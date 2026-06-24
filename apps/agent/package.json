@@ -1,0 +1,25 @@
+{
+  "name": "@tendnote/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "eve dev",
+    "build": "tsc --noEmit",
+    "lint": "biome check agent evals",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tendnote/db": "workspace:*",
+    "@tendnote/domain": "workspace:*",
+    "eve": "^0.13.6",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@tendnote/config": "workspace:*",
+    "@types/node": "^20.19.43",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  }
+}

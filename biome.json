@@ -1,0 +1,83 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": [
+      "**",
+      "!!**/.next",
+      "!!**/.turbo",
+      "!!**/node_modules",
+      "!!**/coverage",
+      "!!**/dist",
+      "!!**/playwright-report",
+      "!!**/test-results",
+      "!!**/packages/db/migrations"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "suspicious": {
+        "noUnknownAtRules": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "apps/web/src/components/ui/button-group.tsx",
+        "apps/web/src/components/ui/input-group.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useKeyWithClickEvents": "off",
+            "useSemanticElements": "off"
+          }
+        }
+      }
+    }
+  ],
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "json": {
+    "formatter": {
+      "indentStyle": "space",
+      "indentWidth": 2
+    }
+  },
+  "css": {
+    "parser": {
+      "cssModules": true,
+      "tailwindDirectives": true
+    },
+    "linter": {
+      "enabled": true
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}

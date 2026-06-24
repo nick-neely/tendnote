@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+
+node_modules
+.cursor
+.turbo
+.next
+dist
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+
+*.log
+.DS_Store

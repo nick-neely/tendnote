@@ -1,0 +1,7 @@
+{
+  "extends": "@tendnote/config/typescript/base",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "drizzle.config.ts"]
+}

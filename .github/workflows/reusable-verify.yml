@@ -1,0 +1,211 @@
+name: Reusable verify
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 24
+  PNPM_VERSION: 10.32.1
+  BETTER_AUTH_SECRET: ci-only-better-auth-secret-with-at-least-32-characters
+  BETTER_AUTH_URL: http://localhost:3000
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+  DATABASE_URL: postgresql://tendnote:tendnote@localhost:5432/tendnote
+  REDIS_URL: redis://localhost:6379
+  TENDNOTE_ENV: ci
+  TURBO_DAEMON: "false"
+  TURBO_TELEMETRY_DISABLED: "1"
+  TMPDIR: /tmp
+
+jobs:
+  database:
+    name: Database
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: tendnote
+          POSTGRES_USER: tendnote
+          POSTGRES_PASSWORD: tendnote
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tendnote -d tendnote"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check migration drift
+        run: pnpm db:check
+
+      - name: Replay migrations
+        run: pnpm db:migrate
+
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint and format
+        run: pnpm lint
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: tendnote
+          POSTGRES_USER: tendnote
+          POSTGRES_PASSWORD: tendnote
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tendnote -d tendnote"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Cache Next.js build artifacts
+        uses: actions/cache@v4
+        with:
+          path: apps/web/.next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**', 'apps/web/next.config.*', 'apps/web/postcss.config.*', 'apps/web/tsconfig*.json', 'packages/**/src/**', 'package.json', 'pnpm-workspace.yaml', 'turbo.json') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            next-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Replay migrations
+        run: pnpm db:migrate
+
+      - name: Build
+        run: pnpm build
+
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - database
+      - lint
+      - test
+      - typecheck
+      - build
+    steps:
+      - name: Check verification results
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" || "${{ contains(needs.*.result, 'skipped') }}" == "true" ]]; then
+            echo "One or more verification jobs failed, were cancelled, or were skipped."
+            exit 1
+          fi

@@ -1,0 +1,7 @@
+{
+  "extends": "@tendnote/config/typescript/base",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["agent/**/*.ts", "evals/**/*.ts"]
+}

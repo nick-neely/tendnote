@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: tendnote-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tendnote
+      POSTGRES_USER: tendnote
+      POSTGRES_PASSWORD: tendnote
+    ports:
+      - "${TENDNOTE_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - tendnote-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tendnote -d tendnote"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: tendnote-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${TENDNOTE_REDIS_PORT:-56379}:6379"
+    volumes:
+      - tendnote-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  tendnote-postgres-data:
+  tendnote-redis-data:

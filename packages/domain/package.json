@@ -1,0 +1,29 @@
+{
+  "name": "@tendnote/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./people": "./src/people.ts",
+    "./memories": "./src/memories.ts",
+    "./followups": "./src/followups.ts",
+    "./drafts": "./src/drafts.ts",
+    "./privacy": "./src/privacy.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "biome check src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@tendnote/config": "workspace:*",
+    "@types/node": "^20.19.43",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  }
+}

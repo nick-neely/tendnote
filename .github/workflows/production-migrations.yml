@@ -1,0 +1,86 @@
+name: Verify and migrate production
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-migrations
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      verify: ${{ steps.filter.outputs.verify }}
+      database: ${{ steps.filter.outputs.database }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            verify:
+              - '.github/workflows/**'
+              - 'apps/**'
+              - 'packages/**'
+              - 'docs/**'
+              - 'README.md'
+              - 'biome.json'
+              - 'docker-compose.yml'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - 'tsconfig*.json'
+            database:
+              - 'packages/db/src/schema/**'
+              - 'packages/db/migrations/**'
+              - 'packages/db/drizzle.config.ts'
+              - 'packages/db/package.json'
+
+  verify:
+    needs: changes
+    if: needs.changes.outputs.verify == 'true'
+    uses: ./.github/workflows/reusable-verify.yml
+
+  migrate:
+    name: Migrate production
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - verify
+    if: needs.changes.outputs.database == 'true' && needs.verify.result == 'success'
+    environment: production
+    env:
+      NODE_VERSION: 24
+      PNPM_VERSION: 10.32.1
+      DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_DIRECT_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: pnpm db:migrate
