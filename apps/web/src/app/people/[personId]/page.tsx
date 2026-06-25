@@ -1,4 +1,5 @@
 import { getPersonProfile } from "@tendnote/db";
+import { isDurableMemoryFact } from "@tendnote/domain";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,9 @@ export default async function PersonDetailPage({
   if (!profile) {
     notFound();
   }
+
+  // Only approved memories are durable, confirmed facts (ADR 0004).
+  const confirmedMemories = profile.memories.filter(isDurableMemoryFact);
 
   return (
     <AppShell>
@@ -37,22 +41,24 @@ export default async function PersonDetailPage({
         <Card className="bg-surface">
           <CardHeader>
             <CardTitle>Memories</CardTitle>
-            <CardDescription>Stored context with source and confidence.</CardDescription>
+            <CardDescription>
+              Confirmed relationship facts, with source and confidence.
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            {profile.memories.length ? (
-              profile.memories.map((memory) => (
+            {confirmedMemories.length ? (
+              confirmedMemories.map((memory) => (
                 <div className="rounded-lg border bg-background p-3" key={memory.id}>
                   <p className="text-sm">{memory.content}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Badge variant="outline">{memory.status}</Badge>
+                    <Badge variant="secondary">Confirmed</Badge>
                     <Badge variant="outline">{memory.confidence}</Badge>
                     <Badge variant="outline">{memory.sensitivity}</Badge>
                   </div>
                 </div>
               ))
             ) : (
-              <p className="text-sm text-muted-foreground">No memories captured yet.</p>
+              <p className="text-sm text-muted-foreground">No confirmed memories yet.</p>
             )}
           </CardContent>
         </Card>

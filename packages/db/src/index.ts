@@ -1,4 +1,5 @@
 export { closeDb, getDb, hasDatabaseUrl } from "./client";
+export * from "./queries/memories";
 export * from "./queries/people";
 export * from "./queries/source-records";
 export * as schema from "./schema";

@@ -45,6 +45,71 @@ export function isDurableMemoryFact(memory: Pick<Memory, "status">) {
   return memory.status === "approved";
 }
 
+/**
+ * Canonical explicit-memory triggers. An explicit request such as "remember",
+ * "save", "note", or "keep track of" creates an approved memory immediately,
+ * while still keeping a source record for provenance (see ADR 0021).
+ */
+export const explicitMemoryTriggers = ["remember", "save", "note", "keep track of"] as const;
+
+export type ExplicitMemoryTrigger = (typeof explicitMemoryTriggers)[number];
+
+export type ParsedExplicitMemoryRequest = {
+  isExplicitMemoryRequest: boolean;
+  trigger: ExplicitMemoryTrigger | null;
+  content: string;
+};
+
+// Ordered longest-first so multi-word phrasings win before their bare trigger.
+// Each phrasing maps to the canonical trigger it represents.
+const explicitMemoryPhrasings: ReadonlyArray<{ phrasing: string; trigger: ExplicitMemoryTrigger }> =
+  [
+    { phrasing: "keep track of", trigger: "keep track of" },
+    { phrasing: "make a note of", trigger: "note" },
+    { phrasing: "make a note that", trigger: "note" },
+    { phrasing: "take a note of", trigger: "note" },
+    { phrasing: "remember that", trigger: "remember" },
+    { phrasing: "remember to", trigger: "remember" },
+    { phrasing: "remember", trigger: "remember" },
+    { phrasing: "save that", trigger: "save" },
+    { phrasing: "save this", trigger: "save" },
+    { phrasing: "save", trigger: "save" },
+    { phrasing: "note that", trigger: "note" },
+    { phrasing: "note", trigger: "note" },
+  ];
+
+const leadingSeparators = /^[\s:,.\-–—]+/;
+
+/**
+ * Deterministically classifies whether a capture is an explicit memory request
+ * and, if so, extracts the durable fact by stripping the trigger phrasing. This
+ * is the product rule for explicit capture; agent and web surfaces stay thin by
+ * deferring to it rather than re-implementing keyword detection.
+ */
+export function parseExplicitMemoryRequest(text: string): ParsedExplicitMemoryRequest {
+  const trimmed = text.trim();
+  const withoutPlease = trimmed.replace(/^please[\s:,.\-–—]+/i, "");
+  const lower = withoutPlease.toLowerCase();
+
+  for (const { phrasing, trigger } of explicitMemoryPhrasings) {
+    if (!lower.startsWith(phrasing)) {
+      continue;
+    }
+
+    // Guard against trigger words embedded in longer words ("saved", "notebook").
+    const remainder = lower.slice(phrasing.length);
+    if (remainder.length > 0 && !leadingSeparators.test(remainder)) {
+      continue;
+    }
+
+    const content = withoutPlease.slice(phrasing.length).replace(leadingSeparators, "").trim();
+
+    return { isExplicitMemoryRequest: true, trigger, content };
+  }
+
+  return { isExplicitMemoryRequest: false, trigger: null, content: trimmed };
+}
+
 export function canUseMemoryProactively(
   memory: Pick<Memory, "status" | "sensitivity">,
   input: { directlyRequested?: boolean } = {},
