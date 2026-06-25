@@ -13,8 +13,7 @@
   "dependencies": {
     "@tendnote/db": "workspace:*",
     "@tendnote/domain": "workspace:*",
-    "eve": "^0.13.6",
-    "zod": "^4.1.13"
+    "eve": "^0.13.6"
   },
   "devDependencies": {
     "@tendnote/config": "workspace:*",

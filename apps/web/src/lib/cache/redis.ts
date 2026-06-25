@@ -12,10 +12,3 @@ export function getRedis() {
 
   return redis;
 }
-
-export async function closeRedis() {
-  if (redis) {
-    await redis.quit();
-    redis = undefined;
-  }
-}

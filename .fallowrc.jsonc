@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "ignoreExports": [
+    {
+      "file": "apps/web/src/components/ai-elements/**",
+      "exports": ["*"]
+    },
+    {
+      "file": "apps/web/src/components/ui/**",
+      "exports": ["*"]
+    }
+  ],
+  "entry": ["apps/agent/agent/agent.ts"],
+  "dynamicallyLoaded": [
+    "apps/agent/agent/channels/**/*.ts",
+    "apps/agent/agent/connections/**/*.ts",
+    "apps/agent/agent/schedules/**/*.ts",
+    "apps/agent/agent/sandbox/**/*.ts",
+    "apps/agent/agent/subagents/**/agent.ts",
+    "apps/agent/agent/tools/**/*.ts"
+  ],
+  "duplicates": {
+    "mode": "mild",
+    "minTokens": 70,
+    "minLines": 6,
+    "threshold": 0,
+    "ignore": [
+      "apps/web/src/components/ai-elements/**",
+      "apps/web/src/components/ui/**",
+      "packages/db/src/schema/**"
+    ]
+  },
+  "health": {
+    "ignore": ["apps/web/src/components/ai-elements/**", "apps/web/src/components/ui/**"]
+  },
+  "audit": {
+    "gate": "new-only"
+  }
+}

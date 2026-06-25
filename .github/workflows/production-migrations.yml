@@ -30,6 +30,7 @@ jobs:
           filters: |
             verify:
               - '.github/workflows/**'
+              - '.fallowrc*'
               - 'apps/**'
               - 'packages/**'
               - 'docs/**'

@@ -10,6 +10,11 @@
     "build": "turbo build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "fallow": "fallow audit",
+    "fallow:ci": "fallow audit --ci",
+    "fallow:dead-code": "fallow dead-code",
+    "fallow:dupes": "fallow dupes",
+    "fallow:health": "fallow health --score --hotspots",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "typecheck": "turbo typecheck",
@@ -24,6 +29,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
+    "fallow": "^2.102.0",
     "turbo": "^2.6.3",
     "typescript": "^5.9.3"
   }

@@ -2,7 +2,7 @@ import type { Followup, Memory, Person, SourceRecord, SourceRecordPerson } from 
 
 const now = new Date("2026-06-24T12:00:00.000Z");
 
-export const demoOwnerUserId = "demo-user";
+const demoOwnerUserId = "demo-user";
 
 const alexId = "8b5f52bf-7f5c-44b2-9c2b-f77c7ec9f010";
 const jordanId = "d1367b4f-79fd-49fd-a3a7-a2807b15a47c";
