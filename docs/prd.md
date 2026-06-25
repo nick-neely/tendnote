@@ -233,13 +233,15 @@ Tendnote should use Eve because the project maps cleanly to Eve's filesystem-fir
 - `agent/agent.ts` for model and runtime configuration
 - `agent/tools/` for typed TypeScript tools that read/write people, memories, follow-ups, and drafts
 - `agent/skills/` for reusable Markdown playbooks such as message drafting, privacy rules, and birthday handling
-- `agent/schedules/` for daily briefs, birthday checks, stale-contact review, and weekly relationship review
-- `agent/channels/` for web chat first, with Slack, Telegram, or email later
-- `agent/connections/` for Google Contacts, Google Calendar, Gmail, Notion, or other MCP/API integrations
-- `agent/subagents/` for later specialized tasks such as memory curation, message drafting, and privacy review
-- `agent/sandbox/` for isolated import cleanup, CSV/vCard parsing, and one-off data scripts
+- `agent/channels/web.ts` when the web chat bridge is active
+- `agent/schedules/` only when daily briefs, birthday checks, stale-contact review, or weekly relationship review are implemented
+- `agent/connections/` only when Google Contacts, Google Calendar, Gmail, Notion, or other integrations begin
+- `agent/subagents/` only when specialized tasks such as memory curation, message drafting, or privacy review are implemented
+- `agent/sandbox/` only when isolated import cleanup, CSV/vCard parsing, or one-off data workflows begin
 
-### Agent Directory Target Shape
+Do not keep inactive future-phase placeholder files in the active Eve agent tree. Placeholders make the agent surface look more capable than it is and can confuse both Eve and implementation agents. Future schedules, channels, connections, subagents, and sandbox workflows should be added in the phase that actually enables them.
+
+### Active Agent Directory Shape
 
 ```txt
 agent/
@@ -248,60 +250,20 @@ agent/
 
   tools/
     search_people.ts
-    get_person_profile.ts
+    get_person_context.ts
     upsert_person.ts
-    add_memory.ts
-    update_memory.ts
-    create_followup.ts
-    list_due_followups.ts
-    update_followup_status.ts
-    draft_message.ts
-    create_message_draft.ts
-    import_contacts_preview.ts
-    dedupe_people_preview.ts
+    capture_source_record.ts
+    capture_memory.ts
+    get_suggested_memory_review.ts
+    approve_suggested_memory.ts
+    dismiss_suggested_memory.ts
 
   skills/
     relationship-memory.md
-    followup-prioritization.md
-    message-drafting-tone.md
-    birthday-protocol.md
-    networking-playbook.md
     privacy-and-consent.md
-    shared-household-context.md
-
-  schedules/
-    daily-brief.ts
-    weekly-relationship-review.ts
-    birthday-check.ts
-    stale-contact-check.ts
-    post-meeting-followup.ts
-
-  channels/
-    web.ts
-    slack.ts
-    telegram.ts
-    email.ts
-
-  connections/
-    google-contacts.ts
-    google-calendar.ts
-    gmail.ts
-    notion.ts
-
-  subagents/
-    memory-curator/
-      agent.ts
-      instructions.md
-    message-drafter/
-      agent.ts
-      instructions.md
-    privacy-guard/
-      agent.ts
-      instructions.md
-
-  sandbox/
-    sandbox.ts
 ```
+
+Phase 1B.5 should add the real web chat channel or bridge. Later phases may add more tools, skills, schedules, channels, connections, subagents, and sandbox workflows as their product behavior becomes real. Keep the active tree lean until then.
 
 ### Core Agent Instructions
 
@@ -336,19 +298,23 @@ Help Nick remember context about people, follow up at the right time, prepare fo
 | Tool | Purpose |
 |---|---|
 | `search_people` | Find people by name, tag, relationship type, or recency. |
-| `get_person_profile` | Load a person's profile, source records, memories, and follow-ups. |
+| `get_person_context` | Load snapshot-backed trust-aware context for a person. |
 | `upsert_person` | Create or update a person. |
-| `add_memory` | Store a structured memory tied to a person. |
-| `create_followup` | Create a due follow-up for a person. |
-| `list_due_followups` | Return follow-ups due today or this week. |
-| `update_followup_status` | Complete, dismiss, snooze, or reopen follow-ups. |
-| `draft_message` | Draft a message without sending it. |
-| `create_message_draft` | Persist draft text inside Tendnote only. |
+| `capture_source_record` | Save logged context with source-record provenance. |
+| `capture_memory` | Store an explicit approved memory tied to a person and source record. |
+| `get_suggested_memory_review` | Load a persisted suggested memory for review. |
+| `approve_suggested_memory` | Promote a suggested memory after explicit approval. |
+| `dismiss_suggested_memory` | Reject a suggested memory after explicit dismissal. |
 
 #### Later Phase Tools
 
 | Tool | Purpose |
 |---|---|
+| `create_followup` | Create a due follow-up for a person after manual follow-ups exist. |
+| `list_due_followups` | Return follow-ups due today or this week after manual follow-ups exist. |
+| `update_followup_status` | Complete, dismiss, snooze, or reopen follow-ups after manual follow-ups exist. |
+| `draft_message` | Draft a message without sending it after drafting begins. |
+| `create_message_draft` | Persist draft text inside Tendnote only after drafting begins. |
 | `import_contacts_preview` | Preview Google Contacts import before writing. |
 | `dedupe_people_preview` | Suggest duplicate merges without applying them automatically. |
 | `create_email_draft` | Create Gmail draft after approval. |
@@ -362,12 +328,12 @@ Help Nick remember context about people, follow up at the right time, prepare fo
 | Skill | Purpose |
 |---|---|
 | `relationship-memory.md` | Defines what should and should not be stored as memory. |
-| `followup-prioritization.md` | Decides who is worth surfacing in the daily or weekly brief. |
-| `message-drafting-tone.md` | Captures Nick's preferred message style and anti-patterns. |
-| `birthday-protocol.md` | Handles birthdays, belated messages, and gift ideas. |
-| `networking-playbook.md` | Handles professional follow-ups after meetings, calls, and intros. |
 | `privacy-and-consent.md` | Defines approval requirements and sensitive-data boundaries. |
-| `shared-household-context.md` | Later skill for Nick and Juli shared context. |
+| `followup-prioritization.md` | Later Phase 1 skill for due reminders, briefs, and review ranking. |
+| `message-drafting-tone.md` | Later Phase 1 skill for Tendnote-only message drafting. |
+| `birthday-protocol.md` | Later Phase 1 skill for birthday prompts after birthday behavior exists. |
+| `networking-playbook.md` | Later Phase 1/2 skill for professional follow-ups after follow-up behavior exists. |
+| `shared-household-context.md` | Later Phase 3 skill for Nick and Juli shared context after scope enforcement exists. |
 
 ### Schedules
 
@@ -589,7 +555,7 @@ tendnote/
 | Workspace | Responsibility |
 |---|---|
 | `apps/web` | Next.js UI, routes, dashboard, people pages, follow-up views, draft review UI, settings, Better Auth routes/client setup, AI Elements chat components, and user-facing API routes. |
-| `apps/agent` | Eve agent runtime, instructions, tools, skills, schedules, channels, connections, subagents, sandbox, and evals. |
+| `apps/agent` | Eve agent runtime, instructions, currently implemented tools/skills, and evals. Add schedules, channels, connections, subagents, and sandbox workflows only when the relevant phase has real behavior. |
 | `packages/db` | Drizzle schema, Drizzle Kit migrations, seed data, query helpers, and Neon database client setup. |
 | `packages/domain` | Shared TypeScript domain types, validation schemas, enums, and business rules for people, memories, follow-ups, drafts, and privacy scopes. |
 | `packages/config` | Shared TypeScript, ESLint, Tailwind, and other repo-level configuration. |
@@ -892,7 +858,7 @@ Deliverables:
 - Message drafting inside Tendnote
 - Approval gate for all external actions
 - Basic dashboard
-- Plain Postgres retrieval first, then context snapshots, full-text search, and pgvector as follow-on slices
+- Plain Postgres retrieval first, then context snapshots, Eve-backed web chat, full-text search, and pgvector as follow-on slices
 
 ##### Phase 1 Prep: Schema and Domain Alignment
 
@@ -918,6 +884,14 @@ Deliverables:
 - Regenerate snapshots after approved memory changes, source record additions, follow-up completions, and profile edits.
 - Use snapshots as the first context layer, then fetch supporting memories/source records as needed.
 
+##### Phase 1B.5: Eve-Backed Web Chat
+
+- Replace the local-only web assistant capture path with a real web chat bridge into the Eve agent.
+- Route web chat turns through Eve so the agent can search people, create or update people when the user explicitly intends it, capture source records, capture explicit memories, load snapshot-backed person context, and render persisted review components.
+- Keep the active Eve tree lean: remove inactive future-phase placeholder schedules, channels, connections, subagents, and sandbox files until their phase has real code-level behavior.
+- Preserve Phase 1 privacy and approval rules: no external sends, no external draft creation, no Gmail/Calendar/Contacts/shared-household behavior, and no automatic person creation from ambiguous casual mentions.
+- Use this as the core natural-language loop before adding full-text search, semantic retrieval, briefs, drafting, or integrations.
+
 ##### Phase 1C: Full-Text Search
 
 - Add Postgres full-text search over people, memory content, source record content, and interaction summaries stored as source records.
@@ -937,6 +911,7 @@ Vertical slice issue seeds:
 - Implement add memory flow with source, sensitivity, confidence, importance, status, and scope.
 - Implement create follow-up flow with complete, snooze, and dismiss actions.
 - Implement person context snapshot generation and snapshot-backed `get_person_profile`.
+- Implement Eve-backed web chat with people search/upsert, source-record capture, explicit memory capture, and review component rendering.
 - Add full-text search over people, memories, and source records.
 - Add pgvector embeddings and semantic memory search as a later Phase 1 issue.
 - Implement daily brief schedule that returns up to 3 items.
@@ -1069,13 +1044,14 @@ Recommended first issue batch:
 9. Add Eve `search_people` and `upsert_person` tools.
 10. Add source records and atomic memory capture flow with suggested/approved states.
 11. Add person context snapshots and snapshot-backed profile retrieval.
-12. Add follow-up creation and status updates.
-13. Add daily brief schedule.
-14. Add draft message tool and review UI.
-15. Add Postgres full-text search.
-16. Add pgvector semantic memory retrieval after the core loop works.
-17. Add no-send-without-approval eval.
-18. Add no-fake-memory eval.
+12. Connect web chat to Eve for people search/upsert, source-record capture, explicit memory capture, and review components.
+13. Add follow-up creation and status updates.
+14. Add daily brief schedule.
+15. Add draft message tool and review UI.
+16. Add Postgres full-text search.
+17. Add pgvector semantic memory retrieval after the core loop works.
+18. Add no-send-without-approval eval.
+19. Add no-fake-memory eval.
 
 Definition of done for an MVP issue:
 
