@@ -336,7 +336,7 @@ Help Nick remember context about people, follow up at the right time, prepare fo
 | Tool | Purpose |
 |---|---|
 | `search_people` | Find people by name, tag, relationship type, or recency. |
-| `get_person_profile` | Load a person's profile, memories, follow-ups, and recent interactions. |
+| `get_person_profile` | Load a person's profile, source records, memories, and follow-ups. |
 | `upsert_person` | Create or update a person. |
 | `add_memory` | Store a structured memory tied to a person. |
 | `create_followup` | Create a due follow-up for a person. |
@@ -636,6 +636,36 @@ Do not create extra packages for every domain area at the start. Add `packages/i
 
 Minimum schema for the MVP. Better Auth may generate or own the canonical auth/user/session/account tables depending on the selected adapter. Tendnote application tables should reference the authenticated user id and may use an app-level profile table if needed for product-specific fields.
 
+### Memory Storage and Retrieval Strategy
+
+Tendnote should store memory in Neon Postgres, not a separate vector database for the initial product. Postgres is the source of truth, Drizzle owns the schema/migrations, and retrieval should become more capable in small steps rather than starting with a complex RAG stack.
+
+Use four layers:
+
+1. **Source records**: raw-ish interaction summaries, notes, imports, calendar events, and future email summaries.
+2. **Atomic memories**: small facts about a person, stored as `suggested` until user-approved or explicitly saved.
+3. **Search indexes**: normal SQL indexes first, then Postgres full-text search, then pgvector embeddings for semantic lookup.
+4. **Context snapshots**: precomputed person profile cards that let the agent load the right context quickly without dumping every memory into the model.
+
+Recommended Phase 1 memory rollout:
+
+| Slice | Storage/retrieval capability | Notes |
+|---|---|---|
+| Phase 1A | Plain Postgres + relational indexes | Store people, source records, memories, follow-ups, drafts, and audit events. Retrieve by `owner_user_id`, `person_id`, `status`, recency, and importance. |
+| Phase 1B | Context snapshots | Add `person_context_snapshots` to cache generated profile cards after memory, source record, follow-up, and profile changes. |
+| Phase 1C | Postgres full-text search | Add `tsvector`/GIN-backed search over memory content, source record content, interaction summaries, and person names. |
+| Phase 1D | pgvector semantic retrieval | Add memory embeddings for fuzzy queries like gift ideas, career updates, stressful life events, or people worth checking in with. |
+
+Agent retrieval should be hybrid:
+
+- Use deterministic SQL for known-person context, birthdays, due follow-ups, pinned memories, and recent source records.
+- Use full-text search for exact recall like names, companies, places, or specific phrases.
+- Use pgvector later for fuzzy or semantic recall.
+- Always apply hard filters first: `owner_user_id`, scope, sensitivity, memory status, and person/workspace access.
+- Build a small context pack for the model, usually the profile snapshot plus the top 8-15 supporting memories/source records.
+
+Do not add Redis or a standalone vector database in Phase 1 unless a measured bottleneck appears. Persisted context snapshots are the preferred first performance optimization.
+
 ```txt
 users / auth_users
   id
@@ -653,7 +683,7 @@ people
   birthday
   relationship_type
   closeness_level
-  notes
+  profile_note          # optional short blurb, not relationship history
   source
   created_at
   updated_at
@@ -668,30 +698,82 @@ contact_methods
   created_at
   updated_at
 
+source_records
+  id
+  owner_user_id
+  source_type           # manual_note, interaction_summary, contact_import, calendar, gmail, other
+  status                # pending_resolution, active, dismissed, archived
+  source_ref            # optional external/provider id
+  occurred_at
+  content               # retained/minimized note, summary, or imported context
+  raw_content           # optional short-lived or dev-only raw input when needed
+  retention_policy      # retain, summarize_then_delete, delete_after_processing
+  confidence            # low, medium, high
+  metadata_json         # display/debug/source-specific details, non-authoritative
+  created_at
+  updated_at
+
+source_record_people
+  source_record_id
+  person_id
+  role                  # primary, mentioned
+  created_at
+
+source_record_mentions
+  id
+  source_record_id
+  mention_text
+  status                # unresolved, linked, ignored
+  linked_person_id
+  candidate_person_ids
+  created_at
+  updated_at
+
 memories
   id
   person_id
   owner_user_id
-  memory_type           # preference, life_event, gift_idea, boundary, context, other
-  content
-  source                # manual, agent, contact_import, calendar, gmail
-  sensitivity           # normal, sensitive, private
+  memory_type           # preference, life_event, gift_idea, boundary, context, followup_context, other
+  content               # atomic approved or suggested fact
+  status                # suggested, approved, dismissed, archived
+  source_record_id
+  sensitivity           # normal, sensitive, restricted
   confidence            # low, medium, high
+  importance            # 1-5
   scope                 # private, shared, household
+  approved_at
+  dismissed_at
   created_at
   updated_at
 
-interactions
+extraction_jobs
   id
-  person_id
   owner_user_id
-  interaction_type      # call, text, email, meeting, hangout, note
-  occurred_at
-  summary
-  source
-  confidence
+  source_record_id
+  status                # queued, processing, completed, failed, skipped
+  attempts
+  last_error
+  idempotency_key
+  run_after
   created_at
   updated_at
+
+memory_embeddings       # Phase 1D
+  memory_id
+  embedding
+  embedding_model
+  embedding_version
+  embedded_text
+  created_at
+
+person_context_snapshots # Phase 1B
+  person_id
+  owner_user_id
+  summary
+  pinned_memory_ids
+  recent_source_record_ids
+  stale_after
+  generated_at
 
 followups
   id
@@ -798,27 +880,68 @@ Vertical slice issue seeds:
 
 #### Phase 1: Personal MVP
 
-Goal: Make Tendnote useful without external integrations.
+Goal: Make Tendnote useful without external integrations while building memory retrieval in incremental slices.
 
 Deliverables:
 
 - Add/edit/search people
-- Manual memory capture
+- Manual memory capture and agent-suggested observations
 - Manual follow-up creation
 - Daily brief schedule
 - Weekly relationship review schedule
 - Message drafting inside Tendnote
 - Approval gate for all external actions
 - Basic dashboard
+- Plain Postgres retrieval first, then context snapshots, full-text search, and pgvector as follow-on slices
+
+##### Phase 1 Prep: Schema and Domain Alignment
+
+- Align `packages/domain`, `packages/db`, migrations, query helpers, and seed data with the settled Phase 1 memory architecture before building new product surfaces.
+- Replace CRM-leaning or ambiguous enum values, such as `relationship_type = client`, with personal-relationship language such as `professional`.
+- Rename highest sensitivity from `private` to `restricted` so `private` only describes visibility scope.
+- Remove hard unique display-name constraints and rely on disambiguation for duplicate names.
+- Replace large freeform person notes with an optional short profile blurb; store notes and relationship history as source records.
+- Add source records, source record people links, unresolved mentions, memory lifecycle fields, extraction jobs, and required source-record provenance for memories.
+- Add deterministic policy tests for source-record provenance, pending-resolution behavior, lifecycle status rules, restricted-content retrieval, and duplicate-name disambiguation.
+
+##### Phase 1A: Plain Postgres Memory
+
+- Store people, source records, atomic memories, follow-ups, drafts, and audit events in Neon Postgres.
+- Store extraction jobs in Postgres and process suggested-memory extraction asynchronously from source records.
+- Add relational indexes for `owner_user_id`, `person_id`, `status`, recency, and importance.
+- Treat explicit "remember/save/note" requests as durable memories.
+- Treat inferred agent observations as `suggested` memories until approved, edited, or dismissed.
+
+##### Phase 1B: Context Snapshots
+
+- Add `person_context_snapshots` as generated profile cards for fast agent context loading.
+- Regenerate snapshots after approved memory changes, source record additions, follow-up completions, and profile edits.
+- Use snapshots as the first context layer, then fetch supporting memories/source records as needed.
+
+##### Phase 1C: Full-Text Search
+
+- Add Postgres full-text search over people, memory content, source record content, and interaction summaries stored as source records.
+- Use full-text search for exact recall questions like companies, places, names, or specific phrases.
+- Keep full-text search scoped by user, memory status, sensitivity, and visibility.
+
+##### Phase 1D: pgvector Semantic Retrieval
+
+- Add `memory_embeddings` for approved memories and selected source summaries.
+- Use pgvector for fuzzy retrieval, gift ideas, life-event themes, career updates, and "who should I check in with" style prompts.
+- Do not block the initial usable MVP on embeddings. Add this after plain retrieval and snapshots work.
 
 Vertical slice issue seeds:
 
 - Implement add person and search people flows through UI and agent tool.
-- Implement add memory flow with source, sensitivity, confidence, and scope.
+- Implement source records and atomic memories with `suggested`, `approved`, `dismissed`, and `archived` states.
+- Implement add memory flow with source, sensitivity, confidence, importance, status, and scope.
 - Implement create follow-up flow with complete, snooze, and dismiss actions.
+- Implement person context snapshot generation and snapshot-backed `get_person_profile`.
+- Add full-text search over people, memories, and source records.
+- Add pgvector embeddings and semantic memory search as a later Phase 1 issue.
 - Implement daily brief schedule that returns up to 3 items.
 - Implement draft message tool and draft review UI.
-- Add evals for no-fake-memory, tone-match, and brief-size-limit.
+- Add evals for no-fake-memory, tone-match, source-grounded-recall, and brief-size-limit.
 
 #### Phase 2: Google Integrations
 
@@ -941,14 +1064,18 @@ Recommended first issue batch:
 4. Add Better Auth setup backed by Neon Postgres.
 5. Add shared domain types, validation schemas, and enums in `packages/domain`.
 6. Add Drizzle schema, Neon client, and migrations in `packages/db`.
-7. Add people CRUD and search.
-8. Add Eve `search_people` and `upsert_person` tools.
-9. Add memory capture flow.
-10. Add follow-up creation and status updates.
-11. Add daily brief schedule.
-12. Add draft message tool and review UI.
-13. Add no-send-without-approval eval.
-14. Add no-fake-memory eval.
+7. Align Phase 0 schema and domain code with the Phase 1 source-record, memory lifecycle, sensitivity, relationship type, and duplicate-name decisions.
+8. Add people CRUD and search.
+9. Add Eve `search_people` and `upsert_person` tools.
+10. Add source records and atomic memory capture flow with suggested/approved states.
+11. Add person context snapshots and snapshot-backed profile retrieval.
+12. Add follow-up creation and status updates.
+13. Add daily brief schedule.
+14. Add draft message tool and review UI.
+15. Add Postgres full-text search.
+16. Add pgvector semantic memory retrieval after the core loop works.
+17. Add no-send-without-approval eval.
+18. Add no-fake-memory eval.
 
 Definition of done for an MVP issue:
 
@@ -973,6 +1100,7 @@ Definition of done for an MVP issue:
 | ORM | Drizzle ORM with Drizzle Kit migrations |
 | Auth | Better Auth |
 | UI foundation | Tailwind CSS, shadcn/ui, and AI Elements |
+| Memory storage/retrieval | Neon Postgres first, then context snapshots, Postgres full-text search, and pgvector |
 | Domain | `tendnote.com`, with `.dev` for docs/dev if purchased |
 
 ### Remaining Open Questions
