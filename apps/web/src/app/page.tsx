@@ -14,11 +14,11 @@ export default async function Home() {
     <AppShell>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
         <section className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
+          <div className="flex max-w-3xl flex-col gap-3">
             <Badge className="w-fit" variant="secondary">
               Phase 0 foundation
             </Badge>
-            <h1 className="text-3xl font-semibold tracking-normal">
+            <h1 className="max-w-2xl text-[length:var(--text-display)] leading-[var(--text-display-line)] font-semibold tracking-normal">
               Relationship memory, local first.
             </h1>
             <p className="max-w-2xl text-muted-foreground">
@@ -28,7 +28,7 @@ export default async function Home() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <Card>
+            <Card className="bg-surface">
               <CardHeader>
                 <CardTitle className="text-base">Postgres</CardTitle>
                 <CardDescription>Local Docker database</CardDescription>
@@ -37,7 +37,7 @@ export default async function Home() {
                 <Badge variant="outline">Drizzle ready</Badge>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="bg-surface">
               <CardHeader>
                 <CardTitle className="text-base">Redis</CardTitle>
                 <CardDescription>Auth cache and rate limits</CardDescription>
@@ -46,7 +46,7 @@ export default async function Home() {
                 <Badge variant="outline">Better Auth</Badge>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="bg-surface">
               <CardHeader>
                 <CardTitle className="text-base">Eve</CardTitle>
                 <CardDescription>Filesystem agent skeleton</CardDescription>
@@ -60,7 +60,9 @@ export default async function Home() {
           <section className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-medium">People</h2>
+                <h2 className="text-[length:var(--text-h2)] leading-[var(--text-h2-line)] font-semibold">
+                  People
+                </h2>
                 <p className="text-sm text-muted-foreground">
                   Seed records render from local Postgres when available, with a mock fallback for
                   first run.

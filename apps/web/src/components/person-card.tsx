@@ -6,12 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 export function PersonCard({ person }: { person: Person }) {
   return (
-    <Link href={`/people/${person.id}`}>
-      <Card className="h-full transition-colors hover:bg-muted/50">
+    <Link className="block h-full" href={`/people/${person.id}`}>
+      <Card className="h-full bg-surface transition-colors hover:border-primary/35 hover:bg-panel">
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <CardTitle className="truncate text-base">{person.displayName}</CardTitle>
+              <CardTitle className="truncate text-[length:var(--text-title)] leading-[var(--text-title-line)]">
+                {person.displayName}
+              </CardTitle>
               <CardDescription>{person.relationshipType}</CardDescription>
             </div>
             <ArrowRightIcon aria-hidden className="text-muted-foreground" />

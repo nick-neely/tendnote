@@ -56,10 +56,10 @@ export function AssistantPanel() {
   }
 
   return (
-    <section className="flex min-h-[520px] flex-col rounded-lg border bg-card">
+    <section className="flex min-h-[520px] flex-col rounded-xl border bg-panel">
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-medium">Assistant</h2>
+          <h2 className="text-sm font-semibold">Assistant</h2>
           <p className="text-xs text-muted-foreground">
             Local-first surface for capture, recall, and draft review.
           </p>

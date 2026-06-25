@@ -4,6 +4,7 @@
 
 node_modules
 .cursor
+.eve
 .turbo
 .next
 dist

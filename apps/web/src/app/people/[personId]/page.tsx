@@ -20,8 +20,10 @@ export default async function PersonDetailPage({
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-normal">{profile.person.displayName}</h1>
+      <div className="flex flex-col gap-3">
+        <h1 className="text-[length:var(--text-display)] leading-[var(--text-display-line)] font-semibold tracking-normal">
+          {profile.person.displayName}
+        </h1>
         <div className="flex flex-wrap gap-2">
           <Badge variant="secondary">{profile.person.relationshipType}</Badge>
           <Badge variant="outline">Closeness {profile.person.closenessLevel}</Badge>
@@ -32,7 +34,7 @@ export default async function PersonDetailPage({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="bg-surface">
           <CardHeader>
             <CardTitle>Memories</CardTitle>
             <CardDescription>Stored context with source and confidence.</CardDescription>
@@ -40,9 +42,9 @@ export default async function PersonDetailPage({
           <CardContent className="flex flex-col gap-3">
             {profile.memories.length ? (
               profile.memories.map((memory) => (
-                <div className="rounded-md border p-3" key={memory.id}>
+                <div className="rounded-lg border bg-background p-3" key={memory.id}>
                   <p className="text-sm">{memory.content}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <Badge variant="outline">{memory.status}</Badge>
                     <Badge variant="outline">{memory.confidence}</Badge>
                     <Badge variant="outline">{memory.sensitivity}</Badge>
@@ -55,7 +57,7 @@ export default async function PersonDetailPage({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-surface">
           <CardHeader>
             <CardTitle>Follow-Ups</CardTitle>
             <CardDescription>Open reminders tied to this person.</CardDescription>
@@ -63,9 +65,9 @@ export default async function PersonDetailPage({
           <CardContent className="flex flex-col gap-3">
             {profile.followups.length ? (
               profile.followups.map((followup) => (
-                <div className="rounded-md border p-3" key={followup.id}>
+                <div className="rounded-lg border bg-background p-3" key={followup.id}>
                   <p className="text-sm">{followup.reason}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <Badge variant="outline">{followup.status}</Badge>
                     <Badge variant="outline">{followup.dueAt.toLocaleDateString()}</Badge>
                   </div>

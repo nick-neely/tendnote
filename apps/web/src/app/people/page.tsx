@@ -9,8 +9,10 @@ export default async function PeoplePage() {
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-normal">People</h1>
+      <div className="flex max-w-2xl flex-col gap-2">
+        <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
+          People
+        </h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
           Phase 0 includes a read-only people list and detail route backed by shared DB query
           helpers.
