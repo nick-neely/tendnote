@@ -1,8 +1,7 @@
 import { getPersonContext } from "@tendnote/db";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-
-const localDemoOwnerUserId = "demo-user";
+import { resolveOwnerUserId } from "../lib/owner";
 
 const inputSchema = z.object({
   personId: z
@@ -28,10 +27,7 @@ export default defineTool({
     "Load trust-aware relationship context for a resolved person. Returns three kinds of context that MUST be phrased differently: `approvedMemories` are CONFIRMED FACTS; `sourceRecords` are LOGGED CONTEXT — phrase as 'you noted' or 'you mentioned', never as established fact; `suggestedMemories` are TENTATIVE review items the user has not approved — never state them as fact. Dismissed, archived, pending, and unresolved records are already excluded. Restricted content is omitted unless the user directly asked (set includeRestricted).",
   inputSchema,
   async execute(input, ctx) {
-    const ownerUserId =
-      ctx.session.auth.current?.principalId ??
-      process.env.TENDNOTE_DEV_OWNER_USER_ID ??
-      localDemoOwnerUserId;
+    const ownerUserId = resolveOwnerUserId(ctx);
 
     const context = await getPersonContext({
       ownerUserId,

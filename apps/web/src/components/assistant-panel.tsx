@@ -23,21 +23,23 @@ type AssistantMessage = {
   sourceRecordReview?: SourceRecordReviewView;
 };
 
-const initialMessages: AssistantMessage[] = [
-  {
-    id: "assistant-intro",
-    from: "assistant",
-    content: "Capture relationship context here. I will save it before any extraction or review.",
-  },
-];
+export type AssistantPersonContext = {
+  personId: string;
+  personName: string;
+};
 
 export function AssistantPanel({
   initialSourceRecordReviews = [],
+  context,
 }: {
   initialSourceRecordReviews?: SourceRecordReviewView[];
+  context?: AssistantPersonContext;
 }) {
+  const introContent = context
+    ? `Capturing about ${context.personName}. Notes are saved and linked to them before any review.`
+    : "Capture relationship context here. I will save it before any extraction or review.";
   const [messages, setMessages] = useState<AssistantMessage[]>(() => [
-    ...initialMessages,
+    { id: "assistant-intro", from: "assistant" as const, content: introContent },
     ...initialSourceRecordReviews.map((review) => ({
       id: `source-record-${review.sourceRecord.id}`,
       from: "assistant" as const,
@@ -69,6 +71,7 @@ export function AssistantPanel({
     try {
       const review = await captureGlobalAssistantSourceRecord({
         retainedContent: text,
+        personId: context?.personId,
       });
 
       setMessages((current) => [
@@ -101,7 +104,9 @@ export function AssistantPanel({
         <div className="flex flex-col gap-1">
           <h2 className="text-sm font-semibold">Assistant</h2>
           <p className="text-xs text-muted-foreground">
-            Local-first capture with review before memory.
+            {context
+              ? `Capturing about ${context.personName}`
+              : "Local-first capture with review before memory."}
           </p>
         </div>
         <Badge variant="secondary">No external sends</Badge>
@@ -125,7 +130,13 @@ export function AssistantPanel({
       <div className="border-t p-3">
         <PromptInput onSubmit={handleSubmit}>
           <PromptInputBody>
-            <PromptInputTextarea placeholder="Remember that Alex is job hunting and likes backend work..." />
+            <PromptInputTextarea
+              placeholder={
+                context
+                  ? `Note something about ${context.personName}...`
+                  : "Remember that Alex is job hunting and likes backend work..."
+              }
+            />
           </PromptInputBody>
           <PromptInputFooter>
             <PromptInputTools>

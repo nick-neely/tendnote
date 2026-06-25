@@ -1,8 +1,10 @@
-import type { SourceRecordPersonRole } from "@tendnote/domain";
+import type { Sensitivity, Source, SourceRecordPersonRole } from "@tendnote/domain";
+import { createSourceRecordCapture } from "./capture";
 import type { SourceRecordResolutionStore } from "./types";
 
 export function createSourceRecordResolution(store: SourceRecordResolutionStore) {
-  return {
+  const capture = createSourceRecordCapture(store);
+  const resolution = {
     async findPersonResolutionCandidates(input: {
       ownerUserId: string;
       mentionText: string;
@@ -179,5 +181,44 @@ export function createSourceRecordResolution(store: SourceRecordResolutionStore)
 
       return store.listSourceRecordsForPersonContext(input);
     },
+    /**
+     * Context-aware capture: save a casual note and link it to a person the
+     * caller already resolved, in one shared owner-scoped operation. Used when
+     * the assistant is launched from a person surface so capture does not need a
+     * separate disambiguation step (ADR 0032). Extraction is enqueued by the
+     * caller after this returns (ADR 0017).
+     */
+    async captureSourceRecordForPerson(input: {
+      ownerUserId: string;
+      personId: string;
+      retainedContent: string;
+      sourceType?: Source;
+      sensitivity?: Sensitivity;
+      role?: SourceRecordPersonRole;
+      metadataJson?: Record<string, unknown>;
+    }) {
+      const { sourceRecord, component } = await capture.captureSourceRecord({
+        ownerUserId: input.ownerUserId,
+        retainedContent: input.retainedContent,
+        sourceType: input.sourceType,
+        sensitivity: input.sensitivity,
+        metadataJson: input.metadataJson,
+      });
+      const linked = await resolution.linkSourceRecordToExistingPerson({
+        ownerUserId: input.ownerUserId,
+        sourceRecordId: sourceRecord.id,
+        personId: input.personId,
+        role: input.role ?? "primary",
+      });
+
+      return {
+        sourceRecord: linked.sourceRecord,
+        component,
+        person: linked.person,
+        link: linked.link,
+      };
+    },
   };
+
+  return resolution;
 }

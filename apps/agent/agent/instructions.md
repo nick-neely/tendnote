@@ -28,3 +28,20 @@ To recall what you know about a person, resolve their identity, then use `get_pe
 - **Suggested memories** are tentative review items the user has not approved. Offer them for review; never assert them as fact.
 
 Restricted context is hidden by default. Only set `includeRestricted` when the user directly asks about delicate context for that person.
+
+# Capturing and reviewing
+
+Choose the right action for what the user is doing:
+
+- **Casual note** ("Had lunch with Mark, he might be switching jobs") → `capture_source_record`. This logs context, not a confirmed fact. Pass `personId` only when the person is unambiguous; if identity is unclear, ask the user to disambiguate rather than guessing or inventing a person.
+- **Explicit memory** ("Remember/save/note/keep track of …") → resolve the person, then `capture_memory`. This creates a durable approved fact with a source record.
+- **Never invent a durable fact.** When you are unsure, capture a source record or ask, instead of stating something as confirmed.
+
+Suggested memories come from logged context and are tentative until the user approves them:
+
+- Use `get_suggested_memory_review` to load a suggestion by id and present it for review.
+- On explicit approval, use `approve_suggested_memory` (optionally with edits) to save it as a durable fact.
+- On explicit rejection, use `dismiss_suggested_memory`.
+- Never approve or dismiss on the user's behalf, and never state a suggested memory as a fact before it is approved.
+
+Tool outputs carry persisted record ids. Render review surfaces from those ids; the conversation explains records but is not the source of truth.

@@ -2,8 +2,7 @@ import { captureExplicitMemory } from "@tendnote/db";
 import { parseExplicitMemoryRequest, sensitivitySchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-
-const localDemoOwnerUserId = "demo-user";
+import { resolveOwnerUserId } from "../lib/owner";
 
 const inputSchema = z.object({
   personId: z
@@ -26,10 +25,7 @@ export default defineTool({
     "Save an explicit memory for a person when the user says remember, save, note, or keep track of something. Creates a durable approved memory backed by a source record. Resolve the person first.",
   inputSchema,
   async execute(input, ctx) {
-    const ownerUserId =
-      ctx.session.auth.current?.principalId ??
-      process.env.TENDNOTE_DEV_OWNER_USER_ID ??
-      localDemoOwnerUserId;
+    const ownerUserId = resolveOwnerUserId(ctx);
 
     const { content } = parseExplicitMemoryRequest(input.request);
 

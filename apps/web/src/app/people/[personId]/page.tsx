@@ -7,6 +7,7 @@ import {
 } from "@tendnote/domain";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { AssistantPanel } from "@/components/assistant-panel";
 import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -115,119 +116,133 @@ export default async function PersonDetailPage({
         ) : null}
       </div>
 
-      {suggestedReviews.length ? (
-        <Card className="bg-surface">
-          <CardHeader>
-            <CardTitle>Needs review</CardTitle>
-            <CardDescription>
-              Suggestions drawn from your notes. Save what&rsquo;s right, edit the wording, or
-              dismiss the rest — nothing becomes a confirmed memory until you say so.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <SuggestedMemoryReviewSection initialReviews={suggestedReviews} />
-          </CardContent>
-        </Card>
-      ) : null}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="flex min-w-0 flex-col gap-4">
+          {suggestedReviews.length ? (
+            <Card className="bg-surface">
+              <CardHeader>
+                <CardTitle>Needs review</CardTitle>
+                <CardDescription>
+                  Suggestions drawn from your notes. Save what&rsquo;s right, edit the wording, or
+                  dismiss the rest — nothing becomes a confirmed memory until you say so.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <SuggestedMemoryReviewSection initialReviews={suggestedReviews} />
+              </CardContent>
+            </Card>
+          ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="bg-surface">
-          <CardHeader>
-            <CardTitle>Memories</CardTitle>
-            <CardDescription>
-              Confirmed relationship facts, with source and confidence.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {approvedMemories.length ? (
-              approvedMemories.map((memory) => (
-                <div className="rounded-lg border bg-background p-3" key={memory.id}>
-                  <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-                    {memory.content}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Badge variant="secondary">Confirmed</Badge>
-                    <Badge variant="outline">{memory.confidence} confidence</Badge>
-                    {memory.sensitivity !== "normal" ? (
-                      <Badge variant="outline">{memory.sensitivity}</Badge>
-                    ) : null}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-[length:var(--text-small)] text-muted-foreground">
-                No confirmed memories yet. Save a suggestion above or tell the assistant something
-                to remember.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="bg-surface">
-          <CardHeader>
-            <CardTitle>Logged context</CardTitle>
-            <CardDescription>
-              Things you noted or mentioned. Kept as context for grounding — not confirmed facts.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {sourceRecords.length ? (
-              sourceRecords.map((sourceRecord) => (
-                <div className="rounded-lg border bg-background p-3" key={sourceRecord.id}>
+          <div className="flex flex-col gap-4">
+            <Card className="bg-surface">
+              <CardHeader>
+                <CardTitle>Memories</CardTitle>
+                <CardDescription>
+                  Confirmed relationship facts, with source and confidence.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                {approvedMemories.length ? (
+                  approvedMemories.map((memory) => (
+                    <div className="rounded-lg border bg-background p-3" key={memory.id}>
+                      <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)]">
+                        {memory.content}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Badge variant="secondary">Confirmed</Badge>
+                        <Badge variant="outline">{memory.confidence} confidence</Badge>
+                        {memory.sensitivity !== "normal" ? (
+                          <Badge variant="outline">{memory.sensitivity}</Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))
+                ) : (
                   <p className="text-[length:var(--text-small)] text-muted-foreground">
-                    {SOURCE_GROUNDING[sourceRecord.sourceType] ?? "Logged context"}
+                    No confirmed memories yet. Save a suggestion above or tell the assistant
+                    something to remember.
                   </p>
-                  <p className="mt-0.5 text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-                    {sourceRecord.content}
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
-                      {sourceRecord.createdAt.toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </span>
-                    {sourceRecord.sensitivity !== "normal" ? (
-                      <Badge variant="outline">{sourceRecord.sensitivity}</Badge>
-                    ) : null}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-[length:var(--text-small)] text-muted-foreground">
-                Nothing logged yet.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                )}
+              </CardContent>
+            </Card>
 
-      <Card className="bg-surface">
-        <CardHeader>
-          <CardTitle>Follow-ups</CardTitle>
-          <CardDescription>Open reminders tied to this person.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {profile.followups.length ? (
-            profile.followups.map((followup) => (
-              <div className="rounded-lg border bg-background p-3" key={followup.id}>
-                <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-                  {followup.reason}
+            <Card className="bg-surface">
+              <CardHeader>
+                <CardTitle>Logged context</CardTitle>
+                <CardDescription>
+                  Things you noted or mentioned. Kept as context for grounding — not confirmed
+                  facts.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                {sourceRecords.length ? (
+                  sourceRecords.map((sourceRecord) => (
+                    <div className="rounded-lg border bg-background p-3" key={sourceRecord.id}>
+                      <p className="text-[length:var(--text-small)] text-muted-foreground">
+                        {SOURCE_GROUNDING[sourceRecord.sourceType] ?? "Logged context"}
+                      </p>
+                      <p className="mt-0.5 text-[length:var(--text-body)] leading-[var(--text-body-line)]">
+                        {sourceRecord.content}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
+                          {sourceRecord.createdAt.toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </span>
+                        {sourceRecord.sensitivity !== "normal" ? (
+                          <Badge variant="outline">{sourceRecord.sensitivity}</Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[length:var(--text-small)] text-muted-foreground">
+                    Nothing logged yet.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="bg-surface">
+            <CardHeader>
+              <CardTitle>Follow-ups</CardTitle>
+              <CardDescription>Open reminders tied to this person.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {profile.followups.length ? (
+                profile.followups.map((followup) => (
+                  <div className="rounded-lg border bg-background p-3" key={followup.id}>
+                    <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)]">
+                      {followup.reason}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Badge variant="outline">{followup.status}</Badge>
+                      <Badge variant="outline">{followup.dueAt.toLocaleDateString()}</Badge>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-[length:var(--text-small)] text-muted-foreground">
+                  No follow-ups created yet.
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Badge variant="outline">{followup.status}</Badge>
-                  <Badge variant="outline">{followup.dueAt.toLocaleDateString()}</Badge>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="text-[length:var(--text-small)] text-muted-foreground">
-              No follow-ups created yet.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <aside className="lg:sticky lg:top-20 lg:self-start">
+          <AssistantPanel
+            context={{
+              personId: profile.person.id,
+              personName: profile.person.displayName,
+            }}
+          />
+        </aside>
+      </div>
     </AppShell>
   );
 }

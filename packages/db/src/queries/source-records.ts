@@ -1,4 +1,4 @@
-import type { SourceRecordPersonRole } from "@tendnote/domain";
+import type { Sensitivity, Source, SourceRecordPersonRole } from "@tendnote/domain";
 import { createSourceRecordCapture } from "./source-records/capture";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 import { createSourceRecordResolution } from "./source-records/resolution";
@@ -70,6 +70,18 @@ export async function listSourceRecordsForPersonContext(input: {
   personId: string;
 }) {
   return defaultSourceRecordResolution.listSourceRecordsForPersonContext(input);
+}
+
+export async function captureSourceRecordForPerson(input: {
+  ownerUserId: string;
+  personId: string;
+  retainedContent: string;
+  sourceType?: Source;
+  sensitivity?: Sensitivity;
+  role?: SourceRecordPersonRole;
+  metadataJson?: Record<string, unknown>;
+}) {
+  return defaultSourceRecordResolution.captureSourceRecordForPerson(input);
 }
 
 export type { ListSourceRecordReviewsInput };
