@@ -37,5 +37,12 @@ export function createDrizzleMemoryStore(): MemoryCaptureStore {
         )
         .orderBy(desc(memories.importance), desc(memories.createdAt));
     },
+    async listMemoriesForSourceRecord(input) {
+      return getDb()
+        .select()
+        .from(memories)
+        .where(eq(memories.sourceRecordId, input.sourceRecordId))
+        .orderBy(memories.createdAt);
+    },
   };
 }

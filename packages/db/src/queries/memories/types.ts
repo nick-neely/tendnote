@@ -53,7 +53,11 @@ export type MemoryCaptureStore = SourceRecordCaptureStore & {
     ownerUserId: string;
     personId: string;
   }) => Promise<Memory[]>;
+  listMemoriesForSourceRecord: (input: { sourceRecordId: string }) => Promise<Memory[]>;
 };
 
 export type InMemoryMemoryStore = InMemorySourceRecordStore &
-  Pick<MemoryCaptureStore, "createMemory" | "listApprovedMemoriesForPerson">;
+  Pick<
+    MemoryCaptureStore,
+    "createMemory" | "listApprovedMemoriesForPerson" | "listMemoriesForSourceRecord"
+  >;

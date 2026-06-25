@@ -37,5 +37,10 @@ export function createInMemoryMemoryStore(): InMemoryMemoryStore {
           (a, b) => b.importance - a.importance || b.createdAt.getTime() - a.createdAt.getTime(),
         );
     },
+    async listMemoriesForSourceRecord(input) {
+      return [...memories.values()]
+        .filter((memory) => memory.sourceRecordId === input.sourceRecordId)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    },
   };
 }

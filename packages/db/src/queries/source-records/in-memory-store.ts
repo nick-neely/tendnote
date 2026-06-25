@@ -207,6 +207,9 @@ export function createInMemorySourceRecordStore(): InMemorySourceRecordStore {
 
       return sourceRecord;
     },
+    async getSourceRecordById(sourceRecordId) {
+      return sourceRecords.get(sourceRecordId) ?? null;
+    },
     async listAuditLogEntries(input) {
       return auditLogEntries.filter((entry) => entry.ownerUserId === input.ownerUserId);
     },

@@ -114,6 +114,7 @@ export type SourceRecordResolutionStore = SourceRecordCaptureStore & {
 };
 
 export type InMemorySourceRecordStore = SourceRecordResolutionStore & {
+  getSourceRecordById: (sourceRecordId: string) => Promise<SourceRecord | null>;
   listPeople: (input: { ownerUserId: string }) => Promise<Person[]>;
   listUnresolvedMentions: (input: { sourceRecordId: string }) => Promise<UnresolvedPersonMention[]>;
   listSourceRecordPeople: (input: { sourceRecordId: string }) => Promise<SourceRecordPerson[]>;

@@ -1,4 +1,5 @@
 export * from "./drafts";
+export * from "./extraction-jobs";
 export * from "./followups";
 export * from "./memories";
 export * from "./people";
