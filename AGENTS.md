@@ -23,3 +23,4 @@ Domain modeling docs are created lazily when terms or decisions need to be resol
 ## Learned User Preferences
 
 - Keep `AGENTS.md` minimal: only document constraints agents routinely get wrong; omit trivia and anything discoverable by searching the codebase.
+- Keep shared DB/product behavior behind small owner-scoped query/mutation entry points; split adapters, product logic, tests, and schema tables into focused files before monoliths form.
