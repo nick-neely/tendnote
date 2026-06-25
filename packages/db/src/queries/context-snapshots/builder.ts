@@ -12,6 +12,12 @@ import type { PersonContextSnapshotStore } from "./types";
 export type GetPersonContextSnapshotInput = {
   ownerUserId: string;
   personId: string;
+  // When the user directly asked about this person/topic, the returned `context`
+  // is loaded through live retrieval that may include restricted records (ADR
+  // 0058). This never changes the cached snapshot, which is always built from
+  // proactive (restricted-free) context, so restricted material is fetched live
+  // rather than baked into the cached profile card (ADR 0009, PRD #11).
+  directlyRequested?: boolean;
 };
 
 /**
@@ -77,20 +83,35 @@ export function createPersonContextSnapshot(
     async getPersonContextSnapshot(
       input: GetPersonContextSnapshotInput,
     ): Promise<PersonContextSnapshotResult> {
-      // Default snapshots are proactive context, so restricted content stays out
-      // (no `directlyRequested`); the Phase 1A filter enforces this (ADR 0058).
-      const context = await personContext.getPersonContext(input);
+      // The snapshot is always built from proactive context (no `directlyRequested`),
+      // so restricted content is never baked into the cached card (ADR 0058, PRD #11).
+      const proactiveContext = await personContext.getPersonContext({
+        ownerUserId: input.ownerUserId,
+        personId: input.personId,
+      });
       const existing = await store.getContextSnapshot(input);
 
-      if (!context.person) {
+      // The returned context is grounding for consumers. When the user directly
+      // asked, it is re-read live so restricted records can surface through
+      // retrieval — separate from, and never written into, the snapshot cache
+      // (ADR 0009: fetch restricted via live retrieval, not the cached card).
+      const context = input.directlyRequested
+        ? await personContext.getPersonContext({
+            ownerUserId: input.ownerUserId,
+            personId: input.personId,
+            directlyRequested: true,
+          })
+        : proactiveContext;
+
+      if (!proactiveContext.person) {
         return { status: "fallback", snapshot: existing, context };
       }
 
       const pack: SnapshotInputPack = {
-        person: context.person,
-        approvedMemories: context.approvedMemories,
-        sourceRecords: context.sourceRecords,
-        suggestedMemories: context.suggestedMemories,
+        person: proactiveContext.person,
+        approvedMemories: proactiveContext.approvedMemories,
+        sourceRecords: proactiveContext.sourceRecords,
+        suggestedMemories: proactiveContext.suggestedMemories,
         followups: [],
       };
       const fingerprint = computeSnapshotFingerprint(pack);
