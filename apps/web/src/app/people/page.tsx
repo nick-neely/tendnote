@@ -1,6 +1,6 @@
 import { searchPeople } from "@tendnote/db";
 import { AppShell } from "@/components/app-shell";
-import { PersonCard } from "@/components/person-card";
+import { PeopleList } from "@/components/people-list";
 
 export const dynamic = "force-dynamic";
 
@@ -9,20 +9,19 @@ export default async function PeoplePage() {
 
   return (
     <AppShell>
-      <div className="flex max-w-2xl flex-col gap-2">
-        <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
-          People
-        </h1>
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          Phase 0 includes a read-only people list and detail route backed by shared DB query
-          helpers.
-        </p>
-      </div>
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+        <header className="flex flex-col gap-1">
+          <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
+            People
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {people.length === 1
+              ? "1 person you're keeping in mind."
+              : `${people.length} people you're keeping in mind.`}
+          </p>
+        </header>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {people.map((person) => (
-          <PersonCard key={person.id} person={person} />
-        ))}
+        <PeopleList people={people} />
       </div>
     </AppShell>
   );

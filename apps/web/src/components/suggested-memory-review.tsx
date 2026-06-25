@@ -172,7 +172,7 @@ function SuggestedMemoryReviewCard({
 
   return (
     <article
-      className="flex flex-col gap-3 rounded-lg border bg-background p-3.5 transition-[opacity,transform,border-color] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 hover:border-foreground/15"
+      className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 transition-[opacity,transform,border-color] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 hover:border-foreground/15"
       data-component-type={component.type}
       data-leaving={leaving}
       data-memory-id={component.memoryId}

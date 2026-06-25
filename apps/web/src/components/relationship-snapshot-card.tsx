@@ -1,5 +1,5 @@
+import { LockIcon } from "lucide-react";
 import { Fragment } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { RelationshipSnapshotView } from "@/lib/relationship-snapshot-view";
 
@@ -27,7 +27,10 @@ export function RelationshipSnapshotCard({
               A quick read on your relationship with {personName}, drawn from your own records.
             </CardDescription>
           </div>
-          <Badge variant="outline">Read-only</Badge>
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 font-medium text-[length:var(--text-caption)] text-muted-foreground">
+            <LockIcon aria-hidden className="size-3" />
+            Read-only
+          </span>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
