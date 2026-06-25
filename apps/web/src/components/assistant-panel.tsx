@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { captureGlobalAssistantSourceRecord } from "@/app/actions/source-records";
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import {
@@ -13,46 +14,85 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { Badge } from "@/components/ui/badge";
+import type { SourceRecordReviewView } from "@/lib/source-record-review-view";
 
 type AssistantMessage = {
   id: string;
   from: "user" | "assistant";
   content: string;
+  sourceRecordReview?: SourceRecordReviewView;
 };
 
 const initialMessages: AssistantMessage[] = [
   {
     id: "assistant-intro",
     from: "assistant",
-    content:
-      "Tendnote is ready for local capture. I can search the seeded people now; writes and outbound actions stay behind explicit approval gates.",
+    content: "Capture relationship context here. I will save it before any extraction or review.",
   },
 ];
 
-export function AssistantPanel() {
-  const [messages, setMessages] = useState<AssistantMessage[]>(initialMessages);
+export function AssistantPanel({
+  initialSourceRecordReviews = [],
+}: {
+  initialSourceRecordReviews?: SourceRecordReviewView[];
+}) {
+  const [messages, setMessages] = useState<AssistantMessage[]>(() => [
+    ...initialMessages,
+    ...initialSourceRecordReviews.map((review) => ({
+      id: `source-record-${review.sourceRecord.id}`,
+      from: "assistant" as const,
+      content: "This logged context is saved and ready to review.",
+      sourceRecordReview: review,
+    })),
+  ]);
+  const [submitStatus, setSubmitStatus] = useState<"ready" | "submitted" | "error">("ready");
 
-  function handleSubmit(message: PromptInputMessage) {
+  async function handleSubmit(message: PromptInputMessage) {
     const text = message.text.trim();
 
     if (!text) {
       return;
     }
 
+    const userMessageId = crypto.randomUUID();
     setMessages((current) => [
       ...current,
       {
-        id: crypto.randomUUID(),
+        id: userMessageId,
         from: "user",
         content: text,
       },
-      {
-        id: crypto.randomUUID(),
-        from: "assistant",
-        content:
-          "Phase 0 has the assistant surface and `search_people` tool scaffolded. The next slice will route this input through Eve and persist approved people, memories, and follow-ups.",
-      },
     ]);
+
+    setSubmitStatus("submitted");
+
+    try {
+      const review = await captureGlobalAssistantSourceRecord({
+        retainedContent: text,
+      });
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: `source-record-${review.sourceRecord.id}`,
+          from: "assistant",
+          content: "Saved as logged context. It is ready for review before becoming memory.",
+          sourceRecordReview: review,
+        },
+      ]);
+      setSubmitStatus("ready");
+    } catch {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          from: "assistant",
+          content: "I could not save that note. Check the local services and try again.",
+        },
+      ]);
+      setSubmitStatus("error");
+      throw new Error("Source record capture failed.");
+    }
   }
 
   return (
@@ -61,10 +101,10 @@ export function AssistantPanel() {
         <div className="flex flex-col gap-1">
           <h2 className="text-sm font-semibold">Assistant</h2>
           <p className="text-xs text-muted-foreground">
-            Local-first surface for capture, recall, and draft review.
+            Local-first capture with review before memory.
           </p>
         </div>
-        <Badge variant="secondary">Approval gated</Badge>
+        <Badge variant="secondary">No external sends</Badge>
       </div>
 
       <Conversation className="min-h-0">
@@ -73,6 +113,9 @@ export function AssistantPanel() {
             <Message from={message.from} key={message.id}>
               <MessageContent>
                 <MessageResponse>{message.content}</MessageResponse>
+                {message.sourceRecordReview ? (
+                  <SourceRecordReviewCard review={message.sourceRecordReview} />
+                ) : null}
               </MessageContent>
             </Message>
           ))}
@@ -86,12 +129,45 @@ export function AssistantPanel() {
           </PromptInputBody>
           <PromptInputFooter>
             <PromptInputTools>
-              <Badge variant="outline">No external sends</Badge>
+              <Badge variant="outline">Saved as source record</Badge>
             </PromptInputTools>
-            <PromptInputSubmit status="ready" />
+            <PromptInputSubmit status={submitStatus} />
           </PromptInputFooter>
         </PromptInput>
       </div>
     </section>
+  );
+}
+
+function SourceRecordReviewCard({ review }: { review: SourceRecordReviewView }) {
+  const { sourceRecord, component } = review;
+  const capturedDate = sourceRecord.createdAt.slice(0, 10);
+  const sourceLabel =
+    sourceRecord.sourceType === "manual" ? "manual note" : `${sourceRecord.sourceType} context`;
+
+  return (
+    <div
+      className="mt-2 flex max-w-full flex-col gap-3 rounded-lg border bg-background p-3"
+      data-component-type={component.type}
+      data-source-record-id={component.sourceRecordId}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">Source record</h3>
+          <p className="text-xs text-muted-foreground">
+            Source: {sourceLabel} from {capturedDate}
+          </p>
+        </div>
+        <Badge variant="outline">{sourceRecord.status}</Badge>
+      </div>
+
+      <p className="max-w-[65ch] text-sm">{sourceRecord.content}</p>
+
+      <div className="flex flex-wrap gap-2">
+        <Badge variant="secondary">Private</Badge>
+        <Badge variant="outline">{sourceRecord.sensitivity}</Badge>
+        <Badge variant="outline">{sourceRecord.confidence} confidence</Badge>
+      </div>
+    </div>
   );
 }

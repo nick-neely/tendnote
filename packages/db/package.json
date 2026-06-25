@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
-    "./queries/people": "./src/queries/people.ts"
+    "./queries/people": "./src/queries/people.ts",
+    "./queries/source-records": "./src/queries/source-records.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

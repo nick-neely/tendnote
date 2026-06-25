@@ -19,3 +19,7 @@ Five canonical roles with default label names (`needs-triage`, `needs-info`, `re
 ### Domain docs
 
 Domain modeling docs are created lazily when terms or decisions need to be resolved. See `docs/agents/domain.md`.
+
+## Learned User Preferences
+
+- Keep `AGENTS.md` minimal: only document constraints agents routinely get wrong; omit trivia and anything discoverable by searching the codebase.

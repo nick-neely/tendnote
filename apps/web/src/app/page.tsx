@@ -1,14 +1,22 @@
-import { searchPeople } from "@tendnote/db";
+import { listSourceRecordReviews, searchPeople } from "@tendnote/db";
 import { AppShell } from "@/components/app-shell";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { PersonCard } from "@/components/person-card";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import {
+  type SourceRecordReviewView,
+  toSourceRecordReviewView,
+} from "@/lib/source-record-review-view";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const people = await searchPeople({ limit: 3 });
+  const [people, recentSourceRecordReviews] = await Promise.all([
+    searchPeople({ limit: 3 }),
+    getRecentSourceRecordReviews(),
+  ]);
 
   return (
     <AppShell>
@@ -77,8 +85,23 @@ export default async function Home() {
           </section>
         </section>
 
-        <AssistantPanel />
+        <AssistantPanel initialSourceRecordReviews={recentSourceRecordReviews} />
       </div>
     </AppShell>
   );
+}
+
+async function getRecentSourceRecordReviews(): Promise<SourceRecordReviewView[]> {
+  try {
+    const ownerUserId = await getCurrentOwnerUserId();
+    const reviews = await listSourceRecordReviews({ ownerUserId, limit: 3 });
+
+    return reviews.map(toSourceRecordReviewView);
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Unable to load source record reviews.", error);
+    }
+
+    return [];
+  }
 }
