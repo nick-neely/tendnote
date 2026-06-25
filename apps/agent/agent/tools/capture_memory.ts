@@ -54,6 +54,15 @@ export default defineTool({
         id: person.id,
         displayName: person.displayName,
       },
+      // Persisted record reference the web UI renders (ADR 0028): an approved
+      // memory grounded in its source record. Distinct from a logged-context
+      // source record so the surface never restates a saved fact as tentative.
+      component: {
+        type: "memory_saved",
+        memoryId: memory.id,
+        sourceRecordId: memory.sourceRecordId,
+        personId: memory.personId,
+      },
     };
   },
 });
