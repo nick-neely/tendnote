@@ -1,11 +1,14 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+const toolsDir = join(process.cwd(), "agent/tools");
+
 function readTool(name: string): string {
-  return readFileSync(join(process.cwd(), "agent/tools", `${name}.ts`), "utf8");
+  return readFileSync(join(toolsDir, `${name}.ts`), "utf8");
 }
 
+const toolFiles = readdirSync(toolsDir).filter((file) => file.endsWith(".ts"));
 const instructions = readFileSync(join(process.cwd(), "agent/instructions.md"), "utf8");
 
 describe("Phase 1A assistant tools are thin wrappers over shared functions", () => {
@@ -77,4 +80,26 @@ describe("instructions steer capture vs save vs review", () => {
     expect(instructions).toMatch(/persisted record ids/i);
     expect(instructions).toMatch(/not the source of truth/i);
   });
+});
+
+describe("tools do not bypass owner scoping or scope/sensitivity rules", () => {
+  // Tools that perform owner-scoped reads/writes (everything except the
+  // owner-agnostic people search).
+  const ownerScopedTools = toolFiles.filter((file) => file !== "search_people.ts");
+
+  for (const file of ownerScopedTools) {
+    it(`${file} resolves the owner via the shared helper instead of trusting input`, () => {
+      const source = readFileSync(join(toolsDir, file), "utf8");
+      expect(source).toContain("resolveOwnerUserId(ctx)");
+      // Owner id is never accepted from tool input.
+      expect(source).not.toMatch(/ownerUserId:\s*input\./);
+    });
+  }
+
+  for (const file of toolFiles) {
+    it(`${file} does not set a non-private scope (defers to the shared private default)`, () => {
+      const source = readFileSync(join(toolsDir, file), "utf8");
+      expect(source).not.toMatch(/scope:\s*["']?(shared|household)/);
+    });
+  }
 });

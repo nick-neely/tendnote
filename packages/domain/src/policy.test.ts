@@ -7,7 +7,7 @@ import {
   memoryStatusSchema,
 } from "./memories";
 import { relationshipTypeSchema, requiresPersonDisambiguation } from "./people";
-import { sensitivitySchema } from "./privacy";
+import { privacyScopeSchema, sensitivitySchema } from "./privacy";
 import {
   canExtractFromSourceRecord,
   sourceRecordSchema,
@@ -102,6 +102,31 @@ describe("phase 1 policy contracts", () => {
         { directlyRequested: true },
       ),
     ).toBe(true);
+  });
+
+  it("reserves shared and household scope but defaults product records to private", () => {
+    // ADR 0055: the scope enum reserves shared/household for later phases, but
+    // Phase 1A product records default to private.
+    expect(privacyScopeSchema.options).toEqual(["private", "shared", "household"]);
+
+    expect(
+      sourceRecordSchema.parse({
+        id: "source-record-1",
+        ownerUserId: "user-1",
+        content: "Logged context.",
+        createdAt: now,
+        updatedAt: now,
+      }).scope,
+    ).toBe("private");
+
+    expect(
+      createMemorySchema.parse({
+        personId: "person-1",
+        ownerUserId: "user-1",
+        sourceRecordId: "source-record-1",
+        content: "Maya prefers short texts.",
+      }).scope,
+    ).toBe("private");
   });
 
   it("keeps source records as retained evidence with non-authoritative metadata", () => {
