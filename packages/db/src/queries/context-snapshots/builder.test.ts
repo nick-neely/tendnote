@@ -446,3 +446,72 @@ describe("compact follow-up context in snapshots", () => {
     expect(intruder.snapshot).toBeNull();
   });
 });
+
+describe("corrections route through underlying records, not snapshot text", () => {
+  it("rebuilds the snapshot when an underlying memory is corrected", async () => {
+    const { reader, memoryStore, person, seedMemory } = await setup();
+    const memory = await seedMemory("Mark is vegetarian.", "approved");
+    const first = await reader.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+    expect(first.snapshot?.summary).toContain("Mark is vegetarian.");
+
+    // Correcting the record — not the snapshot text — is the only way to change
+    // what the snapshot says. The same row is rebuilt from the corrected record.
+    await memoryStore.updateMemory({
+      ownerUserId: OWNER,
+      memoryId: memory.id,
+      patch: { content: "Mark is vegan." },
+    });
+    const second = await reader.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+
+    expect(second.status).toBe("rebuilt");
+    expect(second.snapshot?.id).toBe(first.snapshot?.id);
+    expect(second.snapshot?.summary).toContain("Confirmed: Mark is vegan.");
+    expect(second.snapshot?.summary).not.toContain("Confirmed: Mark is vegetarian.");
+  });
+
+  it("drops a dismissed memory from the summary and its supporting references", async () => {
+    const { reader, memoryStore, person, seedMemory } = await setup();
+    const keep = await seedMemory("Mark loves hiking.", "approved");
+    const remove = await seedMemory("Mark is vegetarian.", "approved");
+    await reader.getPersonContextSnapshot({ ownerUserId: OWNER, personId: person.id });
+
+    await memoryStore.updateMemory({
+      ownerUserId: OWNER,
+      memoryId: remove.id,
+      patch: { status: "dismissed", dismissedAt: new Date() },
+    });
+    const corrected = await reader.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+
+    expect(corrected.status).toBe("rebuilt");
+    expect(corrected.snapshot?.supportingReferences.memoryIds).toEqual([keep.id]);
+    expect(corrected.snapshot?.summary).not.toContain("Confirmed: Mark is vegetarian.");
+  });
+
+  it("derives the summary from records: unchanged records yield a stable summary", async () => {
+    const { reader, person, seedMemory } = await setup();
+    await seedMemory("Mark is vegetarian.", "approved");
+
+    const first = await reader.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+    const second = await reader.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+
+    // The snapshot is a derived cache — there is no path to edit its text
+    // independently of the records, so a fresh read returns the same prose.
+    expect(second.status).toBe("fresh");
+    expect(second.snapshot?.summary).toBe(first.snapshot?.summary);
+  });
+});

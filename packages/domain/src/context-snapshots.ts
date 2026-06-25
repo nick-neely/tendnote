@@ -252,10 +252,16 @@ export function computeSnapshotFingerprint(input: SnapshotInputPack): string {
     person.updatedAt.toISOString(),
   ];
 
-  const addRecords = (label: string, records: Array<{ id: string; updatedAt: Date }>) => {
+  // Include record content alongside id/updatedAt so a correction to a record's
+  // text always flips the snapshot stale, even if the caller does not (or cannot,
+  // within timestamp resolution) bump updatedAt (PRD #11; correction coverage #19).
+  const addRecords = (
+    label: string,
+    records: Array<{ id: string; updatedAt: Date; content: string }>,
+  ) => {
     parts.push(label);
     for (const record of [...records].sort((a, b) => a.id.localeCompare(b.id))) {
-      parts.push(record.id, record.updatedAt.toISOString());
+      parts.push(record.id, record.updatedAt.toISOString(), record.content);
     }
   };
 
@@ -270,5 +276,5 @@ export function computeSnapshotFingerprint(input: SnapshotInputPack): string {
     parts.push(followup.id, followup.status, followup.dueAt.toISOString(), followup.reason);
   }
 
-  return createHash("sha256").update(parts.join(" ")).digest("hex");
+  return createHash("sha256").update(parts.join("\u0000")).digest("hex");
 }
