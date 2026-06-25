@@ -1,4 +1,8 @@
-import { getPersonContext, getPersonProfile, listSuggestedMemoryReviews } from "@tendnote/db";
+import {
+  getPersonContextSnapshot,
+  getPersonProfile,
+  listSuggestedMemoryReviews,
+} from "@tendnote/db";
 import {
   canUseMemoryProactively,
   canUseSourceRecordProactively,
@@ -8,10 +12,15 @@ import {
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { AssistantPanel } from "@/components/assistant-panel";
+import { RelationshipSnapshotCard } from "@/components/relationship-snapshot-card";
 import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import {
+  type RelationshipSnapshotView,
+  toRelationshipSnapshotView,
+} from "@/lib/relationship-snapshot-view";
 import {
   type SuggestedMemoryReviewView,
   toSuggestedMemoryReviewView,
@@ -51,33 +60,47 @@ async function loadSuggestedReviews(personId: string): Promise<SuggestedMemoryRe
   }
 }
 
-/**
- * Trust-aware context for the profile. Uses the shared `getPersonContext`
- * retrieval (ADR 0004/0019); if the store is unavailable, it falls back to the
- * (possibly mock) profile data filtered through the same domain policy helpers,
- * so the same trust rules hold in both paths.
- */
-async function loadPersonContext(
-  personId: string,
-  profile: PersonProfile,
-): Promise<TrustAwareContext> {
-  try {
-    const ownerUserId = await getCurrentOwnerUserId();
-    const context = await getPersonContext({ ownerUserId, personId });
+type ProfileContext = TrustAwareContext & {
+  snapshot: RelationshipSnapshotView | null;
+};
 
-    if (context.person) {
-      return { approvedMemories: context.approvedMemories, sourceRecords: context.sourceRecords };
-    }
-  } catch {
-    // Fall through to the policy-filtered profile data below.
-  }
-
+function fallbackContext(profile: PersonProfile): ProfileContext {
   return {
+    snapshot: null,
     approvedMemories: profile.memories.filter((memory) => canUseMemoryProactively(memory)),
     sourceRecords: profile.sourceRecords.filter((sourceRecord) =>
       canUseSourceRecordProactively(sourceRecord),
     ),
   };
+}
+
+/**
+ * Loads the profile's relationship snapshot and trust-aware context through the
+ * single shared snapshot-backed read path (PRD #11), so the card and the
+ * Memories/Logged-context sections agree and apply the same trust rules. If the
+ * store is unavailable, it falls back to the (possibly mock) profile data filtered
+ * through the same domain policy helpers, and the card steps aside (ADR 0009).
+ */
+async function loadProfileContext(
+  personId: string,
+  profile: PersonProfile,
+): Promise<ProfileContext> {
+  try {
+    const ownerUserId = await getCurrentOwnerUserId();
+    const result = await getPersonContextSnapshot({ ownerUserId, personId });
+
+    if (result.context.person) {
+      return {
+        snapshot: toRelationshipSnapshotView(result),
+        approvedMemories: result.context.approvedMemories,
+        sourceRecords: result.context.sourceRecords,
+      };
+    }
+  } catch {
+    // Fall through to the policy-filtered profile data below.
+  }
+
+  return fallbackContext(profile);
 }
 
 export default async function PersonDetailPage({
@@ -95,11 +118,11 @@ export default async function PersonDetailPage({
     notFound();
   }
 
-  const { approvedMemories, sourceRecords } = await loadPersonContext(personId, profile);
+  const { snapshot, approvedMemories, sourceRecords } = await loadProfileContext(personId, profile);
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3" id="person-header">
         <h1 className="text-[length:var(--text-display)] leading-[var(--text-display-line)] font-semibold tracking-normal">
           {profile.person.displayName}
         </h1>
@@ -118,8 +141,12 @@ export default async function PersonDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-4">
+          {snapshot ? (
+            <RelationshipSnapshotCard view={snapshot} personName={profile.person.displayName} />
+          ) : null}
+
           {suggestedReviews.length ? (
-            <Card className="bg-surface">
+            <Card className="bg-surface" id="needs-review">
               <CardHeader>
                 <CardTitle>Needs review</CardTitle>
                 <CardDescription>
@@ -134,7 +161,7 @@ export default async function PersonDetailPage({
           ) : null}
 
           <div className="flex flex-col gap-4">
-            <Card className="bg-surface">
+            <Card className="bg-surface" id="memories">
               <CardHeader>
                 <CardTitle>Memories</CardTitle>
                 <CardDescription>
@@ -166,7 +193,7 @@ export default async function PersonDetailPage({
               </CardContent>
             </Card>
 
-            <Card className="bg-surface">
+            <Card className="bg-surface" id="logged-context">
               <CardHeader>
                 <CardTitle>Logged context</CardTitle>
                 <CardDescription>
@@ -207,7 +234,7 @@ export default async function PersonDetailPage({
             </Card>
           </div>
 
-          <Card className="bg-surface">
+          <Card className="bg-surface" id="follow-ups">
             <CardHeader>
               <CardTitle>Follow-ups</CardTitle>
               <CardDescription>Open reminders tied to this person.</CardDescription>
