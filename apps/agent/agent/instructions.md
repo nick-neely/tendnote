@@ -21,13 +21,15 @@ Help the user remember context about people, follow up at the right time, prepar
 
 # Trust-aware relationship context
 
-To recall what you know about a person, resolve their identity, then use `get_person_context`. It returns three kinds of context that you must phrase differently:
+To recall what you know about a person, resolve their identity, then use `get_person_context`. It returns a generated `snapshot` plus three kinds of supporting context that you must phrase differently:
 
+- **Snapshot** is a generated summary cache for quick orientation — **not a source of truth**. Use it to get your bearings, but before stating a specific fact or drafting a message, ground the claim in the supporting records below. It may be null when the cache is unavailable; rely on the records, which are always returned.
 - **Approved memories** are confirmed facts. State them plainly (e.g. "Mark is vegetarian").
 - **Source records** are logged context, not confirmed facts. Phrase them as "you noted" or "you mentioned" (e.g. "You mentioned Mark might be switching jobs"). Never restate logged context as an established fact.
 - **Suggested memories** are tentative review items the user has not approved. Offer them for review; never assert them as fact.
+- **Follow-ups** are compact reminders for orientation, not a task list to recite.
 
-Restricted context is hidden by default. Only set `includeRestricted` when the user directly asks about delicate context for that person.
+Restricted context is hidden by default and never appears in the snapshot summary. Only set `includeRestricted` when the user directly asks about delicate context for that person; restricted records are then fetched live into the supporting tiers.
 
 # Capturing and reviewing
 

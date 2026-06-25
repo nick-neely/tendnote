@@ -6,14 +6,32 @@ const toolSource = readFileSync(join(process.cwd(), "agent/tools/get_person_cont
 const instructions = readFileSync(join(process.cwd(), "agent/instructions.md"), "utf8");
 
 describe("trust-aware person context tool", () => {
-  it("calls the shared owner-scoped retrieval rather than re-deriving policy", () => {
-    expect(toolSource).toMatch(/import\s+\{[^}]*getPersonContext[^}]*\}\s+from\s+"@tendnote\/db"/);
+  it("calls the shared snapshot-backed read path rather than re-deriving policy", () => {
+    expect(toolSource).toMatch(
+      /import\s+\{[^}]*getPersonContextSnapshot[^}]*\}\s+from\s+"@tendnote\/db"/,
+    );
+    expect(toolSource).toMatch(/getPersonContextSnapshot\(/);
   });
 
-  it("returns the three trust tiers as distinct keys", () => {
-    for (const key of ["approvedMemories", "sourceRecords", "suggestedMemories"]) {
+  it("does not own snapshot generation, freshness, or persistence", () => {
+    // Eve consumes the shared contract; it must not build/persist snapshots itself.
+    expect(toolSource).not.toMatch(/generateDeterministicSnapshot|upsertContextSnapshot/);
+  });
+
+  it("returns the snapshot summary plus the three trust tiers as distinct keys", () => {
+    for (const key of ["snapshot", "approvedMemories", "sourceRecords", "suggestedMemories"]) {
       expect(toolSource).toContain(key);
     }
+  });
+
+  it("surfaces compact follow-up context", () => {
+    expect(toolSource).toMatch(/followups/);
+  });
+
+  it("steers the model to treat the snapshot as cache, not source of truth", () => {
+    expect(toolSource).toMatch(/cache/i);
+    expect(toolSource).toMatch(/not a source of truth|NOT a source of truth/i);
+    expect(toolSource).toMatch(/ground/i);
   });
 
   it("steers phrasing in the tool description and guidance block", () => {
@@ -23,9 +41,15 @@ describe("trust-aware person context tool", () => {
     expect(toolSource).toMatch(/TENTATIVE/);
   });
 
-  it("keeps restricted context gated behind a direct request", () => {
+  it("keeps restricted context gated behind a direct request and out of the cache", () => {
     expect(toolSource).toMatch(/includeRestricted/);
     expect(toolSource).toMatch(/directlyRequested/);
+  });
+
+  it("fails open to the supporting records when the snapshot is unavailable", () => {
+    // On fallback the snapshot is null; the context tiers are always returned.
+    expect(toolSource).toMatch(/status !== "fallback"|fallback/);
+    expect(toolSource).toMatch(/snapshot:\s*\n?\s*snapshot/);
   });
 });
 
@@ -34,5 +58,11 @@ describe("instructions steer trust-aware phrasing", () => {
     expect(instructions).toMatch(/Approved memories\*\* are confirmed facts/i);
     expect(instructions).toMatch(/you noted.*you mentioned/i);
     expect(instructions).toMatch(/Suggested memories\*\* are tentative/i);
+  });
+
+  it("steers the agent to treat snapshots as cache, not source of truth", () => {
+    expect(instructions).toMatch(/Snapshot\*\* is a generated summary cache/i);
+    expect(instructions).toMatch(/not a source of truth/i);
+    expect(instructions).toMatch(/ground the claim in the supporting records/i);
   });
 });
