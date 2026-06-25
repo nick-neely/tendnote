@@ -273,6 +273,27 @@ describe("snapshot freshness and fail-open rebuild", () => {
     expect(retry.snapshot?.summary).toContain("started a new job");
   });
 
+  it("derives supporting references from records even with a prose-only generator", async () => {
+    const { store, person, seedMemory } = await setup();
+    const approved = await seedMemory("Mark is vegetarian.", "approved");
+    const reader = createPersonContextSnapshot(store, {
+      generator: () => ({
+        summary: "totally custom prose with no record ids",
+        generatorVersion: "llm:test-model",
+      }),
+    });
+
+    const result = await reader.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+
+    expect(result.snapshot?.summary).toBe("totally custom prose with no record ids");
+    expect(result.snapshot?.generatorVersion).toBe("llm:test-model");
+    expect(result.snapshot?.supportingReferences.memoryIds).toEqual([approved.id]);
+    expect(result.snapshot?.supportingReferences.personIds).toEqual([person.id]);
+  });
+
   it("keeps freshness owner-scoped", async () => {
     const { reader, person, seedMemory } = await setup();
     await seedMemory("Mark is vegetarian.", "approved");

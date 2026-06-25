@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSnapshotPrompt,
+  collectSnapshotReferences,
   computeSnapshotFingerprint,
   DETERMINISTIC_GENERATOR_VERSION,
   generateDeterministicSnapshot,
@@ -73,8 +75,8 @@ function sourceRecord(overrides: Partial<SourceRecord> = {}): SourceRecord {
   };
 }
 
-describe("generateDeterministicSnapshot", () => {
-  it("produces prose and record-level supporting references", () => {
+describe("collectSnapshotReferences", () => {
+  it("derives record-level references straight from the input pack", () => {
     const input: SnapshotInputPack = {
       person: person(),
       approvedMemories: [memory()],
@@ -82,6 +84,26 @@ describe("generateDeterministicSnapshot", () => {
       suggestedMemories: [
         memory({ id: "memory-2", status: "suggested", content: "Maybe moving." }),
       ],
+      followups: [{ id: "followup-1" }],
+    };
+
+    expect(collectSnapshotReferences(input)).toEqual({
+      personIds: ["person-1"],
+      memoryIds: ["memory-1"],
+      sourceRecordIds: ["source-1"],
+      suggestedMemoryIds: ["memory-2"],
+      followupIds: ["followup-1"],
+    });
+  });
+});
+
+describe("generateDeterministicSnapshot", () => {
+  it("produces prose grounded in the person and approved memories", () => {
+    const input: SnapshotInputPack = {
+      person: person(),
+      approvedMemories: [memory()],
+      sourceRecords: [sourceRecord()],
+      suggestedMemories: [],
       followups: [],
     };
 
@@ -89,13 +111,6 @@ describe("generateDeterministicSnapshot", () => {
 
     expect(result.summary).toContain("Mark");
     expect(result.summary).toContain("vegetarian");
-    expect(result.supportingReferences).toEqual({
-      personIds: ["person-1"],
-      memoryIds: ["memory-1"],
-      sourceRecordIds: ["source-1"],
-      suggestedMemoryIds: ["memory-2"],
-      followupIds: [],
-    });
   });
 
   it("does not state suggested memories as confirmed facts in prose", () => {
@@ -112,7 +127,6 @@ describe("generateDeterministicSnapshot", () => {
     const result = generateDeterministicSnapshot(input);
 
     expect(result.summary).not.toContain("Maybe moving soon.");
-    expect(result.supportingReferences.suggestedMemoryIds).toEqual(["memory-2"]);
   });
 
   it("uses logged-context phrasing for source records", () => {
@@ -127,6 +141,30 @@ describe("generateDeterministicSnapshot", () => {
     const result = generateDeterministicSnapshot(input);
 
     expect(result.summary.toLowerCase()).toMatch(/you (noted|logged|mentioned)/);
+  });
+});
+
+describe("buildSnapshotPrompt", () => {
+  it("frames confirmed facts and logged context, and excludes suggested-memory content", () => {
+    const prompt = buildSnapshotPrompt({
+      person: person({ profileBlurb: "Met at a conference." }),
+      approvedMemories: [memory({ content: "Mark is vegetarian." })],
+      sourceRecords: [sourceRecord({ content: "Had lunch last week." })],
+      suggestedMemories: [
+        memory({ id: "memory-2", status: "suggested", content: "Maybe switching jobs." }),
+      ],
+      followups: [],
+    });
+
+    // Confirmed facts and logged context are framed distinctly.
+    expect(prompt).toContain("Confirmed facts");
+    expect(prompt).toContain("Mark is vegetarian.");
+    expect(prompt).toMatch(/you noted/i);
+    expect(prompt).toContain("Had lunch last week.");
+    expect(prompt).toContain("Met at a conference.");
+    // Suggested-memory content is hard-excluded from the prompt (ADR 0009), so a
+    // tentative observation can never be promoted to a fact in the cached card.
+    expect(prompt).not.toContain("Maybe switching jobs.");
   });
 });
 

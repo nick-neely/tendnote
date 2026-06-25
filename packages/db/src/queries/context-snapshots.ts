@@ -15,6 +15,11 @@ export type {
 export { createPersonContextSnapshot } from "./context-snapshots/builder";
 export { createDrizzleContextSnapshotStore } from "./context-snapshots/drizzle-store";
 export { createInMemoryContextSnapshotStore } from "./context-snapshots/in-memory-store";
+export type {
+  LlmSnapshotGeneratorOptions,
+  SnapshotProseModel,
+} from "./context-snapshots/llm-generator";
+export { createLlmSnapshotGenerator } from "./context-snapshots/llm-generator";
 export type * from "./context-snapshots/types";
 
 const defaultPersonContextSnapshotStore = {

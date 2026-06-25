@@ -1,10 +1,10 @@
 import {
   type ContextSnapshot,
+  collectSnapshotReferences,
   computeSnapshotFingerprint,
-  DETERMINISTIC_GENERATOR_VERSION,
   generateDeterministicSnapshot,
-  type SnapshotContent,
   type SnapshotInputPack,
+  type SnapshotProse,
 } from "@tendnote/domain";
 import { createPersonContext, type PersonContextResult } from "../person-context";
 import type { PersonContextSnapshotStore } from "./types";
@@ -35,18 +35,18 @@ export type PersonContextSnapshotResult = {
 };
 
 /**
- * A snapshot generator turns the trusted input pack into prose plus references.
- * Injectable so the deterministic generator (default) can be swapped for an LLM
- * adapter (#14) without changing freshness, policy, persistence, or owner
- * scoping. The generator owns wording only (ADR 0009, PRD #11).
+ * A snapshot generator turns the trusted input pack into prose plus the version
+ * tag identifying what produced it. Injectable so the deterministic generator
+ * (default) can be swapped for an LLM adapter (#14) without changing freshness,
+ * policy, persistence, references, or owner scoping. The generator owns wording
+ * only (ADR 0009, PRD #11).
  */
 export type SnapshotGenerator = (
   input: SnapshotInputPack,
-) => SnapshotContent | Promise<SnapshotContent>;
+) => SnapshotProse | Promise<SnapshotProse>;
 
 export type CreatePersonContextSnapshotOptions = {
   generator?: SnapshotGenerator;
-  generatorVersion?: string;
 };
 
 function isSnapshotFresh(snapshot: ContextSnapshot, fingerprint: string): boolean {
@@ -72,7 +72,6 @@ export function createPersonContextSnapshot(
 ) {
   const personContext = createPersonContext(store);
   const generate = options.generator ?? generateDeterministicSnapshot;
-  const generatorVersion = options.generatorVersion ?? DETERMINISTIC_GENERATOR_VERSION;
 
   return {
     async getPersonContextSnapshot(
@@ -101,13 +100,17 @@ export function createPersonContextSnapshot(
       }
 
       try {
-        const content = await generate(pack);
+        const prose = await generate(pack);
         const snapshot = await store.upsertContextSnapshot({
           ownerUserId: input.ownerUserId,
           personId: input.personId,
-          summary: content.summary,
-          supportingReferences: content.supportingReferences,
-          generatorVersion,
+          summary: prose.summary,
+          // References are record-level and owned by the builder, never by the
+          // generator/model, so grounding cannot drift with prose (PRD #11).
+          supportingReferences: collectSnapshotReferences(pack),
+          // The generator declares its own version, so provenance reflects the
+          // real producer even when an adapter falls back internally (#14).
+          generatorVersion: prose.generatorVersion,
           inputFingerprint: fingerprint,
           generatedAt: new Date(),
           failureReason: null,
