@@ -1,11 +1,30 @@
-import { getPersonProfile } from "@tendnote/db";
+import { getPersonProfile, listSuggestedMemoryReviews } from "@tendnote/db";
 import { isDurableMemoryFact } from "@tendnote/domain";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import {
+  type SuggestedMemoryReviewView,
+  toSuggestedMemoryReviewView,
+} from "@/lib/suggested-memory-review-view";
 
 export const dynamic = "force-dynamic";
+
+async function loadSuggestedReviews(personId: string): Promise<SuggestedMemoryReviewView[]> {
+  try {
+    const ownerUserId = await getCurrentOwnerUserId();
+    const reviews = await listSuggestedMemoryReviews({ ownerUserId, personId });
+
+    return reviews.map(toSuggestedMemoryReviewView);
+  } catch {
+    // Review is in-context enrichment; if the store is unavailable the rest of
+    // the profile should still render.
+    return [];
+  }
+}
 
 export default async function PersonDetailPage({
   params,
@@ -13,7 +32,10 @@ export default async function PersonDetailPage({
   params: Promise<{ personId: string }>;
 }) {
   const { personId } = await params;
-  const profile = await getPersonProfile(personId);
+  const [profile, suggestedReviews] = await Promise.all([
+    getPersonProfile(personId),
+    loadSuggestedReviews(personId),
+  ]);
 
   if (!profile) {
     notFound();
@@ -36,6 +58,21 @@ export default async function PersonDetailPage({
           ) : null}
         </div>
       </div>
+
+      {suggestedReviews.length ? (
+        <Card className="bg-surface">
+          <CardHeader>
+            <CardTitle>Needs review</CardTitle>
+            <CardDescription>
+              Suggestions drawn from your notes. Save what&rsquo;s right, edit the wording, or
+              dismiss the rest — nothing becomes a confirmed memory until you say so.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SuggestedMemoryReviewSection initialReviews={suggestedReviews} />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="bg-surface">

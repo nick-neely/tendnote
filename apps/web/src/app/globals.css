@@ -10,6 +10,7 @@
   --color-surface: var(--surface);
   --color-panel: var(--panel);
   --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-foreground: var(--accent-soft-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-success: var(--success);
@@ -75,6 +76,7 @@
   --accent: oklch(0.48 0.12 38);
   --accent-foreground: oklch(0.99 0 0);
   --accent-soft: oklch(0.94 0.035 38);
+  --accent-soft-foreground: oklch(0.4 0.11 38);
   --destructive: oklch(0.5 0.18 28);
   --warning: oklch(0.54 0.13 65);
   --warning-foreground: oklch(0.99 0 0);
@@ -138,6 +140,7 @@
   --accent: oklch(0.64 0.12 38);
   --accent-foreground: oklch(0.09 0 0);
   --accent-soft: oklch(0.24 0.035 38);
+  --accent-soft-foreground: oklch(0.84 0.09 38);
   --destructive: oklch(0.66 0.18 28);
   --warning: oklch(0.7 0.13 65);
   --warning-foreground: oklch(0.09 0 0);

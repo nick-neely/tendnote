@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createMemoryReview } from "../memories/review";
 import { createHarness, OWNER } from "./harness";
 
 describe("extraction job idempotency and retry", () => {
@@ -18,6 +19,29 @@ describe("extraction job idempotency and retry", () => {
     await expect(
       store.listMemoriesForSourceRecord({ sourceRecordId: sourceRecord.id }),
     ).resolves.toHaveLength(1);
+  });
+
+  it("does not reintroduce a dismissed suggestion when the job runs again", async () => {
+    const { store, processor, createPerson, captureRecord, link } = createHarness();
+    const review = createMemoryReview(store);
+    const mark = await createPerson("Mark");
+    const sourceRecord = await captureRecord({ retainedContent: "Mark mentioned a new dog." });
+    await link(sourceRecord.id, mark.id);
+    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+
+    const first = await processor.processExtractionJob({ jobId: job.id });
+    const suggestedId = first.suggestedMemories[0]?.id ?? "";
+    await review.dismissSuggestedMemory({ ownerUserId: OWNER, memoryId: suggestedId });
+
+    // Re-run the job: the dismissed memory still records this person+source, so
+    // extraction must not re-suggest it (dismissed is not reintroduced).
+    await store.updateExtractionJob({ jobId: job.id, status: "pending", claimedAt: null });
+    const second = await processor.processExtractionJob({ jobId: job.id });
+
+    expect(second.suggestedMemories).toHaveLength(0);
+    const memories = await store.listMemoriesForSourceRecord({ sourceRecordId: sourceRecord.id });
+    expect(memories).toHaveLength(1);
+    expect(memories[0]?.status).toBe("dismissed");
   });
 
   it("marks a failed job retryable and recovers without duplicating already-created memories", async () => {

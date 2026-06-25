@@ -2,6 +2,7 @@ import type {
   Confidence,
   CreateMemoryInput,
   Memory,
+  MemoryReviewEdit,
   MemoryType,
   Person,
   Sensitivity,
@@ -56,8 +57,73 @@ export type MemoryCaptureStore = SourceRecordCaptureStore & {
   listMemoriesForSourceRecord: (input: { sourceRecordId: string }) => Promise<Memory[]>;
 };
 
+export type MemoryUpdatePatch = Partial<
+  Pick<
+    Memory,
+    | "content"
+    | "memoryType"
+    | "sensitivity"
+    | "importance"
+    | "confidence"
+    | "status"
+    | "approvedAt"
+    | "dismissedAt"
+  >
+>;
+
+/**
+ * Shared owner-scoped store surface for the suggested-memory review loop. Review
+ * mutations load a persisted memory by id, apply a bounded patch (provenance
+ * fields stay untouched), and list suggested memories awaiting review.
+ */
+export type MemoryReviewStore = MemoryCaptureStore & {
+  getMemory: (input: { ownerUserId: string; memoryId: string }) => Promise<Memory | null>;
+  updateMemory: (input: {
+    ownerUserId: string;
+    memoryId: string;
+    patch: MemoryUpdatePatch;
+  }) => Promise<Memory>;
+  listSuggestedMemoriesForOwner: (input: {
+    ownerUserId: string;
+    personId?: string;
+    limit?: number;
+  }) => Promise<Memory[]>;
+};
+
 export type InMemoryMemoryStore = InMemorySourceRecordStore &
   Pick<
     MemoryCaptureStore,
     "createMemory" | "listApprovedMemoriesForPerson" | "listMemoriesForSourceRecord"
-  >;
+  > &
+  Pick<MemoryReviewStore, "getMemory" | "updateMemory" | "listSuggestedMemoriesForOwner">;
+
+export type SuggestedMemoryReviewComponent = {
+  type: "suggested_memory_review";
+  memoryId: string;
+  sourceRecordId: string;
+};
+
+export type SuggestedMemoryReviewResult = {
+  memory: Memory;
+  sourceRecord: SourceRecord | null;
+  component: SuggestedMemoryReviewComponent;
+};
+
+export type ListSuggestedMemoryReviewsInput = {
+  ownerUserId: string;
+  personId?: string;
+  limit?: number;
+};
+
+export type MemoryReviewActionInput = {
+  ownerUserId: string;
+  memoryId: string;
+};
+
+export type SaveSuggestedMemoryInput = MemoryReviewActionInput & {
+  edit?: MemoryReviewEdit;
+};
+
+export type EditSuggestedMemoryInput = MemoryReviewActionInput & {
+  edit: MemoryReviewEdit;
+};

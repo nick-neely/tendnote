@@ -36,13 +36,47 @@ export const createMemorySchema = memorySchema.omit({
   updatedAt: true,
 });
 
+/**
+ * Fields a user may correct while reviewing a suggested memory, before saving it
+ * as approved or while keeping it suggested. All optional: an empty edit is a
+ * no-op, and a provided `sensitivity` is a manual override that wins over
+ * defaults/classification (ADR 0056). Provenance fields (person, source record)
+ * are intentionally not editable here.
+ */
+export const memoryReviewEditSchema = z
+  .object({
+    content: z.string().trim().min(1),
+    memoryType: memoryTypeSchema,
+    sensitivity: sensitivitySchema,
+    importance: z.number().int().min(1).max(5),
+  })
+  .partial();
+
 export type Memory = z.infer<typeof memorySchema>;
 export type MemoryType = z.infer<typeof memoryTypeSchema>;
 export type MemoryStatus = z.infer<typeof memoryStatusSchema>;
 export type CreateMemoryInput = z.infer<typeof createMemorySchema>;
+export type MemoryReviewEdit = z.infer<typeof memoryReviewEditSchema>;
 
 export function isDurableMemoryFact(memory: Pick<Memory, "status">) {
   return memory.status === "approved";
+}
+
+/**
+ * Applies a review edit to a memory's mutable fields, leaving anything the edit
+ * omits untouched. Pure so the override rules (manual `sensitivity` wins) can be
+ * tested without a store (ADR 0056, ADR 0059).
+ */
+export function applyMemoryReviewEdit<
+  T extends Pick<Memory, "content" | "memoryType" | "sensitivity" | "importance">,
+>(memory: T, edit: MemoryReviewEdit): T {
+  return {
+    ...memory,
+    ...(edit.content !== undefined ? { content: edit.content } : {}),
+    ...(edit.memoryType !== undefined ? { memoryType: edit.memoryType } : {}),
+    ...(edit.sensitivity !== undefined ? { sensitivity: edit.sensitivity } : {}),
+    ...(edit.importance !== undefined ? { importance: edit.importance } : {}),
+  };
 }
 
 /**
