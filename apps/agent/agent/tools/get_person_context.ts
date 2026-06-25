@@ -51,6 +51,15 @@ export default defineTool({
 
     return {
       found: true as const,
+      // Refresh-stable reference for the web chat surface (ADR 0028): the
+      // persisted person id plus the fail-open snapshot status (read-display
+      // state, not action state). #25 renders the loaded context from it and a
+      // refresh reloads the authoritative records.
+      component: {
+        type: "person_context",
+        personId: context.person.id,
+        snapshotStatus: status,
+      },
       // Generated relationship snapshot — a cache to orient from, never a source
       // of truth. Null when missing/stale/failed; use the records below instead.
       snapshot:

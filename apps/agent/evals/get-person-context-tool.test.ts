@@ -125,4 +125,60 @@ describe("get_person_context tool (runtime)", () => {
 
     expect(result.found).toBe(false);
   });
+
+  it("returns a refresh-stable person-context reference the web chat can render", async () => {
+    getPersonContextSnapshot.mockResolvedValue({
+      status: "fresh",
+      snapshot: snapshot(),
+      context: context(),
+    });
+
+    const result = await tool.execute({ personId: "person-1" }, ctx);
+
+    if (!result.found) throw new Error("expected the person to be found");
+    // Reference for #25 to render the loaded context: the persisted person id
+    // plus the fail-open snapshot status (ADR 0028); a refresh reloads records.
+    expect(result.component).toEqual({
+      type: "person_context",
+      personId: "person-1",
+      snapshotStatus: "fresh",
+    });
+  });
+
+  it("carries the fail-open snapshot status on the reference instead of dropping it", async () => {
+    getPersonContextSnapshot.mockResolvedValue({
+      status: "fallback",
+      snapshot: snapshot(),
+      context: context(),
+    });
+
+    const result = await tool.execute({ personId: "person-1" }, ctx);
+
+    if (!result.found) throw new Error("expected the person to be found");
+    expect(result.component).toEqual({
+      type: "person_context",
+      personId: "person-1",
+      snapshotStatus: "fallback",
+    });
+  });
+
+  it("no-fake-memory: never promotes logged context or suggestions into the confirmed-facts tier", async () => {
+    getPersonContextSnapshot.mockResolvedValue({
+      status: "fresh",
+      snapshot: snapshot(),
+      context: context(),
+    });
+
+    const result = await tool.execute({ personId: "person-1" }, ctx);
+
+    if (!result.found) throw new Error("expected the person to be found");
+    const approvedIds = result.approvedMemories.map((memory) => memory.id);
+    // The tentative suggestion and the logged source record must stay in their
+    // own tiers and never appear among confirmed facts.
+    expect(approvedIds).toEqual(["memory-1"]);
+    expect(approvedIds).not.toContain("suggested-1");
+    expect(approvedIds).not.toContain("source-1");
+    expect(result.suggestedMemories.map((memory) => memory.id)).toEqual(["suggested-1"]);
+    expect(result.sourceRecords.map((record) => record.id)).toEqual(["source-1"]);
+  });
 });
