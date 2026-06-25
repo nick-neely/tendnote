@@ -6,8 +6,11 @@ import { createDrizzleMemoryStore } from "./memories/drizzle-store";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 
 export type {
+  CreatePersonContextSnapshotOptions,
   GetPersonContextSnapshotInput,
   PersonContextSnapshotResult,
+  SnapshotGenerator,
+  SnapshotReadStatus,
 } from "./context-snapshots/builder";
 export { createPersonContextSnapshot } from "./context-snapshots/builder";
 export { createDrizzleContextSnapshotStore } from "./context-snapshots/drizzle-store";

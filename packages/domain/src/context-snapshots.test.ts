@@ -131,27 +131,54 @@ describe("generateDeterministicSnapshot", () => {
 });
 
 describe("computeSnapshotFingerprint", () => {
-  it("is stable for the same inputs and changes when a record changes", () => {
-    const base: SnapshotInputPack = {
-      person: person(),
-      approvedMemories: [memory()],
-      sourceRecords: [sourceRecord()],
-      suggestedMemories: [],
-      followups: [],
-    };
+  const base: SnapshotInputPack = {
+    person: person(),
+    approvedMemories: [memory()],
+    sourceRecords: [sourceRecord()],
+    suggestedMemories: [memory({ id: "memory-2", status: "suggested" })],
+    followups: [{ id: "followup-1" }],
+  };
 
-    const first = computeSnapshotFingerprint(base);
-    const same = computeSnapshotFingerprint({
-      ...base,
-      approvedMemories: [memory()],
-    });
-    const changed = computeSnapshotFingerprint({
-      ...base,
-      approvedMemories: [memory({ updatedAt: new Date("2026-02-01T00:00:00Z") })],
-    });
+  it("is stable for identical inputs", () => {
+    expect(computeSnapshotFingerprint(base)).toBe(
+      computeSnapshotFingerprint({ ...base, approvedMemories: [memory()] }),
+    );
+  });
 
-    expect(first).toBe(same);
-    expect(first).not.toBe(changed);
+  it("changes when a person profile field changes", () => {
+    expect(computeSnapshotFingerprint(base)).not.toBe(
+      computeSnapshotFingerprint({ ...base, person: person({ profileBlurb: "Now a neighbor." }) }),
+    );
+  });
+
+  it("changes when a memory is updated", () => {
+    expect(computeSnapshotFingerprint(base)).not.toBe(
+      computeSnapshotFingerprint({
+        ...base,
+        approvedMemories: [memory({ updatedAt: new Date("2026-02-01T00:00:00Z") })],
+      }),
+    );
+  });
+
+  it("changes when a linked source record changes", () => {
+    expect(computeSnapshotFingerprint(base)).not.toBe(
+      computeSnapshotFingerprint({
+        ...base,
+        sourceRecords: [sourceRecord({ updatedAt: new Date("2026-02-01T00:00:00Z") })],
+      }),
+    );
+  });
+
+  it("changes when a review-visible suggested memory changes", () => {
+    expect(computeSnapshotFingerprint(base)).not.toBe(
+      computeSnapshotFingerprint({ ...base, suggestedMemories: [] }),
+    );
+  });
+
+  it("changes when a relevant follow-up changes", () => {
+    expect(computeSnapshotFingerprint(base)).not.toBe(
+      computeSnapshotFingerprint({ ...base, followups: [] }),
+    );
   });
 });
 

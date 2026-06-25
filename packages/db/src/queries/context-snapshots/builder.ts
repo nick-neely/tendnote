@@ -3,9 +3,10 @@ import {
   computeSnapshotFingerprint,
   DETERMINISTIC_GENERATOR_VERSION,
   generateDeterministicSnapshot,
+  type SnapshotContent,
   type SnapshotInputPack,
 } from "@tendnote/domain";
-import { createPersonContext } from "../person-context";
+import { createPersonContext, type PersonContextResult } from "../person-context";
 import type { PersonContextSnapshotStore } from "./types";
 
 export type GetPersonContextSnapshotInput = {
@@ -13,41 +14,77 @@ export type GetPersonContextSnapshotInput = {
   personId: string;
 };
 
+/**
+ * How the snapshot in a read result was produced:
+ * - `fresh` — an existing snapshot whose inputs were unchanged was reused;
+ * - `rebuilt` — a missing or stale snapshot was regenerated and persisted;
+ * - `fallback` — no usable snapshot (unknown person or generation failed), so
+ *   consumers should ground on `context` (the Phase 1A relational context).
+ */
+export type SnapshotReadStatus = "fresh" | "rebuilt" | "fallback";
+
 export type PersonContextSnapshotResult = {
-  // The current cached snapshot for this owner/person, or null when the person
-  // is unknown to the owner. Fail-open fallback to Phase 1A context arrives in #13.
+  status: SnapshotReadStatus;
+  // The current cached snapshot, or null when the person is unknown or a rebuild
+  // failed without a prior snapshot to fall back to.
   snapshot: ContextSnapshot | null;
+  // Phase 1A trust-aware relational context. Always returned so the snapshot
+  // stays a context-shaping cache rather than a correctness dependency, and so
+  // consumers can fetch supporting records before specific claims (PRD #11).
+  context: PersonContextResult;
 };
+
+/**
+ * A snapshot generator turns the trusted input pack into prose plus references.
+ * Injectable so the deterministic generator (default) can be swapped for an LLM
+ * adapter (#14) without changing freshness, policy, persistence, or owner
+ * scoping. The generator owns wording only (ADR 0009, PRD #11).
+ */
+export type SnapshotGenerator = (
+  input: SnapshotInputPack,
+) => SnapshotContent | Promise<SnapshotContent>;
+
+export type CreatePersonContextSnapshotOptions = {
+  generator?: SnapshotGenerator;
+  generatorVersion?: string;
+};
+
+function isSnapshotFresh(snapshot: ContextSnapshot, fingerprint: string): boolean {
+  // A previously failed snapshot is never fresh, so the next read retries it.
+  return !snapshot.failureReason && snapshot.inputFingerprint === fingerprint;
+}
 
 /**
  * Shared snapshot-backed person context read path (PRD #11). Both web and Eve call
  * this seam instead of assembling snapshot context themselves, so generation,
- * policy filtering, and owner scoping stay in one place.
+ * policy filtering, freshness, and owner scoping stay in one place.
  *
- * Phase 1B slice (#12): loading a person without a current snapshot builds one
- * from the Phase 1A trust-aware person context using the deterministic generator
- * and persists exactly one current row. An existing snapshot is returned as-is;
- * staleness-driven rebuilds and fail-open fallback land in #13.
+ * Freshness is deterministic and record-driven: the read recomputes a fingerprint
+ * over the trust-filtered inputs and reuses the cached snapshot only when it
+ * matches. Missing or stale snapshots are rebuilt through the injected generator.
+ * If generation fails, the read fails open to the Phase 1A relational context and
+ * records the failure on the snapshot row, so a cache failure never blocks
+ * profile or assistant retrieval.
  */
-export function createPersonContextSnapshot(store: PersonContextSnapshotStore) {
+export function createPersonContextSnapshot(
+  store: PersonContextSnapshotStore,
+  options: CreatePersonContextSnapshotOptions = {},
+) {
   const personContext = createPersonContext(store);
+  const generate = options.generator ?? generateDeterministicSnapshot;
+  const generatorVersion = options.generatorVersion ?? DETERMINISTIC_GENERATOR_VERSION;
 
   return {
     async getPersonContextSnapshot(
       input: GetPersonContextSnapshotInput,
     ): Promise<PersonContextSnapshotResult> {
-      const existing = await store.getContextSnapshot(input);
-
-      if (existing) {
-        return { snapshot: existing };
-      }
-
       // Default snapshots are proactive context, so restricted content stays out
       // (no `directlyRequested`); the Phase 1A filter enforces this (ADR 0058).
       const context = await personContext.getPersonContext(input);
+      const existing = await store.getContextSnapshot(input);
 
       if (!context.person) {
-        return { snapshot: null };
+        return { status: "fallback", snapshot: existing, context };
       }
 
       const pack: SnapshotInputPack = {
@@ -57,20 +94,64 @@ export function createPersonContextSnapshot(store: PersonContextSnapshotStore) {
         suggestedMemories: context.suggestedMemories,
         followups: [],
       };
+      const fingerprint = computeSnapshotFingerprint(pack);
 
-      const content = generateDeterministicSnapshot(pack);
-      const snapshot = await store.upsertContextSnapshot({
-        ownerUserId: input.ownerUserId,
-        personId: input.personId,
-        summary: content.summary,
-        supportingReferences: content.supportingReferences,
-        generatorVersion: DETERMINISTIC_GENERATOR_VERSION,
-        inputFingerprint: computeSnapshotFingerprint(pack),
-        generatedAt: new Date(),
-        failureReason: null,
-      });
+      if (existing && isSnapshotFresh(existing, fingerprint)) {
+        return { status: "fresh", snapshot: existing, context };
+      }
 
-      return { snapshot };
+      try {
+        const content = await generate(pack);
+        const snapshot = await store.upsertContextSnapshot({
+          ownerUserId: input.ownerUserId,
+          personId: input.personId,
+          summary: content.summary,
+          supportingReferences: content.supportingReferences,
+          generatorVersion,
+          inputFingerprint: fingerprint,
+          generatedAt: new Date(),
+          failureReason: null,
+        });
+
+        return { status: "rebuilt", snapshot, context };
+      } catch (error) {
+        const failureReason = error instanceof Error ? error.message : "snapshot generation failed";
+        const failed = await recordFailure(store, existing, input, failureReason);
+
+        return { status: "fallback", snapshot: failed ?? existing, context };
+      }
     },
   };
+}
+
+/**
+ * Best-effort failure marker. Preserves the prior snapshot's prose and keeps its
+ * (now stale) fingerprint so the next read retries the rebuild, while recording
+ * why generation failed for diagnosis. A write failure here must not break the
+ * fail-open path, so it is swallowed.
+ */
+async function recordFailure(
+  store: PersonContextSnapshotStore,
+  existing: ContextSnapshot | null,
+  input: GetPersonContextSnapshotInput,
+  failureReason: string,
+): Promise<ContextSnapshot | null> {
+  if (!existing) {
+    return null;
+  }
+
+  try {
+    return await store.upsertContextSnapshot({
+      ownerUserId: input.ownerUserId,
+      personId: input.personId,
+      summary: existing.summary,
+      supportingReferences: existing.supportingReferences,
+      generatorVersion: existing.generatorVersion,
+      inputFingerprint: existing.inputFingerprint,
+      generatedAt: new Date(),
+      failureReason,
+    });
+  } catch {
+    return null;
+  }
 }
