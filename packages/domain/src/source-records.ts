@@ -71,6 +71,23 @@ export function canExtractFromSourceRecord(
   return sourceRecord.sensitivity !== "restricted" || input.directlyRequested === true;
 }
 
+/**
+ * Whether a source record may appear as logged context in proactive surfaces
+ * (person profiles, the assistant). Only active records count as logged context
+ * — pending/dismissed/archived records stay out — and restricted content is held
+ * back unless the user directly requested it (ADR 0004, ADR 0058).
+ */
+export function canUseSourceRecordProactively(
+  sourceRecord: Pick<SourceRecord, "status" | "sensitivity">,
+  input: { directlyRequested?: boolean } = {},
+) {
+  if (sourceRecord.status !== "active") {
+    return false;
+  }
+
+  return sourceRecord.sensitivity !== "restricted" || input.directlyRequested === true;
+}
+
 export type SourceRecord = z.infer<typeof sourceRecordSchema>;
 export type CreateSourceRecordInput = z.infer<typeof createSourceRecordSchema>;
 export type SourceRecordStatus = z.infer<typeof sourceRecordStatusSchema>;
