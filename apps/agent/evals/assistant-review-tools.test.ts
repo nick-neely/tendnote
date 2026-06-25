@@ -15,6 +15,7 @@ describe("Phase 1A assistant tools are thin wrappers over shared functions", () 
   const wrappers: Record<string, string> = {
     capture_source_record: "captureSourceRecord",
     capture_memory: "captureExplicitMemory",
+    create_person: "createPerson",
     search_people: "searchPeople",
     get_person_context: "getPersonContext",
     get_suggested_memory_review: "getSuggestedMemoryReview",

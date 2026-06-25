@@ -1,4 +1,10 @@
-import { type SearchPeopleInput, searchPeopleSchema } from "@tendnote/domain";
+import {
+  type CreatePersonInput,
+  createPersonSchema,
+  type Person,
+  type SearchPeopleInput,
+  searchPeopleSchema,
+} from "@tendnote/domain";
 import { and, eq, ilike, or, type SQL } from "drizzle-orm";
 import { getDb, hasDatabaseUrl } from "../client";
 import {
@@ -8,7 +14,14 @@ import {
   mockSourceRecordPeople,
   mockSourceRecords,
 } from "../mock-data";
-import { followups, memories, people, sourceRecordPeople, sourceRecords } from "../schema";
+import {
+  auditLog,
+  followups,
+  memories,
+  people,
+  sourceRecordPeople,
+  sourceRecords,
+} from "../schema";
 
 function logMockFallback(error: unknown) {
   if (process.env.TENDNOTE_STRICT_DB === "true") {
@@ -16,6 +29,69 @@ function logMockFallback(error: unknown) {
   }
 
   console.warn("Tendnote database unavailable. Falling back to mock seed data.", error);
+}
+
+/** Owner-scoped input for {@link createPerson}: the resolved owner plus the new profile. */
+export type CreatePersonMutationInput = CreatePersonInput & { ownerUserId: string };
+
+/**
+ * Creates a person under the resolved owner. This is the single shared
+ * owner-scoped entry point for explicit add-person intent (ADR 0001, ADR 0033):
+ * the Eve `create_person` tool calls it today, and the web app should call the
+ * same path rather than inserting people itself. Person creation always requires
+ * explicit intent — a casual ambiguous mention never reaches here. Falls back to
+ * a synthesized person when the database is unavailable so the local dev loop
+ * keeps working.
+ */
+export async function createPerson(input: CreatePersonMutationInput): Promise<Person> {
+  const parsed = createPersonSchema.parse(input);
+  const values = {
+    ownerUserId: input.ownerUserId,
+    displayName: parsed.displayName,
+    firstName: parsed.firstName ?? null,
+    lastName: parsed.lastName ?? null,
+    birthday: parsed.birthday ?? null,
+    relationshipType: parsed.relationshipType ?? "other",
+    closenessLevel: parsed.closenessLevel ?? 3,
+    profileBlurb: parsed.profileBlurb ?? null,
+    source: parsed.source ?? "manual",
+  };
+
+  const synthesize = (): Person => {
+    const now = new Date();
+    return { id: crypto.randomUUID(), createdAt: now, updatedAt: now, ...values };
+  };
+
+  if (!hasDatabaseUrl()) {
+    return synthesize();
+  }
+
+  try {
+    const [person] = await getDb().insert(people).values(values).returning();
+
+    if (!person) {
+      throw new Error("Failed to create person.");
+    }
+
+    try {
+      await getDb()
+        .insert(auditLog)
+        .values({
+          ownerUserId: input.ownerUserId,
+          action: "person.create",
+          entityType: "person",
+          entityId: person.id,
+          metadataJson: { displayName: person.displayName, source: person.source },
+        });
+    } catch {
+      // The person is already persisted; an audit-log failure must not lose it.
+    }
+
+    return person;
+  } catch (error) {
+    logMockFallback(error);
+    return synthesize();
+  }
 }
 
 export async function searchPeople(input: SearchPeopleInput = {}) {

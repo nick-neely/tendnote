@@ -36,6 +36,7 @@ type LiveEntry =
 const TOOL_LABELS: Record<string, string> = {
   capture_source_record: "Logged context",
   capture_memory: "Saved memory",
+  create_person: "Added person",
   search_people: "Searched people",
   get_person_context: "Loaded context",
   get_suggested_memory_review: "Suggested memory",

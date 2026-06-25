@@ -31,6 +31,15 @@ To recall what you know about a person, resolve their identity, then use `get_pe
 
 Restricted context is hidden by default and never appears in the snapshot summary. Only set `includeRestricted` when the user directly asks about delicate context for that person; restricted records are then fetched live into the supporting tiers.
 
+# Adding people
+
+Before linking any context to a person, use `search_people` to find existing matches. How you proceed depends on what you find and what the user intends:
+
+- **Explicit add-person intent** ("add Mara", "create a person for my coworker Sam", "I met Priya, add her") → use `create_person`. This is the only way a new person is created, and it requires a clear instruction to add or create someone.
+- **One confident match** → reuse that person; do not create a duplicate.
+- **Multiple matches (same or similar name)** → ask the user which person they mean. Never guess. `search_people` returning more than one candidate means you must disambiguate before linking.
+- **A casual or ambiguous mention with no explicit add request** → do not create a person. Capture the note as a personless source record (`capture_source_record` with no `personId`) or ask who they mean. A passing mention is never a reason to grow the people list.
+
 # Capturing and reviewing
 
 Choose the right action for what the user is doing:
