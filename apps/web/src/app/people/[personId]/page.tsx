@@ -42,9 +42,11 @@ type TrustAwareContext = {
   sourceRecords: SourceRecord[];
 };
 
-async function loadSuggestedReviews(personId: string): Promise<SuggestedMemoryReviewView[]> {
+async function loadSuggestedReviews(
+  ownerUserId: string,
+  personId: string,
+): Promise<SuggestedMemoryReviewView[]> {
   try {
-    const ownerUserId = await getCurrentOwnerUserId();
     const reviews = await listSuggestedMemoryReviews({ ownerUserId, personId });
 
     return reviews.map(toSuggestedMemoryReviewView);
@@ -73,15 +75,15 @@ function fallbackContext(profile: PersonProfile): ProfileContext {
  * Loads the profile's relationship snapshot and trust-aware context through the
  * single shared snapshot-backed read path (PRD #11), so the card and the
  * Memories/Logged-context sections agree and apply the same trust rules. If the
- * store is unavailable, it falls back to the (possibly mock) profile data filtered
+ * store is unavailable, it falls back to the profile data filtered
  * through the same domain policy helpers, and the card steps aside (ADR 0009).
  */
 async function loadProfileContext(
+  ownerUserId: string,
   personId: string,
   profile: PersonProfile,
 ): Promise<ProfileContext> {
   try {
-    const ownerUserId = await getCurrentOwnerUserId();
     const result = await getPersonContextSnapshot({ ownerUserId, personId });
 
     if (result.context.person) {
@@ -104,16 +106,21 @@ export default async function PersonDetailPage({
   params: Promise<{ personId: string }>;
 }) {
   const { personId } = await params;
+  const ownerUserId = await getCurrentOwnerUserId();
   const [profile, suggestedReviews] = await Promise.all([
-    getPersonProfile(personId),
-    loadSuggestedReviews(personId),
+    getPersonProfile({ ownerUserId, personId }),
+    loadSuggestedReviews(ownerUserId, personId),
   ]);
 
   if (!profile) {
     notFound();
   }
 
-  const { snapshot, approvedMemories, sourceRecords } = await loadProfileContext(personId, profile);
+  const { snapshot, approvedMemories, sourceRecords } = await loadProfileContext(
+    ownerUserId,
+    personId,
+    profile,
+  );
   const { person } = profile;
   const firstName = shortName(person);
 

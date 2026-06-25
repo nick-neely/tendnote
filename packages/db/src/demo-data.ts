@@ -10,7 +10,7 @@ const caseyId = "f29448de-bec8-48f1-91a5-2af8d55ecbd0";
 const alexSourceRecordId = "d337739b-9dc9-4881-a924-aeb8abf3cc8e";
 const caseySourceRecordId = "0ea0fc54-71d7-44af-b7a6-8ef31bc86ee7";
 
-export const mockPeople: Person[] = [
+export const demoPeople: Person[] = [
   {
     id: alexId,
     ownerUserId: demoOwnerUserId,
@@ -55,7 +55,7 @@ export const mockPeople: Person[] = [
   },
 ];
 
-export const mockSourceRecords: SourceRecord[] = [
+export const demoSourceRecords: SourceRecord[] = [
   {
     id: alexSourceRecordId,
     ownerUserId: demoOwnerUserId,
@@ -90,7 +90,7 @@ export const mockSourceRecords: SourceRecord[] = [
   },
 ];
 
-export const mockSourceRecordPeople: SourceRecordPerson[] = [
+export const demoSourceRecordPeople: SourceRecordPerson[] = [
   {
     id: "e0329a22-8dfc-4a61-bf2d-2906d6b49e11",
     sourceRecordId: alexSourceRecordId,
@@ -107,7 +107,7 @@ export const mockSourceRecordPeople: SourceRecordPerson[] = [
   },
 ];
 
-export const mockMemories: Memory[] = [
+export const demoMemories: Memory[] = [
   {
     id: "9e5cb115-261b-46cb-a72e-89fb90f025be",
     personId: alexId,
@@ -144,7 +144,7 @@ export const mockMemories: Memory[] = [
   },
 ];
 
-export const mockFollowups: Followup[] = [
+export const demoFollowups: Followup[] = [
   {
     id: "44a67523-4080-4492-8de2-01309b21950d",
     personId: jordanId,

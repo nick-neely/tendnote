@@ -248,10 +248,13 @@ agent/
   instructions.md
   agent.ts
 
+  channels/
+    eve.ts
+
   tools/
     search_people.ts
     get_person_context.ts
-    upsert_person.ts
+    create_person.ts
     capture_source_record.ts
     capture_memory.ts
     get_suggested_memory_review.ts
@@ -263,7 +266,7 @@ agent/
     privacy-and-consent.md
 ```
 
-Phase 1B.5 should add the real web chat channel or bridge. Later phases may add more tools, skills, schedules, channels, connections, subagents, and sandbox workflows as their product behavior becomes real. Keep the active tree lean until then.
+Phase 1B.5 added `channels/eve.ts`, the real web chat bridge into the Eve agent. Later phases may add more tools, skills, schedules, connections, subagents, and sandbox workflows as their product behavior becomes real. Keep the active tree lean until then.
 
 ### Core Agent Instructions
 
@@ -299,7 +302,7 @@ Help Nick remember context about people, follow up at the right time, prepare fo
 |---|---|
 | `search_people` | Find people by name, tag, relationship type, or recency. |
 | `get_person_context` | Load snapshot-backed trust-aware context for a person. |
-| `upsert_person` | Create or update a person. |
+| `create_person` | Create a person on explicit user intent (display-name first; no merge). |
 | `capture_source_record` | Save logged context with source-record provenance. |
 | `capture_memory` | Store an explicit approved memory tied to a person and source record. |
 | `get_suggested_memory_review` | Load a persisted suggested memory for review. |
@@ -1041,7 +1044,7 @@ Recommended first issue batch:
 6. Add Drizzle schema, Neon client, and migrations in `packages/db`.
 7. Align Phase 0 schema and domain code with the Phase 1 source-record, memory lifecycle, sensitivity, relationship type, and duplicate-name decisions.
 8. Add people CRUD and search.
-9. Add Eve `search_people` and `upsert_person` tools.
+9. Add Eve `search_people` and `create_person` tools.
 10. Add source records and atomic memory capture flow with suggested/approved states.
 11. Add person context snapshots and snapshot-backed profile retrieval.
 12. Connect web chat to Eve for people search/upsert, source-record capture, explicit memory capture, and review components.

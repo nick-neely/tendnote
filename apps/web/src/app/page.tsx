@@ -13,9 +13,10 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  const ownerUserId = await getCurrentOwnerUserId();
   const [people, recentSourceRecordReviews] = await Promise.all([
-    searchPeople({ limit: 8 }),
-    getRecentSourceRecordReviews(),
+    searchPeople({ ownerUserId, limit: 8 }),
+    getRecentSourceRecordReviews(ownerUserId),
   ]);
   const birthdays = getUpcomingBirthdays(people);
 
@@ -41,9 +42,10 @@ export default async function Home() {
   );
 }
 
-async function getRecentSourceRecordReviews(): Promise<SourceRecordReviewView[]> {
+async function getRecentSourceRecordReviews(
+  ownerUserId: string,
+): Promise<SourceRecordReviewView[]> {
   try {
-    const ownerUserId = await getCurrentOwnerUserId();
     const reviews = await listSourceRecordReviews({ ownerUserId, limit: 3 });
 
     return reviews.map(toSourceRecordReviewView);

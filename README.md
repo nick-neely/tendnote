@@ -1,8 +1,8 @@
 # Tendnote
 
-Tendnote is a personal relationship memory and follow-up assistant. Phase 0 sets up the monorepo, local development services, the app shell, shared domain/database packages, Better Auth, and an Eve agent skeleton.
+Tendnote is a personal relationship memory and follow-up assistant. The current build (through Phase 1B.5) covers the monorepo, local development services, the app shell, shared domain/database packages, Better Auth, and an Eve agent reachable from the web chat. The agent can search people, create people on explicit intent, capture source records and approved memories, load snapshot-backed person context, and render persisted review components. Follow-ups, daily briefs, message drafting, and Google/Gmail integrations are later phases.
 
-For agent-facing project guidance, start with `AGENTS.md`.
+For the full roadmap see `docs/prd.md`. For agent-facing project guidance, start with `AGENTS.md`.
 
 ## Local Development
 

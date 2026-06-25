@@ -1,11 +1,11 @@
 import { closeDb, getDb } from "./client";
 import {
-  mockFollowups,
-  mockMemories,
-  mockPeople,
-  mockSourceRecordPeople,
-  mockSourceRecords,
-} from "./mock-data";
+  demoFollowups,
+  demoMemories,
+  demoPeople,
+  demoSourceRecordPeople,
+  demoSourceRecords,
+} from "./demo-data";
 import { followups, memories, people, sourceRecordPeople, sourceRecords, user } from "./schema";
 
 const ownerUserId = "demo-user";
@@ -31,7 +31,7 @@ async function seed() {
       },
     });
 
-  for (const person of mockPeople) {
+  for (const person of demoPeople) {
     await db
       .insert(people)
       .values(person)
@@ -51,7 +51,7 @@ async function seed() {
       });
   }
 
-  for (const sourceRecord of mockSourceRecords) {
+  for (const sourceRecord of demoSourceRecords) {
     await db
       .insert(sourceRecords)
       .values(sourceRecord)
@@ -74,7 +74,7 @@ async function seed() {
       });
   }
 
-  for (const sourceRecordPerson of mockSourceRecordPeople) {
+  for (const sourceRecordPerson of demoSourceRecordPeople) {
     await db
       .insert(sourceRecordPeople)
       .values(sourceRecordPerson)
@@ -88,7 +88,7 @@ async function seed() {
       });
   }
 
-  for (const memory of mockMemories) {
+  for (const memory of demoMemories) {
     await db
       .insert(memories)
       .values(memory)
@@ -112,7 +112,7 @@ async function seed() {
       });
   }
 
-  for (const followup of mockFollowups) {
+  for (const followup of demoFollowups) {
     await db
       .insert(followups)
       .values(followup)
@@ -135,7 +135,7 @@ async function seed() {
 seed()
   .then(async () => {
     await closeDb();
-    console.log("Seeded Tendnote mock data.");
+    console.log("Seeded Tendnote demo data.");
   })
   .catch(async (error) => {
     await closeDb();
