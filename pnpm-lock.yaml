@@ -165,6 +165,9 @@ importers:
       '@tendnote/domain':
         specifier: workspace:*
         version: link:../domain
+      ai:
+        specifier: ^6.0.209
+        version: 6.0.209(zod@4.4.3)
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9)
