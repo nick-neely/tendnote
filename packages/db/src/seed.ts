@@ -1,6 +1,12 @@
 import { closeDb, getDb } from "./client";
-import { mockFollowups, mockMemories, mockPeople } from "./mock-data";
-import { followups, memories, people, user } from "./schema";
+import {
+  mockFollowups,
+  mockMemories,
+  mockPeople,
+  mockSourceRecordPeople,
+  mockSourceRecords,
+} from "./mock-data";
+import { followups, memories, people, sourceRecordPeople, sourceRecords, user } from "./schema";
 
 const ownerUserId = "demo-user";
 
@@ -38,9 +44,46 @@ async function seed() {
           birthday: person.birthday,
           relationshipType: person.relationshipType,
           closenessLevel: person.closenessLevel,
-          notes: person.notes,
+          profileBlurb: person.profileBlurb,
           source: person.source,
           updatedAt: new Date(),
+        },
+      });
+  }
+
+  for (const sourceRecord of mockSourceRecords) {
+    await db
+      .insert(sourceRecords)
+      .values(sourceRecord)
+      .onConflictDoUpdate({
+        target: sourceRecords.id,
+        set: {
+          ownerUserId: sourceRecord.ownerUserId,
+          sourceType: sourceRecord.sourceType,
+          content: sourceRecord.content,
+          rawContent: sourceRecord.rawContent,
+          retentionPolicy: sourceRecord.retentionPolicy,
+          status: sourceRecord.status,
+          confidence: sourceRecord.confidence,
+          sensitivity: sourceRecord.sensitivity,
+          scope: sourceRecord.scope,
+          importance: sourceRecord.importance,
+          metadataJson: sourceRecord.metadataJson,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  for (const sourceRecordPerson of mockSourceRecordPeople) {
+    await db
+      .insert(sourceRecordPeople)
+      .values(sourceRecordPerson)
+      .onConflictDoUpdate({
+        target: sourceRecordPeople.id,
+        set: {
+          sourceRecordId: sourceRecordPerson.sourceRecordId,
+          personId: sourceRecordPerson.personId,
+          role: sourceRecordPerson.role,
         },
       });
   }
@@ -54,12 +97,16 @@ async function seed() {
         set: {
           personId: memory.personId,
           ownerUserId: memory.ownerUserId,
+          sourceRecordId: memory.sourceRecordId,
           memoryType: memory.memoryType,
           content: memory.content,
-          source: memory.source,
+          status: memory.status,
+          importance: memory.importance,
           sensitivity: memory.sensitivity,
           confidence: memory.confidence,
           scope: memory.scope,
+          approvedAt: memory.approvedAt,
+          dismissedAt: memory.dismissedAt,
           updatedAt: new Date(),
         },
       });

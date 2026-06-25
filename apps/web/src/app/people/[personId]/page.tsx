@@ -43,7 +43,7 @@ export default async function PersonDetailPage({
                 <div className="rounded-md border p-3" key={memory.id}>
                   <p className="text-sm">{memory.content}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <Badge variant="outline">{memory.source}</Badge>
+                    <Badge variant="outline">{memory.status}</Badge>
                     <Badge variant="outline">{memory.confidence}</Badge>
                     <Badge variant="outline">{memory.sensitivity}</Badge>
                   </div>

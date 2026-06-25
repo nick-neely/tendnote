@@ -1,6 +1,13 @@
 import { z } from "zod";
 
-export const followupStatusSchema = z.enum(["open", "completed", "snoozed", "dismissed"]);
+export const followupStatusSchema = z.enum([
+  "suggested",
+  "open",
+  "snoozed",
+  "completed",
+  "dismissed",
+  "archived",
+]);
 
 export const followupSchema = z.object({
   id: z.string(),

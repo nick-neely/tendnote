@@ -1,8 +1,14 @@
 import { type SearchPeopleInput, searchPeopleSchema } from "@tendnote/domain";
 import { and, eq, ilike, or, type SQL } from "drizzle-orm";
 import { getDb, hasDatabaseUrl } from "../client";
-import { mockFollowups, mockMemories, mockPeople } from "../mock-data";
-import { followups, memories, people } from "../schema";
+import {
+  mockFollowups,
+  mockMemories,
+  mockPeople,
+  mockSourceRecordPeople,
+  mockSourceRecords,
+} from "../mock-data";
+import { followups, memories, people, sourceRecordPeople, sourceRecords } from "../schema";
 
 function logMockFallback(error: unknown) {
   if (process.env.TENDNOTE_STRICT_DB === "true") {
@@ -77,6 +83,11 @@ export async function getPersonProfile(personId: string) {
           person,
           memories: mockMemories.filter((memory) => memory.personId === personId),
           followups: mockFollowups.filter((followup) => followup.personId === personId),
+          sourceRecords: mockSourceRecords.filter((sourceRecord) =>
+            mockSourceRecordPeople.some(
+              (link) => link.personId === personId && link.sourceRecordId === sourceRecord.id,
+            ),
+          ),
         }))[0] ?? null
     );
   };
@@ -92,15 +103,21 @@ export async function getPersonProfile(personId: string) {
       return null;
     }
 
-    const [personMemories, personFollowups] = await Promise.all([
+    const [personMemories, personFollowups, personSourceRecords] = await Promise.all([
       getDb().select().from(memories).where(eq(memories.personId, personId)),
       getDb().select().from(followups).where(eq(followups.personId, personId)),
+      getDb()
+        .select({ sourceRecord: sourceRecords })
+        .from(sourceRecordPeople)
+        .innerJoin(sourceRecords, eq(sourceRecordPeople.sourceRecordId, sourceRecords.id))
+        .where(eq(sourceRecordPeople.personId, personId)),
     ]);
 
     return {
       person,
       memories: personMemories,
       followups: personFollowups,
+      sourceRecords: personSourceRecords.map((row) => row.sourceRecord),
     };
   } catch (error) {
     logMockFallback(error);

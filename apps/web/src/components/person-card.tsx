@@ -19,7 +19,7 @@ export function PersonCard({ person }: { person: Person }) {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="line-clamp-2 min-h-10 text-sm text-muted-foreground">
-            {person.notes ?? "No notes captured yet."}
+            {person.profileBlurb ?? "No profile blurb captured yet."}
           </p>
           <div className="flex flex-wrap gap-2">
             <Badge variant="secondary">Closeness {person.closenessLevel}</Badge>

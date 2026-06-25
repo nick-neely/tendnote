@@ -18,7 +18,7 @@ export const relationshipType = pgEnum("relationship_type", [
   "family",
   "partner",
   "colleague",
-  "client",
+  "professional",
   "networking",
   "neighbor",
   "other",
@@ -49,11 +49,39 @@ export const memoryType = pgEnum("memory_type", [
   "other",
 ]);
 
-export const sensitivity = pgEnum("sensitivity", ["normal", "sensitive", "private"]);
+export const sensitivity = pgEnum("sensitivity", ["normal", "sensitive", "restricted"]);
 
 export const confidence = pgEnum("confidence", ["low", "medium", "high"]);
 
 export const privacyScope = pgEnum("privacy_scope", ["private", "shared", "household"]);
+
+export const sourceRecordStatus = pgEnum("source_record_status", [
+  "pending_resolution",
+  "active",
+  "dismissed",
+  "archived",
+]);
+
+export const sourceRecordRetentionPolicy = pgEnum("source_record_retention_policy", [
+  "retain",
+  "summarize_then_delete",
+  "delete_after_processing",
+]);
+
+export const sourceRecordPersonRole = pgEnum("source_record_person_role", ["primary", "mentioned"]);
+
+export const unresolvedMentionStatus = pgEnum("unresolved_mention_status", [
+  "unresolved",
+  "resolved",
+  "dismissed",
+]);
+
+export const memoryStatus = pgEnum("memory_status", [
+  "suggested",
+  "approved",
+  "dismissed",
+  "archived",
+]);
 
 export const interactionType = pgEnum("interaction_type", [
   "call",
@@ -65,10 +93,20 @@ export const interactionType = pgEnum("interaction_type", [
 ]);
 
 export const followupStatus = pgEnum("followup_status", [
+  "suggested",
   "open",
-  "completed",
   "snoozed",
+  "completed",
   "dismissed",
+  "archived",
+]);
+
+export const extractionJobStatus = pgEnum("extraction_job_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "skipped",
 ]);
 
 export const messageDraftChannel = pgEnum("message_draft_channel", [
@@ -111,13 +149,13 @@ export const people = pgTable(
     birthday: text("birthday"),
     relationshipType: relationshipType("relationship_type").notNull().default("other"),
     closenessLevel: integer("closeness_level").notNull().default(3),
-    notes: text("notes"),
+    profileBlurb: text("profile_blurb"),
     source: sourceType("source").notNull().default("manual"),
     ...timestamps,
   },
   (table) => [
     index("people_owner_user_id_idx").on(table.ownerUserId),
-    uniqueIndex("people_owner_display_name_idx").on(table.ownerUserId, table.displayName),
+    index("people_owner_display_name_idx").on(table.ownerUserId, table.displayName),
   ],
 );
 
@@ -137,6 +175,34 @@ export const contactMethods = pgTable(
   (table) => [index("contact_methods_person_id_idx").on(table.personId)],
 );
 
+export const sourceRecords = pgTable(
+  "source_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    sourceType: sourceType("source_type").notNull().default("manual"),
+    content: text("content").notNull(),
+    rawContent: text("raw_content"),
+    retentionPolicy: sourceRecordRetentionPolicy("retention_policy").notNull().default("retain"),
+    status: sourceRecordStatus("status").notNull().default("active"),
+    confidence: confidence("confidence").notNull().default("medium"),
+    sensitivity: sensitivity("sensitivity").notNull().default("normal"),
+    scope: privacyScope("scope").notNull().default("private"),
+    importance: integer("importance").notNull().default(3),
+    metadataJson: jsonb("metadata_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    ...timestamps,
+  },
+  (table) => [
+    index("source_records_owner_user_id_idx").on(table.ownerUserId),
+    index("source_records_owner_status_idx").on(table.ownerUserId, table.status),
+  ],
+);
+
 export const memories = pgTable(
   "memories",
   {
@@ -147,17 +213,92 @@ export const memories = pgTable(
     ownerUserId: text("owner_user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    sourceRecordId: uuid("source_record_id")
+      .notNull()
+      .references(() => sourceRecords.id, { onDelete: "restrict" }),
     memoryType: memoryType("memory_type").notNull().default("context"),
     content: text("content").notNull(),
-    source: sourceType("source").notNull().default("manual"),
+    status: memoryStatus("status").notNull().default("suggested"),
+    importance: integer("importance").notNull().default(3),
     sensitivity: sensitivity("sensitivity").notNull().default("normal"),
     confidence: confidence("confidence").notNull().default("medium"),
     scope: privacyScope("scope").notNull().default("private"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
     index("memories_person_id_idx").on(table.personId),
     index("memories_owner_user_id_idx").on(table.ownerUserId),
+    index("memories_source_record_id_idx").on(table.sourceRecordId),
+    index("memories_owner_status_idx").on(table.ownerUserId, table.status),
+  ],
+);
+
+export const sourceRecordPeople = pgTable(
+  "source_record_people",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sourceRecordId: uuid("source_record_id")
+      .notNull()
+      .references(() => sourceRecords.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    role: sourceRecordPersonRole("role").notNull().default("mentioned"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("source_record_people_record_person_idx").on(table.sourceRecordId, table.personId),
+    index("source_record_people_person_id_idx").on(table.personId),
+  ],
+);
+
+export const unresolvedPersonMentions = pgTable(
+  "unresolved_person_mentions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sourceRecordId: uuid("source_record_id")
+      .notNull()
+      .references(() => sourceRecords.id, { onDelete: "cascade" }),
+    mentionText: text("mention_text").notNull(),
+    candidatePersonIds: jsonb("candidate_person_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    status: unresolvedMentionStatus("status").notNull().default("unresolved"),
+    resolvedPersonId: uuid("resolved_person_id").references(() => people.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("unresolved_person_mentions_source_record_id_idx").on(table.sourceRecordId),
+    index("unresolved_person_mentions_status_idx").on(table.status),
+  ],
+);
+
+export const extractionJobs = pgTable(
+  "extraction_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sourceRecordId: uuid("source_record_id")
+      .notNull()
+      .references(() => sourceRecords.id, { onDelete: "cascade" }),
+    status: extractionJobStatus("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("extraction_jobs_idempotency_key_idx").on(table.idempotencyKey),
+    index("extraction_jobs_source_record_id_idx").on(table.sourceRecordId),
+    index("extraction_jobs_status_run_after_idx").on(table.status, table.runAfter),
   ],
 );
 
@@ -258,6 +399,8 @@ export const peopleRelations = relations(people, ({ many, one }) => ({
   interactions: many(interactions),
   followups: many(followups),
   messageDrafts: many(messageDrafts),
+  sourceRecordLinks: many(sourceRecordPeople),
+  unresolvedMentions: many(unresolvedPersonMentions),
 }));
 
 export const contactMethodsRelations = relations(contactMethods, ({ one }) => ({
@@ -275,6 +418,50 @@ export const memoriesRelations = relations(memories, ({ one }) => ({
   owner: one(user, {
     fields: [memories.ownerUserId],
     references: [user.id],
+  }),
+  sourceRecord: one(sourceRecords, {
+    fields: [memories.sourceRecordId],
+    references: [sourceRecords.id],
+  }),
+}));
+
+export const sourceRecordsRelations = relations(sourceRecords, ({ many, one }) => ({
+  owner: one(user, {
+    fields: [sourceRecords.ownerUserId],
+    references: [user.id],
+  }),
+  people: many(sourceRecordPeople),
+  unresolvedMentions: many(unresolvedPersonMentions),
+  memories: many(memories),
+  extractionJobs: many(extractionJobs),
+}));
+
+export const sourceRecordPeopleRelations = relations(sourceRecordPeople, ({ one }) => ({
+  sourceRecord: one(sourceRecords, {
+    fields: [sourceRecordPeople.sourceRecordId],
+    references: [sourceRecords.id],
+  }),
+  person: one(people, {
+    fields: [sourceRecordPeople.personId],
+    references: [people.id],
+  }),
+}));
+
+export const unresolvedPersonMentionsRelations = relations(unresolvedPersonMentions, ({ one }) => ({
+  sourceRecord: one(sourceRecords, {
+    fields: [unresolvedPersonMentions.sourceRecordId],
+    references: [sourceRecords.id],
+  }),
+  resolvedPerson: one(people, {
+    fields: [unresolvedPersonMentions.resolvedPersonId],
+    references: [people.id],
+  }),
+}));
+
+export const extractionJobsRelations = relations(extractionJobs, ({ one }) => ({
+  sourceRecord: one(sourceRecords, {
+    fields: [extractionJobs.sourceRecordId],
+    references: [sourceRecords.id],
   }),
 }));
 

@@ -15,7 +15,7 @@ export default defineTool({
         displayName: person.displayName,
         relationshipType: person.relationshipType,
         closenessLevel: person.closenessLevel,
-        notes: person.notes,
+        profileBlurb: person.profileBlurb,
       })),
     };
   },

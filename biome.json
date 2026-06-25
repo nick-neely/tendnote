@@ -10,6 +10,8 @@
     "includes": [
       "**",
       "!!**/.next",
+      "!!**/.agents",
+      "!!**/.claude",
       "!!**/.turbo",
       "!!**/node_modules",
       "!!**/coverage",

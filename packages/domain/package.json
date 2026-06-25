@@ -9,7 +9,8 @@
     "./memories": "./src/memories.ts",
     "./followups": "./src/followups.ts",
     "./drafts": "./src/drafts.ts",
-    "./privacy": "./src/privacy.ts"
+    "./privacy": "./src/privacy.ts",
+    "./source-records": "./src/source-records.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

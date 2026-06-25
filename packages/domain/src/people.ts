@@ -6,7 +6,7 @@ export const relationshipTypeSchema = z.enum([
   "family",
   "partner",
   "colleague",
-  "client",
+  "professional",
   "networking",
   "neighbor",
   "other",
@@ -23,7 +23,7 @@ export const personSchema = z.object({
   birthday: z.string().nullable().optional(),
   relationshipType: relationshipTypeSchema.default("other"),
   closenessLevel: z.number().int().min(1).max(5).default(3),
-  notes: z.string().nullable().optional(),
+  profileBlurb: z.string().max(280).nullable().optional(),
   source: sourceSchema.default("manual"),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -61,6 +61,10 @@ export const searchPeopleSchema = z.object({
   relationshipType: relationshipTypeSchema.optional(),
   limit: z.number().int().min(1).max(50).default(10),
 });
+
+export function requiresPersonDisambiguation(candidates: Pick<Person, "id">[]) {
+  return candidates.length > 1;
+}
 
 export type Person = z.infer<typeof personSchema>;
 export type CreatePersonInput = z.infer<typeof createPersonSchema>;
