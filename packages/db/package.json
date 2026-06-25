@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
+    "./queries/context-snapshots": "./src/queries/context-snapshots.ts",
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/people": "./src/queries/people.ts",

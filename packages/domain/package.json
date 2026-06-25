@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./people": "./src/people.ts",
     "./memories": "./src/memories.ts",
+    "./context-snapshots": "./src/context-snapshots.ts",
     "./followups": "./src/followups.ts",
     "./drafts": "./src/drafts.ts",
     "./privacy": "./src/privacy.ts",

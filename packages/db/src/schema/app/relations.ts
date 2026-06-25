@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import { user } from "../auth";
+import { personContextSnapshots } from "./context-snapshots";
 import { followups, interactions, messageDrafts } from "./engagement";
 import { memories } from "./memories";
 import { contactMethods, people } from "./people";
@@ -22,6 +23,18 @@ export const peopleRelations = relations(people, ({ many, one }) => ({
   messageDrafts: many(messageDrafts),
   sourceRecordLinks: many(sourceRecordPeople),
   unresolvedMentions: many(unresolvedPersonMentions),
+  contextSnapshot: many(personContextSnapshots),
+}));
+
+export const personContextSnapshotsRelations = relations(personContextSnapshots, ({ one }) => ({
+  person: one(people, {
+    fields: [personContextSnapshots.personId],
+    references: [people.id],
+  }),
+  owner: one(user, {
+    fields: [personContextSnapshots.ownerUserId],
+    references: [user.id],
+  }),
 }));
 
 export const contactMethodsRelations = relations(contactMethods, ({ one }) => ({
