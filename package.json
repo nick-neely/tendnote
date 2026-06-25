@@ -25,6 +25,7 @@
     "db:check": "pnpm --filter @tendnote/db db:check",
     "db:generate": "pnpm --filter @tendnote/db db:generate",
     "db:migrate": "pnpm --filter @tendnote/db db:migrate",
+    "db:studio": "pnpm --filter @tendnote/db db:studio",
     "db:seed": "pnpm --filter @tendnote/db db:seed"
   },
   "devDependencies": {
