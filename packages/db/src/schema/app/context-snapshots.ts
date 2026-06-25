@@ -1,4 +1,4 @@
-import type { SnapshotSupportingReferences } from "@tendnote/domain";
+import type { CompactFollowupReference, SnapshotSupportingReferences } from "@tendnote/domain";
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { user } from "../auth";
@@ -30,6 +30,10 @@ export const personContextSnapshots = pgTable(
       .$type<SnapshotSupportingReferences>()
       .notNull()
       .default(sql.raw(`'${EMPTY_REFERENCES}'::jsonb`)),
+    followups: jsonb("followups")
+      .$type<CompactFollowupReference[]>()
+      .notNull()
+      .default(sql.raw(`'[]'::jsonb`)),
     generatorVersion: text("generator_version").notNull(),
     inputFingerprint: text("input_fingerprint").notNull(),
     generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),

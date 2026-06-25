@@ -1,15 +1,35 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSnapshotPrompt,
+  collectCompactFollowups,
   collectSnapshotReferences,
   computeSnapshotFingerprint,
   DETERMINISTIC_GENERATOR_VERSION,
   generateDeterministicSnapshot,
   type SnapshotInputPack,
+  selectSnapshotFollowups,
 } from "./context-snapshots";
+import type { Followup } from "./followups";
 import type { Memory } from "./memories";
 import type { Person } from "./people";
 import type { SourceRecord } from "./source-records";
+
+function followup(overrides: Partial<Followup> = {}): Followup {
+  const now = new Date("2026-01-04T00:00:00Z");
+  return {
+    id: "followup-1",
+    personId: "person-1",
+    ownerUserId: OWNER,
+    reason: "Check in about the new job.",
+    dueAt: new Date("2026-02-01T00:00:00Z"),
+    status: "open",
+    cadence: null,
+    lastPromptedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
 
 const OWNER = "user-1";
 
@@ -84,7 +104,7 @@ describe("collectSnapshotReferences", () => {
       suggestedMemories: [
         memory({ id: "memory-2", status: "suggested", content: "Maybe moving." }),
       ],
-      followups: [{ id: "followup-1" }],
+      followups: [followup()],
     };
 
     expect(collectSnapshotReferences(input)).toEqual({
@@ -174,7 +194,7 @@ describe("computeSnapshotFingerprint", () => {
     approvedMemories: [memory()],
     sourceRecords: [sourceRecord()],
     suggestedMemories: [memory({ id: "memory-2", status: "suggested" })],
-    followups: [{ id: "followup-1" }],
+    followups: [followup()],
   };
 
   it("is stable for identical inputs", () => {
@@ -217,6 +237,98 @@ describe("computeSnapshotFingerprint", () => {
     expect(computeSnapshotFingerprint(base)).not.toBe(
       computeSnapshotFingerprint({ ...base, followups: [] }),
     );
+  });
+
+  it("changes when a follow-up status, due date, or reason changes", () => {
+    expect(computeSnapshotFingerprint(base)).not.toBe(
+      computeSnapshotFingerprint({ ...base, followups: [followup({ status: "completed" })] }),
+    );
+    expect(computeSnapshotFingerprint(base)).not.toBe(
+      computeSnapshotFingerprint({
+        ...base,
+        followups: [followup({ dueAt: new Date("2026-03-01T00:00:00Z") })],
+      }),
+    );
+    expect(computeSnapshotFingerprint(base)).not.toBe(
+      computeSnapshotFingerprint({
+        ...base,
+        followups: [followup({ reason: "Different reason." })],
+      }),
+    );
+  });
+});
+
+describe("selectSnapshotFollowups", () => {
+  const now = new Date("2026-06-25T00:00:00Z");
+
+  it("includes active (open/snoozed) follow-ups and excludes suggested/dismissed/archived", () => {
+    const result = selectSnapshotFollowups(
+      [
+        followup({ id: "open-1", status: "open" }),
+        followup({ id: "snoozed-1", status: "snoozed" }),
+        followup({ id: "suggested-1", status: "suggested" }),
+        followup({ id: "dismissed-1", status: "dismissed" }),
+        followup({ id: "archived-1", status: "archived" }),
+      ],
+      now,
+    );
+
+    expect(result.map((f) => f.id).sort()).toEqual(["open-1", "snoozed-1"]);
+  });
+
+  it("includes recently completed follow-ups but not stale ones", () => {
+    const recent = followup({
+      id: "recent",
+      status: "completed",
+      updatedAt: new Date("2026-06-10T00:00:00Z"),
+    });
+    const stale = followup({
+      id: "stale",
+      status: "completed",
+      updatedAt: new Date("2026-01-01T00:00:00Z"),
+    });
+
+    const result = selectSnapshotFollowups([recent, stale], now);
+
+    expect(result.map((f) => f.id)).toEqual(["recent"]);
+  });
+
+  it("orders selected follow-ups by due date", () => {
+    const later = followup({ id: "later", dueAt: new Date("2026-07-01T00:00:00Z") });
+    const sooner = followup({ id: "sooner", dueAt: new Date("2026-06-26T00:00:00Z") });
+
+    expect(selectSnapshotFollowups([later, sooner], now).map((f) => f.id)).toEqual([
+      "sooner",
+      "later",
+    ]);
+  });
+});
+
+describe("collectCompactFollowups", () => {
+  it("maps follow-ups to compact references with id, status, due date, and reason", () => {
+    const input: SnapshotInputPack = {
+      person: person(),
+      approvedMemories: [],
+      sourceRecords: [],
+      suggestedMemories: [],
+      followups: [
+        followup({
+          id: "followup-9",
+          status: "open",
+          dueAt: new Date("2026-02-01T00:00:00Z"),
+          reason: "Send birthday note.",
+        }),
+      ],
+    };
+
+    expect(collectCompactFollowups(input)).toEqual([
+      {
+        id: "followup-9",
+        status: "open",
+        dueAt: "2026-02-01T00:00:00.000Z",
+        reason: "Send birthday note.",
+      },
+    ]);
   });
 });
 

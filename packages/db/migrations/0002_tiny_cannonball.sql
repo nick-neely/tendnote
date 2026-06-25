@@ -1,0 +1,1 @@
+ALTER TABLE "person_context_snapshots" ADD COLUMN "followups" jsonb DEFAULT '[]'::jsonb NOT NULL;

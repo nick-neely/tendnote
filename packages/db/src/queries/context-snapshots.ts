@@ -2,6 +2,7 @@ import type { GetPersonContextSnapshotInput } from "./context-snapshots/builder"
 import { createPersonContextSnapshot } from "./context-snapshots/builder";
 import { createDrizzleContextSnapshotStore } from "./context-snapshots/drizzle-store";
 import type { PersonContextSnapshotStore } from "./context-snapshots/types";
+import { createDrizzleFollowupStore } from "./followups/drizzle-store";
 import { createDrizzleMemoryStore } from "./memories/drizzle-store";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 
@@ -26,6 +27,7 @@ const defaultPersonContextSnapshotStore = {
   ...createDrizzleMemoryStore(),
   listSourceRecordsForPersonContext:
     createDrizzleSourceRecordStore().listSourceRecordsForPersonContext,
+  ...createDrizzleFollowupStore(),
   ...createDrizzleContextSnapshotStore(),
 } satisfies PersonContextSnapshotStore;
 

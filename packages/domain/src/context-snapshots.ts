@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { type Followup, followupStatusSchema } from "./followups";
 import type { Memory } from "./memories";
 import type { Person } from "./people";
 import type { SourceRecord } from "./source-records";
@@ -19,10 +20,25 @@ export const snapshotSupportingReferencesSchema = z.object({
 });
 
 /**
+ * A compact contextual follow-up reference. Carries only enough to orient the
+ * user — id, status, due date, and reason — so the snapshot can reflect active
+ * or recently completed reminders without becoming a reminder feed or scheduling
+ * model. Follow-up lifecycle stays owned by follow-up records, not the snapshot
+ * cache (ADR 0009; statuses defined by ADR 0007).
+ */
+export const compactFollowupReferenceSchema = z.object({
+  id: z.string(),
+  status: followupStatusSchema,
+  dueAt: z.string(),
+  reason: z.string(),
+});
+
+/**
  * A context snapshot is a rebuildable cache row, not a source of truth (ADR
  * 0009). It stores generated summary prose plus record-level supporting
- * references and operational cache metadata (generation time, generator version,
- * input fingerprint, optional failure detail). One current row per owner/person.
+ * references, compact follow-up context, and operational cache metadata
+ * (generation time, generator version, input fingerprint, optional failure
+ * detail). One current row per owner/person.
  */
 export const contextSnapshotSchema = z.object({
   id: z.string(),
@@ -30,6 +46,7 @@ export const contextSnapshotSchema = z.object({
   personId: z.string(),
   summary: z.string(),
   supportingReferences: snapshotSupportingReferencesSchema,
+  followups: z.array(compactFollowupReferenceSchema).default([]),
   generatorVersion: z.string().min(1),
   inputFingerprint: z.string().min(1),
   generatedAt: z.date(),
@@ -45,6 +62,7 @@ export const createContextSnapshotSchema = contextSnapshotSchema.omit({
 });
 
 export type SnapshotSupportingReferences = z.infer<typeof snapshotSupportingReferencesSchema>;
+export type CompactFollowupReference = z.infer<typeof compactFollowupReferenceSchema>;
 export type ContextSnapshot = z.infer<typeof contextSnapshotSchema>;
 export type CreateContextSnapshotInput = z.infer<typeof createContextSnapshotSchema>;
 
@@ -52,16 +70,62 @@ export type CreateContextSnapshotInput = z.infer<typeof createContextSnapshotSch
  * The trusted input pack handed to a snapshot generator. The builder owns
  * loading these inputs, applying policy filters, and owner scoping; a generator
  * only turns this pack into prose and references (ADR 0009, PRD #11). Follow-ups
- * are carried so later phases can add compact reminder context without changing
- * the generator contract.
+ * are the snapshot-eligible ones (active or recently completed) the builder
+ * selected — see {@link selectSnapshotFollowups}.
  */
 export type SnapshotInputPack = {
   person: Person;
   approvedMemories: Memory[];
   sourceRecords: SourceRecord[];
   suggestedMemories: Memory[];
-  followups: Array<{ id: string }>;
+  followups: Followup[];
 };
+
+/** Follow-up statuses that count as active relationship reminders. */
+const ACTIVE_FOLLOWUP_STATUSES: ReadonlySet<Followup["status"]> = new Set(["open", "snoozed"]);
+
+/**
+ * How long a completed follow-up stays useful as relationship context before it
+ * drops out of the snapshot. Keeps "recently completed" bounded so the card does
+ * not accumulate history (PRD #11: snapshots are not a reminder feed).
+ */
+export const RECENTLY_COMPLETED_FOLLOWUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Selects the follow-ups eligible to appear as compact snapshot context: active
+ * reminders (open or snoozed) plus follow-ups completed within the recent window.
+ * Suggested, dismissed, and archived follow-ups are excluded — suggested ones are
+ * tentative review items, the rest are not relationship context (ADR 0006, ADR
+ * 0007, PRD #11). Deterministic given `now`, so eligibility is testable without
+ * a store.
+ */
+export function selectSnapshotFollowups(followups: Followup[], now: Date = new Date()): Followup[] {
+  const recentCutoff = now.getTime() - RECENTLY_COMPLETED_FOLLOWUP_WINDOW_MS;
+
+  return followups
+    .filter((followup) => {
+      if (ACTIVE_FOLLOWUP_STATUSES.has(followup.status)) {
+        return true;
+      }
+
+      return followup.status === "completed" && followup.updatedAt.getTime() >= recentCutoff;
+    })
+    .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
+}
+
+/**
+ * Compact follow-up references for the snapshot: id, status, due date, and reason
+ * only. The builder owns this so the snapshot reflects reminders without copying
+ * follow-up lifecycle into the cache (PRD #11).
+ */
+export function collectCompactFollowups(input: SnapshotInputPack): CompactFollowupReference[] {
+  return input.followups.map((followup) => ({
+    id: followup.id,
+    status: followup.status,
+    dueAt: followup.dueAt.toISOString(),
+    reason: followup.reason,
+  }));
+}
 
 /**
  * A generator's only output: the snapshot prose and the version tag identifying
@@ -130,11 +194,14 @@ export function generateDeterministicSnapshot(input: SnapshotInputPack): Snapsho
  * as "you noted" (source records).
  *
  * Suggested-memory content is deliberately excluded from the prompt, matching the
- * deterministic generator's hard exclusion (ADR 0009: the durable summary is built
- * from the person, approved memories, logged context, and relevant follow-ups;
- * suggested memories belong in separated review hints / supporting references
- * only). Keeping their text out of the prompt is a hard guarantee rather than
- * trusting the model not to promote a tentative observation to a fact.
+ * deterministic generator's hard exclusion (ADR 0009: suggested memories belong in
+ * separated review hints / supporting references only). Keeping their text out of
+ * the prompt is a hard guarantee rather than trusting the model not to promote a
+ * tentative observation to a fact.
+ *
+ * Follow-ups are not put in the prompt either: they ride along as compact
+ * structured references (see {@link collectCompactFollowups}) so the snapshot
+ * reflects reminders without the prose becoming a reminder feed (PRD #11).
  */
 export function buildSnapshotPrompt(input: SnapshotInputPack): string {
   const { person, approvedMemories, sourceRecords } = input;
@@ -195,9 +262,12 @@ export function computeSnapshotFingerprint(input: SnapshotInputPack): string {
   addRecords("approved", input.approvedMemories);
   addRecords("sources", input.sourceRecords);
   addRecords("suggested", input.suggestedMemories);
+  // Include follow-up status, due date, and reason so opening, snoozing,
+  // completing, rescheduling, or re-wording a relevant follow-up flips the
+  // snapshot stale and refreshes its compact reference (PRD #11).
   parts.push("followups");
   for (const followup of [...input.followups].sort((a, b) => a.id.localeCompare(b.id))) {
-    parts.push(followup.id);
+    parts.push(followup.id, followup.status, followup.dueAt.toISOString(), followup.reason);
   }
 
   return createHash("sha256").update(parts.join(" ")).digest("hex");

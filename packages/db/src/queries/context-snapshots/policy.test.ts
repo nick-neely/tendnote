@@ -1,5 +1,6 @@
 import type { MemoryStatus, Sensitivity, SourceRecordStatus } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
+import { createInMemoryFollowupStore } from "../followups/in-memory-store";
 import { createInMemoryMemoryStore } from "../memories/in-memory-store";
 import { createPersonContextSnapshot } from "./builder";
 import { createInMemoryContextSnapshotStore } from "./in-memory-store";
@@ -9,9 +10,14 @@ const OWNER = "user-1";
 
 async function setup() {
   const memoryStore = createInMemoryMemoryStore();
+  const followupStore = createInMemoryFollowupStore();
   const snapshotStore = createInMemoryContextSnapshotStore();
-  const store: PersonContextSnapshotStore & typeof memoryStore & typeof snapshotStore = {
+  const store: PersonContextSnapshotStore &
+    typeof memoryStore &
+    typeof followupStore &
+    typeof snapshotStore = {
     ...memoryStore,
+    ...followupStore,
     ...snapshotStore,
   };
   const reader = createPersonContextSnapshot(store);

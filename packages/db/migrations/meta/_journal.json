@@ -15,6 +15,13 @@
       "when": 1782415147441,
       "tag": "0001_tired_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782417005380,
+      "tag": "0002_tiny_cannonball",
+      "breakpoints": true
     }
   ]
 }

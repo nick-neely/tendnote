@@ -36,6 +36,7 @@ export function createDrizzleContextSnapshotStore(): ContextSnapshotStore {
           set: {
             summary: parsed.summary,
             supportingReferences: parsed.supportingReferences,
+            followups: parsed.followups,
             generatorVersion: parsed.generatorVersion,
             inputFingerprint: parsed.inputFingerprint,
             generatedAt: parsed.generatedAt,

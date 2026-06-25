@@ -1,5 +1,6 @@
 import { DETERMINISTIC_GENERATOR_VERSION, type MemoryStatus } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
+import { createInMemoryFollowupStore } from "../followups/in-memory-store";
 import { createInMemoryMemoryStore } from "../memories/in-memory-store";
 import { createPersonContextSnapshot } from "./builder";
 import { createInMemoryContextSnapshotStore } from "./in-memory-store";
@@ -9,9 +10,14 @@ const OWNER = "user-1";
 
 async function setup() {
   const memoryStore = createInMemoryMemoryStore();
+  const followupStore = createInMemoryFollowupStore();
   const snapshotStore = createInMemoryContextSnapshotStore();
-  const store: PersonContextSnapshotStore & typeof memoryStore & typeof snapshotStore = {
+  const store: PersonContextSnapshotStore &
+    typeof memoryStore &
+    typeof followupStore &
+    typeof snapshotStore = {
     ...memoryStore,
+    ...followupStore,
     ...snapshotStore,
   };
   const reader = createPersonContextSnapshot(store);
@@ -63,7 +69,7 @@ async function setup() {
     });
   }
 
-  return { store, memoryStore, snapshotStore, reader, person, seedMemory };
+  return { store, memoryStore, followupStore, snapshotStore, reader, person, seedMemory };
 }
 
 describe("snapshot-backed person context read path", () => {
@@ -307,5 +313,136 @@ describe("snapshot freshness and fail-open rebuild", () => {
     expect(intruder.status).toBe("fallback");
     expect(intruder.snapshot).toBeNull();
     expect(intruder.context.person).toBeNull();
+  });
+});
+
+describe("compact follow-up context in snapshots", () => {
+  it("includes active follow-ups as compact references", async () => {
+    const { reader, followupStore, person } = await setup();
+    const followup = await followupStore.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Check in about the move.",
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+      status: "open",
+    });
+
+    const { snapshot } = await reader.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+
+    expect(snapshot?.followups).toEqual([
+      {
+        id: followup.id,
+        status: "open",
+        dueAt: "2026-07-01T00:00:00.000Z",
+        reason: "Check in about the move.",
+      },
+    ]);
+    expect(snapshot?.supportingReferences.followupIds).toEqual([followup.id]);
+  });
+
+  it("includes recently completed follow-ups but not suggested or dismissed ones", async () => {
+    const { reader, followupStore, person } = await setup();
+    const recentlyDone = await followupStore.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Sent birthday note.",
+      dueAt: new Date("2026-06-01T00:00:00Z"),
+      status: "completed",
+    });
+    await followupStore.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Maybe grab coffee.",
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+      status: "suggested",
+    });
+    await followupStore.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Old idea.",
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+      status: "dismissed",
+    });
+
+    const { snapshot } = await reader.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+
+    expect(snapshot?.followups.map((followup) => followup.id)).toEqual([recentlyDone.id]);
+  });
+
+  it("treats a new relevant follow-up as a freshness change", async () => {
+    const { reader, followupStore, person, seedMemory } = await setup();
+    await seedMemory("Mark is vegetarian.", "approved");
+
+    const first = await reader.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+    const fresh = await reader.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+    expect(first.status).toBe("rebuilt");
+    expect(fresh.status).toBe("fresh");
+
+    await followupStore.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Follow up on the interview.",
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+      status: "open",
+    });
+    const afterFollowup = await reader.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+
+    expect(afterFollowup.status).toBe("rebuilt");
+    expect(afterFollowup.snapshot?.followups).toHaveLength(1);
+  });
+
+  it("reflects follow-ups without taking ownership of their lifecycle", async () => {
+    const { reader, followupStore, person } = await setup();
+    const followup = await followupStore.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Reconnect.",
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+      status: "open",
+    });
+
+    await reader.getPersonContextSnapshot({ ownerUserId: OWNER, personId: person.id });
+
+    // The follow-up record is the canonical source — the snapshot only mirrors it.
+    const stored = await followupStore.listFollowupsForPerson({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.id).toBe(followup.id);
+    expect(stored[0]?.status).toBe("open");
+  });
+
+  it("does not leak follow-ups to another owner", async () => {
+    const { reader, followupStore, person } = await setup();
+    await followupStore.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Private reminder.",
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+      status: "open",
+    });
+
+    const intruder = await reader.getPersonContextSnapshot({
+      ownerUserId: "intruder",
+      personId: person.id,
+    });
+
+    expect(intruder.snapshot).toBeNull();
   });
 });

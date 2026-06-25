@@ -1,4 +1,5 @@
 import type { ContextSnapshot, CreateContextSnapshotInput } from "@tendnote/domain";
+import type { FollowupContextStore } from "../followups/types";
 import type { PersonContextStore } from "../person-context";
 
 /**
@@ -17,11 +18,13 @@ export type ContextSnapshotStore = {
 
 /**
  * Combined store the snapshot read path depends on: the Phase 1A trust-aware
- * person context inputs plus the snapshot cache. Web and Eve both consume the
- * builder created over this store so generation, policy, and owner scoping stay
- * shared (PRD #11).
+ * person context inputs, the person's follow-ups, and the snapshot cache. Web and
+ * Eve both consume the builder created over this store so generation, policy, and
+ * owner scoping stay shared (PRD #11).
  */
-export type PersonContextSnapshotStore = PersonContextStore & ContextSnapshotStore;
+export type PersonContextSnapshotStore = PersonContextStore &
+  FollowupContextStore &
+  ContextSnapshotStore;
 
 export type InMemoryContextSnapshotStore = ContextSnapshotStore & {
   listContextSnapshots: (input: { ownerUserId: string }) => Promise<ContextSnapshot[]>;

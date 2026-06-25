@@ -1,10 +1,12 @@
 import {
   type ContextSnapshot,
+  collectCompactFollowups,
   collectSnapshotReferences,
   computeSnapshotFingerprint,
   generateDeterministicSnapshot,
   type SnapshotInputPack,
   type SnapshotProse,
+  selectSnapshotFollowups,
 } from "@tendnote/domain";
 import { createPersonContext, type PersonContextResult } from "../person-context";
 import type { PersonContextSnapshotStore } from "./types";
@@ -107,12 +109,22 @@ export function createPersonContextSnapshot(
         return { status: "fallback", snapshot: existing, context };
       }
 
+      // Follow-ups join the pack as compact relationship context: active
+      // reminders plus recently completed ones. Their lifecycle stays owned by
+      // follow-up records — the snapshot only reflects their current state (#16).
+      const followups = selectSnapshotFollowups(
+        await store.listFollowupsForPerson({
+          ownerUserId: input.ownerUserId,
+          personId: input.personId,
+        }),
+      );
+
       const pack: SnapshotInputPack = {
         person: proactiveContext.person,
         approvedMemories: proactiveContext.approvedMemories,
         sourceRecords: proactiveContext.sourceRecords,
         suggestedMemories: proactiveContext.suggestedMemories,
-        followups: [],
+        followups,
       };
       const fingerprint = computeSnapshotFingerprint(pack);
 
@@ -129,6 +141,9 @@ export function createPersonContextSnapshot(
           // References are record-level and owned by the builder, never by the
           // generator/model, so grounding cannot drift with prose (PRD #11).
           supportingReferences: collectSnapshotReferences(pack),
+          // Compact follow-up context (id, status, due date, reason) — not a
+          // reminder feed; lifecycle stays in follow-up records (#16).
+          followups: collectCompactFollowups(pack),
           // The generator declares its own version, so provenance reflects the
           // real producer even when an adapter falls back internally (#14).
           generatorVersion: prose.generatorVersion,
@@ -170,6 +185,7 @@ async function recordFailure(
       personId: input.personId,
       summary: existing.summary,
       supportingReferences: existing.supportingReferences,
+      followups: existing.followups,
       generatorVersion: existing.generatorVersion,
       inputFingerprint: existing.inputFingerprint,
       generatedAt: new Date(),
