@@ -2,7 +2,7 @@
 
 import { CheckIcon, LockIcon, NotebookPenIcon } from "lucide-react";
 import { useState } from "react";
-import { captureGlobalAssistantSourceRecord } from "@/app/actions/source-records";
+import { submitAssistantTurn } from "@/app/actions/assistant";
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
@@ -14,6 +14,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import type { WebChatToolResult } from "@/lib/eve/bridge";
 import type { SourceRecordReviewView } from "@/lib/source-record-review-view";
 import { cn } from "@/lib/utils";
 
@@ -24,8 +25,27 @@ export type AssistantPersonContext = {
 
 type LiveEntry =
   | { kind: "user"; id: string; text: string }
-  | { kind: "capture"; id: string; review: SourceRecordReviewView }
+  | {
+      kind: "assistant";
+      id: string;
+      text: string | null;
+      toolResults: readonly WebChatToolResult[];
+    }
   | { kind: "error"; id: string; text: string };
+
+const TOOL_LABELS: Record<string, string> = {
+  capture_source_record: "Logged context",
+  capture_memory: "Saved memory",
+  search_people: "Searched people",
+  get_person_context: "Loaded context",
+  get_suggested_memory_review: "Suggested memory",
+  approve_suggested_memory: "Saved memory",
+  dismiss_suggested_memory: "Dismissed suggestion",
+};
+
+function toolLabel(toolName: string): string {
+  return TOOL_LABELS[toolName] ?? toolName.replace(/_/g, " ");
+}
 
 const SOURCE_LABELS: Record<string, string> = {
   manual: "Manual note",
@@ -72,14 +92,22 @@ export function AssistantPanel({
     setSubmitStatus("submitted");
 
     try {
-      const review = await captureGlobalAssistantSourceRecord({
-        retainedContent: text,
+      const result = await submitAssistantTurn({
+        message: text,
         personId: context?.personId,
+        personName: context?.personName,
       });
 
       setLive((current) => [
         ...current,
-        { kind: "capture", id: `capture-${review.sourceRecord.id}`, review },
+        {
+          kind: "assistant",
+          id: result.sessionId
+            ? `assistant-${result.sessionId}-${current.length}`
+            : crypto.randomUUID(),
+          text: result.assistantText,
+          toolResults: result.toolResults,
+        },
       ]);
       setSubmitStatus("ready");
     } catch {
@@ -88,11 +116,11 @@ export function AssistantPanel({
         {
           kind: "error",
           id: crypto.randomUUID(),
-          text: "I couldn't save that note. Check the local services and try again.",
+          text: "I couldn't reach the assistant. Check the local services and try again.",
         },
       ]);
       setSubmitStatus("error");
-      throw new Error("Source record capture failed.");
+      throw new Error("Assistant turn failed.");
     }
   }
 
@@ -136,14 +164,28 @@ export function AssistantPanel({
                   );
                 }
 
-                if (entry.kind === "capture") {
+                if (entry.kind === "assistant") {
                   return (
-                    <div className="flex flex-col gap-1.5" key={entry.id}>
-                      <span className="inline-flex items-center gap-1.5 text-[length:var(--text-small)] text-muted-foreground">
-                        <CheckIcon aria-hidden className="size-3.5 text-primary" />
-                        Saved
-                      </span>
-                      <CaptureNote isNew review={entry.review} />
+                    <div className="flex flex-col gap-2" key={entry.id}>
+                      {entry.text ? (
+                        <Message from="assistant">
+                          <MessageContent>{entry.text}</MessageContent>
+                        </Message>
+                      ) : null}
+                      {entry.toolResults.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {entry.toolResults.map((toolResult, index) => (
+                            <span
+                              className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 font-medium text-[length:var(--text-caption)] text-muted-foreground"
+                              // biome-ignore lint/suspicious/noArrayIndexKey: turn-local chips never reorder and carry no stable id until #25 maps persisted records
+                              key={`${entry.id}-tool-${index}`}
+                            >
+                              <CheckIcon aria-hidden className="size-3 text-primary" />
+                              {toolLabel(toolResult.toolName)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 }
