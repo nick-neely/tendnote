@@ -52,6 +52,12 @@ const TONE_BADGE: Record<Tone, string> = {
   pending: "bg-muted text-muted-foreground",
 };
 
+const DISCLOSURE_SUMMARY =
+  "flex cursor-pointer list-none items-center gap-2 px-3 py-2 outline-none transition-colors duration-150 ease-(--motion-ease-out) hover:bg-muted/40 focus-visible:bg-muted/40 motion-reduce:transition-none [&::-webkit-details-marker]:hidden";
+
+const DISCLOSURE_CHEVRON =
+  "size-3 shrink-0 text-muted-foreground/70 transition-transform duration-150 ease-(--motion-ease-out) group-open:rotate-90 motion-reduce:transition-none";
+
 function stringify(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -63,43 +69,35 @@ function stringify(value: unknown): string {
   }
 }
 
+/** One persisted tool part flattened into a renderable call (fields by state). */
 function readToolPart(part: EveDynamicToolPart): ToolCall {
-  const base = {
+  return {
     toolName: part.toolName,
     toolCallId: part.toolCallId,
     stepIndex: part.stepIndex,
     state: part.state,
-  } satisfies ToolCall;
-
-  switch (part.state) {
-    case "output-available":
-      return { ...base, input: part.input, output: part.output };
-    case "output-error":
-      return { ...base, input: part.input, errorText: part.errorText };
-    case "input-streaming":
-    case "input-available":
-    case "approval-requested":
-    case "approval-responded":
-    case "output-denied":
-      return { ...base, input: part.input };
-    default:
-      return base;
-  }
+    input: "input" in part ? part.input : undefined,
+    output: "output" in part ? part.output : undefined,
+    errorText: "errorText" in part ? part.errorText : undefined,
+  };
 }
 
+/** Every dynamic-tool call across assistant messages, in stream order. */
 function collectToolCalls(messages: readonly EveMessage[]): ToolCall[] {
-  const calls: ToolCall[] = [];
-  for (const message of messages) {
-    if (message.role !== "assistant") {
-      continue;
-    }
-    for (const part of message.parts) {
-      if (part.type === "dynamic-tool") {
-        calls.push(readToolPart(part));
-      }
-    }
+  return messages
+    .filter((message) => message.role === "assistant")
+    .flatMap((message) => message.parts)
+    .filter((part): part is EveDynamicToolPart => part.type === "dynamic-tool")
+    .map(readToolPart);
+}
+
+/** Per-tool call counts, most-called first, for the tally chips. */
+function tallyTools(calls: readonly ToolCall[]): [string, number][] {
+  const counts = new Map<string, number>();
+  for (const call of calls) {
+    counts.set(call.toolName, (counts.get(call.toolName) ?? 0) + 1);
   }
-  return calls;
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
 }
 
 /** Ghost copy control with a brief copied confirmation; degrades quietly. */
@@ -166,6 +164,145 @@ function PayloadBlock({ label, value, tone }: { label: string; value: unknown; t
   );
 }
 
+/** The copyable input / error / output payloads for one expanded call. */
+function TraceCallPayloads({ call }: { call: ToolCall }) {
+  return (
+    <div className="flex flex-col gap-2 px-3 pt-1 pb-3 pl-[2.125rem]">
+      <PayloadBlock label="input" value={call.input ?? null} />
+      {call.errorText ? <PayloadBlock label="error" tone="error" value={call.errorText} /> : null}
+      {call.output !== undefined ? <PayloadBlock label="output" value={call.output} /> : null}
+    </div>
+  );
+}
+
+/** One expandable tool-call row: summary line plus copyable payloads. */
+function TraceCall({ call, index }: { call: ToolCall; index: number }) {
+  const tone = STATE_TONE[call.state] ?? "pending";
+
+  return (
+    <details className="group">
+      <summary className={DISCLOSURE_SUMMARY}>
+        <ChevronRightIcon aria-hidden className={DISCLOSURE_CHEVRON} />
+        <span className="w-4 shrink-0 text-right font-mono text-[11px] text-muted-foreground/70 tabular-nums">
+          {index + 1}
+        </span>
+        <span
+          aria-hidden
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            TONE_DOT[tone],
+            tone === "pending" && "animate-pulse motion-reduce:animate-none",
+          )}
+        />
+        <span className="truncate font-mono text-[length:var(--text-small)] font-medium text-foreground">
+          {call.toolName}
+        </span>
+        {typeof call.stepIndex === "number" ? (
+          <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">
+            step {call.stepIndex}
+          </span>
+        ) : null}
+        <span
+          className={cn(
+            "ml-auto shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[11px]",
+            TONE_BADGE[tone],
+          )}
+        >
+          {call.state}
+        </span>
+      </summary>
+      <TraceCallPayloads call={call} />
+    </details>
+  );
+}
+
+/** Ordered list of tool-call rows, or nothing when the turn made no calls. */
+function TraceCallList({ calls }: { calls: readonly ToolCall[] }) {
+  if (calls.length === 0) {
+    return null;
+  }
+
+  return (
+    <ol className="divide-y overflow-hidden rounded-lg border bg-card">
+      {calls.map((call, index) => (
+        <li key={call.toolCallId}>
+          <TraceCall call={call} index={index} />
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Per-tool call tallies; repeats are flagged as a possible loop. */
+function TraceTallies({ tallies }: { tallies: readonly [string, number][] }) {
+  if (tallies.length === 0) {
+    return (
+      <p className="font-mono text-[11px] text-muted-foreground">No tool calls yet this session.</p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {tallies.map(([toolName, count]) => {
+        const repeated = count > 1;
+        return (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[11px]",
+              repeated ? "bg-warning/15 text-foreground" : "bg-muted text-muted-foreground",
+            )}
+            key={toolName}
+            title={repeated ? `Called ${count} times this turn` : undefined}
+          >
+            {repeated ? <span aria-hidden className="size-1.5 rounded-full bg-warning" /> : null}
+            {toolName}
+            <span className="opacity-60">×{count}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Trace heading: call count, turn status, and a copy-all-events control. */
+function TraceHeader({
+  calls,
+  status,
+  events,
+}: {
+  calls: readonly ToolCall[];
+  status: string;
+  events: readonly unknown[];
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <TerminalIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate font-mono text-[length:var(--text-caption)] font-medium text-muted-foreground">
+          Trace · {calls.length} call{calls.length === 1 ? "" : "s"} · {status}
+        </span>
+      </div>
+      {events.length > 0 ? <CopyButton label="Copy events" value={stringify(events)} /> : null}
+    </div>
+  );
+}
+
+/** Collapsed raw stream-event log; copyable from the header above. */
+function RawEvents({ events }: { events: readonly unknown[] }) {
+  return (
+    <details className="group rounded-lg border bg-card">
+      <summary className={DISCLOSURE_SUMMARY}>
+        <ChevronRightIcon aria-hidden className={DISCLOSURE_CHEVRON} />
+        <span className="font-mono text-[11px] text-muted-foreground">Raw stream events</span>
+        <span className="font-mono text-[11px] text-muted-foreground/60">({events.length})</span>
+      </summary>
+      <pre className="max-h-72 overflow-auto border-t px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground/85">
+        {stringify(events)}
+      </pre>
+    </details>
+  );
+}
+
 export function AssistantDebugTrace({
   messages,
   events,
@@ -178,55 +315,15 @@ export function AssistantDebugTrace({
   error?: Error;
 }) {
   const calls = collectToolCalls(messages);
-
-  const counts = new Map<string, number>();
-  for (const call of calls) {
-    counts.set(call.toolName, (counts.get(call.toolName) ?? 0) + 1);
-  }
-  const tallies = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const tallies = tallyTools(calls);
 
   return (
     <section
       className="flex flex-col gap-3 border-t bg-background px-4 py-3 sm:px-5"
       data-debug-trace
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <TerminalIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate font-mono text-[length:var(--text-caption)] font-medium text-muted-foreground">
-            Trace · {calls.length} call{calls.length === 1 ? "" : "s"} · {status}
-          </span>
-        </div>
-        {events.length > 0 ? <CopyButton label="Copy events" value={stringify(events)} /> : null}
-      </div>
-
-      {tallies.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {tallies.map(([toolName, count]) => {
-            const repeated = count > 1;
-            return (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[11px]",
-                  repeated ? "bg-warning/15 text-foreground" : "bg-muted text-muted-foreground",
-                )}
-                key={toolName}
-                title={repeated ? `Called ${count} times this turn` : undefined}
-              >
-                {repeated ? (
-                  <span aria-hidden className="size-1.5 rounded-full bg-warning" />
-                ) : null}
-                {toolName}
-                <span className="opacity-60">×{count}</span>
-              </span>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="font-mono text-[11px] text-muted-foreground">
-          No tool calls yet this session.
-        </p>
-      )}
+      <TraceHeader calls={calls} events={events} status={status} />
+      <TraceTallies tallies={tallies} />
 
       {error ? (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-1.5">
@@ -234,75 +331,8 @@ export function AssistantDebugTrace({
         </div>
       ) : null}
 
-      {calls.length > 0 ? (
-        <ol className="divide-y overflow-hidden rounded-lg border bg-card">
-          {calls.map((call, index) => {
-            const tone = STATE_TONE[call.state] ?? "pending";
-            return (
-              <li key={call.toolCallId}>
-                <details className="group">
-                  <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3 py-2 outline-none transition-colors duration-150 ease-(--motion-ease-out) hover:bg-muted/40 focus-visible:bg-muted/40 motion-reduce:transition-none [&::-webkit-details-marker]:hidden">
-                    <ChevronRightIcon
-                      aria-hidden
-                      className="size-3 shrink-0 text-muted-foreground/70 transition-transform duration-150 ease-(--motion-ease-out) group-open:rotate-90 motion-reduce:transition-none"
-                    />
-                    <span className="w-4 shrink-0 text-right font-mono text-[11px] text-muted-foreground/70 tabular-nums">
-                      {index + 1}
-                    </span>
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "size-1.5 shrink-0 rounded-full",
-                        TONE_DOT[tone],
-                        tone === "pending" && "animate-pulse motion-reduce:animate-none",
-                      )}
-                    />
-                    <span className="truncate font-mono text-[length:var(--text-small)] font-medium text-foreground">
-                      {call.toolName}
-                    </span>
-                    {typeof call.stepIndex === "number" ? (
-                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">
-                        step {call.stepIndex}
-                      </span>
-                    ) : null}
-                    <span
-                      className={cn(
-                        "ml-auto shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[11px]",
-                        TONE_BADGE[tone],
-                      )}
-                    >
-                      {call.state}
-                    </span>
-                  </summary>
-                  <div className="flex flex-col gap-2 px-3 pt-1 pb-3 pl-[2.125rem]">
-                    <PayloadBlock label="input" value={call.input ?? null} />
-                    {call.errorText ? (
-                      <PayloadBlock label="error" tone="error" value={call.errorText} />
-                    ) : null}
-                    {call.output !== undefined ? (
-                      <PayloadBlock label="output" value={call.output} />
-                    ) : null}
-                  </div>
-                </details>
-              </li>
-            );
-          })}
-        </ol>
-      ) : null}
-
-      <details className="group rounded-lg border bg-card">
-        <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 outline-none transition-colors duration-150 ease-(--motion-ease-out) hover:bg-muted/40 focus-visible:bg-muted/40 motion-reduce:transition-none [&::-webkit-details-marker]:hidden">
-          <ChevronRightIcon
-            aria-hidden
-            className="size-3 shrink-0 text-muted-foreground/70 transition-transform duration-150 ease-(--motion-ease-out) group-open:rotate-90 motion-reduce:transition-none"
-          />
-          <span className="font-mono text-[11px] text-muted-foreground">Raw stream events</span>
-          <span className="font-mono text-[11px] text-muted-foreground/60">({events.length})</span>
-        </summary>
-        <pre className="max-h-72 overflow-auto border-t px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground/85">
-          {stringify(events)}
-        </pre>
-      </details>
+      <TraceCallList calls={calls} />
+      <RawEvents events={events} />
     </section>
   );
 }
