@@ -12,6 +12,17 @@ function isCompletedToolPart(
   return part.type === "dynamic-tool" && part.state === "output-available";
 }
 
+/**
+ * One renderable tool result plus the call that produced it. `toolCallId` is the
+ * reducer's own per-call identity (`dynamic-tool:${toolCallId}`), so it is unique
+ * even when a turn calls the same tool more than once — the React key must use it
+ * rather than the tool name, which collides across repeated calls.
+ */
+export type AssistantToolEntry = {
+  readonly toolCallId: string;
+  readonly view: AssistantToolView;
+};
+
 /** Streamed assistant text for one message, concatenated across its text parts. */
 export function messageText(message: EveMessage): string {
   return message.parts
@@ -26,12 +37,13 @@ export function messageText(message: EveMessage): string {
  * payload; pending, errored, denied, or non-assistant parts are skipped so the
  * UI never implies an unsaved result (ADR 0028, ADR 0029).
  */
-export function messageToolViews(message: EveMessage): AssistantToolView[] {
+export function messageToolViews(message: EveMessage): AssistantToolEntry[] {
   if (message.role !== "assistant") {
     return [];
   }
 
-  return message.parts
-    .filter(isCompletedToolPart)
-    .map((part) => toAssistantToolView({ toolName: part.toolName, output: part.output }));
+  return message.parts.filter(isCompletedToolPart).map((part) => ({
+    toolCallId: part.toolCallId,
+    view: toAssistantToolView({ toolName: part.toolName, output: part.output }),
+  }));
 }

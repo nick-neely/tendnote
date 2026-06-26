@@ -41,12 +41,47 @@ describe("messageToolViews (persisted tool results → renderable views)", () =>
 
     expect(messageToolViews(message)).toEqual([
       {
-        kind: "saved_source_record",
-        sourceRecordId: "source-1",
-        content: "Had lunch with Mark.",
-        linkedPersonId: "person-1",
+        toolCallId: "call-1",
+        view: {
+          kind: "saved_source_record",
+          sourceRecordId: "source-1",
+          content: "Had lunch with Mark.",
+          linkedPersonId: "person-1",
+        },
       },
     ]);
+  });
+
+  it("keys each result on its tool call id so repeated same-tool calls stay distinct", () => {
+    const message: EveMessage = {
+      id: "turn_0:assistant",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "search_people",
+          state: "output-available",
+          input: { query: "Alex" },
+          output: { people: [], requiresDisambiguation: false },
+        },
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-2",
+          toolName: "search_people",
+          state: "output-available",
+          input: { query: "Alex" },
+          output: { people: [], requiresDisambiguation: false },
+        },
+      ],
+    };
+
+    const entries = messageToolViews(message);
+
+    // Same tool name, distinct call ids — the React key derives from the id, so
+    // a looping turn no longer collapses to one colliding key.
+    expect(entries.map((entry) => entry.toolCallId)).toEqual(["call-1", "call-2"]);
+    expect(new Set(entries.map((entry) => entry.toolCallId)).size).toBe(2);
   });
 
   it("skips tool calls that have not produced a persisted output yet", () => {

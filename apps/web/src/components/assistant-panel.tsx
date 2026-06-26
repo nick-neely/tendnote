@@ -15,7 +15,6 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
 import { messageText, messageToolViews } from "@/lib/eve/message-views";
-import { assistantToolViewKey } from "@/lib/eve/tool-result-view";
 import type { SourceRecordReviewView } from "@/lib/source-record-review-view";
 import { cn } from "@/lib/utils";
 
@@ -135,12 +134,8 @@ export function AssistantPanel({
                         <MessageContent>{text}</MessageContent>
                       </Message>
                     ) : null}
-                    {views.map((view) => (
-                      <AssistantToolResult
-                        isNew
-                        key={`${message.id}-${assistantToolViewKey(view)}`}
-                        view={view}
-                      />
+                    {views.map(({ toolCallId, view }) => (
+                      <AssistantToolResult isNew key={`${message.id}:${toolCallId}`} view={view} />
                     ))}
                   </div>
                 );
