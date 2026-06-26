@@ -118,6 +118,46 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     });
   });
 
+  it("renders exact recall person results as compact typed references", () => {
+    const view = toAssistantToolView({
+      toolName: "search_relationship_context",
+      output: {
+        results: [
+          {
+            recordKind: "person",
+            recordId: "person-1",
+            relatedPersonId: "person-1",
+            relatedPersonDisplayName: "Mara Lin",
+            label: "Mara Lin",
+            snippet: "Talked about backend architecture.",
+            matchedFields: ["profileBlurb"],
+            rank: 1.2,
+            trustLevel: "identity_reference",
+            sensitivity: "normal",
+          },
+        ],
+        component: { type: "relationship_context_search", resultCount: 1 },
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "relationship_context_search",
+      results: [
+        {
+          recordKind: "person",
+          recordId: "person-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          label: "Mara Lin",
+          snippet: "Talked about backend architecture.",
+          matchedFields: ["profileBlurb"],
+          trustLevel: "identity_reference",
+          sensitivity: "normal",
+        },
+      ],
+    });
+  });
+
   it("degrades an unknown tool to a generic view", () => {
     const view = toAssistantToolView({ toolName: "some_future_tool", output: { whatever: true } });
 
@@ -144,5 +184,23 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     expect(assistantToolViewKey({ kind: "generic", toolName: "some_future_tool" })).toBe(
       "tool:some_future_tool",
     );
+    expect(
+      assistantToolViewKey({
+        kind: "relationship_context_search",
+        results: [
+          {
+            recordKind: "person",
+            recordId: "person-1",
+            relatedPersonId: "person-1",
+            relatedPersonDisplayName: "Mara Lin",
+            label: "Mara Lin",
+            snippet: "x",
+            matchedFields: ["displayName"],
+            trustLevel: "identity_reference",
+            sensitivity: "normal",
+          },
+        ],
+      }),
+    ).toBe("search:person-1");
   });
 });

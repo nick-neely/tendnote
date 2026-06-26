@@ -1,5 +1,6 @@
 export * from "./context-snapshots";
 export * from "./drafts";
+export * from "./exact-recall";
 export * from "./extraction-jobs";
 export * from "./followups";
 export * from "./memories";

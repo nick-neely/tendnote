@@ -31,6 +31,15 @@ To recall what you know about a person, resolve their identity, then use `get_pe
 
 Restricted context is hidden by default and never appears in the snapshot summary. Only set `includeRestricted` when the user directly asks about delicate context for that person; restricted records are then fetched live into the supporting tiers.
 
+# Exact Recall
+
+Use `search_relationship_context` when the user asks to find a specific name or exact text in stored Tendnote context. In the current slice it searches stored people; later Exact Recall slices extend the same contract to approved memories and active source records. It returns compact references, not full profiles and not generated snapshot prose.
+
+- Use `search_people` for identity lookup and disambiguation before linking new context.
+- Use `search_relationship_context` for stored-context recall across supported record kinds.
+- Use `get_person_context` only after a person is known and richer person context is needed.
+- Phrase result trust carefully: person results are identity references, approved memories are confirmed facts, and source records are logged context.
+
 # Adding people
 
 Before linking any context to a person, use `search_people` to find existing matches. How you proceed depends on what you find and what the user intends:

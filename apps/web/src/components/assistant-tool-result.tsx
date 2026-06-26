@@ -1,5 +1,16 @@
-import { BookOpenIcon, CheckIcon, NotebookPenIcon, UserPlusIcon } from "lucide-react";
-import type { AssistantToolView } from "@/lib/eve/tool-result-view";
+import {
+  BookOpenIcon,
+  CheckIcon,
+  NotebookPenIcon,
+  SearchIcon,
+  UserIcon,
+  UserPlusIcon,
+} from "lucide-react";
+import Link from "next/link";
+import type {
+  AssistantToolView,
+  RelationshipContextSearchResultView,
+} from "@/lib/eve/tool-result-view";
 import { cn } from "@/lib/utils";
 
 /**
@@ -88,6 +99,30 @@ export function AssistantToolResult({
     );
   }
 
+  if (view.kind === "relationship_context_search") {
+    return (
+      <Shell isNew={isNew} kind={view.kind}>
+        <StatusRow
+          icon={<SearchIcon aria-hidden className="size-3.5 text-muted-foreground" />}
+          label={
+            view.results.length === 1
+              ? "Found 1 exact match"
+              : `Found ${view.results.length} exact matches`
+          }
+        />
+        {view.results.length > 0 ? (
+          <div className="flex flex-col divide-y divide-border/70">
+            {view.results.map((result) => (
+              <SearchResultRow key={`${result.recordKind}:${result.recordId}`} result={result} />
+            ))}
+          </div>
+        ) : (
+          <Caption>No matching relationship context found</Caption>
+        )}
+      </Shell>
+    );
+  }
+
   // suggested_memory_review — tentative, never asserted as fact.
   return (
     <Shell isNew={isNew} kind={view.kind}>
@@ -101,6 +136,50 @@ export function AssistantToolResult({
       </Body>
       <Caption>Tentative — not saved until you approve it</Caption>
     </Shell>
+  );
+}
+
+function SearchResultRow({ result }: { result: RelationshipContextSearchResultView }) {
+  const href =
+    result.recordKind === "person" && result.relatedPersonId
+      ? `/people/${result.relatedPersonId}`
+      : null;
+  const title = (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      {result.recordKind === "person" ? (
+        <UserIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      ) : (
+        <NotebookPenIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      )}
+      <span className="truncate font-medium text-foreground">{result.label}</span>
+    </span>
+  );
+
+  return (
+    <div className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        {href ? (
+          <Link
+            href={href}
+            className="min-w-0 underline decoration-foreground/25 underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+          >
+            {title}
+          </Link>
+        ) : (
+          title
+        )}
+        <span className="shrink-0 rounded-full border px-1.5 py-0.5 text-[length:var(--text-caption)] text-muted-foreground">
+          {labelRecordKind(result.recordKind)}
+        </span>
+      </div>
+      <Body>
+        {result.trustLevel === "logged_context" ? (
+          <span className="text-muted-foreground">You noted: </span>
+        ) : null}
+        {result.snippet}
+      </Body>
+      <Caption>{labelTrust(result)}</Caption>
+    </div>
   );
 }
 
@@ -157,6 +236,22 @@ function summarizeTiers(view: Extract<AssistantToolView, { kind: "person_context
   if (view.suggestedCount > 0) parts.push(`${view.suggestedCount} to review`);
 
   return parts.length > 0 ? parts.join(" · ") : "Nothing recorded yet";
+}
+
+function labelRecordKind(kind: RelationshipContextSearchResultView["recordKind"]) {
+  if (kind === "source_record") return "Source record";
+  return kind === "memory" ? "Memory" : "Person";
+}
+
+function labelTrust(result: RelationshipContextSearchResultView) {
+  const trust =
+    result.trustLevel === "confirmed_fact"
+      ? "Confirmed fact"
+      : result.trustLevel === "logged_context"
+        ? "Logged context"
+        : "Identity reference";
+
+  return result.relatedPersonDisplayName ? `${trust} · ${result.relatedPersonDisplayName}` : trust;
 }
 
 function humanizeToolName(toolName: string): string {

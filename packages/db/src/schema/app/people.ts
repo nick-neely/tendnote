@@ -1,7 +1,14 @@
-import { boolean, index, integer, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, customType, index, integer, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
 import { contactMethodType, relationshipType, sourceType } from "./enums";
+
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
 
 export const people = pgTable(
   "people",
@@ -17,12 +24,18 @@ export const people = pgTable(
     relationshipType: relationshipType("relationship_type").notNull().default("other"),
     closenessLevel: integer("closeness_level").notNull().default(3),
     profileBlurb: text("profile_blurb"),
+    searchVector: tsvector("search_vector")
+      .notNull()
+      .generatedAlwaysAs(
+        sql`to_tsvector('simple', coalesce("display_name", '') || ' ' || coalesce("first_name", '') || ' ' || coalesce("last_name", '') || ' ' || coalesce("profile_blurb", ''))`,
+      ),
     source: sourceType("source").notNull().default("manual"),
     ...timestamps,
   },
   (table) => [
     index("people_owner_user_id_idx").on(table.ownerUserId),
     index("people_owner_display_name_idx").on(table.ownerUserId, table.displayName),
+    index("people_search_vector_idx").using("gin", table.searchVector),
   ],
 );
 

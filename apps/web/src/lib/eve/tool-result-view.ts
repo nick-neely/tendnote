@@ -44,7 +44,23 @@ export type AssistantToolView =
       content: string;
       sourceRecordId: string | null;
     }
+  | {
+      kind: "relationship_context_search";
+      results: RelationshipContextSearchResultView[];
+    }
   | { kind: "generic"; toolName: string };
+
+export type RelationshipContextSearchResultView = {
+  recordKind: "person" | "memory" | "source_record";
+  recordId: string;
+  relatedPersonId: string | null;
+  relatedPersonDisplayName: string | null;
+  label: string;
+  snippet: string;
+  matchedFields: string[];
+  trustLevel: "identity_reference" | "confirmed_fact" | "logged_context";
+  sensitivity: "normal" | "sensitive" | "restricted";
+};
 
 const sourceRecordOutput = z.object({
   sourceRecord: z.object({ id: z.string(), content: z.string() }),
@@ -78,6 +94,22 @@ const suggestedMemoryOutput = z.object({
   memory: z.object({ id: z.string(), content: z.string(), sourceRecordId: z.string().nullish() }),
 });
 
+const relationshipContextSearchOutput = z.object({
+  results: z.array(
+    z.object({
+      recordKind: z.enum(["person", "memory", "source_record"]),
+      recordId: z.string(),
+      relatedPersonId: z.string().nullish(),
+      relatedPersonDisplayName: z.string().nullish(),
+      label: z.string(),
+      snippet: z.string(),
+      matchedFields: z.array(z.string()),
+      trustLevel: z.enum(["identity_reference", "confirmed_fact", "logged_context"]),
+      sensitivity: z.enum(["normal", "sensitive", "restricted"]),
+    }),
+  ),
+});
+
 /**
  * Stable React key for a rendered view, derived from the persisted record it
  * references so a list of results keys on real ids rather than array position.
@@ -94,6 +126,8 @@ export function assistantToolViewKey(view: AssistantToolView): string {
       return `context:${view.personId}`;
     case "suggested_memory_review":
       return `suggested:${view.memoryId}`;
+    case "relationship_context_search":
+      return `search:${view.results.map((result) => result.recordId).join(":")}`;
     default:
       return `tool:${view.toolName}`;
   }
@@ -161,6 +195,18 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
         memoryId: parsed.data.memory.id,
         content: parsed.data.memory.content,
         sourceRecordId: parsed.data.memory.sourceRecordId ?? null,
+      };
+    }
+    case "search_relationship_context": {
+      const parsed = relationshipContextSearchOutput.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "relationship_context_search",
+        results: parsed.data.results.map((result) => ({
+          ...result,
+          relatedPersonId: result.relatedPersonId ?? null,
+          relatedPersonDisplayName: result.relatedPersonDisplayName ?? null,
+        })),
       };
     }
     default:

@@ -1,0 +1,2 @@
+ALTER TABLE "people" ADD COLUMN "search_vector" "tsvector" GENERATED ALWAYS AS (to_tsvector('simple', coalesce("display_name", '') || ' ' || coalesce("first_name", '') || ' ' || coalesce("last_name", '') || ' ' || coalesce("profile_blurb", ''))) STORED NOT NULL;--> statement-breakpoint
+CREATE INDEX "people_search_vector_idx" ON "people" USING gin ("search_vector");

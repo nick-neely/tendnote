@@ -84,6 +84,39 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("snapshot fresh");
   });
 
+  it("renders exact recall person results as grounded links", () => {
+    const html = render({
+      kind: "relationship_context_search",
+      results: [
+        {
+          recordKind: "person",
+          recordId: "person-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          label: "Mara Lin",
+          snippet: "Talked about backend architecture.",
+          matchedFields: ["profileBlurb"],
+          trustLevel: "identity_reference",
+          sensitivity: "normal",
+        },
+      ],
+    });
+
+    expect(html).toContain("Found 1 exact match");
+    expect(html).toContain("Mara Lin");
+    expect(html).toContain("Talked about backend architecture.");
+    expect(html).toContain("Identity reference");
+    expect(html).toContain('href="/people/person-1"');
+    expect(html).toContain('data-tool-view="relationship_context_search"');
+  });
+
+  it("renders empty exact recall results without creating a search page surface", () => {
+    const html = render({ kind: "relationship_context_search", results: [] });
+
+    expect(html).toContain("Found 0 exact matches");
+    expect(html).toContain("No matching relationship context found");
+  });
+
   it("renders an unknown tool result as a quiet generic confirmation", () => {
     const html = render({ kind: "generic", toolName: "some_future_tool" });
 

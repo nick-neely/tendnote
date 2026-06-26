@@ -10,6 +10,7 @@
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/people": "./src/queries/people.ts",
+    "./queries/relationship-context-search": "./src/queries/relationship-context-search.ts",
     "./queries/source-records": "./src/queries/source-records.ts"
   },
   "scripts": {
