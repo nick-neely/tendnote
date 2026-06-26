@@ -1,5 +1,10 @@
 import { z } from "zod";
-import type { WebChatToolResult } from "./bridge";
+
+/** One Eve tool result surfaced during a turn (a persisted tool's output). */
+export type EveToolResult = {
+  readonly toolName: string;
+  readonly output: unknown;
+};
 
 /**
  * Renderable, refresh-stable view of one persisted Eve tool result. Each kind
@@ -99,7 +104,7 @@ export function assistantToolViewKey(view: AssistantToolView): string {
  * that produced it. Parsing is total: any shape that does not match the expected
  * persisted records falls back to `generic`.
  */
-export function toAssistantToolView(toolResult: WebChatToolResult): AssistantToolView {
+export function toAssistantToolView(toolResult: EveToolResult): AssistantToolView {
   const { toolName, output } = toolResult;
 
   switch (toolName) {

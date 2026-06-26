@@ -25,11 +25,17 @@ function readTsFilesRecursive(dir: string): string[] {
 // covered. External send / draft creation must not appear anywhere in it.
 const webChatSurface = [
   ...readTsFilesRecursive(join(process.cwd(), "src/lib/eve")),
-  readFileSync(join(process.cwd(), "src/app/actions/assistant.ts"), "utf8"),
+  // The browser streams turns straight to the same-origin Eve mount, so the
+  // web→Eve send path is now the panel (agent.send) and the auth middleware.
+  readFileSync(join(process.cwd(), "src/components/assistant-panel.tsx"), "utf8"),
+  readFileSync(join(process.cwd(), "src/middleware.ts"), "utf8"),
 ];
 
+// Outbound send/draft implementations. Provider names require an API boundary
+// (e.g. `gmail.`) so inbound provenance labels — like SOURCE_LABELS.gmail, which
+// only marks where a captured note came from — are never mistaken for a send.
 const externalSendPatterns =
-  /gmail|nodemailer|\bsmtp\b|sendEmail|sendMail|createDraft|create_draft|outlook|twilio/i;
+  /nodemailer|\bsmtp\b|sendEmail|sendMail|createDraft|create_draft|twilio|gmail\.|outlook\.|googleapis|graph\.microsoft/i;
 
 describe("connected web chat cannot send or draft externally (Phase 1B.5)", () => {
   it("the whole web→Eve bridge surface contains no external send or draft path", () => {

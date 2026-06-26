@@ -1,8 +1,7 @@
 "use client";
 
+import { useEveAgent } from "eve/react";
 import { LockIcon, NotebookPenIcon } from "lucide-react";
-import { useState } from "react";
-import { submitAssistantTurn } from "@/app/actions/assistant";
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
@@ -15,11 +14,8 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
-import {
-  type AssistantToolView,
-  assistantToolViewKey,
-  toAssistantToolView,
-} from "@/lib/eve/tool-result-view";
+import { messageText, messageToolViews } from "@/lib/eve/message-views";
+import { assistantToolViewKey } from "@/lib/eve/tool-result-view";
 import type { SourceRecordReviewView } from "@/lib/source-record-review-view";
 import { cn } from "@/lib/utils";
 
@@ -27,16 +23,6 @@ export type AssistantPersonContext = {
   personId: string;
   personName: string;
 };
-
-type LiveEntry =
-  | { kind: "user"; id: string; text: string }
-  | {
-      kind: "assistant";
-      id: string;
-      text: string | null;
-      views: readonly AssistantToolView[];
-    }
-  | { kind: "error"; id: string; text: string };
 
 const SOURCE_LABELS: Record<string, string> = {
   manual: "Manual note",
@@ -62,11 +48,18 @@ export function AssistantPanel({
   initialSourceRecordReviews?: SourceRecordReviewView[];
   context?: AssistantPersonContext;
 }) {
-  const [live, setLive] = useState<LiveEntry[]>([]);
-  const [submitStatus, setSubmitStatus] = useState<"ready" | "submitted" | "error">("ready");
+  // Stream turns directly from the same-origin Eve mount (withEve). The hook owns
+  // the durable Eve session, so follow-up turns continue the same conversation
+  // without a Tendnote chat transcript (ADR 0030). Durable product state still
+  // lives in source records, memories, and follow-ups (ADR 0029).
+  const agent = useEveAgent();
 
   const history = initialSourceRecordReviews;
-  const hasContent = history.length > 0 || live.length > 0;
+  const messages = agent.data.messages;
+  const hasContent = history.length > 0 || messages.length > 0;
+  // A turn is dispatched but no event has arrived yet; assistant text/tools render
+  // live once streaming begins.
+  const isThinking = agent.status === "submitted";
 
   const subtitle = context
     ? `Capturing about ${context.personName}. Saved and linked to them before review.`
@@ -75,43 +68,20 @@ export function AssistantPanel({
   async function handleSubmit(message: PromptInputMessage) {
     const text = message.text.trim();
 
-    if (!text) {
+    if (!text || agent.status !== "ready") {
       return;
     }
 
-    setLive((current) => [...current, { kind: "user", id: crypto.randomUUID(), text }]);
-    setSubmitStatus("submitted");
-
     try {
-      const result = await submitAssistantTurn({
+      await agent.send({
         message: text,
-        personId: context?.personId,
-        personName: context?.personName,
+        clientContext: context
+          ? { person: { id: context.personId, displayName: context.personName } }
+          : undefined,
       });
-
-      setLive((current) => [
-        ...current,
-        {
-          kind: "assistant",
-          id: result.sessionId
-            ? `assistant-${result.sessionId}-${current.length}`
-            : crypto.randomUUID(),
-          text: result.assistantText,
-          views: result.toolResults.map(toAssistantToolView),
-        },
-      ]);
-      setSubmitStatus("ready");
     } catch {
-      setLive((current) => [
-        ...current,
-        {
-          kind: "error",
-          id: crypto.randomUUID(),
-          text: "I couldn't reach the assistant. Check the local services and try again.",
-        },
-      ]);
-      setSubmitStatus("error");
-      throw new Error("Assistant turn failed.");
+      // Failures also surface through `agent.status === "error"` / `agent.error`,
+      // which the error row below renders; nothing else to do here.
     }
   }
 
@@ -142,48 +112,54 @@ export function AssistantPanel({
                 <CaptureNote key={`history-${review.sourceRecord.id}`} review={review} />
               ))}
 
-              {history.length > 0 && live.length > 0 ? (
+              {history.length > 0 && messages.length > 0 ? (
                 <div aria-hidden className="h-px bg-border" />
               ) : null}
 
-              {live.map((entry) => {
-                if (entry.kind === "user") {
+              {messages.map((message) => {
+                if (message.role === "user") {
                   return (
-                    <Message from="user" key={entry.id}>
-                      <MessageContent>{entry.text}</MessageContent>
+                    <Message from="user" key={message.id}>
+                      <MessageContent>{messageText(message)}</MessageContent>
                     </Message>
                   );
                 }
 
-                if (entry.kind === "assistant") {
-                  return (
-                    <div className="flex flex-col gap-2.5" key={entry.id}>
-                      {entry.text ? (
-                        <Message from="assistant">
-                          <MessageContent>{entry.text}</MessageContent>
-                        </Message>
-                      ) : null}
-                      {entry.views.map((view) => (
-                        <AssistantToolResult
-                          isNew
-                          key={`${entry.id}-${assistantToolViewKey(view)}`}
-                          view={view}
-                        />
-                      ))}
-                    </div>
-                  );
-                }
+                const text = messageText(message);
+                const views = messageToolViews(message);
 
                 return (
-                  <p
-                    className="text-[length:var(--text-small)] text-destructive leading-[var(--text-small-line)]"
-                    key={entry.id}
-                    role="alert"
-                  >
-                    {entry.text}
-                  </p>
+                  <div className="flex flex-col gap-2.5" key={message.id}>
+                    {text ? (
+                      <Message from="assistant">
+                        <MessageContent>{text}</MessageContent>
+                      </Message>
+                    ) : null}
+                    {views.map((view) => (
+                      <AssistantToolResult
+                        isNew
+                        key={`${message.id}-${assistantToolViewKey(view)}`}
+                        view={view}
+                      />
+                    ))}
+                  </div>
                 );
               })}
+
+              {isThinking ? (
+                <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+                  Thinking…
+                </p>
+              ) : null}
+
+              {agent.status === "error" ? (
+                <p
+                  className="text-[length:var(--text-small)] text-destructive leading-[var(--text-small-line)]"
+                  role="alert"
+                >
+                  I couldn't reach the assistant. Check the local services and try again.
+                </p>
+              ) : null}
             </>
           ) : (
             <EmptyCapture />
@@ -208,7 +184,7 @@ export function AssistantPanel({
                 Enter to save · Shift + Enter for a new line
               </span>
             </PromptInputTools>
-            <PromptInputSubmit status={submitStatus} />
+            <PromptInputSubmit status={agent.status} />
           </PromptInputFooter>
         </PromptInput>
       </div>

@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "turbo run dev --filter=@tendnote/web",
     "dev:web": "pnpm --filter @tendnote/web dev",
     "dev:agent": "pnpm --filter @tendnote/agent dev",
     "build": "turbo build",
