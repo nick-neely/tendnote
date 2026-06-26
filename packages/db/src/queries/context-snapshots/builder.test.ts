@@ -2,11 +2,21 @@ import { DETERMINISTIC_GENERATOR_VERSION, type MemoryStatus } from "@tendnote/do
 import { describe, expect, it } from "vitest";
 import { createInMemoryFollowupStore } from "../followups/in-memory-store";
 import { createInMemoryMemoryStore } from "../memories/in-memory-store";
-import { createPersonContextSnapshot } from "./builder";
+import { createPersonContextSnapshot, type PersonContextSnapshotResult } from "./builder";
 import { createInMemoryContextSnapshotStore } from "./in-memory-store";
 import type { PersonContextSnapshotStore } from "./types";
 
 const OWNER = "user-1";
+
+/** A snapshot read that fell open to the seeded relational context. */
+function expectRelationalFallback(result: PersonContextSnapshotResult, personId: string) {
+  expect(result.status).toBe("fallback");
+  expect(result.snapshot).toBeNull();
+  expect(result.context.person?.id).toBe(personId);
+  expect(result.context.approvedMemories.map((memory) => memory.content)).toContain(
+    "Mark is vegetarian.",
+  );
+}
 
 async function setup() {
   const memoryStore = createInMemoryMemoryStore();
@@ -242,12 +252,29 @@ describe("snapshot freshness and fail-open rebuild", () => {
       personId: person.id,
     });
 
-    expect(result.status).toBe("fallback");
-    expect(result.snapshot).toBeNull();
-    expect(result.context.person?.id).toBe(person.id);
-    expect(result.context.approvedMemories.map((memory) => memory.content)).toContain(
-      "Mark is vegetarian.",
-    );
+    expectRelationalFallback(result, person.id);
+  });
+
+  it("fails open to Phase 1A context when the snapshot store read throws (unmigrated table)", async () => {
+    const { store, person, seedMemory } = await setup();
+    await seedMemory("Mark is vegetarian.", "approved");
+
+    // Simulate a snapshots table/column that does not exist yet (dev DB behind
+    // on migrations): the cache read throws before any generation happens.
+    const broken = createPersonContextSnapshot({
+      ...store,
+      getContextSnapshot: async () => {
+        throw new Error('relation "person_context_snapshots" does not exist');
+      },
+    });
+
+    const result = await broken.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+
+    // The tool still answers from relational context instead of throwing.
+    expectRelationalFallback(result, person.id);
   });
 
   it("records failure metadata while preserving the prior snapshot on a failed rebuild", async () => {

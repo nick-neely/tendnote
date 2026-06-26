@@ -10,6 +10,9 @@
       "exports": ["*"]
     }
   ],
+  // Loaded implicitly by Next's `reactCompiler: true` (apps/web/next.config.ts),
+  // not via a direct import, so the unused-dependency scan can't see it.
+  "ignoreDependencies": ["babel-plugin-react-compiler"],
   "entry": ["apps/agent/agent/agent.ts"],
   "dynamicallyLoaded": [
     "apps/agent/agent/channels/**/*.ts",

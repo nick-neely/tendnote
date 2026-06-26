@@ -1,9 +1,10 @@
 "use client";
 
 import { useEveAgent } from "eve/react";
-import { LockIcon, NotebookPenIcon } from "lucide-react";
+import { BugIcon, LockIcon, NotebookPenIcon } from "lucide-react";
+import { useState } from "react";
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputBody,
@@ -13,9 +14,9 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
 import { messageText, messageToolViews } from "@/lib/eve/message-views";
-import { assistantToolViewKey } from "@/lib/eve/tool-result-view";
 import type { SourceRecordReviewView } from "@/lib/source-record-review-view";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +54,10 @@ export function AssistantPanel({
   // without a Tendnote chat transcript (ADR 0030). Durable product state still
   // lives in source records, memories, and follow-ups (ADR 0029).
   const agent = useEveAgent();
+
+  // Toggles the Eve turn trace surface (see assistant-debug-trace.tsx) — a
+  // developer diagnostic for tool calls and the raw stream, off by default.
+  const [showDebug, setShowDebug] = useState(false);
 
   const history = initialSourceRecordReviews;
   const messages = agent.data.messages;
@@ -97,10 +102,28 @@ export function AssistantPanel({
             {subtitle}
           </p>
         </div>
-        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 font-medium text-[length:var(--text-caption)] text-muted-foreground">
-          <LockIcon aria-hidden className="size-3" />
-          Private
-        </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* Developer trace toggle for the Eve turn (tool calls + raw stream). */}
+          <button
+            aria-label="Toggle debug trace"
+            aria-pressed={showDebug}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium text-[length:var(--text-caption)] transition-colors",
+              showDebug
+                ? "bg-foreground text-background"
+                : "bg-secondary text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => setShowDebug((on) => !on)}
+            type="button"
+          >
+            <BugIcon aria-hidden className="size-3" />
+            Debug
+          </button>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 font-medium text-[length:var(--text-caption)] text-muted-foreground">
+            <LockIcon aria-hidden className="size-3" />
+            Private
+          </span>
+        </div>
       </header>
 
       <Conversation className="min-h-0 flex-1">
@@ -132,15 +155,13 @@ export function AssistantPanel({
                   <div className="flex flex-col gap-2.5" key={message.id}>
                     {text ? (
                       <Message from="assistant">
-                        <MessageContent>{text}</MessageContent>
+                        <MessageContent>
+                          <MessageResponse>{text}</MessageResponse>
+                        </MessageContent>
                       </Message>
                     ) : null}
-                    {views.map((view) => (
-                      <AssistantToolResult
-                        isNew
-                        key={`${message.id}-${assistantToolViewKey(view)}`}
-                        view={view}
-                      />
+                    {views.map(({ toolCallId, view }) => (
+                      <AssistantToolResult isNew key={`${message.id}:${toolCallId}`} view={view} />
                     ))}
                   </div>
                 );
@@ -166,6 +187,18 @@ export function AssistantPanel({
           )}
         </ConversationContent>
       </Conversation>
+
+      {/* Eve turn trace; toggled from the header. */}
+      {showDebug ? (
+        <div className="max-h-80 overflow-auto">
+          <AssistantDebugTrace
+            error={agent.error}
+            events={agent.events}
+            messages={messages}
+            status={agent.status}
+          />
+        </div>
+      ) : null}
 
       <div className="border-t p-3 sm:p-4">
         <PromptInput onSubmit={handleSubmit}>
