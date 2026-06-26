@@ -33,7 +33,7 @@ Restricted context is hidden by default and never appears in the snapshot summar
 
 # Exact Recall
 
-Use `search_relationship_context` when the user asks to find a specific name or exact text in stored Tendnote context. In the current slice it searches stored people; later Exact Recall slices extend the same contract to approved memories and active source records. It returns compact references, not full profiles and not generated snapshot prose.
+Use `search_relationship_context` when the user asks to find a specific name or exact text in stored Tendnote context. In the current slice it searches stored people and approved memories; a later Exact Recall slice extends the same contract to active source records. It returns compact references, not full profiles and not generated snapshot prose.
 
 - Use `search_people` for identity lookup and disambiguation before linking new context.
 - Use `search_relationship_context` for stored-context recall across supported record kinds.

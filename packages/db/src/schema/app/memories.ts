@@ -1,9 +1,16 @@
-import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { customType, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
 import { confidence, memoryStatus, memoryType, privacyScope, sensitivity } from "./enums";
 import { people } from "./people";
 import { sourceRecords } from "./source-records";
+
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
 
 export const memories = pgTable(
   "memories",
@@ -23,6 +30,9 @@ export const memories = pgTable(
     status: memoryStatus("status").notNull().default("suggested"),
     importance: integer("importance").notNull().default(3),
     sensitivity: sensitivity("sensitivity").notNull().default("normal"),
+    searchVector: tsvector("search_vector")
+      .notNull()
+      .generatedAlwaysAs(sql`to_tsvector('simple', coalesce("content", ''))`),
     confidence: confidence("confidence").notNull().default("medium"),
     scope: privacyScope("scope").notNull().default("private"),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
@@ -34,5 +44,6 @@ export const memories = pgTable(
     index("memories_owner_user_id_idx").on(table.ownerUserId),
     index("memories_source_record_id_idx").on(table.sourceRecordId),
     index("memories_owner_status_idx").on(table.ownerUserId, table.status),
+    index("memories_search_vector_idx").using("gin", table.searchVector),
   ],
 );

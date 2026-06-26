@@ -1,0 +1,2 @@
+ALTER TABLE "memories" ADD COLUMN "search_vector" "tsvector" GENERATED ALWAYS AS (to_tsvector('simple', coalesce("content", ''))) STORED NOT NULL;--> statement-breakpoint
+CREATE INDEX "memories_search_vector_idx" ON "memories" USING gin ("search_vector");

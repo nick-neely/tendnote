@@ -23,6 +23,8 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
         with search_query as (
           select websearch_to_tsquery('simple', ${input.query}) as query
         )
+        select *
+        from (
         select
           'person'::text as record_kind,
           p.id::text as record_id,
@@ -52,6 +54,33 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           and ${kindFilter(input.recordKinds, "person")}
           and ${input.personId ? sql`p.id = ${input.personId}` : sql`true`}
           and p.search_vector @@ search_query.query
+        union all
+        select
+          'memory'::text as record_kind,
+          m.id::text as record_id,
+          m.person_id::text as related_person_id,
+          p.display_name as related_person_display_name,
+          p.display_name as label,
+          ts_headline('simple', m.content, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2') as snippet,
+          array['content']::text[] as matched_fields,
+          (
+            ts_rank_cd(m.search_vector, search_query.query)
+            + (m.importance::float8 * 0.01)
+          )::float8 as rank,
+          'confirmed_fact'::text as trust_level,
+          m.sensitivity::text as sensitivity
+        from memories m
+        inner join people p on p.id = m.person_id
+        cross join search_query
+        where
+          m.owner_user_id = ${input.ownerUserId}
+          and p.owner_user_id = ${input.ownerUserId}
+          and ${kindFilter(input.recordKinds, "memory")}
+          and ${input.personId ? sql`m.person_id = ${input.personId}` : sql`true`}
+          and m.status = 'approved'
+          and (${input.directlyRequested}::boolean or m.sensitivity <> 'restricted')
+          and m.search_vector @@ search_query.query
+        ) mixed_results
         order by rank desc, label asc, record_id asc
         limit ${input.limit}
       `);
