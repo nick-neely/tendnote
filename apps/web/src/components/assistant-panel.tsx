@@ -55,8 +55,8 @@ export function AssistantPanel({
   // lives in source records, memories, and follow-ups (ADR 0029).
   const agent = useEveAgent();
 
-  // [DEBUG-trace] Temporary toggle for the tool-call trace surface (see
-  // assistant-debug-trace.tsx). Remove with the panel below once the loop is fixed.
+  // Toggles the Eve turn trace surface (see assistant-debug-trace.tsx) — a
+  // developer diagnostic for tool calls and the raw stream, off by default.
   const [showDebug, setShowDebug] = useState(false);
 
   const history = initialSourceRecordReviews;
@@ -103,7 +103,7 @@ export function AssistantPanel({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {/* [DEBUG-trace] Temporary toggle for the tool-call trace surface. */}
+          {/* Developer trace toggle for the Eve turn (tool calls + raw stream). */}
           <button
             aria-label="Toggle debug trace"
             aria-pressed={showDebug}
@@ -188,7 +188,7 @@ export function AssistantPanel({
         </ConversationContent>
       </Conversation>
 
-      {/* [DEBUG-trace] Temporary tool-call trace; toggled from the header. */}
+      {/* Eve turn trace; toggled from the header. */}
       {showDebug ? (
         <div className="max-h-80 overflow-auto">
           <AssistantDebugTrace
