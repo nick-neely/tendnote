@@ -4,14 +4,9 @@ import { getAuth } from "@/lib/auth/server";
 /**
  * Runs in the Node.js runtime (not Edge) so it can read the Better Auth session,
  * which uses Postgres + Redis. Only the same-origin Eve endpoints need it.
- *
- * Next 16 has renamed this convention to `proxy.ts`, but the `proxy` file breaks
- * `next dev` on 16.2.9 ("adapterFn is not a function"), so we stay on the still
- * supported `middleware` convention. The build's deprecation warning is benign.
  */
 export const config = {
   matcher: ["/eve/v1/:path*"],
-  runtime: "nodejs",
 };
 
 /** Header the Eve channel reads to scope every tool to the owner (ADR 0001). */
@@ -26,7 +21,7 @@ const localDemoOwnerUserId = "demo-user";
  * so the browser cannot forge the owner. The agent keeps its simple header-trust
  * channel auth because this header is now always server-set.
  */
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   let ownerUserId: string | null = null;
 
   try {
