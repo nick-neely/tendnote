@@ -26,7 +26,7 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
     "@tendnote/domain": "workspace:*",
-    "ai": "7.0.0-beta.178",
+    "ai": "7.0.2",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.7"
   },
