@@ -1,4 +1,7 @@
-import type { SuggestedMemoryReviewComponent, SuggestedMemoryReviewResult } from "@tendnote/db/queries/memories";
+import type {
+  SuggestedMemoryReviewComponent,
+  SuggestedMemoryReviewResult,
+} from "@tendnote/db/queries/memories";
 import type { MemoryType, Sensitivity } from "@tendnote/domain";
 
 /**
