@@ -1,4 +1,4 @@
-import type { PersonContextSnapshotResult } from "@tendnote/db";
+import type { PersonContextSnapshotResult } from "@tendnote/db/queries/context-snapshots";
 import type { ContextSnapshot } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { toRelationshipSnapshotView } from "./relationship-snapshot-view";

@@ -8,7 +8,7 @@ const instructions = readFileSync(join(process.cwd(), "agent/instructions.md"), 
 describe("trust-aware person context tool", () => {
   it("calls the shared snapshot-backed read path rather than re-deriving policy", () => {
     expect(toolSource).toMatch(
-      /import\s+\{[^}]*getPersonContextSnapshot[^}]*\}\s+from\s+"@tendnote\/db"/,
+      /import\s+\{[^}]*getPersonContextSnapshot[^}]*\}\s+from\s+"@tendnote\/db(\/[\w-]+)*"/,
     );
     expect(toolSource).toMatch(/getPersonContextSnapshot\(/);
   });

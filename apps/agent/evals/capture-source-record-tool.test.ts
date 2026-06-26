@@ -8,11 +8,11 @@ const { captureSourceRecord, captureSourceRecordForPerson, enqueueExtractionJob 
   }),
 );
 
-vi.mock("@tendnote/db", () => ({
+vi.mock("@tendnote/db/queries/source-records", () => ({
   captureSourceRecord,
   captureSourceRecordForPerson,
-  enqueueExtractionJob,
 }));
+vi.mock("@tendnote/db/queries/extraction-jobs", () => ({ enqueueExtractionJob }));
 
 const { default: tool } = await import("../agent/tools/capture_source_record");
 

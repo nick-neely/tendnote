@@ -1,4 +1,5 @@
-import { listSourceRecordReviews, searchPeople } from "@tendnote/db";
+import { searchPeople } from "@tendnote/db/queries/people";
+import { listSourceRecordReviews } from "@tendnote/db/queries/source-records";
 import { AppShell } from "@/components/app-shell";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";

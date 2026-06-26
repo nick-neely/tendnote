@@ -44,6 +44,10 @@ _Avoid_: Auto-saved memory, silent extraction
 A rebuildable generated profile card for a person that helps Tendnote load relationship context quickly. A context snapshot is not a source of truth and must point back to supporting people, memories, source records, and follow-ups.
 _Avoid_: Profile fact, memory store, generated truth
 
+**Exact Recall**:
+Finding specific stored relationship context by names, places, companies, phrases, or other explicit text in canonical records. Exact recall is distinct from fuzzy semantic retrieval and proactive relationship suggestions.
+_Avoid_: Semantic search, recommendation, generated summary
+
 **Follow-Up**:
 A user-visible reminder to reconnect with a person for a specific reason at a specific time or cadence.
 _Avoid_: Task, deal, lead activity

@@ -30,7 +30,7 @@ describe("explicit person creation (issue #22)", () => {
   it("routes creation through the shared owner-scoped createPerson mutation", () => {
     const source = readTool("create_person");
 
-    expect(source).toMatch(/from\s+"@tendnote\/db"/);
+    expect(source).toMatch(/from\s+"@tendnote\/db(\/[\w-]+)*"/);
     expect(source).toContain("createPerson");
     expect(source).toContain("resolveOwnerUserId");
   });

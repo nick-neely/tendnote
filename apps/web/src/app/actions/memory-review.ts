@@ -5,7 +5,7 @@ import {
   dismissSuggestedMemory,
   editSuggestedMemory,
   saveSuggestedMemory,
-} from "@tendnote/db";
+} from "@tendnote/db/queries/memories";
 import { memoryReviewEditSchema } from "@tendnote/domain";
 import { z } from "zod";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";

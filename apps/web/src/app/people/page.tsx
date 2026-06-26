@@ -1,4 +1,4 @@
-import { searchPeople } from "@tendnote/db";
+import { searchPeople } from "@tendnote/db/queries/people";
 import { AppShell } from "@/components/app-shell";
 import { PeopleList } from "@/components/people-list";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";

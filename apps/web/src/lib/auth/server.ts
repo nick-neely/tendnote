@@ -1,5 +1,6 @@
 import { redisStorage } from "@better-auth/redis-storage";
-import { getDb, schema } from "@tendnote/db";
+import { getDb } from "@tendnote/db/client";
+import * as schema from "@tendnote/db/schema";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getRedis } from "@/lib/cache/redis";

@@ -1,4 +1,4 @@
-import { getPersonContextSnapshot } from "@tendnote/db";
+import { getPersonContextSnapshot } from "@tendnote/db/queries/context-snapshots";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";

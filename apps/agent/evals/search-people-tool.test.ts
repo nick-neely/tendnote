@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const { searchPeople } = vi.hoisted(() => ({ searchPeople: vi.fn() }));
 
-vi.mock("@tendnote/db", () => ({ searchPeople }));
+vi.mock("@tendnote/db/queries/people", () => ({ searchPeople }));
 
 const { default: tool } = await import("../agent/tools/search_people");
 

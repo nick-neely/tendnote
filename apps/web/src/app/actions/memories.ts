@@ -1,6 +1,6 @@
 "use server";
 
-import { captureExplicitMemory } from "@tendnote/db";
+import { captureExplicitMemory } from "@tendnote/db/queries/memories";
 import { parseExplicitMemoryRequest, sensitivitySchema } from "@tendnote/domain";
 import { z } from "zod";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";

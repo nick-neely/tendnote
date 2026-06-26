@@ -1,8 +1,6 @@
-import {
-  getPersonContextSnapshot,
-  getPersonProfile,
-  listSuggestedMemoryReviews,
-} from "@tendnote/db";
+import { getPersonContextSnapshot } from "@tendnote/db/queries/context-snapshots";
+import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
+import { getPersonProfile } from "@tendnote/db/queries/people";
 import {
   canUseMemoryProactively,
   canUseSourceRecordProactively,

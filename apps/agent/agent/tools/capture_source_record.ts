@@ -1,8 +1,8 @@
+import { enqueueExtractionJob } from "@tendnote/db/queries/extraction-jobs";
 import {
   captureSourceRecord,
   captureSourceRecordForPerson,
-  enqueueExtractionJob,
-} from "@tendnote/db";
+} from "@tendnote/db/queries/source-records";
 import { sensitivitySchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";

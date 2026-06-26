@@ -1,11 +1,11 @@
 "use server";
 
+import { enqueueExtractionJob } from "@tendnote/db/queries/extraction-jobs";
 import {
   captureSourceRecord,
   captureSourceRecordForPerson,
-  enqueueExtractionJob,
   getSourceRecordReview,
-} from "@tendnote/db";
+} from "@tendnote/db/queries/source-records";
 import { z } from "zod";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
 import {

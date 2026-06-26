@@ -233,7 +233,7 @@ Tendnote should use Eve because the project maps cleanly to Eve's filesystem-fir
 - `agent/agent.ts` for model and runtime configuration
 - `agent/tools/` for typed TypeScript tools that read/write people, memories, follow-ups, and drafts
 - `agent/skills/` for reusable Markdown playbooks such as message drafting, privacy rules, and birthday handling
-- `agent/channels/web.ts` when the web chat bridge is active
+- `agent/channels/eve.ts` when the web chat bridge is active
 - `agent/schedules/` only when daily briefs, birthday checks, stale-contact review, or weekly relationship review are implemented
 - `agent/connections/` only when Google Contacts, Google Calendar, Gmail, Notion, or other integrations begin
 - `agent/subagents/` only when specialized tasks such as memory curation, message drafting, or privacy review are implemented
@@ -311,20 +311,20 @@ Help Nick remember context about people, follow up at the right time, prepare fo
 
 #### Later Phase Tools
 
-| Tool | Purpose |
-|---|---|
-| `create_followup` | Create a due follow-up for a person after manual follow-ups exist. |
-| `list_due_followups` | Return follow-ups due today or this week after manual follow-ups exist. |
-| `update_followup_status` | Complete, dismiss, snooze, or reopen follow-ups after manual follow-ups exist. |
-| `draft_message` | Draft a message without sending it after drafting begins. |
-| `create_message_draft` | Persist draft text inside Tendnote only after drafting begins. |
-| `import_contacts_preview` | Preview Google Contacts import before writing. |
-| `dedupe_people_preview` | Suggest duplicate merges without applying them automatically. |
-| `create_email_draft` | Create Gmail draft after approval. |
-| `read_calendar_events` | Read upcoming and recent calendar events. |
-| `post_meeting_followup_candidates` | Suggest follow-ups after relevant events. |
-| `export_user_data` | Export personal data for portability. |
-| `delete_user_data` | Delete scoped data with audit log. |
+| Tool | Phase | Purpose |
+|---|---|---|
+| `create_followup` | 1E | Create a due follow-up for a person after manual follow-ups exist. |
+| `list_due_followups` | 1E | Return active or due follow-ups for today, this week, or a person. |
+| `update_followup_status` | 1E | Complete, dismiss, snooze, or reopen follow-ups after manual follow-ups exist. |
+| `draft_message` | 1G | Draft a Tendnote-only message without sending or creating an external draft. |
+| `create_message_draft` | 1G | Persist draft text inside Tendnote only after drafting begins. |
+| `import_contacts_preview` | 2 | Preview Google Contacts import before writing. |
+| `dedupe_people_preview` | 2 | Suggest duplicate merges without applying them automatically. |
+| `create_email_draft` | 2 | Create Gmail draft after explicit approval and integration authorization. |
+| `read_calendar_events` | 2 | Read upcoming and recent calendar events after Calendar integration is authorized. |
+| `post_meeting_followup_candidates` | 2 | Suggest follow-ups after relevant events. |
+| `export_user_data` | 5 | Export personal data for portability. |
+| `delete_user_data` | 5 | Delete scoped data with audit log. |
 
 ### Skills
 
@@ -341,11 +341,11 @@ Help Nick remember context about people, follow up at the right time, prepare fo
 ### Schedules
 
 | Schedule | Phase | Behavior |
-|---|---:|---|
-| Daily brief | 1 | Runs every morning and suggests 1 to 3 relationship actions. |
-| Weekly relationship review | 1 | Reviews stale contacts, overdue follow-ups, and missed birthdays. |
-| Birthday check | 1 | Prompts user for upcoming or same-day birthday messages. |
-| Stale contact check | 1 | Suggests people not contacted recently, using closeness and cadence. |
+|---|---|---|
+| Daily brief | 1F | Runs every morning and suggests 1 to 3 relationship actions. |
+| Weekly relationship review | 1F | Reviews stale contacts, overdue follow-ups, and missed birthdays after the daily brief model works. |
+| Birthday check | 1F | Prompts user for upcoming or same-day birthdays using stored Tendnote data. |
+| Stale contact check | 1F | Suggests people not contacted recently as reviewable brief items, using closeness and cadence. |
 | Post-meeting follow-up | 2 | After calendar events, suggests thank-you or follow-up messages. |
 | Monthly cleanup | 3 | Suggests duplicate cleanup, missing birthdays, and stale reminders. |
 
@@ -851,6 +851,15 @@ Vertical slice issue seeds:
 
 Goal: Make Tendnote useful without external integrations while building memory retrieval in incremental slices.
 
+End state: Phase 1 should prove the full private Tendnote loop without external accounts or outbound actions:
+
+- **Capture**: the user can add people, log source records, and save explicit memories through UI and Eve.
+- **Curate**: suggested memories and reviewable records can be approved, edited, dismissed, or left pending.
+- **Orient**: Eve and the web UI can load snapshot-backed context plus supporting records, exact search, and semantic retrieval.
+- **Act**: the user can create and manage manual follow-ups through UI and Eve.
+- **Brief**: Tendnote can generate a small persisted daily brief from reviewed context and due follow-ups.
+- **Draft**: Tendnote can draft messages inside the app for review, copy, or dismissal, but cannot send externally.
+
 Deliverables:
 
 - Add/edit/search people
@@ -861,7 +870,7 @@ Deliverables:
 - Message drafting inside Tendnote
 - Approval gate for all external actions
 - Basic dashboard
-- Plain Postgres retrieval first, then context snapshots, Eve-backed web chat, full-text search, and pgvector as follow-on slices
+- Plain Postgres retrieval first, then context snapshots, Eve-backed web chat, full-text search, pgvector, follow-ups, briefs, and drafting as follow-on slices
 
 ##### Phase 1 Prep: Schema and Domain Alignment
 
@@ -890,7 +899,7 @@ Deliverables:
 ##### Phase 1B.5: Eve-Backed Web Chat
 
 - Replace the local-only web assistant capture path with a real web chat bridge into the Eve agent.
-- Route web chat turns through Eve so the agent can search people, create or update people when the user explicitly intends it, capture source records, capture explicit memories, load snapshot-backed person context, and render persisted review components.
+- Route web chat turns through Eve so the agent can search people, create people when the user explicitly intends it, capture source records, capture explicit memories, load snapshot-backed person context, and render persisted review components.
 - Keep the active Eve tree lean: remove inactive future-phase placeholder schedules, channels, connections, subagents, and sandbox files until their phase has real code-level behavior.
 - Preserve Phase 1 privacy and approval rules: no external sends, no external draft creation, no Gmail/Calendar/Contacts/shared-household behavior, and no automatic person creation from ambiguous casual mentions.
 - Use this as the core natural-language loop before adding full-text search, semantic retrieval, briefs, drafting, or integrations.
@@ -907,16 +916,41 @@ Deliverables:
 - Use pgvector for fuzzy retrieval, gift ideas, life-event themes, career updates, and "who should I check in with" style prompts.
 - Do not block the initial usable MVP on embeddings. Add this after plain retrieval and snapshots work.
 
+##### Phase 1E: Manual Follow-Ups Through Eve
+
+- Add the manual follow-up lifecycle for person-linked reminders: create, complete, dismiss, snooze, reopen, and edit.
+- Add Eve tools for follow-up creation and status changes only after shared owner-scoped follow-up mutations and audit logging exist.
+- Treat user-created follow-ups as active reminders and agent-suggested follow-ups as separate reviewable proposals. Do not let Eve silently turn suggestions into active reminders.
+- Keep follow-ups personal and private in Phase 1; do not add Calendar-derived follow-ups or shared household reminders yet.
+- Make due follow-ups visible on person profiles and the dashboard so the later brief has real action items to summarize.
+
+##### Phase 1F: Persisted Daily Brief
+
+- Generate persisted daily brief records with stable child items, source references, statuses, and dismiss/snooze behavior.
+- Keep the first daily brief small: default to 1 to 3 items from due follow-ups, birthdays already stored in Tendnote, reviewed memories, recent source records, and retrieval signals.
+- Use the Phase 1 retrieval stack in order: relational context, snapshots, full-text search, and semantic retrieval when available.
+- Add the Eve schedule only when brief generation is real. Do not keep placeholder schedules in the active agent tree.
+- Keep suggested follow-ups reviewable. A brief may propose an action, but accepting it should create or update the underlying follow-up record.
+- Add weekly relationship review only after the daily brief model works; it should reuse the same persisted brief-item shape instead of introducing a parallel review artifact.
+
+##### Phase 1G: Tendnote-Only Message Drafting
+
+- Add message drafting inside Tendnote after the capture, review, retrieval, follow-up, and brief loop is working.
+- Drafts should use approved memories as facts, source records as source-grounded context, and suggested memories only as clearly tentative hints.
+- Add `draft_message` and `create_message_draft` only for Tendnote-owned draft records. Do not create Gmail drafts, send messages, or write to external systems in Phase 1.
+- Every draft should be reviewable, editable, dismissible, and source-grounded. The user remains responsible for copying or sending outside Tendnote.
+- Add tone, no-fake-memory, source-grounded-drafting, and no-send-without-approval eval coverage before treating drafting as complete.
+
 Vertical slice issue seeds:
 
 - Implement add person and search people flows through UI and agent tool.
 - Implement source records and atomic memories with `suggested`, `approved`, `dismissed`, and `archived` states.
 - Implement add memory flow with source, sensitivity, confidence, importance, status, and scope.
-- Implement create follow-up flow with complete, snooze, and dismiss actions.
 - Implement person context snapshot generation and snapshot-backed `get_person_profile`.
-- Implement Eve-backed web chat with people search/upsert, source-record capture, explicit memory capture, and review component rendering.
+- Implement Eve-backed web chat with people search, explicit person creation, source-record capture, explicit memory capture, and review component rendering.
 - Add full-text search over people, memories, and source records.
 - Add pgvector embeddings and semantic memory search as a later Phase 1 issue.
+- Implement create follow-up flow with complete, snooze, and dismiss actions.
 - Implement daily brief schedule that returns up to 3 items.
 - Implement draft message tool and draft review UI.
 - Add evals for no-fake-memory, tone-match, source-grounded-recall, and brief-size-limit.
@@ -1047,12 +1081,12 @@ Recommended first issue batch:
 9. Add Eve `search_people` and `create_person` tools.
 10. Add source records and atomic memory capture flow with suggested/approved states.
 11. Add person context snapshots and snapshot-backed profile retrieval.
-12. Connect web chat to Eve for people search/upsert, source-record capture, explicit memory capture, and review components.
-13. Add follow-up creation and status updates.
-14. Add daily brief schedule.
-15. Add draft message tool and review UI.
-16. Add Postgres full-text search.
-17. Add pgvector semantic memory retrieval after the core loop works.
+12. Connect web chat to Eve for people search, explicit person creation, source-record capture, explicit memory capture, and review components.
+13. Add Postgres full-text search.
+14. Add pgvector semantic memory retrieval.
+15. Add manual follow-up creation and status updates through UI and Eve.
+16. Add persisted daily brief generation and schedule.
+17. Add Tendnote-only draft message tool and draft review UI.
 18. Add no-send-without-approval eval.
 19. Add no-fake-memory eval.
 

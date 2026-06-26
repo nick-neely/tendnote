@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { captureExplicitMemory } = vi.hoisted(() => ({ captureExplicitMemory: vi.fn() }));
 
-vi.mock("@tendnote/db", () => ({ captureExplicitMemory }));
+vi.mock("@tendnote/db/queries/memories", () => ({ captureExplicitMemory }));
 
 const { default: tool } = await import("../agent/tools/capture_memory");
 

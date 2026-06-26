@@ -1,4 +1,4 @@
-import { dismissSuggestedMemory } from "@tendnote/db";
+import { dismissSuggestedMemory } from "@tendnote/db/queries/memories";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";

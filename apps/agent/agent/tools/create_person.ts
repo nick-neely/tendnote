@@ -1,4 +1,4 @@
-import { createPerson } from "@tendnote/db";
+import { createPerson } from "@tendnote/db/queries/people";
 import { relationshipTypeSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";

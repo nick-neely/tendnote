@@ -1,4 +1,4 @@
-import type { SourceRecordReviewComponent, SourceRecordReviewResult } from "@tendnote/db";
+import type { SourceRecordReviewComponent, SourceRecordReviewResult } from "@tendnote/db/queries/source-records";
 import type { SourceRecord } from "@tendnote/domain";
 
 export type SourceRecordReviewView = {

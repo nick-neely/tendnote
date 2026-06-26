@@ -1,4 +1,4 @@
-import { searchPeople } from "@tendnote/db";
+import { searchPeople } from "@tendnote/db/queries/people";
 import { requiresPersonDisambiguation, searchPeopleSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { resolveOwnerUserId } from "../lib/owner";

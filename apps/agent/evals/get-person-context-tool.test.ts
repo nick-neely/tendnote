@@ -4,7 +4,7 @@ const { getPersonContextSnapshot } = vi.hoisted(() => ({
   getPersonContextSnapshot: vi.fn(),
 }));
 
-vi.mock("@tendnote/db", () => ({ getPersonContextSnapshot }));
+vi.mock("@tendnote/db/queries/context-snapshots", () => ({ getPersonContextSnapshot }));
 
 const { default: tool } = await import("../agent/tools/get_person_context");
 

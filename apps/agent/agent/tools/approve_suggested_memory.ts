@@ -1,4 +1,4 @@
-import { saveSuggestedMemory } from "@tendnote/db";
+import { saveSuggestedMemory } from "@tendnote/db/queries/memories";
 import { memoryReviewEditSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";

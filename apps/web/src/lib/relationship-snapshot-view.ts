@@ -1,4 +1,4 @@
-import type { PersonContextSnapshotResult } from "@tendnote/db";
+import type { PersonContextSnapshotResult } from "@tendnote/db/queries/context-snapshots";
 
 /**
  * A correction affordance: where on the profile a user goes to change what the

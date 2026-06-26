@@ -15,7 +15,7 @@ const cardSource = readFileSync(join(SRC, "components", "relationship-snapshot-c
 describe("web snapshot consumer boundary", () => {
   it("loads the profile through the shared snapshot-backed read path", () => {
     expect(pageSource).toMatch(
-      /import\s+\{[^}]*getPersonContextSnapshot[^}]*\}\s+from\s+"@tendnote\/db"/s,
+      /import\s+\{[^}]*getPersonContextSnapshot[^}]*\}\s+from\s+"@tendnote\/db(\/[\w-]+)*"/s,
     );
     expect(pageSource).toMatch(/getPersonContextSnapshot\(/);
   });

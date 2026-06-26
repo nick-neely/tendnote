@@ -18,7 +18,7 @@
     "@streamdown/mermaid": "^1.0.2",
     "@tendnote/db": "workspace:*",
     "@tendnote/domain": "workspace:*",
-    "ai": "^6.0.75",
+    "ai": "7.0.0-beta.178",
     "better-auth": "^1.6.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

@@ -29,9 +29,12 @@ importers:
       '@tendnote/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      ai:
+        specifier: 7.0.0-beta.178
+        version: 7.0.0-beta.178(zod@4.4.3)
       eve:
         specifier: ^0.13.6
-        version: 0.13.6(@opentelemetry/api@1.9.1)(ai@7.0.0-beta.178(zod@4.4.3))(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(next@16.2.9(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
+        version: 0.13.6(@opentelemetry/api@1.9.1)(ai@7.0.0-beta.178(zod@4.4.3))(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(next@16.2.9(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
       zod:
         specifier: ^4.1.13
         version: 4.4.3
@@ -73,8 +76,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/domain
       ai:
-        specifier: ^6.0.75
-        version: 6.0.209(zod@4.4.3)
+        specifier: 7.0.0-beta.178
+        version: 7.0.0-beta.178(zod@4.4.3)
       better-auth:
         specifier: ^1.6.20
         version: 1.6.20(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(next@16.2.9(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)))
@@ -89,7 +92,7 @@ importers:
         version: 1.1.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       eve:
         specifier: ^0.13.6
-        version: 0.13.6(@opentelemetry/api@1.9.1)(ai@6.0.209(zod@4.4.3))(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(next@16.2.9(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
+        version: 0.13.6(@opentelemetry/api@1.9.1)(ai@7.0.0-beta.178(zod@4.4.3))(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(next@16.2.9(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
       ioredis:
         specifier: ^5.8.2
         version: 5.11.1
@@ -169,8 +172,8 @@ importers:
         specifier: workspace:*
         version: link:../domain
       ai:
-        specifier: ^6.0.209
-        version: 6.0.209(zod@4.4.3)
+        specifier: 7.0.0-beta.178
+        version: 7.0.0-beta.178(zod@4.4.3)
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9)
@@ -218,21 +221,9 @@ importers:
 
 packages:
 
-  '@ai-sdk/gateway@3.0.134':
-    resolution: {integrity: sha512-PfUkQp01EihEyNM6e+nexXmVANiY5KcHMui/MmaHsC4KVVQYh/MwPeOsD3bTPu63e581BKO+AwaPPNmD4x943A==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
-
   '@ai-sdk/gateway@4.0.0-beta.109':
     resolution: {integrity: sha512-W/1kLlPb6Bgbhwep3CA3R6do0HD7SXV5gyuz2XBLY1YABqgxYkw+IhEcjOYlmn9v+Tifjqy5yJqmWdSHMJhyPQ==}
     engines: {node: '>=22'}
-    peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
-
-  '@ai-sdk/provider-utils@4.0.30':
-    resolution: {integrity: sha512-VO7I+vPffqI5sMnPoUq5DCSqKIgQIk/naJWRdQVpz2ma2zoprC/lqiJiUEl2s6DfvTD76TbhD3q39ROjlA6rGw==}
-    engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
@@ -241,10 +232,6 @@ packages:
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
-
-  '@ai-sdk/provider@3.0.10':
-    resolution: {integrity: sha512-Q3BZ27qfpYqnCYGvE3vt+Qi6LGOF9R5Nmzn+9JoM1lCRsD9mYaIhfJLkSunN48nfGXJ6n+XNV0J/XVpqGQl7Dw==}
-    engines: {node: '>=18'}
 
   '@ai-sdk/provider@4.0.0-beta.19':
     resolution: {integrity: sha512-Aca/KiGeRtMM7rOJ38Qio+Dc2V45PpiGoWgdrdtIkgM9zkhYpS043t0ggKoNOWgm/csv99XWGrfSF63PSkVeHw==}
@@ -2518,12 +2505,6 @@ packages:
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
-
-  ai@6.0.209:
-    resolution: {integrity: sha512-NE7uErmxOe+i77BPT1+AhW4wr7xzilbQLsKVmvGEyil5AjaF6C/m92hlPI4Xwtnv5n77D/29bizwcR27/S/gSQ==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
 
   ai@7.0.0-beta.178:
     resolution: {integrity: sha512-kOfIbf23FDkvvfDHOS1gIjImBF9MlYut8fEMlps57vvS622VKL1PeEDLJ181aVd2LPSiDr3SupAMSzI2rEaW3w==}
@@ -5221,25 +5202,11 @@ packages:
 
 snapshots:
 
-  '@ai-sdk/gateway@3.0.134(zod@4.4.3)':
-    dependencies:
-      '@ai-sdk/provider': 3.0.10
-      '@ai-sdk/provider-utils': 4.0.30(zod@4.4.3)
-      '@vercel/oidc': 3.2.0
-      zod: 4.4.3
-
   '@ai-sdk/gateway@4.0.0-beta.109(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.0-beta.19
       '@ai-sdk/provider-utils': 5.0.0-beta.49(zod@4.4.3)
       '@vercel/oidc': 3.2.0
-      zod: 4.4.3
-
-  '@ai-sdk/provider-utils@4.0.30(zod@4.4.3)':
-    dependencies:
-      '@ai-sdk/provider': 3.0.10
-      '@standard-schema/spec': 1.1.0
-      eventsource-parser: 3.1.0
       zod: 4.4.3
 
   '@ai-sdk/provider-utils@5.0.0-beta.49(zod@4.4.3)':
@@ -5249,10 +5216,6 @@ snapshots:
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.0
       zod: 4.4.3
-
-  '@ai-sdk/provider@3.0.10':
-    dependencies:
-      json-schema: 0.4.0
 
   '@ai-sdk/provider@4.0.0-beta.19':
     dependencies:
@@ -6069,7 +6032,8 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
-  '@opentelemetry/api@1.9.1': {}
+  '@opentelemetry/api@1.9.1':
+    optional: true
 
   '@opentelemetry/semantic-conventions@1.41.1': {}
 
@@ -7271,14 +7235,6 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  ai@6.0.209(zod@4.4.3):
-    dependencies:
-      '@ai-sdk/gateway': 3.0.134(zod@4.4.3)
-      '@ai-sdk/provider': 3.0.10
-      '@ai-sdk/provider-utils': 4.0.30(zod@4.4.3)
-      '@opentelemetry/api': 1.9.1
-      zod: 4.4.3
-
   ai@7.0.0-beta.178(zod@4.4.3):
     dependencies:
       '@ai-sdk/gateway': 4.0.0-beta.109(zod@4.4.3)
@@ -7954,55 +7910,7 @@ snapshots:
 
   etag@1.8.1: {}
 
-  eve@0.13.6(@opentelemetry/api@1.9.1)(ai@6.0.209(zod@4.4.3))(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(next@16.2.9(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)):
-    dependencies:
-      ai: 6.0.209(zod@4.4.3)
-      nitro: 3.0.260610-beta(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.1
-      next: 16.2.9(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      react: 19.2.4
-      vite: 8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)
-    transitivePeerDependencies:
-      - '@azure/app-configuration'
-      - '@azure/cosmos'
-      - '@azure/data-tables'
-      - '@azure/identity'
-      - '@azure/keyvault-secrets'
-      - '@azure/storage-blob'
-      - '@capacitor/preferences'
-      - '@deno/kv'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@netlify/blobs'
-      - '@netlify/runtime'
-      - '@planetscale/database'
-      - '@upstash/redis'
-      - '@vercel/blob'
-      - '@vercel/functions'
-      - '@vercel/kv'
-      - '@vercel/queue'
-      - aws4fetch
-      - better-sqlite3
-      - chokidar
-      - dotenv
-      - drizzle-orm
-      - giget
-      - idb-keyval
-      - ioredis
-      - jiti
-      - lru-cache
-      - miniflare
-      - mongodb
-      - mysql2
-      - rollup
-      - sqlite3
-      - uploadthing
-      - wrangler
-      - xml2js
-      - zephyr-agent
-
-  eve@0.13.6(@opentelemetry/api@1.9.1)(ai@7.0.0-beta.178(zod@4.4.3))(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(next@16.2.9(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)):
+  eve@0.13.6(@opentelemetry/api@1.9.1)(ai@7.0.0-beta.178(zod@4.4.3))(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(next@16.2.9(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)):
     dependencies:
       ai: 7.0.0-beta.178(zod@4.4.3)
       nitro: 3.0.260610-beta(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))

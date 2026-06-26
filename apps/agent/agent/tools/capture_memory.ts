@@ -1,4 +1,4 @@
-import { captureExplicitMemory } from "@tendnote/db";
+import { captureExplicitMemory } from "@tendnote/db/queries/memories";
 import { parseExplicitMemoryRequest, sensitivitySchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";

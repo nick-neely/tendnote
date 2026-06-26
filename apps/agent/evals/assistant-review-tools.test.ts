@@ -26,7 +26,10 @@ describe("Phase 1A assistant tools are thin wrappers over shared functions", () 
   for (const [tool, sharedFn] of Object.entries(wrappers)) {
     it(`${tool} calls the shared @tendnote/db function ${sharedFn}`, () => {
       const source = readTool(tool);
-      expect(source).toMatch(/from\s+"@tendnote\/db"/);
+      // Tools import the shared function from a narrow @tendnote/db subpath so a
+      // tool never bundles unrelated heavy deps (e.g. the `ai` SDK pulled by the
+      // snapshot path). Match the package root with an optional subpath.
+      expect(source).toMatch(/from\s+"@tendnote\/db(\/[\w-]+)*"/);
       expect(source).toContain(sharedFn);
     });
   }
