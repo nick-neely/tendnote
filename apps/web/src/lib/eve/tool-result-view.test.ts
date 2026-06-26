@@ -158,6 +158,49 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     });
   });
 
+  it("keeps exact recall output compact and ignores full profiles or snapshot prose", () => {
+    const view = toAssistantToolView({
+      toolName: "search_relationship_context",
+      output: {
+        results: [
+          {
+            recordKind: "memory",
+            recordId: "memory-1",
+            relatedPersonId: "person-1",
+            relatedPersonDisplayName: "Mara Lin",
+            label: "Mara Lin",
+            snippet: "Mara prefers backend architecture conversations.",
+            matchedFields: ["content"],
+            rank: 1.2,
+            trustLevel: "confirmed_fact",
+            sensitivity: "normal",
+            fullProfile: "Do not render this.",
+            snapshot: { summary: "Generated snapshot prose." },
+          },
+        ],
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "relationship_context_search",
+      results: [
+        {
+          recordKind: "memory",
+          recordId: "memory-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          label: "Mara Lin",
+          snippet: "Mara prefers backend architecture conversations.",
+          matchedFields: ["content"],
+          trustLevel: "confirmed_fact",
+          sensitivity: "normal",
+        },
+      ],
+    });
+    expect(JSON.stringify(view)).not.toContain("Generated snapshot prose");
+    expect(JSON.stringify(view)).not.toContain("Do not render this");
+  });
+
   it("degrades an unknown tool to a generic view", () => {
     const view = toAssistantToolView({ toolName: "some_future_tool", output: { whatever: true } });
 

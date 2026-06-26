@@ -139,7 +139,58 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("You noted");
     expect(html).toContain("Logged context");
     expect(html).not.toContain("Confirmed fact");
-    expect(html).not.toContain('href="/people/person-1"');
+    expect(html).toContain('href="/people/person-1"');
+  });
+
+  it("renders mixed exact recall results with separate trust language per record", () => {
+    const html = render({
+      kind: "relationship_context_search",
+      results: [
+        {
+          recordKind: "person",
+          recordId: "person-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          label: "Mara Lin",
+          snippet: "Talked about backend architecture.",
+          matchedFields: ["profileBlurb"],
+          trustLevel: "identity_reference",
+          sensitivity: "normal",
+        },
+        {
+          recordKind: "memory",
+          recordId: "memory-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          label: "Mara Lin",
+          snippet: "Mara prefers backend architecture conversations.",
+          matchedFields: ["content"],
+          trustLevel: "confirmed_fact",
+          sensitivity: "normal",
+        },
+        {
+          recordKind: "source_record",
+          recordId: "source-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          label: "Mara Lin",
+          snippet: "Logged lunch about backend architecture.",
+          matchedFields: ["content"],
+          trustLevel: "logged_context",
+          sensitivity: "normal",
+        },
+      ],
+    });
+
+    expect(html).toContain("Found 3 exact matches");
+    expect(html).toContain("Person");
+    expect(html).toContain("Memory");
+    expect(html).toContain("Source record");
+    expect(html).toContain("Identity reference");
+    expect(html).toContain("Confirmed fact");
+    expect(html).toContain("Logged context");
+    expect(html).toContain("You noted");
+    expect(html).toContain('href="/people/person-1"');
   });
 
   it("renders an unknown tool result as a quiet generic confirmation", () => {

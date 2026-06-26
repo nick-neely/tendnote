@@ -1,5 +1,5 @@
 import { searchRelationshipContext } from "@tendnote/db/queries/relationship-context-search";
-import { searchRelationshipContextSchema } from "@tendnote/domain";
+import { exactRecallResultSchema, searchRelationshipContextSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { resolveOwnerUserId } from "../lib/owner";
 
@@ -9,7 +9,9 @@ export default defineTool({
   inputSchema: searchRelationshipContextSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const results = await searchRelationshipContext({ ...input, ownerUserId });
+    const results = exactRecallResultSchema
+      .array()
+      .parse(await searchRelationshipContext({ ...input, ownerUserId }));
 
     return {
       results,

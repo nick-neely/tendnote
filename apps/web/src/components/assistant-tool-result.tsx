@@ -140,10 +140,7 @@ export function AssistantToolResult({
 }
 
 function SearchResultRow({ result }: { result: RelationshipContextSearchResultView }) {
-  const href =
-    result.recordKind === "person" && result.relatedPersonId
-      ? `/people/${result.relatedPersonId}`
-      : null;
+  const href = result.relatedPersonId ? `/people/${result.relatedPersonId}` : null;
   const title = (
     <span className="inline-flex min-w-0 items-center gap-1.5">
       {result.recordKind === "person" ? (
