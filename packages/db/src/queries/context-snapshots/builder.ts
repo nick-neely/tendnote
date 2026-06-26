@@ -91,7 +91,6 @@ export function createPersonContextSnapshot(
         ownerUserId: input.ownerUserId,
         personId: input.personId,
       });
-      const existing = await store.getContextSnapshot(input);
 
       // The returned context is grounding for consumers. When the user directly
       // asked, it is re-read live so restricted records can surface through
@@ -106,33 +105,43 @@ export function createPersonContextSnapshot(
         : proactiveContext;
 
       if (!proactiveContext.person) {
-        return { status: "fallback", snapshot: existing, context };
+        return { status: "fallback", snapshot: null, context };
       }
 
-      // Follow-ups join the pack as compact relationship context: active
-      // reminders plus recently completed ones. Their lifecycle stays owned by
-      // follow-up records — the snapshot only reflects their current state (#16).
-      const followups = selectSnapshotFollowups(
-        await store.listFollowupsForPerson({
-          ownerUserId: input.ownerUserId,
-          personId: input.personId,
-        }),
-      );
-
-      const pack: SnapshotInputPack = {
-        person: proactiveContext.person,
-        approvedMemories: proactiveContext.approvedMemories,
-        sourceRecords: proactiveContext.sourceRecords,
-        suggestedMemories: proactiveContext.suggestedMemories,
-        followups,
-      };
-      const fingerprint = computeSnapshotFingerprint(pack);
-
-      if (existing && isSnapshotFresh(existing, fingerprint)) {
-        return { status: "fresh", snapshot: existing, context };
-      }
-
+      // Relational `context` above is the must-have result. Everything below is
+      // the best-effort snapshot cache: reading the prior row, gathering
+      // follow-ups, generating prose, and persisting are all wrapped so ANY
+      // failure — including a missing snapshots table/column on an unmigrated
+      // dev DB — degrades to the relational context instead of failing the whole
+      // read. A cache failure must never block assistant or profile retrieval
+      // (ADR 0009, PRD #11).
+      let existing: ContextSnapshot | null = null;
       try {
+        existing = await store.getContextSnapshot(input);
+
+        // Follow-ups join the pack as compact relationship context: active
+        // reminders plus recently completed ones. Their lifecycle stays owned by
+        // follow-up records — the snapshot only reflects their current state (#16).
+        const followups = selectSnapshotFollowups(
+          await store.listFollowupsForPerson({
+            ownerUserId: input.ownerUserId,
+            personId: input.personId,
+          }),
+        );
+
+        const pack: SnapshotInputPack = {
+          person: proactiveContext.person,
+          approvedMemories: proactiveContext.approvedMemories,
+          sourceRecords: proactiveContext.sourceRecords,
+          suggestedMemories: proactiveContext.suggestedMemories,
+          followups,
+        };
+        const fingerprint = computeSnapshotFingerprint(pack);
+
+        if (existing && isSnapshotFresh(existing, fingerprint)) {
+          return { status: "fresh", snapshot: existing, context };
+        }
+
         const prose = await generate(pack);
         const snapshot = await store.upsertContextSnapshot({
           ownerUserId: input.ownerUserId,
@@ -154,7 +163,8 @@ export function createPersonContextSnapshot(
 
         return { status: "rebuilt", snapshot, context };
       } catch (error) {
-        const failureReason = error instanceof Error ? error.message : "snapshot generation failed";
+        const failureReason =
+          error instanceof Error ? error.message : "snapshot read or generation failed";
         const failed = await recordFailure(store, existing, input, failureReason);
 
         return { status: "fallback", snapshot: failed ?? existing, context };

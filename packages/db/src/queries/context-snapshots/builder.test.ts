@@ -250,6 +250,33 @@ describe("snapshot freshness and fail-open rebuild", () => {
     );
   });
 
+  it("fails open to Phase 1A context when the snapshot store read throws (unmigrated table)", async () => {
+    const { store, person, seedMemory } = await setup();
+    await seedMemory("Mark is vegetarian.", "approved");
+
+    // Simulate a snapshots table/column that does not exist yet (dev DB behind
+    // on migrations): the cache read throws before any generation happens.
+    const broken = createPersonContextSnapshot({
+      ...store,
+      getContextSnapshot: async () => {
+        throw new Error('relation "person_context_snapshots" does not exist');
+      },
+    });
+
+    const result = await broken.getPersonContextSnapshot({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+
+    // The tool still answers from relational context instead of throwing.
+    expect(result.status).toBe("fallback");
+    expect(result.snapshot).toBeNull();
+    expect(result.context.person?.id).toBe(person.id);
+    expect(result.context.approvedMemories.map((memory) => memory.content)).toContain(
+      "Mark is vegetarian.",
+    );
+  });
+
   it("records failure metadata while preserving the prior snapshot on a failed rebuild", async () => {
     const { store, person, seedMemory } = await setup();
     await seedMemory("Mark is vegetarian.", "approved");
