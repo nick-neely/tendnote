@@ -53,7 +53,7 @@ export function createInMemoryRelationshipContextSearchStore(
             label: person.displayName,
             snippet: snippet(person.profileBlurb ?? person.displayName),
             matchedFields,
-            rank: scoreMatch(matchedFields),
+            rank: scoreMatch(matchedFields) + scoreRecency(person.updatedAt),
             trustLevel: "identity_reference",
             sensitivity: "normal",
           });
@@ -81,7 +81,10 @@ export function createInMemoryRelationshipContextSearchStore(
             label: person?.displayName ?? "Memory",
             snippet: snippet(memory.content),
             matchedFields: ["content"],
-            rank: scoreText(memory.content, query) + memory.importance * 0.01,
+            rank:
+              scoreText(memory.content, query) +
+              memory.importance * 0.01 +
+              scoreRecency(memory.updatedAt),
             trustLevel: "confirmed_fact",
             sensitivity: memory.sensitivity,
           });
@@ -117,7 +120,10 @@ export function createInMemoryRelationshipContextSearchStore(
             label: relatedPerson?.displayName ?? "Logged note",
             snippet: snippet(sourceRecord.content),
             matchedFields: ["content"],
-            rank: scoreText(sourceRecord.content, query) + sourceRecord.importance * 0.01,
+            rank:
+              scoreText(sourceRecord.content, query) +
+              sourceRecord.importance * 0.01 +
+              scoreRecency(sourceRecord.updatedAt),
             trustLevel: "logged_context",
             sensitivity: sourceRecord.sensitivity,
           });
@@ -159,6 +165,10 @@ function matchesText(value: string, query: string) {
     .map((term) => term.trim())
     .filter(Boolean)
     .every((term) => lower.includes(term));
+}
+
+function scoreRecency(date: Date) {
+  return date.getTime() / 1_000_000_000_000_000;
 }
 
 function compareResults(left: ExactRecallResult, right: ExactRecallResult) {

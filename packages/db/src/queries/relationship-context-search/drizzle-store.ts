@@ -45,6 +45,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           (
             ts_rank_cd(p.search_vector, search_query.query)
             + case when p.display_name ilike ${`%${input.query}%`} then 0.2 else 0 end
+            + (extract(epoch from p.updated_at)::float8 / 1000000000000)
           )::float8 as rank,
           'identity_reference'::text as trust_level,
           'normal'::text as sensitivity
@@ -66,6 +67,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           (
             ts_rank_cd(m.search_vector, search_query.query)
             + (m.importance::float8 * 0.01)
+            + (extract(epoch from m.updated_at)::float8 / 1000000000000)
           )::float8 as rank,
           'confirmed_fact'::text as trust_level,
           m.sensitivity::text as sensitivity
@@ -92,6 +94,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           (
             ts_rank_cd(sr.search_vector, search_query.query)
             + (sr.importance::float8 * 0.01)
+            + (extract(epoch from sr.updated_at)::float8 / 1000000000000)
           )::float8 as rank,
           'logged_context'::text as trust_level,
           sr.sensitivity::text as sensitivity

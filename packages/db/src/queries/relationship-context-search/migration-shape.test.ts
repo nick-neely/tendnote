@@ -47,6 +47,7 @@ describe("exact recall migration shape", () => {
     expect(drizzleStore).toContain("m.sensitivity <> 'restricted'");
     expect(drizzleStore).toContain("ts_rank_cd(m.search_vector, search_query.query)");
     expect(drizzleStore).toContain("m.importance::float8 * 0.01");
+    expect(drizzleStore).toContain("extract(epoch from m.updated_at)");
   });
 
   it("keeps production source-record search policy in the SQL query", () => {
@@ -56,6 +57,15 @@ describe("exact recall migration shape", () => {
     expect(drizzleStore).toContain("p.owner_user_id = ");
     expect(drizzleStore).toContain("ts_rank_cd(sr.search_vector, search_query.query)");
     expect(drizzleStore).toContain("sr.importance::float8 * 0.01");
+    expect(drizzleStore).toContain("extract(epoch from sr.updated_at)");
     expect(drizzleStore).not.toContain("raw_content @@");
+  });
+
+  it("keeps mixed SQL ranking and limit global across the union", () => {
+    expect(drizzleStore).toContain("union all");
+    expect(drizzleStore).toContain(") mixed_results");
+    expect(drizzleStore).toContain("order by rank desc, label asc, record_id asc");
+    expect(drizzleStore).toContain("limit ");
+    expect(drizzleStore).toContain("extract(epoch from p.updated_at)");
   });
 });
