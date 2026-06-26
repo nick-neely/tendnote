@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  customType,
   index,
   integer,
   jsonb,
@@ -24,6 +25,12 @@ import {
 } from "./enums";
 import { people } from "./people";
 
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
+
 export const sourceRecords = pgTable(
   "source_records",
   {
@@ -34,6 +41,9 @@ export const sourceRecords = pgTable(
     sourceType: sourceType("source_type").notNull().default("manual"),
     content: text("content").notNull(),
     rawContent: text("raw_content"),
+    searchVector: tsvector("search_vector")
+      .notNull()
+      .generatedAlwaysAs(sql`to_tsvector('simple', coalesce("content", ''))`),
     retentionPolicy: sourceRecordRetentionPolicy("retention_policy").notNull().default("retain"),
     status: sourceRecordStatus("status").notNull().default("active"),
     confidence: confidence("confidence").notNull().default("medium"),
@@ -49,6 +59,7 @@ export const sourceRecords = pgTable(
   (table) => [
     index("source_records_owner_user_id_idx").on(table.ownerUserId),
     index("source_records_owner_status_idx").on(table.ownerUserId, table.status),
+    index("source_records_search_vector_idx").using("gin", table.searchVector),
   ],
 );
 

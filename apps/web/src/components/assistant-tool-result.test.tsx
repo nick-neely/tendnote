@@ -117,6 +117,31 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("No matching relationship context found");
   });
 
+  it("renders exact recall source-record results as logged context, not confirmed fact", () => {
+    const html = render({
+      kind: "relationship_context_search",
+      results: [
+        {
+          recordKind: "source_record",
+          recordId: "source-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          label: "Mara Lin",
+          snippet: "Logged lunch about backend architecture.",
+          matchedFields: ["content"],
+          trustLevel: "logged_context",
+          sensitivity: "normal",
+        },
+      ],
+    });
+
+    expect(html).toContain("Source record");
+    expect(html).toContain("You noted");
+    expect(html).toContain("Logged context");
+    expect(html).not.toContain("Confirmed fact");
+    expect(html).not.toContain('href="/people/person-1"');
+  });
+
   it("renders an unknown tool result as a quiet generic confirmation", () => {
     const html = render({ kind: "generic", toolName: "some_future_tool" });
 

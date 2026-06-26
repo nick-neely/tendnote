@@ -80,6 +80,41 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           and m.status = 'approved'
           and (${input.directlyRequested}::boolean or m.sensitivity <> 'restricted')
           and m.search_vector @@ search_query.query
+        union all
+        select
+          'source_record'::text as record_kind,
+          sr.id::text as record_id,
+          related_person.id::text as related_person_id,
+          related_person.display_name as related_person_display_name,
+          coalesce(related_person.display_name, 'Logged note') as label,
+          ts_headline('simple', sr.content, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2') as snippet,
+          array['content']::text[] as matched_fields,
+          (
+            ts_rank_cd(sr.search_vector, search_query.query)
+            + (sr.importance::float8 * 0.01)
+          )::float8 as rank,
+          'logged_context'::text as trust_level,
+          sr.sensitivity::text as sensitivity
+        from source_records sr
+        left join lateral (
+          select p.id, p.display_name
+          from source_record_people srp
+          inner join people p on p.id = srp.person_id
+          where
+            srp.source_record_id = sr.id
+            and p.owner_user_id = ${input.ownerUserId}
+            and ${input.personId ? sql`p.id = ${input.personId}` : sql`true`}
+          order by case when srp.role = 'primary' then 0 else 1 end, p.display_name asc, p.id asc
+          limit 1
+        ) related_person on true
+        cross join search_query
+        where
+          sr.owner_user_id = ${input.ownerUserId}
+          and ${kindFilter(input.recordKinds, "source_record")}
+          and ${input.personId ? sql`related_person.id = ${input.personId}` : sql`true`}
+          and sr.status = 'active'
+          and (${input.directlyRequested}::boolean or sr.sensitivity <> 'restricted')
+          and sr.search_vector @@ search_query.query
         ) mixed_results
         order by rank desc, label asc, record_id asc
         limit ${input.limit}

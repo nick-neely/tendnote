@@ -1,9 +1,17 @@
-import type { ExactRecallResult, Memory, Person } from "@tendnote/domain";
+import type {
+  ExactRecallResult,
+  Memory,
+  Person,
+  SourceRecord,
+  SourceRecordPerson,
+} from "@tendnote/domain";
 import type { RelationshipContextSearchStore } from "./types";
 
 export type InMemoryRelationshipContextSearchSeed = {
   people?: Person[];
   memories?: Memory[];
+  sourceRecords?: SourceRecord[];
+  sourceRecordPeople?: SourceRecordPerson[];
 };
 
 export function createInMemoryRelationshipContextSearchStore(
@@ -11,10 +19,12 @@ export function createInMemoryRelationshipContextSearchStore(
 ): RelationshipContextSearchStore {
   const people = seed.people ?? [];
   const memories = seed.memories ?? [];
+  const sourceRecords = seed.sourceRecords ?? [];
+  const sourceRecordPeople = seed.sourceRecordPeople ?? [];
 
   return {
     async searchRelationshipContext(input) {
-      const kinds = new Set(input.recordKinds ?? ["person", "memory"]);
+      const kinds = new Set(input.recordKinds ?? ["person", "memory", "source_record"]);
       const query = input.query.toLowerCase();
       const results: ExactRecallResult[] = [];
 
@@ -74,6 +84,42 @@ export function createInMemoryRelationshipContextSearchStore(
             rank: scoreText(memory.content, query) + memory.importance * 0.01,
             trustLevel: "confirmed_fact",
             sensitivity: memory.sensitivity,
+          });
+        }
+      }
+
+      if (kinds.has("source_record")) {
+        for (const sourceRecord of sourceRecords) {
+          if (sourceRecord.ownerUserId !== input.ownerUserId) continue;
+          if (sourceRecord.status !== "active") continue;
+          if (sourceRecord.sensitivity === "restricted" && !input.directlyRequested) continue;
+          if (!matchesText(sourceRecord.content, query)) continue;
+
+          const relatedPeople = sourceRecordPeople
+            .filter((link) => link.sourceRecordId === sourceRecord.id)
+            .map((link) =>
+              people.find(
+                (candidate) =>
+                  candidate.id === link.personId && candidate.ownerUserId === input.ownerUserId,
+              ),
+            )
+            .filter((candidate): candidate is Person => Boolean(candidate));
+          const relatedPerson = input.personId
+            ? relatedPeople.find((candidate) => candidate.id === input.personId)
+            : relatedPeople[0];
+          if (input.personId && !relatedPerson) continue;
+
+          results.push({
+            recordKind: "source_record",
+            recordId: sourceRecord.id,
+            relatedPersonId: relatedPerson?.id ?? null,
+            relatedPersonDisplayName: relatedPerson?.displayName ?? null,
+            label: relatedPerson?.displayName ?? "Logged note",
+            snippet: snippet(sourceRecord.content),
+            matchedFields: ["content"],
+            rank: scoreText(sourceRecord.content, query) + sourceRecord.importance * 0.01,
+            trustLevel: "logged_context",
+            sensitivity: sourceRecord.sensitivity,
           });
         }
       }
