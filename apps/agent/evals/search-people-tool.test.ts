@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { searchPeople } = vi.hoisted(() => ({ searchPeople: vi.fn() }));
 
@@ -7,6 +7,10 @@ vi.mock("@tendnote/db/queries/people", () => ({ searchPeople }));
 const { default: tool } = await import("../agent/tools/search_people");
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
+
+beforeEach(() => {
+  searchPeople.mockReset();
+});
 
 function person(id: string, displayName: string) {
   return {
@@ -46,5 +50,36 @@ describe("search_people tool (disambiguation signal)", () => {
 
     expect(result.people).toEqual([]);
     expect(result.requiresDisambiguation).toBe(false);
+  });
+
+  it("retries a name query without a guessed relationshipType when the filtered search is empty", async () => {
+    // The model guessed "other" for a friend named Alex; the typed search finds
+    // nothing, so the tool must retry by name alone and still surface the person.
+    searchPeople.mockResolvedValueOnce([]).mockResolvedValueOnce([person("p1", "Alex Morgan")]);
+
+    const result = await tool.execute({ query: "Alex", relationshipType: "other", limit: 10 }, ctx);
+
+    expect(searchPeople).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ query: "Alex", relationshipType: "other", ownerUserId: "user-1" }),
+    );
+    expect(searchPeople).toHaveBeenNthCalledWith(2, {
+      query: "Alex",
+      limit: 10,
+      ownerUserId: "user-1",
+    });
+    expect(searchPeople).toHaveBeenCalledTimes(2);
+    expect(result.people).toEqual([
+      expect.objectContaining({ id: "p1", displayName: "Alex Morgan" }),
+    ]);
+  });
+
+  it("does not retry when a name query has no relationshipType filter", async () => {
+    searchPeople.mockResolvedValue([]);
+
+    const result = await tool.execute({ query: "Nobody", limit: 10 }, ctx);
+
+    expect(searchPeople).toHaveBeenCalledTimes(1);
+    expect(result.people).toEqual([]);
   });
 });
