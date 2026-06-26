@@ -3,7 +3,7 @@
 import { useEveAgent } from "eve/react";
 import { LockIcon, NotebookPenIcon } from "lucide-react";
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputBody,
@@ -131,7 +131,9 @@ export function AssistantPanel({
                   <div className="flex flex-col gap-2.5" key={message.id}>
                     {text ? (
                       <Message from="assistant">
-                        <MessageContent>{text}</MessageContent>
+                        <MessageContent>
+                          <MessageResponse>{text}</MessageResponse>
+                        </MessageContent>
                       </Message>
                     ) : null}
                     {views.map(({ toolCallId, view }) => (
