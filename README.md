@@ -49,7 +49,7 @@ pnpm docker:up
 pnpm db:migrate
 ```
 
-Semantic embeddings run through the same job lifecycle in every environment. Local development processes embedding jobs inline by default so newly captured notes and approved memories become searchable immediately. If `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` is available, embeddings use `TENDNOTE_EMBEDDING_MODEL` (default `openai/text-embedding-3-small`) through the AI SDK. Without gateway credentials, local development falls back to deterministic fake vectors so capture/search still works offline. Set `TENDNOTE_EMBEDDING_RUNTIME=enqueue_only` to leave jobs for a worker instead.
+Semantic embeddings run through the same job lifecycle in every environment. Local development processes embedding jobs inline by default so newly captured notes and approved memories become searchable immediately. If the current server process has `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN`, embeddings use `TENDNOTE_EMBEDDING_MODEL` (default `openai/text-embedding-3-small`) through the AI SDK. Without gateway credentials, local development falls back to deterministic fake vectors so capture/search still works offline. Set `TENDNOTE_EMBEDDING_RUNTIME=enqueue_only` to leave jobs for a worker instead.
 
 ### Environment variables
 
@@ -69,7 +69,10 @@ browser streams turns with no Eve URL to configure. The root `.env` is read
 **only** by `docker compose`; Next.js and `eve dev` do not read it. Most app vars
 have working local defaults (Postgres, Redis, and a dev auth secret), so
 `AI_GATEWAY_API_KEY` (in `apps/agent/.env.local`) is the only one a typical local
-session needs — and only when running the conversational assistant. Each
+session needs — and only when running the conversational assistant. The web app's
+AI Gateway vars are server-only and optional; they are useful only when web
+server actions/pages should generate live snapshots or real embeddings instead
+of using local fallbacks or enqueueing work for another process. Each
 `.env.example` documents the rest. `.env*` files are gitignored (except the
 `.env.example` templates), so your keys are never committed.
 
