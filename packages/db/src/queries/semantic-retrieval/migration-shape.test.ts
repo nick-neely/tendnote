@@ -6,6 +6,7 @@ const migration = readFileSync(
   join(import.meta.dirname, "../../../migrations/0006_overconfident_squadron_supreme.sql"),
   "utf8",
 );
+const drizzleStore = readFileSync(join(import.meta.dirname, "drizzle-store.ts"), "utf8");
 
 describe("semantic retrieval migration shape", () => {
   it("adds pgvector-backed relationship-context embedding storage", () => {
@@ -46,5 +47,15 @@ describe("semantic retrieval migration shape", () => {
     expect(migration).toContain(
       'CREATE INDEX "relationship_context_embedding_jobs_status_run_after_idx"',
     );
+  });
+
+  it("keeps production mixed semantic retrieval policy in the SQL query", () => {
+    expect(drizzleStore).toContain("union all");
+    expect(drizzleStore).toContain("e.trust_level = 'confirmed_fact'");
+    expect(drizzleStore).toContain("e.trust_level = 'logged_context'");
+    expect(drizzleStore).toContain("from source_record_people filter_srp");
+    expect(drizzleStore).toContain("coalesce(filtered_person.display_name");
+    expect(drizzleStore).toContain("round(similarity::numeric, 4) desc");
+    expect(drizzleStore).toContain("sr.sensitivity <> 'restricted'");
   });
 });

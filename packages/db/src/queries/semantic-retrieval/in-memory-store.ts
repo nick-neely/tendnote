@@ -3,8 +3,10 @@ import {
   claimableEmbeddingJobStatuses,
   createEmbeddingJobSchema,
   createRelationshipContextEmbeddingSchema,
+  decideSourceRecordEmbedding,
   type EmbeddingJob,
   projectApprovedMemoryEmbeddedText,
+  projectSourceRecordEmbeddedText,
   type RelationshipContextEmbedding,
 } from "@tendnote/domain";
 import { createInMemoryMemoryStore } from "../memories/in-memory-store";
@@ -140,17 +142,98 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
       return embeddings.get(embeddingKey(input)) ?? null;
     },
     async searchSemanticContext(input) {
-      const kinds = new Set(input.recordKinds ?? ["memory"]);
+      const kinds = new Set(input.recordKinds ?? ["memory", "source_record"]);
       const results = await Promise.all(
         [...embeddings.values()].map(async (embedding) => {
           if (embedding.ownerUserId !== input.ownerUserId) return null;
           if (!kinds.has(embedding.recordKind)) return null;
-          if (embedding.recordKind !== "memory") return null;
           if (embedding.embeddingModel !== input.embeddingModel) return null;
           if (embedding.embeddingVersion !== input.embeddingVersion) return null;
           if (embedding.embeddingDimensions !== input.queryEmbedding.length) return null;
-          if (input.personId && embedding.personId !== input.personId) return null;
           if (embedding.sensitivity === "restricted" && !input.directlyRequested) return null;
+
+          if (embedding.recordKind === "source_record") {
+            if (embedding.trustLevel !== "logged_context") return null;
+
+            const sourceRecord = await base.getSourceRecord({
+              ownerUserId: input.ownerUserId,
+              sourceRecordId: embedding.recordId,
+            });
+
+            if (!sourceRecord) return null;
+
+            const links = await base.listSourceRecordPeople({
+              sourceRecordId: sourceRecord.id,
+            });
+            const people = (
+              await Promise.all(
+                links.map((link) =>
+                  base.getPerson({ ownerUserId: input.ownerUserId, personId: link.personId }),
+                ),
+              )
+            )
+              .filter((person): person is NonNullable<typeof person> => Boolean(person))
+              .map((person) => ({ id: person.id, displayName: person.displayName }));
+            if (input.personId && !people.some((person) => person.id === input.personId)) {
+              return null;
+            }
+            const unresolvedMentions = await base.listUnresolvedMentions({
+              sourceRecordId: sourceRecord.id,
+            });
+            const unresolvedMentionCount = unresolvedMentions.filter(
+              (mention) => mention.status === "unresolved",
+            ).length;
+            const decision = decideSourceRecordEmbedding(
+              sourceRecord,
+              people,
+              unresolvedMentionCount,
+            );
+
+            if (decision.action === "skip") return null;
+            if (sourceRecord.sensitivity !== embedding.sensitivity) return null;
+            if (projectSourceRecordEmbeddedText(sourceRecord, people) !== embedding.embeddedText) {
+              return null;
+            }
+            if (sourceRecord.updatedAt.getTime() !== embedding.sourceUpdatedAt.getTime()) {
+              return null;
+            }
+
+            const similarity = cosineSimilarity(input.queryEmbedding, embedding.embedding);
+
+            if (similarity < input.minimumSimilarity) return null;
+
+            const resultPersonId = input.personId ?? embedding.personId;
+            const person = resultPersonId
+              ? await base.getPerson({
+                  ownerUserId: input.ownerUserId,
+                  personId: resultPersonId,
+                })
+              : null;
+
+            return {
+              recordKind: "source_record" as const,
+              recordId: embedding.recordId,
+              relatedPersonId: resultPersonId,
+              relatedPersonDisplayName: person?.displayName ?? null,
+              snippet: embedding.embeddedText,
+              similarity,
+              trustLevel: embedding.trustLevel,
+              sensitivity: embedding.sensitivity,
+              sourceRefs: [{ kind: "source_record" as const, id: embedding.recordId }],
+              routing: {
+                personId: resultPersonId,
+                recordKind: "source_record" as const,
+                recordId: embedding.recordId,
+              },
+              tieBreakers: {
+                importance: sourceRecord.importance,
+                updatedAt: sourceRecord.updatedAt,
+              },
+            };
+          }
+
+          if (input.personId && embedding.personId !== input.personId) return null;
+          if (embedding.trustLevel !== "confirmed_fact") return null;
 
           const memory = await base.getMemory({
             ownerUserId: input.ownerUserId,
@@ -235,12 +318,17 @@ type InMemorySemanticResult = Awaited<
 };
 
 function compareSemanticResults(left: InMemorySemanticResult, right: InMemorySemanticResult) {
-  const similarityDelta = right.similarity - left.similarity;
-  if (Math.abs(similarityDelta) > 0.0001) return similarityDelta;
+  const similarityBucketDelta =
+    similarityBucket(right.similarity) - similarityBucket(left.similarity);
+  if (similarityBucketDelta !== 0) return similarityBucketDelta;
 
   return (
     right.tieBreakers.importance - left.tieBreakers.importance ||
     right.tieBreakers.updatedAt.getTime() - left.tieBreakers.updatedAt.getTime() ||
     left.recordId.localeCompare(right.recordId)
   );
+}
+
+function similarityBucket(similarity: number) {
+  return Math.round(similarity * 10_000);
 }
