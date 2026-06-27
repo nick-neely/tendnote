@@ -18,6 +18,7 @@ describe("Phase 1A assistant tools are thin wrappers over shared functions", () 
     create_person: "createPerson",
     search_people: "searchPeople",
     get_person_context: "getPersonContext",
+    search_semantic_context: "searchSemanticContext",
     get_suggested_memory_review: "getSuggestedMemoryReview",
     list_suggested_memory_reviews: "listSuggestedMemoryReviews",
     approve_suggested_memory: "saveSuggestedMemory",
@@ -72,6 +73,22 @@ describe("instructions steer capture vs save vs review", () => {
     expect(instructions).toMatch(/capture_memory/);
     expect(instructions).toMatch(/disambiguate/i);
     expect(instructions).toMatch(/[Nn]ever invent a durable fact/);
+  });
+
+  it("distinguishes exact recall, semantic recall, identity lookup, and person context", () => {
+    expect(instructions).toMatch(/search_relationship_context/);
+    expect(instructions).toMatch(/search_semantic_context/);
+    expect(instructions).toMatch(/search_people/);
+    expect(instructions).toMatch(/get_person_context/);
+    expect(instructions).toMatch(/exact stored-context recall/i);
+    expect(instructions).toMatch(/fuzzy stored-context recall/i);
+    expect(instructions).toMatch(/meaning rather than exact wording/i);
+  });
+
+  it("does not use semantic retrieval for proactive agenda ranking in Phase 1D", () => {
+    expect(instructions).toMatch(/Do not use semantic retrieval/i);
+    expect(instructions).toMatch(/who should I check in with/i);
+    expect(instructions).toMatch(/agenda ranking in Phase 1D/i);
   });
 
   it("names the review tools and frames suggestions as tentative until approved", () => {

@@ -250,6 +250,46 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     expect(JSON.stringify(view)).not.toContain("Do not render this");
   });
 
+  it("renders semantic recall results as compact grounded references", () => {
+    const view = toAssistantToolView({
+      toolName: "search_semantic_context",
+      output: {
+        results: [
+          {
+            recordKind: "source_record",
+            recordId: "source-1",
+            relatedPersonId: "person-1",
+            relatedPersonDisplayName: "Mara Lin",
+            snippet: "Mara mentioned a possible career change.",
+            similarity: 0.89,
+            trustLevel: "logged_context",
+            sensitivity: "sensitive",
+            sourceRefs: [{ kind: "source_record", id: "source-1" }],
+            routing: { personId: "person-1", recordKind: "source_record", recordId: "source-1" },
+            generatedAnswer: "Do not render this.",
+          },
+        ],
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "semantic_context_search",
+      results: [
+        {
+          recordKind: "source_record",
+          recordId: "source-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          snippet: "Mara mentioned a possible career change.",
+          similarity: 0.89,
+          trustLevel: "logged_context",
+          sensitivity: "sensitive",
+        },
+      ],
+    });
+    expect(JSON.stringify(view)).not.toContain("generatedAnswer");
+  });
+
   it("degrades an unknown tool to a generic view", () => {
     const view = toAssistantToolView({ toolName: "some_future_tool", output: { whatever: true } });
 
@@ -294,6 +334,23 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         ],
       }),
     ).toBe("search:person-1");
+    expect(
+      assistantToolViewKey({
+        kind: "semantic_context_search",
+        results: [
+          {
+            recordKind: "memory",
+            recordId: "memory-1",
+            relatedPersonId: "person-1",
+            relatedPersonDisplayName: "Mara Lin",
+            snippet: "x",
+            similarity: 0.8,
+            trustLevel: "confirmed_fact",
+            sensitivity: "normal",
+          },
+        ],
+      }),
+    ).toBe("semantic-search:memory-1");
   });
 });
 
@@ -360,12 +417,31 @@ describe("toolViewTier (how much weight a result earns)", () => {
       "disclosure",
     );
     expect(toolViewTier({ kind: "relationship_context_search", results: [] })).toBe("line");
+    expect(
+      toolViewTier({
+        kind: "semantic_context_search",
+        results: [
+          {
+            recordKind: "memory",
+            recordId: "m1",
+            relatedPersonId: null,
+            relatedPersonDisplayName: null,
+            snippet: "x",
+            similarity: 0.8,
+            trustLevel: "confirmed_fact",
+            sensitivity: "normal",
+          },
+        ],
+      }),
+    ).toBe("disclosure");
+    expect(toolViewTier({ kind: "semantic_context_search", results: [] })).toBe("line");
   });
 });
 
 describe("activeToolLabel (in-flight tool → working copy)", () => {
   it("maps known tools to present-continuous labels", () => {
     expect(activeToolLabel("search_relationship_context")).toBe("Searching your notebook…");
+    expect(activeToolLabel("search_semantic_context")).toBe("Searching by meaning…");
     expect(activeToolLabel("capture_memory")).toBe("Saving to memory…");
   });
 

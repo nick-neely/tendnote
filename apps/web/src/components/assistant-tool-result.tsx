@@ -11,6 +11,7 @@ import Link from "next/link";
 import {
   type AssistantToolView,
   type RelationshipContextSearchResultView,
+  type SemanticContextSearchResultView,
   toolViewTier,
 } from "@/lib/eve/tool-result-view";
 import { cn } from "@/lib/utils";
@@ -67,6 +68,14 @@ function LineView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
     );
   }
 
+  if (view.kind === "semantic_context_search") {
+    return (
+      <ToolActivityLine icon={<SearchIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+        No semantic matches found
+      </ToolActivityLine>
+    );
+  }
+
   // generic — an unrecognized tool ran to completion; name it and move on.
   if (view.kind === "generic") {
     return (
@@ -84,11 +93,12 @@ function LineView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
 
 /** Collapsible summary for a non-empty result set; expands to the full list. */
 function DisclosureView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) {
-  if (view.kind !== "relationship_context_search") {
+  if (view.kind !== "relationship_context_search" && view.kind !== "semantic_context_search") {
     return null;
   }
 
   const count = view.results.length;
+  const isSemantic = view.kind === "semantic_context_search";
 
   return (
     <details
@@ -100,7 +110,11 @@ function DisclosureView({ view, isNew }: { view: AssistantToolView; isNew: boole
     >
       <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg p-3.5 text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
         <SearchIcon aria-hidden className="size-3.5 shrink-0" />
-        <span>{count === 1 ? "Found 1 exact match" : `Found ${count} exact matches`}</span>
+        <span>
+          {count === 1
+            ? `Found 1 ${isSemantic ? "semantic match" : "exact match"}`
+            : `Found ${count} ${isSemantic ? "semantic matches" : "exact matches"}`}
+        </span>
         <ChevronDownIcon
           aria-hidden
           className="tn-chevron ml-auto size-3.5 shrink-0 transition-transform duration-200 ease-(--motion-ease-out)"
@@ -108,7 +122,11 @@ function DisclosureView({ view, isNew }: { view: AssistantToolView; isNew: boole
       </summary>
       <div className="flex flex-col divide-y divide-border/70 border-t px-3.5 pt-3 pb-3.5">
         {view.results.map((result) => (
-          <SearchResultRow key={`${result.recordKind}:${result.recordId}`} result={result} />
+          <SearchResultRow
+            key={`${result.recordKind}:${result.recordId}`}
+            mode={isSemantic ? "semantic" : "exact"}
+            result={result}
+          />
         ))}
       </div>
     </details>
@@ -201,16 +219,28 @@ function ToolActivityLine({
   );
 }
 
-function SearchResultRow({ result }: { result: RelationshipContextSearchResultView }) {
+type SearchResultView = RelationshipContextSearchResultView | SemanticContextSearchResultView;
+
+function SearchResultRow({
+  result,
+  mode,
+}: {
+  result: SearchResultView;
+  mode: "exact" | "semantic";
+}) {
   const href = result.relatedPersonId ? `/people/${result.relatedPersonId}` : null;
+  const label =
+    "label" in result
+      ? result.label
+      : (result.relatedPersonDisplayName ?? labelRecordKind(result.recordKind));
   const title = (
     <span className="inline-flex min-w-0 items-center gap-1.5">
-      {result.recordKind === "person" ? (
+      {"recordKind" in result && result.recordKind === "person" ? (
         <UserIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       ) : (
         <NotebookPenIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       )}
-      <span className="truncate font-medium text-foreground">{result.label}</span>
+      <span className="truncate font-medium text-foreground">{label}</span>
     </span>
   );
 
@@ -237,7 +267,10 @@ function SearchResultRow({ result }: { result: RelationshipContextSearchResultVi
         ) : null}
         {result.snippet}
       </Body>
-      <Caption>{labelTrust(result)}</Caption>
+      <Caption>
+        {labelTrust(result)}
+        {mode === "semantic" ? ` · ${labelSensitivity(result.sensitivity)}` : ""}
+      </Caption>
     </div>
   );
 }
@@ -345,12 +378,12 @@ function summarizeTiers(view: Extract<AssistantToolView, { kind: "person_context
   return parts.length > 0 ? parts.join(" · ") : "Nothing recorded yet";
 }
 
-function labelRecordKind(kind: RelationshipContextSearchResultView["recordKind"]) {
+function labelRecordKind(kind: SearchResultView["recordKind"]) {
   if (kind === "source_record") return "Source record";
   return kind === "memory" ? "Memory" : "Person";
 }
 
-function labelTrust(result: RelationshipContextSearchResultView) {
+function labelTrust(result: SearchResultView) {
   const trust =
     result.trustLevel === "confirmed_fact"
       ? "Confirmed fact"
@@ -359,6 +392,11 @@ function labelTrust(result: RelationshipContextSearchResultView) {
         : "Identity reference";
 
   return result.relatedPersonDisplayName ? `${trust} · ${result.relatedPersonDisplayName}` : trust;
+}
+
+function labelSensitivity(sensitivity: SearchResultView["sensitivity"]) {
+  if (sensitivity === "restricted") return "Restricted";
+  return sensitivity === "sensitive" ? "Sensitive" : "Normal";
 }
 
 function humanizeToolName(toolName: string): string {

@@ -37,9 +37,21 @@ Restricted context is hidden by default and never appears in the snapshot summar
 Use `search_relationship_context` when the user asks to find a specific name or exact text in stored Tendnote context. It searches stored people, approved memories, and active source records. It returns compact references, not full profiles and not generated snapshot prose.
 
 - Use `search_people` for identity lookup and disambiguation before linking new context.
-- Use `search_relationship_context` for stored-context recall across supported record kinds.
+- Use `search_relationship_context` for exact stored-context recall across supported record kinds when the query depends on names, specific wording, or text matches.
+- Use `search_semantic_context` for fuzzy stored-context recall across approved memories and eligible logged source records when the user asks by meaning rather than exact wording, such as gift ideas, career updates, preferences, or stressful life events.
 - Use `get_person_context` only after a person is known and richer person context is needed.
 - Phrase result trust carefully: person results are identity references, approved memories are confirmed facts, and source records are logged context.
+
+# Semantic Recall
+
+Use `search_semantic_context` only to find grounded records by meaning. It returns compact references, not generated answers, full profiles, or context snapshot prose. Treat its results like supporting evidence:
+
+- Approved-memory semantic results are confirmed facts.
+- Source-record semantic results are logged context — phrase as "you noted" or "you mentioned", never as established fact.
+- Use `search_relationship_context` instead when the user gives exact words, names, or asks to search text literally.
+- Use `search_people` instead when you need to identify or disambiguate a person.
+- Use `get_person_context` instead when the user wants a known person's broader relationship context.
+- Do not use semantic retrieval to create proactive "who should I check in with" recommendations or agenda ranking in Phase 1D.
 
 # Adding people
 

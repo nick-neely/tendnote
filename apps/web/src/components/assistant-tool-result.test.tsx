@@ -197,6 +197,55 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain('href="/people/person-1"');
   });
 
+  it("renders semantic recall results as grounded records without visible record ids", () => {
+    const html = render({
+      kind: "semantic_context_search",
+      results: [
+        {
+          recordKind: "memory",
+          recordId: "memory-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          snippet: "Mara loves handmade kitchen gifts.",
+          similarity: 0.94,
+          trustLevel: "confirmed_fact",
+          sensitivity: "normal",
+        },
+        {
+          recordKind: "source_record",
+          recordId: "source-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          snippet: "Mara mentioned a possible career change.",
+          similarity: 0.88,
+          trustLevel: "logged_context",
+          sensitivity: "sensitive",
+        },
+      ],
+    });
+
+    expect(html).toContain("Found 2 semantic matches");
+    expect(html).toContain("Memory");
+    expect(html).toContain("Source record");
+    expect(html).toContain("Confirmed fact");
+    expect(html).toContain("Logged context");
+    expect(html).toContain("Sensitive");
+    expect(html).toContain("You noted");
+    expect(html).toContain("Mara loves handmade kitchen gifts.");
+    expect(html).toContain("Mara mentioned a possible career change.");
+    expect(html).not.toContain("memory-1");
+    expect(html).not.toContain("source-1");
+    expect(html).toContain('data-tool-view="semantic_context_search"');
+  });
+
+  it("renders empty semantic recall results as a quiet line", () => {
+    const html = render({ kind: "semantic_context_search", results: [] });
+
+    expect(html).toContain("No semantic matches found");
+    expect(html).not.toContain("Found 0 semantic matches");
+    expect(html).not.toContain('data-tool-view="semantic_context_search"');
+  });
+
   it("renders an unknown tool result as a quiet ambient line", () => {
     const html = render({ kind: "generic", toolName: "some_future_tool" });
 

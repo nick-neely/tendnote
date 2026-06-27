@@ -146,7 +146,7 @@ describe("messageActiveToolViews (in-flight tool calls → working lines)", () =
         {
           type: "dynamic-tool",
           toolCallId: "call-2",
-          toolName: "do_a_new_thing",
+          toolName: "search_semantic_context",
           state: "input-streaming",
           input: {},
         },
@@ -155,7 +155,7 @@ describe("messageActiveToolViews (in-flight tool calls → working lines)", () =
 
     expect(messageActiveToolViews(message)).toEqual([
       { toolCallId: "call-1", label: "Searching people…" },
-      { toolCallId: "call-2", label: "do a new thing…" },
+      { toolCallId: "call-2", label: "Searching by meaning…" },
     ]);
   });
 

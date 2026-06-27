@@ -44,6 +44,10 @@ export type AssistantToolView =
       kind: "relationship_context_search";
       results: RelationshipContextSearchResultView[];
     }
+  | {
+      kind: "semantic_context_search";
+      results: SemanticContextSearchResultView[];
+    }
   | { kind: "generic"; toolName: string };
 
 /** One tentative suggestion the user can approve or dismiss inline. */
@@ -64,6 +68,17 @@ export type RelationshipContextSearchResultView = {
   snippet: string;
   matchedFields: string[];
   trustLevel: "identity_reference" | "confirmed_fact" | "logged_context";
+  sensitivity: "normal" | "sensitive" | "restricted";
+};
+
+export type SemanticContextSearchResultView = {
+  recordKind: "memory" | "source_record";
+  recordId: string;
+  relatedPersonId: string | null;
+  relatedPersonDisplayName: string | null;
+  snippet: string;
+  similarity: number;
+  trustLevel: "confirmed_fact" | "logged_context";
   sensitivity: "normal" | "sensitive" | "restricted";
 };
 
@@ -140,6 +155,21 @@ const relationshipContextSearchOutput = z.object({
   ),
 });
 
+const semanticContextSearchOutput = z.object({
+  results: z.array(
+    z.object({
+      recordKind: z.enum(["memory", "source_record"]),
+      recordId: z.string(),
+      relatedPersonId: z.string().nullish(),
+      relatedPersonDisplayName: z.string().nullish(),
+      snippet: z.string(),
+      similarity: z.number(),
+      trustLevel: z.enum(["confirmed_fact", "logged_context"]),
+      sensitivity: z.enum(["normal", "sensitive", "restricted"]),
+    }),
+  ),
+});
+
 /**
  * Stable React key for a rendered view, derived from the persisted record it
  * references so a list of results keys on real ids rather than array position.
@@ -160,6 +190,8 @@ export function assistantToolViewKey(view: AssistantToolView): string {
       return `suggested-list:${view.reviews.map((review) => review.memoryId).join(":")}`;
     case "relationship_context_search":
       return `search:${view.results.map((result) => result.recordId).join(":")}`;
+    case "semantic_context_search":
+      return `semantic-search:${view.results.map((result) => result.recordId).join(":")}`;
     default:
       return `tool:${view.toolName}`;
   }
@@ -180,6 +212,7 @@ export function toolViewTier(view: AssistantToolView): ToolViewTier {
     case "person_context":
       return "line";
     case "relationship_context_search":
+    case "semantic_context_search":
       return view.results.length > 0 ? "disclosure" : "line";
     default:
       return "card";
@@ -189,6 +222,7 @@ export function toolViewTier(view: AssistantToolView): ToolViewTier {
 const ACTIVE_TOOL_LABELS: Record<string, string> = {
   search_people: "Searching people…",
   search_relationship_context: "Searching your notebook…",
+  search_semantic_context: "Searching by meaning…",
   get_person_context: "Recalling…",
   get_suggested_memory_review: "Checking for suggestions…",
   list_suggested_memory_reviews: "Gathering suggestions to review…",
@@ -274,6 +308,18 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       if (!parsed.success) break;
       return {
         kind: "relationship_context_search",
+        results: parsed.data.results.map((result) => ({
+          ...result,
+          relatedPersonId: result.relatedPersonId ?? null,
+          relatedPersonDisplayName: result.relatedPersonDisplayName ?? null,
+        })),
+      };
+    }
+    case "search_semantic_context": {
+      const parsed = semanticContextSearchOutput.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "semantic_context_search",
         results: parsed.data.results.map((result) => ({
           ...result,
           relatedPersonId: result.relatedPersonId ?? null,
