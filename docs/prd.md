@@ -955,11 +955,16 @@ Deliverables:
 - Prove Phase 1D with deterministic fake-vector tests for policy filtering, enqueueing, staleness, ranking, and Eve tool behavior. Real provider smoke tests may exist behind explicit credentials, but normal verification must not call live embedding APIs.
 - Do not block the initial usable MVP on embeddings. Add this after plain retrieval and snapshots work; it can proceed directly after Phase 1C, but later agenda and brief behavior should still work without embeddings.
 
-##### Phase 1E: Manual Follow-Ups Through Eve
+##### Phase 1E: Follow-Up Lifecycle Through UI And Eve
 
-- Add the manual follow-up lifecycle for person-linked reminders: create, complete, dismiss, snooze, reopen, and edit.
+- Add the follow-up lifecycle for person-linked reminders: create, complete, dismiss, snooze, reopen, archive, and edit.
 - Add Eve tools for follow-up creation and status changes only after shared owner-scoped follow-up mutations and audit logging exist.
-- Treat user-created follow-ups as active reminders and agent-suggested follow-ups as separate reviewable proposals. Do not let Eve silently turn suggestions into active reminders.
+- Treat user-created follow-ups as active `open` reminders and agent-suggested follow-ups as `suggested` reviewable proposals. Do not let Eve silently turn suggestions into active reminders.
+- Let Phase 1E include review-gated suggested follow-up creation and review when the suggestion is grounded in a source record, approved memory, retrieval result, or explicit user conversation context captured as a source record.
+- Trigger suggested follow-up generation only from explicit user or Eve flows such as logging a note, reviewing a source record, approving a memory, viewing a person, or asking whether to follow up. Do not add a background scanner that periodically invents suggested follow-ups in Phase 1E.
+- Require every saved follow-up, including suggested follow-ups, to have a concrete `dueAt`. Eve may propose dates from natural language, but must ask for clarification instead of creating vague "someday" reminders.
+- Defer true recurrence. Keep `cadence` as inert metadata if needed, but do not auto-generate next follow-up instances when a follow-up is completed, snoozed, or edited in Phase 1E.
+- Reuse the existing review surfaces for suggested follow-ups: person ledger, dashboard review rail, and Eve chat cards. Do not add a separate follow-up inbox in Phase 1E.
 - Keep follow-ups personal and private in Phase 1; do not add Calendar-derived follow-ups or shared household reminders yet.
 - Make due follow-ups visible on person profiles and the dashboard so the later brief has real action items to summarize.
 
