@@ -30,6 +30,13 @@ export type AssistantToolView =
     }
   | { kind: "added_person"; personId: string; displayName: string; relationshipType: string | null }
   | {
+      kind: "updated_person";
+      personId: string;
+      displayName: string;
+      relationshipType: string | null;
+      updatedFields: string[];
+    }
+  | {
       kind: "person_context";
       personId: string;
       personName: string | null;
@@ -146,6 +153,16 @@ const personOutput = z.object({
     displayName: z.string(),
     relationshipType: z.string().nullish(),
   }),
+});
+
+const personUpdatedOutput = z.object({
+  updated: z.literal(true),
+  person: z.object({
+    id: z.string(),
+    displayName: z.string(),
+    relationshipType: z.string().nullish(),
+  }),
+  updatedFields: z.array(z.string()),
 });
 
 const personContextOutput = z.object({
@@ -320,6 +337,8 @@ export function assistantToolViewKey(view: AssistantToolView): string {
       return `memory:${view.memoryId}`;
     case "added_person":
       return `person:${view.personId}`;
+    case "updated_person":
+      return `person-updated:${view.personId}:${view.updatedFields.join(",")}`;
     case "person_context":
       return `context:${view.personId}`;
     case "suggested_memory_review":
@@ -392,6 +411,7 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   capture_source_record: "Logging…",
   capture_memory: "Saving to memory…",
   create_person: "Adding to your notebook…",
+  update_person: "Updating the profile…",
 };
 
 /** Present-continuous label for an in-flight tool call (the shimmer line). */
@@ -438,6 +458,17 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
         personId: parsed.data.person.id,
         displayName: parsed.data.person.displayName,
         relationshipType: parsed.data.person.relationshipType ?? null,
+      };
+    }
+    case "update_person": {
+      const parsed = personUpdatedOutput.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "updated_person",
+        personId: parsed.data.person.id,
+        displayName: parsed.data.person.displayName,
+        relationshipType: parsed.data.person.relationshipType ?? null,
+        updatedFields: parsed.data.updatedFields,
       };
     }
     case "get_person_context": {

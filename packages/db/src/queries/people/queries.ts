@@ -1,9 +1,11 @@
-import { createPersonSchema, searchPeopleSchema } from "@tendnote/domain";
+import { createPersonSchema, searchPeopleSchema, updatePersonSchema } from "@tendnote/domain";
 import type {
   CreatePersonMutationInput,
   GetPersonProfileInput,
   PeopleStore,
   SearchPeopleQueryInput,
+  UpdatePersonMutationInput,
+  UpdatePersonPatch,
 } from "./types";
 
 /**
@@ -36,6 +38,39 @@ export function createPeopleQueries(store: PeopleStore) {
         });
       } catch {
         // The person is already persisted; an audit-log failure must not lose it.
+      }
+
+      return person;
+    },
+
+    async updatePerson(input: UpdatePersonMutationInput) {
+      // Validate and keep only the provided fields; `undefined` keys are dropped so
+      // the store never overwrites an unmentioned column.
+      const parsed = updatePersonSchema.parse(input);
+      const patch = Object.fromEntries(
+        Object.entries(parsed).filter(([, value]) => value !== undefined),
+      ) as UpdatePersonPatch;
+
+      const person = await store.updatePerson({
+        ownerUserId: input.ownerUserId,
+        personId: input.personId,
+        patch,
+      });
+
+      if (!person) {
+        return null;
+      }
+
+      try {
+        await store.createAuditLogEntry({
+          ownerUserId: input.ownerUserId,
+          action: "person.update",
+          entityType: "person",
+          entityId: person.id,
+          metadataJson: { fields: Object.keys(patch) },
+        });
+      } catch {
+        // The update is already persisted; an audit-log failure must not lose it.
       }
 
       return person;

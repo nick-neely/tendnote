@@ -6,6 +6,7 @@ import {
   NotebookPenIcon,
   SearchIcon,
   UserIcon,
+  UserPenIcon,
   UserPlusIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -201,6 +202,24 @@ function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
         isNew={isNew}
         kind={view.kind}
         label="Added to your notebook"
+        tone="confirmed"
+      >
+        <Body>{view.displayName}</Body>
+      </ResultCard>
+    );
+  }
+
+  if (view.kind === "updated_person") {
+    const fields = view.updatedFields.map((field) => PERSON_FIELD_LABEL[field] ?? field);
+    return (
+      <ResultCard
+        footer={
+          fields.length > 0 ? <Caption>Updated {formatFieldList(fields)}</Caption> : undefined
+        }
+        icon={<UserPenIcon className="size-3" />}
+        isNew={isNew}
+        kind={view.kind}
+        label="Updated in your notebook"
         tone="confirmed"
       >
         <Body>{view.displayName}</Body>
@@ -430,6 +449,23 @@ function labelTrust(result: SearchResultView) {
         : "Identity reference";
 
   return result.relatedPersonDisplayName ? `${trust} · ${result.relatedPersonDisplayName}` : trust;
+}
+
+/** Human labels for the profile fields `update_person` can change. */
+const PERSON_FIELD_LABEL: Record<string, string> = {
+  displayName: "name",
+  firstName: "first name",
+  lastName: "last name",
+  birthday: "birthday",
+  relationshipType: "relationship",
+  closenessLevel: "closeness",
+  profileBlurb: "description",
+};
+
+const fieldListFormatter = new Intl.ListFormat("en", { style: "long", type: "conjunction" });
+
+function formatFieldList(fields: string[]): string {
+  return fieldListFormatter.format(fields);
 }
 
 function humanizeToolName(toolName: string): string {

@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { authoredInstructions } from "./instructions-source";
 
 const toolsDir = join(process.cwd(), "agent/tools");
 
@@ -9,13 +10,15 @@ function readTool(name: string): string {
 }
 
 const toolFiles = readdirSync(toolsDir).filter((file) => file.endsWith(".ts"));
-const instructions = readFileSync(join(process.cwd(), "agent/instructions/base.md"), "utf8");
+// Tool workflows now live in on-demand skills; assert against base.md + skills.
+const instructions = authoredInstructions();
 
 describe("Phase 1A assistant tools are thin wrappers over shared functions", () => {
   const wrappers: Record<string, string> = {
     capture_source_record: "captureSourceRecord",
     capture_memory: "captureExplicitMemory",
     create_person: "createPerson",
+    update_person: "updatePerson",
     search_people: "searchPeople",
     get_person_context: "getPersonContext",
     search_semantic_context: "searchSemanticContext",

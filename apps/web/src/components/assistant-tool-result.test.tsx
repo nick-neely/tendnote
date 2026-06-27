@@ -68,6 +68,22 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toBe("");
   });
 
+  it("renders an updated person as a confirmed card naming the changed fields", () => {
+    const html = render({
+      kind: "updated_person",
+      personId: "person-1",
+      displayName: "Mara Lin",
+      relationshipType: "colleague",
+      updatedFields: ["displayName", "birthday"],
+    });
+
+    expect(html).toContain("Updated in your notebook");
+    expect(html).toContain("Mara Lin");
+    // Raw field keys are humanized and joined for the user.
+    expect(html).toContain("Updated name and birthday");
+    expect(html).toContain('data-tool-view="updated_person"');
+  });
+
   it("renders person context with per-tier counts and snapshot status", () => {
     const html = render({
       kind: "person_context",

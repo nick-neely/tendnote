@@ -44,6 +44,19 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
       return person;
     },
 
+    async updatePerson({ ownerUserId, personId, patch }) {
+      const existing = people.get(personId);
+
+      if (!existing || existing.ownerUserId !== ownerUserId) {
+        return null;
+      }
+
+      const updated = { ...existing, ...patch, updatedAt: new Date() };
+      people.set(personId, updated);
+
+      return updated;
+    },
+
     async createAuditLogEntry(values) {
       auditLogEntries.push(values);
     },

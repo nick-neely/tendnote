@@ -4,6 +4,7 @@ import type {
   CreatePersonMutationInput,
   GetPersonProfileInput,
   SearchPeopleQueryInput,
+  UpdatePersonMutationInput,
 } from "./people/types";
 
 export { createDrizzlePeopleStore } from "./people/drizzle-store";
@@ -15,6 +16,10 @@ const defaultPeopleQueries = createPeopleQueries(createDrizzlePeopleStore());
 
 export async function createPerson(input: CreatePersonMutationInput) {
   return defaultPeopleQueries.createPerson(input);
+}
+
+export async function updatePerson(input: UpdatePersonMutationInput) {
+  return defaultPeopleQueries.updatePerson(input);
 }
 
 export async function searchPeople(input: SearchPeopleQueryInput) {

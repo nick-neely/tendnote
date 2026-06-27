@@ -48,6 +48,82 @@ describe("people queries", () => {
     ]);
   });
 
+  it("updates only the provided profile fields and records an audit entry", async () => {
+    const store = createInMemoryPeopleStore({
+      people: [createPersonFixture({ id: "p1", ownerUserId: OWNER, displayName: "Mara" })],
+    });
+    const people = createPeopleQueries(store);
+
+    const updated = await people.updatePerson({
+      ownerUserId: OWNER,
+      personId: "p1",
+      displayName: "Mara Lin",
+      birthday: "1990-03-03",
+    });
+
+    expect(updated?.displayName).toBe("Mara Lin");
+    expect(updated?.birthday).toBe("1990-03-03");
+    // Untouched fields are preserved.
+    expect(updated?.relationshipType).toBe("friend");
+    expect(updated?.updatedAt.getTime()).toBeGreaterThan(
+      new Date("2026-06-25T12:00:00.000Z").getTime(),
+    );
+
+    await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.toMatchObject([
+      {
+        action: "person.update",
+        entityType: "person",
+        entityId: "p1",
+        metadataJson: { fields: ["displayName", "birthday"] },
+      },
+    ]);
+  });
+
+  it("clears a nullable field when passed null", async () => {
+    const store = createInMemoryPeopleStore({
+      people: [
+        {
+          ...createPersonFixture({ id: "p1", ownerUserId: OWNER, displayName: "Mara" }),
+          profileBlurb: "old blurb",
+        },
+      ],
+    });
+    const people = createPeopleQueries(store);
+
+    const updated = await people.updatePerson({
+      ownerUserId: OWNER,
+      personId: "p1",
+      profileBlurb: null,
+    });
+
+    expect(updated?.profileBlurb).toBeNull();
+  });
+
+  it("does not update another owner's person and writes no audit entry", async () => {
+    const store = createInMemoryPeopleStore({
+      people: [createPersonFixture({ id: "p1", ownerUserId: OWNER, displayName: "Mara" })],
+    });
+    const people = createPeopleQueries(store);
+
+    await expect(
+      people.updatePerson({ ownerUserId: OTHER_OWNER, personId: "p1", displayName: "Hacked" }),
+    ).resolves.toBeNull();
+    await expect(store.listAuditLogEntries({ ownerUserId: OTHER_OWNER })).resolves.toEqual([]);
+  });
+
+  it("rejects an empty patch and an invalid birthday", async () => {
+    const people = createPeopleQueries(
+      createInMemoryPeopleStore({
+        people: [createPersonFixture({ id: "p1", ownerUserId: OWNER, displayName: "Mara" })],
+      }),
+    );
+
+    await expect(people.updatePerson({ ownerUserId: OWNER, personId: "p1" })).rejects.toThrow();
+    await expect(
+      people.updatePerson({ ownerUserId: OWNER, personId: "p1", birthday: "March 3" }),
+    ).rejects.toThrow();
+  });
+
   it("searches only within the requested owner", async () => {
     const people = createPeopleQueries(
       createInMemoryPeopleStore({

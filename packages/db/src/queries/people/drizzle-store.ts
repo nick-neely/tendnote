@@ -22,6 +22,16 @@ export function createDrizzlePeopleStore(): PeopleStore {
       return person;
     },
 
+    async updatePerson({ ownerUserId, personId, patch }) {
+      const [person] = await getDb()
+        .update(people)
+        .set({ ...patch, updatedAt: new Date() })
+        .where(and(eq(people.id, personId), eq(people.ownerUserId, ownerUserId)))
+        .returning();
+
+      return person ?? null;
+    },
+
     async createAuditLogEntry(values) {
       await getDb().insert(auditLog).values(values);
     },

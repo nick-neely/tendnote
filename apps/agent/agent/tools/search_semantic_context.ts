@@ -21,4 +21,23 @@ export default defineTool({
       },
     };
   },
+  // Record/person ids are for the chat component and your follow-up tool calls, not
+  // your reply. Strip them from the model's view; channels still get the full
+  // structured output for rendering.
+  toModelOutput(output) {
+    return {
+      type: "json",
+      value: {
+        count: output.results.length,
+        results: output.results.map((result) => ({
+          kind: result.recordKind,
+          person: result.relatedPersonDisplayName ?? null,
+          snippet: result.snippet,
+          similarity: result.similarity,
+          trust: result.trustLevel,
+          sensitivity: result.sensitivity,
+        })),
+      },
+    };
+  },
 });

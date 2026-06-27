@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { baseInstructions } from "./instructions-source";
 
 const toolSource = readFileSync(join(process.cwd(), "agent/tools/get_person_context.ts"), "utf8");
-const instructions = readFileSync(join(process.cwd(), "agent/instructions/base.md"), "utf8");
+// Trust-tier phrasing stays always-on in base.md (normalized so wrapping is moot).
+const instructions = baseInstructions();
 
 describe("trust-aware person context tool", () => {
   it("calls the shared snapshot-backed read path rather than re-deriving policy", () => {

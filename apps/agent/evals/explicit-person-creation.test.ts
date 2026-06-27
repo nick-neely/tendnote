@@ -1,9 +1,11 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { authoredInstructions } from "./instructions-source";
 
 const toolsDir = join(process.cwd(), "agent/tools");
-const instructions = readFileSync(join(process.cwd(), "agent/instructions/base.md"), "utf8");
+// "# Adding people" guidance now lives in the capturing-and-review skill.
+const instructions = authoredInstructions();
 
 function readTool(name: string): string {
   return readFileSync(join(toolsDir, `${name}.ts`), "utf8");

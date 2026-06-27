@@ -74,6 +74,35 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     });
   });
 
+  it("renders an update_person result as an updated person with the changed fields", () => {
+    const view = toAssistantToolView({
+      toolName: "update_person",
+      output: {
+        updated: true,
+        person: { id: "person-9", displayName: "Mara Lin", relationshipType: "colleague" },
+        updatedFields: ["displayName", "birthday"],
+        component: { type: "person_updated", personId: "person-9" },
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "updated_person",
+      personId: "person-9",
+      displayName: "Mara Lin",
+      relationshipType: "colleague",
+      updatedFields: ["displayName", "birthday"],
+    });
+  });
+
+  it("degrades a failed update_person result to a generic view", () => {
+    const view = toAssistantToolView({
+      toolName: "update_person",
+      output: { updated: false, component: { type: "person_update_failed", personId: "person-9" } },
+    });
+
+    expect(view).toEqual({ kind: "generic", toolName: "update_person" });
+  });
+
   it("renders a get_person_context result with per-tier counts and snapshot status", () => {
     const view = toAssistantToolView({
       toolName: "get_person_context",

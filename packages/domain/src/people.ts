@@ -45,6 +45,32 @@ export const createPersonSchema = personSchema
     displayName: z.string().min(1),
   });
 
+/**
+ * Editable person profile fields. Every field is optional — only the keys the
+ * caller provides are changed — and at least one must be present. `null` clears a
+ * nullable field; `undefined` (omitted) leaves it untouched. Identity, ownership,
+ * provenance (`source`), and timestamps are not editable here. This is for profile
+ * attributes (name, birthday, relationship), not memories — facts about a person go
+ * through `capture_memory`.
+ */
+export const updatePersonSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(120).optional(),
+    firstName: z.string().trim().max(120).nullable().optional(),
+    lastName: z.string().trim().max(120).nullable().optional(),
+    birthday: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Birthday must be an ISO date (YYYY-MM-DD).")
+      .nullable()
+      .optional(),
+    relationshipType: relationshipTypeSchema.optional(),
+    closenessLevel: z.number().int().min(1).max(5).optional(),
+    profileBlurb: z.string().trim().max(280).nullable().optional(),
+  })
+  .refine((patch) => Object.values(patch).some((value) => value !== undefined), {
+    message: "Provide at least one field to update.",
+  });
+
 export const contactMethodSchema = z.object({
   id: z.string(),
   personId: z.string(),
@@ -68,6 +94,7 @@ export function requiresPersonDisambiguation(candidates: Pick<Person, "id">[]) {
 
 export type Person = z.infer<typeof personSchema>;
 export type CreatePersonInput = z.infer<typeof createPersonSchema>;
+export type UpdatePersonInput = z.infer<typeof updatePersonSchema>;
 export type RelationshipType = z.infer<typeof relationshipTypeSchema>;
 export type ContactMethod = z.infer<typeof contactMethodSchema>;
 export type ContactMethodType = z.infer<typeof contactMethodTypeSchema>;

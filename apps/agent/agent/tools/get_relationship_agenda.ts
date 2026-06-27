@@ -77,4 +77,27 @@ export default defineTool({
       },
     };
   },
+  // The model only needs names, kinds, reasons, dates, and trust to write its
+  // reply. Source-ref UUIDs, person ids, rank, and the render scaffolding are for
+  // the chat component and your tool calls — strip them from the model's view so
+  // they can't leak into a reply and don't crowd the context window. Channels
+  // still receive the full structured output above for rich rendering.
+  toModelOutput(output) {
+    return {
+      type: "json",
+      value: {
+        window: output.window,
+        count: output.candidates.length,
+        candidates: output.candidates.map((candidate) => ({
+          person: candidate.personDisplayName ?? "unlinked record",
+          kind: candidate.kind,
+          title: candidate.title,
+          reason: candidate.reason,
+          due: candidate.dueAt ?? null,
+          trust: candidate.trustLevel,
+          sensitivity: candidate.sensitivity,
+        })),
+      },
+    };
+  },
 });
