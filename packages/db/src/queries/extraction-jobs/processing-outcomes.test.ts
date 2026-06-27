@@ -52,6 +52,48 @@ describe("extraction job suggested-memory creation", () => {
     expect(actions).toContain("extraction_job.completed");
   });
 
+  it("persists valid candidate metadata and the stricter sensitivity", async () => {
+    const adapter: SuggestedMemoryExtractionAdapter = {
+      kind: "fake",
+      async extractCandidates(input) {
+        return {
+          candidates: [
+            {
+              personId: input.resolvedPeople[0]?.id ?? "",
+              content: "Mark prefers early morning calls.",
+              memoryType: "preference",
+              importance: 5,
+              confidence: "high",
+              sensitivity: "restricted",
+            },
+          ],
+        };
+      },
+    };
+    const { processor, createPerson, captureRecord, link } = createHarness({
+      extractionAdapter: adapter,
+    });
+    const mark = await createPerson("Mark");
+    const sourceRecord = await captureRecord({
+      retainedContent: "Mark likes morning calls.",
+      sensitivity: "normal",
+    });
+    await link(sourceRecord.id, mark.id);
+    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+
+    const result = await processor.processExtractionJob({ jobId: job.id });
+
+    expect(result.suggestedMemories[0]).toMatchObject({
+      personId: mark.id,
+      content: "Mark prefers early morning calls.",
+      memoryType: "preference",
+      importance: 5,
+      confidence: "high",
+      sensitivity: "restricted",
+      status: "suggested",
+    });
+  });
+
   it("calls the injected adapter once with retained content and all resolved linked people", async () => {
     const extractCandidates = vi.fn(async (input: SuggestedMemoryExtractionInput) => ({
       candidates: input.resolvedPeople.map((person) => ({
@@ -210,6 +252,9 @@ describe("extraction job suggested-memory creation", () => {
           candidates: [
             { personId: "person-1", content: "", memoryType: "context" },
             { personId: "person-1", content: "Bad metadata.", memoryType: "unknown" },
+            { personId: "person-1", content: "Bad importance.", importance: 6 },
+            { personId: "person-1", content: "Bad confidence.", confidence: "certain" },
+            { personId: "person-1", content: "Bad sensitivity.", sensitivity: "secret" },
           ],
         };
       },
@@ -303,6 +348,187 @@ describe("extraction job suggested-memory creation", () => {
 });
 
 describe("extraction job skip and delay policy", () => {
+  it("runs source-record policy gates before invoking the adapter", async () => {
+    const extractCandidates = vi.fn(async () => ({ candidates: [] }));
+    const adapter: SuggestedMemoryExtractionAdapter = {
+      kind: "fake",
+      extractCandidates,
+    };
+    const { store, processor, createPerson, captureRecord, link } = createHarness({
+      extractionAdapter: adapter,
+    });
+    const mark = await createPerson("Mark");
+
+    const restricted = await captureRecord({
+      retainedContent: "Restricted note.",
+      sensitivity: "restricted",
+    });
+    await link(restricted.id, mark.id);
+    const pending = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Pending note.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "pending_resolution",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+    });
+    await store.linkSourceRecordPerson({
+      sourceRecordId: pending.id,
+      personId: mark.id,
+      role: "primary",
+    });
+    const dismissed = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Dismissed note.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "dismissed",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+    });
+    await store.linkSourceRecordPerson({
+      sourceRecordId: dismissed.id,
+      personId: mark.id,
+      role: "primary",
+    });
+    const archived = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Archived note.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "archived",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+    });
+    await store.linkSourceRecordPerson({
+      sourceRecordId: archived.id,
+      personId: mark.id,
+      role: "primary",
+    });
+    const personless = await captureRecord({ retainedContent: "Personless note." });
+
+    for (const sourceRecord of [restricted, pending, dismissed, archived, personless]) {
+      const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+      await processor.processExtractionJob({ jobId: job.id });
+    }
+
+    expect(extractCandidates).not.toHaveBeenCalled();
+  });
+
+  it("delays unresolved personless records before invoking the adapter", async () => {
+    const extractCandidates = vi.fn(async () => ({ candidates: [] }));
+    const adapter: SuggestedMemoryExtractionAdapter = {
+      kind: "fake",
+      extractCandidates,
+    };
+    const { processor, capture } = createHarness({ extractionAdapter: adapter });
+    const { sourceRecord } = await capture.captureSourceRecord({
+      ownerUserId: OWNER,
+      retainedContent: "Someone named Quinn might be worth tracking.",
+      status: "active",
+      unresolvedMentions: [{ mentionText: "Quinn", candidatePersonIds: [] }],
+    });
+    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+
+    const result = await processor.processExtractionJob({ jobId: job.id });
+
+    expect(result.outcome).toBe("delayed");
+    expect(extractCandidates).not.toHaveBeenCalled();
+  });
+
+  it("allows directly requested restricted extraction to reach the adapter", async () => {
+    const extractCandidates = vi.fn(async (input: SuggestedMemoryExtractionInput) => ({
+      candidates: [
+        {
+          personId: input.resolvedPeople[0]?.id ?? "",
+          content: "Mark has a restricted review candidate.",
+          memoryType: "context" as const,
+        },
+      ],
+    }));
+    const adapter: SuggestedMemoryExtractionAdapter = {
+      kind: "fake",
+      extractCandidates,
+    };
+    const { processor, createPerson, captureRecord, link } = createHarness({
+      extractionAdapter: adapter,
+    });
+    const mark = await createPerson("Mark");
+    const sourceRecord = await captureRecord({
+      retainedContent: "Sensitive note for Mark.",
+      sensitivity: "restricted",
+    });
+    await link(sourceRecord.id, mark.id);
+    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+
+    const result = await processor.processExtractionJob({
+      jobId: job.id,
+      directlyRequested: true,
+    });
+
+    expect(extractCandidates).toHaveBeenCalledTimes(1);
+    expect(result.outcome).toBe("completed");
+    expect(result.suggestedMemories[0]?.sensitivity).toBe("restricted");
+  });
+
+  it("does not let direct requests bypass inactive or personless hard gates", async () => {
+    const extractCandidates = vi.fn(async () => ({ candidates: [] }));
+    const adapter: SuggestedMemoryExtractionAdapter = {
+      kind: "fake",
+      extractCandidates,
+    };
+    const { store, processor, createPerson, captureRecord } = createHarness({
+      extractionAdapter: adapter,
+    });
+    const mark = await createPerson("Mark");
+    const archived = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Archived restricted note.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "archived",
+      confidence: "medium",
+      sensitivity: "restricted",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+    });
+    await store.linkSourceRecordPerson({
+      sourceRecordId: archived.id,
+      personId: mark.id,
+      role: "primary",
+    });
+    const personless = await captureRecord({
+      retainedContent: "Restricted but personless.",
+      sensitivity: "restricted",
+    });
+
+    for (const sourceRecord of [archived, personless]) {
+      const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+      const result = await processor.processExtractionJob({
+        jobId: job.id,
+        directlyRequested: true,
+      });
+
+      expect(result.outcome).toBe("skipped");
+    }
+    expect(extractCandidates).not.toHaveBeenCalled();
+  });
+
   it("skips restricted content from proactive extraction", async () => {
     const { store, processor, createPerson, captureRecord, link, auditActions } = createHarness();
     const mark = await createPerson("Mark");

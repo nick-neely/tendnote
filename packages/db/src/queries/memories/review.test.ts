@@ -173,6 +173,43 @@ describe("edit suggested memory", () => {
     expect(result.memory.content).toBe("Mark is exploring backend roles.");
     await expect(auditActions()).resolves.toContain("memory.review_edit");
   });
+
+  it("keeps manual metadata edits authoritative before approval", async () => {
+    const { store, review, person, seedSuggestion } = await setup();
+    const { memory } = await seedSuggestion({ sensitivity: "restricted" });
+
+    const edited = await review.editSuggestedMemory({
+      ownerUserId: OWNER,
+      memoryId: memory.id,
+      edit: {
+        content: "Mark prefers texts before calls.",
+        memoryType: "preference",
+        sensitivity: "normal",
+        importance: 5,
+      },
+    });
+    const saved = await review.saveSuggestedMemory({
+      ownerUserId: OWNER,
+      memoryId: memory.id,
+    });
+
+    expect(edited.memory.status).toBe("suggested");
+    expect(saved.memory).toMatchObject({
+      status: "approved",
+      content: "Mark prefers texts before calls.",
+      memoryType: "preference",
+      sensitivity: "normal",
+      importance: 5,
+    });
+    await expect(
+      store.listApprovedMemoriesForPerson({ ownerUserId: OWNER, personId: person.id }),
+    ).resolves.toMatchObject([
+      {
+        content: "Mark prefers texts before calls.",
+        sensitivity: "normal",
+      },
+    ]);
+  });
 });
 
 describe("dismiss and archive", () => {
