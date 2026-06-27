@@ -31,6 +31,7 @@ describe("Phase 1A assistant tools are thin wrappers over shared functions", () 
     get_suggested_followup_review: "getSuggestedFollowupReview",
     accept_suggested_followup: "acceptSuggestedFollowup",
     dismiss_suggested_followup: "dismissSuggestedFollowup",
+    get_relationship_agenda: "getRelationshipAgenda",
   };
 
   for (const [tool, sharedFn] of Object.entries(wrappers)) {
@@ -180,10 +181,10 @@ describe("instructions steer capture vs save vs review", () => {
     expect(instructions).toMatch(/meaning rather than exact wording/i);
   });
 
-  it("does not use semantic retrieval for proactive agenda ranking in Phase 1D", () => {
+  it("keeps semantic recall separate from proactive agenda ranking", () => {
     expect(instructions).toMatch(/Do not use semantic retrieval/i);
     expect(instructions).toMatch(/who should I check in with/i);
-    expect(instructions).toMatch(/agenda ranking in Phase 1D/i);
+    expect(instructions).toMatch(/get_relationship_agenda/i);
   });
 
   it("names the review tools and frames suggestions as tentative until approved", () => {
@@ -217,6 +218,12 @@ describe("instructions steer capture vs save vs review", () => {
     expect(instructions).toMatch(/not a "who should I check in with" agenda/i);
   });
 
+  it("routes broad relationship horizon asks to the read-only agenda", () => {
+    expect(instructions).toMatch(/get_relationship_agenda/);
+    expect(instructions).toMatch(/broad relationship/i);
+    expect(instructions).toMatch(/read-only agenda/i);
+  });
+
   it("distinguishes suggested follow-ups from active reminders and gates proposing to explicit flows", () => {
     expect(instructions).toMatch(/propose_followup/);
     expect(instructions).toMatch(/list_suggested_followup_reviews/);
@@ -229,7 +236,8 @@ describe("instructions steer capture vs save vs review", () => {
   it("forbids background generation and cross-person agenda ranking of suggestions", () => {
     expect(instructions).toMatch(/[Nn]ever scan everyone and invent follow-ups/);
     expect(instructions).toMatch(/no background follow-up generation/i);
-    expect(instructions).toMatch(/who the user should check in with/i);
+    expect(instructions).toMatch(/Do not use suggested-follow-up tools to propose reminders/i);
+    expect(instructions).toMatch(/read-only `get_relationship_agenda` tool/i);
   });
 
   it("excludes restricted context from proactive suggestion unless directly requested", () => {

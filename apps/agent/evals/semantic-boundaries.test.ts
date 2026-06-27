@@ -15,13 +15,13 @@ function listFiles(dir: string): string[] {
 }
 
 describe("semantic retrieval Phase 1D boundaries", () => {
-  it("does not expose proactive relationship agenda tooling in Phase 1D", () => {
+  it("exposes only the named Phase 1E.25 agenda tool for proactive relationship agenda reads", () => {
     const files = listFiles(agentRoot);
     const toolFiles = files.filter((file) => file.startsWith("tools/"));
 
+    expect(toolFiles).toContain("tools/get_relationship_agenda.ts");
     expect(toolFiles).not.toEqual(
       expect.arrayContaining([
-        "tools/get_relationship_agenda.ts",
         "tools/recommend_people.ts",
         "tools/rank_relationships.ts",
         "tools/who_to_check_in_with.ts",
