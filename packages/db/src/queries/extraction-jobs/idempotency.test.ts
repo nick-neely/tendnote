@@ -1,8 +1,80 @@
+import type { SuggestedMemoryExtractionAdapter } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { createMemoryReview } from "../memories/review";
 import { createHarness, OWNER } from "./harness";
 
 describe("extraction job idempotency and retry", () => {
+  it("keeps adapter candidate retries idempotent", async () => {
+    const adapter: SuggestedMemoryExtractionAdapter = {
+      kind: "fake",
+      async extractCandidates(input) {
+        return {
+          candidates: [
+            {
+              personId: input.resolvedPeople[0]?.id ?? "",
+              content: "Mark moved to Denver.",
+              memoryType: "life_event",
+            },
+          ],
+        };
+      },
+    };
+    const { store, processor, createPerson, captureRecord, link } = createHarness({
+      extractionAdapter: adapter,
+    });
+    const mark = await createPerson("Mark");
+    const sourceRecord = await captureRecord({ retainedContent: "Raw note about Mark moving." });
+    await link(sourceRecord.id, mark.id);
+    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+
+    await processor.processExtractionJob({ jobId: job.id });
+    await store.updateExtractionJob({ jobId: job.id, status: "pending", claimedAt: null });
+    const second = await processor.processExtractionJob({ jobId: job.id });
+
+    expect(second.suggestedMemories).toHaveLength(0);
+    await expect(
+      store.listMemoriesForSourceRecord({ sourceRecordId: sourceRecord.id }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("does not reintroduce a dismissed adapter candidate on retry", async () => {
+    const adapter: SuggestedMemoryExtractionAdapter = {
+      kind: "fake",
+      async extractCandidates(input) {
+        return {
+          candidates: [
+            {
+              personId: input.resolvedPeople[0]?.id ?? "",
+              content: "Mark mentioned a new dog.",
+              memoryType: "context",
+            },
+          ],
+        };
+      },
+    };
+    const { store, processor, createPerson, captureRecord, link } = createHarness({
+      extractionAdapter: adapter,
+    });
+    const review = createMemoryReview(store);
+    const mark = await createPerson("Mark");
+    const sourceRecord = await captureRecord({ retainedContent: "Raw note about Mark's dog." });
+    await link(sourceRecord.id, mark.id);
+    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+
+    const first = await processor.processExtractionJob({ jobId: job.id });
+    await review.dismissSuggestedMemory({
+      ownerUserId: OWNER,
+      memoryId: first.suggestedMemories[0]?.id ?? "",
+    });
+    await store.updateExtractionJob({ jobId: job.id, status: "pending", claimedAt: null });
+    const second = await processor.processExtractionJob({ jobId: job.id });
+
+    expect(second.suggestedMemories).toHaveLength(0);
+    const memories = await store.listMemoriesForSourceRecord({ sourceRecordId: sourceRecord.id });
+    expect(memories).toHaveLength(1);
+    expect(memories[0]?.status).toBe("dismissed");
+  });
+
   it("does not create duplicate suggested memories when a completed job is processed again", async () => {
     const { store, processor, createPerson, captureRecord, link } = createHarness();
     const mark = await createPerson("Mark");
