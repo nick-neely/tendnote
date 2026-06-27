@@ -1,4 +1,11 @@
-import type { Followup, Memory, Person, Sensitivity, SourceRecord } from "@tendnote/domain";
+import type {
+  Followup,
+  Memory,
+  Person,
+  SemanticRetrievalResult,
+  Sensitivity,
+  SourceRecord,
+} from "@tendnote/domain";
 
 export type RelationshipAgendaKind =
   | "due_followup"
@@ -76,4 +83,10 @@ export type RelationshipAgendaStore = {
     ownerUserId: string;
     limit?: number;
   }) => Promise<RelationshipAgendaSourceRecordReview[]>;
+  searchSemanticContext: (input: {
+    ownerUserId: string;
+    query: string;
+    limit?: number;
+    directlyRequested?: boolean;
+  }) => Promise<SemanticRetrievalResult[]>;
 };

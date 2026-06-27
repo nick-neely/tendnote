@@ -3,6 +3,7 @@ import { getDb } from "../../client";
 import { people, sourceRecordPeople, sourceRecords } from "../../schema";
 import { createDrizzleFollowupLifecycleStore } from "../followups/drizzle-store";
 import { createDrizzleMemoryStore } from "../memories/drizzle-store";
+import { searchSemanticContext } from "../semantic-retrieval";
 import type { RelationshipAgendaSourceRecordReview, RelationshipAgendaStore } from "./types";
 
 export function createDrizzleRelationshipAgendaStore(): RelationshipAgendaStore {
@@ -89,6 +90,14 @@ export function createDrizzleRelationshipAgendaStore(): RelationshipAgendaStore 
       }
 
       return [...reviewsByRecord.values()].slice(0, input.limit ?? 3);
+    },
+    async searchSemanticContext(input) {
+      return searchSemanticContext({
+        ...input,
+        limit: input.limit ?? 3,
+        minimumSimilarity: 0,
+        directlyRequested: input.directlyRequested ?? false,
+      });
     },
   };
 }

@@ -2,11 +2,13 @@ import type {
   RelationshipAgendaCandidate,
   RelationshipAgendaInput,
   RelationshipAgendaKind,
+  RelationshipAgendaSourceRef,
   RelationshipAgendaStore,
 } from "./types";
 
 const DEFAULT_LIMIT = 10;
 const RECENT_CONTEXT_LIMIT = 3;
+const SEMANTIC_CONTEXT_LIMIT = 3;
 const BIRTHDAY_PREP_BUFFER_DAYS = 7;
 const BROAD_AGENDA_QUERY = /\b(who deserves|deserves a thought|check in|review|relationship)\b/i;
 const EXACT_DATE_QUERY =
@@ -100,6 +102,21 @@ function rank(candidates: Array<RelationshipAgendaCandidate & { score: number }>
     .map(({ score: _score, ...candidate }, index) =>
       dedupeSourceRefs({ ...candidate, rank: index + 1 }),
     );
+}
+
+function overlapsExistingCandidate(
+  existing: RelationshipAgendaCandidate,
+  sourceRefs: RelationshipAgendaCandidate["sourceRefs"],
+  input: { personId: string | null; reason: string },
+) {
+  const existingRefs = new Set(existing.sourceRefs.map((ref) => `${ref.kind}:${ref.id}`));
+  const hasSharedSource = sourceRefs.some((ref) => existingRefs.has(`${ref.kind}:${ref.id}`));
+  const hasSamePersonReason =
+    existing.personId !== null &&
+    existing.personId === input.personId &&
+    existing.reason.trim().toLowerCase() === input.reason.trim().toLowerCase();
+
+  return hasSharedSource || hasSamePersonReason;
 }
 
 /**
@@ -336,6 +353,54 @@ export function createRelationshipAgenda(store: RelationshipAgendaStore) {
             sensitivity: recent.sourceRecord.sensitivity,
             rank: 0,
             score: 90,
+          });
+        }
+      }
+
+      if (requested(input, "semantic_context") && input.query) {
+        let semanticResults: Awaited<ReturnType<RelationshipAgendaStore["searchSemanticContext"]>>;
+        try {
+          semanticResults = await store.searchSemanticContext({
+            ownerUserId: input.ownerUserId,
+            query: input.query,
+            limit: SEMANTIC_CONTEXT_LIMIT,
+            directlyRequested: input.directlyRequested ?? false,
+          });
+        } catch {
+          semanticResults = [];
+        }
+
+        for (const result of semanticResults.filter(
+          (candidate) => candidate.sensitivity !== "restricted" || input.directlyRequested === true,
+        )) {
+          const sourceRefs: RelationshipAgendaSourceRef[] = result.sourceRefs.map((ref) => ({
+            kind: ref.kind === "memory" ? "memory" : "source_record",
+            id: ref.id,
+          }));
+          const overlaps = candidates.some((candidate) =>
+            overlapsExistingCandidate(candidate, sourceRefs, {
+              personId: result.relatedPersonId,
+              reason: result.snippet,
+            }),
+          );
+
+          if (overlaps) {
+            continue;
+          }
+
+          candidates.push({
+            kind: "semantic_context",
+            personId: result.relatedPersonId,
+            personDisplayName: result.relatedPersonDisplayName,
+            title: result.relatedPersonDisplayName
+              ? `Related context for ${result.relatedPersonDisplayName}`
+              : "Related relationship context",
+            reason: result.snippet,
+            sourceRefs,
+            trustLevel: result.trustLevel,
+            sensitivity: result.sensitivity,
+            rank: 0,
+            score: 70,
           });
         }
       }
