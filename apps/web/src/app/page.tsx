@@ -46,11 +46,14 @@ export default async function Home() {
             On mobile the assistant leads (order-1) so the chat sits at the top
             under the greeting rather than buried beneath the rail; on desktop it
             stays the left content column with the rail on the right. */}
-        <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:gap-8">
+        <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[minmax(0,1fr)] lg:gap-8">
           <div className="order-1 h-[70dvh] lg:h-full lg:min-h-0">
             <AssistantPanel />
           </div>
-          <div className="order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto">
+          {/* pr-3 keeps the slim scrollbar in a gutter rather than hard against
+              the rail cards; the column is widened to 360px so the cards keep
+              their width instead of giving it up to the gutter. */}
+          <div className="order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pr-3">
             <TodayRail
               birthdays={birthdays}
               followupReviews={dashboardFollowupReviews}
