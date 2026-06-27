@@ -246,6 +246,106 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).not.toContain('data-tool-view="semantic_context_search"');
   });
 
+  it("renders agenda results as compact grounded rows without visible raw ids", () => {
+    const html = render({
+      kind: "relationship_agenda",
+      candidates: [
+        {
+          kind: "due_followup",
+          personId: "person-1",
+          personDisplayName: "Mara Lin",
+          title: "Follow up with Mara Lin",
+          reason: "Ask about the move.",
+          dueLabel: "Jul 2, 2026",
+          sourceRefs: [{ kind: "followup", id: "followup-1" }],
+          trustLevel: "active_reminder",
+          sensitivity: "normal",
+          rank: 1,
+        },
+        {
+          kind: "birthday",
+          personId: "person-2",
+          personDisplayName: "Sam Rivera",
+          title: "Sam Rivera's birthday",
+          reason: "Birthday falls inside the requested window.",
+          dueLabel: "Jul 5, 2026",
+          sourceRefs: [{ kind: "person", id: "person-2" }],
+          trustLevel: "stored_profile_data",
+          sensitivity: "normal",
+          rank: 2,
+        },
+      ],
+    });
+
+    expect(html).toContain("Found 2 agenda items");
+    expect(html).toContain("Follow-up");
+    expect(html).toContain("Birthday");
+    expect(html).toContain("Mara Lin");
+    expect(html).toContain("Sam Rivera");
+    expect(html).toContain("Ask about the move.");
+    expect(html).toContain("Active reminder");
+    expect(html).toContain("Stored profile data");
+    expect(html).toContain("Due Jul 2, 2026");
+    expect(html).toContain("Upcoming Jul 5, 2026");
+    expect(html).toContain("Grounded in follow-up");
+    expect(html).toContain("Grounded in person");
+    expect(html).toContain('href="/people/person-1"');
+    expect(html).toContain('data-tool-view="relationship_agenda"');
+    expect(html).not.toContain("followup-1");
+  });
+
+  it("renders tentative and restricted agenda candidates with explicit labels", () => {
+    const html = render({
+      kind: "relationship_agenda",
+      candidates: [
+        {
+          kind: "suggested_followup",
+          personId: "person-1",
+          personDisplayName: "Mara Lin",
+          title: "Review suggested follow-up for Mara Lin",
+          reason: "Ask whether the move happened.",
+          dueLabel: "Jul 4, 2026",
+          sourceRefs: [
+            { kind: "followup", id: "followup-2" },
+            { kind: "source_record", id: "source-1" },
+          ],
+          trustLevel: "tentative",
+          sensitivity: "sensitive",
+          rank: 1,
+        },
+        {
+          kind: "semantic_context",
+          personId: "person-1",
+          personDisplayName: "Mara Lin",
+          title: "Restricted related context for Mara Lin",
+          reason: "Restricted context.",
+          dueLabel: null,
+          sourceRefs: [{ kind: "source_record", id: "source-restricted" }],
+          trustLevel: "logged_context",
+          sensitivity: "restricted",
+          rank: 2,
+        },
+      ],
+    });
+
+    expect(html).toContain("Suggested follow-up");
+    expect(html).toContain("Tentative");
+    expect(html).toContain("Sensitive");
+    expect(html).toContain("Suggested for Jul 4, 2026");
+    expect(html).toContain("Restricted");
+    expect(html).toContain("Restricted related context for Mara Lin");
+    expect(html).toContain("Grounded in follow-up + source record");
+    expect(html).not.toContain("source-restricted");
+  });
+
+  it("renders empty agenda results as a quiet line", () => {
+    const html = render({ kind: "relationship_agenda", candidates: [] });
+
+    expect(html).toContain("Nothing on the relationship agenda for that window");
+    expect(html).not.toContain("Found 0 agenda items");
+    expect(html).not.toContain('data-tool-view="relationship_agenda"');
+  });
+
   it("renders an unknown tool result as a quiet ambient line", () => {
     const html = render({ kind: "generic", toolName: "some_future_tool" });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   activeToolLabel,
   assistantToolViewKey,
+  relationshipAgendaCandidateKey,
   toAssistantToolView,
   toolViewTier,
 } from "./tool-result-view";
@@ -383,6 +384,83 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     expect(JSON.stringify(view)).not.toContain("generatedAnswer");
   });
 
+  it("renders relationship agenda results as compact typed candidates", () => {
+    const view = toAssistantToolView({
+      toolName: "get_relationship_agenda",
+      output: {
+        candidates: [
+          {
+            kind: "due_followup",
+            personId: "person-1",
+            personDisplayName: "Mara Lin",
+            title: "Follow up with Mara Lin",
+            reason: "Ask about the move.",
+            dueAt: "2026-07-02T12:00:00.000Z",
+            sourceRefs: [{ kind: "followup", id: "followup-1" }],
+            trustLevel: "active_reminder",
+            sensitivity: "normal",
+            rank: 1,
+          },
+          {
+            kind: "suggested_followup",
+            personId: "person-1",
+            personDisplayName: "Mara Lin",
+            title: "Review suggested follow-up for Mara Lin",
+            reason: "Ask whether the move happened.",
+            dueAt: "2026-07-04T12:00:00.000Z",
+            sourceRefs: [
+              { kind: "followup", id: "followup-2" },
+              { kind: "source_record", id: "source-1" },
+            ],
+            trustLevel: "tentative",
+            sensitivity: "sensitive",
+            rank: 2,
+          },
+        ],
+        component: { type: "relationship_agenda", resultCount: 2 },
+      },
+    });
+
+    const dueLabel = new Date("2026-07-02T12:00:00.000Z").toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+    expect(view).toEqual({
+      kind: "relationship_agenda",
+      candidates: [
+        {
+          kind: "due_followup",
+          personId: "person-1",
+          personDisplayName: "Mara Lin",
+          title: "Follow up with Mara Lin",
+          reason: "Ask about the move.",
+          dueLabel,
+          sourceRefs: [{ kind: "followup", id: "followup-1" }],
+          trustLevel: "active_reminder",
+          sensitivity: "normal",
+          rank: 1,
+        },
+        expect.objectContaining({
+          kind: "suggested_followup",
+          personDisplayName: "Mara Lin",
+          trustLevel: "tentative",
+          sensitivity: "sensitive",
+        }),
+      ],
+    });
+  });
+
+  it("renders empty relationship agenda results as an empty agenda view", () => {
+    const view = toAssistantToolView({
+      toolName: "get_relationship_agenda",
+      output: { candidates: [], component: { type: "relationship_agenda", resultCount: 0 } },
+    });
+
+    expect(view).toEqual({ kind: "relationship_agenda", candidates: [] });
+  });
+
   it("degrades an unknown tool to a generic view", () => {
     const view = toAssistantToolView({ toolName: "some_future_tool", output: { whatever: true } });
 
@@ -444,6 +522,39 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         ],
       }),
     ).toBe("semantic-search:memory-1");
+    expect(
+      assistantToolViewKey({
+        kind: "relationship_agenda",
+        candidates: [
+          {
+            kind: "due_followup",
+            personId: "person-1",
+            personDisplayName: "Mara Lin",
+            title: "Follow up with Mara Lin",
+            reason: "Ask about the move.",
+            dueLabel: "Jul 2, 2026",
+            sourceRefs: [{ kind: "followup", id: "followup-1" }],
+            trustLevel: "active_reminder",
+            sensitivity: "normal",
+            rank: 1,
+          },
+        ],
+      }),
+    ).toBe("agenda:followup:followup-1");
+    expect(
+      relationshipAgendaCandidateKey({
+        kind: "recent_context",
+        personId: "person-1",
+        personDisplayName: "Mara Lin",
+        title: "Recent logged context for Mara Lin",
+        reason: "Mara shared a recent update.",
+        dueLabel: null,
+        sourceRefs: [],
+        trustLevel: "logged_context",
+        sensitivity: "normal",
+        rank: 3,
+      }),
+    ).toBe("recent_context:3:person-1");
   });
 });
 
@@ -528,6 +639,26 @@ describe("toolViewTier (how much weight a result earns)", () => {
       }),
     ).toBe("disclosure");
     expect(toolViewTier({ kind: "semantic_context_search", results: [] })).toBe("line");
+    expect(
+      toolViewTier({
+        kind: "relationship_agenda",
+        candidates: [
+          {
+            kind: "birthday",
+            personId: "p1",
+            personDisplayName: "Alex",
+            title: "Alex's birthday",
+            reason: "Birthday falls inside the requested window.",
+            dueLabel: "Jul 5, 2026",
+            sourceRefs: [{ kind: "person", id: "p1" }],
+            trustLevel: "stored_profile_data",
+            sensitivity: "normal",
+            rank: 1,
+          },
+        ],
+      }),
+    ).toBe("disclosure");
+    expect(toolViewTier({ kind: "relationship_agenda", candidates: [] })).toBe("line");
   });
 });
 
@@ -535,6 +666,7 @@ describe("activeToolLabel (in-flight tool → working copy)", () => {
   it("maps known tools to present-continuous labels", () => {
     expect(activeToolLabel("search_relationship_context")).toBe("Searching your notebook…");
     expect(activeToolLabel("search_semantic_context")).toBe("Searching by meaning…");
+    expect(activeToolLabel("get_relationship_agenda")).toBe("Checking your relationship agenda…");
     expect(activeToolLabel("capture_memory")).toBe("Saving to memory…");
   });
 

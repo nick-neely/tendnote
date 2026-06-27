@@ -50,6 +50,10 @@ export type AssistantToolView =
       kind: "semantic_context_search";
       results: SemanticContextSearchResultView[];
     }
+  | {
+      kind: "relationship_agenda";
+      candidates: RelationshipAgendaCandidateView[];
+    }
   | { kind: "generic"; toolName: string };
 
 /** One tentative suggestion the user can approve or dismiss inline. */
@@ -92,6 +96,30 @@ export type SemanticContextSearchResultView = {
   similarity: number;
   trustLevel: "confirmed_fact" | "logged_context";
   sensitivity: "normal" | "sensitive" | "restricted";
+};
+
+export type RelationshipAgendaCandidateView = {
+  kind:
+    | "due_followup"
+    | "birthday"
+    | "review_item"
+    | "recent_context"
+    | "semantic_context"
+    | "suggested_followup";
+  personId: string | null;
+  personDisplayName: string | null;
+  title: string;
+  reason: string;
+  dueLabel: string | null;
+  sourceRefs: { kind: "followup" | "person" | "memory" | "source_record"; id: string }[];
+  trustLevel:
+    | "active_reminder"
+    | "stored_profile_data"
+    | "logged_context"
+    | "confirmed_fact"
+    | "tentative";
+  sensitivity: "normal" | "sensitive" | "restricted";
+  rank: number;
 };
 
 const sourceRecordOutput = z.object({
@@ -224,6 +252,54 @@ const semanticContextSearchOutput = z.object({
   ),
 });
 
+const relationshipAgendaOutput = z.object({
+  candidates: z.array(
+    z.object({
+      kind: z.enum([
+        "due_followup",
+        "birthday",
+        "review_item",
+        "recent_context",
+        "semantic_context",
+        "suggested_followup",
+      ]),
+      personId: z.string().nullish(),
+      personDisplayName: z.string().nullish(),
+      title: z.string(),
+      reason: z.string(),
+      dueAt: z.string().nullish(),
+      sourceRefs: z.array(
+        z.object({
+          kind: z.enum(["followup", "person", "memory", "source_record"]),
+          id: z.string(),
+        }),
+      ),
+      trustLevel: z.enum([
+        "active_reminder",
+        "stored_profile_data",
+        "logged_context",
+        "confirmed_fact",
+        "tentative",
+      ]),
+      sensitivity: z.enum(["normal", "sensitive", "restricted"]),
+      rank: z.number(),
+    }),
+  ),
+});
+
+function toRelationshipAgendaCandidate(
+  candidate: z.infer<typeof relationshipAgendaOutput>["candidates"][number],
+): RelationshipAgendaCandidateView {
+  const { dueAt: _dueAt, ...view } = candidate;
+
+  return {
+    ...view,
+    personId: candidate.personId ?? null,
+    personDisplayName: candidate.personDisplayName ?? null,
+    dueLabel: candidate.dueAt ? formatDueLabel(candidate.dueAt) : null,
+  };
+}
+
 /**
  * Stable React key for a rendered view, derived from the persisted record it
  * references so a list of results keys on real ids rather than array position.
@@ -250,9 +326,19 @@ export function assistantToolViewKey(view: AssistantToolView): string {
       return `search:${view.results.map((result) => result.recordId).join(":")}`;
     case "semantic_context_search":
       return `semantic-search:${view.results.map((result) => result.recordId).join(":")}`;
+    case "relationship_agenda":
+      return `agenda:${view.candidates.map(relationshipAgendaCandidateKey).join(":")}`;
     default:
       return `tool:${view.toolName}`;
   }
+}
+
+export function relationshipAgendaCandidateKey(candidate: RelationshipAgendaCandidateView) {
+  const sourceKey = candidate.sourceRefs
+    .map((sourceRef) => `${sourceRef.kind}:${sourceRef.id}`)
+    .join(":");
+
+  return sourceKey || `${candidate.kind}:${candidate.rank}:${candidate.personId ?? "personless"}`;
 }
 
 /** Visual weight a rendered tool result earns (see assistant-tool-result.tsx). */
@@ -272,6 +358,8 @@ export function toolViewTier(view: AssistantToolView): ToolViewTier {
     case "relationship_context_search":
     case "semantic_context_search":
       return view.results.length > 0 ? "disclosure" : "line";
+    case "relationship_agenda":
+      return view.candidates.length > 0 ? "disclosure" : "line";
     default:
       return "card";
   }
@@ -281,6 +369,7 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   search_people: "Searching people…",
   search_relationship_context: "Searching your notebook…",
   search_semantic_context: "Searching by meaning…",
+  get_relationship_agenda: "Checking your relationship agenda…",
   get_person_context: "Recalling…",
   get_suggested_memory_review: "Checking for suggestions…",
   list_suggested_memory_reviews: "Gathering suggestions to review…",
@@ -405,6 +494,14 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
           relatedPersonId: result.relatedPersonId ?? null,
           relatedPersonDisplayName: result.relatedPersonDisplayName ?? null,
         })),
+      };
+    }
+    case "get_relationship_agenda": {
+      const parsed = relationshipAgendaOutput.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "relationship_agenda",
+        candidates: parsed.data.candidates.map(toRelationshipAgendaCandidate),
       };
     }
     default:
