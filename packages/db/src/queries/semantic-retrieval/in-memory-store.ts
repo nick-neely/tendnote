@@ -4,6 +4,7 @@ import {
   createEmbeddingJobSchema,
   createRelationshipContextEmbeddingSchema,
   type EmbeddingJob,
+  projectApprovedMemoryEmbeddedText,
   type RelationshipContextEmbedding,
 } from "@tendnote/domain";
 import { createInMemoryMemoryStore } from "../memories/in-memory-store";
@@ -138,6 +139,67 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
     async findRelationshipContextEmbedding(input) {
       return embeddings.get(embeddingKey(input)) ?? null;
     },
+    async searchSemanticContext(input) {
+      const kinds = new Set(input.recordKinds ?? ["memory"]);
+      const results = await Promise.all(
+        [...embeddings.values()].map(async (embedding) => {
+          if (embedding.ownerUserId !== input.ownerUserId) return null;
+          if (!kinds.has(embedding.recordKind)) return null;
+          if (embedding.recordKind !== "memory") return null;
+          if (embedding.embeddingModel !== input.embeddingModel) return null;
+          if (embedding.embeddingVersion !== input.embeddingVersion) return null;
+          if (embedding.embeddingDimensions !== input.queryEmbedding.length) return null;
+          if (input.personId && embedding.personId !== input.personId) return null;
+          if (embedding.sensitivity === "restricted" && !input.directlyRequested) return null;
+
+          const memory = await base.getMemory({
+            ownerUserId: input.ownerUserId,
+            memoryId: embedding.recordId,
+          });
+
+          if (memory?.status !== "approved") return null;
+          if (memory.sensitivity === "restricted" && !input.directlyRequested) return null;
+          if (memory.sensitivity !== embedding.sensitivity) return null;
+          if (projectApprovedMemoryEmbeddedText(memory) !== embedding.embeddedText) return null;
+          if (memory.updatedAt.getTime() !== embedding.sourceUpdatedAt.getTime()) return null;
+
+          const similarity = cosineSimilarity(input.queryEmbedding, embedding.embedding);
+
+          if (similarity < input.minimumSimilarity) return null;
+
+          const person = embedding.personId
+            ? await base.getPerson({ ownerUserId: input.ownerUserId, personId: embedding.personId })
+            : null;
+
+          return {
+            recordKind: "memory" as const,
+            recordId: embedding.recordId,
+            relatedPersonId: embedding.personId,
+            relatedPersonDisplayName: person?.displayName ?? null,
+            snippet: embedding.embeddedText,
+            similarity,
+            trustLevel: embedding.trustLevel,
+            sensitivity: embedding.sensitivity,
+            sourceRefs: [{ kind: "memory" as const, id: embedding.recordId }],
+            routing: {
+              personId: embedding.personId,
+              recordKind: "memory" as const,
+              recordId: embedding.recordId,
+            },
+            tieBreakers: {
+              importance: memory.importance,
+              updatedAt: memory.updatedAt,
+            },
+          };
+        }),
+      );
+
+      return results
+        .filter((result): result is NonNullable<typeof result> => Boolean(result))
+        .sort(compareSemanticResults)
+        .slice(0, input.limit)
+        .map(({ tieBreakers: _tieBreakers, ...result }) => result);
+    },
     async listEmbeddingJobs() {
       return [...jobs.values()];
     },
@@ -145,4 +207,40 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
       return [...embeddings.values()];
     },
   };
+}
+
+function cosineSimilarity(left: number[], right: number[]) {
+  if (left.length !== right.length || left.length === 0) {
+    return 0;
+  }
+
+  const dot = left.reduce((sum, value, index) => sum + value * (right[index] ?? 0), 0);
+  const leftMagnitude = Math.hypot(...left);
+  const rightMagnitude = Math.hypot(...right);
+
+  if (leftMagnitude === 0 || rightMagnitude === 0) {
+    return 0;
+  }
+
+  return dot / (leftMagnitude * rightMagnitude);
+}
+
+type InMemorySemanticResult = Awaited<
+  ReturnType<InMemoryEmbeddingStore["searchSemanticContext"]>
+>[number] & {
+  tieBreakers: {
+    importance: number;
+    updatedAt: Date;
+  };
+};
+
+function compareSemanticResults(left: InMemorySemanticResult, right: InMemorySemanticResult) {
+  const similarityDelta = right.similarity - left.similarity;
+  if (Math.abs(similarityDelta) > 0.0001) return similarityDelta;
+
+  return (
+    right.tieBreakers.importance - left.tieBreakers.importance ||
+    right.tieBreakers.updatedAt.getTime() - left.tieBreakers.updatedAt.getTime() ||
+    left.recordId.localeCompare(right.recordId)
+  );
 }

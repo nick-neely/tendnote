@@ -7,6 +7,15 @@ export const semanticRecordKindSchema = z.enum(["memory", "source_record"]);
 
 export const semanticTrustLevelSchema = z.enum(["confirmed_fact", "logged_context"]);
 
+export const searchSemanticContextSchema = z.object({
+  query: z.string().trim().min(1).max(400),
+  personId: z.uuid().optional(),
+  recordKinds: z.array(semanticRecordKindSchema).min(1).max(2).optional(),
+  limit: z.number().int().min(1).max(20).default(8),
+  minimumSimilarity: z.number().min(0).max(1).default(0),
+  directlyRequested: z.boolean().default(false),
+});
+
 export const embeddingJobStatusSchema = z.enum([
   "pending",
   "running",
@@ -32,6 +41,23 @@ export const relationshipContextEmbeddingSchema = z.object({
   sourceUpdatedAt: z.date(),
   createdAt: z.date(),
   updatedAt: z.date(),
+});
+
+export const semanticRetrievalResultSchema = z.object({
+  recordKind: semanticRecordKindSchema,
+  recordId: z.string(),
+  relatedPersonId: z.string().nullable(),
+  relatedPersonDisplayName: z.string().nullable(),
+  snippet: z.string(),
+  similarity: z.number(),
+  trustLevel: semanticTrustLevelSchema,
+  sensitivity: sensitivitySchema,
+  sourceRefs: z.array(z.object({ kind: semanticRecordKindSchema, id: z.string() })).min(1),
+  routing: z.object({
+    personId: z.string().nullable(),
+    recordKind: semanticRecordKindSchema,
+    recordId: z.string(),
+  }),
 });
 
 export const createRelationshipContextEmbeddingSchema = relationshipContextEmbeddingSchema.omit({
@@ -65,6 +91,9 @@ export const createEmbeddingJobSchema = embeddingJobSchema.omit({
 export type SemanticRecordKind = z.infer<typeof semanticRecordKindSchema>;
 export type SemanticTrustLevel = z.infer<typeof semanticTrustLevelSchema>;
 export type RelationshipContextEmbedding = z.infer<typeof relationshipContextEmbeddingSchema>;
+export type SearchSemanticContextInput = z.input<typeof searchSemanticContextSchema>;
+export type ParsedSearchSemanticContextInput = z.output<typeof searchSemanticContextSchema>;
+export type SemanticRetrievalResult = z.infer<typeof semanticRetrievalResultSchema>;
 export type CreateRelationshipContextEmbeddingInput = z.infer<
   typeof createRelationshipContextEmbeddingSchema
 >;

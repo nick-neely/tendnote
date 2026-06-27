@@ -4,8 +4,10 @@ import type {
   EmbeddingJob,
   EmbeddingJobStatus,
   Memory,
+  ParsedSearchSemanticContextInput,
   RelationshipContextEmbedding,
   SemanticRecordKind,
+  SemanticRetrievalResult,
   SourceRecord,
   SourceRecordPerson,
   UnresolvedPersonMention,
@@ -31,6 +33,10 @@ export type EmbeddingAdapter = {
 export type EmbeddingConfig = {
   model: string;
   version: string;
+};
+
+export type SearchSemanticContextQueryInput = ParsedSearchSemanticContextInput & {
+  ownerUserId: string;
 };
 
 export type UpdateEmbeddingJobInput = {
@@ -71,6 +77,13 @@ export type EmbeddingStore = MemoryReviewStore &
       embeddingModel: string;
       embeddingVersion: string;
     }) => Promise<RelationshipContextEmbedding | null>;
+    searchSemanticContext: (
+      input: SearchSemanticContextQueryInput & {
+        queryEmbedding: number[];
+        embeddingModel: string;
+        embeddingVersion: string;
+      },
+    ) => Promise<SemanticRetrievalResult[]>;
   };
 
 export type InMemoryEmbeddingStore = Omit<

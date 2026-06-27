@@ -2,6 +2,7 @@ import {
   claimableEmbeddingJobStatuses,
   createEmbeddingJobSchema,
   createRelationshipContextEmbeddingSchema,
+  type SemanticRetrievalResult,
 } from "@tendnote/domain";
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "../../client";
@@ -16,6 +17,17 @@ import { createDrizzleMemoryStore } from "../memories/drizzle-store";
 import type { EmbeddingStore, UpdateEmbeddingJobInput } from "./types";
 
 const CLAIMABLE_STATUSES = [...claimableEmbeddingJobStatuses];
+
+type SemanticMemorySearchRow = {
+  record_kind: "memory";
+  record_id: string;
+  related_person_id: string | null;
+  related_person_display_name: string | null;
+  snippet: string;
+  similarity: string | number;
+  trust_level: "confirmed_fact" | "logged_context";
+  sensitivity: "normal" | "sensitive" | "restricted";
+};
 
 function buildJobUpdate(input: UpdateEmbeddingJobInput) {
   const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -203,6 +215,72 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
         .limit(1);
 
       return embedding ?? null;
+    },
+    async searchSemanticContext(input) {
+      if (input.recordKinds && !input.recordKinds.includes("memory")) {
+        return [];
+      }
+
+      const queryVector = `[${input.queryEmbedding.join(",")}]`;
+      const rows = await getDb().execute(sql<SemanticMemorySearchRow>`
+        select
+          e.record_kind::text as record_kind,
+          e.record_id::text as record_id,
+          e.person_id::text as related_person_id,
+          p.display_name as related_person_display_name,
+          e.embedded_text as snippet,
+          (1 - (e.embedding <=> ${queryVector}::vector))::float8 as similarity,
+          e.trust_level::text as trust_level,
+          e.sensitivity::text as sensitivity
+        from relationship_context_embeddings e
+        inner join memories m
+          on m.id = e.record_id
+          and e.record_kind = 'memory'
+        inner join people p
+          on p.id = m.person_id
+          and p.owner_user_id = ${input.ownerUserId}
+        where
+          e.owner_user_id = ${input.ownerUserId}
+          and m.owner_user_id = ${input.ownerUserId}
+          and e.record_kind = 'memory'
+          and m.status = 'approved'
+          and e.embedding_model = ${input.embeddingModel}
+          and e.embedding_version = ${input.embeddingVersion}
+          and e.embedding_dimensions = ${input.queryEmbedding.length}
+          and e.source_updated_at = m.updated_at
+          and e.embedded_text = regexp_replace(btrim(m.content), '\\s+', ' ', 'g')
+          and e.sensitivity = m.sensitivity
+          and (${input.personId ? sql`e.person_id = ${input.personId}` : sql`true`})
+          and (${input.directlyRequested}::boolean or e.sensitivity <> 'restricted')
+          and (1 - (e.embedding <=> ${queryVector}::vector)) >= ${input.minimumSimilarity}
+        order by
+          similarity desc,
+          m.importance desc,
+          m.updated_at desc,
+          e.record_id asc
+        limit ${input.limit}
+      `);
+
+      return (rows as unknown as SemanticMemorySearchRow[]).map(toSemanticRetrievalResult);
+    },
+  };
+}
+
+function toSemanticRetrievalResult(row: SemanticMemorySearchRow): SemanticRetrievalResult {
+  return {
+    recordKind: row.record_kind,
+    recordId: row.record_id,
+    relatedPersonId: row.related_person_id,
+    relatedPersonDisplayName: row.related_person_display_name,
+    snippet: row.snippet,
+    similarity: Number(row.similarity),
+    trustLevel: row.trust_level,
+    sensitivity: row.sensitivity,
+    sourceRefs: [{ kind: row.record_kind, id: row.record_id }],
+    routing: {
+      personId: row.related_person_id,
+      recordKind: row.record_kind,
+      recordId: row.record_id,
     },
   };
 }
