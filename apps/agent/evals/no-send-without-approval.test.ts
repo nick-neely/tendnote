@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const instructions = readFileSync(join(process.cwd(), "agent/instructions.md"), "utf8");
+const instructions = readFileSync(join(process.cwd(), "agent/instructions/base.md"), "utf8");
 
 const outboundActionPatterns = [
   /send\s+(an?\s+)?(email|text|message)/i,

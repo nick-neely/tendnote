@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const toolsDir = join(process.cwd(), "agent/tools");
-const instructions = readFileSync(join(process.cwd(), "agent/instructions.md"), "utf8");
+const instructions = readFileSync(join(process.cwd(), "agent/instructions/base.md"), "utf8");
 
 function readTool(name: string): string {
   return readFileSync(join(toolsDir, `${name}.ts`), "utf8");

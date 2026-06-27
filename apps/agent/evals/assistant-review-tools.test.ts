@@ -9,7 +9,7 @@ function readTool(name: string): string {
 }
 
 const toolFiles = readdirSync(toolsDir).filter((file) => file.endsWith(".ts"));
-const instructions = readFileSync(join(process.cwd(), "agent/instructions.md"), "utf8");
+const instructions = readFileSync(join(process.cwd(), "agent/instructions/base.md"), "utf8");
 
 describe("Phase 1A assistant tools are thin wrappers over shared functions", () => {
   const wrappers: Record<string, string> = {

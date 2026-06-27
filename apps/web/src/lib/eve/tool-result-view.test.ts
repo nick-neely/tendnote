@@ -436,6 +436,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
           personDisplayName: "Mara Lin",
           title: "Follow up with Mara Lin",
           reason: "Ask about the move.",
+          dueAt: "2026-07-02T12:00:00.000Z",
           dueLabel,
           sourceRefs: [{ kind: "followup", id: "followup-1" }],
           trustLevel: "active_reminder",
@@ -449,6 +450,24 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
           sensitivity: "sensitive",
         }),
       ],
+      window: null,
+    });
+  });
+
+  it("echoes the requested agenda window so the calendar can highlight it", () => {
+    const view = toAssistantToolView({
+      toolName: "get_relationship_agenda",
+      output: {
+        candidates: [],
+        window: { start: "2026-07-01T00:00:00Z", end: "2026-07-07T23:59:59Z" },
+        component: { type: "relationship_agenda", resultCount: 0 },
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "relationship_agenda",
+      candidates: [],
+      window: { start: "2026-07-01T00:00:00Z", end: "2026-07-07T23:59:59Z" },
     });
   });
 
@@ -458,7 +477,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
       output: { candidates: [], component: { type: "relationship_agenda", resultCount: 0 } },
     });
 
-    expect(view).toEqual({ kind: "relationship_agenda", candidates: [] });
+    expect(view).toEqual({ kind: "relationship_agenda", candidates: [], window: null });
   });
 
   it("degrades an unknown tool to a generic view", () => {
@@ -532,6 +551,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
             personDisplayName: "Mara Lin",
             title: "Follow up with Mara Lin",
             reason: "Ask about the move.",
+            dueAt: "2026-07-02T12:00:00.000Z",
             dueLabel: "Jul 2, 2026",
             sourceRefs: [{ kind: "followup", id: "followup-1" }],
             trustLevel: "active_reminder",
@@ -548,7 +568,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         personDisplayName: "Mara Lin",
         title: "Recent logged context for Mara Lin",
         reason: "Mara shared a recent update.",
-        dueLabel: null,
+        dueAt: "2026-06-25T12:00:00.000Z",
+        dueLabel: "Jun 25, 2026",
         sourceRefs: [],
         trustLevel: "logged_context",
         sensitivity: "normal",
@@ -649,6 +670,7 @@ describe("toolViewTier (how much weight a result earns)", () => {
             personDisplayName: "Alex",
             title: "Alex's birthday",
             reason: "Birthday falls inside the requested window.",
+            dueAt: "2026-07-05T00:00:00.000Z",
             dueLabel: "Jul 5, 2026",
             sourceRefs: [{ kind: "person", id: "p1" }],
             trustLevel: "stored_profile_data",

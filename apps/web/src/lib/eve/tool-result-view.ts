@@ -53,6 +53,12 @@ export type AssistantToolView =
   | {
       kind: "relationship_agenda";
       candidates: RelationshipAgendaCandidateView[];
+      /**
+       * The window the user asked about, echoed by the tool so the calendar can
+       * highlight it. Optional: messages persisted before this field existed
+       * simply render without a highlighted span.
+       */
+      window?: { start: string; end: string } | null;
     }
   | { kind: "generic"; toolName: string };
 
@@ -110,6 +116,8 @@ export type RelationshipAgendaCandidateView = {
   personDisplayName: string | null;
   title: string;
   reason: string;
+  /** ISO timestamp the candidate sits on (its calendar day), or null when undated. */
+  dueAt: string | null;
   dueLabel: string | null;
   sourceRefs: { kind: "followup" | "person" | "memory" | "source_record"; id: string }[];
   trustLevel:
@@ -285,17 +293,17 @@ const relationshipAgendaOutput = z.object({
       rank: z.number(),
     }),
   ),
+  window: z.object({ start: z.string(), end: z.string() }).nullish(),
 });
 
 function toRelationshipAgendaCandidate(
   candidate: z.infer<typeof relationshipAgendaOutput>["candidates"][number],
 ): RelationshipAgendaCandidateView {
-  const { dueAt: _dueAt, ...view } = candidate;
-
   return {
-    ...view,
+    ...candidate,
     personId: candidate.personId ?? null,
     personDisplayName: candidate.personDisplayName ?? null,
+    dueAt: candidate.dueAt ?? null,
     dueLabel: candidate.dueAt ? formatDueLabel(candidate.dueAt) : null,
   };
 }
@@ -502,6 +510,9 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       return {
         kind: "relationship_agenda",
         candidates: parsed.data.candidates.map(toRelationshipAgendaCandidate),
+        window: parsed.data.window
+          ? { start: parsed.data.window.start, end: parsed.data.window.end }
+          : null,
       };
     }
     default:

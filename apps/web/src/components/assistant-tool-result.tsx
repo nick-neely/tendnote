@@ -9,11 +9,11 @@ import {
   UserPlusIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { AgendaCalendar } from "@/components/agenda-calendar";
+import { labelSensitivity } from "@/lib/eve/agenda-format";
 import {
   type AssistantToolView,
-  type RelationshipAgendaCandidateView,
   type RelationshipContextSearchResultView,
-  relationshipAgendaCandidateKey,
   type SemanticContextSearchResultView,
   toolViewTier,
 } from "@/lib/eve/tool-result-view";
@@ -124,13 +124,8 @@ function DisclosureView({ view, isNew }: { view: AssistantToolView; isNew: boole
             className="tn-chevron ml-auto size-3.5 shrink-0 transition-transform duration-200 ease-(--motion-ease-out)"
           />
         </summary>
-        <div className="flex flex-col divide-y divide-border/70 border-t px-3.5 pt-3 pb-3.5">
-          {view.candidates.map((candidate) => (
-            <AgendaCandidateRow
-              candidate={candidate}
-              key={relationshipAgendaCandidateKey(candidate)}
-            />
-          ))}
+        <div className="border-t">
+          <AgendaCalendar candidates={view.candidates} window={view.window ?? null} />
         </div>
       </details>
     );
@@ -318,66 +313,6 @@ function SearchResultRow({
   );
 }
 
-function AgendaCandidateRow({ candidate }: { candidate: RelationshipAgendaCandidateView }) {
-  const href = candidate.personId ? `/people/${candidate.personId}` : null;
-  const personLabel = candidate.personDisplayName ?? "Relationship context";
-  const isTentative = candidate.trustLevel === "tentative";
-  const isRestricted = candidate.sensitivity === "restricted";
-
-  const title = (
-    <span className="inline-flex min-w-0 items-center gap-1.5">
-      {candidate.kind === "due_followup" ||
-      candidate.kind === "birthday" ||
-      candidate.kind === "suggested_followup" ? (
-        <CalendarClockIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-      ) : (
-        <NotebookPenIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-      )}
-      <span className="truncate font-medium text-foreground">{personLabel}</span>
-    </span>
-  );
-
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0",
-        isTentative && "rounded-md bg-accent-soft/35 px-2.5 first:mt-0 last:mb-0",
-        isRestricted && "rounded-md border border-border bg-secondary/60 px-2.5",
-      )}
-    >
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        {href ? (
-          <Link
-            href={href}
-            className="min-w-0 underline decoration-foreground/25 underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
-          >
-            {title}
-          </Link>
-        ) : (
-          title
-        )}
-        <span className="shrink-0 rounded-full border px-1.5 py-0.5 text-[length:var(--text-caption)] text-muted-foreground">
-          {labelAgendaKind(candidate.kind)}
-        </span>
-      </div>
-      <Body>{candidate.title}</Body>
-      <p className="max-w-[68ch] text-pretty text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-        {candidate.reason}
-      </p>
-      <Caption>
-        {[
-          labelAgendaTrust(candidate.trustLevel),
-          labelSensitivity(candidate.sensitivity),
-          candidate.dueLabel ? labelAgendaDue(candidate.kind, candidate.dueLabel) : null,
-          labelSourceGrounding(candidate.sourceRefs),
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-      </Caption>
-    </div>
-  );
-}
-
 export type CardTone = "confirmed" | "neutral" | "tentative";
 
 /**
@@ -495,70 +430,6 @@ function labelTrust(result: SearchResultView) {
         : "Identity reference";
 
   return result.relatedPersonDisplayName ? `${trust} · ${result.relatedPersonDisplayName}` : trust;
-}
-
-function labelSensitivity(sensitivity: SearchResultView["sensitivity"]) {
-  if (sensitivity === "restricted") return "Restricted";
-  return sensitivity === "sensitive" ? "Sensitive" : "Normal";
-}
-
-function labelAgendaKind(kind: RelationshipAgendaCandidateView["kind"]) {
-  switch (kind) {
-    case "due_followup":
-      return "Follow-up";
-    case "birthday":
-      return "Birthday";
-    case "review_item":
-      return "Review";
-    case "recent_context":
-      return "Recent context";
-    case "semantic_context":
-      return "Semantic context";
-    case "suggested_followup":
-      return "Suggested follow-up";
-  }
-}
-
-function labelAgendaTrust(trustLevel: RelationshipAgendaCandidateView["trustLevel"]) {
-  switch (trustLevel) {
-    case "active_reminder":
-      return "Active reminder";
-    case "stored_profile_data":
-      return "Stored profile data";
-    case "logged_context":
-      return "Logged context";
-    case "confirmed_fact":
-      return "Confirmed fact";
-    case "tentative":
-      return "Tentative";
-  }
-}
-
-function labelAgendaDue(kind: RelationshipAgendaCandidateView["kind"], dueLabel: string) {
-  if (kind === "birthday") {
-    return `Upcoming ${dueLabel}`;
-  }
-
-  if (kind === "suggested_followup") {
-    return `Suggested for ${dueLabel}`;
-  }
-
-  return `Due ${dueLabel}`;
-}
-
-function labelSourceGrounding(sourceRefs: RelationshipAgendaCandidateView["sourceRefs"]) {
-  const kinds = new Set(sourceRefs.map((sourceRef) => sourceRef.kind));
-  const labels: string[] = [];
-  if (kinds.has("followup")) labels.push("follow-up");
-  if (kinds.has("person")) labels.push("person");
-  if (kinds.has("memory")) labels.push("memory");
-  if (kinds.has("source_record")) labels.push("source record");
-
-  if (labels.length === 0) {
-    return null;
-  }
-
-  return `Grounded in ${labels.join(" + ")}`;
 }
 
 function humanizeToolName(toolName: string): string {

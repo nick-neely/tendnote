@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const toolSource = readFileSync(join(process.cwd(), "agent/tools/get_person_context.ts"), "utf8");
-const instructions = readFileSync(join(process.cwd(), "agent/instructions.md"), "utf8");
+const instructions = readFileSync(join(process.cwd(), "agent/instructions/base.md"), "utf8");
 
 describe("trust-aware person context tool", () => {
   it("calls the shared snapshot-backed read path rather than re-deriving policy", () => {

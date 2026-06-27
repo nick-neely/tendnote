@@ -246,7 +246,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).not.toContain('data-tool-view="semantic_context_search"');
   });
 
-  it("renders agenda results as compact grounded rows without visible raw ids", () => {
+  it("places dated agenda candidates on the calendar with accessible day labels", () => {
     const html = render({
       kind: "relationship_agenda",
       candidates: [
@@ -256,6 +256,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
           personDisplayName: "Mara Lin",
           title: "Follow up with Mara Lin",
           reason: "Ask about the move.",
+          dueAt: "2026-07-02T12:00:00.000Z",
           dueLabel: "Jul 2, 2026",
           sourceRefs: [{ kind: "followup", id: "followup-1" }],
           trustLevel: "active_reminder",
@@ -268,6 +269,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
           personDisplayName: "Sam Rivera",
           title: "Sam Rivera's birthday",
           reason: "Birthday falls inside the requested window.",
+          dueAt: "2026-07-05T00:00:00.000Z",
           dueLabel: "Jul 5, 2026",
           sourceRefs: [{ kind: "person", id: "person-2" }],
           trustLevel: "stored_profile_data",
@@ -278,23 +280,19 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     });
 
     expect(html).toContain("Found 2 agenda items");
-    expect(html).toContain("Follow-up");
-    expect(html).toContain("Birthday");
+    // Dated items live on the grid; their person and title ride the day cell's
+    // accessible label so screen readers and search hit them without a click.
+    // (renderToStaticMarkup HTML-escapes the apostrophe inside aria-label, so we
+    // assert on the unambiguous person/title fragments rather than the raw "'s".)
+    expect(html).toContain("Follow up with Mara Lin");
     expect(html).toContain("Mara Lin");
     expect(html).toContain("Sam Rivera");
-    expect(html).toContain("Ask about the move.");
-    expect(html).toContain("Active reminder");
-    expect(html).toContain("Stored profile data");
-    expect(html).toContain("Due Jul 2, 2026");
-    expect(html).toContain("Upcoming Jul 5, 2026");
-    expect(html).toContain("Grounded in follow-up");
-    expect(html).toContain("Grounded in person");
-    expect(html).toContain('href="/people/person-1"');
+    expect(html).toContain("birthday");
     expect(html).toContain('data-tool-view="relationship_agenda"');
     expect(html).not.toContain("followup-1");
   });
 
-  it("renders tentative and restricted agenda candidates with explicit labels", () => {
+  it("keeps undated review context in the rail while dated items ride the grid", () => {
     const html = render({
       kind: "relationship_agenda",
       candidates: [
@@ -304,6 +302,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
           personDisplayName: "Mara Lin",
           title: "Review suggested follow-up for Mara Lin",
           reason: "Ask whether the move happened.",
+          dueAt: "2026-07-04T12:00:00.000Z",
           dueLabel: "Jul 4, 2026",
           sourceRefs: [
             { kind: "followup", id: "followup-2" },
@@ -319,6 +318,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
           personDisplayName: "Mara Lin",
           title: "Restricted related context for Mara Lin",
           reason: "Restricted context.",
+          dueAt: null,
           dueLabel: null,
           sourceRefs: [{ kind: "source_record", id: "source-restricted" }],
           trustLevel: "logged_context",
@@ -328,14 +328,47 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
       ],
     });
 
-    expect(html).toContain("Suggested follow-up");
-    expect(html).toContain("Tentative");
-    expect(html).toContain("Sensitive");
-    expect(html).toContain("Suggested for Jul 4, 2026");
-    expect(html).toContain("Restricted");
+    // The legend names what each color means — never color alone.
+    expect(html).toContain("To review");
+    expect(html).toContain("Logged");
+    // The dated suggestion rides the calendar (its title is on the day cell)…
+    expect(html).toContain("Review suggested follow-up for Mara Lin");
+    // …while the undated, restricted context stays fully spelled out in the rail.
     expect(html).toContain("Restricted related context for Mara Lin");
-    expect(html).toContain("Grounded in follow-up + source record");
+    expect(html).toContain("Restricted");
+    expect(html).toContain("Logged context");
+    expect(html).toContain("Grounded in source record");
+    expect(html).toContain('href="/people/person-1"');
     expect(html).not.toContain("source-restricted");
+    expect(html).not.toContain("followup-2");
+  });
+
+  it("falls back to a plain rail when no candidate carries a date", () => {
+    const html = render({
+      kind: "relationship_agenda",
+      candidates: [
+        {
+          kind: "review_item",
+          personId: "person-1",
+          personDisplayName: "Mara Lin",
+          title: "Review suggested memory for Mara Lin",
+          reason: "Maybe switching jobs.",
+          dueAt: null,
+          dueLabel: null,
+          sourceRefs: [{ kind: "memory", id: "memory-9" }],
+          trustLevel: "tentative",
+          sensitivity: "normal",
+          rank: 1,
+        },
+      ],
+    });
+
+    expect(html).toContain("Found 1 agenda item");
+    expect(html).toContain("Relationship agenda");
+    expect(html).toContain("Review suggested memory for Mara Lin");
+    expect(html).toContain("Tentative");
+    expect(html).toContain('data-tool-view="relationship_agenda"');
+    expect(html).not.toContain("memory-9");
   });
 
   it("renders empty agenda results as a quiet line", () => {

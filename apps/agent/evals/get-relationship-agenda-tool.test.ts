@@ -65,6 +65,10 @@ describe("get_relationship_agenda tool", () => {
           rank: 1,
         },
       ],
+      window: {
+        start: "2026-07-01T00:00:00Z",
+        end: "2026-07-07T23:59:59Z",
+      },
       component: {
         type: "relationship_agenda",
         resultCount: 1,

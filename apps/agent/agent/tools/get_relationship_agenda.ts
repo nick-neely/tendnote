@@ -65,6 +65,12 @@ export default defineTool({
         ...candidate,
         dueAt: candidate.dueAt?.toISOString(),
       })),
+      // Echo the requested window so the chat calendar can highlight exactly the
+      // span the user asked about (e.g. "anything next week?") and anchor there.
+      window: {
+        start: input.windowStart,
+        end: input.windowEnd,
+      },
       component: {
         type: "relationship_agenda",
         resultCount: candidates.length,
