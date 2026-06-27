@@ -6,6 +6,9 @@ import type {
   Memory,
   RelationshipContextEmbedding,
   SemanticRecordKind,
+  SourceRecord,
+  SourceRecordPerson,
+  UnresolvedPersonMention,
 } from "@tendnote/domain";
 import type { InMemoryMemoryStore, MemoryReviewStore } from "../memories/types";
 
@@ -50,6 +53,14 @@ export type EmbeddingJobLifecycleStore = {
 
 export type EmbeddingStore = MemoryReviewStore &
   EmbeddingJobLifecycleStore & {
+    listSourceRecordPeople: (input: {
+      ownerUserId: string;
+      sourceRecordId: string;
+    }) => Promise<SourceRecordPerson[]>;
+    listUnresolvedMentions: (input: {
+      ownerUserId: string;
+      sourceRecordId: string;
+    }) => Promise<UnresolvedPersonMention[]>;
     upsertRelationshipContextEmbedding: (
       embedding: CreateRelationshipContextEmbeddingInput,
     ) => Promise<RelationshipContextEmbedding>;
@@ -62,7 +73,10 @@ export type EmbeddingStore = MemoryReviewStore &
     }) => Promise<RelationshipContextEmbedding | null>;
   };
 
-export type InMemoryEmbeddingStore = InMemoryMemoryStore &
+export type InMemoryEmbeddingStore = Omit<
+  InMemoryMemoryStore,
+  "listSourceRecordPeople" | "listUnresolvedMentions"
+> &
   EmbeddingStore & {
     listEmbeddingJobs: () => Promise<EmbeddingJob[]>;
     listRelationshipContextEmbeddings: () => Promise<RelationshipContextEmbedding[]>;
@@ -96,4 +110,5 @@ export type ProcessEmbeddingJobResult = {
   sourceMemory?: Memory | null;
   reason?: string;
   error?: string;
+  sourceRecord?: SourceRecord | null;
 };

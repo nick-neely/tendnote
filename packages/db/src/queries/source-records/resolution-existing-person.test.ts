@@ -75,4 +75,47 @@ describe("source record existing-person resolution", () => {
       ]),
     );
   });
+
+  it("schedules source-record embedding work after linking an existing person", async () => {
+    const store = createInMemorySourceRecordStore();
+    const capture = createSourceRecordCapture(store);
+    const scheduled: Array<{ ownerUserId: string; recordKind: "source_record"; recordId: string }> =
+      [];
+    const resolution = createSourceRecordResolution(store, {
+      async scheduleSourceRecordEmbedding(input) {
+        scheduled.push(input);
+      },
+    });
+
+    const mara = await store.createPerson({
+      ownerUserId: "user-1",
+      displayName: "Mara Lin",
+      firstName: null,
+      lastName: null,
+      birthday: null,
+      relationshipType: "friend",
+      closenessLevel: 3,
+      profileBlurb: null,
+      source: "manual",
+    });
+    const result = await capture.captureSourceRecord({
+      ownerUserId: "user-1",
+      retainedContent: "Mara prefers handmade cooking gifts.",
+    });
+
+    await resolution.linkSourceRecordToExistingPerson({
+      ownerUserId: "user-1",
+      sourceRecordId: result.sourceRecord.id,
+      personId: mara.id,
+      role: "primary",
+    });
+
+    expect(scheduled).toEqual([
+      {
+        ownerUserId: "user-1",
+        recordKind: "source_record",
+        recordId: result.sourceRecord.id,
+      },
+    ]);
+  });
 });

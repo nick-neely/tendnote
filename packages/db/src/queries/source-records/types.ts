@@ -114,6 +114,12 @@ export type SourceRecordResolutionStore = SourceRecordCaptureStore & {
   }) => Promise<UnresolvedPersonMention>;
 };
 
+export type SourceRecordEmbeddingScheduler = (input: {
+  ownerUserId: string;
+  recordKind: "source_record";
+  recordId: string;
+}) => Promise<unknown>;
+
 export type InMemorySourceRecordStore = SourceRecordResolutionStore & {
   getSourceRecordById: (sourceRecordId: string) => Promise<SourceRecord | null>;
   listPeople: (input: { ownerUserId: string }) => Promise<Person[]>;

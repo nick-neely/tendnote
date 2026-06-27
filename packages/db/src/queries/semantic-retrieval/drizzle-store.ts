@@ -5,7 +5,13 @@ import {
 } from "@tendnote/domain";
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "../../client";
-import { relationshipContextEmbeddingJobs, relationshipContextEmbeddings } from "../../schema";
+import {
+  relationshipContextEmbeddingJobs,
+  relationshipContextEmbeddings,
+  sourceRecordPeople,
+  sourceRecords,
+  unresolvedPersonMentions,
+} from "../../schema";
 import { createDrizzleMemoryStore } from "../memories/drizzle-store";
 import type { EmbeddingStore, UpdateEmbeddingJobInput } from "./types";
 
@@ -28,6 +34,36 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
 
   return {
     ...base,
+    async listSourceRecordPeople(input) {
+      const rows = await getDb()
+        .select()
+        .from(sourceRecordPeople)
+        .innerJoin(sourceRecords, eq(sourceRecordPeople.sourceRecordId, sourceRecords.id))
+        .where(
+          and(
+            eq(sourceRecordPeople.sourceRecordId, input.sourceRecordId),
+            eq(sourceRecords.ownerUserId, input.ownerUserId),
+          ),
+        )
+        .orderBy(asc(sourceRecordPeople.createdAt));
+
+      return rows.map((row) => row.source_record_people);
+    },
+    async listUnresolvedMentions(input) {
+      const rows = await getDb()
+        .select()
+        .from(unresolvedPersonMentions)
+        .innerJoin(sourceRecords, eq(unresolvedPersonMentions.sourceRecordId, sourceRecords.id))
+        .where(
+          and(
+            eq(unresolvedPersonMentions.sourceRecordId, input.sourceRecordId),
+            eq(sourceRecords.ownerUserId, input.ownerUserId),
+          ),
+        )
+        .orderBy(asc(unresolvedPersonMentions.createdAt));
+
+      return rows.map((row) => row.unresolved_person_mentions);
+    },
     async createEmbeddingJob(values) {
       const [job] = await getDb()
         .insert(relationshipContextEmbeddingJobs)

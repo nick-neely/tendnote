@@ -47,6 +47,22 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
 
   return {
     ...base,
+    async listSourceRecordPeople(input) {
+      const sourceRecord = await base.getSourceRecord({
+        ownerUserId: input.ownerUserId,
+        sourceRecordId: input.sourceRecordId,
+      });
+
+      return sourceRecord ? base.listSourceRecordPeople(input) : [];
+    },
+    async listUnresolvedMentions(input) {
+      const sourceRecord = await base.getSourceRecord({
+        ownerUserId: input.ownerUserId,
+        sourceRecordId: input.sourceRecordId,
+      });
+
+      return sourceRecord ? base.listUnresolvedMentions(input) : [];
+    },
     async createEmbeddingJob(values) {
       const parsed = createEmbeddingJobSchema.parse(values);
       const now = new Date();

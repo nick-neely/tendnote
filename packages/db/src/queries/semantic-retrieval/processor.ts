@@ -4,9 +4,12 @@ import {
   createEmbeddingJobSchema,
   createRelationshipContextEmbeddingSchema,
   decideApprovedMemoryEmbedding,
+  decideSourceRecordEmbedding,
   type Memory,
   projectApprovedMemoryEmbeddedText,
+  projectSourceRecordEmbeddedText,
   type SemanticRecordKind,
+  type SourceRecord,
 } from "@tendnote/domain";
 import type {
   EmbeddingAdapter,
@@ -99,6 +102,7 @@ export function createEmbeddingProcessor(
     reason: string,
     now: Date,
     sourceMemory: Memory | null = null,
+    sourceRecord: SourceRecord | null = null,
   ): Promise<ProcessEmbeddingJobResult> {
     const updated = await store.updateEmbeddingJob({
       jobId: job.id,
@@ -118,7 +122,14 @@ export function createEmbeddingProcessor(
       },
     });
 
-    return { job: updated, outcome: "skipped", embedding: null, sourceMemory, reason };
+    return {
+      job: updated,
+      outcome: "skipped",
+      embedding: null,
+      sourceMemory,
+      sourceRecord,
+      reason,
+    };
   }
 
   async function processApprovedMemory(
@@ -186,6 +197,95 @@ export function createEmbeddingProcessor(
     );
 
     return { embedding, sourceMemory: memory };
+  }
+
+  async function processSourceRecord(
+    job: ProcessEmbeddingJobResult["job"],
+  ): Promise<
+    | Omit<ProcessEmbeddingJobResult, "job" | "outcome">
+    | { skipReason: string; sourceRecord: SourceRecord | null }
+  > {
+    const sourceRecord = await store.getSourceRecord({
+      ownerUserId: job.ownerUserId,
+      sourceRecordId: job.recordId,
+    });
+
+    if (!sourceRecord) {
+      return { skipReason: "source_record_not_found", sourceRecord: null };
+    }
+
+    const [links, unresolvedMentions] = await Promise.all([
+      store.listSourceRecordPeople({
+        ownerUserId: sourceRecord.ownerUserId,
+        sourceRecordId: sourceRecord.id,
+      }),
+      store.listUnresolvedMentions({
+        ownerUserId: sourceRecord.ownerUserId,
+        sourceRecordId: sourceRecord.id,
+      }),
+    ]);
+    const people = (
+      await Promise.all(
+        links.map((link) =>
+          store.getPerson({ ownerUserId: sourceRecord.ownerUserId, personId: link.personId }),
+        ),
+      )
+    )
+      .filter((person): person is NonNullable<typeof person> => Boolean(person))
+      .map((person) => ({ id: person.id, displayName: person.displayName }));
+    const unresolvedMentionCount = unresolvedMentions.filter(
+      (mention) => mention.status === "unresolved",
+    ).length;
+    const decision = decideSourceRecordEmbedding(sourceRecord, people, unresolvedMentionCount);
+
+    if (decision.action === "skip") {
+      return { skipReason: decision.reason, sourceRecord };
+    }
+
+    const embeddedText = projectSourceRecordEmbeddedText(sourceRecord, people);
+    const contentFingerprint = fingerprintEmbeddedText({
+      recordKind: "source_record",
+      recordId: sourceRecord.id,
+      embeddedText,
+    });
+
+    const existing = await store.findRelationshipContextEmbedding({
+      ownerUserId: sourceRecord.ownerUserId,
+      recordKind: "source_record",
+      recordId: sourceRecord.id,
+      embeddingModel: config.model,
+      embeddingVersion: config.version,
+    });
+
+    if (existing?.contentFingerprint === contentFingerprint) {
+      return { embedding: existing, sourceRecord };
+    }
+
+    const adapterResult = await adapter.embedText({
+      text: embeddedText,
+      model: config.model,
+      version: config.version,
+    });
+    const primaryPerson = people[0] ?? null;
+    const embedding = await store.upsertRelationshipContextEmbedding(
+      createRelationshipContextEmbeddingSchema.parse({
+        ownerUserId: sourceRecord.ownerUserId,
+        personId: primaryPerson?.id ?? null,
+        recordKind: "source_record",
+        recordId: sourceRecord.id,
+        embedding: adapterResult.vector,
+        embeddingModel: adapterResult.model,
+        embeddingVersion: adapterResult.version,
+        embeddingDimensions: adapterResult.vector.length,
+        embeddedText,
+        contentFingerprint,
+        trustLevel: "logged_context",
+        sensitivity: sourceRecord.sensitivity,
+        sourceUpdatedAt: sourceRecord.updatedAt,
+      }),
+    );
+
+    return { embedding, sourceRecord };
   }
 
   return {
@@ -266,10 +366,16 @@ export function createEmbeddingProcessor(
         const result =
           job.recordKind === "memory"
             ? await processApprovedMemory(job)
-            : { skipReason: "source_record_not_eligible", sourceMemory: null };
+            : await processSourceRecord(job);
 
         if ("skipReason" in result) {
-          return skipJob(job, result.skipReason, now, result.sourceMemory);
+          return skipJob(
+            job,
+            result.skipReason,
+            now,
+            "sourceMemory" in result ? result.sourceMemory : null,
+            "sourceRecord" in result ? result.sourceRecord : null,
+          );
         }
 
         if (!result.embedding) {
@@ -300,6 +406,7 @@ export function createEmbeddingProcessor(
           outcome: "completed",
           embedding: result.embedding,
           sourceMemory: result.sourceMemory,
+          sourceRecord: result.sourceRecord,
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

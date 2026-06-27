@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { memoryStatusSchema } from "./memories";
-import { sensitivitySchema } from "./privacy";
-import type { sourceRecordStatusSchema } from "./source-records";
+import { sensitivitySchema, type sourceSchema } from "./privacy";
+import type { sourceRecordRetentionPolicySchema, sourceRecordStatusSchema } from "./source-records";
 
 export const semanticRecordKindSchema = z.enum(["memory", "source_record"]);
 
@@ -90,8 +90,19 @@ export type ApprovedMemoryEmbeddingSource = {
 export type SourceRecordEmbeddingSource = {
   id: string;
   ownerUserId: string;
+  sourceType: z.infer<typeof sourceSchema>;
+  content: string;
+  rawContent?: string | null;
+  retentionPolicy: z.infer<typeof sourceRecordRetentionPolicySchema>;
   status: z.infer<typeof sourceRecordStatusSchema>;
   sensitivity: z.infer<typeof sensitivitySchema>;
+  metadataJson: Record<string, unknown>;
+  updatedAt: Date;
+};
+
+export type SourceRecordEmbeddingPerson = {
+  id: string;
+  displayName: string;
 };
 
 export type EmbeddingDecision =
@@ -102,6 +113,12 @@ export type EmbeddingDecision =
         | "memory_not_approved"
         | "empty_embedded_text"
         | "source_record_not_eligible"
+        | "source_record_not_active"
+        | "source_record_not_retained"
+        | "source_record_not_user_created"
+        | "source_record_not_note_or_summary"
+        | "source_record_not_person_linked"
+        | "source_record_has_unresolved_mentions"
         | "restricted_content";
     };
 
@@ -127,4 +144,81 @@ export function projectApprovedMemoryEmbeddedText(
   memory: Pick<ApprovedMemoryEmbeddingSource, "content">,
 ) {
   return memory.content.trim().replace(/\s+/g, " ");
+}
+
+export function decideSourceRecordEmbedding(
+  sourceRecord: SourceRecordEmbeddingSource,
+  people: SourceRecordEmbeddingPerson[],
+  unresolvedMentionCount = 0,
+): EmbeddingDecision {
+  if (sourceRecord.status !== "active") {
+    return { action: "skip", reason: "source_record_not_active" };
+  }
+
+  if (sourceRecord.sensitivity === "restricted") {
+    return { action: "skip", reason: "restricted_content" };
+  }
+
+  if (sourceRecord.retentionPolicy === "delete_after_processing") {
+    return { action: "skip", reason: "source_record_not_retained" };
+  }
+
+  if (sourceRecord.sourceType !== "manual") {
+    return { action: "skip", reason: "source_record_not_user_created" };
+  }
+
+  if (!isEligibleSourceRecordSemanticKind(sourceRecord)) {
+    return { action: "skip", reason: "source_record_not_note_or_summary" };
+  }
+
+  if (people.length === 0) {
+    return { action: "skip", reason: "source_record_not_person_linked" };
+  }
+
+  if (unresolvedMentionCount > 0) {
+    return { action: "skip", reason: "source_record_has_unresolved_mentions" };
+  }
+
+  if (projectSourceRecordEmbeddedText(sourceRecord, people).length === 0) {
+    return { action: "skip", reason: "empty_embedded_text" };
+  }
+
+  return { action: "embed" };
+}
+
+export function projectSourceRecordEmbeddedText(
+  sourceRecord: Pick<SourceRecordEmbeddingSource, "content" | "metadataJson">,
+  people: SourceRecordEmbeddingPerson[],
+) {
+  const personText = people
+    .map((person) => person.displayName.trim())
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right))
+    .join(", ");
+  const parts = [
+    personText ? `People: ${personText}` : null,
+    interactionTypeFor(sourceRecord)
+      ? `Interaction type: ${interactionTypeFor(sourceRecord)}`
+      : null,
+    `Logged context: ${sourceRecord.content}`,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts
+    .join("\n")
+    .trim()
+    .replace(/[ \t]+/g, " ");
+}
+
+function isEligibleSourceRecordSemanticKind(sourceRecord: SourceRecordEmbeddingSource) {
+  const kind = sourceRecord.metadataJson.semanticRetrievalKind;
+
+  return kind === undefined || kind === "note" || kind === "interaction_summary";
+}
+
+function interactionTypeFor(
+  sourceRecord: Pick<SourceRecordEmbeddingSource, "metadataJson">,
+): string | null {
+  const value = sourceRecord.metadataJson.interactionType;
+
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }

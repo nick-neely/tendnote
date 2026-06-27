@@ -1,4 +1,4 @@
-import type { Memory, Sensitivity } from "@tendnote/domain";
+import type { Memory, Sensitivity, SourceRecord } from "@tendnote/domain";
 import { createInMemoryEmbeddingStore } from "./in-memory-store";
 import { createEmbeddingProcessor } from "./processor";
 import type { EmbeddingAdapter, EmbeddingConfig } from "./types";
@@ -41,19 +41,31 @@ export function createHarness(
     });
   }
 
-  async function createSourceRecord(ownerUserId = OWNER) {
+  async function createSourceRecord(
+    input: Partial<Omit<SourceRecord, "id" | "createdAt" | "updatedAt">> & {
+      ownerUserId?: string;
+    } = {},
+  ) {
     return store.createSourceRecord({
-      ownerUserId,
-      sourceType: "manual",
-      content: "Mara prefers handmade cooking gifts.",
-      rawContent: "Raw provider text should not be embedded.",
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
+      ownerUserId: input.ownerUserId ?? OWNER,
+      sourceType: input.sourceType ?? "manual",
+      content: input.content ?? "Mara prefers handmade cooking gifts.",
+      rawContent: input.rawContent ?? "Raw provider text should not be embedded.",
+      retentionPolicy: input.retentionPolicy ?? "retain",
+      status: input.status ?? "active",
+      confidence: input.confidence ?? "medium",
+      sensitivity: input.sensitivity ?? "normal",
+      scope: input.scope ?? "private",
+      importance: input.importance ?? 3,
+      metadataJson: input.metadataJson ?? {},
+    });
+  }
+
+  async function linkSourceRecord(sourceRecordId: string, personId: string) {
+    return store.linkSourceRecordPerson({
+      sourceRecordId,
+      personId,
+      role: "primary",
     });
   }
 
@@ -62,7 +74,7 @@ export function createHarness(
   ) {
     const ownerUserId = overrides.ownerUserId ?? OWNER;
     const person = await createPerson("Mara Lin", ownerUserId);
-    const sourceRecord = await createSourceRecord(ownerUserId);
+    const sourceRecord = await createSourceRecord({ ownerUserId });
 
     return store.createMemory({
       personId: person.id,
@@ -86,5 +98,13 @@ export function createHarness(
     return entries.map((entry) => entry.action);
   }
 
-  return { store, processor, createPerson, createSourceRecord, createApprovedMemory, auditActions };
+  return {
+    store,
+    processor,
+    createPerson,
+    createSourceRecord,
+    linkSourceRecord,
+    createApprovedMemory,
+    auditActions,
+  };
 }

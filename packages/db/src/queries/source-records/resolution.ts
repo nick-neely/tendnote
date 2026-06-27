@@ -1,8 +1,11 @@
 import type { Sensitivity, Source, SourceRecordPersonRole } from "@tendnote/domain";
 import { createSourceRecordCapture } from "./capture";
-import type { SourceRecordResolutionStore } from "./types";
+import type { SourceRecordEmbeddingScheduler, SourceRecordResolutionStore } from "./types";
 
-export function createSourceRecordResolution(store: SourceRecordResolutionStore) {
+export function createSourceRecordResolution(
+  store: SourceRecordResolutionStore,
+  options: { scheduleSourceRecordEmbedding?: SourceRecordEmbeddingScheduler } = {},
+) {
   const capture = createSourceRecordCapture(store);
   const resolution = {
     async findPersonResolutionCandidates(input: {
@@ -54,6 +57,12 @@ export function createSourceRecordResolution(store: SourceRecordResolutionStore)
           personId: person.id,
         });
       }
+
+      await options.scheduleSourceRecordEmbedding?.({
+        ownerUserId: input.ownerUserId,
+        recordKind: "source_record",
+        recordId: updatedSourceRecord.id,
+      });
 
       await store.createAuditLogEntry({
         ownerUserId: input.ownerUserId,
@@ -119,6 +128,12 @@ export function createSourceRecordResolution(store: SourceRecordResolutionStore)
           personId: person.id,
         });
       }
+
+      await options.scheduleSourceRecordEmbedding?.({
+        ownerUserId: input.ownerUserId,
+        recordKind: "source_record",
+        recordId: updatedSourceRecord.id,
+      });
 
       await store.createAuditLogEntry({
         ownerUserId: input.ownerUserId,
