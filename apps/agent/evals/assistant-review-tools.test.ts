@@ -57,10 +57,10 @@ describe("suggested-memory review tools return persisted ids and status", () => 
 });
 
 describe("context-aware capture", () => {
-  it("capture_source_record links a known person via the shared function and enqueues extraction", () => {
+  it("capture_source_record links a known person via the shared function and triggers extraction", () => {
     const source = readTool("capture_source_record");
     expect(source).toContain("captureSourceRecordForPerson");
-    expect(source).toContain("enqueueExtractionJob");
+    expect(source).toContain("enqueueAndTriggerExtractionJob");
     expect(source).toMatch(/personId/);
   });
 });

@@ -57,7 +57,7 @@ export function TodayRail({
 
       {reviews.length > 0 ? (
         <section className="flex flex-col gap-2.5">
-          <RailHeading>Ready to review</RailHeading>
+          <RailHeading>Recent notes</RailHeading>
           <div className="overflow-hidden rounded-xl border bg-surface">
             <ul className="divide-y">
               {reviews.map((review) => (
@@ -130,27 +130,42 @@ function BirthdayRow({ birthday }: { birthday: UpcomingBirthday }) {
   );
 }
 
-/** A saved capture awaiting confirmation into memory — the pending inbox. */
+/** Recent logged context. Linked notes jump to the relevant person's ledger. */
 function ReviewRow({ review }: { review: SourceRecordReviewView }) {
   const { sourceRecord } = review;
+  const linkedPerson = review.linkedPeople[0] ?? null;
+  const href = linkedPerson ? `/people/${linkedPerson.id}#logged-context` : null;
 
-  return (
-    <li
-      className="flex flex-col gap-2 px-4 py-3"
-      data-source-record-id={review.component.sourceRecordId}
-    >
+  const content = (
+    <>
       <p className="line-clamp-2 text-pretty text-[length:var(--text-small)] leading-[var(--text-small-line)]">
         {sourceRecord.content}
       </p>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-muted-foreground">
           <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-          Ready to review
+          Logged note
         </span>
         <span className="truncate font-mono text-[length:var(--text-caption)] text-muted-foreground">
           {sourceLabel(sourceRecord.sourceType)} · {formatCaptured(sourceRecord.createdAt)}
+          {linkedPerson ? ` · ${linkedPerson.displayName}` : ""}
         </span>
       </div>
+    </>
+  );
+
+  return (
+    <li data-source-record-id={review.component.sourceRecordId}>
+      {href ? (
+        <Link
+          className="flex flex-col gap-2 px-4 py-3 transition-colors hover:bg-panel"
+          href={href}
+        >
+          {content}
+        </Link>
+      ) : (
+        <div className="flex flex-col gap-2 px-4 py-3">{content}</div>
+      )}
     </li>
   );
 }

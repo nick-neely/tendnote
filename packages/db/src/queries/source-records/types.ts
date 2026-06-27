@@ -47,6 +47,7 @@ export type ListSourceRecordReviewsInput = {
 export type SourceRecordReviewResult = {
   sourceRecord: SourceRecord;
   component: SourceRecordReviewComponent;
+  linkedPeople?: Pick<Person, "id" | "displayName">[];
 };
 
 export type SourceRecordAuditLogEntry = {

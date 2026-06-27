@@ -1,6 +1,6 @@
 "use server";
 
-import { enqueueExtractionJob } from "@tendnote/db/queries/extraction-jobs";
+import { enqueueAndTriggerExtractionJob } from "@tendnote/db/queries/extraction-jobs";
 import {
   captureSourceRecord,
   captureSourceRecordForPerson,
@@ -40,11 +40,11 @@ export async function captureGlobalAssistantSourceRecord(input: {
         metadataJson: { captureSurface },
       });
 
-  // Capture is the synchronous guarantee; suggested-memory extraction is async
-  // and job-backed (ADR 0017, ADR 0018). Enqueue the extraction job for the saved
-  // record, but never let a queueing failure lose the note the user just captured.
+  // Capture is the synchronous guarantee; suggested-memory extraction is job-backed
+  // (ADR 0017, ADR 0018). Triggering may process inline in local/dev, but it must
+  // never make the saved note disappear if extraction is unavailable.
   try {
-    await enqueueExtractionJob({ sourceRecordId: result.component.sourceRecordId });
+    await enqueueAndTriggerExtractionJob({ sourceRecordId: result.component.sourceRecordId });
   } catch {
     // The source record is already persisted and can be re-enqueued later; the
     // capture must still succeed for the user.

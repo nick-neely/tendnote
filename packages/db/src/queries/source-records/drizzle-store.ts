@@ -200,11 +200,23 @@ export async function listSourceRecordReviews(input: ListSourceRecordReviewsInpu
     .orderBy(desc(sourceRecords.createdAt))
     .limit(input.limit ?? 5);
 
-  return rows.map((sourceRecord) => ({
-    sourceRecord,
-    component: {
-      type: "source_record_review",
-      sourceRecordId: sourceRecord.id,
-    } satisfies SourceRecordReviewComponent,
-  }));
+  return Promise.all(
+    rows.map(async (sourceRecord) => {
+      const linkedPeople = await getDb()
+        .select({ id: people.id, displayName: people.displayName })
+        .from(sourceRecordPeople)
+        .innerJoin(people, eq(sourceRecordPeople.personId, people.id))
+        .where(eq(sourceRecordPeople.sourceRecordId, sourceRecord.id))
+        .orderBy(people.displayName);
+
+      return {
+        sourceRecord,
+        linkedPeople,
+        component: {
+          type: "source_record_review",
+          sourceRecordId: sourceRecord.id,
+        } satisfies SourceRecordReviewComponent,
+      };
+    }),
+  );
 }

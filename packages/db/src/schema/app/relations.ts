@@ -99,6 +99,17 @@ export const extractionJobsRelations = relations(extractionJobs, ({ one }) => ({
   }),
 }));
 
+export const interactionsRelations = relations(interactions, ({ one }) => ({
+  person: one(people, {
+    fields: [interactions.personId],
+    references: [people.id],
+  }),
+  owner: one(user, {
+    fields: [interactions.ownerUserId],
+    references: [user.id],
+  }),
+}));
+
 export const followupsRelations = relations(followups, ({ one }) => ({
   person: one(people, {
     fields: [followups.personId],

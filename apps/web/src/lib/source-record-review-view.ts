@@ -10,6 +10,7 @@ export type SourceRecordReviewView = {
     createdAt: string;
     updatedAt: string;
   };
+  linkedPeople: { id: string; displayName: string }[];
 };
 
 export function toSourceRecordReviewView(result: SourceRecordReviewResult): SourceRecordReviewView {
@@ -20,5 +21,6 @@ export function toSourceRecordReviewView(result: SourceRecordReviewResult): Sour
       createdAt: result.sourceRecord.createdAt.toISOString(),
       updatedAt: result.sourceRecord.updatedAt.toISOString(),
     },
+    linkedPeople: result.linkedPeople ?? [],
   };
 }

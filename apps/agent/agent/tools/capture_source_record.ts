@@ -1,4 +1,4 @@
-import { enqueueExtractionJob } from "@tendnote/db/queries/extraction-jobs";
+import { enqueueAndTriggerExtractionJob } from "@tendnote/db/queries/extraction-jobs";
 import {
   captureSourceRecord,
   captureSourceRecordForPerson,
@@ -58,9 +58,9 @@ export default defineTool({
           metadataJson: { captureSurface: "eve" },
         });
 
-    // Extraction is async and must not fail the synchronous capture (ADR 0017).
+    // Extraction is job-backed and must not fail the synchronous capture (ADR 0017).
     try {
-      await enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+      await enqueueAndTriggerExtractionJob({ sourceRecordId: sourceRecord.id });
     } catch {
       // The source record is already saved and can be re-enqueued later.
     }
