@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { type Followup, followupStatusSchema } from "./followups";
+import { ACTIVE_FOLLOWUP_STATUSES, type Followup, followupStatusSchema } from "./followups";
 import type { Memory } from "./memories";
 import type { Person } from "./people";
 import type { SourceRecord } from "./source-records";
@@ -80,9 +80,6 @@ export type SnapshotInputPack = {
   suggestedMemories: Memory[];
   followups: Followup[];
 };
-
-/** Follow-up statuses that count as active relationship reminders. */
-const ACTIVE_FOLLOWUP_STATUSES: ReadonlySet<Followup["status"]> = new Set(["open", "snoozed"]);
 
 /**
  * How long a completed follow-up stays useful as relationship context before it
