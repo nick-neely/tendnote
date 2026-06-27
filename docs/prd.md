@@ -425,7 +425,7 @@ Initial pass target:
 | ORM/query | Drizzle ORM and Drizzle Kit migrations |
 | Auth | Better Auth |
 | AI model routing | Vercel AI Gateway where practical |
-| Background agent work | Eve schedules and Vercel Workflows |
+| Background agent work | Postgres-owned jobs triggered by local inline processing, Cron, Vercel Queues, Eve schedules, or Vercel Workflows depending on workflow shape |
 | Email | Resend for app/system emails, Gmail integration later for drafts |
 | Testing | Vitest, Playwright |
 | AI evals | Eve evals plus fixture-based regression tests |
@@ -886,6 +886,7 @@ Deliverables:
 
 - Store people, source records, atomic memories, follow-ups, drafts, and audit events in Neon Postgres.
 - Store extraction jobs in Postgres and process suggested-memory extraction asynchronously from source records.
+- Keep extraction job state in Postgres. Local development may trigger processing inline after enqueue; production hardening should add a Vercel Queue or Cron trigger that carries extraction job ids and calls the same shared processor.
 - Add relational indexes for `owner_user_id`, `person_id`, `status`, recency, and importance.
 - Treat explicit "remember/save/note" requests as durable memories.
 - Treat inferred agent observations as `suggested` memories until approved, edited, or dismissed.
@@ -948,6 +949,7 @@ Vertical slice issue seeds:
 - Implement add memory flow with source, sensitivity, confidence, importance, status, and scope.
 - Implement person context snapshot generation and snapshot-backed `get_person_profile`.
 - Implement Eve-backed web chat with people search, explicit person creation, source-record capture, explicit memory capture, and review component rendering.
+- Add a production background trigger for extraction jobs before relying on deployed capture at real volume. Prefer Vercel Queues for event-driven extraction retries and observability; use Vercel Workflows only if extraction becomes a multi-step orchestration.
 - Add full-text search over people, memories, and source records.
 - Add pgvector embeddings and semantic memory search as a later Phase 1 issue.
 - Implement create follow-up flow with complete, snooze, and dismiss actions.
