@@ -124,4 +124,26 @@ describe("search_semantic_context tool", () => {
       directlyRequested: true,
     });
   });
+
+  it("fails open when the shared semantic query has no ready embeddings", async () => {
+    searchSemanticContext.mockResolvedValue([]);
+
+    const result = await tool.execute(
+      {
+        query: "gift ideas",
+        limit: 5,
+        minimumSimilarity: 0,
+        directlyRequested: false,
+      },
+      ctx,
+    );
+
+    expect(result).toEqual({
+      results: [],
+      component: {
+        type: "semantic_context_search",
+        resultCount: 0,
+      },
+    });
+  });
 });

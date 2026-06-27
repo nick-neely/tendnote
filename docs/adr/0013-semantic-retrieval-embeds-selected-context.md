@@ -8,7 +8,7 @@ Phase 1D should expose semantic retrieval to Eve through a distinct `search_sema
 
 Phase 1D should not add a standalone semantic search page. The product surface should be Eve-first, with shared query/tool coverage and assistant result rendering as needed; a dedicated UI can wait for real usage evidence.
 
-The embedding table should be a generic relationship-context embedding table rather than `memory_embeddings`. It should carry owner, person, record kind, record id, model/version, embedded text, content fingerprint, trust level, sensitivity, and timestamps so semantic retrieval can cover both approved memories and selected source-record summaries without creating parallel embedding paths or implying every semantic match is a confirmed memory.
+The embedding table should be `relationship_context_embeddings`, a generic relationship-context embedding table rather than `memory_embeddings`. It should carry owner, person, record kind, record id, model/version, embedded text, content fingerprint, trust level, sensitivity, and timestamps so semantic retrieval can cover both approved memories and selected source-record summaries without creating parallel embedding paths or implying every semantic match is a confirmed memory.
 
 Embedding generation should be asynchronous and Postgres-owned, following the extraction-job pattern rather than blocking capture or review mutations on an embedding API call. Mutations should enqueue or stale-mark embedding work; workers, cron, or future queue delivery should carry job ids and call shared processing code while Postgres owns status, attempts, idempotency, backoff, errors, and completion. Semantic reads should fail open when embeddings are missing, stale, or still processing.
 
