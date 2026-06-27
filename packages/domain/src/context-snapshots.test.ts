@@ -186,6 +186,22 @@ describe("buildSnapshotPrompt", () => {
     // tentative observation can never be promoted to a fact in the cached card.
     expect(prompt).not.toContain("Maybe switching jobs.");
   });
+
+  it("instructs plain prose with no Markdown and no restated name/role header", () => {
+    const prompt = buildSnapshotPrompt({
+      person: person(),
+      approvedMemories: [],
+      sourceRecords: [],
+      suggestedMemories: [],
+      followups: [],
+    });
+
+    // The card renders the summary as plain text and already shows the name and
+    // relationship, so the prompt asks the model not to emit Markdown or a header.
+    expect(prompt).toMatch(/no markdown/i);
+    expect(prompt).toMatch(/plain prose/i);
+    expect(prompt).toMatch(/do not start with or repeat the person's name/i);
+  });
 });
 
 describe("computeSnapshotFingerprint", () => {

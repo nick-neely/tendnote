@@ -165,7 +165,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         count: 2,
         reviews: [
           {
-            person: { id: "person-1", displayName: "Juli" },
+            person: { id: "person-1", displayName: "Mara" },
             memory: { id: "m1", content: "Girls night next week.", sourceRecordId: "s1" },
           },
           {
@@ -184,7 +184,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
           content: "Girls night next week.",
           sourceRecordId: "s1",
           personId: "person-1",
-          personName: "Juli",
+          personName: "Mara",
         },
         {
           memoryId: "m2",

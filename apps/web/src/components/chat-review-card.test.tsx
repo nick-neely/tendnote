@@ -26,11 +26,11 @@ function render(personName: string | null) {
 
 describe("ChatReviewCard (interactive in-chat review)", () => {
   it("renders a tentative suggestion with inline approve and dismiss, naming the person not an id", () => {
-    const html = render("Juli");
+    const html = render("Mara");
 
     expect(html).toContain("Ready to review");
     expect(html).toContain("Tentative — not saved until you approve it");
-    expect(html).toContain("Suggested for Juli:");
+    expect(html).toContain("Suggested for Mara:");
     expect(html).toContain("Might have a girls night next week.");
     // The actions are present in the initial (pending) render.
     expect(html).toContain("Approve");
@@ -61,7 +61,7 @@ describe("ChatReviewList (the 'anything to review?' result)", () => {
               content: "Might have a girls night next week.",
               sourceRecordId: "s1",
               personId: "person-1",
-              personName: "Juli",
+              personName: "Mara",
             },
             {
               memoryId: "m2",
@@ -77,10 +77,10 @@ describe("ChatReviewList (the 'anything to review?' result)", () => {
 
     expect(html).toContain("Might have a girls night next week.");
     expect(html).toContain("Mentioned a new manager at work.");
-    expect(html).toContain("Suggested for Juli:");
+    expect(html).toContain("Suggested for Mara:");
     expect(html).toContain("Suggested for Mark:");
     // One approve control per suggestion, each scoped to its own person.
-    expect(html).toContain("Approve suggestion for Juli");
+    expect(html).toContain("Approve suggestion for Mara");
     expect(html).toContain("Approve suggestion for Mark");
   });
 

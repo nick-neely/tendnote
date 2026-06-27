@@ -192,18 +192,18 @@ describe("groupTurnToolEntries (folding same-kind durable saves into groups)", (
       entry("p1", {
         kind: "added_person",
         personId: "person-1",
-        displayName: "Juli",
+        displayName: "Mara",
         relationshipType: "partner",
       }),
       entry("u1", {
         kind: "updated_person",
         personId: "person-1",
-        displayName: "Juli",
+        displayName: "Mara",
         relationshipType: "partner",
         updatedFields: ["birthday"],
       }),
-      memory("m1", "Together since 2023.", "Juli"),
-      memory("m2", "They have four cats.", "Juli"),
+      memory("m1", "Plays in a weekend soccer league.", "Mara"),
+      memory("m2", "Allergic to shellfish.", "Mara"),
     ]);
 
     // One add, one update (each lone → single), and the two memories folded into a
@@ -221,12 +221,12 @@ describe("groupTurnToolEntries (folding same-kind durable saves into groups)", (
         content: "Maybe switching jobs.",
         sourceRecordId: null,
         personId: "person-1",
-        personName: "Juli",
+        personName: "Mara",
       }),
       entry("c1", {
         kind: "person_context",
         personId: "person-1",
-        personName: "Juli",
+        personName: "Mara",
         snapshotStatus: "fresh",
         approvedCount: 0,
         loggedCount: 0,

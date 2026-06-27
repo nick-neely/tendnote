@@ -1,4 +1,5 @@
 import type { PersonContextSnapshotResult } from "@tendnote/db/queries/context-snapshots";
+import { sanitizeSnapshotSummary } from "./snapshot-summary-prose";
 
 /**
  * A correction affordance: where on the profile a user goes to change what the
@@ -106,10 +107,15 @@ export function toRelationshipSnapshotView(
     }
   }
 
+  // Generated prose can leak Markdown; normalize it to clean plain text for the
+  // read-only card (the card renders text, not Markdown). An empty result after
+  // stripping chrome falls back rather than showing a blank summary.
+  const summary = snapshot ? sanitizeSnapshotSummary(snapshot.summary) || null : null;
+
   return {
     status: result.status,
     fallback,
-    summary: snapshot?.summary ?? null,
+    summary,
     generatedAtLabel: snapshot
       ? snapshot.generatedAt.toLocaleDateString(undefined, DATE_FORMAT)
       : null,

@@ -50,7 +50,7 @@ const GROUP_META: Record<
  * Collapsed, trust-weighted summary for several same-kind durable records from one
  * turn (see {@link groupTurnToolEntries} in message-views). It keeps the Field
  * Notebook card's tone but defaults to a single summary line — "Saved 6 memories ·
- * Juli" — so a busy capture turn stays quiet; expanding reveals each record as a
+ * Mara" — so a busy capture turn stays quiet; expanding reveals each record as a
  * compact Personal Ledger row (thin rules, content first), never a nested card.
  * Read-only by design: only tentative suggestions earn inline actions, and those
  * are routed to their own interactive cards, never grouped.

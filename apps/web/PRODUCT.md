@@ -13,7 +13,7 @@ spare moments — jotting a detail right after a conversation, scanning a short
 morning brief, drafting a quick check-in. He values privacy and speed and does not
 want another task manager guilt-tripping him.
 
-**Future — shared household (Nick + Juli).** Shared social context, family events,
+**Future — shared household (Nick + Mara).** Shared social context, family events,
 gift ideas, and household reminders, while private notes stay scoped to the right
 person.
 

@@ -207,6 +207,17 @@ export function buildSnapshotPrompt(input: SnapshotInputPack): string {
     "Use only the information provided. State confirmed facts plainly. Frame logged",
     'context as "you noted".',
     "",
+    // The card and page header already show the person's name and relationship, and
+    // the card renders the summary as plain text (it does not parse Markdown). Ask
+    // for clean prose with no Markdown and no restated header, so formatting tokens
+    // and duplicated name/role lines never leak into the rendered card. A
+    // display-time sanitizer (web) is the safety net for when the model ignores this.
+    "Formatting rules:",
+    "- Write 1-3 short paragraphs of plain prose. No Markdown of any kind: no",
+    "  headings (#), bold/italic (* or _), lists, links, code, or block quotes.",
+    "- Do not start with or repeat the person's name, relationship, or role as a",
+    "  title or label line — those are already shown above the snapshot.",
+    "",
     `Person: ${person.displayName} (${person.relationshipType}, closeness ${person.closenessLevel}).`,
   ];
 

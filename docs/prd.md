@@ -81,7 +81,7 @@ A software consultant who wants a private tool to remember relationship context,
 
 #### Future Persona: Shared Household User
 
-Nick and Juli use Tendnote for shared social context, family events, gift ideas, household reminders, and shared contacts while keeping private notes scoped to the correct person.
+Nick and Mara use Tendnote for shared social context, family events, gift ideas, household reminders, and shared contacts while keeping private notes scoped to the correct person.
 
 #### Future Persona: Developer / Self-Hoster
 
@@ -198,7 +198,7 @@ Acceptance criteria:
 
 #### Story 7: Shared Household Context, Later Phase
 
-As a user, I want shared context with my girlfriend so that we can remember family events, gifts, and social commitments together.
+As a user, I want shared context with my partner so that we can remember family events, gifts, and social commitments together.
 
 Acceptance criteria:
 
@@ -337,7 +337,7 @@ Help Nick remember context about people, follow up at the right time, prepare fo
 | `message-drafting-tone.md` | Later Phase 1 skill for Tendnote-only message drafting. |
 | `birthday-protocol.md` | Later Phase 1 skill for birthday prompts after birthday behavior exists. |
 | `networking-playbook.md` | Later Phase 1/2 skill for professional follow-ups after follow-up behavior exists. |
-| `shared-household-context.md` | Later Phase 3 skill for Nick and Juli shared context after scope enforcement exists. |
+| `shared-household-context.md` | Later Phase 3 skill for Nick and Mara shared context after scope enforcement exists. |
 
 ### Schedules
 
@@ -1064,7 +1064,7 @@ Vertical slice issue seeds:
 
 #### Phase 3: Shared Household Context
 
-Goal: Support Nick and Juli shared context without leaking private notes.
+Goal: Support Nick and Mara shared context without leaking private notes.
 
 Deliverables:
 

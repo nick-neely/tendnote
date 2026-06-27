@@ -24,9 +24,9 @@ describe("AssistantToolGroup (collapsed group of same-kind durable records)", ()
       <AssistantToolGroup
         kind="saved_memory"
         views={[
-          savedMemory("Together since March 2023.", "Juli", "source-1"),
-          savedMemory("They have four cats together.", "Juli"),
-          savedMemory("Juli is a great cook.", "Juli"),
+          savedMemory("Plays in a weekend soccer league.", "Mara", "source-1"),
+          savedMemory("Allergic to shellfish.", "Mara"),
+          savedMemory("Learning to play piano.", "Mara"),
         ]}
       />,
     );
@@ -34,14 +34,14 @@ describe("AssistantToolGroup (collapsed group of same-kind durable records)", ()
     // The summary leads with a plural count and the shared person, and the trust
     // language survives the fold (grounded because one memory cites a source).
     expect(html).toContain("Saved 3 memories");
-    expect(html).toContain("Juli");
+    expect(html).toContain("Mara");
     expect(html).toContain("Confirmed facts");
     expect(html).toContain("grounded in source records");
     // Each memory's content is present (expanded body), but a shared person is not
     // repeated per row — it rides the summary instead.
-    expect(html).toContain("Together since March 2023.");
-    expect(html).toContain("They have four cats together.");
-    expect(html).toContain("Juli is a great cook.");
+    expect(html).toContain("Plays in a weekend soccer league.");
+    expect(html).toContain("Allergic to shellfish.");
+    expect(html).toContain("Learning to play piano.");
     expect(html).toContain('data-tool-view="saved_memory_group"');
   });
 
@@ -66,7 +66,7 @@ describe("AssistantToolGroup (collapsed group of same-kind durable records)", ()
     const html = renderToStaticMarkup(
       <AssistantToolGroup
         kind="saved_memory"
-        views={[savedMemory("A fact.", "Juli"), savedMemory("Another fact.", "Juli")]}
+        views={[savedMemory("A fact.", "Mara"), savedMemory("Another fact.", "Mara")]}
       />,
     );
 

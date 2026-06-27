@@ -1,5 +1,5 @@
 ---
-description: Use when the user logs a note, says remember/save/note/keep track of something, adds a person, edits a person's profile details (name, birthday, relationship, closeness), or wants to see, approve, or dismiss suggested memories ("what do I have to review?", "anything to review for Juli?").
+description: Use when the user logs a note, says remember/save/note/keep track of something, adds a person, edits a person's profile details (name, birthday, relationship, closeness), or wants to see, approve, or dismiss suggested memories ("what do I have to review?", "anything to review for Mara?").
 ---
 
 # Adding people
@@ -54,12 +54,12 @@ Suggested memories come from logged context and are **tentative until the user
 approves** them:
 
 - When the user wants to **see or act on** suggested memories ("what do I have to
-  review?", "anything to review for Juli?", "review Juli's suggestions"), call
+  review?", "anything to review for Mara?", "review Mara's suggestions"), call
   `list_suggested_memory_reviews` — pass the resolved `personId` to scope to one
   person, or omit it for everything across all people. It returns every open
   suggestion as an interactive review card the user can approve or dismiss inline, in
   one call. Do NOT answer this from `get_person_context` prose. Keep your own text to a
-  brief lead-in ("Here's what's waiting for Juli") — the cards carry the wording,
+  brief lead-in ("Here's what's waiting for Mara") — the cards carry the wording,
   source framing, and actions, so don't re-enumerate them or restate status in prose.
 - Use `get_suggested_memory_review` only to pull up one specific suggestion by id in
   detail.
