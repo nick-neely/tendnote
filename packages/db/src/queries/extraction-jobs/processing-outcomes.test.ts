@@ -1,7 +1,83 @@
+import type { SuggestedMemoryExtractionAdapter } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { createHarness, OWNER } from "./harness";
 
 describe("extraction job suggested-memory creation", () => {
+  it("uses an injected extraction adapter to create suggested memories", async () => {
+    const adapter: SuggestedMemoryExtractionAdapter = {
+      kind: "fake",
+      promptVersion: "test.v1",
+      async extractCandidates(input) {
+        return {
+          candidates: [
+            {
+              personId: input.resolvedPeople[0]?.id ?? "",
+              content: "Mark is considering a move to Denver.",
+              memoryType: "life_event",
+              importance: 4,
+              confidence: "high",
+              sensitivity: "normal",
+            },
+          ],
+        };
+      },
+    };
+    const { processor, createPerson, captureRecord, link } = createHarness({
+      extractionAdapter: adapter,
+    });
+    const mark = await createPerson("Mark");
+    const sourceRecord = await captureRecord({ retainedContent: "Messy raw note about Mark." });
+    await link(sourceRecord.id, mark.id);
+    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+
+    const result = await processor.processExtractionJob({ jobId: job.id });
+
+    expect(result.outcome).toBe("completed");
+    expect(result.suggestedMemories).toHaveLength(1);
+    expect(result.suggestedMemories[0]).toMatchObject({
+      personId: mark.id,
+      sourceRecordId: sourceRecord.id,
+      content: "Mark is considering a move to Denver.",
+      memoryType: "life_event",
+      importance: 4,
+      confidence: "high",
+      sensitivity: "normal",
+      status: "suggested",
+    });
+  });
+
+  it("rejects adapter candidates for unresolved people", async () => {
+    const adapter: SuggestedMemoryExtractionAdapter = {
+      kind: "fake",
+      async extractCandidates() {
+        return {
+          candidates: [
+            {
+              personId: "unresolved-person",
+              content: "Do not persist this.",
+              memoryType: "context",
+            },
+          ],
+        };
+      },
+    };
+    const { store, processor, createPerson, captureRecord, link } = createHarness({
+      extractionAdapter: adapter,
+    });
+    const mark = await createPerson("Mark");
+    const sourceRecord = await captureRecord({ retainedContent: "Mark and unknown Jordan." });
+    await link(sourceRecord.id, mark.id);
+    const { job } = await processor.enqueueExtractionJob({ sourceRecordId: sourceRecord.id });
+
+    const result = await processor.processExtractionJob({ jobId: job.id });
+
+    expect(result.outcome).toBe("completed");
+    expect(result.suggestedMemories).toHaveLength(0);
+    await expect(
+      store.listMemoriesForSourceRecord({ sourceRecordId: sourceRecord.id }),
+    ).resolves.toEqual([]);
+  });
+
   it("creates a suggested memory tied to the person and source record, then completes", async () => {
     const { store, processor, createPerson, captureRecord, link, auditActions } = createHarness();
     const mark = await createPerson("Mark");

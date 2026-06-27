@@ -8,3 +8,4 @@ export * from "./people";
 export * from "./privacy";
 export * from "./semantic-retrieval";
 export * from "./source-records";
+export * from "./suggested-memory-extraction";

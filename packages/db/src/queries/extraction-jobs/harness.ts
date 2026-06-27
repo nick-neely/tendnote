@@ -1,4 +1,8 @@
-import type { Sensitivity, SourceRecordStatus } from "@tendnote/domain";
+import type {
+  Sensitivity,
+  SourceRecordStatus,
+  SuggestedMemoryExtractionAdapter,
+} from "@tendnote/domain";
 import { createSourceRecordCapture } from "../source-records/capture";
 import { createSourceRecordResolution } from "../source-records/resolution";
 import { createInMemoryExtractionJobStore } from "./in-memory-store";
@@ -11,9 +15,13 @@ import { createExtractionProcessor } from "./processor";
  */
 export const OWNER = "user-1";
 
-export function createHarness() {
+export function createHarness(
+  input: { extractionAdapter?: SuggestedMemoryExtractionAdapter } = {},
+) {
   const store = createInMemoryExtractionJobStore();
-  const processor = createExtractionProcessor(store);
+  const processor = createExtractionProcessor(store, {
+    extractionAdapter: input.extractionAdapter,
+  });
   const capture = createSourceRecordCapture(store);
   const resolution = createSourceRecordResolution(store);
 

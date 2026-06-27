@@ -12,7 +12,8 @@
     "./drafts": "./src/drafts.ts",
     "./privacy": "./src/privacy.ts",
     "./semantic-retrieval": "./src/semantic-retrieval.ts",
-    "./source-records": "./src/source-records.ts"
+    "./source-records": "./src/source-records.ts",
+    "./suggested-memory-extraction": "./src/suggested-memory-extraction.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

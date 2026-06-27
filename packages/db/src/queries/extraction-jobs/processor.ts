@@ -1,4 +1,12 @@
-import { createMemorySchema, decideExtraction, type Memory } from "@tendnote/domain";
+import {
+  createDeterministicSuggestedMemoryExtractionAdapter,
+  createMemorySchema,
+  decideExtraction,
+  type Memory,
+  type SuggestedMemoryExtractionAdapter,
+  stricterSensitivity,
+  validateSuggestedMemoryCandidates,
+} from "@tendnote/domain";
 import type {
   EnqueueExtractionJobInput,
   EnqueueExtractionJobResult,
@@ -31,7 +39,20 @@ function idempotencyKeyFor(sourceRecordId: string) {
  * Resolution-triggered re-extraction and bounded retry/dead-lettering are later
  * slices; Phase 1A waits by leaving partial/failed jobs claimable on a backoff.
  */
-export function createExtractionProcessor(store: ExtractionJobStore) {
+export type CreateExtractionProcessorOptions = {
+  extractionAdapter?: SuggestedMemoryExtractionAdapter;
+};
+
+export function createExtractionProcessor(
+  store: ExtractionJobStore,
+  options: CreateExtractionProcessorOptions = {},
+) {
+  // Until Phase 1E.5's production adapter slice lands, the no-options path keeps
+  // the existing deterministic behavior. Production LLM wiring must inject a
+  // non-deterministic adapter rather than relying on this local/test fallback.
+  const extractionAdapter =
+    options.extractionAdapter ?? createDeterministicSuggestedMemoryExtractionAdapter();
+
   async function failJob(
     job: ProcessExtractionJobResult["job"],
     message: string,
@@ -210,8 +231,31 @@ export function createExtractionProcessor(store: ExtractionJobStore) {
         const personIdsWithMemory = new Set(existingMemories.map((memory) => memory.personId));
         const suggestedMemories: Memory[] = [];
 
-        for (const link of links) {
-          if (personIdsWithMemory.has(link.personId)) {
+        const resolvedPeople = (
+          await Promise.all(
+            links.map(async (link) => {
+              const person = await store.getPerson({ ownerUserId, personId: link.personId });
+
+              return person
+                ? { id: person.id, displayName: person.displayName, linkPersonId: link.personId }
+                : null;
+            }),
+          )
+        ).filter((person) => person !== null);
+
+        const adapterResult = await extractionAdapter.extractCandidates({
+          sourceRecord,
+          resolvedPeople: resolvedPeople.map((person) => ({
+            id: person.id,
+            displayName: person.displayName,
+          })),
+        });
+        const { validCandidates } = validateSuggestedMemoryCandidates(adapterResult, {
+          resolvedPeople,
+        });
+
+        for (const candidate of validCandidates) {
+          if (personIdsWithMemory.has(candidate.personId)) {
             continue;
           }
 
@@ -219,23 +263,21 @@ export function createExtractionProcessor(store: ExtractionJobStore) {
             // Suggested memories carry source-record provenance and stay tentative
             // until reviewed (ADR 0002, ADR 0022).
             createMemorySchema.parse({
-              personId: link.personId,
+              personId: candidate.personId,
               ownerUserId,
               sourceRecordId: sourceRecord.id,
-              memoryType: "context",
-              // Deterministic/manual extraction reuses the retained content as a
-              // tentative suggestion; LLM extraction is a later slice (ADR 0020).
-              content: sourceRecord.content,
+              memoryType: candidate.memoryType,
+              content: candidate.content,
               status: "suggested",
-              importance: sourceRecord.importance,
-              sensitivity: sourceRecord.sensitivity,
-              confidence: sourceRecord.confidence,
+              importance: candidate.importance ?? sourceRecord.importance,
+              sensitivity: stricterSensitivity(sourceRecord.sensitivity, candidate.sensitivity),
+              confidence: candidate.confidence ?? sourceRecord.confidence,
               scope: "private",
             }),
           );
 
           suggestedMemories.push(memory);
-          personIdsWithMemory.add(link.personId);
+          personIdsWithMemory.add(candidate.personId);
 
           await store.createAuditLogEntry({
             ownerUserId,
@@ -243,7 +285,7 @@ export function createExtractionProcessor(store: ExtractionJobStore) {
             entityType: "memory",
             entityId: memory.id,
             metadataJson: {
-              personId: link.personId,
+              personId: candidate.personId,
               sourceRecordId: sourceRecord.id,
               extractionJobId: job.id,
             },
