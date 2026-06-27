@@ -1,5 +1,5 @@
 import type { Sensitivity, Source, SourceRecordPersonRole } from "@tendnote/domain";
-import { enqueueSemanticEmbeddingJob } from "./semantic-retrieval";
+import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 import { createSourceRecordCapture } from "./source-records/capture";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 import { createSourceRecordResolution } from "./source-records/resolution";
@@ -21,7 +21,7 @@ export type * from "./source-records/types";
 const defaultSourceRecordStore = createDrizzleSourceRecordStore();
 const defaultSourceRecordCapture = createSourceRecordCapture(defaultSourceRecordStore);
 const defaultSourceRecordResolution = createSourceRecordResolution(defaultSourceRecordStore, {
-  scheduleSourceRecordEmbedding: enqueueSemanticEmbeddingJob,
+  scheduleSourceRecordEmbedding: enqueueAndTriggerSemanticEmbeddingJob,
 });
 
 export async function captureSourceRecord(input: CaptureSourceRecordInput) {

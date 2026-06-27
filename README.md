@@ -49,6 +49,8 @@ pnpm docker:up
 pnpm db:migrate
 ```
 
+Semantic embeddings run through the same job lifecycle in every environment. Local development processes embedding jobs inline by default so newly captured notes and approved memories become searchable immediately. If `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` is available, embeddings use `TENDNOTE_EMBEDDING_MODEL` (default `openai/text-embedding-3-small`) through the AI SDK. Without gateway credentials, local development falls back to deterministic fake vectors so capture/search still works offline. Set `TENDNOTE_EMBEDDING_RUNTIME=enqueue_only` to leave jobs for a worker instead.
+
 ### Environment variables
 
 Configuration is **per app**, not a single root file. Each process only loads

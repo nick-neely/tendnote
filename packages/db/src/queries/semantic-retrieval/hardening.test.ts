@@ -100,7 +100,7 @@ describe("semantic retrieval hardening", () => {
     expect(embedding.vector).toHaveLength(4);
     expect(moduleSource).toContain("createFakeEmbeddingAdapter()");
     expect(moduleSource).not.toMatch(/OPENAI_API_KEY|ANTHROPIC_API_KEY|GOOGLE_API_KEY/);
-    expect(moduleSource).not.toMatch(/openai|anthropic|gemini/i);
+    expect(moduleSource).toContain("AI_GATEWAY_API_KEY");
   });
 
   it("keeps PRD and ADR references aligned around the Phase 1D boundary", () => {

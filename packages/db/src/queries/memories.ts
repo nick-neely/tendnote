@@ -9,7 +9,7 @@ import type {
   PersonMemoryContextInput,
   SaveSuggestedMemoryInput,
 } from "./memories/types";
-import { enqueueSemanticEmbeddingJob } from "./semantic-retrieval";
+import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 
 export { createMemoryCapture } from "./memories/capture";
 export { createDrizzleMemoryStore } from "./memories/drizzle-store";
@@ -18,7 +18,7 @@ export { createMemoryReview } from "./memories/review";
 export type * from "./memories/types";
 
 const defaultMemoryStore = createDrizzleMemoryStore();
-const scheduleApprovedMemoryEmbedding = enqueueSemanticEmbeddingJob;
+const scheduleApprovedMemoryEmbedding = enqueueAndTriggerSemanticEmbeddingJob;
 const defaultMemoryCapture = createMemoryCapture(defaultMemoryStore, {
   scheduleApprovedMemoryEmbedding,
 });
