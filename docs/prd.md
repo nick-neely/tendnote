@@ -315,7 +315,7 @@ Help Nick remember context about people, follow up at the right time, prepare fo
 |---|---|---|
 | `create_followup` | 1E | Create a due follow-up for a person after manual follow-ups exist. |
 | `list_due_followups` | 1E | Return active or due follow-ups for today, this week, or a person. |
-| `update_followup_status` | 1E | Complete, dismiss, snooze, or reopen follow-ups after manual follow-ups exist. |
+| `update_followup_status` | 1E | Complete, dismiss, snooze, reopen, or archive follow-ups after manual follow-ups exist. |
 | `get_relationship_agenda` | 1E.25 | Return cross-person upcoming context for general asks such as "anything coming up next week?" without requiring a known person first. |
 | `draft_message` | 1G | Draft a Tendnote-only message without sending or creating an external draft. |
 | `create_message_draft` | 1G | Persist draft text inside Tendnote only after drafting begins. |

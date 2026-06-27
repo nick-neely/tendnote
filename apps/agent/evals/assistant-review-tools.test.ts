@@ -132,6 +132,27 @@ describe("suggested follow-up tools are explicit-flow, grounded, and review-gate
   });
 });
 
+describe("Phase 1E follow-up tools stay inside the settled boundary", () => {
+  const followupTools = toolFiles.filter((file) => /followup/.test(file));
+
+  it("imports nothing from agenda, daily-brief, calendar, contacts, gmail, household, or draft/send modules", () => {
+    // PRD #42 / AGENTS.md: Phase 1E follow-ups must not reach into relationship
+    // agenda ranking, persisted briefs, or external/shared-household providers.
+    // We check import specifiers (not prose) so a tool can still *disclaim* agenda
+    // ranking in its description without tripping the guard.
+    const forbiddenModule = /(agenda|brief|calendar|gmail|contacts|household|draft|outreach)/i;
+
+    expect(followupTools.length).toBeGreaterThan(0);
+    for (const file of followupTools) {
+      const source = readTool(file.replace(/\.ts$/, ""));
+      const importSpecifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]);
+      for (const specifier of importSpecifiers) {
+        expect(specifier).not.toMatch(forbiddenModule);
+      }
+    }
+  });
+});
+
 describe("context-aware capture", () => {
   it("capture_source_record links a known person via the shared function and triggers extraction", () => {
     const source = readTool("capture_source_record");
