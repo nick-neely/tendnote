@@ -316,6 +316,7 @@ Help Nick remember context about people, follow up at the right time, prepare fo
 | `create_followup` | 1E | Create a due follow-up for a person after manual follow-ups exist. |
 | `list_due_followups` | 1E | Return active or due follow-ups for today, this week, or a person. |
 | `update_followup_status` | 1E | Complete, dismiss, snooze, or reopen follow-ups after manual follow-ups exist. |
+| `get_relationship_agenda` | 1E.25 | Return cross-person upcoming context for general asks such as "anything coming up next week?" without requiring a known person first. |
 | `draft_message` | 1G | Draft a Tendnote-only message without sending or creating an external draft. |
 | `create_message_draft` | 1G | Persist draft text inside Tendnote only after drafting begins. |
 | `import_contacts_preview` | 2 | Preview Google Contacts import before writing. |
@@ -624,12 +625,14 @@ Recommended Phase 1 memory rollout:
 | Phase 1B | Context snapshots | Add `person_context_snapshots` to cache generated profile cards after memory, source record, follow-up, and profile changes. |
 | Phase 1C | Postgres full-text search | Add `tsvector`/GIN-backed search over memory content, source record content, interaction summaries, and person names. |
 | Phase 1D | pgvector semantic retrieval | Add memory embeddings for fuzzy queries like gift ideas, career updates, stressful life events, or people worth checking in with. |
+| Phase 1E.25 | Relationship agenda read model | Add a cross-person, owner-scoped agenda query over due follow-ups, birthdays, review items, recent context, and strong suggestion candidates so Eve can answer broad time-window questions before persisted briefs exist. |
 
 Agent retrieval should be hybrid:
 
 - Use deterministic SQL for known-person context, birthdays, due follow-ups, pinned memories, and recent source records.
 - Use full-text search for exact recall like names, companies, places, or specific phrases.
 - Use pgvector later for fuzzy or semantic recall.
+- Use the relationship agenda read model for broad horizon questions such as "anything coming up this week?", "who deserves a thought today?", or "what should I review?" without forcing a person-specific context load.
 - Always apply hard filters first: `owner_user_id`, scope, sensitivity, memory status, and person/workspace access.
 - Build a small context pack for the model, usually the profile snapshot plus the top 8-15 supporting memories/source records.
 
@@ -870,7 +873,7 @@ Deliverables:
 - Message drafting inside Tendnote
 - Approval gate for all external actions
 - Basic dashboard
-- Plain Postgres retrieval first, then context snapshots, Eve-backed web chat, full-text search, pgvector, follow-ups, briefs, and drafting as follow-on slices
+- Plain Postgres retrieval first, then context snapshots, Eve-backed web chat, full-text search, pgvector, follow-ups, relationship agenda, briefs, and drafting as follow-on slices
 
 ##### Phase 1 Prep: Schema and Domain Alignment
 
@@ -915,7 +918,7 @@ Deliverables:
 
 - Add `memory_embeddings` for approved memories and selected source summaries.
 - Use pgvector for fuzzy retrieval, gift ideas, life-event themes, career updates, and "who should I check in with" style prompts.
-- Do not block the initial usable MVP on embeddings. Add this after plain retrieval and snapshots work.
+- Do not block the initial usable MVP on embeddings. Add this after plain retrieval and snapshots work; it can proceed directly after Phase 1C, but later agenda and brief behavior should still work without embeddings.
 
 ##### Phase 1E: Manual Follow-Ups Through Eve
 
@@ -924,6 +927,19 @@ Deliverables:
 - Treat user-created follow-ups as active reminders and agent-suggested follow-ups as separate reviewable proposals. Do not let Eve silently turn suggestions into active reminders.
 - Keep follow-ups personal and private in Phase 1; do not add Calendar-derived follow-ups or shared household reminders yet.
 - Make due follow-ups visible on person profiles and the dashboard so the later brief has real action items to summarize.
+
+##### Phase 1E.25: Relationship Agenda For General Asks
+
+- Add a narrow cross-person agenda read model before persisted daily briefs so Eve can answer general time-window questions that are not tied to one known person.
+- Support prompts like "anything coming up next week?", "who deserves a thought today?", "what should I review?", and "any follow-ups due soon?" without making the user name a person first.
+- Sequence this after Phase 1E manual follow-ups so the agenda has real active reminders to draw from. It may use Phase 1D semantic matches when available, but it must not depend on embeddings for basic due-date, birthday, and review-item answers.
+- Keep this as a shared owner-scoped query/API, not model-only reasoning and not a persisted brief artifact yet. Phase 1F should persist selected agenda candidates as daily brief records and brief items.
+- Introduce an Eve `get_relationship_agenda` tool with inputs for `windowStart`, `windowEnd`, `limit`, optional `includeKinds`, and `directlyRequested`. The first `includeKinds` should cover `due_followup`, `birthday`, `review_item`, `recent_context`, and `suggested_followup`.
+- Return compact typed candidates with `kind`, `personId`, `personDisplayName`, `title`, `reason`, optional `dueAt`, `sourceRefs`, `trustLevel`, `sensitivity`, and `rank`. Do not return generated prose as the contract.
+- Use deterministic ranking first: due or overdue open follow-ups, birthdays already stored in Tendnote, open review items, recent source records with clear dates, and high-confidence suggested follow-ups. pgvector can later contribute fuzzy candidates, but the agenda contract should not depend on embeddings to be useful.
+- Keep suggested memories and suggested follow-ups clearly tentative. Eve may surface them for review or as possible actions, but accepting a suggestion must call the appropriate review or follow-up mutation; it must not silently create active reminders.
+- Exclude restricted content by default unless the user directly requests it. Personless pending source records may appear only as review items, not as normal agenda context.
+- Add deterministic tests for owner scoping, date-window filtering, kind filters, ranking, sensitivity exclusion, tentative-vs-confirmed trust labels, and Eve tool grounding.
 
 ##### Phase 1E.5: LLM Suggested-Memory Extraction
 
@@ -1095,10 +1111,11 @@ Recommended first issue batch:
 13. Add Postgres full-text search.
 14. Add pgvector semantic memory retrieval.
 15. Add manual follow-up creation and status updates through UI and Eve.
-16. Add persisted daily brief generation and schedule.
-17. Add Tendnote-only draft message tool and draft review UI.
-18. Add no-send-without-approval eval.
-19. Add no-fake-memory eval.
+16. Add the relationship agenda read model and Eve `get_relationship_agenda` tool for cross-person upcoming-context questions.
+17. Add persisted daily brief generation and schedule.
+18. Add Tendnote-only draft message tool and draft review UI.
+19. Add no-send-without-approval eval.
+20. Add no-fake-memory eval.
 
 Definition of done for an MVP issue:
 
