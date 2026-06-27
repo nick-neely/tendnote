@@ -1,0 +1,104 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import type { GroupableToolView } from "@/lib/eve/tool-result-view";
+import { AssistantToolGroup } from "./assistant-tool-group";
+
+function savedMemory(
+  content: string,
+  personName: string | null,
+  sourceRecordId: string | null = null,
+): GroupableToolView {
+  return {
+    kind: "saved_memory",
+    memoryId: `memory-${content.length}`,
+    sourceRecordId,
+    personId: personName ? "person-1" : null,
+    personName,
+    content,
+  };
+}
+
+describe("AssistantToolGroup (collapsed group of same-kind durable records)", () => {
+  it("collapses several saved memories into one summary, named by count and person", () => {
+    const html = renderToStaticMarkup(
+      <AssistantToolGroup
+        kind="saved_memory"
+        views={[
+          savedMemory("Together since March 2023.", "Juli", "source-1"),
+          savedMemory("They have four cats together.", "Juli"),
+          savedMemory("Juli is a great cook.", "Juli"),
+        ]}
+      />,
+    );
+
+    // The summary leads with a plural count and the shared person, and the trust
+    // language survives the fold (grounded because one memory cites a source).
+    expect(html).toContain("Saved 3 memories");
+    expect(html).toContain("Juli");
+    expect(html).toContain("Confirmed facts");
+    expect(html).toContain("grounded in source records");
+    // Each memory's content is present (expanded body), but a shared person is not
+    // repeated per row — it rides the summary instead.
+    expect(html).toContain("Together since March 2023.");
+    expect(html).toContain("They have four cats together.");
+    expect(html).toContain("Juli is a great cook.");
+    expect(html).toContain('data-tool-view="saved_memory_group"');
+  });
+
+  it("prefixes each row with its person when a memory group spans several people", () => {
+    const html = renderToStaticMarkup(
+      <AssistantToolGroup
+        kind="saved_memory"
+        views={[
+          savedMemory("Moving to Denver.", "Caleb"),
+          savedMemory("Started a new job.", "Mara"),
+        ]}
+      />,
+    );
+
+    expect(html).toContain("Saved 2 memories");
+    // No single shared person, so each row carries its own name.
+    expect(html).toContain("Caleb");
+    expect(html).toContain("Mara");
+  });
+
+  it("does not claim source grounding for a memory group with no source records", () => {
+    const html = renderToStaticMarkup(
+      <AssistantToolGroup
+        kind="saved_memory"
+        views={[savedMemory("A fact.", "Juli"), savedMemory("Another fact.", "Juli")]}
+      />,
+    );
+
+    expect(html).toContain("Confirmed facts");
+    expect(html).not.toContain("grounded in source records");
+  });
+
+  it("renders a logged-notes group as logged context, not confirmed facts", () => {
+    const html = renderToStaticMarkup(
+      <AssistantToolGroup
+        kind="saved_source_record"
+        views={[
+          {
+            kind: "saved_source_record",
+            sourceRecordId: "s1",
+            content: "Lunch with Mark.",
+            linkedPersonId: "p1",
+          },
+          {
+            kind: "saved_source_record",
+            sourceRecordId: "s2",
+            content: "Coffee with Ana.",
+            linkedPersonId: "p2",
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain("Logged 2 notes");
+    expect(html).toContain("You noted");
+    expect(html).toContain("not confirmed facts");
+    expect(html).not.toContain("Confirmed facts");
+    expect(html).toContain('data-tool-view="saved_source_record_group"');
+  });
+});

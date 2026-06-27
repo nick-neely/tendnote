@@ -19,7 +19,8 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
-import { AssistantToolGroup, AssistantToolResult } from "@/components/assistant-tool-result";
+import { AssistantToolGroup } from "@/components/assistant-tool-group";
+import { AssistantToolResult } from "@/components/assistant-tool-result";
 import {
   ChatFollowupReviewCard,
   ChatFollowupReviewList,

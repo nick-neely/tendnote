@@ -1,10 +1,10 @@
 import type { EveDynamicToolPart, EveMessage, EveMessagePart } from "eve/react";
+import { toAssistantToolView } from "./tool-result-parse";
 import {
   type AssistantToolView,
   activeToolLabel,
   type GroupableToolKind,
   isGroupableToolKind,
-  toAssistantToolView,
 } from "./tool-result-view";
 
 function isTextPart(part: EveMessagePart): part is Extract<EveMessagePart, { type: "text" }> {

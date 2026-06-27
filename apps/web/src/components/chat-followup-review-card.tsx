@@ -7,7 +7,7 @@ import {
   acceptSuggestedFollowupAction,
   dismissSuggestedFollowupAction,
 } from "@/app/actions/suggested-followups";
-import { Body, Caption, type CardTone, ResultCard } from "@/components/assistant-tool-result";
+import { Body, Caption, type CardTone, ResultCard } from "@/components/assistant-result-card";
 import { Button } from "@/components/ui/button";
 import type {
   AssistantToolView,

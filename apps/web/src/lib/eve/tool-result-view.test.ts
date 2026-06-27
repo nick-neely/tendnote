@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { toAssistantToolView } from "./tool-result-parse";
 import {
   activeToolLabel,
   assistantToolViewKey,
   relationshipAgendaCandidateKey,
-  toAssistantToolView,
   toolViewTier,
 } from "./tool-result-view";
 
