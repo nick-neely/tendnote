@@ -191,6 +191,118 @@ export function createRelationshipAgenda(store: RelationshipAgendaStore) {
         }
       }
 
+      if (requested(input, "review_item")) {
+        const [suggestedMemories, suggestedFollowups, sourceRecordReviews] = await Promise.all([
+          store.listSuggestedMemoriesForOwner({
+            ownerUserId: input.ownerUserId,
+            limit: input.limit,
+          }),
+          store.listSuggestedFollowupsForOwner({
+            ownerUserId: input.ownerUserId,
+            limit: input.limit,
+          }),
+          store.listSourceRecordReviewsForOwner({
+            ownerUserId: input.ownerUserId,
+            limit: input.limit,
+          }),
+        ]);
+
+        for (const memory of suggestedMemories.filter(
+          (candidate) =>
+            candidate.ownerUserId === input.ownerUserId && candidate.status === "suggested",
+        )) {
+          const [person, sourceRecord] = await Promise.all([
+            store.getPerson({ ownerUserId: input.ownerUserId, personId: memory.personId }),
+            store.getSourceRecord({
+              ownerUserId: input.ownerUserId,
+              sourceRecordId: memory.sourceRecordId,
+            }),
+          ]);
+
+          if (!person) {
+            continue;
+          }
+
+          candidates.push({
+            kind: "review_item",
+            personId: person.id,
+            personDisplayName: person.displayName,
+            title: `Review suggested memory for ${person.displayName}`,
+            reason: memory.content,
+            sourceRefs: [
+              { kind: "memory", id: memory.id },
+              ...(sourceRecord ? [{ kind: "source_record" as const, id: sourceRecord.id }] : []),
+            ],
+            trustLevel: "tentative",
+            sensitivity: memory.sensitivity,
+            rank: 0,
+            score: 40,
+          });
+        }
+
+        for (const followup of suggestedFollowups.filter(
+          (candidate) =>
+            candidate.ownerUserId === input.ownerUserId && candidate.status === "suggested",
+        )) {
+          const [person, sourceRecord] = await Promise.all([
+            store.getPerson({ ownerUserId: input.ownerUserId, personId: followup.personId }),
+            followup.sourceRecordId
+              ? store.getSourceRecord({
+                  ownerUserId: input.ownerUserId,
+                  sourceRecordId: followup.sourceRecordId,
+                })
+              : Promise.resolve(null),
+          ]);
+
+          if (!person) {
+            continue;
+          }
+
+          candidates.push({
+            kind: "review_item",
+            personId: person.id,
+            personDisplayName: person.displayName,
+            title: `Review suggested follow-up for ${person.displayName}`,
+            reason: followup.reason,
+            dueAt: followup.dueAt,
+            sourceRefs: [
+              { kind: "followup", id: followup.id },
+              ...(sourceRecord ? [{ kind: "source_record" as const, id: sourceRecord.id }] : []),
+            ],
+            trustLevel: "tentative",
+            sensitivity: sourceRecord?.sensitivity ?? "normal",
+            rank: 0,
+            score: 45,
+          });
+        }
+
+        for (const review of sourceRecordReviews.filter(
+          (candidate) =>
+            candidate.sourceRecord.ownerUserId === input.ownerUserId &&
+            ["active", "pending_resolution"].includes(candidate.sourceRecord.status),
+        )) {
+          const primaryPerson = review.linkedPeople[0] ?? null;
+          const personless = primaryPerson === null;
+
+          candidates.push({
+            kind: "review_item",
+            personId: primaryPerson?.id ?? null,
+            personDisplayName: primaryPerson?.displayName ?? null,
+            title: personless
+              ? "Resolve a personless source record"
+              : `Review logged context for ${primaryPerson.displayName}`,
+            reason: personless
+              ? "This source record needs person resolution before it becomes relationship context."
+              : review.sourceRecord.content,
+            sourceRefs: [{ kind: "source_record", id: review.sourceRecord.id }],
+            trustLevel: "logged_context",
+            sensitivity: review.sourceRecord.sensitivity,
+            rank: 0,
+            score: personless ? 80 : 50,
+          });
+        }
+      }
+
       return rank(candidates).slice(0, input.limit ?? DEFAULT_LIMIT);
     },
   };

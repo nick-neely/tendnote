@@ -3,6 +3,7 @@ import { createRelationshipAgenda } from "./relationship-agenda/query";
 import type { RelationshipAgendaInput } from "./relationship-agenda/types";
 
 export { createDrizzleRelationshipAgendaStore } from "./relationship-agenda/drizzle-store";
+export { createInMemoryRelationshipAgendaStore } from "./relationship-agenda/in-memory-store";
 export { createRelationshipAgenda } from "./relationship-agenda/query";
 export type * from "./relationship-agenda/types";
 

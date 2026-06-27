@@ -1,4 +1,4 @@
-import type { Followup, Person, Sensitivity } from "@tendnote/domain";
+import type { Followup, Memory, Person, Sensitivity, SourceRecord } from "@tendnote/domain";
 
 export type RelationshipAgendaKind =
   | "due_followup"
@@ -18,6 +18,11 @@ export type RelationshipAgendaTrustLevel =
 export type RelationshipAgendaSourceRef = {
   kind: "followup" | "person" | "memory" | "source_record";
   id: string;
+};
+
+export type RelationshipAgendaSourceRecordReview = {
+  sourceRecord: SourceRecord;
+  linkedPeople: Pick<Person, "id" | "displayName">[];
 };
 
 export type RelationshipAgendaCandidate = {
@@ -51,4 +56,20 @@ export type RelationshipAgendaStore = {
   }) => Promise<Followup[]>;
   getPerson: (input: { ownerUserId: string; personId: string }) => Promise<Person | null>;
   listPeople: (input: { ownerUserId: string }) => Promise<Person[]>;
+  getSourceRecord: (input: {
+    ownerUserId: string;
+    sourceRecordId: string;
+  }) => Promise<SourceRecord | null>;
+  listSuggestedMemoriesForOwner: (input: {
+    ownerUserId: string;
+    limit?: number;
+  }) => Promise<Memory[]>;
+  listSuggestedFollowupsForOwner: (input: {
+    ownerUserId: string;
+    limit?: number;
+  }) => Promise<Followup[]>;
+  listSourceRecordReviewsForOwner: (input: {
+    ownerUserId: string;
+    limit?: number;
+  }) => Promise<RelationshipAgendaSourceRecordReview[]>;
 };
