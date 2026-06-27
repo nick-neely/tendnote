@@ -13,6 +13,8 @@ const BIRTHDAY_PREP_BUFFER_DAYS = 7;
 const BROAD_AGENDA_QUERY = /\b(who deserves|deserves a thought|check in|review|relationship)\b/i;
 const EXACT_DATE_QUERY =
   /\b(today|tomorrow|yesterday|this week|next week|weekend|month|specific|between|on \d{1,2}|due soon|coming up)\b/i;
+const SENSITIVE_CONTEXT_QUERY =
+  /\b(restricted|sensitive|private|confidential|delicate|personal|hidden|sensitivity)\b/i;
 
 function requested(input: RelationshipAgendaInput, kind: RelationshipAgendaKind) {
   return input.includeKinds === undefined || input.includeKinds.includes(kind);
@@ -104,6 +106,52 @@ function rank(candidates: Array<RelationshipAgendaCandidate & { score: number }>
     );
 }
 
+function normalizedReason(reason: string) {
+  return reason
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function materiallySameReason(left: string, right: string) {
+  const normalizedLeft = normalizedReason(left);
+  const normalizedRight = normalizedReason(right);
+
+  if (normalizedLeft.length === 0 || normalizedRight.length === 0) {
+    return false;
+  }
+
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+
+  if (
+    Math.min(normalizedLeft.length, normalizedRight.length) >= 24 &&
+    (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft))
+  ) {
+    return true;
+  }
+
+  const leftTokens = new Set(normalizedLeft.split(" ").filter((token) => token.length > 2));
+  const rightTokens = new Set(normalizedRight.split(" ").filter((token) => token.length > 2));
+  const smaller = leftTokens.size < rightTokens.size ? leftTokens : rightTokens;
+  const larger = leftTokens.size < rightTokens.size ? rightTokens : leftTokens;
+
+  if (smaller.size < 4) {
+    return false;
+  }
+
+  let shared = 0;
+  for (const token of smaller) {
+    if (larger.has(token)) {
+      shared += 1;
+    }
+  }
+
+  return shared / smaller.size >= 0.8;
+}
+
 function overlapsExistingCandidate(
   existing: RelationshipAgendaCandidate,
   sourceRefs: RelationshipAgendaCandidate["sourceRefs"],
@@ -111,12 +159,18 @@ function overlapsExistingCandidate(
 ) {
   const existingRefs = new Set(existing.sourceRefs.map((ref) => `${ref.kind}:${ref.id}`));
   const hasSharedSource = sourceRefs.some((ref) => existingRefs.has(`${ref.kind}:${ref.id}`));
-  const hasSamePersonReason =
-    existing.personId !== null &&
-    existing.personId === input.personId &&
-    existing.reason.trim().toLowerCase() === input.reason.trim().toLowerCase();
+  const hasSamePerson =
+    existing.personId !== null && input.personId !== null && existing.personId === input.personId;
+  const hasMateriallySameReason = materiallySameReason(existing.reason, input.reason);
 
-  return hasSharedSource || hasSamePersonReason;
+  return hasSharedSource || hasSamePerson || hasMateriallySameReason;
+}
+
+function shouldIncludeRestrictedSemanticResult(input: RelationshipAgendaInput) {
+  return (
+    input.directlyRequested === true &&
+    Boolean(input.query && SENSITIVE_CONTEXT_QUERY.test(input.query))
+  );
 }
 
 /**
@@ -209,7 +263,7 @@ export function createRelationshipAgenda(store: RelationshipAgendaStore) {
         }
       }
 
-      if (requested(input, "review_item")) {
+      if (requested(input, "review_item") || requested(input, "suggested_followup")) {
         const [suggestedMemories, suggestedFollowups, sourceRecordReviews] = await Promise.all([
           store.listSuggestedMemoriesForOwner({
             ownerUserId: input.ownerUserId,
@@ -225,99 +279,105 @@ export function createRelationshipAgenda(store: RelationshipAgendaStore) {
           }),
         ]);
 
-        for (const memory of suggestedMemories.filter(
-          (candidate) =>
-            candidate.ownerUserId === input.ownerUserId && candidate.status === "suggested",
-        )) {
-          const [person, sourceRecord] = await Promise.all([
-            store.getPerson({ ownerUserId: input.ownerUserId, personId: memory.personId }),
-            store.getSourceRecord({
-              ownerUserId: input.ownerUserId,
-              sourceRecordId: memory.sourceRecordId,
-            }),
-          ]);
+        if (requested(input, "review_item")) {
+          for (const memory of suggestedMemories.filter(
+            (candidate) =>
+              candidate.ownerUserId === input.ownerUserId && candidate.status === "suggested",
+          )) {
+            const [person, sourceRecord] = await Promise.all([
+              store.getPerson({ ownerUserId: input.ownerUserId, personId: memory.personId }),
+              store.getSourceRecord({
+                ownerUserId: input.ownerUserId,
+                sourceRecordId: memory.sourceRecordId,
+              }),
+            ]);
 
-          if (!person) {
-            continue;
+            if (!person) {
+              continue;
+            }
+
+            candidates.push({
+              kind: "review_item",
+              personId: person.id,
+              personDisplayName: person.displayName,
+              title: `Review suggested memory for ${person.displayName}`,
+              reason: memory.content,
+              sourceRefs: [
+                { kind: "memory", id: memory.id },
+                ...(sourceRecord ? [{ kind: "source_record" as const, id: sourceRecord.id }] : []),
+              ],
+              trustLevel: "tentative",
+              sensitivity: memory.sensitivity,
+              rank: 0,
+              score: 40,
+            });
           }
-
-          candidates.push({
-            kind: "review_item",
-            personId: person.id,
-            personDisplayName: person.displayName,
-            title: `Review suggested memory for ${person.displayName}`,
-            reason: memory.content,
-            sourceRefs: [
-              { kind: "memory", id: memory.id },
-              ...(sourceRecord ? [{ kind: "source_record" as const, id: sourceRecord.id }] : []),
-            ],
-            trustLevel: "tentative",
-            sensitivity: memory.sensitivity,
-            rank: 0,
-            score: 40,
-          });
         }
 
-        for (const followup of suggestedFollowups.filter(
-          (candidate) =>
-            candidate.ownerUserId === input.ownerUserId && candidate.status === "suggested",
-        )) {
-          const [person, sourceRecord] = await Promise.all([
-            store.getPerson({ ownerUserId: input.ownerUserId, personId: followup.personId }),
-            followup.sourceRecordId
-              ? store.getSourceRecord({
-                  ownerUserId: input.ownerUserId,
-                  sourceRecordId: followup.sourceRecordId,
-                })
-              : Promise.resolve(null),
-          ]);
+        if (requested(input, "suggested_followup")) {
+          for (const followup of suggestedFollowups.filter(
+            (candidate) =>
+              candidate.ownerUserId === input.ownerUserId && candidate.status === "suggested",
+          )) {
+            const [person, sourceRecord] = await Promise.all([
+              store.getPerson({ ownerUserId: input.ownerUserId, personId: followup.personId }),
+              followup.sourceRecordId
+                ? store.getSourceRecord({
+                    ownerUserId: input.ownerUserId,
+                    sourceRecordId: followup.sourceRecordId,
+                  })
+                : Promise.resolve(null),
+            ]);
 
-          if (!person) {
-            continue;
+            if (!person) {
+              continue;
+            }
+
+            candidates.push({
+              kind: "suggested_followup",
+              personId: person.id,
+              personDisplayName: person.displayName,
+              title: `Review suggested follow-up for ${person.displayName}`,
+              reason: followup.reason,
+              dueAt: followup.dueAt,
+              sourceRefs: [
+                { kind: "followup", id: followup.id },
+                ...(sourceRecord ? [{ kind: "source_record" as const, id: sourceRecord.id }] : []),
+              ],
+              trustLevel: "tentative",
+              sensitivity: sourceRecord?.sensitivity ?? "normal",
+              rank: 0,
+              score: 45,
+            });
           }
-
-          candidates.push({
-            kind: "review_item",
-            personId: person.id,
-            personDisplayName: person.displayName,
-            title: `Review suggested follow-up for ${person.displayName}`,
-            reason: followup.reason,
-            dueAt: followup.dueAt,
-            sourceRefs: [
-              { kind: "followup", id: followup.id },
-              ...(sourceRecord ? [{ kind: "source_record" as const, id: sourceRecord.id }] : []),
-            ],
-            trustLevel: "tentative",
-            sensitivity: sourceRecord?.sensitivity ?? "normal",
-            rank: 0,
-            score: 45,
-          });
         }
 
-        for (const review of sourceRecordReviews.filter(
-          (candidate) =>
-            candidate.sourceRecord.ownerUserId === input.ownerUserId &&
-            ["active", "pending_resolution"].includes(candidate.sourceRecord.status),
-        )) {
-          const primaryPerson = review.linkedPeople[0] ?? null;
-          const personless = primaryPerson === null;
+        if (requested(input, "review_item")) {
+          for (const review of sourceRecordReviews.filter(
+            (candidate) =>
+              candidate.sourceRecord.ownerUserId === input.ownerUserId &&
+              ["active", "pending_resolution"].includes(candidate.sourceRecord.status),
+          )) {
+            const primaryPerson = review.linkedPeople[0] ?? null;
+            const personless = primaryPerson === null;
 
-          candidates.push({
-            kind: "review_item",
-            personId: primaryPerson?.id ?? null,
-            personDisplayName: primaryPerson?.displayName ?? null,
-            title: personless
-              ? "Resolve a personless source record"
-              : `Review logged context for ${primaryPerson.displayName}`,
-            reason: personless
-              ? "This source record needs person resolution before it becomes relationship context."
-              : review.sourceRecord.content,
-            sourceRefs: [{ kind: "source_record", id: review.sourceRecord.id }],
-            trustLevel: "logged_context",
-            sensitivity: review.sourceRecord.sensitivity,
-            rank: 0,
-            score: personless ? 80 : 50,
-          });
+            candidates.push({
+              kind: "review_item",
+              personId: primaryPerson?.id ?? null,
+              personDisplayName: primaryPerson?.displayName ?? null,
+              title: personless
+                ? "Resolve a personless source record"
+                : `Review logged context for ${primaryPerson.displayName}`,
+              reason: personless
+                ? "This source record needs person resolution before it becomes relationship context."
+                : review.sourceRecord.content,
+              sourceRefs: [{ kind: "source_record", id: review.sourceRecord.id }],
+              trustLevel: "logged_context",
+              sensitivity: review.sourceRecord.sensitivity,
+              rank: 0,
+              score: personless ? 80 : 50,
+            });
+          }
         }
       }
 
@@ -371,20 +431,22 @@ export function createRelationshipAgenda(store: RelationshipAgendaStore) {
         }
 
         for (const result of semanticResults.filter(
-          (candidate) => candidate.sensitivity !== "restricted" || input.directlyRequested === true,
+          (candidate) =>
+            candidate.sensitivity !== "restricted" || shouldIncludeRestrictedSemanticResult(input),
         )) {
           const sourceRefs: RelationshipAgendaSourceRef[] = result.sourceRefs.map((ref) => ({
             kind: ref.kind === "memory" ? "memory" : "source_record",
             id: ref.id,
           }));
-          const overlaps = candidates.some((candidate) =>
+          const overlap = candidates.find((candidate) =>
             overlapsExistingCandidate(candidate, sourceRefs, {
               personId: result.relatedPersonId,
               reason: result.snippet,
             }),
           );
 
-          if (overlaps) {
+          if (overlap) {
+            overlap.sourceRefs.push(...sourceRefs);
             continue;
           }
 
@@ -392,9 +454,14 @@ export function createRelationshipAgenda(store: RelationshipAgendaStore) {
             kind: "semantic_context",
             personId: result.relatedPersonId,
             personDisplayName: result.relatedPersonDisplayName,
-            title: result.relatedPersonDisplayName
-              ? `Related context for ${result.relatedPersonDisplayName}`
-              : "Related relationship context",
+            title:
+              result.sensitivity === "restricted"
+                ? result.relatedPersonDisplayName
+                  ? `Restricted related context for ${result.relatedPersonDisplayName}`
+                  : "Restricted related relationship context"
+                : result.relatedPersonDisplayName
+                  ? `Related context for ${result.relatedPersonDisplayName}`
+                  : "Related relationship context",
             reason: result.snippet,
             sourceRefs,
             trustLevel: result.trustLevel,

@@ -235,7 +235,7 @@ describe("relationship agenda deterministic foundation", () => {
     ).resolves.toEqual(expect.objectContaining({ status: "open" }));
   });
 
-  it("returns suggested memories, suggested follow-ups, and source-record reviews as review items", async () => {
+  it("returns suggested memories, suggested follow-ups, and source-record reviews as typed review candidates", async () => {
     const { store, agenda, person } = await setup();
     const mara = await person("Mara Lin", null);
     const sourceRecord = await store.createSourceRecord({
@@ -325,7 +325,7 @@ describe("relationship agenda deterministic foundation", () => {
       ownerUserId: OWNER,
       windowStart: WINDOW_START,
       windowEnd: WINDOW_END,
-      includeKinds: ["review_item"],
+      includeKinds: ["review_item", "suggested_followup"],
     });
 
     expect(result).toEqual([
@@ -344,7 +344,7 @@ describe("relationship agenda deterministic foundation", () => {
         ],
       }),
       expect.objectContaining({
-        kind: "review_item",
+        kind: "suggested_followup",
         personId: mara.id,
         title: "Review suggested follow-up for Mara Lin",
         reason: "Ask whether the move happened.",
@@ -466,6 +466,118 @@ describe("relationship agenda deterministic foundation", () => {
         includeKinds: ["birthday"],
       }),
     ).resolves.toEqual([]);
+  });
+
+  it("lets suggested_followup filters return only suggested follow-up review candidates", async () => {
+    const { store, agenda, person } = await setup();
+    const mara = await person("Mara Lin", null);
+    const sourceRecord = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Mara mentioned a possible move.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "active",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+    });
+    const followup = await store.createFollowup({
+      ownerUserId: OWNER,
+      personId: mara.id,
+      reason: "Ask whether the move happened.",
+      dueAt: new Date("2026-07-04T12:00:00Z"),
+      status: "suggested",
+      sourceRecordId: sourceRecord.id,
+    });
+    store.seedSuggestedMemories([
+      suggestedMemory({
+        id: "memory-1",
+        personId: mara.id,
+        sourceRecordId: sourceRecord.id,
+        content: "Mara may be moving.",
+      }),
+    ]);
+    store.seedSourceRecordReviews([
+      { sourceRecord, linkedPeople: [{ id: mara.id, displayName: mara.displayName }] },
+    ]);
+
+    const result = await agenda.getRelationshipAgenda({
+      ownerUserId: OWNER,
+      windowStart: WINDOW_START,
+      windowEnd: WINDOW_END,
+      includeKinds: ["suggested_followup"],
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "suggested_followup",
+        title: "Review suggested follow-up for Mara Lin",
+        reason: "Ask whether the move happened.",
+        sourceRefs: [
+          { kind: "followup", id: followup.id },
+          { kind: "source_record", id: sourceRecord.id },
+        ],
+      }),
+    ]);
+  });
+
+  it("keeps review_item filters separate from suggested follow-up filters", async () => {
+    const { store, agenda, person } = await setup();
+    const mara = await person("Mara Lin", null);
+    const sourceRecord = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Mara mentioned a possible move.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "active",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+    });
+    await store.createFollowup({
+      ownerUserId: OWNER,
+      personId: mara.id,
+      reason: "Ask whether the move happened.",
+      dueAt: new Date("2026-07-04T12:00:00Z"),
+      status: "suggested",
+      sourceRecordId: sourceRecord.id,
+    });
+    store.seedSuggestedMemories([
+      suggestedMemory({
+        id: "memory-1",
+        personId: mara.id,
+        sourceRecordId: sourceRecord.id,
+        content: "Mara may be moving.",
+      }),
+    ]);
+    store.seedSourceRecordReviews([
+      { sourceRecord, linkedPeople: [{ id: mara.id, displayName: mara.displayName }] },
+    ]);
+
+    const reviewOnly = await agenda.getRelationshipAgenda({
+      ownerUserId: OWNER,
+      windowStart: WINDOW_START,
+      windowEnd: WINDOW_END,
+      includeKinds: ["review_item"],
+    });
+
+    expect(reviewOnly).toEqual([
+      expect.objectContaining({
+        kind: "review_item",
+        title: "Review suggested memory for Mara Lin",
+      }),
+      expect.objectContaining({
+        kind: "review_item",
+        title: "Review logged context for Mara Lin",
+      }),
+    ]);
+    expect(reviewOnly.map((candidate) => candidate.kind)).not.toContain("suggested_followup");
   });
 
   it("owner-scopes review candidates even when an adapter returns extra rows", async () => {
@@ -940,7 +1052,7 @@ describe("relationship agenda deterministic foundation", () => {
     expect(result).toEqual([]);
   });
 
-  it("lets concrete review candidates win over overlapping semantic matches", async () => {
+  it("lets concrete review candidates win over overlapping semantic matches while keeping source grounding", async () => {
     const { store, agenda, person } = await setup();
     const mara = await person("Mara Lin", null);
     const sourceRecord = await store.createSourceRecord({
@@ -977,6 +1089,18 @@ describe("relationship agenda deterministic foundation", () => {
         sourceRefs: [{ kind: "memory", id: "memory-1" }],
         routing: { personId: mara.id, recordKind: "memory", recordId: "memory-1" },
       },
+      {
+        recordKind: "source_record",
+        recordId: "source-semantic",
+        relatedPersonId: mara.id,
+        relatedPersonDisplayName: mara.displayName,
+        snippet: "Mara may be moving soon.",
+        similarity: 0.89,
+        trustLevel: "logged_context",
+        sensitivity: "normal",
+        sourceRefs: [{ kind: "source_record", id: "source-semantic" }],
+        routing: { personId: mara.id, recordKind: "source_record", recordId: "source-semantic" },
+      },
     ]);
 
     const result = await agenda.getRelationshipAgenda({
@@ -993,6 +1117,56 @@ describe("relationship agenda deterministic foundation", () => {
         sourceRefs: [
           { kind: "memory", id: "memory-1" },
           { kind: "source_record", id: sourceRecord.id },
+          { kind: "source_record", id: "source-semantic" },
+        ],
+      }),
+    ]);
+  });
+
+  it("dedupes semantic matches by materially identical reason even without shared source refs", async () => {
+    const { store, agenda } = await setup();
+    store.seedSemanticResults(OWNER, [
+      {
+        recordKind: "source_record",
+        recordId: "source-1",
+        relatedPersonId: "person-1",
+        relatedPersonDisplayName: "Mara Lin",
+        snippet: "Mara may be moving to Seattle soon.",
+        similarity: 0.91,
+        trustLevel: "logged_context",
+        sensitivity: "normal",
+        sourceRefs: [{ kind: "source_record", id: "source-1" }],
+        routing: { personId: "person-1", recordKind: "source_record", recordId: "source-1" },
+      },
+      {
+        recordKind: "source_record",
+        recordId: "source-2",
+        relatedPersonId: "person-2",
+        relatedPersonDisplayName: "Sam Rivera",
+        snippet: "You logged that Mara may be moving to Seattle soon.",
+        similarity: 0.86,
+        trustLevel: "logged_context",
+        sensitivity: "normal",
+        sourceRefs: [{ kind: "source_record", id: "source-2" }],
+        routing: { personId: "person-2", recordKind: "source_record", recordId: "source-2" },
+      },
+    ]);
+
+    const result = await agenda.getRelationshipAgenda({
+      ownerUserId: OWNER,
+      windowStart: WINDOW_START,
+      windowEnd: WINDOW_END,
+      query: "moving to Seattle",
+      includeKinds: ["semantic_context"],
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "semantic_context",
+        personId: "person-1",
+        sourceRefs: [
+          { kind: "source_record", id: "source-1" },
+          { kind: "source_record", id: "source-2" },
         ],
       }),
     ]);
@@ -1089,7 +1263,7 @@ describe("relationship agenda deterministic foundation", () => {
     ]);
   });
 
-  it("excludes restricted semantic context unless directly requested", async () => {
+  it("excludes restricted semantic context unless directly requested with sensitive query intent", async () => {
     const { store, agenda } = await setup();
     store.seedSemanticResults(OWNER, [
       {
@@ -1125,13 +1299,25 @@ describe("relationship agenda deterministic foundation", () => {
         ownerUserId: OWNER,
         windowStart: WINDOW_START,
         windowEnd: WINDOW_END,
-        query: "delicate topic",
+        query: "relationship context",
+        includeKinds: ["semantic_context"],
+        directlyRequested: true,
+      }),
+    ).resolves.toEqual([]);
+
+    await expect(
+      agenda.getRelationshipAgenda({
+        ownerUserId: OWNER,
+        windowStart: WINDOW_START,
+        windowEnd: WINDOW_END,
+        query: "show the sensitive context for Mara",
         includeKinds: ["semantic_context"],
         directlyRequested: true,
       }),
     ).resolves.toEqual([
       expect.objectContaining({
         kind: "semantic_context",
+        title: "Restricted related context for Mara Lin",
         sensitivity: "restricted",
         sourceRefs: [{ kind: "source_record", id: "source-restricted" }],
       }),
