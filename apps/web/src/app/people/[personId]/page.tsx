@@ -1,4 +1,5 @@
 import { getPersonContextSnapshot } from "@tendnote/db/queries/context-snapshots";
+import { listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { getPersonProfile } from "@tendnote/db/queries/people";
 import {
@@ -20,6 +21,7 @@ import {
   PersonDetailsCard,
 } from "@/components/person-ledger";
 import { RelationshipSnapshotCard } from "@/components/relationship-snapshot-card";
+import { SuggestedFollowupReviewSection } from "@/components/suggested-followup-review";
 import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
 import { shortName } from "@/lib/dashboard-brief";
@@ -28,6 +30,10 @@ import {
   type RelationshipSnapshotView,
   toRelationshipSnapshotView,
 } from "@/lib/relationship-snapshot-view";
+import {
+  type SuggestedFollowupReviewView,
+  toSuggestedFollowupReviewView,
+} from "@/lib/suggested-followup-review-view";
 import {
   type SuggestedMemoryReviewView,
   toSuggestedMemoryReviewView,
@@ -53,6 +59,20 @@ async function loadSuggestedReviews(
   } catch {
     // Review is in-context enrichment; if the store is unavailable the rest of
     // the profile should still render.
+    return [];
+  }
+}
+
+async function loadSuggestedFollowupReviews(
+  ownerUserId: string,
+  personId: string,
+): Promise<SuggestedFollowupReviewView[]> {
+  try {
+    const reviews = await listSuggestedFollowupReviews({ ownerUserId, personId });
+
+    return reviews.map((review) => toSuggestedFollowupReviewView(review));
+  } catch {
+    // Tentative proposals are enrichment; never block the profile if unavailable.
     return [];
   }
 }
@@ -107,9 +127,10 @@ export default async function PersonDetailPage({
 }) {
   const { personId } = await params;
   const ownerUserId = await getCurrentOwnerUserId();
-  const [profile, suggestedReviews] = await Promise.all([
+  const [profile, suggestedReviews, suggestedFollowupReviews] = await Promise.all([
     getPersonProfile({ ownerUserId, personId }),
     loadSuggestedReviews(ownerUserId, personId),
+    loadSuggestedFollowupReviews(ownerUserId, personId),
   ]);
 
   if (!profile) {
@@ -165,6 +186,7 @@ export default async function PersonDetailPage({
               id="follow-ups"
               title="Follow-ups"
             >
+              <SuggestedFollowupReviewSection initialReviews={suggestedFollowupReviews} />
               <PersonFollowups
                 active={activeFollowups}
                 defaultDueDate={toDateInputValue(now)}

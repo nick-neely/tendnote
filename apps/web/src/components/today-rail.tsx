@@ -6,8 +6,10 @@ import {
   DashboardReviewSection,
   type DashboardReviewView,
 } from "@/components/dashboard-review-section";
+import { DashboardSuggestedFollowupsSection } from "@/components/dashboard-suggested-followups-section";
 import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brief";
 import type { DashboardFollowupView } from "@/lib/followup-view";
+import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 
 /**
  * Quiet right-rail context for the dashboard: a small daily brief (the PRD's 1–3
@@ -20,11 +22,13 @@ export function TodayRail({
   people,
   birthdays,
   followups,
+  followupReviews,
   reviews,
 }: {
   people: Person[];
   birthdays: UpcomingBirthday[];
   followups: DashboardFollowupView[];
+  followupReviews: SuggestedFollowupReviewView[];
   reviews: DashboardReviewView[];
 }) {
   return (
@@ -47,6 +51,8 @@ export function TodayRail({
       </section>
 
       <DashboardFollowupsSection initialFollowups={followups} />
+
+      <DashboardSuggestedFollowupsSection initialReviews={followupReviews} />
 
       <DashboardReviewSection initialReviews={reviews} />
 

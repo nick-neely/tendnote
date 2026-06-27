@@ -1,0 +1,138 @@
+"use client";
+
+import { CheckIcon, XIcon } from "lucide-react";
+import Link from "next/link";
+import { useState, useTransition } from "react";
+import {
+  acceptSuggestedFollowupAction,
+  dismissSuggestedFollowupAction,
+} from "@/app/actions/suggested-followups";
+import { Button } from "@/components/ui/button";
+import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
+
+/**
+ * Reviewable suggested follow-ups on the dashboard rail (issue #48): a small set
+ * of tentative proposals the user can accept (turning one into an active reminder)
+ * or dismiss inline. The full review — edit the timing first — lives on the
+ * person's ledger, which the name links to. The section removes itself once
+ * nothing is waiting, matching the rail's "an empty queue is not worth a heading"
+ * rule. These are proposals, never active reminders, until accepted.
+ */
+export function DashboardSuggestedFollowupsSection({
+  initialReviews,
+}: {
+  initialReviews: SuggestedFollowupReviewView[];
+}) {
+  const [reviews, setReviews] = useState(initialReviews);
+
+  function resolve(followupId: string) {
+    setReviews((current) => current.filter((review) => review.followup.id !== followupId));
+  }
+
+  if (reviews.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="flex flex-col gap-2.5">
+      <h2 className="px-1 text-[length:var(--text-small)] font-medium text-muted-foreground">
+        Follow-ups to review
+      </h2>
+      <div className="overflow-hidden rounded-xl border bg-surface">
+        <ul className="divide-y">
+          {reviews.map((review) => (
+            <ReviewRow key={review.followup.id} onResolve={resolve} review={review} />
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+function ReviewRow({
+  review,
+  onResolve,
+}: {
+  review: SuggestedFollowupReviewView;
+  onResolve: (followupId: string) => void;
+}) {
+  const { followup } = review;
+  const personName = review.personName ?? "Someone";
+  const [leaving, setLeaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function run(action: () => Promise<unknown>) {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await action();
+        setLeaving(true);
+        window.setTimeout(() => onResolve(followup.id), 200);
+      } catch {
+        setError("That didn't go through. Try again.");
+      }
+    });
+  }
+
+  return (
+    <li
+      className="flex flex-col gap-2.5 px-4 py-3 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
+      data-leaving={leaving}
+    >
+      <div className="flex items-center justify-between gap-2">
+        {review.personId ? (
+          <Link
+            className="min-w-0 truncate text-sm font-medium underline-offset-4 transition-colors hover:underline"
+            href={`/people/${review.personId}#follow-ups`}
+          >
+            {personName}
+          </Link>
+        ) : (
+          <span className="min-w-0 truncate text-sm font-medium">{personName}</span>
+        )}
+        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
+          <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+          Suggested
+        </span>
+      </div>
+
+      <p className="line-clamp-3 text-pretty text-[length:var(--text-small)] leading-[var(--text-small-line)]">
+        {followup.reason}
+      </p>
+      <p className="text-[length:var(--text-caption)] text-muted-foreground">
+        Proposed for {followup.dueLabel}
+      </p>
+
+      <div className="flex items-center justify-end gap-1.5">
+        <Button
+          aria-label={`Dismiss suggested follow-up for ${personName}`}
+          disabled={pending}
+          onClick={() => run(() => dismissSuggestedFollowupAction({ followupId: followup.id }))}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <XIcon />
+          Dismiss
+        </Button>
+        <Button
+          aria-label={`Accept suggested follow-up for ${personName}`}
+          disabled={pending}
+          onClick={() => run(() => acceptSuggestedFollowupAction({ followupId: followup.id }))}
+          size="sm"
+          type="button"
+        >
+          <CheckIcon />
+          Accept
+        </Button>
+      </div>
+
+      {error ? (
+        <p className="text-[length:var(--text-small)] text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </li>
+  );
+}

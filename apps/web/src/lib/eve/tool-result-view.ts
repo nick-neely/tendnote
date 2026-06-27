@@ -40,6 +40,8 @@ export type AssistantToolView =
     }
   | ({ kind: "suggested_memory_review" } & SuggestedReviewItemView)
   | { kind: "suggested_memory_review_list"; reviews: SuggestedReviewItemView[] }
+  | ({ kind: "suggested_followup_review" } & SuggestedFollowupReviewItemView)
+  | { kind: "suggested_followup_review_list"; reviews: SuggestedFollowupReviewItemView[] }
   | {
       kind: "relationship_context_search";
       results: RelationshipContextSearchResultView[];
@@ -54,6 +56,16 @@ export type AssistantToolView =
 export type SuggestedReviewItemView = {
   memoryId: string;
   content: string;
+  sourceRecordId: string | null;
+  personId: string | null;
+  personName: string | null;
+};
+
+/** One tentative suggested follow-up the user can accept or dismiss inline. */
+export type SuggestedFollowupReviewItemView = {
+  followupId: string;
+  reason: string;
+  dueLabel: string;
   sourceRecordId: string | null;
   personId: string | null;
   personName: string | null;
@@ -139,6 +151,48 @@ function toReviewItem(parsed: z.infer<typeof suggestedReviewItem>): SuggestedRev
   };
 }
 
+const suggestedFollowupReviewItem = z.object({
+  person: z.object({ id: z.string(), displayName: z.string() }).nullish(),
+  followup: z.object({
+    id: z.string(),
+    personId: z.string().nullish(),
+    reason: z.string(),
+    dueAt: z.string(),
+  }),
+  sourceRecord: z.object({ id: z.string() }).nullish(),
+});
+
+const suggestedFollowupOutput = z.object({
+  found: z.literal(true),
+  ...suggestedFollowupReviewItem.shape,
+});
+
+const suggestedFollowupListOutput = z.object({
+  found: z.literal(true),
+  reviews: z.array(suggestedFollowupReviewItem),
+});
+
+function formatDueLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function toFollowupReviewItem(
+  parsed: z.infer<typeof suggestedFollowupReviewItem>,
+): SuggestedFollowupReviewItemView {
+  return {
+    followupId: parsed.followup.id,
+    reason: parsed.followup.reason,
+    dueLabel: formatDueLabel(parsed.followup.dueAt),
+    sourceRecordId: parsed.sourceRecord?.id ?? null,
+    personId: parsed.person?.id ?? parsed.followup.personId ?? null,
+    personName: parsed.person?.displayName ?? null,
+  };
+}
+
 const relationshipContextSearchOutput = z.object({
   results: z.array(
     z.object({
@@ -188,6 +242,10 @@ export function assistantToolViewKey(view: AssistantToolView): string {
       return `suggested:${view.memoryId}`;
     case "suggested_memory_review_list":
       return `suggested-list:${view.reviews.map((review) => review.memoryId).join(":")}`;
+    case "suggested_followup_review":
+      return `suggested-followup:${view.followupId}`;
+    case "suggested_followup_review_list":
+      return `suggested-followup-list:${view.reviews.map((review) => review.followupId).join(":")}`;
     case "relationship_context_search":
       return `search:${view.results.map((result) => result.recordId).join(":")}`;
     case "semantic_context_search":
@@ -226,6 +284,11 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   get_person_context: "Recalling…",
   get_suggested_memory_review: "Checking for suggestions…",
   list_suggested_memory_reviews: "Gathering suggestions to review…",
+  get_suggested_followup_review: "Checking suggested follow-ups…",
+  list_suggested_followup_reviews: "Gathering follow-ups to review…",
+  create_followup: "Setting a reminder…",
+  list_due_followups: "Checking what's due…",
+  update_followup_status: "Updating the reminder…",
   capture_source_record: "Logging…",
   capture_memory: "Saving to memory…",
   create_person: "Adding to your notebook…",
@@ -301,6 +364,19 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       return {
         kind: "suggested_memory_review_list",
         reviews: parsed.data.reviews.map(toReviewItem),
+      };
+    }
+    case "get_suggested_followup_review": {
+      const parsed = suggestedFollowupOutput.safeParse(output);
+      if (!parsed.success) break;
+      return { kind: "suggested_followup_review", ...toFollowupReviewItem(parsed.data) };
+    }
+    case "list_suggested_followup_reviews": {
+      const parsed = suggestedFollowupListOutput.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "suggested_followup_review_list",
+        reviews: parsed.data.reviews.map(toFollowupReviewItem),
       };
     }
     case "search_relationship_context": {

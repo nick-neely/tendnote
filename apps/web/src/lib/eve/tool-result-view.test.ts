@@ -167,6 +167,71 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     });
   });
 
+  // Computed with the same formatter so the assertion is timezone-independent.
+  const dueLabel = new Date("2026-07-15T00:00:00.000Z").toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  it("renders a get_suggested_followup_review result as a tentative follow-up item", () => {
+    const view = toAssistantToolView({
+      toolName: "get_suggested_followup_review",
+      output: {
+        found: true,
+        component: { type: "suggested_followup_review", followupId: "f1", sourceRecordId: "s1" },
+        person: { id: "person-1", displayName: "Mark" },
+        followup: {
+          id: "f1",
+          personId: "person-1",
+          reason: "Check in about the new job.",
+          dueAt: "2026-07-15T00:00:00.000Z",
+        },
+        sourceRecord: { id: "s1" },
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "suggested_followup_review",
+      followupId: "f1",
+      reason: "Check in about the new job.",
+      dueLabel,
+      sourceRecordId: "s1",
+      personId: "person-1",
+      personName: "Mark",
+    });
+  });
+
+  it("maps a list_suggested_followup_reviews result into one item per suggestion", () => {
+    const view = toAssistantToolView({
+      toolName: "list_suggested_followup_reviews",
+      output: {
+        found: true,
+        reviews: [
+          {
+            person: { id: "person-1", displayName: "Mark" },
+            followup: { id: "f1", reason: "Reconnect.", dueAt: "2026-07-15T00:00:00.000Z" },
+            sourceRecord: { id: "s1" },
+          },
+        ],
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "suggested_followup_review_list",
+      reviews: [
+        {
+          followupId: "f1",
+          reason: "Reconnect.",
+          dueLabel,
+          sourceRecordId: "s1",
+          personId: "person-1",
+          personName: "Mark",
+        },
+      ],
+    });
+  });
+
   it("renders exact recall person results as compact typed references", () => {
     const view = toAssistantToolView({
       toolName: "search_relationship_context",

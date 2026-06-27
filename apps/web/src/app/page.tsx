@@ -1,4 +1,4 @@
-import { listActiveFollowups } from "@tendnote/db/queries/followups";
+import { listActiveFollowups, listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { searchPeople } from "@tendnote/db/queries/people";
 import { AppShell } from "@/components/app-shell";
@@ -8,6 +8,7 @@ import { TodayRail } from "@/components/today-rail";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
 import { toDashboardFollowupView } from "@/lib/followup-view";
+import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 import { toSuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 
 // The dashboard surfaces the most important open suggestions, not all of them;
@@ -22,11 +23,13 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const ownerUserId = await getCurrentOwnerUserId();
-  const [people, dashboardReviews, dashboardFollowups] = await Promise.all([
-    searchPeople({ ownerUserId, limit: 8 }),
-    getDashboardReviews(ownerUserId),
-    getDashboardFollowups(ownerUserId),
-  ]);
+  const [people, dashboardReviews, dashboardFollowups, dashboardFollowupReviews] =
+    await Promise.all([
+      searchPeople({ ownerUserId, limit: 8 }),
+      getDashboardReviews(ownerUserId),
+      getDashboardFollowups(ownerUserId),
+      getDashboardFollowupReviews(ownerUserId),
+    ]);
   const birthdays = getUpcomingBirthdays(people);
 
   return (
@@ -50,6 +53,7 @@ export default async function Home() {
           <div className="order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto">
             <TodayRail
               birthdays={birthdays}
+              followupReviews={dashboardFollowupReviews}
               followups={dashboardFollowups}
               people={people}
               reviews={dashboardReviews}
@@ -73,6 +77,24 @@ async function getDashboardFollowups(ownerUserId: string) {
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.warn("Unable to load active follow-ups.", error);
+    }
+
+    return [];
+  }
+}
+
+async function getDashboardFollowupReviews(ownerUserId: string) {
+  try {
+    // A few of the soonest suggested follow-ups across people, for inline review.
+    const reviews = await listSuggestedFollowupReviews({
+      ownerUserId,
+      limit: DASHBOARD_FOLLOWUP_LIMIT,
+    });
+
+    return reviews.map((review) => toSuggestedFollowupReviewView(review));
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Unable to load suggested follow-ups.", error);
     }
 
     return [];

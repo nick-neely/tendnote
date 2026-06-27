@@ -20,6 +20,10 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
+import {
+  ChatFollowupReviewCard,
+  ChatFollowupReviewList,
+} from "@/components/chat-followup-review-card";
 import { ChatReviewCard, ChatReviewList } from "@/components/chat-review-card";
 import { Shimmer } from "@/components/ui/shimmer";
 import { messageActiveToolViews, messageText, messageToolViews } from "@/lib/eve/message-views";
@@ -211,6 +215,14 @@ function MessageTurn({ message }: { message: EveMessage }) {
 
         if (view.kind === "suggested_memory_review_list") {
           return <ChatReviewList isNew key={key} view={view} />;
+        }
+
+        if (view.kind === "suggested_followup_review") {
+          return <ChatFollowupReviewCard isNew item={view} key={key} />;
+        }
+
+        if (view.kind === "suggested_followup_review_list") {
+          return <ChatFollowupReviewList isNew key={key} view={view} />;
         }
 
         return <AssistantToolResult isNew key={key} view={view} />;
