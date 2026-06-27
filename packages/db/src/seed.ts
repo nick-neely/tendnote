@@ -1,12 +1,33 @@
 import { closeDb, getDb } from "./client";
 import {
+  demoContactMethods,
+  demoExtractionJobs,
   demoFollowups,
+  demoInteractions,
   demoMemories,
+  demoMessageDrafts,
   demoPeople,
+  demoRelationshipContextEmbeddingJobs,
+  demoRelationshipContextEmbeddings,
   demoSourceRecordPeople,
   demoSourceRecords,
+  demoUnresolvedPersonMentions,
 } from "./demo-data";
-import { followups, memories, people, sourceRecordPeople, sourceRecords, user } from "./schema";
+import {
+  contactMethods,
+  extractionJobs,
+  followups,
+  interactions,
+  memories,
+  messageDrafts,
+  people,
+  relationshipContextEmbeddingJobs,
+  relationshipContextEmbeddings,
+  sourceRecordPeople,
+  sourceRecords,
+  unresolvedPersonMentions,
+  user,
+} from "./schema";
 
 const ownerUserId = "demo-user";
 
@@ -51,6 +72,23 @@ async function seed() {
       });
   }
 
+  for (const contactMethod of demoContactMethods) {
+    await db
+      .insert(contactMethods)
+      .values(contactMethod)
+      .onConflictDoUpdate({
+        target: contactMethods.id,
+        set: {
+          personId: contactMethod.personId,
+          type: contactMethod.type,
+          value: contactMethod.value,
+          isPrimary: contactMethod.isPrimary,
+          source: contactMethod.source,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
   for (const sourceRecord of demoSourceRecords) {
     await db
       .insert(sourceRecords)
@@ -88,6 +126,43 @@ async function seed() {
       });
   }
 
+  for (const unresolvedPersonMention of demoUnresolvedPersonMentions) {
+    await db
+      .insert(unresolvedPersonMentions)
+      .values(unresolvedPersonMention)
+      .onConflictDoUpdate({
+        target: unresolvedPersonMentions.id,
+        set: {
+          sourceRecordId: unresolvedPersonMention.sourceRecordId,
+          mentionText: unresolvedPersonMention.mentionText,
+          candidatePersonIds: unresolvedPersonMention.candidatePersonIds,
+          status: unresolvedPersonMention.status,
+          resolvedPersonId: unresolvedPersonMention.resolvedPersonId,
+          resolvedAt: unresolvedPersonMention.resolvedAt,
+        },
+      });
+  }
+
+  for (const extractionJob of demoExtractionJobs) {
+    await db
+      .insert(extractionJobs)
+      .values(extractionJob)
+      .onConflictDoUpdate({
+        target: extractionJobs.id,
+        set: {
+          sourceRecordId: extractionJob.sourceRecordId,
+          status: extractionJob.status,
+          attempts: extractionJob.attempts,
+          lastError: extractionJob.lastError,
+          idempotencyKey: extractionJob.idempotencyKey,
+          runAfter: extractionJob.runAfter,
+          claimedAt: extractionJob.claimedAt,
+          completedAt: extractionJob.completedAt,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
   for (const memory of demoMemories) {
     await db
       .insert(memories)
@@ -112,6 +187,25 @@ async function seed() {
       });
   }
 
+  for (const interaction of demoInteractions) {
+    await db
+      .insert(interactions)
+      .values(interaction)
+      .onConflictDoUpdate({
+        target: interactions.id,
+        set: {
+          personId: interaction.personId,
+          ownerUserId: interaction.ownerUserId,
+          interactionType: interaction.interactionType,
+          occurredAt: interaction.occurredAt,
+          summary: interaction.summary,
+          source: interaction.source,
+          confidence: interaction.confidence,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
   for (const followup of demoFollowups) {
     await db
       .insert(followups)
@@ -126,6 +220,71 @@ async function seed() {
           status: followup.status,
           cadence: followup.cadence,
           lastPromptedAt: followup.lastPromptedAt,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  for (const messageDraft of demoMessageDrafts) {
+    await db
+      .insert(messageDrafts)
+      .values(messageDraft)
+      .onConflictDoUpdate({
+        target: messageDrafts.id,
+        set: {
+          personId: messageDraft.personId,
+          ownerUserId: messageDraft.ownerUserId,
+          channel: messageDraft.channel,
+          purpose: messageDraft.purpose,
+          body: messageDraft.body,
+          status: messageDraft.status,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  for (const embedding of demoRelationshipContextEmbeddings) {
+    await db
+      .insert(relationshipContextEmbeddings)
+      .values(embedding)
+      .onConflictDoUpdate({
+        target: relationshipContextEmbeddings.id,
+        set: {
+          ownerUserId: embedding.ownerUserId,
+          personId: embedding.personId,
+          recordKind: embedding.recordKind,
+          recordId: embedding.recordId,
+          embedding: embedding.embedding,
+          embeddingModel: embedding.embeddingModel,
+          embeddingVersion: embedding.embeddingVersion,
+          embeddingDimensions: embedding.embeddingDimensions,
+          embeddedText: embedding.embeddedText,
+          contentFingerprint: embedding.contentFingerprint,
+          trustLevel: embedding.trustLevel,
+          sensitivity: embedding.sensitivity,
+          sourceUpdatedAt: embedding.sourceUpdatedAt,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  for (const embeddingJob of demoRelationshipContextEmbeddingJobs) {
+    await db
+      .insert(relationshipContextEmbeddingJobs)
+      .values(embeddingJob)
+      .onConflictDoUpdate({
+        target: relationshipContextEmbeddingJobs.id,
+        set: {
+          ownerUserId: embeddingJob.ownerUserId,
+          recordKind: embeddingJob.recordKind,
+          recordId: embeddingJob.recordId,
+          status: embeddingJob.status,
+          attempts: embeddingJob.attempts,
+          lastError: embeddingJob.lastError,
+          idempotencyKey: embeddingJob.idempotencyKey,
+          runAfter: embeddingJob.runAfter,
+          claimedAt: embeddingJob.claimedAt,
+          completedAt: embeddingJob.completedAt,
           updatedAt: new Date(),
         },
       });
