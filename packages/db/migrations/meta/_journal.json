@@ -43,6 +43,13 @@
       "when": 1782513820421,
       "tag": "0005_deep_big_bertha",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782526898189,
+      "tag": "0006_overconfident_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }

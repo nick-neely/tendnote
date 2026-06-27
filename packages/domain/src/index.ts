@@ -6,4 +6,5 @@ export * from "./followups";
 export * from "./memories";
 export * from "./people";
 export * from "./privacy";
+export * from "./semantic-retrieval";
 export * from "./source-records";

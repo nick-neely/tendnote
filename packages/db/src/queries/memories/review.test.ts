@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryMemoryStore } from "./in-memory-store";
 import { createMemoryReview } from "./review";
+import type { ApprovedMemoryEmbeddingScheduler } from "./types";
 
 const OWNER = "user-1";
 
-async function setup() {
+async function setup(
+  input: { scheduleApprovedMemoryEmbedding?: ApprovedMemoryEmbeddingScheduler } = {},
+) {
   const store = createInMemoryMemoryStore();
-  const review = createMemoryReview(store);
+  const review = createMemoryReview(store, {
+    scheduleApprovedMemoryEmbedding: input.scheduleApprovedMemoryEmbedding,
+  });
 
   const person = await store.createPerson({
     ownerUserId: OWNER,
@@ -105,6 +110,26 @@ describe("save suggested memory", () => {
       store.listApprovedMemoriesForPerson({ ownerUserId: OWNER, personId: person.id }),
     ).resolves.toHaveLength(1);
     await expect(auditActions()).resolves.toContain("memory.review_save");
+  });
+
+  it("schedules approved-memory embedding work after save without embedding synchronously", async () => {
+    const scheduled: Array<{ ownerUserId: string; recordKind: "memory"; recordId: string }> = [];
+    const { review, seedSuggestion } = await setup({
+      async scheduleApprovedMemoryEmbedding(input) {
+        scheduled.push(input);
+      },
+    });
+    const { memory } = await seedSuggestion();
+
+    const result = await review.saveSuggestedMemory({ ownerUserId: OWNER, memoryId: memory.id });
+
+    expect(scheduled).toEqual([
+      {
+        ownerUserId: OWNER,
+        recordKind: "memory",
+        recordId: result.memory.id,
+      },
+    ]);
   });
 
   it("applies an edit on save, with a manual sensitivity override winning", async () => {

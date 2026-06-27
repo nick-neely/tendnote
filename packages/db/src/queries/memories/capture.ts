@@ -1,6 +1,7 @@
 import { createMemorySchema } from "@tendnote/domain";
 import { createSourceRecordCapture } from "../source-records/capture";
 import type {
+  ApprovedMemoryEmbeddingScheduler,
   CaptureExplicitMemoryInput,
   CaptureExplicitMemoryResult,
   MemoryCaptureStore,
@@ -14,7 +15,10 @@ import type {
  * to it (ADR 0021, ADR 0022). All writes go through the shared owner-scoped store
  * and emit audit log entries (ADR 0001, ADR 0014).
  */
-export function createMemoryCapture(store: MemoryCaptureStore) {
+export function createMemoryCapture(
+  store: MemoryCaptureStore,
+  options: { scheduleApprovedMemoryEmbedding?: ApprovedMemoryEmbeddingScheduler } = {},
+) {
   const sourceRecordCapture = createSourceRecordCapture(store);
 
   return {
@@ -73,6 +77,12 @@ export function createMemoryCapture(store: MemoryCaptureStore) {
         approvedAt: new Date(),
       });
       const memory = await store.createMemory(memoryValues);
+
+      await options.scheduleApprovedMemoryEmbedding?.({
+        ownerUserId: memory.ownerUserId,
+        recordKind: "memory",
+        recordId: memory.id,
+      });
 
       await store.createAuditLogEntry({
         ownerUserId: input.ownerUserId,

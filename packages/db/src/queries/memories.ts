@@ -9,6 +9,7 @@ import type {
   PersonMemoryContextInput,
   SaveSuggestedMemoryInput,
 } from "./memories/types";
+import { enqueueSemanticEmbeddingJob } from "./semantic-retrieval";
 
 export { createMemoryCapture } from "./memories/capture";
 export { createDrizzleMemoryStore } from "./memories/drizzle-store";
@@ -17,8 +18,13 @@ export { createMemoryReview } from "./memories/review";
 export type * from "./memories/types";
 
 const defaultMemoryStore = createDrizzleMemoryStore();
-const defaultMemoryCapture = createMemoryCapture(defaultMemoryStore);
-const defaultMemoryReview = createMemoryReview(defaultMemoryStore);
+const scheduleApprovedMemoryEmbedding = enqueueSemanticEmbeddingJob;
+const defaultMemoryCapture = createMemoryCapture(defaultMemoryStore, {
+  scheduleApprovedMemoryEmbedding,
+});
+const defaultMemoryReview = createMemoryReview(defaultMemoryStore, {
+  scheduleApprovedMemoryEmbedding,
+});
 
 export async function captureExplicitMemory(input: CaptureExplicitMemoryInput) {
   return defaultMemoryCapture.captureExplicitMemory(input);

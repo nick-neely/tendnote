@@ -57,6 +57,12 @@ export type MemoryCaptureStore = SourceRecordCaptureStore & {
   listMemoriesForSourceRecord: (input: { sourceRecordId: string }) => Promise<Memory[]>;
 };
 
+export type ApprovedMemoryEmbeddingScheduler = (input: {
+  ownerUserId: string;
+  recordKind: "memory";
+  recordId: string;
+}) => Promise<unknown>;
+
 export type MemoryUpdatePatch = Partial<
   Pick<
     Memory,

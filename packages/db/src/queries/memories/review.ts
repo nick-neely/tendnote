@@ -1,5 +1,6 @@
 import { applyMemoryReviewEdit, memoryReviewEditSchema } from "@tendnote/domain";
 import type {
+  ApprovedMemoryEmbeddingScheduler,
   EditSuggestedMemoryInput,
   ListSuggestedMemoryReviewsInput,
   MemoryReviewActionInput,
@@ -16,7 +17,10 @@ import type {
  * through the shared owner-scoped store and writes an audit entry (ADR 0001,
  * ADR 0014, ADR 0053).
  */
-export function createMemoryReview(store: MemoryReviewStore) {
+export function createMemoryReview(
+  store: MemoryReviewStore,
+  options: { scheduleApprovedMemoryEmbedding?: ApprovedMemoryEmbeddingScheduler } = {},
+) {
   async function buildReviewResult(
     ownerUserId: string,
     memory: Awaited<ReturnType<MemoryReviewStore["getMemory"]>>,
@@ -103,6 +107,12 @@ export function createMemoryReview(store: MemoryReviewStore) {
           status: "approved",
           approvedAt: new Date(),
         },
+      });
+
+      await options.scheduleApprovedMemoryEmbedding?.({
+        ownerUserId: updated.ownerUserId,
+        recordKind: "memory",
+        recordId: updated.id,
       });
 
       await store.createAuditLogEntry({

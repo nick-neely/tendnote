@@ -157,6 +157,31 @@ describe("explicit memory capture", () => {
     );
   });
 
+  it("schedules approved-memory embedding work without embedding synchronously", async () => {
+    const store = createInMemoryMemoryStore();
+    const scheduled: Array<{ ownerUserId: string; recordKind: "memory"; recordId: string }> = [];
+    const capture = createMemoryCapture(store, {
+      async scheduleApprovedMemoryEmbedding(input) {
+        scheduled.push(input);
+      },
+    });
+    const caleb = await seedPerson(store);
+
+    const result = await capture.captureExplicitMemory({
+      ownerUserId: "user-1",
+      personId: caleb.id,
+      content: "Caleb is moving to Denver in August",
+    });
+
+    expect(scheduled).toEqual([
+      {
+        ownerUserId: "user-1",
+        recordKind: "memory",
+        recordId: result.memory.id,
+      },
+    ]);
+  });
+
   it("honors a manual sensitivity override (ADR 0056)", async () => {
     const store = createInMemoryMemoryStore();
     const capture = createMemoryCapture(store);

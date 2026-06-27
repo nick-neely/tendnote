@@ -96,6 +96,21 @@ export const extractionJobStatus = pgEnum("extraction_job_status", [
   "skipped",
 ]);
 
+export const semanticRecordKind = pgEnum("semantic_record_kind", ["memory", "source_record"]);
+
+export const semanticTrustLevel = pgEnum("semantic_trust_level", [
+  "confirmed_fact",
+  "logged_context",
+]);
+
+export const embeddingJobStatus = pgEnum("embedding_job_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "skipped",
+]);
+
 export const messageDraftChannel = pgEnum("message_draft_channel", [
   "text",
   "email",
