@@ -925,6 +925,13 @@ Deliverables:
 - Keep follow-ups personal and private in Phase 1; do not add Calendar-derived follow-ups or shared household reminders yet.
 - Make due follow-ups visible on person profiles and the dashboard so the later brief has real action items to summarize.
 
+##### Phase 1E.5: LLM Suggested-Memory Extraction
+
+- Replace deterministic source-record-to-suggested-memory extraction with an LLM adapter after the review UI, lifecycle rules, source provenance, policy tests, and manual follow-up foundation are stable.
+- Keep the Postgres `extraction_jobs` lifecycle, idempotency key, audit log entries, sensitivity policy, person-resolution gates, and save/edit/dismiss review loop unchanged.
+- The model should propose small atomic suggested memories from retained source-record content, not create approved memories, follow-ups, drafts, people, or external actions.
+- Add extraction-quality eval coverage before LLM extraction is allowed to feed daily briefs or message drafting as more than clearly tentative review hints.
+
 ##### Phase 1F: Persisted Daily Brief
 
 - Generate persisted daily brief records with stable child items, source references, statuses, and dismiss/snooze behavior.
@@ -953,6 +960,7 @@ Vertical slice issue seeds:
 - Add full-text search over people, memories, and source records.
 - Add pgvector embeddings and semantic memory search as a later Phase 1 issue.
 - Implement create follow-up flow with complete, snooze, and dismiss actions.
+- Add LLM suggested-memory extraction behind the existing extraction-job processor, review lifecycle, and extraction-quality evals.
 - Implement daily brief schedule that returns up to 3 items.
 - Implement draft message tool and draft review UI.
 - Add evals for no-fake-memory, tone-match, source-grounded-recall, and brief-size-limit.
