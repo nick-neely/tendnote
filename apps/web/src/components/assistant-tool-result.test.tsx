@@ -53,17 +53,19 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).not.toContain("grounded in a source record");
   });
 
-  it("renders a suggested memory as tentative review-needed, never asserted as fact", () => {
+  it("does not render the suggested-memory review here — that is the interactive ChatReviewCard", () => {
     const html = render({
       kind: "suggested_memory_review",
       memoryId: "memory-2",
       content: "Maybe switching jobs.",
       sourceRecordId: "source-2",
+      personId: "person-1",
+      personName: "Mark",
     });
 
-    expect(html).toContain("Ready to review");
-    expect(html).toContain("Tentative");
-    expect(html).toContain("Maybe switching jobs.");
+    // This presentational module stays free of the server actions the inline
+    // approve/dismiss needs; the panel routes this kind to ChatReviewCard.
+    expect(html).toBe("");
   });
 
   it("renders person context with per-tier counts and snapshot status", () => {

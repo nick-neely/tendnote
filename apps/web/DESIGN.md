@@ -135,8 +135,20 @@ Rules:
 The app shell uses a simple top bar and constrained workspace. Prefer obvious
 product patterns over invented affordances.
 
-- **Dashboard**: left content column plus assistant rail. The assistant is useful
-  but secondary; it should not turn the app into a chat product.
+- **Dashboard**: two columns on desktop — the assistant (capture/recall chat) as
+  the working column on the left, and a quiet right rail holding Today, **Needs
+  review**, and People. On mobile the assistant leads at the top, directly under
+  the greeting, so capture is the first thing in reach; the rail follows below it.
+  The assistant carries the dashboard but must stay a notebook, not a chat product:
+  no transcript persistence, no assistant-as-destination framing.
+- **Dashboard review rail**: open suggested-memory reviews surface inline in the
+  rail with a compact Save (approve) / Dismiss affordance, so the common case is
+  handled without opening each person. The full review (edit wording, sensitivity,
+  archive) still lives on the person's ledger, which each row links to. The whole
+  "Needs review" section hides when nothing is waiting — an empty queue is not
+  worth a heading, and there is no count badge or backlog framing. Keep it short
+  (a handful of the most important suggestions); the long tail stays on the
+  person pages, never a guilt-inducing inbox.
 - **People list**: card/list hybrid with human details first and metadata second.
   Cards may be dense but should not become CRM tiles.
 - **Person detail**: Personal Ledger density. Use thin rules, flat rows, and
@@ -196,6 +208,18 @@ focus uses sage ring and border. Error states use destructive color plus a messa
 The assistant panel uses `panel` background, border separation, and explicit
 approval language. It should feel like a margin note or workbench, not the center
 of the product.
+
+Eve's turns render trust-weighted result cards (saved memory = sage/confirmed,
+logged context = neutral, tentative suggestion = clay). One of these is
+interactive: the **tentative suggestion card** ("Ready to review") carries inline
+Approve / Dismiss, so the user can resolve a suggestion without leaving chat. On
+action it resolves in place — Approve flips it to the confirmed (sage) treatment
+("Saved to memory"), Dismiss settles it to a quiet neutral state — using the same
+owner-scoped review mutations as the dashboard rail and person ledger. Keep the
+other cards read-only; only a genuinely actionable, trust-bearing item earns
+buttons. Cards name the person and show the record's content; never surface a raw
+id. The full review (edit wording, sensitivity, archive) stays on the person
+ledger, which the card links to.
 
 ### Empty States
 

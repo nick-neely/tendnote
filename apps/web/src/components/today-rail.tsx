@@ -1,31 +1,18 @@
 import type { Person } from "@tendnote/domain";
 import { ArrowRightIcon, CakeIcon } from "lucide-react";
 import Link from "next/link";
+import {
+  DashboardReviewSection,
+  type DashboardReviewView,
+} from "@/components/dashboard-review-section";
 import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brief";
-import type { SourceRecordReviewView } from "@/lib/source-record-review-view";
-
-const SOURCE_LABELS: Record<string, string> = {
-  manual: "Manual note",
-  agent: "Assistant note",
-  seed: "Sample note",
-  contact_import: "Imported contact",
-  calendar: "Calendar",
-  gmail: "Email",
-};
-
-function sourceLabel(sourceType: string): string {
-  return SOURCE_LABELS[sourceType] ?? `${sourceType} context`;
-}
-
-function formatCaptured(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 /**
  * Quiet right-rail context for the dashboard: a small daily brief (the PRD's 1–3
- * timely things) over real signals only, the pending capture inbox, plus fast
- * people recall. No closeness scores, no vanity metrics, no infrastructure —
- * just who might need a thought today and a way to jump to anyone.
+ * timely things) over real signals only, the open suggested-memory reviews
+ * awaiting an approve/dismiss, plus fast people recall. No closeness scores, no
+ * vanity metrics, no infrastructure — just what needs a thought today, what's
+ * waiting on the user, and a way to jump to anyone.
  */
 export function TodayRail({
   people,
@@ -34,7 +21,7 @@ export function TodayRail({
 }: {
   people: Person[];
   birthdays: UpcomingBirthday[];
-  reviews: SourceRecordReviewView[];
+  reviews: DashboardReviewView[];
 }) {
   return (
     <aside className="flex flex-col gap-6">
@@ -55,18 +42,7 @@ export function TodayRail({
         </div>
       </section>
 
-      {reviews.length > 0 ? (
-        <section className="flex flex-col gap-2.5">
-          <RailHeading>Recent notes</RailHeading>
-          <div className="overflow-hidden rounded-xl border bg-surface">
-            <ul className="divide-y">
-              {reviews.map((review) => (
-                <ReviewRow key={review.sourceRecord.id} review={review} />
-              ))}
-            </ul>
-          </div>
-        </section>
-      ) : null}
+      <DashboardReviewSection initialReviews={reviews} />
 
       <section className="flex flex-col gap-2.5">
         <div className="flex items-center justify-between gap-2">
@@ -126,46 +102,6 @@ function BirthdayRow({ birthday }: { birthday: UpcomingBirthday }) {
           </span>
         </span>
       </Link>
-    </li>
-  );
-}
-
-/** Recent logged context. Linked notes jump to the relevant person's ledger. */
-function ReviewRow({ review }: { review: SourceRecordReviewView }) {
-  const { sourceRecord } = review;
-  const linkedPerson = review.linkedPeople[0] ?? null;
-  const href = linkedPerson ? `/people/${linkedPerson.id}#logged-context` : null;
-
-  const content = (
-    <>
-      <p className="line-clamp-2 text-pretty text-[length:var(--text-small)] leading-[var(--text-small-line)]">
-        {sourceRecord.content}
-      </p>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-muted-foreground">
-          <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-          Logged note
-        </span>
-        <span className="truncate font-mono text-[length:var(--text-caption)] text-muted-foreground">
-          {sourceLabel(sourceRecord.sourceType)} · {formatCaptured(sourceRecord.createdAt)}
-          {linkedPerson ? ` · ${linkedPerson.displayName}` : ""}
-        </span>
-      </div>
-    </>
-  );
-
-  return (
-    <li data-source-record-id={review.component.sourceRecordId}>
-      {href ? (
-        <Link
-          className="flex flex-col gap-2 px-4 py-3 transition-colors hover:bg-panel"
-          href={href}
-        >
-          {content}
-        </Link>
-      ) : (
-        <div className="flex flex-col gap-2 px-4 py-3">{content}</div>
-      )}
     </li>
   );
 }

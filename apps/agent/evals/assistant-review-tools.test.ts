@@ -19,6 +19,7 @@ describe("Phase 1A assistant tools are thin wrappers over shared functions", () 
     search_people: "searchPeople",
     get_person_context: "getPersonContext",
     get_suggested_memory_review: "getSuggestedMemoryReview",
+    list_suggested_memory_reviews: "listSuggestedMemoryReviews",
     approve_suggested_memory: "saveSuggestedMemory",
     dismiss_suggested_memory: "dismissSuggestedMemory",
   };
@@ -78,6 +79,16 @@ describe("instructions steer capture vs save vs review", () => {
     expect(instructions).toMatch(/approve_suggested_memory/);
     expect(instructions).toMatch(/dismiss_suggested_memory/);
     expect(instructions).toMatch(/tentative until the user approves/i);
+  });
+
+  it("steers 'what do I have to review' to the list tool so the cards render", () => {
+    expect(instructions).toMatch(/list_suggested_memory_reviews/);
+    // The plural review tool should win over describing suggestions in prose.
+    expect(instructions).toMatch(/anything to review/i);
+  });
+
+  it("never surfaces raw record ids to the user", () => {
+    expect(instructions).toMatch(/[Nn]ever show raw record ids/);
   });
 
   it("treats persisted ids, not conversation, as the source of truth", () => {

@@ -106,6 +106,10 @@ export type SuggestedMemoryReviewComponent = {
 export type SuggestedMemoryReviewResult = {
   memory: Memory;
   sourceRecord: SourceRecord | null;
+  // The person the suggestion belongs to, resolved so review surfaces can name
+  // them instead of leaking a raw id (ADR 0028). Null only if the person was
+  // removed out from under the suggestion.
+  person: Person | null;
   component: SuggestedMemoryReviewComponent;
 };
 

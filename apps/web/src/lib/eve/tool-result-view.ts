@@ -38,17 +38,22 @@ export type AssistantToolView =
       loggedCount: number;
       suggestedCount: number;
     }
-  | {
-      kind: "suggested_memory_review";
-      memoryId: string;
-      content: string;
-      sourceRecordId: string | null;
-    }
+  | ({ kind: "suggested_memory_review" } & SuggestedReviewItemView)
+  | { kind: "suggested_memory_review_list"; reviews: SuggestedReviewItemView[] }
   | {
       kind: "relationship_context_search";
       results: RelationshipContextSearchResultView[];
     }
   | { kind: "generic"; toolName: string };
+
+/** One tentative suggestion the user can approve or dismiss inline. */
+export type SuggestedReviewItemView = {
+  memoryId: string;
+  content: string;
+  sourceRecordId: string | null;
+  personId: string | null;
+  personName: string | null;
+};
 
 export type RelationshipContextSearchResultView = {
   recordKind: "person" | "memory" | "source_record";
@@ -89,10 +94,35 @@ const personContextOutput = z.object({
   suggestedMemories: z.array(z.unknown()),
 });
 
+const suggestedReviewItem = z.object({
+  person: z.object({ id: z.string(), displayName: z.string() }).nullish(),
+  memory: z.object({
+    id: z.string(),
+    personId: z.string().nullish(),
+    content: z.string(),
+    sourceRecordId: z.string().nullish(),
+  }),
+});
+
 const suggestedMemoryOutput = z.object({
   found: z.literal(true),
-  memory: z.object({ id: z.string(), content: z.string(), sourceRecordId: z.string().nullish() }),
+  ...suggestedReviewItem.shape,
 });
+
+const suggestedMemoryListOutput = z.object({
+  found: z.literal(true),
+  reviews: z.array(suggestedReviewItem),
+});
+
+function toReviewItem(parsed: z.infer<typeof suggestedReviewItem>): SuggestedReviewItemView {
+  return {
+    memoryId: parsed.memory.id,
+    content: parsed.memory.content,
+    sourceRecordId: parsed.memory.sourceRecordId ?? null,
+    personId: parsed.person?.id ?? parsed.memory.personId ?? null,
+    personName: parsed.person?.displayName ?? null,
+  };
+}
 
 const relationshipContextSearchOutput = z.object({
   results: z.array(
@@ -126,6 +156,8 @@ export function assistantToolViewKey(view: AssistantToolView): string {
       return `context:${view.personId}`;
     case "suggested_memory_review":
       return `suggested:${view.memoryId}`;
+    case "suggested_memory_review_list":
+      return `suggested-list:${view.reviews.map((review) => review.memoryId).join(":")}`;
     case "relationship_context_search":
       return `search:${view.results.map((result) => result.recordId).join(":")}`;
     default:
@@ -159,6 +191,7 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   search_relationship_context: "Searching your notebook…",
   get_person_context: "Recalling…",
   get_suggested_memory_review: "Checking for suggestions…",
+  list_suggested_memory_reviews: "Gathering suggestions to review…",
   capture_source_record: "Logging…",
   capture_memory: "Saving to memory…",
   create_person: "Adding to your notebook…",
@@ -226,11 +259,14 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
     case "get_suggested_memory_review": {
       const parsed = suggestedMemoryOutput.safeParse(output);
       if (!parsed.success) break;
+      return { kind: "suggested_memory_review", ...toReviewItem(parsed.data) };
+    }
+    case "list_suggested_memory_reviews": {
+      const parsed = suggestedMemoryListOutput.safeParse(output);
+      if (!parsed.success) break;
       return {
-        kind: "suggested_memory_review",
-        memoryId: parsed.data.memory.id,
-        content: parsed.data.memory.content,
-        sourceRecordId: parsed.data.memory.sourceRecordId ?? null,
+        kind: "suggested_memory_review_list",
+        reviews: parsed.data.reviews.map(toReviewItem),
       };
     }
     case "search_relationship_context": {

@@ -20,6 +20,7 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
+import { ChatReviewCard, ChatReviewList } from "@/components/chat-review-card";
 import { Shimmer } from "@/components/ui/shimmer";
 import { messageActiveToolViews, messageText, messageToolViews } from "@/lib/eve/message-views";
 import { cn } from "@/lib/utils";
@@ -198,9 +199,22 @@ function MessageTurn({ message }: { message: EveMessage }) {
           </MessageContent>
         </Message>
       ) : null}
-      {views.map(({ toolCallId, view }) => (
-        <AssistantToolResult isNew key={`${message.id}:${toolCallId}`} view={view} />
-      ))}
+      {views.map(({ toolCallId, view }) => {
+        // Tentative suggestions are the tool results the user can act on inline
+        // (approve/dismiss), so they get the interactive card(s); everything else
+        // is a read-only record of what Eve did.
+        const key = `${message.id}:${toolCallId}`;
+
+        if (view.kind === "suggested_memory_review") {
+          return <ChatReviewCard isNew item={view} key={key} />;
+        }
+
+        if (view.kind === "suggested_memory_review_list") {
+          return <ChatReviewList isNew key={key} view={view} />;
+        }
+
+        return <AssistantToolResult isNew key={key} view={view} />;
+      })}
       {active.map((tool) => (
         <WorkingLine key={`${message.id}:${tool.toolCallId}`} label={tool.label} />
       ))}

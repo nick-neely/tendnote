@@ -103,6 +103,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
       toolName: "get_suggested_memory_review",
       output: {
         found: true,
+        person: { id: "person-1", displayName: "Mark" },
         memory: {
           id: "memory-2",
           personId: "person-1",
@@ -120,6 +121,49 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
       memoryId: "memory-2",
       content: "Maybe switching jobs.",
       sourceRecordId: "source-2",
+      personId: "person-1",
+      personName: "Mark",
+    });
+  });
+
+  it("maps a list_suggested_memory_reviews result into one review item per suggestion", () => {
+    const view = toAssistantToolView({
+      toolName: "list_suggested_memory_reviews",
+      output: {
+        found: true,
+        personId: "person-1",
+        count: 2,
+        reviews: [
+          {
+            person: { id: "person-1", displayName: "Juli" },
+            memory: { id: "m1", content: "Girls night next week.", sourceRecordId: "s1" },
+          },
+          {
+            person: { id: "person-2", displayName: "Mark" },
+            memory: { id: "m2", content: "New manager at work.", sourceRecordId: null },
+          },
+        ],
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "suggested_memory_review_list",
+      reviews: [
+        {
+          memoryId: "m1",
+          content: "Girls night next week.",
+          sourceRecordId: "s1",
+          personId: "person-1",
+          personName: "Juli",
+        },
+        {
+          memoryId: "m2",
+          content: "New manager at work.",
+          sourceRecordId: null,
+          personId: "person-2",
+          personName: "Mark",
+        },
+      ],
     });
   });
 
@@ -279,6 +323,8 @@ describe("toolViewTier (how much weight a result earns)", () => {
         memoryId: "m1",
         content: "x",
         sourceRecordId: null,
+        personId: null,
+        personName: null,
       }),
     ).toBe("card");
   });

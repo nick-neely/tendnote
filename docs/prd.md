@@ -854,7 +854,7 @@ Goal: Make Tendnote useful without external integrations while building memory r
 End state: Phase 1 should prove the full private Tendnote loop without external accounts or outbound actions:
 
 - **Capture**: the user can add people, log source records, and save explicit memories through UI and Eve.
-- **Curate**: suggested memories and reviewable records can be approved, edited, dismissed, or left pending.
+- **Curate**: suggested memories and reviewable records can be approved, edited, dismissed, or left pending. Review happens wherever the user already is, all through the same owner-scoped review mutations: the person ledger (full review — edit wording, sensitivity, archive), the dashboard's "Needs review" rail (a short cross-person list with inline approve/dismiss that hides when empty), and inline in chat (the tentative suggestion card carries approve/dismiss). The user can also just tell Eve to approve or dismiss. Every surface refers to a suggestion by the person's name and the record's content; raw record ids are never shown to the user.
 - **Orient**: Eve and the web UI can load snapshot-backed context plus supporting records, exact search, and semantic retrieval.
 - **Act**: the user can create and manage manual follow-ups through UI and Eve.
 - **Brief**: Tendnote can generate a small persisted daily brief from reviewed context and due follow-ups.

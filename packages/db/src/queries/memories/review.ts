@@ -27,14 +27,17 @@ export function createMemoryReview(store: MemoryReviewStore) {
 
     // Source context grounds the review: the user sees where the suggestion came
     // from (ADR 0005). Owner-scoped, so a record from another owner never leaks.
-    const sourceRecord = await store.getSourceRecord({
-      ownerUserId,
-      sourceRecordId: memory.sourceRecordId,
-    });
+    // The person is resolved alongside it so every review surface can name whom
+    // the suggestion is about rather than leaking a raw id (ADR 0028).
+    const [sourceRecord, person] = await Promise.all([
+      store.getSourceRecord({ ownerUserId, sourceRecordId: memory.sourceRecordId }),
+      store.getPerson({ ownerUserId, personId: memory.personId }),
+    ]);
 
     return {
       memory,
       sourceRecord,
+      person,
       component: {
         type: "suggested_memory_review",
         memoryId: memory.id,

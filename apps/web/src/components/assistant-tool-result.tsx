@@ -170,26 +170,9 @@ function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
     );
   }
 
-  if (view.kind === "suggested_memory_review") {
-    return (
-      <ResultCard
-        footer={<Caption>Tentative — not saved until you approve it</Caption>}
-        isNew={isNew}
-        kind={view.kind}
-        tone="tentative"
-      >
-        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
-          <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-          Ready to review
-        </span>
-        <Body>
-          <span className="text-muted-foreground">Suggested: </span>
-          {view.content}
-        </Body>
-      </ResultCard>
-    );
-  }
-
+  // suggested_memory_review is rendered by the interactive ChatReviewCard, routed
+  // at the panel level so this presentational module stays free of the server
+  // actions (and their `server-only` import) the inline approve/dismiss needs.
   return null;
 }
 
@@ -259,7 +242,7 @@ function SearchResultRow({ result }: { result: RelationshipContextSearchResultVi
   );
 }
 
-type CardTone = "confirmed" | "neutral" | "tentative";
+export type CardTone = "confirmed" | "neutral" | "tentative";
 
 /**
  * Trust-weighted surface for a tool-result card. Confirmed saves carry a quiet
@@ -291,7 +274,7 @@ const CARD_TONE: Record<
   },
 };
 
-function ResultCard({
+export function ResultCard({
   tone,
   icon,
   label,
@@ -338,7 +321,7 @@ function ResultCard({
   );
 }
 
-function Body({ children }: { children: React.ReactNode }) {
+export function Body({ children }: { children: React.ReactNode }) {
   return (
     <p className="max-w-[68ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
       {children}
@@ -347,7 +330,7 @@ function Body({ children }: { children: React.ReactNode }) {
 }
 
 /** Sans explanatory caption — copy, not machine facts, so never mono (DESIGN.md §4). */
-function Caption({ children }: { children: React.ReactNode }) {
+export function Caption({ children }: { children: React.ReactNode }) {
   return (
     <span className="text-[length:var(--text-caption)] text-muted-foreground">{children}</span>
   );

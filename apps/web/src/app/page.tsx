@@ -1,23 +1,25 @@
+import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { searchPeople } from "@tendnote/db/queries/people";
-import { listSourceRecordReviews } from "@tendnote/db/queries/source-records";
 import { AppShell } from "@/components/app-shell";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { TodayRail } from "@/components/today-rail";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
-import {
-  type SourceRecordReviewView,
-  toSourceRecordReviewView,
-} from "@/lib/source-record-review-view";
+import { toSuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
+
+// The dashboard surfaces the most important open suggestions, not all of them;
+// the long tail still lives on each person's ledger. Keeping the rail short keeps
+// it a calm prompt, not a backlog (PRD: 1–3 timely things by default).
+const DASHBOARD_REVIEW_LIMIT = 6;
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const ownerUserId = await getCurrentOwnerUserId();
-  const [people, recentSourceRecordReviews] = await Promise.all([
+  const [people, dashboardReviews] = await Promise.all([
     searchPeople({ ownerUserId, limit: 8 }),
-    getRecentSourceRecordReviews(ownerUserId),
+    getDashboardReviews(ownerUserId),
   ]);
   const birthdays = getUpcomingBirthdays(people);
 
@@ -31,13 +33,16 @@ export default async function Home() {
 
         {/* grid-rows minmax(0,1fr) makes the single row fill the bounded grid
             height; without it the row is auto-sized to content and the chat
-            column grows past the viewport instead of scrolling inside itself. */}
+            column grows past the viewport instead of scrolling inside itself.
+            On mobile the assistant leads (order-1) so the chat sits at the top
+            under the greeting rather than buried beneath the rail; on desktop it
+            stays the left content column with the rail on the right. */}
         <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:gap-8">
-          <div className="order-2 h-[70dvh] lg:order-1 lg:h-full lg:min-h-0">
+          <div className="order-1 h-[70dvh] lg:h-full lg:min-h-0">
             <AssistantPanel />
           </div>
-          <div className="order-1 lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto">
-            <TodayRail birthdays={birthdays} people={people} reviews={recentSourceRecordReviews} />
+          <div className="order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto">
+            <TodayRail birthdays={birthdays} people={people} reviews={dashboardReviews} />
           </div>
         </div>
       </div>
@@ -45,16 +50,19 @@ export default async function Home() {
   );
 }
 
-async function getRecentSourceRecordReviews(
-  ownerUserId: string,
-): Promise<SourceRecordReviewView[]> {
+async function getDashboardReviews(ownerUserId: string) {
   try {
-    const reviews = await listSourceRecordReviews({ ownerUserId, limit: 3 });
+    // No personId → every open suggestion across people, ranked by importance
+    // then recency in the store. Person names are resolved by the caller.
+    const reviews = await listSuggestedMemoryReviews({
+      ownerUserId,
+      limit: DASHBOARD_REVIEW_LIMIT,
+    });
 
-    return reviews.map(toSourceRecordReviewView);
+    return reviews.map(toSuggestedMemoryReviewView);
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn("Unable to load source record reviews.", error);
+      console.warn("Unable to load suggested memory reviews.", error);
     }
 
     return [];

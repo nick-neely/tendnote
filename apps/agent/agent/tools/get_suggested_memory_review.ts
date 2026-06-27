@@ -29,6 +29,12 @@ export default defineTool({
     return {
       found: true as const,
       component: review.component,
+      // The person the suggestion belongs to, resolved so the assistant names
+      // them instead of surfacing a raw id (ADR 0028); null only if the person
+      // was removed out from under the suggestion.
+      person: review.person
+        ? { id: review.person.id, displayName: review.person.displayName }
+        : null,
       memory: {
         id: review.memory.id,
         personId: review.memory.personId,

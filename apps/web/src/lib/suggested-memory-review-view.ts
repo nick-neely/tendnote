@@ -11,6 +11,8 @@ import type { MemoryType, Sensitivity } from "@tendnote/domain";
  */
 export type SuggestedMemoryReviewView = {
   component: SuggestedMemoryReviewComponent;
+  /** Display name of the person the suggestion belongs to; null if unresolved. */
+  personName: string | null;
   memory: {
     id: string;
     personId: string;
@@ -36,6 +38,7 @@ export function toSuggestedMemoryReviewView(
 ): SuggestedMemoryReviewView {
   return {
     component: result.component,
+    personName: result.person?.displayName ?? null,
     memory: {
       id: result.memory.id,
       personId: result.memory.personId,
