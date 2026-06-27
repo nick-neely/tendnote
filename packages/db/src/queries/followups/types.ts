@@ -44,6 +44,7 @@ export type FollowupStore = FollowupContextStore & {
   }) => Promise<Followup>;
   listActiveFollowupsForOwner: (input: {
     ownerUserId: string;
+    personId?: string;
     dueBefore?: Date;
     limit?: number;
   }) => Promise<Followup[]>;

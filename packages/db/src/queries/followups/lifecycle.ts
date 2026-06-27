@@ -16,6 +16,7 @@ import type {
 
 export type ListActiveFollowupsInput = {
   ownerUserId: string;
+  personId?: string;
   dueBefore?: Date;
   limit?: number;
 };

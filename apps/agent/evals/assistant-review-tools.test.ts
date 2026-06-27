@@ -23,6 +23,9 @@ describe("Phase 1A assistant tools are thin wrappers over shared functions", () 
     list_suggested_memory_reviews: "listSuggestedMemoryReviews",
     approve_suggested_memory: "saveSuggestedMemory",
     dismiss_suggested_memory: "dismissSuggestedMemory",
+    create_followup: "createFollowup",
+    list_due_followups: "listActiveFollowups",
+    update_followup_status: "snoozeFollowup",
   };
 
   for (const [tool, sharedFn] of Object.entries(wrappers)) {
@@ -55,6 +58,41 @@ describe("suggested-memory review tools return persisted ids and status", () => 
     const source = readTool("dismiss_suggested_memory");
     expect(source).toMatch(/status:\s*memory\.status/);
     expect(source).toContain("sourceRecordId");
+  });
+});
+
+describe("active follow-up tools are thin wrappers returning compact references", () => {
+  it("create_followup requires a resolved person, reason, and concrete dueAt", () => {
+    const source = readTool("create_followup");
+    expect(source).toContain("createFollowup");
+    expect(source).toMatch(/personId/);
+    expect(source).toMatch(/reason/);
+    expect(source).toMatch(/dueAt/);
+    // Returns a compact persisted reference, not a raw model object.
+    expect(source).toMatch(/id:\s*followup\.id/);
+    expect(source).toMatch(/status:\s*followup\.status/);
+  });
+
+  it("list_due_followups lists active reminders by window or person, due-first", () => {
+    const source = readTool("list_due_followups");
+    expect(source).toContain("listActiveFollowups");
+    expect(source).toMatch(/window/);
+    expect(source).toMatch(/personId/);
+    // Names the person rather than leaking a raw id.
+    expect(source).toMatch(/displayName/);
+  });
+
+  it("update_followup_status supports every active transition through shared functions", () => {
+    const source = readTool("update_followup_status");
+    for (const fn of [
+      "completeFollowup",
+      "dismissFollowup",
+      "snoozeFollowup",
+      "reopenFollowup",
+      "archiveFollowup",
+    ]) {
+      expect(source).toContain(fn);
+    }
   });
 });
 
@@ -102,6 +140,24 @@ describe("instructions steer capture vs save vs review", () => {
     expect(instructions).toMatch(/list_suggested_memory_reviews/);
     // The plural review tool should win over describing suggestions in prose.
     expect(instructions).toMatch(/anything to review/i);
+  });
+
+  it("names the follow-up tools and gates creation on an explicit ask", () => {
+    expect(instructions).toMatch(/create_followup/);
+    expect(instructions).toMatch(/list_due_followups/);
+    expect(instructions).toMatch(/update_followup_status/);
+    // Eve must not invent active reminders.
+    expect(instructions).toMatch(/only when the user explicitly asks/i);
+    expect(instructions).toMatch(/[Nn]ever invent an active reminder/);
+  });
+
+  it("requires a concrete due date and clarification when timing is ambiguous", () => {
+    expect(instructions).toMatch(/concrete due date/i);
+    expect(instructions).toMatch(/ask a clarifying question/i);
+  });
+
+  it("keeps follow-up listing as due-date recall, not agenda ranking", () => {
+    expect(instructions).toMatch(/not a "who should I check in with" agenda/i);
   });
 
   it("never surfaces raw record ids to the user", () => {

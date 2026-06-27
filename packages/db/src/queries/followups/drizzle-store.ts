@@ -78,6 +78,7 @@ export function createDrizzleFollowupStore(): FollowupStore {
           and(
             eq(followups.ownerUserId, input.ownerUserId),
             inArray(followups.status, ACTIVE_STATUSES),
+            ...(input.personId ? [eq(followups.personId, input.personId)] : []),
             ...(input.dueBefore ? [lte(followups.dueAt, input.dueBefore)] : []),
           ),
         )

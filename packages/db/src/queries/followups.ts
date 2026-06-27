@@ -51,6 +51,7 @@ export async function archiveFollowup(input: FollowupActionInput) {
 
 export async function listActiveFollowups(input: {
   ownerUserId: string;
+  personId?: string;
   dueBefore?: Date;
   limit?: number;
 }) {

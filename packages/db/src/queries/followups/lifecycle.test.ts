@@ -368,6 +368,63 @@ describe("dashboard active follow-ups", () => {
 
     await expect(lifecycle.listActiveFollowups({ ownerUserId: "intruder" })).resolves.toEqual([]);
   });
+
+  it("scopes to one person when personId is given", async () => {
+    const { store, lifecycle, person } = await setup();
+    const other = await store.createPerson({
+      ownerUserId: OWNER,
+      displayName: "Dana",
+      firstName: null,
+      lastName: null,
+      birthday: null,
+      relationshipType: "friend",
+      closenessLevel: 3,
+      profileBlurb: null,
+      source: "manual",
+    });
+    await lifecycle.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Mark reminder.",
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+    });
+    await lifecycle.createFollowup({
+      ownerUserId: OWNER,
+      personId: other.id,
+      reason: "Dana reminder.",
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+    });
+
+    const forMark = await lifecycle.listActiveFollowups({
+      ownerUserId: OWNER,
+      personId: person.id,
+    });
+
+    expect(forMark.map((item) => item.followup.reason)).toEqual(["Mark reminder."]);
+  });
+
+  it("filters by a due-before window", async () => {
+    const { lifecycle, person } = await setup();
+    await lifecycle.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Soon.",
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+    });
+    await lifecycle.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Later.",
+      dueAt: new Date("2026-09-01T00:00:00Z"),
+    });
+
+    const due = await lifecycle.listActiveFollowups({
+      ownerUserId: OWNER,
+      dueBefore: new Date("2026-07-15T00:00:00Z"),
+    });
+
+    expect(due.map((item) => item.followup.reason)).toEqual(["Soon."]);
+  });
 });
 
 describe("owner scoping", () => {

@@ -72,6 +72,7 @@ export function createInMemoryFollowupStore(): FollowupStore {
           (followup) =>
             followup.ownerUserId === input.ownerUserId &&
             isActiveFollowupStatus(followup.status) &&
+            (input.personId === undefined || followup.personId === input.personId) &&
             (input.dueBefore === undefined ||
               followup.dueAt.getTime() <= input.dueBefore.getTime()),
         )
