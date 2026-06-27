@@ -19,14 +19,20 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
-import { AssistantToolResult } from "@/components/assistant-tool-result";
+import { AssistantToolGroup, AssistantToolResult } from "@/components/assistant-tool-result";
 import {
   ChatFollowupReviewCard,
   ChatFollowupReviewList,
 } from "@/components/chat-followup-review-card";
 import { ChatReviewCard, ChatReviewList } from "@/components/chat-review-card";
 import { Shimmer } from "@/components/ui/shimmer";
-import { messageActiveToolViews, messageText, messageToolViews } from "@/lib/eve/message-views";
+import {
+  groupTurnToolEntries,
+  messageActiveToolViews,
+  messageText,
+  messageToolViews,
+} from "@/lib/eve/message-views";
+import type { GroupableToolView } from "@/lib/eve/tool-result-view";
 import { cn } from "@/lib/utils";
 
 export type AssistantPersonContext = {
@@ -191,7 +197,10 @@ function MessageTurn({ message }: { message: EveMessage }) {
   }
 
   const text = messageText(message);
-  const views = messageToolViews(message);
+  // Fold runs of same-kind durable saves into one collapsed group so a busy
+  // capture turn ("added a person, then saved six things about them") reads as a
+  // short summary by default; interactive review cards and lookups stay in place.
+  const units = groupTurnToolEntries(messageToolViews(message));
   const active = messageActiveToolViews(message);
 
   return (
@@ -203,10 +212,23 @@ function MessageTurn({ message }: { message: EveMessage }) {
           </MessageContent>
         </Message>
       ) : null}
-      {views.map(({ toolCallId, view }) => {
+      {units.map((unit) => {
+        if (unit.type === "group") {
+          const [{ toolCallId }] = unit.entries;
+          return (
+            <AssistantToolGroup
+              isNew
+              key={`${message.id}:group:${unit.kind}:${toolCallId}`}
+              kind={unit.kind}
+              views={unit.entries.map((entry) => entry.view as GroupableToolView)}
+            />
+          );
+        }
+
         // Tentative suggestions are the tool results the user can act on inline
         // (approve/dismiss), so they get the interactive card(s); everything else
         // is a read-only record of what Eve did.
+        const { toolCallId, view } = unit.entry;
         const key = `${message.id}:${toolCallId}`;
 
         if (view.kind === "suggested_memory_review") {

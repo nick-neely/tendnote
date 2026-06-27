@@ -368,6 +368,33 @@ export function relationshipAgendaCandidateKey(candidate: RelationshipAgendaCand
   return sourceKey || `${candidate.kind}:${candidate.rank}:${candidate.personId ?? "personless"}`;
 }
 
+/**
+ * Durable, trust-bearing record kinds that fold into a collapsed group when a turn
+ * produces several of them (see {@link groupTurnToolEntries}). These are the saves
+ * the user already confirmed by acting — the noisy "added a person, then saved six
+ * things" turn — so grouping them quiets the transcript without hiding the
+ * interactive review cards, which stay individual and actionable.
+ */
+export type GroupableToolKind =
+  | "saved_memory"
+  | "saved_source_record"
+  | "added_person"
+  | "updated_person";
+
+/** One durable view of a groupable kind, narrowed for the group renderer. */
+export type GroupableToolView = Extract<AssistantToolView, { kind: GroupableToolKind }>;
+
+const GROUPABLE_TOOL_KINDS = new Set<AssistantToolView["kind"]>([
+  "saved_memory",
+  "saved_source_record",
+  "added_person",
+  "updated_person",
+]);
+
+export function isGroupableToolKind(kind: AssistantToolView["kind"]): kind is GroupableToolKind {
+  return GROUPABLE_TOOL_KINDS.has(kind);
+}
+
 /** Visual weight a rendered tool result earns (see assistant-tool-result.tsx). */
 export type ToolViewTier = "line" | "card" | "disclosure";
 

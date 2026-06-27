@@ -1,5 +1,11 @@
 import type { EveDynamicToolPart, EveMessage, EveMessagePart } from "eve/react";
-import { type AssistantToolView, activeToolLabel, toAssistantToolView } from "./tool-result-view";
+import {
+  type AssistantToolView,
+  activeToolLabel,
+  type GroupableToolKind,
+  isGroupableToolKind,
+  toAssistantToolView,
+} from "./tool-result-view";
 
 function isTextPart(part: EveMessagePart): part is Extract<EveMessagePart, { type: "text" }> {
   return part.type === "text";
@@ -80,4 +86,71 @@ export function messageActiveToolViews(message: EveMessage): AssistantActiveTool
     toolCallId: part.toolCallId,
     label: activeToolLabel(part.toolName),
   }));
+}
+
+/**
+ * One renderable item in a turn's tool activity: either a standalone result or a
+ * collapsed group of same-kind durable records. When a single turn produces many
+ * of the same durable record — the common "added a person, then saved six things
+ * about them" turn — rendering each as its own card buries the conversation. We
+ * fold runs of the same {@link GroupableToolKind} into one collapsible summary so
+ * the turn reads as "Saved 6 memories" by default and expands on demand, while a
+ * lone result still renders as its own card (see AssistantToolGroup).
+ */
+export type AssistantTurnUnit =
+  | { readonly type: "single"; readonly entry: AssistantToolEntry }
+  | {
+      readonly type: "group";
+      readonly kind: GroupableToolKind;
+      readonly entries: readonly [AssistantToolEntry, ...AssistantToolEntry[]];
+    };
+
+type PendingGroup = {
+  kind: GroupableToolKind;
+  entries: [AssistantToolEntry, ...AssistantToolEntry[]];
+};
+
+function isPendingGroup(
+  slot: { type: "single"; entry: AssistantToolEntry } | PendingGroup,
+): slot is PendingGroup {
+  return "entries" in slot;
+}
+
+/**
+ * Folds a turn's tool entries into render units, collapsing same-kind durable
+ * records into groups while leaving everything else (lookups, disclosures, and
+ * the interactive review cards) untouched and in place. A group keeps the slot of
+ * its first member so ordering stays faithful to the turn even when records of a
+ * kind are interleaved, and a kind that occurs only once degrades back to a single
+ * so a solitary save still earns its full card.
+ */
+export function groupTurnToolEntries(entries: readonly AssistantToolEntry[]): AssistantTurnUnit[] {
+  const slots: ({ type: "single"; entry: AssistantToolEntry } | PendingGroup)[] = [];
+  const pendingByKind = new Map<GroupableToolKind, PendingGroup>();
+
+  for (const entry of entries) {
+    const { kind } = entry.view;
+    if (isGroupableToolKind(kind)) {
+      const open = pendingByKind.get(kind);
+      if (open) {
+        open.entries.push(entry);
+      } else {
+        const group: PendingGroup = { kind, entries: [entry] };
+        pendingByKind.set(kind, group);
+        slots.push(group);
+      }
+    } else {
+      slots.push({ type: "single", entry });
+    }
+  }
+
+  return slots.map((slot): AssistantTurnUnit => {
+    if (!isPendingGroup(slot)) {
+      return slot;
+    }
+    const [first, ...rest] = slot.entries;
+    return rest.length > 0
+      ? { type: "group", kind: slot.kind, entries: slot.entries }
+      : { type: "single", entry: first };
+  });
 }
