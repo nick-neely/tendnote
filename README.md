@@ -39,7 +39,15 @@ For the full roadmap see `docs/prd.md`. For agent-facing project guidance, start
                    # debugging / the Eve TUI; do not run alongside `pnpm dev`)
    ```
 
-Local development uses Docker Postgres and Redis by default on project-specific host ports `55432` and `56379` to avoid collisions with other local services. Production can point `DATABASE_URL` at Neon and `REDIS_URL` at a managed Redis-compatible service.
+Local development uses Docker Postgres with pgvector and Redis by default on project-specific host ports `55432` and `56379` to avoid collisions with other local services. Production can point `DATABASE_URL` at Neon, which supports the `vector` extension, and `REDIS_URL` at a managed Redis-compatible service.
+
+If you created the local database before pgvector was added, recreate the local Postgres volume once so the container uses the pgvector-capable image:
+
+```bash
+pnpm docker:down --volumes
+pnpm docker:up
+pnpm db:migrate
+```
 
 ### Environment variables
 
