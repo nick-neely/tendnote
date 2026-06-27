@@ -48,3 +48,11 @@ export async function reopenFollowup(input: FollowupActionInput) {
 export async function archiveFollowup(input: FollowupActionInput) {
   return defaultFollowupLifecycle.archiveFollowup(input);
 }
+
+export async function listActiveFollowups(input: {
+  ownerUserId: string;
+  dueBefore?: Date;
+  limit?: number;
+}) {
+  return defaultFollowupLifecycle.listActiveFollowups(input);
+}

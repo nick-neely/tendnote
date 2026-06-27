@@ -1,11 +1,13 @@
 import type { Person } from "@tendnote/domain";
 import { ArrowRightIcon, CakeIcon } from "lucide-react";
 import Link from "next/link";
+import { DashboardFollowupsSection } from "@/components/dashboard-followups-section";
 import {
   DashboardReviewSection,
   type DashboardReviewView,
 } from "@/components/dashboard-review-section";
 import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brief";
+import type { DashboardFollowupView } from "@/lib/followup-view";
 
 /**
  * Quiet right-rail context for the dashboard: a small daily brief (the PRD's 1–3
@@ -17,10 +19,12 @@ import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brie
 export function TodayRail({
   people,
   birthdays,
+  followups,
   reviews,
 }: {
   people: Person[];
   birthdays: UpcomingBirthday[];
+  followups: DashboardFollowupView[];
   reviews: DashboardReviewView[];
 }) {
   return (
@@ -41,6 +45,8 @@ export function TodayRail({
           )}
         </div>
       </section>
+
+      <DashboardFollowupsSection initialFollowups={followups} />
 
       <DashboardReviewSection initialReviews={reviews} />
 

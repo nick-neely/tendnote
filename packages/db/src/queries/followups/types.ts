@@ -1,8 +1,17 @@
-import type { CreateFollowupInput, Followup, FollowupEdit } from "@tendnote/domain";
+import type { CreateFollowupInput, Followup, FollowupEdit, Person } from "@tendnote/domain";
 import type {
   InMemorySourceRecordStore,
   SourceRecordResolutionStore,
 } from "../source-records/types";
+
+/** Person summary used to name a follow-up's person without leaking raw ids. */
+export type FollowupPersonRef = Pick<Person, "id" | "displayName">;
+
+/** An active follow-up paired with its (owner-scoped) person, for the dashboard. */
+export type ActiveFollowupSummary = {
+  followup: Followup;
+  person: FollowupPersonRef | null;
+};
 
 /**
  * Read-only follow-up surface the snapshot read path depends on. It returns the
@@ -36,6 +45,7 @@ export type FollowupStore = FollowupContextStore & {
   listActiveFollowupsForOwner: (input: {
     ownerUserId: string;
     dueBefore?: Date;
+    limit?: number;
   }) => Promise<Followup[]>;
 };
 

@@ -90,3 +90,20 @@ export function toFollowupView(followup: Followup, now: Date = new Date()): Foll
     dueState,
   };
 }
+
+/** A dashboard follow-up: the view plus the person it belongs to (named, not id). */
+export type DashboardFollowupView = FollowupView & {
+  personId: string;
+  personName: string | null;
+};
+
+export function toDashboardFollowupView(
+  summary: { followup: Followup; person: { id: string; displayName: string } | null },
+  now: Date = new Date(),
+): DashboardFollowupView {
+  return {
+    ...toFollowupView(summary.followup, now),
+    personId: summary.followup.personId,
+    personName: summary.person?.displayName ?? null,
+  };
+}

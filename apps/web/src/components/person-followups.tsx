@@ -20,6 +20,7 @@ import {
   reopenFollowupAction,
   snoozeFollowupAction,
 } from "@/app/actions/followups";
+import { DueChip } from "@/components/followup-due-chip";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,7 +31,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import type { FollowupDueState, FollowupView } from "@/lib/followup-view";
+import type { FollowupView } from "@/lib/followup-view";
 
 const RESOLVED_STATUS_LABEL: Record<string, string> = {
   completed: "Done",
@@ -41,30 +42,6 @@ const GENERIC_ERROR = "That didn't go through. Try again.";
 
 function sortByDue(followups: FollowupView[]): FollowupView[] {
   return [...followups].sort((a, b) => a.dueAtISO.localeCompare(b.dueAtISO));
-}
-
-/**
- * The timely-state cue. Calm by design: clay accent (never red) for due/today,
- * quiet muted text for upcoming, and always a word — never color alone (DESIGN.md
- * §3, §6; PRD #42). Overdue reads as a plain "Was due {date}", not guilt language
- * like "overdue/missed"; the accent dot carries the timeliness without a nagging
- * badge.
- */
-function DueChip({ dueState, dueLabel }: { dueState: FollowupDueState; dueLabel: string }) {
-  if (dueState === "upcoming") {
-    return (
-      <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
-        Due {dueLabel}
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
-      <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-      {dueState === "overdue" ? `Was due ${dueLabel}` : "Due today"}
-    </span>
-  );
 }
 
 function ErrorText({ message }: { message: string }) {
@@ -224,7 +201,12 @@ function ActiveFollowupRow({
         <p className="max-w-[52ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
           {followup.reason}
         </p>
-        <DueChip dueLabel={followup.dueLabel} dueState={followup.dueState} />
+        <div className="flex shrink-0 flex-col items-end gap-0.5">
+          <DueChip dueLabel={followup.dueLabel} dueState={followup.dueState} />
+          {followup.status === "snoozed" ? (
+            <span className="text-[length:var(--text-caption)] text-muted-foreground">Snoozed</span>
+          ) : null}
+        </div>
       </div>
       <div className="flex items-center justify-end gap-1.5">
         <Button

@@ -67,7 +67,7 @@ export function createInMemoryFollowupStore(): FollowupStore {
       );
     },
     async listActiveFollowupsForOwner(input) {
-      return [...followups.values()]
+      const active = [...followups.values()]
         .filter(
           (followup) =>
             followup.ownerUserId === input.ownerUserId &&
@@ -76,6 +76,8 @@ export function createInMemoryFollowupStore(): FollowupStore {
               followup.dueAt.getTime() <= input.dueBefore.getTime()),
         )
         .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
+
+      return input.limit === undefined ? active : active.slice(0, input.limit);
     },
   };
 }

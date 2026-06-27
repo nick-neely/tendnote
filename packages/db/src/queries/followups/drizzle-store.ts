@@ -71,7 +71,7 @@ export function createDrizzleFollowupStore(): FollowupStore {
         );
     },
     async listActiveFollowupsForOwner(input) {
-      return getDb()
+      const query = getDb()
         .select()
         .from(followups)
         .where(
@@ -82,6 +82,8 @@ export function createDrizzleFollowupStore(): FollowupStore {
           ),
         )
         .orderBy(asc(followups.dueAt));
+
+      return input.limit === undefined ? query : query.limit(input.limit);
     },
   };
 }

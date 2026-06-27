@@ -300,6 +300,76 @@ describe("invalid transitions are rejected", () => {
   });
 });
 
+describe("dashboard active follow-ups", () => {
+  it("lists active reminders due-first, each paired with its person", async () => {
+    const { lifecycle, person } = await setup();
+    await lifecycle.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Later reminder.",
+      dueAt: new Date("2026-08-01T00:00:00Z"),
+    });
+    await lifecycle.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Sooner reminder.",
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+    });
+
+    const active = await lifecycle.listActiveFollowups({ ownerUserId: OWNER });
+
+    expect(active.map((item) => item.followup.reason)).toEqual([
+      "Sooner reminder.",
+      "Later reminder.",
+    ]);
+    expect(active[0]?.person?.displayName).toBe("Mark");
+  });
+
+  it("excludes suggested, completed, dismissed, and archived follow-ups", async () => {
+    const { store, lifecycle, person, seedOpen } = await setup();
+    // A suggested follow-up created directly (the #47 path) must not be active.
+    await store.createFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Tentative idea.",
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+      status: "suggested",
+    });
+    const completed = await seedOpen({ reason: "Done one." });
+    await lifecycle.completeFollowup({ ownerUserId: OWNER, followupId: completed.id });
+    const archived = await seedOpen({ reason: "Archived one." });
+    await lifecycle.archiveFollowup({ ownerUserId: OWNER, followupId: archived.id });
+    const kept = await seedOpen({ reason: "Active one." });
+
+    const active = await lifecycle.listActiveFollowups({ ownerUserId: OWNER });
+
+    expect(active.map((item) => item.followup.id)).toEqual([kept.id]);
+  });
+
+  it("respects the limit", async () => {
+    const { lifecycle, person } = await setup();
+    for (let index = 0; index < 4; index += 1) {
+      await lifecycle.createFollowup({
+        ownerUserId: OWNER,
+        personId: person.id,
+        reason: `Reminder ${index}.`,
+        dueAt: new Date(`2026-07-0${index + 1}T00:00:00Z`),
+      });
+    }
+
+    const active = await lifecycle.listActiveFollowups({ ownerUserId: OWNER, limit: 2 });
+
+    expect(active).toHaveLength(2);
+  });
+
+  it("is owner-scoped", async () => {
+    const { lifecycle, seedOpen } = await setup();
+    await seedOpen();
+
+    await expect(lifecycle.listActiveFollowups({ ownerUserId: "intruder" })).resolves.toEqual([]);
+  });
+});
+
 describe("owner scoping", () => {
   it("hides another owner's follow-up from reads and mutations", async () => {
     const { lifecycle, seedOpen } = await setup();

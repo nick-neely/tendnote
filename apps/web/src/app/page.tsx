@@ -1,3 +1,4 @@
+import { listActiveFollowups } from "@tendnote/db/queries/followups";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { searchPeople } from "@tendnote/db/queries/people";
 import { AppShell } from "@/components/app-shell";
@@ -6,6 +7,7 @@ import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { TodayRail } from "@/components/today-rail";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
+import { toDashboardFollowupView } from "@/lib/followup-view";
 import { toSuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 
 // The dashboard surfaces the most important open suggestions, not all of them;
@@ -13,13 +15,17 @@ import { toSuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view"
 // it a calm prompt, not a backlog (PRD: 1–3 timely things by default).
 const DASHBOARD_REVIEW_LIMIT = 6;
 
+// A handful of the soonest active reminders — a calm prompt, not a task feed (#45).
+const DASHBOARD_FOLLOWUP_LIMIT = 5;
+
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const ownerUserId = await getCurrentOwnerUserId();
-  const [people, dashboardReviews] = await Promise.all([
+  const [people, dashboardReviews, dashboardFollowups] = await Promise.all([
     searchPeople({ ownerUserId, limit: 8 }),
     getDashboardReviews(ownerUserId),
+    getDashboardFollowups(ownerUserId),
   ]);
   const birthdays = getUpcomingBirthdays(people);
 
@@ -42,12 +48,35 @@ export default async function Home() {
             <AssistantPanel />
           </div>
           <div className="order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto">
-            <TodayRail birthdays={birthdays} people={people} reviews={dashboardReviews} />
+            <TodayRail
+              birthdays={birthdays}
+              followups={dashboardFollowups}
+              people={people}
+              reviews={dashboardReviews}
+            />
           </div>
         </div>
       </div>
     </AppShell>
   );
+}
+
+async function getDashboardFollowups(ownerUserId: string) {
+  try {
+    // The soonest active reminders across people, due-first, each named by person.
+    const followups = await listActiveFollowups({
+      ownerUserId,
+      limit: DASHBOARD_FOLLOWUP_LIMIT,
+    });
+
+    return followups.map((summary) => toDashboardFollowupView(summary));
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Unable to load active follow-ups.", error);
+    }
+
+    return [];
+  }
 }
 
 async function getDashboardReviews(ownerUserId: string) {

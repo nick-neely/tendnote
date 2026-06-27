@@ -6,12 +6,19 @@ import {
   resolveFollowupTransition,
 } from "@tendnote/domain";
 import type {
+  ActiveFollowupSummary,
   CreateActiveFollowupInput,
   EditFollowupInput,
   FollowupActionInput,
   FollowupLifecycleStore,
   SnoozeFollowupInput,
 } from "./types";
+
+export type ListActiveFollowupsInput = {
+  ownerUserId: string;
+  dueBefore?: Date;
+  limit?: number;
+};
 
 /**
  * Shared owner-scoped follow-up lifecycle (PRD #42, ADR-0007). This is the single
@@ -97,6 +104,26 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
       });
 
       return followup;
+    },
+
+    /**
+     * Lists the owner's active reminders (open/snoozed) due-first, each paired
+     * with its person for display. Powers the calm dashboard surface (#45):
+     * archived, suggested, completed, and dismissed follow-ups are excluded, and
+     * the person is resolved owner-scoped so surfaces name people, not raw ids.
+     */
+    async listActiveFollowups(input: ListActiveFollowupsInput): Promise<ActiveFollowupSummary[]> {
+      const active = await store.listActiveFollowupsForOwner(input);
+
+      return Promise.all(
+        active.map(async (followup) => ({
+          followup,
+          person: await store.getPerson({
+            ownerUserId: input.ownerUserId,
+            personId: followup.personId,
+          }),
+        })),
+      );
     },
 
     /** Edits a follow-up's reason and/or due date in place (no status change). */
