@@ -8,7 +8,7 @@ const inputSchema = z.object({
   edit: z
     .object({
       reason: z.string().min(1).optional(),
-      dueAt: z.coerce.date().optional(),
+      dueAt: z.string().optional().describe("New proposed due date as an ISO 8601 string."),
     })
     .optional()
     .describe(
@@ -32,7 +32,13 @@ export default defineTool({
     const result = await acceptSuggestedFollowup({
       ownerUserId,
       followupId: input.followupId,
-      edit: input.edit,
+      // Parse the proposed date here; the shared layer validates it is concrete.
+      edit: input.edit
+        ? {
+            ...(input.edit.reason !== undefined ? { reason: input.edit.reason } : {}),
+            ...(input.edit.dueAt !== undefined ? { dueAt: new Date(input.edit.dueAt) } : {}),
+          }
+        : undefined,
     });
 
     return {

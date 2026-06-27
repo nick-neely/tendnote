@@ -15,11 +15,11 @@ const inputSchema = z.object({
   status: z
     .enum(["complete", "dismiss", "snooze", "reopen", "archive"])
     .describe("The lifecycle transition to apply. 'snooze' also requires a new dueAt."),
-  dueAt: z.coerce
-    .date()
+  dueAt: z
+    .string()
     .optional()
     .describe(
-      "New concrete due date, required when status is 'snooze'. Resolve relative phrases to a concrete date; ask the user if the new timing is ambiguous.",
+      "New concrete due date as an ISO 8601 string, required when status is 'snooze'. Resolve relative phrases to a concrete date; ask the user if the new timing is ambiguous.",
     ),
 });
 
@@ -43,7 +43,8 @@ function applyTransition(input: UpdateFollowupInput, ownerUserId: string): Promi
         throw new Error("Snoozing a follow-up needs a new due date.");
       }
 
-      return snoozeFollowup({ ownerUserId, followupId, dueAt: input.dueAt });
+      // Parsed here; the shared layer rejects anything that isn't a concrete date.
+      return snoozeFollowup({ ownerUserId, followupId, dueAt: new Date(input.dueAt) });
     }
   }
 }

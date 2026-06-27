@@ -13,10 +13,10 @@ const inputSchema = z.object({
     .string()
     .min(1)
     .describe("Why following up might help, in plain language (e.g. 'check in about the move')."),
-  dueAt: z.coerce
-    .date()
+  dueAt: z
+    .string()
     .describe(
-      "A concrete proposed due date, ISO 8601. Resolve relative phrases to a concrete date; if timing is ambiguous, ask the user instead of calling this tool.",
+      "A concrete proposed due date as an ISO 8601 string. Resolve relative phrases to a concrete date; if timing is ambiguous, ask the user instead of calling this tool.",
     ),
   sourceRecordId: z
     .uuid()
@@ -51,7 +51,8 @@ export default defineTool({
       ownerUserId,
       personId: input.personId,
       reason: input.reason,
-      dueAt: input.dueAt,
+      // Parsed here; the shared layer rejects anything that isn't a concrete date.
+      dueAt: new Date(input.dueAt),
       sourceRecordId: input.sourceRecordId,
       directlyRequested: input.directlyRequested,
     });

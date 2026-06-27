@@ -13,10 +13,10 @@ const inputSchema = z.object({
     .string()
     .min(1)
     .describe("Why to follow up, in the user's words (e.g. 'check in about the move')."),
-  dueAt: z.coerce
-    .date()
+  dueAt: z
+    .string()
     .describe(
-      "Concrete due date, ISO 8601 (e.g. 2026-07-04). Resolve relative phrases like 'next week' to a concrete date first. If the user's timing is ambiguous, ask a clarifying question instead of calling this tool.",
+      "Concrete due date as an ISO 8601 string (e.g. 2026-07-04). Resolve relative phrases like 'next week' to a concrete date first. If the user's timing is ambiguous, ask a clarifying question instead of calling this tool.",
     ),
 });
 
@@ -39,7 +39,8 @@ export default defineTool({
       ownerUserId,
       personId: input.personId,
       reason: input.reason,
-      dueAt: input.dueAt,
+      // Parsed here; the shared layer rejects anything that isn't a concrete date.
+      dueAt: new Date(input.dueAt),
     });
 
     return {
