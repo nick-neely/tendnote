@@ -39,7 +39,8 @@ type SnapshotGeneratorEnv = Record<string, string | undefined>;
 export function createDefaultSnapshotGenerator(
   env: SnapshotGeneratorEnv = process.env,
 ): SnapshotGenerator {
-  const modelId = env.TENDNOTE_SNAPSHOT_MODEL ?? env.TENDNOTE_AGENT_MODEL ?? "openai/gpt-5.4-mini";
+  const modelId =
+    env.TENDNOTE_SNAPSHOT_MODEL ?? env.TENDNOTE_AGENT_MODEL ?? "anthropic/claude-haiku-4.5";
   const hasGatewayCredentials = Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
 
   if (!hasGatewayCredentials) {
