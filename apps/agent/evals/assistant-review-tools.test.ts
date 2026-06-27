@@ -26,6 +26,11 @@ describe("Phase 1A assistant tools are thin wrappers over shared functions", () 
     create_followup: "createFollowup",
     list_due_followups: "listActiveFollowups",
     update_followup_status: "snoozeFollowup",
+    propose_followup: "suggestFollowup",
+    list_suggested_followup_reviews: "listSuggestedFollowupReviews",
+    get_suggested_followup_review: "getSuggestedFollowupReview",
+    accept_suggested_followup: "acceptSuggestedFollowup",
+    dismiss_suggested_followup: "dismissSuggestedFollowup",
   };
 
   for (const [tool, sharedFn] of Object.entries(wrappers)) {
@@ -96,6 +101,37 @@ describe("active follow-up tools are thin wrappers returning compact references"
   });
 });
 
+describe("suggested follow-up tools are explicit-flow, grounded, and review-gated", () => {
+  it("propose_followup requires grounding and supports the restricted opt-in", () => {
+    const source = readTool("propose_followup");
+    expect(source).toContain("suggestFollowup");
+    expect(source).toMatch(/sourceRecordId/);
+    expect(source).toMatch(/directlyRequested/);
+    // It returns a tentative review component, not an active reminder.
+    expect(source).toContain("component");
+    expect(source).toMatch(/status:\s*result\.followup\.status/);
+  });
+
+  it("accept_suggested_followup promotes via the shared accept with an optional edit", () => {
+    const source = readTool("accept_suggested_followup");
+    expect(source).toContain("acceptSuggestedFollowup");
+    expect(source).toMatch(/edit/);
+  });
+
+  it("dismiss_suggested_followup leaves review through the shared dismiss", () => {
+    const source = readTool("dismiss_suggested_followup");
+    expect(source).toContain("dismissSuggestedFollowup");
+  });
+
+  it("review tools return persisted ids and resolved person names", () => {
+    for (const tool of ["list_suggested_followup_reviews", "get_suggested_followup_review"]) {
+      const source = readTool(tool);
+      expect(source).toContain("component");
+      expect(source).toContain("displayName");
+    }
+  });
+});
+
 describe("context-aware capture", () => {
   it("capture_source_record links a known person via the shared function and triggers extraction", () => {
     const source = readTool("capture_source_record");
@@ -158,6 +194,31 @@ describe("instructions steer capture vs save vs review", () => {
 
   it("keeps follow-up listing as due-date recall, not agenda ranking", () => {
     expect(instructions).toMatch(/not a "who should I check in with" agenda/i);
+  });
+
+  it("distinguishes suggested follow-ups from active reminders and gates proposing to explicit flows", () => {
+    expect(instructions).toMatch(/propose_followup/);
+    expect(instructions).toMatch(/list_suggested_followup_reviews/);
+    expect(instructions).toMatch(/accept_suggested_followup/);
+    expect(instructions).toMatch(/dismiss_suggested_followup/);
+    expect(instructions).toMatch(/tentative proposal/i);
+    expect(instructions).toMatch(/only in an explicit flow/i);
+  });
+
+  it("forbids background generation and cross-person agenda ranking of suggestions", () => {
+    expect(instructions).toMatch(/[Nn]ever scan everyone and invent follow-ups/);
+    expect(instructions).toMatch(/no background follow-up generation/i);
+    expect(instructions).toMatch(/who the user should check in with/i);
+  });
+
+  it("excludes restricted context from proactive suggestion unless directly requested", () => {
+    expect(instructions).toMatch(/[Rr]estricted context is not used for proactive suggestions/);
+    expect(instructions).toMatch(/directlyRequested/);
+  });
+
+  it("accepts or dismisses suggested follow-ups only on explicit user action", () => {
+    expect(instructions).toMatch(/only on explicit user instruction or a card button action/i);
+    expect(instructions).toMatch(/[Nn]ever accept or dismiss on the user's behalf/);
   });
 
   it("never surfaces raw record ids to the user", () => {

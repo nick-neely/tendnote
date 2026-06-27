@@ -1,6 +1,7 @@
 import type { Followup } from "@tendnote/domain";
 import {
   assertConcreteDueAt,
+  canUseSensitiveContext,
   followupEditSchema,
   resolveFollowupTransition,
 } from "@tendnote/domain";
@@ -89,6 +90,19 @@ export function createSuggestedFollowupReview(store: FollowupLifecycleStore) {
       // source record (PRD #42, ADR-0006).
       if (!sourceRecord) {
         throw new Error("A suggested follow-up must be grounded in a source record.");
+      }
+
+      // Restricted context is not used for proactive suggestion by default; only a
+      // direct request can ground a suggestion in it (PRD #42, ADR-0058).
+      if (
+        !canUseSensitiveContext({
+          sensitivity: sourceRecord.sensitivity,
+          directlyRequested: input.directlyRequested,
+        })
+      ) {
+        throw new Error(
+          "Restricted context isn't used for proactive follow-up suggestions unless you ask directly.",
+        );
       }
 
       const followup = await store.createFollowup({

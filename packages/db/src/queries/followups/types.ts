@@ -121,6 +121,10 @@ export type SuggestFollowupInput = {
   // conversation, or a record standing in for an approved memory / retrieval
   // result). Required — suggestions must be grounded (PRD #42, ADR-0006).
   sourceRecordId: string;
+  // True only when the user directly asked about this (delicate) context. Restricted
+  // source records are excluded from proactive suggestion by default; this opt-in
+  // lets a direct request still ground one (PRD #42, ADR-0058).
+  directlyRequested?: boolean;
 };
 
 export type ListSuggestedFollowupReviewsInput = {

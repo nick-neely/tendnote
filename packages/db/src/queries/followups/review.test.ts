@@ -93,6 +93,45 @@ describe("suggest follow-up", () => {
     ).rejects.toThrow(/concrete due date/);
   });
 
+  it("excludes restricted grounding from proactive suggestion unless directly requested", async () => {
+    const { review, person, store } = await setup();
+    const restricted = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Sensitive health note about Mark.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "active",
+      confidence: "medium",
+      sensitivity: "restricted",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+    });
+
+    // Proactive suggestion grounded in restricted context is refused...
+    await expect(
+      review.suggestFollowup({
+        ownerUserId: OWNER,
+        personId: person.id,
+        reason: "Check in.",
+        dueAt: new Date("2026-07-15T00:00:00Z"),
+        sourceRecordId: restricted.id,
+      }),
+    ).rejects.toThrow(/Restricted context/);
+
+    // ...but a direct request can ground one.
+    const result = await review.suggestFollowup({
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Check in.",
+      dueAt: new Date("2026-07-15T00:00:00Z"),
+      sourceRecordId: restricted.id,
+      directlyRequested: true,
+    });
+    expect(result.followup.status).toBe("suggested");
+  });
+
   it("requires grounding in an existing owner-scoped source record", async () => {
     const { review, person } = await setup();
 

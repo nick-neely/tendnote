@@ -284,8 +284,11 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   get_person_context: "Recalling…",
   get_suggested_memory_review: "Checking for suggestions…",
   list_suggested_memory_reviews: "Gathering suggestions to review…",
+  propose_followup: "Drafting a follow-up to review…",
   get_suggested_followup_review: "Checking suggested follow-ups…",
   list_suggested_followup_reviews: "Gathering follow-ups to review…",
+  accept_suggested_followup: "Setting the reminder…",
+  dismiss_suggested_followup: "Dismissing the suggestion…",
   create_followup: "Setting a reminder…",
   list_due_followups: "Checking what's due…",
   update_followup_status: "Updating the reminder…",
@@ -366,6 +369,7 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
         reviews: parsed.data.reviews.map(toReviewItem),
       };
     }
+    case "propose_followup":
     case "get_suggested_followup_review": {
       const parsed = suggestedFollowupOutput.safeParse(output);
       if (!parsed.success) break;

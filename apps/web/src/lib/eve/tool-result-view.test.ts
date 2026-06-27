@@ -202,6 +202,34 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     });
   });
 
+  it("renders a propose_followup result as a tentative follow-up review item", () => {
+    const view = toAssistantToolView({
+      toolName: "propose_followup",
+      output: {
+        found: true,
+        component: { type: "suggested_followup_review", followupId: "f9", sourceRecordId: "s9" },
+        person: { id: "person-1", displayName: "Mark" },
+        followup: {
+          id: "f9",
+          personId: "person-1",
+          reason: "Ask how the move went.",
+          dueAt: "2026-07-15T00:00:00.000Z",
+        },
+        sourceRecord: { id: "s9" },
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "suggested_followup_review",
+      followupId: "f9",
+      reason: "Ask how the move went.",
+      dueLabel,
+      sourceRecordId: "s9",
+      personId: "person-1",
+      personName: "Mark",
+    });
+  });
+
   it("maps a list_suggested_followup_reviews result into one item per suggestion", () => {
     const view = toAssistantToolView({
       toolName: "list_suggested_followup_reviews",
