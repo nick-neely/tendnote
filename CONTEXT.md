@@ -48,6 +48,10 @@ _Avoid_: Profile fact, memory store, generated truth
 Finding specific stored relationship context by names, places, companies, phrases, or other explicit text in canonical records. Exact recall is distinct from fuzzy semantic retrieval and proactive relationship suggestions.
 _Avoid_: Semantic search, recommendation, generated summary
 
+**Semantic Retrieval**:
+Finding stored relationship context by meaning or theme when the user does not know the exact words, such as gift ideas, career updates, or stressful life events. Semantic retrieval can surface grounded context, but it is not the same as proactive relationship agenda ranking.
+_Avoid_: Exact recall, recommendation engine, daily brief
+
 **Follow-Up**:
 A user-visible reminder to reconnect with a person for a specific reason at a specific time or cadence.
 _Avoid_: Task, deal, lead activity

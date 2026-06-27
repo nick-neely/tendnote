@@ -624,14 +624,14 @@ Recommended Phase 1 memory rollout:
 | Phase 1A | Plain Postgres + relational indexes | Store people, source records, memories, follow-ups, drafts, and audit events. Retrieve by `owner_user_id`, `person_id`, `status`, recency, and importance. |
 | Phase 1B | Context snapshots | Add `person_context_snapshots` to cache generated profile cards after memory, source record, follow-up, and profile changes. |
 | Phase 1C | Postgres full-text search | Add `tsvector`/GIN-backed search over memory content, source record content, interaction summaries, and person names. |
-| Phase 1D | pgvector semantic retrieval | Add memory embeddings for fuzzy queries like gift ideas, career updates, stressful life events, or people worth checking in with. |
+| Phase 1D | pgvector semantic retrieval | Add embedded relationship-context records for fuzzy queries like gift ideas, career updates, stressful life events, and later agenda candidate support. |
 | Phase 1E.25 | Relationship agenda read model | Add a cross-person, owner-scoped agenda query over due follow-ups, birthdays, review items, recent context, and strong suggestion candidates so Eve can answer broad time-window questions before persisted briefs exist. |
 
 Agent retrieval should be hybrid:
 
 - Use deterministic SQL for known-person context, birthdays, due follow-ups, pinned memories, and recent source records.
 - Use full-text search for exact recall like names, companies, places, or specific phrases.
-- Use pgvector later for fuzzy or semantic recall.
+- Use pgvector later for fuzzy or semantic recall over approved memories and selected logged context.
 - Use the relationship agenda read model for broad horizon questions such as "anything coming up this week?", "who deserves a thought today?", or "what should I review?" without forcing a person-specific context load.
 - Always apply hard filters first: `owner_user_id`, scope, sensitivity, memory status, and person/workspace access.
 - Build a small context pack for the model, usually the profile snapshot plus the top 8-15 supporting memories/source records.
@@ -722,21 +722,46 @@ extraction_jobs
   id
   owner_user_id
   source_record_id
-  status                # queued, processing, completed, failed, skipped
+  status                # pending, running, completed, failed, skipped
   attempts
   last_error
   idempotency_key
   run_after
+  claimed_at
+  completed_at
   created_at
   updated_at
 
-memory_embeddings       # Phase 1D
-  memory_id
+relationship_context_embedding_jobs # Phase 1D
+  id
+  owner_user_id
+  record_kind
+  record_id
+  status                # pending, running, completed, failed, skipped
+  attempts
+  last_error
+  idempotency_key
+  run_after
+  claimed_at
+  completed_at
+  created_at
+  updated_at
+
+relationship_context_embeddings # Phase 1D
+  owner_user_id
+  person_id
+  record_kind
+  record_id
   embedding
   embedding_model
   embedding_version
   embedded_text
+  content_fingerprint
+  trust_level
+  sensitivity
   created_at
+  updated_at
+  unique_current_key   # owner_user_id, record_kind, record_id, embedding_model, embedding_version
 
 person_context_snapshots # Phase 1B
   person_id
@@ -916,8 +941,18 @@ Deliverables:
 
 ##### Phase 1D: pgvector Semantic Retrieval
 
-- Add `memory_embeddings` for approved memories and selected source summaries.
-- Use pgvector for fuzzy retrieval, gift ideas, life-event themes, career updates, and "who should I check in with" style prompts.
+- Add `relationship_context_embeddings` for approved memories and selected retained source-record summaries.
+- Generate embeddings asynchronously through a Postgres-owned embedding job path that follows the extraction-job lifecycle pattern. Mutations enqueue or mark embedding work stale; capture, review, and profile reads must not wait on an embedding API call.
+- Keep one current embedding row per owner, record, embedding model, and embedding version. Use `content_fingerprint`, `embedding_model`, and `embedding_version` to detect stale embeddings and update them in place.
+- Store `embedded_text` as a deterministic, minimized projection of the source record or memory. Memories can embed approved memory content; source records should embed only retained/minimized fields such as interaction type, retained content, and resolved person display name when allowed.
+- Put embedding generation behind a replaceable adapter. Persist `embedding_model`, `embedding_version`, and enough dimension/index metadata to validate query compatibility, but do not make the provider or model name part of the domain contract.
+- Use pgvector for fuzzy retrieval, gift ideas, life-event themes, career updates, and context candidates that can later support "who should I check in with" style prompts.
+- Rank Phase 1D semantic results primarily by vector similarity after hard policy filters. Allow only light deterministic tie-breakers such as recency or importance, and keep recommendation-style ranking for Phase 1E.25.
+- Add an Eve `search_semantic_context` tool backed by a shared owner-scoped semantic retrieval query. Keep it separate from Exact Recall's `search_relationship_context`.
+- Keep the Phase 1D product surface Eve-first. Add shared query/tool coverage and assistant result rendering as needed, but do not add a standalone semantic search page in this phase.
+- Treat Phase 1D semantic matches as grounded context-finding, not proactive relationship agenda ranking. Phase 1E.25 owns "who should I check in with" prioritization.
+- Let `search_semantic_context` fail open when embeddings are missing, stale, or still processing. Later agenda and brief behavior must remain useful without embeddings.
+- Prove Phase 1D with deterministic fake-vector tests for policy filtering, enqueueing, staleness, ranking, and Eve tool behavior. Real provider smoke tests may exist behind explicit credentials, but normal verification must not call live embedding APIs.
 - Do not block the initial usable MVP on embeddings. Add this after plain retrieval and snapshots work; it can proceed directly after Phase 1C, but later agenda and brief behavior should still work without embeddings.
 
 ##### Phase 1E: Manual Follow-Ups Through Eve
@@ -974,7 +1009,7 @@ Vertical slice issue seeds:
 - Implement Eve-backed web chat with people search, explicit person creation, source-record capture, explicit memory capture, and review component rendering.
 - Add a production background trigger for extraction jobs before relying on deployed capture at real volume. Prefer Vercel Queues for event-driven extraction retries and observability; use Vercel Workflows only if extraction becomes a multi-step orchestration.
 - Add full-text search over people, memories, and source records.
-- Add pgvector embeddings and semantic memory search as a later Phase 1 issue.
+- Add pgvector relationship-context embeddings and semantic context search as a later Phase 1 issue.
 - Implement create follow-up flow with complete, snooze, and dismiss actions.
 - Add LLM suggested-memory extraction behind the existing extraction-job processor, review lifecycle, and extraction-quality evals.
 - Implement daily brief schedule that returns up to 3 items.
@@ -1109,7 +1144,7 @@ Recommended first issue batch:
 11. Add person context snapshots and snapshot-backed profile retrieval.
 12. Connect web chat to Eve for people search, explicit person creation, source-record capture, explicit memory capture, and review components.
 13. Add Postgres full-text search.
-14. Add pgvector semantic memory retrieval.
+14. Add pgvector semantic relationship-context retrieval.
 15. Add manual follow-up creation and status updates through UI and Eve.
 16. Add the relationship agenda read model and Eve `get_relationship_agenda` tool for cross-person upcoming-context questions.
 17. Add persisted daily brief generation and schedule.
