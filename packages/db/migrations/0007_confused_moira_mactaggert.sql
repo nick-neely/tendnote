@@ -1,0 +1,3 @@
+ALTER TABLE "followups" ADD COLUMN "source_record_id" uuid;--> statement-breakpoint
+ALTER TABLE "followups" ADD CONSTRAINT "followups_source_record_id_source_records_id_fk" FOREIGN KEY ("source_record_id") REFERENCES "public"."source_records"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "followups_owner_status_idx" ON "followups" USING btree ("owner_user_id","status");

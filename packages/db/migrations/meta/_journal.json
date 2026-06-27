@@ -50,6 +50,13 @@
       "when": 1782526898189,
       "tag": "0006_overconfident_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782578579107,
+      "tag": "0007_confused_moira_mactaggert",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@ import {
   sourceType,
 } from "./enums";
 import { people } from "./people";
+import { sourceRecords } from "./source-records";
 
 export const interactions = pgTable(
   "interactions",
@@ -49,12 +50,17 @@ export const followups = pgTable(
     dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
     status: followupStatus("status").notNull().default("open"),
     cadence: text("cadence"),
+    // Source grounding for suggested follow-ups; null for user-created reminders.
+    sourceRecordId: uuid("source_record_id").references(() => sourceRecords.id, {
+      onDelete: "set null",
+    }),
     lastPromptedAt: timestamp("last_prompted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
     index("followups_person_id_idx").on(table.personId),
     index("followups_owner_due_idx").on(table.ownerUserId, table.dueAt),
+    index("followups_owner_status_idx").on(table.ownerUserId, table.status),
   ],
 );
 

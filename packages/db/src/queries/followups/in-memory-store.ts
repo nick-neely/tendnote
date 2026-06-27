@@ -80,6 +80,18 @@ export function createInMemoryFollowupStore(): FollowupStore {
 
       return input.limit === undefined ? active : active.slice(0, input.limit);
     },
+    async listSuggestedFollowupsForOwner(input) {
+      const suggested = [...followups.values()]
+        .filter(
+          (followup) =>
+            followup.ownerUserId === input.ownerUserId &&
+            followup.status === "suggested" &&
+            (input.personId === undefined || followup.personId === input.personId),
+        )
+        .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
+
+      return input.limit === undefined ? suggested : suggested.slice(0, input.limit);
+    },
   };
 }
 

@@ -86,6 +86,21 @@ export function createDrizzleFollowupStore(): FollowupStore {
 
       return input.limit === undefined ? query : query.limit(input.limit);
     },
+    async listSuggestedFollowupsForOwner(input) {
+      const query = getDb()
+        .select()
+        .from(followups)
+        .where(
+          and(
+            eq(followups.ownerUserId, input.ownerUserId),
+            eq(followups.status, "suggested"),
+            ...(input.personId ? [eq(followups.personId, input.personId)] : []),
+          ),
+        )
+        .orderBy(asc(followups.dueAt));
+
+      return input.limit === undefined ? query : query.limit(input.limit);
+    },
   };
 }
 

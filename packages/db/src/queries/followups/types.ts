@@ -1,4 +1,10 @@
-import type { CreateFollowupInput, Followup, FollowupEdit, Person } from "@tendnote/domain";
+import type {
+  CreateFollowupInput,
+  Followup,
+  FollowupEdit,
+  Person,
+  SourceRecord,
+} from "@tendnote/domain";
 import type {
   InMemorySourceRecordStore,
   SourceRecordResolutionStore,
@@ -48,16 +54,21 @@ export type FollowupStore = FollowupContextStore & {
     dueBefore?: Date;
     limit?: number;
   }) => Promise<Followup[]>;
+  listSuggestedFollowupsForOwner: (input: {
+    ownerUserId: string;
+    personId?: string;
+    limit?: number;
+  }) => Promise<Followup[]>;
 };
 
 /**
  * Shared owner-scoped store surface for the follow-up lifecycle service. It adds
- * person resolution and audit logging on top of the follow-up CRUD store,
- * mirroring how the memory review store is composed so web and Eve callers share
- * one lifecycle layer (PRD #42).
+ * person resolution, source-record grounding, and audit logging on top of the
+ * follow-up CRUD store, mirroring how the memory review store is composed so web
+ * and Eve callers share one lifecycle layer (PRD #42).
  */
 export type FollowupLifecycleStore = FollowupStore &
-  Pick<SourceRecordResolutionStore, "getPerson" | "createAuditLogEntry">;
+  Pick<SourceRecordResolutionStore, "getPerson" | "getSourceRecord" | "createAuditLogEntry">;
 
 export type InMemoryFollowupLifecycleStore = InMemorySourceRecordStore & FollowupStore;
 
@@ -80,4 +91,48 @@ export type EditFollowupInput = FollowupActionInput & {
 
 export type SnoozeFollowupInput = FollowupActionInput & {
   dueAt: Date;
+};
+
+/** Fixed typed component for a suggested follow-up review item (ADR-0027/0028). */
+export type SuggestedFollowupReviewComponent = {
+  type: "suggested_followup_review";
+  followupId: string;
+  sourceRecordId: string | null;
+};
+
+/**
+ * A suggested follow-up presented for review: the persisted follow-up plus its
+ * resolved person and grounding source record, so review surfaces name people and
+ * show where the proposal came from instead of leaking raw ids (ADR-0028).
+ */
+export type SuggestedFollowupReviewResult = {
+  followup: Followup;
+  person: FollowupPersonRef | null;
+  sourceRecord: SourceRecord | null;
+  component: SuggestedFollowupReviewComponent;
+};
+
+export type SuggestFollowupInput = {
+  ownerUserId: string;
+  personId: string;
+  reason: string;
+  dueAt: Date;
+  // The source record grounding the suggestion (logged context, captured
+  // conversation, or a record standing in for an approved memory / retrieval
+  // result). Required — suggestions must be grounded (PRD #42, ADR-0006).
+  sourceRecordId: string;
+};
+
+export type ListSuggestedFollowupReviewsInput = {
+  ownerUserId: string;
+  personId?: string;
+  limit?: number;
+};
+
+export type AcceptSuggestedFollowupInput = FollowupActionInput & {
+  edit?: FollowupEdit;
+};
+
+export type EditSuggestedFollowupInput = FollowupActionInput & {
+  edit: FollowupEdit;
 };

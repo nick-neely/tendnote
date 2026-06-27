@@ -17,6 +17,11 @@ export const followupSchema = z.object({
   dueAt: z.date(),
   status: followupStatusSchema.default("open"),
   cadence: z.string().nullable().optional(),
+  // Grounding for a suggested follow-up: the source record (logged context,
+  // captured conversation, or a record standing in for an approved memory or
+  // retrieval result) the suggestion was proposed from. Null for user-created
+  // active reminders, which need no grounding (PRD #42, ADR-0006).
+  sourceRecordId: z.string().nullable().optional(),
   lastPromptedAt: z.date().nullable().optional(),
   createdAt: z.date(),
   updatedAt: z.date(),
