@@ -72,4 +72,8 @@ export type RelationshipAgendaStore = {
     ownerUserId: string;
     limit?: number;
   }) => Promise<RelationshipAgendaSourceRecordReview[]>;
+  listRecentSourceRecordsForOwner: (input: {
+    ownerUserId: string;
+    limit?: number;
+  }) => Promise<RelationshipAgendaSourceRecordReview[]>;
 };

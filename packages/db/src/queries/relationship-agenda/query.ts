@@ -6,6 +6,7 @@ import type {
 } from "./types";
 
 const DEFAULT_LIMIT = 10;
+const RECENT_CONTEXT_LIMIT = 3;
 const BIRTHDAY_PREP_BUFFER_DAYS = 7;
 const BROAD_AGENDA_QUERY = /\b(who deserves|deserves a thought|check in|review|relationship)\b/i;
 const EXACT_DATE_QUERY =
@@ -299,6 +300,42 @@ export function createRelationshipAgenda(store: RelationshipAgendaStore) {
             sensitivity: review.sourceRecord.sensitivity,
             rank: 0,
             score: personless ? 80 : 50,
+          });
+        }
+      }
+
+      if (requested(input, "recent_context")) {
+        const recentSourceRecords = await store.listRecentSourceRecordsForOwner({
+          ownerUserId: input.ownerUserId,
+          limit: RECENT_CONTEXT_LIMIT,
+        });
+
+        for (const recent of recentSourceRecords.filter(
+          (candidate) =>
+            candidate.sourceRecord.ownerUserId === input.ownerUserId &&
+            candidate.sourceRecord.status === "active" &&
+            candidate.sourceRecord.sensitivity !== "restricted" &&
+            !Number.isNaN(candidate.sourceRecord.createdAt.getTime()) &&
+            candidate.linkedPeople.length > 0,
+        )) {
+          const primaryPerson = recent.linkedPeople[0];
+
+          if (!primaryPerson) {
+            continue;
+          }
+
+          candidates.push({
+            kind: "recent_context",
+            personId: primaryPerson.id,
+            personDisplayName: primaryPerson.displayName,
+            title: `Recent logged context for ${primaryPerson.displayName}`,
+            reason: recent.sourceRecord.content,
+            dueAt: recent.sourceRecord.createdAt,
+            sourceRefs: [{ kind: "source_record", id: recent.sourceRecord.id }],
+            trustLevel: "logged_context",
+            sensitivity: recent.sourceRecord.sensitivity,
+            rank: 0,
+            score: 90,
           });
         }
       }
