@@ -52,6 +52,10 @@ _Avoid_: Semantic search, recommendation, generated summary
 Finding stored relationship context by meaning or theme when the user does not know the exact words, such as gift ideas, career updates, or stressful life events. Semantic retrieval can surface grounded context, but it is not the same as proactive relationship agenda ranking.
 _Avoid_: Exact recall, recommendation engine, daily brief
 
+**Relationship Agenda**:
+A read-only, cross-person view of existing upcoming or review-worthy relationship context for a time window. A relationship agenda can help Eve answer broad questions, but it is not a suggestion generator, follow-up creator, or persisted brief.
+_Avoid_: Generated task list, background scanner, daily brief
+
 **Follow-Up**:
 A user-visible reminder to reconnect with a person for a specific reason at a specific time or cadence.
 _Avoid_: Task, deal, lead activity

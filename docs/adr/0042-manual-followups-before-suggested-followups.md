@@ -4,7 +4,7 @@ Phase 1E should implement one follow-up lifecycle covering both user-created act
 
 User-created follow-ups create active `open` reminders. Agent-suggested follow-ups create `suggested` records only, must be grounded in a source record, approved memory, retrieval result, or explicit user conversation context captured as a source record, and must never silently become active reminders. Accepting a suggestion promotes it to `open`; dismissing it prevents the same suggestion from returning through normal reminder feeds.
 
-Suggested follow-up generation in Phase 1E should be triggered only from an explicit user or Eve flow, such as logging a note, reviewing a source record, approving a memory, viewing a person, or asking whether to follow up. Phase 1E should not add a background scanner that periodically reviews all relationship context and invents suggested follow-ups; that behavior belongs with the later relationship agenda or brief surfaces.
+Suggested follow-up generation in Phase 1E should be triggered only from an explicit user or Eve flow, such as logging a note, reviewing a source record, approving a memory, viewing a person, or asking whether to follow up. Phase 1E should not add a background scanner that periodically reviews all relationship context and invents suggested follow-ups; later agenda and brief surfaces may rank existing suggested follow-ups, but they should not hide follow-up creation inside broad relationship review.
 
 Every Phase 1E follow-up should have a concrete `dueAt` before it is saved, including suggested follow-ups. Eve may help translate phrases like "soon" or "next week" into a proposed date, but it should ask for clarification when the timing is ambiguous. Phase 1E should not add a vague "someday" reminder bucket.
 
