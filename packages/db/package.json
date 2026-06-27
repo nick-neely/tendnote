@@ -8,6 +8,7 @@
     "./schema": "./src/schema/index.ts",
     "./queries/context-snapshots": "./src/queries/context-snapshots.ts",
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
+    "./queries/followups": "./src/queries/followups.ts",
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/people": "./src/queries/people.ts",
     "./queries/relationship-context-search": "./src/queries/relationship-context-search.ts",

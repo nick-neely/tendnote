@@ -1,4 +1,4 @@
-import type { Followup, Memory, Person, SourceRecord } from "@tendnote/domain";
+import type { Memory, Person, SourceRecord } from "@tendnote/domain";
 import {
   formatBirthday,
   formatMonthYear,
@@ -47,11 +47,11 @@ export function LedgerSection({
   );
 }
 
-function LedgerList({ children }: { children: React.ReactNode }) {
+export function LedgerList({ children }: { children: React.ReactNode }) {
   return <div className="divide-y overflow-hidden rounded-xl border bg-surface">{children}</div>;
 }
 
-function LedgerEmpty({ children }: { children: React.ReactNode }) {
+export function LedgerEmpty({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-dashed px-4 py-5">
       <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
@@ -113,47 +113,6 @@ export function LoggedContextSection({ sourceRecords }: { sourceRecords: SourceR
         </LedgerList>
       ) : (
         <LedgerEmpty>Nothing logged yet. Add a note to start grounding this profile.</LedgerEmpty>
-      )}
-    </LedgerSection>
-  );
-}
-
-export function FollowupsSection({
-  followups,
-  firstName,
-}: {
-  followups: Followup[];
-  firstName: string;
-}) {
-  return (
-    <LedgerSection
-      description={`Reminders tied to ${firstName}.`}
-      id="follow-ups"
-      title="Follow-ups"
-    >
-      {followups.length ? (
-        <LedgerList>
-          {followups.map((followup) => (
-            <article
-              className="flex items-start justify-between gap-4 px-4 py-3.5"
-              key={followup.id}
-            >
-              <p className="max-w-[52ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-                {followup.reason}
-              </p>
-              <div className="shrink-0 text-right">
-                <p className="text-[length:var(--text-small)] font-medium">
-                  Due {formatShortDate(followup.dueAt)}
-                </p>
-                <p className="text-[length:var(--text-caption)] text-muted-foreground capitalize">
-                  {followup.status}
-                </p>
-              </div>
-            </article>
-          ))}
-        </LedgerList>
-      ) : (
-        <LedgerEmpty>No follow-ups yet. Reminders you set will live here.</LedgerEmpty>
       )}
     </LedgerSection>
   );

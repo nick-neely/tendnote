@@ -4,15 +4,16 @@ import { getPersonProfile } from "@tendnote/db/queries/people";
 import {
   canUseMemoryProactively,
   canUseSourceRecordProactively,
+  isActiveFollowupStatus,
   type Memory,
   type SourceRecord,
 } from "@tendnote/domain";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { PersonCapture } from "@/components/person-capture";
+import { PersonFollowups } from "@/components/person-followups";
 import { PersonHeader } from "@/components/person-header";
 import {
-  FollowupsSection,
   LedgerSection,
   LoggedContextSection,
   MemoriesSection,
@@ -22,6 +23,7 @@ import { RelationshipSnapshotCard } from "@/components/relationship-snapshot-car
 import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
 import { shortName } from "@/lib/dashboard-brief";
+import { toDateInputValue, toFollowupView } from "@/lib/followup-view";
 import {
   type RelationshipSnapshotView,
   toRelationshipSnapshotView,
@@ -122,6 +124,19 @@ export default async function PersonDetailPage({
   const { person } = profile;
   const firstName = shortName(person);
 
+  // Active reminders (open/snoozed) lead the section; recently resolved ones stay
+  // reachable for reopen. Suggested follow-ups are never shown as active here —
+  // they live in review surfaces until accepted (#47/#48).
+  const now = new Date();
+  const activeFollowups = profile.followups
+    .filter((followup) => isActiveFollowupStatus(followup.status))
+    .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
+    .map((followup) => toFollowupView(followup, now));
+  const resolvedFollowups = profile.followups
+    .filter((followup) => followup.status === "completed" || followup.status === "dismissed")
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .map((followup) => toFollowupView(followup, now));
+
   return (
     <AppShell>
       <div className="flex flex-col gap-8">
@@ -145,7 +160,19 @@ export default async function PersonDetailPage({
 
             <MemoriesSection memories={approvedMemories} />
             <LoggedContextSection sourceRecords={sourceRecords} />
-            <FollowupsSection firstName={firstName} followups={profile.followups} />
+            <LedgerSection
+              description={`Reminders tied to ${firstName}.`}
+              id="follow-ups"
+              title="Follow-ups"
+            >
+              <PersonFollowups
+                active={activeFollowups}
+                defaultDueDate={toDateInputValue(now)}
+                firstName={firstName}
+                personId={person.id}
+                resolved={resolvedFollowups}
+              />
+            </LedgerSection>
           </div>
 
           <aside className="flex flex-col gap-6 lg:sticky lg:top-20 lg:self-start">
