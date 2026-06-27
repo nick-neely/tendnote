@@ -110,11 +110,13 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain('data-tool-view="relationship_context_search"');
   });
 
-  it("renders empty exact recall results without creating a search page surface", () => {
+  it("renders empty exact recall results as a quiet line, not an expandable card", () => {
     const html = render({ kind: "relationship_context_search", results: [] });
 
-    expect(html).toContain("Found 0 exact matches");
     expect(html).toContain("No matching relationship context found");
+    // An empty result set recedes to a line; no disclosure summary or card chrome.
+    expect(html).not.toContain("Found 0 exact matches");
+    expect(html).not.toContain('data-tool-view="relationship_context_search"');
   });
 
   it("renders exact recall source-record results as logged context, not confirmed fact", () => {
@@ -193,10 +195,11 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain('href="/people/person-1"');
   });
 
-  it("renders an unknown tool result as a quiet generic confirmation", () => {
+  it("renders an unknown tool result as a quiet ambient line", () => {
     const html = render({ kind: "generic", toolName: "some_future_tool" });
 
-    expect(html).toContain("Done");
+    // The humanized name carries it; no card chrome and no redundant "Done".
     expect(html).toContain("some future tool");
+    expect(html).not.toContain('data-tool-view="generic"');
   });
 });

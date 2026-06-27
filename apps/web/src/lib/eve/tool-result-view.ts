@@ -133,6 +133,42 @@ export function assistantToolViewKey(view: AssistantToolView): string {
   }
 }
 
+/** Visual weight a rendered tool result earns (see assistant-tool-result.tsx). */
+export type ToolViewTier = "line" | "card" | "disclosure";
+
+/**
+ * Tiers a tool result by how much the user needs to notice it. Ambient lookups
+ * recede to a quiet inline line; durable, trust-bearing state changes (saved
+ * memory, added person, logged note, tentative suggestion) keep the card; a
+ * non-empty result set collapses behind a one-line summary the user can expand.
+ */
+export function toolViewTier(view: AssistantToolView): ToolViewTier {
+  switch (view.kind) {
+    case "generic":
+    case "person_context":
+      return "line";
+    case "relationship_context_search":
+      return view.results.length > 0 ? "disclosure" : "line";
+    default:
+      return "card";
+  }
+}
+
+const ACTIVE_TOOL_LABELS: Record<string, string> = {
+  search_people: "Searching people…",
+  search_relationship_context: "Searching your notebook…",
+  get_person_context: "Recalling…",
+  get_suggested_memory_review: "Checking for suggestions…",
+  capture_source_record: "Logging…",
+  capture_memory: "Saving to memory…",
+  create_person: "Adding to your notebook…",
+};
+
+/** Present-continuous label for an in-flight tool call (the shimmer line). */
+export function activeToolLabel(toolName: string): string {
+  return ACTIVE_TOOL_LABELS[toolName] ?? `${toolName.replace(/_/g, " ")}…`;
+}
+
 /**
  * Maps one persisted Eve tool result into a renderable view, keyed on the tool
  * that produced it. Parsing is total: any shape that does not match the expected

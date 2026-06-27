@@ -211,6 +211,20 @@ Empty states teach the next action without guilt:
 Use skeletons shaped like the eventual content. Avoid centered spinners except for
 small isolated controls.
 
+### Scrollbars
+
+Tendnote uses a **custom themed scrollbar** (see `globals.css`): a slim rounded
+pill with no track and no arrow buttons, in a **neutral ink tint** that darkens on
+hover/active. This is a deliberate, documented exception to the generic "don't
+restyle scrollbars" product caution — the chunky OS default with arrow buttons
+reads as foreign chrome inside a calm, intentional surface. The rules: the flair
+is the form (slim pill, no buttons), not color; keep it a neutral ink tint, **not
+sage** — a branded scrollbar competes with the primary action and over-greens the
+screen; and keep the thumb clearly visible and mouse-operable in both themes.
+`scrollbar-width: thin` + `scrollbar-color` cover Firefox; `::-webkit-scrollbar-*`
+cover Chromium. Do not push this into novelty (no animated, oversized, or
+hidden-until-hover scrollbars) — on-brand and unobtrusive, not a gimmick.
+
 ## 7. Motion
 
 Motion is responsive, not choreographed.

@@ -1,6 +1,6 @@
 import type { EveMessage } from "eve/react";
 import { describe, expect, it } from "vitest";
-import { messageText, messageToolViews } from "./message-views";
+import { messageActiveToolViews, messageText, messageToolViews } from "./message-views";
 
 describe("messageText (streamed assistant text)", () => {
   it("concatenates text parts in order and ignores non-text parts", () => {
@@ -127,5 +127,76 @@ describe("messageToolViews (persisted tool results → renderable views)", () =>
     };
 
     expect(messageToolViews(message)).toEqual([]);
+  });
+});
+
+describe("messageActiveToolViews (in-flight tool calls → working lines)", () => {
+  it("surfaces input-streaming and input-available calls with present-continuous labels", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "search_people",
+          state: "input-available",
+          input: { query: "Alex" },
+        },
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-2",
+          toolName: "do_a_new_thing",
+          state: "input-streaming",
+          input: {},
+        },
+      ],
+    };
+
+    expect(messageActiveToolViews(message)).toEqual([
+      { toolCallId: "call-1", label: "Searching people…" },
+      { toolCallId: "call-2", label: "do a new thing…" },
+    ]);
+  });
+
+  it("skips completed, errored, and non-assistant parts", () => {
+    const completed: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-1",
+          toolName: "search_people",
+          state: "output-available",
+          input: {},
+          output: { people: [], requiresDisambiguation: false },
+        },
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-2",
+          toolName: "capture_memory",
+          state: "output-error",
+          errorText: "boom",
+          input: {},
+        },
+      ],
+    };
+    const onUser: EveMessage = {
+      id: "m2",
+      role: "user",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolCallId: "call-3",
+          toolName: "search_people",
+          state: "input-available",
+          input: {},
+        },
+      ],
+    };
+
+    expect(messageActiveToolViews(completed)).toEqual([]);
+    expect(messageActiveToolViews(onUser)).toEqual([]);
   });
 });

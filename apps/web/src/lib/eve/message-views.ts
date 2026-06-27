@@ -1,5 +1,5 @@
 import type { EveDynamicToolPart, EveMessage, EveMessagePart } from "eve/react";
-import { type AssistantToolView, toAssistantToolView } from "./tool-result-view";
+import { type AssistantToolView, activeToolLabel, toAssistantToolView } from "./tool-result-view";
 
 function isTextPart(part: EveMessagePart): part is Extract<EveMessagePart, { type: "text" }> {
   return part.type === "text";
@@ -10,6 +10,16 @@ function isCompletedToolPart(
   part: EveMessagePart,
 ): part is EveDynamicToolPart & { state: "output-available"; output: unknown } {
   return part.type === "dynamic-tool" && part.state === "output-available";
+}
+
+/** A tool call still running — no persisted output yet (the working line). */
+function isActiveToolPart(
+  part: EveMessagePart,
+): part is EveDynamicToolPart & { state: "input-streaming" | "input-available" } {
+  return (
+    part.type === "dynamic-tool" &&
+    (part.state === "input-streaming" || part.state === "input-available")
+  );
 }
 
 /**
@@ -45,5 +55,29 @@ export function messageToolViews(message: EveMessage): AssistantToolEntry[] {
   return message.parts.filter(isCompletedToolPart).map((part) => ({
     toolCallId: part.toolCallId,
     view: toAssistantToolView({ toolName: part.toolName, output: part.output }),
+  }));
+}
+
+/** One in-flight tool call, surfaced as a transient "working" shimmer line. */
+export type AssistantActiveTool = {
+  readonly toolCallId: string;
+  readonly label: string;
+};
+
+/**
+ * In-flight tool calls on an assistant message. These carry no persisted output
+ * yet, so the UI shows them as ephemeral shimmer activity ("Searching people…")
+ * that is replaced by the real view once the call reaches `output-available`
+ * (see {@link messageToolViews}). Pending approval, error, denied, and
+ * non-assistant parts are skipped (ADR 0028, ADR 0029).
+ */
+export function messageActiveToolViews(message: EveMessage): AssistantActiveTool[] {
+  if (message.role !== "assistant") {
+    return [];
+  }
+
+  return message.parts.filter(isActiveToolPart).map((part) => ({
+    toolCallId: part.toolCallId,
+    label: activeToolLabel(part.toolName),
   }));
 }

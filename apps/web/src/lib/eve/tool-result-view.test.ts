@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { assistantToolViewKey, toAssistantToolView } from "./tool-result-view";
+import {
+  activeToolLabel,
+  assistantToolViewKey,
+  toAssistantToolView,
+  toolViewTier,
+} from "./tool-result-view";
 
 describe("toAssistantToolView (Eve tool output → renderable view)", () => {
   it("renders a capture_source_record result as logged context with its persisted id", () => {
@@ -245,5 +250,80 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         ],
       }),
     ).toBe("search:person-1");
+  });
+});
+
+describe("toolViewTier (how much weight a result earns)", () => {
+  it("keeps durable, trust-bearing results as cards", () => {
+    expect(
+      toolViewTier({
+        kind: "saved_memory",
+        memoryId: "m1",
+        sourceRecordId: null,
+        personId: null,
+        personName: null,
+        content: "x",
+      }),
+    ).toBe("card");
+    expect(
+      toolViewTier({
+        kind: "added_person",
+        personId: "p1",
+        displayName: "A",
+        relationshipType: null,
+      }),
+    ).toBe("card");
+    expect(
+      toolViewTier({
+        kind: "suggested_memory_review",
+        memoryId: "m1",
+        content: "x",
+        sourceRecordId: null,
+      }),
+    ).toBe("card");
+  });
+
+  it("recedes ambient lookups to a quiet line", () => {
+    expect(toolViewTier({ kind: "generic", toolName: "search_people" })).toBe("line");
+    expect(
+      toolViewTier({
+        kind: "person_context",
+        personId: "p1",
+        personName: "Alex",
+        snapshotStatus: "fresh",
+        approvedCount: 2,
+        loggedCount: 1,
+        suggestedCount: 0,
+      }),
+    ).toBe("line");
+  });
+
+  it("collapses a non-empty search behind a disclosure but lines an empty one", () => {
+    const result = {
+      recordKind: "person" as const,
+      recordId: "p1",
+      relatedPersonId: "p1",
+      relatedPersonDisplayName: "Alex",
+      label: "Alex",
+      snippet: "x",
+      matchedFields: ["displayName"],
+      trustLevel: "identity_reference" as const,
+      sensitivity: "normal" as const,
+    };
+    expect(toolViewTier({ kind: "relationship_context_search", results: [result] })).toBe(
+      "disclosure",
+    );
+    expect(toolViewTier({ kind: "relationship_context_search", results: [] })).toBe("line");
+  });
+});
+
+describe("activeToolLabel (in-flight tool → working copy)", () => {
+  it("maps known tools to present-continuous labels", () => {
+    expect(activeToolLabel("search_relationship_context")).toBe("Searching your notebook…");
+    expect(activeToolLabel("capture_memory")).toBe("Saving to memory…");
+  });
+
+  it("humanizes unknown tools with a trailing ellipsis", () => {
+    expect(activeToolLabel("some_future_tool")).toBe("some future tool…");
   });
 });

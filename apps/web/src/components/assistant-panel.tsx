@@ -2,8 +2,12 @@
 
 import { type EveMessage, useEveAgent } from "eve/react";
 import { BugIcon, LockIcon, NotebookPenIcon } from "lucide-react";
-import { useState } from "react";
-import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
+import { useEffect, useRef, useState } from "react";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import {
   PromptInput,
@@ -16,8 +20,8 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
-import { messageText, messageToolViews } from "@/lib/eve/message-views";
-import type { SourceRecordReviewView } from "@/lib/source-record-review-view";
+import { Shimmer } from "@/components/ui/shimmer";
+import { messageActiveToolViews, messageText, messageToolViews } from "@/lib/eve/message-views";
 import { cn } from "@/lib/utils";
 
 export type AssistantPersonContext = {
@@ -27,23 +31,6 @@ export type AssistantPersonContext = {
 
 type AgentStatus = ReturnType<typeof useEveAgent>["status"];
 
-const SOURCE_LABELS: Record<string, string> = {
-  manual: "Manual note",
-  agent: "Assistant note",
-  seed: "Sample note",
-  contact_import: "Imported contact",
-  calendar: "Calendar",
-  gmail: "Email",
-};
-
-function formatCaptured(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function sourceLabel(sourceType: string): string {
-  return SOURCE_LABELS[sourceType] ?? `${sourceType} context`;
-}
-
 /** Owner-safe one-turn client context for the agent, or none when unscoped. */
 function clientContextFor(context?: AssistantPersonContext) {
   return context
@@ -51,13 +38,7 @@ function clientContextFor(context?: AssistantPersonContext) {
     : undefined;
 }
 
-export function AssistantPanel({
-  initialSourceRecordReviews = [],
-  context,
-}: {
-  initialSourceRecordReviews?: SourceRecordReviewView[];
-  context?: AssistantPersonContext;
-}) {
+export function AssistantPanel({ context }: { context?: AssistantPersonContext }) {
   // Stream turns directly from the same-origin Eve mount (withEve). The hook owns
   // the durable Eve session, so follow-up turns continue the same conversation
   // without a Tendnote chat transcript (ADR 0030). Durable product state still
@@ -87,7 +68,7 @@ export function AssistantPanel({
 
   return (
     <section
-      className="flex h-full min-h-[30rem] flex-col rounded-xl border bg-panel lg:min-h-[34rem]"
+      className="flex h-full min-h-[30rem] flex-col rounded-xl border bg-panel lg:min-h-0"
       id="assistant"
     >
       <AssistantHeader
@@ -96,14 +77,15 @@ export function AssistantPanel({
         showDebug={showDebug}
       />
 
+      {/* The leading flex-1 spacer (in AssistantConversation) anchors a short
+          conversation to the bottom; it collapses once messages overflow so the
+          transcript scrolls normally. Do NOT use `justify-end` here — with
+          overflow it traps the top of the transcript out of scroll range. */}
       <Conversation className="min-h-0 flex-1">
-        <ConversationContent className="min-h-full justify-end gap-4 p-4 sm:p-5">
-          <AssistantConversation
-            history={initialSourceRecordReviews}
-            messages={messages}
-            status={agent.status}
-          />
+        <ConversationContent className="min-h-full gap-4 p-4 sm:p-5">
+          <AssistantConversation messages={messages} status={agent.status} />
         </ConversationContent>
+        <ConversationScrollButton />
       </Conversation>
 
       {/* Eve turn trace; toggled from the header. */}
@@ -170,29 +152,21 @@ function AssistantHeader({
   );
 }
 
-/** Capture history then the live turn, or the empty state before either exists. */
+/** The live conversation, or the empty state before a first turn exists. */
 function AssistantConversation({
-  history,
   messages,
   status,
 }: {
-  history: readonly SourceRecordReviewView[];
   messages: readonly EveMessage[];
   status: AgentStatus;
 }) {
-  const hasContent = history.length > 0 || messages.length > 0;
-
-  if (!hasContent) {
+  if (messages.length === 0 && status !== "submitted") {
     return <EmptyCapture />;
   }
 
   return (
     <>
       <div aria-hidden className="min-h-0 flex-1" />
-      {history.map((review) => (
-        <CaptureNote key={`history-${review.sourceRecord.id}`} review={review} />
-      ))}
-      <HistoryDivider hasHistory={history.length > 0} hasMessages={messages.length > 0} />
       {messages.map((message) => (
         <MessageTurn key={message.id} message={message} />
       ))}
@@ -201,22 +175,7 @@ function AssistantConversation({
   );
 }
 
-/** Hairline only when persisted history sits above a live conversation. */
-function HistoryDivider({
-  hasHistory,
-  hasMessages,
-}: {
-  hasHistory: boolean;
-  hasMessages: boolean;
-}) {
-  if (!hasHistory || !hasMessages) {
-    return null;
-  }
-
-  return <div aria-hidden className="h-px bg-border" />;
-}
-
-/** One conversation turn: the user prompt, or assistant text plus tool results. */
+/** One conversation turn: the user prompt, or assistant text plus tool activity. */
 function MessageTurn({ message }: { message: EveMessage }) {
   if (message.role === "user") {
     return (
@@ -228,6 +187,7 @@ function MessageTurn({ message }: { message: EveMessage }) {
 
   const text = messageText(message);
   const views = messageToolViews(message);
+  const active = messageActiveToolViews(message);
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -241,19 +201,57 @@ function MessageTurn({ message }: { message: EveMessage }) {
       {views.map(({ toolCallId, view }) => (
         <AssistantToolResult isNew key={`${message.id}:${toolCallId}`} view={view} />
       ))}
+      {active.map((tool) => (
+        <WorkingLine key={`${message.id}:${tool.toolCallId}`} label={tool.label} />
+      ))}
     </div>
   );
 }
 
-/** Live turn status line: thinking while a turn streams, or a reach error. */
+/** Transient shimmer line for an in-flight tool call or the pre-token wait. */
+function WorkingLine({ label }: { label: string }) {
+  return (
+    <p className="flex items-center gap-1.5 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+      <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
+      <Shimmer>{label}</Shimmer>
+    </p>
+  );
+}
+
+/**
+ * Defers a transient flag so it only shows after `delay` and, once shown, stays
+ * for at least `minVisible`. Eve often answers in under a beat; without this the
+ * "Thinking…" shimmer flickers on and off in a blink. A fast turn never trips
+ * `delay`, so the shimmer simply never appears; a slower one shows steadily.
+ */
+function useDeferredFlag(active: boolean, { delay = 350, minVisible = 450 } = {}): boolean {
+  const [show, setShow] = useState(false);
+  const shownAt = useRef(0);
+
+  useEffect(() => {
+    if (active === show) {
+      return;
+    }
+
+    if (active) {
+      const timer = setTimeout(() => {
+        shownAt.current = Date.now();
+        setShow(true);
+      }, delay);
+      return () => clearTimeout(timer);
+    }
+
+    const remaining = Math.max(0, minVisible - (Date.now() - shownAt.current));
+    const timer = setTimeout(() => setShow(false), remaining);
+    return () => clearTimeout(timer);
+  }, [active, show, delay, minVisible]);
+
+  return show;
+}
+
+/** Live turn status: a shimmer while a turn spins up, or a reach error. */
 function TurnStatus({ status }: { status: AgentStatus }) {
-  if (status === "submitted") {
-    return (
-      <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-        Thinking…
-      </p>
-    );
-  }
+  const thinking = useDeferredFlag(status === "submitted");
 
   if (status === "error") {
     return (
@@ -266,7 +264,7 @@ function TurnStatus({ status }: { status: AgentStatus }) {
     );
   }
 
-  return null;
+  return thinking ? <WorkingLine label="Thinking…" /> : null;
 }
 
 function AssistantComposer({
@@ -299,40 +297,6 @@ function AssistantComposer({
           <PromptInputSubmit status={status} />
         </PromptInputFooter>
       </PromptInput>
-    </div>
-  );
-}
-
-function CaptureNote({
-  review,
-  isNew = false,
-}: {
-  review: SourceRecordReviewView;
-  isNew?: boolean;
-}) {
-  const { sourceRecord, component } = review;
-
-  return (
-    <div
-      className={cn(
-        "rounded-lg border bg-card p-3.5",
-        isNew && "fade-in slide-in-from-bottom-1 animate-in duration-200 ease-(--motion-ease-out)",
-      )}
-      data-component-type={component.type}
-      data-source-record-id={component.sourceRecordId}
-    >
-      <p className="max-w-[68ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-        {sourceRecord.content}
-      </p>
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t pt-2.5">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
-          <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-          Ready to review
-        </span>
-        <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
-          {sourceLabel(sourceRecord.sourceType)} · {formatCaptured(sourceRecord.createdAt)}
-        </span>
-      </div>
     </div>
   );
 }

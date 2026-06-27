@@ -34,8 +34,12 @@ export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
 export const MessageContent = ({ children, className, ...props }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
+      "flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
+      // The user's own words sit in a quiet sage-tinted bubble — distinct from
+      // the plain assistant text and from the bordered tool-result cards. A flat
+      // neutral fill is invisible here because --secondary/--muted/--panel share
+      // one value, so the tint carries the distinction.
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-2xl group-[.is-user]:bg-primary/10 group-[.is-user]:px-3.5 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground",
       "group-[.is-assistant]:text-foreground",
       className,
     )}

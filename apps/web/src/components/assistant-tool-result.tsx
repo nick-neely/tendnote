@@ -1,24 +1,32 @@
 import {
   BookOpenIcon,
   CheckIcon,
+  ChevronDownIcon,
   NotebookPenIcon,
   SearchIcon,
   UserIcon,
   UserPlusIcon,
 } from "lucide-react";
 import Link from "next/link";
-import type {
-  AssistantToolView,
-  RelationshipContextSearchResultView,
+import {
+  type AssistantToolView,
+  type RelationshipContextSearchResultView,
+  toolViewTier,
 } from "@/lib/eve/tool-result-view";
 import { cn } from "@/lib/utils";
 
 /**
- * Renders one persisted Eve tool result as a calm Field Notebook card. The
- * visual weight tracks trust: sage confirmation for saved memories and added
- * people, a quiet neutral note for logged context, and the clay review capsule
- * for tentative suggestions. Tentative and logged context are never shown with
- * the confirmed-fact treatment (ADR 0004, ADR 0029).
+ * Renders one persisted Eve tool result at a visual weight that tracks how much
+ * the user needs to notice it (see {@link toolViewTier}):
+ *
+ * - **line** — ambient lookups (a search, a recall) recede to a quiet inline
+ *   row with no card chrome, so a turn's housekeeping reads like a margin note.
+ * - **card** — durable, trust-bearing state changes (saved memory, added
+ *   person, logged note, tentative suggestion) keep the Field Notebook card and
+ *   its trust-weighted treatment. Tentative and logged context are never shown
+ *   with the confirmed-fact treatment (ADR 0004, ADR 0029).
+ * - **disclosure** — a result set collapses behind a one-line summary the user
+ *   can expand on demand.
  */
 export function AssistantToolResult({
   view,
@@ -27,115 +35,186 @@ export function AssistantToolResult({
   view: AssistantToolView;
   isNew?: boolean;
 }) {
-  if (view.kind === "generic") {
-    return (
-      <Shell isNew={isNew} kind={view.kind}>
-        <StatusRow
-          icon={<span aria-hidden className="size-1.5 rounded-full bg-muted-foreground/60" />}
-          label="Done"
-        />
-        <Caption>{humanizeToolName(view.toolName)}</Caption>
-      </Shell>
-    );
+  switch (toolViewTier(view)) {
+    case "line":
+      return <LineView isNew={isNew} view={view} />;
+    case "disclosure":
+      return <DisclosureView isNew={isNew} view={view} />;
+    default:
+      return <CardView isNew={isNew} view={view} />;
   }
+}
 
-  if (view.kind === "saved_memory") {
-    return (
-      <Shell isNew={isNew} kind={view.kind}>
-        <StatusRow
-          icon={<CheckIcon aria-hidden className="size-3.5 text-primary" />}
-          label="Saved to memory"
-        />
-        <Body>{view.content}</Body>
-        <Caption>
-          Confirmed fact{view.personName ? ` · ${view.personName}` : ""}
-          {view.sourceRecordId ? " · grounded in a source record" : ""}
-        </Caption>
-      </Shell>
-    );
-  }
-
-  if (view.kind === "saved_source_record") {
-    return (
-      <Shell isNew={isNew} kind={view.kind}>
-        <StatusRow
-          icon={<NotebookPenIcon aria-hidden className="size-3.5 text-muted-foreground" />}
-          label="Logged"
-        />
-        <Body>
-          <span className="text-muted-foreground">You noted: </span>
-          {view.content}
-        </Body>
-        <Caption>Logged context — saved for review, not a confirmed fact</Caption>
-      </Shell>
-    );
-  }
-
-  if (view.kind === "added_person") {
-    return (
-      <Shell isNew={isNew} kind={view.kind}>
-        <StatusRow
-          icon={<UserPlusIcon aria-hidden className="size-3.5 text-primary" />}
-          label="Added to your notebook"
-        />
-        <Body>{view.displayName}</Body>
-        {view.relationshipType ? <Caption>{view.relationshipType}</Caption> : null}
-      </Shell>
-    );
-  }
-
+/** Quiet ambient row: an Eve lookup that happened, kept out of the way. */
+function LineView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) {
   if (view.kind === "person_context") {
     return (
-      <Shell isNew={isNew} kind={view.kind}>
-        <StatusRow
-          icon={<BookOpenIcon aria-hidden className="size-3.5 text-muted-foreground" />}
-          label={`Recalled ${view.personName ?? "this person"}`}
-        />
-        <Caption>{summarizeTiers(view)}</Caption>
-        <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
+      <ToolActivityLine icon={<BookOpenIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+        Recalled {view.personName ?? "this person"}
+        <span className="text-muted-foreground/80"> · {summarizeTiers(view)}</span>
+        <span className="ml-1.5 font-mono text-[length:var(--text-caption)] text-muted-foreground/70">
           snapshot {view.snapshotStatus}
         </span>
-      </Shell>
+      </ToolActivityLine>
     );
   }
 
   if (view.kind === "relationship_context_search") {
     return (
-      <Shell isNew={isNew} kind={view.kind}>
-        <StatusRow
-          icon={<SearchIcon aria-hidden className="size-3.5 text-muted-foreground" />}
-          label={
-            view.results.length === 1
-              ? "Found 1 exact match"
-              : `Found ${view.results.length} exact matches`
-          }
-        />
-        {view.results.length > 0 ? (
-          <div className="flex flex-col divide-y divide-border/70">
-            {view.results.map((result) => (
-              <SearchResultRow key={`${result.recordKind}:${result.recordId}`} result={result} />
-            ))}
-          </div>
-        ) : (
-          <Caption>No matching relationship context found</Caption>
-        )}
-      </Shell>
+      <ToolActivityLine icon={<SearchIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+        No matching relationship context found
+      </ToolActivityLine>
     );
   }
 
-  // suggested_memory_review — tentative, never asserted as fact.
+  // generic — an unrecognized tool ran to completion; name it and move on.
+  if (view.kind === "generic") {
+    return (
+      <ToolActivityLine
+        icon={<span aria-hidden className="size-1.5 rounded-full bg-muted-foreground/50" />}
+        isNew={isNew}
+      >
+        {humanizeToolName(view.toolName)}
+      </ToolActivityLine>
+    );
+  }
+
+  return null;
+}
+
+/** Collapsible summary for a non-empty result set; expands to the full list. */
+function DisclosureView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) {
+  if (view.kind !== "relationship_context_search") {
+    return null;
+  }
+
+  const count = view.results.length;
+
   return (
-    <Shell isNew={isNew} kind={view.kind}>
-      <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
-        <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-        Ready to review
+    <details
+      className={cn(
+        "group rounded-lg border bg-card [&[open]_.tn-chevron]:rotate-180",
+        isNew && "fade-in slide-in-from-bottom-1 animate-in duration-200 ease-(--motion-ease-out)",
+      )}
+      data-tool-view={view.kind}
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg p-3.5 text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <SearchIcon aria-hidden className="size-3.5 shrink-0" />
+        <span>{count === 1 ? "Found 1 exact match" : `Found ${count} exact matches`}</span>
+        <ChevronDownIcon
+          aria-hidden
+          className="tn-chevron ml-auto size-3.5 shrink-0 transition-transform duration-200 ease-(--motion-ease-out)"
+        />
+      </summary>
+      <div className="flex flex-col divide-y divide-border/70 border-t px-3.5 pt-3 pb-3.5">
+        {view.results.map((result) => (
+          <SearchResultRow key={`${result.recordKind}:${result.recordId}`} result={result} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+/** Durable, trust-bearing result that earns the Field Notebook card. */
+function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) {
+  if (view.kind === "saved_memory") {
+    return (
+      <ResultCard
+        footer={
+          <Caption>
+            Confirmed fact{view.personName ? ` · ${view.personName}` : ""}
+            {view.sourceRecordId ? " · grounded in a source record" : ""}
+          </Caption>
+        }
+        icon={<CheckIcon className="size-3" />}
+        isNew={isNew}
+        kind={view.kind}
+        label="Saved to memory"
+        tone="confirmed"
+      >
+        <Body>{view.content}</Body>
+      </ResultCard>
+    );
+  }
+
+  if (view.kind === "added_person") {
+    return (
+      <ResultCard
+        footer={view.relationshipType ? <Caption>{view.relationshipType}</Caption> : undefined}
+        icon={<UserPlusIcon className="size-3" />}
+        isNew={isNew}
+        kind={view.kind}
+        label="Added to your notebook"
+        tone="confirmed"
+      >
+        <Body>{view.displayName}</Body>
+      </ResultCard>
+    );
+  }
+
+  if (view.kind === "saved_source_record") {
+    return (
+      <ResultCard
+        footer={<Caption>Logged context — saved for review, not a confirmed fact</Caption>}
+        icon={<NotebookPenIcon className="size-3" />}
+        isNew={isNew}
+        kind={view.kind}
+        label="Logged"
+        tone="neutral"
+      >
+        <Body>
+          <span className="text-muted-foreground">You noted: </span>
+          {view.content}
+        </Body>
+      </ResultCard>
+    );
+  }
+
+  if (view.kind === "suggested_memory_review") {
+    return (
+      <ResultCard
+        footer={<Caption>Tentative — not saved until you approve it</Caption>}
+        isNew={isNew}
+        kind={view.kind}
+        tone="tentative"
+      >
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
+          <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+          Ready to review
+        </span>
+        <Body>
+          <span className="text-muted-foreground">Suggested: </span>
+          {view.content}
+        </Body>
+      </ResultCard>
+    );
+  }
+
+  return null;
+}
+
+/** Quiet ambient line shared by completed lookups (the line tier). */
+function ToolActivityLine({
+  icon,
+  children,
+  isNew,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  isNew: boolean;
+}) {
+  return (
+    <p
+      className={cn(
+        "flex items-center gap-1.5 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]",
+        isNew && "fade-in animate-in duration-200 ease-(--motion-ease-out)",
+      )}
+    >
+      <span aria-hidden className="flex size-3.5 shrink-0 items-center justify-center">
+        {icon}
       </span>
-      <Body>
-        <span className="text-muted-foreground">Suggested: </span>
-        {view.content}
-      </Body>
-      <Caption>Tentative — not saved until you approve it</Caption>
-    </Shell>
+      <span className="min-w-0">{children}</span>
+    </p>
   );
 }
 
@@ -180,34 +259,82 @@ function SearchResultRow({ result }: { result: RelationshipContextSearchResultVi
   );
 }
 
-function Shell({
+type CardTone = "confirmed" | "neutral" | "tentative";
+
+/**
+ * Trust-weighted surface for a tool-result card. Confirmed saves carry a quiet
+ * sage wash (sage = confirmed in the system), logged context stays neutral, and
+ * tentative suggestions take a clay wash — so the card's color says how much to
+ * trust it before a word is read (DESIGN.md §3, ADR 0004, ADR 0029).
+ */
+const CARD_TONE: Record<
+  CardTone,
+  { surface: string; divider: string; chip: string; label: string }
+> = {
+  confirmed: {
+    surface: "border-primary/20 bg-primary/[0.05]",
+    divider: "border-primary/15",
+    chip: "bg-primary/15 text-primary",
+    label: "text-primary",
+  },
+  neutral: {
+    surface: "border-border bg-card",
+    divider: "border-border",
+    chip: "bg-secondary text-muted-foreground",
+    label: "text-foreground",
+  },
+  tentative: {
+    surface: "border-accent/25 bg-accent-soft/45",
+    divider: "border-accent/20",
+    chip: "bg-accent/15 text-accent",
+    label: "text-accent-soft-foreground",
+  },
+};
+
+function ResultCard({
+  tone,
+  icon,
+  label,
+  footer,
   children,
   isNew,
   kind,
 }: {
+  tone: CardTone;
+  icon?: React.ReactNode;
+  label?: string;
+  footer?: React.ReactNode;
   children: React.ReactNode;
   isNew: boolean;
   kind: AssistantToolView["kind"];
 }) {
+  const t = CARD_TONE[tone];
+
   return (
     <article
       className={cn(
-        "flex flex-col gap-2 rounded-lg border bg-card p-3.5",
+        "flex flex-col gap-2.5 rounded-xl border p-3.5",
+        t.surface,
         isNew && "fade-in slide-in-from-bottom-1 animate-in duration-200 ease-(--motion-ease-out)",
       )}
       data-tool-view={kind}
     >
+      {icon && label ? (
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className={cn("flex size-5 shrink-0 items-center justify-center rounded-full", t.chip)}
+          >
+            {icon}
+          </span>
+          <span className={cn("text-[length:var(--text-small)] font-medium", t.label)}>
+            {label}
+          </span>
+        </div>
+      ) : null}
       {children}
+      {footer ? <div className={cn("border-t pt-2.5", t.divider)}>{footer}</div> : null}
     </article>
-  );
-}
-
-function StatusRow({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-[length:var(--text-small)] text-muted-foreground">
-      {icon}
-      {label}
-    </span>
   );
 }
 
