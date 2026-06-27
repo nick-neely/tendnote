@@ -991,9 +991,21 @@ Deliverables:
 ##### Phase 1E.5: LLM Suggested-Memory Extraction
 
 - Replace deterministic source-record-to-suggested-memory extraction with an LLM adapter after the review UI, lifecycle rules, source provenance, policy tests, and manual follow-up foundation are stable.
+- Treat the LLM adapter as the production extraction path. Keep deterministic extraction available only as a replaceable test/local-fixture/fallback adapter, not as a silent production fallback that creates lower-quality suggestions when the model path fails.
+- If the LLM adapter is unavailable or fails, use the existing `extraction_jobs` retry, failure, and audit lifecycle so model/provider problems are observable and recoverable.
 - Keep the Postgres `extraction_jobs` lifecycle, idempotency key, audit log entries, sensitivity policy, person-resolution gates, and save/edit/dismiss review loop unchanged.
+- Run LLM extraction once per eligible source record, passing retained source-record content plus the resolved people linked to that record. Do not run one model call per person link.
+- The adapter should return zero or more atomic candidate memories, each tagged to a resolved `personId`; it must not create or infer new people, attach suggestions to unresolved mentions, or bypass the shared processor's per-person idempotency checks.
+- Let the adapter propose `memoryType`, `importance`, `confidence`, and `sensitivity` for each candidate, but validate those values against existing enums/ranges and treat them as bounded classifications rather than policy authority.
+- Apply hard source-record policy gates before model invocation, preserve manual/user sensitivity overrides, and choose the stricter sensitivity when model classification is more restrictive than the source record. The review UI remains the correction point before approval.
 - The model should propose small atomic suggested memories from retained source-record content, not create approved memories, follow-ups, drafts, people, or external actions.
-- Add extraction-quality eval coverage before LLM extraction is allowed to feed daily briefs or message drafting as more than clearly tentative review hints.
+- Add extraction-quality fixture coverage before LLM extraction is allowed to feed daily briefs or message drafting as more than clearly tentative review hints.
+- Cover messy relationship-note fixtures, including multi-person notes, no-memory notes, sensitive/restricted content, ambiguous people, over-specific claims, split atomic facts, and "do not infer" cases.
+- Keep normal verification on fake or deterministic adapters for schema parsing, policy gates, idempotency, retry/failure behavior, and fixture regression. Any live-model evals must be explicit and credential-gated.
+- Persist extraction provenance in audit or job metadata only, not as first-class memory fields. Capture adapter kind, extraction model, prompt/schema version, candidate count, and rejected/invalid candidate count where useful for debugging and evals.
+- If job-level provenance is needed, add `metadata_json` to `extraction_jobs`; otherwise write richer `audit_log.metadata_json` for `memory.suggest`, `extraction_job.completed`, and `extraction_job.failed`. Do not add `model_version` or similar columns to `memories` in Phase 1E.5.
+- Do not add a new user-facing review surface for LLM extraction. Phase 1E.5 should improve the existing suggested-memory pipeline and continue using the person ledger, dashboard review rail, and Eve chat cards for review.
+- The only user-visible change should be better suggested-memory candidate quality and metadata already supported by the existing review UI, not a new extraction inbox, page, or assistant mode.
 
 ##### Phase 1F: Persisted Daily Brief
 

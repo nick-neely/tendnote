@@ -1,0 +1,3 @@
+# LLM Extraction Metadata Is Bounded Classification
+
+Phase 1E.5 may let the LLM extraction adapter propose `memoryType`, `importance`, `confidence`, and `sensitivity` for each suggested-memory candidate, but those values are bounded classifications rather than policy authority. The shared processor must validate them against existing enums and ranges, apply hard source-record policy gates before model invocation, preserve manual/user overrides, and choose the stricter sensitivity when model classification is more restrictive than the source record; the review loop remains where the user can correct candidate wording and metadata before approval.
