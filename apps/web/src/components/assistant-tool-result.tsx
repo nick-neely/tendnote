@@ -4,7 +4,6 @@ import {
   CheckIcon,
   ChevronDownIcon,
   NotebookPenIcon,
-  PenLineIcon,
   SearchIcon,
   UserIcon,
   UserPenIcon,
@@ -248,30 +247,10 @@ function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
     );
   }
 
-  if (view.kind === "message_draft") {
-    return (
-      <ResultCard
-        footer={
-          <Caption>
-            Tendnote-only draft — review and copy to send yourself. Nothing was sent.
-          </Caption>
-        }
-        icon={<PenLineIcon className="size-3" />}
-        isNew={isNew}
-        kind={view.kind}
-        label="Drafted a message"
-        tone="neutral"
-      >
-        <Body>{view.body}</Body>
-        {view.grounding.length ? (
-          <p className="mt-2 text-[length:var(--text-caption)] text-muted-foreground">
-            Grounded in {view.grounding.map((item) => item.label).join(", ")}
-          </p>
-        ) : null}
-      </ResultCard>
-    );
-  }
-
+  // message_draft is rendered by the interactive ChatDraftCard (inline WYSIWYG edit
+  // + copy), routed at the panel level so this presentational module stays free of
+  // the client editor and server actions that card needs.
+  //
   // suggested_memory_review is rendered by the interactive ChatReviewCard, routed
   // at the panel level so this presentational module stays free of the server
   // actions (and their `server-only` import) the inline approve/dismiss needs.

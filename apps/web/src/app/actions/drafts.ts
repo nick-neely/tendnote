@@ -5,6 +5,7 @@ import {
   dismissDraft,
   editDraftBody,
   type GenerateDraftOutcome,
+  getDraft,
   markDraftSentManually,
   regenerateDraft,
 } from "@tendnote/db/queries/drafts";
@@ -65,6 +66,21 @@ export async function editDraftBodyAction(input: {
 
   revalidatePath(`/people/${draft.personId}`);
   return toDraftView(draft);
+}
+
+/**
+ * Reads the authoritative persisted draft for the in-chat draft card (ADR-0028).
+ * Eve's tool output is snapshotted into the chat transcript, so on a later visit it
+ * replays the body as first generated; hydrating by id lets the card show the live
+ * record instead — reflecting an inline edit or a lifecycle change made on the
+ * person page. Owner-scoped and read-only; returns null if the draft is gone.
+ */
+export async function getDraftViewAction(input: { draftId: string }): Promise<DraftView | null> {
+  const { draftId } = draftActionSchema.parse(input);
+  const ownerUserId = await getCurrentOwnerUserId();
+  const draft = await getDraft({ ownerUserId, draftId });
+
+  return draft ? toDraftView(draft) : null;
 }
 
 export type RegenerateDraftResult = {

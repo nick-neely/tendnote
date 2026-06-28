@@ -266,6 +266,49 @@
   }
 }
 
+@layer components {
+  /*
+   * Tiptap draft editor surface. The editor is headless, so the rich-text content
+   * (.ProseMirror) is styled here to match the draft's read view exactly — body
+   * type, calm paragraph rhythm, light email-style formatting — so toggling between
+   * reading and editing a draft never shifts the layout. Sage focus, no inner
+   * chrome: the field is the message, not a form control.
+   */
+  .tn-rich-editor .ProseMirror {
+    font-size: var(--text-body);
+    line-height: var(--text-body-line);
+    color: var(--foreground);
+    outline: none;
+    min-height: 4.5rem;
+    max-width: 68ch;
+    text-wrap: pretty;
+  }
+
+  .tn-rich-editor .ProseMirror :where(p, ul, ol):not(:first-child) {
+    margin-top: 0.75rem;
+  }
+
+  .tn-rich-editor .ProseMirror :where(ul, ol) {
+    padding-left: 1.25rem;
+  }
+
+  .tn-rich-editor .ProseMirror ul {
+    list-style: disc;
+  }
+
+  .tn-rich-editor .ProseMirror ol {
+    list-style: decimal;
+  }
+
+  .tn-rich-editor .ProseMirror li::marker {
+    color: var(--muted-foreground);
+  }
+
+  .tn-rich-editor .ProseMirror strong {
+    font-weight: 600;
+  }
+}
+
 /*
  * Custom themed scrollbar — a deliberate exception to the generic "don't restyle
  * scrollbars" caution (see DESIGN.md §6). The flair is the form (slim rounded

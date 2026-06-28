@@ -89,6 +89,15 @@ describe("buildDraftPrompt", () => {
     expect(prompt).not.toContain("Tentative (unconfirmed) hints");
   });
 
+  it("allows light Markdown for an email draft but keeps text/chat plain", () => {
+    const email = buildDraftPrompt(context({ channel: "email", facts: ["Moved to Denver"] }));
+    expect(email).toMatch(/light Markdown/i);
+
+    const text = buildDraftPrompt(context({ channel: "text", facts: ["Moved to Denver"] }));
+    expect(text).toMatch(/no Markdown formatting/i);
+    expect(text).not.toMatch(/light Markdown/i);
+  });
+
   it("passes a tone request through to the model", () => {
     const prompt = buildDraftPrompt(
       context({ facts: ["Moved to Denver"], toneInstruction: "warmer and shorter" }),

@@ -21,6 +21,7 @@ import {
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
 import { AssistantToolGroup } from "@/components/assistant-tool-group";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
+import { ChatDraftCard } from "@/components/chat-draft-card";
 import {
   ChatFollowupReviewCard,
   ChatFollowupReviewList,
@@ -246,6 +247,12 @@ function MessageTurn({ message }: { message: EveMessage }) {
 
         if (view.kind === "suggested_followup_review_list") {
           return <ChatFollowupReviewList isNew key={key} view={view} />;
+        }
+
+        // The draft card is interactive (inline WYSIWYG edit + copy), so it routes
+        // here to the client card rather than the presentational tool-result module.
+        if (view.kind === "message_draft") {
+          return <ChatDraftCard isNew key={key} view={view} />;
         }
 
         return <AssistantToolResult isNew key={key} view={view} />;

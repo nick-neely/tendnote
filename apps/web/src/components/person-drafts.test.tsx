@@ -51,24 +51,23 @@ function view(overrides: Partial<DraftView> = {}): DraftView {
 }
 
 describe("PersonDrafts", () => {
-  it("renders a draft with status, body, grounding summary, and review actions", () => {
+  it("renders a draft with status, body, a grounding disclosure, and review actions", () => {
     const html = renderToStaticMarkup(
       <PersonDrafts initialDrafts={[view()]} personId={PERSON_ID} />,
     );
 
     expect(html).toContain("Draft");
     expect(html).toContain("heard you moved to Denver");
-    expect(html).toContain("Why this draft was written");
-    expect(html).toContain("Confirmed");
-    expect(html).toContain("Moved to Denver");
+    // Grounding and the Tendnote-only reassurance now live behind the shared
+    // "About this draft" disclosure (the popover content renders only when opened),
+    // so the draft itself leads instead of a wall of provenance.
+    expect(html).toContain("About this draft");
     expect(html).toContain("Copy");
     expect(html).toContain("Edit");
     expect(html).toContain("Regenerate");
     expect(html).toContain("Dismiss");
     expect(html).toContain("Approve");
     expect(html).toContain("Mark sent");
-    // Reinforces the Tendnote-only boundary.
-    expect(html).toContain("Nothing is sent or created outside Tendnote");
     // Raw ids are never user-facing copy.
     expect(html).not.toContain("33333333-3333-3333-3333-333333333333");
   });

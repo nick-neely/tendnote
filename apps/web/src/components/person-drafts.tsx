@@ -9,9 +9,12 @@ import {
   markDraftSentManuallyAction,
   regenerateDraftAction,
 } from "@/app/actions/drafts";
+import { DraftBody } from "@/components/draft-body";
+import { DraftEditor } from "@/components/draft-editor";
+import { DraftGroundingPopover } from "@/components/draft-grounding-popover";
 import { DraftMessageButton } from "@/components/draft-message-button";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { copyDraftToClipboard } from "@/lib/draft-markdown";
 import type { DraftView } from "@/lib/draft-view";
 
 export function PersonDrafts({
@@ -60,12 +63,10 @@ function DraftReviewCard({
   onAdd: (view: DraftView) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [body, setBody] = useState(draft.body);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const trimmed = body.trim();
   const isActive = draft.status === "draft" || draft.status === "approved";
 
   function run(action: () => Promise<void>, failure: string) {
@@ -82,7 +83,7 @@ function DraftReviewCard({
   async function handleCopy() {
     setError(null);
     try {
-      await navigator.clipboard.writeText(draft.body);
+      await copyDraftToClipboard(draft.body);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -90,21 +91,20 @@ function DraftReviewCard({
     }
   }
 
-  function handleApplyEdit() {
-    if (!trimmed || trimmed === draft.body) {
+  function handleSave(nextBody: string) {
+    if (!nextBody || nextBody === draft.body) {
       setIsEditing(false);
-      setBody(draft.body);
+      setError(null);
       return;
     }
     run(async () => {
-      const updated = await editDraftBodyAction({ draftId: draft.id, body: trimmed });
+      const updated = await editDraftBodyAction({ draftId: draft.id, body: nextBody });
       onUpdate(updated);
       setIsEditing(false);
     }, "That edit didn't save. Try again.");
   }
 
   function handleCancelEdit() {
-    setBody(draft.body);
     setIsEditing(false);
     setError(null);
   }
@@ -154,52 +154,25 @@ function DraftReviewCard({
       </div>
 
       {isEditing ? (
-        <Textarea
-          aria-label="Edit draft"
-          className="min-h-28 text-[length:var(--text-body)] leading-[var(--text-body-line)]"
-          onChange={(event) => setBody(event.target.value)}
-          value={body}
+        <DraftEditor
+          ariaLabel="Edit draft"
+          markdown={draft.body}
+          onCancel={handleCancelEdit}
+          onSave={handleSave}
+          saving={pending}
         />
       ) : (
-        <p className="max-w-[68ch] whitespace-pre-wrap text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-          {draft.body}
-        </p>
+        <DraftBody markdown={draft.body} />
       )}
 
-      {draft.grounding.length ? (
-        <div className="border-t pt-2.5">
-          <p className="text-[length:var(--text-caption)] text-muted-foreground">
-            Why this draft was written
-          </p>
-          <ul className="mt-1.5 flex flex-col gap-1">
-            {draft.grounding.map((item) => (
-              <li
-                className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
-                key={`${item.kind}:${item.trust}:${item.label}`}
-              >
-                <span className="font-medium text-foreground/70">{item.trustLabel}:</span>{" "}
-                {item.label}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap items-center justify-end gap-1.5 border-t pt-3">
-        {isEditing ? (
-          <>
-            <Button onClick={handleCancelEdit} size="sm" type="button" variant="ghost">
-              Cancel
-            </Button>
-            <Button disabled={pending} onClick={handleApplyEdit} size="sm" type="button">
-              <CheckIcon />
-              Save edit
-            </Button>
-          </>
-        ) : (
-          <>
+      {isEditing ? null : (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3">
+          <DraftGroundingPopover
+            grounding={draft.grounding.map((item) => ({ trust: item.trust, label: item.label }))}
+          />
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
             <Button onClick={handleCopy} size="sm" type="button" variant="ghost">
-              <CopyIcon />
+              {copied ? <CheckIcon /> : <CopyIcon />}
               {copied ? "Copied" : "Copy"}
             </Button>
             {isActive ? (
@@ -253,13 +226,9 @@ function DraftReviewCard({
                 </Button>
               </>
             ) : null}
-          </>
-        )}
-      </div>
-
-      <p className="text-[length:var(--text-caption)] text-muted-foreground">
-        Tendnote-only draft. Nothing is sent or created outside Tendnote — copy it to send yourself.
-      </p>
+          </div>
+        </div>
+      )}
 
       {error ? (
         <p className="text-[length:var(--text-small)] text-destructive" role="alert">

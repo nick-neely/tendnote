@@ -73,6 +73,9 @@ export function buildDraftPrompt(ctx: DraftGroundedContext): string {
     "- Confirmed facts may be stated plainly. Logged context should be referenced gently ('I know we talked about…').",
     "- Tentative hints are unreviewed: you may allude to them softly as a question, never as fact, and prefer to omit them if unsure.",
     "- This is a Tendnote-only draft. Never claim to have sent it, scheduled it, or created an external/Gmail draft.",
+    ctx.channel === "email"
+      ? "- Output light Markdown suited to email: separate paragraphs with a blank line, and use *occasional* bold, italics, a link, or a short list only when it genuinely helps. Default to plain prose; never over-format a short note."
+      : "- Write plain prose with no Markdown formatting; a text or chat message should read as plain text.",
   ];
 
   if (ctx.followupReason) {
