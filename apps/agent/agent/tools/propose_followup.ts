@@ -73,4 +73,24 @@ export default defineTool({
       sourceRecord: result.sourceRecord ? { id: result.sourceRecord.id } : null,
     };
   },
+  // The proposal renders as a review card the user already sees. Drop the reason and
+  // due date echo from the model's view (Eve `toModelOutput`) so it offers it briefly
+  // instead of restating it; keep the id + person so the user can ask you to set or
+  // dismiss it. Channel still gets the full output above for rendering.
+  toModelOutput(output) {
+    return {
+      type: "json" as const,
+      value: {
+        proposed: true,
+        followupId: output.followup.id,
+        personId: output.followup.personId,
+        person: output.person?.displayName ?? null,
+        status: output.followup.status,
+        rendered:
+          "The suggested follow-up is shown to the user in a review card they can accept, edit, or dismiss.",
+        guidance:
+          "It's a TENTATIVE suggestion, not an active reminder. Don't reprint the reason or due date — the card shows them. Offer it for review in a brief line; set it as a reminder only on the user's explicit say-so.",
+      },
+    };
+  },
 });

@@ -65,4 +65,23 @@ export default defineTool({
       },
     };
   },
+  // The saved memory is rendered as a card the user already sees. Project the
+  // model's view down (Eve `toModelOutput`) to the handles it needs to act, plus a
+  // reminder not to reprint the text; the channel still gets the full output above
+  // for rendering. See create_message_draft / search_relationship_context.
+  toModelOutput(output) {
+    return {
+      type: "json" as const,
+      value: {
+        saved: true,
+        memoryId: output.memory.id,
+        personId: output.memory.personId,
+        person: output.person.displayName,
+        sensitivity: output.memory.sensitivity,
+        rendered: "The saved memory is shown to the user in a card.",
+        guidance:
+          "Don't reprint the memory text — it's in the card. Confirm briefly; you can name the person and offer to change or remove it.",
+      },
+    };
+  },
 });

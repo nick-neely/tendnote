@@ -60,4 +60,25 @@ export default defineTool({
       })),
     };
   },
+  // Each suggestion renders as its own review card the user already sees. Drop the
+  // reasons and due dates from the model's view (Eve `toModelOutput`) so it summarizes
+  // instead of reprinting every one; keep each followupId + person so the user can ask
+  // you to accept or dismiss a specific one. Channel gets the full output for rendering.
+  toModelOutput(output) {
+    return {
+      type: "json" as const,
+      value: {
+        count: output.count,
+        reviews: output.reviews.map((review) => ({
+          followupId: review.followup.id,
+          person: review.person?.displayName ?? null,
+          status: review.followup.status,
+        })),
+        rendered:
+          "Each suggested follow-up is shown to the user as its own review card they can accept or dismiss.",
+        guidance:
+          "These are TENTATIVE suggestions, not active reminders. Don't reprint the reasons or due dates — the cards show them. Summarize briefly (how many, for whom); act only on explicit approval.",
+      },
+    };
+  },
 });

@@ -103,4 +103,31 @@ export default defineTool({
       component: { type: "person_updated", personId: person.id },
     };
   },
+  // The updated profile is rendered as a card the user already sees. Keep the name,
+  // id, and which fields changed so the model can confirm naturally, but remind it
+  // not to restate the full profile; the channel still renders the full output.
+  toModelOutput(output) {
+    if (!output.updated || !output.person) {
+      return {
+        type: "json" as const,
+        value: {
+          updated: false,
+          guidance:
+            "The update didn't apply (the person couldn't be found). Tell the user and offer to confirm who they meant.",
+        },
+      };
+    }
+    return {
+      type: "json" as const,
+      value: {
+        updated: true,
+        personId: output.person.id,
+        person: output.person.displayName,
+        updatedFields: output.updatedFields,
+        rendered: "The updated profile is shown to the user in a card.",
+        guidance:
+          "Confirm briefly which fields you changed — the card shows the result; don't restate the full profile.",
+      },
+    };
+  },
 });

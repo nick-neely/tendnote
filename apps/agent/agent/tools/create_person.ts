@@ -52,4 +52,21 @@ export default defineTool({
       component: { type: "person_created", personId: person.id },
     };
   },
+  // The new person is rendered as a card the user already sees. Keep the name (the
+  // model needs it to refer to them) and the id (to chain a next action), but remind
+  // the model to keep its confirmation to a brief line rather than restating details.
+  toModelOutput(output) {
+    return {
+      type: "json" as const,
+      value: {
+        added: true,
+        personId: output.person.id,
+        person: output.person.displayName,
+        relationshipType: output.person.relationshipType,
+        rendered: "The new person is shown to the user in a card.",
+        guidance:
+          "Keep your confirmation to a brief line — the card already shows who you added; don't restate their details at length.",
+      },
+    };
+  },
 });

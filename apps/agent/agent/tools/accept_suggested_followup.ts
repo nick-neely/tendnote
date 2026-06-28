@@ -55,4 +55,23 @@ export default defineTool({
       },
     };
   },
+  // The now-active reminder renders as a card the user already sees. Keep the id,
+  // person, status, and due date so the model can confirm naturally ("set for the
+  // 5th"), but drop the full reason and remind it to keep the confirmation brief.
+  toModelOutput(output) {
+    return {
+      type: "json" as const,
+      value: {
+        accepted: true,
+        followupId: output.followup.id,
+        personId: output.followup.personId,
+        person: output.person?.displayName ?? null,
+        status: output.followup.status,
+        dueAt: output.followup.dueAt,
+        rendered: "The now-active reminder is shown to the user in a card.",
+        guidance:
+          "Confirm briefly that the reminder is set (you can mention who and when) — don't restate the full reason; the card shows it.",
+      },
+    };
+  },
 });

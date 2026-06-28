@@ -60,4 +60,25 @@ export default defineTool({
       })),
     };
   },
+  // Each suggestion renders as its own interactive review card the user already sees.
+  // Drop the suggestion text from the model's view (Eve `toModelOutput`) so it
+  // summarizes instead of reprinting every one; keep each memoryId + person so the
+  // user can ask you to approve or dismiss a specific one. Channel gets full output.
+  toModelOutput(output) {
+    return {
+      type: "json" as const,
+      value: {
+        count: output.count,
+        reviews: output.reviews.map((review) => ({
+          memoryId: review.memory.id,
+          person: review.person?.displayName ?? null,
+          sensitivity: review.memory.sensitivity,
+        })),
+        rendered:
+          "Each suggestion is shown to the user as its own review card with approve/dismiss controls.",
+        guidance:
+          "These are TENTATIVE and unapproved — never state them as fact. Don't reprint the suggestion text; the cards show it. Summarize in a brief line (how many and for whom); act only on the user's explicit approval.",
+      },
+    };
+  },
 });

@@ -48,4 +48,34 @@ export default defineTool({
         : null,
     };
   },
+  // The suggestion is rendered as an interactive review card the user already sees.
+  // Drop the suggestion/source text from the model's view (Eve `toModelOutput`) so it
+  // can't reprint it; keep the ids so the user can ask you to approve or dismiss it.
+  // The channel still gets the full output above for rendering. If you need the exact
+  // wording later, re-load it by id rather than carrying it in your reply.
+  toModelOutput(output) {
+    if (!output.found || !output.memory) {
+      return {
+        type: "json" as const,
+        value: {
+          found: false,
+          guidance: "That suggestion is no longer available to review. Tell the user.",
+        },
+      };
+    }
+    return {
+      type: "json" as const,
+      value: {
+        found: true,
+        memoryId: output.memory.id,
+        personId: output.memory.personId,
+        person: output.person?.displayName ?? null,
+        sensitivity: output.memory.sensitivity,
+        rendered:
+          "The suggested memory is shown to the user in a review card with approve/dismiss controls.",
+        guidance:
+          "It's TENTATIVE and unapproved — never state it as fact. Don't reprint the suggestion text; it's in the card. Present it for review in a brief line; approve or dismiss only on the user's explicit say-so.",
+      },
+    };
+  },
 });

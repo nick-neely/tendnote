@@ -128,7 +128,32 @@ export default defineTool({
         label: ref.label,
       })),
       guidance:
-        "This is a private Tendnote-only draft. Show the body for the user to review and edit; offer to copy it so they can send it themselves. Never claim it was sent or that an external/Gmail draft was created. Refer to the person by name, never by id.",
+        "This is a private Tendnote-only draft, shown to the user in a draft card with the full body, its grounding, and Copy/Edit controls. Do not reprint the body or restate the grounding in your reply — point to the card below and offer to adjust the tone or wording. Never claim it was sent or that an external/Gmail draft was created. Refer to the person by name, never by id.",
+    };
+  },
+  // The chat renders a created draft as a card showing the full message, its
+  // grounding, and Copy/Edit controls — the user already sees all of it. Project
+  // the model's view down to the gist (Eve `toModelOutput`) so it can't reprint
+  // what the card shows; the channel still receives the full output above for
+  // rendering (see search_relationship_context for the same pattern).
+  toModelOutput(output) {
+    if (!output.created) {
+      // Declined: the model still needs the reason + guidance to clarify or
+      // capture a note rather than invent a message.
+      return {
+        type: "json",
+        value: { created: false, reason: output.reason, guidance: output.guidance },
+      };
+    }
+    return {
+      type: "json",
+      value: {
+        created: true,
+        rendered:
+          "The draft is shown to the user in a card with the full message, its grounding, and Copy/Edit controls.",
+        guidance:
+          "Do not repeat the message body or restate its grounding — both are already in the card the user sees. Reply with one short line that points to the draft below and offers to adjust the tone or wording. Never claim it was sent or that an external/Gmail draft was created; refer to the person by name.",
+      },
     };
   },
 });

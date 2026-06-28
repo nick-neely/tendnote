@@ -44,4 +44,21 @@ export default defineTool({
       },
     };
   },
+  // The now-approved memory renders as a card the user already sees. Drop the memory
+  // text from the model's view (Eve `toModelOutput`) so it confirms briefly instead of
+  // reprinting it; keep the ids + status. Channel gets the full output for rendering.
+  toModelOutput(output) {
+    return {
+      type: "json" as const,
+      value: {
+        approved: true,
+        memoryId: output.memory.id,
+        personId: output.memory.personId,
+        status: output.memory.status,
+        rendered: "The now-approved memory is shown to the user in a card.",
+        guidance:
+          "Confirm briefly that it's saved as a confirmed fact — don't reprint the memory text; the card shows it.",
+      },
+    };
+  },
 });

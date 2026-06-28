@@ -41,4 +41,32 @@ export default defineTool({
       sourceRecord: review.sourceRecord ? { id: review.sourceRecord.id } : null,
     };
   },
+  // The suggestion renders as a review card the user already sees. Drop the reason and
+  // due date from the model's view (Eve `toModelOutput`) so it can't reprint them;
+  // keep the id + person so the user can ask you to accept or dismiss it.
+  toModelOutput(output) {
+    if (!output.found || !output.followup) {
+      return {
+        type: "json" as const,
+        value: {
+          found: false,
+          guidance: "That suggested follow-up is gone or already resolved. Tell the user.",
+        },
+      };
+    }
+    return {
+      type: "json" as const,
+      value: {
+        found: true,
+        followupId: output.followup.id,
+        personId: output.followup.personId,
+        person: output.person?.displayName ?? null,
+        status: output.followup.status,
+        rendered:
+          "The suggested follow-up is shown to the user in a review card they can accept, edit, or dismiss.",
+        guidance:
+          "TENTATIVE, not an active reminder. Don't reprint the reason or due date — the card shows them. Present it for review briefly; accept only on the user's explicit say-so.",
+      },
+    };
+  },
 });

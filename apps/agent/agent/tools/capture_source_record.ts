@@ -75,4 +75,20 @@ export default defineTool({
       component,
     };
   },
+  // The logged note is rendered as a card the user already sees. Drop the note text
+  // from the model's view (Eve `toModelOutput`) so it frames briefly instead of
+  // reprinting it; the channel still gets the full output above for rendering.
+  toModelOutput(output) {
+    return {
+      type: "json" as const,
+      value: {
+        saved: true,
+        sourceRecordId: output.sourceRecord.id,
+        linkedPersonId: output.linkedPersonId,
+        rendered: "The logged note is shown to the user in a card.",
+        guidance:
+          "Don't reprint the note — it's in the card. Confirm briefly that you logged it (it's logged context, not a confirmed fact) and offer to change it.",
+      },
+    };
+  },
 });
