@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { CredentialsForm } from "@/components/auth/credentials-form";
 import { getCurrentAccess } from "@/lib/access/current-access";
+import { githubEnvFromProcess, isGithubConfigured } from "@/lib/auth/social";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export default async function SignInPage() {
 
   return (
     <AuthScaffold title="Welcome back" subtitle="Sign in to your private Tendnote.">
-      <CredentialsForm mode="sign-in" />
+      <CredentialsForm githubEnabled={isGithubConfigured(githubEnvFromProcess())} mode="sign-in" />
     </AuthScaffold>
   );
 }

@@ -93,4 +93,24 @@ describe("private beta access resolver", () => {
     expect(decision.admitted).toBe(true);
     expect(evaluateFlag).not.toHaveBeenCalled();
   });
+
+  it("gates a GitHub-authenticated user through the same provider-agnostic path", async () => {
+    // A GitHub signup is just another user id + email here — the user-create hook
+    // gives it a pending profile, and the resolver keys on userId/email only, with
+    // no provider branch, so admission is decided identically to email/password.
+    const evaluateFlag = vi.fn<PrivateBetaFlagEvaluator>().mockResolvedValue(false);
+    const { queries, resolver } = await createHarness(evaluateFlag);
+    const githubUser = { userId: "github-user-1", email: "octocat@example.com" };
+    await queries.ensureAccessProfile({ userId: githubUser.userId });
+
+    const denied = await resolver.resolveAccess(githubUser);
+    expect(denied.admitted).toBe(false);
+    expect(denied.status).toBe("pending");
+
+    // The same GitHub user becomes admitted once the flag grants access.
+    evaluateFlag.mockResolvedValue(true);
+    const admitted = await resolver.resolveAccess(githubUser);
+    expect(admitted.admitted).toBe(true);
+    expect(admitted.profile?.source).toBe("beta_flag");
+  });
 });

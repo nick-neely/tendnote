@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { CredentialsForm } from "@/components/auth/credentials-form";
 import { getCurrentAccess } from "@/lib/access/current-access";
+import { githubEnvFromProcess, isGithubConfigured } from "@/lib/auth/social";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export default async function SignUpPage() {
       title="Create your account"
       subtitle="Tendnote is in private beta. Create your account now — you'll come straight in once access is granted, no second signup."
     >
-      <CredentialsForm mode="sign-up" />
+      <CredentialsForm githubEnabled={isGithubConfigured(githubEnvFromProcess())} mode="sign-up" />
     </AuthScaffold>
   );
 }

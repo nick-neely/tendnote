@@ -5,6 +5,7 @@ import * as schema from "@tendnote/db/schema";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getRedis } from "@/lib/cache/redis";
+import { githubEnvFromProcess, githubSocialProvider } from "./social";
 
 function getBetterAuthSecret() {
   if (process.env.BETTER_AUTH_SECRET) {
@@ -19,6 +20,8 @@ function getBetterAuthSecret() {
 }
 
 function createAuth() {
+  const github = githubSocialProvider(githubEnvFromProcess());
+
   return betterAuth({
     appName: "Tendnote",
     baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
@@ -29,7 +32,15 @@ function createAuth() {
     }),
     emailAndPassword: {
       enabled: true,
+      sendResetPassword: async ({ user, url }) => {
+        // Tendnote does not send email as a product feature in Phase 2A, so the
+        // reset link is surfaced server-side for an operator to deliver during
+        // private beta. A real transactional email provider plugs in here later.
+        console.info(`[tendnote] Password reset link for ${user.email}: ${url}`);
+      },
     },
+    // GitHub is the only Phase 2A social provider, and only when configured.
+    ...(github ? { socialProviders: { github } } : {}),
     databaseHooks: {
       user: {
         create: {

@@ -26,9 +26,11 @@ describe("semantic retrieval product-route boundaries", () => {
     // allowed alongside them but carry no semantic-search route.
     expect(pageRoutes).toEqual([
       "/",
+      "forgot-password",
       "pending",
       "people",
       "people/[personId]",
+      "reset-password",
       "sign-in",
       "sign-up",
     ]);
