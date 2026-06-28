@@ -27,6 +27,10 @@ function scrubFailureMessage(message: string) {
   return message.replace(/\s+/g, " ").slice(0, 200);
 }
 
+function memoryCandidateKey(input: { personId: string; content: string }) {
+  return `${input.personId}:${input.content.trim().toLowerCase()}`;
+}
+
 /**
  * Phase 1A extraction processor: deterministic/manual, no LLM yet (ADR 0020).
  *
@@ -244,13 +248,14 @@ export function createExtractionProcessor(
       }
 
       try {
-        // Idempotency: never create a second suggested memory for a person who
-        // already has one from this source record (covers retries and the
-        // partial re-runs below).
+        // Idempotency: never recreate the same candidate for a person/source
+        // record (covers retries, dismissed suggestions, and partial re-runs),
+        // while still allowing one messy note to split into multiple atomic
+        // memories for the same person.
         const existingMemories = await store.listMemoriesForSourceRecord({
           sourceRecordId: sourceRecord.id,
         });
-        const personIdsWithMemory = new Set(existingMemories.map((memory) => memory.personId));
+        const existingCandidateKeys = new Set(existingMemories.map(memoryCandidateKey));
         const suggestedMemories: Memory[] = [];
 
         const resolvedPeople = (
@@ -292,14 +297,16 @@ export function createExtractionProcessor(
         };
 
         for (const candidate of validCandidates) {
-          if (personIdsWithMemory.has(candidate.personId)) {
+          if (existingCandidateKeys.has(memoryCandidateKey(candidate))) {
             rejectedCandidateCount += 1;
           }
         }
         const finalProvenance = { ...provenance, rejectedCandidateCount };
 
         for (const candidate of validCandidates) {
-          if (personIdsWithMemory.has(candidate.personId)) {
+          const candidateKey = memoryCandidateKey(candidate);
+
+          if (existingCandidateKeys.has(candidateKey)) {
             continue;
           }
 
@@ -321,7 +328,7 @@ export function createExtractionProcessor(
           );
 
           suggestedMemories.push(memory);
-          personIdsWithMemory.add(candidate.personId);
+          existingCandidateKeys.add(candidateKey);
 
           await store.createAuditLogEntry({
             ownerUserId,
