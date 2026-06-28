@@ -131,8 +131,8 @@ describe("draft source-reference foundation", () => {
     await expect(
       ctx.store.createDraft(
         draftInput(person, {
-          // biome-ignore lint/suspicious/noExplicitAny: exercising invalid input
           sourceRefs: [
+            // biome-ignore lint/suspicious/noExplicitAny: exercising invalid input
             { kind: "gmail_thread", id: "x", label: "nope", trust: "confirmed_fact" } as any,
           ],
         }),
