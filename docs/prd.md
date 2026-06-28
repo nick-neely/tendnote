@@ -344,7 +344,7 @@ Help Nick remember context about people, follow up at the right time, prepare fo
 | Schedule | Phase | Behavior |
 |---|---|---|
 | Daily brief | 1F | Runs every morning and suggests 1 to 3 relationship actions. |
-| Weekly relationship review | 1F | Reviews stale contacts, overdue follow-ups, and missed birthdays after the daily brief model works. |
+| Weekly relationship review | 1F | Reviews stale contacts, overdue follow-ups, missed birthdays, and lower-priority context using the same persisted brief-item model as the daily brief. |
 | Birthday check | 1F | Prompts user for upcoming or same-day birthdays using stored Tendnote data. |
 | Stale contact check | 1F | Suggests people not contacted recently as reviewable brief items, using closeness and cadence. |
 | Post-meeting follow-up | 2 | After calendar events, suggests thank-you or follow-up messages. |
@@ -885,7 +885,7 @@ End state: Phase 1 should prove the full private Tendnote loop without external 
 - **Curate**: suggested memories and reviewable records can be approved, edited, dismissed, or left pending. Review happens wherever the user already is, all through the same owner-scoped review mutations: the person ledger (full review — edit wording, sensitivity, archive), the dashboard's "Needs review" rail (a short cross-person list with inline approve/dismiss that hides when empty), and inline in chat (the tentative suggestion card carries approve/dismiss). The user can also just tell Eve to approve or dismiss. Every surface refers to a suggestion by the person's name and the record's content; raw record ids are never shown to the user.
 - **Orient**: Eve and the web UI can load snapshot-backed context plus supporting records, exact search, and semantic retrieval.
 - **Act**: the user can create and manage manual follow-ups through UI and Eve.
-- **Brief**: Tendnote can generate a small persisted daily brief from reviewed context and due follow-ups.
+- **Brief**: Tendnote can generate small persisted daily and weekly briefs from reviewed context and due follow-ups.
 - **Draft**: Tendnote can draft messages inside the app for review, copy, or dismissal, but cannot send externally.
 
 Deliverables:
@@ -973,10 +973,10 @@ Deliverables:
 - Add a narrow cross-person agenda read model before persisted daily briefs so Eve can answer general time-window questions that are not tied to one known person.
 - Support prompts like "anything coming up next week?", "who deserves a thought today?", "what should I review?", and "any follow-ups due soon?" without making the user name a person first.
 - Sequence this after Phase 1E manual follow-ups and Phase 1D semantic retrieval so the agenda has both real active reminders and fuzzy relationship context to draw from. It should use semantic matches as part of the first 1E.25 slice, while still remaining useful when embeddings are missing, stale, or processing.
-- Keep this as a shared owner-scoped query/API, not model-only reasoning, not a mutation surface, and not a persisted brief artifact yet. Phase 1F should persist selected agenda candidates as daily brief records and brief items.
+- Keep this as a shared owner-scoped query/API, not model-only reasoning, not a mutation surface, and not a persisted brief artifact yet. Phase 1F should persist selected agenda candidates as brief records and brief items.
 - Introduce an Eve `get_relationship_agenda` tool with inputs for `windowStart`, `windowEnd`, optional `query`, `limit`, optional `includeKinds`, and `directlyRequested`. Eve may pass the user's broad ask or a short normalized phrase as `query` for semantic matching; if omitted, the agenda should still return deterministic items and recent context. The first `includeKinds` should cover `due_followup`, `birthday`, `review_item`, `recent_context`, `semantic_context`, and `suggested_followup`.
 - Return one mixed deterministic ranked list of compact typed candidates with `kind`, `personId`, `personDisplayName`, `title`, `reason`, optional `dueAt`, `sourceRefs`, `trustLevel`, `sensitivity`, and `rank`. Do not return generated prose or grouped sections as the query contract; Eve responses or later brief UI may group items for presentation.
-- Keep the Phase 1E.25 product surface Eve/tooling-first. Add the shared query, Eve tool, deterministic tests, and any minimal assistant tool-result rendering needed for stable chat output, but do not add a standalone agenda page or expand the dashboard into an agenda surface before Phase 1F persisted daily briefs.
+- Keep the Phase 1E.25 product surface Eve/tooling-first. Add the shared query, Eve tool, deterministic tests, and any minimal assistant tool-result rendering needed for stable chat output, but do not add a standalone agenda page or expand the dashboard into an agenda surface before Phase 1F persisted briefs.
 - Keep `get_relationship_agenda` read-only. It may rank persisted follow-ups, birthdays, review items, recent eligible source records, and semantic retrieval matches, but it must not create follow-ups, create suggested follow-ups, update prompting metadata, run a background scanner, or persist brief artifacts.
 - Keep hybrid composition inside the shared agenda read model. Eve should not stitch together separate `search_semantic_context` and follow-up/review queries for broad agenda answers; it should call `get_relationship_agenda`, and the shared query should apply owner scoping, policy filters, dedupe, and ranking across deterministic and semantic candidates.
 - Use hybrid deterministic-plus-semantic ranking in the first implementation. Deterministic signals should still anchor the agenda: due or overdue open follow-ups, birthdays already stored in Tendnote, open review items, recent source records with clear dates, and high-confidence suggested follow-ups. Semantic matches should add useful fuzzy candidates from Phase 1D when available, but the agenda contract and core behavior must not depend on embeddings to return useful due-date, birthday, and review-item answers.
@@ -1007,14 +1007,31 @@ Deliverables:
 - Do not add a new user-facing review surface for LLM extraction. Phase 1E.5 should improve the existing suggested-memory pipeline and continue using the person ledger, dashboard review rail, and Eve chat cards for review.
 - The only user-visible change should be better suggested-memory candidate quality and metadata already supported by the existing review UI, not a new extraction inbox, page, or assistant mode.
 
-##### Phase 1F: Persisted Daily Brief
+##### Phase 1F: Persisted Briefs
 
-- Generate persisted daily brief records with stable child items, source references, statuses, and dismiss/snooze behavior.
+- Generate persisted brief records with stable child items, source references, statuses, and dismiss/snooze behavior.
+- Use one shared brief model for daily and weekly cadences; vary date window, item cap, and ranking depth instead of creating separate daily-brief and weekly-review storage or lifecycle paths.
+- Make generation idempotent per owner, local date, and cadence; scheduled retries and duplicate invocations should return the existing brief unless the user explicitly regenerates it.
+- Store generation metadata on the brief record, including generated time, generation reason (`scheduled`, `manual`, or `regenerated`), agenda window start/end, and enough optional summary provenance to debug the decorative LLM summary without making model provenance part of item truth.
+- Give brief items their own lifecycle statuses, such as active, dismissed, snoozed, and acted-on, so clearing a brief item does not mutate the underlying source record, memory, or follow-up unless the user explicitly takes that source action.
+- Treat prior brief-item feedback as generation input. Regeneration should avoid reintroducing dismissed or currently snoozed items with the same source refs, person, and kind unless the snooze has expired or the user explicitly asks to ignore prior feedback.
+- Snapshot the selected agenda candidate fields into each brief item at generation time, including kind, person, title, reason, due date, source references, trust level, sensitivity, and rank. Keep source references for grounding, but do not recompute user-facing title, reason, or rank from the live agenda query when rendering an existing brief.
+- Treat scheduled brief generation as proactive context use: exclude restricted content, allow sensitive content only with source grounding and careful phrasing, and persist sensitivity on each brief item for rendering and action policy.
+- Select brief items deterministically from the shared relationship agenda and source-backed signals. Phase 1F may include an LLM-generated summary line as presentation decoration, but the model must not choose items, change ranks, create actions, or become the source of truth for the brief.
+- Store any generated summary line on the persisted brief record as nullable presentation text. If summary generation fails, create the brief with deterministic items and no summary rather than blocking the brief.
 - Keep the first daily brief small: default to 1 to 3 items from due follow-ups, birthdays already stored in Tendnote, reviewed memories, recent source records, and retrieval signals.
+- Surface persisted briefs first in the existing dashboard rail/current home experience. Do not require a separate brief history page for the first Phase 1F implementation.
+- Persist and query prior briefs internally for feedback suppression, audit, and future history even though the first UI focuses on the current daily and weekly briefs.
 - Use the Phase 1 retrieval stack in order: relational context, snapshots, full-text search, and semantic retrieval when available.
-- Add the Eve schedule only when brief generation is real. Do not keep placeholder schedules in the active agent tree.
+- Add Eve schedules only when brief generation is real. Use root-level Eve schedule files under `agent/schedules/` and account for Eve's UTC, at-least-once cron behavior with Tendnote-owned idempotency and leases.
+- For per-user local-time daily and weekly briefs, prefer one static Eve dispatcher schedule that claims due Tendnote-owned schedule rows over hard-coded per-user cron files. Store recurrence, timezone, next run, lease, and retry state in Tendnote's app data.
+- Default daily and weekly in-app brief generation on for the private Phase 1 owner, with stored schedule rows that can later be disabled. External email, push, calendar, or chat delivery remains out of scope until a later explicit opt-in phase.
+- Have the dispatcher call the shared owner-scoped brief generator directly for normal persisted in-app briefs. Do not start an Eve `receive(...)` chat/session for each due brief unless a later notification surface needs proactive channel delivery.
+- Add a narrow manual generate/regenerate action for the current daily or weekly brief so local testing and recovery do not depend on production cron. It must call the same shared generator; regeneration should be explicit and auditable rather than silently overwriting an existing brief.
 - Keep suggested follow-ups reviewable. A brief may propose an action, but accepting it should create or update the underlying follow-up record.
-- Add weekly relationship review only after the daily brief model works; it should reuse the same persisted brief-item shape instead of introducing a parallel review artifact.
+- When a brief item represents a suggested follow-up, accepting it should use the existing owner-scoped suggested-followup review mutation and then mark the brief item acted-on. Do not create a brief-specific follow-up acceptance lifecycle.
+- Include weekly relationship review in Phase 1F as the same persisted brief artifact with a broader window and ranking depth, not a parallel review artifact or later phase.
+- Verify the product seam before UI expansion: tests should cover owner scoping, local-date/cadence uniqueness, duplicate schedule ticks, schedule lease/retry behavior, restricted-content exclusion, sensitive item preservation, item lifecycle transitions, explicit regeneration, and feedback suppression for dismissed or snoozed items.
 
 ##### Phase 1G: Tendnote-Only Message Drafting
 

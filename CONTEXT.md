@@ -75,3 +75,7 @@ _Avoid_: Raw chatbot, task manager
 **Daily Brief**:
 A small set of relationship suggestions for today. It should stay capped and useful rather than becoming a task feed.
 _Avoid_: Pipeline, queue, inbox
+
+**Weekly Relationship Review**:
+A broader periodic brief for stale contacts, overdue follow-ups, missed birthdays, and lower-priority relationship context. It uses the same persisted brief-item model as the daily brief rather than a separate queue.
+_Avoid_: Task feed, backlog, separate review system

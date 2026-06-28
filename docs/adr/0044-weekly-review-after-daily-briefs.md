@@ -1,5 +1,5 @@
-# Weekly Review After Daily Briefs
+# Weekly Review Uses the Daily Brief Model
 
-Phase 1 should defer weekly relationship review until daily briefs are useful. Weekly review uses the same underlying context as daily briefs but with broader ranking and more lower-priority candidates, so weak daily-brief relevance would turn into a larger and noisier review surface.
+Phase 1F should implement daily briefs and weekly relationship review together as the same persisted brief artifact with different cadence, window, and ranking depth. Weekly review uses the same item shape, source references, status lifecycle, dismiss/snooze behavior, and policy gates as daily briefs rather than introducing a parallel review artifact or waiting for a later phase.
 
-Daily brief usefulness should be proven with reviewed memories, manual follow-ups, birthdays, and dismissal/snooze feedback before adding a weekly review.
+The weekly review can include broader stale-contact and lower-priority candidates than the daily brief, but it should remain capped and reviewable so Tendnote does not become a task feed.
