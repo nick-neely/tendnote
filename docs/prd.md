@@ -1037,6 +1037,7 @@ Deliverables:
 
 - Add message drafting inside Tendnote after the capture, review, retrieval, follow-up, and brief loop is working.
 - Drafts should use approved memories as facts, source records as source-grounded context, and suggested memories only as clearly tentative hints.
+- Persist source references for each generated draft so the draft can explain which approved memories, source records, suggested memories, follow-ups, or brief items informed it. Do not rely on prompt-only grounding.
 - Add `draft_message` and `create_message_draft` only for Tendnote-owned draft records. Do not create Gmail drafts, send messages, or write to external systems in Phase 1.
 - Every draft should be reviewable, editable, dismissible, and source-grounded. The user remains responsible for copying or sending outside Tendnote.
 - Add tone, no-fake-memory, source-grounded-drafting, and no-send-without-approval eval coverage before treating drafting as complete.
