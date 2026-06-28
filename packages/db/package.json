@@ -9,6 +9,7 @@
     "./queries/brief-schedules": "./src/queries/brief-schedules.ts",
     "./queries/briefs": "./src/queries/briefs.ts",
     "./queries/context-snapshots": "./src/queries/context-snapshots.ts",
+    "./queries/drafts": "./src/queries/drafts.ts",
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
     "./queries/followups": "./src/queries/followups.ts",
     "./queries/memories": "./src/queries/memories.ts",

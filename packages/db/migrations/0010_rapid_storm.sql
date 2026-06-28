@@ -1,0 +1,1 @@
+ALTER TABLE "message_drafts" ADD COLUMN "source_refs" jsonb DEFAULT '[]'::jsonb NOT NULL;

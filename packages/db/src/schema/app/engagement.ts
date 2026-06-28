@@ -1,4 +1,6 @@
-import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import type { DraftSourceRef } from "@tendnote/domain";
+import { sql } from "drizzle-orm";
+import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
 import {
@@ -78,6 +80,10 @@ export const messageDrafts = pgTable(
     purpose: messageDraftPurpose("purpose").notNull().default("other"),
     body: text("body").notNull(),
     status: messageDraftStatus("status").notNull().default("draft"),
+    // Persisted source-grounding contract for the draft (PRD #75, issue #76,
+    // ADR-0040). Snapshotted at generation time so the draft stays explainable
+    // after the underlying memories, notes, follow-ups, or brief items change.
+    sourceRefs: jsonb("source_refs").$type<DraftSourceRef[]>().notNull().default(sql`'[]'::jsonb`),
     ...timestamps,
   },
   (table) => [

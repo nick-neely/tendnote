@@ -12,6 +12,75 @@ export const messageDraftPurposeSchema = z.enum([
 
 export const messageDraftStatusSchema = z.enum(["draft", "approved", "dismissed", "sent_manually"]);
 
+/**
+ * Source grounding kinds preserved on every generated Tendnote draft (PRD #75,
+ * issue #76, ADR-0040). These mirror the context trust tiers (ADR-0004): approved
+ * memories are confirmed facts, source records are logged context, suggested
+ * memories are tentative hints, and follow-ups and brief items are the
+ * intent/entry-point that started the draft. Persisted references are the
+ * grounding contract — the draft body is editable prose, but the references stay
+ * stable so a draft can be reviewed, explained, tested, and audited after
+ * generation even if the underlying memory or note later changes.
+ */
+export const draftSourceRefKindSchema = z.enum([
+  "approved_memory",
+  "source_record",
+  "suggested_memory",
+  "followup",
+  "brief_item",
+]);
+export type DraftSourceRefKind = z.infer<typeof draftSourceRefKindSchema>;
+
+/** Trust tier a draft source reference contributes to phrasing (ADR-0004). */
+export const draftSourceRefTrustSchema = z.enum([
+  "confirmed_fact",
+  "logged_context",
+  "tentative",
+  "intent",
+  "entry_point",
+]);
+export type DraftSourceRefTrust = z.infer<typeof draftSourceRefTrustSchema>;
+
+/**
+ * A single persisted draft source reference. `id` identifies the grounding record
+ * but is never user-facing copy; `label` is a short snapshot of the record so the
+ * review UI and Eve can render the grounding without re-resolving (or exposing)
+ * raw ids. The trust tier is snapshotted so phrasing stays explainable even if
+ * the underlying record's status later changes.
+ */
+/** The trust tier each draft source-reference kind contributes (ADR-0004). */
+export function draftSourceRefTrustForKind(kind: DraftSourceRefKind): DraftSourceRefTrust {
+  switch (kind) {
+    case "approved_memory":
+      return "confirmed_fact";
+    case "source_record":
+      return "logged_context";
+    case "suggested_memory":
+      return "tentative";
+    case "followup":
+      return "intent";
+    case "brief_item":
+      return "entry_point";
+  }
+}
+
+export const draftSourceRefSchema = z
+  .object({
+    kind: draftSourceRefKindSchema,
+    id: z.string().min(1),
+    label: z.string().min(1),
+    trust: draftSourceRefTrustSchema,
+  })
+  // Trust is snapshotted so phrasing stays explainable, but it must agree with the
+  // kind's canonical tier (ADR-0004): an `approved_memory` is always a confirmed
+  // fact, a `suggested_memory` always tentative. Rejecting mismatches keeps Eve
+  // and the review UI from rendering an inconsistent grounding snapshot.
+  .refine((ref) => ref.trust === draftSourceRefTrustForKind(ref.kind), {
+    message: "Draft source reference trust must match its kind's canonical trust tier.",
+    path: ["trust"],
+  });
+export type DraftSourceRef = z.infer<typeof draftSourceRefSchema>;
+
 export const messageDraftSchema = z.object({
   id: z.string(),
   personId: z.string(),
@@ -20,6 +89,10 @@ export const messageDraftSchema = z.object({
   purpose: messageDraftPurposeSchema.default("other"),
   body: z.string().min(1),
   status: messageDraftStatusSchema.default("draft"),
+  // The grounding contract for the draft (PRD #75, issue #76). Snapshotted at
+  // generation time so the draft stays explainable after the underlying records
+  // change. Empty only for legacy/manual drafts created without grounding.
+  sourceRefs: z.array(draftSourceRefSchema).default([]),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
