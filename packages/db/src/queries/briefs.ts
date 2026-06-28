@@ -1,8 +1,11 @@
+import type { BriefCadence } from "@tendnote/domain";
 import { generateDeterministicBriefSummary } from "@tendnote/domain";
 import { gateway, generateText } from "ai";
 import { createDrizzleBriefLifecycleStore, createDrizzleBriefStore } from "./briefs/drizzle-store";
 import type { GenerateBriefInput } from "./briefs/generator";
 import { createBriefGenerator } from "./briefs/generator";
+import type { BriefItemActionInput, SnoozeBriefItemInput } from "./briefs/lifecycle";
+import { createBriefLifecycle } from "./briefs/lifecycle";
 import type { ManualBriefInput } from "./briefs/manual";
 import { createManualBriefGeneration } from "./briefs/manual";
 import { type BriefSummaryAdapter, createLlmBriefSummaryAdapter } from "./briefs/summary-adapter";
@@ -98,4 +101,32 @@ const defaultManualBriefGeneration = createManualBriefGeneration(
 
 export function generateManualBrief(input: ManualBriefInput) {
   return defaultManualBriefGeneration.generateCurrentBrief(input);
+}
+
+// Dashboard read + item-action defaults (issue #70). One drizzle lifecycle store
+// backs both the current-brief read and the owner-scoped dismiss/snooze actions, so
+// the dashboard renders persisted snapshots and clears items without recomputing
+// the relationship agenda.
+const defaultBriefLifecycleStore = createDrizzleBriefLifecycleStore();
+const defaultBriefLifecycle = createBriefLifecycle(defaultBriefLifecycleStore);
+
+/** The owner's current (non-superseded) brief for a cadence and local date, or null. */
+export function getCurrentBrief(input: {
+  ownerUserId: string;
+  cadence: BriefCadence;
+  localDate: string;
+}) {
+  return defaultBriefLifecycleStore.findCurrentBrief(input);
+}
+
+export function dismissBriefItem(input: BriefItemActionInput) {
+  return defaultBriefLifecycle.dismissBriefItem(input);
+}
+
+export function snoozeBriefItem(input: SnoozeBriefItemInput) {
+  return defaultBriefLifecycle.snoozeBriefItem(input);
+}
+
+export function markBriefItemActed(input: BriefItemActionInput) {
+  return defaultBriefLifecycle.markBriefItemActed(input);
 }

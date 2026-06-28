@@ -1,11 +1,15 @@
+import { getCurrentBrief } from "@tendnote/db/queries/briefs";
 import { listActiveFollowups, listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { searchPeople } from "@tendnote/db/queries/people";
+import type { BriefCadence } from "@tendnote/domain";
 import { AppShell } from "@/components/app-shell";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { TodayRail } from "@/components/today-rail";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { currentLocalDate } from "@/lib/brief-local-date";
+import { type BriefView, toBriefView } from "@/lib/brief-view";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
 import { toDashboardFollowupView } from "@/lib/followup-view";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
@@ -23,13 +27,21 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const ownerUserId = await getCurrentOwnerUserId();
-  const [people, dashboardReviews, dashboardFollowups, dashboardFollowupReviews] =
-    await Promise.all([
-      searchPeople({ ownerUserId, limit: 8 }),
-      getDashboardReviews(ownerUserId),
-      getDashboardFollowups(ownerUserId),
-      getDashboardFollowupReviews(ownerUserId),
-    ]);
+  const [
+    people,
+    dashboardReviews,
+    dashboardFollowups,
+    dashboardFollowupReviews,
+    dailyBrief,
+    weeklyBrief,
+  ] = await Promise.all([
+    searchPeople({ ownerUserId, limit: 8 }),
+    getDashboardReviews(ownerUserId),
+    getDashboardFollowups(ownerUserId),
+    getDashboardFollowupReviews(ownerUserId),
+    getDashboardBrief(ownerUserId, "daily"),
+    getDashboardBrief(ownerUserId, "weekly"),
+  ]);
   const birthdays = getUpcomingBirthdays(people);
 
   return (
@@ -56,16 +68,36 @@ export default async function Home() {
           <div className="order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pr-3">
             <TodayRail
               birthdays={birthdays}
+              dailyBrief={dailyBrief}
               followupReviews={dashboardFollowupReviews}
               followups={dashboardFollowups}
               people={people}
               reviews={dashboardReviews}
+              weeklyBrief={weeklyBrief}
             />
           </div>
         </div>
       </div>
     </AppShell>
   );
+}
+
+async function getDashboardBrief(
+  ownerUserId: string,
+  cadence: BriefCadence,
+): Promise<BriefView | null> {
+  try {
+    // Render the current persisted brief from stored snapshots — never a live
+    // relationship-agenda recomputation (PRD #65, issue #70).
+    const brief = await getCurrentBrief({ ownerUserId, cadence, localDate: currentLocalDate() });
+    return brief ? toBriefView(brief) : null;
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`Unable to load the ${cadence} brief.`, error);
+    }
+
+    return null;
+  }
 }
 
 async function getDashboardFollowups(ownerUserId: string) {

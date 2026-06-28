@@ -1,12 +1,14 @@
 import type { Person } from "@tendnote/domain";
 import { ArrowRightIcon, CakeIcon } from "lucide-react";
 import Link from "next/link";
+import { DashboardBriefSection } from "@/components/dashboard-brief-section";
 import { DashboardFollowupsSection } from "@/components/dashboard-followups-section";
 import {
   DashboardReviewSection,
   type DashboardReviewView,
 } from "@/components/dashboard-review-section";
 import { DashboardSuggestedFollowupsSection } from "@/components/dashboard-suggested-followups-section";
+import type { BriefView } from "@/lib/brief-view";
 import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brief";
 import type { DashboardFollowupView } from "@/lib/followup-view";
 import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
@@ -24,15 +26,31 @@ export function TodayRail({
   followups,
   followupReviews,
   reviews,
+  dailyBrief,
+  weeklyBrief,
 }: {
   people: Person[];
   birthdays: UpcomingBirthday[];
   followups: DashboardFollowupView[];
   followupReviews: SuggestedFollowupReviewView[];
   reviews: DashboardReviewView[];
+  dailyBrief: BriefView | null;
+  weeklyBrief: BriefView | null;
 }) {
   return (
     <aside className="flex flex-col gap-6">
+      {/* Persisted briefs lead the rail: the current daily brief first, then the
+          weekly relationship review (PRD #65, issue #70). Keying on the brief id
+          remounts the section when a brief is generated or regenerated (so new
+          items appear after revalidation), while dismiss/snooze keep their
+          optimistic state because the id is unchanged. */}
+      <DashboardBriefSection brief={dailyBrief} cadence="daily" key={dailyBrief?.id ?? "daily"} />
+      <DashboardBriefSection
+        brief={weeklyBrief}
+        cadence="weekly"
+        key={weeklyBrief?.id ?? "weekly"}
+      />
+
       <section className="flex flex-col gap-2.5">
         <RailHeading>Today</RailHeading>
         <div className="overflow-hidden rounded-xl border bg-surface">
