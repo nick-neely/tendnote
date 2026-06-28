@@ -26,9 +26,11 @@ function readTsFilesRecursive(dir: string): string[] {
 const webChatSurface = [
   ...readTsFilesRecursive(join(process.cwd(), "src/lib/eve")),
   // The browser streams turns straight to the same-origin Eve mount, so the
-  // web→Eve send path is now the panel (agent.send) and the auth proxy.
+  // web→Eve send path is now the panel (agent.send) and the auth proxy plus its
+  // ingress-decision module.
   readFileSync(join(process.cwd(), "src/components/assistant-panel.tsx"), "utf8"),
   readFileSync(join(process.cwd(), "src/proxy.ts"), "utf8"),
+  readFileSync(join(process.cwd(), "src/lib/access/eve-ingress.ts"), "utf8"),
 ];
 
 // Outbound send/draft implementations. Provider names require an API boundary

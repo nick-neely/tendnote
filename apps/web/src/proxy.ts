@@ -1,48 +1,72 @@
+import { checkAccess } from "@tendnote/db/queries/access-profiles";
 import { type NextRequest, NextResponse } from "next/server";
+import { localFallbackOwnerUserId } from "@/lib/access/access-state";
+import { applyEveOwnerHeaders, decideEveIngress } from "@/lib/access/eve-ingress";
 import { getAuth } from "@/lib/auth/server";
 
 /**
- * Runs in the Node.js runtime (not Edge) so it can read the Better Auth session,
- * which uses Postgres + Redis. Only the same-origin Eve endpoints need it.
+ * Runs in the Node.js runtime (not Edge) so it can read the Better Auth session
+ * and the access profile, which use Postgres + Redis. Only the same-origin Eve
+ * endpoints need it.
  */
 export const config = {
   matcher: ["/eve/v1/:path*"],
 };
 
-/** Header the Eve channel reads to scope every tool to the owner (ADR 0001). */
-const OWNER_HEADER = "x-tendnote-owner-id";
-const localDemoOwnerUserId = "demo-user";
-
 /**
  * The single trust boundary for the same-origin Eve mount. The browser streams
  * turns directly to `/eve/v1/*` (withEve), so this validates the Better Auth
- * session and injects the resolved owner as a server-set header before withEve
- * rewrites the request to the agent. It strips any client-supplied value first,
- * so the browser cannot forge the owner. The agent keeps its simple header-trust
- * channel auth because this header is now always server-set.
+ * session, requires admitted Private Beta Access, and injects the resolved owner
+ * as a server-set header before withEve rewrites the request to the agent. It
+ * strips any client-supplied owner first, so the browser cannot forge it, and
+ * denies pending or unauthenticated callers in hosted environments. The agent
+ * keeps its simple header-trust channel auth because this header is now always
+ * server-set.
  */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
-  let ownerUserId: string | null = null;
+  let user: { id: string } | null = null;
 
   try {
     const session = await getAuth().api.getSession({ headers: request.headers });
-    ownerUserId = session?.user.id ?? null;
+    user = session?.user ? { id: session.user.id } : null;
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
       throw error;
     }
   }
 
-  if (!ownerUserId) {
-    if (process.env.NODE_ENV === "production") {
-      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-    }
-    ownerUserId = process.env.TENDNOTE_DEV_OWNER_USER_ID ?? localDemoOwnerUserId;
-  }
+  const decision = await decideEveIngress(
+    user,
+    // Admit on persisted access, not the full Vercel Flags resolver: the flag's
+    // request-scoped `identify` can't run in middleware. Eve is only reachable
+    // from the app shell, whose page load runs the resolver and persists any
+    // flag grant first, so a granted user is already persisted by the time they
+    // stream a turn.
+    async (userId) => (await checkAccess({ userId })).admitted,
+    {
+      localFallbackOwnerUserId: localFallbackOwnerUserId({
+        nodeEnv: process.env.NODE_ENV,
+        devOwnerUserId: process.env.TENDNOTE_DEV_OWNER_USER_ID,
+      }),
+    },
+  );
 
-  const headers = new Headers(request.headers);
-  headers.delete(OWNER_HEADER);
-  headers.set(OWNER_HEADER, ownerUserId);
+  const headers = applyEveOwnerHeaders(request.headers, decision);
+
+  if (!headers) {
+    // A signed-in pending user is authenticated but not yet admitted (403); an
+    // unauthenticated caller needs to sign in (401).
+    const pending = decision.type === "denied" && decision.reason === "pending";
+
+    return NextResponse.json(
+      {
+        error: pending
+          ? "Private Beta Access is required to use the assistant."
+          : "Sign in to use the assistant.",
+      },
+      { status: pending ? 403 : 401 },
+    );
+  }
 
   return NextResponse.next({ request: { headers } });
 }
