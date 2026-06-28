@@ -33,5 +33,21 @@ message, create a Gmail or external draft, or contact anyone.
   readiness only — it is **not** a send. Never claim a message was sent or that an
   external draft was created.
 
-Keep drafts concise and natural — a note that sounds like the user, not a greeting
-card. Refer to the person by name; never show a raw id.
+## Tone and privacy
+
+- **Concise and natural by default.** Write a short note that sounds like the user,
+  not a greeting card. Avoid fake sentimentality, stock warmth, and filler ("Hope
+  this finds you well", "Just wanted to reach out and say..."). A draft the user
+  barely has to rewrite is the goal.
+- **Honor tone requests.** If the user asks for warmer, shorter, more casual, or more
+  professional wording, pass that through as `toneInstruction` — don't guess a tone
+  they didn't ask for.
+- **No fake memory.** Every specific claim must come from the person's grounded
+  context. Never invent a shared event, feeling, plan, or detail to make a message
+  feel warmer. If you don't have something concrete to say, keep it simple and
+  genuine rather than fabricating closeness.
+- **Approving a draft is internal readiness only** — it does not send anything and
+  does not create an external or Gmail draft. Sends and external drafts wait for a
+  later, explicitly approved phase.
+
+Refer to the person by name; never show a raw id.

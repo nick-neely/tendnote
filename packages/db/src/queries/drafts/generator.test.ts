@@ -192,6 +192,26 @@ describe("draft generation — grounding and trust policy", () => {
     expect(calls[0]?.loggedContext).not.toContain("Unlinked note");
   });
 
+  it("includes sensitive (non-restricted) content in a draft and grounds it", async () => {
+    // Sensitive is distinct from restricted: it is eligible for drafting by default
+    // (canUseSensitiveContext blocks only restricted), but stays source-grounded.
+    const sensitive = await ctx.seedMemory({
+      content: "Recently lost their father",
+      status: "approved",
+      sensitivity: "sensitive",
+      linkSource: false,
+    });
+    const { adapter, calls } = recordingAdapter();
+    const generator = createDraftGenerator(ctx.store, ctx.personContext, { draftAdapter: adapter });
+
+    const outcome = await generator.generateDraft({ ownerUserId: OWNER, personId: ctx.person.id });
+
+    expect(outcome.status).toBe("created");
+    if (outcome.status !== "created") return;
+    expect(calls[0]?.facts).toContain("Recently lost their father");
+    expect(outcome.draft.sourceRefs.map((r) => r.id)).toEqual([sensitive.id]);
+  });
+
   it("keeps restricted content out of a draft unless directly requested", async () => {
     await ctx.seedMemory({
       content: "Going through a tough divorce",

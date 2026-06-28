@@ -1,0 +1,48 @@
+import { describe, expect, it } from "vitest";
+import { authoredInstructions, baseInstructions } from "./instructions-source";
+
+// The whole authored surface (base.md + every skill), so a rule that lives in the
+// drafting skill still counts as enforced guidance even if it later moves between
+// base and a skill (see authoredInstructions).
+const authored = authoredInstructions();
+const base = baseInstructions();
+
+describe("drafting instructions — tone and privacy", () => {
+  it("requires concise, natural, non-fake-sentimental drafts", () => {
+    expect(authored).toMatch(/concise and natural/i);
+    expect(authored).toMatch(/greeting card/i);
+    expect(authored).toMatch(/fake sentimentality/i);
+  });
+
+  it("preserves trust-tier distinctions when drafting", () => {
+    expect(authored).toMatch(/confirmed facts/i);
+    expect(authored).toMatch(/logged context/i);
+    expect(authored).toMatch(/tentative/i);
+  });
+
+  it("forbids inventing personal facts to warm a message (no fake memory)", () => {
+    expect(authored).toMatch(/no fake memory|never invent/i);
+  });
+
+  it("honors explicit tone requests rather than guessing", () => {
+    expect(authored).toMatch(/warmer|shorter|more professional/i);
+    expect(authored).toMatch(/toneInstruction/);
+  });
+});
+
+describe("drafting instructions — no external send or draft", () => {
+  it("keeps the always-on approval gate in base instructions", () => {
+    expect(base).toMatch(/Never send an email, text, or message without explicit approval\./);
+  });
+
+  it("states drafting stays inside Tendnote with no external send or draft", () => {
+    expect(authored).toMatch(/inside Tendnote/i);
+    expect(authored).toMatch(/never send/i);
+    expect(authored).toMatch(/gmail|external draft/i);
+  });
+
+  it("frames approving a draft as internal readiness, not a send", () => {
+    expect(authored).toMatch(/internal readiness/i);
+    expect(authored).toMatch(/not.*send|never.*sent/i);
+  });
+});

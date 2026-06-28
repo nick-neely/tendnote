@@ -82,4 +82,97 @@ describe("buildDraftPrompt", () => {
     expect(prompt).toContain("Logged context");
     expect(prompt).toContain("Tentative");
   });
+
+  it("does not leak the tentative section when there are no tentative hints", () => {
+    const prompt = buildDraftPrompt(context({ facts: ["Moved to Denver"] }));
+
+    expect(prompt).not.toContain("Tentative (unconfirmed) hints");
+  });
+
+  it("passes a tone request through to the model", () => {
+    const prompt = buildDraftPrompt(
+      context({ facts: ["Moved to Denver"], toneInstruction: "warmer and shorter" }),
+    );
+
+    expect(prompt).toContain("Tone request: warmer and shorter");
+  });
+});
+
+// CI-safe model-behavior evals (PRD #75 testing decisions): the deterministic
+// generator stands in for the model so tone, no-fake-memory, and source-grounding
+// are enforced without live credentials. Live-model evals are credential-gated.
+describe("draft behavior evals (deterministic, no live model)", () => {
+  // Greeting-card / fake-warmth phrasing the drafts must avoid (tone match).
+  const CLICHES = [
+    "hope this finds you well",
+    "just wanted to reach out",
+    "thinking of you always",
+    "warmest wishes",
+    "near and dear",
+  ];
+
+  it("tone match (prompt): instructs the model toward concise, non-fake-sentimental prose", () => {
+    // The real tone lever for a live model is the prompt — assert it explicitly
+    // steers away from greeting-card warmth and toward a concise, natural note.
+    const prompt = buildDraftPrompt(context({ facts: ["Just moved to Denver"] }));
+    expect(prompt).toMatch(/concise and natural/i);
+    expect(prompt).toMatch(/greeting card/i);
+    expect(prompt).toMatch(/fake sentimentality/i);
+  });
+
+  it("tone match (deterministic): the fallback body stays clean and concise", () => {
+    const result = generateDeterministicDraft(
+      context({ facts: ["Just moved to Denver"], followupReason: "check in after the move" }),
+    );
+    const lower = result.body.toLowerCase();
+    for (const cliche of CLICHES) {
+      expect(lower).not.toContain(cliche);
+    }
+    // Concise by default: a short note, not a paragraph wall.
+    expect(result.body.length).toBeLessThan(320);
+  });
+
+  it("no fake memory: the body contains only grounding that was provided", () => {
+    const result = generateDeterministicDraft(
+      context({
+        facts: ["Just adopted a rescue dog named Biscuit"],
+        tentative: ["Maybe changing jobs soon"],
+      }),
+    );
+    // Confirmed fact may appear; the unconfirmed hint must not be asserted.
+    expect(result.body).toContain("Biscuit");
+    expect(result.body.toLowerCase()).not.toContain("job");
+  });
+
+  it("source-grounded: approved memory is referenced as a fact", () => {
+    const result = generateDeterministicDraft(context({ facts: ["is training for a marathon"] }));
+    expect(result.body.toLowerCase()).toContain("training for a marathon");
+  });
+
+  it("source-grounded: source-record context is used when there is no confirmed fact", () => {
+    const result = generateDeterministicDraft(
+      context({ loggedContext: ["a recent trip to Japan"] }),
+    );
+    expect(result.body.toLowerCase()).toContain("a recent trip to japan");
+  });
+
+  it("source-grounded: a follow-up reason drives the outreach", () => {
+    const result = generateDeterministicDraft(
+      context({ followupReason: "see how the new apartment is" }),
+    );
+    expect(result.body.toLowerCase()).toContain("see how the new apartment is");
+  });
+
+  it("source-grounded: a brief-item reason drives the outreach", () => {
+    const result = generateDeterministicDraft(
+      context({ briefReason: "it has been three months since you last spoke" }),
+    );
+    expect(result.body.toLowerCase()).toContain("three months since you last spoke");
+  });
+
+  it("thin context: refuses (no grounding) rather than inventing", () => {
+    // Suggested-only / empty context is not enough to justify a draft.
+    expect(hasGroundedDraftContext(context({ tentative: ["Might like jazz"] }))).toBe(false);
+    expect(hasGroundedDraftContext(context())).toBe(false);
+  });
 });

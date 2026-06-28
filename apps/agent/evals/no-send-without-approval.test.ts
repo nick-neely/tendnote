@@ -26,4 +26,23 @@ describe("no-send-without-approval", () => {
       expect(outboundActionPatterns.some((pattern) => pattern.test(toolName))).toBe(false);
     }
   });
+
+  it("the draft tool stays Tendnote-only: it persists a draft and never sends or drafts externally", () => {
+    // Phase 1G adds a drafting tool; the no-send guarantee now covers it explicitly.
+    const draftTool = readFileSync(
+      join(process.cwd(), "agent/tools/create_message_draft.ts"),
+      "utf8",
+    );
+    const importSources = [...draftTool.matchAll(/from\s+"([^"]+)"/g)].map(
+      (match) => match[1] ?? "",
+    );
+
+    // Its only data dependency is the shared internal draft generator — no provider.
+    expect(importSources).toContain("@tendnote/db/queries/drafts");
+    for (const moduleId of importSources) {
+      expect(moduleId).not.toMatch(/gmail|mcp|nodemailer|provider|sendgrid|twilio|slack|resend/i);
+    }
+    // Its description tells the model it never sends or creates an external/Gmail draft.
+    expect(draftTool).toMatch(/never sends a message, creates a gmail or external draft/i);
+  });
 });
