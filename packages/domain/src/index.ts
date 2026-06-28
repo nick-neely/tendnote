@@ -2,6 +2,7 @@ export * from "./brief-schedules";
 export * from "./brief-summary";
 export * from "./briefs";
 export * from "./context-snapshots";
+export * from "./draft-generation";
 export * from "./drafts";
 export * from "./exact-recall";
 export * from "./extraction-jobs";
