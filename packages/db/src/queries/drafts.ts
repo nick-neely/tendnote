@@ -3,6 +3,12 @@ import { gateway, generateText } from "ai";
 import { createLlmDraftAdapter, type DraftAdapter } from "./drafts/draft-adapter";
 import { createDrizzleDraftLifecycleStore, createDrizzleDraftStore } from "./drafts/drizzle-store";
 import { createDraftGenerator, type GenerateDraftInput } from "./drafts/generator";
+import {
+  createDraftLifecycle,
+  type DraftActionInput,
+  type EditDraftBodyInput,
+} from "./drafts/lifecycle";
+import { createDraftRegeneration } from "./drafts/regenerate";
 import { getPersonContext } from "./person-context";
 
 export {
@@ -27,6 +33,12 @@ export {
   createInMemoryDraftLifecycleStore,
   createInMemoryDraftStore,
 } from "./drafts/in-memory-store";
+export {
+  createDraftLifecycle,
+  type DraftActionInput,
+  type EditDraftBodyInput,
+} from "./drafts/lifecycle";
+export { createDraftRegeneration, type DraftRegenerationDeps } from "./drafts/regenerate";
 export type * from "./drafts/types";
 
 type DraftAdapterEnv = Record<string, string | undefined>;
@@ -72,9 +84,13 @@ export function generateDraft(input: GenerateDraftInput) {
   return defaultDraftGenerator.generateDraft(input);
 }
 
-// Default owner-scoped draft reads (issue #76). Render-time surfaces read drafts
-// through these so they never fork draft storage.
+// Default owner-scoped draft reads + lifecycle (issues #76/#78). One drizzle
+// lifecycle store backs reads and the audited dismiss/approve/sent-manually/edit
+// actions, so the review surface reads persisted drafts and mutates them through
+// the shared lifecycle without forking draft storage.
+const defaultDraftLifecycleStore = createDrizzleDraftLifecycleStore();
 const defaultDraftStore = createDrizzleDraftStore();
+const defaultDraftLifecycle = createDraftLifecycle(defaultDraftLifecycleStore);
 
 /** A single owner-scoped draft (with its persisted source references), or null. */
 export function getDraft(input: { ownerUserId: string; draftId: string }) {
@@ -88,4 +104,31 @@ export function listDraftsForPerson(input: {
   statuses?: MessageDraftStatus[];
 }) {
   return defaultDraftStore.listDraftsForPerson(input);
+}
+
+export function approveDraft(input: DraftActionInput) {
+  return defaultDraftLifecycle.approveDraft(input);
+}
+
+export function dismissDraft(input: DraftActionInput) {
+  return defaultDraftLifecycle.dismissDraft(input);
+}
+
+export function markDraftSentManually(input: DraftActionInput) {
+  return defaultDraftLifecycle.markDraftSentManually(input);
+}
+
+export function editDraftBody(input: EditDraftBodyInput) {
+  return defaultDraftLifecycle.editDraftBody(input);
+}
+
+// Explicit regeneration reuses the shared lifecycle store and the default
+// generator, so it cannot fork generation or audit behavior (issue #78).
+const defaultDraftRegeneration = createDraftRegeneration({
+  store: defaultDraftLifecycleStore,
+  generateDraft,
+});
+
+export function regenerateDraft(input: DraftActionInput) {
+  return defaultDraftRegeneration.regenerateDraft(input);
 }

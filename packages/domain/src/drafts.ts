@@ -108,3 +108,41 @@ export type MessageDraftChannel = z.infer<typeof messageDraftChannelSchema>;
 export type MessageDraftPurpose = z.infer<typeof messageDraftPurposeSchema>;
 export type MessageDraftStatus = z.infer<typeof messageDraftStatusSchema>;
 export type CreateMessageDraftInput = z.infer<typeof createMessageDraftSchema>;
+
+/**
+ * Explicit draft lifecycle transitions (PRD #75, issue #78, ADR-0014). This is the
+ * single validated matrix so web and Eve callers cannot make invalid jumps. All
+ * transitions are internal to Tendnote: `mark_sent_manually` records that the user
+ * sent the message themselves — it never implies Tendnote sent anything (PRD user
+ * story #10), and `approve` is internal readiness only, not an external send.
+ */
+export type MessageDraftAction = "approve" | "dismiss" | "mark_sent_manually";
+
+const MESSAGE_DRAFT_TRANSITIONS: Record<
+  MessageDraftAction,
+  { from: ReadonlySet<MessageDraftStatus>; to: MessageDraftStatus }
+> = {
+  approve: { from: new Set(["draft"]), to: "approved" },
+  dismiss: { from: new Set(["draft", "approved"]), to: "dismissed" },
+  mark_sent_manually: { from: new Set(["draft", "approved"]), to: "sent_manually" },
+};
+
+export function resolveMessageDraftTransition(
+  current: MessageDraftStatus,
+  action: MessageDraftAction,
+): MessageDraftStatus {
+  const rule = MESSAGE_DRAFT_TRANSITIONS[action];
+
+  if (!rule.from.has(current)) {
+    throw new Error(`Cannot ${action} a draft that is ${current}.`);
+  }
+
+  return rule.to;
+}
+
+/** A draft body is editable only while it is still active (draft or approved). */
+export function assertMessageDraftEditable(status: MessageDraftStatus): void {
+  if (status !== "draft" && status !== "approved") {
+    throw new Error(`Cannot edit a draft that is ${status}.`);
+  }
+}

@@ -1,4 +1,5 @@
 import { getPersonContextSnapshot } from "@tendnote/db/queries/context-snapshots";
+import { listDraftsForPerson } from "@tendnote/db/queries/drafts";
 import { listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { getPersonProfile } from "@tendnote/db/queries/people";
@@ -12,6 +13,7 @@ import {
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { PersonCapture } from "@/components/person-capture";
+import { PersonDrafts } from "@/components/person-drafts";
 import { PersonFollowups } from "@/components/person-followups";
 import { PersonHeader } from "@/components/person-header";
 import {
@@ -25,6 +27,7 @@ import { SuggestedFollowupReviewSection } from "@/components/suggested-followup-
 import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
 import { shortName } from "@/lib/dashboard-brief";
+import { type DraftView, toDraftView } from "@/lib/draft-view";
 import { toDateInputValue, toFollowupView } from "@/lib/followup-view";
 import {
   type RelationshipSnapshotView,
@@ -73,6 +76,23 @@ async function loadSuggestedFollowupReviews(
     return reviews.map((review) => toSuggestedFollowupReviewView(review));
   } catch {
     // Tentative proposals are enrichment; never block the profile if unavailable.
+    return [];
+  }
+}
+
+async function loadDrafts(ownerUserId: string, personId: string): Promise<DraftView[]> {
+  try {
+    // Dismissed drafts stay out of the focused review surface; the user is shown
+    // their active, approved, and sent-manually drafts (PRD user story #34/#35).
+    const drafts = await listDraftsForPerson({
+      ownerUserId,
+      personId,
+      statuses: ["draft", "approved", "sent_manually"],
+    });
+
+    return drafts.map(toDraftView);
+  } catch {
+    // Drafts are in-context enrichment; never block the profile if unavailable.
     return [];
   }
 }
@@ -127,10 +147,11 @@ export default async function PersonDetailPage({
 }) {
   const { personId } = await params;
   const ownerUserId = await getCurrentOwnerUserId();
-  const [profile, suggestedReviews, suggestedFollowupReviews] = await Promise.all([
+  const [profile, suggestedReviews, suggestedFollowupReviews, drafts] = await Promise.all([
     getPersonProfile({ ownerUserId, personId }),
     loadSuggestedReviews(ownerUserId, personId),
     loadSuggestedFollowupReviews(ownerUserId, personId),
+    loadDrafts(ownerUserId, personId),
   ]);
 
   if (!profile) {
@@ -194,6 +215,14 @@ export default async function PersonDetailPage({
                 personId={person.id}
                 resolved={resolvedFollowups}
               />
+            </LedgerSection>
+
+            <LedgerSection
+              description={`Tendnote-only message drafts for ${firstName}. Review, edit, copy, or mark them sent — nothing leaves Tendnote.`}
+              id="message-drafts"
+              title="Message drafts"
+            >
+              <PersonDrafts initialDrafts={drafts} />
             </LedgerSection>
           </div>
 
