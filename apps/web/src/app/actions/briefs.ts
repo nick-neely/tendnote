@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  acceptBriefSuggestedFollowup,
   dismissBriefItem,
   generateManualBrief,
   type ManualBriefOutcome,
@@ -85,4 +86,24 @@ export async function snoozeBriefItemAction(input: {
 
   revalidatePath("/");
   return { briefItemId: item.id, status: item.status };
+}
+
+/**
+ * Accepts a suggested-followup brief item: it delegates to the existing
+ * suggested-followup review mutation (the follow-up becomes a real reminder) and
+ * marks the brief item acted-on only after that succeeds (PRD #65, issue #71). A
+ * failure propagates so the rail keeps the item rather than hiding it.
+ */
+export async function acceptBriefFollowupAction(input: {
+  briefItemId: string;
+}): Promise<BriefItemResolution> {
+  const { briefItemId } = briefItemActionSchema.parse(input);
+  const ownerUserId = await getCurrentOwnerUserId();
+  const result = await acceptBriefSuggestedFollowup({ ownerUserId, briefItemId });
+
+  revalidatePath("/");
+  // Acceptance promotes a real reminder on the person's ledger, so re-render their
+  // profile too — unlike dismiss/snooze, which never touch underlying records.
+  revalidatePath(`/people/${result.followup.followup.personId}`);
+  return { briefItemId: result.briefItem.id, status: result.briefItem.status };
 }

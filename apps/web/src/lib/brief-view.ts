@@ -16,6 +16,9 @@ export type BriefItemView = {
   dueLabel: string | null;
   dueState: FollowupDueState | null;
   isSensitive: boolean;
+  // Suggested follow-ups can be accepted from the brief, promoting the real
+  // reminder through the existing review lifecycle (issue #71).
+  isSuggestedFollowup: boolean;
 };
 
 export type BriefView = {
@@ -50,6 +53,11 @@ export function toBriefView(brief: BriefWithItems, now: Date = new Date()): Brie
         dueLabel: due ? dueLabelFor(due) : null,
         dueState: due ? followupDueState(due, now) : null,
         isSensitive: item.sensitivity === "sensitive",
+        // Mirror the acceptance precondition: a suggested follow-up is acceptable
+        // only when it carries the follow-up source ref the accept resolves from.
+        isSuggestedFollowup:
+          item.kind === "suggested_followup" &&
+          item.sourceRefs.some((ref) => ref.kind === "followup"),
       };
     });
 

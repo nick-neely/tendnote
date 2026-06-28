@@ -1,9 +1,10 @@
 "use client";
 
-import { ClockIcon, LockIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { CheckIcon, ClockIcon, LockIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import {
+  acceptBriefFollowupAction,
   dismissBriefItemAction,
   generateBriefAction,
   snoozeBriefItemAction,
@@ -211,6 +212,18 @@ function BriefItemRow({
             <XIcon />
             Dismiss
           </Button>
+          {item.isSuggestedFollowup ? (
+            <Button
+              aria-label={`Accept suggested follow-up for ${label}`}
+              disabled={pending}
+              onClick={() => run(() => acceptBriefFollowupAction({ briefItemId: item.id }))}
+              size="sm"
+              type="button"
+            >
+              <CheckIcon />
+              Accept
+            </Button>
+          ) : null}
         </div>
       </div>
 

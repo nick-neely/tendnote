@@ -1,6 +1,8 @@
 import type { BriefCadence } from "@tendnote/domain";
 import { generateDeterministicBriefSummary } from "@tendnote/domain";
 import { gateway, generateText } from "ai";
+import type { AcceptBriefSuggestedFollowupInput } from "./briefs/accept-followup";
+import { createBriefSuggestedFollowupAcceptance } from "./briefs/accept-followup";
 import { createDrizzleBriefLifecycleStore, createDrizzleBriefStore } from "./briefs/drizzle-store";
 import type { GenerateBriefInput } from "./briefs/generator";
 import { createBriefGenerator } from "./briefs/generator";
@@ -9,8 +11,14 @@ import { createBriefLifecycle } from "./briefs/lifecycle";
 import type { ManualBriefInput } from "./briefs/manual";
 import { createManualBriefGeneration } from "./briefs/manual";
 import { type BriefSummaryAdapter, createLlmBriefSummaryAdapter } from "./briefs/summary-adapter";
+import { acceptSuggestedFollowup } from "./followups";
 import { getRelationshipAgenda } from "./relationship-agenda";
 
+export {
+  type AcceptBriefSuggestedFollowupInput,
+  type AcceptBriefSuggestedFollowupResult,
+  createBriefSuggestedFollowupAcceptance,
+} from "./briefs/accept-followup";
 export {
   createDrizzleBriefLifecycleStore,
   createDrizzleBriefStore,
@@ -129,4 +137,17 @@ export function snoozeBriefItem(input: SnoozeBriefItemInput) {
 
 export function markBriefItemActed(input: BriefItemActionInput) {
   return defaultBriefLifecycle.markBriefItemActed(input);
+}
+
+// Accepting a suggested-followup brief item delegates to the existing shared
+// suggested-followup review mutation (issue #71); no brief-specific follow-up
+// lifecycle is introduced. The brief item is marked acted-on only after accept.
+const defaultBriefSuggestedFollowupAcceptance = createBriefSuggestedFollowupAcceptance({
+  getBriefItem: (input) => defaultBriefLifecycleStore.getBriefItem(input),
+  markBriefItemActed: (input) => defaultBriefLifecycle.markBriefItemActed(input),
+  acceptSuggestedFollowup,
+});
+
+export function acceptBriefSuggestedFollowup(input: AcceptBriefSuggestedFollowupInput) {
+  return defaultBriefSuggestedFollowupAcceptance.acceptBriefSuggestedFollowup(input);
 }

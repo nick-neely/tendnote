@@ -61,7 +61,13 @@ describe("toBriefView", () => {
       dueLabel: "Jun 27",
       dueState: "today",
       isSensitive: false,
+      isSuggestedFollowup: false,
     });
+  });
+
+  it("flags suggested-followup items as acceptable", () => {
+    const view = toBriefView(brief([item({ kind: "suggested_followup" })]), NOW);
+    expect(view.items[0]?.isSuggestedFollowup).toBe(true);
   });
 
   it("excludes dismissed, snoozed, and acted-on items", () => {

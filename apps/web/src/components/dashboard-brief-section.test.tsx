@@ -6,6 +6,7 @@ vi.mock("@/app/actions/briefs", () => ({
   dismissBriefItemAction: vi.fn(),
   snoozeBriefItemAction: vi.fn(),
   generateBriefAction: vi.fn(),
+  acceptBriefFollowupAction: vi.fn(),
 }));
 
 import { DashboardBriefSection } from "./dashboard-brief-section";
@@ -21,6 +22,7 @@ function itemView(overrides: Partial<BriefItemView> = {}): BriefItemView {
     dueLabel: "Jun 27",
     dueState: "today",
     isSensitive: false,
+    isSuggestedFollowup: false,
     ...overrides,
   };
 }
@@ -70,6 +72,23 @@ describe("DashboardBriefSection", () => {
     expect(html).toContain("Generate");
     // No regenerate affordance without an existing brief.
     expect(html).not.toContain("Refresh");
+  });
+
+  it("offers Accept only on suggested-followup items", () => {
+    const suggested = renderToStaticMarkup(
+      <DashboardBriefSection
+        brief={briefView({
+          items: [itemView({ kind: "suggested_followup", isSuggestedFollowup: true })],
+        })}
+        cadence="daily"
+      />,
+    );
+    expect(suggested).toContain("Accept");
+
+    const plain = renderToStaticMarkup(
+      <DashboardBriefSection brief={briefView()} cadence="daily" />,
+    );
+    expect(plain).not.toContain("Accept");
   });
 
   it("marks sensitive items so they read carefully", () => {
