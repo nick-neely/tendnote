@@ -79,3 +79,7 @@ _Avoid_: Pipeline, queue, inbox
 **Weekly Relationship Review**:
 A broader periodic brief for stale contacts, overdue follow-ups, missed birthdays, and lower-priority relationship context. It uses the same persisted brief-item model as the daily brief rather than a separate queue.
 _Avoid_: Task feed, backlog, separate review system
+
+**Message Draft**:
+A private, Tendnote-owned draft of a message to a person, grounded in relationship context and persisted with the source references that informed it. Drafts stay inside Tendnote — the user reviews, edits, copies, dismisses, approves internally, or marks them sent manually — and approving is internal readiness only, never an external send or draft.
+_Avoid_: Outbox, campaign, automatic send, external draft

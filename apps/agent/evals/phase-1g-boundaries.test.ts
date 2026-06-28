@@ -1,0 +1,111 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const agentRoot = join(import.meta.dirname, "../agent");
+const repoRoot = join(import.meta.dirname, "../../..");
+
+/**
+ * Phase 1G boundary evals (PRD #75, issue #82). They confirm that Tendnote-only
+ * message drafting did not cross into external sends, external/Gmail draft
+ * creation, provider integrations, or new delivery channels — across the shared
+ * generator, web surfaces, and the Eve tool — and that the governing docs/ADRs
+ * stay aligned with the implemented boundary. Per-slice policy (trust tiers,
+ * restricted exclusion, owner scoping, raw-id hiding, refusal) is unit-tested in
+ * the db generator/lifecycle tests, the web component/action tests, and the Eve
+ * tool eval; this file guards the repository-wide invariants those cannot.
+ */
+
+// The db drafting module is globbed (not hardcoded) so a future-added file — the
+// most likely place an external-delivery module would land — cannot slip past the
+// scan. The cross-package drafting files are listed explicitly.
+const dbDraftsDir = join(repoRoot, "packages/db/src/queries/drafts");
+const dbDraftFiles = readdirSync(dbDraftsDir)
+  .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"))
+  .map((file) => `packages/db/src/queries/drafts/${file}`);
+
+const PHASE_1G_FILES = [
+  "packages/db/src/queries/drafts.ts",
+  ...dbDraftFiles,
+  "packages/domain/src/drafts.ts",
+  "packages/domain/src/draft-generation.ts",
+  "apps/web/src/lib/draft-view.ts",
+  "apps/web/src/app/actions/drafts.ts",
+  "apps/web/src/app/actions/create-draft.ts",
+  "apps/web/src/components/person-drafts.tsx",
+  "apps/web/src/components/draft-message-button.tsx",
+  "apps/web/src/components/use-create-draft.ts",
+  "apps/web/src/app/people/[personId]/page.tsx",
+  // The Eve draft-result render path — the surfaces that show a draft to the user.
+  "apps/web/src/lib/eve/tool-result-view.ts",
+  "apps/web/src/lib/eve/tool-result-parse.ts",
+  "apps/web/src/components/assistant-tool-result.tsx",
+  "apps/agent/agent/tools/create_message_draft.ts",
+];
+
+// External delivery / provider modules that must never be imported by drafting.
+const FORBIDDEN_IMPORT =
+  /gmail|googleapis|nodemailer|twilio|sendgrid|@sendgrid|resend|telegram|discord|slack/i;
+
+// Provider/network CALL sites the import scan can't see (raw fetch to a provider,
+// SMTP, dynamic import, etc.). These tokens never appear in the tools' own
+// boundary-affirming prose ("never creates a Gmail draft"), so they catch a real
+// delivery implementation without false-positiving on the guardrail wording.
+const FORBIDDEN_CALL =
+  /nodemailer|createtransport|\bsmtp\b|sendmail|googleapis\.com|api\.sendgrid|api\.twilio|hooks\.slack\.com|api\.resend|mcp__/i;
+
+function importSpecifiers(source: string): string[] {
+  return [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1] ?? "");
+}
+
+describe("Phase 1G boundary — no external delivery in drafting surfaces", () => {
+  it("imports no external send/draft/provider module in any Phase 1G surface", () => {
+    for (const relativePath of PHASE_1G_FILES) {
+      const fullPath = join(repoRoot, relativePath);
+      expect(existsSync(fullPath), `${relativePath} should exist`).toBe(true);
+      for (const moduleId of importSpecifiers(readFileSync(fullPath, "utf8"))) {
+        expect(moduleId, `${relativePath} imports ${moduleId}`).not.toMatch(FORBIDDEN_IMPORT);
+      }
+    }
+  });
+
+  it("makes no raw provider/network call (fetch/SMTP/dynamic import) in any surface", () => {
+    for (const relativePath of PHASE_1G_FILES) {
+      const source = readFileSync(join(repoRoot, relativePath), "utf8");
+      expect(source, `${relativePath} contains a provider call site`).not.toMatch(FORBIDDEN_CALL);
+    }
+  });
+
+  it("adds no external delivery channel — only the same-origin Eve channel", () => {
+    expect(readdirSync(join(agentRoot, "channels"))).toEqual(["eve.ts"]);
+  });
+
+  it("adds no provider/send dependency to any drafting package", () => {
+    for (const pkg of ["packages/db", "packages/domain", "apps/web", "apps/agent"]) {
+      const manifest = JSON.parse(readFileSync(join(repoRoot, pkg, "package.json"), "utf8"));
+      const deps = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies });
+      for (const dep of deps) {
+        expect(dep, `${pkg} depends on ${dep}`).not.toMatch(
+          /nodemailer|twilio|sendgrid|@sendgrid|resend|googleapis|gmail/i,
+        );
+      }
+    }
+  });
+});
+
+describe("Phase 1G boundary — docs and ADRs aligned", () => {
+  it("keeps the governing drafting ADR present", () => {
+    expect(existsSync(join(repoRoot, "docs", "adr", "0040-drafting-after-review-loop.md"))).toBe(
+      true,
+    );
+  });
+
+  it("ADR-0040 records the persisted source-reference grounding boundary", () => {
+    const adr = readFileSync(
+      join(repoRoot, "docs", "adr", "0040-drafting-after-review-loop.md"),
+      "utf8",
+    );
+    expect(adr).toMatch(/source reference/i);
+    expect(adr).toMatch(/persist/i);
+  });
+});
