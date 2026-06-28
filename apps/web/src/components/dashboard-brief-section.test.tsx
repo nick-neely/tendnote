@@ -9,6 +9,10 @@ vi.mock("@/app/actions/briefs", () => ({
   acceptBriefFollowupAction: vi.fn(),
 }));
 
+vi.mock("@/components/use-create-draft", () => ({
+  useCreateDraft: () => ({ create: () => {}, pending: false, error: null }),
+}));
+
 import { DashboardBriefSection } from "./dashboard-brief-section";
 
 function itemView(overrides: Partial<BriefItemView> = {}): BriefItemView {

@@ -9,11 +9,18 @@ import {
   markDraftSentManuallyAction,
   regenerateDraftAction,
 } from "@/app/actions/drafts";
+import { DraftMessageButton } from "@/components/draft-message-button";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { DraftView } from "@/lib/draft-view";
 
-export function PersonDrafts({ initialDrafts }: { initialDrafts: DraftView[] }) {
+export function PersonDrafts({
+  personId,
+  initialDrafts,
+}: {
+  personId: string;
+  initialDrafts: DraftView[];
+}) {
   const [drafts, setDrafts] = useState(initialDrafts);
 
   function update(view: DraftView) {
@@ -24,19 +31,21 @@ export function PersonDrafts({ initialDrafts }: { initialDrafts: DraftView[] }) 
     setDrafts((current) => [view, ...current]);
   }
 
-  if (drafts.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No message drafts yet. Start one from this person to draft from their relationship context.
-      </p>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-2.5">
-      {drafts.map((draft) => (
-        <DraftReviewCard key={draft.id} draft={draft} onAdd={add} onUpdate={update} />
-      ))}
+      <div className="flex justify-end">
+        {/* Person entry point: draft from this person's relationship context (#79). */}
+        <DraftMessageButton personId={personId} purpose="check_in" />
+      </div>
+      {drafts.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No message drafts yet. Start one to draft from this person's relationship context.
+        </p>
+      ) : (
+        drafts.map((draft) => (
+          <DraftReviewCard key={draft.id} draft={draft} onAdd={add} onUpdate={update} />
+        ))
+      )}
     </div>
   );
 }

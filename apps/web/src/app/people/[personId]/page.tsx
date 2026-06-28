@@ -222,7 +222,7 @@ export default async function PersonDetailPage({
               id="message-drafts"
               title="Message drafts"
             >
-              <PersonDrafts initialDrafts={drafts} />
+              <PersonDrafts initialDrafts={drafts} personId={person.id} />
             </LedgerSection>
           </div>
 

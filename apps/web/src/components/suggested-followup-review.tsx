@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, PencilIcon, XIcon } from "lucide-react";
+import { CheckIcon, PencilIcon, PenLineIcon, XIcon } from "lucide-react";
 import { useState, useTransition } from "react";
 import {
   acceptSuggestedFollowupAction,
@@ -9,6 +9,7 @@ import {
 } from "@/app/actions/suggested-followups";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useCreateDraft } from "@/components/use-create-draft";
 import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -86,7 +87,8 @@ function SuggestedFollowupReviewCard({
   onResolve: (followupId: string) => void;
   onUpdate: (view: SuggestedFollowupReviewView) => void;
 }) {
-  const { followup, source, personName } = review;
+  const { followup, source, personName, personId } = review;
+  const { create: createDraft, pending: draftPending, error: draftError } = useCreateDraft();
   const [isEditing, setIsEditing] = useState(false);
   const [draftReason, setDraftReason] = useState(followup.reason);
   const [draftDate, setDraftDate] = useState(followup.dueAtDate);
@@ -235,6 +237,25 @@ function SuggestedFollowupReviewCard({
           </>
         ) : (
           <>
+            {personId ? (
+              <Button
+                disabled={pending || draftPending}
+                onClick={() =>
+                  // A review-point draft: it grounds on the suggestion's reason but
+                  // never accepts it or creates follow-up state (PRD #79).
+                  createDraft({
+                    personId,
+                    followupContext: { id: followup.id, reason: followup.reason },
+                  })
+                }
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <PenLineIcon />
+                Draft
+              </Button>
+            ) : null}
             <Button
               aria-label="Dismiss suggested follow-up"
               disabled={pending}
@@ -264,9 +285,9 @@ function SuggestedFollowupReviewCard({
         )}
       </div>
 
-      {error ? (
+      {error || draftError ? (
         <p className="text-[length:var(--text-small)] text-destructive" role="alert">
-          {error}
+          {error ?? draftError}
         </p>
       ) : null}
     </article>

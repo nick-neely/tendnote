@@ -10,7 +10,15 @@ vi.mock("@/app/actions/drafts", () => ({
   regenerateDraftAction: vi.fn(),
 }));
 
+// The entry-point button uses a router-backed hook; stub it so static rendering
+// needs no Next.js router context.
+vi.mock("@/components/use-create-draft", () => ({
+  useCreateDraft: () => ({ create: vi.fn(), pending: false, error: null }),
+}));
+
 import { PersonDrafts } from "./person-drafts";
+
+const PERSON_ID = "person-1";
 
 function view(overrides: Partial<DraftView> = {}): DraftView {
   return {
@@ -44,7 +52,9 @@ function view(overrides: Partial<DraftView> = {}): DraftView {
 
 describe("PersonDrafts", () => {
   it("renders a draft with status, body, grounding summary, and review actions", () => {
-    const html = renderToStaticMarkup(<PersonDrafts initialDrafts={[view()]} />);
+    const html = renderToStaticMarkup(
+      <PersonDrafts initialDrafts={[view()]} personId={PERSON_ID} />,
+    );
 
     expect(html).toContain("Draft");
     expect(html).toContain("heard you moved to Denver");
@@ -69,6 +79,7 @@ describe("PersonDrafts", () => {
         initialDrafts={[
           view({ status: "sent_manually", statusLabel: "Sent manually", editable: false }),
         ]}
+        personId={PERSON_ID}
       />,
     );
 
@@ -81,7 +92,10 @@ describe("PersonDrafts", () => {
 
   it("does not show an Approve action once a draft is approved", () => {
     const html = renderToStaticMarkup(
-      <PersonDrafts initialDrafts={[view({ status: "approved", statusLabel: "Approved" })]} />,
+      <PersonDrafts
+        initialDrafts={[view({ status: "approved", statusLabel: "Approved" })]}
+        personId={PERSON_ID}
+      />,
     );
 
     expect(html).toContain("Approved");
@@ -91,7 +105,7 @@ describe("PersonDrafts", () => {
   });
 
   it("renders an empty state when there are no drafts", () => {
-    const html = renderToStaticMarkup(<PersonDrafts initialDrafts={[]} />);
+    const html = renderToStaticMarkup(<PersonDrafts initialDrafts={[]} personId={PERSON_ID} />);
 
     expect(html).toContain("No message drafts yet");
   });

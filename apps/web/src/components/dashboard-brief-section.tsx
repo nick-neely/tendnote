@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, ClockIcon, LockIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { CheckIcon, ClockIcon, LockIcon, PenLineIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/app/actions/briefs";
 import { DueChip } from "@/components/followup-due-chip";
 import { Button } from "@/components/ui/button";
+import { useCreateDraft } from "@/components/use-create-draft";
 import type { BriefItemView, BriefView } from "@/lib/brief-view";
 
 const CADENCE_COPY = {
@@ -135,6 +136,7 @@ function BriefItemRow({
   item: BriefItemView;
   onResolve: (id: string) => void;
 }) {
+  const { create: createDraft, pending: draftPending, error: draftError } = useCreateDraft();
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -212,6 +214,24 @@ function BriefItemRow({
             <XIcon />
             Dismiss
           </Button>
+          {item.personId ? (
+            <Button
+              aria-label={`Draft a message for ${label}`}
+              disabled={draftPending}
+              onClick={() =>
+                createDraft({
+                  personId: item.personId as string,
+                  briefItemContext: { id: item.id, title: item.title, reason: item.reason },
+                })
+              }
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <PenLineIcon />
+              Draft
+            </Button>
+          ) : null}
           {item.isSuggestedFollowup ? (
             <Button
               aria-label={`Accept suggested follow-up for ${label}`}
@@ -227,9 +247,9 @@ function BriefItemRow({
         </div>
       </div>
 
-      {error ? (
+      {error || draftError ? (
         <p className="text-[length:var(--text-small)] text-destructive" role="alert">
-          {error}
+          {error ?? draftError}
         </p>
       ) : null}
     </li>

@@ -4,6 +4,7 @@ import {
   CheckIcon,
   MoreHorizontalIcon,
   PencilIcon,
+  PenLineIcon,
   XIcon,
 } from "lucide-react";
 import { useState, useTransition } from "react";
@@ -25,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { useCreateDraft } from "@/components/use-create-draft";
 import type { FollowupView } from "@/lib/followup-view";
 
 /**
@@ -33,14 +35,17 @@ import type { FollowupView } from "@/lib/followup-view";
  * resolving one animates it out before the parent drops it from the active list.
  */
 export function ActiveFollowupRow({
+  personId,
   followup,
   onResolve,
   onUpdate,
 }: {
+  personId: string;
   followup: FollowupView;
   onResolve: (id: string) => void;
   onUpdate: (view: FollowupView) => void;
 }) {
+  const { create: createDraft, pending: draftPending, error: draftError } = useCreateDraft();
   const [mode, setMode] = useState<"view" | "edit" | "snooze">("view");
   const [reason, setReason] = useState(followup.reason);
   const [dueDate, setDueDate] = useState(followup.dueAtDate);
@@ -212,6 +217,19 @@ export function ActiveFollowupRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              disabled={draftPending}
+              onSelect={() =>
+                createDraft({
+                  personId,
+                  followupContext: { id: followup.id, reason: followup.reason },
+                })
+              }
+            >
+              <PenLineIcon />
+              Draft a message
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => setMode("snooze")}>
               <AlarmClockIcon />
               Snooze
@@ -237,6 +255,7 @@ export function ActiveFollowupRow({
         </DropdownMenu>
       </div>
       {error ? <ErrorText message={error} /> : null}
+      {draftError ? <ErrorText message={draftError} /> : null}
     </article>
   );
 }

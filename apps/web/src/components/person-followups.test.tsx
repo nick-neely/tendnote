@@ -14,6 +14,10 @@ vi.mock("@/app/actions/followups", () => ({
   snoozeFollowupAction: vi.fn(),
 }));
 
+vi.mock("@/components/use-create-draft", () => ({
+  useCreateDraft: () => ({ create: () => {}, pending: false, error: null }),
+}));
+
 import { PersonFollowups } from "./person-followups";
 
 function view(overrides: Partial<FollowupView> = {}): FollowupView {

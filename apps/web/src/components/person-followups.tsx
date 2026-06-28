@@ -65,6 +65,7 @@ export function PersonFollowups({
               key={followup.id}
               onResolve={removeActive}
               onUpdate={updateActive}
+              personId={personId}
             />
           ))}
         </LedgerList>

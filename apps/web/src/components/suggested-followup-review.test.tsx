@@ -8,6 +8,10 @@ vi.mock("@/app/actions/suggested-followups", () => ({
   editSuggestedFollowupAction: vi.fn(),
 }));
 
+vi.mock("@/components/use-create-draft", () => ({
+  useCreateDraft: () => ({ create: () => {}, pending: false, error: null }),
+}));
+
 import { SuggestedFollowupReviewSection } from "./suggested-followup-review";
 
 function view(overrides: Partial<SuggestedFollowupReviewView> = {}): SuggestedFollowupReviewView {
@@ -50,6 +54,9 @@ describe("SuggestedFollowupReviewSection (person ledger)", () => {
     expect(html).toContain("Accept");
     expect(html).toContain("Edit");
     expect(html).toContain("Dismiss");
+    // The draft entry point is a distinct control from Accept: drafting from a
+    // review point never accepts the suggestion or creates follow-up state (#79).
+    expect(html).toContain("Draft");
     // Tentative until accepted.
     expect(html).toContain("nothing becomes a reminder until you accept");
     // Raw ids are never shown to the user.
