@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./briefs": "./src/briefs.ts",
     "./people": "./src/people.ts",
     "./memories": "./src/memories.ts",
     "./context-snapshots": "./src/context-snapshots.ts",

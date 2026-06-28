@@ -132,3 +132,35 @@ export const messageDraftStatus = pgEnum("message_draft_status", [
   "dismissed",
   "sent_manually",
 ]);
+
+export const briefCadence = pgEnum("brief_cadence", ["daily", "weekly"]);
+
+export const briefGenerationReason = pgEnum("brief_generation_reason", [
+  "scheduled",
+  "manual",
+  "regenerated",
+]);
+
+export const briefItemStatus = pgEnum("brief_item_status", [
+  "active",
+  "dismissed",
+  "snoozed",
+  "acted_on",
+]);
+
+export const briefItemKind = pgEnum("brief_item_kind", [
+  "due_followup",
+  "birthday",
+  "review_item",
+  "recent_context",
+  "semantic_context",
+  "suggested_followup",
+]);
+
+export const briefItemTrustLevel = pgEnum("brief_item_trust_level", [
+  "active_reminder",
+  "stored_profile_data",
+  "logged_context",
+  "confirmed_fact",
+  "tentative",
+]);

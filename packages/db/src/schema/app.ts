@@ -1,4 +1,5 @@
 export * from "./app/audit-log";
+export * from "./app/briefs";
 export * from "./app/context-snapshots";
 export * from "./app/engagement";
 export * from "./app/enums";
