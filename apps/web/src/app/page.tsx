@@ -6,7 +6,7 @@ import type { BriefCadence } from "@tendnote/domain";
 import { AppShell } from "@/components/app-shell";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
-import { TodayRail } from "@/components/today-rail";
+import { DashboardRail } from "@/components/dashboard-rail";
 import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
@@ -57,16 +57,16 @@ export default async function Home() {
             column grows past the viewport instead of scrolling inside itself.
             On mobile the assistant leads (order-1) so the chat sits at the top
             under the greeting rather than buried beneath the rail; on desktop it
-            stays the left content column with the rail on the right. */}
-        <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[minmax(0,1fr)] lg:gap-8">
+            stays the left content column with the tabbed rail on the right. The
+            rail widens a touch from lg→xl so its tabs and cards keep room. */}
+        <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="order-1 h-[70dvh] lg:h-full lg:min-h-0">
             <AssistantPanel />
           </div>
-          {/* pr-3 keeps the slim scrollbar in a gutter rather than hard against
-              the rail cards; the column is widened to 360px so the cards keep
-              their width instead of giving it up to the gutter. */}
-          <div className="order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pr-3">
-            <TodayRail
+          {/* The rail manages its own scroll inside the active tab panel (the tab
+              bar stays pinned), so the column itself is only height-bounded. */}
+          <div className="order-2 lg:h-full lg:min-h-0">
+            <DashboardRail
               birthdays={birthdays}
               dailyBrief={dailyBrief}
               followupReviews={dashboardFollowupReviews}

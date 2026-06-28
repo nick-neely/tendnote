@@ -14,34 +14,39 @@ import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-revie
  * Reviewable suggested follow-ups on the dashboard rail (issue #48): a small set
  * of tentative proposals the user can accept (turning one into an active reminder)
  * or dismiss inline. The full review — edit the timing first — lives on the
- * person's ledger, which the name links to. The section removes itself once
- * nothing is waiting, matching the rail's "an empty queue is not worth a heading"
- * rule. These are proposals, never active reminders, until accepted.
+ * person's ledger, which the name links to. These are proposals, never active
+ * reminders, until accepted.
+ *
+ * Controlled by the dashboard rail (see DashboardFollowupsSection): the rail owns
+ * the list so the Follow-ups tab count stays in sync. Renders nothing when empty.
  */
 export function DashboardSuggestedFollowupsSection({
-  initialReviews,
+  reviews,
+  onResolve,
+  heading = "Follow-ups to review",
+  headingAction,
 }: {
-  initialReviews: SuggestedFollowupReviewView[];
+  reviews: SuggestedFollowupReviewView[];
+  onResolve: (followupId: string) => void;
+  heading?: string;
+  headingAction?: React.ReactNode;
 }) {
-  const [reviews, setReviews] = useState(initialReviews);
-
-  function resolve(followupId: string) {
-    setReviews((current) => current.filter((review) => review.followup.id !== followupId));
-  }
-
   if (reviews.length === 0) {
     return null;
   }
 
   return (
     <section className="flex flex-col gap-2.5">
-      <h2 className="px-1 text-[length:var(--text-small)] font-medium text-muted-foreground">
-        Follow-ups to review
-      </h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="px-1 text-[length:var(--text-small)] font-medium text-muted-foreground">
+          {heading}
+        </h2>
+        {headingAction}
+      </div>
       <div className="overflow-hidden rounded-xl border bg-surface">
         <ul className="divide-y">
           {reviews.map((review) => (
-            <ReviewRow key={review.followup.id} onResolve={resolve} review={review} />
+            <ReviewRow key={review.followup.id} onResolve={onResolve} review={review} />
           ))}
         </ul>
       </div>

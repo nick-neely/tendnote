@@ -35,7 +35,7 @@ function view(overrides: Partial<SuggestedFollowupReviewView> = {}): SuggestedFo
 describe("DashboardSuggestedFollowupsSection (dashboard rail)", () => {
   it("renders a compact reviewable suggestion with accept/dismiss linking to the person", () => {
     const html = renderToStaticMarkup(
-      <DashboardSuggestedFollowupsSection initialReviews={[view()]} />,
+      <DashboardSuggestedFollowupsSection reviews={[view()]} onResolve={() => {}} />,
     );
 
     expect(html).toContain("Follow-ups to review");
@@ -49,14 +49,19 @@ describe("DashboardSuggestedFollowupsSection (dashboard rail)", () => {
   });
 
   it("hides entirely when nothing is waiting (no heading)", () => {
-    const html = renderToStaticMarkup(<DashboardSuggestedFollowupsSection initialReviews={[]} />);
+    const html = renderToStaticMarkup(
+      <DashboardSuggestedFollowupsSection reviews={[]} onResolve={() => {}} />,
+    );
 
     expect(html).toBe("");
   });
 
   it("reads sensibly when the person could not be resolved", () => {
     const html = renderToStaticMarkup(
-      <DashboardSuggestedFollowupsSection initialReviews={[view({ personName: null })]} />,
+      <DashboardSuggestedFollowupsSection
+        reviews={[view({ personName: null })]}
+        onResolve={() => {}}
+      />,
     );
 
     expect(html).toContain("Someone");

@@ -26,7 +26,9 @@ function view(overrides: Partial<DashboardFollowupView> = {}): DashboardFollowup
 
 describe("DashboardFollowupsSection", () => {
   it("renders active follow-ups with person name, reason, due state, and quick actions", () => {
-    const html = renderToStaticMarkup(<DashboardFollowupsSection initialFollowups={[view()]} />);
+    const html = renderToStaticMarkup(
+      <DashboardFollowupsSection followups={[view()]} onResolve={() => {}} />,
+    );
 
     expect(html).toContain("Follow-ups");
     expect(html).toContain("Mark");
@@ -40,14 +42,16 @@ describe("DashboardFollowupsSection", () => {
   });
 
   it("hides entirely when there is nothing active (no heading)", () => {
-    const html = renderToStaticMarkup(<DashboardFollowupsSection initialFollowups={[]} />);
+    const html = renderToStaticMarkup(
+      <DashboardFollowupsSection followups={[]} onResolve={() => {}} />,
+    );
 
     expect(html).toBe("");
   });
 
   it("reads sensibly when the person could not be resolved", () => {
     const html = renderToStaticMarkup(
-      <DashboardFollowupsSection initialFollowups={[view({ personName: null })]} />,
+      <DashboardFollowupsSection followups={[view({ personName: null })]} onResolve={() => {}} />,
     );
 
     expect(html).toContain("Someone");
@@ -55,7 +59,7 @@ describe("DashboardFollowupsSection", () => {
 
   it("surfaces the snoozed status so it is distinguishable from open", () => {
     const html = renderToStaticMarkup(
-      <DashboardFollowupsSection initialFollowups={[view({ status: "snoozed" })]} />,
+      <DashboardFollowupsSection followups={[view({ status: "snoozed" })]} onResolve={() => {}} />,
     );
 
     expect(html).toContain("Snoozed");
@@ -64,7 +68,8 @@ describe("DashboardFollowupsSection", () => {
   it("marks past-due reminders with calm words, not guilt copy", () => {
     const html = renderToStaticMarkup(
       <DashboardFollowupsSection
-        initialFollowups={[view({ dueState: "overdue", dueLabel: "Jun 20" })]}
+        followups={[view({ dueState: "overdue", dueLabel: "Jun 20" })]}
+        onResolve={() => {}}
       />,
     );
 

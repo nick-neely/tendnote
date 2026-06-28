@@ -17,33 +17,39 @@ export type DashboardReviewView = SuggestedMemoryReviewView;
  * Pending suggested-memory reviews surfaced inline on the dashboard so the common
  * case — approve or dismiss — happens without opening each person. The full
  * review (edit, sensitivity, archive) still lives on the person's ledger, which
- * the person name links to. The whole section removes itself once the last
- * suggestion is resolved; an empty review queue is not worth a heading.
+ * the person name links to.
+ *
+ * Controlled by the dashboard rail (see DashboardFollowupsSection): the rail owns
+ * the list so the Review tab count and the Overview peek stay in sync. Renders
+ * nothing when empty; the rail shows the teaching empty state for an empty tab.
  */
 export function DashboardReviewSection({
-  initialReviews,
+  reviews,
+  onResolve,
+  heading = "Needs review",
+  headingAction,
 }: {
-  initialReviews: DashboardReviewView[];
+  reviews: DashboardReviewView[];
+  onResolve: (memoryId: string) => void;
+  heading?: string;
+  headingAction?: React.ReactNode;
 }) {
-  const [reviews, setReviews] = useState(initialReviews);
-
-  function resolve(memoryId: string) {
-    setReviews((current) => current.filter((review) => review.memory.id !== memoryId));
-  }
-
   if (reviews.length === 0) {
     return null;
   }
 
   return (
     <section className="flex flex-col gap-2.5">
-      <h2 className="px-1 text-[length:var(--text-small)] font-medium text-muted-foreground">
-        Needs review
-      </h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="px-1 text-[length:var(--text-small)] font-medium text-muted-foreground">
+          {heading}
+        </h2>
+        {headingAction}
+      </div>
       <div className="overflow-hidden rounded-xl border bg-surface">
         <ul className="divide-y">
           {reviews.map((review) => (
-            <ReviewRow key={review.memory.id} onResolve={resolve} review={review} />
+            <ReviewRow key={review.memory.id} onResolve={onResolve} review={review} />
           ))}
         </ul>
       </div>

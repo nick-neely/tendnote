@@ -12,34 +12,42 @@ import type { DashboardFollowupView } from "@/lib/followup-view";
  * Due and upcoming active follow-ups on the dashboard rail (issue #45). A calm,
  * compact prompt — not a task inbox or agenda feed: the few soonest reminders,
  * with quick Complete/Dismiss inline and the person name linking to the full
- * lifecycle on their profile. The section removes itself once nothing is active,
- * matching the rail's "an empty queue is not worth a heading" rule. Only active
- * reminders reach here; suggested follow-ups stay in review surfaces (#48).
+ * lifecycle on their profile. Only active reminders reach here; suggested
+ * follow-ups stay in review surfaces (#48).
+ *
+ * Controlled by the dashboard rail: the rail owns the list so a tab count and
+ * the Overview peek stay in sync as items resolve. Heading and an optional
+ * action (e.g. a "See all" link) are passed in so the same list can render as a
+ * full tab ("Reminders") or a limited Overview peek. Renders nothing when empty;
+ * the rail decides whether an empty tab shows a teaching empty state.
  */
 export function DashboardFollowupsSection({
-  initialFollowups,
+  followups,
+  onResolve,
+  heading = "Follow-ups",
+  headingAction,
 }: {
-  initialFollowups: DashboardFollowupView[];
+  followups: DashboardFollowupView[];
+  onResolve: (id: string) => void;
+  heading?: string;
+  headingAction?: React.ReactNode;
 }) {
-  const [followups, setFollowups] = useState(initialFollowups);
-
-  function resolve(id: string) {
-    setFollowups((current) => current.filter((followup) => followup.id !== id));
-  }
-
   if (followups.length === 0) {
     return null;
   }
 
   return (
     <section className="flex flex-col gap-2.5">
-      <h2 className="px-1 text-[length:var(--text-small)] font-medium text-muted-foreground">
-        Follow-ups
-      </h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="px-1 text-[length:var(--text-small)] font-medium text-muted-foreground">
+          {heading}
+        </h2>
+        {headingAction}
+      </div>
       <div className="overflow-hidden rounded-xl border bg-surface">
         <ul className="divide-y">
           {followups.map((followup) => (
-            <FollowupRow followup={followup} key={followup.id} onResolve={resolve} />
+            <FollowupRow followup={followup} key={followup.id} onResolve={onResolve} />
           ))}
         </ul>
       </div>
