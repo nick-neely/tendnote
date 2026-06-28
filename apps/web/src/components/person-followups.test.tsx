@@ -18,6 +18,12 @@ vi.mock("@/components/use-create-draft", () => ({
   useCreateDraft: () => ({ create: () => {}, pending: false, error: null }),
 }));
 
+// The surface calls router.refresh() on mutation; static render only needs the
+// hook to resolve.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
+
 import { PersonFollowups } from "./person-followups";
 
 function view(overrides: Partial<FollowupView> = {}): FollowupView {

@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckIcon, CopyIcon, PencilIcon, RefreshCwIcon, SendIcon, XIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
   approveDraftAction,
@@ -16,6 +17,11 @@ import { DraftMessageButton } from "@/components/draft-message-button";
 import { Button } from "@/components/ui/button";
 import { copyDraftToClipboard } from "@/lib/draft-markdown";
 import type { DraftView } from "@/lib/draft-view";
+import { useServerSyncedList } from "@/lib/use-server-synced-list";
+
+const draftId = (draft: DraftView) => draft.id;
+const byNewest = (drafts: DraftView[]) =>
+  [...drafts].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
 export function PersonDrafts({
   personId,
@@ -24,14 +30,22 @@ export function PersonDrafts({
   personId: string;
   initialDrafts: DraftView[];
 }) {
-  const [drafts, setDrafts] = useState(initialDrafts);
+  const router = useRouter();
+  // Server-synced so a draft started from the button below (or any other entry
+  // point that refreshes) appears here instantly, newest first, without dropping
+  // the local edits the draft cards make.
+  const [drafts, setDrafts] = useServerSyncedList(initialDrafts, draftId, byNewest);
 
+  // Re-read the server after a draft changes so the Drafts tab count (drafts not
+  // yet marked sent) stays accurate; the active tab is preserved across refresh.
   function update(view: DraftView) {
     setDrafts((current) => current.map((draft) => (draft.id === view.id ? view : draft)));
+    router.refresh();
   }
 
   function add(view: DraftView) {
     setDrafts((current) => [view, ...current]);
+    router.refresh();
   }
 
   return (

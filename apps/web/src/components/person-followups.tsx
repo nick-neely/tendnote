@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ActiveFollowupRow } from "@/components/person-followup-active-row";
 import { CreateFollowupForm } from "@/components/person-followup-create-form";
 import { ResolvedFollowupRow } from "@/components/person-followup-resolved-row";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import type { FollowupView } from "@/lib/followup-view";
+import { useServerSyncedList } from "@/lib/use-server-synced-list";
+
+const followupId = (followup: FollowupView) => followup.id;
 
 function sortByDue(followups: FollowupView[]): FollowupView[] {
   return [...followups].sort((a, b) => a.dueAtISO.localeCompare(b.dueAtISO));
@@ -34,25 +37,36 @@ export function PersonFollowups({
   active: FollowupView[];
   resolved: FollowupView[];
 }) {
-  const [activeList, setActiveList] = useState(active);
-  const [resolvedList, setResolvedList] = useState(resolved);
+  const router = useRouter();
+  // Server-synced so an accept in the suggested-follow-ups section above (which
+  // promotes a suggestion to an active reminder and refreshes) shows up here
+  // instantly, and a completed reminder lands in Resolved — without losing the
+  // local optimistic edits these handlers make.
+  const [activeList, setActiveList] = useServerSyncedList(active, followupId, sortByDue);
+  const [resolvedList, setResolvedList] = useServerSyncedList(resolved, followupId);
 
+  // Any follow-up mutation re-reads the server so the Follow-ups tab count and
+  // the dashboard rail stay in step; client state (the active tab) survives it.
   function removeActive(id: string) {
     setActiveList((current) => current.filter((followup) => followup.id !== id));
+    router.refresh();
   }
 
   function updateActive(view: FollowupView) {
     setActiveList((current) =>
       sortByDue(current.map((followup) => (followup.id === view.id ? view : followup))),
     );
+    router.refresh();
   }
 
   function addActive(view: FollowupView) {
     setActiveList((current) => sortByDue([...current, view]));
+    router.refresh();
   }
 
   function removeResolved(id: string) {
     setResolvedList((current) => current.filter((followup) => followup.id !== id));
+    router.refresh();
   }
 
   return (

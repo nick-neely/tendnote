@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckIcon, PencilIcon, PenLineIcon, XIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
   acceptSuggestedFollowupAction,
@@ -44,10 +45,13 @@ export function SuggestedFollowupReviewSection({
 }: {
   initialReviews: SuggestedFollowupReviewView[];
 }) {
+  const router = useRouter();
   const [reviews, setReviews] = useState(initialReviews);
 
   function resolve(followupId: string) {
     setReviews((current) => current.filter((review) => review.followup.id !== followupId));
+    // Keep the Follow-ups tab count honest after an accept/dismiss.
+    router.refresh();
   }
 
   function update(view: SuggestedFollowupReviewView) {

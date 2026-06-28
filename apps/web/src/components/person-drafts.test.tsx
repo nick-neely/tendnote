@@ -16,6 +16,10 @@ vi.mock("@/components/use-create-draft", () => ({
   useCreateDraft: () => ({ create: vi.fn(), pending: false, error: null }),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
+
 import { PersonDrafts } from "./person-drafts";
 
 const PERSON_ID = "person-1";

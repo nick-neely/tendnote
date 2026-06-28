@@ -13,11 +13,12 @@ import {
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { PersonCapture } from "@/components/person-capture";
+import { PersonDetailTabs, type PersonTab } from "@/components/person-detail-tabs";
 import { PersonDrafts } from "@/components/person-drafts";
 import { PersonFollowups } from "@/components/person-followups";
 import { PersonHeader } from "@/components/person-header";
 import {
-  LedgerSection,
+  LedgerEmpty,
   LoggedContextSection,
   MemoriesSection,
   PersonDetailsCard,
@@ -179,63 +180,85 @@ export default async function PersonDetailPage({
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
     .map((followup) => toFollowupView(followup, now));
 
+  // Tab counts are server-derived and stay live because every section calls
+  // router.refresh() on mutation: pending suggestions to review, things to act on
+  // under follow-ups (active reminders + tentative proposals), and drafts not yet
+  // marked sent. Confirmed memories and the snapshot don't carry a count.
+  const reviewCount = suggestedReviews.length;
+  const followupCount = activeFollowups.length + suggestedFollowupReviews.length;
+  const draftsCount = drafts.filter((draft) => draft.status !== "sent_manually").length;
+  const initialTab: PersonTab = snapshot ? "snapshot" : "memory";
+
   return (
     <AppShell>
-      <div className="flex flex-col gap-8">
-        <PersonHeader person={person} />
-
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-8">
-          <div className="flex min-w-0 flex-col gap-8">
-            {snapshot ? (
-              <RelationshipSnapshotCard personName={person.displayName} view={snapshot} />
-            ) : null}
-
-            {suggestedReviews.length ? (
-              <LedgerSection
-                description="Suggestions drawn from your notes. Save what's right, edit the wording, or dismiss the rest — nothing becomes a memory until you say so."
-                id="needs-review"
-                title="Needs review"
-              >
-                <SuggestedMemoryReviewSection initialReviews={suggestedReviews} />
-              </LedgerSection>
-            ) : null}
-
-            <MemoriesSection memories={approvedMemories} />
-            <LoggedContextSection sourceRecords={sourceRecords} />
-            <LedgerSection
-              description={`Reminders tied to ${firstName}.`}
-              id="follow-ups"
-              title="Follow-ups"
-            >
-              <SuggestedFollowupReviewSection initialReviews={suggestedFollowupReviews} />
-              <PersonFollowups
-                active={activeFollowups}
-                defaultDueDate={toDateInputValue(now)}
-                firstName={firstName}
-                personId={person.id}
-                resolved={resolvedFollowups}
-              />
-            </LedgerSection>
-
-            <LedgerSection
-              description={`Tendnote-only message drafts for ${firstName}. Review, edit, copy, or mark them sent — nothing leaves Tendnote.`}
-              id="message-drafts"
-              title="Message drafts"
-            >
-              <PersonDrafts initialDrafts={drafts} personId={person.id} />
-            </LedgerSection>
-          </div>
-
-          <aside className="flex flex-col gap-6 lg:sticky lg:top-20 lg:self-start">
+      <PersonDetailTabs
+        aside={
+          <>
             <PersonCapture
               firstName={firstName}
               personId={person.id}
               personName={person.displayName}
             />
             <PersonDetailsCard person={person} />
-          </aside>
-        </div>
-      </div>
+          </>
+        }
+        draftsCount={draftsCount}
+        draftsPanel={
+          <div className="flex flex-col gap-3">
+            <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+              Tendnote-only message drafts for {firstName}. Review, edit, copy, or mark them sent —
+              nothing leaves Tendnote.
+            </p>
+            <PersonDrafts initialDrafts={drafts} personId={person.id} />
+          </div>
+        }
+        followupCount={followupCount}
+        followupsPanel={
+          <div className="flex flex-col gap-3">
+            <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+              Reminders tied to {firstName}. Accept a suggestion to make it active, or add your own.
+            </p>
+            <SuggestedFollowupReviewSection initialReviews={suggestedFollowupReviews} />
+            <PersonFollowups
+              active={activeFollowups}
+              defaultDueDate={toDateInputValue(now)}
+              firstName={firstName}
+              personId={person.id}
+              resolved={resolvedFollowups}
+            />
+          </div>
+        }
+        hasSnapshot={Boolean(snapshot)}
+        header={<PersonHeader person={person} />}
+        initialTab={initialTab}
+        memoryPanel={
+          <div className="flex flex-col gap-8">
+            <MemoriesSection memories={approvedMemories} />
+            <LoggedContextSection sourceRecords={sourceRecords} />
+          </div>
+        }
+        reviewCount={reviewCount}
+        reviewPanel={
+          <div className="flex flex-col gap-3">
+            <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+              Suggestions drawn from your notes. Save what's right, edit the wording, or dismiss the
+              rest — nothing becomes a memory until you say so.
+            </p>
+            {suggestedReviews.length ? (
+              <SuggestedMemoryReviewSection initialReviews={suggestedReviews} />
+            ) : (
+              <LedgerEmpty>
+                Nothing waiting to review. New suggestions drawn from your notes will show up here.
+              </LedgerEmpty>
+            )}
+          </div>
+        }
+        snapshotPanel={
+          snapshot ? (
+            <RelationshipSnapshotCard personName={person.displayName} view={snapshot} />
+          ) : null
+        }
+      />
     </AppShell>
   );
 }

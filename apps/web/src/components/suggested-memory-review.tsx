@@ -2,6 +2,7 @@
 
 import type { Sensitivity } from "@tendnote/domain";
 import { ArchiveIcon, CheckIcon, PencilIcon, XIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
   archiveSuggestedMemoryAction,
@@ -53,10 +54,14 @@ export function SuggestedMemoryReviewSection({
 }: {
   initialReviews: SuggestedMemoryReviewView[];
 }) {
+  const router = useRouter();
   const [reviews, setReviews] = useState(initialReviews);
 
   function resolve(memoryId: string) {
     setReviews((current) => current.filter((review) => review.memory.id !== memoryId));
+    // Re-read the server so the tab count drops and a saved suggestion appears
+    // under Memory; client state (active tab) survives the refresh.
+    router.refresh();
   }
 
   function update(view: SuggestedMemoryReviewView) {

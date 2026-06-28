@@ -12,6 +12,10 @@ vi.mock("@/components/use-create-draft", () => ({
   useCreateDraft: () => ({ create: () => {}, pending: false, error: null }),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
+
 import { SuggestedFollowupReviewSection } from "./suggested-followup-review";
 
 function view(overrides: Partial<SuggestedFollowupReviewView> = {}): SuggestedFollowupReviewView {

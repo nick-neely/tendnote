@@ -11,6 +11,7 @@ import {
   type DashboardReviewView,
 } from "@/components/dashboard-review-section";
 import { DashboardSuggestedFollowupsSection } from "@/components/dashboard-suggested-followups-section";
+import { TabCount } from "@/components/tab-count";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { BriefView } from "@/lib/brief-view";
 import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brief";
@@ -150,24 +151,6 @@ export function DashboardRail({
         <PeopleSection people={people} />
       </TabsContent>
     </Tabs>
-  );
-}
-
-/**
- * A calm, neutral presence indicator for a tab — informative, never a red overdue
- * badge or backlog count. Hidden when the tab is empty; capped so it stays a
- * glance, not a number to clear. Tints toward the brand sage when its tab is
- * active.
- */
-function TabCount({ count }: { count: number }) {
-  if (count <= 0) {
-    return null;
-  }
-
-  return (
-    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-foreground/10 px-1 font-medium text-[length:var(--text-caption)] text-foreground tabular-nums transition-colors group-data-[state=active]/tab:bg-primary/15 group-data-[state=active]/tab:text-primary">
-      {count > 9 ? "9+" : count}
-    </span>
   );
 }
 
