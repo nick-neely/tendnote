@@ -49,6 +49,17 @@ const personContextOutput = z.object({
   suggestedMemories: z.array(z.unknown()),
 });
 
+const messageDraftOutput = z.object({
+  created: z.literal(true),
+  draft: z.object({
+    id: z.string(),
+    personId: z.string().nullish(),
+    status: z.string(),
+    body: z.string(),
+  }),
+  grounding: z.array(z.object({ trust: z.string(), label: z.string() })).optional(),
+});
+
 const suggestedReviewItem = z.object({
   person: z.object({ id: z.string(), displayName: z.string() }).nullish(),
   memory: z.object({
@@ -263,6 +274,18 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
         approvedCount: parsed.data.approvedMemories.length,
         loggedCount: parsed.data.sourceRecords.length,
         suggestedCount: parsed.data.suggestedMemories.length,
+      };
+    }
+    case "create_message_draft": {
+      const parsed = messageDraftOutput.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "message_draft",
+        draftId: parsed.data.draft.id,
+        personId: parsed.data.draft.personId ?? null,
+        status: parsed.data.draft.status,
+        body: parsed.data.draft.body,
+        grounding: parsed.data.grounding ?? [],
       };
     }
     case "get_suggested_memory_review": {

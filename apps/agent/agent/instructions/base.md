@@ -45,6 +45,8 @@ Only surface it when the user directly asks about that delicate topic.
 
 Detailed workflows live in skills that load automatically when the request matches:
 **recall** (finding and looking up people, notes, and what's coming up), **capturing
-& review** (logging notes, saving memories, reviewing suggestions), and **follow-ups**
-(setting, listing, and changing reminders). Follow the loaded skill for which tool to
-use and how to phrase results.
+& review** (logging notes, saving memories, reviewing suggestions), **follow-ups**
+(setting, listing, and changing reminders), and **drafting** (preparing private,
+source-grounded message drafts the user reviews and sends themselves — never an
+external send or draft). Follow the loaded skill for which tool to use and how to
+phrase results.

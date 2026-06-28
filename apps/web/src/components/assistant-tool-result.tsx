@@ -4,6 +4,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   NotebookPenIcon,
+  PenLineIcon,
   SearchIcon,
   UserIcon,
   UserPenIcon,
@@ -243,6 +244,30 @@ function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
           <span className="text-muted-foreground">You noted: </span>
           {view.content}
         </Body>
+      </ResultCard>
+    );
+  }
+
+  if (view.kind === "message_draft") {
+    return (
+      <ResultCard
+        footer={
+          <Caption>
+            Tendnote-only draft — review and copy to send yourself. Nothing was sent.
+          </Caption>
+        }
+        icon={<PenLineIcon className="size-3" />}
+        isNew={isNew}
+        kind={view.kind}
+        label="Drafted a message"
+        tone="neutral"
+      >
+        <Body>{view.body}</Body>
+        {view.grounding.length ? (
+          <p className="mt-2 text-[length:var(--text-caption)] text-muted-foreground">
+            Grounded in {view.grounding.map((item) => item.label).join(", ")}
+          </p>
+        ) : null}
       </ResultCard>
     );
   }

@@ -509,6 +509,43 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     expect(view).toEqual({ kind: "relationship_agenda", candidates: [], window: null });
   });
 
+  it("renders a create_message_draft result as a persisted draft view", () => {
+    const view = toAssistantToolView({
+      toolName: "create_message_draft",
+      output: {
+        created: true,
+        component: { type: "message_draft", draftId: "draft-1" },
+        draft: {
+          id: "draft-1",
+          personId: "person-1",
+          channel: "text",
+          purpose: "check_in",
+          status: "draft",
+          body: "Hi Mark — how's Denver?",
+        },
+        grounding: [{ trust: "confirmed_fact", label: "Moved to Denver" }],
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "message_draft",
+      draftId: "draft-1",
+      personId: "person-1",
+      status: "draft",
+      body: "Hi Mark — how's Denver?",
+      grounding: [{ trust: "confirmed_fact", label: "Moved to Denver" }],
+    });
+  });
+
+  it("degrades a declined create_message_draft result to a generic view", () => {
+    const view = toAssistantToolView({
+      toolName: "create_message_draft",
+      output: { created: false, reason: "insufficient_context" },
+    });
+
+    expect(view).toEqual({ kind: "generic", toolName: "create_message_draft" });
+  });
+
   it("degrades an unknown tool to a generic view", () => {
     const view = toAssistantToolView({ toolName: "some_future_tool", output: { whatever: true } });
 

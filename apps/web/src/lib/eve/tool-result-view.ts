@@ -37,6 +37,14 @@ export type AssistantToolView =
       loggedCount: number;
       suggestedCount: number;
     }
+  | {
+      kind: "message_draft";
+      draftId: string;
+      personId: string | null;
+      status: string;
+      body: string;
+      grounding: { trust: string; label: string }[];
+    }
   | ({ kind: "suggested_memory_review" } & SuggestedReviewItemView)
   | { kind: "suggested_memory_review_list"; reviews: SuggestedReviewItemView[] }
   | ({ kind: "suggested_followup_review" } & SuggestedFollowupReviewItemView)
@@ -145,6 +153,8 @@ export function assistantToolViewKey(view: AssistantToolView): string {
       return `person-updated:${view.personId}:${view.updatedFields.join(",")}`;
     case "person_context":
       return `context:${view.personId}`;
+    case "message_draft":
+      return `draft:${view.draftId}`;
     case "suggested_memory_review":
       return `suggested:${view.memoryId}`;
     case "suggested_memory_review_list":
@@ -218,6 +228,10 @@ export function toolViewTier(view: AssistantToolView): ToolViewTier {
       return view.results.length > 0 ? "disclosure" : "line";
     case "relationship_agenda":
       return view.candidates.length > 0 ? "disclosure" : "line";
+    case "message_draft":
+      // A persisted, durable draft earns the card — the user must see what was
+      // written (and the Tendnote-only boundary) and act on it.
+      return "card";
     default:
       return "card";
   }
@@ -241,6 +255,7 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   update_followup_status: "Updating the reminder…",
   capture_source_record: "Logging…",
   capture_memory: "Saving to memory…",
+  create_message_draft: "Drafting a message…",
   create_person: "Adding to your notebook…",
   update_person: "Updating the profile…",
 };
