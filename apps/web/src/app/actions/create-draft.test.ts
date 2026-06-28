@@ -8,8 +8,8 @@ const { generateDraft, revalidatePath } = vi.hoisted(() => ({
 
 vi.mock("@tendnote/db/queries/drafts", () => ({ generateDraft }));
 vi.mock("next/cache", () => ({ revalidatePath }));
-vi.mock("@/lib/auth/current-user", () => ({
-  getCurrentOwnerUserId: vi.fn().mockResolvedValue("user-1"),
+vi.mock("@/lib/access/current-access", () => ({
+  requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("user-1"),
 }));
 
 import { createDraftAction } from "./create-draft";

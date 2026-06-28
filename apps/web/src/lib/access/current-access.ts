@@ -3,10 +3,14 @@ import "server-only";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAuth } from "@/lib/auth/server";
-import { type AccessState, decideAccessRoute, resolveAccessState } from "./access-state";
+import {
+  type AccessState,
+  decideAccessRoute,
+  localFallbackOwnerUserId,
+  ownerForActionOrThrow,
+  resolveAccessState,
+} from "./access-state";
 import { privateBetaAccess } from "./private-beta-flag";
-
-const localDemoOwnerUserId = "demo-user";
 
 /**
  * Resolve Private Beta Access for the current request from the trusted Better
@@ -32,16 +36,12 @@ export async function getCurrentAccess(): Promise<AccessState> {
   return resolveAccessState(sessionUser, (entity) => privateBetaAccess.resolveAccess(entity));
 }
 
-/**
- * The local-development-only fallback owner. Returns `undefined` in production so
- * hosted requests can never be admitted without a real admitted session.
- */
-function localFallbackOwnerUserId(): string | undefined {
-  if (process.env.NODE_ENV === "production") {
-    return undefined;
-  }
-
-  return process.env.TENDNOTE_DEV_OWNER_USER_ID ?? localDemoOwnerUserId;
+/** Resolve the local-dev fallback owner from the live environment, if any. */
+function currentLocalFallbackOwnerUserId(): string | undefined {
+  return localFallbackOwnerUserId({
+    nodeEnv: process.env.NODE_ENV,
+    devOwnerUserId: process.env.TENDNOTE_DEV_OWNER_USER_ID,
+  });
 }
 
 /**
@@ -52,7 +52,7 @@ function localFallbackOwnerUserId(): string | undefined {
 export async function requireAdmittedOwner(): Promise<string> {
   const state = await getCurrentAccess();
   const route = decideAccessRoute(state, {
-    localFallbackOwnerUserId: localFallbackOwnerUserId(),
+    localFallbackOwnerUserId: currentLocalFallbackOwnerUserId(),
   });
 
   if (route.type === "redirect") {
@@ -60,4 +60,20 @@ export async function requireAdmittedOwner(): Promise<string> {
   }
 
   return route.ownerUserId;
+}
+
+/**
+ * Server-action access gate and owner resolver. Like {@link requireAdmittedOwner}
+ * but throws instead of redirecting, so a mutation triggered by an unauthenticated
+ * or pending caller (e.g. a stale client) fails closed rather than silently
+ * proceeding. Admitted callers — and the local-dev fallback owner outside
+ * production — get their owner id.
+ */
+export async function requireAdmittedOwnerForAction(): Promise<string> {
+  const state = await getCurrentAccess();
+  const route = decideAccessRoute(state, {
+    localFallbackOwnerUserId: currentLocalFallbackOwnerUserId(),
+  });
+
+  return ownerForActionOrThrow(route);
 }

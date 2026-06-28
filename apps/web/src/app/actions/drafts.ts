@@ -11,7 +11,7 @@ import {
 } from "@tendnote/db/queries/drafts";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { type DraftView, toDraftView } from "@/lib/draft-view";
 
 const draftActionSchema = z.object({ draftId: z.uuid() });
@@ -25,7 +25,7 @@ const editDraftSchema = z.object({ draftId: z.uuid(), body: z.string().trim().mi
  */
 export async function approveDraftAction(input: { draftId: string }): Promise<DraftView> {
   const { draftId } = draftActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const draft = await approveDraft({ ownerUserId, draftId });
 
   revalidatePath(`/people/${draft.personId}`);
@@ -34,7 +34,7 @@ export async function approveDraftAction(input: { draftId: string }): Promise<Dr
 
 export async function dismissDraftAction(input: { draftId: string }): Promise<DraftView> {
   const { draftId } = draftActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const draft = await dismissDraft({ ownerUserId, draftId });
 
   revalidatePath(`/people/${draft.personId}`);
@@ -48,7 +48,7 @@ export async function dismissDraftAction(input: { draftId: string }): Promise<Dr
  */
 export async function markDraftSentManuallyAction(input: { draftId: string }): Promise<DraftView> {
   const { draftId } = draftActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const draft = await markDraftSentManually({ ownerUserId, draftId });
 
   revalidatePath(`/people/${draft.personId}`);
@@ -61,7 +61,7 @@ export async function editDraftBodyAction(input: {
   body: string;
 }): Promise<DraftView> {
   const { draftId, body } = editDraftSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const draft = await editDraftBody({ ownerUserId, draftId, body });
 
   revalidatePath(`/people/${draft.personId}`);
@@ -77,7 +77,7 @@ export async function editDraftBodyAction(input: {
  */
 export async function getDraftViewAction(input: { draftId: string }): Promise<DraftView | null> {
   const { draftId } = draftActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const draft = await getDraft({ ownerUserId, draftId });
 
   return draft ? toDraftView(draft) : null;
@@ -97,7 +97,7 @@ export async function regenerateDraftAction(input: {
   draftId: string;
 }): Promise<RegenerateDraftResult> {
   const { draftId } = draftActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const outcome = await regenerateDraft({ ownerUserId, draftId });
 
   if (outcome.status === "created") {

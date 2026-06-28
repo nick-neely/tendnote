@@ -7,7 +7,7 @@ import {
   getSourceRecordReview,
 } from "@tendnote/db/queries/source-records";
 import { z } from "zod";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import {
   type SourceRecordReviewView,
   toSourceRecordReviewView,
@@ -25,7 +25,7 @@ export async function captureGlobalAssistantSourceRecord(input: {
   personId?: string;
 }): Promise<SourceRecordReviewView> {
   const parsed = captureGlobalAssistantSourceRecordSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const captureSurface = parsed.personId ? "person_assistant" : "global_assistant";
   const result = parsed.personId
     ? await captureSourceRecordForPerson({

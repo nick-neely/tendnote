@@ -6,7 +6,7 @@ import {
 } from "@tendnote/db/queries/memories";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 
 // personId is the note's already-resolved person, used only to re-render their
 // profile after the action so the new memories show on their ledger.
@@ -25,7 +25,7 @@ export async function approveLoggedNoteAction(input: {
   personId?: string;
 }): Promise<LoggedNoteApproval> {
   const parsed = loggedNoteSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await approveExtractedMemoriesForSourceRecord({
     ownerUserId,
     sourceRecordId: parsed.sourceRecordId,
@@ -46,7 +46,7 @@ export async function dismissLoggedNoteAction(input: {
   personId?: string;
 }): Promise<LoggedNoteDismissal> {
   const parsed = loggedNoteSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await dismissExtractedMemoriesForSourceRecord({
     ownerUserId,
     sourceRecordId: parsed.sourceRecordId,

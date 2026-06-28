@@ -4,7 +4,7 @@ import { generateDraft } from "@tendnote/db/queries/drafts";
 import { messageDraftPurposeSchema } from "@tendnote/domain";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 
 /**
  * Narrow entry-point input for starting a Tendnote draft from a product surface
@@ -40,7 +40,7 @@ export async function createDraftAction(
   input: z.input<typeof createDraftSchema>,
 ): Promise<CreateDraftResult> {
   const parsed = createDraftSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
 
   const outcome = await generateDraft({
     ownerUserId,

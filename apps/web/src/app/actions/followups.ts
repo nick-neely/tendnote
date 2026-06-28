@@ -12,7 +12,7 @@ import {
 import type { Followup } from "@tendnote/domain";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { type FollowupView, parseDateInputValue, toFollowupView } from "@/lib/followup-view";
 
 const followupActionSchema = z.object({ followupId: z.uuid() });
@@ -55,7 +55,7 @@ export async function createFollowupAction(input: {
   dueAt: string;
 }): Promise<FollowupView> {
   const parsed = createFollowupActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const followup = await createFollowup({ ownerUserId, ...parsed });
 
   revalidatePerson(followup.personId);
@@ -70,7 +70,7 @@ export async function editFollowupAction(input: {
     followupId: input.followupId,
     ...input.edit,
   });
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const followup = await editFollowup({
     ownerUserId,
     followupId: parsed.followupId,
@@ -89,7 +89,7 @@ async function transitionAction(
   run: (input: { ownerUserId: string; followupId: string }) => Promise<Followup>,
 ): Promise<FollowupView> {
   const parsed = followupActionSchema.parse({ followupId });
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const followup = await run({ ownerUserId, followupId: parsed.followupId });
 
   revalidatePerson(followup.personId);
@@ -117,7 +117,7 @@ export async function snoozeFollowupAction(input: {
   dueAt: string;
 }): Promise<FollowupView> {
   const parsed = snoozeFollowupActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const followup = await snoozeFollowup({ ownerUserId, ...parsed });
 
   revalidatePerson(followup.personId);

@@ -3,7 +3,7 @@
 import { captureExplicitMemory } from "@tendnote/db/queries/memories";
 import { parseExplicitMemoryRequest, sensitivitySchema } from "@tendnote/domain";
 import { z } from "zod";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 
 const captureExplicitMemorySchema = z.object({
   personId: z.uuid(),
@@ -38,7 +38,7 @@ export async function captureExplicitMemoryForPerson(input: {
   sensitivity?: "normal" | "sensitive" | "restricted";
 }): Promise<ExplicitMemoryCaptureView> {
   const parsedInput = captureExplicitMemorySchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const { content } = parseExplicitMemoryRequest(parsedInput.request);
 
   const { memory, sourceRecord, person } = await captureExplicitMemory({

@@ -8,7 +8,7 @@ import {
 } from "@tendnote/db/queries/memories";
 import { memoryReviewEditSchema } from "@tendnote/domain";
 import { z } from "zod";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import {
   type SuggestedMemoryReviewView,
   toSuggestedMemoryReviewView,
@@ -30,7 +30,7 @@ export async function saveSuggestedMemoryAction(input: {
   edit?: z.input<typeof memoryReviewEditSchema>;
 }): Promise<SuggestedMemoryReviewView> {
   const parsed = memoryEditActionSchema.parse({ memoryId: input.memoryId, edit: input.edit ?? {} });
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await saveSuggestedMemory({ ownerUserId, ...parsed });
 
   return toSuggestedMemoryReviewView(result);
@@ -41,7 +41,7 @@ export async function editSuggestedMemoryAction(input: {
   edit: z.input<typeof memoryReviewEditSchema>;
 }): Promise<SuggestedMemoryReviewView> {
   const parsed = memoryEditActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await editSuggestedMemory({ ownerUserId, ...parsed });
 
   return toSuggestedMemoryReviewView(result);
@@ -51,7 +51,7 @@ export async function dismissSuggestedMemoryAction(input: {
   memoryId: string;
 }): Promise<MemoryReviewResolution> {
   const parsed = memoryActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const memory = await dismissSuggestedMemory({ ownerUserId, memoryId: parsed.memoryId });
 
   return { memoryId: memory.id, status: memory.status };
@@ -61,7 +61,7 @@ export async function archiveSuggestedMemoryAction(input: {
   memoryId: string;
 }): Promise<MemoryReviewResolution> {
   const parsed = memoryActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const memory = await archiveMemory({ ownerUserId, memoryId: parsed.memoryId });
 
   return { memoryId: memory.id, status: memory.status };

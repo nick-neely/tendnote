@@ -10,7 +10,7 @@ import {
 import { briefCadenceSchema } from "@tendnote/domain";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
 
 // Default snooze defers a brief item by a week — long enough to clear it from the
@@ -42,7 +42,7 @@ export async function generateBriefAction(input: {
   regenerate?: boolean;
 }): Promise<GenerateBriefResult> {
   const { cadence, regenerate } = generateBriefSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
 
   const result = await generateManualBrief({
     ownerUserId,
@@ -68,7 +68,7 @@ export async function dismissBriefItemAction(input: {
   briefItemId: string;
 }): Promise<BriefItemResolution> {
   const { briefItemId } = briefItemActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const item = await dismissBriefItem({ ownerUserId, briefItemId });
 
   revalidatePath("/");
@@ -80,7 +80,7 @@ export async function snoozeBriefItemAction(input: {
   briefItemId: string;
 }): Promise<BriefItemResolution> {
   const { briefItemId } = briefItemActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const snoozedUntil = new Date(Date.now() + SNOOZE_DAYS * 24 * 60 * 60 * 1000);
   const item = await snoozeBriefItem({ ownerUserId, briefItemId, snoozedUntil });
 
@@ -98,7 +98,7 @@ export async function acceptBriefFollowupAction(input: {
   briefItemId: string;
 }): Promise<BriefItemResolution> {
   const { briefItemId } = briefItemActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await acceptBriefSuggestedFollowup({ ownerUserId, briefItemId });
 
   revalidatePath("/");

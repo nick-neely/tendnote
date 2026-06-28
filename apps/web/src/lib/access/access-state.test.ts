@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type AccessState,
   decideAccessRoute,
+  localFallbackOwnerUserId,
+  ownerForActionOrThrow,
   resolveAccessState,
   type SessionUser,
 } from "./access-state";
@@ -96,5 +98,91 @@ describe("resolveAccessState", () => {
     expect(state).toEqual({ state: "unauthenticated" });
     // No session means no access evaluation at all.
     expect(resolveAccess).not.toHaveBeenCalled();
+  });
+});
+
+describe("localFallbackOwnerUserId (#87 demo-user is local-dev only)", () => {
+  it("returns no fallback owner in production", () => {
+    expect(localFallbackOwnerUserId({ nodeEnv: "production" })).toBeUndefined();
+    expect(
+      localFallbackOwnerUserId({ nodeEnv: "production", devOwnerUserId: "demo-user" }),
+    ).toBeUndefined();
+  });
+
+  it("falls back to the demo owner outside production", () => {
+    expect(localFallbackOwnerUserId({ nodeEnv: "development" })).toBe("demo-user");
+    expect(localFallbackOwnerUserId({ nodeEnv: "test" })).toBe("demo-user");
+  });
+
+  it("honors an explicit dev owner id outside production", () => {
+    expect(localFallbackOwnerUserId({ nodeEnv: "development", devOwnerUserId: "owner-42" })).toBe(
+      "owner-42",
+    );
+  });
+});
+
+describe("hosted vs local-dev access gating (#87)", () => {
+  const pending: AccessState = { state: "pending", user: USER, decision: pendingDecision };
+  const admitted: AccessState = {
+    state: "admitted",
+    user: USER,
+    ownerUserId: "user-1",
+    decision: admittedDecision,
+  };
+
+  it("denies an unauthenticated hosted request (no fallback in production)", () => {
+    const fallback = localFallbackOwnerUserId({ nodeEnv: "production" });
+
+    expect(
+      decideAccessRoute({ state: "unauthenticated" }, { localFallbackOwnerUserId: fallback }),
+    ).toEqual({
+      type: "redirect",
+      to: "/sign-in",
+    });
+  });
+
+  it("denies a pending hosted request before any data loads", () => {
+    const fallback = localFallbackOwnerUserId({ nodeEnv: "production" });
+
+    expect(decideAccessRoute(pending, { localFallbackOwnerUserId: fallback })).toEqual({
+      type: "redirect",
+      to: "/pending",
+    });
+  });
+
+  it("admits an admitted hosted request with its owner id", () => {
+    const fallback = localFallbackOwnerUserId({ nodeEnv: "production" });
+
+    expect(decideAccessRoute(admitted, { localFallbackOwnerUserId: fallback })).toEqual({
+      type: "admitted",
+      ownerUserId: "user-1",
+    });
+  });
+
+  it("admits an unauthenticated local-dev request via the fallback owner", () => {
+    const fallback = localFallbackOwnerUserId({ nodeEnv: "development" });
+
+    expect(
+      decideAccessRoute({ state: "unauthenticated" }, { localFallbackOwnerUserId: fallback }),
+    ).toEqual({
+      type: "admitted",
+      ownerUserId: "demo-user",
+    });
+  });
+});
+
+describe("ownerForActionOrThrow (#87 server-action gate fails closed)", () => {
+  it("returns the owner id for an admitted route", () => {
+    expect(ownerForActionOrThrow({ type: "admitted", ownerUserId: "user-1" })).toBe("user-1");
+  });
+
+  it("throws for a pending caller instead of mutating data", () => {
+    expect(() => ownerForActionOrThrow({ type: "redirect", to: "/pending" })).toThrow(
+      /Private Beta Access/,
+    );
+  });
+
+  it("throws for an unauthenticated caller", () => {
+    expect(() => ownerForActionOrThrow({ type: "redirect", to: "/sign-in" })).toThrow(/signed in/);
   });
 });

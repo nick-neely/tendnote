@@ -8,7 +8,7 @@ import {
 import type { FollowupEdit } from "@tendnote/domain";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { parseDateInputValue } from "@/lib/followup-view";
 import {
   type SuggestedFollowupReviewView,
@@ -49,7 +49,7 @@ export async function acceptSuggestedFollowupAction(input: {
 }): Promise<SuggestedFollowupReviewView> {
   const { followupId } = followupActionSchema.parse({ followupId: input.followupId });
   const edit = parseFollowupEdit(input.edit);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await acceptSuggestedFollowup({ ownerUserId, followupId, edit });
 
   revalidatePerson(result.followup.personId);
@@ -62,7 +62,7 @@ export async function editSuggestedFollowupAction(input: {
 }): Promise<SuggestedFollowupReviewView> {
   const { followupId } = followupActionSchema.parse({ followupId: input.followupId });
   const edit = parseFollowupEdit(input.edit);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await editSuggestedFollowup({ ownerUserId, followupId, edit });
 
   revalidatePerson(result.followup.personId);
@@ -73,7 +73,7 @@ export async function dismissSuggestedFollowupAction(input: {
   followupId: string;
 }): Promise<SuggestedFollowupResolution> {
   const { followupId } = followupActionSchema.parse(input);
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const followup = await dismissSuggestedFollowup({ ownerUserId, followupId });
 
   revalidatePerson(followup.personId);

@@ -38,6 +38,24 @@ export async function resolveAccessState(
     : { state: "pending", user, decision };
 }
 
+const LOCAL_DEMO_OWNER_USER_ID = "demo-user";
+
+/**
+ * The local-development-only fallback owner. Returns `undefined` in production so
+ * hosted preview/production requests can never be admitted without a real
+ * admitted session — the demo owner is an explicit local convenience only.
+ */
+export function localFallbackOwnerUserId(env: {
+  nodeEnv?: string;
+  devOwnerUserId?: string;
+}): string | undefined {
+  if (env.nodeEnv === "production") {
+    return undefined;
+  }
+
+  return env.devOwnerUserId ?? LOCAL_DEMO_OWNER_USER_ID;
+}
+
 /** Where a resolved access state should send the request. */
 export type AccessRoute =
   | { type: "admitted"; ownerUserId: string }
@@ -51,7 +69,7 @@ export type AccessRoute =
  */
 export function decideAccessRoute(
   state: AccessState,
-  options: { localFallbackOwnerUserId?: string | null } = {},
+  options: { localFallbackOwnerUserId?: string } = {},
 ): AccessRoute {
   switch (state.state) {
     case "admitted":
@@ -63,4 +81,21 @@ export function decideAccessRoute(
         ? { type: "admitted", ownerUserId: options.localFallbackOwnerUserId }
         : { type: "redirect", to: "/sign-in" };
   }
+}
+
+/**
+ * Resolve an {@link AccessRoute} to an owner id for a server action, throwing a
+ * user-safe error instead of redirecting. A mutation by an unauthenticated or
+ * pending caller (e.g. a stale client) fails closed rather than proceeding.
+ */
+export function ownerForActionOrThrow(route: AccessRoute): string {
+  if (route.type === "redirect") {
+    throw new Error(
+      route.to === "/pending"
+        ? "Private Beta Access is required to do that."
+        : "You must be signed in to do that.",
+    );
+  }
+
+  return route.ownerUserId;
 }
