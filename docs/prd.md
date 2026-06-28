@@ -1020,25 +1020,9 @@ Deliverables:
 
 - Add message drafting inside Tendnote after the capture, review, retrieval, follow-up, and brief loop is working.
 - Drafts should use approved memories as facts, source records as source-grounded context, and suggested memories only as clearly tentative hints.
-- Add `draft_message` and `create_message_draft` only for Tendnote-owned draft records. Do not create Gmail drafts, send messages, or write to external systems in Phase 1.
+- Add `draft_message` and `crea te_message_draft` only for Tendnote-owned draft records. Do not create Gmail drafts, send messages, or write to external systems in Phase 1.
 - Every draft should be reviewable, editable, dismissible, and source-grounded. The user remains responsible for copying or sending outside Tendnote.
 - Add tone, no-fake-memory, source-grounded-drafting, and no-send-without-approval eval coverage before treating drafting as complete.
-
-Vertical slice issue seeds:
-
-- Implement add person and search people flows through UI and agent tool.
-- Implement source records and atomic memories with `suggested`, `approved`, `dismissed`, and `archived` states.
-- Implement add memory flow with source, sensitivity, confidence, importance, status, and scope.
-- Implement person context snapshot generation and snapshot-backed `get_person_profile`.
-- Implement Eve-backed web chat with people search, explicit person creation, source-record capture, explicit memory capture, and review component rendering.
-- Add a production background trigger for extraction jobs before relying on deployed capture at real volume. Prefer Vercel Queues for event-driven extraction retries and observability; use Vercel Workflows only if extraction becomes a multi-step orchestration.
-- Add full-text search over people, memories, and source records.
-- Add pgvector relationship-context embeddings and semantic context search as a later Phase 1 issue.
-- Implement create follow-up flow with complete, snooze, and dismiss actions.
-- Add LLM suggested-memory extraction behind the existing extraction-job processor, review lifecycle, and extraction-quality evals.
-- Implement daily brief schedule that returns up to 3 items.
-- Implement draft message tool and draft review UI.
-- Add evals for no-fake-memory, tone-match, source-grounded-recall, and brief-size-limit.
 
 #### Phase 2: Google Integrations
 
