@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import { user } from "../auth";
+import { accessProfiles } from "./access-profiles";
 import { personContextSnapshots } from "./context-snapshots";
 import { followups, interactions, messageDrafts } from "./engagement";
 import { memories } from "./memories";
@@ -10,6 +11,13 @@ import {
   sourceRecords,
   unresolvedPersonMentions,
 } from "./source-records";
+
+export const accessProfilesRelations = relations(accessProfiles, ({ one }) => ({
+  user: one(user, {
+    fields: [accessProfiles.userId],
+    references: [user.id],
+  }),
+}));
 
 export const peopleRelations = relations(people, ({ many, one }) => ({
   owner: one(user, {

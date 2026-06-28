@@ -1,0 +1,65 @@
+import type { AccessProfile } from "@tendnote/domain";
+import type { AccessProfileStore } from "./types";
+
+export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): AccessProfileStore {
+  const profiles = new Map(seed.map((profile) => [profile.userId, profile]));
+
+  function insert(input: Parameters<AccessProfileStore["create"]>[0]): AccessProfile {
+    const now = new Date();
+    const profile: AccessProfile = {
+      userId: input.userId,
+      status: input.status,
+      source: input.source,
+      grantedAt: input.grantedAt,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    profiles.set(profile.userId, profile);
+
+    return profile;
+  }
+
+  function hasConflict(input: Parameters<AccessProfileStore["create"]>[0]): boolean {
+    // Mirror the DB constraints: one profile per user, one bootstrap total.
+    if (profiles.has(input.userId)) {
+      return true;
+    }
+
+    return (
+      input.source === "bootstrap" &&
+      [...profiles.values()].some((profile) => profile.source === "bootstrap")
+    );
+  }
+
+  return {
+    async getByUserId(userId) {
+      return profiles.get(userId) ?? null;
+    },
+
+    async create(input) {
+      return insert(input);
+    },
+
+    async insertIfAbsent(input) {
+      if (hasConflict(input)) {
+        return null;
+      }
+
+      return insert(input);
+    },
+
+    async update({ userId, patch }) {
+      const existing = profiles.get(userId);
+
+      if (!existing) {
+        return null;
+      }
+
+      const updated: AccessProfile = { ...existing, ...patch, updatedAt: new Date() };
+      profiles.set(userId, updated);
+
+      return updated;
+    },
+  };
+}

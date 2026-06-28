@@ -1,3 +1,4 @@
+export * from "./app/access-profiles";
 export * from "./app/audit-log";
 export * from "./app/brief-schedules";
 export * from "./app/briefs";

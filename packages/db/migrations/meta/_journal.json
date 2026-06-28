@@ -78,6 +78,13 @@
       "when": 1782625648198,
       "tag": "0010_rapid_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782682658715,
+      "tag": "0011_known_roulette",
+      "breakpoints": true
     }
   ]
 }
