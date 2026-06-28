@@ -4,9 +4,11 @@ import {
   decideExtraction,
   type Memory,
   type SuggestedMemoryExtractionAdapter,
+  sourceRecordAutoApprovesMemories,
   stricterSensitivity,
   validateSuggestedMemoryCandidates,
 } from "@tendnote/domain";
+import type { ApprovedMemoryEmbeddingScheduler } from "../memories/types";
 import type {
   EnqueueExtractionJobInput,
   EnqueueExtractionJobResult,
@@ -49,6 +51,10 @@ function memoryCandidateKey(input: { personId: string; content: string }) {
  */
 export type CreateExtractionProcessorOptions = {
   extractionAdapter?: SuggestedMemoryExtractionAdapter;
+  // Schedules embedding for a memory that extraction saves as approved (because the
+  // user pre-approved the note). Suggested memories are never embedded until reviewed,
+  // so this only fires on the auto-approve path. Omitted in unit harnesses.
+  scheduleApprovedMemoryEmbedding?: ApprovedMemoryEmbeddingScheduler;
 };
 
 export function createExtractionProcessor(
@@ -257,6 +263,10 @@ export function createExtractionProcessor(
         });
         const existingCandidateKeys = new Set(existingMemories.map(memoryCandidateKey));
         const suggestedMemories: Memory[] = [];
+        // The user can pre-approve a logged note inline; when they have, extraction
+        // saves what it distills as confirmed memories instead of tentative
+        // suggestions, riding the same pipeline rather than forking it.
+        const autoApprove = sourceRecordAutoApprovesMemories(sourceRecord.metadataJson);
 
         const resolvedPeople = (
           await Promise.all(
@@ -311,28 +321,38 @@ export function createExtractionProcessor(
           }
 
           const memory = await store.createMemory(
-            // Suggested memories carry source-record provenance and stay tentative
-            // until reviewed (ADR 0002, ADR 0022).
+            // Memories carry source-record provenance (ADR 0002, ADR 0022). They stay
+            // tentative until reviewed unless the note was pre-approved, in which case
+            // they are saved confirmed with an approval timestamp.
             createMemorySchema.parse({
               personId: candidate.personId,
               ownerUserId,
               sourceRecordId: sourceRecord.id,
               memoryType: candidate.memoryType,
               content: candidate.content,
-              status: "suggested",
+              status: autoApprove ? "approved" : "suggested",
               importance: candidate.importance ?? sourceRecord.importance,
               sensitivity: stricterSensitivity(sourceRecord.sensitivity, candidate.sensitivity),
               confidence: candidate.confidence ?? sourceRecord.confidence,
               scope: "private",
+              ...(autoApprove ? { approvedAt: now } : {}),
             }),
           );
 
           suggestedMemories.push(memory);
           existingCandidateKeys.add(candidateKey);
 
+          if (autoApprove) {
+            await options.scheduleApprovedMemoryEmbedding?.({
+              ownerUserId,
+              recordKind: "memory",
+              recordId: memory.id,
+            });
+          }
+
           await store.createAuditLogEntry({
             ownerUserId,
-            action: "memory.suggest",
+            action: autoApprove ? "memory.auto_approved" : "memory.suggest",
             entityType: "memory",
             entityId: memory.id,
             metadataJson: {

@@ -26,6 +26,7 @@ import {
   ChatFollowupReviewCard,
   ChatFollowupReviewList,
 } from "@/components/chat-followup-review-card";
+import { ChatLoggedNoteCard } from "@/components/chat-logged-note-card";
 import { ChatReviewCard, ChatReviewList } from "@/components/chat-review-card";
 import { Shimmer } from "@/components/ui/shimmer";
 import {
@@ -253,6 +254,19 @@ function MessageTurn({ message }: { message: EveMessage }) {
         // here to the client card rather than the presentational tool-result module.
         if (view.kind === "message_draft") {
           return <ChatDraftCard isNew key={key} view={view} />;
+        }
+
+        // A logged note linked to a resolved person can be promoted to a memory or
+        // dismissed inline; a personless note has nothing to attach to, so it falls
+        // through to the read-only logged card below.
+        if (view.kind === "saved_source_record" && view.linkedPersonId) {
+          return (
+            <ChatLoggedNoteCard
+              isNew
+              key={key}
+              view={{ ...view, linkedPersonId: view.linkedPersonId }}
+            />
+          );
         }
 
         return <AssistantToolResult isNew key={key} view={view} />;

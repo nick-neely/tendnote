@@ -16,11 +16,19 @@ import { createExtractionProcessor } from "./processor";
 export const OWNER = "user-1";
 
 export function createHarness(
-  input: { extractionAdapter?: SuggestedMemoryExtractionAdapter } = {},
+  input: {
+    extractionAdapter?: SuggestedMemoryExtractionAdapter;
+    scheduleApprovedMemoryEmbedding?: (input: {
+      ownerUserId: string;
+      recordKind: "memory";
+      recordId: string;
+    }) => Promise<unknown>;
+  } = {},
 ) {
   const store = createInMemoryExtractionJobStore();
   const processor = createExtractionProcessor(store, {
     extractionAdapter: input.extractionAdapter,
+    scheduleApprovedMemoryEmbedding: input.scheduleApprovedMemoryEmbedding,
   });
   const capture = createSourceRecordCapture(store);
   const resolution = createSourceRecordResolution(store);

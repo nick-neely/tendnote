@@ -82,6 +82,23 @@ export function createInMemorySourceRecordStore(): InMemorySourceRecordStore {
 
       return updatedSourceRecord;
     },
+    async updateSourceRecordMetadata(input) {
+      const sourceRecord = sourceRecords.get(input.sourceRecordId);
+
+      if (!sourceRecord || sourceRecord.ownerUserId !== input.ownerUserId) {
+        throw new Error("Source record not found.");
+      }
+
+      const updatedSourceRecord = {
+        ...sourceRecord,
+        metadataJson: input.metadataJson,
+        updatedAt: new Date(),
+      };
+
+      sourceRecords.set(updatedSourceRecord.id, updatedSourceRecord);
+
+      return updatedSourceRecord;
+    },
     async createUnresolvedMention(values) {
       const now = new Date();
       const unresolvedMention = {

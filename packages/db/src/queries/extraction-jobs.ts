@@ -10,6 +10,7 @@ import {
   enqueueAndTriggerExtractionJobWithProcessor,
 } from "./extraction-jobs/runtime";
 import type { EnqueueExtractionJobInput, ProcessExtractionJobInput } from "./extraction-jobs/types";
+import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 
 export type { AiSdkSuggestedMemoryExtractionAdapterOptions } from "./extraction-jobs/ai-sdk-adapter";
 export {
@@ -39,6 +40,9 @@ export function createExtractionJobProcessor(
       input.model || input.promptVersion
         ? createAiSdkSuggestedMemoryExtractionAdapter(input)
         : createDefaultSuggestedMemoryExtractionAdapter(input.env),
+    // Memories extracted from a pre-approved note are saved confirmed, so they embed
+    // like any approved memory (suggested memories embed only once reviewed).
+    scheduleApprovedMemoryEmbedding: enqueueAndTriggerSemanticEmbeddingJob,
   });
 }
 

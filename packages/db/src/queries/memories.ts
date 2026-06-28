@@ -8,6 +8,7 @@ import type {
   MemoryReviewActionInput,
   PersonMemoryContextInput,
   SaveSuggestedMemoryInput,
+  SourceRecordMemoryActionInput,
 } from "./memories/types";
 import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 
@@ -52,6 +53,18 @@ export async function editSuggestedMemory(input: EditSuggestedMemoryInput) {
 
 export async function dismissSuggestedMemory(input: MemoryReviewActionInput) {
   return defaultMemoryReview.dismissSuggestedMemory(input);
+}
+
+export async function approveExtractedMemoriesForSourceRecord(
+  input: SourceRecordMemoryActionInput,
+) {
+  return defaultMemoryReview.approveExtractedMemoriesForSourceRecord(input);
+}
+
+export async function dismissExtractedMemoriesForSourceRecord(
+  input: SourceRecordMemoryActionInput,
+) {
+  return defaultMemoryReview.dismissExtractedMemoriesForSourceRecord(input);
 }
 
 export async function archiveMemory(input: MemoryReviewActionInput) {

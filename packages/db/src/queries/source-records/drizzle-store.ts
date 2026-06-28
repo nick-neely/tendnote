@@ -75,6 +75,27 @@ export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
 
       return sourceRecord;
     },
+    async updateSourceRecordMetadata(input) {
+      const [sourceRecord] = await getDb()
+        .update(sourceRecords)
+        .set({
+          metadataJson: input.metadataJson,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(sourceRecords.id, input.sourceRecordId),
+            eq(sourceRecords.ownerUserId, input.ownerUserId),
+          ),
+        )
+        .returning();
+
+      if (!sourceRecord) {
+        throw new Error("Source record not found.");
+      }
+
+      return sourceRecord;
+    },
     async createUnresolvedMention(values) {
       const [unresolvedMention] = await getDb()
         .insert(unresolvedPersonMentions)

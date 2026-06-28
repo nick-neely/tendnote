@@ -130,6 +130,26 @@ export type MemoryReviewActionInput = {
   memoryId: string;
 };
 
+/** Acting on every memory extracted from one logged note, by source-record id. */
+export type SourceRecordMemoryActionInput = {
+  ownerUserId: string;
+  sourceRecordId: string;
+};
+
+export type ApproveExtractedMemoriesResult = {
+  sourceRecordId: string;
+  /** The note is now pre-approved, so later extractions auto-approve too. */
+  autoApprove: true;
+  /** Already-extracted suggestions approved in this call (empty if none yet). */
+  approvedMemoryIds: string[];
+};
+
+export type DismissExtractedMemoriesResult = {
+  sourceRecordId: string;
+  status: string;
+  dismissedMemoryIds: string[];
+};
+
 export type SaveSuggestedMemoryInput = MemoryReviewActionInput & {
   edit?: MemoryReviewEdit;
 };

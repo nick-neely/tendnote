@@ -78,6 +78,12 @@ export type SourceRecordCaptureStore = {
     sourceRecordId: string;
     status: SourceRecordStatus;
   }) => Promise<SourceRecord>;
+  /** Replace a source record's metadata blob (callers merge before passing it in). */
+  updateSourceRecordMetadata: (input: {
+    ownerUserId: string;
+    sourceRecordId: string;
+    metadataJson: Record<string, unknown>;
+  }) => Promise<SourceRecord>;
   createUnresolvedMention: (
     unresolvedMention: CreateUnresolvedMentionInput,
   ) => Promise<UnresolvedPersonMention>;

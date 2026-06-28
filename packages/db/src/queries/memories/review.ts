@@ -1,11 +1,18 @@
-import { applyMemoryReviewEdit, memoryReviewEditSchema } from "@tendnote/domain";
+import {
+  applyMemoryReviewEdit,
+  memoryReviewEditSchema,
+  SOURCE_RECORD_AUTO_APPROVE_KEY,
+} from "@tendnote/domain";
 import type {
   ApprovedMemoryEmbeddingScheduler,
+  ApproveExtractedMemoriesResult,
+  DismissExtractedMemoriesResult,
   EditSuggestedMemoryInput,
   ListSuggestedMemoryReviewsInput,
   MemoryReviewActionInput,
   MemoryReviewStore,
   SaveSuggestedMemoryInput,
+  SourceRecordMemoryActionInput,
   SuggestedMemoryReviewResult,
 } from "./types";
 
@@ -196,6 +203,147 @@ export function createMemoryReview(
       });
 
       return updated;
+    },
+
+    /**
+     * Approve a logged note inline — the "approve" action on the in-chat logged-note
+     * card. This rides the automatic extraction pipeline rather than replacing it: it
+     * (1) pre-approves the note so any memories the extractor *later* distills from it
+     * are saved as confirmed facts instead of tentative suggestions, and (2) approves
+     * any suggestions the extractor *already* produced (the inline/dev case, where
+     * extraction runs during capture). Each approval uses the same promote-to-approved
+     * path as single-memory review, so embeddings and audit stay consistent.
+     */
+    async approveExtractedMemoriesForSourceRecord(
+      input: SourceRecordMemoryActionInput,
+    ): Promise<ApproveExtractedMemoriesResult> {
+      const sourceRecord = await store.getSourceRecord({
+        ownerUserId: input.ownerUserId,
+        sourceRecordId: input.sourceRecordId,
+      });
+
+      if (!sourceRecord) {
+        throw new Error("Source record not found.");
+      }
+
+      await store.updateSourceRecordMetadata({
+        ownerUserId: input.ownerUserId,
+        sourceRecordId: input.sourceRecordId,
+        metadataJson: { ...sourceRecord.metadataJson, [SOURCE_RECORD_AUTO_APPROVE_KEY]: true },
+      });
+
+      const memories = await store.listMemoriesForSourceRecord({
+        sourceRecordId: input.sourceRecordId,
+      });
+      const approvedMemoryIds: string[] = [];
+
+      for (const memory of memories) {
+        if (memory.status !== "suggested") {
+          continue;
+        }
+
+        const updated = await store.updateMemory({
+          ownerUserId: input.ownerUserId,
+          memoryId: memory.id,
+          patch: { status: "approved", approvedAt: new Date() },
+        });
+
+        await options.scheduleApprovedMemoryEmbedding?.({
+          ownerUserId: updated.ownerUserId,
+          recordKind: "memory",
+          recordId: updated.id,
+        });
+
+        await store.createAuditLogEntry({
+          ownerUserId: input.ownerUserId,
+          action: "memory.review_save",
+          entityType: "memory",
+          entityId: updated.id,
+          metadataJson: {
+            sourceRecordId: input.sourceRecordId,
+            personId: updated.personId,
+            autoApproved: true,
+          },
+        });
+
+        approvedMemoryIds.push(updated.id);
+      }
+
+      await store.createAuditLogEntry({
+        ownerUserId: input.ownerUserId,
+        action: "source_record.auto_approve_memories",
+        entityType: "source_record",
+        entityId: sourceRecord.id,
+        metadataJson: { approvedMemoryCount: approvedMemoryIds.length },
+      });
+
+      return { sourceRecordId: input.sourceRecordId, autoApprove: true, approvedMemoryIds };
+    },
+
+    /**
+     * Dismiss a logged note inline — the "dismiss" action on the in-chat logged-note
+     * card. Mirrors approve: it dismisses the note (which, being non-active, stops the
+     * extractor from producing anything further from it) and dismisses any suggestions
+     * already extracted, so a dismissed note never resurfaces in review.
+     */
+    async dismissExtractedMemoriesForSourceRecord(
+      input: SourceRecordMemoryActionInput,
+    ): Promise<DismissExtractedMemoriesResult> {
+      const sourceRecord = await store.getSourceRecord({
+        ownerUserId: input.ownerUserId,
+        sourceRecordId: input.sourceRecordId,
+      });
+
+      if (!sourceRecord) {
+        throw new Error("Source record not found.");
+      }
+
+      const updatedRecord = await store.updateSourceRecordStatus({
+        ownerUserId: input.ownerUserId,
+        sourceRecordId: input.sourceRecordId,
+        status: "dismissed",
+      });
+
+      const memories = await store.listMemoriesForSourceRecord({
+        sourceRecordId: input.sourceRecordId,
+      });
+      const dismissedMemoryIds: string[] = [];
+
+      for (const memory of memories) {
+        if (memory.status !== "suggested") {
+          continue;
+        }
+
+        const updated = await store.updateMemory({
+          ownerUserId: input.ownerUserId,
+          memoryId: memory.id,
+          patch: { status: "dismissed", dismissedAt: new Date() },
+        });
+
+        await store.createAuditLogEntry({
+          ownerUserId: input.ownerUserId,
+          action: "memory.review_dismiss",
+          entityType: "memory",
+          entityId: updated.id,
+          metadataJson: { sourceRecordId: input.sourceRecordId, personId: updated.personId },
+        });
+
+        dismissedMemoryIds.push(updated.id);
+      }
+
+      await store.createAuditLogEntry({
+        ownerUserId: input.ownerUserId,
+        action: "source_record.dismiss",
+        entityType: "source_record",
+        entityId: updatedRecord.id,
+        metadataJson: { dismissedMemoryCount: dismissedMemoryIds.length },
+      });
+
+      return {
+        sourceRecordId: input.sourceRecordId,
+        status: updatedRecord.status,
+        dismissedMemoryIds,
+      };
     },
 
     /**

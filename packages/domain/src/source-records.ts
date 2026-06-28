@@ -60,6 +60,21 @@ export const unresolvedPersonMentionSchema = z.object({
   resolvedAt: z.date().nullable().optional(),
 });
 
+/**
+ * Metadata flag set when the user approves a logged note inline before (or as) it is
+ * extracted: it pre-approves the note so the extraction pipeline saves whatever it
+ * distills as a confirmed memory instead of a tentative suggestion. One key, shared by
+ * the approve mutation and the extraction processor so the contract never drifts.
+ */
+export const SOURCE_RECORD_AUTO_APPROVE_KEY = "autoApproveMemories";
+
+/** Whether a logged note was pre-approved, so its extracted memories skip review. */
+export function sourceRecordAutoApprovesMemories(
+  metadataJson: Record<string, unknown> | null | undefined,
+): boolean {
+  return metadataJson?.[SOURCE_RECORD_AUTO_APPROVE_KEY] === true;
+}
+
 export function canExtractFromSourceRecord(
   sourceRecord: Pick<SourceRecord, "status" | "sensitivity">,
   input: { directlyRequested?: boolean } = {},

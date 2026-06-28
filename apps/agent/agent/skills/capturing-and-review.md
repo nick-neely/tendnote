@@ -48,6 +48,11 @@ Choose the right action for what the user is doing:
 - **Never invent a durable fact.** When you are unsure, capture a source record or
   ask, instead of stating something as confirmed.
 
+When you log a casual note, the background extractor mines it into **suggested
+memories** the user reviews later. The user can also approve a logged note inline the
+moment you save it — which pre-approves whatever that note is extracted into — so a
+plain `capture_source_record` is enough; you do not propose memories yourself.
+
 # Reviewing suggested memories
 
 Suggested memories come from logged context and are **tentative until the user
