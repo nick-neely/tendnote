@@ -23,6 +23,10 @@ function idempotencyKeyFor(sourceRecordId: string) {
   return `source_record:${sourceRecordId}`;
 }
 
+function scrubFailureMessage(message: string) {
+  return message.replace(/\s+/g, " ").slice(0, 200);
+}
+
 /**
  * Phase 1A extraction processor: deterministic/manual, no LLM yet (ADR 0020).
  *
@@ -53,12 +57,23 @@ export function createExtractionProcessor(
   const extractionAdapter =
     options.extractionAdapter ?? createDeterministicSuggestedMemoryExtractionAdapter();
 
+  function adapterProvenance() {
+    return {
+      adapterKind: extractionAdapter.kind,
+      ...(extractionAdapter.model ? { extractionModel: extractionAdapter.model } : {}),
+      ...(extractionAdapter.promptVersion
+        ? { promptVersion: extractionAdapter.promptVersion }
+        : {}),
+    };
+  }
+
   async function failJob(
     job: ProcessExtractionJobResult["job"],
     message: string,
     ownerUserId: string | null,
     now: Date,
     retryDelayMs: number,
+    metadata: Record<string, unknown> = {},
   ): Promise<ProcessExtractionJobResult> {
     const updated = await store.updateExtractionJob({
       jobId: job.id,
@@ -75,7 +90,14 @@ export function createExtractionProcessor(
         action: "extraction_job.failed",
         entityType: "extraction_job",
         entityId: job.id,
-        metadataJson: { sourceRecordId: job.sourceRecordId, error: message },
+        metadataJson: {
+          sourceRecordId: job.sourceRecordId,
+          extractionJobId: job.id,
+          failureReason: "adapter_error",
+          failureMessage: scrubFailureMessage(message),
+          ...adapterProvenance(),
+          ...metadata,
+        },
       });
     }
 
@@ -250,9 +272,31 @@ export function createExtractionProcessor(
             displayName: person.displayName,
           })),
         });
-        const { validCandidates } = validateSuggestedMemoryCandidates(adapterResult, {
-          resolvedPeople,
-        });
+        const { validCandidates, invalidCandidateCount } = validateSuggestedMemoryCandidates(
+          adapterResult,
+          {
+            resolvedPeople,
+          },
+        );
+        const candidateCount = Array.isArray(adapterResult.candidates)
+          ? adapterResult.candidates.length
+          : 0;
+        let rejectedCandidateCount = invalidCandidateCount;
+        const provenance = {
+          ...adapterProvenance(),
+          sourceRecordId: sourceRecord.id,
+          extractionJobId: job.id,
+          candidateCount,
+          invalidCandidateCount,
+          rejectedCandidateCount,
+        };
+
+        for (const candidate of validCandidates) {
+          if (personIdsWithMemory.has(candidate.personId)) {
+            rejectedCandidateCount += 1;
+          }
+        }
+        const finalProvenance = { ...provenance, rejectedCandidateCount };
 
         for (const candidate of validCandidates) {
           if (personIdsWithMemory.has(candidate.personId)) {
@@ -285,9 +329,8 @@ export function createExtractionProcessor(
             entityType: "memory",
             entityId: memory.id,
             metadataJson: {
+              ...finalProvenance,
               personId: candidate.personId,
-              sourceRecordId: sourceRecord.id,
-              extractionJobId: job.id,
             },
           });
         }
@@ -313,6 +356,7 @@ export function createExtractionProcessor(
               entityType: "extraction_job",
               entityId: job.id,
               metadataJson: {
+                ...finalProvenance,
                 sourceRecordId: sourceRecord.id,
                 suggestedMemoryCount: suggestedMemories.length,
                 unresolvedMentionCount,
@@ -335,6 +379,7 @@ export function createExtractionProcessor(
           entityType: "extraction_job",
           entityId: job.id,
           metadataJson: {
+            ...finalProvenance,
             sourceRecordId: sourceRecord.id,
             suggestedMemoryCount: suggestedMemories.length,
           },

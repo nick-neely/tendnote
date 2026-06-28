@@ -68,5 +68,19 @@ export function createHarness(
     return entries.map((entry) => entry.action);
   }
 
-  return { store, processor, capture, resolution, createPerson, captureRecord, link, auditActions };
+  async function auditEntries() {
+    return store.listAuditLogEntries({ ownerUserId: OWNER });
+  }
+
+  return {
+    store,
+    processor,
+    capture,
+    resolution,
+    createPerson,
+    captureRecord,
+    link,
+    auditActions,
+    auditEntries,
+  };
 }

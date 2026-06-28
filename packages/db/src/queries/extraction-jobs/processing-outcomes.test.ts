@@ -25,9 +25,10 @@ describe("extraction job suggested-memory creation", () => {
         };
       },
     };
-    const { processor, createPerson, captureRecord, link, auditActions } = createHarness({
-      extractionAdapter: adapter,
-    });
+    const { processor, createPerson, captureRecord, link, auditActions, auditEntries } =
+      createHarness({
+        extractionAdapter: adapter,
+      });
     const mark = await createPerson("Mark");
     const sourceRecord = await captureRecord({ retainedContent: "Messy raw note about Mark." });
     await link(sourceRecord.id, mark.id);
@@ -50,6 +51,17 @@ describe("extraction job suggested-memory creation", () => {
     const actions = await auditActions();
     expect(actions).toContain("memory.suggest");
     expect(actions).toContain("extraction_job.completed");
+    const memorySuggest = (await auditEntries()).find((entry) => entry.action === "memory.suggest");
+    expect(memorySuggest?.metadataJson).toMatchObject({
+      adapterKind: "fake",
+      promptVersion: "test.v1",
+      sourceRecordId: sourceRecord.id,
+      extractionJobId: job.id,
+      personId: mark.id,
+      candidateCount: 1,
+      invalidCandidateCount: 0,
+      rejectedCandidateCount: 0,
+    });
   });
 
   it("persists valid candidate metadata and the stricter sensitivity", async () => {
@@ -142,9 +154,10 @@ describe("extraction job suggested-memory creation", () => {
         return { candidates: [] };
       },
     };
-    const { store, processor, createPerson, captureRecord, link, auditActions } = createHarness({
-      extractionAdapter: adapter,
-    });
+    const { store, processor, createPerson, captureRecord, link, auditActions, auditEntries } =
+      createHarness({
+        extractionAdapter: adapter,
+      });
     const mark = await createPerson("Mark");
     const sourceRecord = await captureRecord({ retainedContent: "Small talk with Mark." });
     await link(sourceRecord.id, mark.id);
@@ -158,6 +171,18 @@ describe("extraction job suggested-memory creation", () => {
       store.listMemoriesForSourceRecord({ sourceRecordId: sourceRecord.id }),
     ).resolves.toEqual([]);
     await expect(auditActions()).resolves.toContain("extraction_job.completed");
+    const completed = (await auditEntries()).find(
+      (entry) => entry.action === "extraction_job.completed",
+    );
+    expect(completed?.metadataJson).toMatchObject({
+      adapterKind: "fake",
+      sourceRecordId: sourceRecord.id,
+      extractionJobId: job.id,
+      candidateCount: 0,
+      invalidCandidateCount: 0,
+      rejectedCandidateCount: 0,
+      suggestedMemoryCount: 0,
+    });
   });
 
   it("rejects adapter candidates for unresolved people", async () => {
@@ -259,7 +284,7 @@ describe("extraction job suggested-memory creation", () => {
         };
       },
     };
-    const { store, processor, createPerson, captureRecord, link } = createHarness({
+    const { store, processor, createPerson, captureRecord, link, auditEntries } = createHarness({
       extractionAdapter: adapter,
     });
     const mark = await createPerson("Mark");
@@ -274,6 +299,18 @@ describe("extraction job suggested-memory creation", () => {
     await expect(
       store.listMemoriesForSourceRecord({ sourceRecordId: sourceRecord.id }),
     ).resolves.toEqual([]);
+    const completed = (await auditEntries()).find(
+      (entry) => entry.action === "extraction_job.completed",
+    );
+    expect(completed?.metadataJson).toMatchObject({
+      adapterKind: "fake",
+      candidateCount: 5,
+      invalidCandidateCount: 5,
+      rejectedCandidateCount: 5,
+      suggestedMemoryCount: 0,
+      sourceRecordId: sourceRecord.id,
+      extractionJobId: job.id,
+    });
   });
 
   it("marks adapter failures as retryable job failures without falling back", async () => {
@@ -284,9 +321,10 @@ describe("extraction job suggested-memory creation", () => {
         throw new Error("model unavailable");
       },
     };
-    const { store, processor, createPerson, captureRecord, link, auditActions } = createHarness({
-      extractionAdapter: adapter,
-    });
+    const { store, processor, createPerson, captureRecord, link, auditActions, auditEntries } =
+      createHarness({
+        extractionAdapter: adapter,
+      });
     const mark = await createPerson("Mark");
     const sourceRecord = await captureRecord({ retainedContent: "Mark may be moving." });
     await link(sourceRecord.id, mark.id);
@@ -302,6 +340,16 @@ describe("extraction job suggested-memory creation", () => {
       store.listMemoriesForSourceRecord({ sourceRecordId: sourceRecord.id }),
     ).resolves.toEqual([]);
     await expect(auditActions()).resolves.toContain("extraction_job.failed");
+    const failed = (await auditEntries()).find((entry) => entry.action === "extraction_job.failed");
+    expect(failed?.metadataJson).toMatchObject({
+      adapterKind: "llm",
+      extractionModel: "test-model",
+      sourceRecordId: sourceRecord.id,
+      extractionJobId: job.id,
+      failureReason: "adapter_error",
+      failureMessage: "model unavailable",
+    });
+    expect(failed?.metadataJson).not.toHaveProperty("content");
   });
 
   it("creates a suggested memory tied to the person and source record, then completes", async () => {
