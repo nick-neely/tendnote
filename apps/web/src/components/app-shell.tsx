@@ -1,4 +1,4 @@
-import { BookUserIcon, HomeIcon, MessageSquareTextIcon } from "lucide-react";
+import { BookUserIcon, CircleUserRoundIcon, HomeIcon, MessageSquareTextIcon } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -13,6 +13,11 @@ const navItems = [
     href: "/people",
     label: "People",
     icon: BookUserIcon,
+  },
+  {
+    href: "/account",
+    label: "Account",
+    icon: CircleUserRoundIcon,
   },
 ];
 
