@@ -6,6 +6,7 @@
   "exports": {
     "./client": "./src/client.ts",
     "./schema": "./src/schema/index.ts",
+    "./queries/brief-schedules": "./src/queries/brief-schedules.ts",
     "./queries/briefs": "./src/queries/briefs.ts",
     "./queries/context-snapshots": "./src/queries/context-snapshots.ts",
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",

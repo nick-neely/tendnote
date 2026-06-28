@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -15,13 +15,32 @@ function listAuthoredFiles(dir: string): string[] {
 }
 
 describe("active Eve tree", () => {
-  it("does not add inactive future schedules, connections, subagents, or placeholders", () => {
+  it("adds only the real brief dispatcher schedule, no inactive placeholders", () => {
     const files = listAuthoredFiles(agentRoot);
 
-    expect(files.some((file) => file.startsWith("schedules/"))).toBe(false);
+    // Phase 1F adds exactly one real root schedule: the app-owned brief dispatcher
+    // (PRD #65, issue #72, ADR-0066). It exists only because brief generation is
+    // real; no inactive placeholder schedules, connections, or subagents are added.
+    const scheduleFiles = files.filter((file) => file.startsWith("schedules/"));
+    expect(scheduleFiles).toEqual(["schedules/brief-dispatcher.ts"]);
+
     expect(files.some((file) => file.startsWith("connections/"))).toBe(false);
     expect(files.some((file) => file.startsWith("subagents/"))).toBe(false);
     expect(files.some((file) => /placeholder|stub|future/i.test(file))).toBe(false);
+  });
+
+  it("dispatches briefs in-app without a chat session or proactive channel delivery", () => {
+    // The dispatcher persists briefs by calling the shared generator directly; it
+    // must not start an Eve chat session or use receive()/channel delivery for
+    // normal in-app brief persistence (PRD #65, issue #72, ADR-0066).
+    const source = readFileSync(join(agentRoot, "schedules/brief-dispatcher.ts"), "utf8");
+    // Strip comments so the doc comment's mention of receive(...) is not matched as
+    // a call; we check the actual code only.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+    expect(code).not.toMatch(/\breceive\b/);
+    expect(code).not.toMatch(/channels\//);
+    expect(code).toMatch(/dispatchDueBriefs/);
   });
 
   it("has no background follow-up scanner or periodic suggestion generator (Phase 1E)", () => {
