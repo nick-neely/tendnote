@@ -2,6 +2,7 @@ import {
   type BriefCadence,
   type BriefGenerationReason,
   type BriefItem,
+  type BriefSummaryInput,
   type BriefWithItems,
   briefItemIdentityKeys,
   type CreateBriefItemInput,
@@ -12,7 +13,45 @@ import type {
   RelationshipAgendaInput,
   RelationshipAgendaKind,
 } from "../relationship-agenda/types";
+import type { BriefSummaryAdapter } from "./summary-adapter";
 import type { BriefStore } from "./types";
+
+/** Optional generator dependencies. The summary adapter decorates only (issue #73). */
+export type BriefGeneratorOptions = {
+  summaryAdapter?: BriefSummaryAdapter;
+};
+
+type GeneratedSummary = {
+  summary: string | null;
+  summaryProvenance: Record<string, unknown> | null;
+};
+
+/**
+ * Runs the optional decorative summary adapter over the already-selected items
+ * (PRD #65, issue #73). It is fail-open: a missing adapter, no items, empty
+ * output, or a thrown adapter error all yield no summary, so the brief is always
+ * created with its deterministic items regardless of summary success.
+ */
+async function buildSummary(
+  adapter: BriefSummaryAdapter | undefined,
+  input: BriefSummaryInput,
+): Promise<GeneratedSummary> {
+  if (!adapter || input.items.length === 0) {
+    return { summary: null, summaryProvenance: null };
+  }
+
+  try {
+    const result = await adapter(input);
+
+    if (!result || result.summary.trim().length === 0) {
+      return { summary: null, summaryProvenance: null };
+    }
+
+    return { summary: result.summary.trim(), summaryProvenance: result.provenance ?? null };
+  } catch {
+    return { summary: null, summaryProvenance: null };
+  }
+}
 
 /**
  * Read-only relationship agenda surface the generator selects candidates from
@@ -164,7 +203,11 @@ function toBriefItem(
  * items do not immediately reappear. Suppression reads prior items only — it never
  * mutates the underlying memory, source record, or follow-up.
  */
-export function createBriefGenerator(store: BriefStore, agenda: BriefAgendaSource) {
+export function createBriefGenerator(
+  store: BriefStore,
+  agenda: BriefAgendaSource,
+  options: BriefGeneratorOptions = {},
+) {
   return {
     async generateBrief(input: GenerateBriefInput): Promise<BriefWithItems> {
       const now = input.now ?? new Date();
@@ -235,6 +278,18 @@ export function createBriefGenerator(store: BriefStore, agenda: BriefAgendaSourc
         ? "regenerated"
         : (input.generationReason ?? "scheduled");
 
+      // Decorative summary runs after deterministic selection and never feeds back
+      // into items, ranks, or source refs (ADR-0008). Fail-open: no summary on error.
+      const { summary, summaryProvenance } = await buildSummary(options.summaryAdapter, {
+        cadence: input.cadence,
+        items: items.map((item) => ({
+          kind: item.kind,
+          personDisplayName: item.personDisplayName,
+          title: item.title,
+          reason: item.reason,
+        })),
+      });
+
       return store.createBrief({
         ownerUserId: input.ownerUserId,
         cadence: input.cadence,
@@ -243,8 +298,8 @@ export function createBriefGenerator(store: BriefStore, agenda: BriefAgendaSourc
         generatedAt: now,
         windowStart,
         windowEnd,
-        summary: null,
-        summaryProvenance: null,
+        summary,
+        summaryProvenance,
         supersededAt: null,
         items,
       });

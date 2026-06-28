@@ -1,5 +1,9 @@
 import type { BriefCadence, BriefWithItems } from "@tendnote/domain";
-import { type BriefAgendaSource, createBriefGenerator } from "./generator";
+import {
+  type BriefAgendaSource,
+  type BriefGeneratorOptions,
+  createBriefGenerator,
+} from "./generator";
 import type { BriefLifecycleStore } from "./types";
 
 export type ManualBriefOutcome = "created" | "returned_existing" | "regenerated";
@@ -30,8 +34,12 @@ export type ManualBriefResult = {
  * generator. Every manual generate/regenerate is audited so user-triggered changes
  * to generated artifacts stay explainable.
  */
-export function createManualBriefGeneration(store: BriefLifecycleStore, agenda: BriefAgendaSource) {
-  const generator = createBriefGenerator(store, agenda);
+export function createManualBriefGeneration(
+  store: BriefLifecycleStore,
+  agenda: BriefAgendaSource,
+  options: BriefGeneratorOptions = {},
+) {
+  const generator = createBriefGenerator(store, agenda, options);
 
   return {
     async generateCurrentBrief(input: ManualBriefInput): Promise<ManualBriefResult> {
