@@ -40,4 +40,20 @@ describe("active Eve tree", () => {
     );
     expect(followupProducers).toEqual(["tools/propose_followup.ts"]);
   });
+
+  it("does not add extraction review tools, sandboxes, or user-facing model-debugging surfaces", () => {
+    const files = listAuthoredFiles(agentRoot);
+    const toolFiles = files.filter((file) => file.startsWith("tools/"));
+
+    expect(files.some((file) => /extraction.*(inbox|sandbox|debug|mode)/i.test(file))).toBe(false);
+    expect(toolFiles.some((file) => /extract|model|debug/i.test(file))).toBe(false);
+    expect(toolFiles).toEqual(
+      expect.arrayContaining([
+        "tools/list_suggested_memory_reviews.ts",
+        "tools/get_suggested_memory_review.ts",
+        "tools/approve_suggested_memory.ts",
+        "tools/dismiss_suggested_memory.ts",
+      ]),
+    );
+  });
 });

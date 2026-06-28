@@ -55,9 +55,9 @@ export function createExtractionProcessor(
   store: ExtractionJobStore,
   options: CreateExtractionProcessorOptions = {},
 ) {
-  // Until Phase 1E.5's production adapter slice lands, the no-options path keeps
-  // the existing deterministic behavior. Production LLM wiring must inject a
-  // non-deterministic adapter rather than relying on this local/test fallback.
+  // The no-options path keeps deterministic behavior for unit harnesses and
+  // explicit local fallback. The exported Drizzle runtime injects the production
+  // LLM adapter instead of relying on this fallback.
   const extractionAdapter =
     options.extractionAdapter ?? createDeterministicSuggestedMemoryExtractionAdapter();
 

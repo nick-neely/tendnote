@@ -1,3 +1,8 @@
+import {
+  type AiSdkSuggestedMemoryExtractionAdapterOptions,
+  createAiSdkSuggestedMemoryExtractionAdapter,
+  createDefaultSuggestedMemoryExtractionAdapter,
+} from "./extraction-jobs/ai-sdk-adapter";
 import { createDrizzleExtractionJobStore } from "./extraction-jobs/drizzle-store";
 import { createExtractionProcessor } from "./extraction-jobs/processor";
 import {
@@ -6,6 +11,13 @@ import {
 } from "./extraction-jobs/runtime";
 import type { EnqueueExtractionJobInput, ProcessExtractionJobInput } from "./extraction-jobs/types";
 
+export type { AiSdkSuggestedMemoryExtractionAdapterOptions } from "./extraction-jobs/ai-sdk-adapter";
+export {
+  createAiSdkSuggestedMemoryExtractionAdapter,
+  createDefaultSuggestedMemoryExtractionAdapter,
+  hasSuggestedMemoryExtractionCredentials,
+  shouldRunLiveSuggestedMemoryExtractionSmoke,
+} from "./extraction-jobs/ai-sdk-adapter";
 export { createDrizzleExtractionJobStore } from "./extraction-jobs/drizzle-store";
 export { createInMemoryExtractionJobStore } from "./extraction-jobs/in-memory-store";
 export {
@@ -19,8 +31,18 @@ export {
 } from "./extraction-jobs/runtime";
 export type * from "./extraction-jobs/types";
 
-const defaultExtractionJobStore = createDrizzleExtractionJobStore();
-const defaultExtractionProcessor = createExtractionProcessor(defaultExtractionJobStore);
+export function createExtractionJobProcessor(
+  input: AiSdkSuggestedMemoryExtractionAdapterOptions = {},
+) {
+  return createExtractionProcessor(createDrizzleExtractionJobStore(), {
+    extractionAdapter:
+      input.model || input.promptVersion
+        ? createAiSdkSuggestedMemoryExtractionAdapter(input)
+        : createDefaultSuggestedMemoryExtractionAdapter(input.env),
+  });
+}
+
+const defaultExtractionProcessor = createExtractionJobProcessor();
 
 export async function enqueueExtractionJob(input: EnqueueExtractionJobInput) {
   return defaultExtractionProcessor.enqueueExtractionJob(input);
