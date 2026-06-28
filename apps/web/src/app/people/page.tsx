@@ -1,12 +1,12 @@
 import { searchPeople } from "@tendnote/db/queries/people";
 import { AppShell } from "@/components/app-shell";
 import { PeopleList } from "@/components/people-list";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwner } from "@/lib/access/current-access";
 
 export const dynamic = "force-dynamic";
 
 export default async function PeoplePage() {
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwner();
   const people = await searchPeople({ ownerUserId, limit: 50 });
 
   return (

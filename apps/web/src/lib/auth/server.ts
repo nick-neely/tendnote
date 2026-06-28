@@ -1,5 +1,6 @@
 import { redisStorage } from "@better-auth/redis-storage";
 import { getDb } from "@tendnote/db/client";
+import { ensureAccessProfile } from "@tendnote/db/queries/access-profiles";
 import * as schema from "@tendnote/db/schema";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -28,6 +29,18 @@ function createAuth() {
     }),
     emailAndPassword: {
       enabled: true,
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            // Every new signup gets a durable access profile: the first user
+            // bootstraps as the initial allowed owner, later users start pending
+            // until Private Beta Access is granted (ADR-0067).
+            await ensureAccessProfile({ userId: user.id });
+          },
+        },
+      },
     },
     secondaryStorage: redisStorage({
       client: getRedis(),

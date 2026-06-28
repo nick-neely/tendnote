@@ -21,7 +21,17 @@ describe("semantic retrieval product-route boundaries", () => {
       .map((file) => (file === "page.tsx" ? "/" : file.replace(/\/page\.tsx$/, "")))
       .sort();
 
-    expect(pageRoutes).toEqual(["/", "people", "people/[personId]"]);
+    // The relationship-data product routes are still only the dashboard and
+    // people pages; Phase 2A's auth surfaces (sign-in/sign-up/pending) are
+    // allowed alongside them but carry no semantic-search route.
+    expect(pageRoutes).toEqual([
+      "/",
+      "pending",
+      "people",
+      "people/[personId]",
+      "sign-in",
+      "sign-up",
+    ]);
     expect(pageRoutes).not.toEqual(
       expect.arrayContaining(["semantic", "semantic-search", "search", "embeddings", "vector"]),
     );

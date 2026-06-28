@@ -7,7 +7,7 @@ import { AppShell } from "@/components/app-shell";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { DashboardRail } from "@/components/dashboard-rail";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
@@ -26,7 +26,7 @@ const DASHBOARD_FOLLOWUP_LIMIT = 5;
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwner();
   const [
     people,
     dashboardReviews,

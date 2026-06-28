@@ -26,7 +26,7 @@ import {
 import { RelationshipSnapshotCard } from "@/components/relationship-snapshot-card";
 import { SuggestedFollowupReviewSection } from "@/components/suggested-followup-review";
 import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
-import { getCurrentOwnerUserId } from "@/lib/auth/current-user";
+import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { shortName } from "@/lib/dashboard-brief";
 import { type DraftView, toDraftView } from "@/lib/draft-view";
 import { toDateInputValue, toFollowupView } from "@/lib/followup-view";
@@ -147,7 +147,7 @@ export default async function PersonDetailPage({
   params: Promise<{ personId: string }>;
 }) {
   const { personId } = await params;
-  const ownerUserId = await getCurrentOwnerUserId();
+  const ownerUserId = await requireAdmittedOwner();
   const [profile, suggestedReviews, suggestedFollowupReviews, drafts] = await Promise.all([
     getPersonProfile({ ownerUserId, personId }),
     loadSuggestedReviews(ownerUserId, personId),
