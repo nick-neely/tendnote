@@ -167,3 +167,47 @@ export function resolveBriefItemTransition(
 
   return rule.to;
 }
+
+/**
+ * Whether a prior brief item still represents cleared feedback that should
+ * suppress a matching candidate during (re)generation (PRD #65, issue #68,
+ * ADR-0008): dismissed and acted-on are durable, a snooze suppresses only until
+ * it expires. Active items are not feedback — the candidate may legitimately
+ * reappear.
+ */
+export function isBriefItemFeedbackActive(
+  item: Pick<BriefItem, "status" | "snoozedUntil">,
+  now: Date,
+): boolean {
+  if (item.status === "dismissed" || item.status === "acted_on") {
+    return true;
+  }
+
+  if (item.status === "snoozed") {
+    return item.snoozedUntil === null || item.snoozedUntil.getTime() > now.getTime();
+  }
+
+  return false;
+}
+
+/**
+ * Stable keys identifying the candidate a brief item came from, used to match a
+ * new agenda candidate against prior feedback (PRD #65, issue #68). Each key binds
+ * kind, person, and a single source reference together, so two items "match" only
+ * when they share the same kind, the same person, and at least one source
+ * reference — the conjunctive rule ADR-0008 states ("same source references,
+ * person, and kind"). This is deliberately stricter than the agenda's
+ * kind-agnostic dedupe: a different follow-up for the same person (a distinct
+ * source reference) is a genuinely new prompt and is not suppressed.
+ */
+export function briefItemIdentityKeys(input: {
+  kind: BriefItemKind;
+  personId: string | null;
+  sourceRefs: BriefSourceRef[];
+}): string[] {
+  const person = input.personId ?? "";
+
+  return input.sourceRefs.map(
+    (ref) => `${input.kind}|person:${person}|source:${ref.kind}:${ref.id}`,
+  );
+}

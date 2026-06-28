@@ -1,8 +1,11 @@
-import type {
-  BriefCadence,
-  BriefGenerationReason,
-  BriefWithItems,
-  CreateBriefItemInput,
+import {
+  type BriefCadence,
+  type BriefGenerationReason,
+  type BriefItem,
+  type BriefWithItems,
+  briefItemIdentityKeys,
+  type CreateBriefItemInput,
+  isBriefItemFeedbackActive,
 } from "@tendnote/domain";
 import type {
   RelationshipAgendaCandidate,
@@ -68,6 +71,10 @@ export type GenerateBriefInput = {
   // current brief already exists; otherwise a duplicate run returns the existing
   // brief (idempotent per owner/local date/cadence).
   regenerate?: boolean;
+  // The explicit "ignore prior feedback" escape hatch (PRD #65, ADR-0008): when
+  // true, reselection does not suppress dismissed/snoozed/acted-on candidates.
+  // Normal generation and regeneration leave this false so feedback is respected.
+  ignorePriorFeedback?: boolean;
   // Injectable clock for deterministic tests.
   now?: Date;
 };
@@ -76,6 +83,41 @@ function addUtcDays(date: Date, days: number): Date {
   const copy = new Date(date);
   copy.setUTCDate(copy.getUTCDate() + days);
   return copy;
+}
+
+/**
+ * Builds the set of identity keys that prior feedback suppresses (PRD #65, issue
+ * #68, ADR-0008). A candidate is suppressed when it shares a key with a prior
+ * dismissed, acted-on, or still-snoozed item — i.e. the same kind, the same
+ * person, and at least one shared source reference. Expired snoozes and prior
+ * active items do not suppress, so the candidate can reappear.
+ */
+function buildSuppressedKeys(priorItems: BriefItem[], now: Date): Set<string> {
+  const suppressed = new Set<string>();
+
+  for (const item of priorItems) {
+    if (!isBriefItemFeedbackActive(item, now)) {
+      continue;
+    }
+
+    for (const key of briefItemIdentityKeys({
+      kind: item.kind,
+      personId: item.personId,
+      sourceRefs: item.sourceRefs,
+    })) {
+      suppressed.add(key);
+    }
+  }
+
+  return suppressed;
+}
+
+function isSuppressed(candidate: RelationshipAgendaCandidate, suppressed: Set<string>): boolean {
+  return briefItemIdentityKeys({
+    kind: candidate.kind,
+    personId: candidate.personId,
+    sourceRefs: candidate.sourceRefs.map((ref) => ({ kind: ref.kind, id: ref.id })),
+  }).some((key) => suppressed.has(key));
 }
 
 /**
@@ -116,9 +158,11 @@ function toBriefItem(
  * dependency (briefs pass no query, so the agenda's semantic path never runs),
  * keeping briefs useful when embeddings are missing or stale.
  *
- * Regeneration here supersedes-and-replaces; honoring prior dismiss/snooze
- * feedback during reselection (ADR-0008) arrives in issue #68 and layers on top
- * of this seam without changing the generator's contract.
+ * Regeneration supersedes-and-replaces, and reselection honors prior brief-item
+ * feedback (issue #68, ADR-0008): candidates that match a prior dismissed,
+ * acted-on, or still-snoozed item by source/person/kind are suppressed so cleared
+ * items do not immediately reappear. Suppression reads prior items only — it never
+ * mutates the underlying memory, source record, or follow-up.
  */
 export function createBriefGenerator(store: BriefStore, agenda: BriefAgendaSource) {
   return {
@@ -154,17 +198,36 @@ export function createBriefGenerator(store: BriefStore, agenda: BriefAgendaSourc
       const windowStart = new Date(`${input.localDate}T00:00:00.000Z`);
       const windowEnd = addUtcDays(windowStart, config.windowDays);
 
-      const candidates = await agenda.getRelationshipAgenda({
-        ownerUserId: input.ownerUserId,
-        windowStart,
-        windowEnd,
-        includeKinds: config.includeKinds,
-        limit: config.agendaLimit,
-      });
+      const [candidates, priorItems] = await Promise.all([
+        agenda.getRelationshipAgenda({
+          ownerUserId: input.ownerUserId,
+          windowStart,
+          windowEnd,
+          includeKinds: config.includeKinds,
+          limit: config.agendaLimit,
+        }),
+        // Prior cleared brief items across this owner/cadence carry the feedback
+        // (PRD #65, issue #68). The store filters to cleared statuses; snooze
+        // expiry is still resolved per-item below. Reading them keeps suppression
+        // local to the brief surface — the underlying memory, source record, and
+        // follow-up are never touched. Skipped entirely when the caller explicitly
+        // asks to ignore prior feedback (ADR-0008 escape hatch).
+        input.ignorePriorFeedback
+          ? Promise.resolve([])
+          : store.listBriefItemsForOwner({
+              ownerUserId: input.ownerUserId,
+              cadence: input.cadence,
+              statuses: ["dismissed", "snoozed", "acted_on"],
+            }),
+      ]);
+
+      const suppressed = buildSuppressedKeys(priorItems, now);
 
       const items = candidates
         // Restricted content is never surfaced in proactive briefs (ADR-0058).
         .filter((candidate) => candidate.sensitivity !== "restricted")
+        // Cleared candidates (dismissed/snoozed/acted-on) do not immediately return.
+        .filter((candidate) => !isSuppressed(candidate, suppressed))
         .slice(0, config.itemCap)
         .map((candidate, index) => toBriefItem(input.ownerUserId, candidate, index + 1));
 
