@@ -1042,27 +1042,33 @@ Deliverables:
 - Every draft should be reviewable, editable, dismissible, and source-grounded. The user remains responsible for copying or sending outside Tendnote.
 - Add tone, no-fake-memory, source-grounded-drafting, and no-send-without-approval eval coverage before treating drafting as complete.
 
-#### Phase 2: Google Integrations
+#### Phase 2: Hosted Account And Integration Foundation
 
-Goal: Reduce manual entry by adding safe, preview-first integrations.
+Goal: Move Tendnote from a private local-owner app into a real authenticated hosted product, then add safe, preview-first integrations behind that account foundation.
 
 Deliverables:
 
-- Google Contacts import preview
-- Duplicate detection preview
-- Google Calendar read integration
-- Birthday and upcoming event prompts
-- Post-meeting follow-up suggestions
-- Gmail draft creation after approval
+- Real Better Auth sign-up, sign-in, sign-out, protected app shell, and account/profile surface
+- Support email/password, password reset, and GitHub sign-in for Phase 2A; defer Google sign-in and Google integration OAuth linking
+- Private beta access gate: first successful signup becomes the initial allowed owner; later signups require Vercel Flags targeting through user entities and beta segments
+- Unapproved signups should still create Better Auth users, then land on a pending-access page until Private Beta Access is granted
+- Pending-access users should see only a limited identity/access-status/sign-out area, not the normal app shell, relationship data, or Eve chat
+- Persist product access in a Tendnote-owned account/profile row instead of deriving access from the oldest Better Auth user
+- Keep the Phase 2A account page focused on identity, access status, and sign-out; defer active-session management and integration status persistence to later slices
+- Production and preview auth boundary that removes hosted reliance on `demo-user` while preserving an explicit local-development-only fallback
+- Integration settings foundation for future connection status, authorization state, and revocation controls
+- Google Calendar read integration with birthday, upcoming event, and post-meeting follow-up prompts
+- Gmail draft creation after explicit approval and user-scoped integration authorization
+- Google Contacts import and duplicate-detection preview
 
 Vertical slice issue seeds:
 
-- Add Google Contacts connection and import preview screen.
-- Add duplicate candidate matching with manual confirmation.
-- Add Calendar read connection and upcoming event context panel.
-- Add post-meeting follow-up candidate schedule.
-- Add Gmail draft creation behind explicit approval.
-- Add privacy evals around calendar and email-derived context.
+- Phase 2A: complete Better Auth user flows, password reset, GitHub sign-in, private beta access, pending-access state, Vercel Flags discovery/evaluation, narrow account/profile page, protected route behavior, and signed-in Eve owner scoping.
+- Phase 2B: add integration settings foundation with provider status rows, authorization affordances, and revocation/audit placeholders before any Google data is read.
+- Phase 2C: add Google Calendar read connection, upcoming/recent event previews, and post-meeting follow-up candidates.
+- Phase 2D: add Gmail draft creation behind explicit approval; do not read Gmail history or send messages.
+- Phase 2E: add Google Contacts import preview and duplicate candidate matching with manual confirmation.
+- Add privacy and policy evals around account access, calendar-derived context, email-derived drafts, and contact import behavior.
 
 #### Phase 3: Shared Household Context
 

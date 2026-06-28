@@ -83,3 +83,7 @@ _Avoid_: Task feed, backlog, separate review system
 **Message Draft**:
 A private, Tendnote-owned draft of a message to a person, grounded in relationship context and persisted with the source references that informed it. Drafts stay inside Tendnote — the user reviews, edits, copies, dismisses, approves internally, or marks them sent manually — and approving is internal readiness only, never an external send or draft.
 _Avoid_: Outbox, campaign, automatic send, external draft
+
+**Private Beta Access**:
+The account-level gate that decides whether a signed-up user may enter Tendnote during the early hosted product phase. It controls product access only; it is not the same as relationship data ownership, integration authorization, or payment status.
+_Avoid_: Public signup, environment allowlist, owner scope

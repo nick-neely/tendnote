@@ -3,7 +3,7 @@ import { eveChannel } from "eve/channels/eve";
 
 /**
  * Header the web app injects the authenticated owner on. The agent is served
- * same-origin via `withEve()`, and `apps/web/src/middleware.ts` validates the
+ * same-origin via `withEve()`, and `apps/web/src/proxy.ts` validates the
  * Better Auth session and sets this header (stripping any client value) before
  * the request reaches the channel, so the Eve session scopes every tool to the
  * owner the web app authorized (ADR 0001: shared owner-scoped mutations).
