@@ -1,8 +1,13 @@
 import { checkAccess } from "@tendnote/db/queries/access-profiles";
 import { type NextRequest, NextResponse } from "next/server";
 import { localFallbackOwnerUserId } from "@/lib/access/access-state";
-import { applyEveOwnerHeaders, decideEveIngress } from "@/lib/access/eve-ingress";
+import {
+  applyEveOwnerHeaders,
+  decideEveIngress,
+  enforceEveIngressBudget,
+} from "@/lib/access/eve-ingress";
 import { getAuth } from "@/lib/auth/server";
+import { getProductRateLimiter } from "@/lib/rate-limit";
 
 /**
  * Runs in the Node.js runtime (not Edge) so it can read the Better Auth session
@@ -66,6 +71,19 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       },
       { status: pending ? 403 : 401 },
     );
+  }
+
+  // Admitted: charge the product rate limiter before forwarding the turn to the
+  // agent, so abusive or accidental chat usage can't consume unbounded runtime.
+  if (decision.type === "owner") {
+    const budget = await enforceEveIngressBudget(getProductRateLimiter(), decision.ownerUserId);
+
+    if (budget.type === "limited") {
+      return NextResponse.json(
+        { error: "You're sending messages too quickly. Please wait a moment and try again." },
+        { status: 429, headers: { "Retry-After": String(budget.retryAfterSeconds) } },
+      );
+    }
   }
 
   return NextResponse.next({ request: { headers } });

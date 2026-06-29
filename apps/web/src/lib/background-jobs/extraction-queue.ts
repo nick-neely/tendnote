@@ -11,6 +11,7 @@ import {
   processExtractionJob,
   resolveExtractionRuntimeMode,
 } from "@tendnote/db/queries/extraction-jobs";
+import type { ProductRateLimiter } from "@/lib/rate-limit";
 import {
   type BackgroundJobQueueConsumerMetadata,
   type BackgroundJobQueueLogger,
@@ -76,6 +77,7 @@ export async function consumeExtractionQueueMessage(input: {
   deliveryStore?: BackgroundJobDeliveryStore;
   logger?: BackgroundJobQueueLogger;
   now?: Date;
+  rateLimiter?: ProductRateLimiter;
   claimJob?: typeof claimExtractionJob;
   getJob?: typeof getExtractionJob;
   processJob?: typeof processExtractionJob;
@@ -90,6 +92,7 @@ export async function consumeExtractionQueueMessage(input: {
     payload: input.payload,
     metadata: input.metadata,
     logger: input.logger,
+    rateLimiter: input.rateLimiter,
     processors: [
       {
         jobKind: "extraction",

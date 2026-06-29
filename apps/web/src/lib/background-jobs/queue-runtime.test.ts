@@ -1,5 +1,7 @@
 import { createInMemoryBackgroundJobDeliveryStore } from "@tendnote/db/queries/background-job-deliveries";
 import { describe, expect, it, vi } from "vitest";
+import { createFakeRateLimitStore } from "@/lib/rate-limit/fake-store";
+import { createProductRateLimiter } from "@/lib/rate-limit/limiter";
 import {
   BACKGROUND_JOB_QUEUE_CONFIG,
   type BackgroundJobQueuePayload,
@@ -307,5 +309,81 @@ describe("background job queue runtime", () => {
       jobId: delivery.jobId,
     });
     expect(processJob).not.toHaveBeenCalled();
+  });
+
+  it("defers a rate-limited delivery without claiming the job or changing status", async () => {
+    const store = createInMemoryBackgroundJobDeliveryStore();
+    const queue = createQueue();
+    const { delivery } = await store.createBackgroundJobDelivery({
+      ownerUserId: "user-1",
+      jobKind: "extraction",
+      jobId: "00000000-0000-0000-0000-000000000201",
+    });
+    await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: "user-1",
+      deliveryId: delivery.id,
+    });
+
+    const claimJob = vi.fn().mockResolvedValue({ status: "ready" as const });
+    const processJob = vi.fn().mockResolvedValue(undefined);
+    // A limiter that always denies (budget of 0).
+    const rateLimiter = createProductRateLimiter(createFakeRateLimitStore(), {
+      now: () => 1_000_000_000_000,
+      categories: {
+        "eve-ingress": { limit: 0, windowSeconds: 60 },
+        "server-action": { limit: 0, windowSeconds: 60 },
+        "llm-extraction": { limit: 0, windowSeconds: 60 },
+        embedding: { limit: 0, windowSeconds: 60 },
+        "provider-call": { limit: 0, windowSeconds: 60 },
+      },
+    });
+
+    const result = await consumeBackgroundJobQueueMessage({
+      store,
+      payload: { deliveryId: delivery.id, jobKind: "extraction", jobId: delivery.jobId },
+      processors: [{ jobKind: "extraction", claimJob, processJob }],
+      rateLimiter,
+    });
+
+    expect(result).toMatchObject({ status: "deferred", reason: "rate_limited" });
+    // No claim, no process, and delivery status/last-error are untouched.
+    expect(claimJob).not.toHaveBeenCalled();
+    expect(processJob).not.toHaveBeenCalled();
+    await expect(
+      store.getBackgroundJobDelivery({ ownerUserId: "user-1", deliveryId: delivery.id }),
+    ).resolves.toMatchObject({ status: "published", lastError: null });
+  });
+
+  it("processes a delivery normally when the limiter allows it", async () => {
+    const store = createInMemoryBackgroundJobDeliveryStore();
+    const queue = createQueue();
+    const { delivery } = await store.createBackgroundJobDelivery({
+      ownerUserId: "user-1",
+      jobKind: "embedding",
+      jobId: "00000000-0000-0000-0000-000000000202",
+    });
+    await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: "user-1",
+      deliveryId: delivery.id,
+    });
+
+    const claimJob = vi.fn().mockResolvedValue({ status: "ready" as const });
+    const processJob = vi.fn().mockResolvedValue(undefined);
+    const rateLimiter = createProductRateLimiter(createFakeRateLimitStore());
+
+    const result = await consumeBackgroundJobQueueMessage({
+      store,
+      payload: { deliveryId: delivery.id, jobKind: "embedding", jobId: delivery.jobId },
+      processors: [{ jobKind: "embedding", claimJob, processJob }],
+      rateLimiter,
+    });
+
+    expect(result.status).toBe("processed");
+    expect(claimJob).toHaveBeenCalledTimes(1);
+    expect(processJob).toHaveBeenCalledTimes(1);
   });
 });

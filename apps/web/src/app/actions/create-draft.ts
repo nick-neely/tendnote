@@ -5,6 +5,7 @@ import { messageDraftPurposeSchema } from "@tendnote/domain";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { enforceProductBudget } from "@/lib/rate-limit/guards";
 
 /**
  * Narrow entry-point input for starting a Tendnote draft from a product surface
@@ -41,6 +42,8 @@ export async function createDraftAction(
 ): Promise<CreateDraftResult> {
   const parsed = createDraftSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
+  // Draft generation is model-backed; charge the shared server-action budget.
+  await enforceProductBudget({ subject: ownerUserId, costCategory: "server-action" });
 
   const outcome = await generateDraft({
     ownerUserId,

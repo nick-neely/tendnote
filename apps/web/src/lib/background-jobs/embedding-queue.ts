@@ -12,6 +12,7 @@ import {
   processSemanticEmbeddingJob,
   resolveSemanticEmbeddingRuntimeMode,
 } from "@tendnote/db/queries/semantic-retrieval";
+import type { ProductRateLimiter } from "@/lib/rate-limit";
 import {
   type BackgroundJobQueueConsumerMetadata,
   type BackgroundJobQueueLogger,
@@ -81,6 +82,7 @@ export async function consumeEmbeddingQueueMessage(input: {
   deliveryStore?: BackgroundJobDeliveryStore;
   logger?: BackgroundJobQueueLogger;
   now?: Date;
+  rateLimiter?: ProductRateLimiter;
   claimJob?: typeof claimSemanticEmbeddingJob;
   getJob?: typeof getSemanticEmbeddingJob;
   processJob?: typeof processSemanticEmbeddingJob;
@@ -95,6 +97,7 @@ export async function consumeEmbeddingQueueMessage(input: {
     payload: input.payload,
     metadata: input.metadata,
     logger: input.logger,
+    rateLimiter: input.rateLimiter,
     processors: [
       {
         jobKind: "embedding",

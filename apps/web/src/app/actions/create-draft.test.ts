@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { generateDraft, revalidatePath } = vi.hoisted(() => ({
+const { generateDraft, revalidatePath, enforceProductBudget } = vi.hoisted(() => ({
   generateDraft: vi.fn(),
   revalidatePath: vi.fn(),
+  enforceProductBudget: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/drafts", () => ({ generateDraft }));
@@ -11,6 +12,7 @@ vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("user-1"),
 }));
+vi.mock("@/lib/rate-limit/guards", () => ({ enforceProductBudget }));
 
 import { createDraftAction } from "./create-draft";
 
@@ -22,6 +24,7 @@ const DRAFT_ID = randomUUID();
 beforeEach(() => {
   generateDraft.mockReset();
   revalidatePath.mockReset();
+  enforceProductBudget.mockReset();
 });
 
 describe("createDraftAction", () => {
@@ -104,6 +107,16 @@ describe("createDraftAction", () => {
 
   it("rejects an invalid person id", async () => {
     await expect(createDraftAction({ personId: "not-a-uuid" })).rejects.toThrow();
+    expect(generateDraft).not.toHaveBeenCalled();
+  });
+
+  it("charges the product budget and does not generate when the limit is exceeded", async () => {
+    enforceProductBudget.mockRejectedValueOnce(new Error("rate limited"));
+
+    await expect(createDraftAction({ personId: PERSON_ID })).rejects.toThrow();
+    expect(enforceProductBudget).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: "user-1", costCategory: "server-action" }),
+    );
     expect(generateDraft).not.toHaveBeenCalled();
   });
 });

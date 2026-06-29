@@ -6,6 +6,7 @@ import {
   topicForBackgroundJob,
 } from "@tendnote/db/queries/background-job-deliveries";
 import { send as sendVercelQueueMessage } from "@vercel/queue";
+import type { CostCategory, ProductRateLimiter } from "@/lib/rate-limit";
 
 export type BackgroundJobQueuePayload = {
   deliveryId: string;
@@ -95,8 +96,11 @@ export const BACKGROUND_JOB_QUEUE_CONFIG = {
     maxMessagesPerSecond: number;
     visibilityTimeoutSeconds: number;
     retryAfterSeconds: number;
+    // The product rate limiter's `key` and `costCategory` for this consumer.
+    // Typing `costCategory` as CostCategory keeps it aligned with the limiter's
+    // budget table (ADR-0068 rate-control boundary → ADR-0070 product limiter).
     rateLimitKey: string;
-    costCategory: string;
+    costCategory: CostCategory;
   }
 >;
 
@@ -208,6 +212,13 @@ export async function consumeBackgroundJobQueueMessage(input: {
   processors: BackgroundJobQueueProcessor[];
   metadata?: BackgroundJobQueueConsumerMetadata;
   logger?: BackgroundJobQueueLogger;
+  /**
+   * Optional product rate limiter (ADR-0070). When provided, the consumer charges
+   * the owner's budget for this job's `costCategory`/`rateLimitKey` before claiming
+   * the job. A denied budget defers the message for redelivery without touching
+   * delivery or processor-job status, so delivery semantics stay unchanged.
+   */
+  rateLimiter?: ProductRateLimiter;
 }) {
   const payload = parseBackgroundJobQueuePayload(input.payload);
   if (!payload) {
@@ -290,6 +301,27 @@ export async function consumeBackgroundJobQueueMessage(input: {
       jobKind: delivery.jobKind,
     });
     return { status: "ignored" as const, reason: "missing_handler" as const };
+  }
+
+  if (input.rateLimiter) {
+    const limitConfig = BACKGROUND_JOB_QUEUE_CONFIG[payload.jobKind];
+    const limit = await input.rateLimiter.check({
+      subject: delivery.ownerUserId,
+      costCategory: limitConfig.costCategory,
+      key: limitConfig.rateLimitKey,
+    });
+
+    if (!limit.allowed) {
+      logQueueAnomaly(input.logger, "rate_limited", {
+        deliveryId: delivery.id,
+        jobKind: delivery.jobKind,
+        costCategory: limitConfig.costCategory,
+        reason: limit.reason,
+      });
+      // Defer before claiming: no claimJob, no status write. The transport edge
+      // redelivers later (backpressure), leaving delivery/job status untouched.
+      return { status: "deferred" as const, reason: "rate_limited" as const };
+    }
   }
 
   const jobState = await processor.claimJob({

@@ -12,6 +12,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
+import { enforceProductBudget } from "@/lib/rate-limit/guards";
 
 // Default snooze defers a brief item by a week — long enough to clear it from the
 // rail without losing the underlying relationship context (PRD #65).
@@ -43,6 +44,8 @@ export async function generateBriefAction(input: {
 }): Promise<GenerateBriefResult> {
   const { cadence, regenerate } = generateBriefSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
+  // Brief generation is model-backed; charge the shared server-action budget.
+  await enforceProductBudget({ subject: ownerUserId, costCategory: "server-action" });
 
   const result = await generateManualBrief({
     ownerUserId,
