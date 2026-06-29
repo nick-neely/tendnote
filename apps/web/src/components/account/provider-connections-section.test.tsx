@@ -1,7 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ProviderConnectionView } from "@/lib/integrations/provider-connection-view";
 import { ProviderConnectionsSection } from "./provider-connections-section";
+
+// The disconnect button imports a server action whose module chain reaches
+// `server-only`; stub the action so this presentational test renders client-side.
+vi.mock("@/app/actions/integrations", () => ({ disconnectGoogleCalendarAction: vi.fn() }));
 
 const READY_VIEW: ProviderConnectionView[] = [
   {
@@ -10,6 +14,7 @@ const READY_VIEW: ProviderConnectionView[] = [
     label: "Google Calendar",
     status: "ready",
     displayIdentity: null,
+    revocationReason: null,
   },
   {
     providerKey: "google",
@@ -17,6 +22,7 @@ const READY_VIEW: ProviderConnectionView[] = [
     label: "Gmail",
     status: "ready",
     displayIdentity: null,
+    revocationReason: null,
   },
   {
     providerKey: "google",
@@ -24,6 +30,7 @@ const READY_VIEW: ProviderConnectionView[] = [
     label: "Google Contacts",
     status: "ready",
     displayIdentity: null,
+    revocationReason: null,
   },
 ];
 
@@ -62,6 +69,7 @@ describe("ProviderConnectionsSection", () => {
             label: "Google Calendar",
             status: "connected",
             displayIdentity: "nick@example.com",
+            revocationReason: null,
           },
         ]}
       />,
@@ -71,6 +79,49 @@ describe("ProviderConnectionsSection", () => {
     expect(html).toContain("nick@example.com");
     expect(html).toContain("Disconnect");
     expect(html).toContain("disabled");
+  });
+
+  it("renders a live disconnect control for a connected Calendar when configured", () => {
+    const html = renderToStaticMarkup(
+      <ProviderConnectionsSection
+        calendarConnectable
+        connections={[
+          {
+            providerKey: "google",
+            capabilityKey: "calendar",
+            label: "Google Calendar",
+            status: "connected",
+            displayIdentity: "nick@example.com",
+            revocationReason: null,
+          },
+        ]}
+      />,
+    );
+
+    // A real disconnect control — not the inert "(not available yet)" affordance.
+    expect(html).toContain("Disconnect Google Calendar");
+    expect(html).not.toContain("not available yet");
+  });
+
+  it("explains remaining Google cleanup after a disconnect that left the grant in place", () => {
+    const html = renderToStaticMarkup(
+      <ProviderConnectionsSection
+        calendarConnectable
+        connections={[
+          {
+            providerKey: "google",
+            capabilityKey: "calendar",
+            label: "Google Calendar",
+            status: "revoked",
+            displayIdentity: null,
+            revocationReason: "user_disconnect_provider_grant_not_revoked",
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain("Google Account permissions");
+    expect(html).toContain("https://myaccount.google.com/permissions");
   });
 
   it("surfaces an error status as visible state without color alone", () => {
@@ -83,6 +134,7 @@ describe("ProviderConnectionsSection", () => {
             label: "Gmail",
             status: "error",
             displayIdentity: null,
+            revocationReason: null,
           },
         ]}
       />,

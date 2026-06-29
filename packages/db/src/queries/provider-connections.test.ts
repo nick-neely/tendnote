@@ -301,6 +301,18 @@ describe("provider connection lifecycle", () => {
     await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.toEqual([]);
   });
 
+  it("reports a capability readable only while connected (disconnect blocks reads)", async () => {
+    const store = createInMemoryProviderConnectionStore();
+    const queries = createProviderConnectionQueries(store);
+    const ref = { ownerUserId: OWNER, providerKey: "google", capabilityKey: "calendar" };
+
+    expect(await queries.isProviderCapabilityConnected(ref)).toBe(false); // missing
+    await queries.connectProviderConnection(ref);
+    expect(await queries.isProviderCapabilityConnected(ref)).toBe(true);
+    await queries.markProviderConnectionRevoked(ref);
+    expect(await queries.isProviderCapabilityConnected(ref)).toBe(false); // revoked
+  });
+
   it("scopes connect to the owner: connecting for one owner leaves another owner untouched", async () => {
     const store = createInMemoryProviderConnectionStore({
       providerConnections: [connectionFixture({ ownerUserId: OTHER_OWNER, status: "ready" })],

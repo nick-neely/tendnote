@@ -37,6 +37,17 @@ export function createProviderConnectionQueries(store: ProviderConnectionStore) 
       return store.getProviderConnection(ref);
     },
 
+    /**
+     * Whether an owner's provider capability is currently connected — the shared
+     * read-gate consumers (Eve, previews, briefs) check before reading provider
+     * data. A revoked/error/ready/missing connection is not readable, so disconnect
+     * (which marks the connection `revoked`) blocks future reads (ADR-0080).
+     */
+    async isProviderCapabilityConnected(ref: ProviderConnectionRef) {
+      const existing = await store.getProviderConnection(ref);
+      return existing?.status === "connected";
+    },
+
     async createProviderConnection(input: CreateProviderConnectionMutationInput) {
       const parsed = createProviderConnectionSchema.parse(input);
 

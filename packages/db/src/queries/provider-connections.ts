@@ -26,6 +26,10 @@ export async function getProviderConnection(ref: ProviderConnectionRef) {
   return defaultProviderConnectionQueries.getProviderConnection(ref);
 }
 
+export async function isProviderCapabilityConnected(ref: ProviderConnectionRef) {
+  return defaultProviderConnectionQueries.isProviderCapabilityConnected(ref);
+}
+
 export async function createProviderConnection(input: CreateProviderConnectionMutationInput) {
   return defaultProviderConnectionQueries.createProviderConnection(input);
 }

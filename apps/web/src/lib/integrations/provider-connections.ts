@@ -1,14 +1,22 @@
 import "server-only";
 
+import { clearOwnerCalendarCache } from "@tendnote/db/queries/calendar";
 import {
   connectProviderConnection,
   listProviderConnections,
+  markProviderConnectionRevoked,
   setProviderConnectionStatus,
 } from "@tendnote/db/queries/provider-connections";
 import type { ProviderConnectionStatus } from "@tendnote/domain";
 import { requireAdmittedOwner, requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
 import { reconcileGoogleCalendarConnection } from "./google-calendar-connection";
+import {
+  type DisconnectGoogleCalendarResult,
+  disconnectGoogleCalendar,
+} from "./google-calendar-disconnect";
+
+const GOOGLE_OAUTH_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 
 /**
  * Hosted product boundary for reading Provider Connection state (#100, ADR-0069).
@@ -69,4 +77,64 @@ export async function setOwnerProviderConnectionStatus(input: {
 }) {
   const ownerUserId = await requireAdmittedOwnerForAction();
   return setProviderConnectionStatus({ ownerUserId, ...input });
+}
+
+/**
+ * Hosted product boundary for disconnecting Google Calendar (Phase 2C, ADR-0080).
+ * Resolves the admitted owner via the action gate, then best-effort revokes the
+ * Google grant, authoritatively unlinks the Better Auth account (so reads are
+ * blocked and the reconcile cannot re-connect), clears the Calendar cache, and
+ * marks the Provider Connection revoked. Returns whether the user still needs to
+ * finish cleanup at their Google Account permissions.
+ */
+export async function disconnectOwnerGoogleCalendar(): Promise<DisconnectGoogleCalendarResult> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+
+  return disconnectGoogleCalendar({
+    ownerUserId,
+    revokeAndUnlink: async () => {
+      const [{ getAuth }, { headers }] = await Promise.all([
+        import("@/lib/auth/server"),
+        import("next/headers"),
+      ]);
+      const requestHeaders = await headers();
+      const auth = getAuth();
+
+      // Best-effort provider-side grant revocation first — it needs the access
+      // token that the authoritative unlink below discards. Never throws, so an
+      // unavailable Google revoke endpoint still lets local unlink/cleanup proceed
+      // (ADR-0080).
+      let providerRevoked = false;
+      try {
+        const token = await auth.api.getAccessToken({
+          body: { providerId: "google" },
+          headers: requestHeaders,
+        });
+        const accessToken = (token as { accessToken?: string } | null)?.accessToken;
+        if (accessToken) {
+          // Send the token in the form body (not the URL) so it cannot leak into
+          // request logs (ADR-0081). Google's revoke endpoint accepts either.
+          const response = await fetch(GOOGLE_OAUTH_REVOKE_URL, {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ token: accessToken }).toString(),
+          });
+          providerRevoked = response.ok;
+        }
+      } catch {
+        providerRevoked = false;
+      }
+
+      // Authoritative: remove the account link (and its token custody). Throws on
+      // failure, failing the whole disconnect rather than reporting a false success.
+      await auth.api.unlinkAccount({
+        body: { providerId: "google" },
+        headers: requestHeaders,
+      });
+
+      return { providerRevoked };
+    },
+    clearCache: clearOwnerCalendarCache,
+    markRevoked: markProviderConnectionRevoked,
+  });
 }

@@ -18,6 +18,8 @@ export type ProviderConnectionView = {
   label: string;
   status: ProviderConnectionStatus;
   displayIdentity: string | null;
+  /** Audit-facing revocation detail; drives the "finish cleanup at Google" note. */
+  revocationReason: string | null;
 };
 
 export function buildProviderConnectionView(
@@ -36,6 +38,7 @@ export function buildProviderConnectionView(
       label: capability.label,
       status: persisted?.status ?? "ready",
       displayIdentity: persisted?.displayIdentity ?? null,
+      revocationReason: persisted?.revocationReason ?? null,
     };
   });
 }
