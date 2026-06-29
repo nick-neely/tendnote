@@ -14,15 +14,15 @@ Phase 1 proves the full private relationship loop with no external accounts or o
 - **Brief** yourself with small persisted daily and weekly relationship briefs.
 - **Draft** thoughtful messages inside Tendnote — source-grounded, reviewable, and never sent externally.
 
-Hosted accounts, a private-beta gate, and Google/Gmail/Calendar/Contacts integrations are later phases. See [`docs/prd.md`](docs/prd.md) for the full roadmap.
+Hosted accounts are live behind a private-beta gate (Phase 2A): sign-up, sign-in, password reset, and an access-gated app shell, with unadmitted users held on a pending page. Google/Gmail/Calendar/Contacts integrations and shared household context are later phases. See [`docs/prd.md`](docs/prd.md) for the full roadmap.
 
 ## How it's built
 
 A lean Turborepo with pnpm workspaces:
 
-- `apps/web` — Next.js App Router UI, dashboard, people pages, Better Auth.
+- `apps/web` — Next.js App Router UI, dashboard, people pages, Better Auth sign-up/sign-in, and a Vercel Flags private-beta access gate. Also hosts the background-job queue consumers and recovery cron.
 - `apps/agent` — the Eve agent (tools, skills, the brief dispatcher schedule, evals), mounted into the web app same-origin via `withEve()`, so the browser streams chat turns with no separate agent URL. See [`apps/agent/README.md`](apps/agent/README.md).
-- `packages/db` — Drizzle schema, migrations, and owner-scoped queries over Postgres (with pgvector), plus Postgres-owned background jobs for extraction and embeddings.
+- `packages/db` — Drizzle schema, migrations, and owner-scoped queries over Postgres (with pgvector), plus Postgres-owned background jobs (extraction, embeddings) delivered through a Vercel Queues + outbox foundation.
 - `packages/domain` / `packages/config` — shared types/validation and shared config.
 
 See [`docs/architecture.md`](docs/architecture.md) for details and [`AGENTS.md`](AGENTS.md) for agent-facing guidance.

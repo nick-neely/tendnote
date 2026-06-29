@@ -346,7 +346,6 @@ describe("extraction queue delivery", () => {
         {
           type: "queue/v2beta",
           topic: BACKGROUND_JOB_QUEUE_CONFIG.extraction.topic,
-          consumerGroup: BACKGROUND_JOB_QUEUE_CONFIG.extraction.consumerGroup,
         },
       ],
     });

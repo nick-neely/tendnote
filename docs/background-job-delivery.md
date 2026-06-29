@@ -15,7 +15,11 @@ Local development can keep work inline through the existing processor runtime mo
 
 ## Runtime Configuration
 
-Production and preview deployments need the Vercel Queue integration available to the app runtime, the `apps/web/vercel.json` queue triggers deployed, and normal app/database environment variables configured. The queue callbacks are:
+Production and preview deployments need the Vercel Queue integration available to the app runtime, the `apps/web/vercel.json` queue triggers deployed, and normal app/database environment variables configured. The Vercel project root must be `apps/web` so Vercel reads that config file; if the project root is the repository root, copy or move the deployment config to the root-level `vercel.json` shape instead.
+
+Queue trigger objects in `vercel.json` intentionally include only Vercel-supported properties such as `type` and `topic`. Tendnote's internal `consumerGroup` names live in `apps/web/src/lib/background-jobs/queue-runtime.ts` for logging and future rate-control metadata; they are not valid `vercel.json` fields.
+
+The queue callbacks are:
 
 - `/api/queue/extraction` for the `extraction` topic.
 - `/api/queue/embedding` for the `embedding` topic.

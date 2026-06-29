@@ -1,16 +1,17 @@
 # @tendnote/web
 
-Next.js App Router workspace for Tendnote: the dashboard, people pages, Better Auth, and the same-origin Eve chat mount.
+Next.js App Router workspace for Tendnote: the dashboard, people pages, Better Auth with a private-beta gate, the same-origin Eve chat mount, and the background-job queue consumers.
 
 ## Layout
 
-- `src/app` — routes: the dashboard (`page.tsx`), people list and person profile, and the Better Auth handler under `api/auth/[...all]`.
+- `src/app` — routes: the dashboard (`page.tsx`), people list and person profile, auth pages (`sign-in`, `sign-up`, `forgot-password`, `reset-password`, `account`, `pending`), and the Better Auth handler under `api/auth/[...all]`.
+- `src/app/api/queue/*` and `src/app/api/cron/background-jobs` — Vercel Queue consumers and the recovery cron; the Vercel Flags discovery endpoint is at `.well-known/vercel/flags`.
 - `src/app/actions` — owner-scoped server actions (memories, source records, follow-ups, suggested follow-ups, briefs, drafts).
-- `src/components` — dashboard rail, person detail, chat review cards, and draft surfaces.
+- `src/components` — dashboard rail, person detail, chat review cards, draft surfaces, and auth forms.
 - `src/components/ui` — shadcn/ui components.
 - `src/components/ai-elements` — AI Elements chat primitives.
-- `src/lib/auth` — Better Auth server/client setup; `src/lib/eve` — persisted Eve tool-result rendering.
-- `src/proxy.ts` — validates the Better Auth session on `/eve/v1/*` and injects the trusted owner header.
+- `src/lib/auth` — Better Auth setup; `src/lib/access` — Private Beta Access resolution and Eve ingress gating; `src/lib/background-jobs` — queue runtime and recovery; `src/lib/eve` — persisted Eve tool-result rendering.
+- `src/proxy.ts` — validates the Better Auth session on `/eve/v1/*`, requires an admitted owner, and injects the trusted owner header.
 
 ## Eve chat
 

@@ -244,7 +244,6 @@ describe("embedding queue delivery", () => {
         {
           type: "queue/v2beta",
           topic: BACKGROUND_JOB_QUEUE_CONFIG.embedding.topic,
-          consumerGroup: BACKGROUND_JOB_QUEUE_CONFIG.embedding.consumerGroup,
         },
       ],
     });

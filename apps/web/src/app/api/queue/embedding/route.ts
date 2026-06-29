@@ -4,7 +4,7 @@ import { BACKGROUND_JOB_QUEUE_CONFIG } from "@/lib/background-jobs/queue-runtime
 
 export const runtime = "nodejs";
 
-export const POST = handleCallback(
+const handleEmbeddingQueueCallback = handleCallback(
   async (message, metadata) => {
     await consumeEmbeddingQueueMessage({
       payload: message,
@@ -24,3 +24,7 @@ export const POST = handleCallback(
     },
   },
 );
+
+export function POST(request: Request) {
+  return handleEmbeddingQueueCallback(request);
+}
