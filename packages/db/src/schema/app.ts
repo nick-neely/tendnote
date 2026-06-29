@@ -4,6 +4,7 @@ export * from "./app/background-job-deliveries";
 export * from "./app/brief-schedules";
 export * from "./app/briefs";
 export * from "./app/calendar-event-cache";
+export * from "./app/calendar-suggested-followups";
 export * from "./app/context-snapshots";
 export * from "./app/engagement";
 export * from "./app/enums";

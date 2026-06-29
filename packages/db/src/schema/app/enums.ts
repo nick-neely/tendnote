@@ -170,6 +170,12 @@ export const briefItemStatus = pgEnum("brief_item_status", [
   "acted_on",
 ]);
 
+export const calendarSuggestionStatus = pgEnum("calendar_suggestion_status", [
+  "suggested",
+  "accepted",
+  "dismissed",
+]);
+
 export const briefItemKind = pgEnum("brief_item_kind", [
   "due_followup",
   "birthday",

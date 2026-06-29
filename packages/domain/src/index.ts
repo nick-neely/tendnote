@@ -3,6 +3,7 @@ export * from "./brief-schedules";
 export * from "./brief-summary";
 export * from "./briefs";
 export * from "./calendar";
+export * from "./calendar-followups";
 export * from "./context-snapshots";
 export * from "./draft-generation";
 export * from "./drafts";
