@@ -1,4 +1,5 @@
-import { createFlagsDiscoveryEndpoint, getProviderData } from "flags/next";
+import { getProviderData } from "@flags-sdk/vercel";
+import { createFlagsDiscoveryEndpoint } from "flags/next";
 import { privateBetaAccessFlag } from "@/lib/access/private-beta-flag";
 
 /**

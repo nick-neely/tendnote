@@ -1,10 +1,10 @@
 import "server-only";
 
+import { vercelAdapter } from "@flags-sdk/vercel";
 import { checkAccess, grantAccess } from "@tendnote/db/queries/access-profiles";
 import { dedupe, flag } from "flags/next";
 import { headers } from "next/headers";
 import { getAuth } from "@/lib/auth/server";
-import { decidePrivateBetaAccess, type PrivateBetaUser } from "./private-beta-decision";
 import {
   type BetaFlagEntity,
   createPrivateBetaAccessResolver,
@@ -13,9 +13,9 @@ import {
 
 export const PRIVATE_BETA_FLAG_KEY = "private-beta-access";
 
-/** Vercel Flags entities wrapper around the {@link PrivateBetaUser} being evaluated. */
+/** Vercel Flags entities wrapper around the signed-in user being evaluated. */
 export type PrivateBetaEntities = {
-  user?: PrivateBetaUser;
+  user?: { id: string; email?: string };
 };
 
 // Derive the entity from the trusted Better Auth session so the browser cannot
@@ -30,15 +30,13 @@ const identify = dedupe(async (): Promise<PrivateBetaEntities> => {
 export const privateBetaAccessFlag = flag<boolean, PrivateBetaEntities>({
   key: PRIVATE_BETA_FLAG_KEY,
   description: "Private Beta Access gate for Tendnote (Phase 2A).",
+  adapter: vercelAdapter(),
   defaultValue: false,
   options: [
     { value: false, label: "Denied" },
     { value: true, label: "Granted" },
   ],
   identify,
-  decide({ entities }) {
-    return decidePrivateBetaAccess(entities?.user);
-  },
 });
 
 /**

@@ -63,6 +63,19 @@ Most app vars have working local defaults (Postgres, Redis, and a dev auth secre
 
 The root `.env` is read **only** by `docker compose`; Next.js and `eve dev` do not read it. Each `.env.example` documents the rest. `.env*` files are gitignored (except the `.env.example` templates), so your keys are never committed.
 
+## Private beta flags
+
+Phase 2A keeps hosted access private by default through the Vercel-managed `private-beta-access` boolean flag. The app sends the trusted Better Auth user entity on every evaluation:
+
+```text
+user.id
+user.email
+```
+
+In the Vercel dashboard, define a `User` entity with `id` and `email` string attributes, create a production beta segment such as `Private Beta Users - Production`, and target that segment to return `true` for `private-beta-access`. Leave the flag default as `false`.
+
+Vercel deployments receive the OIDC token automatically. For local dashboard-backed evaluation, run `vercel link` once for `apps/web`, then `vercel env pull` into `apps/web/.env.local`. `FLAGS_SECRET` only protects the Flags Explorer discovery endpoint at `/.well-known/vercel/flags`; it is separate from flag evaluation credentials.
+
 ## Quality gates
 
 ```bash
