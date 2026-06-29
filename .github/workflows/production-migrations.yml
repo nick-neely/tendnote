@@ -59,7 +59,7 @@ jobs:
     needs:
       - changes
       - verify
-    if: false && needs.changes.outputs.database == 'true' && needs.verify.result == 'success'
+    if: needs.changes.outputs.database == 'true' && needs.verify.result == 'success'
     environment: production
     env:
       NODE_VERSION: 24
