@@ -1,21 +1,16 @@
-import { CalendarIcon, CheckIcon, MailIcon, UsersRoundIcon } from "lucide-react";
+import { CheckIcon } from "lucide-react";
 import { redirect } from "next/navigation";
+import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
 import { AppShell } from "@/components/app-shell";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Badge } from "@/components/ui/badge";
 import { localFallbackOwnerUserId } from "@/lib/access/access-state";
 import { resolveAccountView } from "@/lib/access/account-summary";
 import { getCurrentAccess } from "@/lib/access/current-access";
+import { buildProviderConnectionView } from "@/lib/integrations/provider-connection-view";
+import { getOwnerProviderConnections } from "@/lib/integrations/provider-connections";
 
 export const dynamic = "force-dynamic";
-
-// Future integration affordances are disabled-only in Phase 2A: they create no
-// provider authorization and no status tables (that is Phase 2B).
-const FUTURE_INTEGRATIONS = [
-  { icon: CalendarIcon, label: "Google Calendar" },
-  { icon: MailIcon, label: "Gmail" },
-  { icon: UsersRoundIcon, label: "Google Contacts" },
-] as const;
 
 export default async function AccountPage() {
   const access = await getCurrentAccess();
@@ -30,6 +25,10 @@ export default async function AccountPage() {
   if (view.type === "redirect") {
     redirect(view.to);
   }
+
+  // Admitted-only: getOwnerProviderConnections resolves the admitted owner before
+  // reading, so pending/unauthenticated users never reach connection state.
+  const connections = buildProviderConnectionView(await getOwnerProviderConnections());
 
   const initial = view.name.trim().charAt(0).toUpperCase() || "?";
 
@@ -86,27 +85,8 @@ export default async function AccountPage() {
           </div>
         </section>
 
-        {/* Future integrations — disabled affordances only (Phase 2B). */}
-        <section className="flex flex-col gap-3">
-          <h2 className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground">
-            Integrations
-          </h2>
-          <ul className="flex flex-col divide-y rounded-lg border bg-surface">
-            {FUTURE_INTEGRATIONS.map(({ icon: Icon, label }) => (
-              <li className="flex items-center justify-between gap-3 px-3.5 py-3" key={label}>
-                <span className="flex items-center gap-2.5 text-[length:var(--text-body)] leading-[var(--text-body-line)] text-muted-foreground">
-                  <Icon aria-hidden className="size-4 shrink-0" />
-                  {label}
-                </span>
-                <Badge variant="outline">Coming soon</Badge>
-              </li>
-            ))}
-          </ul>
-          <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-            Calendar, Gmail, and Contacts connect later, each with its own narrow permission and
-            your explicit approval.
-          </p>
-        </section>
+        {/* Integrations — real Provider Connection status rows, inert in Phase 2B. */}
+        <ProviderConnectionsSection connections={connections} />
 
         {/* Sign out */}
         <section className="flex flex-col gap-3 border-t pt-6">
