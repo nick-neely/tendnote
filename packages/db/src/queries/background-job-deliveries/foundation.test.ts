@@ -99,6 +99,7 @@ describe("background job delivery ledger", () => {
       jobId: "00000000-0000-0000-0000-000000000006",
     });
     await store.updateBackgroundJobDelivery({
+      ownerUserId: "user-1",
       deliveryId: first.delivery.id,
       status: "abandoned",
       lastError: "processor job is terminal",

@@ -49,8 +49,15 @@ export type BackgroundJobDeliveryStore = {
   createBackgroundJobDelivery: (
     input: CreateBackgroundJobDeliveryInput,
   ) => Promise<{ delivery: BackgroundJobDelivery; created: boolean }>;
-  getBackgroundJobDelivery: (deliveryId: string) => Promise<BackgroundJobDelivery | null>;
+  getBackgroundJobDelivery: (input: {
+    ownerUserId: string;
+    deliveryId: string;
+  }) => Promise<BackgroundJobDelivery | null>;
+  getBackgroundJobDeliveryForConsumer: (
+    deliveryId: string,
+  ) => Promise<BackgroundJobDelivery | null>;
   findBackgroundJobDeliveryForJob: (input: {
+    ownerUserId: string;
     jobKind: BackgroundJobKind;
     jobId: string;
   }) => Promise<BackgroundJobDelivery | null>;
@@ -61,10 +68,10 @@ export type BackgroundJobDeliveryStore = {
     input: MarkBackgroundJobDeliveryPublishFailedInput,
   ) => Promise<BackgroundJobDelivery>;
   updateBackgroundJobDelivery: (
-    input: UpdateBackgroundJobDeliveryInput,
+    input: UpdateBackgroundJobDeliveryInput & { ownerUserId: string },
   ) => Promise<BackgroundJobDelivery>;
-  listBackgroundJobDeliveries: (input?: {
-    ownerUserId?: string;
+  listBackgroundJobDeliveries: (input: {
+    ownerUserId: string;
     status?: BackgroundJobDeliveryStatus;
   }) => Promise<BackgroundJobDelivery[]>;
 };

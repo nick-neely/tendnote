@@ -57,6 +57,7 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
       }
 
       const existing = await this.findBackgroundJobDeliveryForJob({
+        ownerUserId: values.ownerUserId,
         jobKind: values.jobKind,
         jobId: values.jobId,
       });
@@ -67,7 +68,21 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
 
       return { delivery: existing, created: false };
     },
-    async getBackgroundJobDelivery(deliveryId) {
+    async getBackgroundJobDelivery(input) {
+      const [delivery] = await getDb()
+        .select()
+        .from(backgroundJobDeliveries)
+        .where(
+          and(
+            eq(backgroundJobDeliveries.id, input.deliveryId),
+            eq(backgroundJobDeliveries.ownerUserId, input.ownerUserId),
+          ),
+        )
+        .limit(1);
+
+      return delivery ?? null;
+    },
+    async getBackgroundJobDeliveryForConsumer(deliveryId) {
       const [delivery] = await getDb()
         .select()
         .from(backgroundJobDeliveries)
@@ -83,6 +98,7 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
         .from(backgroundJobDeliveries)
         .where(
           and(
+            eq(backgroundJobDeliveries.ownerUserId, input.ownerUserId),
             eq(backgroundJobDeliveries.jobKind, input.jobKind),
             eq(backgroundJobDeliveries.jobId, input.jobId),
             eq(backgroundJobDeliveries.topic, topic),
@@ -102,7 +118,12 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
           publishedAt,
           updatedAt: publishedAt,
         })
-        .where(eq(backgroundJobDeliveries.id, input.deliveryId))
+        .where(
+          and(
+            eq(backgroundJobDeliveries.id, input.deliveryId),
+            eq(backgroundJobDeliveries.ownerUserId, input.ownerUserId),
+          ),
+        )
         .returning();
 
       if (!delivery) {
@@ -121,7 +142,12 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
           nextAttemptAt: input.nextAttemptAt,
           updatedAt: new Date(),
         })
-        .where(eq(backgroundJobDeliveries.id, input.deliveryId))
+        .where(
+          and(
+            eq(backgroundJobDeliveries.id, input.deliveryId),
+            eq(backgroundJobDeliveries.ownerUserId, input.ownerUserId),
+          ),
+        )
         .returning();
 
       if (!delivery) {
@@ -134,7 +160,12 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
       const [delivery] = await getDb()
         .update(backgroundJobDeliveries)
         .set(updateValues(input))
-        .where(eq(backgroundJobDeliveries.id, input.deliveryId))
+        .where(
+          and(
+            eq(backgroundJobDeliveries.id, input.deliveryId),
+            eq(backgroundJobDeliveries.ownerUserId, input.ownerUserId),
+          ),
+        )
         .returning();
 
       if (!delivery) {
@@ -143,12 +174,10 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
 
       return delivery;
     },
-    async listBackgroundJobDeliveries(input = {}) {
+    async listBackgroundJobDeliveries(input) {
       const filters = [];
 
-      if (input.ownerUserId) {
-        filters.push(eq(backgroundJobDeliveries.ownerUserId, input.ownerUserId));
-      }
+      filters.push(eq(backgroundJobDeliveries.ownerUserId, input.ownerUserId));
       if (input.status) {
         filters.push(eq(backgroundJobDeliveries.status, input.status));
       }

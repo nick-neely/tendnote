@@ -54,7 +54,12 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
 
       return { delivery, created: true };
     },
-    async getBackgroundJobDelivery(deliveryId) {
+    async getBackgroundJobDelivery(input) {
+      const delivery = deliveries.get(input.deliveryId);
+
+      return delivery?.ownerUserId === input.ownerUserId ? delivery : null;
+    },
+    async getBackgroundJobDeliveryForConsumer(deliveryId) {
       return deliveries.get(deliveryId) ?? null;
     },
     async findBackgroundJobDeliveryForJob(input) {
@@ -63,11 +68,13 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
         deliveryKey({ jobKind: input.jobKind, jobId: input.jobId, topic }),
       );
 
-      return deliveryId ? (deliveries.get(deliveryId) ?? null) : null;
+      const delivery = deliveryId ? deliveries.get(deliveryId) : null;
+
+      return delivery?.ownerUserId === input.ownerUserId ? delivery : null;
     },
     async markBackgroundJobDeliveryPublished(input) {
       const delivery = deliveries.get(input.deliveryId);
-      if (!delivery) {
+      if (!delivery || delivery.ownerUserId !== input.ownerUserId) {
         throw new Error("Background job delivery not found.");
       }
       const now = input.publishedAt ?? new Date();
@@ -84,7 +91,7 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
     },
     async markBackgroundJobDeliveryPublishFailed(input) {
       const delivery = deliveries.get(input.deliveryId);
-      if (!delivery) {
+      if (!delivery || delivery.ownerUserId !== input.ownerUserId) {
         throw new Error("Background job delivery not found.");
       }
       const updated: BackgroundJobDelivery = {
@@ -101,7 +108,7 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
     },
     async updateBackgroundJobDelivery(input) {
       const delivery = deliveries.get(input.deliveryId);
-      if (!delivery) {
+      if (!delivery || delivery.ownerUserId !== input.ownerUserId) {
         throw new Error("Background job delivery not found.");
       }
       const updated: BackgroundJobDelivery = {
@@ -116,10 +123,10 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
 
       return updated;
     },
-    async listBackgroundJobDeliveries(input = {}) {
+    async listBackgroundJobDeliveries(input) {
       return [...deliveries.values()]
         .filter((delivery) => {
-          if (input.ownerUserId && delivery.ownerUserId !== input.ownerUserId) {
+          if (delivery.ownerUserId !== input.ownerUserId) {
             return false;
           }
           if (input.status && delivery.status !== input.status) {
