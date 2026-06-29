@@ -1,5 +1,6 @@
 export * from "./app/access-profiles";
 export * from "./app/audit-log";
+export * from "./app/background-job-deliveries";
 export * from "./app/brief-schedules";
 export * from "./app/briefs";
 export * from "./app/context-snapshots";

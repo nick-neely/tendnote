@@ -115,6 +115,15 @@ export const embeddingJobStatus = pgEnum("embedding_job_status", [
   "skipped",
 ]);
 
+export const backgroundJobKind = pgEnum("background_job_kind", ["extraction", "embedding"]);
+
+export const backgroundJobDeliveryStatus = pgEnum("background_job_delivery_status", [
+  "pending",
+  "published",
+  "publish_failed",
+  "abandoned",
+]);
+
 export const messageDraftChannel = pgEnum("message_draft_channel", [
   "text",
   "email",
