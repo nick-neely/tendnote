@@ -54,7 +54,8 @@ describe("createDefaultSnapshotGenerator", () => {
     expect(aiMock.gateway).toHaveBeenCalledWith("openai/test-model");
     expect(aiMock.generateText).toHaveBeenCalledWith({
       model: { modelId: "openai/test-model" },
-      prompt: expect.stringContaining("Write a short, warm relationship snapshot"),
+      system: expect.stringContaining("never infer, embellish, or invent"),
+      prompt: expect.stringContaining("Write a brief, grounded relationship snapshot"),
     });
   });
 });

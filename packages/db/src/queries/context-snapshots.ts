@@ -52,6 +52,11 @@ export function createDefaultSnapshotGenerator(
     model: async ({ prompt }) => {
       const { text } = await generateText({
         model: gateway(modelId),
+        system:
+          "You write grounded relationship snapshots for Tendnote. You summarize only " +
+          "the facts you are given and never infer, embellish, or invent feelings, " +
+          "routines, backstory, or significance. Accuracy outranks warmth, and the " +
+          "length must match the facts available rather than fill a quota.",
         prompt,
       });
 

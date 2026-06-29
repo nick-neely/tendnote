@@ -202,6 +202,24 @@ describe("buildSnapshotPrompt", () => {
     expect(prompt).toMatch(/plain prose/i);
     expect(prompt).toMatch(/do not start with or repeat the person's name/i);
   });
+
+  it("scales length to the facts and forbids inventing feelings or significance", () => {
+    const prompt = buildSnapshotPrompt({
+      person: person(),
+      approvedMemories: [],
+      sourceRecords: [],
+      suggestedMemories: [],
+      followups: [],
+    });
+
+    // Grounding must outrank tone: with one or two facts the model writes a sentence
+    // or two, not an embellished paragraph, and never invents feelings/significance.
+    expect(prompt).toMatch(/do not infer, embellish, or invent/i);
+    expect(prompt).toMatch(/one or two plain sentences/i);
+    expect(prompt).toMatch(/never exceed three short paragraphs/i);
+    // The old "warm" framing that coaxed padding is gone.
+    expect(prompt).not.toMatch(/\bwarm\b/i);
+  });
 });
 
 describe("computeSnapshotFingerprint", () => {

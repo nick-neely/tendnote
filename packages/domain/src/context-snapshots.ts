@@ -188,7 +188,9 @@ export function generateDeterministicSnapshot(input: SnapshotInputPack): Snapsho
  * Builds the prompt handed to an LLM snapshot generator. Pure and testable so the
  * generator contract can be verified without a model. It carries the trust framing
  * into the prompt: confirmed facts (approved memories) and logged context worded
- * as "you noted" (source records).
+ * as "you noted" (source records). Grounding outranks tone, and the requested
+ * length scales to the available facts, so a single fact yields a sentence rather
+ * than an embellished paragraph (the model must not invent feelings or significance).
  *
  * Suggested-memory content is deliberately excluded from the prompt, matching the
  * deterministic generator's hard exclusion (ADR 0009: suggested memories belong in
@@ -203,9 +205,27 @@ export function generateDeterministicSnapshot(input: SnapshotInputPack): Snapsho
 export function buildSnapshotPrompt(input: SnapshotInputPack): string {
   const { person, approvedMemories, sourceRecords } = input;
   const sections: string[] = [
-    "Write a short, warm relationship snapshot to help the user remember this person.",
-    "Use only the information provided. State confirmed facts plainly. Frame logged",
+    "Write a brief, grounded relationship snapshot that helps the user remember this person.",
+    "Use only the facts provided below. State confirmed facts plainly. Frame logged",
     'context as "you noted".',
+    "",
+    // The "warm + 1-3 paragraphs" framing used to coax embellishment out of weaker
+    // models: with only one or two facts the model would pad to fill the paragraph
+    // quota, inventing feelings, routines, and significance the facts never stated.
+    // Grounding now outranks tone and length scales to the available facts, matching
+    // the anti-confabulation rules the draft and extraction prompts already enforce.
+    "Grounding rules (these override tone and length):",
+    "- Report only what the facts state. Do not infer, embellish, or invent feelings,",
+    "  routines, backstory, motivations, or significance that is not explicitly given.",
+    "- Do not narrate what the relationship 'means' or how it feels. This is a note to",
+    "  self, not a greeting card or a story. Avoid sentimentality. If a fact is just a",
+    "  fact, state it and stop.",
+    "",
+    "Length (match the amount of information — never pad):",
+    "- One or two facts: write one or two plain sentences. Do not stretch them into a",
+    "  paragraph.",
+    "- Only add a second short paragraph when several distinct facts genuinely need it.",
+    "  Never exceed three short paragraphs.",
     "",
     // The card and page header already show the person's name and relationship, and
     // the card renders the summary as plain text (it does not parse Markdown). Ask
@@ -213,8 +233,8 @@ export function buildSnapshotPrompt(input: SnapshotInputPack): string {
     // and duplicated name/role lines never leak into the rendered card. A
     // display-time sanitizer (web) is the safety net for when the model ignores this.
     "Formatting rules:",
-    "- Write 1-3 short paragraphs of plain prose. No Markdown of any kind: no",
-    "  headings (#), bold/italic (* or _), lists, links, code, or block quotes.",
+    "- Plain prose only. No Markdown of any kind: no headings (#), bold/italic (* or _),",
+    "  lists, links, code, or block quotes.",
     "- Do not start with or repeat the person's name, relationship, or role as a",
     "  title or label line — those are already shown above the snapshot.",
     "",
