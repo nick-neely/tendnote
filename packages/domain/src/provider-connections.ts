@@ -100,3 +100,31 @@ export type ProviderCapabilityRef = z.infer<typeof providerCapabilityRefSchema>;
 export function providerCapabilityKey(ref: ProviderCapabilityRef): string {
   return `${ref.providerKey}:${ref.capabilityKey}`;
 }
+
+/**
+ * Validated input for creating an owner-scoped Provider Connection row. Only
+ * non-secret state is accepted; status defaults to `ready`.
+ */
+export const createProviderConnectionSchema = z.object({
+  ownerUserId: z.string().min(1),
+  providerKey: providerKeySchema,
+  capabilityKey: capabilityKeySchema,
+  status: providerConnectionStatusSchema.default("ready"),
+  displayIdentity: z.string().max(320).nullable().optional(),
+  authorizedScopes: z.array(z.string().max(256)).max(64).nullable().optional(),
+});
+
+export type CreateProviderConnectionInput = z.input<typeof createProviderConnectionSchema>;
+
+/**
+ * Phase 2B treats any change between statuses as a real, auditable transition; a
+ * transition to the same status is a no-op that callers skip without writing an
+ * audit entry. Richer transition rules (e.g. cannot move to `connected` from
+ * `unavailable`) arrive with the first real OAuth slice (Phase 2C+).
+ */
+export function isProviderConnectionStatusChange(
+  current: ProviderConnectionStatus,
+  next: ProviderConnectionStatus,
+): boolean {
+  return current !== next;
+}
