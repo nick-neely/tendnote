@@ -1,6 +1,9 @@
+import type { CalendarReadResult } from "@tendnote/domain";
 import { createDrizzleCalendarCacheStore } from "./calendar/drizzle-store";
-import { createCalendarReader } from "./calendar/reader";
-import type { CalendarProviderAdapter } from "./calendar/types";
+import type { CalendarReader } from "./calendar/reader";
+import { CalendarUnavailableError, createCalendarReader } from "./calendar/reader";
+import type { CalendarProviderAdapter, CalendarReadRequest } from "./calendar/types";
+import { isProviderCapabilityConnected } from "./provider-connections";
 
 export { createDrizzleCalendarCacheStore } from "./calendar/drizzle-store";
 export {
@@ -44,4 +47,53 @@ export async function clearOwnerCalendarCache(ref: {
   capabilityKey: string;
 }): Promise<number> {
   return createDrizzleCalendarCacheStore().clearConnection(ref);
+}
+
+export type OwnerCalendarReadOutcome = {
+  /** Whether the owner's Calendar capability is connected. */
+  connected: boolean;
+  /** The bounded read, or null when disconnected or temporarily unavailable. */
+  result: CalendarReadResult | null;
+};
+
+/**
+ * The shared owner-scoped Calendar read that web previews, Eve, and scheduled
+ * workflows all go through, so provider behavior never forks (ADR-0075). It gates
+ * on the Provider Connection being connected (disconnect blocks reads, ADR-0080),
+ * reads the bounded window through the injected cache-aside reader, and degrades
+ * gracefully — a transient provider failure with no fresh-enough cache returns
+ * `result: null` rather than throwing (ADR-0081). The reader's adapter is injected
+ * by the caller, so this seam never reaches for Google credentials itself.
+ */
+export async function readConnectedOwnerCalendar(
+  input: CalendarReadRequest,
+  deps: {
+    reader: CalendarReader;
+    isConnected?: (ref: {
+      ownerUserId: string;
+      providerKey: string;
+      capabilityKey: string;
+    }) => Promise<boolean>;
+  },
+): Promise<OwnerCalendarReadOutcome> {
+  const ref = {
+    ownerUserId: input.ownerUserId,
+    providerKey: input.providerKey,
+    capabilityKey: input.capabilityKey,
+  };
+  const isConnected = deps.isConnected ?? isProviderCapabilityConnected;
+
+  if (!(await isConnected(ref))) {
+    return { connected: false, result: null };
+  }
+
+  try {
+    const result = await deps.reader.readCalendarEvents(input);
+    return { connected: true, result };
+  } catch (error) {
+    if (error instanceof CalendarUnavailableError) {
+      return { connected: true, result: null };
+    }
+    throw error;
+  }
 }

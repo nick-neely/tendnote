@@ -3,8 +3,8 @@ import "server-only";
 import {
   createDefaultCalendarReader,
   createGoogleCalendarAdapter,
+  readConnectedOwnerCalendar,
 } from "@tendnote/db/queries/calendar";
-import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-connections";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
 import { buildCalendarPreviewView, type CalendarPreviewView } from "./calendar-preview";
@@ -32,9 +32,6 @@ export async function getOwnerCalendarPreview(): Promise<CalendarPreviewView> {
   }
 
   const ref = { ownerUserId, providerKey: "google", capabilityKey: "calendar" };
-  if (!(await isProviderCapabilityConnected(ref))) {
-    return buildCalendarPreviewView({ connected: false, result: null, now });
-  }
 
   const [{ getAuth }, { headers }] = await Promise.all([
     import("@/lib/auth/server"),
@@ -56,17 +53,17 @@ export async function getOwnerCalendarPreview(): Promise<CalendarPreviewView> {
     },
   });
 
-  try {
-    const result = await createDefaultCalendarReader(adapter).readCalendarEvents({
+  // Shared owner-scoped read: gates on the connection, reads the bounded window,
+  // and degrades gracefully — the same seam Eve and the brief dispatcher use.
+  const { connected, result } = await readConnectedOwnerCalendar(
+    {
       ...ref,
       timeMin: new Date(now.getTime() - PREVIEW_LOOKBACK_MS),
       timeMax: new Date(now.getTime() + PREVIEW_LOOKAHEAD_MS),
       maxResults: PREVIEW_MAX_RESULTS,
-    });
-    return buildCalendarPreviewView({ connected: true, result, now });
-  } catch {
-    // CalendarUnavailableError (no fresh-enough cache) or a token failure: stay
-    // calm and let Eve/briefs keep working (ADR-0081).
-    return buildCalendarPreviewView({ connected: true, result: null, now });
-  }
+    },
+    { reader: createDefaultCalendarReader(adapter) },
+  );
+
+  return buildCalendarPreviewView({ connected, result, now });
 }
