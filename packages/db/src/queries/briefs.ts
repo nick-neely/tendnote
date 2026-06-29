@@ -3,6 +3,10 @@ import { generateDeterministicBriefSummary } from "@tendnote/domain";
 import { gateway, generateText } from "ai";
 import type { AcceptBriefSuggestedFollowupInput } from "./briefs/accept-followup";
 import { createBriefSuggestedFollowupAcceptance } from "./briefs/accept-followup";
+import {
+  type BriefCalendarContextProvider,
+  createCalendarBriefContextProvider,
+} from "./briefs/calendar-context";
 import { createDrizzleBriefLifecycleStore, createDrizzleBriefStore } from "./briefs/drizzle-store";
 import type { GenerateBriefInput } from "./briefs/generator";
 import { createBriefGenerator } from "./briefs/generator";
@@ -11,6 +15,7 @@ import { createBriefLifecycle } from "./briefs/lifecycle";
 import type { ManualBriefInput } from "./briefs/manual";
 import { createManualBriefGeneration } from "./briefs/manual";
 import { type BriefSummaryAdapter, createLlmBriefSummaryAdapter } from "./briefs/summary-adapter";
+import { createDefaultCalendarReader, createGoogleCalendarAdapter } from "./calendar";
 import { acceptSuggestedFollowup } from "./followups";
 import { getRelationshipAgenda } from "./relationship-agenda";
 
@@ -19,6 +24,13 @@ export {
   type AcceptBriefSuggestedFollowupResult,
   createBriefSuggestedFollowupAcceptance,
 } from "./briefs/accept-followup";
+export {
+  type BriefCalendarContextInput,
+  type BriefCalendarContextProvider,
+  type BriefCalendarHighlight,
+  createCalendarBriefContextProvider,
+  mapCalendarHighlights,
+} from "./briefs/calendar-context";
 export {
   createDrizzleBriefLifecycleStore,
   createDrizzleBriefStore,
@@ -87,10 +99,27 @@ const defaultBriefSummaryAdapter = createDefaultBriefSummaryAdapter();
 // drizzle brief store and the drizzle relationship agenda. Schedule dispatch
 // (#72) and the manual web action (#69) call this shared default so they cannot
 // fork generator behavior.
+// Shared Calendar brief-context provider (#112): brief generation reads minimized
+// highlights through the shared owner-scoped seam. In the scheduled/db context there
+// is no live Better Auth token, so reads are served from the short-lived cache that
+// web/Eve reads warm; a cache miss (or a disconnected calendar) degrades to no
+// highlights. No standalone Calendar sync loop is added.
+const defaultCalendarBriefContext: BriefCalendarContextProvider =
+  createCalendarBriefContextProvider({
+    readerFor: () =>
+      createDefaultCalendarReader(
+        createGoogleCalendarAdapter({
+          getAccessToken: async () => {
+            throw new Error("No live Google token in scheduled brief context; cache-only.");
+          },
+        }),
+      ),
+  });
+
 const defaultBriefGenerator = createBriefGenerator(
   createDrizzleBriefStore(),
   { getRelationshipAgenda },
-  { summaryAdapter: defaultBriefSummaryAdapter },
+  { summaryAdapter: defaultBriefSummaryAdapter, calendarContext: defaultCalendarBriefContext },
 );
 
 export function generateBrief(input: GenerateBriefInput) {
@@ -104,7 +133,7 @@ export function generateBrief(input: GenerateBriefInput) {
 const defaultManualBriefGeneration = createManualBriefGeneration(
   createDrizzleBriefLifecycleStore(),
   { getRelationshipAgenda },
-  { summaryAdapter: defaultBriefSummaryAdapter },
+  { summaryAdapter: defaultBriefSummaryAdapter, calendarContext: defaultCalendarBriefContext },
 );
 
 export function generateManualBrief(input: ManualBriefInput) {

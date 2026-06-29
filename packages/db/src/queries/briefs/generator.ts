@@ -13,12 +13,19 @@ import type {
   RelationshipAgendaInput,
   RelationshipAgendaKind,
 } from "../relationship-agenda/types";
+import type { BriefCalendarContextProvider, BriefCalendarHighlight } from "./calendar-context";
 import type { BriefSummaryAdapter } from "./summary-adapter";
 import type { BriefStore } from "./types";
 
 /** Optional generator dependencies. The summary adapter decorates only (issue #73). */
 export type BriefGeneratorOptions = {
   summaryAdapter?: BriefSummaryAdapter;
+  /**
+   * Provider-derived Google Calendar highlights for the brief window (Phase 2C,
+   * #112). Optional and best-effort: a disconnected/unavailable calendar (or a
+   * thrown error) simply yields no calendar items, so briefs degrade gracefully.
+   */
+  calendarContext?: BriefCalendarContextProvider;
 };
 
 type GeneratedSummary = {
@@ -54,6 +61,42 @@ async function buildSummary(
 }
 
 /**
+ * Reads provider-derived Calendar highlights for the brief window and snapshots
+ * them into bounded brief items (#112). Fail-open: a missing provider, no events,
+ * or a thrown error all yield no calendar items, so the brief is still created
+ * with its deterministic agenda items (ADR-0081).
+ */
+async function buildCalendarItems(
+  provider: BriefCalendarContextProvider | undefined,
+  input: {
+    ownerUserId: string;
+    windowStart: Date;
+    windowEnd: Date;
+    limit: number;
+    startRank: number;
+  },
+): Promise<CreateBriefItemInput[]> {
+  if (!provider || input.limit <= 0) {
+    return [];
+  }
+  try {
+    const highlights = await provider({
+      ownerUserId: input.ownerUserId,
+      windowStart: input.windowStart,
+      windowEnd: input.windowEnd,
+      limit: input.limit,
+    });
+    return highlights
+      .slice(0, input.limit)
+      .map((highlight, index) =>
+        toCalendarBriefItem(input.ownerUserId, highlight, input.startRank + index),
+      );
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Read-only relationship agenda surface the generator selects candidates from
  * (PRD #65, ADR-0062). The agenda is the bridge from broad ranking to persisted
  * brief items; the generator never queries records directly.
@@ -76,6 +119,9 @@ const CADENCE_CONFIG: Record<
     itemCap: number;
     agendaLimit: number;
     includeKinds: RelationshipAgendaKind[];
+    // Max provider-derived Calendar highlights appended to the brief (#112). Kept
+    // small so the daily brief stays a calm prompt rather than a full agenda.
+    calendarCap: number;
   }
 > = {
   daily: {
@@ -83,6 +129,7 @@ const CADENCE_CONFIG: Record<
     itemCap: 3,
     agendaLimit: 8,
     includeKinds: ["due_followup", "birthday", "suggested_followup", "review_item"],
+    calendarCap: 2,
   },
   weekly: {
     windowDays: 7,
@@ -96,6 +143,7 @@ const CADENCE_CONFIG: Record<
       "review_item",
       "recent_context",
     ],
+    calendarCap: 4,
   },
 };
 
@@ -188,6 +236,41 @@ function toBriefItem(
 }
 
 /**
+ * Snapshots a provider-derived Calendar highlight into a brief item (#112). Marked
+ * `calendar_event` with `logged_context` trust so it reads as read-only provider
+ * context, never approved memory or an active follow-up. It carries no person link
+ * or source ref (Calendar attendees are matched/promoted only by later, explicit
+ * workflows — ADR-0078) and no raw provider payload. These items live only on the
+ * brief surface and never enter full-text/semantic retrieval (ADR-0079), which
+ * covers approved memories and retained source records only.
+ *
+ * Sensitivity is `normal`: a calendar event is the OWNER's own schedule shown back
+ * to them in their OWN private brief — unlike a third-party memory, so the ADR-0058
+ * restricted filter (which gates classified relationship memories) does not apply.
+ */
+function toCalendarBriefItem(
+  ownerUserId: string,
+  highlight: BriefCalendarHighlight,
+  rank: number,
+): CreateBriefItemInput {
+  return {
+    ownerUserId,
+    kind: "calendar_event",
+    personId: null,
+    personDisplayName: null,
+    title: highlight.title,
+    reason: highlight.reason,
+    dueAt: highlight.start,
+    sourceRefs: [],
+    trustLevel: "logged_context",
+    sensitivity: "normal",
+    rank,
+    status: "active",
+    snoozedUntil: null,
+  };
+}
+
+/**
  * Shared owner-scoped brief generator (PRD #65, issue #67). This is the single
  * seam dashboard actions, manual generation, and schedule dispatch all call, so
  * business rules cannot fork. Item selection is deterministic and source-backed:
@@ -266,13 +349,27 @@ export function createBriefGenerator(
 
       const suppressed = buildSuppressedKeys(priorItems, now);
 
-      const items = candidates
+      const agendaItems = candidates
         // Restricted content is never surfaced in proactive briefs (ADR-0058).
         .filter((candidate) => candidate.sensitivity !== "restricted")
         // Cleared candidates (dismissed/snoozed/acted-on) do not immediately return.
         .filter((candidate) => !isSuppressed(candidate, suppressed))
         .slice(0, config.itemCap)
         .map((candidate, index) => toBriefItem(input.ownerUserId, candidate, index + 1));
+
+      // Provider-derived Calendar highlights (#112). Best-effort and bounded: a
+      // disconnected/unavailable calendar or any read error yields none, so the
+      // brief is always created with its deterministic items (ADR-0081). Appended
+      // after the agenda items so Calendar context never displaces follow-ups.
+      const calendarItems = await buildCalendarItems(options.calendarContext, {
+        ownerUserId: input.ownerUserId,
+        windowStart,
+        windowEnd,
+        limit: config.calendarCap,
+        startRank: agendaItems.length + 1,
+      });
+
+      const items = [...agendaItems, ...calendarItems];
 
       const generationReason: BriefGenerationReason = input.regenerate
         ? "regenerated"

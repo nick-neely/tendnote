@@ -177,6 +177,7 @@ export const briefItemKind = pgEnum("brief_item_kind", [
   "recent_context",
   "semantic_context",
   "suggested_followup",
+  "calendar_event",
 ]);
 
 export const briefItemTrustLevel = pgEnum("brief_item_trust_level", [

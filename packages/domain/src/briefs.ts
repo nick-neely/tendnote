@@ -39,6 +39,9 @@ export const briefItemKindSchema = z.enum([
   "recent_context",
   "semantic_context",
   "suggested_followup",
+  // Provider-derived Google Calendar context (Phase 2C, #112): minimized,
+  // read-only highlights — not approved memory or an active follow-up.
+  "calendar_event",
 ]);
 export type BriefItemKind = z.infer<typeof briefItemKindSchema>;
 

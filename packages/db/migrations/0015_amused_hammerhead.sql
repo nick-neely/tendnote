@@ -1,0 +1,1 @@
+ALTER TYPE "public"."brief_item_kind" ADD VALUE 'calendar_event';
