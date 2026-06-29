@@ -87,3 +87,7 @@ _Avoid_: Outbox, campaign, automatic send, external draft
 **Private Beta Access**:
 The account-level gate that decides whether a signed-up user may enter Tendnote during the early hosted product phase. It controls product access only; it is not the same as relationship data ownership, integration authorization, or payment status.
 _Avoid_: Public signup, environment allowlist, owner scope
+
+**Provider Connection**:
+A user-scoped integration authorization record for an external provider or provider capability, such as Google Calendar, Gmail, Google Contacts, or a future non-Google service. A provider connection tracks connection status and consent boundaries; it is not the same as Better Auth sign-in or product access.
+_Avoid_: Login method, private beta access, provider dump

@@ -1071,15 +1071,15 @@ Goal: Move Tendnote from a private local-owner app into a real authenticated hos
 Deliverables:
 
 - Real Better Auth sign-up, sign-in, sign-out, protected app shell, and account/profile surface
-- Support email/password, password reset, and GitHub sign-in for Phase 2A; defer Google sign-in and Google integration OAuth linking
+- Support email/password, password reset, and GitHub sign-in for Phase 2A; defer Google sign-in and feature-specific integration OAuth linking
 - Private beta access gate: first successful signup becomes the initial allowed owner; later signups require Vercel Flags targeting through user entities and beta segments
 - Unapproved signups should still create Better Auth users, then land on a pending-access page until Private Beta Access is granted
 - Pending-access users should see only a limited identity/access-status/sign-out area, not the normal app shell, relationship data, or Eve chat
 - Persist product access in a Tendnote-owned account/profile row instead of deriving access from the oldest Better Auth user
-- Keep the Phase 2A account page focused on identity, access status, and sign-out; defer active-session management and integration status persistence to later slices
+- Keep the Phase 2A account page focused on identity, access status, and sign-out; add Phase 2B provider connection status as a reusable account-page section, and defer active-session management plus a separate settings/integrations route until live integrations need it
 - Production and preview auth boundary that removes hosted reliance on `demo-user` while preserving an explicit local-development-only fallback
-- Integration settings foundation for future connection status, authorization state, and revocation controls
-- Add reusable Redis-backed app rate limiting for Eve ingress and expensive server actions, reusing the existing Redis connection rather than adding a second Upstash REST client by default
+- Modular integration settings foundation for future provider connection status, authorization state, and revocation controls; prefer Better Auth-supported SSO/social providers for future sign-in/account-linking flows rather than making generic OAuth/OIDC the default abstraction
+- Add reusable Tendnote-owned Redis-backed product rate limiting for Eve ingress, expensive server actions, queue consumers, and future provider calls, separate from Better Auth's auth/session rate limits and reusing the existing Redis connection
 - Google Calendar read integration with birthday, upcoming event, and post-meeting follow-up prompts
 - Gmail draft creation after explicit approval and user-scoped integration authorization
 - Google Contacts import and duplicate-detection preview
@@ -1087,8 +1087,8 @@ Deliverables:
 Vertical slice issue seeds:
 
 - Phase 2A: complete Better Auth user flows, password reset, GitHub sign-in, private beta access, pending-access state, Vercel Flags discovery/evaluation, narrow account/profile page, protected route behavior, and signed-in Eve owner scoping.
-- Phase 2B: add integration settings foundation with provider status rows, authorization affordances, revocation/audit placeholders, and reusable Redis-backed app rate limiting before any Google data is read.
-- Phase 2C: add Google Calendar read connection, upcoming/recent event previews, and post-meeting follow-up candidates.
+- Phase 2B: add modular integration settings foundation with provider connection status rows, inert authorization affordances, revocation/audit placeholders for persisted state changes only, no token storage, and reusable Tendnote-owned Redis-backed product rate limiting before any external OAuth scopes are requested or provider data is read.
+- Phase 2C: add Google sign-in/account linking as needed, Google Calendar read connection, upcoming/recent event previews, and post-meeting follow-up candidates.
 - Phase 2D: add Gmail draft creation behind explicit approval; do not read Gmail history or send messages.
 - Phase 2E: add Google Contacts import preview and duplicate candidate matching with manual confirmation.
 - Add privacy and policy evals around account access, calendar-derived context, email-derived drafts, and contact import behavior.
