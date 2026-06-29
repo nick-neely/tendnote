@@ -10,6 +10,7 @@
     "./queries/background-job-deliveries": "./src/queries/background-job-deliveries.ts",
     "./queries/brief-schedules": "./src/queries/brief-schedules.ts",
     "./queries/briefs": "./src/queries/briefs.ts",
+    "./queries/calendar": "./src/queries/calendar.ts",
     "./queries/context-snapshots": "./src/queries/context-snapshots.ts",
     "./queries/drafts": "./src/queries/drafts.ts",
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
