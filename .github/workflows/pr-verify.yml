@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Check paths
         id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             verify:
