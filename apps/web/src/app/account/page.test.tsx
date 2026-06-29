@@ -19,7 +19,13 @@ vi.mock("@/lib/integrations/provider-connections", () => ({ getOwnerProviderConn
 vi.mock("@/lib/integrations/provider-connection-view", () => ({
   buildProviderConnectionView: () => [],
 }));
+vi.mock("@/lib/integrations/calendar-preview-data", () => ({
+  getOwnerCalendarPreview: vi.fn().mockResolvedValue({ state: "hidden" }),
+}));
 // Presentational shells are exercised by their own tests; stub them here.
+vi.mock("@/components/account/calendar-preview-section", () => ({
+  CalendarPreviewSection: () => null,
+}));
 vi.mock("@/components/app-shell", () => ({
   AppShell: ({ children }: { children: unknown }) => children,
 }));

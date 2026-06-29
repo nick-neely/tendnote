@@ -1,5 +1,6 @@
 import { CheckIcon } from "lucide-react";
 import { redirect } from "next/navigation";
+import { CalendarPreviewSection } from "@/components/account/calendar-preview-section";
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
 import { AppShell } from "@/components/app-shell";
 import { SignOutButton } from "@/components/auth/sign-out-button";
@@ -8,6 +9,7 @@ import { localFallbackOwnerUserId } from "@/lib/access/access-state";
 import { resolveAccountView } from "@/lib/access/account-summary";
 import { getCurrentAccess } from "@/lib/access/current-access";
 import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
+import { getOwnerCalendarPreview } from "@/lib/integrations/calendar-preview-data";
 import { buildProviderConnectionView } from "@/lib/integrations/provider-connection-view";
 import { getOwnerProviderConnections } from "@/lib/integrations/provider-connections";
 
@@ -33,6 +35,8 @@ export default async function AccountPage() {
   // Google Calendar can be connected only when the server has Google credentials
   // configured (Phase 2C, ADR-0071); otherwise the affordance stays inert.
   const calendarConnectable = isGoogleConfigured(googleEnvFromProcess());
+  // Read-only bounded preview of the connected calendar; hidden when not connected.
+  const calendarPreview = await getOwnerCalendarPreview();
 
   const initial = view.name.trim().charAt(0).toUpperCase() || "?";
 
@@ -95,6 +99,10 @@ export default async function AccountPage() {
           calendarConnectable={calendarConnectable}
           connections={connections}
         />
+
+        {/* Read-only Google Calendar preview — provider-derived context, not memory
+            or follow-ups; renders only when Calendar is connected (#110). */}
+        <CalendarPreviewSection view={calendarPreview} />
 
         {/* Sign out */}
         <section className="flex flex-col gap-3 border-t pt-6">
