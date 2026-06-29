@@ -1057,6 +1057,7 @@ Deliverables:
 - Keep the Phase 2A account page focused on identity, access status, and sign-out; defer active-session management and integration status persistence to later slices
 - Production and preview auth boundary that removes hosted reliance on `demo-user` while preserving an explicit local-development-only fallback
 - Integration settings foundation for future connection status, authorization state, and revocation controls
+- Add reusable Redis-backed app rate limiting for Eve ingress and expensive server actions, reusing the existing Redis connection rather than adding a second Upstash REST client by default
 - Google Calendar read integration with birthday, upcoming event, and post-meeting follow-up prompts
 - Gmail draft creation after explicit approval and user-scoped integration authorization
 - Google Contacts import and duplicate-detection preview
@@ -1064,7 +1065,7 @@ Deliverables:
 Vertical slice issue seeds:
 
 - Phase 2A: complete Better Auth user flows, password reset, GitHub sign-in, private beta access, pending-access state, Vercel Flags discovery/evaluation, narrow account/profile page, protected route behavior, and signed-in Eve owner scoping.
-- Phase 2B: add integration settings foundation with provider status rows, authorization affordances, and revocation/audit placeholders before any Google data is read.
+- Phase 2B: add integration settings foundation with provider status rows, authorization affordances, revocation/audit placeholders, and reusable Redis-backed app rate limiting before any Google data is read.
 - Phase 2C: add Google Calendar read connection, upcoming/recent event previews, and post-meeting follow-up candidates.
 - Phase 2D: add Gmail draft creation behind explicit approval; do not read Gmail history or send messages.
 - Phase 2E: add Google Contacts import preview and duplicate candidate matching with manual confirmation.
