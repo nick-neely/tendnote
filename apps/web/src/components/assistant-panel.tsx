@@ -1,5 +1,6 @@
 "use client";
 
+import type { PromptNudge } from "@tendnote/domain";
 import { type EveMessage, useEveAgent } from "eve/react";
 import { BugIcon, LockIcon, NotebookPenIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -19,6 +20,8 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
+import { sendNudgeToAgent } from "@/components/assistant-nudge";
+import { AssistantPromptNudges } from "@/components/assistant-prompt-nudges";
 import { AssistantTurnUnitView, turnUnitKey } from "@/components/assistant-turn-unit";
 import { Shimmer } from "@/components/ui/shimmer";
 import {
@@ -43,7 +46,14 @@ function clientContextFor(context?: AssistantPersonContext) {
     : undefined;
 }
 
-export function AssistantPanel({ context }: { context?: AssistantPersonContext }) {
+export function AssistantPanel({
+  context,
+  nudges = [],
+}: {
+  context?: AssistantPersonContext;
+  /** Calendar-derived prompt nudges; clicking one sends its text to Eve (#114). */
+  nudges?: PromptNudge[];
+}) {
   // Stream turns directly from the same-origin Eve mount (withEve). The hook owns
   // the durable Eve session, so follow-up turns continue the same conversation
   // without a Tendnote chat transcript (ADR 0030). Durable product state still
@@ -69,6 +79,12 @@ export function AssistantPanel({ context }: { context?: AssistantPersonContext }
       // Failures also surface through `agent.status === "error"` / `agent.error`,
       // which the error row below renders; nothing else to do here.
     }
+  }
+
+  // A prompt nudge starts a conversational turn by sending its text to Eve — it
+  // never mutates product state or accepts/dismisses a suggestion (#114).
+  function sendNudge(prompt: string) {
+    sendNudgeToAgent({ status: agent.status, send: agent.send }, context, prompt);
   }
 
   return (
@@ -101,6 +117,18 @@ export function AssistantPanel({ context }: { context?: AssistantPersonContext }
             events={agent.events}
             messages={messages}
             status={agent.status}
+          />
+        </div>
+      ) : null}
+
+      {/* Calendar prompt nudges sit just above the composer on the idle assistant,
+          so they invite a conversation without crowding an active transcript (#114). */}
+      {messages.length === 0 ? (
+        <div className="px-4 pt-2 sm:px-5">
+          <AssistantPromptNudges
+            disabled={agent.status !== "ready"}
+            nudges={nudges}
+            onSelect={sendNudge}
           />
         </div>
       ) : null}

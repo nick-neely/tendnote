@@ -13,6 +13,7 @@ export * from "./followups";
 export * from "./memories";
 export * from "./people";
 export * from "./privacy";
+export * from "./prompt-nudges";
 export * from "./provider-connection-catalog";
 export * from "./provider-connections";
 export * from "./semantic-retrieval";

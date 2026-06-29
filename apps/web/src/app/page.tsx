@@ -12,6 +12,7 @@ import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
 import { toDashboardFollowupView } from "@/lib/followup-view";
+import { getOwnerCalendarPromptNudges } from "@/lib/integrations/calendar-prompt-nudges";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 import { toSuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 
@@ -34,6 +35,7 @@ export default async function Home() {
     dashboardFollowupReviews,
     dailyBrief,
     weeklyBrief,
+    calendarNudges,
   ] = await Promise.all([
     searchPeople({ ownerUserId, limit: 8 }),
     getDashboardReviews(ownerUserId),
@@ -41,6 +43,7 @@ export default async function Home() {
     getDashboardFollowupReviews(ownerUserId),
     getDashboardBrief(ownerUserId, "daily"),
     getDashboardBrief(ownerUserId, "weekly"),
+    getOwnerCalendarPromptNudges(),
   ]);
   const birthdays = getUpcomingBirthdays(people);
 
@@ -61,7 +64,7 @@ export default async function Home() {
             rail widens a touch from lg→xl so its tabs and cards keep room. */}
         <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="order-1 h-[70dvh] lg:h-full lg:min-h-0">
-            <AssistantPanel />
+            <AssistantPanel nudges={calendarNudges} />
           </div>
           {/* The rail manages its own scroll inside the active tab panel (the tab
               bar stays pinned), so the column itself is only height-bounded. */}

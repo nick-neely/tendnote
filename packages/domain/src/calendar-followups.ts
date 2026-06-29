@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { PromptNudge } from "./prompt-nudges";
 
 /**
  * Calendar-derived suggested follow-ups (Phase 2C, ADR-0077, ADR-0078, ADR-0082).
@@ -64,6 +65,21 @@ export type CalendarSuggestedFollowup = z.infer<typeof calendarSuggestedFollowup
  * the unresolved attendee identity, else "none" — so the same meeting never yields
  * repeated nudges for the same person, and a dismissed key is never re-suggested.
  */
+/**
+ * Map a Calendar suggested follow-up to a generic prompt nudge (#114). The nudge
+ * SENDS its prompt to Eve to start a conversational flow — it does not accept or
+ * dismiss the underlying suggestion (review cards remain that surface).
+ */
+export function calendarSuggestionToPromptNudge(
+  suggestion: Pick<CalendarSuggestedFollowup, "id" | "reason">,
+): PromptNudge {
+  const label =
+    suggestion.reason.length <= 80
+      ? suggestion.reason
+      : `${suggestion.reason.slice(0, 79).trimEnd()}…`;
+  return { id: suggestion.id, label, prompt: suggestion.reason, source: "calendar" };
+}
+
 export function calendarSuggestionDedupeKey(input: {
   providerEventId: string;
   calendarId: string;
