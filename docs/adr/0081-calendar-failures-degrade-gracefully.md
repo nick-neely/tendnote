@@ -1,0 +1,3 @@
+# Calendar Failures Degrade Gracefully
+
+Phase 2C Google Calendar failures should degrade Eve, previews, briefs, and follow-up suggestion workflows gracefully rather than blocking the whole product surface. Transient Google API, quota, network, or rate-limit failures should use fresh-enough cached summaries when available, mark stale Calendar context clearly when it is used beyond normal TTL, and avoid moving the Provider Connection into a durable `error` state unless the failure reflects auth, revocation, credential, or persistent configuration problems. Logs, audit entries, and user-facing errors must not expose OAuth tokens or raw provider payloads.

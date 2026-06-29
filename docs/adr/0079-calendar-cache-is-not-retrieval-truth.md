@@ -1,0 +1,3 @@
+# Calendar Cache Is Not Retrieval Truth
+
+Phase 2C cached Google Calendar event summaries should not enter Tendnote's durable full-text or semantic relationship retrieval indexes by default. Eve, previews, scheduled briefs, and post-meeting suggestion workflows may use Calendar context through the scoped Calendar read/cache seam, but cached events are not approved memory or retained source records. Calendar-derived context enters normal retrieval only after an explicit product workflow promotes it into durable Tendnote state, such as a retained source record or accepted follow-up, under the existing source-grounding and review rules.

@@ -1,0 +1,3 @@
+# Calendar Context Is Read-Through, Not An Approval Board
+
+After a user connects Google Calendar in Phase 2C, Tendnote should be able to read scoped Calendar event context for Eve answers, previews, agenda-style surfaces, and post-meeting follow-up suggestions without forcing the user to approve every event first. The approval boundary applies when Calendar context becomes durable product state: approved memory, retained source record, active follow-up, or external-facing draft/action. This keeps the connected Calendar useful and seamless while preserving Tendnote's existing rule that provider data is minimized, source-grounded, and not silently promoted into permanent memory or autonomous external behavior.

@@ -1,0 +1,3 @@
+# Calendar Attendees Match Existing People
+
+Phase 2C should resolve Google Calendar attendees to existing Tendnote people on a best-effort basis, preferring stable signals such as email address and treating display-name matches as tentative. Calendar attendee data should not automatically create new people, because person creation still requires user intent and richer duplicate detection belongs with the later Google Contacts import phase. Calendar-derived previews and suggested follow-ups may surface unmatched attendees as unresolved/link-needed context, but should only attach durable people, memories, and active follow-ups to explicitly resolved Tendnote person records.

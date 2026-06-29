@@ -1,0 +1,3 @@
+# Calendar Disconnect Revokes Access And Clears Cache
+
+Phase 2C Google Calendar disconnect should do real local cleanup and revoke or unlink provider access through Better Auth and Google support where available, rather than only marking the Provider Connection as revoked. Disconnect should clear short-lived Calendar cache rows, update and audit the `provider_connections` status transition, and prevent Eve, previews, briefs, and post-meeting workflows from reading Calendar again until the user reconnects. If provider-side revocation cannot be completed automatically, Tendnote should still clear local access/cache and make the remaining Google Account permission cleanup explicit to the user.

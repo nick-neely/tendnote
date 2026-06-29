@@ -1,0 +1,3 @@
+# Calendar Followup Classification Is Deterministic First
+
+Phase 2C Calendar-derived follow-up suggestions should use deterministic filtering before any LLM-assisted classification. Deterministic code should bound candidate events by owner, connected calendar, time window, status, attendee/person match, event type, dedupe keys, and product caps; an LLM may then classify the bounded minimized summaries for follow-up relevance and draft a concise suggested reason. The model must not receive raw provider payload dumps, choose from unbounded Calendar history, create active follow-ups directly, or bypass review, caps, and source-grounding rules.

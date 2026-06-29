@@ -1,0 +1,3 @@
+# Google Calendar OAuth Uses Better Auth
+
+Phase 2C should use Better Auth's Google social provider and `linkSocial` flow for Google Calendar authorization, including refresh-token handling and token refresh, rather than creating a parallel generic OAuth subsystem or a Tendnote-owned provider-token table. Tendnote Provider Connections remain the product integration consent/status/audit read model for Google Calendar, with non-secret display identity and authorized-scope metadata mirrored there as needed, while Better Auth account records own OAuth token custody behind encryption hooks. This preserves the Phase 2B split between authentication/account linking and product authorization state, while avoiding duplicated OAuth refresh, revocation, and account-linking behavior.

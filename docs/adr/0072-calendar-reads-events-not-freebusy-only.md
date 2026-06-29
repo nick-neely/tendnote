@@ -1,0 +1,3 @@
+# Calendar Reads Events, Not Freebusy Only
+
+Phase 2C Google Calendar should request read access sufficient to list upcoming and recent event details rather than limiting the product to freebusy availability blocks. Tendnote needs enough event context, such as title, time, attendees, status, and selected description/location fields, to render useful previews and propose reviewable post-meeting follow-up candidates. The privacy boundary is minimization and review: Calendar reads should be transformed into retained summaries/source records and follow-up candidates, not stored as raw provider payload dumps or treated as automatically approved memory.

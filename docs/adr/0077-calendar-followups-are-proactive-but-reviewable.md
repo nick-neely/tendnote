@@ -1,0 +1,3 @@
+# Calendar Followups Are Proactive But Reviewable
+
+Phase 2C should create lightweight Calendar-derived suggested follow-up candidates proactively from relevant recent or upcoming meetings, including during scheduled brief generation or bounded post-meeting checks, rather than only when the user explicitly asks Eve. The candidates should be capped, deduplicated by owner, provider event identity, and person/contact signal, and remain suggested until the user accepts them as active follow-ups. This keeps Tendnote useful as a personal agent while preserving the existing boundary that Calendar context can suggest actions but cannot silently create durable tasks, memories, drafts, sends, or external writes.
