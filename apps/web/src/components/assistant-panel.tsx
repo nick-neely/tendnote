@@ -19,15 +19,7 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
-import { AssistantToolGroup } from "@/components/assistant-tool-group";
-import { AssistantToolResult } from "@/components/assistant-tool-result";
-import { ChatDraftCard } from "@/components/chat-draft-card";
-import {
-  ChatFollowupReviewCard,
-  ChatFollowupReviewList,
-} from "@/components/chat-followup-review-card";
-import { ChatLoggedNoteCard } from "@/components/chat-logged-note-card";
-import { ChatReviewCard, ChatReviewList } from "@/components/chat-review-card";
+import { AssistantTurnUnitView, turnUnitKey } from "@/components/assistant-turn-unit";
 import { Shimmer } from "@/components/ui/shimmer";
 import {
   groupTurnToolEntries,
@@ -35,7 +27,6 @@ import {
   messageText,
   messageToolViews,
 } from "@/lib/eve/message-views";
-import type { GroupableToolView } from "@/lib/eve/tool-result-view";
 import { cn } from "@/lib/utils";
 
 export type AssistantPersonContext = {
@@ -215,62 +206,9 @@ function MessageTurn({ message }: { message: EveMessage }) {
           </MessageContent>
         </Message>
       ) : null}
-      {units.map((unit) => {
-        if (unit.type === "group") {
-          const [{ toolCallId }] = unit.entries;
-          return (
-            <AssistantToolGroup
-              isNew
-              key={`${message.id}:group:${unit.kind}:${toolCallId}`}
-              kind={unit.kind}
-              views={unit.entries.map((entry) => entry.view as GroupableToolView)}
-            />
-          );
-        }
-
-        // Tentative suggestions are the tool results the user can act on inline
-        // (approve/dismiss), so they get the interactive card(s); everything else
-        // is a read-only record of what Eve did.
-        const { toolCallId, view } = unit.entry;
-        const key = `${message.id}:${toolCallId}`;
-
-        if (view.kind === "suggested_memory_review") {
-          return <ChatReviewCard isNew item={view} key={key} />;
-        }
-
-        if (view.kind === "suggested_memory_review_list") {
-          return <ChatReviewList isNew key={key} view={view} />;
-        }
-
-        if (view.kind === "suggested_followup_review") {
-          return <ChatFollowupReviewCard isNew item={view} key={key} />;
-        }
-
-        if (view.kind === "suggested_followup_review_list") {
-          return <ChatFollowupReviewList isNew key={key} view={view} />;
-        }
-
-        // The draft card is interactive (inline WYSIWYG edit + copy), so it routes
-        // here to the client card rather than the presentational tool-result module.
-        if (view.kind === "message_draft") {
-          return <ChatDraftCard isNew key={key} view={view} />;
-        }
-
-        // A logged note linked to a resolved person can be promoted to a memory or
-        // dismissed inline; a personless note has nothing to attach to, so it falls
-        // through to the read-only logged card below.
-        if (view.kind === "saved_source_record" && view.linkedPersonId) {
-          return (
-            <ChatLoggedNoteCard
-              isNew
-              key={key}
-              view={{ ...view, linkedPersonId: view.linkedPersonId }}
-            />
-          );
-        }
-
-        return <AssistantToolResult isNew key={key} view={view} />;
-      })}
+      {units.map((unit) => (
+        <AssistantTurnUnitView key={turnUnitKey(message.id, unit)} unit={unit} />
+      ))}
       {active.map((tool) => (
         <WorkingLine key={`${message.id}:${tool.toolCallId}`} label={tool.label} />
       ))}
