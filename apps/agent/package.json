@@ -13,6 +13,7 @@
   "dependencies": {
     "@tendnote/db": "workspace:*",
     "@tendnote/domain": "workspace:*",
+    "@vercel/queue": "^0.3.1",
     "ai": "7.0.2",
     "eve": "^0.15.0",
     "zod": "^4.1.13"

@@ -9,7 +9,11 @@ import {
   type EnqueueAndTriggerExtractionJobInput,
   enqueueAndTriggerExtractionJobWithProcessor,
 } from "./extraction-jobs/runtime";
-import type { EnqueueExtractionJobInput, ProcessExtractionJobInput } from "./extraction-jobs/types";
+import type {
+  ClaimExtractionJobInput,
+  EnqueueExtractionJobInput,
+  ProcessExtractionJobInput,
+} from "./extraction-jobs/types";
 import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 
 export type { AiSdkSuggestedMemoryExtractionAdapterOptions } from "./extraction-jobs/ai-sdk-adapter";
@@ -58,6 +62,14 @@ export async function enqueueAndTriggerExtractionJob(input: EnqueueAndTriggerExt
 
 export async function claimNextExtractionJob(input: { now?: Date } = {}) {
   return defaultExtractionProcessor.claimNextExtractionJob(input);
+}
+
+export async function claimExtractionJob(input: ClaimExtractionJobInput) {
+  return defaultExtractionProcessor.claimExtractionJob(input);
+}
+
+export async function getExtractionJob(jobId: string) {
+  return defaultExtractionProcessor.getExtractionJob(jobId);
 }
 
 export async function processExtractionJob(input: ProcessExtractionJobInput) {

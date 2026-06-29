@@ -29,6 +29,9 @@ importers:
       '@tendnote/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@vercel/queue':
+        specifier: ^0.3.1
+        version: 0.3.1
       ai:
         specifier: 7.0.2
         version: 7.0.2(zod@4.4.3)

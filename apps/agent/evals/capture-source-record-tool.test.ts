@@ -1,17 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { captureSourceRecord, captureSourceRecordForPerson, enqueueAndTriggerExtractionJob } =
+const { captureSourceRecord, captureSourceRecordForPerson, enqueueAndPublishExtractionJob } =
   vi.hoisted(() => ({
     captureSourceRecord: vi.fn(),
     captureSourceRecordForPerson: vi.fn(),
-    enqueueAndTriggerExtractionJob: vi.fn(),
+    enqueueAndPublishExtractionJob: vi.fn(),
   }));
 
 vi.mock("@tendnote/db/queries/source-records", () => ({
   captureSourceRecord,
   captureSourceRecordForPerson,
 }));
-vi.mock("@tendnote/db/queries/extraction-jobs", () => ({ enqueueAndTriggerExtractionJob }));
+vi.mock("../agent/lib/background-jobs/extraction-queue", () => ({
+  enqueueAndPublishExtractionJob,
+}));
 
 const { default: tool } = await import("../agent/tools/capture_source_record");
 
@@ -31,7 +33,7 @@ function sourceRecordResult(id: string) {
 describe("capture_source_record tool (casual note → logged context)", () => {
   it("logs a casual note as a source record without linking a person when identity is unknown", async () => {
     captureSourceRecord.mockResolvedValue(sourceRecordResult("source-1"));
-    enqueueAndTriggerExtractionJob.mockResolvedValue(undefined);
+    enqueueAndPublishExtractionJob.mockResolvedValue(undefined);
 
     const result = await tool.execute({ retainedContent: "Had lunch with Mark." }, ctx);
 
@@ -39,7 +41,10 @@ describe("capture_source_record tool (casual note → logged context)", () => {
       expect.objectContaining({ ownerUserId: "user-1", retainedContent: "Had lunch with Mark." }),
     );
     expect(captureSourceRecordForPerson).not.toHaveBeenCalled();
-    expect(enqueueAndTriggerExtractionJob).toHaveBeenCalledWith({ sourceRecordId: "source-1" });
+    expect(enqueueAndPublishExtractionJob).toHaveBeenCalledWith({
+      ownerUserId: "user-1",
+      sourceRecordId: "source-1",
+    });
     expect(result.sourceRecord.id).toBe("source-1");
     expect(result.linkedPersonId).toBeNull();
     // It is logged context, not a confirmed fact — the persisted record carries a
@@ -49,7 +54,7 @@ describe("capture_source_record tool (casual note → logged context)", () => {
 
   it("links the note to a resolved person when identity is unambiguous", async () => {
     captureSourceRecordForPerson.mockResolvedValue(sourceRecordResult("source-2"));
-    enqueueAndTriggerExtractionJob.mockResolvedValue(undefined);
+    enqueueAndPublishExtractionJob.mockResolvedValue(undefined);
 
     const result = await tool.execute(
       {
@@ -66,13 +71,16 @@ describe("capture_source_record tool (casual note → logged context)", () => {
       }),
     );
     expect(captureSourceRecord).not.toHaveBeenCalled();
-    expect(enqueueAndTriggerExtractionJob).toHaveBeenCalledWith({ sourceRecordId: "source-2" });
+    expect(enqueueAndPublishExtractionJob).toHaveBeenCalledWith({
+      ownerUserId: "user-1",
+      sourceRecordId: "source-2",
+    });
     expect(result.linkedPersonId).toBe("11111111-1111-1111-1111-111111111111");
   });
 
   it("still returns the saved record when extraction trigger fails", async () => {
     captureSourceRecord.mockResolvedValue(sourceRecordResult("source-3"));
-    enqueueAndTriggerExtractionJob.mockRejectedValue(new Error("queue down"));
+    enqueueAndPublishExtractionJob.mockRejectedValue(new Error("queue down"));
 
     const result = await tool.execute({ retainedContent: "Quick note." }, ctx);
 

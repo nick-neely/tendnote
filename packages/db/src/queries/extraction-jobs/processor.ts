@@ -164,6 +164,14 @@ export function createExtractionProcessor(
       return store.claimNextExtractionJob({ now: input.now ?? new Date() });
     },
 
+    async claimExtractionJob(input: { jobId: string; now?: Date }) {
+      return store.claimExtractionJob({ jobId: input.jobId, now: input.now ?? new Date() });
+    },
+
+    async getExtractionJob(jobId: string) {
+      return store.getExtractionJob(jobId);
+    },
+
     async processExtractionJob(
       input: ProcessExtractionJobInput,
     ): Promise<ProcessExtractionJobResult> {

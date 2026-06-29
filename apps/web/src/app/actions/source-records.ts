@@ -1,6 +1,5 @@
 "use server";
 
-import { enqueueAndTriggerExtractionJob } from "@tendnote/db/queries/extraction-jobs";
 import {
   captureSourceRecord,
   captureSourceRecordForPerson,
@@ -8,6 +7,7 @@ import {
 } from "@tendnote/db/queries/source-records";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { enqueueAndPublishExtractionJob } from "@/lib/background-jobs/extraction-queue";
 import {
   type SourceRecordReviewView,
   toSourceRecordReviewView,
@@ -44,7 +44,10 @@ export async function captureGlobalAssistantSourceRecord(input: {
   // (ADR 0017, ADR 0018). Triggering may process inline in local/dev, but it must
   // never make the saved note disappear if extraction is unavailable.
   try {
-    await enqueueAndTriggerExtractionJob({ sourceRecordId: result.component.sourceRecordId });
+    await enqueueAndPublishExtractionJob({
+      ownerUserId,
+      sourceRecordId: result.component.sourceRecordId,
+    });
   } catch {
     // The source record is already persisted and can be re-enqueued later; the
     // capture must still succeed for the user.

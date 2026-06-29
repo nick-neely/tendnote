@@ -1,4 +1,3 @@
-import { enqueueAndTriggerExtractionJob } from "@tendnote/db/queries/extraction-jobs";
 import {
   captureSourceRecord,
   captureSourceRecordForPerson,
@@ -6,6 +5,7 @@ import {
 import { sensitivitySchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { enqueueAndPublishExtractionJob } from "../lib/background-jobs/extraction-queue";
 import { resolveOwnerUserId } from "../lib/owner";
 
 const inputSchema = z.object({
@@ -60,7 +60,7 @@ export default defineTool({
 
     // Extraction is job-backed and must not fail the synchronous capture (ADR 0017).
     try {
-      await enqueueAndTriggerExtractionJob({ sourceRecordId: sourceRecord.id });
+      await enqueueAndPublishExtractionJob({ ownerUserId, sourceRecordId: sourceRecord.id });
     } catch {
       // The source record is already saved and can be re-enqueued later.
     }

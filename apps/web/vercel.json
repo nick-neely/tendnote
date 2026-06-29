@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "src/app/api/queue/extraction/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "tendnote-extraction-v1",
+          "consumerGroup": "tendnote-extraction-processor"
+        }
+      ]
+    }
+  }
+}

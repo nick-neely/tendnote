@@ -77,6 +77,11 @@ export type ProcessExtractionJobInput = {
   retryDelayMs?: number;
 };
 
+export type ClaimExtractionJobInput = {
+  jobId: string;
+  now?: Date;
+};
+
 export type ProcessExtractionJobOutcome =
   | "not_found"
   | "not_claimable"
