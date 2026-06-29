@@ -1,6 +1,7 @@
 import { createDrizzleProviderConnectionStore } from "./provider-connections/drizzle-store";
 import { createProviderConnectionQueries } from "./provider-connections/queries";
 import type {
+  ConnectProviderConnectionInput,
   CreateProviderConnectionMutationInput,
   MarkProviderConnectionRevokedInput,
   ProviderConnectionRef,
@@ -27,6 +28,10 @@ export async function getProviderConnection(ref: ProviderConnectionRef) {
 
 export async function createProviderConnection(input: CreateProviderConnectionMutationInput) {
   return defaultProviderConnectionQueries.createProviderConnection(input);
+}
+
+export async function connectProviderConnection(input: ConnectProviderConnectionInput) {
+  return defaultProviderConnectionQueries.connectProviderConnection(input);
 }
 
 export async function setProviderConnectionStatus(input: SetProviderConnectionStatusInput) {

@@ -1,8 +1,10 @@
+import { GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE } from "@tendnote/domain";
+
 /**
- * GitHub is the only Phase 2A social provider, and it is optional: sign-in is
- * offered only when both OAuth credentials are present, and hidden otherwise.
- * Google is intentionally not added here — Calendar/Gmail/Contacts will be linked
- * later with feature-specific scopes (ADR-0067). Pure so it can be unit tested.
+ * Social/OAuth provider configuration for Better Auth. GitHub (Phase 2A) backs
+ * sign-in; Google (Phase 2C) backs Calendar account linking with a feature-
+ * specific scope (ADR-0067, ADR-0071). Each provider is optional and only wired
+ * when both credentials are present. Pure so it can be unit tested.
  */
 export type GithubEnv = { clientId?: string; clientSecret?: string };
 
@@ -23,5 +25,46 @@ export function githubEnvFromProcess(): GithubEnv {
   return {
     clientId: process.env.GITHUB_CLIENT_ID,
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
+  };
+}
+
+export type GoogleEnv = { clientId?: string; clientSecret?: string };
+
+/**
+ * Better Auth Google provider config (Phase 2C, ADR-0071). `accessType: "offline"`
+ * plus `prompt: "select_account consent"` ensure Google issues a refresh token so
+ * Better Auth can refresh access without re-prompting. The requested scope is the
+ * single Calendar event-read scope — no Gmail or Contacts. Token custody and
+ * refresh stay inside Better Auth; Tendnote never stores the tokens.
+ */
+export type GoogleSocialProvider = {
+  clientId: string;
+  clientSecret: string;
+  accessType: "offline";
+  prompt: "select_account consent";
+  scope: string[];
+};
+
+export function isGoogleConfigured(env: GoogleEnv): boolean {
+  return Boolean(env.clientId && env.clientSecret);
+}
+
+export function googleSocialProvider(env: GoogleEnv): GoogleSocialProvider | undefined {
+  return env.clientId && env.clientSecret
+    ? {
+        clientId: env.clientId,
+        clientSecret: env.clientSecret,
+        accessType: "offline",
+        prompt: "select_account consent",
+        scope: [GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE],
+      }
+    : undefined;
+}
+
+/** Read Google OAuth credentials from the server environment. */
+export function googleEnvFromProcess(): GoogleEnv {
+  return {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
   };
 }

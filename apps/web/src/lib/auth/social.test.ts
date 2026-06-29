@@ -1,5 +1,11 @@
+import { GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { githubSocialProvider, isGithubConfigured } from "./social";
+import {
+  githubSocialProvider,
+  googleSocialProvider,
+  isGithubConfigured,
+  isGoogleConfigured,
+} from "./social";
 
 describe("GitHub social configuration", () => {
   it("is configured only when both client id and secret are present", () => {
@@ -17,5 +23,33 @@ describe("GitHub social configuration", () => {
     });
     expect(githubSocialProvider({ clientId: "id" })).toBeUndefined();
     expect(githubSocialProvider({})).toBeUndefined();
+  });
+});
+
+describe("Google social configuration (Phase 2C Calendar)", () => {
+  it("is configured only when both client id and secret are present", () => {
+    expect(isGoogleConfigured({ clientId: "id", clientSecret: "secret" })).toBe(true);
+    expect(isGoogleConfigured({ clientId: "id" })).toBe(false);
+    expect(isGoogleConfigured({ clientSecret: "secret" })).toBe(false);
+    expect(isGoogleConfigured({})).toBe(false);
+  });
+
+  it("requests offline access and only the Calendar event-read scope when configured", () => {
+    const provider = googleSocialProvider({ clientId: "id", clientSecret: "secret" });
+
+    expect(provider).toEqual({
+      clientId: "id",
+      clientSecret: "secret",
+      accessType: "offline",
+      prompt: "select_account consent",
+      scope: [GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE],
+    });
+    // Phase 2C boundary: never Gmail or Contacts.
+    expect(provider?.scope.join(" ")).not.toMatch(/gmail|contacts/);
+  });
+
+  it("builds no provider config when unconfigured", () => {
+    expect(googleSocialProvider({ clientId: "id" })).toBeUndefined();
+    expect(googleSocialProvider({})).toBeUndefined();
   });
 });

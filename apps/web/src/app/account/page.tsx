@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { localFallbackOwnerUserId } from "@/lib/access/access-state";
 import { resolveAccountView } from "@/lib/access/account-summary";
 import { getCurrentAccess } from "@/lib/access/current-access";
+import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
 import { buildProviderConnectionView } from "@/lib/integrations/provider-connection-view";
 import { getOwnerProviderConnections } from "@/lib/integrations/provider-connections";
 
@@ -29,6 +30,9 @@ export default async function AccountPage() {
   // Admitted-only: getOwnerProviderConnections resolves the admitted owner before
   // reading, so pending/unauthenticated users never reach connection state.
   const connections = buildProviderConnectionView(await getOwnerProviderConnections());
+  // Google Calendar can be connected only when the server has Google credentials
+  // configured (Phase 2C, ADR-0071); otherwise the affordance stays inert.
+  const calendarConnectable = isGoogleConfigured(googleEnvFromProcess());
 
   const initial = view.name.trim().charAt(0).toUpperCase() || "?";
 
@@ -85,8 +89,12 @@ export default async function AccountPage() {
           </div>
         </section>
 
-        {/* Integrations — real Provider Connection status rows, inert in Phase 2B. */}
-        <ProviderConnectionsSection connections={connections} />
+        {/* Integrations — real Provider Connection rows; Calendar is connectable in
+            Phase 2C when Google credentials are configured (ADR-0071). */}
+        <ProviderConnectionsSection
+          calendarConnectable={calendarConnectable}
+          connections={connections}
+        />
 
         {/* Sign out */}
         <section className="flex flex-col gap-3 border-t pt-6">

@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ProviderConnectionView } from "@/lib/integrations/provider-connection-view";
+import { CalendarConnectButton } from "./calendar-connect-button";
 
 type BadgeVariant = "default" | "outline";
 
@@ -42,16 +43,19 @@ const CAPABILITY_ICONS: Record<string, LucideIcon> = {
 };
 
 /**
- * Account integration settings: real Provider Connection status rows with honest,
- * inert connect/revoke affordances (#101, ADR-0069). Phase 2B requests no OAuth
- * scopes and reads no provider data — the disabled affordance and the helper copy
- * make clear that nothing is connected yet. Built as a standalone section so a
- * future settings/integrations route can reuse it unchanged.
+ * Account integration settings: real Provider Connection status rows (#101,
+ * ADR-0069). In Phase 2C (ADR-0071) Google Calendar can be connected when Google
+ * credentials are configured — its row starts the real Better Auth linkSocial flow
+ * — while Gmail and Contacts stay inert until their later phases. Built as a
+ * standalone section so a future settings/integrations route can reuse it.
  */
 export function ProviderConnectionsSection({
   connections,
+  calendarConnectable = false,
 }: {
   connections: ProviderConnectionView[];
+  /** True only when Google credentials are configured server-side (Phase 2C). */
+  calendarConnectable?: boolean;
 }) {
   return (
     <section className="flex flex-col gap-3">
@@ -62,6 +66,11 @@ export function ProviderConnectionsSection({
       <ul className="flex flex-col divide-y rounded-lg border bg-surface">
         {connections.map((connection) => (
           <ProviderConnectionRow
+            connectable={
+              calendarConnectable &&
+              connection.providerKey === "google" &&
+              connection.capabilityKey === "calendar"
+            }
             connection={connection}
             key={`${connection.providerKey}:${connection.capabilityKey}`}
           />
@@ -69,15 +78,31 @@ export function ProviderConnectionsSection({
       </ul>
 
       <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
-        These aren&rsquo;t connected yet. Calendar, Gmail, and Contacts will connect later, each
-        behind its own narrow permission and your explicit approval — Tendnote isn&rsquo;t reading
-        any Google data.
+        {calendarConnectable ? (
+          <>
+            Connect Google Calendar to let Tendnote read upcoming and recent events — read-only,
+            behind your explicit Google consent. Gmail and Contacts stay disconnected and arrive in
+            later phases. Tendnote isn&rsquo;t reading any other Google data.
+          </>
+        ) : (
+          <>
+            These aren&rsquo;t connected yet. Calendar, Gmail, and Contacts will connect later, each
+            behind its own narrow permission and your explicit approval — Tendnote isn&rsquo;t
+            reading any Google data.
+          </>
+        )}
       </p>
     </section>
   );
 }
 
-function ProviderConnectionRow({ connection }: { connection: ProviderConnectionView }) {
+function ProviderConnectionRow({
+  connection,
+  connectable,
+}: {
+  connection: ProviderConnectionView;
+  connectable: boolean;
+}) {
   const status = STATUS_META[connection.status];
   const StatusIcon = status.Icon;
   const CapabilityIcon = CAPABILITY_ICONS[connection.capabilityKey] ?? PlugIcon;
@@ -85,6 +110,9 @@ function ProviderConnectionRow({ connection }: { connection: ProviderConnectionV
   const isConnected = connection.status === "connected";
   const isUnavailable = connection.status === "unavailable";
   const actionLabel = isConnected ? "Disconnect" : "Connect";
+  // A connectable, not-yet-connected Calendar row gets the live connect flow;
+  // every other affordance stays inert until its phase wires it.
+  const showConnect = connectable && !isConnected && !isUnavailable;
 
   return (
     <li className="flex items-center justify-between gap-3 px-3.5 py-3">
@@ -107,9 +135,12 @@ function ProviderConnectionRow({ connection }: { connection: ProviderConnectionV
           {StatusIcon ? <StatusIcon aria-hidden data-icon="inline-start" /> : null}
           {status.label}
         </Badge>
-        {isUnavailable ? null : (
-          // Inert in Phase 2B: no OAuth scopes, no token storage, no provider reads.
-          // Disabled (not just styled) so it is unfocusable and cannot be triggered.
+        {isUnavailable ? null : showConnect ? (
+          <CalendarConnectButton label={connection.label} />
+        ) : (
+          // Inert: no OAuth scopes, no token handling. Disabled (not just styled)
+          // so it is unfocusable and cannot be triggered. Disconnect for a live
+          // Calendar connection is wired in a later slice (#109).
           <Button
             aria-label={`${actionLabel} ${connection.label} (not available yet)`}
             disabled

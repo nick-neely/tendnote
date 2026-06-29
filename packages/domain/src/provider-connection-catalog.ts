@@ -13,6 +13,21 @@ import type { ProviderCapabilityRef } from "./provider-connections";
 export const PROVIDER_GOOGLE = "google";
 
 /**
+ * The single Google OAuth scope Phase 2C Calendar requests (ADR-0072, ADR-0076):
+ * read-only access to event details on the owner's calendars. This is the
+ * narrowest scope that returns title/time/attendees/status rather than freebusy
+ * blocks. Phase 2C deliberately does NOT request Gmail, Contacts, or the broader
+ * `calendar`/`calendar.readonly` scopes — those are later phases.
+ */
+export const GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE =
+  "https://www.googleapis.com/auth/calendar.events.readonly";
+
+/** Whether a granted-scope list includes Calendar event-read access. */
+export function hasCalendarEventsReadScope(scopes: readonly string[]): boolean {
+  return scopes.includes(GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE);
+}
+
+/**
  * Default provider capabilities surfaced in Phase 2B. Calendar, Gmail, and
  * Contacts are distinct capabilities so each permission is reasoned about
  * independently. Adding a provider here is a catalog change, not a schema change.

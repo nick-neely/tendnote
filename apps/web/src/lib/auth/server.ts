@@ -5,7 +5,12 @@ import * as schema from "@tendnote/db/schema";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getRedis } from "@/lib/cache/redis";
-import { githubEnvFromProcess, githubSocialProvider } from "./social";
+import {
+  githubEnvFromProcess,
+  githubSocialProvider,
+  googleEnvFromProcess,
+  googleSocialProvider,
+} from "./social";
 
 function getBetterAuthSecret() {
   if (process.env.BETTER_AUTH_SECRET) {
@@ -21,6 +26,13 @@ function getBetterAuthSecret() {
 
 function createAuth() {
   const github = githubSocialProvider(githubEnvFromProcess());
+  // Google backs Phase 2C Calendar account linking (ADR-0071). Wired only when
+  // credentials are configured; Better Auth owns its OAuth token custody/refresh.
+  const google = googleSocialProvider(googleEnvFromProcess());
+  const socialProviders = {
+    ...(github ? { github } : {}),
+    ...(google ? { google } : {}),
+  };
 
   return betterAuth({
     appName: "Tendnote",
@@ -39,8 +51,20 @@ function createAuth() {
         console.info(`[tendnote] Password reset link for ${user.email}: ${url}`);
       },
     },
-    // GitHub is the only Phase 2A social provider, and only when configured.
-    ...(github ? { socialProviders: { github } } : {}),
+    // GitHub (sign-in) and Google (Phase 2C Calendar linking) — each wired only
+    // when its credentials are configured.
+    ...(Object.keys(socialProviders).length > 0 ? { socialProviders } : {}),
+    account: {
+      // Encrypt OAuth access/refresh tokens at rest (keyed off BETTER_AUTH_SECRET)
+      // so Calendar token custody never lands in the DB in plaintext (ADR-0071).
+      encryptOAuthTokens: true,
+      accountLinking: {
+        // linkSocial connects Google Calendar to the already signed-in Tendnote
+        // user rather than creating a parallel account.
+        enabled: true,
+        trustedProviders: ["github", "google"],
+      },
+    },
     databaseHooks: {
       user: {
         create: {

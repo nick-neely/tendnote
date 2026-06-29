@@ -218,4 +218,109 @@ describe("provider connection lifecycle", () => {
       }),
     ).rejects.toThrow();
   });
+
+  it("connects a brand-new capability, mirroring identity and scopes, with a connect audit", async () => {
+    const store = createInMemoryProviderConnectionStore();
+    const queries = createProviderConnectionQueries(store);
+
+    const connection = await queries.connectProviderConnection({
+      ownerUserId: OWNER,
+      providerKey: "google",
+      capabilityKey: "calendar",
+      displayIdentity: "owner@example.com",
+      authorizedScopes: ["https://www.googleapis.com/auth/calendar.events.readonly"],
+    });
+
+    expect(connection).toMatchObject({
+      status: "connected",
+      displayIdentity: "owner@example.com",
+      authorizedScopes: ["https://www.googleapis.com/auth/calendar.events.readonly"],
+    });
+    expect(connection?.connectedAt).toBeInstanceOf(Date);
+    // Non-secret only: no token-shaped fields exist on the row.
+    expect(Object.keys(connection ?? {})).not.toContain("accessToken");
+    await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.toMatchObject([
+      { action: "provider_connection.connect", metadataJson: { from: null, created: true } },
+    ]);
+  });
+
+  it("re-connecting an error'd connection clears error state and re-audits", async () => {
+    const store = createInMemoryProviderConnectionStore({
+      providerConnections: [
+        connectionFixture({
+          ownerUserId: OWNER,
+          status: "error",
+          lastErrorAt: new Date("2026-06-20T00:00:00.000Z"),
+          lastErrorMessage: "auth failed",
+        }),
+      ],
+    });
+    const queries = createProviderConnectionQueries(store);
+
+    const updated = await queries.connectProviderConnection({
+      ownerUserId: OWNER,
+      providerKey: "google",
+      capabilityKey: "calendar",
+      displayIdentity: "owner@example.com",
+      authorizedScopes: ["https://www.googleapis.com/auth/calendar.events.readonly"],
+    });
+
+    expect(updated).toMatchObject({
+      status: "connected",
+      lastErrorAt: null,
+      lastErrorMessage: null,
+    });
+    await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.toMatchObject([
+      { action: "provider_connection.connect", metadataJson: { from: "error", created: false } },
+    ]);
+  });
+
+  it("is idempotent: re-connecting with identical identity and scopes writes no audit", async () => {
+    const store = createInMemoryProviderConnectionStore({
+      providerConnections: [
+        connectionFixture({
+          ownerUserId: OWNER,
+          status: "connected",
+          displayIdentity: "owner@example.com",
+          authorizedScopes: ["https://www.googleapis.com/auth/calendar.events.readonly"],
+          connectedAt: new Date("2026-06-25T12:00:00.000Z"),
+        }),
+      ],
+    });
+    const queries = createProviderConnectionQueries(store);
+
+    const result = await queries.connectProviderConnection({
+      ownerUserId: OWNER,
+      providerKey: "google",
+      capabilityKey: "calendar",
+      displayIdentity: "owner@example.com",
+      authorizedScopes: ["https://www.googleapis.com/auth/calendar.events.readonly"],
+    });
+
+    expect(result).toMatchObject({ status: "connected" });
+    await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.toEqual([]);
+  });
+
+  it("scopes connect to the owner: connecting for one owner leaves another owner untouched", async () => {
+    const store = createInMemoryProviderConnectionStore({
+      providerConnections: [connectionFixture({ ownerUserId: OTHER_OWNER, status: "ready" })],
+    });
+    const queries = createProviderConnectionQueries(store);
+
+    await queries.connectProviderConnection({
+      ownerUserId: OWNER,
+      providerKey: "google",
+      capabilityKey: "calendar",
+      displayIdentity: "owner@example.com",
+    });
+
+    await expect(
+      queries.getProviderConnection({
+        ownerUserId: OTHER_OWNER,
+        providerKey: "google",
+        capabilityKey: "calendar",
+      }),
+    ).resolves.toMatchObject({ status: "ready" });
+    await expect(store.listAuditLogEntries({ ownerUserId: OTHER_OWNER })).resolves.toEqual([]);
+  });
 });

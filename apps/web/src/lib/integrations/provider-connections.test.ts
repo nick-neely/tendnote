@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   listProviderConnections,
   setProviderConnectionStatus,
+  connectProviderConnection,
   requireAdmittedOwner,
   requireAdmittedOwnerForAction,
 } = vi.hoisted(() => ({
   listProviderConnections: vi.fn(),
   setProviderConnectionStatus: vi.fn(),
+  connectProviderConnection: vi.fn(),
   requireAdmittedOwner: vi.fn(),
   requireAdmittedOwnerForAction: vi.fn(),
 }));
@@ -17,6 +19,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("@tendnote/db/queries/provider-connections", () => ({
   listProviderConnections,
   setProviderConnectionStatus,
+  connectProviderConnection,
 }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwner,

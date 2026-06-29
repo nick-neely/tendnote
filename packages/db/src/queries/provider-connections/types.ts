@@ -36,6 +36,18 @@ export type MarkProviderConnectionRevokedInput = ProviderConnectionRef & {
 };
 
 /**
+ * Mirror a real provider authorization into owner-scoped product state (Phase 2C,
+ * ADR-0071). OAuth token custody lives in Better Auth account records; this only
+ * records the non-secret connected status, display identity, and authorized
+ * scopes. `displayIdentity`/`authorizedScopes` left `undefined` preserve any
+ * existing value; pass `null` to clear.
+ */
+export type ConnectProviderConnectionInput = ProviderConnectionRef & {
+  displayIdentity?: string | null;
+  authorizedScopes?: string[] | null;
+};
+
+/**
  * Full row the store persists; every field is non-secret (ADR-0069). Columns are
  * listed explicitly rather than `Omit<ProviderConnection, …>` because the domain
  * fields are optional/nullable, but the store must receive every column with a

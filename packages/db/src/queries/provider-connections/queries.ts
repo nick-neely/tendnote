@@ -4,6 +4,7 @@ import {
   providerConnectionStatusSchema,
 } from "@tendnote/domain";
 import type {
+  ConnectProviderConnectionInput,
   CreateProviderConnectionMutationInput,
   MarkProviderConnectionRevokedInput,
   ProviderConnectionRef,
@@ -65,6 +66,113 @@ export function createProviderConnectionQueries(store: ProviderConnectionStore) 
       });
 
       return connection;
+    },
+
+    /**
+     * Mirror a real provider authorization into owner-scoped product state
+     * (Phase 2C, ADR-0071): mark the capability `connected`, record the non-secret
+     * display identity and authorized scopes, and clear any prior error/revocation
+     * state. Creates the row if it does not exist yet. Idempotent: a re-connect
+     * that changes nothing returns the existing row without writing an audit entry.
+     * Never stores OAuth tokens — token custody stays in Better Auth.
+     */
+    async connectProviderConnection(input: ConnectProviderConnectionInput) {
+      const ref = refOf(input);
+      const existing = await store.getProviderConnection(ref);
+
+      const nextIdentity =
+        input.displayIdentity !== undefined
+          ? input.displayIdentity
+          : (existing?.displayIdentity ?? null);
+      const nextScopes =
+        input.authorizedScopes !== undefined
+          ? input.authorizedScopes
+          : (existing?.authorizedScopes ?? null);
+
+      // Validate the non-secret payload (identity length, scope caps) up front.
+      const parsed = createProviderConnectionSchema.parse({
+        ownerUserId: ref.ownerUserId,
+        providerKey: ref.providerKey,
+        capabilityKey: ref.capabilityKey,
+        status: "connected",
+        displayIdentity: nextIdentity,
+        authorizedScopes: nextScopes,
+      });
+
+      const now = new Date();
+
+      if (!existing) {
+        const created = await store.createProviderConnection({
+          ownerUserId: parsed.ownerUserId,
+          providerKey: parsed.providerKey,
+          capabilityKey: parsed.capabilityKey,
+          status: "connected",
+          displayIdentity: parsed.displayIdentity ?? null,
+          authorizedScopes: parsed.authorizedScopes ?? null,
+          connectedAt: now,
+          revokedAt: null,
+          lastErrorAt: null,
+          lastErrorMessage: null,
+          revocationReason: null,
+        });
+
+        await writeAudit(store, {
+          ownerUserId: created.ownerUserId,
+          action: "provider_connection.connect",
+          entityId: created.id,
+          metadataJson: {
+            providerKey: created.providerKey,
+            capabilityKey: created.capabilityKey,
+            from: null,
+            created: true,
+          },
+        });
+
+        return created;
+      }
+
+      const identityUnchanged =
+        (existing.displayIdentity ?? null) === (parsed.displayIdentity ?? null);
+      const scopesUnchanged = scopesEqual(
+        existing.authorizedScopes ?? null,
+        parsed.authorizedScopes ?? null,
+      );
+
+      if (existing.status === "connected" && identityUnchanged && scopesUnchanged) {
+        return existing;
+      }
+
+      const updated = await store.updateProviderConnection({
+        ref,
+        patch: {
+          status: "connected",
+          connectedAt: now,
+          displayIdentity: parsed.displayIdentity ?? null,
+          authorizedScopes: parsed.authorizedScopes ?? null,
+          revokedAt: null,
+          lastErrorAt: null,
+          lastErrorMessage: null,
+          revocationReason: null,
+        },
+      });
+
+      if (!updated) {
+        return null;
+      }
+
+      await writeAudit(store, {
+        ownerUserId: updated.ownerUserId,
+        action: "provider_connection.connect",
+        entityId: updated.id,
+        metadataJson: {
+          providerKey: updated.providerKey,
+          capabilityKey: updated.capabilityKey,
+          from: existing.status,
+          created: false,
+        },
+      });
+
+      return updated;
     },
 
     /**
@@ -193,6 +301,22 @@ export function createProviderConnectionQueries(store: ProviderConnectionStore) 
       return updated;
     },
   };
+}
+
+/**
+ * Set equality for authorized-scope lists (null ≍ no scopes). Order-insensitive
+ * because a provider's granted-scope ordering is not guaranteed stable; comparing
+ * as sets keeps a re-connect that grants the same scopes idempotent.
+ */
+function scopesEqual(a: string[] | null, b: string[] | null): boolean {
+  if (a === null || b === null) {
+    return a === b;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  const setB = new Set(b);
+  return a.every((scope) => setB.has(scope));
 }
 
 function refOf(input: ProviderConnectionRef): ProviderConnectionRef {
