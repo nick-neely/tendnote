@@ -4,11 +4,11 @@ import {
   archiveMemory,
   dismissSuggestedMemory,
   editSuggestedMemory,
-  saveSuggestedMemory,
 } from "@tendnote/db/queries/memories";
 import { memoryReviewEditSchema } from "@tendnote/domain";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { saveSuggestedMemoryWithEmbeddingDelivery } from "@/lib/background-jobs/embedding-schedulers";
 import {
   type SuggestedMemoryReviewView,
   toSuggestedMemoryReviewView,
@@ -31,7 +31,7 @@ export async function saveSuggestedMemoryAction(input: {
 }): Promise<SuggestedMemoryReviewView> {
   const parsed = memoryEditActionSchema.parse({ memoryId: input.memoryId, edit: input.edit ?? {} });
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await saveSuggestedMemory({ ownerUserId, ...parsed });
+  const result = await saveSuggestedMemoryWithEmbeddingDelivery({ ownerUserId, ...parsed });
 
   return toSuggestedMemoryReviewView(result);
 }

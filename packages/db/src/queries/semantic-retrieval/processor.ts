@@ -336,6 +336,14 @@ export function createEmbeddingProcessor(
       return store.claimNextEmbeddingJob({ now: input.now ?? new Date() });
     },
 
+    async claimEmbeddingJob(input: { jobId: string; now?: Date }) {
+      return store.claimEmbeddingJob({ jobId: input.jobId, now: input.now ?? new Date() });
+    },
+
+    async getEmbeddingJob(jobId: string) {
+      return store.getEmbeddingJob(jobId);
+    },
+
     async processEmbeddingJob(input: ProcessEmbeddingJobInput): Promise<ProcessEmbeddingJobResult> {
       const now = input.now ?? new Date();
       const retryDelayMs = input.retryDelayMs ?? DEFAULT_EMBEDDING_RETRY_DELAY_MS;

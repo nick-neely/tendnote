@@ -1,9 +1,9 @@
 "use server";
 
-import { captureExplicitMemory } from "@tendnote/db/queries/memories";
 import { parseExplicitMemoryRequest, sensitivitySchema } from "@tendnote/domain";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { captureExplicitMemoryWithEmbeddingDelivery } from "@/lib/background-jobs/embedding-schedulers";
 
 const captureExplicitMemorySchema = z.object({
   personId: z.uuid(),
@@ -41,7 +41,7 @@ export async function captureExplicitMemoryForPerson(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const { content } = parseExplicitMemoryRequest(parsedInput.request);
 
-  const { memory, sourceRecord, person } = await captureExplicitMemory({
+  const { memory, sourceRecord, person } = await captureExplicitMemoryWithEmbeddingDelivery({
     ownerUserId,
     personId: parsedInput.personId,
     content,

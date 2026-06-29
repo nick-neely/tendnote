@@ -1,10 +1,8 @@
-import {
-  captureSourceRecord,
-  captureSourceRecordForPerson,
-} from "@tendnote/db/queries/source-records";
+import { captureSourceRecord } from "@tendnote/db/queries/source-records";
 import { sensitivitySchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { captureSourceRecordForPersonWithEmbeddingDelivery } from "../lib/background-jobs/embedding-schedulers";
 import { enqueueAndPublishExtractionJob } from "../lib/background-jobs/extraction-queue";
 import { resolveOwnerUserId } from "../lib/owner";
 
@@ -44,7 +42,7 @@ export default defineTool({
     // Context-aware path: when the person is known, capture and link in one
     // shared owner-scoped call; otherwise log a global source record.
     const { sourceRecord, component } = input.personId
-      ? await captureSourceRecordForPerson({
+      ? await captureSourceRecordForPersonWithEmbeddingDelivery({
           ownerUserId,
           personId: input.personId,
           retainedContent: input.retainedContent,

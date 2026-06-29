@@ -1,12 +1,10 @@
 "use server";
 
-import {
-  approveExtractedMemoriesForSourceRecord,
-  dismissExtractedMemoriesForSourceRecord,
-} from "@tendnote/db/queries/memories";
+import { dismissExtractedMemoriesForSourceRecord } from "@tendnote/db/queries/memories";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { approveExtractedMemoriesForSourceRecordWithEmbeddingDelivery } from "@/lib/background-jobs/embedding-schedulers";
 
 // personId is the note's already-resolved person, used only to re-render their
 // profile after the action so the new memories show on their ledger.
@@ -26,7 +24,7 @@ export async function approveLoggedNoteAction(input: {
 }): Promise<LoggedNoteApproval> {
   const parsed = loggedNoteSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await approveExtractedMemoriesForSourceRecord({
+  const result = await approveExtractedMemoriesForSourceRecordWithEmbeddingDelivery({
     ownerUserId,
     sourceRecordId: parsed.sourceRecordId,
   });

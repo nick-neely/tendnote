@@ -8,6 +8,15 @@
           "consumerGroup": "tendnote-extraction-processor"
         }
       ]
+    },
+    "src/app/api/queue/embedding/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "tendnote-embedding-v1",
+          "consumerGroup": "tendnote-embedding-processor"
+        }
+      ]
     }
   }
 }

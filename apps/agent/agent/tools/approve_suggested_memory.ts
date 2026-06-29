@@ -1,7 +1,7 @@
-import { saveSuggestedMemory } from "@tendnote/db/queries/memories";
 import { memoryReviewEditSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { saveSuggestedMemoryWithEmbeddingDelivery } from "../lib/background-jobs/embedding-schedulers";
 import { resolveOwnerUserId } from "../lib/owner";
 
 const inputSchema = z.object({
@@ -25,7 +25,7 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const result = await saveSuggestedMemory({
+    const result = await saveSuggestedMemoryWithEmbeddingDelivery({
       ownerUserId,
       memoryId: input.memoryId,
       edit: input.edit,

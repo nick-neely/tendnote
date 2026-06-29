@@ -16,7 +16,7 @@ const instructions = authoredInstructions();
 describe("Phase 1A assistant tools are thin wrappers over shared functions", () => {
   const wrappers: Record<string, string> = {
     capture_source_record: "captureSourceRecord",
-    capture_memory: "captureExplicitMemory",
+    capture_memory: "captureExplicitMemoryWithEmbeddingDelivery",
     create_person: "createPerson",
     update_person: "updatePerson",
     search_people: "searchPeople",
@@ -24,7 +24,7 @@ describe("Phase 1A assistant tools are thin wrappers over shared functions", () 
     search_semantic_context: "searchSemanticContext",
     get_suggested_memory_review: "getSuggestedMemoryReview",
     list_suggested_memory_reviews: "listSuggestedMemoryReviews",
-    approve_suggested_memory: "saveSuggestedMemory",
+    approve_suggested_memory: "saveSuggestedMemoryWithEmbeddingDelivery",
     dismiss_suggested_memory: "dismissSuggestedMemory",
     create_followup: "createFollowup",
     list_due_followups: "listActiveFollowups",
@@ -43,7 +43,9 @@ describe("Phase 1A assistant tools are thin wrappers over shared functions", () 
       // Tools import the shared function from a narrow @tendnote/db subpath so a
       // tool never bundles unrelated heavy deps (e.g. the `ai` SDK pulled by the
       // snapshot path). Match the package root with an optional subpath.
-      expect(source).toMatch(/from\s+"@tendnote\/db(\/[\w-]+)*"/);
+      expect(source).toMatch(
+        /from\s+"(@tendnote\/db(\/[\w-]+)*|\.\.\/lib\/background-jobs\/[\w-]+)"/,
+      );
       expect(source).toContain(sharedFn);
     });
   }

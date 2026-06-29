@@ -114,6 +114,11 @@ export type ProcessEmbeddingJobInput = {
   retryDelayMs?: number;
 };
 
+export type ClaimEmbeddingJobInput = {
+  jobId: string;
+  now?: Date;
+};
+
 export type ProcessEmbeddingJobOutcome = "not_claimable" | "skipped" | "completed" | "failed";
 
 export type ProcessEmbeddingJobResult = {

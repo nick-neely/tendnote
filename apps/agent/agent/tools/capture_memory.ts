@@ -1,7 +1,7 @@
-import { captureExplicitMemory } from "@tendnote/db/queries/memories";
 import { parseExplicitMemoryRequest, sensitivitySchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { captureExplicitMemoryWithEmbeddingDelivery } from "../lib/background-jobs/embedding-schedulers";
 import { resolveOwnerUserId } from "../lib/owner";
 
 const inputSchema = z.object({
@@ -29,7 +29,7 @@ export default defineTool({
 
     const { content } = parseExplicitMemoryRequest(input.request);
 
-    const { memory, sourceRecord, person } = await captureExplicitMemory({
+    const { memory, sourceRecord, person } = await captureExplicitMemoryWithEmbeddingDelivery({
       ownerUserId,
       personId: input.personId,
       content,

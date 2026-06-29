@@ -1,15 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { captureSourceRecord, captureSourceRecordForPerson, enqueueAndPublishExtractionJob } =
-  vi.hoisted(() => ({
-    captureSourceRecord: vi.fn(),
-    captureSourceRecordForPerson: vi.fn(),
-    enqueueAndPublishExtractionJob: vi.fn(),
-  }));
+const {
+  captureSourceRecord,
+  captureSourceRecordForPersonWithEmbeddingDelivery,
+  enqueueAndPublishExtractionJob,
+} = vi.hoisted(() => ({
+  captureSourceRecord: vi.fn(),
+  captureSourceRecordForPersonWithEmbeddingDelivery: vi.fn(),
+  enqueueAndPublishExtractionJob: vi.fn(),
+}));
 
 vi.mock("@tendnote/db/queries/source-records", () => ({
   captureSourceRecord,
-  captureSourceRecordForPerson,
+}));
+vi.mock("../agent/lib/background-jobs/embedding-schedulers", () => ({
+  captureSourceRecordForPersonWithEmbeddingDelivery,
 }));
 vi.mock("../agent/lib/background-jobs/extraction-queue", () => ({
   enqueueAndPublishExtractionJob,
@@ -40,7 +45,7 @@ describe("capture_source_record tool (casual note → logged context)", () => {
     expect(captureSourceRecord).toHaveBeenCalledWith(
       expect.objectContaining({ ownerUserId: "user-1", retainedContent: "Had lunch with Mark." }),
     );
-    expect(captureSourceRecordForPerson).not.toHaveBeenCalled();
+    expect(captureSourceRecordForPersonWithEmbeddingDelivery).not.toHaveBeenCalled();
     expect(enqueueAndPublishExtractionJob).toHaveBeenCalledWith({
       ownerUserId: "user-1",
       sourceRecordId: "source-1",
@@ -53,7 +58,9 @@ describe("capture_source_record tool (casual note → logged context)", () => {
   });
 
   it("links the note to a resolved person when identity is unambiguous", async () => {
-    captureSourceRecordForPerson.mockResolvedValue(sourceRecordResult("source-2"));
+    captureSourceRecordForPersonWithEmbeddingDelivery.mockResolvedValue(
+      sourceRecordResult("source-2"),
+    );
     enqueueAndPublishExtractionJob.mockResolvedValue(undefined);
 
     const result = await tool.execute(
@@ -64,7 +71,7 @@ describe("capture_source_record tool (casual note → logged context)", () => {
       ctx,
     );
 
-    expect(captureSourceRecordForPerson).toHaveBeenCalledWith(
+    expect(captureSourceRecordForPersonWithEmbeddingDelivery).toHaveBeenCalledWith(
       expect.objectContaining({
         ownerUserId: "user-1",
         personId: "11111111-1111-1111-1111-111111111111",

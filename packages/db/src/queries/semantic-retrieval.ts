@@ -8,6 +8,7 @@ import {
   enqueueAndTriggerSemanticEmbeddingJobWithProcessor,
 } from "./semantic-retrieval/runtime";
 import type {
+  ClaimEmbeddingJobInput,
   EmbeddingAdapter,
   EmbeddingConfig,
   EnqueueEmbeddingJobInput,
@@ -97,6 +98,14 @@ export async function enqueueAndTriggerSemanticEmbeddingJob(
 
 export async function processSemanticEmbeddingJob(input: ProcessEmbeddingJobInput) {
   return defaultProcessor.processEmbeddingJob(input);
+}
+
+export async function claimSemanticEmbeddingJob(input: ClaimEmbeddingJobInput) {
+  return defaultProcessor.claimEmbeddingJob(input);
+}
+
+export async function getSemanticEmbeddingJob(jobId: string) {
+  return defaultProcessor.getEmbeddingJob(jobId);
 }
 
 export async function searchSemanticContext(input: SearchSemanticContextQueryInput) {

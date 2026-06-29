@@ -1,12 +1,9 @@
 "use server";
 
-import {
-  captureSourceRecord,
-  captureSourceRecordForPerson,
-  getSourceRecordReview,
-} from "@tendnote/db/queries/source-records";
+import { captureSourceRecord, getSourceRecordReview } from "@tendnote/db/queries/source-records";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { captureSourceRecordForPersonWithEmbeddingDelivery } from "@/lib/background-jobs/embedding-schedulers";
 import { enqueueAndPublishExtractionJob } from "@/lib/background-jobs/extraction-queue";
 import {
   type SourceRecordReviewView,
@@ -28,7 +25,7 @@ export async function captureGlobalAssistantSourceRecord(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const captureSurface = parsed.personId ? "person_assistant" : "global_assistant";
   const result = parsed.personId
-    ? await captureSourceRecordForPerson({
+    ? await captureSourceRecordForPersonWithEmbeddingDelivery({
         ownerUserId,
         personId: parsed.personId,
         retainedContent: parsed.retainedContent,
