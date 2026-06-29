@@ -52,6 +52,7 @@ describe("background job delivery ledger", () => {
     const publishedAt = new Date("2026-06-29T12:00:00.000Z");
 
     const published = await store.markBackgroundJobDeliveryPublished({
+      ownerUserId: "user-1",
       deliveryId: delivery.id,
       publishedAt,
     });
@@ -71,6 +72,7 @@ describe("background job delivery ledger", () => {
     const nextAttemptAt = new Date("2026-06-29T12:05:00.000Z");
 
     const failed = await store.markBackgroundJobDeliveryPublishFailed({
+      ownerUserId: "user-1",
       deliveryId: delivery.id,
       error: " queue provider unavailable ",
       nextAttemptAt,

@@ -25,11 +25,13 @@ export type CreateBackgroundJobDeliveryInput = {
 };
 
 export type MarkBackgroundJobDeliveryPublishedInput = {
+  ownerUserId: string;
   deliveryId: string;
   publishedAt?: Date;
 };
 
 export type MarkBackgroundJobDeliveryPublishFailedInput = {
+  ownerUserId: string;
   deliveryId: string;
   error: string;
   nextAttemptAt: Date;
@@ -58,7 +60,9 @@ export type BackgroundJobDeliveryStore = {
   markBackgroundJobDeliveryPublishFailed: (
     input: MarkBackgroundJobDeliveryPublishFailedInput,
   ) => Promise<BackgroundJobDelivery>;
-  updateBackgroundJobDelivery: (input: UpdateBackgroundJobDeliveryInput) => Promise<BackgroundJobDelivery>;
+  updateBackgroundJobDelivery: (
+    input: UpdateBackgroundJobDeliveryInput,
+  ) => Promise<BackgroundJobDelivery>;
   listBackgroundJobDeliveries: (input?: {
     ownerUserId?: string;
     status?: BackgroundJobDeliveryStatus;

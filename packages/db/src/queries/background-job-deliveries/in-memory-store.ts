@@ -63,14 +63,13 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
         deliveryKey({ jobKind: input.jobKind, jobId: input.jobId, topic }),
       );
 
-      return deliveryId ? deliveries.get(deliveryId) ?? null : null;
+      return deliveryId ? (deliveries.get(deliveryId) ?? null) : null;
     },
     async markBackgroundJobDeliveryPublished(input) {
       const delivery = deliveries.get(input.deliveryId);
       if (!delivery) {
         throw new Error("Background job delivery not found.");
       }
-
       const now = input.publishedAt ?? new Date();
       const updated: BackgroundJobDelivery = {
         ...delivery,
@@ -88,7 +87,6 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
       if (!delivery) {
         throw new Error("Background job delivery not found.");
       }
-
       const updated: BackgroundJobDelivery = {
         ...delivery,
         status: "publish_failed",
@@ -106,7 +104,6 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
       if (!delivery) {
         throw new Error("Background job delivery not found.");
       }
-
       const updated: BackgroundJobDelivery = {
         ...delivery,
         ...(input.status !== undefined ? { status: input.status } : {}),
