@@ -69,6 +69,10 @@ Most app vars have working local defaults (Postgres, Redis, and a dev auth secre
 
 The root `.env` is read **only** by `docker compose`; Next.js and `eve dev` do not read it. Each `.env.example` documents the rest. `.env*` files are gitignored (except the `.env.example` templates), so your keys are never committed.
 
+## Google Calendar (Phase 2C)
+
+Connecting Google Calendar needs an operator to configure a Google Cloud OAuth client (consent screen, Calendar event-read scope, callback URLs) and set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `apps/web/.env.local`. This is human-in-the-loop work that code slices cannot complete. See [`google-calendar-setup.md`](google-calendar-setup.md) for the step-by-step guide and local/hosted smoke checklists.
+
 ## Private beta flags
 
 Phase 2A keeps hosted access private by default through the Vercel-managed `private-beta-access` boolean flag. The app sends the trusted Better Auth user entity on every evaluation:
