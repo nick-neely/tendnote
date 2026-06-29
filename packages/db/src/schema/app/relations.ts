@@ -5,6 +5,7 @@ import { personContextSnapshots } from "./context-snapshots";
 import { followups, interactions, messageDrafts } from "./engagement";
 import { memories } from "./memories";
 import { contactMethods, people } from "./people";
+import { providerConnections } from "./provider-connections";
 import {
   extractionJobs,
   sourceRecordPeople,
@@ -15,6 +16,13 @@ import {
 export const accessProfilesRelations = relations(accessProfiles, ({ one }) => ({
   user: one(user, {
     fields: [accessProfiles.userId],
+    references: [user.id],
+  }),
+}));
+
+export const providerConnectionsRelations = relations(providerConnections, ({ one }) => ({
+  owner: one(user, {
+    fields: [providerConnections.ownerUserId],
     references: [user.id],
   }),
 }));

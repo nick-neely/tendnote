@@ -124,6 +124,15 @@ export const backgroundJobDeliveryStatus = pgEnum("background_job_delivery_statu
   "abandoned",
 ]);
 
+export const providerConnectionStatus = pgEnum("provider_connection_status", [
+  "ready",
+  "pending",
+  "connected",
+  "revoked",
+  "error",
+  "unavailable",
+]);
+
 export const messageDraftChannel = pgEnum("message_draft_channel", [
   "text",
   "email",

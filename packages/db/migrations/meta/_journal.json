@@ -92,6 +92,13 @@
       "when": 1782750775032,
       "tag": "0012_background_job_deliveries",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1782750836287,
+      "tag": "0013_provider_connections",
+      "breakpoints": true
     }
   ]
 }
