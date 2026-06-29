@@ -136,5 +136,20 @@ export function createInMemoryBackgroundJobDeliveryStore(): BackgroundJobDeliver
         })
         .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
     },
+    async listDueBackgroundJobDeliveries(input) {
+      const statuses = new Set(input.statuses);
+
+      return [...deliveries.values()]
+        .filter(
+          (delivery) =>
+            statuses.has(delivery.status) &&
+            delivery.nextAttemptAt.getTime() <= input.now.getTime(),
+        )
+        .sort((left, right) => {
+          const attemptOrder = left.nextAttemptAt.getTime() - right.nextAttemptAt.getTime();
+          return attemptOrder || left.createdAt.getTime() - right.createdAt.getTime();
+        })
+        .slice(0, input.limit);
+    },
   };
 }

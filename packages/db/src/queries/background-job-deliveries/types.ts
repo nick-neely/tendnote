@@ -74,4 +74,9 @@ export type BackgroundJobDeliveryStore = {
     ownerUserId: string;
     status?: BackgroundJobDeliveryStatus;
   }) => Promise<BackgroundJobDelivery[]>;
+  listDueBackgroundJobDeliveries: (input: {
+    statuses: BackgroundJobDeliveryStatus[];
+    now: Date;
+    limit: number;
+  }) => Promise<BackgroundJobDelivery[]>;
 };

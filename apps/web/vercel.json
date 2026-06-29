@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/cron/background-jobs",
+      "schedule": "*/10 * * * *"
+    }
+  ],
   "functions": {
     "src/app/api/queue/extraction/route.ts": {
       "experimentalTriggers": [

@@ -113,7 +113,10 @@ export async function consumeExtractionQueueMessage(input: {
           };
         },
         async processJob({ jobId }) {
-          await processJob({ jobId, claim: false });
+          const result = await processJob({ jobId, claim: false });
+          if (result.outcome === "failed") {
+            throw new Error(result.error ?? result.reason ?? "Extraction job failed.");
+          }
         },
       },
     ],

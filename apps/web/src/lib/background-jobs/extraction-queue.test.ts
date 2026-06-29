@@ -329,7 +329,7 @@ describe("extraction queue delivery", () => {
         getJob: processor.getExtractionJob,
         processJob: processor.processExtractionJob,
       }),
-    ).resolves.toMatchObject({ status: "processed" });
+    ).rejects.toThrow("provider throttled");
 
     await expect(processor.getExtractionJob(job.id)).resolves.toMatchObject({
       status: "failed",

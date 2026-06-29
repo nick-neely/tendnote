@@ -96,6 +96,10 @@ export async function enqueueAndTriggerSemanticEmbeddingJob(
   return enqueueAndTriggerSemanticEmbeddingJobWithProcessor(defaultProcessor, input);
 }
 
+export async function claimNextSemanticEmbeddingJob(input: { now?: Date } = {}) {
+  return defaultProcessor.claimNextEmbeddingJob(input);
+}
+
 export async function processSemanticEmbeddingJob(input: ProcessEmbeddingJobInput) {
   return defaultProcessor.processEmbeddingJob(input);
 }

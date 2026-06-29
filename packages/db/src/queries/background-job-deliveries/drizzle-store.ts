@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { backgroundJobDeliveries } from "../../schema";
 import { topicForBackgroundJob } from "./topics";
@@ -187,6 +187,23 @@ export function createDrizzleBackgroundJobDeliveryStore(): BackgroundJobDelivery
         .from(backgroundJobDeliveries)
         .where(filters.length ? and(...filters) : undefined)
         .orderBy(asc(backgroundJobDeliveries.createdAt));
+    },
+    async listDueBackgroundJobDeliveries(input) {
+      if (input.limit <= 0 || input.statuses.length === 0) {
+        return [];
+      }
+
+      return getDb()
+        .select()
+        .from(backgroundJobDeliveries)
+        .where(
+          and(
+            inArray(backgroundJobDeliveries.status, input.statuses),
+            lte(backgroundJobDeliveries.nextAttemptAt, input.now),
+          ),
+        )
+        .orderBy(asc(backgroundJobDeliveries.nextAttemptAt), asc(backgroundJobDeliveries.createdAt))
+        .limit(input.limit);
     },
   };
 }
