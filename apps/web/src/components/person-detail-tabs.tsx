@@ -100,7 +100,7 @@ export function PersonDetailTabs({
           edges so the divider reads as a real toolbar. */}
       <div className="-mx-4 sticky top-14 z-10 flex flex-col gap-4 border-b bg-background/90 px-4 pt-1 pb-3 backdrop-blur sm:-mx-6 sm:px-6">
         {header}
-        <TabsList className="w-fit max-w-full overflow-x-auto">
+        <TabsList className="w-fit max-w-full overflow-x-auto overflow-y-hidden">
           {hasSnapshot ? (
             <TabsTrigger className="group/tab" value="snapshot">
               Snapshot
