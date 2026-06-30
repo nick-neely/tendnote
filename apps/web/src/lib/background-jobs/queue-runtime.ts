@@ -3,37 +3,28 @@ import {
   type BackgroundJobDelivery,
   type BackgroundJobDeliveryStore,
   type BackgroundJobKind,
+  type BackgroundJobQueueLogger,
+  type BackgroundJobQueuePayload,
+  type BackgroundJobQueueSendAdapter,
   topicForBackgroundJob,
 } from "@tendnote/db/queries/background-job-deliveries";
 import { send as sendVercelQueueMessage } from "@vercel/queue";
 import type { CostCategory, ProductRateLimiter } from "@/lib/rate-limit";
 
-export type BackgroundJobQueuePayload = {
-  deliveryId: string;
-  jobKind: BackgroundJobKind;
-  jobId: string;
-};
-
-export type BackgroundJobQueueSendInput = {
-  topic: string;
-  payload: BackgroundJobQueuePayload;
-  idempotencyKey: string;
-  headers?: Record<string, string>;
-};
-
-export type BackgroundJobQueueSendResult = {
-  messageId: string | null;
-};
-
-export type BackgroundJobQueueSendAdapter = {
-  send: (input: BackgroundJobQueueSendInput) => Promise<BackgroundJobQueueSendResult>;
-};
-
-export type BackgroundJobQueueLogger = {
-  info?: (message: string, metadata?: Record<string, unknown>) => void;
-  warn?: (message: string, metadata?: Record<string, unknown>) => void;
-  error?: (message: string, metadata?: Record<string, unknown>) => void;
-};
+// The outbox-publish orchestration and its transport seam now live in @tendnote/db
+// (shared by Eve and the web so the publish path is no longer re-inlined per app).
+// Re-export them here so existing web consumers keep importing from "./queue-runtime";
+// the rate-limit-aware consumer runtime below stays web-owned.
+export {
+  type BackgroundJobQueueLogger,
+  type BackgroundJobQueuePayload,
+  type BackgroundJobQueueSendAdapter,
+  type BackgroundJobQueueSendInput,
+  type BackgroundJobQueueSendResult,
+  backgroundJobQueueIdempotencyKey,
+  buildBackgroundJobQueuePayload,
+  publishBackgroundJobDelivery,
+} from "@tendnote/db/queries/background-job-deliveries";
 
 export type BackgroundJobQueueConsumerMetadata = {
   topicName?: string;
@@ -104,8 +95,6 @@ export const BACKGROUND_JOB_QUEUE_CONFIG = {
   }
 >;
 
-const DEFAULT_RETRY_DELAY_MS = 5 * 60 * 1000;
-
 export function createVercelBackgroundJobQueueAdapter(): BackgroundJobQueueSendAdapter {
   return {
     async send(input) {
@@ -115,95 +104,6 @@ export function createVercelBackgroundJobQueueAdapter(): BackgroundJobQueueSendA
       });
     },
   };
-}
-
-export function buildBackgroundJobQueuePayload(
-  delivery: Pick<BackgroundJobDelivery, "id" | "jobKind" | "jobId">,
-): BackgroundJobQueuePayload {
-  return {
-    deliveryId: delivery.id,
-    jobKind: delivery.jobKind,
-    jobId: delivery.jobId,
-  };
-}
-
-export function backgroundJobQueueIdempotencyKey(
-  delivery: Pick<BackgroundJobDelivery, "id" | "jobKind" | "jobId" | "topic">,
-) {
-  return `${delivery.jobKind}:${delivery.jobId}:${delivery.topic}:${delivery.id}`;
-}
-
-export async function publishBackgroundJobDelivery(input: {
-  store: BackgroundJobDeliveryStore;
-  queue: BackgroundJobQueueSendAdapter;
-  ownerUserId: string;
-  deliveryId: string;
-  now?: Date;
-  retryDelayMs?: number;
-  logger?: BackgroundJobQueueLogger;
-}) {
-  const now = input.now ?? new Date();
-  const delivery = await input.store.getBackgroundJobDelivery({
-    ownerUserId: input.ownerUserId,
-    deliveryId: input.deliveryId,
-  });
-
-  if (!delivery) {
-    throw new Error("Background job delivery not found.");
-  }
-
-  if (delivery.topic !== topicForBackgroundJob(delivery.jobKind)) {
-    input.logger?.error?.("background_job_queue.topic_mismatch", {
-      deliveryId: delivery.id,
-      jobKind: delivery.jobKind,
-      topic: delivery.topic,
-    });
-    const failed = await input.store.markBackgroundJobDeliveryPublishFailed({
-      ownerUserId: delivery.ownerUserId,
-      deliveryId: delivery.id,
-      error: "Delivery topic does not match the typed topic map.",
-      nextAttemptAt: new Date(now.getTime() + (input.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS)),
-    });
-    return { ok: false as const, delivery: failed };
-  }
-
-  try {
-    await input.queue.send({
-      topic: delivery.topic,
-      payload: buildBackgroundJobQueuePayload(delivery),
-      idempotencyKey: backgroundJobQueueIdempotencyKey(delivery),
-      headers: {
-        "x-tendnote-job-kind": delivery.jobKind,
-        "x-tendnote-delivery-id": delivery.id,
-      },
-    });
-  } catch (error) {
-    input.logger?.error?.("background_job_queue.publish_failed", {
-      deliveryId: delivery.id,
-      jobKind: delivery.jobKind,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    const failed = await input.store.markBackgroundJobDeliveryPublishFailed({
-      ownerUserId: delivery.ownerUserId,
-      deliveryId: delivery.id,
-      error: error instanceof Error ? error.message : String(error),
-      nextAttemptAt: new Date(now.getTime() + (input.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS)),
-    });
-    return { ok: false as const, delivery: failed };
-  }
-
-  const published = await input.store.markBackgroundJobDeliveryPublished({
-    ownerUserId: delivery.ownerUserId,
-    deliveryId: delivery.id,
-    publishedAt: now,
-  });
-  input.logger?.info?.("background_job_queue.published", {
-    deliveryId: delivery.id,
-    jobKind: delivery.jobKind,
-    topic: delivery.topic,
-  });
-
-  return { ok: true as const, delivery: published };
 }
 
 export async function consumeBackgroundJobQueueMessage(input: {

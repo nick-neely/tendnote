@@ -1,6 +1,8 @@
 import {
   type BackgroundJobDeliveryStore,
+  type BackgroundJobQueueSendAdapter,
   createDrizzleBackgroundJobDeliveryStore,
+  publishBackgroundJobDelivery,
 } from "@tendnote/db/queries/background-job-deliveries";
 import {
   type EnqueueAndTriggerExtractionJobInput,
@@ -8,38 +10,24 @@ import {
   enqueueAndTriggerExtractionJob,
   resolveExtractionRuntimeMode,
 } from "@tendnote/db/queries/extraction-jobs";
-import { send as sendVercelQueueMessage } from "@vercel/queue";
-
-type QueueSendAdapter = {
-  send: (input: {
-    topic: string;
-    payload: { deliveryId: string; jobKind: "extraction"; jobId: string };
-    idempotencyKey: string;
-    headers?: Record<string, string>;
-  }) => Promise<unknown>;
-};
+import { createVercelBackgroundJobQueueAdapter } from "./queue-adapter";
 
 type EnqueueExtraction = (
   input: EnqueueAndTriggerExtractionJobInput,
 ) => Promise<EnqueueAndTriggerExtractionJobResult>;
 
-function createVercelQueueAdapter(): QueueSendAdapter {
-  return {
-    async send(input) {
-      return sendVercelQueueMessage(input.topic, input.payload, {
-        idempotencyKey: input.idempotencyKey,
-        headers: input.headers,
-      });
-    },
-  };
-}
-
+/**
+ * Enqueue a suggested-memory extraction job and, in enqueue_only mode, publish its
+ * outbox delivery through the shared @tendnote/db publish orchestration (ADR-0068).
+ * Eve and the web go through the same publish path now; only the concrete Vercel
+ * transport is injected per app.
+ */
 export async function enqueueAndPublishExtractionJob(input: {
   ownerUserId: string;
   sourceRecordId: string;
   runtimeMode?: EnqueueAndTriggerExtractionJobInput["runtimeMode"];
   deliveryStore?: BackgroundJobDeliveryStore;
-  queue?: QueueSendAdapter;
+  queue?: BackgroundJobQueueSendAdapter;
   enqueueExtraction?: EnqueueExtraction;
 }): Promise<EnqueueAndTriggerExtractionJobResult & { deliveryId: string | null }> {
   const mode =
@@ -63,29 +51,12 @@ export async function enqueueAndPublishExtractionJob(input: {
     jobKind: "extraction",
     jobId: result.job.id,
   });
-
-  try {
-    await (input.queue ?? createVercelQueueAdapter()).send({
-      topic: delivery.topic,
-      payload: { deliveryId: delivery.id, jobKind: "extraction", jobId: delivery.jobId },
-      idempotencyKey: `extraction:${delivery.jobId}:${delivery.topic}:${delivery.id}`,
-      headers: {
-        "x-tendnote-job-kind": "extraction",
-        "x-tendnote-delivery-id": delivery.id,
-      },
-    });
-    await deliveryStore.markBackgroundJobDeliveryPublished({
-      ownerUserId: input.ownerUserId,
-      deliveryId: delivery.id,
-    });
-  } catch (error) {
-    await deliveryStore.markBackgroundJobDeliveryPublishFailed({
-      ownerUserId: input.ownerUserId,
-      deliveryId: delivery.id,
-      error: error instanceof Error ? error.message : String(error),
-      nextAttemptAt: new Date(Date.now() + 5 * 60 * 1000),
-    });
-  }
+  await publishBackgroundJobDelivery({
+    store: deliveryStore,
+    queue: input.queue ?? createVercelBackgroundJobQueueAdapter(),
+    ownerUserId: input.ownerUserId,
+    deliveryId: delivery.id,
+  });
 
   return { ...result, deliveryId: delivery.id };
 }
