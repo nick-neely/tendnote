@@ -29,7 +29,7 @@ Gmail or Contacts scopes (ADR-0072, PRD Out of Scope).
      orgs; use it if every tester is in your Workspace org).
    - **App name:** Tendnote. Add a support email and developer contact email.
    - **App domain / authorized domains:** add your production domain (e.g.
-     `tendnote.app`) once known. Localhost does not need an authorized domain.
+     `tendnote.stacklet.app/`) once known. Localhost does not need an authorized domain.
    - **Publishing status:** keep the app in **Testing** during private beta and
      add each beta tester's Google account under **Test users**. A Testing app
      issues refresh tokens to test users without full verification. Move to
