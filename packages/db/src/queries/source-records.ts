@@ -11,6 +11,11 @@ import type {
 
 export { createSourceRecordCapture } from "./source-records/capture";
 export {
+  type CaptureLoggedContextDeps,
+  type CaptureLoggedContextInput,
+  captureLoggedContext,
+} from "./source-records/capture-logged-context";
+export {
   createDrizzleSourceRecordStore,
   listSourceRecordReviews,
 } from "./source-records/drizzle-store";

@@ -1,6 +1,10 @@
 "use server";
 
-import { captureSourceRecord, getSourceRecordReview } from "@tendnote/db/queries/source-records";
+import {
+  captureLoggedContext,
+  captureSourceRecord,
+  getSourceRecordReview,
+} from "@tendnote/db/queries/source-records";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { captureSourceRecordForPersonWithEmbeddingDelivery } from "@/lib/background-jobs/embedding-schedulers";
@@ -24,31 +28,23 @@ export async function captureGlobalAssistantSourceRecord(input: {
   const parsed = captureGlobalAssistantSourceRecordSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
   const captureSurface = parsed.personId ? "person_assistant" : "global_assistant";
-  const result = parsed.personId
-    ? await captureSourceRecordForPersonWithEmbeddingDelivery({
-        ownerUserId,
-        personId: parsed.personId,
-        retainedContent: parsed.retainedContent,
-        metadataJson: { captureSurface },
-      })
-    : await captureSourceRecord({
-        ownerUserId,
-        retainedContent: parsed.retainedContent,
-        metadataJson: { captureSurface },
-      });
 
-  // Capture is the synchronous guarantee; suggested-memory extraction is job-backed
-  // (ADR 0017, ADR 0018). Triggering may process inline in local/dev, but it must
-  // never make the saved note disappear if extraction is unavailable.
-  try {
-    await enqueueAndPublishExtractionJob({
+  // The shared capture→extract sequence (branch on person, capture, best-effort
+  // enqueue) lives in @tendnote/db; this action injects the web's wiring and keeps
+  // only its own presentation framing (the reloaded review view below).
+  const result = await captureLoggedContext(
+    {
       ownerUserId,
-      sourceRecordId: result.component.sourceRecordId,
-    });
-  } catch {
-    // The source record is already persisted and can be re-enqueued later; the
-    // capture must still succeed for the user.
-  }
+      retainedContent: parsed.retainedContent,
+      personId: parsed.personId,
+      captureSurface,
+    },
+    {
+      captureForPerson: captureSourceRecordForPersonWithEmbeddingDelivery,
+      captureGlobal: captureSourceRecord,
+      enqueueExtraction: enqueueAndPublishExtractionJob,
+    },
+  );
 
   const review = await getSourceRecordReview({
     ownerUserId,

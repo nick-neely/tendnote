@@ -1,4 +1,4 @@
-import { captureSourceRecord } from "@tendnote/db/queries/source-records";
+import { captureLoggedContext, captureSourceRecord } from "@tendnote/db/queries/source-records";
 import { sensitivitySchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -39,29 +39,23 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    // Context-aware path: when the person is known, capture and link in one
-    // shared owner-scoped call; otherwise log a global source record.
-    const { sourceRecord, component } = input.personId
-      ? await captureSourceRecordForPersonWithEmbeddingDelivery({
-          ownerUserId,
-          personId: input.personId,
-          retainedContent: input.retainedContent,
-          sensitivity: input.sensitivity,
-          metadataJson: { captureSurface: "eve" },
-        })
-      : await captureSourceRecord({
-          ownerUserId,
-          retainedContent: input.retainedContent,
-          sensitivity: input.sensitivity,
-          metadataJson: { captureSurface: "eve" },
-        });
-
-    // Extraction is job-backed and must not fail the synchronous capture (ADR 0017).
-    try {
-      await enqueueAndPublishExtractionJob({ ownerUserId, sourceRecordId: sourceRecord.id });
-    } catch {
-      // The source record is already saved and can be re-enqueued later.
-    }
+    // The shared capture→extract sequence (branch on person, capture, best-effort
+    // enqueue) lives in @tendnote/db; this tool injects Eve's wiring and keeps only
+    // its own presentation framing.
+    const { sourceRecord, component } = await captureLoggedContext(
+      {
+        ownerUserId,
+        retainedContent: input.retainedContent,
+        personId: input.personId,
+        sensitivity: input.sensitivity,
+        captureSurface: "eve",
+      },
+      {
+        captureForPerson: captureSourceRecordForPersonWithEmbeddingDelivery,
+        captureGlobal: captureSourceRecord,
+        enqueueExtraction: enqueueAndPublishExtractionJob,
+      },
+    );
 
     return {
       sourceRecord: {
