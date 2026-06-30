@@ -122,15 +122,21 @@ export function personMatchesPeopleSearch(
 /**
  * Stable people-search ordering: by display name, then id for a deterministic
  * tie-break. The Postgres adapter mirrors this with `order by display_name, id`.
- * Case/locale ordering of the display name itself follows the database collation
- * there and `localeCompare` here, so the two agree for same-case ASCII names and
- * may differ only by collation case/locale rules — never by the id tie-break.
+ * Display-name case/locale ordering follows the database collation there and
+ * `localeCompare` here, so the two agree for same-case ASCII names and may differ
+ * only by collation case/locale rules. The id tie-break is a code-point compare,
+ * which matches Postgres's `uuid`-column byte ordering exactly (ids are canonical
+ * UUIDs), so equal display names always break the same way across adapters.
  */
 export function comparePeopleForSearch(
   left: Pick<Person, "id" | "displayName">,
   right: Pick<Person, "id" | "displayName">,
 ): number {
-  return left.displayName.localeCompare(right.displayName) || left.id.localeCompare(right.id);
+  const byDisplayName = left.displayName.localeCompare(right.displayName);
+  if (byDisplayName !== 0) {
+    return byDisplayName;
+  }
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 
 export type Person = z.infer<typeof personSchema>;
