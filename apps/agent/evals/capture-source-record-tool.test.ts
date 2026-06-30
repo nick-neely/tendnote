@@ -10,9 +10,16 @@ const {
   enqueueAndPublishExtractionJob: vi.fn(),
 }));
 
-vi.mock("@tendnote/db/queries/source-records", () => ({
-  captureSourceRecord,
-}));
+// Keep the real captureLoggedContext orchestration (candidate 5) so the assertions
+// below still verify the tool drives capture + extraction through the injected deps;
+// only the leaf capture/enqueue functions are mocked.
+vi.mock("@tendnote/db/queries/source-records", async (importActual) => {
+  const actual = await importActual<typeof import("@tendnote/db/queries/source-records")>();
+  return {
+    captureSourceRecord,
+    captureLoggedContext: actual.captureLoggedContext,
+  };
+});
 vi.mock("../agent/lib/background-jobs/embedding-schedulers", () => ({
   captureSourceRecordForPersonWithEmbeddingDelivery,
 }));
