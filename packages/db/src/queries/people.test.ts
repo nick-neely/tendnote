@@ -143,6 +143,52 @@ describe("people queries", () => {
     expect(results.map((person) => person.id)).toEqual(["owner-sam"]);
   });
 
+  it("matches first name and last name, not only display name", async () => {
+    const people = createPeopleQueries(
+      createInMemoryPeopleStore({
+        people: [
+          {
+            ...createPersonFixture({ id: "p1", ownerUserId: OWNER, displayName: "Bob" }),
+            firstName: "Robert",
+            lastName: "Smith",
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      people.searchPeople({ ownerUserId: OWNER, query: "robert" }).then((r) => r.map((p) => p.id)),
+    ).resolves.toEqual(["p1"]);
+    await expect(
+      people.searchPeople({ ownerUserId: OWNER, query: "smith" }).then((r) => r.map((p) => p.id)),
+    ).resolves.toEqual(["p1"]);
+  });
+
+  it("orders search results by display name with a stable id tie-break", async () => {
+    const people = createPeopleQueries(
+      createInMemoryPeopleStore({
+        people: [
+          createPersonFixture({ id: "p3", ownerUserId: OWNER, displayName: "Sam Zeta" }),
+          // Two people share a display name (seeded out of id order) so the id
+          // tie-break — the reason the drizzle order gained `, people.id` — is exercised.
+          createPersonFixture({ id: "b-dup", ownerUserId: OWNER, displayName: "Sam Alpha" }),
+          createPersonFixture({ id: "a-dup", ownerUserId: OWNER, displayName: "Sam Alpha" }),
+          createPersonFixture({ id: "p2", ownerUserId: OWNER, displayName: "Sam Beta" }),
+        ],
+      }),
+    );
+
+    const results = await people.searchPeople({ ownerUserId: OWNER, query: "sam" });
+
+    expect(results.map((person) => person.id)).toEqual(["a-dup", "b-dup", "p2", "p3"]);
+    expect(results.map((person) => person.displayName)).toEqual([
+      "Sam Alpha",
+      "Sam Alpha",
+      "Sam Beta",
+      "Sam Zeta",
+    ]);
+  });
+
   it("returns null for another owner's profile", async () => {
     const people = createPeopleQueries(
       createInMemoryPeopleStore({

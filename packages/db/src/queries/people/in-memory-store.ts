@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import type { Followup, Memory, Person, SourceRecord, SourceRecordPerson } from "@tendnote/domain";
+import {
+  comparePeopleForSearch,
+  type Followup,
+  type Memory,
+  type Person,
+  personMatchesPeopleSearch,
+  type SourceRecord,
+  type SourceRecordPerson,
+} from "@tendnote/domain";
 import type { PeopleStore, PersonAuditLogEntry } from "./types";
 
 export type InMemoryPeopleStoreSeed = {
@@ -63,15 +71,15 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
 
     async searchPeople(input) {
       return [...people.values()]
-        .filter((person) => {
-          const matchesOwner = person.ownerUserId === input.ownerUserId;
-          const matchesQuery =
-            !input.query || person.displayName.toLowerCase().includes(input.query.toLowerCase());
-          const matchesRelationship =
-            !input.relationshipType || person.relationshipType === input.relationshipType;
-
-          return matchesOwner && matchesQuery && matchesRelationship;
-        })
+        .filter(
+          (person) =>
+            person.ownerUserId === input.ownerUserId &&
+            personMatchesPeopleSearch(person, {
+              query: input.query,
+              relationshipType: input.relationshipType,
+            }),
+        )
+        .sort(comparePeopleForSearch)
         .slice(0, input.limit);
     },
 

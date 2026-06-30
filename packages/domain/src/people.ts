@@ -92,6 +92,47 @@ export function requiresPersonDisambiguation(candidates: Pick<Person, "id">[]) {
   return candidates.length > 1;
 }
 
+/**
+ * The people-search match rule: the single source of truth for who an Exact
+ * people lookup returns. A person matches when the case-insensitive query is a
+ * substring of their display name, first name, or last name, and — when a
+ * relationship-type filter is given — their relationship type equals it. The
+ * Postgres adapter mirrors this with `ilike '%query%'` over the same three fields;
+ * the in-memory adapter applies it directly, so tests over the double validate the
+ * fields production actually searches.
+ */
+export function personMatchesPeopleSearch(
+  person: Pick<Person, "displayName" | "firstName" | "lastName" | "relationshipType">,
+  filter: { query?: string; relationshipType?: RelationshipType },
+): boolean {
+  if (filter.relationshipType && person.relationshipType !== filter.relationshipType) {
+    return false;
+  }
+
+  const query = filter.query?.trim().toLowerCase();
+  if (!query) {
+    return true;
+  }
+
+  return [person.displayName, person.firstName, person.lastName].some((field) =>
+    field?.toLowerCase().includes(query),
+  );
+}
+
+/**
+ * Stable people-search ordering: by display name, then id for a deterministic
+ * tie-break. The Postgres adapter mirrors this with `order by display_name, id`.
+ * Case/locale ordering of the display name itself follows the database collation
+ * there and `localeCompare` here, so the two agree for same-case ASCII names and
+ * may differ only by collation case/locale rules — never by the id tie-break.
+ */
+export function comparePeopleForSearch(
+  left: Pick<Person, "id" | "displayName">,
+  right: Pick<Person, "id" | "displayName">,
+): number {
+  return left.displayName.localeCompare(right.displayName) || left.id.localeCompare(right.id);
+}
+
 export type Person = z.infer<typeof personSchema>;
 export type CreatePersonInput = z.infer<typeof createPersonSchema>;
 export type UpdatePersonInput = z.infer<typeof updatePersonSchema>;

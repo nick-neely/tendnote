@@ -330,5 +330,9 @@ function compareSemanticResults(left: InMemorySemanticResult, right: InMemorySem
 }
 
 function similarityBucket(similarity: number) {
+  // Mirrors the drizzle adapter's primary sort key `round(similarity::numeric, 4)`:
+  // both bucket similarity to 4 decimals before tie-breaking, so the two adapters
+  // order identically. The scale (×10_000 here vs decimal rounding in SQL) is just a
+  // representation difference — the comparison order is the same, not drifted.
   return Math.round(similarity * 10_000);
 }

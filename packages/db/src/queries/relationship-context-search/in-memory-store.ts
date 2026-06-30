@@ -168,6 +168,9 @@ function matchesText(value: string, query: string) {
 }
 
 function scoreRecency(date: Date) {
+  // Mirrors the drizzle adapter's `extract(epoch from updated_at)::float8 / 1e12`.
+  // getTime() is milliseconds, so the divisor is 1e15 (= 1000 × 1e12): ms / 1e15 ≡
+  // epoch-seconds / 1e12. Keep both in step — they are equal, not drifted.
   return date.getTime() / 1_000_000_000_000_000;
 }
 

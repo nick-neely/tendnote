@@ -37,13 +37,23 @@ export function createDrizzlePeopleStore(): PeopleStore {
     },
 
     async searchPeople(input) {
+      // The match + order here are the SQL mirror of the shared contract
+      // (`personMatchesPeopleSearch` / `comparePeopleForSearch` in @tendnote/domain):
+      // trimmed case-insensitive substring over display/first/last name, ordered by
+      // display name with a stable id tie-break. The in-memory adapter applies those
+      // rules directly, so its tests validate the fields and ordering production uses.
+      // (Display-name case/locale ordering follows the database collation, as the
+      // domain comparator's localeCompare does — the id tie-break is exact either way.)
       const where: SQL[] = [eq(people.ownerUserId, input.ownerUserId)];
 
-      if (input.query) {
+      // Match the predicate's trim so a padded query behaves identically here and in
+      // the in-memory adapter even when a caller bypasses searchPeopleSchema.
+      const query = input.query?.trim();
+      if (query) {
         const queryFilter = or(
-          ilike(people.displayName, `%${input.query}%`),
-          ilike(people.firstName, `%${input.query}%`),
-          ilike(people.lastName, `%${input.query}%`),
+          ilike(people.displayName, `%${query}%`),
+          ilike(people.firstName, `%${query}%`),
+          ilike(people.lastName, `%${query}%`),
         );
 
         if (queryFilter) {
@@ -60,7 +70,7 @@ export function createDrizzlePeopleStore(): PeopleStore {
         .from(people)
         .where(and(...where))
         .limit(input.limit)
-        .orderBy(people.displayName);
+        .orderBy(people.displayName, people.id);
     },
 
     async getPersonProfile(input) {
