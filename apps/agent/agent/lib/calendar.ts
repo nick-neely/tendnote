@@ -1,7 +1,8 @@
 import {
   type CalendarReader,
-  createDefaultCalendarReader,
-  createGoogleCalendarAdapter,
+  createDefaultGoogleCalendarReader,
+  createDrizzleBetterAuthGoogleCalendarAccessTokenProvider,
+  type GoogleCalendarAccessTokenProvider,
 } from "@tendnote/db/queries/calendar";
 
 /**
@@ -15,29 +16,17 @@ import {
  * to "temporarily unavailable" (ADR-0081) rather than failing the turn.
  */
 
-export type GoogleAccessTokenProvider = (ownerUserId: string) => Promise<string>;
-
-/**
- * Default token provider. The live-token bridge to Better Auth is supplied by the
- * deployment; absent it, this throws so the reader degrades to cache-only +
- * graceful-unavailable rather than pretending to have a token. Passed explicitly
- * (no module-level mutable state) so wiring is per-call and test-isolated.
- */
-const tokenBridgeNotConfigured: GoogleAccessTokenProvider = async () => {
-  throw new Error("Google Calendar live-token bridge is not configured in this runtime.");
-};
-
 /**
  * Build the owner-scoped Calendar reader Eve reads through. The token provider is
- * injected (defaulting to the unconfigured bridge); the deployment passes a real
- * provider once the Better Auth token bridge exists.
+ * injected for tests, defaulting to the Better Auth account-token bridge. Token
+ * custody remains in Better Auth account records; Eve only receives the token at
+ * provider-call time and never stores or logs it.
  */
 export function createOwnerCalendarReader(
   ownerUserId: string,
-  getAccessToken: GoogleAccessTokenProvider = tokenBridgeNotConfigured,
+  getAccessToken: GoogleCalendarAccessTokenProvider = createDrizzleBetterAuthGoogleCalendarAccessTokenProvider(),
 ): CalendarReader {
-  const adapter = createGoogleCalendarAdapter({
-    getAccessToken: () => getAccessToken(ownerUserId),
+  return createDefaultGoogleCalendarReader({
+    getAccessToken: (ref) => getAccessToken({ ...ref, ownerUserId }),
   });
-  return createDefaultCalendarReader(adapter);
 }

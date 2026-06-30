@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { readConnectedOwnerCalendar } from "./calendar";
+import { createDefaultGoogleCalendarReader, readConnectedOwnerCalendar } from "./calendar";
 import { createFailingCalendarAdapter, createFakeCalendarAdapter } from "./calendar/fake-adapter";
 import { createInMemoryCalendarCacheStore } from "./calendar/in-memory-store";
 import { createCalendarReader } from "./calendar/reader";
@@ -74,5 +74,50 @@ describe("readConnectedOwnerCalendar", () => {
     });
 
     expect(outcome).toEqual({ connected: true, result: null });
+  });
+
+  it("can read live on cache miss through the Better Auth token bridge composition", async () => {
+    const tokenCalls: string[] = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            id: "evt-live",
+            summary: "Live coffee",
+            start: { dateTime: "2026-06-30T15:00:00.000Z" },
+            end: { dateTime: "2026-06-30T15:30:00.000Z" },
+            attendees: [{ email: "maya@example.com", displayName: "Maya", self: false }],
+            rawPayloadMustNotLeak: "secret",
+          },
+        ],
+      }),
+      text: async () => "",
+    } as Response);
+    const reader = createDefaultGoogleCalendarReader({
+      cacheStore: createInMemoryCalendarCacheStore(),
+      getAccessToken: async (ref) => {
+        tokenCalls.push(ref.ownerUserId);
+        return "live-token";
+      },
+      now: () => 1000,
+    });
+
+    const outcome = await readConnectedOwnerCalendar(REQUEST, {
+      reader,
+      isConnected: async () => true,
+    });
+
+    expect(outcome.connected).toBe(true);
+    expect(outcome.result?.source).toBe("live");
+    expect(outcome.result?.events[0]).toMatchObject({
+      providerEventId: "evt-live",
+      title: "Live coffee",
+    });
+    expect(Object.keys(outcome.result?.events[0] ?? {})).not.toContain("rawPayloadMustNotLeak");
+    expect(tokenCalls).toEqual(["owner-1"]);
+    expect(fetchSpy.mock.calls[0]?.[1]?.headers).toEqual({ authorization: "Bearer live-token" });
+    fetchSpy.mockRestore();
   });
 });

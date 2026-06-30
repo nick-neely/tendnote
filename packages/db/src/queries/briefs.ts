@@ -15,7 +15,7 @@ import { createBriefLifecycle } from "./briefs/lifecycle";
 import type { ManualBriefInput } from "./briefs/manual";
 import { createManualBriefGeneration } from "./briefs/manual";
 import { type BriefSummaryAdapter, createLlmBriefSummaryAdapter } from "./briefs/summary-adapter";
-import { createDefaultCalendarReader, createGoogleCalendarAdapter } from "./calendar";
+import { createDefaultGoogleCalendarReader } from "./calendar";
 import { acceptSuggestedFollowup } from "./followups";
 import { getRelationshipAgenda } from "./relationship-agenda";
 
@@ -99,21 +99,14 @@ const defaultBriefSummaryAdapter = createDefaultBriefSummaryAdapter();
 // drizzle brief store and the drizzle relationship agenda. Schedule dispatch
 // (#72) and the manual web action (#69) call this shared default so they cannot
 // fork generator behavior.
-// Shared Calendar brief-context provider (#112): brief generation reads minimized
-// highlights through the shared owner-scoped seam. In the scheduled/db context there
-// is no live Better Auth token, so reads are served from the short-lived cache that
-// web/Eve reads warm; a cache miss (or a disconnected calendar) degrades to no
-// highlights. No standalone Calendar sync loop is added.
+// Shared Calendar brief-context provider (#112, #116): brief generation reads
+// minimized highlights through the shared owner-scoped seam. Cache misses can read
+// live using the Better Auth account-token bridge; missing/expired/revoked tokens
+// or transient provider failures degrade to no highlights. No standalone Calendar
+// sync loop is added.
 const defaultCalendarBriefContext: BriefCalendarContextProvider =
   createCalendarBriefContextProvider({
-    readerFor: () =>
-      createDefaultCalendarReader(
-        createGoogleCalendarAdapter({
-          getAccessToken: async () => {
-            throw new Error("No live Google token in scheduled brief context; cache-only.");
-          },
-        }),
-      ),
+    readerFor: () => createDefaultGoogleCalendarReader(),
   });
 
 const defaultBriefGenerator = createBriefGenerator(

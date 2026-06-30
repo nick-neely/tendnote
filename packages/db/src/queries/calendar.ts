@@ -1,10 +1,28 @@
 import type { CalendarReadResult } from "@tendnote/domain";
+import {
+  createDrizzleBetterAuthGoogleCalendarAccessTokenProvider,
+  type GoogleCalendarAccessTokenProvider,
+} from "./calendar/access-token";
 import { createDrizzleCalendarCacheStore } from "./calendar/drizzle-store";
+import { createGoogleCalendarAdapter } from "./calendar/google-adapter";
 import type { CalendarReader } from "./calendar/reader";
 import { CalendarUnavailableError, createCalendarReader } from "./calendar/reader";
-import type { CalendarProviderAdapter, CalendarReadRequest } from "./calendar/types";
+import type {
+  CalendarCacheStore,
+  CalendarProviderAdapter,
+  CalendarReadRequest,
+} from "./calendar/types";
 import { isProviderCapabilityConnected } from "./provider-connections";
 
+export type {
+  BetterAuthGoogleAccountToken,
+  GoogleCalendarAccessTokenProvider,
+} from "./calendar/access-token";
+export {
+  createBetterAuthGoogleCalendarAccessTokenProvider,
+  createDrizzleBetterAuthGoogleCalendarAccessTokenProvider,
+  GoogleCalendarAccessTokenUnavailableError,
+} from "./calendar/access-token";
 export { createDrizzleCalendarCacheStore } from "./calendar/drizzle-store";
 export {
   createFailingCalendarAdapter,
@@ -31,13 +49,36 @@ export type * from "./calendar/types";
  */
 export function createDefaultCalendarReader(
   adapter: CalendarProviderAdapter,
-  options?: { ttlMs?: number; staleMaxMs?: number; now?: () => number },
+  options?: {
+    cacheStore?: CalendarCacheStore;
+    ttlMs?: number;
+    staleMaxMs?: number;
+    now?: () => number;
+  },
 ) {
   return createCalendarReader({
     adapter,
-    cacheStore: createDrizzleCalendarCacheStore(),
+    cacheStore: options?.cacheStore ?? createDrizzleCalendarCacheStore(),
     ...options,
   });
+}
+
+export function createDefaultGoogleCalendarReader(options?: {
+  getAccessToken?: GoogleCalendarAccessTokenProvider;
+  cacheStore?: CalendarCacheStore;
+  ttlMs?: number;
+  staleMaxMs?: number;
+  now?: () => number;
+}) {
+  const getAccessToken =
+    options?.getAccessToken ?? createDrizzleBetterAuthGoogleCalendarAccessTokenProvider();
+
+  return createDefaultCalendarReader(
+    createGoogleCalendarAdapter({
+      getAccessToken,
+    }),
+    options,
+  );
 }
 
 /** Clear an owner's cached Calendar windows for a connection (disconnect, #109). */

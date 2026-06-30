@@ -1,5 +1,6 @@
 import type { CalendarEventSummary } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
+import { createDefaultGoogleCalendarReader } from "../calendar";
 import { createFailingCalendarAdapter, createFakeCalendarAdapter } from "../calendar/fake-adapter";
 import { createInMemoryCalendarCacheStore } from "../calendar/in-memory-store";
 import { createCalendarReader } from "../calendar/reader";
@@ -126,6 +127,46 @@ describe("createCalendarBriefContextProvider", () => {
     const highlights = await provider(WINDOW);
     expect(highlights).toHaveLength(1);
     expect(highlights[0]?.title).toBe("Standup");
+  });
+
+  it("can populate brief highlights from a live cache-miss read", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            id: "evt-live",
+            summary: "Live standup",
+            start: { dateTime: "2026-06-27T15:00:00.000Z" },
+            end: { dateTime: "2026-06-27T15:30:00.000Z" },
+            attendees: [{ email: "maya@example.com", displayName: "Maya", self: false }],
+          },
+        ],
+      }),
+      text: async () => "",
+    } as Response);
+    const provider = createCalendarBriefContextProvider({
+      readerFor: () =>
+        createDefaultGoogleCalendarReader({
+          cacheStore: createInMemoryCalendarCacheStore(),
+          getAccessToken: async () => "brief-token",
+          now: () => 1000,
+        }),
+      isConnected: async () => true,
+    });
+
+    const highlights = await provider(WINDOW);
+
+    expect(highlights).toEqual([
+      {
+        title: "Live standup",
+        start: new Date("2026-06-27T15:00:00.000Z"),
+        allDay: false,
+        reason: "On your calendar, with Maya",
+      },
+    ]);
+    fetchSpy.mockRestore();
   });
 });
 

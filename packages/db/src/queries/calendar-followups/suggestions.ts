@@ -105,7 +105,7 @@ export function createCalendarSuggestionReview(store: CalendarSuggestionStore) {
       },
     ): Promise<CalendarSuggestedFollowup> {
       const suggestion = await store.getSuggestion(input);
-      if (!suggestion || suggestion.status !== "suggested") {
+      if (suggestion?.status !== "suggested") {
         throw new Error("Only suggested Calendar follow-ups can be accepted.");
       }
       if (!suggestion.personId) {
@@ -145,7 +145,7 @@ export function createCalendarSuggestionReview(store: CalendarSuggestionStore) {
       id: string;
     }): Promise<CalendarSuggestedFollowup> {
       const suggestion = await store.getSuggestion(input);
-      if (!suggestion || suggestion.status !== "suggested") {
+      if (suggestion?.status !== "suggested") {
         throw new Error("Only suggested Calendar follow-ups can be dismissed.");
       }
 
