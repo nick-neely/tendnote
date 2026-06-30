@@ -1,4 +1,5 @@
 import { getCurrentBrief } from "@tendnote/db/queries/briefs";
+import { listCalendarSuggestedFollowups } from "@tendnote/db/queries/calendar-followups";
 import { listActiveFollowups, listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { searchPeople } from "@tendnote/db/queries/people";
@@ -10,6 +11,7 @@ import { DashboardRail } from "@/components/dashboard-rail";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
+import { toCalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
 import { toDashboardFollowupView } from "@/lib/followup-view";
 import { getOwnerCalendarPromptNudges } from "@/lib/integrations/calendar-prompt-nudges";
@@ -33,6 +35,7 @@ export default async function Home() {
     dashboardReviews,
     dashboardFollowups,
     dashboardFollowupReviews,
+    dashboardCalendarSuggestions,
     dailyBrief,
     weeklyBrief,
     calendarNudges,
@@ -41,6 +44,7 @@ export default async function Home() {
     getDashboardReviews(ownerUserId),
     getDashboardFollowups(ownerUserId),
     getDashboardFollowupReviews(ownerUserId),
+    getDashboardCalendarSuggestions(ownerUserId),
     getDashboardBrief(ownerUserId, "daily"),
     getDashboardBrief(ownerUserId, "weekly"),
     getOwnerCalendarPromptNudges(),
@@ -74,6 +78,7 @@ export default async function Home() {
               dailyBrief={dailyBrief}
               followupReviews={dashboardFollowupReviews}
               followups={dashboardFollowups}
+              calendarSuggestions={dashboardCalendarSuggestions}
               people={people}
               reviews={dashboardReviews}
               weeklyBrief={weeklyBrief}
@@ -133,6 +138,21 @@ async function getDashboardFollowupReviews(ownerUserId: string) {
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.warn("Unable to load suggested follow-ups.", error);
+    }
+
+    return [];
+  }
+}
+
+async function getDashboardCalendarSuggestions(ownerUserId: string) {
+  try {
+    const suggestions = await listCalendarSuggestedFollowups(ownerUserId);
+    return suggestions
+      .slice(0, DASHBOARD_FOLLOWUP_LIMIT)
+      .map((suggestion) => toCalendarSuggestionReviewView(suggestion));
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Unable to load Calendar suggested follow-ups.", error);
     }
 
     return [];

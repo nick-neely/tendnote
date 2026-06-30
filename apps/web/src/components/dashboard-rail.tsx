@@ -5,6 +5,7 @@ import { ArrowRightIcon, CakeIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { DashboardBriefSection } from "@/components/dashboard-brief-section";
+import { DashboardCalendarSuggestionsSection } from "@/components/dashboard-calendar-suggestions-section";
 import { DashboardFollowupsSection } from "@/components/dashboard-followups-section";
 import {
   DashboardReviewSection,
@@ -14,6 +15,7 @@ import { DashboardSuggestedFollowupsSection } from "@/components/dashboard-sugge
 import { TabCount } from "@/components/tab-count";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { BriefView } from "@/lib/brief-view";
+import type { CalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
 import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brief";
 import type { DashboardFollowupView } from "@/lib/followup-view";
 import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
@@ -47,6 +49,7 @@ export function DashboardRail({
   birthdays,
   followups: initialFollowups,
   followupReviews: initialFollowupReviews,
+  calendarSuggestions: initialCalendarSuggestions,
   reviews: initialReviews,
   dailyBrief,
   weeklyBrief,
@@ -55,22 +58,26 @@ export function DashboardRail({
   birthdays: UpcomingBirthday[];
   followups: DashboardFollowupView[];
   followupReviews: SuggestedFollowupReviewView[];
+  calendarSuggestions: CalendarSuggestionReviewView[];
   reviews: DashboardReviewView[];
   dailyBrief: BriefView | null;
   weeklyBrief: BriefView | null;
 }) {
   const [followups, setFollowups] = useState(initialFollowups);
   const [suggestedFollowups, setSuggestedFollowups] = useState(initialFollowupReviews);
+  const [calendarSuggestions, setCalendarSuggestions] = useState(initialCalendarSuggestions);
   const [memoryReviews, setMemoryReviews] = useState(initialReviews);
 
   const resolveFollowup = (id: string) =>
     setFollowups((current) => current.filter((followup) => followup.id !== id));
   const resolveSuggestedFollowup = (id: string) =>
     setSuggestedFollowups((current) => current.filter((review) => review.followup.id !== id));
+  const resolveCalendarSuggestion = (id: string) =>
+    setCalendarSuggestions((current) => current.filter((suggestion) => suggestion.id !== id));
   const resolveReview = (memoryId: string) =>
     setMemoryReviews((current) => current.filter((review) => review.memory.id !== memoryId));
 
-  const followupCount = followups.length + suggestedFollowups.length;
+  const followupCount = followups.length + suggestedFollowups.length + calendarSuggestions.length;
   const reviewCount = memoryReviews.length;
 
   return (
@@ -125,6 +132,10 @@ export function DashboardRail({
               heading="Suggested"
               onResolve={resolveSuggestedFollowup}
               reviews={suggestedFollowups}
+            />
+            <DashboardCalendarSuggestionsSection
+              onResolve={resolveCalendarSuggestion}
+              suggestions={calendarSuggestions}
             />
           </>
         )}

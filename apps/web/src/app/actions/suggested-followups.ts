@@ -1,6 +1,10 @@
 "use server";
 
 import {
+  acceptCalendarSuggestedFollowup,
+  dismissCalendarSuggestedFollowup,
+} from "@tendnote/db/queries/calendar-followups";
+import {
   acceptSuggestedFollowup,
   dismissSuggestedFollowup,
   editSuggestedFollowup,
@@ -78,4 +82,45 @@ export async function dismissSuggestedFollowupAction(input: {
 
   revalidatePerson(followup.personId);
   return { followupId: followup.id, status: followup.status };
+}
+
+const calendarSuggestionActionSchema = z.object({ suggestionId: z.uuid() });
+
+export type CalendarSuggestedFollowupResolution = {
+  suggestionId: string;
+  status: string;
+  acceptedFollowupId: string | null;
+};
+
+export async function acceptCalendarSuggestedFollowupAction(input: {
+  suggestionId: string;
+}): Promise<CalendarSuggestedFollowupResolution> {
+  const { suggestionId } = calendarSuggestionActionSchema.parse(input);
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const suggestion = await acceptCalendarSuggestedFollowup({ ownerUserId, id: suggestionId });
+
+  if (suggestion.personId) {
+    revalidatePerson(suggestion.personId);
+  }
+  revalidatePath("/");
+  return {
+    suggestionId: suggestion.id,
+    status: suggestion.status,
+    acceptedFollowupId: suggestion.acceptedFollowupId,
+  };
+}
+
+export async function dismissCalendarSuggestedFollowupAction(input: {
+  suggestionId: string;
+}): Promise<CalendarSuggestedFollowupResolution> {
+  const { suggestionId } = calendarSuggestionActionSchema.parse(input);
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const suggestion = await dismissCalendarSuggestedFollowup({ ownerUserId, id: suggestionId });
+
+  revalidatePath("/");
+  return {
+    suggestionId: suggestion.id,
+    status: suggestion.status,
+    acceptedFollowupId: suggestion.acceptedFollowupId,
+  };
 }
