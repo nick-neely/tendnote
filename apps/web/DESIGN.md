@@ -235,6 +235,22 @@ Empty states teach the next action without guilt:
 Use skeletons shaped like the eventual content. Avoid centered spinners except for
 small isolated controls.
 
+For transient "thinking" / "working" copy (Eve's in-flight tool lines), use the
+**processing shimmer** (`Shimmer` in `components/ui/shimmer.tsx`, `.tn-shimmer*` in
+`globals.css`). It stacks two copies of the text: a solid `muted-foreground` base
+that is always readable, and a `foreground`-ink band masked into a sweep on top —
+a calm wave of ink moving through the word. This is the **one sanctioned way** to
+shimmer text here; do not reach for the common alpha-only mask (sweeping the text's
+opacity), which dims the text toward the page background and collapses to ~1.6:1 on
+a white surface — the light-mode washout we explicitly rejected. The rules: never
+let the text go transparent (the base layer guarantees legibility — every frame of
+the sweep stays 8:1–18:1 in both themes); keep it a single-hue luminance wave, never
+`background-clip: text` over a multi-color gradient (that is the banned gradient
+text); let the theme tokens flip it (it darkens in light, brightens in dark, with no
+theme-specific CSS); and honor reduced motion by dropping the band to the static
+base line. Pair it with the pulsing sage dot, which carries most of the liveliness —
+the shimmer stays a whisper, not a sheen.
+
 ### Scrollbars
 
 Tendnote uses a **custom themed scrollbar** (see `globals.css`): a slim rounded
