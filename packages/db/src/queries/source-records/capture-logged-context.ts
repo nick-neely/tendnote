@@ -11,14 +11,17 @@ import type { CaptureSourceRecordInput, CaptureSourceRecordResult } from "./type
  * the branch, the capture-surface metadata, and the swallow-on-failure policy live in
  * one place instead of being hand-assembled per surface.
  */
+/** Where a logged-context capture originated, recorded in the Source Record metadata. */
+export type CaptureSurface = "eve" | "global_assistant" | "person_assistant";
+
 export type CaptureLoggedContextInput = {
   ownerUserId: string;
   retainedContent: string;
   /** Link to an already-resolved person; omit when identity is ambiguous. */
   personId?: string;
   sensitivity?: CaptureSourceRecordInput["sensitivity"];
-  /** Where the capture came from, recorded in metadata (e.g. "eve", "global_assistant"). */
-  captureSurface: string;
+  /** Where the capture came from, recorded in metadata. */
+  captureSurface: CaptureSurface;
 };
 
 export type CaptureLoggedContextDeps = {

@@ -13,6 +13,7 @@ export { createSourceRecordCapture } from "./source-records/capture";
 export {
   type CaptureLoggedContextDeps,
   type CaptureLoggedContextInput,
+  type CaptureSurface,
   captureLoggedContext,
 } from "./source-records/capture-logged-context";
 export {

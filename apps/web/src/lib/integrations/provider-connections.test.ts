@@ -5,7 +5,6 @@ const {
   setProviderConnectionStatus,
   connectProviderConnection,
   markProviderConnectionRevoked,
-  clearOwnerCalendarCache,
   requireAdmittedOwner,
   requireAdmittedOwnerForAction,
 } = vi.hoisted(() => ({
@@ -13,7 +12,6 @@ const {
   setProviderConnectionStatus: vi.fn(),
   connectProviderConnection: vi.fn(),
   markProviderConnectionRevoked: vi.fn(),
-  clearOwnerCalendarCache: vi.fn(),
   requireAdmittedOwner: vi.fn(),
   requireAdmittedOwnerForAction: vi.fn(),
 }));
@@ -26,7 +24,6 @@ vi.mock("@tendnote/db/queries/provider-connections", () => ({
   connectProviderConnection,
   markProviderConnectionRevoked,
 }));
-vi.mock("@tendnote/db/queries/calendar", () => ({ clearOwnerCalendarCache }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwner,
   requireAdmittedOwnerForAction,
@@ -100,12 +97,12 @@ describe("setOwnerProviderConnectionStatus", () => {
 });
 
 describe("disconnectOwnerGoogleCalendar", () => {
-  it("fails closed when the action gate denies the caller — no revoke or cache clear", async () => {
+  it("fails closed when the action gate denies the caller — nothing is revoked", async () => {
     requireAdmittedOwnerForAction.mockRejectedValue(new Error("not admitted"));
 
     await expect(disconnectOwnerGoogleCalendar()).rejects.toThrow();
-    // The gate runs before any provider/cache mutation, so nothing is touched.
-    expect(clearOwnerCalendarCache).not.toHaveBeenCalled();
+    // The gate runs before any provider mutation; markRevoked — which also clears the
+    // Calendar cache now (ADR-0080) — is never reached.
     expect(markProviderConnectionRevoked).not.toHaveBeenCalled();
   });
 });
