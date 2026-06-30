@@ -114,6 +114,39 @@ describe("Phase 2C Calendar integration boundaries", () => {
     }
   });
 
+  it("adds no Gmail, Contacts, external-send, or household behavior (Phase 2C scope, #115)", () => {
+    // No new routes for those out-of-scope capabilities.
+    for (const route of ["gmail", "contacts", "household", "households"]) {
+      expect(existsSync(join(webApp, route))).toBe(false);
+    }
+    const sources = readSources(webSrc);
+    for (const forbidden of [
+      "gmail.googleapis",
+      "people.googleapis", // Google Contacts/People API
+      "auth/gmail",
+      "auth/contacts",
+      // External-send sinks: Phase 2C ships no outbound mail transport or Gmail
+      // send path (Eve's no-send-without-approval guard stays the only authority).
+      "nodemailer",
+      "sendgrid",
+      "mailgun",
+      "transporter.send",
+      "messages/send", // Gmail send REST
+      "auth/gmail.send",
+    ]) {
+      expect(sources).not.toContain(forbidden);
+    }
+  });
+
+  it("keeps prompt nudges Calendar-only — not a broad recommendations system (#114/#115)", () => {
+    // The generic prompt-nudge source enum supports only the Calendar source in 2C.
+    const promptNudges = readFileSync(
+      join(repoRoot, "packages/domain/src/prompt-nudges.ts"),
+      "utf8",
+    );
+    expect(promptNudges).toMatch(/promptNudgeSourceSchema\s*=\s*z\.enum\(\["calendar"\]\)/);
+  });
+
   it("keeps the governing ADRs present", () => {
     for (const adr of [
       "0069-provider-connections-before-google-oauth.md",
