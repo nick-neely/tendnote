@@ -1,4 +1,9 @@
-import { z } from "zod";
+import {
+  assistantToolResultSchemas,
+  type RelationshipAgendaToolResult,
+  type SuggestedFollowupReviewItemOutput,
+  type SuggestedMemoryReviewItemOutput,
+} from "@tendnote/domain";
 import type {
   AssistantToolView,
   RelationshipAgendaCandidateView,
@@ -12,75 +17,16 @@ export type EveToolResult = {
   readonly output: unknown;
 };
 
-const sourceRecordOutput = z.object({
-  sourceRecord: z.object({ id: z.string(), content: z.string() }),
-  linkedPersonId: z.string().nullish(),
-});
+/**
+ * Parsing is driven by the shared contract in @tendnote/domain
+ * (`assistantToolResultSchemas`): the web no longer re-declares the persisted
+ * shapes, it consumes the single source of truth and maps the parsed data to its
+ * view types. Drift between a tool's output and the contract is caught centrally by
+ * the domain schema and the assistant-review guard rather than silently rendering
+ * `generic` here.
+ */
 
-const memoryOutput = z.object({
-  memory: z.object({ id: z.string(), content: z.string(), sourceRecordId: z.string().nullish() }),
-  person: z.object({ id: z.string(), displayName: z.string() }).nullish(),
-});
-
-const personOutput = z.object({
-  person: z.object({
-    id: z.string(),
-    displayName: z.string(),
-    relationshipType: z.string().nullish(),
-  }),
-});
-
-const personUpdatedOutput = z.object({
-  updated: z.literal(true),
-  person: z.object({
-    id: z.string(),
-    displayName: z.string(),
-    relationshipType: z.string().nullish(),
-  }),
-  updatedFields: z.array(z.string()),
-});
-
-const personContextOutput = z.object({
-  found: z.literal(true),
-  person: z.object({ id: z.string(), displayName: z.string() }),
-  snapshotStatus: z.string(),
-  approvedMemories: z.array(z.unknown()),
-  sourceRecords: z.array(z.unknown()),
-  suggestedMemories: z.array(z.unknown()),
-});
-
-const messageDraftOutput = z.object({
-  created: z.literal(true),
-  draft: z.object({
-    id: z.string(),
-    personId: z.string().nullish(),
-    status: z.string(),
-    body: z.string(),
-  }),
-  grounding: z.array(z.object({ trust: z.string(), label: z.string() })).optional(),
-});
-
-const suggestedReviewItem = z.object({
-  person: z.object({ id: z.string(), displayName: z.string() }).nullish(),
-  memory: z.object({
-    id: z.string(),
-    personId: z.string().nullish(),
-    content: z.string(),
-    sourceRecordId: z.string().nullish(),
-  }),
-});
-
-const suggestedMemoryOutput = z.object({
-  found: z.literal(true),
-  ...suggestedReviewItem.shape,
-});
-
-const suggestedMemoryListOutput = z.object({
-  found: z.literal(true),
-  reviews: z.array(suggestedReviewItem),
-});
-
-function toReviewItem(parsed: z.infer<typeof suggestedReviewItem>): SuggestedReviewItemView {
+function toReviewItem(parsed: SuggestedMemoryReviewItemOutput): SuggestedReviewItemView {
   return {
     memoryId: parsed.memory.id,
     content: parsed.memory.content,
@@ -89,27 +35,6 @@ function toReviewItem(parsed: z.infer<typeof suggestedReviewItem>): SuggestedRev
     personName: parsed.person?.displayName ?? null,
   };
 }
-
-const suggestedFollowupReviewItem = z.object({
-  person: z.object({ id: z.string(), displayName: z.string() }).nullish(),
-  followup: z.object({
-    id: z.string(),
-    personId: z.string().nullish(),
-    reason: z.string(),
-    dueAt: z.string(),
-  }),
-  sourceRecord: z.object({ id: z.string() }).nullish(),
-});
-
-const suggestedFollowupOutput = z.object({
-  found: z.literal(true),
-  ...suggestedFollowupReviewItem.shape,
-});
-
-const suggestedFollowupListOutput = z.object({
-  found: z.literal(true),
-  reviews: z.array(suggestedFollowupReviewItem),
-});
 
 function formatDueLabel(iso: string): string {
   const date = new Date(iso);
@@ -120,7 +45,7 @@ function formatDueLabel(iso: string): string {
 }
 
 function toFollowupReviewItem(
-  parsed: z.infer<typeof suggestedFollowupReviewItem>,
+  parsed: SuggestedFollowupReviewItemOutput,
 ): SuggestedFollowupReviewItemView {
   return {
     followupId: parsed.followup.id,
@@ -132,75 +57,8 @@ function toFollowupReviewItem(
   };
 }
 
-const relationshipContextSearchOutput = z.object({
-  results: z.array(
-    z.object({
-      recordKind: z.enum(["person", "memory", "source_record"]),
-      recordId: z.string(),
-      relatedPersonId: z.string().nullish(),
-      relatedPersonDisplayName: z.string().nullish(),
-      label: z.string(),
-      snippet: z.string(),
-      matchedFields: z.array(z.string()),
-      trustLevel: z.enum(["identity_reference", "confirmed_fact", "logged_context"]),
-      sensitivity: z.enum(["normal", "sensitive", "restricted"]),
-    }),
-  ),
-});
-
-const semanticContextSearchOutput = z.object({
-  results: z.array(
-    z.object({
-      recordKind: z.enum(["memory", "source_record"]),
-      recordId: z.string(),
-      relatedPersonId: z.string().nullish(),
-      relatedPersonDisplayName: z.string().nullish(),
-      snippet: z.string(),
-      similarity: z.number(),
-      trustLevel: z.enum(["confirmed_fact", "logged_context"]),
-      sensitivity: z.enum(["normal", "sensitive", "restricted"]),
-    }),
-  ),
-});
-
-const relationshipAgendaOutput = z.object({
-  candidates: z.array(
-    z.object({
-      kind: z.enum([
-        "due_followup",
-        "birthday",
-        "review_item",
-        "recent_context",
-        "semantic_context",
-        "suggested_followup",
-      ]),
-      personId: z.string().nullish(),
-      personDisplayName: z.string().nullish(),
-      title: z.string(),
-      reason: z.string(),
-      dueAt: z.string().nullish(),
-      sourceRefs: z.array(
-        z.object({
-          kind: z.enum(["followup", "person", "memory", "source_record"]),
-          id: z.string(),
-        }),
-      ),
-      trustLevel: z.enum([
-        "active_reminder",
-        "stored_profile_data",
-        "logged_context",
-        "confirmed_fact",
-        "tentative",
-      ]),
-      sensitivity: z.enum(["normal", "sensitive", "restricted"]),
-      rank: z.number(),
-    }),
-  ),
-  window: z.object({ start: z.string(), end: z.string() }).nullish(),
-});
-
 function toRelationshipAgendaCandidate(
-  candidate: z.infer<typeof relationshipAgendaOutput>["candidates"][number],
+  candidate: RelationshipAgendaToolResult["candidates"][number],
 ): RelationshipAgendaCandidateView {
   return {
     ...candidate,
@@ -213,15 +71,15 @@ function toRelationshipAgendaCandidate(
 
 /**
  * Maps one persisted Eve tool result into a renderable view, keyed on the tool
- * that produced it. Parsing is total: any shape that does not match the expected
- * persisted records falls back to `generic`.
+ * that produced it. Parsing is total: any shape that does not match the shared
+ * contract falls back to `generic`.
  */
 export function toAssistantToolView(toolResult: EveToolResult): AssistantToolView {
   const { toolName, output } = toolResult;
 
   switch (toolName) {
     case "capture_source_record": {
-      const parsed = sourceRecordOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.capture_source_record.safeParse(output);
       if (!parsed.success) break;
       return {
         kind: "saved_source_record",
@@ -231,7 +89,7 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       };
     }
     case "capture_memory": {
-      const parsed = memoryOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.capture_memory.safeParse(output);
       if (!parsed.success) break;
       return {
         kind: "saved_memory",
@@ -243,7 +101,7 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       };
     }
     case "create_person": {
-      const parsed = personOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.create_person.safeParse(output);
       if (!parsed.success) break;
       return {
         kind: "added_person",
@@ -253,7 +111,7 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       };
     }
     case "update_person": {
-      const parsed = personUpdatedOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.update_person.safeParse(output);
       if (!parsed.success) break;
       return {
         kind: "updated_person",
@@ -264,7 +122,7 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       };
     }
     case "get_person_context": {
-      const parsed = personContextOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.get_person_context.safeParse(output);
       if (!parsed.success) break;
       return {
         kind: "person_context",
@@ -277,7 +135,7 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       };
     }
     case "create_message_draft": {
-      const parsed = messageDraftOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.create_message_draft.safeParse(output);
       if (!parsed.success) break;
       return {
         kind: "message_draft",
@@ -289,12 +147,12 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       };
     }
     case "get_suggested_memory_review": {
-      const parsed = suggestedMemoryOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.get_suggested_memory_review.safeParse(output);
       if (!parsed.success) break;
       return { kind: "suggested_memory_review", ...toReviewItem(parsed.data) };
     }
     case "list_suggested_memory_reviews": {
-      const parsed = suggestedMemoryListOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.list_suggested_memory_reviews.safeParse(output);
       if (!parsed.success) break;
       return {
         kind: "suggested_memory_review_list",
@@ -303,12 +161,12 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
     }
     case "propose_followup":
     case "get_suggested_followup_review": {
-      const parsed = suggestedFollowupOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.get_suggested_followup_review.safeParse(output);
       if (!parsed.success) break;
       return { kind: "suggested_followup_review", ...toFollowupReviewItem(parsed.data) };
     }
     case "list_suggested_followup_reviews": {
-      const parsed = suggestedFollowupListOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.list_suggested_followup_reviews.safeParse(output);
       if (!parsed.success) break;
       return {
         kind: "suggested_followup_review_list",
@@ -316,7 +174,7 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       };
     }
     case "search_relationship_context": {
-      const parsed = relationshipContextSearchOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.search_relationship_context.safeParse(output);
       if (!parsed.success) break;
       return {
         kind: "relationship_context_search",
@@ -328,7 +186,7 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       };
     }
     case "search_semantic_context": {
-      const parsed = semanticContextSearchOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.search_semantic_context.safeParse(output);
       if (!parsed.success) break;
       return {
         kind: "semantic_context_search",
@@ -340,7 +198,7 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       };
     }
     case "get_relationship_agenda": {
-      const parsed = relationshipAgendaOutput.safeParse(output);
+      const parsed = assistantToolResultSchemas.get_relationship_agenda.safeParse(output);
       if (!parsed.success) break;
       return {
         kind: "relationship_agenda",

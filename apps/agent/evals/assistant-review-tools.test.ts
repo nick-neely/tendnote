@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { RENDERED_TOOL_NAMES } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { authoredInstructions } from "./instructions-source";
 
@@ -285,4 +286,17 @@ describe("tools do not bypass owner scoping or scope/sensitivity rules", () => {
       expect(source).not.toMatch(/scope:\s*["']?(shared|household)/);
     });
   }
+});
+
+describe("the web render contract stays in lock-step with the agent's tools", () => {
+  it("has a tool for every rendered tool-result schema (no orphaned contract)", () => {
+    // RENDERED_TOOL_NAMES is the single source of truth (@tendnote/domain) for which
+    // tool outputs the web renders. If a rendered tool is renamed or removed without
+    // updating the contract, its results would silently fall back to `generic`; this
+    // guard makes that a failing test instead.
+    expect(RENDERED_TOOL_NAMES.length).toBeGreaterThan(0);
+    for (const toolName of RENDERED_TOOL_NAMES) {
+      expect(toolFiles).toContain(`${toolName}.ts`);
+    }
+  });
 });

@@ -1,3 +1,4 @@
+import { RENDERED_TOOL_NAMES } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { toAssistantToolView } from "./tool-result-parse";
 import {
@@ -760,5 +761,15 @@ describe("activeToolLabel (in-flight tool → working copy)", () => {
 
   it("humanizes unknown tools with a trailing ellipsis", () => {
     expect(activeToolLabel("some_future_tool")).toBe("some future tool…");
+  });
+
+  it("has an explicit working label for every rendered tool in the shared contract", () => {
+    // Every tool that persists a renderable result (the @tendnote/domain registry)
+    // must have a hand-written shimmer label, so the label map can't silently drift
+    // behind the contract and fall back to the slugified tool name.
+    for (const toolName of RENDERED_TOOL_NAMES) {
+      const fallback = `${toolName.replace(/_/g, " ")}…`;
+      expect(activeToolLabel(toolName)).not.toBe(fallback);
+    }
   });
 });
