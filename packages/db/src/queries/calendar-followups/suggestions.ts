@@ -170,3 +170,5 @@ export function createCalendarSuggestionReview(store: CalendarSuggestionStore) {
     },
   };
 }
+
+export type CalendarSuggestionReview = ReturnType<typeof createCalendarSuggestionReview>;

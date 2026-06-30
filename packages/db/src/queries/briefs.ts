@@ -16,6 +16,7 @@ import type { ManualBriefInput } from "./briefs/manual";
 import { createManualBriefGeneration } from "./briefs/manual";
 import { type BriefSummaryAdapter, createLlmBriefSummaryAdapter } from "./briefs/summary-adapter";
 import { createDefaultGoogleCalendarReader } from "./calendar";
+import { runCalendarSuggestionWorkflow } from "./calendar-followups";
 import { acceptSuggestedFollowup } from "./followups";
 import { getRelationshipAgenda } from "./relationship-agenda";
 
@@ -115,8 +116,20 @@ const defaultBriefGenerator = createBriefGenerator(
   { summaryAdapter: defaultBriefSummaryAdapter, calendarContext: defaultCalendarBriefContext },
 );
 
-export function generateBrief(input: GenerateBriefInput) {
-  return defaultBriefGenerator.generateBrief(input);
+async function runCalendarSuggestionsBestEffort(input: { ownerUserId: string; now?: Date }) {
+  try {
+    await runCalendarSuggestionWorkflow(input);
+  } catch {
+    // Suggestion generation is schedule-shaped adjunct work (#117). Brief
+    // persistence must not fail because Calendar is disconnected/unavailable or
+    // because a bounded suggestion run failed.
+  }
+}
+
+export async function generateBrief(input: GenerateBriefInput) {
+  const brief = await defaultBriefGenerator.generateBrief(input);
+  await runCalendarSuggestionsBestEffort({ ownerUserId: input.ownerUserId, now: input.now });
+  return brief;
 }
 
 // Manual generate/regenerate default: the audited owner-scoped seam the web action
@@ -129,8 +142,10 @@ const defaultManualBriefGeneration = createManualBriefGeneration(
   { summaryAdapter: defaultBriefSummaryAdapter, calendarContext: defaultCalendarBriefContext },
 );
 
-export function generateManualBrief(input: ManualBriefInput) {
-  return defaultManualBriefGeneration.generateCurrentBrief(input);
+export async function generateManualBrief(input: ManualBriefInput) {
+  const brief = await defaultManualBriefGeneration.generateCurrentBrief(input);
+  await runCalendarSuggestionsBestEffort({ ownerUserId: input.ownerUserId, now: input.now });
+  return brief;
 }
 
 // Dashboard read + item-action defaults (issue #70). One drizzle lifecycle store
