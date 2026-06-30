@@ -5,8 +5,10 @@ import { createInMemoryCalendarCacheStore } from "./calendar/in-memory-store";
 import {
   CalendarUnavailableError,
   createCalendarReader,
+  DEFAULT_CALENDAR_STALE_MAX_MS,
   DEFAULT_CALENDAR_TTL_MS,
 } from "./calendar/reader";
+import type { CalendarCacheEntry } from "./calendar/types";
 
 const OWNER = "owner-1";
 const CONNECTION = { ownerUserId: OWNER, providerKey: "google", capabilityKey: "calendar" };
@@ -167,5 +169,85 @@ describe("createCalendarReader", () => {
     const cleared = await cacheStore.clearConnection(CONNECTION);
     expect(cleared).toBe(2);
     expect(cacheStore.entries()).toHaveLength(0);
+  });
+
+  it("prunes a connection's dead windows after a live read so the cache stays bounded", async () => {
+    // A long-dead window from an earlier `now`, past the stale-fallback horizon.
+    const cacheStore = createInMemoryCalendarCacheStore([
+      cacheEntry({
+        windowKey: "ancient",
+        fetchedAt: new Date(NOW_MS - DEFAULT_CALENDAR_STALE_MAX_MS - 1),
+      }),
+    ]);
+    const adapter = createFakeCalendarAdapter([event()]);
+    const reader = createCalendarReader({ adapter, cacheStore, now: () => NOW_MS });
+
+    await reader.readCalendarEvents({ ...CONNECTION, ...WINDOW });
+
+    // The dead window is gone; only the just-written fresh window remains, so a
+    // moving window key cannot grow the cache without bound.
+    const keys = cacheStore.entries().map((entry) => entry.windowKey);
+    expect(keys).not.toContain("ancient");
+    expect(cacheStore.entries()).toHaveLength(1);
+  });
+});
+
+const NOW_MS = 1_000_000_000;
+
+/** A minimal cache entry for the given connection, for eviction assertions. */
+function cacheEntry(input: {
+  windowKey: string;
+  fetchedAt: Date;
+  calendarId?: string;
+  ownerUserId?: string;
+}): CalendarCacheEntry {
+  return {
+    ...CONNECTION,
+    ownerUserId: input.ownerUserId ?? CONNECTION.ownerUserId,
+    calendarId: input.calendarId ?? "primary",
+    windowKey: input.windowKey,
+    events: [],
+    fetchedAt: input.fetchedAt,
+    expiresAt: new Date(input.fetchedAt.getTime() + DEFAULT_CALENDAR_TTL_MS),
+  };
+}
+
+describe("calendar cache eviction", () => {
+  it("evicts rows past the stale-fallback horizon and keeps serviceable ones", async () => {
+    const now = new Date(NOW_MS);
+    const store = createInMemoryCalendarCacheStore([
+      cacheEntry({
+        windowKey: "dead",
+        fetchedAt: new Date(NOW_MS - DEFAULT_CALENDAR_STALE_MAX_MS - 1),
+      }),
+      cacheEntry({ windowKey: "serviceable", fetchedAt: new Date(NOW_MS - 1_000) }),
+    ]);
+
+    const evicted = await store.evictExpired({
+      ref: CONNECTION,
+      now,
+      staleMaxMs: DEFAULT_CALENDAR_STALE_MAX_MS,
+    });
+
+    expect(evicted).toBe(1);
+    expect(store.entries().map((entry) => entry.windowKey)).toEqual(["serviceable"]);
+  });
+
+  it("evicts only the given connection's rows", async () => {
+    const now = new Date(NOW_MS);
+    const dead = new Date(NOW_MS - DEFAULT_CALENDAR_STALE_MAX_MS - 1);
+    const store = createInMemoryCalendarCacheStore([
+      cacheEntry({ windowKey: "mine", fetchedAt: dead }),
+      cacheEntry({ windowKey: "theirs", fetchedAt: dead, ownerUserId: "owner-2" }),
+    ]);
+
+    const evicted = await store.evictExpired({
+      ref: CONNECTION,
+      now,
+      staleMaxMs: DEFAULT_CALENDAR_STALE_MAX_MS,
+    });
+
+    expect(evicted).toBe(1);
+    expect(store.entries().map((entry) => entry.ownerUserId)).toEqual(["owner-2"]);
   });
 });

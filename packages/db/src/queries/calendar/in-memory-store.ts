@@ -50,6 +50,18 @@ export function createInMemoryCalendarCacheStore(
       return cleared;
     },
 
+    async evictExpired({ ref, now, staleMaxMs }) {
+      const horizonMs = now.getTime() - staleMaxMs;
+      let evicted = 0;
+      for (const [mapKey, entry] of cache) {
+        if (matchesConnection(entry, ref) && entry.fetchedAt.getTime() < horizonMs) {
+          cache.delete(mapKey);
+          evicted += 1;
+        }
+      }
+      return evicted;
+    },
+
     entries() {
       return [...cache.values()];
     },

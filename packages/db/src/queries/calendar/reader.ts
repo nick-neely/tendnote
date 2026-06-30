@@ -92,6 +92,11 @@ export function createCalendarReader(options: CalendarReaderOptions) {
         const fetchedAt = new Date(nowMs);
         const expiresAt = new Date(nowMs + ttlMs);
         await options.cacheStore.put({ ...key, events, fetchedAt, expiresAt });
+        // Keep the cache bounded (ADR-0075): the window key derives from `now`, so
+        // each live read writes a fresh row. Prune this connection's rows that are
+        // past the stale-fallback horizon so a moving window cannot accumulate rows
+        // without limit. Runs only on a live read (a cache miss), not on cache hits.
+        await options.cacheStore.evictExpired({ ref, now: new Date(nowMs), staleMaxMs });
         return { events, source: "live", stale: false, fetchedAt, expiresAt };
       } catch (error) {
         // Live failure (transient quota/network/etc.): serve a fresh-enough expired

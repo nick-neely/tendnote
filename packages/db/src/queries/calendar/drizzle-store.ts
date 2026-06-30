@@ -1,5 +1,5 @@
 import { calendarEventSummarySchema } from "@tendnote/domain";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { getDb } from "../../client";
 import { calendarEventCache } from "../../schema";
 import type {
@@ -86,6 +86,26 @@ export function createDrizzleCalendarCacheStore(): CalendarCacheStore {
             eq(calendarEventCache.ownerUserId, ref.ownerUserId),
             eq(calendarEventCache.providerKey, ref.providerKey),
             eq(calendarEventCache.capabilityKey, ref.capabilityKey),
+          ),
+        )
+        .returning({ id: calendarEventCache.id });
+
+      return deleted.length;
+    },
+
+    async evictExpired({ ref, now, staleMaxMs }) {
+      // Past the stale-fallback horizon a row can never be served again, so prune it
+      // (uses the fetched_at / expires_at-adjacent index). Keeps the cache bounded
+      // even though the window key moves with `now`.
+      const horizon = new Date(now.getTime() - staleMaxMs);
+      const deleted = await getDb()
+        .delete(calendarEventCache)
+        .where(
+          and(
+            eq(calendarEventCache.ownerUserId, ref.ownerUserId),
+            eq(calendarEventCache.providerKey, ref.providerKey),
+            eq(calendarEventCache.capabilityKey, ref.capabilityKey),
+            lt(calendarEventCache.fetchedAt, horizon),
           ),
         )
         .returning({ id: calendarEventCache.id });

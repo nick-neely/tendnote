@@ -50,4 +50,17 @@ export type CalendarCacheStore = {
   get: (key: CalendarCacheKey) => Promise<CalendarCacheEntry | null>;
   put: (entry: CalendarCacheEntry) => Promise<void>;
   clearConnection: (ref: CalendarConnectionRef) => Promise<number>;
+  /**
+   * Prune a connection's cache rows that can no longer be served — not even as a
+   * stale fallback (ADR-0075 "expire aggressively", ADR-0081). An entry is
+   * serviceable while `now - fetchedAt <= staleMaxMs`; this removes those older than
+   * that horizon and returns how many rows were deleted. The window key derives from
+   * a moving `now`, so each live read writes a fresh row; the reader calls this after
+   * every live fetch to keep the cache bounded without a separate sweeper.
+   */
+  evictExpired: (input: {
+    ref: CalendarConnectionRef;
+    now: Date;
+    staleMaxMs: number;
+  }) => Promise<number>;
 };
