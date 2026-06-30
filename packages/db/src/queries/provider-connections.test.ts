@@ -336,3 +336,86 @@ describe("provider connection lifecycle", () => {
     await expect(store.listAuditLogEntries({ ownerUserId: OTHER_OWNER })).resolves.toEqual([]);
   });
 });
+
+describe("revoke clears cached provider data (ADR-0080)", () => {
+  const REF = { ownerUserId: OWNER, providerKey: "google", capabilityKey: "calendar" } as const;
+
+  it("runs onRevoke when markProviderConnectionRevoked transitions to revoked", async () => {
+    const cleared: Array<{ ownerUserId: string; providerKey: string; capabilityKey: string }> = [];
+    const store = createInMemoryProviderConnectionStore({
+      providerConnections: [connectionFixture({ ownerUserId: OWNER, status: "connected" })],
+    });
+    const queries = createProviderConnectionQueries(store, {
+      onRevoke: async (ref) => {
+        cleared.push(ref);
+      },
+    });
+
+    await queries.markProviderConnectionRevoked(REF);
+
+    expect(cleared).toEqual([REF]);
+  });
+
+  it("runs onRevoke when setProviderConnectionStatus transitions to revoked", async () => {
+    const cleared: string[] = [];
+    const store = createInMemoryProviderConnectionStore({
+      providerConnections: [connectionFixture({ ownerUserId: OWNER, status: "connected" })],
+    });
+    const queries = createProviderConnectionQueries(store, {
+      onRevoke: async (ref) => {
+        cleared.push(ref.capabilityKey);
+      },
+    });
+
+    await queries.setProviderConnectionStatus({ ...REF, status: "revoked" });
+
+    expect(cleared).toEqual(["calendar"]);
+  });
+
+  it("does not run onRevoke for a non-revoke status change", async () => {
+    const cleared: string[] = [];
+    const store = createInMemoryProviderConnectionStore({
+      providerConnections: [connectionFixture({ ownerUserId: OWNER, status: "connected" })],
+    });
+    const queries = createProviderConnectionQueries(store, {
+      onRevoke: async () => {
+        cleared.push("called");
+      },
+    });
+
+    await queries.setProviderConnectionStatus({ ...REF, status: "error" });
+
+    expect(cleared).toEqual([]);
+  });
+
+  it("does not run onRevoke when re-revoking an already-revoked connection (no-op)", async () => {
+    const cleared: string[] = [];
+    const store = createInMemoryProviderConnectionStore({
+      providerConnections: [connectionFixture({ ownerUserId: OWNER, status: "revoked" })],
+    });
+    const queries = createProviderConnectionQueries(store, {
+      onRevoke: async () => {
+        cleared.push("called");
+      },
+    });
+
+    await queries.markProviderConnectionRevoked(REF);
+
+    expect(cleared).toEqual([]);
+  });
+
+  it("still persists the revoke when onRevoke throws (cleanup is best-effort)", async () => {
+    const store = createInMemoryProviderConnectionStore({
+      providerConnections: [connectionFixture({ ownerUserId: OWNER, status: "connected" })],
+    });
+    const queries = createProviderConnectionQueries(store, {
+      onRevoke: async () => {
+        throw new Error("cache store down");
+      },
+    });
+
+    const updated = await queries.markProviderConnectionRevoked(REF);
+
+    expect(updated?.status).toBe("revoked");
+  });
+});

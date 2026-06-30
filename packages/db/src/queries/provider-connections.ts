@@ -1,3 +1,4 @@
+import { createDrizzleCalendarCacheStore } from "./calendar/drizzle-store";
 import { createDrizzleProviderConnectionStore } from "./provider-connections/drizzle-store";
 import { createProviderConnectionQueries } from "./provider-connections/queries";
 import type {
@@ -14,8 +15,15 @@ export { createInMemoryProviderConnectionStore } from "./provider-connections/in
 export { createProviderConnectionQueries } from "./provider-connections/queries";
 export type * from "./provider-connections/types";
 
+// Revoking a connection clears that capability's cached provider data in one place
+// (ADR-0080): the Calendar cache for the calendar capability, a no-op (zero rows)
+// for capabilities without one. We use the leaf cache store rather than the calendar
+// facade because calendar.ts already imports this module's read-gate — going through
+// the facade would form an import cycle.
+const calendarCache = createDrizzleCalendarCacheStore();
 const defaultProviderConnectionQueries = createProviderConnectionQueries(
   createDrizzleProviderConnectionStore(),
+  { onRevoke: (ref) => calendarCache.clearConnection(ref).then(() => undefined) },
 );
 
 export async function listProviderConnections(input: { ownerUserId: string }) {

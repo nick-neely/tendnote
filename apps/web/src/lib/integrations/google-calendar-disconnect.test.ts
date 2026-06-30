@@ -12,43 +12,34 @@ function deps(overrides: Partial<Parameters<typeof disconnectGoogleCalendar>[0]>
   return {
     ownerUserId: OWNER,
     revokeAndUnlink: vi.fn().mockResolvedValue({ providerRevoked: true }),
-    clearCache: vi.fn().mockResolvedValue(2),
+    // markRevoked persists the revoke AND clears the Calendar cache (ADR-0080), so
+    // the orchestration no longer has a separate clearCache step.
     markRevoked: vi.fn().mockResolvedValue({ status: "revoked" }),
     ...overrides,
   };
 }
 
 describe("disconnectGoogleCalendar", () => {
-  it("revokes+unlinks, clears the cache, and marks the connection revoked", async () => {
+  it("revokes+unlinks and marks the connection revoked (which clears the cache)", async () => {
     const d = deps();
 
     const result = await disconnectGoogleCalendar(d);
 
     expect(d.revokeAndUnlink).toHaveBeenCalledTimes(1);
-    expect(d.clearCache).toHaveBeenCalledWith({
-      ownerUserId: OWNER,
-      providerKey: "google",
-      capabilityKey: "calendar",
-    });
     expect(d.markRevoked).toHaveBeenCalledWith({
       ownerUserId: OWNER,
       providerKey: "google",
       capabilityKey: "calendar",
       reason: "user_disconnect",
     });
-    expect(result).toEqual({
-      providerRevoked: true,
-      cacheCleared: 2,
-      remainingCleanupRequired: false,
-    });
+    expect(result).toEqual({ providerRevoked: true, remainingCleanupRequired: false });
   });
 
-  it("still clears cache + marks revoked when the Google-side grant was not revoked", async () => {
+  it("still marks revoked when the Google-side grant was not revoked", async () => {
     const d = deps({ revokeAndUnlink: vi.fn().mockResolvedValue({ providerRevoked: false }) });
 
     const result = await disconnectGoogleCalendar(d);
 
-    expect(d.clearCache).toHaveBeenCalledTimes(1);
     expect(d.markRevoked).toHaveBeenCalledWith(
       expect.objectContaining({ reason: "user_disconnect_provider_grant_not_revoked" }),
     );
@@ -60,16 +51,16 @@ describe("disconnectGoogleCalendar", () => {
     const d = deps({ revokeAndUnlink: vi.fn().mockRejectedValue(new Error("unlink failed")) });
 
     await expect(disconnectGoogleCalendar(d)).rejects.toThrow("unlink failed");
-    expect(d.clearCache).not.toHaveBeenCalled();
+    // markRevoked never runs, so the connection stays connected and its cache (which
+    // markRevoked would have cleared) is untouched.
     expect(d.markRevoked).not.toHaveBeenCalled();
   });
 
-  it("scopes cache clearing and revocation to the disconnecting owner", async () => {
+  it("scopes revocation to the disconnecting owner", async () => {
     const d = deps({ ownerUserId: "owner-2" });
 
     await disconnectGoogleCalendar(d);
 
-    expect(d.clearCache).toHaveBeenCalledWith(expect.objectContaining({ ownerUserId: "owner-2" }));
     expect(d.markRevoked).toHaveBeenCalledWith(expect.objectContaining({ ownerUserId: "owner-2" }));
   });
 
@@ -85,7 +76,6 @@ describe("disconnectGoogleCalendar", () => {
     await disconnectGoogleCalendar({
       ownerUserId: OWNER,
       revokeAndUnlink: vi.fn().mockResolvedValue({ providerRevoked: true }),
-      clearCache: vi.fn().mockResolvedValue(0),
       markRevoked: queries.markProviderConnectionRevoked,
     });
     // The shared read-gate consumers check now refuses reads.

@@ -81,15 +81,6 @@ export function createDefaultGoogleCalendarReader(options?: {
   );
 }
 
-/** Clear an owner's cached Calendar windows for a connection (disconnect, #109). */
-export async function clearOwnerCalendarCache(ref: {
-  ownerUserId: string;
-  providerKey: string;
-  capabilityKey: string;
-}): Promise<number> {
-  return createDrizzleCalendarCacheStore().clearConnection(ref);
-}
-
 export type OwnerCalendarReadOutcome = {
   /** Whether the owner's Calendar capability is connected. */
   connected: boolean;

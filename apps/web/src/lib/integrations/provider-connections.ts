@@ -1,6 +1,5 @@
 import "server-only";
 
-import { clearOwnerCalendarCache } from "@tendnote/db/queries/calendar";
 import {
   connectProviderConnection,
   listProviderConnections,
@@ -134,7 +133,6 @@ export async function disconnectOwnerGoogleCalendar(): Promise<DisconnectGoogleC
 
       return { providerRevoked };
     },
-    clearCache: clearOwnerCalendarCache,
     markRevoked: markProviderConnectionRevoked,
   });
 }

@@ -7,8 +7,9 @@ import { GOOGLE_CALENDAR_CAPABILITY } from "./google-calendar-connection";
  * 1. Revoke the Google-side grant where possible and unlink the Better Auth
  *    account (the authoritative "stop reading" step — it removes token custody so
  *    Tendnote can no longer read AND the account-link reconcile cannot re-connect).
- * 2. Clear the owner's short-lived Calendar cache.
- * 3. Transition the Provider Connection to `revoked` with an audit entry.
+ * 2. Transition the Provider Connection to `revoked` with an audit entry. Marking it
+ *    revoked also clears the owner's short-lived Calendar cache: the cache-clear is
+ *    bound to the revoke mutation (ADR-0080), not a separate step here.
  *
  * If the authoritative unlink fails the whole disconnect fails (nothing is marked
  * revoked, so the UI does not falsely claim success). If only the Google-side grant
@@ -29,13 +30,11 @@ export type DisconnectGoogleCalendarDeps = {
    * rejects only if the authoritative unlink itself fails.
    */
   revokeAndUnlink: () => Promise<RevokeAndUnlinkResult>;
-  /** Clear the owner's cached Calendar windows for this connection. Returns count. */
-  clearCache: (ref: {
-    ownerUserId: string;
-    providerKey: string;
-    capabilityKey: string;
-  }) => Promise<number>;
-  /** Mark the Provider Connection revoked with an audit-visible reason. */
+  /**
+   * Mark the Provider Connection revoked with an audit-visible reason. Revoking also
+   * clears the owner's Calendar cache (ADR-0080), so disconnect has no separate
+   * cache-clear step.
+   */
   markRevoked: (input: {
     ownerUserId: string;
     providerKey: string;
@@ -47,8 +46,6 @@ export type DisconnectGoogleCalendarDeps = {
 export type DisconnectGoogleCalendarResult = {
   /** True when the Google-side grant was revoked, not just unlinked locally. */
   providerRevoked: boolean;
-  /** Number of cached Calendar windows cleared. */
-  cacheCleared: number;
   /** True when the user must finish cleanup at their Google Account permissions. */
   remainingCleanupRequired: boolean;
 };
@@ -60,17 +57,14 @@ export async function disconnectGoogleCalendar(
   // runs, so we never report a disconnect we did not actually perform.
   const { providerRevoked } = await deps.revokeAndUnlink();
 
-  const ref = {
+  // Marking the connection revoked also clears the owner's Calendar cache (ADR-0080),
+  // so the cache-clear can't be skipped by any revoke path.
+  await deps.markRevoked({
     ownerUserId: deps.ownerUserId,
     providerKey: PROVIDER_KEY,
     capabilityKey: GOOGLE_CALENDAR_CAPABILITY,
-  };
-
-  const cacheCleared = await deps.clearCache(ref);
-  await deps.markRevoked({
-    ...ref,
     reason: providerRevoked ? "user_disconnect" : "user_disconnect_provider_grant_not_revoked",
   });
 
-  return { providerRevoked, cacheCleared, remainingCleanupRequired: !providerRevoked };
+  return { providerRevoked, remainingCleanupRequired: !providerRevoked };
 }

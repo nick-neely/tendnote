@@ -36,6 +36,18 @@ export type MarkProviderConnectionRevokedInput = ProviderConnectionRef & {
 };
 
 /**
+ * Side-effects the queries run on lifecycle transitions. `onRevoke` fires after any
+ * transition INTO `revoked` (ADR-0080) — `markProviderConnectionRevoked` and
+ * `setProviderConnectionStatus({ status: "revoked" })` alike — so cached provider
+ * data is cleared in one place no matter which revoke path a caller takes. It is
+ * best-effort (a cleanup failure must not undo the persisted revoke) and defaults to
+ * a no-op, so tests and capabilities without a cache need no wiring.
+ */
+export type ProviderConnectionQueriesDeps = {
+  onRevoke?: (ref: ProviderConnectionRef) => Promise<void>;
+};
+
+/**
  * Mirror a real provider authorization into owner-scoped product state (Phase 2C,
  * ADR-0071). OAuth token custody lives in Better Auth account records; this only
  * records the non-secret connected status, display identity, and authorized

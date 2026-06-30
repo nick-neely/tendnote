@@ -7,6 +7,7 @@ import type {
   ConnectProviderConnectionInput,
   CreateProviderConnectionMutationInput,
   MarkProviderConnectionRevokedInput,
+  ProviderConnectionQueriesDeps,
   ProviderConnectionRef,
   ProviderConnectionStore,
   RecordProviderConnectionErrorInput,
@@ -26,7 +27,11 @@ const ENTITY_TYPE = "provider_connection";
  * the caller's responsibility (hosted product boundaries resolve the admitted
  * owner before calling here).
  */
-export function createProviderConnectionQueries(store: ProviderConnectionStore) {
+export function createProviderConnectionQueries(
+  store: ProviderConnectionStore,
+  deps: ProviderConnectionQueriesDeps = {},
+) {
+  const onRevoke = deps.onRevoke;
   return {
     /** All of the given owner's connection rows. */
     async listProviderConnections(input: { ownerUserId: string }) {
@@ -231,6 +236,12 @@ export function createProviderConnectionQueries(store: ProviderConnectionStore) 
         },
       });
 
+      // Any transition into `revoked` clears cached provider data here, so the
+      // invariant holds no matter which caller drove the change (ADR-0080).
+      if (updated.status === "revoked") {
+        await runRevokeCleanup(onRevoke, refOf(updated));
+      }
+
       return updated;
     },
 
@@ -309,6 +320,10 @@ export function createProviderConnectionQueries(store: ProviderConnectionStore) 
         },
       });
 
+      // Disconnect clears the cache (ADR-0080) as part of revoking, not as a separate
+      // step a caller has to remember.
+      await runRevokeCleanup(onRevoke, refOf(updated));
+
       return updated;
     },
   };
@@ -336,6 +351,26 @@ function refOf(input: ProviderConnectionRef): ProviderConnectionRef {
     providerKey: input.providerKey,
     capabilityKey: input.capabilityKey,
   };
+}
+
+/**
+ * Run the revoke cleanup hook best-effort. The revoke is already persisted and reads
+ * are gated on `connected`, so cached data can no longer be served; a cleanup hiccup
+ * must not undo consent withdrawal (ADR-0080/0081), and the cache is TTL-bounded and
+ * evicted on the next live read regardless.
+ */
+async function runRevokeCleanup(
+  onRevoke: ((ref: ProviderConnectionRef) => Promise<void>) | undefined,
+  ref: ProviderConnectionRef,
+) {
+  if (!onRevoke) {
+    return;
+  }
+  try {
+    await onRevoke(ref);
+  } catch {
+    // Swallowed by design — see the doc comment above.
+  }
 }
 
 async function writeAudit(
