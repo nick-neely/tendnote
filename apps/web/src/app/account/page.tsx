@@ -32,9 +32,11 @@ export default async function AccountPage() {
   // Admitted-only: getOwnerProviderConnections resolves the admitted owner before
   // reading, so pending/unauthenticated users never reach connection state.
   const connections = buildProviderConnectionView(await getOwnerProviderConnections());
-  // Google Calendar can be connected only when the server has Google credentials
-  // configured (Phase 2C, ADR-0071); otherwise the affordance stays inert.
-  const calendarConnectable = isGoogleConfigured(googleEnvFromProcess());
+  // Google Calendar (Phase 2C, ADR-0071) and Gmail (Phase 2D, ADR-0090) can each be
+  // connected only when the server has Google credentials configured; otherwise the
+  // affordances stay inert. Both read the same gate — the capabilities differ by the
+  // narrow scope each requests, not by separate credentials.
+  const googleConfigured = isGoogleConfigured(googleEnvFromProcess());
   // Read-only bounded preview of the connected calendar; hidden when not connected.
   const calendarPreview = await getOwnerCalendarPreview();
 
@@ -93,11 +95,13 @@ export default async function AccountPage() {
           </div>
         </section>
 
-        {/* Integrations — real Provider Connection rows; Calendar is connectable in
-            Phase 2C when Google credentials are configured (ADR-0071). */}
+        {/* Integrations — real Provider Connection rows. Calendar (Phase 2C, ADR-0071)
+            and Gmail (Phase 2D, ADR-0090) are each connectable when Google credentials
+            are configured, behind their own narrow scope. */}
         <ProviderConnectionsSection
-          calendarConnectable={calendarConnectable}
+          calendarConnectable={googleConfigured}
           connections={connections}
+          gmailConnectable={googleConfigured}
         />
 
         {/* Read-only Google Calendar preview — provider-derived context, not memory

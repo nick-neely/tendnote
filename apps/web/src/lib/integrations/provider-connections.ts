@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   connectProviderConnection,
+  isProviderCapabilityConnected,
   listProviderConnections,
   markProviderConnectionRevoked,
   setProviderConnectionStatus,
@@ -14,6 +15,7 @@ import {
   type DisconnectGoogleCalendarResult,
   disconnectGoogleCalendar,
 } from "./google-calendar-disconnect";
+import { reconcileGoogleGmailConnection } from "./google-gmail-connection";
 
 const GOOGLE_OAUTH_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 
@@ -36,18 +38,21 @@ export async function getOwnerProviderConnections() {
   // account page (ADR-0081), so failures are swallowed and the persisted state is
   // read as-is. Durable auth/credential error mapping lands with the read and
   // disconnect slices (#108, #109) where real provider errors surface.
-  await syncGoogleCalendarConnection(ownerUserId).catch(() => {});
+  await syncGoogleConnections(ownerUserId).catch(() => {});
   return listProviderConnections({ ownerUserId });
 }
 
 /**
- * Reconcile the owner's Better Auth Google account-link into their Calendar
- * Provider Connection. No-op unless Google is configured; the heavy/RSC-only deps
- * (Better Auth server, request headers) are imported lazily so this stays inert —
- * and unit tests stay deterministic — when Calendar is not wired. The connected
- * identity and scopes come from the linked Google account, never the session.
+ * Reconcile the owner's Better Auth Google account-link into their Calendar and
+ * Gmail Provider Connections (Phase 2C/2D, ADR-0071/0090). Lists the shared Google
+ * account link once, then mirrors each capability from its own granted scope, so
+ * Calendar and Gmail connect independently and neither implies the other. No-op
+ * unless Google is configured; the heavy/RSC-only deps (Better Auth server, request
+ * headers) are imported lazily so this stays inert — and unit tests stay
+ * deterministic — when Google is not wired. Identity and scopes come from the linked
+ * Google account, never the session.
  */
-async function syncGoogleCalendarConnection(ownerUserId: string): Promise<void> {
+async function syncGoogleConnections(ownerUserId: string): Promise<void> {
   if (!isGoogleConfigured(googleEnvFromProcess())) {
     return;
   }
@@ -55,12 +60,23 @@ async function syncGoogleCalendarConnection(ownerUserId: string): Promise<void> 
     import("@/lib/auth/server"),
     import("next/headers"),
   ]);
-  const accounts = await getAuth().api.listUserAccounts({ headers: await headers() });
-  await reconcileGoogleCalendarConnection({
-    ownerUserId,
-    accounts: accounts ?? [],
-    connect: connectProviderConnection,
-  });
+  const accounts = (await getAuth().api.listUserAccounts({ headers: await headers() })) ?? [];
+  await Promise.all([
+    reconcileGoogleCalendarConnection({
+      ownerUserId,
+      accounts,
+      connect: connectProviderConnection,
+    }),
+    reconcileGoogleGmailConnection({
+      ownerUserId,
+      accounts,
+      connect: connectProviderConnection,
+      // Downgrade a stale Gmail row when the shared Google account was unlinked (e.g.
+      // by a Calendar disconnect), so Gmail status stays honest (ADR-0090).
+      isConnected: isProviderCapabilityConnected,
+      revoke: markProviderConnectionRevoked,
+    }),
+  ]);
 }
 
 /**

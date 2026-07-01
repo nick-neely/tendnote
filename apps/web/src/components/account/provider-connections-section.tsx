@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import type { ProviderConnectionView } from "@/lib/integrations/provider-connection-view";
 import { CalendarConnectButton } from "./calendar-connect-button";
 import { CalendarDisconnectButton } from "./calendar-disconnect-button";
+import { GmailConnectButton } from "./gmail-connect-button";
 
 /** Revocation reason set when disconnect could not revoke the Google-side grant. */
 const PROVIDER_GRANT_NOT_REVOKED_REASON = "user_disconnect_provider_grant_not_revoked";
@@ -56,11 +57,15 @@ const CAPABILITY_ICONS: Record<string, LucideIcon> = {
 export function ProviderConnectionsSection({
   connections,
   calendarConnectable = false,
+  gmailConnectable = false,
 }: {
   connections: ProviderConnectionView[];
   /** True only when Google credentials are configured server-side (Phase 2C). */
   calendarConnectable?: boolean;
+  /** True only when Google credentials are configured server-side (Phase 2D). */
+  gmailConnectable?: boolean;
 }) {
+  const anyConnectable = calendarConnectable || gmailConnectable;
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground">
@@ -70,23 +75,23 @@ export function ProviderConnectionsSection({
       <ul className="flex flex-col divide-y rounded-lg border bg-surface">
         {connections.map((connection) => (
           <ProviderConnectionRow
+            connectable={isCapabilityConnectable(connection, {
+              calendarConnectable,
+              gmailConnectable,
+            })}
             connection={connection}
             key={`${connection.providerKey}:${connection.capabilityKey}`}
-            manageable={
-              calendarConnectable &&
-              connection.providerKey === "google" &&
-              connection.capabilityKey === "calendar"
-            }
           />
         ))}
       </ul>
 
       <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
-        {calendarConnectable ? (
+        {anyConnectable ? (
           <>
-            Connect Google Calendar to let Tendnote read upcoming and recent events — read-only,
-            behind your explicit Google consent. Gmail and Contacts stay disconnected and arrive in
-            later phases. Tendnote isn&rsquo;t reading any other Google data.
+            Connect Google Calendar to let Tendnote read upcoming and recent events — read-only.
+            Connect Gmail to let Tendnote save email drafts you approve — draft-only, never sending.
+            Each connects behind its own narrow Google consent, and neither implies the other.
+            Contacts stays disconnected and arrives in a later phase.
           </>
         ) : (
           <>
@@ -100,13 +105,30 @@ export function ProviderConnectionsSection({
   );
 }
 
+/** Which Google capabilities the account row can start a live connect flow for. */
+function isCapabilityConnectable(
+  connection: ProviderConnectionView,
+  configured: { calendarConnectable: boolean; gmailConnectable: boolean },
+): boolean {
+  if (connection.providerKey !== "google") {
+    return false;
+  }
+  if (connection.capabilityKey === "calendar") {
+    return configured.calendarConnectable;
+  }
+  if (connection.capabilityKey === "gmail") {
+    return configured.gmailConnectable;
+  }
+  return false;
+}
+
 function ProviderConnectionRow({
   connection,
-  manageable,
+  connectable,
 }: {
   connection: ProviderConnectionView;
-  /** True only for the Google Calendar row when Google credentials are configured. */
-  manageable: boolean;
+  /** True for a Google capability whose live connect flow is wired and configured. */
+  connectable: boolean;
 }) {
   const status = STATUS_META[connection.status];
   const StatusIcon = status.Icon;
@@ -115,14 +137,17 @@ function ProviderConnectionRow({
   const isConnected = connection.status === "connected";
   const isUnavailable = connection.status === "unavailable";
   const actionLabel = isConnected ? "Disconnect" : "Connect";
-  // The Calendar row gets the live connect/disconnect flow; every other affordance
-  // stays inert until its phase wires it.
-  const showConnect = manageable && !isConnected && !isUnavailable;
-  const showDisconnect = manageable && isConnected;
+  const isCalendar = connection.capabilityKey === "calendar";
+  // Calendar has both connect and the audited disconnect flow (ADR-0080). Gmail is
+  // connect-only in this slice; its disconnect arrives with the shared-account
+  // disconnect design. Every other affordance stays inert until its phase wires it.
+  const showConnect = connectable && !isConnected && !isUnavailable;
+  const showDisconnect = connectable && isCalendar && isConnected;
   // After a disconnect that could not revoke the Google-side grant, the user still
   // has cleanup to finish in their Google Account (ADR-0080).
   const showCleanupNote =
-    manageable &&
+    connectable &&
+    isCalendar &&
     connection.status === "revoked" &&
     connection.revocationReason === PROVIDER_GRANT_NOT_REVOKED_REASON;
 
@@ -149,7 +174,11 @@ function ProviderConnectionRow({
             {status.label}
           </Badge>
           {isUnavailable ? null : showConnect ? (
-            <CalendarConnectButton label={connection.label} />
+            isCalendar ? (
+              <CalendarConnectButton label={connection.label} />
+            ) : (
+              <GmailConnectButton label={connection.label} />
+            )
           ) : showDisconnect ? (
             <CalendarDisconnectButton label={connection.label} />
           ) : (

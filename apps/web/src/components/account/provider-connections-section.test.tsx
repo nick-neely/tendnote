@@ -124,6 +124,19 @@ describe("ProviderConnectionsSection", () => {
     expect(html).toContain("https://myaccount.google.com/permissions");
   });
 
+  it("renders a live Gmail connect control when Gmail is configured, independent of Calendar", () => {
+    const html = renderToStaticMarkup(
+      <ProviderConnectionsSection connections={READY_VIEW} gmailConnectable />,
+    );
+
+    // The Gmail row gets a real connect control (not the inert affordance), while
+    // Calendar/Contacts (no calendarConnectable) stay inert.
+    expect(html).toContain("Connect Gmail");
+    expect(html).not.toContain("Connect Gmail (not available yet)");
+    // Copy reflects the draft-only, never-sending Gmail boundary.
+    expect(html).toContain("never sending");
+  });
+
   it("surfaces an error status as visible state without color alone", () => {
     const html = renderToStaticMarkup(
       <ProviderConnectionsSection

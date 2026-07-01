@@ -18,6 +18,23 @@ import { z } from "zod";
 export const GMAIL_PROVIDER_KEY = "google";
 export const GMAIL_CAPABILITY_KEY = "gmail";
 
+/**
+ * The single narrow Google scope Phase 2D Gmail draft writes request (ADR-0090,
+ * ADR-0095): create and update drafts. `gmail.compose` is the narrowest scope that
+ * supports `users.drafts.create`/`users.drafts.update`; Phase 2D deliberately does
+ * NOT request `gmail.readonly`, `gmail.modify`, history, or full-mailbox scopes.
+ *
+ * No-send is enforced structurally, not by scope: Tendnote's Gmail adapter exposes
+ * only draft create/update and has no send path (ADR-0089, PRD out-of-scope), so a
+ * created draft never contacts another person.
+ */
+export const GOOGLE_GMAIL_COMPOSE_SCOPE = "https://www.googleapis.com/auth/gmail.compose";
+
+/** Whether a granted-scope list includes the Gmail draft-write scope. */
+export function hasGmailComposeScope(scopes: readonly string[]): boolean {
+  return scopes.includes(GOOGLE_GMAIL_COMPOSE_SCOPE);
+}
+
 /** A Gmail draft action either creates a new draft or updates an existing one. */
 export const gmailDraftActionKindSchema = z.enum(["create", "update"]);
 export type GmailDraftActionKind = z.infer<typeof gmailDraftActionKindSchema>;
