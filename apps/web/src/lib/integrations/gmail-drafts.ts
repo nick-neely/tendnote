@@ -3,55 +3,23 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { editDraftBody, getDraft } from "@tendnote/db/queries/drafts";
 import {
+  createDefaultGmailApprovalGate,
   createDefaultGoogleGmailDraftService,
   type GmailDraftActionOutcome,
 } from "@tendnote/db/queries/gmail-drafts";
-import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-connections";
-import {
-  GMAIL_CAPABILITY_KEY,
-  GMAIL_PROVIDER_KEY,
-  type GmailDraftRecipient,
-  gmailDraftApprovalSchema,
-} from "@tendnote/domain";
+import { type GmailDraftRecipient, gmailDraftApprovalSchema } from "@tendnote/domain";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 
 /**
  * Hosted product boundary for Gmail draft creation (Phase 2D, ADR-0083). Every path
  * resolves the admitted owner first, then goes through the ONE shared Gmail draft
- * service so web and Eve cannot fork external-write policy. The precondition gate
- * requires a connected `google/gmail` capability and an APPROVED Tendnote draft, so
- * Gmail is only ever written from an approved, source-grounded draft (ADR-0086); the
- * write itself uses the persisted draft body, never modal-only text.
+ * service, composed with the ONE shared approval gate (connected `google/gmail` +
+ * approved Tendnote draft), so web and Eve cannot fork external-write policy
+ * (ADR-0092). Gmail is only ever written from an approved, source-grounded draft
+ * (ADR-0086); the write itself uses the persisted draft body, never modal-only text.
  */
-
-/** Connection + approval gate shared by create and retry (ADR-0083, ADR-0090). */
-async function gmailWriteGate(input: {
-  ownerUserId: string;
-  messageDraftId: string;
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const connected = await isProviderCapabilityConnected({
-    ownerUserId: input.ownerUserId,
-    providerKey: GMAIL_PROVIDER_KEY,
-    capabilityKey: GMAIL_CAPABILITY_KEY,
-  });
-  if (!connected) {
-    return { ok: false, reason: "Gmail isn't connected." };
-  }
-  const draft = await getDraft({ ownerUserId: input.ownerUserId, draftId: input.messageDraftId });
-  if (!draft) {
-    return { ok: false, reason: "That draft no longer exists." };
-  }
-  if (draft.status !== "approved") {
-    return { ok: false, reason: "Approve the Tendnote draft before saving it to Gmail." };
-  }
-  return { ok: true };
-}
-
 function gmailService() {
-  return createDefaultGoogleGmailDraftService({
-    authorize: (input) =>
-      gmailWriteGate({ ownerUserId: input.ownerUserId, messageDraftId: input.messageDraftId }),
-  });
+  return createDefaultGoogleGmailDraftService({ authorize: createDefaultGmailApprovalGate() });
 }
 
 export type OwnerGmailDraftResult = {

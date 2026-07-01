@@ -1,4 +1,5 @@
 import {
+  findLinkedGmailDraftAction,
   GMAIL_CAPABILITY_KEY,
   GMAIL_PROVIDER_KEY,
   type GmailDraftAction,
@@ -91,14 +92,6 @@ export function createGmailDraftService(deps: GmailDraftServiceDeps) {
       throw new Error("Cannot create a Gmail draft from an empty Tendnote draft body.");
     }
     return body;
-  }
-
-  /** The current external draft for a Tendnote draft: latest succeeded action. */
-  function currentSucceeded(actions: GmailDraftAction[]): GmailDraftAction | null {
-    return (
-      actions.find((action) => action.status === "succeeded" && action.gmailDraftId !== null) ??
-      null
-    );
   }
 
   function nextVersion(actions: GmailDraftAction[]): number {
@@ -211,7 +204,7 @@ export function createGmailDraftService(deps: GmailDraftServiceDeps) {
         ownerUserId: input.ownerUserId,
         messageDraftId: input.messageDraftId,
       });
-      if (currentSucceeded(existing)) {
+      if (findLinkedGmailDraftAction(existing)) {
         return {
           status: "blocked",
           reason: "A Gmail draft already exists for this Tendnote draft; update it instead.",
@@ -293,7 +286,7 @@ export function createGmailDraftService(deps: GmailDraftServiceDeps) {
         ownerUserId: input.ownerUserId,
         messageDraftId: input.messageDraftId,
       });
-      const target = currentSucceeded(existing);
+      const target = findLinkedGmailDraftAction(existing);
       if (!target || target.gmailDraftId === null) {
         return {
           status: "blocked",

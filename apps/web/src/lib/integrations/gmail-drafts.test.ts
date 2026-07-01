@@ -66,6 +66,31 @@ vi.mock("@tendnote/db/queries/gmail-drafts", () => ({
       },
     };
   },
+  // The shared gate the boundary composes (ADR-0092). Mirror its real logic here,
+  // driven by the same mocked connection/draft seams, so the boundary tests exercise
+  // the connection+approval preconditions through the production wiring.
+  createDefaultGmailApprovalGate:
+    () => async (input: { ownerUserId: string; messageDraftId: string }) => {
+      const connected = await isProviderCapabilityConnected({
+        ownerUserId: input.ownerUserId,
+        providerKey: "google",
+        capabilityKey: "gmail",
+      });
+      if (!connected) {
+        return { ok: false, reason: "Gmail isn't connected." };
+      }
+      const draft = await getDraft({
+        ownerUserId: input.ownerUserId,
+        draftId: input.messageDraftId,
+      });
+      if (!draft) {
+        return { ok: false, reason: "That draft no longer exists." };
+      }
+      if (draft.status !== "approved") {
+        return { ok: false, reason: "Approve the Tendnote draft before saving it to Gmail." };
+      }
+      return { ok: true };
+    },
 }));
 
 import { createOwnerGmailDraft, updateOwnerGmailDraft } from "./gmail-drafts";

@@ -36,12 +36,16 @@ describe("Phase 2C agent-surface boundaries", () => {
     expect(existsSync(join(agentRoot, "connections"))).toBe(false);
   });
 
-  it("exposes only the read-only Calendar read tool — no Gmail/Contacts/OAuth tools", () => {
+  it("exposes only the read-only Calendar read tool and the Phase 2D Gmail draft-write tool", () => {
     const tools = readdirSync(join(agentRoot, "tools"));
     // Calendar's only Eve tool is the read.
     expect(tools.filter((name) => /calendar/i.test(name))).toEqual(["list_calendar_events.ts"]);
-    // No Gmail, Contacts, or generic OAuth provider tools.
-    expect(tools.filter((name) => /gmail|contacts|oauth/i.test(name))).toEqual([]);
+    // Phase 2D adds exactly one Gmail tool: a DRAFT-WRITE tool behind the shared
+    // approval gate (no Gmail read/history/send). Contacts and generic OAuth tools
+    // stay absent (their phases haven't landed).
+    expect(tools.filter((name) => /gmail|contacts|oauth/i.test(name)).sort()).toEqual([
+      "save_draft_to_gmail.ts",
+    ]);
   });
 
   it("hardcodes no provider API host on the agent surface (the db seam owns HTTP)", () => {

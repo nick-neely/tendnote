@@ -1,11 +1,51 @@
 import { describe, expect, it } from "vitest";
+import type { GmailDraftAction } from "./gmail-drafts";
 import {
+  findLinkedGmailDraftAction,
   GOOGLE_GMAIL_COMPOSE_SCOPE,
   gmailDraftRecipientSchema,
   gmailDraftSubjectSchema,
   hasGmailComposeScope,
   suggestGmailSubject,
 } from "./gmail-drafts";
+
+function action(overrides: Partial<GmailDraftAction>): GmailDraftAction {
+  return {
+    id: "a",
+    ownerUserId: "u",
+    messageDraftId: "d",
+    providerKey: "google",
+    capabilityKey: "gmail",
+    kind: "create",
+    status: "succeeded",
+    subject: "s",
+    recipient: { email: "a@b.com", source: "manual_entry", contactMethodId: null },
+    gmailDraftId: "g",
+    version: 1,
+    idempotencyKey: "k",
+    lastErrorMessage: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+describe("findLinkedGmailDraftAction", () => {
+  it("returns the most recent succeeded action holding a Gmail draft id", () => {
+    const linked = findLinkedGmailDraftAction([
+      action({ id: "newest-failed", status: "failed", gmailDraftId: null }),
+      action({ id: "succeeded", status: "succeeded", gmailDraftId: "g1" }),
+    ]);
+    expect(linked?.id).toBe("succeeded");
+  });
+
+  it("returns null when no succeeded action has a Gmail draft id", () => {
+    expect(
+      findLinkedGmailDraftAction([action({ status: "failed", gmailDraftId: null })]),
+    ).toBeNull();
+    expect(findLinkedGmailDraftAction([])).toBeNull();
+  });
+});
 
 describe("Gmail draft-write scope", () => {
   it("detects the compose scope", () => {

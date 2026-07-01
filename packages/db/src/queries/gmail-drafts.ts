@@ -1,9 +1,15 @@
 import { createDrizzleDraftStore } from "./drafts/drizzle-store";
 import { createDrizzleBetterAuthGoogleGmailAccessTokenProvider } from "./gmail-drafts/access-token";
 import { createDrizzleGmailDraftActionStore } from "./gmail-drafts/drizzle-store";
+import { createGmailApprovalGate } from "./gmail-drafts/gate";
 import { createGoogleGmailDraftAdapter } from "./gmail-drafts/google-adapter";
 import { createGmailDraftService, type GmailDraftServiceDeps } from "./gmail-drafts/service";
-import type { GmailDraftAdapter, GmailDraftBodySource } from "./gmail-drafts/types";
+import type {
+  GmailDraftAdapter,
+  GmailDraftAuthorize,
+  GmailDraftBodySource,
+} from "./gmail-drafts/types";
+import { isProviderCapabilityConnected } from "./provider-connections";
 
 export {
   type BetterAuthGoogleAccountToken,
@@ -18,6 +24,10 @@ export {
   createFakeGmailDraftAdapter,
   type FakeGmailDraftAdapter,
 } from "./gmail-drafts/fake-adapter";
+export {
+  createGmailApprovalGate,
+  type GmailApprovalGateDeps,
+} from "./gmail-drafts/gate";
 export {
   createGoogleGmailDraftAdapter,
   type GoogleGmailAdapterOptions,
@@ -81,6 +91,22 @@ export function createDefaultGmailDraftService(
     store: options?.store ?? createDrizzleGmailDraftActionStore(),
     drafts: options?.drafts ?? createDrizzleGmailDraftBodySource(),
     authorize: options?.authorize,
+  });
+}
+
+/**
+ * The default shared Gmail write gate (ADR-0092): connected `google/gmail`
+ * capability + an approved Tendnote draft. Both the web UI and Eve build their Gmail
+ * draft service with this one gate so external-write approval policy cannot fork.
+ */
+export function createDefaultGmailApprovalGate(): GmailDraftAuthorize {
+  const draftStore = createDrizzleDraftStore();
+  return createGmailApprovalGate({
+    isConnected: isProviderCapabilityConnected,
+    getDraftStatus: async ({ ownerUserId, draftId }) => {
+      const draft = await draftStore.getDraft({ ownerUserId, draftId });
+      return draft?.status ?? null;
+    },
   });
 }
 

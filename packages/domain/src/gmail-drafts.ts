@@ -129,6 +129,20 @@ export const gmailDraftActionSchema = z.object({
 export type GmailDraftAction = z.infer<typeof gmailDraftActionSchema>;
 
 /**
+ * The single definition of "this Tendnote draft is already linked to a Gmail draft"
+ * (ADR-0088, ADR-0092): the most recent succeeded action that holds a Gmail draft
+ * id, or null. Shared by the write service and Eve so web and chat cannot fork what
+ * counts as an existing external draft to update. Expects actions newest-first.
+ */
+export function findLinkedGmailDraftAction(
+  actions: readonly GmailDraftAction[],
+): GmailDraftAction | null {
+  return (
+    actions.find((action) => action.status === "succeeded" && action.gmailDraftId !== null) ?? null
+  );
+}
+
+/**
  * A deterministic suggested Gmail subject from the Tendnote draft's purpose and the
  * person's name (ADR-0087, ADR-0097). This is a low-friction starting point the user
  * edits/approves before the write — it is NOT model-backed generation, so Phase 2D
