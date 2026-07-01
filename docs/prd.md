@@ -427,7 +427,7 @@ Initial pass target:
 | Auth | Better Auth |
 | AI model routing | Vercel AI Gateway where practical |
 | Background agent work | Postgres-owned jobs with Vercel Queues as the default production delivery path for lightweight event-driven processors; separate queue topics per processor family; local inline processing, Cron, manual runners, Eve schedules, or Vercel Workflows are used when the workflow shape requires them |
-| Email | Resend for app/system emails, Gmail integration later for drafts |
+| Email | Resend for app/system emails, Gmail draft creation through approved Tendnote drafts |
 | Testing | Vitest, Playwright |
 | AI evals | Eve evals plus fixture-based regression tests |
 | Deployment | Vercel |

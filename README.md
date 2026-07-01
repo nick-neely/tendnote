@@ -22,7 +22,7 @@ Hosted accounts are live behind a private-beta gate (Phase 2A): sign-up, sign-in
 - **Calendar-derived follow-up suggestions** after recent meetings, generated deterministically and held for review (accept or dismiss); nothing becomes an active reminder or external action on its own.
 - **Disconnect** revokes the Google grant, clears the cached events, and blocks further reads.
 
-Gmail, Contacts, and shared household context remain later phases. See [`docs/prd.md`](docs/prd.md) for the full roadmap and [`docs/google-calendar-setup.md`](docs/google-calendar-setup.md) for OAuth setup.
+Gmail draft creation is connected behind explicit approval with narrow `gmail.compose` consent. Contacts and shared household context remain later phases. See [`docs/prd.md`](docs/prd.md) for the full roadmap and [`docs/google-setup.md`](docs/google-setup.md) for OAuth setup.
 
 ## How it's built
 

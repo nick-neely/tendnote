@@ -33,9 +33,10 @@ export type GoogleEnv = { clientId?: string; clientSecret?: string };
 /**
  * Better Auth Google provider config (Phase 2C, ADR-0071). `accessType: "offline"`
  * plus `prompt: "select_account consent"` ensure Google issues a refresh token so
- * Better Auth can refresh access without re-prompting. The requested scope is the
- * single Calendar event-read scope — no Gmail or Contacts. Token custody and
- * refresh stay inside Better Auth; Tendnote never stores the tokens.
+ * Better Auth can refresh access without re-prompting. The base provider scope is
+ * Calendar event-read; Gmail draft access is added later through linkSocial
+ * incremental consent with `gmail.compose`. Token custody and refresh stay inside
+ * Better Auth; Tendnote never stores the tokens.
  */
 export type GoogleSocialProvider = {
   clientId: string;

@@ -8,11 +8,12 @@ const repoRoot = join(import.meta.dirname, "../../..");
 /**
  * Phase 2C agent-surface boundaries (PRD #105, ADR-0074). Phase 2C adds Eve's
  * narrow READ-ONLY Google Calendar read tool, deliberately crossing the Phase 2B
- * "no provider tools" boundary. These assertions pin what remains true: the only
- * provider tool is the read-only Calendar read (no Gmail/Contacts/OAuth tools), the
- * agent surface hardcodes no provider API host (the shared db seam owns provider
- * HTTP via injected adapters), the Calendar tool performs no durable writes, and
- * Eve still has only its same-origin channel.
+ * "no provider tools" boundary. Phase 2D later adds a Gmail draft-write tool, so
+ * these assertions pin what remains true for Calendar: the only Calendar provider
+ * tool is the read-only Calendar read, no Contacts/OAuth tools exist, the agent
+ * surface hardcodes no provider API host (the shared db seam owns provider HTTP via
+ * injected adapters), the Calendar tool performs no durable writes, and Eve still
+ * has only its same-origin channel.
  */
 
 function readSources(root: string): string {

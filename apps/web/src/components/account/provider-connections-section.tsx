@@ -49,10 +49,10 @@ const CAPABILITY_ICONS: Record<string, LucideIcon> = {
 
 /**
  * Account integration settings: real Provider Connection status rows (#101,
- * ADR-0069). In Phase 2C (ADR-0071) Google Calendar can be connected when Google
- * credentials are configured — its row starts the real Better Auth linkSocial flow
- * — while Gmail and Contacts stay inert until their later phases. Built as a
- * standalone section so a future settings/integrations route can reuse it.
+ * ADR-0069). Google Calendar and Gmail can be connected when Google credentials
+ * are configured; each row starts a narrow Better Auth linkSocial flow for its
+ * capability. Contacts stays inert until its later phase. Built as a standalone
+ * section so a future settings/integrations route can reuse it.
  */
 export function ProviderConnectionsSection({
   connections,
@@ -95,9 +95,9 @@ export function ProviderConnectionsSection({
           </>
         ) : (
           <>
-            These aren&rsquo;t connected yet. Calendar, Gmail, and Contacts will connect later, each
-            behind its own narrow permission and your explicit approval — Tendnote isn&rsquo;t
-            reading any Google data.
+            These aren&rsquo;t connected yet. Add Google credentials to connect Calendar and Gmail,
+            each behind its own narrow permission and your explicit approval. Tendnote isn&rsquo;t
+            reading any Google data. Contacts arrives in a later phase.
           </>
         )}
       </p>
