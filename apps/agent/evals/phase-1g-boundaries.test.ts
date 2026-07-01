@@ -32,10 +32,8 @@ const PHASE_1G_FILES = [
   "apps/web/src/lib/draft-view.ts",
   "apps/web/src/app/actions/drafts.ts",
   "apps/web/src/app/actions/create-draft.ts",
-  "apps/web/src/components/person-drafts.tsx",
   "apps/web/src/components/draft-message-button.tsx",
   "apps/web/src/components/use-create-draft.ts",
-  "apps/web/src/app/people/[personId]/page.tsx",
   // The Eve draft-result render path — the surfaces that show a draft to the user.
   "apps/web/src/lib/eve/tool-result-view.ts",
   "apps/web/src/lib/eve/tool-result-parse.ts",
@@ -43,9 +41,27 @@ const PHASE_1G_FILES = [
   "apps/agent/agent/tools/create_message_draft.ts",
 ];
 
-// External delivery / provider modules that must never be imported by drafting.
+// Phase 2D adds APPROVED Gmail draft externalization (ADR-0083/0096) to the person
+// draft surfaces. These may reference the shared Gmail draft-write modules — which
+// route every write through the approval gate — but must still make no raw
+// provider/send call and import no send/other-provider module (Gmail *draft* write
+// is allowed; sending and other delivery providers are not).
+const PHASE_2D_GMAIL_SURFACES = [
+  "apps/web/src/components/person-drafts.tsx",
+  "apps/web/src/app/people/[personId]/page.tsx",
+];
+
+// External delivery / provider modules that must never be imported by Phase 1G
+// drafting surfaces. Gmail draft-write stays out of these surfaces entirely — it is
+// confined to the Phase 2D Gmail surfaces below.
 const FORBIDDEN_IMPORT =
   /gmail|googleapis|nodemailer|twilio|sendgrid|@sendgrid|resend|telegram|discord|slack/i;
+
+// External SEND / other-provider modules that must never be imported by ANY draft
+// surface, including the Phase 2D Gmail surfaces (Gmail draft-write is allowed;
+// sending and other delivery providers are not).
+const FORBIDDEN_SEND_IMPORT =
+  /googleapis|nodemailer|twilio|sendgrid|@sendgrid|resend|telegram|discord|slack|gmail\.send/i;
 
 // Provider/network CALL sites the import scan can't see (raw fetch to a provider,
 // SMTP, dynamic import, etc.). These tokens never appear in the tools' own
@@ -69,8 +85,21 @@ describe("Phase 1G boundary — no external delivery in drafting surfaces", () =
     }
   });
 
+  it("confines the Phase 2D Gmail surfaces to draft-write — no send/other-provider import", () => {
+    for (const relativePath of PHASE_2D_GMAIL_SURFACES) {
+      const fullPath = join(repoRoot, relativePath);
+      expect(existsSync(fullPath), `${relativePath} should exist`).toBe(true);
+      for (const moduleId of importSpecifiers(readFileSync(fullPath, "utf8"))) {
+        expect(moduleId, `${relativePath} imports ${moduleId}`).not.toMatch(FORBIDDEN_SEND_IMPORT);
+      }
+    }
+  });
+
   it("makes no raw provider/network call (fetch/SMTP/dynamic import) in any surface", () => {
-    for (const relativePath of PHASE_1G_FILES) {
+    // The no-send / no-raw-provider-call invariant holds for every draft surface,
+    // including the Phase 2D Gmail surfaces (which write drafts only via the shared
+    // service, never a raw provider call here).
+    for (const relativePath of [...PHASE_1G_FILES, ...PHASE_2D_GMAIL_SURFACES]) {
       const source = readFileSync(join(repoRoot, relativePath), "utf8");
       expect(source, `${relativePath} contains a provider call site`).not.toMatch(FORBIDDEN_CALL);
     }

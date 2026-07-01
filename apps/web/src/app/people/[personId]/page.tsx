@@ -1,11 +1,16 @@
+import { listPersonEmailContactMethods } from "@tendnote/db/queries/contact-methods";
 import { getPersonContextSnapshot } from "@tendnote/db/queries/context-snapshots";
 import { listDraftsForPerson } from "@tendnote/db/queries/drafts";
 import { listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
+import { listGmailDraftActionsForDraft } from "@tendnote/db/queries/gmail-drafts";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { getPersonProfile } from "@tendnote/db/queries/people";
+import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-connections";
 import {
   canUseMemoryProactively,
   canUseSourceRecordProactively,
+  GMAIL_CAPABILITY_KEY,
+  GMAIL_PROVIDER_KEY,
   isActiveFollowupStatus,
   type Memory,
   type SourceRecord,
@@ -14,7 +19,7 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { PersonCapture } from "@/components/person-capture";
 import { PersonDetailTabs, type PersonTab } from "@/components/person-detail-tabs";
-import { PersonDrafts } from "@/components/person-drafts";
+import { type GmailDraftContext, PersonDrafts } from "@/components/person-drafts";
 import { PersonFollowups } from "@/components/person-followups";
 import { PersonHeader } from "@/components/person-header";
 import {
@@ -31,6 +36,7 @@ import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { shortName } from "@/lib/dashboard-brief";
 import { type DraftView, toDraftView } from "@/lib/draft-view";
 import { toDateInputValue, toFollowupView } from "@/lib/followup-view";
+import { latestGmailDraftView } from "@/lib/gmail-draft-view";
 import {
   type RelationshipSnapshotView,
   toRelationshipSnapshotView,
@@ -96,6 +102,50 @@ async function loadDrafts(ownerUserId: string, personId: string): Promise<DraftV
   } catch {
     // Drafts are in-context enrichment; never block the profile if unavailable.
     return [];
+  }
+}
+
+/**
+ * Load the inline Gmail externalization context for the drafts tab (Phase 2D,
+ * ADR-0096): whether Gmail is connected, the person's saved email addresses for the
+ * recipient picker, and each approved draft's last known Gmail state. Best-effort —
+ * Gmail is enrichment on the draft card, so a failure never blocks the profile.
+ */
+async function loadGmailDraftContext(
+  ownerUserId: string,
+  personId: string,
+  personName: string,
+  drafts: DraftView[],
+): Promise<GmailDraftContext> {
+  const empty: GmailDraftContext = {
+    connected: false,
+    personName,
+    personEmails: [],
+    byDraftId: {},
+  };
+  try {
+    // Only approved drafts can be externalized, so only they need Gmail state.
+    const approved = drafts.filter((draft) => draft.status === "approved");
+    const [connected, personEmails, actionLists] = await Promise.all([
+      isProviderCapabilityConnected({
+        ownerUserId,
+        providerKey: GMAIL_PROVIDER_KEY,
+        capabilityKey: GMAIL_CAPABILITY_KEY,
+      }),
+      listPersonEmailContactMethods({ ownerUserId, personId }),
+      Promise.all(
+        approved.map((draft) =>
+          listGmailDraftActionsForDraft({ ownerUserId, messageDraftId: draft.id }),
+        ),
+      ),
+    ]);
+    const byDraftId: GmailDraftContext["byDraftId"] = {};
+    approved.forEach((draft, index) => {
+      byDraftId[draft.id] = latestGmailDraftView(actionLists[index] ?? []);
+    });
+    return { connected, personName, personEmails, byDraftId };
+  } catch {
+    return empty;
   }
 }
 
@@ -167,6 +217,7 @@ export default async function PersonDetailPage({
   );
   const { person } = profile;
   const firstName = shortName(person);
+  const gmail = await loadGmailDraftContext(ownerUserId, personId, person.displayName, drafts);
 
   // Active reminders (open/snoozed) lead the section; recently resolved ones stay
   // reachable for reopen. Suggested follow-ups are never shown as active here —
@@ -223,7 +274,7 @@ export default async function PersonDetailPage({
               Tendnote-only message drafts for {firstName}. Review, edit, copy, or mark them sent —
               nothing leaves Tendnote.
             </p>
-            <PersonDrafts initialDrafts={drafts} personId={person.id} />
+            <PersonDrafts gmail={gmail} initialDrafts={drafts} personId={person.id} />
           </div>
         }
         followupCount={followupCount}

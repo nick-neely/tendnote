@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { MessageDraftPurpose } from "./drafts";
 
 /**
  * Gmail draft externalization vocabulary (Phase 2D, PRD #119, ADRs 0083–0097).
@@ -126,6 +127,33 @@ export const gmailDraftActionSchema = z.object({
   updatedAt: z.date(),
 });
 export type GmailDraftAction = z.infer<typeof gmailDraftActionSchema>;
+
+/**
+ * A deterministic suggested Gmail subject from the Tendnote draft's purpose and the
+ * person's name (ADR-0087, ADR-0097). This is a low-friction starting point the user
+ * edits/approves before the write — it is NOT model-backed generation, so Phase 2D
+ * adds no new model eval. The suggestion never invents relationship facts; it only
+ * frames the known purpose. Callers must still let the user edit and approve it.
+ */
+export function suggestGmailSubject(input: {
+  purpose: MessageDraftPurpose;
+  personName?: string | null;
+}): string {
+  const name = input.personName?.trim();
+  const withName = (base: string) => (name ? `${base}, ${name}` : base);
+  switch (input.purpose) {
+    case "birthday":
+      return name ? `Happy birthday, ${name}!` : "Happy birthday!";
+    case "thank_you":
+      return withName("Thank you");
+    case "check_in":
+      return withName("Checking in");
+    case "networking":
+      return withName("Great connecting");
+    default:
+      return name ? `Hello, ${name}` : "Hello";
+  }
+}
 
 /** Validated input for approving a Gmail draft write (subject + recipient). */
 export const gmailDraftApprovalSchema = z.object({

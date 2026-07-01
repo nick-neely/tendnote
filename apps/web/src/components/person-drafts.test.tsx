@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { DraftView } from "@/lib/draft-view";
+import type { GmailDraftContext } from "./person-drafts";
 
 vi.mock("@/app/actions/drafts", () => ({
   approveDraftAction: vi.fn(),
@@ -9,6 +10,17 @@ vi.mock("@/app/actions/drafts", () => ({
   markDraftSentManuallyAction: vi.fn(),
   regenerateDraftAction: vi.fn(),
 }));
+
+// The Gmail panel imports server actions that reach `server-only`; stub them so the
+// approved-draft card renders client-side in this static test.
+vi.mock("@/app/actions/gmail-drafts", () => ({
+  createGmailDraftAction: vi.fn(),
+  retryGmailDraftAction: vi.fn(),
+}));
+
+function gmailContext(overrides: Partial<GmailDraftContext> = {}): GmailDraftContext {
+  return { connected: false, personName: "Mark", personEmails: [], byDraftId: {}, ...overrides };
+}
 
 // The entry-point button uses a router-backed hook; stub it so static rendering
 // needs no Next.js router context.
@@ -57,7 +69,7 @@ function view(overrides: Partial<DraftView> = {}): DraftView {
 describe("PersonDrafts", () => {
   it("renders a draft with status, body, a grounding disclosure, and review actions", () => {
     const html = renderToStaticMarkup(
-      <PersonDrafts initialDrafts={[view()]} personId={PERSON_ID} />,
+      <PersonDrafts gmail={gmailContext()} initialDrafts={[view()]} personId={PERSON_ID} />,
     );
 
     expect(html).toContain("Draft");
@@ -79,6 +91,7 @@ describe("PersonDrafts", () => {
   it("hides edit/lifecycle actions for a terminal (sent) draft but still allows copy", () => {
     const html = renderToStaticMarkup(
       <PersonDrafts
+        gmail={gmailContext()}
         initialDrafts={[
           view({ status: "sent_manually", statusLabel: "Sent manually", editable: false }),
         ]}
@@ -96,6 +109,7 @@ describe("PersonDrafts", () => {
   it("does not show an Approve action once a draft is approved", () => {
     const html = renderToStaticMarkup(
       <PersonDrafts
+        gmail={gmailContext()}
         initialDrafts={[view({ status: "approved", statusLabel: "Approved" })]}
         personId={PERSON_ID}
       />,
@@ -108,7 +122,9 @@ describe("PersonDrafts", () => {
   });
 
   it("renders an empty state when there are no drafts", () => {
-    const html = renderToStaticMarkup(<PersonDrafts initialDrafts={[]} personId={PERSON_ID} />);
+    const html = renderToStaticMarkup(
+      <PersonDrafts gmail={gmailContext()} initialDrafts={[]} personId={PERSON_ID} />,
+    );
 
     expect(html).toContain("No message drafts yet");
   });

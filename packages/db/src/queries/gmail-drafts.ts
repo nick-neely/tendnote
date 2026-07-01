@@ -1,14 +1,27 @@
 import { createDrizzleDraftStore } from "./drafts/drizzle-store";
+import { createDrizzleBetterAuthGoogleGmailAccessTokenProvider } from "./gmail-drafts/access-token";
 import { createDrizzleGmailDraftActionStore } from "./gmail-drafts/drizzle-store";
+import { createGoogleGmailDraftAdapter } from "./gmail-drafts/google-adapter";
 import { createGmailDraftService, type GmailDraftServiceDeps } from "./gmail-drafts/service";
 import type { GmailDraftAdapter, GmailDraftBodySource } from "./gmail-drafts/types";
 
+export {
+  type BetterAuthGoogleAccountToken,
+  createBetterAuthGoogleGmailAccessTokenProvider,
+  createDrizzleBetterAuthGoogleGmailAccessTokenProvider,
+  type GoogleGmailAccessTokenProvider,
+  GoogleGmailAccessTokenUnavailableError,
+} from "./gmail-drafts/access-token";
 export { createDrizzleGmailDraftActionStore } from "./gmail-drafts/drizzle-store";
 export {
   createFailingGmailDraftAdapter,
   createFakeGmailDraftAdapter,
   type FakeGmailDraftAdapter,
 } from "./gmail-drafts/fake-adapter";
+export {
+  createGoogleGmailDraftAdapter,
+  type GoogleGmailAdapterOptions,
+} from "./gmail-drafts/google-adapter";
 export type { InMemoryGmailDraftActionStore } from "./gmail-drafts/in-memory-store";
 export { createInMemoryGmailDraftActionStore } from "./gmail-drafts/in-memory-store";
 export {
@@ -20,6 +33,19 @@ export {
   type GmailDraftWriteInput,
 } from "./gmail-drafts/service";
 export type * from "./gmail-drafts/types";
+
+// Default owner-scoped read of a draft's Gmail action history for inline state
+// (ADR-0096). Read-only — no adapter or gate — so surfaces can render "saved in
+// Gmail" / failed state without going through the write service.
+const defaultGmailDraftActionStore = createDrizzleGmailDraftActionStore();
+
+/** An owner's Gmail draft actions for one Tendnote draft, newest first (ADR-0096). */
+export function listGmailDraftActionsForDraft(input: {
+  ownerUserId: string;
+  messageDraftId: string;
+}) {
+  return defaultGmailDraftActionStore.listActionsForDraft(input);
+}
 
 /**
  * The Tendnote draft body source of truth (ADR-0086): the Gmail write reads the
@@ -56,4 +82,21 @@ export function createDefaultGmailDraftService(
     drafts: options?.drafts ?? createDrizzleGmailDraftBodySource(),
     authorize: options?.authorize,
   });
+}
+
+/**
+ * The default Gmail draft service backed by the live Google Gmail draft adapter,
+ * reading the owner's Better Auth Google token. The precondition gate (connected
+ * `google/gmail` capability + approved Tendnote draft) is injected by the caller
+ * so the connection/approval policy composes at the product boundary (#122).
+ */
+export function createDefaultGoogleGmailDraftService(
+  options?: Partial<Omit<GmailDraftServiceDeps, "adapter">>,
+) {
+  return createDefaultGmailDraftService(
+    createGoogleGmailDraftAdapter({
+      getAccessToken: createDrizzleBetterAuthGoogleGmailAccessTokenProvider(),
+    }),
+    options,
+  );
 }

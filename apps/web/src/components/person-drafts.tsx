@@ -14,10 +14,21 @@ import { DraftBody } from "@/components/draft-body";
 import { DraftEditor } from "@/components/draft-editor";
 import { DraftGroundingPopover } from "@/components/draft-grounding-popover";
 import { DraftMessageButton } from "@/components/draft-message-button";
+import { GmailDraftPanel, type PersonEmailOption } from "@/components/gmail-draft-panel";
 import { Button } from "@/components/ui/button";
 import { copyDraftToClipboard } from "@/lib/draft-markdown";
 import type { DraftView } from "@/lib/draft-view";
+import type { GmailDraftView } from "@/lib/gmail-draft-view";
 import { useServerSyncedList } from "@/lib/use-server-synced-list";
+
+/** Gmail externalization context shared by every draft card on the person page. */
+export type GmailDraftContext = {
+  connected: boolean;
+  personName: string | null;
+  personEmails: PersonEmailOption[];
+  /** Latest inline Gmail state per Tendnote draft id (ADR-0096). */
+  byDraftId: Record<string, GmailDraftView | null>;
+};
 
 const draftId = (draft: DraftView) => draft.id;
 const byNewest = (drafts: DraftView[]) =>
@@ -26,9 +37,11 @@ const byNewest = (drafts: DraftView[]) =>
 export function PersonDrafts({
   personId,
   initialDrafts,
+  gmail,
 }: {
   personId: string;
   initialDrafts: DraftView[];
+  gmail: GmailDraftContext;
 }) {
   const router = useRouter();
   // Server-synced so a draft started from the button below (or any other entry
@@ -60,7 +73,13 @@ export function PersonDrafts({
         </p>
       ) : (
         drafts.map((draft) => (
-          <DraftReviewCard key={draft.id} draft={draft} onAdd={add} onUpdate={update} />
+          <DraftReviewCard
+            draft={draft}
+            gmail={gmail}
+            key={draft.id}
+            onAdd={add}
+            onUpdate={update}
+          />
         ))
       )}
     </div>
@@ -71,11 +90,14 @@ function DraftReviewCard({
   draft,
   onUpdate,
   onAdd,
+  gmail,
 }: {
   draft: DraftView;
   onUpdate: (view: DraftView) => void;
   onAdd: (view: DraftView) => void;
+  gmail: GmailDraftContext;
 }) {
+  const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -243,6 +265,19 @@ function DraftReviewCard({
           </div>
         </div>
       )}
+
+      {/* Gmail externalization lives inline on the approved draft card (ADR-0096):
+          no separate Gmail page, and only from an approved, source-grounded draft. */}
+      {!isEditing && draft.status === "approved" ? (
+        <GmailDraftPanel
+          connected={gmail.connected}
+          draft={draft}
+          initialView={gmail.byDraftId[draft.id] ?? null}
+          onWrite={() => router.refresh()}
+          personEmails={gmail.personEmails}
+          personName={gmail.personName}
+        />
+      ) : null}
 
       {error ? (
         <p className="text-[length:var(--text-small)] text-destructive" role="alert">
