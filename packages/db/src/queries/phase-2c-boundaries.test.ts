@@ -116,9 +116,13 @@ describe("Phase 2C Calendar boundaries (db)", () => {
 
   it("adds the calendar_event brief kind but no Gmail/Contacts capability reads", () => {
     expect(briefItemKind.enumValues).toContain("calendar_event");
-    // No Gmail or Contacts read query modules exist anywhere under queries/.
+    // Phase 2D adds a write-only Gmail *draft* module (`gmail-drafts`), which never
+    // reads the mailbox/history. Contacts stays absent, and no Gmail read module may
+    // appear. The Gmail no-read boundary itself is pinned in the Phase 2D policy
+    // tests (#126); here we only keep Phase 2C's Calendar sources clean of Gmail.
     const queryEntries = readdirSync(queriesDir);
-    expect(queryEntries.filter((name) => /gmail|contacts/i.test(name))).toEqual([]);
+    const gmailContactsModules = queryEntries.filter((name) => /gmail|contacts/i.test(name)).sort();
+    expect(gmailContactsModules).toEqual(["gmail-drafts", "gmail-drafts.ts"]);
     for (const forbidden of [
       "auth/gmail",
       "auth/contacts",

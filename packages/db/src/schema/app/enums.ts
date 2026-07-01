@@ -155,6 +155,15 @@ export const messageDraftStatus = pgEnum("message_draft_status", [
   "sent_manually",
 ]);
 
+export const gmailDraftActionKind = pgEnum("gmail_draft_action_kind", ["create", "update"]);
+
+export const gmailDraftActionStatus = pgEnum("gmail_draft_action_status", ["succeeded", "failed"]);
+
+export const gmailDraftRecipientSource = pgEnum("gmail_draft_recipient_source", [
+  "contact_method",
+  "manual_entry",
+]);
+
 export const briefCadence = pgEnum("brief_cadence", ["daily", "weekly"]);
 
 export const briefGenerationReason = pgEnum("brief_generation_reason", [

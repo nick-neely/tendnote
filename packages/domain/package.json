@@ -14,6 +14,7 @@
     "./context-snapshots": "./src/context-snapshots.ts",
     "./followups": "./src/followups.ts",
     "./drafts": "./src/drafts.ts",
+    "./gmail-drafts": "./src/gmail-drafts.ts",
     "./privacy": "./src/privacy.ts",
     "./semantic-retrieval": "./src/semantic-retrieval.ts",
     "./source-records": "./src/source-records.ts",
