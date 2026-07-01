@@ -5,6 +5,7 @@ import type { GmailDraftView } from "@/lib/gmail-draft-view";
 
 vi.mock("@/app/actions/gmail-drafts", () => ({
   createGmailDraftAction: vi.fn(),
+  updateGmailDraftAction: vi.fn(),
   retryGmailDraftAction: vi.fn(),
 }));
 
@@ -66,6 +67,14 @@ describe("GmailDraftPanel", () => {
     // No send language (ADR-0089): it tells the user to send from Gmail themselves.
     expect(html).toContain("Send it yourself from Gmail");
     expect(html.toLowerCase()).not.toContain("sent to");
+    // Explicit update intent is offered for a linked draft (ADR-0088).
+    expect(html).toContain("Update in Gmail");
+  });
+
+  it("does not offer an update affordance once Gmail is disconnected", () => {
+    const html = render({ connected: false, initialView: succeeded });
+    expect(html).toContain("Saved as a Gmail draft");
+    expect(html).not.toContain("Update in Gmail");
   });
 
   it("shows a visible retry after a failed create", () => {

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { editDraftBody, getDraft } from "@tendnote/db/queries/drafts";
 import {
   createDefaultGoogleGmailDraftService,
@@ -59,20 +60,23 @@ export type OwnerGmailDraftResult = {
   personId: string | null;
 };
 
-/**
- * Create a Gmail draft from an approved Tendnote draft. A last-mile body edit is
- * written through the Tendnote draft lifecycle FIRST (ADR-0086), so the external
- * write always uses the persisted draft snapshot, never an unpersisted variation.
- * Idempotent per Tendnote draft: a resubmit returns the existing action instead of
- * creating a duplicate Gmail draft (retries go through `retryOwnerGmailDraft`).
- */
-export async function createOwnerGmailDraft(input: {
+export type GmailDraftWriteRequest = {
   draftId: string;
   recipient: GmailDraftRecipient;
   subject: string;
   /** Optional last-mile body edit to persist through the draft before the write. */
   bodyEdit?: string;
-}): Promise<OwnerGmailDraftResult> {
+};
+
+/**
+ * Resolve the admitted owner, validate the approval, and write a last-mile body edit
+ * through the Tendnote draft lifecycle BEFORE Gmail is touched (ADR-0086), so both
+ * the create and update paths use the persisted draft snapshot rather than an
+ * unpersisted variation. The edit persists even if the Gmail write is later blocked
+ * — it is a legitimate change to the user's own draft, independent of the external
+ * write, and Gmail itself is never mutated on a blocked outcome.
+ */
+async function prepareApprovedGmailWrite(input: GmailDraftWriteRequest) {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const approval = gmailDraftApprovalSchema.parse({
     subject: input.subject,
@@ -82,11 +86,6 @@ export async function createOwnerGmailDraft(input: {
   const draft = await getDraft({ ownerUserId, draftId: input.draftId });
   const personId = draft?.personId ?? null;
 
-  // Write last-mile body edits through the Tendnote draft lifecycle before Gmail is
-  // touched, so Tendnote stays the source of truth (ADR-0086). Only when it changed.
-  // This persists even if the Gmail write is later blocked (e.g. duplicate) — the
-  // edit is a legitimate change to the user's own draft, independent of the external
-  // write, and Gmail itself is never mutated on a blocked outcome.
   if (draft && input.bodyEdit !== undefined) {
     const nextBody = input.bodyEdit.trim();
     if (nextBody && nextBody !== draft.body) {
@@ -94,6 +93,18 @@ export async function createOwnerGmailDraft(input: {
     }
   }
 
+  return { ownerUserId, approval, personId };
+}
+
+/**
+ * Create a Gmail draft from an approved Tendnote draft. Idempotent per Tendnote
+ * draft: a resubmit returns the existing action instead of creating a duplicate
+ * Gmail draft (retries go through `retryOwnerGmailDraft`).
+ */
+export async function createOwnerGmailDraft(
+  input: GmailDraftWriteRequest,
+): Promise<OwnerGmailDraftResult> {
+  const { ownerUserId, approval, personId } = await prepareApprovedGmailWrite(input);
   const outcome = await gmailService().createGmailDraft({
     ownerUserId,
     messageDraftId: input.draftId,
@@ -101,7 +112,29 @@ export async function createOwnerGmailDraft(input: {
     recipient: approval.recipient,
     idempotencyKey: `create:${input.draftId}`,
   });
+  return { outcome, personId };
+}
 
+/**
+ * Update the existing Gmail draft linked to a revised Tendnote draft (ADR-0088).
+ * Requires the same current user intent as create (an explicit call from the active
+ * flow): editing the Tendnote draft alone never updates Gmail. Targets the STORED
+ * Gmail draft id so no duplicate is created; a fresh idempotency key per submission
+ * lets each explicit revision update, while the service records durable version
+ * state. Duplicate-avoidance comes from the service targeting the stored id — never
+ * from the key — so a stable key is deliberately NOT used here.
+ */
+export async function updateOwnerGmailDraft(
+  input: GmailDraftWriteRequest,
+): Promise<OwnerGmailDraftResult> {
+  const { ownerUserId, approval, personId } = await prepareApprovedGmailWrite(input);
+  const outcome = await gmailService().updateGmailDraft({
+    ownerUserId,
+    messageDraftId: input.draftId,
+    subject: approval.subject,
+    recipient: approval.recipient,
+    idempotencyKey: `update:${input.draftId}:${randomUUID()}`,
+  });
   return { outcome, personId };
 }
 

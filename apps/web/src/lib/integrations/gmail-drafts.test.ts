@@ -6,6 +6,7 @@ const getDraft = vi.fn();
 const editDraftBody = vi.fn();
 const isProviderCapabilityConnected = vi.fn();
 const createGmailDraft = vi.fn();
+const updateGmailDraft = vi.fn();
 const retryGmailDraftAction = vi.fn();
 let capturedAuthorize: ((input: unknown) => Promise<{ ok: boolean; reason?: string }>) | null =
   null;
@@ -42,6 +43,23 @@ vi.mock("@tendnote/db/queries/gmail-drafts", () => ({
         createGmailDraft(input);
         return { status: "succeeded", action: { id: "act-1", recipient: input.recipient } };
       },
+      updateGmailDraft: async (input: { messageDraftId: string; recipient: unknown }) => {
+        const gate = await opts.authorize({
+          ownerUserId: "user-1",
+          messageDraftId: input.messageDraftId,
+          kind: "update",
+        });
+        if (!gate.ok) {
+          return { status: "blocked", reason: gate.reason };
+        }
+        // The spy may return a forced outcome (e.g. a failed write); default succeeded.
+        return (
+          updateGmailDraft(input) ?? {
+            status: "succeeded",
+            action: { id: "act-2", kind: "update", recipient: input.recipient },
+          }
+        );
+      },
       retryGmailDraftAction: (input: unknown) => {
         retryGmailDraftAction(input);
         return { status: "succeeded", action: { id: "act-1" } };
@@ -50,7 +68,7 @@ vi.mock("@tendnote/db/queries/gmail-drafts", () => ({
   },
 }));
 
-import { createOwnerGmailDraft } from "./gmail-drafts";
+import { createOwnerGmailDraft, updateOwnerGmailDraft } from "./gmail-drafts";
 
 const RECIPIENT = {
   email: "casey@example.com",
@@ -143,6 +161,61 @@ describe("createOwnerGmailDraft input confirmation", () => {
         recipient: { email: "casey@example.com", source: "manual_entry", contactMethodId: null },
       }),
     );
+  });
+});
+
+describe("updateOwnerGmailDraft (explicit revision, ADR-0088)", () => {
+  it("updates through the shared gate only on an explicit call, targeting the linked draft", async () => {
+    const { outcome } = await updateOwnerGmailDraft({
+      draftId: "d1",
+      recipient: RECIPIENT,
+      subject: "Revised",
+    });
+    expect(outcome.status).toBe("succeeded");
+    // The update path runs (never create), so it targets the existing Gmail draft id
+    // rather than creating a duplicate; and it only ran because we called it.
+    expect(updateGmailDraft).toHaveBeenCalledTimes(1);
+    expect(createGmailDraft).not.toHaveBeenCalled();
+  });
+
+  it("write-through persists the revised body before the Gmail update", async () => {
+    await updateOwnerGmailDraft({
+      draftId: "d1",
+      recipient: RECIPIENT,
+      subject: "Revised",
+      bodyEdit: "Revised body",
+    });
+    expect(editDraftBody).toHaveBeenCalledWith({
+      ownerUserId: "user-1",
+      draftId: "d1",
+      body: "Revised body",
+    });
+    expect(updateGmailDraft).toHaveBeenCalled();
+  });
+
+  it("blocks the update when the Tendnote draft is no longer approved", async () => {
+    getDraft.mockResolvedValue({ id: "d1", personId: "p1", status: "draft", body: "b" });
+    const { outcome } = await updateOwnerGmailDraft({
+      draftId: "d1",
+      recipient: RECIPIENT,
+      subject: "Revised",
+    });
+    expect(outcome.status).toBe("blocked");
+    expect(updateGmailDraft).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a failed update outcome (visible retry state) without mutating the draft further", async () => {
+    updateGmailDraft.mockReturnValue({
+      status: "failed",
+      action: { id: "act-2", kind: "update" },
+    });
+    const { outcome, personId } = await updateOwnerGmailDraft({
+      draftId: "d1",
+      recipient: RECIPIENT,
+      subject: "Revised",
+    });
+    expect(outcome.status).toBe("failed");
+    expect(personId).toBe("p1");
   });
 });
 

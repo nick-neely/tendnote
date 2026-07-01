@@ -8,6 +8,7 @@ import {
   createGmailDraftAction,
   type GmailDraftActionResult,
   retryGmailDraftAction,
+  updateGmailDraftAction,
 } from "@/app/actions/gmail-drafts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,17 +51,36 @@ export function GmailDraftPanel({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  // When a Gmail draft already exists, an explicit update prefills from its last
+  // known state; otherwise a create prefills a suggested subject and the primary
+  // saved recipient. `isUpdate` routes the submit and its labels (ADR-0088).
+  const isUpdate = initialView?.status === "succeeded";
   const primaryEmail = personEmails.find((option) => option.isPrimary) ?? personEmails[0] ?? null;
-  const [recipientId, setRecipientId] = useState<string>(primaryEmail?.id ?? MANUAL);
-  const [manualEmail, setManualEmail] = useState("");
-  const [subject, setSubject] = useState(() =>
-    suggestGmailSubject({ purpose: draft.purpose as MessageDraftPurpose, personName }),
+  const matchedSavedEmail = initialView
+    ? personEmails.find((option) => option.value === initialView.recipientEmail)
+    : undefined;
+  const [recipientId, setRecipientId] = useState<string>(
+    matchedSavedEmail?.id ?? (initialView ? MANUAL : (primaryEmail?.id ?? MANUAL)),
+  );
+  const [manualEmail, setManualEmail] = useState(
+    initialView && !matchedSavedEmail ? initialView.recipientEmail : "",
+  );
+  const [subject, setSubject] = useState(
+    () =>
+      initialView?.subject ??
+      suggestGmailSubject({ purpose: draft.purpose as MessageDraftPurpose, personName }),
   );
   const [body, setBody] = useState(draft.body);
 
   const subjectId = useId();
   const manualEmailId = useId();
   const bodyId = useId();
+
+  // One copy source for the submit affordance, keyed by whether this is a first
+  // create or an explicit update of the linked Gmail draft.
+  const submitLabel = isUpdate
+    ? { idle: "Update Gmail draft", busy: "Updating…" }
+    : { idle: "Save to Gmail", busy: "Saving…" };
 
   function apply(result: GmailDraftActionResult) {
     if (result.status === "blocked") {
@@ -77,7 +97,7 @@ export function GmailDraftPanel({
     onWrite?.();
   }
 
-  function handleCreate() {
+  function handleSubmit() {
     const recipient =
       recipientId === MANUAL
         ? { email: manualEmail.trim(), source: "manual_entry" as const, contactMethodId: null }
@@ -97,19 +117,22 @@ export function GmailDraftPanel({
     }
 
     setError(null);
+    // Explicit user intent (ADR-0088): an update only ever runs from this submit,
+    // never from a background/local draft edit. Both paths persist a last-mile body
+    // edit through the Tendnote draft first (ADR-0086); update targets the existing
+    // Gmail draft id rather than creating a duplicate.
+    const submit = isUpdate ? updateGmailDraftAction : createGmailDraftAction;
     startTransition(async () => {
       try {
         apply(
-          await createGmailDraftAction({
-            draftId: draft.id,
-            subject: subject.trim(),
-            recipient,
-            // Persist a last-mile body edit through the Tendnote draft first.
-            bodyEdit: body,
-          }),
+          await submit({ draftId: draft.id, subject: subject.trim(), recipient, bodyEdit: body }),
         );
       } catch {
-        setError("Couldn't save this draft to Gmail. Try again.");
+        setError(
+          isUpdate
+            ? "Couldn't update the Gmail draft. Try again."
+            : "Couldn't save this draft to Gmail. Try again.",
+        );
       }
     });
   }
@@ -130,20 +153,30 @@ export function GmailDraftPanel({
 
   // Success: the last known external state. Phase 2D shows only this — it does not
   // reconcile whether the user later edited or sent the draft in Gmail (ADR-0089).
-  if (view?.status === "succeeded") {
+  // Revising the linked Gmail draft requires the explicit "Update in Gmail" intent
+  // below — editing the Tendnote draft alone never touches Gmail (ADR-0088).
+  if (!open && view?.status === "succeeded") {
     return (
-      <div className="flex items-center gap-2 border-t pt-3 text-[length:var(--text-small)] text-muted-foreground">
-        <MailCheckIcon aria-hidden className="size-4 shrink-0 text-primary" />
-        <span>
-          Saved as a Gmail draft to{" "}
-          <span className="font-medium text-foreground">{view.recipientEmail}</span>. Send it
-          yourself from Gmail.
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3">
+        <span className="flex items-center gap-2 text-[length:var(--text-small)] text-muted-foreground">
+          <MailCheckIcon aria-hidden className="size-4 shrink-0 text-primary" />
+          <span>
+            Saved as a Gmail draft to{" "}
+            <span className="font-medium text-foreground">{view.recipientEmail}</span>. Send it
+            yourself from Gmail.
+          </span>
         </span>
+        {connected ? (
+          <Button onClick={() => setOpen(true)} size="sm" type="button" variant="ghost">
+            <RefreshCwIcon />
+            Update in Gmail
+          </Button>
+        ) : null}
       </div>
     );
   }
 
-  if (view?.status === "failed") {
+  if (!open && view?.status === "failed") {
     return (
       <div className="flex flex-col gap-2 border-t pt-3">
         {/* Operational failure uses the same destructive treatment as the draft
@@ -154,7 +187,9 @@ export function GmailDraftPanel({
           role="alert"
         >
           <TriangleAlertIcon aria-hidden className="size-4 shrink-0" />
-          Couldn&rsquo;t save this draft to Gmail.
+          {view.kind === "update"
+            ? "Couldn’t update the Gmail draft."
+            : "Couldn’t save this draft to Gmail."}
         </p>
         <div className="flex justify-end">
           <Button
@@ -172,7 +207,7 @@ export function GmailDraftPanel({
     );
   }
 
-  if (!connected) {
+  if (!open && !connected) {
     return (
       <p className="border-t pt-3 text-[length:var(--text-small)] text-muted-foreground">
         <Link className="underline underline-offset-2" href="/account">
@@ -267,7 +302,7 @@ export function GmailDraftPanel({
           value={body}
         />
         <p className="text-[length:var(--text-caption)] text-muted-foreground">
-          Edits here save back to the Tendnote draft before the Gmail draft is created.
+          Edits here save back to the Tendnote draft before the Gmail draft is written.
         </p>
       </div>
 
@@ -290,9 +325,9 @@ export function GmailDraftPanel({
         >
           Cancel
         </Button>
-        <Button disabled={pending} onClick={handleCreate} size="sm" type="button">
+        <Button disabled={pending} onClick={handleSubmit} size="sm" type="button">
           <CheckIcon />
-          {pending ? "Saving…" : "Save to Gmail"}
+          {pending ? submitLabel.busy : submitLabel.idle}
         </Button>
       </div>
     </div>

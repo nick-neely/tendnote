@@ -4,7 +4,13 @@ import type { GmailDraftActionOutcome } from "@tendnote/db/queries/gmail-drafts"
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { type GmailDraftView, toGmailDraftView } from "@/lib/gmail-draft-view";
-import { createOwnerGmailDraft, retryOwnerGmailDraft } from "@/lib/integrations/gmail-drafts";
+import {
+  createOwnerGmailDraft,
+  type GmailDraftWriteRequest,
+  type OwnerGmailDraftResult,
+  retryOwnerGmailDraft,
+  updateOwnerGmailDraft,
+} from "@/lib/integrations/gmail-drafts";
 
 const recipientSchema = z.object({
   email: z.string().trim().min(3).max(320),
@@ -12,12 +18,24 @@ const recipientSchema = z.object({
   contactMethodId: z.string().min(1).nullable().default(null),
 });
 
-const createSchema = z.object({
+/** Shared input shape for both the create and update Gmail write actions. */
+const gmailDraftInputSchema = z.object({
   draftId: z.uuid(),
   subject: z.string().trim().min(1),
   recipient: recipientSchema,
   bodyEdit: z.string().optional(),
 });
+
+type GmailDraftInput = {
+  draftId: string;
+  subject: string;
+  recipient: {
+    email: string;
+    source: "contact_method" | "manual_entry";
+    contactMethodId?: string | null;
+  };
+  bodyEdit?: string;
+};
 
 const retrySchema = z.object({ draftId: z.uuid(), actionId: z.uuid() });
 
@@ -43,28 +61,40 @@ function toResult(
   return { status: outcome.status, view: toGmailDraftView(outcome.action) };
 }
 
-/**
- * Create a Gmail draft from an approved Tendnote draft through the shared approval
- * gate. Persists last-mile body edits through the Tendnote draft first; never sends.
- */
-export async function createGmailDraftAction(input: {
-  draftId: string;
-  subject: string;
-  recipient: {
-    email: string;
-    source: "contact_method" | "manual_entry";
-    contactMethodId?: string | null;
-  };
-  bodyEdit?: string;
-}): Promise<GmailDraftActionResult> {
-  const parsed = createSchema.parse(input);
-  const { outcome, personId } = await createOwnerGmailDraft({
+/** Validate the shared input and run one owner-scoped Gmail write to a UI result. */
+async function runGmailWrite(
+  input: GmailDraftInput,
+  write: (request: GmailDraftWriteRequest) => Promise<OwnerGmailDraftResult>,
+): Promise<GmailDraftActionResult> {
+  const parsed = gmailDraftInputSchema.parse(input);
+  const { outcome, personId } = await write({
     draftId: parsed.draftId,
     subject: parsed.subject,
     recipient: parsed.recipient,
     bodyEdit: parsed.bodyEdit,
   });
   return toResult(outcome, personId);
+}
+
+/**
+ * Create a Gmail draft from an approved Tendnote draft through the shared approval
+ * gate. Persists last-mile body edits through the Tendnote draft first; never sends.
+ */
+export async function createGmailDraftAction(
+  input: GmailDraftInput,
+): Promise<GmailDraftActionResult> {
+  return runGmailWrite(input, createOwnerGmailDraft);
+}
+
+/**
+ * Update the Gmail draft linked to a revised Tendnote draft (ADR-0088). Explicit
+ * user intent only — editing the draft alone never updates Gmail — and targets the
+ * existing Gmail draft id rather than creating a duplicate.
+ */
+export async function updateGmailDraftAction(
+  input: GmailDraftInput,
+): Promise<GmailDraftActionResult> {
+  return runGmailWrite(input, updateOwnerGmailDraft);
 }
 
 /** Explicitly retry a failed Gmail draft write (visible retry only, no background). */
