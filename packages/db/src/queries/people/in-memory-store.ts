@@ -65,6 +65,36 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
       return updated;
     },
 
+    async deletePerson({ ownerUserId, personId }) {
+      const existing = people.get(personId);
+
+      if (!existing || existing.ownerUserId !== ownerUserId) {
+        return null;
+      }
+
+      // The production adapter leans on database cascades to remove owned rows;
+      // mirror that here so the double stays faithful — drop the person and any
+      // memories, follow-ups, source records, and links that belonged to them.
+      people.delete(personId);
+      for (const [id, memory] of memories) {
+        if (memory.personId === personId) {
+          memories.delete(id);
+        }
+      }
+      for (const [id, followup] of followups) {
+        if (followup.personId === personId) {
+          followups.delete(id);
+        }
+      }
+      for (const [key, link] of sourceRecordPeople) {
+        if (link.personId === personId) {
+          sourceRecordPeople.delete(key);
+        }
+      }
+
+      return existing;
+    },
+
     async createAuditLogEntry(values) {
       auditLogEntries.push(values);
     },

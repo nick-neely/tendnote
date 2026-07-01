@@ -32,6 +32,20 @@ export function createDrizzlePeopleStore(): PeopleStore {
       return person ?? null;
     },
 
+    async deletePerson({ ownerUserId, personId }) {
+      // Owner-scoped hard delete. Every person-owned table's foreign key is
+      // `on delete cascade`/`set null`, so Postgres removes the memories,
+      // follow-ups, drafts, snapshots, and contact methods (and null- links the
+      // historical brief/source references) atomically with the person. The audit
+      // row has no foreign key to `people`, so the deletion record survives.
+      const [person] = await getDb()
+        .delete(people)
+        .where(and(eq(people.id, personId), eq(people.ownerUserId, ownerUserId)))
+        .returning();
+
+      return person ?? null;
+    },
+
     async createAuditLogEntry(values) {
       await getDb().insert(auditLog).values(values);
     },

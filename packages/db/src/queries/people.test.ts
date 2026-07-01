@@ -124,6 +124,94 @@ describe("people queries", () => {
     ).rejects.toThrow();
   });
 
+  it("deletes a person, cascades their owned rows, and records an audit entry", async () => {
+    const now = new Date("2026-06-25T12:00:00.000Z");
+    const store = createInMemoryPeopleStore({
+      people: [
+        createPersonFixture({ id: "p1", ownerUserId: OWNER, displayName: "Mara" }),
+        createPersonFixture({ id: "keep", ownerUserId: OWNER, displayName: "Sam" }),
+      ],
+      memories: [
+        {
+          id: "m1",
+          personId: "p1",
+          ownerUserId: OWNER,
+          sourceRecordId: "s1",
+          memoryType: "context",
+          content: "Likes hiking",
+          status: "approved",
+          importance: 3,
+          sensitivity: "normal",
+          confidence: "medium",
+          scope: "private",
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      followups: [
+        {
+          id: "f1",
+          personId: "p1",
+          ownerUserId: OWNER,
+          reason: "Check in",
+          dueAt: now,
+          status: "open",
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+    });
+    const people = createPeopleQueries(store);
+
+    const removed = await people.deletePerson({ ownerUserId: OWNER, personId: "p1" });
+
+    expect(removed?.id).toBe("p1");
+    // The person is gone; another owner's — and this owner's other — people remain.
+    await expect(
+      people.getPersonProfile({ ownerUserId: OWNER, personId: "p1" }),
+    ).resolves.toBeNull();
+    const kept = await people.getPersonProfile({ ownerUserId: OWNER, personId: "keep" });
+    expect(kept?.person.id).toBe("keep");
+    // Owned rows cascade away with the person (the store mirrors the DB's foreign keys).
+    expect(kept?.memories).toEqual([]);
+    expect(kept?.followups).toEqual([]);
+
+    await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.toMatchObject([
+      {
+        action: "person.delete",
+        entityType: "person",
+        entityId: "p1",
+        metadataJson: { displayName: "Mara" },
+      },
+    ]);
+  });
+
+  it("does not delete another owner's person and writes no audit entry", async () => {
+    const store = createInMemoryPeopleStore({
+      people: [createPersonFixture({ id: "p1", ownerUserId: OWNER, displayName: "Mara" })],
+    });
+    const people = createPeopleQueries(store);
+
+    await expect(
+      people.deletePerson({ ownerUserId: OTHER_OWNER, personId: "p1" }),
+    ).resolves.toBeNull();
+    // The person survives the cross-owner attempt.
+    await expect(
+      people.getPersonProfile({ ownerUserId: OWNER, personId: "p1" }),
+    ).resolves.not.toBeNull();
+    await expect(store.listAuditLogEntries({ ownerUserId: OTHER_OWNER })).resolves.toEqual([]);
+  });
+
+  it("returns null and writes no audit entry when the person is already gone", async () => {
+    const store = createInMemoryPeopleStore();
+    const people = createPeopleQueries(store);
+
+    await expect(
+      people.deletePerson({ ownerUserId: OWNER, personId: "missing" }),
+    ).resolves.toBeNull();
+    await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.toEqual([]);
+  });
+
   it("searches only within the requested owner", async () => {
     const people = createPeopleQueries(
       createInMemoryPeopleStore({

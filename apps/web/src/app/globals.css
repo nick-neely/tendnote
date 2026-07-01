@@ -121,6 +121,9 @@
   --motion-base: 200ms;
   --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
+  --animate-accordion-down: accordion-down var(--motion-base) var(--motion-ease-out);
+  --animate-accordion-up: accordion-up var(--motion-base) var(--motion-ease-out);
+
   /* Scrollbar thumb — pure neutral (NOT foreground, which is green-tinted ink, and
      NOT primary, which would compete with the action color). */
   --sb-thumb: oklch(0 0 0 / 0.2);
@@ -216,6 +219,27 @@
       scroll-behavior: auto;
       transition-duration: 1ms;
     }
+  }
+}
+
+/* Radix Accordion height transition (see components/ui/accordion.tsx). Driven by
+   `--radix-accordion-content-height`; the global reduced-motion rule above collapses
+   it to ~instant. */
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
   }
 }
 

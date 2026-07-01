@@ -2,6 +2,7 @@ import { createDrizzlePeopleStore } from "./people/drizzle-store";
 import { createPeopleQueries } from "./people/queries";
 import type {
   CreatePersonMutationInput,
+  DeletePersonMutationInput,
   GetPersonProfileInput,
   SearchPeopleQueryInput,
   UpdatePersonMutationInput,
@@ -20,6 +21,10 @@ export async function createPerson(input: CreatePersonMutationInput) {
 
 export async function updatePerson(input: UpdatePersonMutationInput) {
   return defaultPeopleQueries.updatePerson(input);
+}
+
+export async function deletePerson(input: DeletePersonMutationInput) {
+  return defaultPeopleQueries.deletePerson(input);
 }
 
 export async function searchPeople(input: SearchPeopleQueryInput) {

@@ -23,6 +23,7 @@ import {
   MemoriesSection,
   PersonDetailsCard,
 } from "@/components/person-ledger";
+import { PersonRemove } from "@/components/person-remove";
 import { RelationshipSnapshotCard } from "@/components/relationship-snapshot-card";
 import { SuggestedFollowupReviewSection } from "@/components/suggested-followup-review";
 import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
@@ -200,6 +201,19 @@ export default async function PersonDetailPage({
               personName={person.displayName}
             />
             <PersonDetailsCard person={person} />
+            <PersonRemove
+              drafts={drafts.map((draft) => ({ id: draft.id, text: draft.body }))}
+              followups={profile.followups.map((followup) => ({
+                id: followup.id,
+                text: followup.reason,
+              }))}
+              memories={profile.memories.map((memory) => ({
+                id: memory.id,
+                text: memory.content,
+              }))}
+              personId={person.id}
+              personName={person.displayName}
+            />
           </>
         }
         draftsCount={draftsCount}

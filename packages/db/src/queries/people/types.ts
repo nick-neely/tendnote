@@ -16,6 +16,11 @@ export type UpdatePersonMutationInput = UpdatePersonInput & {
   personId: string;
 };
 
+export type DeletePersonMutationInput = {
+  ownerUserId: string;
+  personId: string;
+};
+
 /** Defined-only editable fields handed to the store (undefined keys are dropped). */
 export type UpdatePersonPatch = Partial<
   Pick<
@@ -68,6 +73,7 @@ export type PeopleStore = {
     personId: string;
     patch: UpdatePersonPatch;
   }) => Promise<Person | null>;
+  deletePerson: (input: { ownerUserId: string; personId: string }) => Promise<Person | null>;
   createAuditLogEntry: (auditLogEntry: PersonAuditLogEntry) => Promise<void>;
   searchPeople: (input: SearchPeopleStoreInput) => Promise<Person[]>;
   getPersonProfile: (input: GetPersonProfileInput) => Promise<PersonProfile | null>;

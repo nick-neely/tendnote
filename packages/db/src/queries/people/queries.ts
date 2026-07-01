@@ -1,6 +1,7 @@
 import { createPersonSchema, searchPeopleSchema, updatePersonSchema } from "@tendnote/domain";
 import type {
   CreatePersonMutationInput,
+  DeletePersonMutationInput,
   GetPersonProfileInput,
   PeopleStore,
   SearchPeopleQueryInput,
@@ -71,6 +72,34 @@ export function createPeopleQueries(store: PeopleStore) {
         });
       } catch {
         // The update is already persisted; an audit-log failure must not lose it.
+      }
+
+      return person;
+    },
+
+    async deletePerson(input: DeletePersonMutationInput) {
+      // Hard delete, scoped to the owner. The store returns the removed person so
+      // the audit entry can name it; a null means nothing matched (wrong owner or
+      // already gone) and no audit entry is written.
+      const person = await store.deletePerson({
+        ownerUserId: input.ownerUserId,
+        personId: input.personId,
+      });
+
+      if (!person) {
+        return null;
+      }
+
+      try {
+        await store.createAuditLogEntry({
+          ownerUserId: input.ownerUserId,
+          action: "person.delete",
+          entityType: "person",
+          entityId: person.id,
+          metadataJson: { displayName: person.displayName },
+        });
+      } catch {
+        // The person is already removed; an audit-log failure must not resurrect it.
       }
 
       return person;
