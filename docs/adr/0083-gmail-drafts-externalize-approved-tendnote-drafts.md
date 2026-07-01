@@ -1,0 +1,3 @@
+# Gmail Drafts Externalize Approved Tendnote Drafts
+
+Phase 2D Gmail draft creation should be an explicit externalization step from an already grounded Tendnote message draft, not a parallel Gmail-native drafting path from raw relationship context. The user experience may make "draft this in Gmail" feel seamless, but the product boundary remains: Tendnote first creates or uses a source-grounded internal draft, the user explicitly approves creating the Gmail draft, and the external draft action is audited back to the Tendnote draft and its source references. This preserves the Phase 1G drafting contract while allowing Gmail draft creation without reading Gmail history or sending messages.

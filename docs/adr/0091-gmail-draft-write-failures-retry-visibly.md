@@ -1,0 +1,3 @@
+# Gmail Draft Write Failures Retry Visibly
+
+Phase 2D Gmail draft create/update failures should persist the failed external-action attempt with a non-secret error, leave the Tendnote message draft intact, and require an explicit visible retry from the user. Tendnote should not automatically retry Gmail draft writes in the background during this phase, because a delayed external mutation could create or update a provider draft after the user's intent or local draft content has changed. Provider auth failures may update the `google/gmail` Provider Connection state, while transient write failures stay on the draft action record.

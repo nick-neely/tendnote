@@ -1,0 +1,3 @@
+# Gmail Draft Actions Are Durable Records
+
+Phase 2D should persist each Gmail draft creation attempt as a durable external-action record linked to the source Tendnote `message_drafts` row, rather than representing it only as draft status changes or audit metadata. The record should hold non-secret provider/capability identity, the Tendnote draft id, intended recipient metadata, the Gmail draft id when creation succeeds, status, timestamps, and retry/error fields. This gives Tendnote idempotency, visible "created in Gmail" state, and recoverable failure handling for external writes while keeping audit logs focused on explaining user-visible decisions and lifecycle changes.

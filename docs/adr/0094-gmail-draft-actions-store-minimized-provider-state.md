@@ -1,0 +1,3 @@
+# Gmail Draft Actions Store Minimized Provider State
+
+Phase 2D Gmail draft action records should store only the minimized provider state Tendnote needs to make external draft creation and updates explainable, idempotent, and recoverable. The record should include the Tendnote draft id, Gmail draft id, status, subject, confirmed recipient metadata, provider/capability, timestamps, action/version metadata, and non-secret errors, while keeping the message body on the Tendnote `message_drafts` row. Tendnote should not persist raw Gmail API payloads, mailbox labels, thread metadata, message history, or provider dumps for Gmail draft creation.

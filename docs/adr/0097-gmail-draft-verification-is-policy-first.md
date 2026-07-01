@@ -1,0 +1,3 @@
+# Gmail Draft Verification Is Policy First
+
+Phase 2D verification should focus on deterministic policy and integration-boundary tests for Gmail draft creation and updates: explicit approval, connected `google/gmail` capability, no send behavior, no Gmail history reads, idempotent create/update behavior, no silent external mutations, minimized stored provider state, and visible retry after failures. New model evals are only needed if Phase 2D introduces model-backed subject generation or other new generation behavior beyond the existing Tendnote message-drafting path. This keeps Gmail verification centered on external-write safety rather than re-testing the broader Phase 1G drafting model.

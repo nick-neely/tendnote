@@ -1,0 +1,3 @@
+# Gmail Draft Updates Require Current User Intent
+
+Phase 2D should support updating an existing Gmail draft when the user revises a linked Tendnote draft and intends the Gmail artifact to stay current. The implementation may make this feel seamless in the revision flow, but it should not silently update Gmail merely because a Tendnote draft row changed or an agent regenerated local text in the background. Each Gmail draft update should write through the Tendnote draft first, require current user intent for the external mutation, and record a durable external-action update against the existing Gmail draft id.
