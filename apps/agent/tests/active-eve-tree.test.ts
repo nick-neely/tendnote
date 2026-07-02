@@ -59,6 +59,7 @@ describe("active Eve tree", () => {
     expect(code).toMatch(/dispatchPostMeetingAftercare/);
     expect(code).toMatch(/createDiscordProactiveDeliverySender/);
     expect(code).toMatch(/discordSender/);
+    expect(code).toMatch(/weeklyRelationshipReviewDiscordSender/);
   });
 
   it("has no background follow-up scanner or periodic suggestion generator (Phase 1E)", () => {

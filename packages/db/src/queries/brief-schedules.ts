@@ -2,8 +2,8 @@ import { ensureDefaultBriefSchedules } from "./brief-schedules/defaults";
 import type { RunDueBriefSchedulesInput } from "./brief-schedules/dispatcher";
 import { createBriefScheduleDispatcher } from "./brief-schedules/dispatcher";
 import { createDrizzleBriefScheduleStore } from "./brief-schedules/drizzle-store";
-import { generateBrief } from "./briefs";
 import { type DiscordProactiveDeliverySender, generateMorningAgenda } from "./morning-agenda";
+import { generateWeeklyRelationshipReview } from "./weekly-relationship-review";
 
 export {
   type EnsureDefaultBriefSchedulesInput,
@@ -29,7 +29,7 @@ const defaultBriefScheduleDispatcher = createBriefScheduleDispatcher(
   (input) =>
     input.cadence === "daily"
       ? generateMorningAgenda(input).then((result) => result.brief)
-      : generateBrief(input),
+      : generateWeeklyRelationshipReview(input).then((result) => result.brief),
 );
 
 export type DispatchDueBriefsInput = RunDueBriefSchedulesInput & {
@@ -41,6 +41,7 @@ export type DispatchDueBriefsInput = RunDueBriefSchedulesInput & {
   // in-app only; when present, the daily workflow persists the brief first and then
   // attempts Discord delivery through the configured workflow target.
   morningAgendaDiscordSender?: DiscordProactiveDeliverySender;
+  weeklyRelationshipReviewDiscordSender?: DiscordProactiveDeliverySender;
 };
 
 /**
@@ -61,7 +62,7 @@ export async function dispatchDueBriefs(input: DispatchDueBriefsInput = {}) {
     });
   }
 
-  if (!input.morningAgendaDiscordSender) {
+  if (!input.morningAgendaDiscordSender && !input.weeklyRelationshipReviewDiscordSender) {
     return defaultBriefScheduleDispatcher.runDueBriefSchedules(input);
   }
 
@@ -72,6 +73,14 @@ export async function dispatchDueBriefs(input: DispatchDueBriefsInput = {}) {
           deliverDiscord: true,
           sender: input.morningAgendaDiscordSender,
         }).then((result) => result.brief)
-      : generateBrief(generationInput),
+      : generateWeeklyRelationshipReview({
+          ...generationInput,
+          ...(input.weeklyRelationshipReviewDiscordSender
+            ? {
+                deliverDiscord: true,
+                sender: input.weeklyRelationshipReviewDiscordSender,
+              }
+            : {}),
+        }).then((result) => result.brief),
   ).runDueBriefSchedules(input);
 }

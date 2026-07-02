@@ -31,6 +31,7 @@
     "./queries/relationship-agenda": "./src/queries/relationship-agenda.ts",
     "./queries/relationship-context-search": "./src/queries/relationship-context-search.ts",
     "./queries/semantic-retrieval": "./src/queries/semantic-retrieval.ts",
+    "./queries/weekly-relationship-review": "./src/queries/weekly-relationship-review.ts",
     "./queries/source-records": "./src/queries/source-records.ts"
   },
   "scripts": {

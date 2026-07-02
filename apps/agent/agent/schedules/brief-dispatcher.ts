@@ -35,6 +35,7 @@ export default defineSchedule({
           ensureOwnerUserId: ownerUserId,
           timezone,
           ...(discordSender ? { morningAgendaDiscordSender: discordSender } : {}),
+          ...(discordSender ? { weeklyRelationshipReviewDiscordSender: discordSender } : {}),
         }).catch((error) => {
           console.error("Brief schedule dispatch failed.", error);
         }),
