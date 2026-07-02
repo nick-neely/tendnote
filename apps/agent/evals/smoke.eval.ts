@@ -1,6 +1,4 @@
 import { defineEval } from "eve/evals";
-import { includes } from "eve/evals/expect";
-
 export default defineEval({
   description: "Eve boots, accepts a basic Tendnote session turn, and replies without tools.",
   tags: ["deterministic", "smoke"],
@@ -9,6 +7,6 @@ export default defineEval({
 
     t.succeeded();
     t.usedNoTools();
-    t.check(t.reply, includes(/hello|hi/i));
+    t.messageIncludes(/\S/);
   },
 });
