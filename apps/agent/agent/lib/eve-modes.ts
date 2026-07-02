@@ -50,7 +50,8 @@ export type EveToolName =
   | "list_calendar_events"
   | "list_suggested_followup_reviews"
   | "propose_followup"
-  | "create_message_draft";
+  | "create_message_draft"
+  | "cleanup_preview";
 
 export type EveSkillName =
   | "capturing-and-review"
@@ -142,7 +143,7 @@ const modeDefinitions = {
   },
   cleanup_preview: {
     mode: "cleanup_preview",
-    tools: [],
+    tools: ["cleanup_preview"],
     skills: ["cleanup-preview"],
     capabilities: ["cleanup_preview", "sandbox_parse"],
   },

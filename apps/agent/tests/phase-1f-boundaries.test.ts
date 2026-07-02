@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { expectAllowedAgentChannels, expectChannelToExclude } from "./agent-channel-boundaries";
@@ -8,9 +8,9 @@ const repoRoot = join(import.meta.dirname, "../../..");
 
 /**
  * Phase 1F boundary evals on the Eve/agent surface (PRD #65, issue #74). They
- * confirm in-app brief generation did not introduce external delivery channels,
- * sandboxes, or workflow surfaces, and that the domain language stays aligned with
- * the persisted-brief model.
+ * confirm in-app brief generation did not introduce external delivery channels or
+ * workflow surfaces, and that the domain language stays aligned with the
+ * persisted-brief model.
  */
 describe("Phase 1F agent-surface boundaries", () => {
   it("keeps Phase 1F brief generation out of external delivery channels", () => {
@@ -24,10 +24,11 @@ describe("Phase 1F agent-surface boundaries", () => {
     );
   });
 
-  it("adds no sandbox, workflow, or connection surfaces", () => {
-    for (const dir of ["sandbox", "sandboxes", "workflows", "connections"]) {
+  it("adds no workflow or connection surfaces and only the real Phase 3 cleanup sandbox", () => {
+    for (const dir of ["sandboxes", "workflows", "connections"]) {
       expect(existsSync(join(agentRoot, dir))).toBe(false);
     }
+    expect(readdirSync(join(agentRoot, "sandbox"))).toEqual(["cleanup-preview.ts"]);
   });
 
   it("keeps domain language aligned with the persisted brief-item model", () => {

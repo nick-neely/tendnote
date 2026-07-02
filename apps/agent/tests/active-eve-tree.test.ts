@@ -39,6 +39,9 @@ describe("active Eve tree", () => {
       "subagents/relationship_strategist/tools/propose_followup.ts",
     ]);
 
+    expect(files.filter((file) => file.startsWith("sandbox/"))).toEqual([
+      "sandbox/cleanup-preview.ts",
+    ]);
     expect(files.some((file) => file.startsWith("connections/"))).toBe(false);
     expect(files.some((file) => /placeholder|stub|future/i.test(file))).toBe(false);
   });
@@ -80,14 +83,18 @@ describe("active Eve tree", () => {
     expect(followupProducers).toEqual(["tools/propose_followup.ts"]);
   });
 
-  it("does not add extraction review tools, sandboxes, or user-facing model-debugging surfaces", () => {
+  it("does not add extraction review tools or user-facing model-debugging surfaces", () => {
     const files = listAuthoredFiles(agentRoot);
     const toolFiles = files.filter((file) => file.startsWith("tools/"));
+    const sandboxFiles = files.filter((file) => file.startsWith("sandbox/"));
 
+    expect(sandboxFiles).toEqual(["sandbox/cleanup-preview.ts"]);
+    expect(sandboxFiles.some((file) => /extraction|model|debug/i.test(file))).toBe(false);
     expect(files.some((file) => /extraction.*(inbox|sandbox|debug|mode)/i.test(file))).toBe(false);
     expect(toolFiles.some((file) => /extract|model|debug/i.test(file))).toBe(false);
     expect(toolFiles).toEqual(
       expect.arrayContaining([
+        "tools/cleanup_preview.ts",
         "tools/list_suggested_memory_reviews.ts",
         "tools/get_suggested_memory_review.ts",
         "tools/approve_suggested_memory.ts",

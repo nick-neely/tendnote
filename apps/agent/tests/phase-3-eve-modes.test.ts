@@ -43,6 +43,7 @@ describe("Phase 3 Eve modes foundation", () => {
 
     expect(modeAllowsTool("cleanup_preview", "capture_source_record")).toBe(false);
     expect(modeAllowsTool("cleanup_preview", "create_message_draft")).toBe(false);
+    expect(modeAllowsTool("cleanup_preview", "cleanup_preview")).toBe(true);
     expect(modeAllowsCapability("cleanup_preview", "persist_draft_with_intent")).toBe(false);
 
     expect(modeAllowsTool("scheduled_workflow", "create_message_draft")).toBe(false);
