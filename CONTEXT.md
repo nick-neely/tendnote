@@ -88,6 +88,14 @@ _Avoid_: Outbox, campaign, automatic send, external draft
 An action-specific recipient address used when Tendnote creates an external provider draft from an approved message draft. It may come from a saved person contact method or from explicit user input for that draft action, but it is not automatically a durable person contact method.
 _Avoid_: Imported contact, inferred email, synced address book entry
 
+**Contact Import Preview**:
+A lightweight review surface for proposed Google Contacts changes before Tendnote writes people, birthdays, or contact methods. It should feel like confirming sensible suggestions, not processing a ledger of every provider record.
+_Avoid_: Contact sync, address book mirror, import ledger
+
+**Contact Import Candidate**:
+A proposed contact import outcome that the user can confirm, skip, or resolve before it changes Tendnote relationship data.
+_Avoid_: Synced contact, automatic person, imported truth
+
 **Private Beta Access**:
 The account-level gate that decides whether a signed-up user may enter Tendnote during the early hosted product phase. It controls product access only; it is not the same as relationship data ownership, integration authorization, or payment status.
 _Avoid_: Public signup, environment allowlist, owner scope

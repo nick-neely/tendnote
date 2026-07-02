@@ -1133,9 +1133,22 @@ Add Gmail draft creation and update behind explicit approval; do not read Gmail 
 - **Calendar handoff**: Calendar-derived follow-ups enter Gmail only through reviewed follow-ups and Tendnote drafts (ADR 0093).
 - **First-slice surface**: The first slice supports only `to`, subject, and body with inline draft state and policy-first verification (ADRs 0095, 0096, 0097).
 
-##### Phase 2E: Google Contacts Import Preview
+##### Phase 2E: Google Contacts Import Preview (PRD #127)
 
 Add Google Contacts import preview and duplicate candidate matching with manual confirmation.
+
+- **Preview-confirm model**: Contacts import may create people or update existing people only through explicit preview confirmation; it should feel like confirming useful suggestions, not processing every provider row (ADRs 0098, 0104).
+- **Retention boundary**: Unconfirmed preview rows are ephemeral or short-lived import-session state, not durable source records, memories, people, or contact methods (ADR 0099).
+- **Conflict handling**: Confirmed candidates may add missing fields, but conflicting Tendnote profile/contact values require explicit resolution and must not be silently overwritten (ADR 0100).
+- **Explicit import action**: Phase 2E uses a user-triggered "preview latest contacts" flow, not background sync, polling, webhooks, or automatic refresh, while keeping provider fetch/match/apply seams reusable for later sync (ADR 0101).
+- **Field scope**: First slice imports display names, email addresses, phone numbers, and birthdays only; richer People API fields stay out of scope (ADRs 0102, 0117).
+- **Matching**: Use deterministic email/phone matching plus advisory LLM or semantic fuzzy ranking; fuzzy matches require user confirmation before linking or updating a person (ADR 0103).
+- **UI shape**: Google Contacts connection starts from the account/settings provider row, then opens a dedicated import preview surface with search, ranking, conflict handling, safe bulk confirmation, and post-confirmation feedback (ADRs 0105, 0111, 0112).
+- **Data ownership**: Confirmed imports enrich profile/contact data only; they do not infer memories, follow-ups, semantic context, Gmail drafts, or outbound actions, and confirmed data remains in Tendnote after disconnect (ADRs 0106, 0118, 0119, 0121).
+- **Provider/account boundary**: Contacts is a separate incremental Google capability on the same linked Google identity, limited to personal contacts and narrow People API scope (ADRs 0107, 0110).
+- **Audit and recovery**: Record per-confirmed-candidate audit/provenance with minimized provider references, no raw provider payloads, no transactional undo in the first slice, and owner-wide contact-method dedupe (ADRs 0108, 0109, 0113, 0114).
+- **Contact method shape**: Add normalized/display representations for contact methods, including phone normalization for matching, before import relies on owner-wide dedupe (ADRs 0115, 0116).
+- **Verification**: Use fake adapters and fixture-based CI tests plus a manual live-Google smoke checklist; do not run live Google API tests in normal CI (ADR 0120).
 
 ##### Phase 2 Policy Evals
 
