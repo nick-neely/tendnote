@@ -12,6 +12,7 @@
     "./queries/briefs": "./src/queries/briefs.ts",
     "./queries/calendar": "./src/queries/calendar.ts",
     "./queries/calendar-followups": "./src/queries/calendar-followups.ts",
+    "./queries/contacts-import-preview": "./src/queries/contacts-import-preview.ts",
     "./queries/contact-methods": "./src/queries/contact-methods.ts",
     "./queries/context-snapshots": "./src/queries/context-snapshots.ts",
     "./queries/drafts": "./src/queries/drafts.ts",
