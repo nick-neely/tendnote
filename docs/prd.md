@@ -1150,9 +1150,23 @@ Add Google Contacts import preview and duplicate candidate matching with manual 
 - **Contact method shape**: Add normalized/display representations for contact methods, including phone normalization for matching, before import relies on owner-wide dedupe (ADRs 0115, 0116).
 - **Verification**: Use fake adapters and fixture-based CI tests plus a manual live-Google smoke checklist; do not run live Google API tests in normal CI (ADR 0120).
 
-##### Phase 2 Policy Evals
+##### Phase 2F: Eve-Native Eval Foundation
 
-Add privacy and policy evals around account access, calendar-derived context, email-derived drafts, and contact import behavior.
+Rework Tendnote's agent eval suite around Eve-native evals that cover the full agent-behavior spectrum: safety and policy gates, tool choice, source grounding, refusal behavior, instruction and skill quality, model suitability, and CI/reporting ergonomics. The earliest slices should be policy-only and deterministic, but this PRD should carry the eval foundation through to a complete baseline rather than leaving quality and model-comparison work as recurring follow-up debt.
+
+- Keep product-rule tests near the logic they protect: `packages/domain`, `packages/db`, integration seams, web parsing/rendering, and thin adapter boundaries.
+- Start with one dedicated inventory-and-relocation slice for every current `apps/agent/evals/*.test.ts` file: move useful Vitest-style wrapper/source-scan tests into the package or module that owns the protected behavior, remove redundant coverage when the owner already has better tests, and document anything intentionally converted later. After that pass, reserve `apps/agent/evals` for Eve-native `.eval.ts` files only.
+- Refresh and extend the existing synthetic demo/fixture base rather than creating a parallel dataset from scratch. Use `packages/db/src/demo-data.ts`, `packages/db/src/seed.ts`, and existing fake adapters as the starting point, updating them for Phase 2A-2E coverage where stale.
+- Add an eval-specific database reset/seed harness that points Eve evals at a stable isolated local Postgres database such as `tendnote_eval`, not the developer's normal `tendnote` local database. The harness should hard-reset the eval database before each suite, apply committed Drizzle migrations, seed the synthetic fixture data, run evals with `DATABASE_URL` pointed at the eval database, and support repeatable reset for debugging. Per-run temporary databases can be deferred until CI parallelization or sharding requires them.
+- Convert agent-behavior coverage into Eve cases driven through real sessions, using `defineEval`, `evals.config.ts`, assertions, tags, targets, datasets, and strict/JUnit-friendly output.
+- Slice the first Eve-native suite around deterministic policy gates: pending-access users cannot reach normal Eve behavior, Calendar context stays read-only/provider-derived, Gmail draft creation never sends or reads mailbox history, and Contacts import never infers memories, follow-ups, semantic context, Gmail drafts, or outbound actions.
+- Add deterministic behavior evals for correct tool choice, forbidden tool calls, expected tool calls, refusal behavior, source-grounded recall, disambiguation, approval flow parking/responding, and external-action boundaries.
+- Add judge-backed quality evals only after deterministic gates are stable, covering tone, factuality, draft usefulness, grounded summarization, brief usefulness, and instruction/skill quality where exact assertions cannot capture correctness.
+- Add model-comparison eval support with explicit tags, cost/credential gates, and reportable outputs so Tendnote can compare candidate agent and judge models without making normal CI flaky or expensive.
+- Add CI/reporting support: fast deterministic strict Eve evals should be the normal blocking CI path; judge-backed and model-comparison runs should be explicit, credential-gated commands or scheduled/manual workflows so normal CI does not burn LLM tokens, slow every change, or fail on provider noise. Include JUnit output, JSON artifacts, and documented commands for local and deployed targets.
+- Expose clear commands: a deterministic `pnpm eval:agent` path that performs eval DB reset/seed and runs strict Eve evals, plus explicit heavier commands such as `pnpm eval:agent:judge`, `pnpm eval:agent:models`, and `pnpm eval:agent:list` for judged quality checks, model comparison, and discovery/debugging.
+- Keep eval data synthetic and upload-safe. Do not depend on Nick's personal data, production data, or live Google APIs; fixture gaps should be filled by extending the existing demo data and fake adapters.
+- Do not add new product behavior, Google scopes, provider sync, shared-household privacy behavior, or external actions in this phase. This phase upgrades verification architecture before broader privacy-sensitive work.
 
 #### Phase 3: Shared Household Context
 
