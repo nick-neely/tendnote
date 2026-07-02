@@ -1,4 +1,5 @@
 import { ensureAccessProfile } from "@tendnote/db/queries/access-profiles";
+import { updateAuthUserEmail } from "@tendnote/db/queries/auth-users";
 import { serializeSignedCookie } from "better-call";
 import { localFallbackOwnerUserId } from "@/lib/access/access-state";
 import { getAuth } from "@/lib/auth/server";
@@ -17,14 +18,16 @@ export async function POST() {
 
   const auth = getAuth();
   const context = await auth.$context;
-  const user =
-    (await context.internalAdapter.findUserById(ownerUserId)) ??
-    (await context.internalAdapter.createUser({
-      id: ownerUserId,
-      email: localDemoEmail(ownerUserId),
-      name: "Local development",
-      emailVerified: true,
-    }));
+  const email = localDemoEmail(ownerUserId, process.env.TENDNOTE_DEV_OWNER_EMAIL);
+  const existingUser = await context.internalAdapter.findUserById(ownerUserId);
+  const user = existingUser
+    ? await syncLocalDemoEmail(existingUser, email)
+    : await context.internalAdapter.createUser({
+        id: ownerUserId,
+        email,
+        name: "Local development",
+        emailVerified: true,
+      });
 
   await ensureAccessProfile({ userId: user.id });
 
@@ -48,7 +51,26 @@ export async function POST() {
   });
 }
 
-function localDemoEmail(ownerUserId: string) {
+type LocalDemoUser = {
+  id: string;
+  email?: string | null;
+};
+
+async function syncLocalDemoEmail<TUser extends LocalDemoUser>(user: TUser, email: string) {
+  if (user.email === email) {
+    return user;
+  }
+
+  await updateAuthUserEmail({ email, userId: user.id });
+  return { ...user, email, emailVerified: true };
+}
+
+function localDemoEmail(ownerUserId: string, configuredEmail?: string) {
+  const trimmedEmail = configuredEmail?.trim();
+  if (trimmedEmail) {
+    return trimmedEmail;
+  }
+
   const localPart = ownerUserId.toLowerCase().replace(/[^a-z0-9._-]+/g, "-") || "demo-user";
   return `${localPart}@${LOCAL_DEMO_EMAIL_DOMAIN}`;
 }
