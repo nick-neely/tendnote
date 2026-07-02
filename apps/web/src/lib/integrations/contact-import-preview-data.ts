@@ -4,6 +4,7 @@ import { findOwnerContactMethodDuplicates } from "@tendnote/db/queries/contact-m
 import {
   type ContactImportPreviewSession,
   createContactImportPreviewSession,
+  createFakeContactImportFuzzyMatcher,
   createFakeContactImportPreviewAdapter,
 } from "@tendnote/db/queries/contacts-import-preview";
 import { getPerson, searchPeople } from "@tendnote/db/queries/people";
@@ -23,6 +24,7 @@ export async function getOwnerContactImportPreview(input: {
     { ownerUserId, query: input.query },
     {
       adapter: createFakeContactImportPreviewAdapter(),
+      fuzzyMatcher: createFakeContactImportFuzzyMatcher(),
       isProviderCapabilityConnected,
       searchPeople,
       getPerson,

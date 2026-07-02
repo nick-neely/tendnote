@@ -8,6 +8,7 @@ import type { ContactMethodDuplicateMatch } from "../contact-methods/types";
 import type {
   ContactImportCandidateConflict,
   ContactImportCandidateMatchSignal,
+  ContactImportFuzzyMatch,
   ContactImportPreviewCandidate,
   ContactImportPreviewDeps,
   ContactImportPreviewSession,
@@ -44,7 +45,7 @@ export async function createContactImportPreviewSession(
   }
 
   const contacts = await deps.adapter.fetchContacts({ ownerUserId: input.ownerUserId });
-  const people = await deps.searchPeople({ ownerUserId: input.ownerUserId, limit: 50 });
+  const people = await deps.searchPeople({ ownerUserId: input.ownerUserId, limit: 200 });
   const normalizedMethods = contacts.flatMap((contact) => normalizedContactMethods(contact));
   const duplicateMatches = normalizedMethods.length
     ? await deps.findOwnerContactMethodDuplicates({
@@ -119,6 +120,12 @@ async function buildCandidate(input: {
   const matchedPerson =
     loadedMatchedPerson ??
     (matchedPersonId ? (people.find((person) => person.id === matchedPersonId) ?? null) : null);
+  const advisoryMatches = hasExistingPersonMatch
+    ? []
+    : sanitizeAdvisoryMatches(
+        await (deps.fuzzyMatcher?.rankPossibleMatches({ ownerUserId, contact, people }) ?? []),
+        people,
+      );
   const birthday = normalizeBirthday(contact.birthday);
   const reasons: string[] = [];
   const conflicts: ContactImportCandidateConflict[] = [];
@@ -132,6 +139,10 @@ async function buildCandidate(input: {
         ? `Matches ${matchedPerson.displayName} by saved contact method`
         : "Matches an existing Tendnote person by saved contact method",
     );
+  }
+  if (advisoryMatches.length > 0) {
+    score += advisoryMatches[0]?.confidence === "high" ? 45 : 25;
+    reasons.push(`Possible match: ${advisoryMatches[0]?.displayName}`);
   }
   if (ambiguousDuplicate) {
     score -= 25;
@@ -186,9 +197,11 @@ async function buildCandidate(input: {
         ? "individual_review"
         : hasStrongRecommendation
           ? "safe_recommendation"
-          : emails.length > 0 || birthday || normalizedPhones.length > 0
-            ? "individual_review"
-            : "weak_match";
+          : advisoryMatches.length > 0
+            ? "advisory_match"
+            : emails.length > 0 || birthday || normalizedPhones.length > 0
+              ? "individual_review"
+              : "weak_match";
   const safeBulkEligible = reviewState === "safe_recommendation";
 
   return {
@@ -210,11 +223,33 @@ async function buildCandidate(input: {
     reviewState,
     safeBulkEligible,
     matchSignals,
+    advisoryMatches,
     conflicts,
     matchedPerson: matchedPerson
       ? { id: matchedPerson.id, displayName: matchedPerson.displayName }
       : null,
   };
+}
+
+function sanitizeAdvisoryMatches(
+  matches: ContactImportFuzzyMatch[],
+  people: Awaited<ReturnType<ContactImportPreviewDeps["searchPeople"]>>,
+): ContactImportFuzzyMatch[] {
+  const peopleById = new Map(people.map((person) => [person.id, person]));
+  const seen = new Set<string>();
+  return matches.flatMap((match) => {
+    const person = peopleById.get(match.personId);
+    if (!person || seen.has(person.id)) {
+      return [];
+    }
+    seen.add(person.id);
+    return [
+      {
+        ...match,
+        displayName: person.displayName,
+      },
+    ];
+  });
 }
 
 function buildMatchSignals(

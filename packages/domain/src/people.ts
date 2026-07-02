@@ -133,7 +133,7 @@ export const contactMethodSchema = z.object({
 export const searchPeopleSchema = z.object({
   query: z.string().trim().optional(),
   relationshipType: relationshipTypeSchema.optional(),
-  limit: z.number().int().min(1).max(50).default(10),
+  limit: z.number().int().min(1).max(200).default(10),
 });
 
 export function requiresPersonDisambiguation(candidates: Pick<Person, "id">[]) {

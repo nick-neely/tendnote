@@ -19,6 +19,7 @@ export type ContactImportPreviewAdapter = {
 
 export type ContactImportPreviewDeps = {
   adapter: ContactImportPreviewAdapter;
+  fuzzyMatcher?: ContactImportFuzzyMatcher;
   isProviderCapabilityConnected: (ref: ProviderConnectionRef) => Promise<boolean>;
   searchPeople: (input: {
     ownerUserId: string;
@@ -31,6 +32,21 @@ export type ContactImportPreviewDeps = {
   ) => Promise<ContactMethodDuplicateMatch[]>;
 };
 
+export type ContactImportFuzzyMatch = {
+  personId: string;
+  displayName: string;
+  confidence: "medium" | "high";
+  reason: string;
+};
+
+export type ContactImportFuzzyMatcher = {
+  rankPossibleMatches: (input: {
+    ownerUserId: string;
+    contact: GoogleContactsPreviewContact;
+    people: Person[];
+  }) => Promise<ContactImportFuzzyMatch[]>;
+};
+
 export type ContactImportCandidatePriority =
   | "existing_person_match"
   | "birthday"
@@ -41,6 +57,7 @@ export type ContactImportCandidateReviewState =
   | "safe_recommendation"
   | "conflict"
   | "ambiguous_duplicate"
+  | "advisory_match"
   | "individual_review"
   | "weak_match";
 
@@ -73,6 +90,7 @@ export type ContactImportPreviewCandidate = {
   reviewState: ContactImportCandidateReviewState;
   safeBulkEligible: boolean;
   matchSignals: ContactImportCandidateMatchSignal[];
+  advisoryMatches: ContactImportFuzzyMatch[];
   conflicts: ContactImportCandidateConflict[];
   matchedPerson?: Pick<Person, "id" | "displayName"> | null;
 };

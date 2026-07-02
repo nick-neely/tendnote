@@ -5,9 +5,16 @@ import { describe, expect, it, vi } from "vitest";
 import type { InMemoryContactMethodSeed } from "../contact-methods";
 import { createInMemoryContactMethodStore as createContactMethodStore } from "../contact-methods";
 import { createInMemoryPeopleStore, createPeopleQueries } from "../people";
-import { createFakeContactImportPreviewAdapter } from "./fake-adapter";
+import {
+  createFakeContactImportFuzzyMatcher,
+  createFakeContactImportPreviewAdapter,
+} from "./fake-adapter";
 import { createContactImportPreviewSession } from "./service";
-import type { ContactImportPreviewDeps, GoogleContactsPreviewContact } from "./types";
+import type {
+  ContactImportFuzzyMatcher,
+  ContactImportPreviewDeps,
+  GoogleContactsPreviewContact,
+} from "./types";
 
 const OWNER = "owner-1";
 const NOW = new Date("2026-01-01T00:00:00Z");
@@ -33,6 +40,7 @@ function createDeps(input: {
   contacts?: GoogleContactsPreviewContact[];
   people?: Person[];
   contactMethods?: InMemoryContactMethodSeed["contactMethods"];
+  fuzzyMatcher?: ContactImportFuzzyMatcher;
 }): ContactImportPreviewDeps & { peopleStore: ReturnType<typeof createInMemoryPeopleStore> } {
   const peopleStore = createInMemoryPeopleStore({ people: input.people });
   const people = createPeopleQueries(peopleStore);
@@ -54,6 +62,7 @@ function createDeps(input: {
   return {
     peopleStore,
     adapter: createFakeContactImportPreviewAdapter(input.contacts),
+    fuzzyMatcher: input.fuzzyMatcher,
     isProviderCapabilityConnected: vi.fn().mockResolvedValue(input.connected ?? true),
     searchPeople: people.searchPeople,
     getPerson: people.getPerson,
@@ -365,6 +374,187 @@ describe("createContactImportPreviewSession", () => {
       reviewState: "weak_match",
       safeBulkEligible: false,
       matchSignals: [],
+    });
+  });
+
+  it("adds advisory fuzzy-ranked possible matches with human-readable reasons", async () => {
+    const deps = createDeps({
+      contacts: [
+        {
+          providerContactId: "people/fuzzy",
+          displayName: "M Chen",
+          emails: ["mchen@example.com"],
+        },
+      ],
+      contactMethods: [],
+      fuzzyMatcher: createFakeContactImportFuzzyMatcher({
+        "people/fuzzy": [
+          {
+            personId: "person-mara",
+            displayName: "Untrusted Name",
+            confidence: "high",
+            reason: "Similar name and shared email initials",
+          },
+          {
+            personId: "person-mara-2",
+            displayName: "Mara C",
+            confidence: "medium",
+            reason: "Similar first initial and last name",
+          },
+        ],
+      }),
+      people: [
+        personFixture({ id: "person-mara", displayName: "Mara Chen" }),
+        personFixture({ id: "person-mara-2", displayName: "Mara C" }),
+      ],
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(session.candidates[0]).toMatchObject({
+      displayName: "M Chen",
+      reviewState: "advisory_match",
+      safeBulkEligible: false,
+      matchedPerson: null,
+      advisoryMatches: [
+        {
+          personId: "person-mara",
+          displayName: "Mara Chen",
+          confidence: "high",
+          reason: "Similar name and shared email initials",
+        },
+        {
+          personId: "person-mara-2",
+          displayName: "Mara C",
+          confidence: "medium",
+          reason: "Similar first initial and last name",
+        },
+      ],
+    });
+    expect(session.candidates[0]?.reasons).toContain("Possible match: Mara Chen");
+  });
+
+  it("filters fuzzy adapter output to owner-scoped people", async () => {
+    const deps = createDeps({
+      contacts: [{ providerContactId: "people/fuzzy", displayName: "M Chen" }],
+      people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
+      contactMethods: [],
+      fuzzyMatcher: createFakeContactImportFuzzyMatcher({
+        "people/fuzzy": [
+          {
+            personId: "person-mara",
+            displayName: "Wrong Name",
+            confidence: "high",
+            reason: "Valid local person",
+          },
+          {
+            personId: "person-other-owner",
+            displayName: "Other Owner",
+            confidence: "high",
+            reason: "Should be discarded",
+          },
+        ],
+      }),
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(session.candidates[0]?.advisoryMatches).toEqual([
+      {
+        personId: "person-mara",
+        displayName: "Mara Chen",
+        confidence: "high",
+        reason: "Valid local person",
+      },
+    ]);
+  });
+
+  it("can fuzzy-rank possible matches beyond the first 50 people", async () => {
+    const people = Array.from({ length: 75 }, (_, index) =>
+      personFixture({
+        id: `person-${String(index).padStart(2, "0")}`,
+        displayName: `Aardvark ${String(index).padStart(2, "0")}`,
+      }),
+    );
+    people.push(personFixture({ id: "person-mara", displayName: "Mara Chen" }));
+    const deps = createDeps({
+      contacts: [{ providerContactId: "people/fuzzy", displayName: "M Chen" }],
+      people,
+      contactMethods: [],
+      fuzzyMatcher: createFakeContactImportFuzzyMatcher({
+        "people/fuzzy": [
+          {
+            personId: "person-mara",
+            displayName: "Mara Chen",
+            confidence: "high",
+            reason: "Similar name",
+          },
+        ],
+      }),
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(session.candidates[0]).toMatchObject({
+      reviewState: "advisory_match",
+      advisoryMatches: [{ personId: "person-mara", displayName: "Mara Chen" }],
+    });
+  });
+
+  it("never lets advisory fuzzy matches auto-link or become bulk eligible", async () => {
+    const deps = createDeps({
+      contacts: [{ providerContactId: "people/fuzzy", displayName: "Mara?" }],
+      people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
+      contactMethods: [],
+      fuzzyMatcher: createFakeContactImportFuzzyMatcher({
+        "people/fuzzy": [
+          {
+            personId: "person-mara",
+            displayName: "Mara Chen",
+            confidence: "high",
+            reason: "Name is close",
+          },
+        ],
+      }),
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(session.candidates[0]).toMatchObject({
+      reviewState: "advisory_match",
+      safeBulkEligible: false,
+      matchedPerson: null,
+      matchSignals: [],
+    });
+  });
+
+  it("does not ask fuzzy matching to override deterministic exact matches", async () => {
+    const fuzzyMatcher = {
+      rankPossibleMatches: vi.fn().mockResolvedValue([
+        {
+          personId: "person-other",
+          displayName: "Other Person",
+          confidence: "high",
+          reason: "Should not be used",
+        },
+      ]),
+    };
+    const deps = createDeps({
+      people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
+      fuzzyMatcher,
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(fuzzyMatcher.rankPossibleMatches).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        contact: expect.objectContaining({ providerContactId: "people/c1001" }),
+      }),
+    );
+    expect(session.candidates[0]).toMatchObject({
+      displayName: "Mara Chen",
+      reviewState: "safe_recommendation",
+      advisoryMatches: [],
     });
   });
 

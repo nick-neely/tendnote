@@ -172,6 +172,14 @@ function CandidateList({
                   {conflict.message}
                 </span>
               ))}
+              {candidate.advisoryMatches.map((match) => (
+                <span
+                  className="rounded-md border bg-background px-2 py-1 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground"
+                  key={`${match.personId}:${match.reason}`}
+                >
+                  Advisory: {match.displayName} · {match.reason}
+                </span>
+              ))}
               {candidate.birthday ? (
                 <span className="rounded-md bg-secondary px-2 py-1 font-mono text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-secondary-foreground">
                   {candidate.birthday}
@@ -189,6 +197,7 @@ function reviewStateLabel(state: string): string {
   if (state === "safe_recommendation") return "Safe";
   if (state === "conflict") return "Conflict";
   if (state === "ambiguous_duplicate") return "Ambiguous";
+  if (state === "advisory_match") return "Advisory";
   if (state === "individual_review") return "Review";
   return "Weak";
 }

@@ -49,6 +49,7 @@ describe("ContactsImportPage", () => {
               matchedPersonId: "person-safe",
             },
           ],
+          advisoryMatches: [],
           conflicts: [],
           matchedPerson: { id: "person-safe", displayName: "Safe Contact" },
         },
@@ -72,6 +73,7 @@ describe("ContactsImportPage", () => {
               matchedPersonId: "person-conflict",
             },
           ],
+          advisoryMatches: [],
           conflicts: [{ type: "birthday", message: "Tendnote already has birthday --04-18." }],
           matchedPerson: { id: "person-conflict", displayName: "Conflict Contact" },
         },
@@ -87,5 +89,51 @@ describe("ContactsImportPage", () => {
     expect(html).toContain("Safe Contact");
     expect(html).toContain("Conflict Contact");
     expect(html).toContain("Tendnote already has birthday --04-18.");
+  });
+
+  it("renders advisory fuzzy match reasons distinctly", async () => {
+    getOwnerContactImportPreview.mockResolvedValue({
+      id: "session-1",
+      connected: true,
+      mode: "prioritized",
+      query: "",
+      fetchedCount: 1,
+      shownCount: 1,
+      hiddenCount: 0,
+      candidates: [
+        {
+          id: "fuzzy",
+          displayName: "M Chen",
+          providerContactId: "people/fuzzy",
+          emails: ["mchen@example.com"],
+          phones: [],
+          birthday: null,
+          priority: "useful_email",
+          score: 65,
+          reasons: ["Possible match: Mara Chen", "Includes an email address"],
+          reviewState: "advisory_match",
+          safeBulkEligible: false,
+          matchSignals: [],
+          advisoryMatches: [
+            {
+              personId: "person-mara",
+              displayName: "Mara Chen",
+              confidence: "high",
+              reason: "Similar name and shared email initials",
+            },
+          ],
+          conflicts: [],
+          matchedPerson: null,
+        },
+      ],
+    });
+
+    const html = renderToStaticMarkup(
+      await ContactsImportPage({ searchParams: Promise.resolve({}) }),
+    );
+
+    expect(html).toContain("Advisory");
+    expect(html).toContain("Advisory: Mara Chen");
+    expect(html).toContain("Similar name and shared email initials");
   });
 });

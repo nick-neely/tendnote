@@ -1,4 +1,9 @@
-import type { ContactImportPreviewAdapter, GoogleContactsPreviewContact } from "./types";
+import type {
+  ContactImportFuzzyMatch,
+  ContactImportFuzzyMatcher,
+  ContactImportPreviewAdapter,
+  GoogleContactsPreviewContact,
+} from "./types";
 
 export const DEFAULT_CONTACT_IMPORT_PREVIEW_FIXTURES: GoogleContactsPreviewContact[] = [
   {
@@ -42,4 +47,49 @@ export function createFakeContactImportPreviewAdapter(
       }));
     },
   };
+}
+
+export function createFakeContactImportFuzzyMatcher(
+  matchesByProviderContactId: Record<string, ContactImportFuzzyMatch[]> = {},
+): ContactImportFuzzyMatcher {
+  return {
+    async rankPossibleMatches({ contact, people }) {
+      const configured = matchesByProviderContactId[contact.providerContactId];
+      if (configured) {
+        return configured;
+      }
+
+      const normalizedContactName = contact.displayName.trim().toLowerCase();
+      if (!normalizedContactName) {
+        return [];
+      }
+
+      return people
+        .map((person) => {
+          const normalizedPersonName = person.displayName.trim().toLowerCase();
+          const similar =
+            normalizedPersonName.includes(normalizedContactName) ||
+            normalizedContactName.includes(normalizedPersonName) ||
+            initials(normalizedPersonName) === initials(normalizedContactName);
+          if (!similar) {
+            return null;
+          }
+          return {
+            personId: person.id,
+            displayName: person.displayName,
+            confidence: normalizedPersonName === normalizedContactName ? "high" : "medium",
+            reason: "Similar display name",
+          } satisfies ContactImportFuzzyMatch;
+        })
+        .filter((match): match is ContactImportFuzzyMatch => match !== null);
+    },
+  };
+}
+
+function initials(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("");
 }
