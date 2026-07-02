@@ -1,4 +1,5 @@
-import { SearchIcon, UsersRoundIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { CheckIcon, SearchIcon, TriangleAlertIcon, UsersRoundIcon } from "lucide-react";
 import Link from "next/link";
 import {
   confirmContactImportCandidateAction,
@@ -54,7 +55,7 @@ export default async function ContactsImportPage({
               Contact import preview
             </h1>
             <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
-              Review fixture-backed Google Contacts before anything is saved to Tendnote.
+              Review contacts from Google before anything is saved to Tendnote.
             </p>
           </div>
         </header>
@@ -71,28 +72,16 @@ export default async function ContactsImportPage({
               <section className="rounded-lg border bg-surface px-3.5 py-3">
                 <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty">
                   Confirmed {confirmed} contact import candidate{confirmed === "1" ? "" : "s"}.
-                  {created} new {created === "1" ? "person" : "people"}, {updated} updated{" "}
+                  Added {created} new {created === "1" ? "person" : "people"}, {updated} updated{" "}
                   {updated === "1" ? "person" : "people"}, {methods} contact{" "}
                   {methods === "1" ? "method" : "methods"}, and {birthdays}{" "}
-                  {birthdays === "1" ? "birthday" : "birthdays"} changed. Imported fields are now
-                  normal Tendnote profile data and can be edited or archived from people profiles.
+                  {birthdays === "1" ? "birthday" : "birthdays"}. These can be edited or archived
+                  from people profiles.
                 </p>
               </section>
             ) : null}
-            {importError ? (
-              <section className="rounded-lg border border-accent/30 bg-accent/10 px-3.5 py-3">
-                <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty text-accent">
-                  {importError}
-                </p>
-              </section>
-            ) : null}
-            {preview.errorMessage ? (
-              <section className="rounded-lg border border-accent/30 bg-accent/10 px-3.5 py-3">
-                <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty text-accent">
-                  {preview.errorMessage}
-                </p>
-              </section>
-            ) : null}
+            {importError ? <ImportErrorBanner message={importError} /> : null}
+            {preview.errorMessage ? <ImportErrorBanner message={preview.errorMessage} /> : null}
             <section className="flex flex-col gap-3">
               <form action="/account/contacts/import" className="flex flex-col gap-2 sm:flex-row">
                 <label className="sr-only" htmlFor="contacts-import-search">
@@ -216,41 +205,50 @@ function CandidateList({
                   </span>
                 </div>
               </div>
-              <Badge variant="outline">{reviewStateLabel(candidate.reviewState)}</Badge>
+              <ReviewStateBadge state={candidate.reviewState} />
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <Badge variant="outline">{priorityLabel(candidate.priority)}</Badge>
               {candidate.reasons.map((reason) => (
-                <span
-                  className="rounded-md bg-secondary px-2 py-1 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-secondary-foreground"
-                  key={reason}
-                >
+                <Badge key={reason} variant="secondary">
                   {reason}
-                </span>
-              ))}
-              {candidate.conflicts.map((conflict) => (
-                <span
-                  className="rounded-md border border-accent/30 bg-accent/10 px-2 py-1 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-accent"
-                  key={`${conflict.type}:${conflict.message}`}
-                >
-                  {conflict.message}
-                </span>
-              ))}
-              {candidate.advisoryMatches.map((match) => (
-                <span
-                  className="rounded-md border bg-background px-2 py-1 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground"
-                  key={`${match.personId}:${match.reason}`}
-                >
-                  Advisory: {match.displayName} · {match.reason}
-                </span>
+                </Badge>
               ))}
               {candidate.birthday ? (
-                <span className="rounded-md bg-secondary px-2 py-1 font-mono text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-secondary-foreground">
+                <Badge className="font-mono" variant="outline">
                   {candidate.birthday}
-                </span>
+                </Badge>
               ) : null}
             </div>
+
+            {candidate.conflicts.length > 0 || candidate.advisoryMatches.length > 0 ? (
+              <ul className="flex flex-col gap-1">
+                {candidate.conflicts.map((conflict) => (
+                  <li
+                    className="flex items-start gap-1.5 text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground"
+                    key={`${conflict.type}:${conflict.message}`}
+                  >
+                    <TriangleAlertIcon
+                      aria-hidden
+                      className="mt-0.5 size-3.5 shrink-0 text-accent"
+                    />
+                    <span>{conflict.message}</span>
+                  </li>
+                ))}
+                {candidate.advisoryMatches.map((match) => (
+                  <li
+                    className="flex items-start gap-1.5 text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground"
+                    key={`${match.personId}:${match.reason}`}
+                  >
+                    <UsersRoundIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                      Advisory: {match.displayName} · {match.reason}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {showExplicitConfirmation ? <ReviewResolutionControls candidate={candidate} /> : null}
           </li>
         ))}
@@ -269,61 +267,76 @@ function ReviewResolutionControls({
   const targetOptions = reviewTargetOptions(candidate);
   const canCreate =
     candidate.reviewState === "individual_review" || candidate.reviewState === "weak_match";
-  const needsTarget =
-    candidate.reviewState === "ambiguous_duplicate" ||
-    candidate.reviewState === "advisory_match" ||
-    (candidate.reviewState === "weak_match" && targetOptions.length === 0);
+  // Advisory matches are only "possible" people, so the owner picks one deliberately;
+  // a confirmed contact-method match is a single known person applied without a chooser.
+  const needsTargetChoice = candidate.reviewState === "advisory_match";
   const birthdayConflict = candidate.conflicts.some((conflict) => conflict.type === "birthday");
-  const showApplyForm = targetOptions.length > 0 || needsTarget || birthdayConflict;
+  const hasNamedTarget = targetOptions.length > 0;
+  // A contact matched to more than one person can't be attached safely from here, and
+  // the other people can't be named on this screen — resolve it on their profiles.
+  const unresolvableTarget = !hasNamedTarget && !canCreate;
 
   return (
     <div className="flex flex-col gap-2 border-t pt-2">
-      {showApplyForm ? (
+      {hasNamedTarget ? (
         <form action={confirmContactImportCandidateAction} className="flex flex-col gap-2">
           <input name="candidateId" type="hidden" value={candidate.id} />
-          {targetOptions.length === 1 && !needsTarget ? (
-            <input name="targetPersonId" type="hidden" value={targetOptions[0]?.id} />
-          ) : null}
-          {targetOptions.length > 0 && needsTarget ? (
-            <fieldset className="flex flex-col gap-1.5 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
-              <span>Choose target person</span>
+          {needsTargetChoice ? (
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="text-[length:var(--text-small)] font-medium text-muted-foreground">
+                Choose target person
+              </legend>
               {targetOptions.map((target) => (
-                <label className="flex items-center gap-1.5" key={target.id}>
-                  <input name="targetPersonId" required type="radio" value={target.id} />
-                  {target.label}
+                <label
+                  className="flex items-center gap-2 text-[length:var(--text-small)] leading-[var(--text-small-line)]"
+                  key={target.id}
+                >
+                  <input
+                    className={RADIO_CLASS}
+                    name="targetPersonId"
+                    required
+                    type="radio"
+                    value={target.id}
+                  />
+                  <span>{target.label}</span>
                 </label>
               ))}
             </fieldset>
-          ) : null}
-          {targetOptions.length === 0 && needsTarget ? (
-            <label className="flex flex-col gap-1 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
-              Target person ID
-              <input
-                className="h-8 rounded-md border bg-background px-2 text-[length:var(--text-small)] leading-[var(--text-small-line)] text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                name="targetPersonId"
-                placeholder="Paste a Tendnote person ID"
-                required
-              />
-            </label>
-          ) : null}
+          ) : (
+            <input name="targetPersonId" type="hidden" value={targetOptions[0]?.id} />
+          )}
           {birthdayConflict ? (
-            <fieldset className="flex flex-wrap gap-2 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
-              <label className="flex items-center gap-1.5">
-                <input defaultChecked name="birthdayChoice" type="radio" value="existing" />
-                Keep Tendnote birthday
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="text-[length:var(--text-small)] font-medium text-muted-foreground">
+                Birthday
+              </legend>
+              <label className="flex items-center gap-2 text-[length:var(--text-small)] leading-[var(--text-small-line)]">
+                <input
+                  className={RADIO_CLASS}
+                  defaultChecked
+                  name="birthdayChoice"
+                  type="radio"
+                  value="existing"
+                />
+                <span>Keep Tendnote birthday</span>
               </label>
-              <label className="flex items-center gap-1.5">
-                <input name="birthdayChoice" type="radio" value="provider" />
-                Use provider birthday
+              <label className="flex items-center gap-2 text-[length:var(--text-small)] leading-[var(--text-small-line)]">
+                <input
+                  className={RADIO_CLASS}
+                  name="birthdayChoice"
+                  type="radio"
+                  value="provider"
+                />
+                <span>Use provider birthday</span>
               </label>
             </fieldset>
           ) : null}
-          <Button size="sm" type="submit" variant="outline">
+          <Button className="self-start" size="sm" type="submit" variant="outline">
             Apply explicit resolution
           </Button>
         </form>
       ) : null}
-      {canCreate && targetOptions.length === 0 ? (
+      {canCreate && !hasNamedTarget ? (
         <form action={confirmContactImportCandidateAction}>
           <input name="candidateId" type="hidden" value={candidate.id} />
           <input name="createPerson" type="hidden" value="true" />
@@ -331,6 +344,12 @@ function ReviewResolutionControls({
             Create new person
           </Button>
         </form>
+      ) : null}
+      {unresolvableTarget ? (
+        <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
+          This contact matches more than one person. Open those people to attach or merge it, or
+          skip it here.
+        </p>
       ) : null}
       <form action={skipContactImportCandidateAction}>
         <input name="candidateId" type="hidden" value={candidate.id} />
@@ -342,13 +361,51 @@ function ReviewResolutionControls({
   );
 }
 
-function reviewStateLabel(state: string): string {
-  if (state === "safe_recommendation") return "Safe";
-  if (state === "conflict") return "Conflict";
-  if (state === "ambiguous_duplicate") return "Ambiguous";
-  if (state === "advisory_match") return "Advisory";
-  if (state === "individual_review") return "Review";
-  return "Weak";
+const RADIO_CLASS =
+  "size-4 shrink-0 rounded-full [accent-color:var(--primary)] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
+
+// Clay accent is the system's "needs review" weight (DESIGN §3), held to a single
+// state badge and only for genuine conflicts — not applied to every chip. The icon
+// keeps the state legible without relying on color alone.
+const REVIEW_STATE_META: Record<
+  string,
+  { label: string; tone: "neutral" | "review"; Icon?: LucideIcon }
+> = {
+  safe_recommendation: { label: "Safe", tone: "neutral", Icon: CheckIcon },
+  conflict: { label: "Conflict", tone: "review", Icon: TriangleAlertIcon },
+  ambiguous_duplicate: { label: "Ambiguous", tone: "review", Icon: TriangleAlertIcon },
+  advisory_match: { label: "Advisory", tone: "neutral", Icon: UsersRoundIcon },
+  individual_review: { label: "Review", tone: "neutral" },
+  weak_match: { label: "Weak", tone: "neutral" },
+};
+
+function ReviewStateBadge({ state }: { state: string }) {
+  const meta = REVIEW_STATE_META[state] ?? { label: "Review", tone: "neutral" as const };
+  const Icon = meta.Icon;
+
+  return (
+    <Badge
+      className={meta.tone === "review" ? "border-accent/30 bg-accent/10 text-accent" : undefined}
+      variant="outline"
+    >
+      {Icon ? <Icon aria-hidden data-icon="inline-start" /> : null}
+      {meta.label}
+    </Badge>
+  );
+}
+
+function ImportErrorBanner({ message }: { message: string }) {
+  return (
+    <section
+      className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-3"
+      role="alert"
+    >
+      <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
+      <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty text-destructive">
+        {message}
+      </p>
+    </section>
+  );
 }
 
 function priorityLabel(priority: string): string {
@@ -374,10 +431,6 @@ function reviewTargetOptions(
     ...candidate.advisoryMatches.map((match) => ({
       id: match.personId,
       label: `${match.displayName} (${match.reason})`,
-    })),
-    ...candidate.matchSignals.map((signal) => ({
-      id: signal.matchedPersonId,
-      label: `Person ${signal.matchedPersonId}`,
     })),
   ].filter((target): target is { id: string; label: string } => target !== null);
   const seen = new Set<string>();
