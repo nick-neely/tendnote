@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Person } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
+import type { InMemoryContactMethodSeed } from "../contact-methods";
 import { createInMemoryContactMethodStore as createContactMethodStore } from "../contact-methods";
 import { createInMemoryPeopleStore, createPeopleQueries } from "../people";
 import { createFakeContactImportPreviewAdapter } from "./fake-adapter";
@@ -31,11 +32,12 @@ function createDeps(input: {
   connected?: boolean;
   contacts?: GoogleContactsPreviewContact[];
   people?: Person[];
+  contactMethods?: InMemoryContactMethodSeed["contactMethods"];
 }): ContactImportPreviewDeps & { peopleStore: ReturnType<typeof createInMemoryPeopleStore> } {
   const peopleStore = createInMemoryPeopleStore({ people: input.people });
   const people = createPeopleQueries(peopleStore);
   const contactMethods = createContactMethodStore({
-    contactMethods: [
+    contactMethods: input.contactMethods ?? [
       {
         id: "cm-mara",
         ownerUserId: OWNER,
@@ -54,6 +56,7 @@ function createDeps(input: {
     adapter: createFakeContactImportPreviewAdapter(input.contacts),
     isProviderCapabilityConnected: vi.fn().mockResolvedValue(input.connected ?? true),
     searchPeople: people.searchPeople,
+    getPerson: people.getPerson,
     findOwnerContactMethodDuplicates: contactMethods.findOwnerContactMethodDuplicates,
   };
 }
@@ -70,13 +73,14 @@ describe("createContactImportPreviewSession", () => {
       connected: true,
       mode: "prioritized",
       fetchedCount: 5,
-      shownCount: 3,
-      hiddenCount: 2,
+      shownCount: 4,
+      hiddenCount: 1,
     });
     expect(session.candidates.map((candidate) => candidate.displayName)).toEqual([
       "Mara Chen",
       "Ari Patel",
       "Jordan Lee",
+      "Neighborhood Bakery",
     ]);
     const firstCandidate = session.candidates[0];
     expect(firstCandidate).toMatchObject({
@@ -125,11 +129,243 @@ describe("createContactImportPreviewSession", () => {
     expect(session.candidates[0]).toMatchObject({
       displayName: "Mara Chen",
       priority: "existing_person_match",
-      matchedPerson: null,
+      matchedPerson: { id: "person-mara", displayName: "Mara Chen" },
     });
-    expect(session.candidates[0]?.reasons).toContain(
-      "Matches an existing Tendnote person by saved contact method",
-    );
+    expect(session.candidates[0]?.reasons).toContain("Matches Mara Chen by saved contact method");
+  });
+
+  it("uses normalized email and strong phone signals for deterministic matches", async () => {
+    const deps = createDeps({
+      contacts: [
+        {
+          providerContactId: "people/phone",
+          displayName: "Phone Match",
+          phones: ["+1 (312) 555-7777"],
+        },
+      ],
+      people: [personFixture({ id: "person-phone", displayName: "Phone Match" })],
+      contactMethods: [
+        {
+          id: "cm-phone",
+          ownerUserId: OWNER,
+          personId: "person-phone",
+          type: "phone",
+          value: "+13125557777",
+          normalizedValue: "+13125557777",
+          isPrimary: true,
+        },
+      ],
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(session.candidates[0]).toMatchObject({
+      priority: "existing_person_match",
+      reviewState: "safe_recommendation",
+      safeBulkEligible: true,
+      matchSignals: [
+        {
+          type: "phone",
+          value: "+13125557777",
+          confidence: "strong",
+          matchedPersonId: "person-phone",
+        },
+      ],
+    });
+  });
+
+  it("flags owner-wide duplicate contact methods across multiple people as ambiguous and not bulk safe", async () => {
+    const deps = createDeps({
+      contacts: [
+        {
+          providerContactId: "people/shared",
+          displayName: "Shared Email",
+          emails: ["shared@example.com"],
+        },
+      ],
+      people: [
+        personFixture({ id: "person-one", displayName: "One" }),
+        personFixture({ id: "person-two", displayName: "Two" }),
+      ],
+      contactMethods: [
+        {
+          id: "cm-one",
+          ownerUserId: OWNER,
+          personId: "person-one",
+          type: "email",
+          value: "shared@example.com",
+          normalizedValue: "shared@example.com",
+          isPrimary: true,
+        },
+        {
+          id: "cm-two",
+          ownerUserId: OWNER,
+          personId: "person-two",
+          type: "email",
+          value: "shared@example.com",
+          normalizedValue: "shared@example.com",
+          isPrimary: true,
+        },
+      ],
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(session.candidates[0]).toMatchObject({
+      reviewState: "ambiguous_duplicate",
+      safeBulkEligible: false,
+      conflicts: [
+        {
+          type: "duplicate_contact_method",
+          message: "This contact method is already attached to more than one Tendnote person.",
+        },
+      ],
+    });
+  });
+
+  it("flags existing Tendnote birthday conflicts and excludes them from safe bulk", async () => {
+    const deps = createDeps({
+      contacts: [
+        {
+          providerContactId: "people/birthday-conflict",
+          displayName: "Mara Chen",
+          emails: ["mara.chen@example.com"],
+          birthday: "--05-20",
+        },
+      ],
+      people: [personFixture({ id: "person-mara", displayName: "Mara Chen", birthday: "--04-18" })],
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(session.candidates[0]).toMatchObject({
+      reviewState: "conflict",
+      safeBulkEligible: false,
+      conflicts: [{ type: "birthday", message: "Tendnote already has birthday --04-18." }],
+    });
+  });
+
+  it("excludes mixed useful contacts with ambiguous phones from safe bulk", async () => {
+    const deps = createDeps({
+      contacts: [
+        {
+          providerContactId: "people/mixed-ambiguous",
+          displayName: "Useful But Ambiguous",
+          emails: ["useful@example.com"],
+          phones: ["555-0100"],
+        },
+      ],
+      people: [],
+      contactMethods: [],
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(session.candidates[0]).toMatchObject({
+      priority: "useful_email",
+      reviewState: "individual_review",
+      safeBulkEligible: false,
+      conflicts: [
+        {
+          type: "ambiguous_contact_method",
+          message: "Review phone number before using it for matching or import.",
+        },
+      ],
+    });
+  });
+
+  it("keeps safe recommendations visible separately from higher-scoring review rows", async () => {
+    const deps = createDeps({
+      contacts: [
+        {
+          providerContactId: "people/conflict",
+          displayName: "Mara Chen",
+          emails: ["mara.chen@example.com"],
+          phones: ["+1 (312) 555-0101"],
+          birthday: "--05-20",
+        },
+        {
+          providerContactId: "people/safe",
+          displayName: "Phone Match",
+          phones: ["+1 (312) 555-7777"],
+        },
+      ],
+      people: [
+        personFixture({ id: "person-mara", displayName: "Mara Chen", birthday: "--04-18" }),
+        personFixture({ id: "person-phone", displayName: "Phone Match" }),
+      ],
+      contactMethods: [
+        {
+          id: "cm-mara",
+          ownerUserId: OWNER,
+          personId: "person-mara",
+          type: "email",
+          value: "mara.chen@example.com",
+          normalizedValue: "mara.chen@example.com",
+          isPrimary: true,
+        },
+        {
+          id: "cm-phone",
+          ownerUserId: OWNER,
+          personId: "person-phone",
+          type: "phone",
+          value: "+13125557777",
+          normalizedValue: "+13125557777",
+          isPrimary: true,
+        },
+      ],
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER, limit: 1 }, deps);
+
+    expect(session.candidates.map((candidate) => candidate.displayName)).toEqual([
+      "Phone Match",
+      "Mara Chen",
+    ]);
+    expect(session.candidates.map((candidate) => candidate.reviewState)).toEqual([
+      "safe_recommendation",
+      "conflict",
+    ]);
+  });
+
+  it("marks ambiguous-phone rows as individual-only and not bulk safe", async () => {
+    const deps = createDeps({
+      contacts: [
+        {
+          providerContactId: "people/weak",
+          displayName: "Printer Support",
+          phones: ["555-0100"],
+        },
+      ],
+      people: [],
+      contactMethods: [],
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(session.candidates[0]).toMatchObject({
+      priority: "lower_priority",
+      reviewState: "individual_review",
+      safeBulkEligible: false,
+      matchSignals: [],
+    });
+  });
+
+  it("marks no-signal rows as weak matches", async () => {
+    const deps = createDeps({
+      contacts: [{ providerContactId: "people/weak", displayName: "Neighborhood Bakery" }],
+      people: [],
+      contactMethods: [],
+    });
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(session.candidates[0]).toMatchObject({
+      priority: "lower_priority",
+      reviewState: "weak_match",
+      safeBulkEligible: false,
+      matchSignals: [],
+    });
   });
 
   it("does not fetch fixture contacts when Contacts is disconnected", async () => {

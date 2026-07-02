@@ -2,6 +2,7 @@ import { createPersonSchema, searchPeopleSchema, updatePersonSchema } from "@ten
 import type {
   CreatePersonMutationInput,
   DeletePersonMutationInput,
+  GetPersonInput,
   GetPersonProfileInput,
   PeopleStore,
   SearchPeopleQueryInput,
@@ -114,6 +115,10 @@ export function createPeopleQueries(store: PeopleStore) {
         relationshipType: filters.relationshipType,
         limit: filters.limit,
       });
+    },
+
+    async getPerson(input: GetPersonInput) {
+      return store.getPerson(input);
     },
 
     async getPersonProfile(input: GetPersonProfileInput) {

@@ -15,6 +15,8 @@ export default async function ContactsImportPage({
   const params = await searchParams;
   const query = Array.isArray(params?.q) ? params?.q[0] : params?.q;
   const preview = await getOwnerContactImportPreview({ query });
+  const safeCandidates = preview.candidates.filter((candidate) => candidate.safeBulkEligible);
+  const reviewCandidates = preview.candidates.filter((candidate) => !candidate.safeBulkEligible);
 
   return (
     <AppShell>
@@ -88,51 +90,107 @@ export default async function ContactsImportPage({
                 </p>
               </section>
             ) : (
-              <ul className="flex flex-col divide-y rounded-lg border bg-surface">
-                {preview.candidates.map((candidate) => (
-                  <li className="flex flex-col gap-2 px-3.5 py-3" key={candidate.id}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-2.5">
-                        <UsersRoundIcon
-                          aria-hidden
-                          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-                        />
-                        <div className="flex min-w-0 flex-col gap-1">
-                          <span className="truncate text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium">
-                            {candidate.displayName}
-                          </span>
-                          <span className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
-                            {candidate.emails[0] ?? candidate.phones[0] ?? "No email or phone"}
-                          </span>
-                        </div>
-                      </div>
-                      <Badge variant="outline">{priorityLabel(candidate.priority)}</Badge>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5">
-                      {candidate.reasons.map((reason) => (
-                        <span
-                          className="rounded-md bg-secondary px-2 py-1 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-secondary-foreground"
-                          key={reason}
-                        >
-                          {reason}
-                        </span>
-                      ))}
-                      {candidate.birthday ? (
-                        <span className="rounded-md bg-secondary px-2 py-1 font-mono text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-secondary-foreground">
-                          {candidate.birthday}
-                        </span>
-                      ) : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <div className="flex flex-col gap-6">
+                {safeCandidates.length > 0 ? (
+                  <CandidateList
+                    candidates={safeCandidates}
+                    description="No conflicts, ambiguous duplicates, weak signals, or unusual field changes."
+                    title="Safe recommendations"
+                  />
+                ) : null}
+                {reviewCandidates.length > 0 ? (
+                  <CandidateList
+                    candidates={reviewCandidates}
+                    description="Review these individually before any future confirmation step."
+                    title="Needs individual review"
+                  />
+                ) : null}
+              </div>
             )}
           </>
         )}
       </div>
     </AppShell>
   );
+}
+
+function CandidateList({
+  title,
+  description,
+  candidates,
+}: {
+  title: string;
+  description: string;
+  candidates: NonNullable<Awaited<ReturnType<typeof getOwnerContactImportPreview>>>["candidates"];
+}) {
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground">
+          {title}
+        </h2>
+        <p className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-muted-foreground">
+          {description}
+        </p>
+      </div>
+      <ul className="flex flex-col divide-y rounded-lg border bg-surface">
+        {candidates.map((candidate) => (
+          <li className="flex flex-col gap-2 px-3.5 py-3" key={candidate.id}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-2.5">
+                <UsersRoundIcon
+                  aria-hidden
+                  className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                />
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span className="truncate text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium">
+                    {candidate.displayName}
+                  </span>
+                  <span className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
+                    {candidate.emails[0] ?? candidate.phones[0] ?? "No email or phone"}
+                  </span>
+                </div>
+              </div>
+              <Badge variant="outline">{reviewStateLabel(candidate.reviewState)}</Badge>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              <Badge variant="outline">{priorityLabel(candidate.priority)}</Badge>
+              {candidate.reasons.map((reason) => (
+                <span
+                  className="rounded-md bg-secondary px-2 py-1 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-secondary-foreground"
+                  key={reason}
+                >
+                  {reason}
+                </span>
+              ))}
+              {candidate.conflicts.map((conflict) => (
+                <span
+                  className="rounded-md border border-accent/30 bg-accent/10 px-2 py-1 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-accent"
+                  key={`${conflict.type}:${conflict.message}`}
+                >
+                  {conflict.message}
+                </span>
+              ))}
+              {candidate.birthday ? (
+                <span className="rounded-md bg-secondary px-2 py-1 font-mono text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-secondary-foreground">
+                  {candidate.birthday}
+                </span>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function reviewStateLabel(state: string): string {
+  if (state === "safe_recommendation") return "Safe";
+  if (state === "conflict") return "Conflict";
+  if (state === "ambiguous_duplicate") return "Ambiguous";
+  if (state === "individual_review") return "Review";
+  return "Weak";
 }
 
 function priorityLabel(priority: string): string {

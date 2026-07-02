@@ -87,6 +87,16 @@ export function createDrizzlePeopleStore(): PeopleStore {
         .orderBy(people.displayName, people.id);
     },
 
+    async getPerson(input) {
+      const [person] = await getDb()
+        .select()
+        .from(people)
+        .where(and(eq(people.id, input.personId), eq(people.ownerUserId, input.ownerUserId)))
+        .limit(1);
+
+      return person ?? null;
+    },
+
     async getPersonProfile(input) {
       const [person] = await getDb()
         .select()

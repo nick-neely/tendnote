@@ -6,7 +6,7 @@ import {
   createContactImportPreviewSession,
   createFakeContactImportPreviewAdapter,
 } from "@tendnote/db/queries/contacts-import-preview";
-import { searchPeople } from "@tendnote/db/queries/people";
+import { getPerson, searchPeople } from "@tendnote/db/queries/people";
 import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-connections";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 
@@ -25,6 +25,7 @@ export async function getOwnerContactImportPreview(input: {
       adapter: createFakeContactImportPreviewAdapter(),
       isProviderCapabilityConnected,
       searchPeople,
+      getPerson,
       findOwnerContactMethodDuplicates,
     },
   );

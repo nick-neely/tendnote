@@ -42,6 +42,11 @@ export type GetPersonProfileInput = {
   personId: string;
 };
 
+export type GetPersonInput = {
+  ownerUserId: string;
+  personId: string;
+};
+
 export type PersonProfile = {
   person: Person;
   memories: Memory[];
@@ -76,5 +81,6 @@ export type PeopleStore = {
   deletePerson: (input: { ownerUserId: string; personId: string }) => Promise<Person | null>;
   createAuditLogEntry: (auditLogEntry: PersonAuditLogEntry) => Promise<void>;
   searchPeople: (input: SearchPeopleStoreInput) => Promise<Person[]>;
+  getPerson: (input: GetPersonInput) => Promise<Person | null>;
   getPersonProfile: (input: GetPersonProfileInput) => Promise<PersonProfile | null>;
 };

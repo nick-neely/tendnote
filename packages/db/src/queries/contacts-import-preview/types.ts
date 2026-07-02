@@ -25,6 +25,7 @@ export type ContactImportPreviewDeps = {
     query?: string;
     limit: number;
   }) => Promise<Person[]>;
+  getPerson: (input: { ownerUserId: string; personId: string }) => Promise<Person | null>;
   findOwnerContactMethodDuplicates: (
     input: ContactMethodDuplicateLookupInput,
   ) => Promise<ContactMethodDuplicateMatch[]>;
@@ -36,6 +37,29 @@ export type ContactImportCandidatePriority =
   | "useful_email"
   | "lower_priority";
 
+export type ContactImportCandidateReviewState =
+  | "safe_recommendation"
+  | "conflict"
+  | "ambiguous_duplicate"
+  | "individual_review"
+  | "weak_match";
+
+export type ContactImportCandidateMatchSignal = {
+  type: "email" | "phone";
+  value: string;
+  confidence: "strong";
+  matchedPersonId: string;
+};
+
+export type ContactImportCandidateConflict = {
+  type:
+    | "birthday"
+    | "duplicate_contact_method"
+    | "display_name_review"
+    | "ambiguous_contact_method";
+  message: string;
+};
+
 export type ContactImportPreviewCandidate = {
   id: string;
   displayName: string;
@@ -46,6 +70,10 @@ export type ContactImportPreviewCandidate = {
   priority: ContactImportCandidatePriority;
   score: number;
   reasons: string[];
+  reviewState: ContactImportCandidateReviewState;
+  safeBulkEligible: boolean;
+  matchSignals: ContactImportCandidateMatchSignal[];
+  conflicts: ContactImportCandidateConflict[];
   matchedPerson?: Pick<Person, "id" | "displayName"> | null;
 };
 

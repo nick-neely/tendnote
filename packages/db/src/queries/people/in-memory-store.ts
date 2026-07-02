@@ -113,6 +113,11 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
         .slice(0, input.limit);
     },
 
+    async getPerson(input) {
+      const person = people.get(input.personId);
+      return person?.ownerUserId === input.ownerUserId ? person : null;
+    },
+
     async getPersonProfile(input) {
       const person = people.get(input.personId);
 

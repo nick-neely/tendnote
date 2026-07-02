@@ -3,6 +3,7 @@ import { createPeopleQueries } from "./people/queries";
 import type {
   CreatePersonMutationInput,
   DeletePersonMutationInput,
+  GetPersonInput,
   GetPersonProfileInput,
   SearchPeopleQueryInput,
   UpdatePersonMutationInput,
@@ -29,6 +30,10 @@ export async function deletePerson(input: DeletePersonMutationInput) {
 
 export async function searchPeople(input: SearchPeopleQueryInput) {
   return defaultPeopleQueries.searchPeople(input);
+}
+
+export async function getPerson(input: GetPersonInput) {
+  return defaultPeopleQueries.getPerson(input);
 }
 
 export async function getPersonProfile(input: GetPersonProfileInput) {
