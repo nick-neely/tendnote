@@ -12,7 +12,7 @@ import type { CaptureSourceRecordInput, CaptureSourceRecordResult } from "./type
  * one place instead of being hand-assembled per surface.
  */
 /** Where a logged-context capture originated, recorded in the Source Record metadata. */
-export type CaptureSurface = "eve" | "global_assistant" | "person_assistant";
+export type CaptureSurface = "eve" | "discord" | "global_assistant" | "person_assistant";
 
 export type CaptureLoggedContextInput = {
   ownerUserId: string;

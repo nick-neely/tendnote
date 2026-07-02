@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { expectAllowedAgentChannels, expectChannelToExclude } from "./agent-channel-boundaries";
 
 const agentRoot = join(import.meta.dirname, "../agent");
 const repoRoot = join(import.meta.dirname, "../../..");
@@ -105,8 +106,13 @@ describe("Phase 1G boundary — no external delivery in drafting surfaces", () =
     }
   });
 
-  it("adds no external delivery channel — only the same-origin Eve channel", () => {
-    expect(readdirSync(join(agentRoot, "channels"))).toEqual(["eve.ts"]);
+  it("keeps drafting externalization out of delivery channels", () => {
+    expectAllowedAgentChannels(agentRoot);
+    expectChannelToExclude(
+      agentRoot,
+      "discord.ts",
+      /save_draft_to_gmail|gmail\.send|sendgrid|resend|nodemailer/i,
+    );
   });
 
   it("adds no provider/send dependency to any drafting package", () => {

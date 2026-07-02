@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { expectAllowedAgentChannels, expectChannelToExclude } from "./agent-channel-boundaries";
 
 const agentRoot = join(import.meta.dirname, "../agent");
 const repoRoot = join(import.meta.dirname, "../../..");
@@ -78,8 +79,13 @@ describe("Phase 2C agent-surface boundaries", () => {
     }
   });
 
-  it("adds no provider delivery channels — only the same-origin Eve channel", () => {
-    expect(readdirSync(join(agentRoot, "channels"))).toEqual(["eve.ts"]);
+  it("keeps Calendar reads out of provider delivery channels", () => {
+    expectAllowedAgentChannels(agentRoot);
+    expectChannelToExclude(
+      agentRoot,
+      "discord.ts",
+      /google|calendar|oauth|provider connection|sendgrid|resend|nodemailer/i,
+    );
   });
 
   it("keeps the governing ADRs present", () => {

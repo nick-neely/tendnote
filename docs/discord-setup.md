@@ -58,6 +58,7 @@ Eve-mounted web app.
 DISCORD_PUBLIC_KEY=
 DISCORD_APPLICATION_ID=
 DISCORD_BOT_TOKEN=
+DISCORD_OWNER_USER_MAP=discord-user-id:tendnote-owner-user-id
 ```
 
 - `DISCORD_PUBLIC_KEY` verifies `X-Signature-Ed25519` and
@@ -66,6 +67,10 @@ DISCORD_BOT_TOKEN=
   responses and command registration.
 - `DISCORD_BOT_TOKEN` is required for proactive messages, fallback messages, and
   typing indicators.
+- `DISCORD_OWNER_USER_MAP` maps Discord user ids to Tendnote owner user ids. Use
+  comma-separated `discordUserId:ownerUserId` pairs for local setup, or a JSON
+  object such as `{"discordUserId":"ownerUserId"}` when that is easier for the
+  host environment.
 
 All three values are server-only secrets/configuration. Do not prefix them with
 `NEXT_PUBLIC_`.
@@ -103,7 +108,9 @@ Do not add broad moderation, admin, or unrelated bot permissions.
 ## 6. Owner mapping
 
 Discord interactions must map to a Tendnote owner before Eve can capture context.
-The implementation should make this mapping explicit and testable.
+Set `DISCORD_OWNER_USER_MAP` in the server environment. This mapping is
+configuration owned by Tendnote operators; never accept an owner id from the
+Discord request body.
 
 At minimum, verify:
 

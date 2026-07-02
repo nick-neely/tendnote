@@ -1,6 +1,7 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { expectAllowedAgentChannels, expectChannelToExclude } from "./agent-channel-boundaries";
 
 const agentRoot = join(import.meta.dirname, "../agent");
 const repoRoot = join(import.meta.dirname, "../../..");
@@ -12,11 +13,15 @@ const repoRoot = join(import.meta.dirname, "../../..");
  * the persisted-brief model.
  */
 describe("Phase 1F agent-surface boundaries", () => {
-  it("adds no external delivery channels — only the same-origin Eve channel", () => {
-    const channels = readdirSync(join(agentRoot, "channels"));
-    // External email/push/calendar/chat delivery is out of scope for Phase 1F
-    // (PRD #65, ADR-0066). No slack/discord/twilio/telegram/teams channels.
-    expect(channels).toEqual(["eve.ts"]);
+  it("keeps Phase 1F brief generation out of external delivery channels", () => {
+    // Phase 3 may add a private capture channel, but Phase 1F brief generation
+    // still must not add a delivery channel or provider send surface.
+    expectAllowedAgentChannels(agentRoot);
+    expectChannelToExclude(
+      agentRoot,
+      "discord.ts",
+      /brief|sendgrid|resend|nodemailer|twilio|telegram|slack|teams/i,
+    );
   });
 
   it("adds no sandbox, workflow, or connection surfaces", () => {

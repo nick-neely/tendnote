@@ -29,6 +29,10 @@ export const config = {
  * server-set.
  */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  if (request.nextUrl.pathname === "/eve/v1/discord") {
+    return NextResponse.next();
+  }
+
   let user: { id: string } | null = null;
 
   try {
