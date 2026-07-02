@@ -26,7 +26,7 @@ describe("GitHub social configuration", () => {
   });
 });
 
-describe("Google social configuration (Phase 2C Calendar)", () => {
+describe("Google social configuration", () => {
   it("is configured only when both client id and secret are present", () => {
     expect(isGoogleConfigured({ clientId: "id", clientSecret: "secret" })).toBe(true);
     expect(isGoogleConfigured({ clientId: "id" })).toBe(false);
@@ -34,7 +34,7 @@ describe("Google social configuration (Phase 2C Calendar)", () => {
     expect(isGoogleConfigured({})).toBe(false);
   });
 
-  it("requests offline access and only the Calendar event-read scope when configured", () => {
+  it("requests offline access and only the base Calendar event-read scope when configured", () => {
     const provider = googleSocialProvider({ clientId: "id", clientSecret: "secret" });
 
     expect(provider).toEqual({
@@ -44,7 +44,7 @@ describe("Google social configuration (Phase 2C Calendar)", () => {
       prompt: "select_account consent",
       scope: [GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE],
     });
-    // Phase 2C boundary: never Gmail or Contacts.
+    // Feature-specific Gmail and Contacts scopes are requested later via linkSocial.
     expect(provider?.scope.join(" ")).not.toMatch(/gmail|contacts/);
   });
 

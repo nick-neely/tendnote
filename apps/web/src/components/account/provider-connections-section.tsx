@@ -10,11 +10,14 @@ import {
   TriangleAlertIcon,
   UsersRoundIcon,
 } from "lucide-react";
+import type { ComponentType } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ProviderConnectionView } from "@/lib/integrations/provider-connection-view";
 import { CalendarConnectButton } from "./calendar-connect-button";
 import { CalendarDisconnectButton } from "./calendar-disconnect-button";
+import { ContactsConnectButton } from "./contacts-connect-button";
+import { ContactsDisconnectButton } from "./contacts-disconnect-button";
 import { GmailConnectButton } from "./gmail-connect-button";
 
 /** Revocation reason set when disconnect could not revoke the Google-side grant. */
@@ -47,25 +50,57 @@ const CAPABILITY_ICONS: Record<string, LucideIcon> = {
   contacts: UsersRoundIcon,
 };
 
+type ConnectableConfig = {
+  calendarConnectable: boolean;
+  contactsConnectable: boolean;
+  gmailConnectable: boolean;
+};
+
+type CapabilityAction = {
+  configuredBy: keyof ConnectableConfig;
+  ConnectButton: ComponentType<{ label: string }>;
+  DisconnectButton?: ComponentType<{ label: string }>;
+};
+
+const GOOGLE_CAPABILITY_ACTIONS: Record<string, CapabilityAction> = {
+  calendar: {
+    configuredBy: "calendarConnectable",
+    ConnectButton: CalendarConnectButton,
+    DisconnectButton: CalendarDisconnectButton,
+  },
+  contacts: {
+    configuredBy: "contactsConnectable",
+    ConnectButton: ContactsConnectButton,
+    DisconnectButton: ContactsDisconnectButton,
+  },
+  gmail: {
+    configuredBy: "gmailConnectable",
+    ConnectButton: GmailConnectButton,
+  },
+};
+
 /**
  * Account integration settings: real Provider Connection status rows (#101,
  * ADR-0069). Google Calendar and Gmail can be connected when Google credentials
  * are configured; each row starts a narrow Better Auth linkSocial flow for its
- * capability. Contacts stays inert until its later phase. Built as a standalone
+ * capability. Contacts also exposes the first import-preview entry point. Built as a standalone
  * section so a future settings/integrations route can reuse it.
  */
 export function ProviderConnectionsSection({
   connections,
   calendarConnectable = false,
+  contactsConnectable = false,
   gmailConnectable = false,
 }: {
   connections: ProviderConnectionView[];
   /** True only when Google credentials are configured server-side (Phase 2C). */
   calendarConnectable?: boolean;
+  /** True only when Google credentials are configured server-side (Phase 2E). */
+  contactsConnectable?: boolean;
   /** True only when Google credentials are configured server-side (Phase 2D). */
   gmailConnectable?: boolean;
 }) {
-  const anyConnectable = calendarConnectable || gmailConnectable;
+  const anyConnectable = calendarConnectable || gmailConnectable || contactsConnectable;
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground">
@@ -77,6 +112,7 @@ export function ProviderConnectionsSection({
           <ProviderConnectionRow
             connectable={isCapabilityConnectable(connection, {
               calendarConnectable,
+              contactsConnectable,
               gmailConnectable,
             })}
             connection={connection}
@@ -90,14 +126,14 @@ export function ProviderConnectionsSection({
           <>
             Connect Google Calendar to let Tendnote read upcoming and recent events — read-only.
             Connect Gmail to let Tendnote save email drafts you approve — draft-only, never sending.
-            Each connects behind its own narrow Google consent, and neither implies the other.
-            Contacts stays disconnected and arrives in a later phase.
+            Connect Google Contacts to preview personal contacts before anything is saved. Each
+            connects behind its own narrow Google consent, and none implies the other.
           </>
         ) : (
           <>
-            These aren&rsquo;t connected yet. Add Google credentials to connect Calendar and Gmail,
-            each behind its own narrow permission and your explicit approval. Tendnote isn&rsquo;t
-            reading any Google data. Contacts arrives in a later phase.
+            These aren&rsquo;t connected yet. Add Google credentials to connect Calendar, Gmail, and
+            Contacts, each behind its own narrow permission and your explicit approval. Tendnote
+            isn&rsquo;t reading any Google data.
           </>
         )}
       </p>
@@ -108,18 +144,13 @@ export function ProviderConnectionsSection({
 /** Which Google capabilities the account row can start a live connect flow for. */
 function isCapabilityConnectable(
   connection: ProviderConnectionView,
-  configured: { calendarConnectable: boolean; gmailConnectable: boolean },
+  configured: ConnectableConfig,
 ): boolean {
   if (connection.providerKey !== "google") {
     return false;
   }
-  if (connection.capabilityKey === "calendar") {
-    return configured.calendarConnectable;
-  }
-  if (connection.capabilityKey === "gmail") {
-    return configured.gmailConnectable;
-  }
-  return false;
+  const action = GOOGLE_CAPABILITY_ACTIONS[connection.capabilityKey];
+  return action ? configured[action.configuredBy] : false;
 }
 
 function ProviderConnectionRow({
@@ -133,16 +164,20 @@ function ProviderConnectionRow({
   const status = STATUS_META[connection.status];
   const StatusIcon = status.Icon;
   const CapabilityIcon = CAPABILITY_ICONS[connection.capabilityKey] ?? PlugIcon;
+  const action =
+    connection.providerKey === "google"
+      ? GOOGLE_CAPABILITY_ACTIONS[connection.capabilityKey]
+      : undefined;
 
   const isConnected = connection.status === "connected";
   const isUnavailable = connection.status === "unavailable";
   const actionLabel = isConnected ? "Disconnect" : "Connect";
   const isCalendar = connection.capabilityKey === "calendar";
-  // Calendar has both connect and the audited disconnect flow (ADR-0080). Gmail is
-  // connect-only in this slice; its disconnect arrives with the shared-account
-  // disconnect design. Every other affordance stays inert until its phase wires it.
-  const showConnect = connectable && !isConnected && !isUnavailable;
-  const showDisconnect = connectable && isCalendar && isConnected;
+  const isContacts = connection.capabilityKey === "contacts";
+  const ConnectButton = action?.ConnectButton;
+  const DisconnectButton = action?.DisconnectButton;
+  const showConnect = Boolean(connectable && ConnectButton && !isConnected && !isUnavailable);
+  const showDisconnect = Boolean(connectable && DisconnectButton && isConnected);
   // After a disconnect that could not revoke the Google-side grant, the user still
   // has cleanup to finish in their Google Account (ADR-0080).
   const showCleanupNote =
@@ -173,14 +208,10 @@ function ProviderConnectionRow({
             {StatusIcon ? <StatusIcon aria-hidden data-icon="inline-start" /> : null}
             {status.label}
           </Badge>
-          {isUnavailable ? null : showConnect ? (
-            isCalendar ? (
-              <CalendarConnectButton label={connection.label} />
-            ) : (
-              <GmailConnectButton label={connection.label} />
-            )
-          ) : showDisconnect ? (
-            <CalendarDisconnectButton label={connection.label} />
+          {isUnavailable ? null : showConnect && ConnectButton ? (
+            <ConnectButton label={connection.label} />
+          ) : showDisconnect && DisconnectButton ? (
+            <DisconnectButton label={connection.label} />
           ) : (
             // Inert: no OAuth scopes, no token handling. Disabled (not just styled)
             // so it is unfocusable and cannot be triggered.
@@ -210,6 +241,24 @@ function ProviderConnectionRow({
           </a>
           .
         </p>
+      ) : null}
+      {connection.status === "error" && connection.lastErrorMessage ? (
+        <p className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-muted-foreground">
+          {connection.lastErrorMessage}
+        </p>
+      ) : null}
+      {connectable && isContacts && connection.status === "ready" ? (
+        <p className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-muted-foreground">
+          Preview latest contacts before saving anything to Tendnote.
+        </p>
+      ) : null}
+      {connectable && isContacts && connection.status === "connected" ? (
+        <a
+          className="self-start text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-primary underline underline-offset-2"
+          href="/account/contacts/import"
+        >
+          Preview latest contacts
+        </a>
       ) : null}
     </li>
   );

@@ -17,14 +17,20 @@ export const PROVIDER_GOOGLE = "google";
  * read-only access to event details on the owner's calendars. This is the
  * narrowest scope that returns title/time/attendees/status rather than freebusy
  * blocks. Phase 2C deliberately does NOT request Gmail, Contacts, or the broader
- * `calendar`/`calendar.readonly` scopes — those are later phases.
+ * `calendar`/`calendar.readonly` scopes through the Calendar connect path.
  */
 export const GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE =
   "https://www.googleapis.com/auth/calendar.events.readonly";
+export const GOOGLE_CONTACTS_READONLY_SCOPE = "https://www.googleapis.com/auth/contacts.readonly";
 
 /** Whether a granted-scope list includes Calendar event-read access. */
 export function hasCalendarEventsReadScope(scopes: readonly string[]): boolean {
   return scopes.includes(GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE);
+}
+
+/** Whether a granted-scope list includes personal Google Contacts read access. */
+export function hasContactsReadScope(scopes: readonly string[]): boolean {
+  return scopes.includes(GOOGLE_CONTACTS_READONLY_SCOPE);
 }
 
 /**

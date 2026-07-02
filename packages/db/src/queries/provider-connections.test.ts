@@ -136,6 +136,27 @@ describe("provider connection lifecycle", () => {
     ]);
   });
 
+  it("records an error row when a default-ready capability has not been persisted yet", async () => {
+    const store = createInMemoryProviderConnectionStore();
+    const queries = createProviderConnectionQueries(store);
+
+    const updated = await queries.recordProviderConnectionError({
+      ownerUserId: OWNER,
+      providerKey: "google",
+      capabilityKey: "contacts",
+      message: "identity mismatch",
+    });
+
+    expect(updated).toMatchObject({
+      status: "error",
+      capabilityKey: "contacts",
+      lastErrorMessage: "identity mismatch",
+    });
+    await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.toMatchObject([
+      { action: "provider_connection.error", metadataJson: { from: null } },
+    ]);
+  });
+
   it("marks a placeholder revocation state with an audit entry, and re-revoking is a no-op", async () => {
     const store = createInMemoryProviderConnectionStore({
       providerConnections: [connectionFixture({ ownerUserId: OWNER, status: "connected" })],

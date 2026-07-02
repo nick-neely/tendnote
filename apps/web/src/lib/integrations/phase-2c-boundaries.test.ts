@@ -7,11 +7,11 @@ import { describe, expect, it } from "vitest";
  * real Google Calendar connect path, so it deliberately crosses the Phase 2B
  * "inert, no Google provider" boundary (PRD #98). These assertions pin the
  * boundaries that REMAIN true in 2C: Calendar uses Better Auth's Google provider
- * (no parallel OAuth subsystem), the only requested scope is Calendar event-read
- * (no Gmail/Contacts), OAuth token custody stays in Better Auth (provider_connections
- * stores no tokens, and OAuth tokens are encrypted at rest), and integrations still
- * live on the account page with no separate route. A future slice that crosses one
- * of these must do so deliberately and update this file.
+ * (no parallel OAuth subsystem), the Calendar connect path requests only Calendar
+ * event-read, OAuth token custody stays in Better Auth (provider_connections stores
+ * no tokens, and OAuth tokens are encrypted at rest), and integrations still live
+ * on the account page with no separate settings route. Future provider capabilities
+ * can add their own scopes without weakening the Calendar path.
  */
 
 const dirname = import.meta.dirname;
@@ -73,24 +73,19 @@ describe("Phase 2C Calendar integration boundaries", () => {
     expect(server).toContain("encryptOAuthTokens");
   });
 
-  it("requests only the Calendar event-read scope — never Gmail or Contacts", () => {
+  it("requests only the Calendar event-read scope from the base Google provider", () => {
     const social = readFileSync(join(webSrc, "lib/auth/social.ts"), "utf8");
     // The Google provider requests exactly one scope: the domain event-read constant.
     expect(social).toMatch(/scope:\s*\[GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE\]/);
 
-    // That constant resolves to the narrow event-read scope, and the catalog that
-    // defines it declares no Gmail/Contacts/broad-Calendar scope URLs.
+    // That constant resolves to the narrow event-read scope; Contacts/Gmail scopes
+    // are requested by their own linkSocial buttons, not by the base provider.
     const catalog = readFileSync(
       join(repoRoot, "packages/domain/src/provider-connection-catalog.ts"),
       "utf8",
     ).toLowerCase();
     expect(catalog).toContain("auth/calendar.events.readonly");
-    for (const forbidden of [
-      "auth/gmail",
-      "auth/contacts",
-      "auth/calendar.readonly",
-      "auth/calendar ",
-    ]) {
+    for (const forbidden of ["auth/calendar.readonly", "auth/calendar "]) {
       expect(catalog).not.toContain(forbidden);
     }
   });
@@ -114,17 +109,15 @@ describe("Phase 2C Calendar integration boundaries", () => {
     }
   });
 
-  it("adds no Gmail, Contacts, external-send, or household behavior (Phase 2C scope, #115)", () => {
+  it("keeps Phase 2C free of send, household, and direct provider-data fetch behavior", () => {
     // No new routes for those out-of-scope capabilities.
-    for (const route of ["gmail", "contacts", "household", "households"]) {
+    for (const route of ["gmail", "household", "households"]) {
       expect(existsSync(join(webApp, route))).toBe(false);
     }
     const sources = readSources(webSrc);
     for (const forbidden of [
       "gmail.googleapis",
       "people.googleapis", // Google Contacts/People API
-      "auth/gmail",
-      "auth/contacts",
       // External-send sinks: Phase 2C ships no outbound mail transport or Gmail
       // send path (Eve's no-send-without-approval guard stays the only authority).
       "nodemailer",

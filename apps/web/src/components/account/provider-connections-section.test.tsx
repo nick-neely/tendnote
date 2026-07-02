@@ -5,7 +5,10 @@ import { ProviderConnectionsSection } from "./provider-connections-section";
 
 // The disconnect button imports a server action whose module chain reaches
 // `server-only`; stub the action so this presentational test renders client-side.
-vi.mock("@/app/actions/integrations", () => ({ disconnectGoogleCalendarAction: vi.fn() }));
+vi.mock("@/app/actions/integrations", () => ({
+  disconnectGoogleCalendarAction: vi.fn(),
+  disconnectGoogleContactsAction: vi.fn(),
+}));
 
 const READY_VIEW: ProviderConnectionView[] = [
   {
@@ -15,6 +18,7 @@ const READY_VIEW: ProviderConnectionView[] = [
     status: "ready",
     displayIdentity: null,
     revocationReason: null,
+    lastErrorMessage: null,
   },
   {
     providerKey: "google",
@@ -23,6 +27,7 @@ const READY_VIEW: ProviderConnectionView[] = [
     status: "ready",
     displayIdentity: null,
     revocationReason: null,
+    lastErrorMessage: null,
   },
   {
     providerKey: "google",
@@ -31,6 +36,7 @@ const READY_VIEW: ProviderConnectionView[] = [
     status: "ready",
     displayIdentity: null,
     revocationReason: null,
+    lastErrorMessage: null,
   },
 ];
 
@@ -70,6 +76,7 @@ describe("ProviderConnectionsSection", () => {
             status: "connected",
             displayIdentity: "nick@example.com",
             revocationReason: null,
+            lastErrorMessage: null,
           },
         ]}
       />,
@@ -93,6 +100,7 @@ describe("ProviderConnectionsSection", () => {
             status: "connected",
             displayIdentity: "nick@example.com",
             revocationReason: null,
+            lastErrorMessage: null,
           },
         ]}
       />,
@@ -115,6 +123,7 @@ describe("ProviderConnectionsSection", () => {
             status: "revoked",
             displayIdentity: null,
             revocationReason: "user_disconnect_provider_grant_not_revoked",
+            lastErrorMessage: null,
           },
         ]}
       />,
@@ -122,6 +131,34 @@ describe("ProviderConnectionsSection", () => {
 
     expect(html).toContain("Google Account permissions");
     expect(html).toContain("https://myaccount.google.com/permissions");
+  });
+
+  it("renders live Contacts connect and preview affordances when configured", () => {
+    const readyHtml = renderToStaticMarkup(
+      <ProviderConnectionsSection connections={READY_VIEW} contactsConnectable />,
+    );
+    expect(readyHtml).toContain("Connect Google Contacts");
+    expect(readyHtml).toContain("Preview latest contacts before saving anything");
+
+    const connectedHtml = renderToStaticMarkup(
+      <ProviderConnectionsSection
+        contactsConnectable
+        connections={[
+          {
+            providerKey: "google",
+            capabilityKey: "contacts",
+            label: "Google Contacts",
+            status: "connected",
+            displayIdentity: "nick@example.com",
+            revocationReason: null,
+            lastErrorMessage: null,
+          },
+        ]}
+      />,
+    );
+    expect(connectedHtml).toContain("Preview latest contacts");
+    expect(connectedHtml).toContain("/account/contacts/import");
+    expect(connectedHtml).toContain("Disconnect Google Contacts");
   });
 
   it("renders a live Gmail connect control when Gmail is configured, independent of Calendar", () => {
@@ -148,11 +185,14 @@ describe("ProviderConnectionsSection", () => {
             status: "error",
             displayIdentity: null,
             revocationReason: null,
+            lastErrorMessage:
+              "Google Contacts must use the same linked Google account as existing Google capabilities.",
           },
         ]}
       />,
     );
 
     expect(html).toContain("Needs attention");
+    expect(html).toContain("same linked Google account");
   });
 });

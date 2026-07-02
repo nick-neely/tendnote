@@ -30,6 +30,7 @@ describe("buildProviderConnectionView", () => {
     expect(view.map((row) => row.label)).toEqual(["Google Calendar", "Gmail", "Google Contacts"]);
     expect(view.every((row) => row.status === "ready")).toBe(true);
     expect(view.every((row) => row.displayIdentity === null)).toBe(true);
+    expect(view.every((row) => row.lastErrorMessage === null)).toBe(true);
   });
 
   it("overlays persisted status and display identity onto the matching capability", () => {
@@ -54,5 +55,20 @@ describe("buildProviderConnectionView", () => {
 
     expect(view).toHaveLength(3);
     expect(view.some((row) => row.capabilityKey === "drive")).toBe(false);
+  });
+
+  it("carries non-secret error detail for visible blocked states", () => {
+    const view = buildProviderConnectionView([
+      connection({
+        capabilityKey: "contacts",
+        status: "error",
+        lastErrorMessage: "Google Contacts must use the same linked Google account.",
+      }),
+    ]);
+
+    expect(view.find((row) => row.capabilityKey === "contacts")).toMatchObject({
+      status: "error",
+      lastErrorMessage: "Google Contacts must use the same linked Google account.",
+    });
   });
 });

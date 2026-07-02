@@ -249,12 +249,38 @@ export function createProviderConnectionQueries(
     async recordProviderConnectionError(input: RecordProviderConnectionErrorInput) {
       const ref = refOf(input);
       const existing = await store.getProviderConnection(ref);
+      const now = new Date();
 
       if (!existing) {
-        return null;
+        const created = await store.createProviderConnection({
+          ownerUserId: ref.ownerUserId,
+          providerKey: ref.providerKey,
+          capabilityKey: ref.capabilityKey,
+          status: "error",
+          displayIdentity: null,
+          authorizedScopes: null,
+          connectedAt: null,
+          revokedAt: null,
+          lastErrorAt: now,
+          lastErrorMessage: input.message,
+          revocationReason: null,
+        });
+
+        await writeAudit(store, {
+          ownerUserId: created.ownerUserId,
+          action: "provider_connection.error",
+          entityId: created.id,
+          metadataJson: {
+            providerKey: created.providerKey,
+            capabilityKey: created.capabilityKey,
+            from: null,
+            message: input.message,
+          },
+        });
+
+        return created;
       }
 
-      const now = new Date();
       const updated = await store.updateProviderConnection({
         ref,
         patch: { status: "error", lastErrorAt: now, lastErrorMessage: input.message },

@@ -100,6 +100,7 @@ export default async function AccountPage() {
             are configured, behind their own narrow scope. */}
         <ProviderConnectionsSection
           calendarConnectable={googleConfigured}
+          contactsConnectable={googleConfigured}
           connections={connections}
           gmailConnectable={googleConfigured}
         />

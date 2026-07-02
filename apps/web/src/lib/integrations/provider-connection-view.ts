@@ -20,6 +20,8 @@ export type ProviderConnectionView = {
   displayIdentity: string | null;
   /** Audit-facing revocation detail; drives the "finish cleanup at Google" note. */
   revocationReason: string | null;
+  /** Non-secret provider/authorization error detail for visible recovery copy. */
+  lastErrorMessage: string | null;
 };
 
 export function buildProviderConnectionView(
@@ -39,6 +41,7 @@ export function buildProviderConnectionView(
       status: persisted?.status ?? "ready",
       displayIdentity: persisted?.displayIdentity ?? null,
       revocationReason: persisted?.revocationReason ?? null,
+      lastErrorMessage: persisted?.lastErrorMessage ?? null,
     };
   });
 }

@@ -5,6 +5,7 @@ import {
   isProviderCapabilityConnected,
   listProviderConnections,
   markProviderConnectionRevoked,
+  recordProviderConnectionError,
   setProviderConnectionStatus,
 } from "@tendnote/db/queries/provider-connections";
 import type { ProviderConnectionStatus } from "@tendnote/domain";
@@ -15,6 +16,7 @@ import {
   type DisconnectGoogleCalendarResult,
   disconnectGoogleCalendar,
 } from "./google-calendar-disconnect";
+import { reconcileGoogleContactsConnection } from "./google-contacts-connection";
 import { reconcileGoogleGmailConnection } from "./google-gmail-connection";
 
 const GOOGLE_OAUTH_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
@@ -61,6 +63,7 @@ async function syncGoogleConnections(ownerUserId: string): Promise<void> {
     import("next/headers"),
   ]);
   const accounts = (await getAuth().api.listUserAccounts({ headers: await headers() })) ?? [];
+  const existingConnections = await listProviderConnections({ ownerUserId });
   await Promise.all([
     reconcileGoogleCalendarConnection({
       ownerUserId,
@@ -75,6 +78,15 @@ async function syncGoogleConnections(ownerUserId: string): Promise<void> {
       // by a Calendar disconnect), so Gmail status stays honest (ADR-0090).
       isConnected: isProviderCapabilityConnected,
       revoke: markProviderConnectionRevoked,
+    }),
+    reconcileGoogleContactsConnection({
+      ownerUserId,
+      accounts,
+      existingConnections,
+      connect: connectProviderConnection,
+      isConnected: isProviderCapabilityConnected,
+      revoke: markProviderConnectionRevoked,
+      recordError: recordProviderConnectionError,
     }),
   ]);
 }
@@ -92,6 +104,22 @@ export async function setOwnerProviderConnectionStatus(input: {
 }) {
   const ownerUserId = await requireAdmittedOwnerForAction();
   return setProviderConnectionStatus({ ownerUserId, ...input });
+}
+
+/**
+ * Explicit owner intent to reconnect Google Contacts after a local disconnect.
+ * The read-path reconciler honors `user_disconnect` as a durable preview-read
+ * block, so only the Contacts connect button clears that local opt-out before
+ * starting Better Auth's narrow Contacts consent flow.
+ */
+export async function prepareOwnerGoogleContactsConnect() {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  return setProviderConnectionStatus({
+    ownerUserId,
+    providerKey: "google",
+    capabilityKey: "contacts",
+    status: "ready",
+  });
 }
 
 /**
@@ -150,5 +178,20 @@ export async function disconnectOwnerGoogleCalendar(): Promise<DisconnectGoogleC
       return { providerRevoked };
     },
     markRevoked: markProviderConnectionRevoked,
+  });
+}
+
+/**
+ * Disconnect Google Contacts locally for this owner. Confirmed imported people,
+ * contact methods, and birthdays are Tendnote-owned data and are intentionally not
+ * deleted; the revoked Provider Connection blocks future Contacts preview reads.
+ */
+export async function disconnectOwnerGoogleContacts() {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  return markProviderConnectionRevoked({
+    ownerUserId,
+    providerKey: "google",
+    capabilityKey: "contacts",
+    reason: "user_disconnect",
   });
 }

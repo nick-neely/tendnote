@@ -6,10 +6,10 @@
 > operator with access to the Google Cloud project must run them.
 
 Tendnote authorizes Google capabilities through **Better Auth's Google social
-provider and `linkSocial` flow** (ADR-0071, ADR-0090). Better Auth owns OAuth
+provider and `linkSocial` flow** (ADR-0071, ADR-0090, ADR-0107). Better Auth owns OAuth
 token custody, refresh, and encryption. Tendnote Provider Connections mirror only
 non-secret product status, display identity, and authorized-scope metadata for
-each capability, such as `google/calendar` and `google/gmail`.
+each capability, such as `google/calendar`, `google/gmail`, and `google/contacts`.
 
 Do **not** build a separate OAuth subsystem or store provider tokens in a
 Tendnote table.
@@ -27,9 +27,10 @@ Enable only the APIs that match the Tendnote capabilities you are testing:
 | --- | --- | --- |
 | Google Calendar | Google Calendar API | Read-only upcoming/recent event summaries and Calendar-derived follow-up suggestions. |
 | Gmail | Gmail API | Creating and updating user-approved Gmail drafts. |
+| Google Contacts | People API | Explicit preview of personal contacts before confirmed Tendnote profile/contact enrichment. |
 
-Google Contacts is a later phase. Do not enable or request People/Contacts API
-access for the current Calendar/Gmail setup.
+Enable the People API only when testing Phase 2E Contacts import preview. Do not
+enable Directory API, Admin SDK, or organization-wide contact APIs.
 
 ## 2. OAuth consent screen
 
@@ -52,6 +53,7 @@ Add exactly the scopes Tendnote uses, no more.
 | Sign-in identity for the connected Google account | `openid`, `email`, `profile` | Better Auth requests identity scopes for the linked Google account and display identity. |
 | Read event details for the primary calendar | `https://www.googleapis.com/auth/calendar.events.readonly` | Used by Phase 2C. Narrower than full calendar read/write and enough for event title, time, attendees, status, selected location, and description excerpts. |
 | Create and update Gmail drafts | `https://www.googleapis.com/auth/gmail.compose` | Used by Phase 2D. Allows draft create/update; Tendnote still has no send path and does not read Gmail history. |
+| Preview personal contacts | `https://www.googleapis.com/auth/contacts.readonly` | Used by Phase 2E. Read-only personal contacts for explicit preview; no Directory, Admin, inferred contacts, or writes. |
 
 Do **not** add these broader scopes for the current product:
 
@@ -61,11 +63,17 @@ Do **not** add these broader scopes for the current product:
 - `https://www.googleapis.com/auth/gmail.modify`
 - `https://www.googleapis.com/auth/gmail.send`
 - `https://mail.google.com/`
-- Contacts, People, Directory, or Admin SDK scopes
+- `https://www.googleapis.com/auth/contacts`
+- `https://www.googleapis.com/auth/contacts.other.readonly`
+- `https://www.googleapis.com/auth/directory.readonly`
+- Directory API, Admin SDK, organization, or inferred-contact scopes
 
-Calendar and Gmail are separate Tendnote Provider Connection capabilities. A user
-may connect Calendar without Gmail, or Gmail without Calendar, even though both
-use the same Google OAuth client and Better Auth account-link custody.
+Calendar, Gmail, and Contacts are separate Tendnote Provider Connection
+capabilities. A user may connect one without the others, even though all use the
+same Google OAuth client and Better Auth account-link custody. Contacts must use
+the same linked Google account identity as the owner's other connected Google
+capabilities; Tendnote blocks mismatches until explicit multi-account semantics
+exist.
 
 ## 4. OAuth client credentials
 
@@ -155,11 +163,28 @@ Run after the relevant code slices land, with `GOOGLE_CLIENT_ID` and
       attempt a Gmail draft write. Tendnote reports a visible failure/retry state
       and does not background retry.
 
+### Contacts
+
+- [ ] **Connect:** From the account provider area, start the Google Contacts
+      connect flow. Google's consent screen lists `contacts.readonly` plus
+      identity scopes, not Directory, Admin, inferred-contact, Contacts write,
+      Gmail, or Calendar write scopes.
+- [ ] **Same identity:** If Calendar or Gmail is already connected, the Contacts
+      row connects only for the same linked Google account identity. A different
+      Google account is blocked with visible recovery copy.
+- [ ] **Preview entry:** After returning to Tendnote, the Contacts Provider
+      Connection shows `connected` and the account row offers **Preview latest
+      contacts**. Opening preview is explicit; no contacts are saved merely by
+      connecting.
+- [ ] **Disconnect:** Disconnect Contacts. Future Contacts preview reads are
+      blocked, while confirmed Tendnote-owned people, emails, phones, and
+      birthdays remain editable in Tendnote.
+
 ### Secret safety
 
-- [ ] Tail dev server logs during both flows. No OAuth tokens, raw Calendar
-      payloads, raw Gmail API payloads, message history, labels, threads, or
-      mailbox data appear in logs.
+- [ ] Tail dev server logs during all flows. No OAuth tokens, raw Calendar
+      payloads, raw Gmail API payloads, raw People API payloads, message history,
+      labels, threads, mailbox data, or directory data appear in logs.
 
 ## 7. Hosted smoke checklist
 
@@ -171,8 +196,12 @@ Run after the relevant code slices land, with `GOOGLE_CLIENT_ID` and
       while the consent screen is in Testing mode.
 - [ ] Calendar connect -> status -> read -> disconnect works end-to-end.
 - [ ] Gmail connect -> status -> create draft -> update draft works end-to-end.
+- [ ] Contacts connect -> status -> preview entry -> disconnect works
+      end-to-end; live preview/apply checks follow the Phase 2E smoke checklist
+      once the adapter and preview workflow are wired.
 - [ ] Hosted logs and audit entries contain no OAuth tokens, raw provider
-      payloads, Gmail history, mailbox labels, or sent-message activity.
+      payloads, Gmail history, mailbox labels, directory data, or sent-message
+      activity.
 
 ## 8. Verification status notes
 
