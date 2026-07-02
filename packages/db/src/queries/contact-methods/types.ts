@@ -31,6 +31,17 @@ export type ContactMethodDuplicateMatch = {
   normalizedValue: string | null;
 };
 
+export type CreateContactMethodInput = {
+  ownerUserId: string;
+  personId: string;
+  type: "email" | "phone";
+  value: string;
+  displayValue: string | null;
+  normalizedValue: string | null;
+  isPrimary?: boolean;
+  source?: "manual" | "agent" | "contact_import" | "calendar" | "gmail" | "seed";
+};
+
 export type ContactMethodStore = {
   /** An owner's saved email contact methods for a person, primary first. */
   listPersonEmailContactMethods: (input: {
@@ -42,6 +53,8 @@ export type ContactMethodStore = {
   findOwnerContactMethodDuplicates: (
     input: ContactMethodDuplicateLookupInput,
   ) => Promise<ContactMethodDuplicateMatch[]>;
+
+  createContactMethod: (input: CreateContactMethodInput) => Promise<ContactMethodDuplicateMatch>;
 };
 
 export function toPersonEmailContactMethod(row: {

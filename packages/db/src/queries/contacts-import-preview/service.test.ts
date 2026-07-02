@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { Person } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
 import type { InMemoryContactMethodSeed } from "../contact-methods";
@@ -9,10 +7,12 @@ import {
   createFakeContactImportFuzzyMatcher,
   createFakeContactImportPreviewAdapter,
 } from "./fake-adapter";
-import { createContactImportPreviewSession } from "./service";
+import { applyContactImportCandidates, createContactImportPreviewSession } from "./service";
 import type {
+  ContactImportApplyDeps,
   ContactImportFuzzyMatcher,
   ContactImportPreviewDeps,
+  ContactImportProviderReferenceInput,
   GoogleContactsPreviewContact,
 } from "./types";
 
@@ -67,6 +67,37 @@ function createDeps(input: {
     searchPeople: people.searchPeople,
     getPerson: people.getPerson,
     findOwnerContactMethodDuplicates: contactMethods.findOwnerContactMethodDuplicates,
+  };
+}
+
+function createApplyDeps(input: Parameters<typeof createDeps>[0]): ContactImportApplyDeps & {
+  peopleStore: ReturnType<typeof createInMemoryPeopleStore>;
+  providerRefs: ContactImportProviderReferenceInput[];
+  contactAuditEntries: Array<{ metadataJson: Record<string, unknown> }>;
+} {
+  const previewDeps = createDeps(input);
+  const peopleStore = previewDeps.peopleStore;
+  const people = createPeopleQueries(peopleStore);
+  const contactMethods = createContactMethodStore({
+    contactMethods: input.contactMethods ?? [],
+  });
+  const providerRefs: ContactImportProviderReferenceInput[] = [];
+  const contactAuditEntries: Array<{ metadataJson: Record<string, unknown> }> = [];
+
+  return {
+    ...previewDeps,
+    findOwnerContactMethodDuplicates: contactMethods.findOwnerContactMethodDuplicates,
+    createPerson: people.createPerson,
+    updatePerson: people.updatePerson,
+    createContactMethod: contactMethods.createContactMethod,
+    createProviderReference: async (ref) => {
+      providerRefs.push(ref);
+    },
+    createAuditLogEntry: async (entry) => {
+      contactAuditEntries.push({ metadataJson: entry.metadataJson });
+    },
+    providerRefs,
+    contactAuditEntries,
   };
 }
 
@@ -588,22 +619,216 @@ describe("createContactImportPreviewSession", () => {
     ).resolves.toHaveLength(1);
   });
 
-  it("has no durable write dependencies for unconfirmed previews", () => {
-    const source = readFileSync(join(import.meta.dirname, "service.ts"), "utf8");
+  it("bulk-applies safe existing-person candidates with missing fields and provenance", async () => {
+    const deps = createApplyDeps({
+      contacts: [
+        {
+          providerContactId: "people/safe-existing",
+          displayName: "Mara Chen",
+          emails: ["mara.chen@example.com"],
+          phones: ["+1 (312) 555-0101"],
+          birthday: "--04-18",
+        },
+      ],
+      people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
+      contactMethods: [
+        {
+          id: "cm-mara",
+          ownerUserId: OWNER,
+          personId: "person-mara",
+          type: "email",
+          value: "mara.chen@example.com",
+          normalizedValue: "mara.chen@example.com",
+          isPrimary: true,
+        },
+      ],
+    });
 
-    for (const forbidden of [
-      "createPerson",
-      "updatePerson",
-      "createMemory",
-      "captureMemory",
-      "captureSourceRecord",
-      "createSourceRecord",
-      "createContactMethod",
-      "semantic-retrieval",
-      "source-records",
-      "memories",
-    ]) {
-      expect(source).not.toContain(forbidden);
-    }
+    const result = await applyContactImportCandidates({ ownerUserId: OWNER }, deps);
+
+    expect(result).toMatchObject({
+      importedCount: 1,
+      createdPeople: 0,
+      updatedPeople: 1,
+      addedContactMethods: 1,
+      addedBirthdays: 1,
+      undoAvailable: false,
+    });
+    expect(result.candidates[0]).toMatchObject({
+      personId: "person-mara",
+      addedPhones: ["+1 (312) 555-0101"],
+      addedBirthday: "--04-18",
+      skipped: ["email:mara.chen@example.com"],
+    });
+    expect(deps.providerRefs).toEqual([
+      {
+        ownerUserId: OWNER,
+        personId: "person-mara",
+        providerKey: "google",
+        providerContactId: "people/safe-existing",
+      },
+    ]);
+    expect(deps.contactAuditEntries[0]?.metadataJson).toMatchObject({
+      providerKey: "google",
+      providerContactId: "people/safe-existing",
+      personId: "person-mara",
+      createdPerson: false,
+      addedPhones: ["+1 (312) 555-0101"],
+      addedBirthday: "--04-18",
+    });
+  });
+
+  it("skips contact methods that become owner-wide duplicates at write time", async () => {
+    const deps = createApplyDeps({
+      contacts: [
+        {
+          providerContactId: "people/safe-existing",
+          displayName: "Mara Chen",
+          emails: ["mara.chen@example.com"],
+          phones: ["+1 (312) 555-0101"],
+        },
+      ],
+      people: [
+        personFixture({ id: "person-mara", displayName: "Mara Chen" }),
+        personFixture({ id: "person-other", displayName: "Other Person" }),
+      ],
+      contactMethods: [
+        {
+          id: "cm-mara",
+          ownerUserId: OWNER,
+          personId: "person-mara",
+          type: "email",
+          value: "mara.chen@example.com",
+          normalizedValue: "mara.chen@example.com",
+          isPrimary: true,
+        },
+      ],
+    });
+    const duplicateLookup = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: "cm-mara",
+          personId: "person-mara",
+          type: "email",
+          value: "mara.chen@example.com",
+          displayValue: "mara.chen@example.com",
+          normalizedValue: "mara.chen@example.com",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "cm-other-phone",
+          personId: "person-other",
+          type: "phone",
+          value: "+13125550101",
+          displayValue: "+1 (312) 555-0101",
+          normalizedValue: "+13125550101",
+        },
+      ]);
+
+    const result = await applyContactImportCandidates(
+      { ownerUserId: OWNER },
+      { ...deps, findOwnerContactMethodDuplicates: duplicateLookup },
+    );
+
+    expect(result).toMatchObject({
+      importedCount: 1,
+      addedContactMethods: 0,
+    });
+    expect(result.candidates[0]?.skipped).toEqual([
+      "email:mara.chen@example.com",
+      "phone:+1 (312) 555-0101",
+    ]);
+    expect(deps.contactAuditEntries[0]?.metadataJson).toMatchObject({
+      skipped: ["email:mara.chen@example.com", "phone:+1 (312) 555-0101"],
+    });
+  });
+
+  it("explicitly applies non-conflicting new-person candidates only after confirmation", async () => {
+    const deps = createApplyDeps({
+      contacts: [
+        {
+          providerContactId: "people/new",
+          displayName: "New Friend",
+          emails: ["new@example.com"],
+          birthday: "--03-14",
+        },
+      ],
+      people: [],
+      contactMethods: [],
+    });
+    const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(preview.candidates[0]).toMatchObject({
+      reviewState: "individual_review",
+      safeBulkEligible: false,
+    });
+
+    await expect(
+      deps.searchPeople({ ownerUserId: OWNER, query: "New Friend", limit: 10 }),
+    ).resolves.toEqual([]);
+
+    const result = await applyContactImportCandidates(
+      { ownerUserId: OWNER, candidateIds: [preview.candidates[0]?.id ?? ""], mode: "explicit" },
+      deps,
+    );
+
+    expect(result).toMatchObject({
+      importedCount: 1,
+      createdPeople: 1,
+      addedContactMethods: 1,
+      addedBirthdays: 1,
+      undoAvailable: false,
+    });
+    await expect(
+      deps.searchPeople({ ownerUserId: OWNER, query: "New Friend", limit: 10 }),
+    ).resolves.toHaveLength(1);
+    expect(deps.providerRefs[0]).toMatchObject({
+      providerKey: "google",
+      providerContactId: "people/new",
+    });
+  });
+
+  it("does not apply conflicts, ambiguous duplicates, weak rows, or advisory matches", async () => {
+    const deps = createApplyDeps({
+      contacts: [
+        {
+          providerContactId: "people/conflict",
+          displayName: "Mara Chen",
+          emails: ["mara.chen@example.com"],
+          birthday: "--05-20",
+        },
+        {
+          providerContactId: "people/advisory",
+          displayName: "M Chen",
+        },
+      ],
+      people: [personFixture({ id: "person-mara", displayName: "Mara Chen", birthday: "--04-18" })],
+      fuzzyMatcher: createFakeContactImportFuzzyMatcher({
+        "people/advisory": [
+          {
+            personId: "person-mara",
+            displayName: "Mara Chen",
+            confidence: "high",
+            reason: "Similar name",
+          },
+        ],
+      }),
+    });
+    const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    const result = await applyContactImportCandidates(
+      {
+        ownerUserId: OWNER,
+        candidateIds: preview.candidates.map((candidate) => candidate.id),
+        mode: "explicit",
+      },
+      deps,
+    );
+
+    expect(result.importedCount).toBe(0);
+    expect(deps.providerRefs).toEqual([]);
+    expect(deps.contactAuditEntries).toEqual([]);
   });
 });

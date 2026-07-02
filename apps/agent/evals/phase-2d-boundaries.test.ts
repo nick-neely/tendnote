@@ -31,13 +31,6 @@ const gmailDbSources = readdirSync(gmailDir)
   .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"))
   .map((file) => `packages/db/src/queries/gmail-drafts/${file}`);
 
-const contactMethodSources = [
-  "packages/db/src/queries/contact-methods.ts",
-  "packages/db/src/queries/contact-methods/types.ts",
-  "packages/db/src/queries/contact-methods/drizzle-store.ts",
-  "packages/db/src/queries/contact-methods/in-memory-store.ts",
-];
-
 const WEB_GMAIL_SOURCES = [
   "apps/web/src/lib/integrations/gmail-drafts.ts",
   "apps/web/src/app/actions/gmail-drafts.ts",
@@ -50,7 +43,6 @@ const EVE_GMAIL_SOURCES = ["apps/agent/agent/tools/save_draft_to_gmail.ts"];
 const GMAIL_SOURCE_FILES = [
   "packages/db/src/queries/gmail-drafts.ts",
   ...gmailDbSources,
-  ...contactMethodSources,
   ...WEB_GMAIL_SOURCES,
   ...EVE_GMAIL_SOURCES,
 ];

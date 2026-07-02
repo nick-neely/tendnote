@@ -1,5 +1,9 @@
 import { SearchIcon, UsersRoundIcon } from "lucide-react";
 import Link from "next/link";
+import {
+  confirmContactImportCandidateAction,
+  confirmSafeContactImportCandidatesAction,
+} from "@/app/actions/contact-import";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,13 +11,27 @@ import { getOwnerContactImportPreview } from "@/lib/integrations/contact-import-
 
 export const dynamic = "force-dynamic";
 
+type SearchParams = {
+  q?: string | string[];
+  confirmed?: string | string[];
+  created?: string | string[];
+  updated?: string | string[];
+  methods?: string | string[];
+  birthdays?: string | string[];
+};
+
 export default async function ContactsImportPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ q?: string | string[] }>;
+  searchParams?: Promise<SearchParams>;
 }) {
   const params = await searchParams;
-  const query = Array.isArray(params?.q) ? params?.q[0] : params?.q;
+  const query = readParam(params?.q, "");
+  const confirmed = readParam(params?.confirmed, "");
+  const created = readParam(params?.created);
+  const updated = readParam(params?.updated);
+  const methods = readParam(params?.methods);
+  const birthdays = readParam(params?.birthdays);
   const preview = await getOwnerContactImportPreview({ query });
   const safeCandidates = preview.candidates.filter((candidate) => candidate.safeBulkEligible);
   const reviewCandidates = preview.candidates.filter((candidate) => !candidate.safeBulkEligible);
@@ -46,6 +64,18 @@ export default async function ContactsImportPage({
           </section>
         ) : (
           <>
+            {confirmed ? (
+              <section className="rounded-lg border bg-surface px-3.5 py-3">
+                <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty">
+                  Confirmed {confirmed} contact import candidate{confirmed === "1" ? "" : "s"}.
+                  {created} new {created === "1" ? "person" : "people"}, {updated} updated{" "}
+                  {updated === "1" ? "person" : "people"}, {methods} contact{" "}
+                  {methods === "1" ? "method" : "methods"}, and {birthdays}{" "}
+                  {birthdays === "1" ? "birthday" : "birthdays"} changed. Imported fields are now
+                  normal Tendnote profile data and can be edited or archived from people profiles.
+                </p>
+              </section>
+            ) : null}
             <section className="flex flex-col gap-3">
               <form action="/account/contacts/import" className="flex flex-col gap-2 sm:flex-row">
                 <label className="sr-only" htmlFor="contacts-import-search">
@@ -69,6 +99,21 @@ export default async function ContactsImportPage({
                   Search
                 </Button>
               </form>
+              {safeCandidates.length > 0 ? (
+                <form action={confirmSafeContactImportCandidatesAction}>
+                  {safeCandidates.map((candidate) => (
+                    <input
+                      key={candidate.id}
+                      name="candidateId"
+                      type="hidden"
+                      value={candidate.id}
+                    />
+                  ))}
+                  <Button size="sm" type="submit">
+                    Confirm safe recommendations
+                  </Button>
+                </form>
+              ) : null}
 
               <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
                 {preview.mode === "search"
@@ -102,6 +147,7 @@ export default async function ContactsImportPage({
                   <CandidateList
                     candidates={reviewCandidates}
                     description="Review these individually before any future confirmation step."
+                    showExplicitConfirmation
                     title="Needs individual review"
                   />
                 ) : null}
@@ -118,10 +164,12 @@ function CandidateList({
   title,
   description,
   candidates,
+  showExplicitConfirmation = false,
 }: {
   title: string;
   description: string;
   candidates: NonNullable<Awaited<ReturnType<typeof getOwnerContactImportPreview>>>["candidates"];
+  showExplicitConfirmation?: boolean;
 }) {
   return (
     <section className="flex flex-col gap-3">
@@ -186,6 +234,14 @@ function CandidateList({
                 </span>
               ) : null}
             </div>
+            {showExplicitConfirmation && candidate.reviewState === "individual_review" ? (
+              <form action={confirmContactImportCandidateAction}>
+                <input name="candidateId" type="hidden" value={candidate.id} />
+                <Button size="sm" type="submit" variant="outline">
+                  Confirm this candidate
+                </Button>
+              </form>
+            ) : null}
           </li>
         ))}
       </ul>
@@ -207,4 +263,8 @@ function priorityLabel(priority: string): string {
   if (priority === "birthday") return "Birthday";
   if (priority === "useful_email") return "Email";
   return "Lower priority";
+}
+
+function readParam(value: string | string[] | undefined, fallback = "0"): string {
+  return Array.isArray(value) ? (value[0] ?? fallback) : (value ?? fallback);
 }

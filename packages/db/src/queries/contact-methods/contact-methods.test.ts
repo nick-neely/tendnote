@@ -40,12 +40,11 @@ describe("contact method reader", () => {
     expect(result.map((cm) => cm.id)).not.toContain("cm-3");
   });
 
-  it("is read-only: exposes no insert/update path (no contact enrichment, ADR-0085)", () => {
-    // A Gmail draft recipient can never be silently saved as a contact method,
-    // because this store has only a read method — there is no write surface.
+  it("keeps contact enrichment behind an explicit create path", () => {
     expect(Object.keys(store)).toEqual([
       "listPersonEmailContactMethods",
       "findOwnerContactMethodDuplicates",
+      "createContactMethod",
     ]);
   });
 

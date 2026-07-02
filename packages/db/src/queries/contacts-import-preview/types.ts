@@ -2,7 +2,9 @@ import type { Person } from "@tendnote/domain";
 import type {
   ContactMethodDuplicateLookupInput,
   ContactMethodDuplicateMatch,
+  CreateContactMethodInput,
 } from "../contact-methods/types";
+import type { CreatePersonMutationInput, UpdatePersonMutationInput } from "../people/types";
 import type { ProviderConnectionRef } from "../provider-connections/types";
 
 export type GoogleContactsPreviewContact = {
@@ -104,4 +106,47 @@ export type ContactImportPreviewSession = {
   shownCount: number;
   hiddenCount: number;
   candidates: ContactImportPreviewCandidate[];
+};
+
+export type ContactImportProviderReferenceInput = {
+  ownerUserId: string;
+  personId: string;
+  providerKey: "google";
+  providerContactId: string;
+};
+
+export type ContactImportAuditEntry = {
+  ownerUserId: string;
+  action: "contact_import.candidate_confirmed";
+  entityType: "contact_import_candidate";
+  entityId: string;
+  metadataJson: Record<string, unknown>;
+};
+
+export type ContactImportApplyDeps = ContactImportPreviewDeps & {
+  createPerson: (input: CreatePersonMutationInput) => Promise<Person>;
+  updatePerson: (input: UpdatePersonMutationInput) => Promise<Person | null>;
+  createContactMethod: (input: CreateContactMethodInput) => Promise<ContactMethodDuplicateMatch>;
+  createProviderReference: (input: ContactImportProviderReferenceInput) => Promise<void>;
+  createAuditLogEntry: (entry: ContactImportAuditEntry) => Promise<void>;
+};
+
+export type ContactImportApplyResult = {
+  importedCount: number;
+  createdPeople: number;
+  updatedPeople: number;
+  addedContactMethods: number;
+  addedBirthdays: number;
+  candidates: Array<{
+    candidateId: string;
+    providerContactId: string;
+    personId: string;
+    displayName: string;
+    createdPerson: boolean;
+    addedEmails: string[];
+    addedPhones: string[];
+    addedBirthday: string | null;
+    skipped: string[];
+  }>;
+  undoAvailable: false;
 };

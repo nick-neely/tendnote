@@ -88,5 +88,47 @@ export function createDrizzleContactMethodStore(): ContactMethodStore {
           displayValue: contactMethodDisplayValue(row),
         }));
     },
+
+    async createContactMethod(input) {
+      const [person] = await getDb()
+        .select({ id: people.id })
+        .from(people)
+        .where(and(eq(people.id, input.personId), eq(people.ownerUserId, input.ownerUserId)))
+        .limit(1);
+
+      if (!person) {
+        throw new Error("Person not found for owner.");
+      }
+
+      const [created] = await getDb()
+        .insert(contactMethods)
+        .values({
+          personId: input.personId,
+          type: input.type,
+          value: input.value,
+          displayValue: input.displayValue,
+          normalizedValue: input.normalizedValue,
+          isPrimary: input.isPrimary ?? false,
+          source: input.source ?? "contact_import",
+        })
+        .returning({
+          id: contactMethods.id,
+          personId: contactMethods.personId,
+          type: contactMethods.type,
+          value: contactMethods.value,
+          displayValue: contactMethods.displayValue,
+          normalizedValue: contactMethods.normalizedValue,
+        });
+
+      if (!created || (created.type !== "email" && created.type !== "phone")) {
+        throw new Error("Failed to create contact method.");
+      }
+
+      return {
+        ...created,
+        type: created.type,
+        displayValue: contactMethodDisplayValue(created),
+      };
+    },
   };
 }

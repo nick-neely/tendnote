@@ -6,6 +6,8 @@ import {
 } from "@tendnote/domain";
 import type { ContactMethodDuplicateMatch } from "../contact-methods/types";
 import type {
+  ContactImportApplyDeps,
+  ContactImportApplyResult,
   ContactImportCandidateConflict,
   ContactImportCandidateMatchSignal,
   ContactImportFuzzyMatch,
@@ -88,6 +90,203 @@ export async function createContactImportPreviewSession(
     hiddenCount: mode === "search" ? 0 : Math.max(0, candidates.length - shown.length),
     candidates: shown,
   };
+}
+
+export async function applyContactImportCandidates(
+  input: { ownerUserId: string; candidateIds?: string[]; mode?: "safe_bulk" | "explicit" },
+  deps: ContactImportApplyDeps,
+): Promise<ContactImportApplyResult> {
+  const preview = await createContactImportPreviewSession(
+    { ownerUserId: input.ownerUserId, limit: 200 },
+    deps,
+  );
+  const requestedIds = new Set(input.candidateIds ?? []);
+  const mode = input.mode ?? "safe_bulk";
+  const candidates = preview.candidates.filter((candidate) =>
+    requestedIds.size > 0 ? requestedIds.has(candidate.id) : candidate.safeBulkEligible,
+  );
+  const confirmed = candidates.filter((candidate) =>
+    mode === "safe_bulk" ? candidate.safeBulkEligible : canExplicitlyConfirm(candidate),
+  );
+  const results: ContactImportApplyResult["candidates"] = [];
+
+  for (const candidate of confirmed) {
+    const existingPerson = candidate.matchedPerson
+      ? await deps.getPerson({
+          ownerUserId: input.ownerUserId,
+          personId: candidate.matchedPerson.id,
+        })
+      : null;
+    const person =
+      existingPerson ??
+      (await deps.createPerson({
+        ownerUserId: input.ownerUserId,
+        displayName: candidate.displayName,
+        birthday: candidate.birthday,
+        source: "contact_import",
+      }));
+    const createdPerson = !existingPerson;
+    const addedEmails: string[] = [];
+    const addedPhones: string[] = [];
+    let addedBirthday: string | null = null;
+    const skipped: string[] = [];
+
+    if (!createdPerson && candidate.birthday) {
+      if (person.birthday) {
+        skipped.push("birthday");
+      } else {
+        const updated = await deps.updatePerson({
+          ownerUserId: input.ownerUserId,
+          personId: person.id,
+          birthday: candidate.birthday,
+        });
+        if (updated) {
+          addedBirthday = candidate.birthday;
+        }
+      }
+    } else if (createdPerson && candidate.birthday) {
+      addedBirthday = candidate.birthday;
+    }
+
+    for (const email of candidate.emails) {
+      const normalizedValue = normalizeEmailContactValue(email);
+      if (
+        candidate.matchSignals.some(
+          (signal) => signal.type === "email" && signal.value === normalizedValue,
+        )
+      ) {
+        skipped.push(`email:${email}`);
+        continue;
+      }
+      const duplicate = await findWriteTimeDuplicate({
+        deps,
+        ownerUserId: input.ownerUserId,
+        personId: person.id,
+        method: { type: "email", value: email, normalizedValue },
+      });
+      if (duplicate) {
+        skipped.push(`email:${email}`);
+        continue;
+      }
+      await deps.createContactMethod({
+        ownerUserId: input.ownerUserId,
+        personId: person.id,
+        type: "email",
+        value: normalizedValue,
+        displayValue: email,
+        normalizedValue,
+        source: "contact_import",
+      });
+      addedEmails.push(email);
+    }
+
+    for (const phone of candidate.phones) {
+      const normalizedValue = normalizePhoneContactValue(phone).normalizedValue;
+      if (!normalizedValue) {
+        skipped.push(`phone:${phone}`);
+        continue;
+      }
+      if (
+        candidate.matchSignals.some(
+          (signal) => signal.type === "phone" && signal.value === normalizedValue,
+        )
+      ) {
+        skipped.push(`phone:${phone}`);
+        continue;
+      }
+      const duplicate = await findWriteTimeDuplicate({
+        deps,
+        ownerUserId: input.ownerUserId,
+        personId: person.id,
+        method: { type: "phone", value: phone, normalizedValue },
+      });
+      if (duplicate) {
+        skipped.push(`phone:${phone}`);
+        continue;
+      }
+      await deps.createContactMethod({
+        ownerUserId: input.ownerUserId,
+        personId: person.id,
+        type: "phone",
+        value: normalizedValue,
+        displayValue: phone,
+        normalizedValue,
+        source: "contact_import",
+      });
+      addedPhones.push(phone);
+    }
+
+    await deps.createProviderReference({
+      ownerUserId: input.ownerUserId,
+      personId: person.id,
+      providerKey: "google",
+      providerContactId: candidate.providerContactId,
+    });
+
+    await deps.createAuditLogEntry({
+      ownerUserId: input.ownerUserId,
+      action: "contact_import.candidate_confirmed",
+      entityType: "contact_import_candidate",
+      entityId: candidate.id,
+      metadataJson: {
+        providerKey: "google",
+        providerContactId: candidate.providerContactId,
+        personId: person.id,
+        createdPerson,
+        addedEmails,
+        addedPhones,
+        addedBirthday,
+        skipped,
+      },
+    });
+
+    results.push({
+      candidateId: candidate.id,
+      providerContactId: candidate.providerContactId,
+      personId: person.id,
+      displayName: person.displayName,
+      createdPerson,
+      addedEmails,
+      addedPhones,
+      addedBirthday,
+      skipped,
+    });
+  }
+
+  return {
+    importedCount: results.length,
+    createdPeople: results.filter((result) => result.createdPerson).length,
+    updatedPeople: results.filter((result) => !result.createdPerson).length,
+    addedContactMethods: results.reduce(
+      (count, result) => count + result.addedEmails.length + result.addedPhones.length,
+      0,
+    ),
+    addedBirthdays: results.filter((result) => result.addedBirthday).length,
+    candidates: results,
+    undoAvailable: false,
+  };
+}
+
+function canExplicitlyConfirm(candidate: ContactImportPreviewCandidate): boolean {
+  return (
+    candidate.reviewState === "safe_recommendation" || candidate.reviewState === "individual_review"
+  );
+}
+
+async function findWriteTimeDuplicate(input: {
+  deps: ContactImportApplyDeps;
+  ownerUserId: string;
+  personId: string;
+  method: { type: "email" | "phone"; value: string; normalizedValue: string };
+}): Promise<ContactMethodDuplicateMatch | null> {
+  const [duplicate] = await input.deps.findOwnerContactMethodDuplicates({
+    ownerUserId: input.ownerUserId,
+    methods: [input.method],
+  });
+  if (!duplicate || duplicate.personId === input.personId) {
+    return null;
+  }
+  return duplicate;
 }
 
 async function buildCandidate(input: {

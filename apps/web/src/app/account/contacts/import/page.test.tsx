@@ -11,6 +11,10 @@ vi.mock("@/components/app-shell", () => ({
 vi.mock("@/lib/integrations/contact-import-preview-data", () => ({
   getOwnerContactImportPreview,
 }));
+vi.mock("@/app/actions/contact-import", () => ({
+  confirmContactImportCandidateAction: vi.fn(),
+  confirmSafeContactImportCandidatesAction: vi.fn(),
+}));
 
 import ContactsImportPage from "./page";
 
@@ -25,8 +29,8 @@ describe("ContactsImportPage", () => {
       connected: true,
       mode: "prioritized",
       query: "",
-      fetchedCount: 2,
-      shownCount: 2,
+      fetchedCount: 3,
+      shownCount: 3,
       hiddenCount: 0,
       candidates: [
         {
@@ -77,6 +81,23 @@ describe("ContactsImportPage", () => {
           conflicts: [{ type: "birthday", message: "Tendnote already has birthday --04-18." }],
           matchedPerson: { id: "person-conflict", displayName: "Conflict Contact" },
         },
+        {
+          id: "new",
+          displayName: "New Contact",
+          providerContactId: "people/new",
+          emails: ["new@example.com"],
+          phones: [],
+          birthday: null,
+          priority: "useful_email",
+          score: 20,
+          reasons: ["Includes an email address"],
+          reviewState: "individual_review",
+          safeBulkEligible: false,
+          matchSignals: [],
+          advisoryMatches: [],
+          conflicts: [],
+          matchedPerson: null,
+        },
       ],
     });
 
@@ -88,7 +109,42 @@ describe("ContactsImportPage", () => {
     expect(html).toContain("Needs individual review");
     expect(html).toContain("Safe Contact");
     expect(html).toContain("Conflict Contact");
+    expect(html).toContain("New Contact");
+    expect(html).toContain("Confirm this candidate");
     expect(html).toContain("Tendnote already has birthday --04-18.");
+    expect(html).toContain('name="candidateId"');
+    expect(html).toContain('value="safe"');
+    expect(html).toContain('value="new"');
+    expect(html).not.toContain('value="conflict"');
+  });
+
+  it("shows post-confirmation change counts", async () => {
+    getOwnerContactImportPreview.mockResolvedValue({
+      id: "session-1",
+      connected: true,
+      mode: "prioritized",
+      query: "",
+      fetchedCount: 0,
+      shownCount: 0,
+      hiddenCount: 0,
+      candidates: [],
+    });
+
+    const html = renderToStaticMarkup(
+      await ContactsImportPage({
+        searchParams: Promise.resolve({
+          confirmed: "2",
+          created: "1",
+          updated: "1",
+          methods: "3",
+          birthdays: "1",
+        }),
+      }),
+    );
+
+    expect(html).toContain("Confirmed 2 contact import candidates");
+    expect(html).toContain("1 new person, 1 updated person, 3 contact methods, and 1 birthday");
+    expect(html).toContain("can be edited or archived from people profiles");
   });
 
   it("renders advisory fuzzy match reasons distinctly", async () => {

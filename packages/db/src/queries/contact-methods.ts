@@ -18,3 +18,16 @@ export function findOwnerContactMethodDuplicates(input: {
 }) {
   return defaultContactMethodStore.findOwnerContactMethodDuplicates(input);
 }
+
+export function createContactMethod(input: {
+  ownerUserId: string;
+  personId: string;
+  type: "email" | "phone";
+  value: string;
+  displayValue: string | null;
+  normalizedValue: string | null;
+  isPrimary?: boolean;
+  source?: "manual" | "agent" | "contact_import" | "calendar" | "gmail" | "seed";
+}) {
+  return defaultContactMethodStore.createContactMethod(input);
+}

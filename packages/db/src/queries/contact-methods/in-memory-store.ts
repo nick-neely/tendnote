@@ -60,5 +60,27 @@ export function createInMemoryContactMethodStore(
             normalizedValue ?? (type === "email" ? normalizeEmailContactValue(value) : null),
         }));
     },
+
+    async createContactMethod(input) {
+      const entry = {
+        id: `contact-method-${entries.length + 1}`,
+        ownerUserId: input.ownerUserId,
+        personId: input.personId,
+        type: input.type,
+        value: input.value,
+        displayValue: input.displayValue ?? input.value,
+        normalizedValue: input.normalizedValue,
+        isPrimary: input.isPrimary ?? false,
+      };
+      entries.push(entry);
+      return {
+        id: entry.id,
+        personId: entry.personId,
+        type: entry.type,
+        value: entry.value,
+        displayValue: contactMethodDisplayValue(entry),
+        normalizedValue: entry.normalizedValue,
+      };
+    },
   };
 }
