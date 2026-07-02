@@ -103,3 +103,35 @@ _Avoid_: Public signup, environment allowlist, owner scope
 **Provider Connection**:
 A user-scoped integration authorization record for an external provider or provider capability, such as Google Calendar, Gmail, Google Contacts, or a future non-Google service. A provider connection tracks connection status and consent boundaries; it is not the same as Better Auth sign-in or product access.
 _Avoid_: Login method, private beta access, provider dump
+
+**Private Capture Channel**:
+A non-web assistant entry point that lets the owner capture relationship context into Tendnote from a private conversational surface. A private capture channel may create source records or reviewable suggestions, but it is not a provider sync, shared household surface, or external-send channel.
+_Avoid_: Chat sync, messaging integration, shared channel, outbound channel
+
+**Memory Curator**:
+An Eve specialist that reviews existing private relationship context and proposes cleanup, clarification, or consolidation work for the owner to approve. A memory curator is not an autonomous editor of durable memories.
+_Avoid_: Auto-cleanup agent, memory janitor, silent editor
+
+**Relationship Strategist**:
+An Eve specialist that ranks private relationship context and proposes reviewable next actions, such as suggested follow-ups, based on existing memories, source records, follow-ups, birthdays, Calendar context, drafts, and retrieval signals. A relationship strategist is not the relationship agenda itself and cannot create active reminders, memories, drafts, or external actions.
+_Avoid_: Agenda, recommendation engine, autonomous task creator
+
+**Draft Proposal**:
+An ephemeral assistant suggestion or preview for a possible message draft before the owner chooses to persist it as a Tendnote message draft. A draft proposal can be useful in chat or review surfaces, but it is not a saved draft and cannot be externalized to Gmail.
+_Avoid_: Message draft, outbound message, Gmail draft
+
+**Cleanup Preview**:
+A sandbox-prepared, owner-reviewed set of candidate changes produced from messy private input such as CSV/vCard files, pasted lists, or old notes. A cleanup preview is not a provider sync or durable import until the owner confirms specific candidates through Tendnote review surfaces.
+_Avoid_: Bulk import, sync, automatic cleanup, provider mirror
+
+**Morning Agenda**:
+A private scheduled relationship agenda for the current day that surfaces a small set of useful nudges from existing due follow-ups, birthdays, recent Calendar context, review items, and eligible relationship-strategist suggestions. A morning agenda is not continuous background scanning or an autonomous task creator.
+_Avoid_: Daily task feed, pipeline, background scanner
+
+**Post-Meeting Aftercare**:
+A private scheduled workflow that reviews recent eligible Calendar events and proposes follow-ups, memory-review prompts, or draft proposals after the interaction. Post-meeting aftercare does not promote Calendar context into durable memories or drafts without owner review.
+_Avoid_: Calendar sync, automatic meeting notes, auto follow-up
+
+**Eve Mode**:
+A bounded assistant capability profile that narrows Eve's tools, skills, and behavior for a specific private workflow, such as Discord capture, selected-person work, drafting, scheduled workflows, or cleanup previews. An Eve mode is not a separate assistant persona or workspace.
+_Avoid_: Persona, workspace, unrestricted mode

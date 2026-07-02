@@ -1,0 +1,3 @@
+# Discord First Private Capture Channel
+
+Phase 3 should add Discord as Tendnote's first non-web private capture channel and defer Slack. Discord fits the desired private, rich HITL assistant surface with slash commands, components, modals, and proactive messages, while Slack is more workspace-oriented and has heavier Vercel Connect setup; Discord inbound attachments are not supported by Eve today, so file import and cleanup should stay in the web app plus sandbox workflow rather than going through Discord. Proactive Discord delivery is allowed only after explicit owner setup per scheduled workflow; Tendnote remains the source of truth if delivery fails.

@@ -1168,7 +1168,34 @@ Rework Tendnote's agent eval suite around Eve-native evals that cover the full a
 - Keep eval data synthetic and upload-safe. Do not depend on Nick's personal data, production data, or live Google APIs; fixture gaps should be filled by extending the existing demo data and fake adapters.
 - Do not add new product behavior, Google scopes, provider sync, shared-household privacy behavior, or external actions in this phase. This phase upgrades verification architecture before broader privacy-sensitive work.
 
-#### Phase 3: Shared Household Context
+#### Phase 3: Advanced Private Eve Behavior
+
+Goal: Make Eve materially more useful as a private relationship assistant before adding shared-household privacy behavior. Eve may notice, organize, suggest, draft, and prepare, but Tendnote remains the source of truth for approval, persistence, and external action boundaries.
+
+Deliverables:
+
+- Discord-first private capture channel for owner-scoped quick capture, HITL review, and explicit opt-in proactive delivery (ADR 0122)
+- Memory curator subagent for review-only cleanup proposals (ADR 0123)
+- Relationship strategist subagent for advanced private agenda ranking and review-gated suggested follow-ups (ADR 0124)
+- Message drafter subagent for variants, revisions, source-grounded drafting, and proactive draft proposals that require explicit persistence (ADR 0125)
+- Contact/file cleanup sandbox workflows for cleanup previews from CSV/vCard and messy pasted context (ADR 0126)
+- Advanced private schedules for Morning Agenda, Post-Meeting Aftercare, Weekly Relationship Review, and Birthday/Gift Planning (ADR 0127)
+- Dynamic skills for high-value relationship workflows such as gift planning, meeting prep, relationship repair, birthday messages, memory cleanup, follow-up strategy, and drafting
+- Five explicit Eve modes that narrow tools and skills by workflow: Discord Capture Mode, Selected Person Mode, Drafting Mode, Scheduled Workflow Mode, and Cleanup Preview Mode (ADR 0128)
+- No generic Eve MCP/OpenAPI connections; external services remain Tendnote-owned provider connections with explicit product semantics (ADR 0129)
+
+Vertical slice issue seeds:
+
+1. Add the Eve modes foundation: mode selection, dynamic skills/tools, owner/channel context rules, and the five baseline modes — Discord Capture Mode, Selected Person Mode, Drafting Mode, Scheduled Workflow Mode, and Cleanup Preview Mode.
+2. Add Discord private capture channel with owner mapping, slash-command capture, HITL components/modals, and explicit per-workflow target setup for proactive private nudges. Scheduled artifacts persist in Tendnote first; Discord delivery is opt-in and failure must not lose the artifact.
+3. Add memory-curator subagent that can read eligible private context and propose reviewable memory edits, archive candidates, duplicate cleanup, contradiction prompts, source-record cleanup suggestions, or clarification questions without directly approving, editing, archiving, merging, or deleting durable memories.
+4. Add message-drafter subagent that proposes, previews, creates, and revises Tendnote message drafts with multiple tone variants and source references. It may proactively suggest or preview a draft, but it must create a persisted Tendnote message draft only after explicit owner intent; Gmail externalization keeps the existing approval gate.
+5. Add relationship-strategist subagent that uses the relationship agenda, Calendar context, follow-ups, birthdays, drafts, and semantic context to propose private reviewable next actions. It may create `suggested` follow-ups through the existing review-gated path, but must not create active follow-ups, memories, source records, drafts, or external actions.
+6. Add private scheduled workflows for Morning Agenda, Post-Meeting Aftercare, Weekly Relationship Review, and Birthday/Gift Planning using app-owned dispatcher rows and shared owner-scoped product functions. Defer continuous background scanning, arbitrary high-frequency sweeps, autonomous draft creation, unconfigured Discord push delivery, and shared-household-aware scheduling.
+7. Add sandbox-backed cleanup previews for CSV/vCard files, pasted lists, old notes, exported text/JSON, and other messy owner-supplied private context. The sandbox may parse, normalize, and dedupe candidates, but durable people, memories, contact methods, source records, and follow-ups still require confirmation through Tendnote review surfaces; Google Contacts import stays separate.
+8. Defer Slack, Telegram, shared household behavior, new eval-suite scope, generic Eve MCP/OpenAPI connections, and all external sends or autonomous external draft creation. Discord is a channel, and existing Google Calendar, Gmail, and Contacts capabilities remain behind Tendnote-owned provider seams.
+
+#### Phase 4: Shared Household Context
 
 Goal: Support Nick and Mara shared context without leaking private notes.
 
@@ -1180,6 +1207,7 @@ Deliverables:
 - Gift ideas
 - Family and social event tracking
 - Permission-aware agent responses
+- Privacy guard subagent for shared-context review
 
 Vertical slice issue seeds:
 
@@ -1188,29 +1216,7 @@ Vertical slice issue seeds:
 - Build shared reminders page.
 - Add household gift ideas and birthday planning view.
 - Add privacy-boundary evals for shared context.
-
-#### Phase 4: Advanced Agentic Behavior
-
-Goal: Add more advanced Eve capabilities after the core loop is useful.
-
-Deliverables:
-
-- Memory curator subagent
-- Message drafter subagent
-- Privacy guard subagent
-- Contact import sandbox workflows
-- More advanced follow-up ranking
-- Optional Slack or Telegram quick-capture channel
-- More robust eval suite
-
-Vertical slice issue seeds:
-
-- Add memory-curator subagent with restricted write access.
-- Add message-drafter subagent with read-only profile context.
-- Add privacy-guard subagent for shared-context review.
-- Use sandbox for vCard/CSV import cleanup preview.
-- Add Slack or Telegram quick-capture channel.
-- Add eval suite to CI.
+- Add privacy-guard subagent after shared-context query enforcement exists.
 
 #### Phase 5: Productization or Open Source
 
