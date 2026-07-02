@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   confirmContactImportCandidateAction,
   confirmSafeContactImportCandidatesAction,
+  skipContactImportCandidateAction,
 } from "@/app/actions/contact-import";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -234,18 +235,94 @@ function CandidateList({
                 </span>
               ) : null}
             </div>
-            {showExplicitConfirmation && candidate.reviewState === "individual_review" ? (
-              <form action={confirmContactImportCandidateAction}>
-                <input name="candidateId" type="hidden" value={candidate.id} />
-                <Button size="sm" type="submit" variant="outline">
-                  Confirm this candidate
-                </Button>
-              </form>
-            ) : null}
+            {showExplicitConfirmation ? <ReviewResolutionControls candidate={candidate} /> : null}
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+function ReviewResolutionControls({
+  candidate,
+}: {
+  candidate: NonNullable<
+    Awaited<ReturnType<typeof getOwnerContactImportPreview>>
+  >["candidates"][number];
+}) {
+  const targetOptions = reviewTargetOptions(candidate);
+  const canCreate =
+    candidate.reviewState === "individual_review" || candidate.reviewState === "weak_match";
+  const needsTarget =
+    candidate.reviewState === "ambiguous_duplicate" ||
+    candidate.reviewState === "advisory_match" ||
+    (candidate.reviewState === "weak_match" && targetOptions.length === 0);
+  const birthdayConflict = candidate.conflicts.some((conflict) => conflict.type === "birthday");
+  const showApplyForm = targetOptions.length > 0 || needsTarget || birthdayConflict;
+
+  return (
+    <div className="flex flex-col gap-2 border-t pt-2">
+      {showApplyForm ? (
+        <form action={confirmContactImportCandidateAction} className="flex flex-col gap-2">
+          <input name="candidateId" type="hidden" value={candidate.id} />
+          {targetOptions.length === 1 && !needsTarget ? (
+            <input name="targetPersonId" type="hidden" value={targetOptions[0]?.id} />
+          ) : null}
+          {targetOptions.length > 0 && needsTarget ? (
+            <fieldset className="flex flex-col gap-1.5 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
+              <span>Choose target person</span>
+              {targetOptions.map((target) => (
+                <label className="flex items-center gap-1.5" key={target.id}>
+                  <input name="targetPersonId" required type="radio" value={target.id} />
+                  {target.label}
+                </label>
+              ))}
+            </fieldset>
+          ) : null}
+          {targetOptions.length === 0 && needsTarget ? (
+            <label className="flex flex-col gap-1 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
+              Target person ID
+              <input
+                className="h-8 rounded-md border bg-background px-2 text-[length:var(--text-small)] leading-[var(--text-small-line)] text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                name="targetPersonId"
+                placeholder="Paste a Tendnote person ID"
+                required
+              />
+            </label>
+          ) : null}
+          {birthdayConflict ? (
+            <fieldset className="flex flex-wrap gap-2 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
+              <label className="flex items-center gap-1.5">
+                <input defaultChecked name="birthdayChoice" type="radio" value="existing" />
+                Keep Tendnote birthday
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input name="birthdayChoice" type="radio" value="provider" />
+                Use provider birthday
+              </label>
+            </fieldset>
+          ) : null}
+          <Button size="sm" type="submit" variant="outline">
+            Apply explicit resolution
+          </Button>
+        </form>
+      ) : null}
+      {canCreate && targetOptions.length === 0 ? (
+        <form action={confirmContactImportCandidateAction}>
+          <input name="candidateId" type="hidden" value={candidate.id} />
+          <input name="createPerson" type="hidden" value="true" />
+          <Button size="sm" type="submit" variant="outline">
+            Create new person
+          </Button>
+        </form>
+      ) : null}
+      <form action={skipContactImportCandidateAction}>
+        <input name="candidateId" type="hidden" value={candidate.id} />
+        <Button size="sm" type="submit" variant="ghost">
+          Skip candidate
+        </Button>
+      </form>
+    </div>
   );
 }
 
@@ -267,4 +344,33 @@ function priorityLabel(priority: string): string {
 
 function readParam(value: string | string[] | undefined, fallback = "0"): string {
   return Array.isArray(value) ? (value[0] ?? fallback) : (value ?? fallback);
+}
+
+function reviewTargetOptions(
+  candidate: NonNullable<
+    Awaited<ReturnType<typeof getOwnerContactImportPreview>>
+  >["candidates"][number],
+): Array<{ id: string; label: string }> {
+  const targets = [
+    candidate.matchedPerson
+      ? { id: candidate.matchedPerson.id, label: candidate.matchedPerson.displayName }
+      : null,
+    ...candidate.advisoryMatches.map((match) => ({
+      id: match.personId,
+      label: `${match.displayName} (${match.reason})`,
+    })),
+    ...candidate.matchSignals.map((signal) => ({
+      id: signal.matchedPersonId,
+      label: `Person ${signal.matchedPersonId}`,
+    })),
+  ].filter((target): target is { id: string; label: string } => target !== null);
+  const seen = new Set<string>();
+
+  return targets.filter((target) => {
+    if (seen.has(target.id)) {
+      return false;
+    }
+    seen.add(target.id);
+    return true;
+  });
 }

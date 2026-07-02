@@ -14,6 +14,7 @@ vi.mock("@/lib/integrations/contact-import-preview-data", () => ({
 vi.mock("@/app/actions/contact-import", () => ({
   confirmContactImportCandidateAction: vi.fn(),
   confirmSafeContactImportCandidatesAction: vi.fn(),
+  skipContactImportCandidateAction: vi.fn(),
 }));
 
 import ContactsImportPage from "./page";
@@ -110,12 +111,13 @@ describe("ContactsImportPage", () => {
     expect(html).toContain("Safe Contact");
     expect(html).toContain("Conflict Contact");
     expect(html).toContain("New Contact");
-    expect(html).toContain("Confirm this candidate");
+    expect(html).toContain("Apply explicit resolution");
+    expect(html).toContain("Create new person");
+    expect(html).toContain("Skip candidate");
     expect(html).toContain("Tendnote already has birthday --04-18.");
     expect(html).toContain('name="candidateId"');
     expect(html).toContain('value="safe"');
     expect(html).toContain('value="new"');
-    expect(html).not.toContain('value="conflict"');
   });
 
   it("shows post-confirmation change counts", async () => {
@@ -189,6 +191,7 @@ describe("ContactsImportPage", () => {
     );
 
     expect(html).toContain("Advisory");
+    expect(html).toContain("Choose target person");
     expect(html).toContain("Advisory: Mara Chen");
     expect(html).toContain("Similar name and shared email initials");
   });

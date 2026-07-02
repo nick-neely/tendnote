@@ -150,3 +150,11 @@ export type ContactImportApplyResult = {
   }>;
   undoAvailable: false;
 };
+
+export type ContactImportCandidateResolution = {
+  candidateId: string;
+  action: "apply" | "skip";
+  targetPersonId?: string | null;
+  createPerson?: boolean;
+  birthdayChoice?: "provider" | "existing" | "skip";
+};

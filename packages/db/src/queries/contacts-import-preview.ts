@@ -16,6 +16,7 @@ import { applyContactImportCandidates } from "./contacts-import-preview/service"
 import type {
   ContactImportApplyDeps,
   ContactImportAuditEntry,
+  ContactImportCandidateResolution,
   ContactImportProviderReferenceInput,
 } from "./contacts-import-preview/types";
 import { createPeopleQueries } from "./people/queries";
@@ -58,6 +59,7 @@ export async function applyOwnerContactImportCandidates(input: {
   ownerUserId: string;
   candidateIds?: string[];
   mode?: "safe_bulk" | "explicit";
+  resolutions?: ContactImportCandidateResolution[];
 }) {
   return getDb().transaction(async (tx) =>
     applyContactImportCandidates(input, {

@@ -10,6 +10,7 @@ import type {
   ContactImportApplyResult,
   ContactImportCandidateConflict,
   ContactImportCandidateMatchSignal,
+  ContactImportCandidateResolution,
   ContactImportFuzzyMatch,
   ContactImportPreviewCandidate,
   ContactImportPreviewDeps,
@@ -93,36 +94,62 @@ export async function createContactImportPreviewSession(
 }
 
 export async function applyContactImportCandidates(
-  input: { ownerUserId: string; candidateIds?: string[]; mode?: "safe_bulk" | "explicit" },
+  input: {
+    ownerUserId: string;
+    candidateIds?: string[];
+    mode?: "safe_bulk" | "explicit";
+    resolutions?: ContactImportCandidateResolution[];
+  },
   deps: ContactImportApplyDeps,
 ): Promise<ContactImportApplyResult> {
   const preview = await createContactImportPreviewSession(
     { ownerUserId: input.ownerUserId, limit: 200 },
     deps,
   );
+  const resolutions = new Map(
+    input.resolutions?.map((resolution) => [resolution.candidateId, resolution]),
+  );
   const requestedIds = new Set(input.candidateIds ?? []);
   const mode = input.mode ?? "safe_bulk";
   const candidates = preview.candidates.filter((candidate) =>
-    requestedIds.size > 0 ? requestedIds.has(candidate.id) : candidate.safeBulkEligible,
+    resolutions.size > 0
+      ? resolutions.has(candidate.id)
+      : requestedIds.size > 0
+        ? requestedIds.has(candidate.id)
+        : candidate.safeBulkEligible,
   );
   const confirmed = candidates.filter((candidate) =>
-    mode === "safe_bulk" ? candidate.safeBulkEligible : canExplicitlyConfirm(candidate),
+    mode === "safe_bulk"
+      ? candidate.safeBulkEligible
+      : canExplicitlyConfirm(candidate, resolutions.get(candidate.id)),
   );
   const results: ContactImportApplyResult["candidates"] = [];
 
   for (const candidate of confirmed) {
-    const existingPerson = candidate.matchedPerson
+    const resolution = resolutions.get(candidate.id);
+    if (resolution?.action === "skip") {
+      continue;
+    }
+    const targetPersonId = resolution?.targetPersonId ?? candidate.matchedPerson?.id ?? null;
+    const existingPerson = targetPersonId
       ? await deps.getPerson({
           ownerUserId: input.ownerUserId,
-          personId: candidate.matchedPerson.id,
+          personId: targetPersonId,
         })
       : null;
+    if (targetPersonId && !existingPerson) {
+      continue;
+    }
+    const canCreatePerson = Boolean(resolution?.createPerson && canCreateForCandidate(candidate));
+    if (!existingPerson && !canCreatePerson) {
+      continue;
+    }
     const person =
       existingPerson ??
       (await deps.createPerson({
         ownerUserId: input.ownerUserId,
         displayName: candidate.displayName,
-        birthday: candidate.birthday,
+        birthday: resolution?.birthdayChoice === "skip" ? null : candidate.birthday,
         source: "contact_import",
       }));
     const createdPerson = !existingPerson;
@@ -133,7 +160,18 @@ export async function applyContactImportCandidates(
 
     if (!createdPerson && candidate.birthday) {
       if (person.birthday) {
-        skipped.push("birthday");
+        if (person.birthday !== candidate.birthday && resolution?.birthdayChoice === "provider") {
+          const updated = await deps.updatePerson({
+            ownerUserId: input.ownerUserId,
+            personId: person.id,
+            birthday: candidate.birthday,
+          });
+          if (updated) {
+            addedBirthday = candidate.birthday;
+          }
+        } else {
+          skipped.push("birthday");
+        }
       } else {
         const updated = await deps.updatePerson({
           ownerUserId: input.ownerUserId,
@@ -237,6 +275,14 @@ export async function applyContactImportCandidates(
         addedPhones,
         addedBirthday,
         skipped,
+        resolution: resolution
+          ? {
+              action: resolution.action,
+              targetPersonId: resolution.targetPersonId ?? null,
+              createPerson: resolution.createPerson ?? null,
+              birthdayChoice: resolution.birthdayChoice ?? null,
+            }
+          : null,
       },
     });
 
@@ -267,10 +313,27 @@ export async function applyContactImportCandidates(
   };
 }
 
-function canExplicitlyConfirm(candidate: ContactImportPreviewCandidate): boolean {
-  return (
-    candidate.reviewState === "safe_recommendation" || candidate.reviewState === "individual_review"
-  );
+function canExplicitlyConfirm(
+  candidate: ContactImportPreviewCandidate,
+  resolution?: ContactImportCandidateResolution,
+): boolean {
+  if (!resolution) {
+    return candidate.reviewState === "safe_recommendation";
+  }
+  if (resolution.action === "skip") {
+    return true;
+  }
+  if (candidate.reviewState === "safe_recommendation") {
+    return true;
+  }
+  if (resolution.targetPersonId) {
+    return true;
+  }
+  return Boolean(resolution.createPerson && canCreateForCandidate(candidate));
+}
+
+function canCreateForCandidate(candidate: ContactImportPreviewCandidate): boolean {
+  return candidate.reviewState === "individual_review" || candidate.reviewState === "weak_match";
 }
 
 async function findWriteTimeDuplicate(input: {

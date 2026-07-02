@@ -770,7 +770,17 @@ describe("createContactImportPreviewSession", () => {
     ).resolves.toEqual([]);
 
     const result = await applyContactImportCandidates(
-      { ownerUserId: OWNER, candidateIds: [preview.candidates[0]?.id ?? ""], mode: "explicit" },
+      {
+        ownerUserId: OWNER,
+        mode: "explicit",
+        resolutions: [
+          {
+            candidateId: preview.candidates[0]?.id ?? "",
+            action: "apply",
+            createPerson: true,
+          },
+        ],
+      },
       deps,
     );
 
@@ -788,6 +798,43 @@ describe("createContactImportPreviewSession", () => {
       providerKey: "google",
       providerContactId: "people/new",
     });
+  });
+
+  it("does not create a fallback person when an explicit target ID is invalid", async () => {
+    const deps = createApplyDeps({
+      contacts: [
+        {
+          providerContactId: "people/new",
+          displayName: "New Friend",
+          emails: ["new@example.com"],
+        },
+      ],
+      people: [],
+      contactMethods: [],
+    });
+    const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    const result = await applyContactImportCandidates(
+      {
+        ownerUserId: OWNER,
+        mode: "explicit",
+        resolutions: [
+          {
+            candidateId: preview.candidates[0]?.id ?? "",
+            action: "apply",
+            targetPersonId: "person-other-owner-or-typo",
+            createPerson: true,
+          },
+        ],
+      },
+      deps,
+    );
+
+    expect(result.importedCount).toBe(0);
+    await expect(
+      deps.searchPeople({ ownerUserId: OWNER, query: "New Friend", limit: 10 }),
+    ).resolves.toEqual([]);
+    expect(deps.providerRefs).toEqual([]);
   });
 
   it("does not apply conflicts, ambiguous duplicates, weak rows, or advisory matches", async () => {
@@ -828,6 +875,140 @@ describe("createContactImportPreviewSession", () => {
     );
 
     expect(result.importedCount).toBe(0);
+    expect(deps.providerRefs).toEqual([]);
+    expect(deps.contactAuditEntries).toEqual([]);
+  });
+
+  it("applies a conflicting birthday only when the user chooses the provider value", async () => {
+    const deps = createApplyDeps({
+      contacts: [
+        {
+          providerContactId: "people/conflict",
+          displayName: "Mara Chen",
+          emails: ["mara.chen@example.com"],
+          birthday: "--05-20",
+        },
+      ],
+      people: [personFixture({ id: "person-mara", displayName: "Mara Chen", birthday: "--04-18" })],
+      contactMethods: [
+        {
+          id: "cm-mara",
+          ownerUserId: OWNER,
+          personId: "person-mara",
+          type: "email",
+          value: "mara.chen@example.com",
+          normalizedValue: "mara.chen@example.com",
+          isPrimary: true,
+        },
+      ],
+    });
+    const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    const result = await applyContactImportCandidates(
+      {
+        ownerUserId: OWNER,
+        mode: "explicit",
+        resolutions: [
+          {
+            candidateId: preview.candidates[0]?.id ?? "",
+            action: "apply",
+            targetPersonId: "person-mara",
+            birthdayChoice: "provider",
+          },
+        ],
+      },
+      deps,
+    );
+
+    expect(result).toMatchObject({
+      importedCount: 1,
+      updatedPeople: 1,
+      addedBirthdays: 1,
+    });
+    await expect(
+      deps.peopleStore.getPerson({ ownerUserId: OWNER, personId: "person-mara" }),
+    ).resolves.toMatchObject({
+      birthday: "--05-20",
+    });
+    expect(deps.contactAuditEntries[0]?.metadataJson).toMatchObject({
+      resolution: { targetPersonId: "person-mara", birthdayChoice: "provider" },
+    });
+  });
+
+  it("links advisory candidates only after an explicit target-person choice", async () => {
+    const deps = createApplyDeps({
+      contacts: [
+        {
+          providerContactId: "people/advisory",
+          displayName: "M Chen",
+          emails: ["mchen@example.com"],
+        },
+      ],
+      people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
+      contactMethods: [],
+      fuzzyMatcher: createFakeContactImportFuzzyMatcher({
+        "people/advisory": [
+          {
+            personId: "person-mara",
+            displayName: "Mara Chen",
+            confidence: "high",
+            reason: "Similar name",
+          },
+        ],
+      }),
+    });
+    const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    const result = await applyContactImportCandidates(
+      {
+        ownerUserId: OWNER,
+        mode: "explicit",
+        resolutions: [
+          {
+            candidateId: preview.candidates[0]?.id ?? "",
+            action: "apply",
+            targetPersonId: "person-mara",
+          },
+        ],
+      },
+      deps,
+    );
+
+    expect(result).toMatchObject({
+      importedCount: 1,
+      createdPeople: 0,
+      updatedPeople: 1,
+      addedContactMethods: 1,
+    });
+    expect(deps.providerRefs[0]).toMatchObject({
+      personId: "person-mara",
+      providerContactId: "people/advisory",
+    });
+  });
+
+  it("skips explicitly dismissed candidates without durable relationship writes", async () => {
+    const deps = createApplyDeps({
+      contacts: [
+        { providerContactId: "people/skip", displayName: "Skip Me", emails: ["skip@example.com"] },
+      ],
+      people: [],
+      contactMethods: [],
+    });
+    const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    const result = await applyContactImportCandidates(
+      {
+        ownerUserId: OWNER,
+        mode: "explicit",
+        resolutions: [{ candidateId: preview.candidates[0]?.id ?? "", action: "skip" }],
+      },
+      deps,
+    );
+
+    expect(result.importedCount).toBe(0);
+    await expect(
+      deps.searchPeople({ ownerUserId: OWNER, query: "Skip", limit: 10 }),
+    ).resolves.toEqual([]);
     expect(deps.providerRefs).toEqual([]);
     expect(deps.contactAuditEntries).toEqual([]);
   });
