@@ -7,6 +7,7 @@
     "dev": "eve dev",
     "build": "tsc --noEmit",
     "eval:deterministic": "pnpm eval:prepare && DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} eve eval --tag deterministic --strict --skip-report --junit .eve/evals/junit.xml",
+    "eval:judged": "if [ -z \"${AI_GATEWAY_API_KEY:-}${VERCEL_OIDC_TOKEN:-}\" ] && ! grep -Eq '^(AI_GATEWAY_API_KEY|VERCEL_OIDC_TOKEN)=' .env.local 2>/dev/null; then echo \"Skipping judged Eve evals: set AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN.\"; exit 0; fi; pnpm eval:prepare && DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} eve eval --tag judged --skip-report --junit .eve/evals/judged-junit.xml",
     "eval:list": "eve eval --list",
     "eval:prepare": "TENDNOTE_EVAL_DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} pnpm --dir ../.. --filter @tendnote/db db:eval:reset && DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} pnpm --dir ../.. --filter @tendnote/db db:migrate && DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} pnpm --dir ../.. --filter @tendnote/db db:seed",
     "lint": "biome check agent evals tests",

@@ -64,3 +64,15 @@ CI runs the same deterministic command in the reusable verify workflow. The job
 uses Postgres only, passes `AI_GATEWAY_API_KEY` for the agent model, does not run
 judge-backed or model-comparison tags, writes `.eve/evals/junit.xml`, and uploads
 `apps/agent/.eve/evals/` only when the deterministic eval job fails.
+
+## Judge-Backed Quality Evals
+
+Judge-backed quality evals are explicit and outside normal CI:
+
+- `pnpm --filter @tendnote/agent eval:judged` runs `eve eval --tag judged --skip-report --junit .eve/evals/judged-junit.xml`.
+- The command first prepares the isolated `tendnote_eval` database, then runs only evals tagged `judged`.
+- It skips with a clear message when neither `AI_GATEWAY_API_KEY` nor `VERCEL_OIDC_TOKEN` is available.
+- The default judge model is `openai/gpt-5.4-mini`; override it with `TENDNOTE_JUDGE_MODEL`.
+
+Current judged evals cover recall tone/factuality/grounded summarization, private
+draft usefulness, relationship brief usefulness, and instruction-style quality.
