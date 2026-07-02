@@ -190,7 +190,7 @@ for (const agentModel of agentModels) {
       deterministic: deterministic.summary,
       judged: judged.summary,
       failedCommand: deterministic.failedCommand || judged.failedCommand,
-    }); 
+    });
   }
 }
 
