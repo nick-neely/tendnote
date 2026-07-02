@@ -52,6 +52,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.verify == 'true'
     uses: ./.github/workflows/reusable-verify.yml
+    secrets: inherit
 
   migrate:
     name: Migrate production

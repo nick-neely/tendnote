@@ -59,3 +59,8 @@ The first Eve-native harness uses a stable local eval database:
 The reset script refuses to reset any database whose name does not begin with
 `tendnote_eval`, keeping the normal local `tendnote` database out of the eval
 path.
+
+CI runs the same deterministic command in the reusable verify workflow. The job
+uses Postgres only, passes `AI_GATEWAY_API_KEY` for the agent model, does not run
+judge-backed or model-comparison tags, writes `.eve/evals/junit.xml`, and uploads
+`apps/agent/.eve/evals/` only when the deterministic eval job fails.
