@@ -5,8 +5,30 @@
  */
 export type PersonEmailContactMethod = {
   id: string;
+  /** Canonical sendable address used by Gmail draft approval and matching. */
   value: string;
+  /** Human-readable provider/user formatting, when different from `value`. */
+  displayValue?: string | null;
+  normalizedValue?: string | null;
   isPrimary: boolean;
+};
+
+export type ContactMethodDuplicateLookupInput = {
+  ownerUserId: string;
+  methods: Array<{
+    type: "email" | "phone";
+    value: string;
+    normalizedValue: string | null;
+  }>;
+};
+
+export type ContactMethodDuplicateMatch = {
+  id: string;
+  personId: string;
+  type: "email" | "phone";
+  value: string;
+  displayValue: string | null;
+  normalizedValue: string | null;
 };
 
 export type ContactMethodStore = {
@@ -15,4 +37,25 @@ export type ContactMethodStore = {
     ownerUserId: string;
     personId: string;
   }) => Promise<PersonEmailContactMethod[]>;
+
+  /** Owner-wide duplicate lookup for Contacts import matching and conflict flags. */
+  findOwnerContactMethodDuplicates: (
+    input: ContactMethodDuplicateLookupInput,
+  ) => Promise<ContactMethodDuplicateMatch[]>;
 };
+
+export function toPersonEmailContactMethod(row: {
+  id: string;
+  value: string;
+  displayValue?: string | null;
+  normalizedValue?: string | null;
+  isPrimary: boolean;
+}): PersonEmailContactMethod {
+  return {
+    id: row.id,
+    value: row.value,
+    displayValue: row.displayValue ?? row.value,
+    normalizedValue: row.normalizedValue ?? null,
+    isPrimary: row.isPrimary,
+  };
+}

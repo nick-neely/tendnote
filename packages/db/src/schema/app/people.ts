@@ -48,9 +48,14 @@ export const contactMethods = pgTable(
       .references(() => people.id, { onDelete: "cascade" }),
     type: contactMethodType("type").notNull(),
     value: text("value").notNull(),
+    displayValue: text("display_value"),
+    normalizedValue: text("normalized_value"),
     isPrimary: boolean("is_primary").notNull().default(false),
     source: sourceType("source").notNull().default("manual"),
     ...timestamps,
   },
-  (table) => [index("contact_methods_person_id_idx").on(table.personId)],
+  (table) => [
+    index("contact_methods_person_id_idx").on(table.personId),
+    index("contact_methods_normalized_value_idx").on(table.type, table.normalizedValue),
+  ],
 );

@@ -1,7 +1,8 @@
-import { and, desc, eq } from "drizzle-orm";
+import { contactMethodDisplayValue, normalizeEmailContactValue } from "@tendnote/domain";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { getDb } from "../../client";
 import { contactMethods, people } from "../../schema";
-import type { ContactMethodStore } from "./types";
+import { type ContactMethodStore, toPersonEmailContactMethod } from "./types";
 
 /**
  * Drizzle-backed reader for a person's saved email contact methods. Owner scoping
@@ -16,6 +17,8 @@ export function createDrizzleContactMethodStore(): ContactMethodStore {
         .select({
           id: contactMethods.id,
           value: contactMethods.value,
+          displayValue: contactMethods.displayValue,
+          normalizedValue: contactMethods.normalizedValue,
           isPrimary: contactMethods.isPrimary,
         })
         .from(contactMethods)
@@ -29,7 +32,61 @@ export function createDrizzleContactMethodStore(): ContactMethodStore {
         )
         .orderBy(desc(contactMethods.isPrimary));
 
-      return rows;
+      return rows.map((row) =>
+        toPersonEmailContactMethod({
+          ...row,
+          normalizedValue: row.normalizedValue ?? normalizeEmailContactValue(row.value),
+        }),
+      );
+    },
+
+    async findOwnerContactMethodDuplicates({ ownerUserId, methods }) {
+      const emailValues = methods
+        .filter((method) => method.type === "email" && method.normalizedValue)
+        .map((method) => method.normalizedValue as string);
+      const phoneValues = methods
+        .filter((method) => method.type === "phone" && method.normalizedValue)
+        .map((method) => method.normalizedValue as string);
+
+      const filters = [
+        emailValues.length > 0
+          ? and(
+              eq(contactMethods.type, "email"),
+              inArray(contactMethods.normalizedValue, emailValues),
+            )
+          : undefined,
+        phoneValues.length > 0
+          ? and(
+              eq(contactMethods.type, "phone"),
+              inArray(contactMethods.normalizedValue, phoneValues),
+            )
+          : undefined,
+      ].filter(Boolean);
+
+      if (filters.length === 0) {
+        return [];
+      }
+
+      const rows = await getDb()
+        .select({
+          id: contactMethods.id,
+          personId: contactMethods.personId,
+          type: contactMethods.type,
+          value: contactMethods.value,
+          displayValue: contactMethods.displayValue,
+          normalizedValue: contactMethods.normalizedValue,
+        })
+        .from(contactMethods)
+        .innerJoin(people, eq(contactMethods.personId, people.id))
+        .where(and(eq(people.ownerUserId, ownerUserId), or(...filters)));
+
+      return rows
+        .filter((row) => row.type === "email" || row.type === "phone")
+        .map((row) => ({
+          ...row,
+          type: row.type as "email" | "phone",
+          displayValue: contactMethodDisplayValue(row),
+        }));
     },
   };
 }

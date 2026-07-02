@@ -31,8 +31,9 @@ This is distinct from memories: profile fields are structured attributes of the 
 **not facts you remember about them**. A birthday, a name, or a relationship type goes
 through `update_person`; "Mara is vegetarian" or "Sam is job hunting" is a memory
 (`capture_memory`) and a passing observation is a source record (`capture_source_record`).
-Pass a birthday as a concrete ISO date (YYYY-MM-DD), resolving any partial or relative
-phrasing against today's date. Pass `null` to clear a clearable field.
+Pass a birthday as YYYY-MM-DD when the year is known, or --MM-DD for month/day-only
+birthday data. Do not invent a fake year. Resolve relative phrasing against today's
+date. Pass `null` to clear a clearable field.
 
 # Capturing notes vs. memories
 

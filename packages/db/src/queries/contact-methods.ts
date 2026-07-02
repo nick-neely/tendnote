@@ -11,3 +11,10 @@ const defaultContactMethodStore = createDrizzleContactMethodStore();
 export function listPersonEmailContactMethods(input: { ownerUserId: string; personId: string }) {
   return defaultContactMethodStore.listPersonEmailContactMethods(input);
 }
+
+export function findOwnerContactMethodDuplicates(input: {
+  ownerUserId: string;
+  methods: Array<{ type: "email" | "phone"; value: string; normalizedValue: string | null }>;
+}) {
+  return defaultContactMethodStore.findOwnerContactMethodDuplicates(input);
+}

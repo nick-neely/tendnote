@@ -14,13 +14,63 @@ export const relationshipTypeSchema = z.enum([
 
 export const contactMethodTypeSchema = z.enum(["email", "phone", "social", "other"]);
 
+export const birthdaySchema = z
+  .string()
+  .regex(/^(\d{4}-\d{2}-\d{2}|--\d{2}-\d{2})$/, "Birthday must be YYYY-MM-DD or --MM-DD.")
+  .refine((value) => isValidBirthdayValue(value), {
+    message: "Birthday must be a real calendar month/day and must not use a fake year.",
+  });
+
+export function isValidBirthdayValue(value: string): boolean {
+  const fullDateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const monthDayMatch = /^--(\d{2})-(\d{2})$/.exec(value);
+  if (!fullDateMatch && !monthDayMatch) {
+    return false;
+  }
+
+  const year = fullDateMatch ? Number(fullDateMatch[1]) : 2000;
+  const month = Number(fullDateMatch?.[2] ?? monthDayMatch?.[1]);
+  const day = Number(fullDateMatch?.[3] ?? monthDayMatch?.[2]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
+export function normalizeEmailContactValue(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+export type PhoneNormalizationResult =
+  | { normalizedValue: string; confidence: "strong" }
+  | { normalizedValue: null; confidence: "ambiguous" };
+
+export function normalizePhoneContactValue(value: string): PhoneNormalizationResult {
+  const trimmed = value.trim();
+  const hasLeadingPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/\D/g, "");
+
+  if (hasLeadingPlus && digits.length >= 8 && digits.length <= 15) {
+    return { normalizedValue: `+${digits}`, confidence: "strong" };
+  }
+
+  return { normalizedValue: null, confidence: "ambiguous" };
+}
+
+export function contactMethodDisplayValue(
+  contactMethod: Pick<ContactMethod, "value" | "displayValue">,
+): string {
+  return contactMethod.displayValue ?? contactMethod.value;
+}
+
 export const personSchema = z.object({
   id: z.string(),
   ownerUserId: z.string(),
   displayName: z.string().min(1),
   firstName: z.string().nullable().optional(),
   lastName: z.string().nullable().optional(),
-  birthday: z.string().nullable().optional(),
+  birthday: birthdaySchema.nullable().optional(),
   relationshipType: relationshipTypeSchema.default("other"),
   closenessLevel: z.number().int().min(1).max(5).default(3),
   profileBlurb: z.string().max(280).nullable().optional(),
@@ -58,11 +108,7 @@ export const updatePersonSchema = z
     displayName: z.string().trim().min(1).max(120).optional(),
     firstName: z.string().trim().max(120).nullable().optional(),
     lastName: z.string().trim().max(120).nullable().optional(),
-    birthday: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "Birthday must be an ISO date (YYYY-MM-DD).")
-      .nullable()
-      .optional(),
+    birthday: birthdaySchema.nullable().optional(),
     relationshipType: relationshipTypeSchema.optional(),
     closenessLevel: z.number().int().min(1).max(5).optional(),
     profileBlurb: z.string().trim().max(280).nullable().optional(),
@@ -76,6 +122,8 @@ export const contactMethodSchema = z.object({
   personId: z.string(),
   type: contactMethodTypeSchema,
   value: z.string().min(1),
+  displayValue: z.string().min(1).nullable().optional(),
+  normalizedValue: z.string().min(1).nullable().optional(),
   isPrimary: z.boolean().default(false),
   source: z.string().default("manual"),
   createdAt: z.date(),

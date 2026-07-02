@@ -1,5 +1,5 @@
 import { updatePerson } from "@tendnote/db/queries/people";
-import { relationshipTypeSchema } from "@tendnote/domain";
+import { birthdaySchema, relationshipTypeSchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
@@ -32,13 +32,11 @@ const inputSchema = z
       .nullable()
       .optional()
       .describe("Last name; pass null to clear it."),
-    birthday: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "Birthday must be an ISO date (YYYY-MM-DD).")
+    birthday: birthdaySchema
       .nullable()
       .optional()
       .describe(
-        "Birthday as an ISO date (YYYY-MM-DD); pass null to clear it. Resolve any relative or partial phrasing to a concrete date against today's date first.",
+        "Birthday as YYYY-MM-DD when the year is known, or --MM-DD for month/day-only birthdays; pass null to clear it. Do not invent a fake year.",
       ),
     relationshipType: relationshipTypeSchema
       .optional()
