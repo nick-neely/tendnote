@@ -67,52 +67,52 @@ export async function applyOwnerContactImportCandidates(input: {
   resolutions?: ContactImportCandidateResolution[];
   adapter?: ContactImportPreviewAdapter;
 }) {
-  return getDb().transaction(async (tx) =>
-    applyContactImportCandidates(input, {
-      adapter: input.adapter ?? createFakeContactImportPreviewAdapter(),
-      fuzzyMatcher: createFakeContactImportFuzzyMatcher(),
-      isProviderCapabilityConnected: async (ref) => {
-        const [connection] = await tx
-          .select({ id: providerConnections.id })
-          .from(providerConnections)
-          .where(
-            and(
-              eq(providerConnections.ownerUserId, ref.ownerUserId),
-              eq(providerConnections.providerKey, ref.providerKey),
-              eq(providerConnections.capabilityKey, ref.capabilityKey),
-              eq(providerConnections.status, "connected"),
-            ),
-          )
-          .limit(1);
+  const db = getDb();
 
-        return Boolean(connection);
-      },
-      ...createTransactionPeopleDeps(tx),
-      ...createTransactionContactMethodDeps(tx),
-      createProviderReference: async (ref) => {
-        await tx
-          .insert(contactImportProviderRefs)
-          .values(ref)
-          .onConflictDoNothing({
-            target: [
-              contactImportProviderRefs.ownerUserId,
-              contactImportProviderRefs.providerKey,
-              contactImportProviderRefs.providerContactId,
-            ],
-          });
-      },
-      createAuditLogEntry: async (entry) => {
-        await tx.insert(auditLog).values(entry);
-      },
-    } satisfies ContactImportApplyDeps),
-  );
+  return applyContactImportCandidates(input, {
+    adapter: input.adapter ?? createFakeContactImportPreviewAdapter(),
+    fuzzyMatcher: createFakeContactImportFuzzyMatcher(),
+    isProviderCapabilityConnected: async (ref) => {
+      const [connection] = await db
+        .select({ id: providerConnections.id })
+        .from(providerConnections)
+        .where(
+          and(
+            eq(providerConnections.ownerUserId, ref.ownerUserId),
+            eq(providerConnections.providerKey, ref.providerKey),
+            eq(providerConnections.capabilityKey, ref.capabilityKey),
+            eq(providerConnections.status, "connected"),
+          ),
+        )
+        .limit(1);
+
+      return Boolean(connection);
+    },
+    ...createDrizzlePeopleDeps(db),
+    ...createDrizzleContactMethodDeps(db),
+    createProviderReference: async (ref) => {
+      await db
+        .insert(contactImportProviderRefs)
+        .values(ref)
+        .onConflictDoNothing({
+          target: [
+            contactImportProviderRefs.ownerUserId,
+            contactImportProviderRefs.providerKey,
+            contactImportProviderRefs.providerContactId,
+          ],
+        });
+    },
+    createAuditLogEntry: async (entry) => {
+      await db.insert(auditLog).values(entry);
+    },
+  } satisfies ContactImportApplyDeps);
 }
 
 type DbClient = ReturnType<typeof getDb>;
-type TransactionClient = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+type ContactImportDbClient = DbClient;
 
-function createTransactionPeopleDeps(tx: TransactionClient) {
-  const peopleQueries = createPeopleQueries(createTransactionPeopleStore(tx));
+function createDrizzlePeopleDeps(db: ContactImportDbClient) {
+  const peopleQueries = createPeopleQueries(createDrizzlePeopleStore(db));
   return {
     createPerson: peopleQueries.createPerson,
     updatePerson: peopleQueries.updatePerson,
@@ -121,10 +121,10 @@ function createTransactionPeopleDeps(tx: TransactionClient) {
   };
 }
 
-function createTransactionPeopleStore(tx: TransactionClient): PeopleStore {
+function createDrizzlePeopleStore(db: ContactImportDbClient): PeopleStore {
   return {
     async createPerson(values) {
-      const [person] = await tx.insert(people).values(values).returning();
+      const [person] = await db.insert(people).values(values).returning();
 
       if (!person) {
         throw new Error("Failed to create person.");
@@ -134,7 +134,7 @@ function createTransactionPeopleStore(tx: TransactionClient): PeopleStore {
     },
 
     async updatePerson({ ownerUserId, personId, patch }) {
-      const [person] = await tx
+      const [person] = await db
         .update(people)
         .set({ ...patch, updatedAt: new Date() })
         .where(and(eq(people.id, personId), eq(people.ownerUserId, ownerUserId)))
@@ -148,7 +148,7 @@ function createTransactionPeopleStore(tx: TransactionClient): PeopleStore {
     },
 
     async createAuditLogEntry(values) {
-      await tx.insert(auditLog).values(values);
+      await db.insert(auditLog).values(values);
     },
 
     async searchPeople(input) {
@@ -170,7 +170,7 @@ function createTransactionPeopleStore(tx: TransactionClient): PeopleStore {
         where.push(eq(people.relationshipType, input.relationshipType));
       }
 
-      return tx
+      return db
         .select()
         .from(people)
         .where(and(...where))
@@ -179,7 +179,7 @@ function createTransactionPeopleStore(tx: TransactionClient): PeopleStore {
     },
 
     async getPerson(input) {
-      const [person] = await tx
+      const [person] = await db
         .select()
         .from(people)
         .where(and(eq(people.id, input.personId), eq(people.ownerUserId, input.ownerUserId)))
@@ -194,7 +194,7 @@ function createTransactionPeopleStore(tx: TransactionClient): PeopleStore {
   };
 }
 
-function createTransactionContactMethodDeps(tx: TransactionClient) {
+function createDrizzleContactMethodDeps(db: ContactImportDbClient) {
   return {
     async findOwnerContactMethodDuplicates(input) {
       const emailValues = input.methods
@@ -222,7 +222,7 @@ function createTransactionContactMethodDeps(tx: TransactionClient) {
         return [];
       }
 
-      const rows = await tx
+      const rows = await db
         .select({
           id: contactMethods.id,
           personId: contactMethods.personId,
@@ -245,7 +245,7 @@ function createTransactionContactMethodDeps(tx: TransactionClient) {
     },
 
     async createContactMethod(input) {
-      const [person] = await tx
+      const [person] = await db
         .select({ id: people.id })
         .from(people)
         .where(and(eq(people.id, input.personId), eq(people.ownerUserId, input.ownerUserId)))
@@ -255,7 +255,7 @@ function createTransactionContactMethodDeps(tx: TransactionClient) {
         throw new Error("Person not found for owner.");
       }
 
-      const [created] = await tx
+      const [created] = await db
         .insert(contactMethods)
         .values({
           personId: input.personId,
