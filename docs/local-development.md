@@ -51,6 +51,23 @@ Semantic embeddings run through the same job lifecycle in every environment. Loc
 
 In production, extraction and embedding jobs are delivered through Vercel Queues with an outbox-style ledger and a recovery cron. None of that is needed locally — inline processing and deterministic adapters cover the path, and `pnpm verify` never touches a live queue. See [`background-job-delivery.md`](background-job-delivery.md) for the production foundation and the optional live smoke test.
 
+## Eve evals
+
+Phase 2F Eve-native evals run against a stable isolated Postgres database named
+`tendnote_eval`, not the normal `tendnote` local database. The deterministic
+command hard-resets that database, applies committed Drizzle migrations, loads
+the same synthetic demo fixture data used by local development, and then runs
+strict Eve evals with `DATABASE_URL` pointed at the eval database:
+
+```bash
+pnpm --filter @tendnote/agent eval:list
+pnpm --filter @tendnote/agent eval:deterministic
+```
+
+Override `TENDNOTE_EVAL_DATABASE_URL` when the eval database is not on the
+default Docker Postgres port. The reset guard only permits database names that
+begin with `tendnote_eval`.
+
 ## Private beta access
 
 Hosted environments gate the app behind Private Beta Access (Phase 2A). Local development does not need the Vercel Flags provider: with no authenticated session it admits the dev fallback owner (`TENDNOTE_DEV_OWNER_USER_ID`, defaulting to `demo-user`), so the app shell and Eve chat work without sign-in. See [`architecture.md`](architecture.md#access-and-private-beta).

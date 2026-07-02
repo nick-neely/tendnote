@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
-import acceptSuggestedFollowupTool from "../tools/accept_suggested_followup";
-import approveSuggestedMemoryTool from "../tools/approve_suggested_memory";
-import captureMemoryTool from "../tools/capture_memory";
-import captureSourceRecordTool from "../tools/capture_source_record";
-import createMessageDraftTool from "../tools/create_message_draft";
-import createPersonTool from "../tools/create_person";
-import agendaTool from "../tools/get_relationship_agenda";
-import getSuggestedFollowupReviewTool from "../tools/get_suggested_followup_review";
-import getSuggestedMemoryReviewTool from "../tools/get_suggested_memory_review";
-import listSuggestedFollowupReviewsTool from "../tools/list_suggested_followup_reviews";
-import listSuggestedMemoryReviewsTool from "../tools/list_suggested_memory_reviews";
-import proposeFollowupTool from "../tools/propose_followup";
-import exactSearchTool from "../tools/search_relationship_context";
-import semanticSearchTool from "../tools/search_semantic_context";
-import updatePersonTool from "../tools/update_person";
+import acceptSuggestedFollowupTool from "../agent/tools/accept_suggested_followup";
+import approveSuggestedMemoryTool from "../agent/tools/approve_suggested_memory";
+import captureMemoryTool from "../agent/tools/capture_memory";
+import captureSourceRecordTool from "../agent/tools/capture_source_record";
+import createMessageDraftTool from "../agent/tools/create_message_draft";
+import createPersonTool from "../agent/tools/create_person";
+import agendaTool from "../agent/tools/get_relationship_agenda";
+import getSuggestedFollowupReviewTool from "../agent/tools/get_suggested_followup_review";
+import getSuggestedMemoryReviewTool from "../agent/tools/get_suggested_memory_review";
+import listSuggestedFollowupReviewsTool from "../agent/tools/list_suggested_followup_reviews";
+import listSuggestedMemoryReviewsTool from "../agent/tools/list_suggested_memory_reviews";
+import proposeFollowupTool from "../agent/tools/propose_followup";
+import exactSearchTool from "../agent/tools/search_relationship_context";
+import semanticSearchTool from "../agent/tools/search_semantic_context";
+import updatePersonTool from "../agent/tools/update_person";
 
 /**
  * `toModelOutput` shapes what the *model* sees; channels (the web chat) still

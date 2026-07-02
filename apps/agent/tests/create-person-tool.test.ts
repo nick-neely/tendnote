@@ -4,7 +4,7 @@ const { createPerson } = vi.hoisted(() => ({ createPerson: vi.fn() }));
 
 vi.mock("@tendnote/db/queries/people", () => ({ createPerson }));
 
-const { default: tool } = await import("../tools/create_person");
+const { default: tool } = await import("../agent/tools/create_person");
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

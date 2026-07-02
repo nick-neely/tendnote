@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "eve dev",
     "build": "tsc --noEmit",
-    "lint": "biome check agent evals",
+    "eval:deterministic": "pnpm eval:prepare && DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} eve eval --tag deterministic --strict --skip-report --junit .eve/evals/junit.xml",
+    "eval:list": "eve eval --list",
+    "eval:prepare": "TENDNOTE_EVAL_DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} pnpm --dir ../.. --filter @tendnote/db db:eval:reset && DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} pnpm --dir ../.. --filter @tendnote/db db:migrate && DATABASE_URL=${TENDNOTE_EVAL_DATABASE_URL:-postgres://tendnote:tendnote@localhost:55432/tendnote_eval} pnpm --dir ../.. --filter @tendnote/db db:seed",
+    "lint": "biome check agent evals tests",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

@@ -2,8 +2,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const repoRoot = join(import.meta.dirname, "../../../..");
-const agentRoot = join(import.meta.dirname, "..");
+const repoRoot = join(import.meta.dirname, "../../..");
+const agentRoot = join(import.meta.dirname, "../agent");
 
 function listFiles(root: string): string[] {
   return readdirSync(join(repoRoot, root)).flatMap((entry) => {

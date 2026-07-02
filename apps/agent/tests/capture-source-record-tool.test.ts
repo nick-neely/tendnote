@@ -20,14 +20,14 @@ vi.mock("@tendnote/db/queries/source-records", async (importActual) => {
     captureLoggedContext: actual.captureLoggedContext,
   };
 });
-vi.mock("../lib/background-jobs/embedding-schedulers", () => ({
+vi.mock("../agent/lib/background-jobs/embedding-schedulers", () => ({
   captureSourceRecordForPersonWithEmbeddingDelivery,
 }));
-vi.mock("../lib/background-jobs/extraction-queue", () => ({
+vi.mock("../agent/lib/background-jobs/extraction-queue", () => ({
   enqueueAndPublishExtractionJob,
 }));
 
-const { default: tool } = await import("../tools/capture_source_record");
+const { default: tool } = await import("../agent/tools/capture_source_record");
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

@@ -1,15 +1,17 @@
 import { createInMemoryBackgroundJobDeliveryStore } from "@tendnote/db/queries/background-job-deliveries";
-import type { EnqueueAndTriggerExtractionJobResult } from "@tendnote/db/queries/extraction-jobs";
+import type { EnqueueAndTriggerSemanticEmbeddingJobResult } from "@tendnote/db/queries/semantic-retrieval";
 import { describe, expect, it, vi } from "vitest";
-import { enqueueAndPublishExtractionJob } from "../lib/background-jobs/extraction-queue";
+import { enqueueAndPublishSemanticEmbeddingJob } from "../agent/lib/background-jobs/embedding-queue";
 
-const extractionJob = {
-  id: "00000000-0000-0000-0000-000000000401",
-  sourceRecordId: "source-1",
+const embeddingJob = {
+  id: "00000000-0000-0000-0000-000000000501",
+  ownerUserId: "user-1",
+  recordKind: "memory",
+  recordId: "memory-1",
   status: "pending",
   attempts: 0,
   lastError: null,
-  idempotencyKey: "source-record:source-1",
+  idempotencyKey: "embedding:user-1:memory:memory-1",
   runAfter: new Date("2026-06-29T12:00:00.000Z"),
   claimedAt: null,
   completedAt: null,
@@ -17,35 +19,36 @@ const extractionJob = {
   updatedAt: new Date("2026-06-29T12:00:00.000Z"),
 } as const;
 
-function enqueueResult(): EnqueueAndTriggerExtractionJobResult {
+function enqueueResult(): EnqueueAndTriggerSemanticEmbeddingJobResult {
   return {
-    job: extractionJob,
+    job: embeddingJob,
     created: true,
     processResult: null,
   };
 }
 
-describe("agent extraction queue delivery", () => {
-  it("creates and publishes an extraction delivery intent", async () => {
+describe("agent embedding queue delivery", () => {
+  it("creates and publishes an embedding delivery intent", async () => {
     const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
     const queue = { send: vi.fn().mockResolvedValue({ messageId: "msg-1" }) };
 
-    const result = await enqueueAndPublishExtractionJob({
+    const result = await enqueueAndPublishSemanticEmbeddingJob({
       ownerUserId: "user-1",
-      sourceRecordId: "source-1",
+      recordKind: "memory",
+      recordId: "memory-1",
       runtimeMode: "enqueue_only",
       deliveryStore,
       queue,
-      enqueueExtraction: vi.fn().mockResolvedValue(enqueueResult()),
+      enqueueEmbedding: vi.fn().mockResolvedValue(enqueueResult()),
     });
 
     expect(queue.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        topic: "tendnote-extraction-v1",
+        topic: "tendnote-embedding-v1",
         payload: {
           deliveryId: result.deliveryId,
-          jobKind: "extraction",
-          jobId: extractionJob.id,
+          jobKind: "embedding",
+          jobId: embeddingJob.id,
         },
       }),
     );
@@ -53,8 +56,8 @@ describe("agent extraction queue delivery", () => {
       deliveryStore.getBackgroundJobDeliveryForConsumer(result.deliveryId ?? ""),
     ).resolves.toMatchObject({
       ownerUserId: "user-1",
-      jobKind: "extraction",
-      jobId: extractionJob.id,
+      jobKind: "embedding",
+      jobId: embeddingJob.id,
       status: "published",
     });
   });
@@ -63,13 +66,14 @@ describe("agent extraction queue delivery", () => {
     const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
     const queue = { send: vi.fn().mockRejectedValue(new Error("queue down")) };
 
-    const result = await enqueueAndPublishExtractionJob({
+    const result = await enqueueAndPublishSemanticEmbeddingJob({
       ownerUserId: "user-1",
-      sourceRecordId: "source-1",
+      recordKind: "memory",
+      recordId: "memory-1",
       runtimeMode: "enqueue_only",
       deliveryStore,
       queue,
-      enqueueExtraction: vi.fn().mockResolvedValue(enqueueResult()),
+      enqueueEmbedding: vi.fn().mockResolvedValue(enqueueResult()),
     });
 
     await expect(

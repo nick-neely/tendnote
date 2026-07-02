@@ -6,7 +6,7 @@ const { generateDraft } = vi.hoisted(() => ({ generateDraft: vi.fn() }));
 
 vi.mock("@tendnote/db/queries/drafts", () => ({ generateDraft }));
 
-const { default: tool } = await import("../tools/create_message_draft");
+const { default: tool } = await import("../agent/tools/create_message_draft");
 
 const PERSON_ID = "11111111-1111-1111-1111-111111111111";
 const DRAFT_ID = "22222222-2222-2222-2222-222222222222";

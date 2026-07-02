@@ -2,8 +2,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const agentRoot = join(import.meta.dirname, "..");
-const repoRoot = join(import.meta.dirname, "../../../..");
+const agentRoot = join(import.meta.dirname, "../agent");
+const repoRoot = join(import.meta.dirname, "../../..");
 
 /**
  * Phase 1G boundary evals (PRD #75, issue #82). They confirm that Tendnote-only

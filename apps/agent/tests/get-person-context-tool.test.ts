@@ -6,7 +6,7 @@ const { getPersonContextSnapshot } = vi.hoisted(() => ({
 
 vi.mock("@tendnote/db/queries/context-snapshots", () => ({ getPersonContextSnapshot }));
 
-const { default: tool } = await import("../tools/get_person_context");
+const { default: tool } = await import("../agent/tools/get_person_context");
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

@@ -8,7 +8,7 @@ vi.mock("@tendnote/db/queries/relationship-agenda", () => ({
   getRelationshipAgenda,
 }));
 
-const { default: tool } = await import("../tools/get_relationship_agenda");
+const { default: tool } = await import("../agent/tools/get_relationship_agenda");
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

@@ -7,7 +7,7 @@ import {
   CALENDAR_TOOL_MAX_LIMIT,
   type CalendarReadRequestForOwner,
   runCalendarRead,
-} from "../lib/calendar-read";
+} from "../agent/lib/calendar-read";
 
 /**
  * Phase 2C Eve Calendar safety evals (PRD #105, ADR-0074). Calendar context Eve

@@ -5,8 +5,8 @@ import {
   CALENDAR_TOOL_MAX_LIMIT,
   type CalendarReadRequestForOwner,
   runCalendarRead,
-} from "../lib/calendar-read";
-import calendarTool from "../tools/list_calendar_events";
+} from "../agent/lib/calendar-read";
+import calendarTool from "../agent/tools/list_calendar_events";
 
 const NOW = new Date("2026-06-30T12:00:00.000Z");
 

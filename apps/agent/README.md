@@ -11,7 +11,8 @@ Eve filesystem agent for Tendnote. Mounted into the web app same-origin via `wit
 - `agent/skills/` — Markdown playbooks: `capturing-and-review.md`, `recall.md`, `followups.md`, `drafting.md`.
 - `agent/channels/eve.ts` — the same-origin HTTP channel; maps the web-set `x-tendnote-owner-id` header onto the Eve session principal (ADR 0001).
 - `agent/schedules/brief-dispatcher.ts` — claims due Tendnote-owned brief schedule rows and calls the shared brief generator (ADR 0066).
-- `evals/` — fixture-based Vitest evals (no-send-without-approval, no-fake-memory, person disambiguation, trust/privacy boundaries, tool output, phase boundary guards). Live-model evals are credential-gated; normal verification uses deterministic adapters.
+- `evals/` — Eve-native `.eval.ts` cases discovered by `eve eval`.
+- `tests/` — legacy Vitest wrapper and boundary tests that should not be discovered as Eve evals or authored agent nodes.
 
 Keep the active tree lean — add schedules, channels, connections, subagents, and sandbox workflows only when their phase has real behavior (see [`docs/prd.md`](../../docs/prd.md)).
 
@@ -21,6 +22,11 @@ Keep the active tree lean — add schedules, channels, connections, subagents, a
 # From the repo root:
 pnpm dev          # web app + agent same-origin via withEve (use this for web chat)
 pnpm dev:agent    # agent only, standalone on :2000 (Eve TUI / isolated debugging)
+```
+
+```bash
+pnpm --filter @tendnote/agent eval:list           # list Eve-native evals
+pnpm --filter @tendnote/agent eval:deterministic  # reset/migrate/seed tendnote_eval, then run strict deterministic evals
 ```
 
 `AI_GATEWAY_API_KEY` in `apps/agent/.env.local` is required to drive the model. See [`docs/local-development.md`](../../docs/local-development.md).
