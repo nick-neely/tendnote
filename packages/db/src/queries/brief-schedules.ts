@@ -3,6 +3,7 @@ import type { RunDueBriefSchedulesInput } from "./brief-schedules/dispatcher";
 import { createBriefScheduleDispatcher } from "./brief-schedules/dispatcher";
 import { createDrizzleBriefScheduleStore } from "./brief-schedules/drizzle-store";
 import { generateBrief } from "./briefs";
+import { type DiscordProactiveDeliverySender, generateMorningAgenda } from "./morning-agenda";
 
 export {
   type EnsureDefaultBriefSchedulesInput,
@@ -25,7 +26,10 @@ const defaultBriefScheduleStore = createDrizzleBriefScheduleStore();
 // or proactive channel delivery for in-app brief persistence (ADR-0066).
 const defaultBriefScheduleDispatcher = createBriefScheduleDispatcher(
   defaultBriefScheduleStore,
-  (input) => generateBrief(input),
+  (input) =>
+    input.cadence === "daily"
+      ? generateMorningAgenda(input).then((result) => result.brief)
+      : generateBrief(input),
 );
 
 export type DispatchDueBriefsInput = RunDueBriefSchedulesInput & {
@@ -33,6 +37,10 @@ export type DispatchDueBriefsInput = RunDueBriefSchedulesInput & {
   // private Phase 1 owner before claiming, so in-app generation is on by default.
   ensureOwnerUserId?: string;
   timezone?: string;
+  // Optional Phase 3 proactive delivery hook. When absent, Morning Agenda remains
+  // in-app only; when present, the daily workflow persists the brief first and then
+  // attempts Discord delivery through the configured workflow target.
+  morningAgendaDiscordSender?: DiscordProactiveDeliverySender;
 };
 
 /**
@@ -53,5 +61,17 @@ export async function dispatchDueBriefs(input: DispatchDueBriefsInput = {}) {
     });
   }
 
-  return defaultBriefScheduleDispatcher.runDueBriefSchedules(input);
+  if (!input.morningAgendaDiscordSender) {
+    return defaultBriefScheduleDispatcher.runDueBriefSchedules(input);
+  }
+
+  return createBriefScheduleDispatcher(defaultBriefScheduleStore, (generationInput) =>
+    generationInput.cadence === "daily"
+      ? generateMorningAgenda({
+          ...generationInput,
+          deliverDiscord: true,
+          sender: input.morningAgendaDiscordSender,
+        }).then((result) => result.brief)
+      : generateBrief(generationInput),
+  ).runDueBriefSchedules(input);
 }

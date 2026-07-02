@@ -1,5 +1,6 @@
 import { dispatchDueBriefs } from "@tendnote/db/queries/brief-schedules";
 import { defineSchedule } from "eve/schedules";
+import { createDiscordProactiveDeliverySender } from "../channels/discord";
 
 // The private Phase 1 owner and their timezone. Daily and weekly in-app brief
 // generation is default-enabled for this owner; the dispatcher seeds the rows on
@@ -22,11 +23,17 @@ const timezone = process.env.TENDNOTE_BRIEF_TIMEZONE ?? "UTC";
 export default defineSchedule({
   cron: "*/15 * * * *",
   async run({ waitUntil }) {
+    const morningAgendaDiscordSender = createDiscordProactiveDeliverySender();
+
     // Per-row generation errors are handled inside the dispatcher; this catch
     // covers a claim or bootstrap failure so the cron task never ends on an
     // unobserved rejection.
     waitUntil(
-      dispatchDueBriefs({ ensureOwnerUserId: ownerUserId, timezone }).catch((error) => {
+      dispatchDueBriefs({
+        ensureOwnerUserId: ownerUserId,
+        timezone,
+        ...(morningAgendaDiscordSender ? { morningAgendaDiscordSender } : {}),
+      }).catch((error) => {
         console.error("Brief schedule dispatch failed.", error);
       }),
     );

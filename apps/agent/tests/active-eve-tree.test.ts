@@ -43,18 +43,20 @@ describe("active Eve tree", () => {
     expect(files.some((file) => /placeholder|stub|future/i.test(file))).toBe(false);
   });
 
-  it("dispatches briefs in-app without a chat session or proactive channel delivery", () => {
+  it("dispatches briefs without a chat session and gates Morning Agenda Discord delivery", () => {
     // The dispatcher persists briefs by calling the shared generator directly; it
-    // must not start an Eve chat session or use receive()/channel delivery for
-    // normal in-app brief persistence (PRD #65, issue #72, ADR-0066).
+    // must not start an Eve chat session. Phase 3 Morning Agenda may pass a
+    // Discord sender hook into the shared schedule dispatcher, which persists the
+    // artifact before attempting opt-in delivery.
     const source = readFileSync(join(agentRoot, "schedules/brief-dispatcher.ts"), "utf8");
     // Strip comments so the doc comment's mention of receive(...) is not matched as
     // a call; we check the actual code only.
     const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
     expect(code).not.toMatch(/\breceive\b/);
-    expect(code).not.toMatch(/channels\//);
     expect(code).toMatch(/dispatchDueBriefs/);
+    expect(code).toMatch(/createDiscordProactiveDeliverySender/);
+    expect(code).toMatch(/morningAgendaDiscordSender/);
   });
 
   it("has no background follow-up scanner or periodic suggestion generator (Phase 1E)", () => {

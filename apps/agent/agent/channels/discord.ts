@@ -47,6 +47,35 @@ type DiscordInteractionResponse = {
   };
 };
 
+export function createDiscordProactiveDeliverySender(
+  input: { botToken?: string; fetch?: typeof fetch } = {},
+) {
+  const botToken = input.botToken ?? process.env.DISCORD_BOT_TOKEN;
+  const fetchImpl = input.fetch ?? fetch;
+
+  if (!botToken) {
+    return null;
+  }
+
+  return async ({ targetId, content }: { targetId: string; content: string }) => {
+    const response = await fetchImpl(
+      `https://discord.com/api/v10/channels/${encodeURIComponent(targetId)}/messages`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bot ${botToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ content }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Discord proactive delivery failed with status ${response.status}`);
+    }
+  };
+}
+
 export async function handleDiscordRequest(
   request: Request,
   input: {
