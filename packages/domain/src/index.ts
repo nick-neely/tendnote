@@ -13,6 +13,7 @@ export * from "./extraction-jobs";
 export * from "./followups";
 export * from "./gmail-drafts";
 export * from "./memories";
+export * from "./memory-curator";
 export * from "./people";
 export * from "./privacy";
 export * from "./prompt-nudges";

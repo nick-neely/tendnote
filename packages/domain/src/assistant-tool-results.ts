@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { memoryCuratorProposalResultSchema } from "./memory-curator";
 
 /**
  * The single source of truth for the persisted Eve tool-result contract that the
@@ -167,6 +168,8 @@ export const relationshipAgendaToolResult = z.object({
   window: z.object({ start: z.string(), end: z.string() }).nullish(),
 });
 
+export const memoryCuratorToolResult = memoryCuratorProposalResultSchema;
+
 /**
  * Registry of rendered Eve tools → their persisted result contract. The web parses
  * with these and the agent guard asserts its rendered-tool set matches the keys, so
@@ -187,6 +190,7 @@ export const assistantToolResultSchemas = {
   search_relationship_context: relationshipContextSearchToolResult,
   search_semantic_context: semanticContextSearchToolResult,
   get_relationship_agenda: relationshipAgendaToolResult,
+  propose_memory_cleanup: memoryCuratorToolResult,
 } as const satisfies Record<string, z.ZodTypeAny>;
 
 /** A tool name that persists a typed, rendered result (vs. a `generic` fallback). */
@@ -198,6 +202,7 @@ export const RENDERED_TOOL_NAMES = Object.keys(assistantToolResultSchemas) as Re
 export type SuggestedMemoryReviewItemOutput = z.infer<typeof suggestedMemoryReviewItem>;
 export type SuggestedFollowupReviewItemOutput = z.infer<typeof suggestedFollowupReviewItem>;
 export type RelationshipAgendaToolResult = z.infer<typeof relationshipAgendaToolResult>;
+export type MemoryCuratorToolResult = z.infer<typeof memoryCuratorToolResult>;
 
 /** True when a tool name has a typed rendered contract in the registry. */
 export function isRenderedToolName(toolName: string): toolName is RenderedToolName {

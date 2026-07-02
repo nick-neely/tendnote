@@ -3,6 +3,7 @@ import {
   CalendarClockIcon,
   CheckIcon,
   ChevronDownIcon,
+  ClipboardListIcon,
   NotebookPenIcon,
   SearchIcon,
   UserIcon,
@@ -86,6 +87,14 @@ function LineView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
     return (
       <ToolActivityLine icon={<CalendarClockIcon aria-hidden className="size-3.5" />} isNew={isNew}>
         Nothing on the relationship agenda for that window
+      </ToolActivityLine>
+    );
+  }
+
+  if (view.kind === "memory_curator_proposals") {
+    return (
+      <ToolActivityLine icon={<ClipboardListIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+        No memory cleanup proposals found
       </ToolActivityLine>
     );
   }
@@ -247,6 +256,39 @@ function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
     );
   }
 
+  if (view.kind === "memory_curator_proposals") {
+    const count = view.proposals.length;
+    return (
+      <ResultCard
+        footer={<Caption>Review-only cleanup proposals · no memories changed</Caption>}
+        icon={<ClipboardListIcon className="size-3" />}
+        isNew={isNew}
+        kind={view.kind}
+        label={count === 1 ? "Memory cleanup proposal" : "Memory cleanup proposals"}
+        tone="neutral"
+      >
+        <div className="flex flex-col gap-3">
+          {view.proposals.map((proposal) => (
+            <div className="flex flex-col gap-1.5" key={proposal.id}>
+              <Body>{proposal.title}</Body>
+              <Caption>{proposal.reason}</Caption>
+              <Caption>Suggested review: {proposal.suggestedAction}</Caption>
+              <Caption>
+                Grounded in{" "}
+                {proposal.sourceRefs
+                  .map(
+                    (sourceRef) =>
+                      `${labelMemoryCuratorSourceKind(sourceRef.kind)}: ${sourceRef.label}`,
+                  )
+                  .join("; ")}
+              </Caption>
+            </div>
+          ))}
+        </div>
+      </ResultCard>
+    );
+  }
+
   // message_draft is rendered by the interactive ChatDraftCard (inline WYSIWYG edit
   // + copy), routed at the panel level so this presentational module stays free of
   // the client editor and server actions that card needs.
@@ -350,6 +392,10 @@ function summarizeTiers(view: Extract<AssistantToolView, { kind: "person_context
 function labelRecordKind(kind: SearchResultView["recordKind"]) {
   if (kind === "source_record") return "Source record";
   return kind === "memory" ? "Memory" : "Person";
+}
+
+function labelMemoryCuratorSourceKind(kind: "memory" | "source_record") {
+  return kind === "memory" ? "Memory" : "Source record";
 }
 
 function labelTrust(result: SearchResultView) {

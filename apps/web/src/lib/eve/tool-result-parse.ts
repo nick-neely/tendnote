@@ -1,5 +1,6 @@
 import {
   assistantToolResultSchemas,
+  type MemoryCuratorToolResult,
   type RelationshipAgendaToolResult,
   type SuggestedFollowupReviewItemOutput,
   type SuggestedMemoryReviewItemOutput,
@@ -33,6 +34,23 @@ function toReviewItem(parsed: SuggestedMemoryReviewItemOutput): SuggestedReviewI
     sourceRecordId: parsed.memory.sourceRecordId ?? null,
     personId: parsed.person?.id ?? parsed.memory.personId ?? null,
     personName: parsed.person?.displayName ?? null,
+  };
+}
+
+function toMemoryCuratorProposal(
+  proposal: MemoryCuratorToolResult["proposals"][number],
+): Extract<AssistantToolView, { kind: "memory_curator_proposals" }>["proposals"][number] {
+  return {
+    id: proposal.id,
+    proposalKind: proposal.kind,
+    personId: proposal.personId ?? null,
+    personDisplayName: proposal.personDisplayName ?? null,
+    title: proposal.title,
+    reason: proposal.reason,
+    suggestedAction: proposal.suggestedAction,
+    sourceRefs: proposal.sourceRefs,
+    sensitivity: proposal.sensitivity,
+    reviewOnly: proposal.reviewOnly,
   };
 }
 
@@ -206,6 +224,14 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
         window: parsed.data.window
           ? { start: parsed.data.window.start, end: parsed.data.window.end }
           : null,
+      };
+    }
+    case "propose_memory_cleanup": {
+      const parsed = assistantToolResultSchemas.propose_memory_cleanup.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "memory_curator_proposals",
+        proposals: parsed.data.proposals.map(toMemoryCuratorProposal),
       };
     }
     default:

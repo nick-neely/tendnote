@@ -67,6 +67,10 @@ export type AssistantToolView =
        */
       window?: { start: string; end: string } | null;
     }
+  | {
+      kind: "memory_curator_proposals";
+      proposals: MemoryCuratorProposalView[];
+    }
   | { kind: "generic"; toolName: string };
 
 /** One tentative suggestion the user can approve or dismiss inline. */
@@ -137,6 +141,25 @@ export type RelationshipAgendaCandidateView = {
   rank: number;
 };
 
+export type MemoryCuratorProposalView = {
+  id: string;
+  proposalKind:
+    | "duplicate_memory"
+    | "stale_memory_archive"
+    | "contradiction_warning"
+    | "rewrite_suggestion"
+    | "clarification_prompt"
+    | "source_record_cleanup";
+  personId: string | null;
+  personDisplayName: string | null;
+  title: string;
+  reason: string;
+  suggestedAction: string;
+  sourceRefs: { kind: "memory" | "source_record"; id: string; label: string }[];
+  sensitivity: "normal" | "sensitive" | "restricted";
+  reviewOnly: true;
+};
+
 /**
  * Stable React key for a rendered view, derived from the persisted record it
  * references so a list of results keys on real ids rather than array position.
@@ -169,6 +192,8 @@ export function assistantToolViewKey(view: AssistantToolView): string {
       return `semantic-search:${view.results.map((result) => result.recordId).join(":")}`;
     case "relationship_agenda":
       return `agenda:${view.candidates.map(relationshipAgendaCandidateKey).join(":")}`;
+    case "memory_curator_proposals":
+      return `memory-curator:${view.proposals.map((proposal) => proposal.id).join(":")}`;
     default:
       return `tool:${view.toolName}`;
   }
@@ -228,6 +253,8 @@ export function toolViewTier(view: AssistantToolView): ToolViewTier {
       return view.results.length > 0 ? "disclosure" : "line";
     case "relationship_agenda":
       return view.candidates.length > 0 ? "disclosure" : "line";
+    case "memory_curator_proposals":
+      return view.proposals.length > 0 ? "card" : "line";
     case "message_draft":
       // A persisted, durable draft earns the card — the user must see what was
       // written (and the Tendnote-only boundary) and act on it.
@@ -242,6 +269,7 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   search_relationship_context: "Searching your notebook…",
   search_semantic_context: "Searching by meaning…",
   get_relationship_agenda: "Checking your relationship agenda…",
+  propose_memory_cleanup: "Reviewing memory cleanup candidates…",
   get_person_context: "Recalling…",
   get_suggested_memory_review: "Checking for suggestions…",
   list_suggested_memory_reviews: "Gathering suggestions to review…",

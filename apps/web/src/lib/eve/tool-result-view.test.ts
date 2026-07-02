@@ -198,6 +198,57 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     });
   });
 
+  it("renders Memory Curator proposals as grounded review-only assistant cards", () => {
+    const view = toAssistantToolView({
+      toolName: "propose_memory_cleanup",
+      output: {
+        ownerUserId: "owner-1",
+        proposals: [
+          {
+            id: "duplicate_memory:memory-1:memory-2",
+            kind: "duplicate_memory",
+            ownerUserId: "owner-1",
+            personId: "person-1",
+            personDisplayName: "Maya",
+            title: "Possible duplicate memory for Maya",
+            reason: "Two approved memories have the same normalized content.",
+            suggestedAction:
+              "Review both memories and decide whether one should be archived or rewritten.",
+            sourceRefs: [
+              { kind: "memory", id: "memory-1", label: "Maya lives in Austin." },
+              { kind: "memory", id: "memory-2", label: "Maya lives in Austin." },
+            ],
+            sensitivity: "normal",
+            reviewOnly: true,
+          },
+        ],
+        component: { type: "memory_curator_proposals", proposalCount: 1 },
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "memory_curator_proposals",
+      proposals: [
+        {
+          id: "duplicate_memory:memory-1:memory-2",
+          proposalKind: "duplicate_memory",
+          personId: "person-1",
+          personDisplayName: "Maya",
+          title: "Possible duplicate memory for Maya",
+          reason: "Two approved memories have the same normalized content.",
+          suggestedAction:
+            "Review both memories and decide whether one should be archived or rewritten.",
+          sourceRefs: [
+            { kind: "memory", id: "memory-1", label: "Maya lives in Austin." },
+            { kind: "memory", id: "memory-2", label: "Maya lives in Austin." },
+          ],
+          sensitivity: "normal",
+          reviewOnly: true,
+        },
+      ],
+    });
+  });
+
   // Computed with the same formatter so the assertion is timezone-independent.
   const dueLabel = new Date("2026-07-15T00:00:00.000Z").toLocaleDateString("en-US", {
     month: "short",
@@ -629,6 +680,28 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
       }),
     ).toBe("agenda:followup:followup-1");
     expect(
+      assistantToolViewKey({
+        kind: "memory_curator_proposals",
+        proposals: [
+          {
+            id: "duplicate_memory:memory-1:memory-2",
+            proposalKind: "duplicate_memory",
+            personId: "person-1",
+            personDisplayName: "Maya",
+            title: "Possible duplicate memory for Maya",
+            reason: "Two approved memories have the same normalized content.",
+            suggestedAction: "Review both memories.",
+            sourceRefs: [
+              { kind: "memory", id: "memory-1", label: "Maya lives in Austin." },
+              { kind: "memory", id: "memory-2", label: "Maya lives in Austin." },
+            ],
+            sensitivity: "normal",
+            reviewOnly: true,
+          },
+        ],
+      }),
+    ).toBe("memory-curator:duplicate_memory:memory-1:memory-2");
+    expect(
       relationshipAgendaCandidateKey({
         kind: "recent_context",
         personId: "person-1",
@@ -748,6 +821,26 @@ describe("toolViewTier (how much weight a result earns)", () => {
       }),
     ).toBe("disclosure");
     expect(toolViewTier({ kind: "relationship_agenda", candidates: [] })).toBe("line");
+    expect(
+      toolViewTier({
+        kind: "memory_curator_proposals",
+        proposals: [
+          {
+            id: "rewrite_suggestion:memory-1",
+            proposalKind: "rewrite_suggestion",
+            personId: "person-1",
+            personDisplayName: "Maya",
+            title: "Vague memory for Maya",
+            reason: "The memory uses vague language.",
+            suggestedAction: "Rewrite after owner review.",
+            sourceRefs: [{ kind: "memory", id: "memory-1", label: "Maya likes some stuff." }],
+            sensitivity: "normal",
+            reviewOnly: true,
+          },
+        ],
+      }),
+    ).toBe("card");
+    expect(toolViewTier({ kind: "memory_curator_proposals", proposals: [] })).toBe("line");
   });
 });
 
@@ -756,6 +849,7 @@ describe("activeToolLabel (in-flight tool → working copy)", () => {
     expect(activeToolLabel("search_relationship_context")).toBe("Searching your notebook…");
     expect(activeToolLabel("search_semantic_context")).toBe("Searching by meaning…");
     expect(activeToolLabel("get_relationship_agenda")).toBe("Checking your relationship agenda…");
+    expect(activeToolLabel("propose_memory_cleanup")).toBe("Reviewing memory cleanup candidates…");
     expect(activeToolLabel("capture_memory")).toBe("Saving to memory…");
   });
 

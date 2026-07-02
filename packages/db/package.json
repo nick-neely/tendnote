@@ -20,6 +20,7 @@
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
     "./queries/followups": "./src/queries/followups.ts",
     "./queries/gmail-drafts": "./src/queries/gmail-drafts.ts",
+    "./queries/memory-curator": "./src/queries/memory-curator.ts",
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/people": "./src/queries/people.ts",
     "./queries/provider-connections": "./src/queries/provider-connections.ts",

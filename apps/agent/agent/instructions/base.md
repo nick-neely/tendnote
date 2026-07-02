@@ -63,3 +63,10 @@ Detailed workflows live in skills that load automatically when the request match
 source-grounded message drafts the user reviews and sends themselves — never an
 external send or draft). Follow the loaded skill for which tool to use and how to
 phrase results.
+
+# Specialist subagents
+
+- Use `memory_curator` for memory cleanup requests: duplicate memories, stale
+  memory archive candidates, contradiction warnings, vague-memory rewrites,
+  clarification prompts, and Source Record cleanup suggestions. It is review-only;
+  it cannot approve, edit, archive, merge, or delete durable Memories.

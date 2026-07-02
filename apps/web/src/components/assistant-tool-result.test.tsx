@@ -395,6 +395,46 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).not.toContain('data-tool-view="relationship_agenda"');
   });
 
+  it("renders Memory Curator proposals as grounded review-only cards", () => {
+    const html = render({
+      kind: "memory_curator_proposals",
+      proposals: [
+        {
+          id: "duplicate_memory:memory-1:memory-2",
+          proposalKind: "duplicate_memory",
+          personId: "person-1",
+          personDisplayName: "Maya",
+          title: "Possible duplicate memory for Maya",
+          reason: "Two approved memories have the same normalized content.",
+          suggestedAction: "Review both memories before changing anything.",
+          sourceRefs: [
+            { kind: "memory", id: "memory-1", label: "Maya lives in Austin." },
+            { kind: "memory", id: "memory-2", label: "Maya lives in Austin." },
+          ],
+          sensitivity: "normal",
+          reviewOnly: true,
+        },
+      ],
+    });
+
+    expect(html).toContain("Memory cleanup proposal");
+    expect(html).toContain("Review-only cleanup proposals");
+    expect(html).toContain("no memories changed");
+    expect(html).toContain("Possible duplicate memory for Maya");
+    expect(html).toContain("Review both memories before changing anything.");
+    expect(html).toContain("Memory: Maya lives in Austin.");
+    expect(html).toContain('data-tool-view="memory_curator_proposals"');
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("form");
+  });
+
+  it("renders empty Memory Curator proposals as a quiet line", () => {
+    const html = render({ kind: "memory_curator_proposals", proposals: [] });
+
+    expect(html).toContain("No memory cleanup proposals found");
+    expect(html).not.toContain('data-tool-view="memory_curator_proposals"');
+  });
+
   it("renders an unknown tool result as a quiet ambient line", () => {
     const html = render({ kind: "generic", toolName: "some_future_tool" });
 

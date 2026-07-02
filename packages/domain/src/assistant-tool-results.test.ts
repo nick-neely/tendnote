@@ -65,4 +65,31 @@ describe("assistant tool-result contract", () => {
     });
     expect(parsed.success).toBe(true);
   });
+
+  it("accepts review-only Memory Curator proposals with source grounding", () => {
+    const parsed = assistantToolResultSchemas.propose_memory_cleanup.safeParse({
+      ownerUserId: "owner-1",
+      proposals: [
+        {
+          id: "duplicate_memory:memory-1:memory-2",
+          kind: "duplicate_memory",
+          ownerUserId: "owner-1",
+          personId: "person-1",
+          personDisplayName: "Maya",
+          title: "Possible duplicate memory for Maya",
+          reason: "Two approved memories have the same normalized content.",
+          suggestedAction: "Review both memories and decide whether one should be archived.",
+          sourceRefs: [
+            { kind: "memory", id: "memory-1", label: "Maya lives in Austin." },
+            { kind: "memory", id: "memory-2", label: "Maya lives in Austin." },
+          ],
+          sensitivity: "normal",
+          reviewOnly: true,
+        },
+      ],
+      component: { type: "memory_curator_proposals", proposalCount: 1 },
+    });
+
+    expect(parsed.success).toBe(true);
+  });
 });

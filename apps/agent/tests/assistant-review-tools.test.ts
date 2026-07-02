@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RENDERED_TOOL_NAMES } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
@@ -11,6 +11,13 @@ function readTool(name: string): string {
 }
 
 const toolFiles = readdirSync(toolsDir).filter((file) => file.endsWith(".ts"));
+const renderedToolFiles = new Set(toolFiles);
+const subagentToolsDir = join(process.cwd(), "agent/subagents/memory_curator/tools");
+if (existsSync(subagentToolsDir)) {
+  for (const file of readdirSync(subagentToolsDir).filter((file) => file.endsWith(".ts"))) {
+    renderedToolFiles.add(file);
+  }
+}
 // Tool workflows now live in on-demand skills; assert against base.md + skills.
 const instructions = authoredInstructions();
 
@@ -296,7 +303,7 @@ describe("the web render contract stays in lock-step with the agent's tools", ()
     // guard makes that a failing test instead.
     expect(RENDERED_TOOL_NAMES.length).toBeGreaterThan(0);
     for (const toolName of RENDERED_TOOL_NAMES) {
-      expect(toolFiles).toContain(`${toolName}.ts`);
+      expect(renderedToolFiles).toContain(`${toolName}.ts`);
     }
   });
 });

@@ -19,13 +19,18 @@ describe("active Eve tree", () => {
     const files = listAuthoredFiles(agentRoot);
 
     // Phase 1F adds exactly one real root schedule: the app-owned brief dispatcher
-    // (PRD #65, issue #72, ADR-0066). It exists only because brief generation is
-    // real; no inactive placeholder schedules, connections, or subagents are added.
+    // (PRD #65, issue #72, ADR-0066). Phase 3 adds the first real declared
+    // subagent, Memory Curator (#149). No inactive placeholders are allowed.
     const scheduleFiles = files.filter((file) => file.startsWith("schedules/"));
     expect(scheduleFiles).toEqual(["schedules/brief-dispatcher.ts"]);
+    const subagentFiles = files.filter((file) => file.startsWith("subagents/"));
+    expect(subagentFiles).toEqual([
+      "subagents/memory_curator/agent.ts",
+      "subagents/memory_curator/instructions.md",
+      "subagents/memory_curator/tools/propose_memory_cleanup.ts",
+    ]);
 
     expect(files.some((file) => file.startsWith("connections/"))).toBe(false);
-    expect(files.some((file) => file.startsWith("subagents/"))).toBe(false);
     expect(files.some((file) => /placeholder|stub|future/i.test(file))).toBe(false);
   });
 

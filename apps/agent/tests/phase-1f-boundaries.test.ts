@@ -25,7 +25,7 @@ describe("Phase 1F agent-surface boundaries", () => {
   });
 
   it("adds no sandbox, workflow, or connection surfaces", () => {
-    for (const dir of ["sandbox", "sandboxes", "workflows", "connections", "subagents"]) {
+    for (const dir of ["sandbox", "sandboxes", "workflows", "connections"]) {
       expect(existsSync(join(agentRoot, dir))).toBe(false);
     }
   });
