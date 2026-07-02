@@ -1,10 +1,14 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { generateDraft } = vi.hoisted(() => ({ generateDraft: vi.fn() }));
+const { generateDraft, persistAcceptedDraftProposal } = vi.hoisted(() => ({
+  generateDraft: vi.fn(),
+  persistAcceptedDraftProposal: vi.fn(),
+}));
 
 vi.mock("@tendnote/db/queries/drafts", () => ({ generateDraft }));
+vi.mock("@tendnote/db/queries/draft-proposals", () => ({ persistAcceptedDraftProposal }));
 
 const { default: tool } = await import("../agent/tools/create_message_draft");
 
@@ -12,6 +16,10 @@ const PERSON_ID = "11111111-1111-1111-1111-111111111111";
 const DRAFT_ID = "22222222-2222-2222-2222-222222222222";
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function createdDraft() {
   return {
@@ -84,6 +92,47 @@ describe("create_message_draft tool", () => {
     );
   });
 
+  it("persists an accepted Draft Proposal body without regenerating it", async () => {
+    persistAcceptedDraftProposal.mockResolvedValue(createdDraft());
+
+    const result = await tool.execute(
+      {
+        personId: PERSON_ID,
+        purpose: "check_in",
+        acceptedProposal: {
+          body: "Exact accepted proposal body.",
+          sourceRefs: [
+            {
+              kind: "approved_memory",
+              id: "memory-1",
+              label: "Moved to Denver",
+              trust: "confirmed_fact",
+            },
+          ],
+        },
+      },
+      ctx,
+    );
+
+    expect(result.created).toBe(true);
+    expect(generateDraft).not.toHaveBeenCalled();
+    expect(persistAcceptedDraftProposal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: "user-1",
+        personId: PERSON_ID,
+        body: "Exact accepted proposal body.",
+        sourceRefs: [
+          {
+            kind: "approved_memory",
+            id: "memory-1",
+            label: "Moved to Denver",
+            trust: "confirmed_fact",
+          },
+        ],
+      }),
+    );
+  });
+
   it("keeps restricted content out unless explicitly requested", async () => {
     generateDraft.mockResolvedValue(createdDraft());
 
@@ -142,7 +191,9 @@ describe("create_message_draft tool", () => {
     for (const moduleId of importSources) {
       expect(moduleId).not.toMatch(/gmail|mcp|nodemailer|provider|sendgrid|twilio|slack|resend/i);
     }
-    // The only data dependency is the shared draft generator — no provider client.
+    // The only data dependencies are the shared Tendnote draft generator and
+    // accepted-proposal persister — no provider client.
     expect(importSources).toContain("@tendnote/db/queries/drafts");
+    expect(importSources).toContain("@tendnote/db/queries/draft-proposals");
   });
 });

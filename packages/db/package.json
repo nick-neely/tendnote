@@ -16,6 +16,7 @@
     "./queries/contacts-import-preview": "./src/queries/contacts-import-preview.ts",
     "./queries/contact-methods": "./src/queries/contact-methods.ts",
     "./queries/context-snapshots": "./src/queries/context-snapshots.ts",
+    "./queries/draft-proposals": "./src/queries/draft-proposals.ts",
     "./queries/drafts": "./src/queries/drafts.ts",
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
     "./queries/followups": "./src/queries/followups.ts",

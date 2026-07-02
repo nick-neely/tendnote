@@ -435,6 +435,59 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).not.toContain('data-tool-view="memory_curator_proposals"');
   });
 
+  it("renders Draft Proposals as grounded options without saving controls", () => {
+    const html = render({
+      kind: "draft_proposal",
+      proposal: {
+        id: "draft_proposal:person-1:warm",
+        personId: "person-1",
+        personDisplayName: "Maya",
+        channel: "text",
+        purpose: "check_in",
+        variants: [
+          {
+            id: "variant-1",
+            label: "Warm",
+            toneInstruction: "warm",
+            body: "Hi Maya, thinking about your move to Denver.",
+          },
+        ],
+        sourceRefs: [
+          {
+            kind: "approved_memory",
+            id: "memory-1",
+            label: "Maya moved to Denver.",
+            trust: "confirmed_fact",
+          },
+        ],
+        ephemeral: true,
+        persistenceRequiresExplicitOwnerIntent: true,
+      },
+      skippedReason: null,
+    });
+
+    expect(html).toContain("Draft options for Maya");
+    expect(html).toContain("Warm");
+    expect(html).toContain("Hi Maya, thinking about your move to Denver.");
+    expect(html).toContain("Memory: Maya moved to Denver.");
+    expect(html).toContain("Draft Proposal only");
+    expect(html).toContain("not saved as a Tendnote draft");
+    expect(html).toContain('data-tool-view="draft_proposal"');
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("Gmail");
+  });
+
+  it("renders skipped Draft Proposals as a quiet line", () => {
+    const html = render({
+      kind: "draft_proposal",
+      proposal: null,
+      skippedReason: "insufficient_context",
+    });
+
+    expect(html).toContain("No draft options: not enough grounded context");
+    expect(html).not.toContain('data-tool-view="draft_proposal"');
+  });
+
   it("renders an unknown tool result as a quiet ambient line", () => {
     const html = render({ kind: "generic", toolName: "some_future_tool" });
 

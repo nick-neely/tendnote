@@ -12,10 +12,14 @@ function readTool(name: string): string {
 
 const toolFiles = readdirSync(toolsDir).filter((file) => file.endsWith(".ts"));
 const renderedToolFiles = new Set(toolFiles);
-const subagentToolsDir = join(process.cwd(), "agent/subagents/memory_curator/tools");
-if (existsSync(subagentToolsDir)) {
-  for (const file of readdirSync(subagentToolsDir).filter((file) => file.endsWith(".ts"))) {
-    renderedToolFiles.add(file);
+const subagentsDir = join(process.cwd(), "agent/subagents");
+if (existsSync(subagentsDir)) {
+  for (const subagent of readdirSync(subagentsDir)) {
+    const subagentToolsDir = join(subagentsDir, subagent, "tools");
+    if (!existsSync(subagentToolsDir)) continue;
+    for (const file of readdirSync(subagentToolsDir).filter((file) => file.endsWith(".ts"))) {
+      renderedToolFiles.add(file);
+    }
   }
 }
 // Tool workflows now live in on-demand skills; assert against base.md + skills.

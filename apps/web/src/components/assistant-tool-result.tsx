@@ -4,6 +4,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ClipboardListIcon,
+  MessageSquareTextIcon,
   NotebookPenIcon,
   SearchIcon,
   UserIcon,
@@ -95,6 +96,17 @@ function LineView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
     return (
       <ToolActivityLine icon={<ClipboardListIcon aria-hidden className="size-3.5" />} isNew={isNew}>
         No memory cleanup proposals found
+      </ToolActivityLine>
+    );
+  }
+
+  if (view.kind === "draft_proposal") {
+    return (
+      <ToolActivityLine
+        icon={<MessageSquareTextIcon aria-hidden className="size-3.5" />}
+        isNew={isNew}
+      >
+        {labelDraftProposalSkip(view.skippedReason)}
       </ToolActivityLine>
     );
   }
@@ -289,6 +301,34 @@ function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
     );
   }
 
+  if (view.kind === "draft_proposal" && view.proposal) {
+    return (
+      <ResultCard
+        footer={<Caption>Draft Proposal only · not saved as a Tendnote draft</Caption>}
+        icon={<MessageSquareTextIcon className="size-3" />}
+        isNew={isNew}
+        kind={view.kind}
+        label={`Draft options for ${view.proposal.personDisplayName}`}
+        tone="neutral"
+      >
+        <div className="flex flex-col gap-3">
+          {view.proposal.variants.map((variant) => (
+            <div className="flex flex-col gap-1.5" key={variant.id}>
+              <Caption>{variant.label}</Caption>
+              <Body>{variant.body}</Body>
+            </div>
+          ))}
+          <Caption>
+            Grounded in{" "}
+            {view.proposal.sourceRefs
+              .map((sourceRef) => `${labelDraftSourceKind(sourceRef.kind)}: ${sourceRef.label}`)
+              .join("; ")}
+          </Caption>
+        </div>
+      </ResultCard>
+    );
+  }
+
   // message_draft is rendered by the interactive ChatDraftCard (inline WYSIWYG edit
   // + copy), routed at the panel level so this presentational module stays free of
   // the client editor and server actions that card needs.
@@ -396,6 +436,38 @@ function labelRecordKind(kind: SearchResultView["recordKind"]) {
 
 function labelMemoryCuratorSourceKind(kind: "memory" | "source_record") {
   return kind === "memory" ? "Memory" : "Source record";
+}
+
+function labelDraftSourceKind(
+  kind: NonNullable<
+    Extract<AssistantToolView, { kind: "draft_proposal" }>["proposal"]
+  >["sourceRefs"][number]["kind"],
+) {
+  switch (kind) {
+    case "approved_memory":
+      return "Memory";
+    case "source_record":
+      return "Source record";
+    case "suggested_memory":
+      return "Suggested memory";
+    case "followup":
+      return "Follow-up";
+    case "brief_item":
+      return "Brief item";
+  }
+}
+
+function labelDraftProposalSkip(
+  reason: Extract<AssistantToolView, { kind: "draft_proposal" }>["skippedReason"],
+) {
+  switch (reason) {
+    case "person_not_found":
+      return "No draft options: person could not be resolved";
+    case "generation_failed":
+      return "No draft options: drafting is temporarily unavailable";
+    default:
+      return "No draft options: not enough grounded context";
+  }
 }
 
 function labelTrust(result: SearchResultView) {

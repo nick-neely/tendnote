@@ -598,6 +598,91 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     expect(view).toEqual({ kind: "generic", toolName: "create_message_draft" });
   });
 
+  it("renders propose_message_draft as an ephemeral grounded Draft Proposal", () => {
+    const view = toAssistantToolView({
+      toolName: "propose_message_draft",
+      output: {
+        ownerUserId: "owner-1",
+        proposal: {
+          id: "draft_proposal:person-1:warm",
+          ownerUserId: "owner-1",
+          personId: "person-1",
+          personDisplayName: "Maya",
+          channel: "text",
+          purpose: "check_in",
+          variants: [
+            {
+              id: "variant-1",
+              label: "Warm",
+              toneInstruction: "warm",
+              body: "Hi Maya, thinking about your move to Denver.",
+            },
+          ],
+          sourceRefs: [
+            {
+              kind: "approved_memory",
+              id: "memory-1",
+              label: "Maya moved to Denver.",
+              trust: "confirmed_fact",
+            },
+          ],
+          ephemeral: true,
+          persistenceRequiresExplicitOwnerIntent: true,
+        },
+        skippedReason: null,
+        component: { type: "draft_proposal", proposalId: "draft_proposal:person-1:warm" },
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "draft_proposal",
+      proposal: {
+        id: "draft_proposal:person-1:warm",
+        personId: "person-1",
+        personDisplayName: "Maya",
+        channel: "text",
+        purpose: "check_in",
+        variants: [
+          {
+            id: "variant-1",
+            label: "Warm",
+            toneInstruction: "warm",
+            body: "Hi Maya, thinking about your move to Denver.",
+          },
+        ],
+        sourceRefs: [
+          {
+            kind: "approved_memory",
+            id: "memory-1",
+            label: "Maya moved to Denver.",
+            trust: "confirmed_fact",
+          },
+        ],
+        ephemeral: true,
+        persistenceRequiresExplicitOwnerIntent: true,
+      },
+      skippedReason: null,
+    });
+  });
+
+  it("renders skipped propose_message_draft results as a typed empty proposal", () => {
+    const view = toAssistantToolView({
+      toolName: "propose_message_draft",
+      output: {
+        ownerUserId: "owner-1",
+        proposal: null,
+        skippedReason: "insufficient_context",
+        component: { type: "draft_proposal", proposalId: null },
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "draft_proposal",
+      proposal: null,
+      skippedReason: "insufficient_context",
+    });
+  });
+
   it("degrades an unknown tool to a generic view", () => {
     const view = toAssistantToolView({ toolName: "some_future_tool", output: { whatever: true } });
 
@@ -701,6 +786,37 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         ],
       }),
     ).toBe("memory-curator:duplicate_memory:memory-1:memory-2");
+    expect(
+      assistantToolViewKey({
+        kind: "draft_proposal",
+        proposal: {
+          id: "draft_proposal:person-1:warm",
+          personId: "person-1",
+          personDisplayName: "Maya",
+          channel: "text",
+          purpose: "check_in",
+          variants: [
+            {
+              id: "variant-1",
+              label: "Warm",
+              toneInstruction: "warm",
+              body: "Hi Maya.",
+            },
+          ],
+          sourceRefs: [
+            {
+              kind: "approved_memory",
+              id: "memory-1",
+              label: "Maya moved to Denver.",
+              trust: "confirmed_fact",
+            },
+          ],
+          ephemeral: true,
+          persistenceRequiresExplicitOwnerIntent: true,
+        },
+        skippedReason: null,
+      }),
+    ).toBe("draft-proposal:draft_proposal:person-1:warm");
     expect(
       relationshipAgendaCandidateKey({
         kind: "recent_context",
@@ -841,6 +957,44 @@ describe("toolViewTier (how much weight a result earns)", () => {
       }),
     ).toBe("card");
     expect(toolViewTier({ kind: "memory_curator_proposals", proposals: [] })).toBe("line");
+    expect(
+      toolViewTier({
+        kind: "draft_proposal",
+        proposal: {
+          id: "draft_proposal:person-1:warm",
+          personId: "person-1",
+          personDisplayName: "Maya",
+          channel: "text",
+          purpose: "check_in",
+          variants: [
+            {
+              id: "variant-1",
+              label: "Warm",
+              toneInstruction: "warm",
+              body: "Hi Maya.",
+            },
+          ],
+          sourceRefs: [
+            {
+              kind: "approved_memory",
+              id: "memory-1",
+              label: "Maya moved to Denver.",
+              trust: "confirmed_fact",
+            },
+          ],
+          ephemeral: true,
+          persistenceRequiresExplicitOwnerIntent: true,
+        },
+        skippedReason: null,
+      }),
+    ).toBe("card");
+    expect(
+      toolViewTier({
+        kind: "draft_proposal",
+        proposal: null,
+        skippedReason: "insufficient_context",
+      }),
+    ).toBe("line");
   });
 });
 
@@ -850,6 +1004,7 @@ describe("activeToolLabel (in-flight tool → working copy)", () => {
     expect(activeToolLabel("search_semantic_context")).toBe("Searching by meaning…");
     expect(activeToolLabel("get_relationship_agenda")).toBe("Checking your relationship agenda…");
     expect(activeToolLabel("propose_memory_cleanup")).toBe("Reviewing memory cleanup candidates…");
+    expect(activeToolLabel("propose_message_draft")).toBe("Drafting options…");
     expect(activeToolLabel("capture_memory")).toBe("Saving to memory…");
   });
 

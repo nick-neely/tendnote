@@ -7,6 +7,7 @@ export * from "./calendar";
 export * from "./calendar-followups";
 export * from "./context-snapshots";
 export * from "./draft-generation";
+export * from "./draft-proposals";
 export * from "./drafts";
 export * from "./exact-recall";
 export * from "./extraction-jobs";

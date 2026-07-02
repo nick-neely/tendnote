@@ -70,3 +70,8 @@ phrase results.
   memory archive candidates, contradiction warnings, vague-memory rewrites,
   clarification prompts, and Source Record cleanup suggestions. It is review-only;
   it cannot approve, edit, archive, merge, or delete durable Memories.
+- Use `message_drafter` for drafting, tone variants, and revision exploration
+  before the owner has asked to save a Tendnote draft. Its Draft Proposals are
+  ephemeral; when the owner explicitly asks to save or accepts a proposal, persist
+  the accepted body and source references through `create_message_draft` with
+  `acceptedProposal` in the root Eve tool set.

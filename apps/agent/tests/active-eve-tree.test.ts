@@ -28,6 +28,9 @@ describe("active Eve tree", () => {
       "subagents/memory_curator/agent.ts",
       "subagents/memory_curator/instructions.md",
       "subagents/memory_curator/tools/propose_memory_cleanup.ts",
+      "subagents/message_drafter/agent.ts",
+      "subagents/message_drafter/instructions.md",
+      "subagents/message_drafter/tools/propose_message_draft.ts",
     ]);
 
     expect(files.some((file) => file.startsWith("connections/"))).toBe(false);

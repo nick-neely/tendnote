@@ -92,4 +92,40 @@ describe("assistant tool-result contract", () => {
 
     expect(parsed.success).toBe(true);
   });
+
+  it("accepts ephemeral Draft Proposals with variants and source grounding", () => {
+    const parsed = assistantToolResultSchemas.propose_message_draft.safeParse({
+      ownerUserId: "owner-1",
+      proposal: {
+        id: "draft_proposal:person-1:warm",
+        ownerUserId: "owner-1",
+        personId: "person-1",
+        personDisplayName: "Maya",
+        channel: "text",
+        purpose: "check_in",
+        variants: [
+          {
+            id: "variant-1",
+            label: "Warm",
+            toneInstruction: "warm",
+            body: "Hi Maya, thinking about your move to Denver.",
+          },
+        ],
+        sourceRefs: [
+          {
+            kind: "approved_memory",
+            id: "memory-1",
+            label: "Maya moved to Denver.",
+            trust: "confirmed_fact",
+          },
+        ],
+        ephemeral: true,
+        persistenceRequiresExplicitOwnerIntent: true,
+      },
+      skippedReason: null,
+      component: { type: "draft_proposal", proposalId: "draft_proposal:person-1:warm" },
+    });
+
+    expect(parsed.success).toBe(true);
+  });
 });

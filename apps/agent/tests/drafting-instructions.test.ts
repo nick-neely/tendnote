@@ -28,6 +28,14 @@ describe("drafting instructions — tone and privacy", () => {
     expect(authored).toMatch(/warmer|shorter|more professional/i);
     expect(authored).toMatch(/toneInstruction/);
   });
+
+  it("routes exploratory drafting through ephemeral Draft Proposals before persistence", () => {
+    expect(authored).toMatch(/message_drafter/);
+    expect(authored).toMatch(/ephemeral Draft Proposals/i);
+    expect(authored).toMatch(/revisionContext/);
+    expect(authored).toMatch(/acceptedProposal/);
+    expect(authored).toMatch(/saved draft matches what the owner accepted/i);
+  });
 });
 
 describe("drafting instructions — no external send or draft", () => {

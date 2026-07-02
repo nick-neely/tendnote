@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { draftProposalResultSchema } from "./draft-proposals";
 import { memoryCuratorProposalResultSchema } from "./memory-curator";
 
 /**
@@ -169,6 +170,7 @@ export const relationshipAgendaToolResult = z.object({
 });
 
 export const memoryCuratorToolResult = memoryCuratorProposalResultSchema;
+export const draftProposalToolResult = draftProposalResultSchema;
 
 /**
  * Registry of rendered Eve tools → their persisted result contract. The web parses
@@ -191,6 +193,7 @@ export const assistantToolResultSchemas = {
   search_semantic_context: semanticContextSearchToolResult,
   get_relationship_agenda: relationshipAgendaToolResult,
   propose_memory_cleanup: memoryCuratorToolResult,
+  propose_message_draft: draftProposalToolResult,
 } as const satisfies Record<string, z.ZodTypeAny>;
 
 /** A tool name that persists a typed, rendered result (vs. a `generic` fallback). */
@@ -203,6 +206,7 @@ export type SuggestedMemoryReviewItemOutput = z.infer<typeof suggestedMemoryRevi
 export type SuggestedFollowupReviewItemOutput = z.infer<typeof suggestedFollowupReviewItem>;
 export type RelationshipAgendaToolResult = z.infer<typeof relationshipAgendaToolResult>;
 export type MemoryCuratorToolResult = z.infer<typeof memoryCuratorToolResult>;
+export type DraftProposalToolResult = z.infer<typeof draftProposalToolResult>;
 
 /** True when a tool name has a typed rendered contract in the registry. */
 export function isRenderedToolName(toolName: string): toolName is RenderedToolName {

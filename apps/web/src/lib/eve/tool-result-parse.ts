@@ -1,5 +1,6 @@
 import {
   assistantToolResultSchemas,
+  type DraftProposalToolResult,
   type MemoryCuratorToolResult,
   type RelationshipAgendaToolResult,
   type SuggestedFollowupReviewItemOutput,
@@ -51,6 +52,22 @@ function toMemoryCuratorProposal(
     sourceRefs: proposal.sourceRefs,
     sensitivity: proposal.sensitivity,
     reviewOnly: proposal.reviewOnly,
+  };
+}
+
+function toDraftProposal(
+  proposal: NonNullable<DraftProposalToolResult["proposal"]>,
+): NonNullable<Extract<AssistantToolView, { kind: "draft_proposal" }>["proposal"]> {
+  return {
+    id: proposal.id,
+    personId: proposal.personId,
+    personDisplayName: proposal.personDisplayName,
+    channel: proposal.channel,
+    purpose: proposal.purpose,
+    variants: proposal.variants,
+    sourceRefs: proposal.sourceRefs,
+    ephemeral: proposal.ephemeral,
+    persistenceRequiresExplicitOwnerIntent: proposal.persistenceRequiresExplicitOwnerIntent,
   };
 }
 
@@ -232,6 +249,15 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
       return {
         kind: "memory_curator_proposals",
         proposals: parsed.data.proposals.map(toMemoryCuratorProposal),
+      };
+    }
+    case "propose_message_draft": {
+      const parsed = assistantToolResultSchemas.propose_message_draft.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "draft_proposal",
+        proposal: parsed.data.proposal ? toDraftProposal(parsed.data.proposal) : null,
+        skippedReason: parsed.data.skippedReason ?? null,
       };
     }
     default:
