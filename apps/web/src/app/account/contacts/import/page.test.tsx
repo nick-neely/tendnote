@@ -14,7 +14,6 @@ vi.mock("@/lib/integrations/contact-import-preview-data", () => ({
 vi.mock("@/app/actions/contact-import", () => ({
   confirmContactImportCandidateAction: vi.fn(),
   confirmSafeContactImportCandidatesAction: vi.fn(),
-  skipContactImportCandidateAction: vi.fn(),
 }));
 
 import ContactsImportPage from "./page";
@@ -24,7 +23,7 @@ beforeEach(() => {
 });
 
 describe("ContactsImportPage", () => {
-  it("separates safe recommendations from individual-review candidates", async () => {
+  it("renders a unified table with resolution controls per review state", async () => {
     getOwnerContactImportPreview.mockResolvedValue({
       id: "session-1",
       connected: true,
@@ -102,25 +101,26 @@ describe("ContactsImportPage", () => {
       ],
     });
 
-    const html = renderToStaticMarkup(
-      await ContactsImportPage({ searchParams: Promise.resolve({}) }),
-    );
+    const html = renderToStaticMarkup(await ContactsImportPage());
 
-    expect(html).toContain("Safe recommendations");
-    expect(html).toContain("Needs individual review");
+    // Unified table + toolbar rather than the old split sections + banner.
+    expect(html).toContain("Confirm safe recommendations");
+    expect(html).toContain("Filter by name, email, or phone");
+    // Every candidate shares one table.
     expect(html).toContain("Safe Contact");
     expect(html).toContain("Conflict Contact");
     expect(html).toContain("New Contact");
-    expect(html).toContain("Apply explicit resolution");
+    expect(html).toContain("Matches Conflict Contact");
+    // Inline resolution zone (rendered collapsed) per review state.
+    expect(html).toContain("Apply resolution");
     expect(html).toContain("Create new person");
-    expect(html).toContain("Skip candidate");
+    expect(html).toContain("Skip");
     expect(html).toContain("Tendnote already has birthday --04-18.");
-    expect(html).toContain('name="candidateId"');
-    expect(html).toContain('value="safe"');
-    expect(html).toContain('value="new"');
+    // Summary line reflects the full fetched set, not the old 3-cap copy.
+    expect(html).toContain("fetched from Google");
   });
 
-  it("shows post-confirmation change counts", async () => {
+  it("renders a calm empty state when nothing was fetched", async () => {
     getOwnerContactImportPreview.mockResolvedValue({
       id: "session-1",
       connected: true,
@@ -132,24 +132,12 @@ describe("ContactsImportPage", () => {
       candidates: [],
     });
 
-    const html = renderToStaticMarkup(
-      await ContactsImportPage({
-        searchParams: Promise.resolve({
-          confirmed: "2",
-          created: "1",
-          updated: "1",
-          methods: "3",
-          birthdays: "1",
-        }),
-      }),
-    );
+    const html = renderToStaticMarkup(await ContactsImportPage());
 
-    expect(html).toContain("Confirmed 2 contact import candidates");
-    expect(html).toContain("1 new person, 1 updated person, 3 contact methods, and 1 birthday");
-    expect(html).toContain("can be edited or archived from people profiles");
+    expect(html).toContain("No contacts were fetched from Google.");
   });
 
-  it("renders advisory fuzzy match reasons distinctly", async () => {
+  it("renders advisory fuzzy match reasons with a target chooser", async () => {
     getOwnerContactImportPreview.mockResolvedValue({
       id: "session-1",
       connected: true,
@@ -186,9 +174,7 @@ describe("ContactsImportPage", () => {
       ],
     });
 
-    const html = renderToStaticMarkup(
-      await ContactsImportPage({ searchParams: Promise.resolve({}) }),
-    );
+    const html = renderToStaticMarkup(await ContactsImportPage());
 
     expect(html).toContain("Advisory");
     expect(html).toContain("Choose target person");

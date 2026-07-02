@@ -18,13 +18,16 @@ import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
  * Owner-scoped Contacts import preview data for Phase 2E #130. This is
  * fixture-backed provider data for the first end-to-end preview path; the shared
  * service returns ephemeral candidate rows and performs no relationship writes.
+ *
+ * The review UI is a client-side data table that pages, sorts, and filters the
+ * full candidate set locally, so we request every candidate (matching the apply
+ * path's limit) rather than the default per-bucket preview cap. No `query` is
+ * passed — filtering happens in the table, not via a server round-trip.
  */
-export async function getOwnerContactImportPreview(input: {
-  query?: string;
-}): Promise<ContactImportPreviewSession> {
+export async function getOwnerContactImportPreview(): Promise<ContactImportPreviewSession> {
   const ownerUserId = await requireAdmittedOwner();
   return createContactImportPreviewSession(
-    { ownerUserId, query: input.query },
+    { ownerUserId, limit: 200 },
     {
       adapter: await createOwnerContactImportAdapter(),
       fuzzyMatcher: createFakeContactImportFuzzyMatcher(),

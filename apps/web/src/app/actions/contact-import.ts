@@ -2,98 +2,72 @@
 
 import {
   applyOwnerContactImportCandidates,
+  type ContactImportApplyResult,
   type ContactImportCandidateResolution,
 } from "@tendnote/db/queries/contacts-import-preview";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { createOwnerContactImportAdapter } from "@/lib/integrations/contact-import-preview-data";
 
-export async function confirmSafeContactImportCandidatesAction(formData: FormData) {
+export type ConfirmSafeContactImportInput = {
+  candidateIds: string[];
+};
+
+export type ConfirmContactImportCandidateInput = {
+  candidateId: string;
+  targetPersonId?: string | null;
+  createPerson?: boolean;
+  birthdayChoice?: "provider" | "existing" | "skip";
+};
+
+/**
+ * Confirm safe-recommendation candidates in bulk. Returns the apply result to
+ * the client, which fires a sonner toast and optimistically removes the rows.
+ * The people list is revalidated so it reflects new/updated people.
+ */
+export async function confirmSafeContactImportCandidatesAction(
+  input: ConfirmSafeContactImportInput,
+): Promise<ContactImportApplyResult> {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await applyOwnerContactImportCandidates({
     ownerUserId,
-    candidateIds: getCandidateIds(formData),
+    candidateIds: input.candidateIds,
     mode: "safe_bulk",
     adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
   });
 
-  revalidatePath("/account/contacts/import");
   revalidatePath("/people");
-  redirect(importFeedbackUrl(result));
+  return result;
 }
 
-export async function confirmContactImportCandidateAction(formData: FormData) {
+/**
+ * Confirm a single review candidate with an explicit resolution (target person,
+ * create-new, or birthday choice). Returns the apply result to the client.
+ */
+export async function confirmContactImportCandidateAction(
+  input: ConfirmContactImportCandidateInput,
+): Promise<ContactImportApplyResult> {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await applyOwnerContactImportCandidates({
     ownerUserId,
-    candidateIds: getCandidateIds(formData),
+    candidateIds: [input.candidateId],
     mode: "explicit",
-    resolutions: [getResolution(formData)],
+    resolutions: [toResolution(input)],
     adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
   });
 
-  revalidatePath("/account/contacts/import");
   revalidatePath("/people");
-  redirect(importFeedbackUrl(result));
+  return result;
 }
 
-export async function skipContactImportCandidateAction(formData: FormData) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await applyOwnerContactImportCandidates({
-    ownerUserId,
-    mode: "explicit",
-    resolutions: [{ candidateId: String(formData.get("candidateId") ?? ""), action: "skip" }],
-    adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
-  });
-
-  revalidatePath("/account/contacts/import");
-  redirect(importFeedbackUrl(result));
-}
-
-function getCandidateIds(formData: FormData): string[] {
-  return formData
-    .getAll("candidateId")
-    .flatMap((value) => (typeof value === "string" && value ? [value] : []));
-}
-
-function getResolution(formData: FormData): ContactImportCandidateResolution {
-  const candidateId = String(formData.get("candidateId") ?? "");
-  const targetPersonId = String(formData.get("targetPersonId") ?? "").trim();
-  const createPerson = formData.get("createPerson") === "true";
-  const birthdayChoice = String(formData.get("birthdayChoice") ?? "");
+function toResolution(input: ConfirmContactImportCandidateInput): ContactImportCandidateResolution {
+  const targetPersonId = input.targetPersonId?.trim() ?? "";
 
   return {
-    candidateId,
+    candidateId: input.candidateId,
     action: "apply",
     targetPersonId: targetPersonId || null,
-    createPerson,
-    birthdayChoice:
-      birthdayChoice === "provider" || birthdayChoice === "existing" || birthdayChoice === "skip"
-        ? birthdayChoice
-        : undefined,
+    createPerson: input.createPerson ?? false,
+    birthdayChoice: input.birthdayChoice,
   };
-}
-
-function importFeedbackUrl(result: {
-  importedCount: number;
-  createdPeople: number;
-  updatedPeople: number;
-  addedContactMethods: number;
-  addedBirthdays: number;
-  errorMessage?: string;
-}) {
-  if (result.errorMessage) {
-    return `/account/contacts/import?importError=${encodeURIComponent(result.errorMessage)}`;
-  }
-
-  const params = new URLSearchParams({
-    confirmed: String(result.importedCount),
-    created: String(result.createdPeople),
-    updated: String(result.updatedPeople),
-    methods: String(result.addedContactMethods),
-    birthdays: String(result.addedBirthdays),
-  });
-
-  return `/account/contacts/import?${params}`;
 }
