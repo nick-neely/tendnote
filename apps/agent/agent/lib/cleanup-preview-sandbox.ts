@@ -5,7 +5,7 @@ import {
 
 /**
  * Cleanup Preview Mode runs owner-supplied messy private text through an isolated
- * sandbox entrypoint and returns review-only normalized candidates. Durable
+ * app-owned entrypoint and returns review-only normalized candidates. Durable
  * people, memories, contact methods, source records, and follow-ups are not
  * written here; Tendnote confirmation surfaces must apply accepted candidates.
  */

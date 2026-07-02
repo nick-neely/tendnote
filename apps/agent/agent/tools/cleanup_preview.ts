@@ -1,7 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { runCleanupPreviewSandbox } from "../lib/cleanup-preview-sandbox";
 import { resolveOwnerUserId } from "../lib/owner";
-import { runCleanupPreviewSandbox } from "../sandbox/cleanup-preview";
 
 const inputSchema = z.object({
   inputText: z

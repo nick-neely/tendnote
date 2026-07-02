@@ -1,5 +1,6 @@
 import { createPublicKey, verify } from "node:crypto";
 import { captureSourceRecord } from "@tendnote/db/queries/source-records";
+import { defineChannel, POST } from "eve/channels";
 import { captureSourceRecordForPersonWithEmbeddingDelivery } from "../lib/background-jobs/embedding-schedulers";
 import { enqueueAndPublishExtractionJob } from "../lib/background-jobs/extraction-queue";
 import {
@@ -143,7 +144,9 @@ export async function handleDiscordRequest(
   return json(ephemeral(responseForRejection(result.reason)), 200);
 }
 
-export default handleDiscordRequest;
+export default defineChannel({
+  routes: [POST("/", (request) => handleDiscordRequest(request))],
+});
 
 export function renderDiscordHitlPrompt(input: {
   sessionId: string;

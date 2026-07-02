@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { expectAllowedAgentChannels, expectChannelToExclude } from "./agent-channel-boundaries";
@@ -24,11 +24,10 @@ describe("Phase 1F agent-surface boundaries", () => {
     );
   });
 
-  it("adds no workflow or connection surfaces and only the real Phase 3 cleanup sandbox", () => {
-    for (const dir of ["sandboxes", "workflows", "connections"]) {
+  it("adds no workflow, connection, or authored Eve sandbox surfaces", () => {
+    for (const dir of ["sandboxes", "workflows", "connections", "sandbox"]) {
       expect(existsSync(join(agentRoot, dir))).toBe(false);
     }
-    expect(readdirSync(join(agentRoot, "sandbox"))).toEqual(["cleanup-preview.ts"]);
   });
 
   it("keeps domain language aligned with the persisted brief-item model", () => {

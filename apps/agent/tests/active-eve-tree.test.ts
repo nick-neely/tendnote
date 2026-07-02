@@ -39,9 +39,7 @@ describe("active Eve tree", () => {
       "subagents/relationship_strategist/tools/propose_followup.ts",
     ]);
 
-    expect(files.filter((file) => file.startsWith("sandbox/"))).toEqual([
-      "sandbox/cleanup-preview.ts",
-    ]);
+    expect(files.filter((file) => file.startsWith("sandbox/"))).toEqual([]);
     expect(files.some((file) => file.startsWith("connections/"))).toBe(false);
     expect(files.some((file) => /placeholder|stub|future/i.test(file))).toBe(false);
   });
@@ -88,7 +86,7 @@ describe("active Eve tree", () => {
     const toolFiles = files.filter((file) => file.startsWith("tools/"));
     const sandboxFiles = files.filter((file) => file.startsWith("sandbox/"));
 
-    expect(sandboxFiles).toEqual(["sandbox/cleanup-preview.ts"]);
+    expect(sandboxFiles).toEqual([]);
     expect(sandboxFiles.some((file) => /extraction|model|debug/i.test(file))).toBe(false);
     expect(files.some((file) => /extraction.*(inbox|sandbox|debug|mode)/i.test(file))).toBe(false);
     expect(toolFiles.some((file) => /extract|model|debug/i.test(file))).toBe(false);

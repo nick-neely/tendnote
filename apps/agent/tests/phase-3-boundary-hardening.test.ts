@@ -11,8 +11,8 @@ const repoRoot = join(import.meta.dirname, "../../..");
 
 const PHASE_3_IMPLEMENTATION_FILES = [
   "apps/agent/agent/channels/discord.ts",
+  "apps/agent/agent/lib/cleanup-preview-sandbox.ts",
   "apps/agent/agent/lib/eve-modes.ts",
-  "apps/agent/agent/sandbox/cleanup-preview.ts",
   "apps/agent/agent/schedules/brief-dispatcher.ts",
   "apps/agent/agent/subagents/memory_curator/agent.ts",
   "apps/agent/agent/subagents/memory_curator/tools/propose_memory_cleanup.ts",
@@ -40,7 +40,7 @@ const PHASE_3_IMPLEMENTATION_FILES = [
 ] as const;
 
 const CLEANUP_PREVIEW_FILES = [
-  "apps/agent/agent/sandbox/cleanup-preview.ts",
+  "apps/agent/agent/lib/cleanup-preview-sandbox.ts",
   "apps/agent/agent/tools/cleanup_preview.ts",
   "packages/db/src/queries/cleanup-preview.ts",
 ] as const;
@@ -91,7 +91,7 @@ describe("Phase 3 boundary hardening", () => {
     const currentPhase3Files = [
       ...listFiles("apps/agent/agent")
         .filter((file) =>
-          /channels\/discord|lib\/eve-modes|sandbox\/cleanup-preview|schedules\/brief-dispatcher|subagents\/|tools\/cleanup_preview/.test(
+          /channels\/discord|lib\/cleanup-preview-sandbox|lib\/eve-modes|schedules\/brief-dispatcher|subagents\/|tools\/cleanup_preview/.test(
             file,
           ),
         )
