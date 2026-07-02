@@ -187,7 +187,7 @@ function CandidateList({
           {description}
         </p>
       </div>
-      <ul className="flex flex-col divide-y rounded-lg border bg-surface">
+      <ul className="flex flex-col divide-y overflow-hidden rounded-lg border bg-surface">
         {candidates.map((candidate) => (
           <li className="flex flex-col gap-2 px-3.5 py-3" key={candidate.id}>
             <div className="flex items-start justify-between gap-3">
@@ -277,13 +277,17 @@ function ReviewResolutionControls({
   const unresolvableTarget = !hasNamedTarget && !canCreate;
 
   return (
-    <div className="flex flex-col gap-2 border-t pt-2">
+    // Recessed footer zone: the source contact stays on the card's --surface; the
+    // decision steps down onto --panel, full-bleed to the card edges (clipped to the
+    // card's rounded corners by the list's overflow-hidden). Flat — border + fill,
+    // no shadow, no nested card, no side stripe.
+    <div className="-mx-3.5 -mb-3 mt-1 flex flex-col gap-2.5 border-t bg-panel px-3.5 py-3">
       {hasNamedTarget ? (
         <form action={confirmContactImportCandidateAction} className="flex flex-col gap-2">
           <input name="candidateId" type="hidden" value={candidate.id} />
           {needsTargetChoice ? (
             <fieldset className="flex flex-col gap-1.5">
-              <legend className="text-[length:var(--text-small)] font-medium text-muted-foreground">
+              <legend className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-foreground">
                 Choose target person
               </legend>
               {targetOptions.map((target) => (
