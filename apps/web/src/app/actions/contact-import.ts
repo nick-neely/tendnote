@@ -7,6 +7,7 @@ import {
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { createOwnerContactImportAdapter } from "@/lib/integrations/contact-import-preview-data";
 
 export async function confirmSafeContactImportCandidatesAction(formData: FormData) {
   const ownerUserId = await requireAdmittedOwnerForAction();
@@ -14,6 +15,7 @@ export async function confirmSafeContactImportCandidatesAction(formData: FormDat
     ownerUserId,
     candidateIds: getCandidateIds(formData),
     mode: "safe_bulk",
+    adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
   });
 
   revalidatePath("/account/contacts/import");
@@ -28,6 +30,7 @@ export async function confirmContactImportCandidateAction(formData: FormData) {
     candidateIds: getCandidateIds(formData),
     mode: "explicit",
     resolutions: [getResolution(formData)],
+    adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
   });
 
   revalidatePath("/account/contacts/import");
@@ -41,6 +44,7 @@ export async function skipContactImportCandidateAction(formData: FormData) {
     ownerUserId,
     mode: "explicit",
     resolutions: [{ candidateId: String(formData.get("candidateId") ?? ""), action: "skip" }],
+    adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
   });
 
   revalidatePath("/account/contacts/import");
@@ -77,7 +81,12 @@ function importFeedbackUrl(result: {
   updatedPeople: number;
   addedContactMethods: number;
   addedBirthdays: number;
+  errorMessage?: string;
 }) {
+  if (result.errorMessage) {
+    return `/account/contacts/import?importError=${encodeURIComponent(result.errorMessage)}`;
+  }
+
   const params = new URLSearchParams({
     confirmed: String(result.importedCount),
     created: String(result.createdPeople),

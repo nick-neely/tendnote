@@ -105,6 +105,7 @@ export type ContactImportPreviewSession = {
   fetchedCount: number;
   shownCount: number;
   hiddenCount: number;
+  errorMessage?: string;
   candidates: ContactImportPreviewCandidate[];
 };
 
@@ -137,6 +138,7 @@ export type ContactImportApplyResult = {
   updatedPeople: number;
   addedContactMethods: number;
   addedBirthdays: number;
+  errorMessage?: string;
   candidates: Array<{
     candidateId: string;
     providerContactId: string;

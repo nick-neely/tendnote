@@ -19,6 +19,7 @@ type SearchParams = {
   updated?: string | string[];
   methods?: string | string[];
   birthdays?: string | string[];
+  importError?: string | string[];
 };
 
 export default async function ContactsImportPage({
@@ -33,6 +34,7 @@ export default async function ContactsImportPage({
   const updated = readParam(params?.updated);
   const methods = readParam(params?.methods);
   const birthdays = readParam(params?.birthdays);
+  const importError = readParam(params?.importError, "");
   const preview = await getOwnerContactImportPreview({ query });
   const safeCandidates = preview.candidates.filter((candidate) => candidate.safeBulkEligible);
   const reviewCandidates = preview.candidates.filter((candidate) => !candidate.safeBulkEligible);
@@ -74,6 +76,20 @@ export default async function ContactsImportPage({
                   {methods === "1" ? "method" : "methods"}, and {birthdays}{" "}
                   {birthdays === "1" ? "birthday" : "birthdays"} changed. Imported fields are now
                   normal Tendnote profile data and can be edited or archived from people profiles.
+                </p>
+              </section>
+            ) : null}
+            {importError ? (
+              <section className="rounded-lg border border-accent/30 bg-accent/10 px-3.5 py-3">
+                <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty text-accent">
+                  {importError}
+                </p>
+              </section>
+            ) : null}
+            {preview.errorMessage ? (
+              <section className="rounded-lg border border-accent/30 bg-accent/10 px-3.5 py-3">
+                <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty text-accent">
+                  {preview.errorMessage}
                 </p>
               </section>
             ) : null}

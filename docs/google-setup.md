@@ -176,6 +176,21 @@ Run after the relevant code slices land, with `GOOGLE_CLIENT_ID` and
       Connection shows `connected` and the account row offers **Preview latest
       contacts**. Opening preview is explicit; no contacts are saved merely by
       connecting.
+- [ ] **Live preview:** Open `/account/contacts/import`. The preview fetches
+      only personal People API contacts using `names,emailAddresses,phoneNumbers,birthdays`
+      with `READ_SOURCE_TYPE_CONTACT`; no Directory, Admin, inferred contacts,
+      or raw People payload appears in the UI or logs.
+- [ ] **Confirm safe:** Confirm a safe recommendation. Tendnote updates only
+      confirmed Tendnote-owned people/contact fields, stores a minimized provider
+      contact reference, and records audit/provenance. No Gmail draft, send,
+      Calendar write, or outbound behavior occurs.
+- [ ] **Resolve review:** Resolve one conflicting/advisory candidate by choosing
+      the target person and winning values. Conflicting Tendnote fields are not
+      overwritten unless explicitly chosen, and skipped candidates create no
+      durable relationship writes.
+- [ ] **Failure cleanup:** Revoke Tendnote from Google Account permissions, then
+      open Contacts import preview. Tendnote shows a visible preview failure and
+      confirmation actions do not apply partial durable changes.
 - [ ] **Disconnect:** Disconnect Contacts. Future Contacts preview reads are
       blocked, while confirmed Tendnote-owned people, emails, phones, and
       birthdays remain editable in Tendnote.
@@ -196,9 +211,9 @@ Run after the relevant code slices land, with `GOOGLE_CLIENT_ID` and
       while the consent screen is in Testing mode.
 - [ ] Calendar connect -> status -> read -> disconnect works end-to-end.
 - [ ] Gmail connect -> status -> create draft -> update draft works end-to-end.
-- [ ] Contacts connect -> status -> preview entry -> disconnect works
-      end-to-end; live preview/apply checks follow the Phase 2E smoke checklist
-      once the adapter and preview workflow are wired.
+- [ ] Contacts connect -> status -> preview entry -> live preview -> safe
+      confirmation -> conflict/advisory resolution -> disconnect works
+      end-to-end, following the Phase 2E checklist above.
 - [ ] Hosted logs and audit entries contain no OAuth tokens, raw provider
       payloads, Gmail history, mailbox labels, directory data, or sent-message
       activity.

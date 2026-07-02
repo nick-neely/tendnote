@@ -17,6 +17,7 @@ import type {
   ContactImportApplyDeps,
   ContactImportAuditEntry,
   ContactImportCandidateResolution,
+  ContactImportPreviewAdapter,
   ContactImportProviderReferenceInput,
 } from "./contacts-import-preview/types";
 import { createPeopleQueries } from "./people/queries";
@@ -26,6 +27,10 @@ export {
   createFakeContactImportFuzzyMatcher,
   createFakeContactImportPreviewAdapter,
 } from "./contacts-import-preview/fake-adapter";
+export {
+  createGoogleContactsAdapter,
+  type GoogleContactsAdapterOptions,
+} from "./contacts-import-preview/google-adapter";
 export {
   applyContactImportCandidates,
   createContactImportPreviewSession,
@@ -60,10 +65,11 @@ export async function applyOwnerContactImportCandidates(input: {
   candidateIds?: string[];
   mode?: "safe_bulk" | "explicit";
   resolutions?: ContactImportCandidateResolution[];
+  adapter?: ContactImportPreviewAdapter;
 }) {
   return getDb().transaction(async (tx) =>
     applyContactImportCandidates(input, {
-      adapter: createFakeContactImportPreviewAdapter(),
+      adapter: input.adapter ?? createFakeContactImportPreviewAdapter(),
       fuzzyMatcher: createFakeContactImportFuzzyMatcher(),
       isProviderCapabilityConnected: async (ref) => {
         const [connection] = await tx

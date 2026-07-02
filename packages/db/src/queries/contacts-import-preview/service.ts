@@ -47,7 +47,25 @@ export async function createContactImportPreviewSession(
     };
   }
 
-  const contacts = await deps.adapter.fetchContacts({ ownerUserId: input.ownerUserId });
+  let contacts: GoogleContactsPreviewContact[];
+  try {
+    contacts = await deps.adapter.fetchContacts({ ownerUserId: input.ownerUserId });
+  } catch (error) {
+    return {
+      id: randomUUID(),
+      connected: true,
+      mode,
+      query,
+      fetchedCount: 0,
+      shownCount: 0,
+      hiddenCount: 0,
+      errorMessage:
+        error instanceof Error
+          ? error.message
+          : "Google Contacts preview is temporarily unavailable.",
+      candidates: [],
+    };
+  }
   const people = await deps.searchPeople({ ownerUserId: input.ownerUserId, limit: 200 });
   const normalizedMethods = contacts.flatMap((contact) => normalizedContactMethods(contact));
   const duplicateMatches = normalizedMethods.length
@@ -106,6 +124,9 @@ export async function applyContactImportCandidates(
     { ownerUserId: input.ownerUserId, limit: 200 },
     deps,
   );
+  if (preview.errorMessage) {
+    return emptyApplyResult(preview.errorMessage);
+  }
   const resolutions = new Map(
     input.resolutions?.map((resolution) => [resolution.candidateId, resolution]),
   );
@@ -309,6 +330,19 @@ export async function applyContactImportCandidates(
     ),
     addedBirthdays: results.filter((result) => result.addedBirthday).length,
     candidates: results,
+    undoAvailable: false,
+  };
+}
+
+function emptyApplyResult(errorMessage?: string): ContactImportApplyResult {
+  return {
+    importedCount: 0,
+    createdPeople: 0,
+    updatedPeople: 0,
+    addedContactMethods: 0,
+    addedBirthdays: 0,
+    errorMessage,
+    candidates: [],
     undoAvailable: false,
   };
 }

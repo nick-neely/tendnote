@@ -603,6 +603,47 @@ describe("createContactImportPreviewSession", () => {
     expect(fetchContacts).not.toHaveBeenCalled();
   });
 
+  it("surfaces provider preview errors without returning candidates", async () => {
+    const deps = {
+      ...createDeps({}),
+      adapter: {
+        fetchContacts: vi
+          .fn()
+          .mockRejectedValue(new Error("Google Contacts preview failed with status 403.")),
+      },
+    };
+
+    const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(session).toMatchObject({
+      connected: true,
+      fetchedCount: 0,
+      shownCount: 0,
+      errorMessage: "Google Contacts preview failed with status 403.",
+      candidates: [],
+    });
+  });
+
+  it("surfaces provider errors during apply without durable writes", async () => {
+    const deps = {
+      ...createApplyDeps({}),
+      adapter: {
+        fetchContacts: vi
+          .fn()
+          .mockRejectedValue(new Error("Google Contacts preview failed with status 401.")),
+      },
+    };
+
+    const result = await applyContactImportCandidates({ ownerUserId: OWNER }, deps);
+
+    expect(result).toMatchObject({
+      importedCount: 0,
+      errorMessage: "Google Contacts preview failed with status 401.",
+    });
+    expect(deps.providerRefs).toEqual([]);
+    expect(deps.contactAuditEntries).toEqual([]);
+  });
+
   it("does not write durable relationship data for unconfirmed preview rows", async () => {
     const deps = createDeps({
       people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
