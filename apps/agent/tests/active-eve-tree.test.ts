@@ -55,6 +55,7 @@ describe("active Eve tree", () => {
     const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
     expect(code).not.toMatch(/\breceive\b/);
+    expect(code).toMatch(/dispatchBirthdayGiftPlanning/);
     expect(code).toMatch(/dispatchDueBriefs/);
     expect(code).toMatch(/dispatchPostMeetingAftercare/);
     expect(code).toMatch(/createDiscordProactiveDeliverySender/);

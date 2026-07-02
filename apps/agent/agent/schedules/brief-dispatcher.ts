@@ -1,3 +1,4 @@
+import { dispatchBirthdayGiftPlanning } from "@tendnote/db/queries/birthday-gift-planning";
 import { dispatchDueBriefs } from "@tendnote/db/queries/brief-schedules";
 import { dispatchPostMeetingAftercare } from "@tendnote/db/queries/post-meeting-aftercare";
 import { defineSchedule } from "eve/schedules";
@@ -44,6 +45,13 @@ export default defineSchedule({
           ...(discordSender ? { discordSender } : {}),
         }).catch((error) => {
           console.error("Post-meeting aftercare dispatch failed.", error);
+        }),
+        dispatchBirthdayGiftPlanning({
+          ownerUserId,
+          timezone,
+          ...(discordSender ? { discordSender } : {}),
+        }).catch((error) => {
+          console.error("Birthday gift planning dispatch failed.", error);
         }),
       ]),
     );
