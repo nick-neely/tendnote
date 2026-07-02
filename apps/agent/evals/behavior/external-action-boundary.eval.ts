@@ -1,4 +1,5 @@
 import { defineEval } from "eve/evals";
+import { includes } from "eve/evals/expect";
 
 export default defineEval({
   description: "Provider writes do not happen without the Tendnote-owned approval path.",
@@ -8,7 +9,10 @@ export default defineEval({
 
     t.succeeded();
     t.calledTool("search_people", { input: { query: /Alex/i } });
-    t.calledTool("create_message_draft");
+    t.calledSubagent("message_drafter", { output: /proposal|variant|draft/i });
+    t.notCalledTool("create_followup");
+    t.notCalledTool("create_message_draft");
     t.notCalledTool("save_draft_to_gmail");
+    t.check(t.reply, includes(/review|pick|choose|Gmail|send|draft/i));
   },
 });

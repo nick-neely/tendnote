@@ -8,6 +8,13 @@ Pick the narrowest tool for what the user is asking.
 
 - Use `search_people` for identity lookup and disambiguation before linking new
   context.
+- For named-person questions like "what do I know about Alex's job search?" or
+  "what should I keep in mind about Mara?", resolve the person with
+  `search_people`, then use `get_person_context` before answering. Do not conclude
+  there is no stored context from an empty `search_relationship_context` result when
+  the query is about a known person; full person context is the source for that
+  person's approved memories, source records, suggested memories, and snapshot
+  guidance.
 - Use `search_relationship_context` for **exact stored-context recall** across
   stored people, approved memories, and active source records when the query
   depends on names, specific wording, or text matches. It returns compact
@@ -28,6 +35,14 @@ Pick the narrowest tool for what the user is asking.
 Phrase result trust carefully: person results are identity references, approved
 memories are confirmed facts, and source records are logged context — phrase those as
 "you noted" or "you mentioned", never as an established fact.
+
+Keep recall summaries literal. Do not turn stored context into broader
+psychological or workplace inferences ("quieter work rhythm", "async-friendly
+companies", "they value focus time") unless the user asks for strategy and you
+label the inference as optional. For a plain recall answer, summarize what was
+stored and keep any next-step suggestions directly tied to those stored words. Do
+not connect unrelated personal details, such as gift or hobby preferences, back to
+work style unless the stored record explicitly makes that connection.
 
 ## Exact vs. semantic
 

@@ -29,7 +29,7 @@ const inputSchema = z.object({
  */
 export default defineTool({
   description:
-    "Load a person's relationship context through the shared snapshot-backed read path. `snapshot.summary` is a generated CACHE for quick orientation, NOT a source of truth — before stating specific facts or drafting a message, ground them in the supporting records. Those records come in three tiers that MUST be phrased differently: `approvedMemories` are CONFIRMED FACTS; `sourceRecords` are LOGGED CONTEXT — phrase as 'you noted' or 'you mentioned', never as established fact; `suggestedMemories` are TENTATIVE review items the user has not approved — never state them as fact. `followups` are compact reminders, not a task list. Dismissed, archived, pending, and unresolved records are already excluded. Restricted content is omitted from the snapshot and the default tiers unless the user directly asked (set includeRestricted). If `snapshot` is null the cache was unavailable; fall back to the supporting records, which are always returned.",
+    "Load a person's relationship context through the shared snapshot-backed read path after identity is resolved with search_people. Use this for named-person questions like 'what do I know about Alex's job search?' or 'what should I remember about Mara?' `snapshot.summary` is a generated CACHE for quick orientation, NOT a source of truth — before stating specific facts or drafting a message, ground them in the supporting records. Those records come in three tiers that MUST be phrased differently: `approvedMemories` are CONFIRMED FACTS; `sourceRecords` are LOGGED CONTEXT — phrase as 'you noted' or 'you mentioned', never as established fact; `suggestedMemories` are TENTATIVE review items the user has not approved — never state them as fact. `followups` are compact reminders, not a task list. Dismissed, archived, pending, and unresolved records are already excluded. Restricted content is omitted from the snapshot and the default tiers unless the user directly asked (set includeRestricted). If `snapshot` is null the cache was unavailable; fall back to the supporting records, which are always returned.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -108,6 +108,8 @@ export default defineTool({
         sourceRecords: "Logged context. Phrase as 'you noted' or 'you mentioned', not as fact.",
         suggestedMemories: "Tentative and unapproved. Offer for review; never assert as fact.",
         followups: "Compact reminders for orientation. Do not treat as a task list.",
+        inference:
+          "For recall answers, stay literal. Do not expand stored facts into psychographic or workplace-culture inferences, and do not connect unrelated personal details back to work style unless a stored record explicitly does so.",
       },
     };
   },
