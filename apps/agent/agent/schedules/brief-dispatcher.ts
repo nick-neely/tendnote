@@ -1,4 +1,5 @@
 import { dispatchDueBriefs } from "@tendnote/db/queries/brief-schedules";
+import { dispatchPostMeetingAftercare } from "@tendnote/db/queries/post-meeting-aftercare";
 import { defineSchedule } from "eve/schedules";
 import { createDiscordProactiveDeliverySender } from "../channels/discord";
 
@@ -23,19 +24,27 @@ const timezone = process.env.TENDNOTE_BRIEF_TIMEZONE ?? "UTC";
 export default defineSchedule({
   cron: "*/15 * * * *",
   async run({ waitUntil }) {
-    const morningAgendaDiscordSender = createDiscordProactiveDeliverySender();
+    const discordSender = createDiscordProactiveDeliverySender();
 
     // Per-row generation errors are handled inside the dispatcher; this catch
     // covers a claim or bootstrap failure so the cron task never ends on an
     // unobserved rejection.
     waitUntil(
-      dispatchDueBriefs({
-        ensureOwnerUserId: ownerUserId,
-        timezone,
-        ...(morningAgendaDiscordSender ? { morningAgendaDiscordSender } : {}),
-      }).catch((error) => {
-        console.error("Brief schedule dispatch failed.", error);
-      }),
+      Promise.all([
+        dispatchDueBriefs({
+          ensureOwnerUserId: ownerUserId,
+          timezone,
+          ...(discordSender ? { morningAgendaDiscordSender: discordSender } : {}),
+        }).catch((error) => {
+          console.error("Brief schedule dispatch failed.", error);
+        }),
+        dispatchPostMeetingAftercare({
+          ownerUserId,
+          ...(discordSender ? { discordSender } : {}),
+        }).catch((error) => {
+          console.error("Post-meeting aftercare dispatch failed.", error);
+        }),
+      ]),
     );
   },
 });

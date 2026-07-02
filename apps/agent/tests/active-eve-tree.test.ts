@@ -43,11 +43,12 @@ describe("active Eve tree", () => {
     expect(files.some((file) => /placeholder|stub|future/i.test(file))).toBe(false);
   });
 
-  it("dispatches briefs without a chat session and gates Morning Agenda Discord delivery", () => {
+  it("dispatches scheduled workflows without a chat session and gates Discord delivery", () => {
     // The dispatcher persists briefs by calling the shared generator directly; it
     // must not start an Eve chat session. Phase 3 Morning Agenda may pass a
-    // Discord sender hook into the shared schedule dispatcher, which persists the
-    // artifact before attempting opt-in delivery.
+    // Discord sender hook into the shared schedule dispatcher. Post-Meeting
+    // Aftercare runs from the same root schedule and persists reviewable proposals
+    // before attempting opt-in delivery.
     const source = readFileSync(join(agentRoot, "schedules/brief-dispatcher.ts"), "utf8");
     // Strip comments so the doc comment's mention of receive(...) is not matched as
     // a call; we check the actual code only.
@@ -55,8 +56,9 @@ describe("active Eve tree", () => {
 
     expect(code).not.toMatch(/\breceive\b/);
     expect(code).toMatch(/dispatchDueBriefs/);
+    expect(code).toMatch(/dispatchPostMeetingAftercare/);
     expect(code).toMatch(/createDiscordProactiveDeliverySender/);
-    expect(code).toMatch(/morningAgendaDiscordSender/);
+    expect(code).toMatch(/discordSender/);
   });
 
   it("has no background follow-up scanner or periodic suggestion generator (Phase 1E)", () => {

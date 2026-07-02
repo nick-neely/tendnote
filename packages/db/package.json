@@ -25,6 +25,7 @@
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/morning-agenda": "./src/queries/morning-agenda.ts",
     "./queries/people": "./src/queries/people.ts",
+    "./queries/post-meeting-aftercare": "./src/queries/post-meeting-aftercare.ts",
     "./queries/provider-connections": "./src/queries/provider-connections.ts",
     "./queries/scheduled-workflow-deliveries": "./src/queries/scheduled-workflow-deliveries.ts",
     "./queries/relationship-agenda": "./src/queries/relationship-agenda.ts",
