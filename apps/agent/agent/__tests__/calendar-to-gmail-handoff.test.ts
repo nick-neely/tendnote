@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const repoRoot = join(import.meta.dirname, "../../..");
+const repoRoot = join(import.meta.dirname, "../../../..");
 
 /**
  * Calendar → Gmail handoff boundary (Phase 2D, ADR-0093). Calendar-derived

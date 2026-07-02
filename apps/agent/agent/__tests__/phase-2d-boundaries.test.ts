@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const repoRoot = join(import.meta.dirname, "../../..");
+const repoRoot = join(import.meta.dirname, "../../../..");
 
 /**
  * Consolidated Phase 2D Gmail draft boundary (PRD #119, ADRs 0083-0097). Phase 2D

@@ -2,8 +2,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const agentRoot = join(import.meta.dirname, "../agent");
-const repoRoot = join(import.meta.dirname, "../../..");
+const agentRoot = join(import.meta.dirname, "..");
+const repoRoot = join(import.meta.dirname, "../../../..");
 
 /**
  * Phase 2C agent-surface boundaries (PRD #105, ADR-0074). Phase 2C adds Eve's

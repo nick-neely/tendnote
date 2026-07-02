@@ -2,8 +2,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const agentRoot = join(import.meta.dirname, "../agent");
-const repoRoot = join(import.meta.dirname, "../../..");
+const agentRoot = join(import.meta.dirname, "..");
+const repoRoot = join(import.meta.dirname, "../../../..");
 
 /**
  * Phase 1F boundary evals on the Eve/agent surface (PRD #65, issue #74). They

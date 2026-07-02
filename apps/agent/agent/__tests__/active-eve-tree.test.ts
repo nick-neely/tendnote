@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const agentRoot = join(import.meta.dirname, "../agent");
+const agentRoot = join(import.meta.dirname, "..");
 
 function listAuthoredFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {

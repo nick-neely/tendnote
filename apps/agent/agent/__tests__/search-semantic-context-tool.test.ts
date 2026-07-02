@@ -8,7 +8,7 @@ vi.mock("@tendnote/db/queries/semantic-retrieval", () => ({
   searchSemanticContext,
 }));
 
-const { default: tool } = await import("../agent/tools/search_semantic_context");
+const { default: tool } = await import("../tools/search_semantic_context");
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

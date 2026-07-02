@@ -2,8 +2,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const repoRoot = join(import.meta.dirname, "../../..");
-const agentRoot = join(import.meta.dirname, "../agent");
+const repoRoot = join(import.meta.dirname, "../../../..");
+const agentRoot = join(import.meta.dirname, "..");
 
 function listFiles(root: string): string[] {
   return readdirSync(join(repoRoot, root)).flatMap((entry) => {
@@ -46,6 +46,7 @@ const contactImportSources = CONTACT_IMPORT_SURFACES.map(read).join("\n").toLowe
 describe("Phase 2E Contacts import boundary - no external write or inference side effects", () => {
   it("scans every current Contacts import source surface", () => {
     expect(CONTACT_IMPORT_SURFACES).toEqual([
+      "apps/web/src/app/account/contacts/import/contact-import-review.tsx",
       "apps/web/src/app/account/contacts/import/page.tsx",
       "apps/web/src/app/actions/contact-import.ts",
       "apps/web/src/lib/integrations/contact-import-preview-data.ts",

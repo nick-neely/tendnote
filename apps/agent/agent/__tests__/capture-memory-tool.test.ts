@@ -4,11 +4,11 @@ const { captureExplicitMemoryWithEmbeddingDelivery } = vi.hoisted(() => ({
   captureExplicitMemoryWithEmbeddingDelivery: vi.fn(),
 }));
 
-vi.mock("../agent/lib/background-jobs/embedding-schedulers", () => ({
+vi.mock("../lib/background-jobs/embedding-schedulers", () => ({
   captureExplicitMemoryWithEmbeddingDelivery,
 }));
 
-const { default: tool } = await import("../agent/tools/capture_memory");
+const { default: tool } = await import("../tools/capture_memory");
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 
