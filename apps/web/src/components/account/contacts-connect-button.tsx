@@ -5,6 +5,7 @@ import { useState } from "react";
 import { prepareGoogleContactsConnectAction } from "@/app/actions/integrations";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
+import { ensureLocalDemoAuthSessionIfNeeded } from "@/lib/auth/local-demo-session-client";
 
 /**
  * Starts the Google Contacts connect flow (Phase 2E, ADR-0107/0110). Uses Better
@@ -12,12 +13,19 @@ import { authClient } from "@/lib/auth/client";
  * Reconciliation on return enforces the same linked Google identity as Calendar
  * and Gmail before marking the Contacts capability connected.
  */
-export function ContactsConnectButton({ label }: { label: string }) {
+export function ContactsConnectButton({
+  ensureLocalDemoAuthSession = false,
+  label,
+}: {
+  ensureLocalDemoAuthSession?: boolean;
+  label: string;
+}) {
   const [pending, setPending] = useState(false);
 
   async function connect() {
     setPending(true);
     try {
+      await ensureLocalDemoAuthSessionIfNeeded(ensureLocalDemoAuthSession);
       await prepareGoogleContactsConnectAction();
       await authClient.linkSocial({
         provider: "google",

@@ -28,6 +28,7 @@ export default async function AccountPage() {
   if (view.type === "redirect") {
     redirect(view.to);
   }
+  const usingLocalFallback = access.state === "unauthenticated";
 
   // Admitted-only: getOwnerProviderConnections resolves the admitted owner before
   // reading, so pending/unauthenticated users never reach connection state.
@@ -102,6 +103,7 @@ export default async function AccountPage() {
           calendarConnectable={googleConfigured}
           contactsConnectable={googleConfigured}
           connections={connections}
+          ensureLocalDemoAuthSession={usingLocalFallback}
           gmailConnectable={googleConfigured}
         />
 

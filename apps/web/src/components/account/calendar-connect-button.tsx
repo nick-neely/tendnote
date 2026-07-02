@@ -4,6 +4,7 @@ import { GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE } from "@tendnote/domain";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
+import { ensureLocalDemoAuthSessionIfNeeded } from "@/lib/auth/local-demo-session-client";
 
 /**
  * Starts the real Google Calendar connect flow (Phase 2C, ADR-0071). Uses Better
@@ -12,12 +13,19 @@ import { authClient } from "@/lib/auth/client";
  * owns token custody. On return the account page reconciles the connection, so no
  * token or provider URL is ever handled here.
  */
-export function CalendarConnectButton({ label }: { label: string }) {
+export function CalendarConnectButton({
+  ensureLocalDemoAuthSession = false,
+  label,
+}: {
+  ensureLocalDemoAuthSession?: boolean;
+  label: string;
+}) {
   const [pending, setPending] = useState(false);
 
   async function connect() {
     setPending(true);
     try {
+      await ensureLocalDemoAuthSessionIfNeeded(ensureLocalDemoAuthSession);
       await authClient.linkSocial({
         provider: "google",
         scopes: [GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE],

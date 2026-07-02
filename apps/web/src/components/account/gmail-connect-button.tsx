@@ -4,6 +4,7 @@ import { GOOGLE_GMAIL_COMPOSE_SCOPE } from "@tendnote/domain";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
+import { ensureLocalDemoAuthSessionIfNeeded } from "@/lib/auth/local-demo-session-client";
 
 /**
  * Starts the real Gmail connect flow (Phase 2D, ADR-0090). Uses Better Auth's
@@ -13,12 +14,19 @@ import { authClient } from "@/lib/auth/client";
  * Gmail's grant narrow and independent of Calendar. On return the account page
  * reconciles the Gmail connection, so no token or provider URL is handled here.
  */
-export function GmailConnectButton({ label }: { label: string }) {
+export function GmailConnectButton({
+  ensureLocalDemoAuthSession = false,
+  label,
+}: {
+  ensureLocalDemoAuthSession?: boolean;
+  label: string;
+}) {
   const [pending, setPending] = useState(false);
 
   async function connect() {
     setPending(true);
     try {
+      await ensureLocalDemoAuthSessionIfNeeded(ensureLocalDemoAuthSession);
       await authClient.linkSocial({
         provider: "google",
         scopes: [GOOGLE_GMAIL_COMPOSE_SCOPE],

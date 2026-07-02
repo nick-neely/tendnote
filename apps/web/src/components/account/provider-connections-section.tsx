@@ -58,7 +58,7 @@ type ConnectableConfig = {
 
 type CapabilityAction = {
   configuredBy: keyof ConnectableConfig;
-  ConnectButton: ComponentType<{ label: string }>;
+  ConnectButton: ComponentType<{ ensureLocalDemoAuthSession?: boolean; label: string }>;
   DisconnectButton?: ComponentType<{ label: string }>;
 };
 
@@ -91,6 +91,7 @@ export function ProviderConnectionsSection({
   calendarConnectable = false,
   contactsConnectable = false,
   gmailConnectable = false,
+  ensureLocalDemoAuthSession = false,
 }: {
   connections: ProviderConnectionView[];
   /** True only when Google credentials are configured server-side (Phase 2C). */
@@ -99,6 +100,8 @@ export function ProviderConnectionsSection({
   contactsConnectable?: boolean;
   /** True only when Google credentials are configured server-side (Phase 2D). */
   gmailConnectable?: boolean;
+  /** True when local fallback access needs a real Better Auth session before OAuth linking. */
+  ensureLocalDemoAuthSession?: boolean;
 }) {
   const anyConnectable = calendarConnectable || gmailConnectable || contactsConnectable;
   return (
@@ -116,6 +119,7 @@ export function ProviderConnectionsSection({
               gmailConnectable,
             })}
             connection={connection}
+            ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
             key={`${connection.providerKey}:${connection.capabilityKey}`}
           />
         ))}
@@ -156,10 +160,12 @@ function isCapabilityConnectable(
 function ProviderConnectionRow({
   connection,
   connectable,
+  ensureLocalDemoAuthSession,
 }: {
   connection: ProviderConnectionView;
   /** True for a Google capability whose live connect flow is wired and configured. */
   connectable: boolean;
+  ensureLocalDemoAuthSession: boolean;
 }) {
   const status = STATUS_META[connection.status];
   const StatusIcon = status.Icon;
@@ -209,7 +215,10 @@ function ProviderConnectionRow({
             {status.label}
           </Badge>
           {isUnavailable ? null : showConnect && ConnectButton ? (
-            <ConnectButton label={connection.label} />
+            <ConnectButton
+              ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
+              label={connection.label}
+            />
           ) : showDisconnect && DisconnectButton ? (
             <DisconnectButton label={connection.label} />
           ) : (

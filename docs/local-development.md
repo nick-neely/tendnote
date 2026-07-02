@@ -55,6 +55,8 @@ In production, extraction and embedding jobs are delivered through Vercel Queues
 
 Hosted environments gate the app behind Private Beta Access (Phase 2A). Local development does not need the Vercel Flags provider: with no authenticated session it admits the dev fallback owner (`TENDNOTE_DEV_OWNER_USER_ID`, defaulting to `demo-user`), so the app shell and Eve chat work without sign-in. See [`architecture.md`](architecture.md#access-and-private-beta).
 
+Google capability linking still goes through Better Auth's `linkSocial` endpoint, which requires a real Better Auth session cookie. When you start a Google connect flow while using the local fallback owner, the account page first calls the dev-only `/api/dev/demo-session` bridge. That bridge creates or reuses a Better Auth user with the same id as the fallback owner, mints a local session cookie, and then lets `linkSocial` continue. The route is unavailable in production.
+
 ## Environment variables
 
 Configuration is **per app**, not a single root file. Each process only loads env files from its own directory, so copy each `.env.example` to a `.env.local` in the same folder.
