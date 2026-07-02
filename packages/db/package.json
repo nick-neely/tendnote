@@ -23,6 +23,7 @@
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/people": "./src/queries/people.ts",
     "./queries/provider-connections": "./src/queries/provider-connections.ts",
+    "./queries/scheduled-workflow-deliveries": "./src/queries/scheduled-workflow-deliveries.ts",
     "./queries/relationship-agenda": "./src/queries/relationship-agenda.ts",
     "./queries/relationship-context-search": "./src/queries/relationship-context-search.ts",
     "./queries/semantic-retrieval": "./src/queries/semantic-retrieval.ts",

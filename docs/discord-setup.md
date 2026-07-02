@@ -143,22 +143,32 @@ Run after the Discord private capture channel slice lands.
 
 ## 8. Proactive delivery checklist
 
-Run after the Discord proactive delivery settings slice lands.
+Configure proactive delivery through the scheduled workflow delivery setting for
+the exact workflow. Each setting is owner-scoped and channel-specific:
+`workflow`, `channel: "discord"`, `targetId` (private Discord channel id or DM
+target), `enabled`, and `allowSensitive`.
 
-- [ ] **Target setup:** Configure a Discord target for one scheduled workflow
-      only, leaving the other workflows in-app only.
+Settings are stored in `scheduled_workflow_delivery_settings`; delivery outcomes
+are recorded in `scheduled_workflow_delivery_attempts` as `sent`, `skipped`, or
+`failed`. The scheduled artifact remains the source of truth in Tendnote.
+
+- [ ] **Target setup:** Configure a Discord `targetId` for one scheduled workflow
+      only, leaving the other workflows in-app only. Confirm each workflow can use
+      a different target without changing the others.
 - [ ] **Persist first:** Trigger the workflow and verify the scheduled artifact
       is persisted in Tendnote before Discord delivery is attempted.
 - [ ] **Delivery:** The configured Discord target receives a concise private
       nudge that points back to the Tendnote artifact or presents only policy-safe
       summary content.
 - [ ] **No target:** A workflow with no Discord target still produces an in-app
-      artifact and sends nothing to Discord.
+      artifact, records a skipped delivery attempt with `missing_discord_target`,
+      and sends nothing to Discord.
 - [ ] **Failure fallback:** Break Discord delivery credentials or target access.
-      The Tendnote artifact remains reviewable, and the delivery failure is
-      visible/recoverable.
-- [ ] **Sensitivity:** Sensitive or restricted content is excluded from Discord
-      proactive delivery unless explicit configuration and policy permit it.
+      The Tendnote artifact remains reviewable, and the failed delivery attempt is
+      visible/recoverable with the artifact id and error.
+- [ ] **Sensitivity:** Sensitive content is excluded unless `allowSensitive` is
+      explicitly enabled for that workflow. Restricted content remains excluded
+      from proactive Discord delivery.
 
 ## 9. Hosted smoke checklist
 

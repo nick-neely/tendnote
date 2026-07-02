@@ -202,3 +202,26 @@ export const briefItemTrustLevel = pgEnum("brief_item_trust_level", [
   "confirmed_fact",
   "tentative",
 ]);
+
+export const phase3ScheduledWorkflow = pgEnum("phase3_scheduled_workflow", [
+  "morning_agenda",
+  "post_meeting_aftercare",
+  "weekly_relationship_review",
+  "birthday_gift_planning",
+]);
+
+export const proactiveDeliveryChannel = pgEnum("proactive_delivery_channel", ["discord"]);
+
+export const proactiveDeliveryStatus = pgEnum("proactive_delivery_status", [
+  "sent",
+  "skipped",
+  "failed",
+]);
+
+export const scheduledArtifactKind = pgEnum("scheduled_artifact_kind", [
+  "morning_agenda",
+  "post_meeting_aftercare",
+  "weekly_relationship_review",
+  "birthday_gift_planning",
+  "brief",
+]);
