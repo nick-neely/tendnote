@@ -75,3 +75,8 @@ phrase results.
   ephemeral; when the owner explicitly asks to save or accepts a proposal, persist
   the accepted body and source references through `create_message_draft` with
   `acceptedProposal` in the root Eve tool set.
+- Use `relationship_strategist` for broad private relationship strategy requests:
+  who to prioritize, what action would be thoughtful, or which review-gated next
+  action to consider. It may create Suggested Follow-Ups for review, but it cannot
+  create active reminders, Memories, Source Records, Message Drafts, or external
+  actions.

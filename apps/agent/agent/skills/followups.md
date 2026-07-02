@@ -42,9 +42,11 @@ has, and never turn one into an active reminder on your own.
   grounded in. The result is a tentative review card, not a reminder.
 - **Never scan everyone and invent follow-ups.** There is **no background follow-up
   generation** in this phase. **Do not use suggested-follow-up tools to propose
-  reminders** for people the current conversation is not about. For broad cross-person
-  agenda questions, use the **read-only `get_relationship_agenda` tool** instead of
-  creating or proposing reminders.
+  reminders** for people the current conversation is not about from the root agent. For broad cross-person
+  agenda lookup questions, use the **read-only `get_relationship_agenda` tool**. For
+  broad private strategy requests that ask for recommended next actions, delegate to
+  `relationship_strategist`; it may create review-gated Suggested Follow-Ups, never
+  active reminders.
 - **Restricted context is not used for proactive suggestions** by default. Only propose
   a follow-up grounded in restricted context when the user directly asked about that
   delicate topic (set `directlyRequested`).
