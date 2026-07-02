@@ -660,6 +660,33 @@ describe("createContactImportPreviewSession", () => {
     ).resolves.toHaveLength(1);
   });
 
+  it("does not expose unconfirmed preview rows as durable search-visible people", async () => {
+    const deps = createApplyDeps({
+      contacts: [
+        {
+          providerContactId: "people/preview-only",
+          displayName: "Preview Only",
+          emails: ["preview-only@example.com"],
+          birthday: "--10-31",
+        },
+      ],
+      people: [],
+      contactMethods: [],
+    });
+
+    const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    expect(preview.candidates[0]).toMatchObject({
+      displayName: "Preview Only",
+      safeBulkEligible: false,
+    });
+    await expect(
+      deps.searchPeople({ ownerUserId: OWNER, query: "Preview Only", limit: 10 }),
+    ).resolves.toEqual([]);
+    expect(deps.providerRefs).toEqual([]);
+    expect(deps.contactAuditEntries).toEqual([]);
+  });
+
   it("bulk-applies safe existing-person candidates with missing fields and provenance", async () => {
     const deps = createApplyDeps({
       contacts: [
@@ -717,6 +744,65 @@ describe("createContactImportPreviewSession", () => {
       addedPhones: ["+1 (312) 555-0101"],
       addedBirthday: "--04-18",
     });
+  });
+
+  it("persists only minimized relationship data when adapter input contains raw-provider-shaped extras", async () => {
+    const rawProviderExtras = {
+      etag: "etag-secret",
+      biographies: [{ value: "raw provider biography" }],
+      photos: [{ url: "https://people.example/photo" }],
+      metadata: { sources: [{ id: "raw-source" }] },
+    };
+    const deps = createApplyDeps({
+      contacts: [
+        {
+          providerContactId: "people/raw-extra",
+          displayName: "Raw Extra",
+          emails: ["raw-extra@example.com"],
+          ...rawProviderExtras,
+        } as GoogleContactsPreviewContact,
+      ],
+      people: [],
+      contactMethods: [],
+    });
+    const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    const result = await applyContactImportCandidates(
+      {
+        ownerUserId: OWNER,
+        mode: "explicit",
+        resolutions: [
+          {
+            candidateId: preview.candidates[0]?.id ?? "",
+            action: "apply",
+            createPerson: true,
+          },
+        ],
+      },
+      deps,
+    );
+
+    expect(result.importedCount).toBe(1);
+    expect(result).toMatchObject({ createdPeople: 1, addedContactMethods: 1 });
+    const [created] = await deps.searchPeople({
+      ownerUserId: OWNER,
+      query: "Raw Extra",
+      limit: 10,
+    });
+    expect(created).toMatchObject({ displayName: "Raw Extra", source: "contact_import" });
+    expect(deps.providerRefs[0]).toMatchObject({
+      ownerUserId: OWNER,
+      personId: created?.id,
+      providerKey: "google",
+      providerContactId: "people/raw-extra",
+    });
+    expect(JSON.stringify(created)).not.toContain("etag-secret");
+    expect(JSON.stringify(created)).not.toContain("raw provider biography");
+    expect(JSON.stringify(deps.providerRefs)).not.toContain("raw provider biography");
+    expect(JSON.stringify(deps.contactAuditEntries)).not.toContain("etag-secret");
+    expect(JSON.stringify(deps.contactAuditEntries)).not.toContain("raw provider biography");
+    expect(JSON.stringify(deps.contactAuditEntries)).not.toContain("people.example/photo");
+    expect(JSON.stringify(deps.contactAuditEntries)).not.toContain("raw-source");
   });
 
   it("skips contact methods that become owner-wide duplicates at write time", async () => {
