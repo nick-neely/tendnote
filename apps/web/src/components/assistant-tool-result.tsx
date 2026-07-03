@@ -413,8 +413,13 @@ function SearchResultRow({
         {result.snippet}
       </Body>
       <Caption>
-        {labelTrust(result)}
-        {mode === "semantic" ? ` · ${labelSensitivity(result.sensitivity)}` : ""}
+        {[
+          labelTrust(result),
+          result.visibilityLabel,
+          mode === "semantic" ? labelSensitivity(result.sensitivity) : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
       </Caption>
     </div>
   );

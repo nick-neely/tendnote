@@ -162,6 +162,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("Source record");
     expect(html).toContain("You noted");
     expect(html).toContain("Logged context");
+    expect(html).toContain("Only me");
     expect(html).not.toContain("Confirmed fact");
     expect(html).toContain('href="/people/person-1"');
   });
@@ -219,6 +220,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("Identity reference");
     expect(html).toContain("Confirmed fact");
     expect(html).toContain("Logged context");
+    expect(html).toContain("Only me");
     expect(html).toContain("You noted");
     expect(html).toContain('href="/people/person-1"');
   });
@@ -259,6 +261,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("Source record");
     expect(html).toContain("Confirmed fact");
     expect(html).toContain("Logged context");
+    expect(html).toContain("Only me");
     expect(html).toContain("Sensitive");
     expect(html).toContain("You noted");
     expect(html).toContain("Mara loves handmade kitchen gifts.");
