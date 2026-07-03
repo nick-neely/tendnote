@@ -1,7 +1,7 @@
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
-import { householdMemberStatus, householdRole, privacyScope } from "./enums";
+import { householdMemberStatus, householdRole, privacyScope, visibilityRecordKind } from "./enums";
 
 export const householdWorkspaces = pgTable(
   "household_workspaces",
@@ -41,5 +41,33 @@ export const householdMemberships = pgTable(
     uniqueIndex("household_memberships_household_user_idx").on(table.householdId, table.userId),
     index("household_memberships_user_status_idx").on(table.userId, table.status),
     index("household_memberships_household_status_idx").on(table.householdId, table.status),
+  ],
+);
+
+export const householdRecordShares = pgTable(
+  "household_record_shares",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => householdWorkspaces.id, { onDelete: "cascade" }),
+    recordKind: visibilityRecordKind("record_kind").notNull(),
+    recordId: uuid("record_id").notNull(),
+    sharedWithUserId: text("shared_with_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    sharedByUserId: text("shared_by_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("household_record_shares_record_user_idx").on(
+      table.recordKind,
+      table.recordId,
+      table.sharedWithUserId,
+    ),
+    index("household_record_shares_household_idx").on(table.householdId),
+    index("household_record_shares_user_idx").on(table.sharedWithUserId),
   ],
 );

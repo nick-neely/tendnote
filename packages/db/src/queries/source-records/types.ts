@@ -1,5 +1,6 @@
 import type {
   Confidence,
+  CreateSourceRecordInput,
   Person,
   Sensitivity,
   Source,
@@ -69,9 +70,7 @@ export type CreateUnresolvedMentionInput = Omit<
   Partial<Pick<UnresolvedPersonMention, "status" | "resolvedPersonId" | "resolvedAt">>;
 
 export type SourceRecordCaptureStore = {
-  createSourceRecord: (
-    sourceRecord: Omit<SourceRecord, "id" | "createdAt" | "updatedAt">,
-  ) => Promise<SourceRecord>;
+  createSourceRecord: (sourceRecord: CreateSourceRecordInput) => Promise<SourceRecord>;
   getSourceRecord: (input: GetSourceRecordReviewInput) => Promise<SourceRecord | null>;
   updateSourceRecordStatus: (input: {
     ownerUserId: string;

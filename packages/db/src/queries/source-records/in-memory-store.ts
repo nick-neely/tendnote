@@ -5,6 +5,7 @@ import type {
   SourceRecordPerson,
   UnresolvedPersonMention,
 } from "@tendnote/domain";
+import { createSourceRecordSchema } from "@tendnote/domain";
 import type { InMemorySourceRecordStore, SourceRecordAuditLogEntry } from "./types";
 
 export function createInMemorySourceRecordStore(): InMemorySourceRecordStore {
@@ -52,10 +53,11 @@ export function createInMemorySourceRecordStore(): InMemorySourceRecordStore {
         .slice(0, input.limit ?? 10);
     },
     async createSourceRecord(values) {
+      const parsed = createSourceRecordSchema.parse(values);
       const now = new Date();
 
-      const sourceRecord = {
-        ...values,
+      const sourceRecord: SourceRecord = {
+        ...parsed,
         id: randomUUID(),
         createdAt: now,
         updatedAt: now,

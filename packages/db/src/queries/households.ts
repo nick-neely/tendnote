@@ -2,9 +2,11 @@ import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createHouseholdLifecycle } from "./households/lifecycle";
 import type {
   AcceptHouseholdInviteInput,
+  CanViewHouseholdRecordInput,
   CreateHouseholdInput,
   InviteHouseholdMemberInput,
   RemoveHouseholdMemberInput,
+  ShareHouseholdRecordInput,
 } from "./households/types";
 
 export { createDrizzleHouseholdStore } from "./households/drizzle-store";
@@ -29,4 +31,12 @@ export function acceptHouseholdInvite(input: AcceptHouseholdInviteInput) {
 
 export function removeHouseholdMember(input: RemoveHouseholdMemberInput) {
   return defaultHouseholdLifecycle.removeMember(input);
+}
+
+export function shareHouseholdRecordWithSelectedMembers(input: ShareHouseholdRecordInput) {
+  return defaultHouseholdLifecycle.shareRecordWithSelectedMembers(input);
+}
+
+export function canViewHouseholdRecord(input: CanViewHouseholdRecordInput) {
+  return defaultHouseholdLifecycle.canViewHouseholdRecord(input);
 }

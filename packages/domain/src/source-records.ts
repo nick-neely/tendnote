@@ -21,6 +21,7 @@ export const unresolvedMentionStatusSchema = z.enum(["unresolved", "resolved", "
 export const sourceRecordSchema = z.object({
   id: z.string(),
   ownerUserId: z.string(),
+  householdId: z.string().nullable().optional(),
   sourceType: sourceSchema.default("manual"),
   content: z.string().min(1),
   rawContent: z.string().nullable().optional(),
@@ -104,7 +105,7 @@ export function canUseSourceRecordProactively(
 }
 
 export type SourceRecord = z.infer<typeof sourceRecordSchema>;
-export type CreateSourceRecordInput = z.infer<typeof createSourceRecordSchema>;
+export type CreateSourceRecordInput = z.input<typeof createSourceRecordSchema>;
 export type SourceRecordStatus = z.infer<typeof sourceRecordStatusSchema>;
 export type SourceRecordRetentionPolicy = z.infer<typeof sourceRecordRetentionPolicySchema>;
 export type SourceRecordPerson = z.infer<typeof sourceRecordPersonSchema>;

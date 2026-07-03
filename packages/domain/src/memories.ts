@@ -16,6 +16,7 @@ export const memorySchema = z.object({
   id: z.string(),
   personId: z.string(),
   ownerUserId: z.string(),
+  householdId: z.string().nullable().optional(),
   sourceRecordId: z.string().min(1),
   memoryType: memoryTypeSchema.default("context"),
   content: z.string().min(1),
@@ -55,7 +56,7 @@ export const memoryReviewEditSchema = z
 export type Memory = z.infer<typeof memorySchema>;
 export type MemoryType = z.infer<typeof memoryTypeSchema>;
 export type MemoryStatus = z.infer<typeof memoryStatusSchema>;
-export type CreateMemoryInput = z.infer<typeof createMemorySchema>;
+export type CreateMemoryInput = z.input<typeof createMemorySchema>;
 export type MemoryReviewEdit = z.infer<typeof memoryReviewEditSchema>;
 
 export function isDurableMemoryFact(memory: Pick<Memory, "status">) {

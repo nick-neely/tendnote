@@ -5,7 +5,12 @@ import {
 } from "@tendnote/domain";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../client";
-import { auditLog, householdMemberships, householdWorkspaces } from "../../schema";
+import {
+  auditLog,
+  householdMemberships,
+  householdRecordShares,
+  householdWorkspaces,
+} from "../../schema";
 import type { HouseholdStore } from "./types";
 
 export function createDrizzleHouseholdStore(): HouseholdStore {
@@ -90,6 +95,45 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
           and(
             eq(householdMemberships.userId, input.userId),
             eq(householdMemberships.status, "active"),
+          ),
+        );
+    },
+    async createHouseholdRecordShare(input) {
+      const [share] = await getDb()
+        .insert(householdRecordShares)
+        .values(input)
+        .onConflictDoNothing()
+        .returning();
+
+      if (share) {
+        return share;
+      }
+
+      const [existing] = await getDb()
+        .select()
+        .from(householdRecordShares)
+        .where(
+          and(
+            eq(householdRecordShares.recordKind, input.recordKind),
+            eq(householdRecordShares.recordId, input.recordId),
+            eq(householdRecordShares.sharedWithUserId, input.sharedWithUserId),
+          ),
+        )
+        .limit(1);
+      if (!existing) {
+        throw new Error("Failed to create household record share.");
+      }
+      return existing;
+    },
+    async listHouseholdRecordShares(input) {
+      return getDb()
+        .select()
+        .from(householdRecordShares)
+        .where(
+          and(
+            eq(householdRecordShares.householdId, input.householdId),
+            eq(householdRecordShares.recordKind, input.recordKind),
+            eq(householdRecordShares.recordId, input.recordId),
           ),
         );
     },

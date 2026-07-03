@@ -135,6 +135,120 @@ describe("household membership lifecycle", () => {
     ).toContain("household.member_remove");
   });
 
+  it("persists selected-member record shares only for active household members", async () => {
+    const { lifecycle, store } = setup();
+    const { household } = await lifecycle.createHousehold({ ownerUserId: OWNER, name: "Home" });
+    await lifecycle.inviteMember({
+      ownerUserId: OWNER,
+      householdId: household.id,
+      invitedUserId: MEMBER,
+    });
+    await lifecycle.acceptInvite({ householdId: household.id, userId: MEMBER });
+
+    const shares = await lifecycle.shareRecordWithSelectedMembers({
+      actorUserId: OWNER,
+      householdId: household.id,
+      recordKind: "memory",
+      recordId: "00000000-0000-4000-8000-000000000001",
+      selectedUserIds: [MEMBER],
+    });
+
+    expect(shares).toHaveLength(1);
+    expect(
+      await store.listHouseholdRecordShares({
+        householdId: household.id,
+        recordKind: "memory",
+        recordId: "00000000-0000-4000-8000-000000000001",
+      }),
+    ).toMatchObject([{ sharedWithUserId: MEMBER, sharedByUserId: OWNER }]);
+    expect(
+      (await store.listAuditLogEntries({ ownerUserId: OWNER })).map((entry) => entry.action),
+    ).toContain("household.record_share");
+
+    await expect(
+      lifecycle.shareRecordWithSelectedMembers({
+        actorUserId: OWNER,
+        householdId: household.id,
+        recordKind: "memory",
+        recordId: "00000000-0000-4000-8000-000000000002",
+        selectedUserIds: [OTHER_MEMBER],
+      }),
+    ).rejects.toThrow("Selected household members must be active.");
+  });
+
+  it("lets active members share records without household owner authority", async () => {
+    const { lifecycle, store } = setup();
+    const { household } = await lifecycle.createHousehold({ ownerUserId: OWNER, name: "Home" });
+    await lifecycle.inviteMember({
+      ownerUserId: OWNER,
+      householdId: household.id,
+      invitedUserId: MEMBER,
+    });
+    await lifecycle.acceptInvite({ householdId: household.id, userId: MEMBER });
+    await lifecycle.inviteMember({
+      ownerUserId: OWNER,
+      householdId: household.id,
+      invitedUserId: OTHER_MEMBER,
+    });
+    await lifecycle.acceptInvite({ householdId: household.id, userId: OTHER_MEMBER });
+
+    await lifecycle.shareRecordWithSelectedMembers({
+      actorUserId: MEMBER,
+      householdId: household.id,
+      recordKind: "memory",
+      recordId: "00000000-0000-4000-8000-000000000003",
+      selectedUserIds: [OTHER_MEMBER],
+    });
+
+    expect(
+      await store.listHouseholdRecordShares({
+        householdId: household.id,
+        recordKind: "memory",
+        recordId: "00000000-0000-4000-8000-000000000003",
+      }),
+    ).toMatchObject([{ sharedWithUserId: OTHER_MEMBER, sharedByUserId: MEMBER }]);
+  });
+
+  it("checks selected-member visibility from persisted shares and active memberships", async () => {
+    const { lifecycle } = setup();
+    const { household } = await lifecycle.createHousehold({ ownerUserId: OWNER, name: "Home" });
+    await lifecycle.inviteMember({
+      ownerUserId: OWNER,
+      householdId: household.id,
+      invitedUserId: MEMBER,
+    });
+    await lifecycle.acceptInvite({ householdId: household.id, userId: MEMBER });
+
+    await lifecycle.shareRecordWithSelectedMembers({
+      actorUserId: OWNER,
+      householdId: household.id,
+      recordKind: "memory",
+      recordId: "00000000-0000-4000-8000-000000000004",
+      selectedUserIds: [MEMBER],
+    });
+
+    await expect(
+      lifecycle.canViewHouseholdRecord({
+        callerUserId: MEMBER,
+        ownerUserId: OWNER,
+        householdId: household.id,
+        scope: "shared",
+        recordKind: "memory",
+        recordId: "00000000-0000-4000-8000-000000000004",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      lifecycle.canViewHouseholdRecord({
+        callerUserId: OTHER_MEMBER,
+        ownerUserId: OWNER,
+        householdId: household.id,
+        scope: "shared",
+        recordKind: "memory",
+        recordId: "00000000-0000-4000-8000-000000000004",
+      }),
+    ).resolves.toBe(false);
+  });
+
   it("does not introduce owner access to another member's private records", async () => {
     const { lifecycle } = setup();
     const { household } = await lifecycle.createHousehold({ ownerUserId: OWNER, name: "Home" });

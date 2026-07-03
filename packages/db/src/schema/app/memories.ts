@@ -3,6 +3,7 @@ import { customType, index, integer, pgTable, text, timestamp, uuid } from "driz
 import { user } from "../auth";
 import { timestamps } from "./common";
 import { confidence, memoryStatus, memoryType, privacyScope, sensitivity } from "./enums";
+import { householdWorkspaces } from "./households";
 import { people } from "./people";
 import { sourceRecords } from "./source-records";
 
@@ -22,6 +23,9 @@ export const memories = pgTable(
     ownerUserId: text("owner_user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    householdId: uuid("household_id").references(() => householdWorkspaces.id, {
+      onDelete: "set null",
+    }),
     sourceRecordId: uuid("source_record_id")
       .notNull()
       .references(() => sourceRecords.id, { onDelete: "restrict" }),
@@ -42,6 +46,7 @@ export const memories = pgTable(
   (table) => [
     index("memories_person_id_idx").on(table.personId),
     index("memories_owner_user_id_idx").on(table.ownerUserId),
+    index("memories_household_id_idx").on(table.householdId),
     index("memories_source_record_id_idx").on(table.sourceRecordId),
     index("memories_owner_status_idx").on(table.ownerUserId, table.status),
     index("memories_search_vector_idx").using("gin", table.searchVector),

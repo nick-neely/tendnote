@@ -6,13 +6,14 @@ import {
   type HouseholdWorkspace,
   householdMembershipSchema,
 } from "@tendnote/domain";
-import type { HouseholdAuditLogEntry, HouseholdStore } from "./types";
+import type { HouseholdAuditLogEntry, HouseholdRecordShare, HouseholdStore } from "./types";
 
 export function createInMemoryHouseholdStore(): HouseholdStore & {
   listAuditLogEntries: (input: { ownerUserId: string }) => Promise<HouseholdAuditLogEntry[]>;
 } {
   const households = new Map<string, HouseholdWorkspace>();
   const memberships = new Map<string, HouseholdMembership>();
+  const recordShares = new Map<string, HouseholdRecordShare>();
   const auditLogEntries: HouseholdAuditLogEntry[] = [];
 
   return {
@@ -93,6 +94,29 @@ export function createInMemoryHouseholdStore(): HouseholdStore & {
     async listActiveHouseholdMembershipsForUser(input) {
       return [...memberships.values()].filter(
         (membership) => membership.userId === input.userId && membership.status === "active",
+      );
+    },
+    async createHouseholdRecordShare(input) {
+      const existing = [...recordShares.values()].find(
+        (share) =>
+          share.recordKind === input.recordKind &&
+          share.recordId === input.recordId &&
+          share.sharedWithUserId === input.sharedWithUserId,
+      );
+      if (existing) {
+        return existing;
+      }
+
+      const share: HouseholdRecordShare = { ...input, id: randomUUID(), createdAt: new Date() };
+      recordShares.set(share.id, share);
+      return share;
+    },
+    async listHouseholdRecordShares(input) {
+      return [...recordShares.values()].filter(
+        (share) =>
+          share.householdId === input.householdId &&
+          share.recordKind === input.recordKind &&
+          share.recordId === input.recordId,
       );
     },
     async createAuditLogEntry(input) {

@@ -3,6 +3,39 @@ import { z } from "zod";
 export const privacyScopeSchema = z.enum(["private", "shared", "household"]);
 export type PrivacyScope = z.infer<typeof privacyScopeSchema>;
 
+export const visibilityChoiceSchema = z.enum(["only_me", "selected_members", "whole_household"]);
+export type VisibilityChoice = z.infer<typeof visibilityChoiceSchema>;
+
+export const VISIBILITY_CONTROL_OPTIONS: ReadonlyArray<{
+  choice: VisibilityChoice;
+  scope: PrivacyScope;
+  label: string;
+  description: string;
+}> = [
+  {
+    choice: "only_me",
+    scope: "private",
+    label: "Only me",
+    description: "Visible only to the person who owns this record.",
+  },
+  {
+    choice: "selected_members",
+    scope: "shared",
+    label: "Specific people",
+    description: "Visible to selected active household members.",
+  },
+  {
+    choice: "whole_household",
+    scope: "household",
+    label: "Whole household",
+    description: "Visible to every active household member, including future members.",
+  },
+];
+
+export function scopeForVisibilityChoice(choice: VisibilityChoice): PrivacyScope {
+  return VISIBILITY_CONTROL_OPTIONS.find((option) => option.choice === choice)?.scope ?? "private";
+}
+
 export const sensitivitySchema = z.enum(["normal", "sensitive", "restricted"]);
 export type Sensitivity = z.infer<typeof sensitivitySchema>;
 
@@ -34,4 +67,66 @@ export function canUseMemoryInBrief(input: {
   directlyRequested?: boolean;
 }) {
   return input.sensitivity === "normal" || input.directlyRequested === true;
+}
+
+export type ScopedRecordVisibility = {
+  ownerUserId: string;
+  scope: PrivacyScope;
+  householdId: string | null;
+  sharedWithUserIds?: readonly string[];
+};
+
+export type ScopedRecordShare = {
+  sharedWithUserId: string;
+};
+
+export type ActiveHouseholdAccess = {
+  householdId: string;
+  userId: string;
+};
+
+export function scopedRecordVisibility(input: {
+  ownerUserId: string;
+  scope: PrivacyScope;
+  householdId: string | null;
+  shares?: readonly ScopedRecordShare[];
+}): ScopedRecordVisibility {
+  return {
+    ownerUserId: input.ownerUserId,
+    scope: input.scope,
+    householdId: input.householdId,
+    sharedWithUserIds: input.shares?.map((share) => share.sharedWithUserId),
+  };
+}
+
+export function canViewScopedRecord(input: {
+  callerUserId: string;
+  record: ScopedRecordVisibility;
+  activeMemberships: readonly ActiveHouseholdAccess[];
+}): boolean {
+  if (input.record.scope === "private") {
+    return input.callerUserId === input.record.ownerUserId;
+  }
+
+  if (!input.record.householdId) {
+    return false;
+  }
+
+  const activeInHousehold = input.activeMemberships.some(
+    (membership) =>
+      membership.householdId === input.record.householdId &&
+      membership.userId === input.callerUserId,
+  );
+  if (!activeInHousehold) {
+    return false;
+  }
+
+  if (input.record.scope === "household") {
+    return true;
+  }
+
+  return (
+    input.callerUserId === input.record.ownerUserId ||
+    input.record.sharedWithUserIds?.includes(input.callerUserId) === true
+  );
 }

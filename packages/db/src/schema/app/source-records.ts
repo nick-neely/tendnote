@@ -23,6 +23,7 @@ import {
   sourceType,
   unresolvedMentionStatus,
 } from "./enums";
+import { householdWorkspaces } from "./households";
 import { people } from "./people";
 
 const tsvector = customType<{ data: string }>({
@@ -38,6 +39,9 @@ export const sourceRecords = pgTable(
     ownerUserId: text("owner_user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    householdId: uuid("household_id").references(() => householdWorkspaces.id, {
+      onDelete: "set null",
+    }),
     sourceType: sourceType("source_type").notNull().default("manual"),
     content: text("content").notNull(),
     rawContent: text("raw_content"),
@@ -58,6 +62,7 @@ export const sourceRecords = pgTable(
   },
   (table) => [
     index("source_records_owner_user_id_idx").on(table.ownerUserId),
+    index("source_records_household_id_idx").on(table.householdId),
     index("source_records_owner_status_idx").on(table.ownerUserId, table.status),
     index("source_records_search_vector_idx").using("gin", table.searchVector),
   ],

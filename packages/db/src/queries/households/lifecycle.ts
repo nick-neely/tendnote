@@ -1,10 +1,16 @@
-import { assertHouseholdOwner } from "@tendnote/domain";
+import {
+  assertHouseholdOwner,
+  canViewScopedRecord,
+  scopedRecordVisibility,
+} from "@tendnote/domain";
 import type {
   AcceptHouseholdInviteInput,
+  CanViewHouseholdRecordInput,
   CreateHouseholdInput,
   HouseholdStore,
   InviteHouseholdMemberInput,
   RemoveHouseholdMemberInput,
+  ShareHouseholdRecordInput,
 } from "./types";
 
 export function createHouseholdLifecycle(store: HouseholdStore) {
@@ -17,6 +23,17 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
       throw new Error("Household membership not found.");
     }
     assertHouseholdOwner(membership);
+    return membership;
+  }
+
+  async function requireActiveMember(input: { actorUserId: string; householdId: string }) {
+    const membership = await store.getHouseholdMembership({
+      householdId: input.householdId,
+      userId: input.actorUserId,
+    });
+    if (membership?.status !== "active") {
+      throw new Error("Active household membership required.");
+    }
     return membership;
   }
 
@@ -147,6 +164,74 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
 
     listActiveMembershipsForUser(input: { userId: string }) {
       return store.listActiveHouseholdMembershipsForUser(input);
+    },
+
+    async shareRecordWithSelectedMembers(input: ShareHouseholdRecordInput) {
+      await requireActiveMember(input);
+
+      const activeMembers = await store.listHouseholdMemberships({
+        householdId: input.householdId,
+        status: "active",
+      });
+      const activeUserIds = new Set(activeMembers.map((member) => member.userId));
+      const invalidUserIds = input.selectedUserIds.filter((userId) => !activeUserIds.has(userId));
+      if (invalidUserIds.length > 0) {
+        throw new Error("Selected household members must be active.");
+      }
+
+      const shares = [];
+      for (const selectedUserId of input.selectedUserIds) {
+        shares.push(
+          await store.createHouseholdRecordShare({
+            householdId: input.householdId,
+            recordKind: input.recordKind,
+            recordId: input.recordId,
+            sharedWithUserId: selectedUserId,
+            sharedByUserId: input.actorUserId,
+          }),
+        );
+      }
+
+      await store.createAuditLogEntry({
+        ownerUserId: input.actorUserId,
+        action: "household.record_share",
+        entityType: input.recordKind,
+        entityId: input.recordId,
+        metadataJson: {
+          householdId: input.householdId,
+          selectedUserIds: input.selectedUserIds,
+        },
+      });
+
+      return shares;
+    },
+
+    async canViewHouseholdRecord(input: CanViewHouseholdRecordInput) {
+      const activeMemberships = input.householdId
+        ? await store.listHouseholdMemberships({
+            householdId: input.householdId,
+            status: "active",
+          })
+        : [];
+      const shares =
+        input.scope === "shared" && input.householdId
+          ? await store.listHouseholdRecordShares({
+              householdId: input.householdId,
+              recordKind: input.recordKind,
+              recordId: input.recordId,
+            })
+          : [];
+
+      return canViewScopedRecord({
+        callerUserId: input.callerUserId,
+        record: scopedRecordVisibility({
+          ownerUserId: input.ownerUserId,
+          scope: input.scope,
+          householdId: input.householdId,
+          shares,
+        }),
+        activeMemberships,
+      });
     },
   };
 }
