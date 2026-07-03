@@ -20,9 +20,11 @@ external draft, or contact anyone.
   `personId` in the delegated message. Pass a `purpose` (birthday, thank_you,
   check_in, networking, other) when you can infer it, the `channel` if the user said
   how they'll send it, tone requests verbatim, and `followupContext` /
-  `briefItemContext` when drafting from a follow-up or brief item. Very small
-  wording tweaks may be answered directly, but they must remain grounded,
-  review-only, and unsaved.
+  `briefItemContext` when drafting from a follow-up or brief item. For revisions,
+  pass the existing proposal or draft body through `revisionContext` so the drafter
+  changes the selected wording instead of starting over. Very small wording tweaks
+  may be answered directly, but they must remain grounded, review-only, and
+  unsaved.
 - **Persist only after explicit owner intent.** Use `create_message_draft` directly
   only when the owner asks to save/persist a Tendnote draft, or accepts a specific
   Draft Proposal. When accepting a proposal, pass the accepted body and source refs
