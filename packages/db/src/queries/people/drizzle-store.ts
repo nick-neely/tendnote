@@ -1,4 +1,5 @@
 import { and, eq, ilike, or, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import {
   auditLog,
@@ -8,7 +9,10 @@ import {
   sourceRecordPeople,
   sourceRecords,
 } from "../../schema";
+import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import type { PeopleStore } from "./types";
+
+const visibleProfileFollowups = alias(followups, "f");
 
 export function createDrizzlePeopleStore(): PeopleStore {
   return {
@@ -98,14 +102,47 @@ export function createDrizzlePeopleStore(): PeopleStore {
     },
 
     async getPersonProfile(input) {
-      const [person] = await getDb()
+      let [person] = await getDb()
         .select()
         .from(people)
         .where(and(eq(people.id, input.personId), eq(people.ownerUserId, input.ownerUserId)))
         .limit(1);
 
       if (!person) {
-        return null;
+        const visibleFollowups = await getDb()
+          .select()
+          .from(visibleProfileFollowups)
+          .where(
+            and(
+              eq(visibleProfileFollowups.personId, input.personId),
+              visibleHouseholdRecordSql({
+                callerUserId: input.ownerUserId,
+                tableAlias: "f",
+                recordKind: "followup",
+              }),
+            ),
+          );
+
+        if (visibleFollowups.length === 0) {
+          return null;
+        }
+
+        [person] = await getDb()
+          .select()
+          .from(people)
+          .where(eq(people.id, input.personId))
+          .limit(1);
+
+        if (!person) {
+          return null;
+        }
+
+        return {
+          person,
+          memories: [],
+          followups: visibleFollowups,
+          sourceRecords: [],
+        };
       }
 
       const [personMemories, personFollowups, personSourceRecords] = await Promise.all([

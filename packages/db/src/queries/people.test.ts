@@ -156,6 +156,8 @@ describe("people queries", () => {
           reason: "Check in",
           dueAt: now,
           status: "open",
+          householdId: null,
+          scope: "private",
           createdAt: now,
           updatedAt: now,
         },

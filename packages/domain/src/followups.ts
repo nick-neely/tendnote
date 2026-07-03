@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { privacyScopeSchema } from "./privacy";
 
 export const followupStatusSchema = z.enum([
   "suggested",
@@ -23,6 +24,10 @@ export const followupSchema = z.object({
   // active reminders, which need no grounding (PRD #42, ADR-0006).
   sourceRecordId: z.string().nullable().optional(),
   lastPromptedAt: z.date().nullable().optional(),
+  householdId: z.string().nullable().default(null),
+  scope: privacyScopeSchema.default("private"),
+  createdByUserId: z.string().nullable().optional(),
+  lastActorUserId: z.string().nullable().optional(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
@@ -35,7 +40,7 @@ export const createFollowupSchema = followupSchema.omit({
 
 export type Followup = z.infer<typeof followupSchema>;
 export type FollowupStatus = z.infer<typeof followupStatusSchema>;
-export type CreateFollowupInput = z.infer<typeof createFollowupSchema>;
+export type CreateFollowupInput = z.input<typeof createFollowupSchema>;
 
 /**
  * Statuses that count as active relationship reminders the user still owes. The

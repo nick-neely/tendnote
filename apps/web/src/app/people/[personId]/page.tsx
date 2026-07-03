@@ -3,6 +3,7 @@ import { getPersonContextSnapshot } from "@tendnote/db/queries/context-snapshots
 import { listDraftsForPerson } from "@tendnote/db/queries/drafts";
 import { listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
 import { listGmailDraftActionsForDraft } from "@tendnote/db/queries/gmail-drafts";
+import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { getPersonProfile } from "@tendnote/db/queries/people";
 import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-connections";
@@ -199,12 +200,14 @@ export default async function PersonDetailPage({
 }) {
   const { personId } = await params;
   const ownerUserId = await requireAdmittedOwner();
-  const [profile, suggestedReviews, suggestedFollowupReviews, drafts] = await Promise.all([
-    getPersonProfile({ ownerUserId, personId }),
-    loadSuggestedReviews(ownerUserId, personId),
-    loadSuggestedFollowupReviews(ownerUserId, personId),
-    loadDrafts(ownerUserId, personId),
-  ]);
+  const [profile, suggestedReviews, suggestedFollowupReviews, drafts, shareableMembers] =
+    await Promise.all([
+      getPersonProfile({ ownerUserId, personId }),
+      loadSuggestedReviews(ownerUserId, personId),
+      loadSuggestedFollowupReviews(ownerUserId, personId),
+      loadDrafts(ownerUserId, personId),
+      listShareableHouseholdMembersForUser({ userId: ownerUserId }),
+    ]);
 
   if (!profile) {
     notFound();
@@ -290,6 +293,7 @@ export default async function PersonDetailPage({
               firstName={firstName}
               personId={person.id}
               resolved={resolvedFollowups}
+              shareableMembers={shareableMembers}
             />
           </div>
         }

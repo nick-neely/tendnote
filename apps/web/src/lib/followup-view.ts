@@ -1,4 +1,5 @@
 import type { Followup, FollowupStatus } from "@tendnote/domain";
+import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain/privacy";
 
 /**
  * Where a follow-up sits relative to now, so the profile and dashboard can make
@@ -17,6 +18,8 @@ export type FollowupView = {
   dueAtDate: string;
   dueLabel: string;
   dueState: FollowupDueState;
+  visibilityChoice: ReturnType<typeof visibilityChoiceForScope>;
+  visibilityLabel: string;
 };
 
 function startOfDay(date: Date): number {
@@ -88,6 +91,8 @@ export function toFollowupView(followup: Followup, now: Date = new Date()): Foll
     dueAtDate: toDateInputValue(followup.dueAt),
     dueLabel,
     dueState,
+    visibilityChoice: visibilityChoiceForScope(followup.scope),
+    visibilityLabel: visibilityLabelForScope(followup.scope),
   };
 }
 

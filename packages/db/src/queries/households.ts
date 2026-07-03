@@ -1,3 +1,6 @@
+import { and, eq, ne } from "drizzle-orm";
+import { getDb } from "../client";
+import { householdMemberships, user } from "../schema";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createHouseholdLifecycle } from "./households/lifecycle";
 import type {
@@ -39,4 +42,33 @@ export function shareHouseholdRecordWithSelectedMembers(input: ShareHouseholdRec
 
 export function canViewHouseholdRecord(input: CanViewHouseholdRecordInput) {
   return defaultHouseholdLifecycle.canViewHouseholdRecord(input);
+}
+
+export function listActiveHouseholdMembershipsForUser(input: { userId: string }) {
+  return defaultHouseholdLifecycle.listActiveMembershipsForUser(input);
+}
+
+export async function listShareableHouseholdMembersForUser(input: { userId: string }) {
+  const memberships = await defaultHouseholdLifecycle.listActiveMembershipsForUser(input);
+  const householdId = memberships[0]?.householdId;
+  if (!householdId) {
+    return [];
+  }
+
+  return getDb()
+    .select({
+      householdId: householdMemberships.householdId,
+      userId: householdMemberships.userId,
+      name: user.name,
+      email: user.email,
+    })
+    .from(householdMemberships)
+    .innerJoin(user, eq(householdMemberships.userId, user.id))
+    .where(
+      and(
+        eq(householdMemberships.householdId, householdId),
+        eq(householdMemberships.status, "active"),
+        ne(householdMemberships.userId, input.userId),
+      ),
+    );
 }

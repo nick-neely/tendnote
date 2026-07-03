@@ -236,11 +236,13 @@ describe("no agenda, brief, or external-provider behavior in the follow-up layer
       (file) => file.endsWith(".ts") && !file.endsWith(".test.ts"),
     );
 
-    // Phase 1E follow-ups must not reach into relationship agenda ranking, daily
-    // briefs, Calendar/Gmail/Contacts, shared/household, or external drafts/sends
-    // (PRD #42, AGENTS.md). Scan import specifiers — not prose — so a comment that
-    // *discusses* the boundary cannot false-positive.
-    const forbiddenModule = /(agenda|brief|calendar|gmail|contacts|household|draft|outreach)/i;
+    // Follow-ups must not reach into relationship agenda ranking, daily briefs,
+    // Calendar/Gmail/Contacts, non-person general actions, or external
+    // drafts/sends. Phase 4 is allowed to import household scope primitives for
+    // the shared person/relationship Follow-Up proof artifact (#162). Scan import
+    // specifiers — not prose — so a comment that discusses the boundary cannot
+    // false-positive.
+    const forbiddenModule = /(agenda|brief|calendar|gmail|contacts|draft|outreach)/i;
 
     expect(sourceFiles.length).toBeGreaterThan(0);
     for (const file of sourceFiles) {

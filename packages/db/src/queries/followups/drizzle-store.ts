@@ -5,14 +5,18 @@ import {
   followupSchema,
 } from "@tendnote/domain";
 import { and, asc, eq, inArray, lte } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import { followups } from "../../schema";
+import { createDrizzleHouseholdStore } from "../households/drizzle-store";
+import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
 import type { FollowupLifecycleStore, FollowupStore } from "./types";
 
 // Derived from the single domain source of truth so the SQL filter cannot drift
 // from `isActiveFollowupStatus` (PRD #42).
 const ACTIVE_STATUSES = [...ACTIVE_FOLLOWUP_STATUSES] as [FollowupStatus, ...FollowupStatus[]];
+const visibleFollowups = alias(followups, "f");
 
 /**
  * Drizzle-backed follow-up CRUD store. Carries only follow-up methods so it can be
@@ -39,6 +43,24 @@ export function createDrizzleFollowupStore(): FollowupStore {
         .from(followups)
         .where(
           and(eq(followups.id, input.followupId), eq(followups.ownerUserId, input.ownerUserId)),
+        )
+        .limit(1);
+
+      return followup ?? null;
+    },
+    async getVisibleFollowup(input) {
+      const [followup] = await getDb()
+        .select()
+        .from(visibleFollowups)
+        .where(
+          and(
+            eq(visibleFollowups.id, input.followupId),
+            visibleHouseholdRecordSql({
+              callerUserId: input.callerUserId,
+              tableAlias: "f",
+              recordKind: "followup",
+            }),
+          ),
         )
         .limit(1);
 
@@ -86,6 +108,26 @@ export function createDrizzleFollowupStore(): FollowupStore {
 
       return input.limit === undefined ? query : query.limit(input.limit);
     },
+    async listVisibleActiveFollowups(input) {
+      const query = getDb()
+        .select()
+        .from(visibleFollowups)
+        .where(
+          and(
+            visibleHouseholdRecordSql({
+              callerUserId: input.callerUserId,
+              tableAlias: "f",
+              recordKind: "followup",
+            }),
+            inArray(visibleFollowups.status, ACTIVE_STATUSES),
+            ...(input.personId ? [eq(visibleFollowups.personId, input.personId)] : []),
+            ...(input.dueBefore ? [lte(visibleFollowups.dueAt, input.dueBefore)] : []),
+          ),
+        )
+        .orderBy(asc(visibleFollowups.dueAt));
+
+      return input.limit === undefined ? query : query.limit(input.limit);
+    },
     async listSuggestedFollowupsForOwner(input) {
       const query = getDb()
         .select()
@@ -112,6 +154,7 @@ export function createDrizzleFollowupStore(): FollowupStore {
 export function createDrizzleFollowupLifecycleStore(): FollowupLifecycleStore {
   return {
     ...createDrizzleSourceRecordStore(),
+    ...createDrizzleHouseholdStore(),
     ...createDrizzleFollowupStore(),
   };
 }

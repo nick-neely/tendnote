@@ -35,6 +35,8 @@ function view(overrides: Partial<FollowupView> = {}): FollowupView {
     dueAtDate: "2026-07-04",
     dueLabel: "Jul 4",
     dueState: "upcoming",
+    visibilityChoice: "only_me",
+    visibilityLabel: "Only me",
     ...overrides,
   };
 }
@@ -56,6 +58,7 @@ describe("PersonFollowups", () => {
     const html = render({ active: [view()] });
 
     expect(html).toContain("Check in about the move.");
+    expect(html).toContain("Only me");
     expect(html).toContain("Complete");
     expect(html).toContain("More actions");
     expect(html).toContain("New follow-up");
@@ -102,5 +105,23 @@ describe("PersonFollowups", () => {
     const html = render({ active: [view()], resolved: [] });
 
     expect(html).not.toContain("Resolved (");
+  });
+
+  it("renders household member sharing choices when members are available", () => {
+    const html = renderToStaticMarkup(
+      <PersonFollowups
+        active={[]}
+        defaultDueDate="2026-06-27"
+        firstName="Mark"
+        personId="person-1"
+        resolved={[]}
+        shareableMembers={[{ userId: "user-2", name: "Nina", email: "nina@example.com" }]}
+      />,
+    );
+
+    expect(html).toContain("New follow-up");
+    // The form starts collapsed, so member details are only exposed after the
+    // user opens creation.
+    expect(html).not.toContain("nina@example.com");
   });
 });

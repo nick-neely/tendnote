@@ -5,6 +5,7 @@ import type {
   Person,
   SourceRecord,
 } from "@tendnote/domain";
+import type { HouseholdStore } from "../households/types";
 import type {
   InMemorySourceRecordStore,
   SourceRecordResolutionStore,
@@ -32,6 +33,8 @@ export type FollowupContextStore = {
 
 /** Bounded patch the lifecycle layer may apply to a persisted follow-up. */
 export type FollowupUpdatePatch = Partial<Pick<Followup, "reason" | "dueAt" | "status">>;
+export type FollowupLifecyclePatch = FollowupUpdatePatch &
+  Partial<Pick<Followup, "lastActorUserId">>;
 
 /**
  * Full follow-up store: the read surface plus follow-up creation, single-record
@@ -43,13 +46,23 @@ export type FollowupUpdatePatch = Partial<Pick<Followup, "reason" | "dueAt" | "s
 export type FollowupStore = FollowupContextStore & {
   createFollowup: (input: CreateFollowupInput) => Promise<Followup>;
   getFollowup: (input: { ownerUserId: string; followupId: string }) => Promise<Followup | null>;
+  getVisibleFollowup: (input: {
+    callerUserId: string;
+    followupId: string;
+  }) => Promise<Followup | null>;
   updateFollowup: (input: {
     ownerUserId: string;
     followupId: string;
-    patch: FollowupUpdatePatch;
+    patch: FollowupLifecyclePatch;
   }) => Promise<Followup>;
   listActiveFollowupsForOwner: (input: {
     ownerUserId: string;
+    personId?: string;
+    dueBefore?: Date;
+    limit?: number;
+  }) => Promise<Followup[]>;
+  listVisibleActiveFollowups: (input: {
+    callerUserId: string;
     personId?: string;
     dueBefore?: Date;
     limit?: number;
@@ -68,9 +81,18 @@ export type FollowupStore = FollowupContextStore & {
  * and Eve callers share one lifecycle layer (PRD #42).
  */
 export type FollowupLifecycleStore = FollowupStore &
-  Pick<SourceRecordResolutionStore, "getPerson" | "getSourceRecord" | "createAuditLogEntry">;
+  Pick<SourceRecordResolutionStore, "getPerson" | "getSourceRecord" | "createAuditLogEntry"> &
+  Pick<
+    HouseholdStore,
+    | "getHouseholdMembership"
+    | "listHouseholdMemberships"
+    | "createHouseholdRecordShare"
+    | "listHouseholdRecordShares"
+  >;
 
-export type InMemoryFollowupLifecycleStore = InMemorySourceRecordStore & FollowupStore;
+export type InMemoryFollowupLifecycleStore = InMemorySourceRecordStore &
+  FollowupStore &
+  HouseholdStore;
 
 export type CreateActiveFollowupInput = {
   ownerUserId: string;
@@ -78,6 +100,9 @@ export type CreateActiveFollowupInput = {
   reason: string;
   dueAt: Date;
   cadence?: string | null;
+  householdId?: string | null;
+  scope?: "private" | "shared" | "household";
+  selectedUserIds?: string[];
 };
 
 export type FollowupActionInput = {

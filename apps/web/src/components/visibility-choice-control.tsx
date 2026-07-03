@@ -6,16 +6,22 @@ export function VisibilityChoiceControl({
   value,
   onChoiceChange,
   name = "visibility",
+  choices,
 }: {
   value: VisibilityChoice;
   onChoiceChange: (choice: VisibilityChoice) => void;
   name?: string;
+  choices?: readonly VisibilityChoice[];
 }) {
+  const options = choices
+    ? VISIBILITY_CONTROL_OPTIONS.filter((option) => choices.includes(option.choice))
+    : VISIBILITY_CONTROL_OPTIONS;
+
   return (
     <fieldset className="grid gap-2">
       <legend className="text-sm font-medium text-foreground">Visibility</legend>
       <div className="grid gap-2 sm:grid-cols-3">
-        {VISIBILITY_CONTROL_OPTIONS.map((option) => (
+        {options.map((option) => (
           <label
             className="flex min-h-24 cursor-pointer flex-col gap-1 rounded-md border border-border bg-card p-3 text-sm transition-colors hover:border-primary/45 has-checked:border-primary has-checked:bg-secondary"
             key={option.choice}

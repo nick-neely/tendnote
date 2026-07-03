@@ -14,6 +14,10 @@ function followup(overrides: Partial<Followup> = {}): Followup {
     status: "open",
     cadence: null,
     lastPromptedAt: null,
+    householdId: null,
+    scope: "private",
+    createdByUserId: "user-1",
+    lastActorUserId: "user-1",
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
@@ -68,5 +72,7 @@ describe("toFollowupView", () => {
     expect(view.dueState).toBe("upcoming");
     expect(view.dueAtDate).toBe("2026-07-04");
     expect(view.dueLabel).toContain("Jul");
+    expect(view.visibilityChoice).toBe("only_me");
+    expect(view.visibilityLabel).toBe("Only me");
   });
 });

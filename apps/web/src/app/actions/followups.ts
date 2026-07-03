@@ -9,7 +9,9 @@ import {
   reopenFollowup,
   snoozeFollowup,
 } from "@tendnote/db/queries/followups";
+import { listActiveHouseholdMembershipsForUser } from "@tendnote/db/queries/households";
 import type { Followup } from "@tendnote/domain";
+import { scopeForVisibilityChoice, visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
@@ -26,6 +28,8 @@ const createFollowupActionSchema = z.object({
   personId: z.uuid(),
   reason: z.string().trim().min(1, "Add a reason for this follow-up."),
   dueAt: dueDateInputSchema,
+  visibilityChoice: visibilityChoiceSchema.default("only_me"),
+  selectedUserIds: z.array(z.string().min(1)).optional(),
 });
 
 const editFollowupActionSchema = z.object({
@@ -53,10 +57,24 @@ export async function createFollowupAction(input: {
   personId: string;
   reason: string;
   dueAt: string;
+  visibilityChoice?: z.infer<typeof visibilityChoiceSchema>;
+  selectedUserIds?: string[];
 }): Promise<FollowupView> {
   const parsed = createFollowupActionSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const followup = await createFollowup({ ownerUserId, ...parsed });
+  const scope = scopeForVisibilityChoice(parsed.visibilityChoice);
+  const memberships =
+    scope === "private" ? [] : await listActiveHouseholdMembershipsForUser({ userId: ownerUserId });
+  const householdId = scope === "private" ? null : (memberships[0]?.householdId ?? null);
+  const followup = await createFollowup({
+    ownerUserId,
+    personId: parsed.personId,
+    reason: parsed.reason,
+    dueAt: parsed.dueAt,
+    scope,
+    householdId,
+    selectedUserIds: parsed.selectedUserIds,
+  });
 
   revalidatePerson(followup.personId);
   return toFollowupView(followup);

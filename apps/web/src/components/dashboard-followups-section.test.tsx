@@ -18,6 +18,8 @@ function view(overrides: Partial<DashboardFollowupView> = {}): DashboardFollowup
     dueAtDate: "2026-07-04",
     dueLabel: "Jul 4",
     dueState: "upcoming",
+    visibilityChoice: "only_me",
+    visibilityLabel: "Only me",
     personId: "person-1",
     personName: "Mark",
     ...overrides,

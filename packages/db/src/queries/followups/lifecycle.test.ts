@@ -3,6 +3,9 @@ import { createInMemoryFollowupLifecycleStore } from "./in-memory-store";
 import { createFollowupLifecycle } from "./lifecycle";
 
 const OWNER = "user-1";
+const MEMBER = "user-2";
+const OTHER_MEMBER = "user-3";
+const OUTSIDER = "user-4";
 
 async function setup() {
   const store = createInMemoryFollowupLifecycleStore();
@@ -424,6 +427,190 @@ describe("dashboard active follow-ups", () => {
     });
 
     expect(due.map((item) => item.followup.reason)).toEqual(["Soon."]);
+  });
+});
+
+describe("household-scoped follow-ups", () => {
+  async function setupHousehold() {
+    const base = await setup();
+    const household = await base.store.createHouseholdWorkspace({
+      ownerUserId: OWNER,
+      name: "Household",
+      defaultScope: "private",
+    });
+    await base.store.createHouseholdMembership({
+      householdId: household.id,
+      userId: OWNER,
+      invitedByUserId: OWNER,
+      role: "owner",
+      status: "active",
+      invitedAt: new Date("2026-06-01T00:00:00Z"),
+      acceptedAt: new Date("2026-06-01T00:00:00Z"),
+      removedAt: null,
+    });
+    await base.store.createHouseholdMembership({
+      householdId: household.id,
+      userId: MEMBER,
+      invitedByUserId: OWNER,
+      role: "member",
+      status: "active",
+      invitedAt: new Date("2026-06-01T00:00:00Z"),
+      acceptedAt: new Date("2026-06-01T00:00:00Z"),
+      removedAt: null,
+    });
+    await base.store.createHouseholdMembership({
+      householdId: household.id,
+      userId: OTHER_MEMBER,
+      invitedByUserId: OWNER,
+      role: "member",
+      status: "active",
+      invitedAt: new Date("2026-06-01T00:00:00Z"),
+      acceptedAt: new Date("2026-06-01T00:00:00Z"),
+      removedAt: null,
+    });
+
+    const memberPerson = await base.store.createPerson({
+      ownerUserId: MEMBER,
+      displayName: "Mara",
+      firstName: null,
+      lastName: null,
+      birthday: null,
+      relationshipType: "friend",
+      closenessLevel: 3,
+      profileBlurb: null,
+      source: "manual",
+    });
+
+    return { ...base, household, memberPerson };
+  }
+
+  it("creates private, selected-member, and household reminders with creator provenance", async () => {
+    const { lifecycle, household, memberPerson } = await setupHousehold();
+
+    const privateFollowup = await lifecycle.createFollowup({
+      ownerUserId: MEMBER,
+      personId: memberPerson.id,
+      reason: "Private check-in.",
+      dueAt: new Date("2026-07-04T00:00:00Z"),
+    });
+    const selectedFollowup = await lifecycle.createFollowup({
+      ownerUserId: MEMBER,
+      personId: memberPerson.id,
+      reason: "Shared check-in.",
+      dueAt: new Date("2026-07-05T00:00:00Z"),
+      scope: "shared",
+      householdId: household.id,
+      selectedUserIds: [OWNER],
+    });
+    const householdFollowup = await lifecycle.createFollowup({
+      ownerUserId: MEMBER,
+      personId: memberPerson.id,
+      reason: "Household check-in.",
+      dueAt: new Date("2026-07-06T00:00:00Z"),
+      scope: "household",
+      householdId: household.id,
+    });
+
+    expect(privateFollowup).toMatchObject({
+      ownerUserId: MEMBER,
+      createdByUserId: MEMBER,
+      lastActorUserId: MEMBER,
+      scope: "private",
+      householdId: null,
+    });
+    expect(selectedFollowup).toMatchObject({
+      createdByUserId: MEMBER,
+      lastActorUserId: MEMBER,
+      scope: "shared",
+      householdId: household.id,
+    });
+    expect(householdFollowup).toMatchObject({
+      createdByUserId: MEMBER,
+      lastActorUserId: MEMBER,
+      scope: "household",
+      householdId: household.id,
+    });
+  });
+
+  it("shows selected-member reminders only to selected active members", async () => {
+    const { lifecycle, household, memberPerson } = await setupHousehold();
+    const selected = await lifecycle.createFollowup({
+      ownerUserId: MEMBER,
+      personId: memberPerson.id,
+      reason: "Coordinate a gift.",
+      dueAt: new Date("2026-07-05T00:00:00Z"),
+      scope: "shared",
+      householdId: household.id,
+      selectedUserIds: [OWNER],
+    });
+
+    await expect(lifecycle.listActiveFollowups({ ownerUserId: OWNER })).resolves.toEqual([
+      expect.objectContaining({ followup: expect.objectContaining({ id: selected.id }) }),
+    ]);
+    await expect(lifecycle.listActiveFollowups({ ownerUserId: OTHER_MEMBER })).resolves.toEqual([]);
+    await expect(lifecycle.listActiveFollowups({ ownerUserId: OUTSIDER })).resolves.toEqual([]);
+  });
+
+  it("shows household reminders to all active household members", async () => {
+    const { lifecycle, household, memberPerson } = await setupHousehold();
+    const shared = await lifecycle.createFollowup({
+      ownerUserId: MEMBER,
+      personId: memberPerson.id,
+      reason: "Household-wide check-in.",
+      dueAt: new Date("2026-07-05T00:00:00Z"),
+      scope: "household",
+      householdId: household.id,
+    });
+
+    await expect(lifecycle.listActiveFollowups({ ownerUserId: OWNER })).resolves.toEqual([
+      expect.objectContaining({ followup: expect.objectContaining({ id: shared.id }) }),
+    ]);
+    await expect(lifecycle.listActiveFollowups({ ownerUserId: OTHER_MEMBER })).resolves.toEqual([
+      expect.objectContaining({ followup: expect.objectContaining({ id: shared.id }) }),
+    ]);
+    await expect(lifecycle.listActiveFollowups({ ownerUserId: OUTSIDER })).resolves.toEqual([]);
+  });
+
+  it("allows visible members to lifecycle-change shared reminders and records the actor", async () => {
+    const { lifecycle, household, memberPerson } = await setupHousehold();
+    const selected = await lifecycle.createFollowup({
+      ownerUserId: MEMBER,
+      personId: memberPerson.id,
+      reason: "Coordinate a gift.",
+      dueAt: new Date("2026-07-05T00:00:00Z"),
+      scope: "shared",
+      householdId: household.id,
+      selectedUserIds: [OWNER],
+    });
+
+    const completed = await lifecycle.completeFollowup({
+      ownerUserId: OWNER,
+      followupId: selected.id,
+    });
+
+    expect(completed).toMatchObject({
+      ownerUserId: MEMBER,
+      status: "completed",
+      createdByUserId: MEMBER,
+      lastActorUserId: OWNER,
+    });
+  });
+
+  it("blocks unauthorized lifecycle changes for reminders the actor cannot see", async () => {
+    const { lifecycle, household, memberPerson } = await setupHousehold();
+    const selected = await lifecycle.createFollowup({
+      ownerUserId: MEMBER,
+      personId: memberPerson.id,
+      reason: "Coordinate a gift.",
+      dueAt: new Date("2026-07-05T00:00:00Z"),
+      scope: "shared",
+      householdId: household.id,
+      selectedUserIds: [OWNER],
+    });
+
+    await expect(
+      lifecycle.completeFollowup({ ownerUserId: OTHER_MEMBER, followupId: selected.id }),
+    ).rejects.toThrow(/Follow-up not found/);
   });
 });
 

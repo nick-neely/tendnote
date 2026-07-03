@@ -183,9 +183,14 @@ export function ActiveFollowupRow({
       data-leaving={leaving}
     >
       <div className="flex items-start justify-between gap-4">
-        <p className="max-w-[52ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-          {followup.reason}
-        </p>
+        <div className="grid gap-1">
+          <p className="max-w-[52ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
+            {followup.reason}
+          </p>
+          <span className="text-[length:var(--text-caption)] text-muted-foreground">
+            {followup.visibilityLabel}
+          </span>
+        </div>
         <div className="flex shrink-0 flex-col items-end gap-0.5">
           <DueChip dueLabel={followup.dueLabel} dueState={followup.dueState} />
           {followup.status === "snoozed" ? (

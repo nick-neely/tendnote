@@ -10,8 +10,10 @@ import {
   messageDraftChannel,
   messageDraftPurpose,
   messageDraftStatus,
+  privacyScope,
   sourceType,
 } from "./enums";
+import { householdWorkspaces } from "./households";
 import { people } from "./people";
 import { sourceRecords } from "./source-records";
 
@@ -57,12 +59,23 @@ export const followups = pgTable(
       onDelete: "set null",
     }),
     lastPromptedAt: timestamp("last_prompted_at", { withTimezone: true }),
+    householdId: uuid("household_id").references(() => householdWorkspaces.id, {
+      onDelete: "set null",
+    }),
+    scope: privacyScope("scope").notNull().default("private"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    lastActorUserId: text("last_actor_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
     ...timestamps,
   },
   (table) => [
     index("followups_person_id_idx").on(table.personId),
     index("followups_owner_due_idx").on(table.ownerUserId, table.dueAt),
     index("followups_owner_status_idx").on(table.ownerUserId, table.status),
+    index("followups_household_scope_idx").on(table.householdId, table.scope),
   ],
 );
 

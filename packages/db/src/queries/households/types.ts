@@ -10,7 +10,7 @@ import type { SourceRecordAuditLogEntry } from "../source-records/types";
 
 export type HouseholdAuditLogEntry = SourceRecordAuditLogEntry;
 
-export type VisibilityRecordKind = "memory" | "source_record";
+export type VisibilityRecordKind = "memory" | "source_record" | "followup";
 
 export type HouseholdRecordShare = {
   id: string;

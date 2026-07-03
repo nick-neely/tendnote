@@ -2,7 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { ActiveFollowupRow } from "@/components/person-followup-active-row";
-import { CreateFollowupForm } from "@/components/person-followup-create-form";
+import {
+  CreateFollowupForm,
+  type ShareableHouseholdMember,
+} from "@/components/person-followup-create-form";
 import { ResolvedFollowupRow } from "@/components/person-followup-resolved-row";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import type { FollowupView } from "@/lib/followup-view";
@@ -28,12 +31,14 @@ export function PersonFollowups({
   personId,
   firstName,
   defaultDueDate,
+  shareableMembers = [],
   active,
   resolved,
 }: {
   personId: string;
   firstName: string;
   defaultDueDate: string;
+  shareableMembers?: ShareableHouseholdMember[];
   active: FollowupView[];
   resolved: FollowupView[];
 }) {
@@ -94,6 +99,7 @@ export function PersonFollowups({
         firstName={firstName}
         onCreate={addActive}
         personId={personId}
+        shareableMembers={shareableMembers}
       />
 
       {resolvedList.length ? (

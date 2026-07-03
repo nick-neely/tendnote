@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import {
+  canViewScopedRecord,
   createFollowupSchema,
   type Followup,
   followupSchema,
   isActiveFollowupStatus,
+  scopedRecordVisibility,
 } from "@tendnote/domain";
+import { createInMemoryHouseholdStore } from "../households/in-memory-store";
+import type { HouseholdStore } from "../households/types";
 import { createInMemorySourceRecordStore } from "../source-records/in-memory-store";
 import type { FollowupStore, InMemoryFollowupLifecycleStore } from "./types";
 
@@ -14,8 +18,37 @@ import type { FollowupStore, InMemoryFollowupLifecycleStore } from "./types";
  * the composed snapshot store without shadowing those (PRD #11). The lifecycle
  * store composes this with a source-record store for the richer surface.
  */
-export function createInMemoryFollowupStore(): FollowupStore {
+export function createInMemoryFollowupStore(): FollowupStore & HouseholdStore {
   const followups = new Map<string, Followup>();
+  const householdStore = createInMemoryHouseholdStore();
+
+  async function canCallerView(input: { callerUserId: string; followup: Followup }) {
+    const activeMemberships = input.followup.householdId
+      ? await householdStore.listHouseholdMemberships({
+          householdId: input.followup.householdId,
+          status: "active",
+        })
+      : [];
+    const shares =
+      input.followup.scope === "shared" && input.followup.householdId
+        ? await householdStore.listHouseholdRecordShares({
+            householdId: input.followup.householdId,
+            recordKind: "followup",
+            recordId: input.followup.id,
+          })
+        : [];
+
+    return canViewScopedRecord({
+      callerUserId: input.callerUserId,
+      record: scopedRecordVisibility({
+        ownerUserId: input.followup.ownerUserId,
+        scope: input.followup.scope,
+        householdId: input.followup.householdId,
+        shares,
+      }),
+      activeMemberships,
+    });
+  }
 
   return {
     async createFollowup(values) {
@@ -36,6 +69,15 @@ export function createInMemoryFollowupStore(): FollowupStore {
       const followup = followups.get(input.followupId);
 
       if (!followup || followup.ownerUserId !== input.ownerUserId) {
+        return null;
+      }
+
+      return followup;
+    },
+    async getVisibleFollowup(input) {
+      const followup = followups.get(input.followupId);
+
+      if (!followup || !(await canCallerView({ callerUserId: input.callerUserId, followup }))) {
         return null;
       }
 
@@ -80,6 +122,23 @@ export function createInMemoryFollowupStore(): FollowupStore {
 
       return input.limit === undefined ? active : active.slice(0, input.limit);
     },
+    async listVisibleActiveFollowups(input) {
+      const active = [];
+      for (const followup of followups.values()) {
+        if (
+          isActiveFollowupStatus(followup.status) &&
+          (input.personId === undefined || followup.personId === input.personId) &&
+          (input.dueBefore === undefined ||
+            followup.dueAt.getTime() <= input.dueBefore.getTime()) &&
+          (await canCallerView({ callerUserId: input.callerUserId, followup }))
+        ) {
+          active.push(followup);
+        }
+      }
+
+      active.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
+      return input.limit === undefined ? active : active.slice(0, input.limit);
+    },
     async listSuggestedFollowupsForOwner(input) {
       const suggested = [...followups.values()]
         .filter(
@@ -92,6 +151,7 @@ export function createInMemoryFollowupStore(): FollowupStore {
 
       return input.limit === undefined ? suggested : suggested.slice(0, input.limit);
     },
+    ...householdStore,
   };
 }
 

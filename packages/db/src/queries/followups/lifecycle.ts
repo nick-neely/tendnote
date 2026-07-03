@@ -35,7 +35,12 @@ export type ListActiveFollowupsInput = {
 export function createFollowupLifecycle(store: FollowupLifecycleStore) {
   /** Loads an owner-scoped follow-up or throws so callers cannot touch another owner's. */
   async function requireFollowup(input: FollowupActionInput) {
-    const followup = await store.getFollowup(input);
+    const followup =
+      (await store.getFollowup(input)) ??
+      (await store.getVisibleFollowup({
+        callerUserId: input.ownerUserId,
+        followupId: input.followupId,
+      }));
 
     if (!followup) {
       throw new Error("Follow-up not found.");
@@ -49,17 +54,18 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
     const status = resolveFollowupTransition(followup.status, action);
 
     const updated = await store.updateFollowup({
-      ownerUserId: input.ownerUserId,
+      ownerUserId: followup.ownerUserId,
       followupId: followup.id,
-      patch: { status },
+      patch: { status, lastActorUserId: input.ownerUserId },
     });
 
     await store.createAuditLogEntry({
-      ownerUserId: input.ownerUserId,
+      ownerUserId: followup.ownerUserId,
       action: `followup.${action}`,
       entityType: "followup",
       entityId: updated.id,
       metadataJson: {
+        actorUserId: input.ownerUserId,
         personId: updated.personId,
         previousStatus: followup.status,
         status: updated.status,
@@ -77,6 +83,39 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
      */
     async createFollowup(input: CreateActiveFollowupInput) {
       const dueAt = assertConcreteDueAt(input.dueAt);
+      const scope = input.scope ?? "private";
+      const householdId = scope === "private" ? null : (input.householdId ?? null);
+
+      if (scope !== "private") {
+        if (!householdId) {
+          throw new Error("Shared follow-ups require a household.");
+        }
+        const membership = await store.getHouseholdMembership({
+          householdId,
+          userId: input.ownerUserId,
+        });
+        if (membership?.status !== "active") {
+          throw new Error("Active household membership required.");
+        }
+      }
+
+      if (scope === "shared" && (!input.selectedUserIds || input.selectedUserIds.length === 0)) {
+        throw new Error("Select at least one household member to share this follow-up.");
+      }
+
+      if (scope === "shared" && householdId) {
+        const activeMembers = await store.listHouseholdMemberships({
+          householdId,
+          status: "active",
+        });
+        const activeUserIds = new Set(activeMembers.map((member) => member.userId));
+        const invalidUserIds = (input.selectedUserIds ?? []).filter(
+          (userId) => !activeUserIds.has(userId),
+        );
+        if (invalidUserIds.length > 0) {
+          throw new Error("Selected household members must be active.");
+        }
+      }
 
       const person = await store.getPerson({
         ownerUserId: input.ownerUserId,
@@ -94,14 +133,36 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
         dueAt,
         status: "open",
         cadence: input.cadence ?? null,
+        householdId,
+        scope,
+        createdByUserId: input.ownerUserId,
+        lastActorUserId: input.ownerUserId,
       });
+
+      if (scope === "shared" && householdId) {
+        for (const selectedUserId of input.selectedUserIds ?? []) {
+          await store.createHouseholdRecordShare({
+            householdId,
+            recordKind: "followup",
+            recordId: followup.id,
+            sharedWithUserId: selectedUserId,
+            sharedByUserId: input.ownerUserId,
+          });
+        }
+      }
 
       await store.createAuditLogEntry({
         ownerUserId: input.ownerUserId,
         action: "followup.create",
         entityType: "followup",
         entityId: followup.id,
-        metadataJson: { personId: followup.personId, status: followup.status },
+        metadataJson: {
+          actorUserId: input.ownerUserId,
+          householdId: followup.householdId,
+          personId: followup.personId,
+          scope: followup.scope,
+          status: followup.status,
+        },
       });
 
       return followup;
@@ -114,13 +175,18 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
      * the person is resolved owner-scoped so surfaces name people, not raw ids.
      */
     async listActiveFollowups(input: ListActiveFollowupsInput): Promise<ActiveFollowupSummary[]> {
-      const active = await store.listActiveFollowupsForOwner(input);
+      const active = await store.listVisibleActiveFollowups({
+        callerUserId: input.ownerUserId,
+        personId: input.personId,
+        dueBefore: input.dueBefore,
+        limit: input.limit,
+      });
 
       return Promise.all(
         active.map(async (followup) => ({
           followup,
           person: await store.getPerson({
-            ownerUserId: input.ownerUserId,
+            ownerUserId: followup.ownerUserId,
             personId: followup.personId,
           }),
         })),
@@ -149,17 +215,18 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
       }
 
       const updated = await store.updateFollowup({
-        ownerUserId: input.ownerUserId,
+        ownerUserId: followup.ownerUserId,
         followupId: followup.id,
-        patch,
+        patch: { ...patch, lastActorUserId: input.ownerUserId },
       });
 
       await store.createAuditLogEntry({
-        ownerUserId: input.ownerUserId,
+        ownerUserId: followup.ownerUserId,
         action: "followup.edit",
         entityType: "followup",
         entityId: updated.id,
         metadataJson: {
+          actorUserId: input.ownerUserId,
           personId: updated.personId,
           editedReason: edit.reason !== undefined,
           editedDueAt: edit.dueAt !== undefined,
@@ -192,17 +259,18 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
       const status = resolveFollowupTransition(followup.status, "snooze");
 
       const updated = await store.updateFollowup({
-        ownerUserId: input.ownerUserId,
+        ownerUserId: followup.ownerUserId,
         followupId: followup.id,
-        patch: { status, dueAt },
+        patch: { status, dueAt, lastActorUserId: input.ownerUserId },
       });
 
       await store.createAuditLogEntry({
-        ownerUserId: input.ownerUserId,
+        ownerUserId: followup.ownerUserId,
         action: "followup.snooze",
         entityType: "followup",
         entityId: updated.id,
         metadataJson: {
+          actorUserId: input.ownerUserId,
           personId: updated.personId,
           previousStatus: followup.status,
           status: updated.status,

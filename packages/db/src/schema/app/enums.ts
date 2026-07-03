@@ -54,7 +54,11 @@ export const householdMemberStatus = pgEnum("household_member_status", [
   "removed",
 ]);
 
-export const visibilityRecordKind = pgEnum("visibility_record_kind", ["memory", "source_record"]);
+export const visibilityRecordKind = pgEnum("visibility_record_kind", [
+  "memory",
+  "source_record",
+  "followup",
+]);
 
 export const sourceRecordStatus = pgEnum("source_record_status", [
   "pending_resolution",
