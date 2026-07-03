@@ -54,6 +54,7 @@ export function suggestedMemory(
     sensitivity: overrides.sensitivity ?? "normal",
     confidence: overrides.confidence ?? "medium",
     scope: overrides.scope ?? "private",
+    householdId: overrides.householdId ?? null,
     approvedAt: overrides.approvedAt ?? null,
     dismissedAt: overrides.dismissedAt ?? null,
     createdAt: overrides.createdAt ?? now,

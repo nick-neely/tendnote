@@ -131,6 +131,38 @@ describe("search_semantic_context tool", () => {
     });
   });
 
+  it("includes visibility provenance in model-facing semantic recall summaries", () => {
+    const toModelOutput = tool.toModelOutput;
+    if (!toModelOutput) {
+      throw new Error("Expected search_semantic_context to define toModelOutput.");
+    }
+
+    const output = toModelOutput({
+      results: [
+        {
+          recordKind: "source_record",
+          recordId: "source-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          snippet: "Household context about Mara.",
+          similarity: 0.82,
+          trustLevel: "logged_context",
+          sensitivity: "normal",
+          visibilityChoice: "whole_household",
+          visibilityLabel: "Whole household",
+          sourceRefs: [{ kind: "source_record", id: "source-1" }],
+          routing: { personId: "person-1", recordKind: "source_record", recordId: "source-1" },
+        },
+      ],
+      component: { type: "semantic_context_search", resultCount: 1 },
+    }) as { type: "json"; value: { results: Array<Record<string, unknown>> } };
+
+    expect(output.value.results[0]).toMatchObject({
+      visibility: "Whole household",
+      visibilityChoice: "whole_household",
+    });
+  });
+
   it("fails open when the shared semantic query has no ready embeddings", async () => {
     searchSemanticContext.mockResolvedValue([]);
 

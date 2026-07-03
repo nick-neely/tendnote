@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHouseholdLifecycle } from "../households/lifecycle";
 import { OTHER_OWNER, OWNER, setup, WINDOW_END, WINDOW_START } from "./query.test-helpers";
 
 describe("relationship agenda — recent context", () => {
@@ -114,6 +115,83 @@ describe("relationship agenda — recent context", () => {
     ]);
     expect(JSON.stringify(result)).not.toContain("Restricted context should stay out.");
     expect(JSON.stringify(result)).not.toContain("Fourth eligible context should stay out.");
+  });
+
+  it("includes selected-member visible recent source records with provenance", async () => {
+    const { store, agenda, person } = await setup();
+    const households = createHouseholdLifecycle(store);
+    const memberUserId = "user-3";
+    const { household } = await households.createHousehold({ ownerUserId: OWNER, name: "Home" });
+    await households.inviteMember({
+      ownerUserId: OWNER,
+      householdId: household.id,
+      invitedUserId: memberUserId,
+    });
+    await households.acceptInvite({ householdId: household.id, userId: memberUserId });
+    const mara = await person("Mara Lin", null);
+    const shared = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Mara shared a dinner plan.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "active",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "shared",
+      householdId: household.id,
+      importance: 3,
+      metadataJson: {},
+    });
+    await store.createHouseholdRecordShare({
+      householdId: household.id,
+      recordKind: "source_record",
+      recordId: shared.id,
+      sharedWithUserId: memberUserId,
+      sharedByUserId: OWNER,
+    });
+    const privateRecord = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Private source should not leak.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "active",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+    });
+    store.seedRecentSourceRecords([
+      {
+        sourceRecord: shared,
+        linkedPeople: [{ id: mara.id, displayName: mara.displayName }],
+      },
+      {
+        sourceRecord: privateRecord,
+        linkedPeople: [{ id: mara.id, displayName: mara.displayName }],
+      },
+    ]);
+
+    const result = await agenda.getRelationshipAgenda({
+      ownerUserId: memberUserId,
+      windowStart: WINDOW_START,
+      windowEnd: WINDOW_END,
+      includeKinds: ["recent_context"],
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "recent_context",
+        reason: "Mara shared a dinner plan.",
+        visibilityChoice: "selected_members",
+        visibilityLabel: "Specific people",
+      }),
+    ]);
+    expect(result.map((candidate) => candidate.reason)).not.toContain(
+      "Private source should not leak.",
+    );
   });
 
   it("ranks recent context below concrete agenda items and honors recent_context filters", async () => {

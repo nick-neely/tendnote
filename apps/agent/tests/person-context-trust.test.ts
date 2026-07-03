@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { baseInstructions } from "./instructions-source";
+import { authoredInstructions } from "./instructions-source";
 
 const toolSource = readFileSync(join(process.cwd(), "agent/tools/get_person_context.ts"), "utf8");
-// Trust-tier phrasing stays always-on in base.md (normalized so wrapping is moot).
-const instructions = baseInstructions();
+// Trust-tier phrasing spans always-on base.md plus recall skill guidance.
+const instructions = authoredInstructions();
 
 describe("trust-aware person context tool", () => {
   it("calls the shared snapshot-backed read path rather than re-deriving policy", () => {
@@ -66,5 +66,12 @@ describe("instructions steer trust-aware phrasing", () => {
     expect(instructions).toMatch(/Snapshot\*\* is a generated summary cache/i);
     expect(instructions).toMatch(/not a source of truth/i);
     expect(instructions).toMatch(/ground the claim in the supporting records/i);
+  });
+
+  it("distinguishes private, selected-member, and household visibility provenance", () => {
+    expect(instructions).toMatch(/Only me.*private note/i);
+    expect(instructions).toMatch(/Specific people.*selected-member shared context/i);
+    expect(instructions).toMatch(/Whole household.*household context/i);
+    expect(instructions).toMatch(/another member's private records/i);
   });
 });

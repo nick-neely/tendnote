@@ -151,6 +151,21 @@ export function createInMemoryFollowupStore(): FollowupStore & HouseholdStore {
 
       return input.limit === undefined ? suggested : suggested.slice(0, input.limit);
     },
+    async listVisibleSuggestedFollowups(input) {
+      const suggested = [];
+      for (const followup of followups.values()) {
+        if (
+          followup.status === "suggested" &&
+          (input.personId === undefined || followup.personId === input.personId) &&
+          (await canCallerView({ callerUserId: input.callerUserId, followup }))
+        ) {
+          suggested.push(followup);
+        }
+      }
+
+      suggested.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
+      return input.limit === undefined ? suggested : suggested.slice(0, input.limit);
+    },
     ...householdStore,
   };
 }

@@ -291,6 +291,8 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
           sourceRefs: [{ kind: "followup", id: "followup-1" }],
           trustLevel: "active_reminder",
           sensitivity: "normal",
+          visibilityChoice: "selected_members",
+          visibilityLabel: "Specific people",
           rank: 1,
         },
         {
@@ -316,6 +318,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     // assert on the unambiguous person/title fragments rather than the raw "'s".)
     expect(html).toContain("Follow up with Mara Lin");
     expect(html).toContain("Mara Lin");
+    expect(html).toContain("Specific people");
     expect(html).toContain("Sam Rivera");
     expect(html).toContain("birthday");
     expect(html).toContain('data-tool-view="relationship_agenda"');

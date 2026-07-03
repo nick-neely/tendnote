@@ -52,7 +52,7 @@ function rank(candidates: ScoredCandidate[]) {
 }
 
 /**
- * Shared owner-scoped relationship agenda read model (PRD #51/#52). Each enabled
+ * Shared visible relationship agenda read model (PRD #51/#52). Each enabled
  * candidate kind is gathered by a focused collector (see collectors.ts), then the
  * merged set is deduped and ranked. Semantic context is folded in last because it
  * merges into the candidates the other collectors already produced.

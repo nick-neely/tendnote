@@ -1,5 +1,6 @@
 import type { SourceRecord } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
+import { createHouseholdLifecycle } from "../households/lifecycle";
 import {
   OTHER_OWNER,
   OWNER,
@@ -149,6 +150,151 @@ describe("relationship agenda — review candidates", () => {
     );
     expect(result.map((candidate) => candidate.reason)).not.toContain(
       "Archived suggestion should stay out.",
+    );
+  });
+
+  it("includes selected-member visible review candidates without leaking private review items", async () => {
+    const { store, agenda, person } = await setup();
+    const households = createHouseholdLifecycle(store);
+    const memberUserId = "user-3";
+    const { household } = await households.createHousehold({ ownerUserId: OWNER, name: "Home" });
+    await households.inviteMember({
+      ownerUserId: OWNER,
+      householdId: household.id,
+      invitedUserId: memberUserId,
+    });
+    await households.acceptInvite({ householdId: household.id, userId: memberUserId });
+    const mara = await person("Mara Lin", null);
+    const sharedSource = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Mara shared context for review.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "pending_resolution",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "shared",
+      householdId: household.id,
+      importance: 3,
+      metadataJson: {},
+    });
+    await store.createHouseholdRecordShare({
+      householdId: household.id,
+      recordKind: "source_record",
+      recordId: sharedSource.id,
+      sharedWithUserId: memberUserId,
+      sharedByUserId: OWNER,
+    });
+    const privateSource = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Private review source should not leak.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "pending_resolution",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+    });
+    const sharedFollowup = await store.createFollowup({
+      ownerUserId: OWNER,
+      personId: mara.id,
+      reason: "Shared suggested follow-up.",
+      dueAt: new Date("2026-07-04T12:00:00Z"),
+      householdId: household.id,
+      scope: "shared",
+      sourceRecordId: sharedSource.id,
+      status: "suggested",
+    });
+    await store.createHouseholdRecordShare({
+      householdId: household.id,
+      recordKind: "followup",
+      recordId: sharedFollowup.id,
+      sharedWithUserId: memberUserId,
+      sharedByUserId: OWNER,
+    });
+    await store.createFollowup({
+      ownerUserId: OWNER,
+      personId: mara.id,
+      reason: "Private suggested follow-up should not leak.",
+      dueAt: new Date("2026-07-04T12:00:00Z"),
+      sourceRecordId: privateSource.id,
+      status: "suggested",
+    });
+    store.seedSuggestedMemories([
+      suggestedMemory({
+        id: "shared-memory",
+        ownerUserId: OWNER,
+        personId: mara.id,
+        sourceRecordId: sharedSource.id,
+        content: "Shared suggested memory.",
+        scope: "shared",
+        householdId: household.id,
+      }),
+      suggestedMemory({
+        id: "private-memory",
+        ownerUserId: OWNER,
+        personId: mara.id,
+        sourceRecordId: privateSource.id,
+        content: "Private suggested memory should not leak.",
+      }),
+    ]);
+    await store.createHouseholdRecordShare({
+      householdId: household.id,
+      recordKind: "memory",
+      recordId: "shared-memory",
+      sharedWithUserId: memberUserId,
+      sharedByUserId: OWNER,
+    });
+    store.seedSourceRecordReviews([
+      {
+        sourceRecord: sharedSource,
+        linkedPeople: [{ id: mara.id, displayName: mara.displayName }],
+      },
+      {
+        sourceRecord: privateSource,
+        linkedPeople: [{ id: mara.id, displayName: mara.displayName }],
+      },
+    ]);
+
+    const result = await agenda.getRelationshipAgenda({
+      ownerUserId: memberUserId,
+      windowStart: WINDOW_START,
+      windowEnd: WINDOW_END,
+      includeKinds: ["review_item", "suggested_followup"],
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "review_item",
+        reason: "Shared suggested memory.",
+        visibilityChoice: "selected_members",
+        visibilityLabel: "Specific people",
+      }),
+      expect.objectContaining({
+        kind: "suggested_followup",
+        reason: "Shared suggested follow-up.",
+        visibilityChoice: "selected_members",
+        visibilityLabel: "Specific people",
+      }),
+      expect.objectContaining({
+        kind: "review_item",
+        reason: "Mara shared context for review.",
+        visibilityChoice: "selected_members",
+        visibilityLabel: "Specific people",
+      }),
+    ]);
+    expect(result.map((candidate) => candidate.reason)).not.toContain(
+      "Private suggested memory should not leak.",
+    );
+    expect(result.map((candidate) => candidate.reason)).not.toContain(
+      "Private suggested follow-up should not leak.",
+    );
+    expect(result.map((candidate) => candidate.reason)).not.toContain(
+      "Private review source should not leak.",
     );
   });
 
@@ -385,7 +531,7 @@ describe("relationship agenda — review candidates", () => {
       importance: 3,
       metadataJson: {},
     });
-    const otherFollowup = await store.createFollowup({
+    await store.createFollowup({
       ownerUserId: OTHER_OWNER,
       personId: intruder.id,
       reason: "Should not leak.",
@@ -393,7 +539,7 @@ describe("relationship agenda — review candidates", () => {
       status: "suggested",
       sourceRecordId: otherSourceRecord.id,
     });
-    store.listSuggestedMemoriesForOwner = async () => [
+    store.seedSuggestedMemories([
       suggestedMemory({
         id: "memory-1",
         personId: mara.id,
@@ -407,14 +553,13 @@ describe("relationship agenda — review candidates", () => {
         sourceRecordId: otherSourceRecord.id,
         content: "Should not leak.",
       }),
-    ];
-    store.listSuggestedFollowupsForOwner = async () => [otherFollowup];
-    store.listSourceRecordReviewsForOwner = async () => [
+    ]);
+    store.seedSourceRecordReviews([
       {
         sourceRecord: otherSourceRecord,
         linkedPeople: [{ id: intruder.id, displayName: intruder.displayName }],
       },
-    ];
+    ]);
 
     const result = await agenda.getRelationshipAgenda({
       ownerUserId: OWNER,

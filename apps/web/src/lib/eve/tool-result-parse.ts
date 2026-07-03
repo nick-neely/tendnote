@@ -101,6 +101,8 @@ function toRelationshipAgendaCandidate(
     personDisplayName: candidate.personDisplayName ?? null,
     dueAt: candidate.dueAt ?? null,
     dueLabel: candidate.dueAt ? formatDueLabel(candidate.dueAt) : null,
+    visibilityChoice: candidate.visibilityChoice ?? null,
+    visibilityLabel: candidate.visibilityLabel ?? null,
   };
 }
 

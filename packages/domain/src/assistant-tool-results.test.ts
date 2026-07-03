@@ -60,6 +60,8 @@ describe("assistant tool-result contract", () => {
           sourceRefs: [{ kind: "followup", id: "f1" }],
           trustLevel: "active_reminder",
           sensitivity: "normal",
+          visibilityChoice: "selected_members",
+          visibilityLabel: "Specific people",
           rank: 1,
         },
       ],

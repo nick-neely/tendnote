@@ -100,8 +100,8 @@ export type SuggestedFollowupReviewItemView = {
 export type RelationshipContextSearchResultView = {
   recordKind: "person" | "memory" | "source_record";
   recordId: string;
-  visibilityChoice: "only_me" | "selected_members" | "whole_household" | null;
-  visibilityLabel: string | null;
+  visibilityChoice?: "only_me" | "selected_members" | "whole_household" | null;
+  visibilityLabel?: string | null;
   relatedPersonId: string | null;
   relatedPersonDisplayName: string | null;
   label: string;
@@ -147,6 +147,8 @@ export type RelationshipAgendaCandidateView = {
     | "confirmed_fact"
     | "tentative";
   sensitivity: "normal" | "sensitive" | "restricted";
+  visibilityChoice?: "only_me" | "selected_members" | "whole_household" | null;
+  visibilityLabel?: string | null;
   rank: number;
 };
 

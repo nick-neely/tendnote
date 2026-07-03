@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { createHouseholdLifecycle } from "../households/lifecycle";
 import { OTHER_OWNER, OWNER, setup, WINDOW_END, WINDOW_START } from "./query.test-helpers";
+
+const MEMBER = "user-3";
 
 describe("relationship agenda — follow-ups and birthdays", () => {
   it("returns owner-scoped active follow-ups and birthdays as one ranked typed list", async () => {
@@ -54,6 +57,56 @@ describe("relationship agenda — follow-ups and birthdays", () => {
     expect(result.map((candidate) => candidate.personId)).not.toContain(intruder.id);
     expect(result[0]?.sourceRefs).toEqual([expect.objectContaining({ kind: "followup" })]);
     expect(result[1]?.sourceRefs).toEqual([{ kind: "person", id: mara.id }]);
+  });
+
+  it("includes selected-member visible follow-ups with visibility provenance", async () => {
+    const { store, followups, agenda, person } = await setup();
+    const households = createHouseholdLifecycle(store);
+    const { household } = await households.createHousehold({ ownerUserId: OWNER, name: "Home" });
+    await households.inviteMember({
+      ownerUserId: OWNER,
+      householdId: household.id,
+      invitedUserId: MEMBER,
+    });
+    await households.acceptInvite({ householdId: household.id, userId: MEMBER });
+    const mara = await person("Mara Lin", null);
+
+    await followups.createFollowup({
+      ownerUserId: OWNER,
+      personId: mara.id,
+      reason: "Coordinate the shared dinner plan.",
+      dueAt: new Date("2026-07-02T12:00:00Z"),
+      householdId: household.id,
+      scope: "shared",
+      selectedUserIds: [MEMBER],
+    });
+    await followups.createFollowup({
+      ownerUserId: OWNER,
+      personId: mara.id,
+      reason: "Private reminder should not leak.",
+      dueAt: new Date("2026-07-03T12:00:00Z"),
+    });
+
+    const result = await agenda.getRelationshipAgenda({
+      ownerUserId: MEMBER,
+      windowStart: WINDOW_START,
+      windowEnd: WINDOW_END,
+      includeKinds: ["due_followup"],
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "due_followup",
+        personId: mara.id,
+        personDisplayName: "Mara Lin",
+        reason: "Coordinate the shared dinner plan.",
+        visibilityChoice: "selected_members",
+        visibilityLabel: "Specific people",
+      }),
+    ]);
+    expect(result.map((candidate) => candidate.reason)).not.toContain(
+      "Private reminder should not leak.",
+    );
   });
 
   it("keeps exact birthday windows precise unless the query is broad", async () => {

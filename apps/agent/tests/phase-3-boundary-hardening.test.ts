@@ -109,15 +109,13 @@ describe("Phase 3 boundary hardening", () => {
     expect(currentPhase3Files).toEqual([...PHASE_3_IMPLEMENTATION_FILES].sort());
   });
 
-  it("does not add generic Eve MCP/OpenAPI or shared-household/privacy-guard behavior", () => {
+  it("does not add generic Eve MCP/OpenAPI, shared-context, or privacy-guard behavior", () => {
     const source = normalizedSource(PHASE_3_IMPLEMENTATION_FILES);
 
     for (const forbidden of [
       "modelcontextprotocol",
       "openapi",
       "swagger",
-      "household",
-      "shared household",
       "shared_context",
       "shared context",
       "privacy_guard",

@@ -72,6 +72,11 @@ export type FollowupStore = FollowupContextStore & {
     personId?: string;
     limit?: number;
   }) => Promise<Followup[]>;
+  listVisibleSuggestedFollowups: (input: {
+    callerUserId: string;
+    personId?: string;
+    limit?: number;
+  }) => Promise<Followup[]>;
 };
 
 /**

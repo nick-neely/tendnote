@@ -152,6 +152,38 @@ describe("search_relationship_context tool", () => {
     });
   });
 
+  it("includes visibility provenance in model-facing exact recall summaries", () => {
+    const toModelOutput = tool.toModelOutput;
+    if (!toModelOutput) {
+      throw new Error("Expected search_relationship_context to define toModelOutput.");
+    }
+
+    const output = toModelOutput({
+      results: [
+        {
+          recordKind: "memory",
+          recordId: "memory-1",
+          relatedPersonId: "person-1",
+          relatedPersonDisplayName: "Mara Lin",
+          label: "Mara Lin",
+          snippet: "Mara shared a household update.",
+          matchedFields: ["content"],
+          rank: 1,
+          trustLevel: "confirmed_fact",
+          sensitivity: "normal",
+          visibilityChoice: "selected_members",
+          visibilityLabel: "Specific people",
+        },
+      ],
+      component: { type: "relationship_context_search", resultCount: 1 },
+    }) as { type: "json"; value: { results: Array<Record<string, unknown>> } };
+
+    expect(output.value.results[0]).toMatchObject({
+      visibility: "Specific people",
+      visibilityChoice: "selected_members",
+    });
+  });
+
   it("forwards direct restricted requests without using search_people", async () => {
     searchRelationshipContext.mockResolvedValue([]);
 

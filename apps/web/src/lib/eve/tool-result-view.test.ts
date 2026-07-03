@@ -493,6 +493,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
             sourceRefs: [{ kind: "followup", id: "followup-1" }],
             trustLevel: "active_reminder",
             sensitivity: "normal",
+            visibilityChoice: "selected_members",
+            visibilityLabel: "Specific people",
             rank: 1,
           },
           {
@@ -535,6 +537,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
           sourceRefs: [{ kind: "followup", id: "followup-1" }],
           trustLevel: "active_reminder",
           sensitivity: "normal",
+          visibilityChoice: "selected_members",
+          visibilityLabel: "Specific people",
           rank: 1,
         },
         expect.objectContaining({

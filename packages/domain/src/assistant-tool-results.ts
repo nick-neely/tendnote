@@ -167,6 +167,8 @@ export const relationshipAgendaToolResult = z.object({
         "tentative",
       ]),
       sensitivity: z.enum(["normal", "sensitive", "restricted"]),
+      visibilityChoice: z.enum(["only_me", "selected_members", "whole_household"]).nullish(),
+      visibilityLabel: z.string().nullish(),
       rank: z.number(),
     }),
   ),

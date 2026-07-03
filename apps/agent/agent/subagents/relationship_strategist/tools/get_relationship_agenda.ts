@@ -41,7 +41,7 @@ const inputSchema = z.object({
 
 export default defineTool({
   description:
-    "Read the owner's relationship agenda for private strategy requests. This is read-only: it ranks existing context and never creates reminders, suggestions, scans, briefs, drafts, memories, source records, or external actions.",
+    "Read the caller's visible relationship agenda for private strategy requests. Visible context includes the caller's private records plus selected-member and whole-household records the caller can view. This is read-only: it ranks existing context and never creates reminders, suggestions, scans, briefs, drafts, memories, source records, or external actions. Preserve visibility/provenance language when it affects trust or actionability.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -84,6 +84,8 @@ export default defineTool({
           due: candidate.dueAt ?? null,
           trust: candidate.trustLevel,
           sensitivity: candidate.sensitivity,
+          visibility: candidate.visibilityLabel ?? null,
+          visibilityChoice: candidate.visibilityChoice ?? null,
           sourceRefs: candidate.sourceRefs,
         })),
         guidance:

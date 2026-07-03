@@ -5,6 +5,7 @@ import type {
   SemanticRetrievalResult,
   Sensitivity,
   SourceRecord,
+  VisibilityChoice,
 } from "@tendnote/domain";
 
 export type RelationshipAgendaKind =
@@ -42,6 +43,8 @@ export type RelationshipAgendaCandidate = {
   sourceRefs: RelationshipAgendaSourceRef[];
   trustLevel: RelationshipAgendaTrustLevel;
   sensitivity: Sensitivity;
+  visibilityChoice?: VisibilityChoice;
+  visibilityLabel?: string;
   rank: number;
 };
 
@@ -61,6 +64,11 @@ export type RelationshipAgendaStore = {
     dueBefore?: Date;
     limit?: number;
   }) => Promise<Followup[]>;
+  listVisibleActiveFollowups: (input: {
+    callerUserId: string;
+    dueBefore?: Date;
+    limit?: number;
+  }) => Promise<Followup[]>;
   getPerson: (input: { ownerUserId: string; personId: string }) => Promise<Person | null>;
   listPeople: (input: { ownerUserId: string }) => Promise<Person[]>;
   getSourceRecord: (input: {
@@ -71,16 +79,32 @@ export type RelationshipAgendaStore = {
     ownerUserId: string;
     limit?: number;
   }) => Promise<Memory[]>;
+  listVisibleSuggestedMemories: (input: {
+    callerUserId: string;
+    limit?: number;
+  }) => Promise<Memory[]>;
   listSuggestedFollowupsForOwner: (input: {
     ownerUserId: string;
+    limit?: number;
+  }) => Promise<Followup[]>;
+  listVisibleSuggestedFollowups: (input: {
+    callerUserId: string;
     limit?: number;
   }) => Promise<Followup[]>;
   listSourceRecordReviewsForOwner: (input: {
     ownerUserId: string;
     limit?: number;
   }) => Promise<RelationshipAgendaSourceRecordReview[]>;
+  listVisibleSourceRecordReviews: (input: {
+    callerUserId: string;
+    limit?: number;
+  }) => Promise<RelationshipAgendaSourceRecordReview[]>;
   listRecentSourceRecordsForOwner: (input: {
     ownerUserId: string;
+    limit?: number;
+  }) => Promise<RelationshipAgendaSourceRecordReview[]>;
+  listVisibleRecentSourceRecords: (input: {
+    callerUserId: string;
     limit?: number;
   }) => Promise<RelationshipAgendaSourceRecordReview[]>;
   searchSemanticContext: (input: {

@@ -307,6 +307,7 @@ function AgendaItem({ candidate }: { candidate: Candidate }) {
   const caption = [
     labelAgendaTrust(candidate.trustLevel),
     labelSensitivity(candidate.sensitivity),
+    candidate.visibilityLabel,
     candidate.dueAt ? labelAgendaDue(candidate.kind, formatAgendaDay(candidate.dueAt)) : null,
     labelSourceGrounding(candidate.sourceRefs),
   ]
@@ -352,7 +353,9 @@ function AgendaItem({ candidate }: { candidate: Candidate }) {
 
 function dayAriaLabel(date: Date, items: Candidate[]): string {
   const count = items.length === 1 ? "1 item" : `${items.length} items`;
-  const titles = items.map((item) => item.title).join("; ");
+  const titles = items
+    .map((item) => (item.visibilityLabel ? `${item.title} (${item.visibilityLabel})` : item.title))
+    .join("; ");
   return `${formatAgendaWeekday(date)}, ${count}: ${titles}`;
 }
 

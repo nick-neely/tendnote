@@ -318,6 +318,47 @@ describe("relationship agenda — semantic context", () => {
     ]);
   });
 
+  it("preserves semantic result visibility provenance on agenda candidates", async () => {
+    const { store, agenda } = await setup();
+    store.seedSemanticResults(OWNER, [
+      {
+        recordKind: "memory",
+        recordId: "memory-household",
+        visibilityChoice: "whole_household",
+        visibilityLabel: "Whole household",
+        relatedPersonId: "person-1",
+        relatedPersonDisplayName: "Mara Lin",
+        snippet: "Mara likes shared dinner plans.",
+        similarity: 0.91,
+        trustLevel: "confirmed_fact",
+        sensitivity: "normal",
+        sourceRefs: [{ kind: "memory", id: "memory-household" }],
+        routing: {
+          personId: "person-1",
+          recordKind: "memory",
+          recordId: "memory-household",
+        },
+      },
+    ]);
+
+    const result = await agenda.getRelationshipAgenda({
+      ownerUserId: OWNER,
+      windowStart: WINDOW_START,
+      windowEnd: WINDOW_END,
+      query: "dinner plans",
+      includeKinds: ["semantic_context"],
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "semantic_context",
+        reason: "Mara likes shared dinner plans.",
+        visibilityChoice: "whole_household",
+        visibilityLabel: "Whole household",
+      }),
+    ]);
+  });
+
   it("excludes restricted semantic context unless directly requested with sensitive query intent", async () => {
     const { store, agenda } = await setup();
     store.seedSemanticResults(OWNER, [

@@ -48,6 +48,8 @@ describe("get_relationship_agenda toModelOutput", () => {
         sourceRefs: [{ kind: "source_record" as const, id: SOURCE_ID }],
         trustLevel: "tentative" as const,
         sensitivity: "normal" as const,
+        visibilityChoice: "whole_household" as const,
+        visibilityLabel: "Whole household",
         rank: 1,
       },
     ],
@@ -64,6 +66,8 @@ describe("get_relationship_agenda toModelOutput", () => {
     expect(serialized).toContain("review_item");
     expect(serialized).toContain("revised launch checklist");
     expect(serialized).toContain("tentative");
+    expect(serialized).toContain("Whole household");
+    expect(serialized).toContain("whole_household");
 
     // Ids and render scaffolding never reach the model.
     expect(serialized).not.toContain(PERSON_ID);

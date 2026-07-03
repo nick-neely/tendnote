@@ -1,4 +1,5 @@
 import { listActiveFollowups } from "@tendnote/db/queries/followups";
+import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
@@ -50,7 +51,7 @@ function dueBeforeFor(window?: "today" | "this_week"): Date | undefined {
  */
 export default defineTool({
   description:
-    "List the user's active follow-up reminders (open or snoozed), soonest due first. Use for 'what's due today?', 'what do I owe this week?', or 'what follow-ups do I have for <person>?'. Pass window=today or window=this_week to filter by due date, and/or a resolved personId to scope to one person (resolve identity first). This is a plain due-date list, NOT agenda or 'who should I check in with' ranking. Returns compact references (id, person name, reason, due date, status); refer to people by name and never show raw ids.",
+    "List active follow-up reminders visible to the caller (their private reminders plus selected-member shared and whole-household reminders), soonest due first. Use for 'what's due today?', 'what do I owe this week?', or 'what follow-ups do I have for <person>?'. Pass window=today or window=this_week to filter by due date, and/or a resolved personId to scope to one person (resolve identity first). This is a plain due-date list, NOT agenda or 'who should I check in with' ranking. Returns compact references (id, person name, reason, due date, status, visibility); refer to people by name, preserve visibility provenance when it affects actionability, and never show raw ids.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -71,6 +72,8 @@ export default defineTool({
         reason: summary.followup.reason,
         dueAt: summary.followup.dueAt.toISOString(),
         status: summary.followup.status,
+        visibilityChoice: visibilityChoiceForScope(summary.followup.scope),
+        visibilityLabel: visibilityLabelForScope(summary.followup.scope),
         // Resolved so the assistant names the person, never a raw id (ADR 0028).
         person: summary.person
           ? { id: summary.person.id, displayName: summary.person.displayName }

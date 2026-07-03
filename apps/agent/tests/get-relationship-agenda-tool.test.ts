@@ -13,7 +13,7 @@ const { default: tool } = await import("../agent/tools/get_relationship_agenda")
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 
 describe("get_relationship_agenda tool", () => {
-  it("calls the shared owner-scoped agenda read model and returns typed candidates", async () => {
+  it("calls the shared visible agenda read model and returns typed candidates", async () => {
     getRelationshipAgenda.mockResolvedValue([
       {
         kind: "due_followup",
@@ -25,6 +25,8 @@ describe("get_relationship_agenda tool", () => {
         sourceRefs: [{ kind: "followup", id: "followup-1" }],
         trustLevel: "active_reminder",
         sensitivity: "normal",
+        visibilityChoice: "selected_members",
+        visibilityLabel: "Specific people",
         rank: 1,
       },
     ]);
@@ -62,6 +64,8 @@ describe("get_relationship_agenda tool", () => {
           sourceRefs: [{ kind: "followup", id: "followup-1" }],
           trustLevel: "active_reminder",
           sensitivity: "normal",
+          visibilityChoice: "selected_members",
+          visibilityLabel: "Specific people",
           rank: 1,
         },
       ],

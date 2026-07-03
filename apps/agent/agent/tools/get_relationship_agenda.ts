@@ -46,7 +46,7 @@ const inputSchema = z.object({
  */
 export default defineTool({
   description:
-    "Read the user's owner-scoped relationship agenda for broad questions like 'anything coming up next week?', 'who deserves a thought today?', 'who should I prioritize?', or 'what follow-ups are due soon?'. The root agent may use this directly for lightweight read-only agenda and prioritization answers; use relationship_strategist for deeper synthesis or review-gated follow-up proposals. Pass a concrete windowStart/windowEnd, optional query, limit, includeKinds, and directlyRequested. This is read-only agenda ranking over existing context; never use it to create reminders, suggestions, scans, or brief artifacts. Return people by display name and never show raw ids.",
+    "Read the user's visible relationship agenda for broad questions like 'anything coming up next week?', 'who deserves a thought today?', 'who should I prioritize?', or 'what follow-ups are due soon?'. Visible context includes the caller's private records plus selected-member and whole-household records the caller can view. The root agent may use this directly for lightweight read-only agenda and prioritization answers; use relationship_strategist for deeper synthesis or review-gated follow-up proposals. Pass a concrete windowStart/windowEnd, optional query, limit, includeKinds, and directlyRequested. This is read-only agenda ranking over existing context; never use it to create reminders, suggestions, scans, or brief artifacts. Preserve visibility/provenance language when it affects trust or actionability. Return people by display name and never show raw ids.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -96,6 +96,8 @@ export default defineTool({
           due: candidate.dueAt ?? null,
           trust: candidate.trustLevel,
           sensitivity: candidate.sensitivity,
+          visibility: candidate.visibilityLabel ?? null,
+          visibilityChoice: candidate.visibilityChoice ?? null,
         })),
       },
     };

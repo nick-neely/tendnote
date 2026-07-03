@@ -1,3 +1,4 @@
+import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain/privacy";
 import type {
   RelationshipAgendaCandidate,
   RelationshipAgendaInput,
@@ -155,15 +156,15 @@ export async function collectDueFollowups(
   store: RelationshipAgendaStore,
   input: RelationshipAgendaInput,
 ): Promise<ScoredCandidate[]> {
-  const followups = await store.listActiveFollowupsForOwner({
-    ownerUserId: input.ownerUserId,
+  const followups = await store.listVisibleActiveFollowups({
+    callerUserId: input.ownerUserId,
     dueBefore: input.windowEnd,
   });
   const candidates: ScoredCandidate[] = [];
 
   for (const followup of followups) {
     const person = await store.getPerson({
-      ownerUserId: input.ownerUserId,
+      ownerUserId: followup.ownerUserId,
       personId: followup.personId,
     });
 
@@ -184,6 +185,8 @@ export async function collectDueFollowups(
       sourceRefs: [{ kind: "followup", id: followup.id }],
       trustLevel: "active_reminder",
       sensitivity: "normal",
+      visibilityChoice: visibilityChoiceForScope(followup.scope),
+      visibilityLabel: visibilityLabelForScope(followup.scope),
       rank: 0,
       score: overdue ? 0 : 10,
     });
@@ -256,21 +259,20 @@ export async function collectReviewCandidates(
   input: RelationshipAgendaInput,
 ): Promise<ScoredCandidate[]> {
   const [suggestedMemories, suggestedFollowups, sourceRecordReviews] = await Promise.all([
-    store.listSuggestedMemoriesForOwner({ ownerUserId: input.ownerUserId, limit: input.limit }),
-    store.listSuggestedFollowupsForOwner({ ownerUserId: input.ownerUserId, limit: input.limit }),
-    store.listSourceRecordReviewsForOwner({ ownerUserId: input.ownerUserId, limit: input.limit }),
+    store.listVisibleSuggestedMemories({ callerUserId: input.ownerUserId, limit: input.limit }),
+    store.listVisibleSuggestedFollowups({ callerUserId: input.ownerUserId, limit: input.limit }),
+    store.listVisibleSourceRecordReviews({ callerUserId: input.ownerUserId, limit: input.limit }),
   ]);
   const candidates: ScoredCandidate[] = [];
 
   if (requested(input, "review_item")) {
     for (const memory of suggestedMemories.filter(
-      (candidate) =>
-        candidate.ownerUserId === input.ownerUserId && candidate.status === "suggested",
+      (candidate) => candidate.status === "suggested",
     )) {
       const [person, sourceRecord] = await Promise.all([
-        store.getPerson({ ownerUserId: input.ownerUserId, personId: memory.personId }),
+        store.getPerson({ ownerUserId: memory.ownerUserId, personId: memory.personId }),
         store.getSourceRecord({
-          ownerUserId: input.ownerUserId,
+          ownerUserId: memory.ownerUserId,
           sourceRecordId: memory.sourceRecordId,
         }),
       ]);
@@ -291,6 +293,8 @@ export async function collectReviewCandidates(
         ],
         trustLevel: "tentative",
         sensitivity: memory.sensitivity,
+        visibilityChoice: visibilityChoiceForScope(memory.scope),
+        visibilityLabel: visibilityLabelForScope(memory.scope),
         rank: 0,
         score: 40,
       });
@@ -299,14 +303,13 @@ export async function collectReviewCandidates(
 
   if (requested(input, "suggested_followup")) {
     for (const followup of suggestedFollowups.filter(
-      (candidate) =>
-        candidate.ownerUserId === input.ownerUserId && candidate.status === "suggested",
+      (candidate) => candidate.status === "suggested",
     )) {
       const [person, sourceRecord] = await Promise.all([
-        store.getPerson({ ownerUserId: input.ownerUserId, personId: followup.personId }),
+        store.getPerson({ ownerUserId: followup.ownerUserId, personId: followup.personId }),
         followup.sourceRecordId
           ? store.getSourceRecord({
-              ownerUserId: input.ownerUserId,
+              ownerUserId: followup.ownerUserId,
               sourceRecordId: followup.sourceRecordId,
             })
           : Promise.resolve(null),
@@ -329,6 +332,8 @@ export async function collectReviewCandidates(
         ],
         trustLevel: "tentative",
         sensitivity: sourceRecord?.sensitivity ?? "normal",
+        visibilityChoice: visibilityChoiceForScope(followup.scope),
+        visibilityLabel: visibilityLabelForScope(followup.scope),
         rank: 0,
         score: 45,
       });
@@ -336,10 +341,8 @@ export async function collectReviewCandidates(
   }
 
   if (requested(input, "review_item")) {
-    for (const review of sourceRecordReviews.filter(
-      (candidate) =>
-        candidate.sourceRecord.ownerUserId === input.ownerUserId &&
-        ["active", "pending_resolution"].includes(candidate.sourceRecord.status),
+    for (const review of sourceRecordReviews.filter((candidate) =>
+      ["active", "pending_resolution"].includes(candidate.sourceRecord.status),
     )) {
       const primaryPerson = review.linkedPeople[0] ?? null;
       const personless = primaryPerson === null;
@@ -357,6 +360,8 @@ export async function collectReviewCandidates(
         sourceRefs: [{ kind: "source_record", id: review.sourceRecord.id }],
         trustLevel: "logged_context",
         sensitivity: review.sourceRecord.sensitivity,
+        visibilityChoice: visibilityChoiceForScope(review.sourceRecord.scope),
+        visibilityLabel: visibilityLabelForScope(review.sourceRecord.scope),
         rank: 0,
         score: personless ? 80 : 50,
       });
@@ -375,15 +380,14 @@ export async function collectRecentContext(
   store: RelationshipAgendaStore,
   input: RelationshipAgendaInput,
 ): Promise<ScoredCandidate[]> {
-  const recentSourceRecords = await store.listRecentSourceRecordsForOwner({
-    ownerUserId: input.ownerUserId,
+  const recentSourceRecords = await store.listVisibleRecentSourceRecords({
+    callerUserId: input.ownerUserId,
     limit: RECENT_CONTEXT_LIMIT,
   });
   const candidates: ScoredCandidate[] = [];
 
   for (const recent of recentSourceRecords.filter(
     (candidate) =>
-      candidate.sourceRecord.ownerUserId === input.ownerUserId &&
       candidate.sourceRecord.status === "active" &&
       candidate.sourceRecord.sensitivity !== "restricted" &&
       !Number.isNaN(candidate.sourceRecord.createdAt.getTime()) &&
@@ -405,6 +409,8 @@ export async function collectRecentContext(
       sourceRefs: [{ kind: "source_record", id: recent.sourceRecord.id }],
       trustLevel: "logged_context",
       sensitivity: recent.sourceRecord.sensitivity,
+      visibilityChoice: visibilityChoiceForScope(recent.sourceRecord.scope),
+      visibilityLabel: visibilityLabelForScope(recent.sourceRecord.scope),
       rank: 0,
       score: 90,
     });
@@ -459,6 +465,8 @@ export async function mergeSemanticContext(
 
     if (overlap) {
       overlap.sourceRefs.push(...sourceRefs);
+      overlap.visibilityChoice ??= result.visibilityChoice;
+      overlap.visibilityLabel ??= result.visibilityLabel;
       continue;
     }
 
@@ -478,6 +486,8 @@ export async function mergeSemanticContext(
       sourceRefs,
       trustLevel: result.trustLevel,
       sensitivity: result.sensitivity,
+      visibilityChoice: result.visibilityChoice,
+      visibilityLabel: result.visibilityLabel,
       rank: 0,
       score: 70,
     });

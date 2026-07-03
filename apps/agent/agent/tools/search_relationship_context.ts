@@ -5,7 +5,7 @@ import { resolveOwnerUserId } from "../lib/owner";
 
 export default defineTool({
   description:
-    "Exact Recall search over canonical Tendnote records: stored people, approved memories, and active source records. Returns compact typed references with snippets, record ids, related person metadata, trust level, and sensitivity. Use this for literal text search and cross-person exact recall. For named-person questions like 'what do I know about Alex's job search?', use search_people then get_person_context instead; do not treat an empty exact search as proof there is no context for a known person. Do not use it as identity disambiguation (`search_people`) or as a full known-person context loader (`get_person_context`). It does not return full profiles or generated context snapshot prose.",
+    "Exact Recall search over canonical Tendnote records visible to the caller: their private records plus selected-member shared and whole-household records they can access. Returns compact typed references with snippets, record ids, related person metadata, trust level, sensitivity, and visibility provenance. Use this for literal text search and cross-person exact recall. Phrase visibility carefully: 'Only me' is the caller's private note, 'Specific people' is selected-member shared context, and 'Whole household' is household context. For named-person questions like 'what do I know about Alex's job search?', use search_people then get_person_context instead; do not treat an empty exact search as proof there is no context for a known person. Do not use it as identity disambiguation (`search_people`) or as a full known-person context loader (`get_person_context`). It does not return full profiles or generated context snapshot prose.",
   inputSchema: searchRelationshipContextSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -36,6 +36,8 @@ export default defineTool({
           snippet: result.snippet,
           trust: result.trustLevel,
           sensitivity: result.sensitivity,
+          visibility: result.visibilityLabel,
+          visibilityChoice: result.visibilityChoice,
         })),
       },
     };

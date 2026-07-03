@@ -103,6 +103,8 @@ describe("active follow-up tools are thin wrappers returning compact references"
     expect(source).toMatch(/personId/);
     // Names the person rather than leaking a raw id.
     expect(source).toMatch(/displayName/);
+    expect(source).toContain("visibilityChoiceForScope");
+    expect(source).toContain("visibilityLabelForScope");
   });
 
   it("update_followup_status supports every active transition through shared functions", () => {

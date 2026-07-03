@@ -5,7 +5,7 @@ import { resolveOwnerUserId } from "../lib/owner";
 
 export default defineTool({
   description:
-    "Semantic relationship-context search over approved memories and eligible logged source records. Use this for fuzzy stored-context questions like gift ideas, career updates, preferences, and stressful life events when the user may not remember the exact wording. Returns compact typed references with snippets, related person metadata, similarity, trust level, and sensitivity. Do not use this for exact text lookup (`search_relationship_context`), identity lookup (`search_people`), full known-person context loading (`get_person_context`), proactive agenda ranking, or generated answers.",
+    "Semantic relationship-context search over approved memories and eligible logged source records visible to the caller: their private records plus selected-member shared and whole-household records they can access. Use this for fuzzy stored-context questions like gift ideas, career updates, preferences, and stressful life events when the user may not remember the exact wording. Returns compact typed references with snippets, related person metadata, similarity, trust level, sensitivity, and visibility provenance. Phrase visibility carefully: 'Only me' is the caller's private note, 'Specific people' is selected-member shared context, and 'Whole household' is household context. Do not use this for exact text lookup (`search_relationship_context`), identity lookup (`search_people`), full known-person context loading (`get_person_context`), proactive agenda ranking, or generated answers.",
   inputSchema: searchSemanticContextSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -36,6 +36,8 @@ export default defineTool({
           similarity: result.similarity,
           trust: result.trustLevel,
           sensitivity: result.sensitivity,
+          visibility: result.visibilityLabel,
+          visibilityChoice: result.visibilityChoice,
         })),
       },
     };
