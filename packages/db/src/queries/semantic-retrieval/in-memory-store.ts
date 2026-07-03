@@ -1,23 +1,35 @@
 import { randomUUID } from "node:crypto";
 import {
+  canViewScopedRecord,
   claimableEmbeddingJobStatuses,
   createEmbeddingJobSchema,
   createRelationshipContextEmbeddingSchema,
   decideSourceRecordEmbedding,
   type EmbeddingJob,
+  type HouseholdMembership,
+  type PrivacyScope,
   projectApprovedMemoryEmbeddedText,
   projectSourceRecordEmbeddedText,
   type RelationshipContextEmbedding,
+  scopedRecordVisibility,
 } from "@tendnote/domain";
+import type { HouseholdRecordShare } from "../households/types";
 import { createInMemoryMemoryStore } from "../memories/in-memory-store";
 import type { InMemoryEmbeddingStore } from "./types";
 
 const CLAIMABLE_STATUSES = new Set<EmbeddingJob["status"]>(claimableEmbeddingJobStatuses);
 
-export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
+export function createInMemoryEmbeddingStore(
+  seed: {
+    householdMemberships?: HouseholdMembership[];
+    householdRecordShares?: HouseholdRecordShare[];
+  } = {},
+): InMemoryEmbeddingStore {
   const base = createInMemoryMemoryStore();
   const jobs = new Map<string, EmbeddingJob>();
   const embeddings = new Map<string, RelationshipContextEmbedding>();
+  const householdMemberships = seed.householdMemberships ?? [];
+  const householdRecordShares = seed.householdRecordShares ?? [];
 
   function embeddingKey(
     embedding: Pick<
@@ -145,7 +157,6 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
       const kinds = new Set(input.recordKinds ?? ["memory", "source_record"]);
       const results = await Promise.all(
         [...embeddings.values()].map(async (embedding) => {
-          if (embedding.ownerUserId !== input.ownerUserId) return null;
           if (!kinds.has(embedding.recordKind)) return null;
           if (embedding.embeddingModel !== input.embeddingModel) return null;
           if (embedding.embeddingVersion !== input.embeddingVersion) return null;
@@ -156,11 +167,12 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
             if (embedding.trustLevel !== "logged_context") return null;
 
             const sourceRecord = await base.getSourceRecord({
-              ownerUserId: input.ownerUserId,
+              ownerUserId: embedding.ownerUserId,
               sourceRecordId: embedding.recordId,
             });
 
             if (!sourceRecord) return null;
+            if (!canViewerSeeRecord(input.ownerUserId, sourceRecord, "source_record")) return null;
 
             const links = await base.listSourceRecordPeople({
               sourceRecordId: sourceRecord.id,
@@ -168,7 +180,10 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
             const people = (
               await Promise.all(
                 links.map((link) =>
-                  base.getPerson({ ownerUserId: input.ownerUserId, personId: link.personId }),
+                  base.getPerson({
+                    ownerUserId: sourceRecord.ownerUserId,
+                    personId: link.personId,
+                  }),
                 ),
               )
             )
@@ -205,7 +220,7 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
             const resultPersonId = input.personId ?? embedding.personId;
             const person = resultPersonId
               ? await base.getPerson({
-                  ownerUserId: input.ownerUserId,
+                  ownerUserId: sourceRecord.ownerUserId,
                   personId: resultPersonId,
                 })
               : null;
@@ -213,6 +228,9 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
             return {
               recordKind: "source_record" as const,
               recordId: embedding.recordId,
+              ownerUserId: sourceRecord.ownerUserId,
+              householdId: sourceRecord.householdId ?? null,
+              scope: sourceRecord.scope,
               relatedPersonId: resultPersonId,
               relatedPersonDisplayName: person?.displayName ?? null,
               snippet: embedding.embeddedText,
@@ -236,11 +254,12 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
           if (embedding.trustLevel !== "confirmed_fact") return null;
 
           const memory = await base.getMemory({
-            ownerUserId: input.ownerUserId,
+            ownerUserId: embedding.ownerUserId,
             memoryId: embedding.recordId,
           });
 
           if (memory?.status !== "approved") return null;
+          if (!canViewerSeeRecord(input.ownerUserId, memory, "memory")) return null;
           if (memory.sensitivity === "restricted" && !input.directlyRequested) return null;
           if (memory.sensitivity !== embedding.sensitivity) return null;
           if (projectApprovedMemoryEmbeddedText(memory) !== embedding.embeddedText) return null;
@@ -251,12 +270,18 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
           if (similarity < input.minimumSimilarity) return null;
 
           const person = embedding.personId
-            ? await base.getPerson({ ownerUserId: input.ownerUserId, personId: embedding.personId })
+            ? await base.getPerson({
+                ownerUserId: memory.ownerUserId,
+                personId: embedding.personId,
+              })
             : null;
 
           return {
             recordKind: "memory" as const,
             recordId: embedding.recordId,
+            ownerUserId: memory.ownerUserId,
+            householdId: memory.householdId ?? null,
+            scope: memory.scope,
             relatedPersonId: embedding.personId,
             relatedPersonDisplayName: person?.displayName ?? null,
             snippet: embedding.embeddedText,
@@ -290,6 +315,34 @@ export function createInMemoryEmbeddingStore(): InMemoryEmbeddingStore {
       return [...embeddings.values()];
     },
   };
+
+  function canViewerSeeRecord(
+    callerUserId: string,
+    record: {
+      id: string;
+      ownerUserId: string;
+      householdId?: string | null;
+      scope: PrivacyScope;
+    },
+    recordKind: "memory" | "source_record",
+  ) {
+    const shares = householdRecordShares.filter(
+      (share) => share.recordKind === recordKind && share.recordId === record.id,
+    );
+
+    return canViewScopedRecord({
+      callerUserId,
+      record: scopedRecordVisibility({
+        ownerUserId: record.ownerUserId,
+        scope: record.scope,
+        householdId: record.householdId ?? null,
+        shares,
+      }),
+      activeMemberships: householdMemberships.filter(
+        (membership) => membership.status === "active",
+      ),
+    });
+  }
 }
 
 function cosineSimilarity(left: number[], right: number[]) {

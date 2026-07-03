@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { HouseholdRecordShare } from "../households/types";
 import { createHarness, EMBEDDING_CONFIG, OTHER_OWNER, OWNER } from "./harness";
 import { createSemanticRetrievalQueries } from "./queries";
 import type { EmbeddingAdapter } from "./types";
@@ -13,6 +14,8 @@ const vectorAdapter: EmbeddingAdapter = {
   },
 };
 
+const householdId = "99999999-9999-4999-8999-999999999999";
+
 function vectorFor(text: string) {
   const lower = text.toLowerCase();
   if (lower.includes("cooking") || lower.includes("gift")) return [1, 0, 0, 0];
@@ -22,6 +25,89 @@ function vectorFor(text: string) {
 }
 
 describe("semantic retrieval - approved memory results", () => {
+  it("applies household visibility before returning memory semantic results", async () => {
+    const householdRecordShares: HouseholdRecordShare[] = [];
+    const { store, processor, createApprovedMemory } = createHarness({
+      adapter: vectorAdapter,
+      householdMemberships: [
+        {
+          id: "membership-owner",
+          householdId,
+          userId: OWNER,
+          invitedByUserId: OTHER_OWNER,
+          role: "member",
+          status: "active",
+          invitedAt: new Date("2026-06-26T00:00:00Z"),
+          acceptedAt: new Date("2026-06-26T00:00:00Z"),
+          removedAt: null,
+          createdAt: new Date("2026-06-26T00:00:00Z"),
+          updatedAt: new Date("2026-06-26T00:00:00Z"),
+        },
+        {
+          id: "membership-member",
+          householdId,
+          userId: OTHER_OWNER,
+          invitedByUserId: OTHER_OWNER,
+          role: "owner",
+          status: "active",
+          invitedAt: new Date("2026-06-26T00:00:00Z"),
+          acceptedAt: new Date("2026-06-26T00:00:00Z"),
+          removedAt: null,
+          createdAt: new Date("2026-06-26T00:00:00Z"),
+          updatedAt: new Date("2026-06-26T00:00:00Z"),
+        },
+      ],
+      householdRecordShares,
+    });
+    const privateMemory = await createApprovedMemory({
+      ownerUserId: OTHER_OWNER,
+      content: "Mara keeps private cooking notes.",
+    });
+    const sharedMemory = await createApprovedMemory({
+      ownerUserId: OTHER_OWNER,
+      content: "Mara shared cooking gift notes.",
+      scope: "shared",
+      householdId,
+    });
+    householdRecordShares.push({
+      id: "share-memory",
+      householdId,
+      recordKind: "memory",
+      recordId: sharedMemory.id,
+      sharedWithUserId: OWNER,
+      sharedByUserId: OTHER_OWNER,
+      createdAt: new Date("2026-06-26T00:00:00Z"),
+    });
+
+    for (const memory of [privateMemory, sharedMemory]) {
+      const { job } = await processor.enqueueEmbeddingJob({
+        ownerUserId: memory.ownerUserId,
+        recordKind: "memory",
+        recordId: memory.id,
+      });
+      await processor.processEmbeddingJob({ jobId: job.id });
+    }
+    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+
+    const results = await queries.searchSemanticContext({
+      ownerUserId: OWNER,
+      query: "gift ideas",
+      recordKinds: ["memory"],
+      limit: 5,
+      minimumSimilarity: 0.5,
+      directlyRequested: false,
+    });
+
+    expect(results.map((result) => result.recordId)).toEqual([sharedMemory.id]);
+    expect(results[0]).toEqual(
+      expect.objectContaining({
+        ownerUserId: OTHER_OWNER,
+        householdId,
+        scope: "shared",
+      }),
+    );
+  });
+
   it("searches approved-memory embeddings with compact person-aware results", async () => {
     const { store, processor, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
     const memory = await createApprovedMemory({

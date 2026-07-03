@@ -1,5 +1,6 @@
-import type { Memory, Person } from "@tendnote/domain";
+import type { HouseholdMembership, Memory, Person } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
+import type { HouseholdRecordShare } from "../households/types";
 import { createInMemoryRelationshipContextSearchStore } from "./in-memory-store";
 import { createRelationshipContextSearchQueries } from "./queries";
 
@@ -30,6 +31,7 @@ function memory(overrides: Partial<Memory>): Memory {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     personId: maraId,
     ownerUserId: "owner-1",
+    householdId: null,
     sourceRecordId: "99999999-9999-4999-8999-999999999999",
     memoryType: "context",
     content: "Mara prefers backend architecture conversations in Nashville.",
@@ -46,11 +48,124 @@ function memory(overrides: Partial<Memory>): Memory {
   };
 }
 
-function queries(seed: { people?: Person[]; memories?: Memory[] }) {
+function householdMembership(overrides: Partial<HouseholdMembership>): HouseholdMembership {
+  return {
+    id: `membership-${overrides.userId ?? "user"}`,
+    householdId: "99999999-9999-4999-8999-999999999999",
+    userId: "member-1",
+    invitedByUserId: "owner-1",
+    role: "member",
+    status: "active",
+    invitedAt: now,
+    acceptedAt: now,
+    removedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+function householdRecordShare(overrides: Partial<HouseholdRecordShare>): HouseholdRecordShare {
+  return {
+    id: `share-${overrides.recordId ?? "record"}`,
+    householdId: "99999999-9999-4999-8999-999999999999",
+    recordKind: "memory",
+    recordId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    sharedWithUserId: "member-1",
+    sharedByUserId: "owner-1",
+    createdAt: now,
+    ...overrides,
+  };
+}
+
+function queries(seed: {
+  people?: Person[];
+  memories?: Memory[];
+  householdMemberships?: HouseholdMembership[];
+  householdRecordShares?: HouseholdRecordShare[];
+}) {
   return createRelationshipContextSearchQueries(createInMemoryRelationshipContextSearchStore(seed));
 }
 
 describe("relationship-context search - memory results", () => {
+  it("applies household visibility before returning memory exact-recall results", async () => {
+    const householdId = "99999999-9999-4999-8999-999999999999";
+    const sharedMemoryId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const householdMemoryId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const removedMemoryId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const search = queries({
+      people: [
+        person({ ownerUserId: "owner-1" }),
+        person({ id: noahId, ownerUserId: "member-1", displayName: "Noah Kim" }),
+      ],
+      memories: [
+        memory({ content: "private kayaking plan" }),
+        memory({
+          id: sharedMemoryId,
+          content: "shared kayaking plan",
+          scope: "shared",
+          householdId,
+        }),
+        memory({
+          id: householdMemoryId,
+          content: "household kayaking plan",
+          scope: "household",
+          householdId,
+        }),
+        memory({
+          id: removedMemoryId,
+          content: "removed kayaking plan",
+          scope: "shared",
+          householdId,
+        }),
+      ],
+      householdMemberships: [
+        householdMembership({ householdId, userId: "owner-1", role: "owner" }),
+        householdMembership({ householdId, userId: "member-1" }),
+        householdMembership({ householdId, userId: "removed-1", status: "removed" }),
+      ],
+      householdRecordShares: [
+        householdRecordShare({
+          householdId,
+          recordId: sharedMemoryId,
+          sharedWithUserId: "member-1",
+        }),
+        householdRecordShare({
+          householdId,
+          recordId: removedMemoryId,
+          sharedWithUserId: "removed-1",
+        }),
+      ],
+    });
+
+    const activeMemberResults = await search.searchRelationshipContext({
+      ownerUserId: "member-1",
+      query: "kayaking",
+      recordKinds: ["memory"],
+      limit: 10,
+      directlyRequested: true,
+    });
+    expect(activeMemberResults.map((result) => result.recordId).sort()).toEqual(
+      [householdMemoryId, sharedMemoryId].sort(),
+    );
+    expect(activeMemberResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ recordId: sharedMemoryId, scope: "shared", householdId }),
+        expect.objectContaining({ recordId: householdMemoryId, scope: "household", householdId }),
+      ]),
+    );
+
+    await expect(
+      search.searchRelationshipContext({
+        ownerUserId: "removed-1",
+        query: "kayaking",
+        recordKinds: ["memory"],
+        limit: 10,
+        directlyRequested: true,
+      }),
+    ).resolves.toEqual([]);
+  });
+
   it("returns approved memories as confirmed exact-recall results with person metadata", async () => {
     const search = queries({ people: [person({})], memories: [memory({})] });
 

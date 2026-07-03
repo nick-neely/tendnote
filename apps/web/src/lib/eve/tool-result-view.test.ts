@@ -390,6 +390,9 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
           {
             recordKind: "memory",
             recordId: "memory-1",
+            ownerUserId: "member-1",
+            householdId: "household-1",
+            scope: "shared",
             relatedPersonId: "person-1",
             relatedPersonDisplayName: "Mara Lin",
             label: "Mara Lin",
@@ -411,6 +414,9 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         {
           recordKind: "memory",
           recordId: "memory-1",
+          ownerUserId: "member-1",
+          householdId: "household-1",
+          scope: "shared",
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           label: "Mara Lin",
@@ -433,6 +439,9 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
           {
             recordKind: "source_record",
             recordId: "source-1",
+            ownerUserId: "member-1",
+            householdId: "household-1",
+            scope: "household",
             relatedPersonId: "person-1",
             relatedPersonDisplayName: "Mara Lin",
             snippet: "Mara mentioned a possible career change.",
@@ -453,6 +462,9 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         {
           recordKind: "source_record",
           recordId: "source-1",
+          ownerUserId: "member-1",
+          householdId: "household-1",
+          scope: "household",
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           snippet: "Mara mentioned a possible career change.",

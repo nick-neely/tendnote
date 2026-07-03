@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { memoryStatusSchema } from "./memories";
-import { sensitivitySchema, type sourceSchema } from "./privacy";
+import { privacyScopeSchema, sensitivitySchema, type sourceSchema } from "./privacy";
 import type { sourceRecordRetentionPolicySchema, sourceRecordStatusSchema } from "./source-records";
 
 export const semanticRecordKindSchema = z.enum(["memory", "source_record"]);
@@ -46,6 +46,9 @@ export const relationshipContextEmbeddingSchema = z.object({
 export const semanticRetrievalResultSchema = z.object({
   recordKind: semanticRecordKindSchema,
   recordId: z.string(),
+  ownerUserId: z.string().optional(),
+  householdId: z.string().nullable().optional(),
+  scope: privacyScopeSchema.optional(),
   relatedPersonId: z.string().nullable(),
   relatedPersonDisplayName: z.string().nullable(),
   snippet: z.string(),

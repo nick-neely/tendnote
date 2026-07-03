@@ -1,4 +1,5 @@
-import type { Memory, Sensitivity, SourceRecord } from "@tendnote/domain";
+import type { HouseholdMembership, Memory, Sensitivity, SourceRecord } from "@tendnote/domain";
+import type { HouseholdRecordShare } from "../households/types";
 import { createInMemoryEmbeddingStore } from "./in-memory-store";
 import { createEmbeddingProcessor } from "./processor";
 import type { EmbeddingAdapter, EmbeddingConfig } from "./types";
@@ -11,9 +12,17 @@ export const EMBEDDING_CONFIG: EmbeddingConfig = {
 };
 
 export function createHarness(
-  input: { adapter?: EmbeddingAdapter; config?: EmbeddingConfig } = {},
+  input: {
+    adapter?: EmbeddingAdapter;
+    config?: EmbeddingConfig;
+    householdMemberships?: HouseholdMembership[];
+    householdRecordShares?: HouseholdRecordShare[];
+  } = {},
 ) {
-  const store = createInMemoryEmbeddingStore();
+  const store = createInMemoryEmbeddingStore({
+    householdMemberships: input.householdMemberships,
+    householdRecordShares: input.householdRecordShares,
+  });
   const adapter =
     input.adapter ??
     ({

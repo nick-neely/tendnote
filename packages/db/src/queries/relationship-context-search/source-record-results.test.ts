@@ -1,5 +1,11 @@
-import type { Person, SourceRecord, SourceRecordPerson } from "@tendnote/domain";
+import type {
+  HouseholdMembership,
+  Person,
+  SourceRecord,
+  SourceRecordPerson,
+} from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
+import type { HouseholdRecordShare } from "../households/types";
 import { createInMemoryRelationshipContextSearchStore } from "./in-memory-store";
 import { createRelationshipContextSearchQueries } from "./queries";
 
@@ -37,6 +43,7 @@ function sourceRecord(overrides: Partial<SourceRecord>): SourceRecord {
     confidence: "medium",
     sensitivity: "normal",
     scope: "private",
+    householdId: null,
     importance: 3,
     metadataJson: {},
     createdAt: now,
@@ -60,11 +67,117 @@ function queries(seed: {
   people?: Person[];
   sourceRecords?: SourceRecord[];
   sourceRecordPeople?: SourceRecordPerson[];
+  householdMemberships?: HouseholdMembership[];
+  householdRecordShares?: HouseholdRecordShare[];
 }) {
   return createRelationshipContextSearchQueries(createInMemoryRelationshipContextSearchStore(seed));
 }
 
+function householdMembership(overrides: Partial<HouseholdMembership>): HouseholdMembership {
+  return {
+    id: `membership-${overrides.userId ?? "user"}`,
+    householdId: "99999999-9999-4999-8999-999999999999",
+    userId: "member-1",
+    invitedByUserId: "owner-1",
+    role: "member",
+    status: "active",
+    invitedAt: now,
+    acceptedAt: now,
+    removedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+function householdRecordShare(overrides: Partial<HouseholdRecordShare>): HouseholdRecordShare {
+  return {
+    id: `share-${overrides.recordId ?? "record"}`,
+    householdId: "99999999-9999-4999-8999-999999999999",
+    recordKind: "source_record",
+    recordId: sourceId,
+    sharedWithUserId: "member-1",
+    sharedByUserId: "owner-1",
+    createdAt: now,
+    ...overrides,
+  };
+}
+
 describe("relationship-context search - source-record results", () => {
+  it("applies household visibility before returning source-record exact recall results", async () => {
+    const householdId = "99999999-9999-4999-8999-999999999999";
+    const sharedRecordId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const householdRecordId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const removedRecordId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const search = queries({
+      sourceRecords: [
+        sourceRecord({ content: "private pottery note" }),
+        sourceRecord({
+          id: sharedRecordId,
+          content: "shared pottery note",
+          scope: "shared",
+          householdId,
+        }),
+        sourceRecord({
+          id: householdRecordId,
+          content: "household pottery note",
+          scope: "household",
+          householdId,
+        }),
+        sourceRecord({
+          id: removedRecordId,
+          content: "removed pottery note",
+          scope: "shared",
+          householdId,
+        }),
+      ],
+      householdMemberships: [
+        householdMembership({ householdId, userId: "owner-1", role: "owner" }),
+        householdMembership({ householdId, userId: "member-1" }),
+        householdMembership({ householdId, userId: "removed-1", status: "removed" }),
+      ],
+      householdRecordShares: [
+        householdRecordShare({
+          householdId,
+          recordId: sharedRecordId,
+          sharedWithUserId: "member-1",
+        }),
+        householdRecordShare({
+          householdId,
+          recordId: removedRecordId,
+          sharedWithUserId: "removed-1",
+        }),
+      ],
+    });
+
+    const activeMemberResults = await search.searchRelationshipContext({
+      ownerUserId: "member-1",
+      query: "pottery",
+      recordKinds: ["source_record"],
+      limit: 10,
+      directlyRequested: true,
+    });
+    expect(activeMemberResults.map((result) => result.recordId).sort()).toEqual(
+      [householdRecordId, sharedRecordId].sort(),
+    );
+    expect(activeMemberResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ recordId: sharedRecordId, scope: "shared", householdId }),
+        expect.objectContaining({ recordId: householdRecordId, scope: "household", householdId }),
+      ]),
+    );
+
+    await expect(
+      search.searchRelationshipContext({
+        ownerUserId: "removed-1",
+        query: "pottery",
+        recordKinds: ["source_record"],
+        limit: 10,
+        directlyRequested: true,
+      }),
+    ).resolves.toEqual([]);
+  });
+
   it("returns active source records as logged-context exact recall results", async () => {
     const search = queries({
       people: [person({})],

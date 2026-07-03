@@ -100,6 +100,9 @@ export type SuggestedFollowupReviewItemView = {
 export type RelationshipContextSearchResultView = {
   recordKind: "person" | "memory" | "source_record";
   recordId: string;
+  ownerUserId?: string;
+  householdId?: string | null;
+  scope?: "private" | "shared" | "household";
   relatedPersonId: string | null;
   relatedPersonDisplayName: string | null;
   label: string;
@@ -112,6 +115,9 @@ export type RelationshipContextSearchResultView = {
 export type SemanticContextSearchResultView = {
   recordKind: "memory" | "source_record";
   recordId: string;
+  ownerUserId?: string;
+  householdId?: string | null;
+  scope?: "private" | "shared" | "household";
   relatedPersonId: string | null;
   relatedPersonDisplayName: string | null;
   snippet: string;

@@ -1,10 +1,14 @@
 import type {
   ExactRecallResult,
+  HouseholdMembership,
   Memory,
   Person,
+  PrivacyScope,
   SourceRecord,
   SourceRecordPerson,
 } from "@tendnote/domain";
+import { canViewScopedRecord, scopedRecordVisibility } from "@tendnote/domain";
+import type { HouseholdRecordShare } from "../households/types";
 import type { RelationshipContextSearchStore } from "./types";
 
 export type InMemoryRelationshipContextSearchSeed = {
@@ -12,6 +16,8 @@ export type InMemoryRelationshipContextSearchSeed = {
   memories?: Memory[];
   sourceRecords?: SourceRecord[];
   sourceRecordPeople?: SourceRecordPerson[];
+  householdMemberships?: HouseholdMembership[];
+  householdRecordShares?: HouseholdRecordShare[];
 };
 
 export function createInMemoryRelationshipContextSearchStore(
@@ -21,6 +27,8 @@ export function createInMemoryRelationshipContextSearchStore(
   const memories = seed.memories ?? [];
   const sourceRecords = seed.sourceRecords ?? [];
   const sourceRecordPeople = seed.sourceRecordPeople ?? [];
+  const householdMemberships = seed.householdMemberships ?? [];
+  const householdRecordShares = seed.householdRecordShares ?? [];
 
   return {
     async searchRelationshipContext(input) {
@@ -62,7 +70,7 @@ export function createInMemoryRelationshipContextSearchStore(
 
       if (kinds.has("memory")) {
         for (const memory of memories) {
-          if (memory.ownerUserId !== input.ownerUserId) continue;
+          if (!canViewerSeeRecord(input.ownerUserId, memory, "memory")) continue;
           if (memory.personId !== input.personId && input.personId) continue;
           if (memory.status !== "approved") continue;
           if (memory.sensitivity === "restricted" && !input.directlyRequested) continue;
@@ -70,12 +78,15 @@ export function createInMemoryRelationshipContextSearchStore(
 
           const person = people.find(
             (candidate) =>
-              candidate.id === memory.personId && candidate.ownerUserId === input.ownerUserId,
+              candidate.id === memory.personId && candidate.ownerUserId === memory.ownerUserId,
           );
 
           results.push({
             recordKind: "memory",
             recordId: memory.id,
+            ownerUserId: memory.ownerUserId,
+            householdId: memory.householdId ?? null,
+            scope: memory.scope,
             relatedPersonId: memory.personId,
             relatedPersonDisplayName: person?.displayName ?? null,
             label: person?.displayName ?? "Memory",
@@ -93,7 +104,7 @@ export function createInMemoryRelationshipContextSearchStore(
 
       if (kinds.has("source_record")) {
         for (const sourceRecord of sourceRecords) {
-          if (sourceRecord.ownerUserId !== input.ownerUserId) continue;
+          if (!canViewerSeeRecord(input.ownerUserId, sourceRecord, "source_record")) continue;
           if (sourceRecord.status !== "active") continue;
           if (sourceRecord.sensitivity === "restricted" && !input.directlyRequested) continue;
           if (!matchesText(sourceRecord.content, query)) continue;
@@ -103,7 +114,8 @@ export function createInMemoryRelationshipContextSearchStore(
             .map((link) =>
               people.find(
                 (candidate) =>
-                  candidate.id === link.personId && candidate.ownerUserId === input.ownerUserId,
+                  candidate.id === link.personId &&
+                  candidate.ownerUserId === sourceRecord.ownerUserId,
               ),
             )
             .filter((candidate): candidate is Person => Boolean(candidate));
@@ -115,6 +127,9 @@ export function createInMemoryRelationshipContextSearchStore(
           results.push({
             recordKind: "source_record",
             recordId: sourceRecord.id,
+            ownerUserId: sourceRecord.ownerUserId,
+            householdId: sourceRecord.householdId ?? null,
+            scope: sourceRecord.scope,
             relatedPersonId: relatedPerson?.id ?? null,
             relatedPersonDisplayName: relatedPerson?.displayName ?? null,
             label: relatedPerson?.displayName ?? "Logged note",
@@ -133,6 +148,34 @@ export function createInMemoryRelationshipContextSearchStore(
       return results.sort(compareResults).slice(0, input.limit);
     },
   };
+
+  function canViewerSeeRecord(
+    callerUserId: string,
+    record: {
+      id: string;
+      ownerUserId: string;
+      householdId?: string | null;
+      scope: PrivacyScope;
+    },
+    recordKind: "memory" | "source_record",
+  ) {
+    const shares = householdRecordShares.filter(
+      (share) => share.recordKind === recordKind && share.recordId === record.id,
+    );
+
+    return canViewScopedRecord({
+      callerUserId,
+      record: scopedRecordVisibility({
+        ownerUserId: record.ownerUserId,
+        scope: record.scope,
+        householdId: record.householdId ?? null,
+        shares,
+      }),
+      activeMemberships: householdMemberships.filter(
+        (membership) => membership.status === "active",
+      ),
+    });
+  }
 }
 
 function snippet(value: string) {

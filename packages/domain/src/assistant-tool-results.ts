@@ -107,6 +107,9 @@ export const relationshipContextSearchToolResult = z.object({
     z.object({
       recordKind: z.enum(["person", "memory", "source_record"]),
       recordId: z.string(),
+      ownerUserId: z.string().optional(),
+      householdId: z.string().nullable().optional(),
+      scope: z.enum(["private", "shared", "household"]).optional(),
       relatedPersonId: z.string().nullish(),
       relatedPersonDisplayName: z.string().nullish(),
       label: z.string(),
@@ -123,6 +126,9 @@ export const semanticContextSearchToolResult = z.object({
     z.object({
       recordKind: z.enum(["memory", "source_record"]),
       recordId: z.string(),
+      ownerUserId: z.string().optional(),
+      householdId: z.string().nullable().optional(),
+      scope: z.enum(["private", "shared", "household"]).optional(),
       relatedPersonId: z.string().nullish(),
       relatedPersonDisplayName: z.string().nullish(),
       snippet: z.string(),

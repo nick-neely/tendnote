@@ -1,11 +1,15 @@
 import type { ExactRecallRecordKind, ExactRecallResult } from "@tendnote/domain";
 import { sql } from "drizzle-orm";
 import { getDb } from "../../client";
+import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import type { RelationshipContextSearchStore } from "./types";
 
 type SearchRow = {
   record_kind: ExactRecallRecordKind;
   record_id: string;
+  owner_user_id: string | null;
+  household_id: string | null;
+  scope: "private" | "shared" | "household" | null;
   related_person_id: string | null;
   related_person_display_name: string | null;
   label: string;
@@ -28,6 +32,9 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
         select
           'person'::text as record_kind,
           p.id::text as record_id,
+          null::text as owner_user_id,
+          null::text as household_id,
+          null::text as scope,
           p.id::text as related_person_id,
           p.display_name as related_person_display_name,
           p.display_name as label,
@@ -59,6 +66,9 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
         select
           'memory'::text as record_kind,
           m.id::text as record_id,
+          m.owner_user_id::text as owner_user_id,
+          m.household_id::text as household_id,
+          m.scope::text as scope,
           m.person_id::text as related_person_id,
           p.display_name as related_person_display_name,
           p.display_name as label,
@@ -75,8 +85,11 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
         inner join people p on p.id = m.person_id
         cross join search_query
         where
-          m.owner_user_id = ${input.ownerUserId}
-          and p.owner_user_id = ${input.ownerUserId}
+          ${visibleHouseholdRecordSql({
+            callerUserId: input.ownerUserId,
+            tableAlias: "m",
+            recordKind: "memory",
+          })}
           and ${kindFilter(input.recordKinds, "memory")}
           and ${input.personId ? sql`m.person_id = ${input.personId}` : sql`true`}
           and m.status = 'approved'
@@ -86,6 +99,9 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
         select
           'source_record'::text as record_kind,
           sr.id::text as record_id,
+          sr.owner_user_id::text as owner_user_id,
+          sr.household_id::text as household_id,
+          sr.scope::text as scope,
           related_person.id::text as related_person_id,
           related_person.display_name as related_person_display_name,
           coalesce(related_person.display_name, 'Logged note') as label,
@@ -105,14 +121,17 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           inner join people p on p.id = srp.person_id
           where
             srp.source_record_id = sr.id
-            and p.owner_user_id = ${input.ownerUserId}
             and ${input.personId ? sql`p.id = ${input.personId}` : sql`true`}
           order by case when srp.role = 'primary' then 0 else 1 end, p.display_name asc, p.id asc
           limit 1
         ) related_person on true
         cross join search_query
         where
-          sr.owner_user_id = ${input.ownerUserId}
+          ${visibleHouseholdRecordSql({
+            callerUserId: input.ownerUserId,
+            tableAlias: "sr",
+            recordKind: "source_record",
+          })}
           and ${kindFilter(input.recordKinds, "source_record")}
           and ${input.personId ? sql`related_person.id = ${input.personId}` : sql`true`}
           and sr.status = 'active'
@@ -136,6 +155,13 @@ function toExactRecallResult(row: SearchRow): ExactRecallResult {
   return {
     recordKind: row.record_kind,
     recordId: row.record_id,
+    ...(row.scope
+      ? {
+          ownerUserId: row.owner_user_id ?? undefined,
+          householdId: row.household_id,
+          scope: row.scope,
+        }
+      : {}),
     relatedPersonId: row.related_person_id,
     relatedPersonDisplayName: row.related_person_display_name,
     label: row.label,
