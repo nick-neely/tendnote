@@ -23,6 +23,7 @@
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
     "./queries/followups": "./src/queries/followups.ts",
     "./queries/gmail-drafts": "./src/queries/gmail-drafts.ts",
+    "./queries/households": "./src/queries/households.ts",
     "./queries/memory-curator": "./src/queries/memory-curator.ts",
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/morning-agenda": "./src/queries/morning-agenda.ts",

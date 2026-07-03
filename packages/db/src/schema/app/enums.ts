@@ -46,6 +46,14 @@ export const confidence = pgEnum("confidence", ["low", "medium", "high"]);
 
 export const privacyScope = pgEnum("privacy_scope", ["private", "shared", "household"]);
 
+export const householdRole = pgEnum("household_role", ["owner", "member"]);
+
+export const householdMemberStatus = pgEnum("household_member_status", [
+  "invited",
+  "active",
+  "removed",
+]);
+
 export const sourceRecordStatus = pgEnum("source_record_status", [
   "pending_resolution",
   "active",

@@ -11,6 +11,7 @@ export * from "./app/context-snapshots";
 export * from "./app/engagement";
 export * from "./app/enums";
 export * from "./app/gmail-draft-actions";
+export * from "./app/households";
 export * from "./app/memories";
 export * from "./app/people";
 export * from "./app/provider-connections";
