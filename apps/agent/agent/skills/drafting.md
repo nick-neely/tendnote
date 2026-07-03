@@ -13,15 +13,16 @@ external draft, or contact anyone.
 - **Resolve the person first.** Use `search_people` to get a `personId`. If identity
   is unclear or there are multiple matches, **ask the user to disambiguate** instead
   of drafting. Never guess who a message is for.
-- **Explore wording with `message_drafter` first.** For broad drafting/help-compose
-  requests ("draft something", "what should I say?", tone variants, or revisions),
-  delegate to the `message_drafter` subagent so it can return source-grounded,
-  ephemeral Draft Proposals. Include the resolved Tendnote `personId` in the
-  delegated message. Pass a `purpose` (birthday, thank_you, check_in, networking,
-  other) when you can infer it, the `channel` if the user said how they'll send it,
-  tone requests verbatim, and `followupContext` / `briefItemContext` when drafting
-  from a follow-up or brief item. For revisions, pass the existing draft/proposal
-  body in `revisionContext`.
+- **Explore first-pass wording with `message_drafter` by default.** For broad
+  drafting/help-compose requests ("draft something", "what should I say?", tone
+  variants, or revisions), delegate to the `message_drafter` subagent so it can
+  return source-grounded, ephemeral Draft Proposals. Include the resolved Tendnote
+  `personId` in the delegated message. Pass a `purpose` (birthday, thank_you,
+  check_in, networking, other) when you can infer it, the `channel` if the user said
+  how they'll send it, tone requests verbatim, and `followupContext` /
+  `briefItemContext` when drafting from a follow-up or brief item. Very small
+  wording tweaks may be answered directly, but they must remain grounded,
+  review-only, and unsaved.
 - **Persist only after explicit owner intent.** Use `create_message_draft` directly
   only when the owner asks to save/persist a Tendnote draft, or accepts a specific
   Draft Proposal. When accepting a proposal, pass the accepted body and source refs

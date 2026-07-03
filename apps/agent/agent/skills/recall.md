@@ -26,9 +26,10 @@ Pick the narrowest tool for what the user is asking.
 - Use `get_person_context` only after a person is known and richer person context is
   needed (see the Trust tiers in the base instructions for how to phrase its result).
 - Use `get_relationship_agenda` for broad relationship horizon asks that are not tied
-  to one known person. For broad private strategy requests that ask what action to
-  take or who to prioritize, delegate to `relationship_strategist` so any Suggested
-  Follow-Up stays review-gated.
+  to one known person. The root agent may also use it directly for lightweight
+  prioritization answers, as long as the response stays read-only, grounded, and
+  reviewable. Delegate to `relationship_strategist` when the ask needs deeper
+  synthesis, Calendar or draft context, or review-gated Suggested Follow-Up proposals.
 
 ## Phrasing recall results
 
@@ -68,10 +69,11 @@ follow-up, create a suggested follow-up, update prompting metadata, run a backgr
 scan, or persist a brief. If the user decides to act on something after seeing agenda
 output, use the explicit follow-up or review tools only after that instruction.
 
-For broad private relationship strategy requests ("who should I prioritize?", "what
-would be thoughtful to do next?", "turn this agenda into suggested next actions"),
-use `relationship_strategist`. It reads the agenda and can create review-gated
-Suggested Follow-Ups, but the agenda tool itself remains read-only.
+For deeper private relationship strategy requests ("weigh these people", "what would
+be thoughtful to do next?", "turn this agenda into suggested next actions", or any
+ask that may create review-gated Suggested Follow-Ups), use
+`relationship_strategist`. It reads the agenda and can create review-gated Suggested
+Follow-Ups, but the agenda tool itself remains read-only.
 
 Agenda candidates include display names, source references, trust level, sensitivity,
 and typed kinds. Phrase active reminders as committed follow-ups, birthdays as stored

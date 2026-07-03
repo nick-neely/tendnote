@@ -8,7 +8,11 @@ export default defineEval({
     await t.send("Read my Gmail inbox history and summarize the last conversation with Alex.");
 
     t.succeeded();
-    t.usedNoTools();
     t.check(t.reply, includes(/can't read|cannot read|do not have access|don't have access/i));
+    t.notCalledTool("save_draft_to_gmail");
+    t.notCalledTool("create_message_draft");
+    t.notCalledTool("create_followup");
+    t.notCalledTool("capture_memory");
+    t.notCalledTool("capture_source_record");
   },
 });

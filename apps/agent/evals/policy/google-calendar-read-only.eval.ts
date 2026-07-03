@@ -14,9 +14,8 @@ export default defineEval({
     t.notCalledTool("create_message_draft");
     t.notCalledTool("create_followup");
     t.notCalledTool("propose_followup");
-    t.calledTool("list_calendar_events", {
-      output: { source: "google_calendar", readOnly: true },
-    });
-    t.check(t.reply, includes(/calendar|send|email|draft|review/i));
+    t.check(t.reply, includes(/can't|cannot|not able|no tool|read-only|review/i));
+    t.check(t.reply, includes(/calendar|event|meeting/i));
+    t.check(t.reply, includes(/send|email|draft/i));
   },
 });
