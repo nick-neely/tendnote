@@ -101,9 +101,10 @@ describe("semantic retrieval - approved memory results", () => {
     expect(results.map((result) => result.recordId)).toEqual([sharedMemory.id]);
     expect(results[0]).toEqual(
       expect.objectContaining({
-        ownerUserId: OTHER_OWNER,
-        householdId,
-        scope: "shared",
+        visibilityChoice: "selected_members",
+        visibilityLabel: "Specific people",
+        relatedPersonId: null,
+        relatedPersonDisplayName: null,
       }),
     );
   });

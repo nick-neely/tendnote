@@ -7,7 +7,15 @@ export type InMemoryRelationshipAgendaStore = RelationshipAgendaStore &
     seedSuggestedMemories: (memories: Memory[]) => void;
     seedSourceRecordReviews: (reviews: RelationshipAgendaSourceRecordReview[]) => void;
     seedRecentSourceRecords: (reviews: RelationshipAgendaSourceRecordReview[]) => void;
-    seedSemanticResults: (ownerUserId: string, results: SemanticRetrievalResult[]) => void;
+    seedSemanticResults: (
+      ownerUserId: string,
+      results: Array<
+        Omit<SemanticRetrievalResult, "visibilityChoice" | "visibilityLabel"> & {
+          visibilityChoice?: SemanticRetrievalResult["visibilityChoice"];
+          visibilityLabel?: string;
+        }
+      >,
+    ) => void;
     failSemanticSearch: (error?: Error) => void;
     listSemanticSearchInputs: () => Array<{
       ownerUserId: string;
@@ -43,7 +51,10 @@ export function createInMemoryRelationshipAgendaStore(): InMemoryRelationshipAge
       recentSourceRecords = reviews;
     },
     seedSemanticResults(ownerUserId, results) {
-      semanticResults = results.map((result) => ({ ownerUserId, result }));
+      semanticResults = results.map((result) => ({
+        ownerUserId,
+        result: { visibilityChoice: "only_me", visibilityLabel: "Only me", ...result },
+      }));
       semanticSearchError = null;
     },
     failSemanticSearch(error = new Error("semantic search unavailable")) {

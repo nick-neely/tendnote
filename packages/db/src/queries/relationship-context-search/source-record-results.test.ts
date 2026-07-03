@@ -162,8 +162,11 @@ describe("relationship-context search - source-record results", () => {
     );
     expect(activeMemberResults).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ recordId: sharedRecordId, scope: "shared", householdId }),
-        expect.objectContaining({ recordId: householdRecordId, scope: "household", householdId }),
+        expect.objectContaining({ recordId: sharedRecordId, visibilityLabel: "Specific people" }),
+        expect.objectContaining({
+          recordId: householdRecordId,
+          visibilityLabel: "Whole household",
+        }),
       ]),
     );
 

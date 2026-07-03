@@ -188,3 +188,32 @@ describe("Phase 1F boundary — render from snapshot", () => {
     expect(read?.items[0]?.title).toBe(generated.items[0]?.title);
   });
 });
+
+describe("Phase 1F boundary — private owner-scoped brief reads", () => {
+  it("does not expose persisted briefs or brief items to another household member by default", async () => {
+    const mark = await ctx.person("Mark");
+    await ctx.dueFollowup(mark, "Reconnect.");
+    const generated = await ctx.generateScheduled("daily");
+    const firstItem = generated.items[0];
+
+    await expect(
+      ctx.briefStore.getBrief({ ownerUserId: "intruder", briefId: generated.id }),
+    ).resolves.toBeNull();
+    await expect(
+      ctx.briefStore.findCurrentBrief({
+        ownerUserId: "intruder",
+        localDate: LOCAL_DATE,
+        cadence: "daily",
+      }),
+    ).resolves.toBeNull();
+    if (firstItem) {
+      await expect(
+        ctx.briefStore.updateBriefItem({
+          ownerUserId: "intruder",
+          briefItemId: firstItem.id,
+          patch: { status: "dismissed" },
+        }),
+      ).rejects.toThrow("Brief item not found.");
+    }
+  });
+});

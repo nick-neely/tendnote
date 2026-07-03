@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { privacyScopeSchema, sensitivitySchema } from "./privacy";
+import { sensitivitySchema, visibilityChoiceSchema } from "./privacy";
 
 export const exactRecallRecordKindSchema = z.enum(["person", "memory", "source_record"]);
 
@@ -20,9 +20,8 @@ export const searchRelationshipContextSchema = z.object({
 export const exactRecallResultSchema = z.object({
   recordKind: exactRecallRecordKindSchema,
   recordId: z.string(),
-  ownerUserId: z.string().optional(),
-  householdId: z.string().nullable().optional(),
-  scope: privacyScopeSchema.optional(),
+  visibilityChoice: visibilityChoiceSchema.nullable(),
+  visibilityLabel: z.string().nullable(),
   relatedPersonId: z.string().nullable(),
   relatedPersonDisplayName: z.string().nullable(),
   label: z.string(),

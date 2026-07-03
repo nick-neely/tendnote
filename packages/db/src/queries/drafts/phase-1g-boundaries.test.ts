@@ -199,3 +199,30 @@ describe("Phase 1G boundary — owner scoping and raw-id-free grounding", () => 
     expect(outcome.draft.sourceRefs.every((ref) => ref.label.trim().length > 0)).toBe(true);
   });
 });
+
+describe("Phase 4 boundary — drafts stay private until household sharing exists", () => {
+  it("keeps persisted draft reads and mutations owner-scoped", async () => {
+    const person = await ctx.makePerson("Mark");
+    await ctx.seedMemory({
+      person,
+      content: "Moved to Denver",
+      status: "approved",
+      linkSource: false,
+    });
+    const outcome = await ctx.generator.generateDraft({ ownerUserId: OWNER, personId: person.id });
+
+    expect(outcome.status).toBe("created");
+    if (outcome.status !== "created") return;
+
+    await expect(
+      ctx.draftStore.getDraft({ ownerUserId: "intruder", draftId: outcome.draft.id }),
+    ).resolves.toBeNull();
+    await expect(
+      ctx.draftStore.updateDraft({
+        ownerUserId: "intruder",
+        draftId: outcome.draft.id,
+        patch: { status: "approved" },
+      }),
+    ).rejects.toThrow("Message draft not found.");
+  });
+});

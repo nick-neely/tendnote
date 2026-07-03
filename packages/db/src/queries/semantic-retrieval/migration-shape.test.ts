@@ -54,7 +54,8 @@ describe("semantic retrieval migration shape", () => {
     expect(drizzleStore).toContain("e.trust_level = 'confirmed_fact'");
     expect(drizzleStore).toContain("e.trust_level = 'logged_context'");
     expect(drizzleStore).toContain("from source_record_people filter_srp");
-    expect(drizzleStore).toContain("coalesce(filtered_person.display_name");
+    expect(drizzleStore).toContain("visible_people.primary_display_name");
+    expect(drizzleStore).toContain("filtered_person.id is not null");
     expect(drizzleStore).toContain("round(similarity::numeric, 4) desc");
     expect(drizzleStore).toContain("sr.sensitivity <> 'restricted'");
   });

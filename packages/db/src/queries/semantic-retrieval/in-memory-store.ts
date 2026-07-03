@@ -1,19 +1,19 @@
 import { randomUUID } from "node:crypto";
 import {
-  canViewScopedRecord,
   claimableEmbeddingJobStatuses,
   createEmbeddingJobSchema,
   createRelationshipContextEmbeddingSchema,
   decideSourceRecordEmbedding,
   type EmbeddingJob,
   type HouseholdMembership,
-  type PrivacyScope,
   projectApprovedMemoryEmbeddedText,
   projectSourceRecordEmbeddedText,
   type RelationshipContextEmbedding,
-  scopedRecordVisibility,
+  visibilityChoiceForScope,
+  visibilityLabelForScope,
 } from "@tendnote/domain";
 import type { HouseholdRecordShare } from "../households/types";
+import { canViewerSeeSeededHouseholdRecord } from "../households/visibility-memory";
 import { createInMemoryMemoryStore } from "../memories/in-memory-store";
 import type { InMemoryEmbeddingStore } from "./types";
 
@@ -220,7 +220,7 @@ export function createInMemoryEmbeddingStore(
             const resultPersonId = input.personId ?? embedding.personId;
             const person = resultPersonId
               ? await base.getPerson({
-                  ownerUserId: sourceRecord.ownerUserId,
+                  ownerUserId: input.ownerUserId,
                   personId: resultPersonId,
                 })
               : null;
@@ -228,12 +228,11 @@ export function createInMemoryEmbeddingStore(
             return {
               recordKind: "source_record" as const,
               recordId: embedding.recordId,
-              ownerUserId: sourceRecord.ownerUserId,
-              householdId: sourceRecord.householdId ?? null,
-              scope: sourceRecord.scope,
-              relatedPersonId: resultPersonId,
+              visibilityChoice: visibilityChoiceForScope(sourceRecord.scope),
+              visibilityLabel: visibilityLabelForScope(sourceRecord.scope),
+              relatedPersonId: person?.id ?? null,
               relatedPersonDisplayName: person?.displayName ?? null,
-              snippet: embedding.embeddedText,
+              snippet: sourceRecord.content,
               similarity,
               trustLevel: embedding.trustLevel,
               sensitivity: embedding.sensitivity,
@@ -271,7 +270,7 @@ export function createInMemoryEmbeddingStore(
 
           const person = embedding.personId
             ? await base.getPerson({
-                ownerUserId: memory.ownerUserId,
+                ownerUserId: input.ownerUserId,
                 personId: embedding.personId,
               })
             : null;
@@ -279,10 +278,9 @@ export function createInMemoryEmbeddingStore(
           return {
             recordKind: "memory" as const,
             recordId: embedding.recordId,
-            ownerUserId: memory.ownerUserId,
-            householdId: memory.householdId ?? null,
-            scope: memory.scope,
-            relatedPersonId: embedding.personId,
+            visibilityChoice: visibilityChoiceForScope(memory.scope),
+            visibilityLabel: visibilityLabelForScope(memory.scope),
+            relatedPersonId: person?.id ?? null,
             relatedPersonDisplayName: person?.displayName ?? null,
             snippet: embedding.embeddedText,
             similarity,
@@ -322,25 +320,16 @@ export function createInMemoryEmbeddingStore(
       id: string;
       ownerUserId: string;
       householdId?: string | null;
-      scope: PrivacyScope;
+      scope: "private" | "shared" | "household";
     },
     recordKind: "memory" | "source_record",
   ) {
-    const shares = householdRecordShares.filter(
-      (share) => share.recordKind === recordKind && share.recordId === record.id,
-    );
-
-    return canViewScopedRecord({
+    return canViewerSeeSeededHouseholdRecord({
       callerUserId,
-      record: scopedRecordVisibility({
-        ownerUserId: record.ownerUserId,
-        scope: record.scope,
-        householdId: record.householdId ?? null,
-        shares,
-      }),
-      activeMemberships: householdMemberships.filter(
-        (membership) => membership.status === "active",
-      ),
+      record,
+      recordKind,
+      householdMemberships,
+      householdRecordShares,
     });
   }
 }

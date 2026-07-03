@@ -36,6 +36,8 @@ describe("assistant tool-result contract", () => {
         {
           recordKind: "source_record",
           recordId: "sr1",
+          visibilityChoice: "selected_members",
+          visibilityLabel: "Specific people",
           snippet: "A possible career change.",
           similarity: 0.9,
           trustLevel: "logged_context",

@@ -266,15 +266,11 @@ describe("relationship-context search - mixed results", () => {
       expect.arrayContaining([
         expect.objectContaining({
           recordId: sharedMemberMemory.id,
-          ownerUserId: "member-1",
-          scope: "shared",
-          householdId: "household-1",
+          visibilityLabel: "Specific people",
         }),
         expect.objectContaining({
           recordId: householdMemberSource.id,
-          ownerUserId: "member-1",
-          scope: "household",
-          householdId: "household-1",
+          visibilityLabel: "Whole household",
         }),
       ]),
     );

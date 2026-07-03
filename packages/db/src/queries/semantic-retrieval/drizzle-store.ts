@@ -3,6 +3,8 @@ import {
   createEmbeddingJobSchema,
   createRelationshipContextEmbeddingSchema,
   type SemanticRetrievalResult,
+  visibilityChoiceForScope,
+  visibilityLabelForScope,
 } from "@tendnote/domain";
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "../../client";
@@ -233,7 +235,7 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
             m.owner_user_id::text as owner_user_id,
             m.household_id::text as household_id,
             m.scope::text as scope,
-            e.person_id::text as related_person_id,
+            p.id::text as related_person_id,
             p.display_name as related_person_display_name,
             e.embedded_text as snippet,
             (1 - (e.embedding <=> ${queryVector}::vector))::float8 as similarity,
@@ -247,6 +249,7 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
             and e.record_kind = 'memory'
           inner join people p
             on p.id = m.person_id
+            and p.owner_user_id = ${input.ownerUserId}
           where
             e.owner_user_id = m.owner_user_id
             and ${visibleHouseholdRecordSql({
@@ -274,9 +277,9 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
             sr.owner_user_id::text as owner_user_id,
             sr.household_id::text as household_id,
             sr.scope::text as scope,
-            coalesce(${input.personId ?? null}::uuid, e.person_id)::text as related_person_id,
-            coalesce(filtered_person.display_name, related_people.primary_display_name) as related_person_display_name,
-            e.embedded_text as snippet,
+            coalesce(filtered_person.id, visible_people.primary_id)::text as related_person_id,
+            coalesce(filtered_person.display_name, visible_people.primary_display_name) as related_person_display_name,
+            regexp_replace(btrim(sr.content), '[ \t]+', ' ', 'g') as snippet,
             (1 - (e.embedding <=> ${queryVector}::vector))::float8 as similarity,
             e.trust_level::text as trust_level,
             e.sensitivity::text as sensitivity,
@@ -296,8 +299,20 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
             where srp.source_record_id = sr.id
               and btrim(p.display_name) <> ''
           ) related_people on true
+          left join lateral (
+            select
+              (array_agg(p.id order by case when srp.role = 'primary' then 0 else 1 end, p.display_name asc, p.id asc))[1] as primary_id,
+              (array_agg(p.display_name order by case when srp.role = 'primary' then 0 else 1 end, p.display_name asc, p.id asc))[1] as primary_display_name
+            from source_record_people srp
+            inner join people p
+              on p.id = srp.person_id
+            where srp.source_record_id = sr.id
+              and p.owner_user_id = ${input.ownerUserId}
+              and btrim(p.display_name) <> ''
+          ) visible_people on true
           left join people filtered_person
             on filtered_person.id = ${input.personId ?? null}::uuid
+            and filtered_person.owner_user_id = ${input.ownerUserId}
           where
             e.owner_user_id = sr.owner_user_id
             and ${visibleHouseholdRecordSql({
@@ -336,11 +351,9 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
             and sr.sensitivity <> 'restricted'
             and (${
               input.personId
-                ? sql`exists (
+                ? sql`filtered_person.id is not null and exists (
                     select 1
                     from source_record_people filter_srp
-                    inner join people filter_people
-                      on filter_people.id = filter_srp.person_id
                     where filter_srp.source_record_id = sr.id
                       and filter_srp.person_id = ${input.personId}
                   )`
@@ -372,9 +385,8 @@ function toSemanticRetrievalResult(row: SemanticMemorySearchRow): SemanticRetrie
   return {
     recordKind: row.record_kind,
     recordId: row.record_id,
-    ownerUserId: row.owner_user_id,
-    householdId: row.household_id,
-    scope: row.scope,
+    visibilityChoice: visibilityChoiceForScope(row.scope),
+    visibilityLabel: visibilityLabelForScope(row.scope),
     relatedPersonId: row.related_person_id,
     relatedPersonDisplayName: row.related_person_display_name,
     snippet: row.snippet,

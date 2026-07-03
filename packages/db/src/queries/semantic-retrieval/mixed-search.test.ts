@@ -75,12 +75,11 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
         recordId: sourceRecord.id,
         relatedPersonId: person.id,
         relatedPersonDisplayName: "Mara Lin",
-        snippet: [
-          "People: Mara Lin",
-          "Logged context: Mara wrote down handmade kitchen gift ideas.",
-        ].join("\n"),
+        snippet: "Mara wrote down handmade kitchen gift ideas.",
         trustLevel: "logged_context",
         sensitivity: "normal",
+        visibilityChoice: "only_me",
+        visibilityLabel: "Only me",
         sourceRefs: [{ kind: "source_record", id: sourceRecord.id }],
       }),
     ]);

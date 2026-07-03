@@ -26,6 +26,8 @@ describe("search_relationship_context tool", () => {
         rank: 1.2,
         trustLevel: "identity_reference",
         sensitivity: "normal",
+        visibilityChoice: "only_me",
+        visibilityLabel: "Only me",
       },
     ]);
 
@@ -65,6 +67,8 @@ describe("search_relationship_context tool", () => {
         rank: 1.1,
         trustLevel: "confirmed_fact",
         sensitivity: "normal",
+        visibilityChoice: "only_me",
+        visibilityLabel: "Only me",
         fullProfile: "Do not expose full profiles through exact recall.",
         snapshot: { summary: "Generated snapshot prose must not become recall truth." },
       },
@@ -79,6 +83,8 @@ describe("search_relationship_context tool", () => {
         rank: 0.9,
         trustLevel: "logged_context",
         sensitivity: "normal",
+        visibilityChoice: "only_me",
+        visibilityLabel: "Only me",
         snapshotStatus: "fresh",
       },
     ]);
@@ -100,6 +106,8 @@ describe("search_relationship_context tool", () => {
         rank: 1.1,
         trustLevel: "confirmed_fact",
         sensitivity: "normal",
+        visibilityChoice: "only_me",
+        visibilityLabel: "Only me",
       },
       {
         recordKind: "source_record",
@@ -112,6 +120,8 @@ describe("search_relationship_context tool", () => {
         rank: 0.9,
         trustLevel: "logged_context",
         sensitivity: "normal",
+        visibilityChoice: "only_me",
+        visibilityLabel: "Only me",
       },
     ]);
     expect(result).not.toHaveProperty("person");

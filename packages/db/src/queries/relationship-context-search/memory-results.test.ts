@@ -150,8 +150,11 @@ describe("relationship-context search - memory results", () => {
     );
     expect(activeMemberResults).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ recordId: sharedMemoryId, scope: "shared", householdId }),
-        expect.objectContaining({ recordId: householdMemoryId, scope: "household", householdId }),
+        expect.objectContaining({ recordId: sharedMemoryId, visibilityLabel: "Specific people" }),
+        expect.objectContaining({
+          recordId: householdMemoryId,
+          visibilityLabel: "Whole household",
+        }),
       ]),
     );
 

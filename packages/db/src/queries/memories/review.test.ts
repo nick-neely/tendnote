@@ -95,6 +95,18 @@ describe("suggested memory review surface", () => {
       review.saveSuggestedMemory({ ownerUserId: "intruder", memoryId: suggestions[0]?.id ?? "" }),
     ).rejects.toThrow();
   });
+
+  it("keeps suggested-memory review actions owner-scoped before household review sharing exists", async () => {
+    const { review, seedSuggestion } = await setup();
+    const { memory } = await seedSuggestion();
+
+    await expect(
+      review.saveSuggestedMemory({ ownerUserId: "intruder", memoryId: memory.id }),
+    ).rejects.toThrow();
+    await expect(
+      review.dismissSuggestedMemory({ ownerUserId: "intruder", memoryId: memory.id }),
+    ).rejects.toThrow();
+  });
 });
 
 describe("save suggested memory", () => {

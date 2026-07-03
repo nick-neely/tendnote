@@ -1,4 +1,9 @@
-import type { ExactRecallRecordKind, ExactRecallResult } from "@tendnote/domain";
+import {
+  type ExactRecallRecordKind,
+  type ExactRecallResult,
+  visibilityChoiceForScope,
+  visibilityLabelForScope,
+} from "@tendnote/domain";
 import { sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
@@ -69,9 +74,9 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           m.owner_user_id::text as owner_user_id,
           m.household_id::text as household_id,
           m.scope::text as scope,
-          m.person_id::text as related_person_id,
+          p.id::text as related_person_id,
           p.display_name as related_person_display_name,
-          p.display_name as label,
+          coalesce(p.display_name, 'Memory') as label,
           ts_headline('simple', m.content, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2') as snippet,
           array['content']::text[] as matched_fields,
           (
@@ -82,7 +87,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           'confirmed_fact'::text as trust_level,
           m.sensitivity::text as sensitivity
         from memories m
-        inner join people p on p.id = m.person_id
+        left join people p on p.id = m.person_id and p.owner_user_id = ${input.ownerUserId}
         cross join search_query
         where
           ${visibleHouseholdRecordSql({
@@ -91,7 +96,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
             recordKind: "memory",
           })}
           and ${kindFilter(input.recordKinds, "memory")}
-          and ${input.personId ? sql`m.person_id = ${input.personId}` : sql`true`}
+          and ${input.personId ? sql`p.id = ${input.personId}` : sql`true`}
           and m.status = 'approved'
           and (${input.directlyRequested}::boolean or m.sensitivity <> 'restricted')
           and m.search_vector @@ search_query.query
@@ -121,6 +126,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           inner join people p on p.id = srp.person_id
           where
             srp.source_record_id = sr.id
+            and p.owner_user_id = ${input.ownerUserId}
             and ${input.personId ? sql`p.id = ${input.personId}` : sql`true`}
           order by case when srp.role = 'primary' then 0 else 1 end, p.display_name asc, p.id asc
           limit 1
@@ -155,13 +161,8 @@ function toExactRecallResult(row: SearchRow): ExactRecallResult {
   return {
     recordKind: row.record_kind,
     recordId: row.record_id,
-    ...(row.scope
-      ? {
-          ownerUserId: row.owner_user_id ?? undefined,
-          householdId: row.household_id,
-          scope: row.scope,
-        }
-      : {}),
+    visibilityChoice: row.scope ? visibilityChoiceForScope(row.scope) : null,
+    visibilityLabel: row.scope ? visibilityLabelForScope(row.scope) : null,
     relatedPersonId: row.related_person_id,
     relatedPersonDisplayName: row.related_person_display_name,
     label: row.label,

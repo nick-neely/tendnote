@@ -59,6 +59,8 @@ describe("relationship-context search - person results", () => {
         rank: expect.any(Number),
         trustLevel: "identity_reference",
         sensitivity: "normal",
+        visibilityChoice: null,
+        visibilityLabel: null,
       },
     ]);
   });

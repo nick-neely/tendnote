@@ -350,6 +350,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
           {
             recordKind: "person",
             recordId: "person-1",
+            visibilityChoice: null,
+            visibilityLabel: null,
             relatedPersonId: "person-1",
             relatedPersonDisplayName: "Mara Lin",
             label: "Mara Lin",
@@ -370,6 +372,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         {
           recordKind: "person",
           recordId: "person-1",
+          visibilityChoice: null,
+          visibilityLabel: null,
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           label: "Mara Lin",
@@ -390,9 +394,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
           {
             recordKind: "memory",
             recordId: "memory-1",
-            ownerUserId: "member-1",
-            householdId: "household-1",
-            scope: "shared",
+            visibilityChoice: "selected_members",
+            visibilityLabel: "Specific people",
             relatedPersonId: "person-1",
             relatedPersonDisplayName: "Mara Lin",
             label: "Mara Lin",
@@ -414,9 +417,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         {
           recordKind: "memory",
           recordId: "memory-1",
-          ownerUserId: "member-1",
-          householdId: "household-1",
-          scope: "shared",
+          visibilityChoice: "selected_members",
+          visibilityLabel: "Specific people",
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           label: "Mara Lin",
@@ -429,6 +431,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     });
     expect(JSON.stringify(view)).not.toContain("Generated snapshot prose");
     expect(JSON.stringify(view)).not.toContain("Do not render this");
+    expect(JSON.stringify(view)).not.toContain("household-1");
   });
 
   it("renders semantic recall results as compact grounded references", () => {
@@ -439,9 +442,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
           {
             recordKind: "source_record",
             recordId: "source-1",
-            ownerUserId: "member-1",
-            householdId: "household-1",
-            scope: "household",
+            visibilityChoice: "whole_household",
+            visibilityLabel: "Whole household",
             relatedPersonId: "person-1",
             relatedPersonDisplayName: "Mara Lin",
             snippet: "Mara mentioned a possible career change.",
@@ -462,9 +464,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         {
           recordKind: "source_record",
           recordId: "source-1",
-          ownerUserId: "member-1",
-          householdId: "household-1",
-          scope: "household",
+          visibilityChoice: "whole_household",
+          visibilityLabel: "Whole household",
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           snippet: "Mara mentioned a possible career change.",
@@ -728,6 +729,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
           {
             recordKind: "person",
             recordId: "person-1",
+            visibilityChoice: null,
+            visibilityLabel: null,
             relatedPersonId: "person-1",
             relatedPersonDisplayName: "Mara Lin",
             label: "Mara Lin",
@@ -746,6 +749,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
           {
             recordKind: "memory",
             recordId: "memory-1",
+            visibilityChoice: "only_me",
+            visibilityLabel: "Only me",
             relatedPersonId: "person-1",
             relatedPersonDisplayName: "Mara Lin",
             snippet: "x",
@@ -898,6 +903,8 @@ describe("toolViewTier (how much weight a result earns)", () => {
     const result = {
       recordKind: "person" as const,
       recordId: "p1",
+      visibilityChoice: null,
+      visibilityLabel: null,
       relatedPersonId: "p1",
       relatedPersonDisplayName: "Alex",
       label: "Alex",
@@ -917,6 +924,8 @@ describe("toolViewTier (how much weight a result earns)", () => {
           {
             recordKind: "memory",
             recordId: "m1",
+            visibilityChoice: "only_me",
+            visibilityLabel: "Only me",
             relatedPersonId: null,
             relatedPersonDisplayName: null,
             snippet: "x",

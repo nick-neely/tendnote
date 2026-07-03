@@ -36,6 +36,23 @@ export function scopeForVisibilityChoice(choice: VisibilityChoice): PrivacyScope
   return VISIBILITY_CONTROL_OPTIONS.find((option) => option.choice === choice)?.scope ?? "private";
 }
 
+export function visibilityChoiceForScope(scope: PrivacyScope): VisibilityChoice {
+  return visibilityOptionForScope(scope).choice;
+}
+
+export function visibilityLabelForScope(scope: PrivacyScope): string {
+  return visibilityOptionForScope(scope).label;
+}
+
+function visibilityOptionForScope(scope: PrivacyScope) {
+  const fallback = VISIBILITY_CONTROL_OPTIONS[0];
+  if (!fallback) {
+    throw new Error("Visibility control options must include a private default.");
+  }
+
+  return VISIBILITY_CONTROL_OPTIONS.find((option) => option.scope === scope) ?? fallback;
+}
+
 export const sensitivitySchema = z.enum(["normal", "sensitive", "restricted"]);
 export type Sensitivity = z.infer<typeof sensitivitySchema>;
 

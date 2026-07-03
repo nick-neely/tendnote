@@ -3,12 +3,12 @@ import type {
   HouseholdMembership,
   Memory,
   Person,
-  PrivacyScope,
   SourceRecord,
   SourceRecordPerson,
 } from "@tendnote/domain";
-import { canViewScopedRecord, scopedRecordVisibility } from "@tendnote/domain";
+import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain";
 import type { HouseholdRecordShare } from "../households/types";
+import { canViewerSeeSeededHouseholdRecord } from "../households/visibility-memory";
 import type { RelationshipContextSearchStore } from "./types";
 
 export type InMemoryRelationshipContextSearchSeed = {
@@ -56,6 +56,8 @@ export function createInMemoryRelationshipContextSearchStore(
           results.push({
             recordKind: "person",
             recordId: person.id,
+            visibilityChoice: null,
+            visibilityLabel: null,
             relatedPersonId: person.id,
             relatedPersonDisplayName: person.displayName,
             label: person.displayName,
@@ -78,16 +80,15 @@ export function createInMemoryRelationshipContextSearchStore(
 
           const person = people.find(
             (candidate) =>
-              candidate.id === memory.personId && candidate.ownerUserId === memory.ownerUserId,
+              candidate.id === memory.personId && candidate.ownerUserId === input.ownerUserId,
           );
 
           results.push({
             recordKind: "memory",
             recordId: memory.id,
-            ownerUserId: memory.ownerUserId,
-            householdId: memory.householdId ?? null,
-            scope: memory.scope,
-            relatedPersonId: memory.personId,
+            visibilityChoice: visibilityChoiceForScope(memory.scope),
+            visibilityLabel: visibilityLabelForScope(memory.scope),
+            relatedPersonId: person?.id ?? null,
             relatedPersonDisplayName: person?.displayName ?? null,
             label: person?.displayName ?? "Memory",
             snippet: snippet(memory.content),
@@ -114,8 +115,7 @@ export function createInMemoryRelationshipContextSearchStore(
             .map((link) =>
               people.find(
                 (candidate) =>
-                  candidate.id === link.personId &&
-                  candidate.ownerUserId === sourceRecord.ownerUserId,
+                  candidate.id === link.personId && candidate.ownerUserId === input.ownerUserId,
               ),
             )
             .filter((candidate): candidate is Person => Boolean(candidate));
@@ -127,9 +127,8 @@ export function createInMemoryRelationshipContextSearchStore(
           results.push({
             recordKind: "source_record",
             recordId: sourceRecord.id,
-            ownerUserId: sourceRecord.ownerUserId,
-            householdId: sourceRecord.householdId ?? null,
-            scope: sourceRecord.scope,
+            visibilityChoice: visibilityChoiceForScope(sourceRecord.scope),
+            visibilityLabel: visibilityLabelForScope(sourceRecord.scope),
             relatedPersonId: relatedPerson?.id ?? null,
             relatedPersonDisplayName: relatedPerson?.displayName ?? null,
             label: relatedPerson?.displayName ?? "Logged note",
@@ -155,25 +154,16 @@ export function createInMemoryRelationshipContextSearchStore(
       id: string;
       ownerUserId: string;
       householdId?: string | null;
-      scope: PrivacyScope;
+      scope: "private" | "shared" | "household";
     },
     recordKind: "memory" | "source_record",
   ) {
-    const shares = householdRecordShares.filter(
-      (share) => share.recordKind === recordKind && share.recordId === record.id,
-    );
-
-    return canViewScopedRecord({
+    return canViewerSeeSeededHouseholdRecord({
       callerUserId,
-      record: scopedRecordVisibility({
-        ownerUserId: record.ownerUserId,
-        scope: record.scope,
-        householdId: record.householdId ?? null,
-        shares,
-      }),
-      activeMemberships: householdMemberships.filter(
-        (membership) => membership.status === "active",
-      ),
+      record,
+      recordKind,
+      householdMemberships,
+      householdRecordShares,
     });
   }
 }

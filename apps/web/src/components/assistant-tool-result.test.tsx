@@ -109,6 +109,8 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
         {
           recordKind: "person",
           recordId: "person-1",
+          visibilityChoice: null,
+          visibilityLabel: null,
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           label: "Mara Lin",
@@ -144,6 +146,8 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
         {
           recordKind: "source_record",
           recordId: "source-1",
+          visibilityChoice: "only_me",
+          visibilityLabel: "Only me",
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           label: "Mara Lin",
@@ -169,6 +173,8 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
         {
           recordKind: "person",
           recordId: "person-1",
+          visibilityChoice: null,
+          visibilityLabel: null,
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           label: "Mara Lin",
@@ -180,6 +186,8 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
         {
           recordKind: "memory",
           recordId: "memory-1",
+          visibilityChoice: "only_me",
+          visibilityLabel: "Only me",
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           label: "Mara Lin",
@@ -191,6 +199,8 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
         {
           recordKind: "source_record",
           recordId: "source-1",
+          visibilityChoice: "only_me",
+          visibilityLabel: "Only me",
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           label: "Mara Lin",
@@ -220,6 +230,8 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
         {
           recordKind: "memory",
           recordId: "memory-1",
+          visibilityChoice: "only_me",
+          visibilityLabel: "Only me",
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           snippet: "Mara loves handmade kitchen gifts.",
@@ -230,6 +242,8 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
         {
           recordKind: "source_record",
           recordId: "source-1",
+          visibilityChoice: "only_me",
+          visibilityLabel: "Only me",
           relatedPersonId: "person-1",
           relatedPersonDisplayName: "Mara Lin",
           snippet: "Mara mentioned a possible career change.",
