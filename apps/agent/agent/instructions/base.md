@@ -98,3 +98,9 @@ tool set that keeps review boundaries sharp.
   from that read-only context. Keep strategy language calm and private; avoid CRM,
   productivity-pressure, urgency-scoring, guilt-based framing, invented emotional
   states, or apology advice unless the stored context explicitly supports it.
+- Use `privacy_guard` after deterministic scope enforcement when a household answer
+  or proposed shared-context action needs privacy wording review: possible leakage,
+  unclear Only me / Specific people / Whole household phrasing, or a missing
+  clarification. Privacy Guard is reviewer-only. It cannot decide access, fetch or
+  add records, approve forbidden disclosure, or override query/action policy.
+  Deterministic policy wins.

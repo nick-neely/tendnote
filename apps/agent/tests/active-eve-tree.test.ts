@@ -31,6 +31,8 @@ describe("active Eve tree", () => {
       "subagents/message_drafter/agent.ts",
       "subagents/message_drafter/instructions.md",
       "subagents/message_drafter/tools/propose_message_draft.ts",
+      "subagents/privacy_guard/agent.ts",
+      "subagents/privacy_guard/instructions.md",
       "subagents/relationship_strategist/agent.ts",
       "subagents/relationship_strategist/instructions.md",
       "subagents/relationship_strategist/tools/get_relationship_agenda.ts",

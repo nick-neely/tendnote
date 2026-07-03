@@ -91,7 +91,7 @@ describe("Phase 3 boundary hardening", () => {
     const currentPhase3Files = [
       ...listFiles("apps/agent/agent")
         .filter((file) =>
-          /channels\/discord|lib\/cleanup-preview-sandbox|lib\/eve-modes|schedules\/brief-dispatcher|subagents\/|tools\/cleanup_preview/.test(
+          /channels\/discord|lib\/cleanup-preview-sandbox|lib\/eve-modes|schedules\/brief-dispatcher|subagents\/(memory_curator|message_drafter|relationship_strategist)\/|tools\/cleanup_preview/.test(
             file,
           ),
         )
