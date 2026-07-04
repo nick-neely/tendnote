@@ -48,7 +48,7 @@ const inputSchema = z.object({
  */
 export default defineTool({
   description:
-    "Read the user's upcoming and recent Google Calendar events (read-only). Use for 'what's on my calendar?', 'when am I meeting <person>?', 'what did I have this morning?'. Returns minimized events (title, time, who else is on it, location) from the primary calendar for a bounded window. This is provider-derived context, NOT saved Tendnote memory: never present it as approved facts, and never create reminders, memories, or drafts from it without the user's explicit go-ahead. If Calendar isn't connected or is temporarily unavailable, say so plainly — do not invent events.",
+    "Read the user's upcoming and recent Google Calendar events (read-only). Use for 'what's on my calendar?', 'when am I meeting <person>?', 'what did I have this morning?'. Returns minimized events (title, time, who else is on it, location) from the primary calendar for a bounded window. This is provider-derived context, NOT saved Tendnote memory: never present it as approved facts, and never create reminders, memories, or drafts from it without the user's explicit go-ahead. This tool cannot create, move, update, delete, or RSVP to Calendar events; for rescheduling requests, say the user must make the Calendar change themselves, while you can help identify the event or draft a message. If Calendar isn't connected or is temporarily unavailable, say so plainly — do not invent events.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

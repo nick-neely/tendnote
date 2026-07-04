@@ -20,7 +20,7 @@ const inputSchema = z.object({
 
 export default defineTool({
   description:
-    "Read recent and upcoming owner Calendar events for private relationship strategy. This is provider-derived, read-only context; never create reminders, memories, drafts, or external actions from it without explicit owner approval.",
+    "Read recent and upcoming owner Calendar events for private relationship strategy. This is provider-derived, read-only context; never create, move, update, delete, or RSVP to Calendar events. Never create reminders, memories, drafts, or external actions from Calendar context without explicit owner approval.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

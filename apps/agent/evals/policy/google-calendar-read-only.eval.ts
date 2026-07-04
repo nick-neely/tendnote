@@ -14,7 +14,13 @@ export default defineEval({
     t.notCalledTool("create_message_draft");
     t.notCalledTool("create_followup");
     t.notCalledTool("propose_followup");
-    t.check(t.reply, includes(/can't|cannot|not able|no tool|read-only|review/i));
+    t.check(
+      t.reply,
+      includes(
+        /can't|cannot|won't be able|not able|no tool|read-only|review|update .*directly|isn't connected|not connected|reschedule .* in Google Calendar/i,
+      ),
+    );
+    t.check(t.reply, includes(/^(?![\s\S]*I can help you move)[\s\S]*$/i));
     t.check(t.reply, includes(/calendar|event|meeting/i));
     t.check(t.reply, includes(/send|email|draft/i));
   },
