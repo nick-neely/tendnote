@@ -135,3 +135,23 @@ _Avoid_: Calendar sync, automatic meeting notes, auto follow-up
 **Eve Mode**:
 A bounded assistant capability profile that narrows Eve's tools, skills, and behavior for a specific private workflow, such as Discord capture, selected-person work, drafting, scheduled workflows, or cleanup previews. An Eve mode is not a separate assistant persona or workspace.
 _Avoid_: Persona, workspace, unrestricted mode
+
+**Household Workspace**:
+A lightweight shared permission anchor for a small private household or trusted circle. A household workspace can have multiple invited members with roles and visibility controls, and later Personal OS domains can feed into it as a household operating layer, but it is not an organization, team workspace, CRM account, or admin console.
+_Avoid_: Organization, team, account, CRM workspace
+
+**Household Member**:
+A Tendnote user who has accepted or been invited into a Household Workspace and can see or act on records according to their membership role and each record's scope. A household member is not automatically allowed to see another member's private records.
+_Avoid_: Admin user, teammate, shared owner
+
+**Household Owner**:
+A Household Member who can manage the Household Workspace, including invitations, membership, settings, and visibility defaults. A household owner role is not a broad product administrator or permission to read another member's private records.
+_Avoid_: Admin, superuser, organization owner
+
+**Shared Scope**:
+A visibility scope for records explicitly shared with selected Household Members. Shared scope is narrower than household scope and does not imply visibility to every member.
+_Avoid_: Household scope, public, team-wide
+
+**Household Scope**:
+A visibility scope for records available to all current Household Members. Household scope is broader than shared scope but still private to the Household Workspace.
+_Avoid_: Public, shared with selected members, organization-wide

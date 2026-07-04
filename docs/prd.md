@@ -1195,30 +1195,117 @@ Vertical slice issue seeds:
 7. Add sandbox-backed cleanup previews for CSV/vCard files, pasted lists, old notes, exported text/JSON, and other messy owner-supplied private context. The sandbox may parse, normalize, and dedupe candidates, but durable people, memories, contact methods, source records, and follow-ups still require confirmation through Tendnote review surfaces; Google Contacts import stays separate.
 8. Defer Slack, Telegram, shared household behavior, new eval-suite scope, generic Eve MCP/OpenAPI connections, and all external sends or autonomous external draft creation. Discord is a channel, and existing Google Calendar, Gmail, and Contacts capabilities remain behind Tendnote-owned provider seams.
 
-#### Phase 4: Shared Household Context
+#### Phase 4: Household/Scope Foundation
 
-Goal: Support Nick and Mara shared context without leaking private notes.
+Goal: Add the permission substrate for shared household behavior before broadening Tendnote into a multi-domain Personal OS. This phase should prove that private, shared, and household visibility rules are enforced in shared queries, web surfaces, Eve responses, and scheduled/proactive behavior before richer household product workflows are added.
 
 Deliverables:
 
-- Shared household workspace
-- Private, shared, and household scopes
-- Shared reminders
-- Gift ideas
-- Family and social event tracking
-- Permission-aware agent responses
-- Privacy guard subagent for shared-context review
+- Household Workspace and membership model for multiple invited members with Owner and Member roles plus visibility controls (ADRs 0130, 0131)
+- Private, shared, and household visibility scopes where Owner role does not pierce private records (ADR 0132)
+- Scope enforcement for memories, source records, follow-ups, drafts, briefs, review items, and Eve tools
+- Permission-aware Eve responses that can use mixed visible scopes while preserving provenance and scope boundaries (ADR 0136)
+- Minimal shared person/relationship reminder behavior as the proof artifact for scope enforcement, while shared memories, shared drafts, and general non-person actions remain future-compatible and deferred (ADRs 0133, 0134)
+- Privacy-boundary tests/evals for shared context
+- Privacy Guard subagent only after deterministic query/action scope enforcement exists, and only as a reviewer rather than the access boundary (ADR 0137)
 
 Vertical slice issue seeds:
 
-- Add workspace and membership model.
-- Add scope enforcement to memory, follow-up, and draft queries.
-- Build shared reminders page.
-- Add household gift ideas and birthday planning view.
-- Add privacy-boundary evals for shared context.
-- Add privacy-guard subagent after shared-context query enforcement exists.
+1. Add lightweight Household Workspace, invitations, Owner/Member roles, membership lifecycle, member removal behavior, and audit without adding multi-workspace switching, organization/team behavior, CRM account semantics, or a broad admin console.
+2. Add the private/shared/household scope model, selected-member sharing, record-level visibility controls, household future-member behavior, and removed-member access revocation.
+3. Add scope enforcement across existing owner-scoped read/write seams, including memories, source records, Follow-Ups, drafts, briefs, review items, retrieval, and Eve tool outputs.
+4. Add minimal shared person/relationship Follow-Up behavior to prove shared action visibility. Do not build general non-person reminders/actions, rich shared memory, or shared draft workflows in Phase 4, but keep the Household Workspace model compatible with those future Personal OS and Phase 8 household OS behaviors.
+5. Add permission-aware Eve responses and assistant rendering for private, shared, and household records. Allow Eve to combine the caller's private records with visible shared and household records in one useful answer, while preventing leakage of another member's private records and preserving scope/provenance in phrasing and assistant component payloads.
+6. Add privacy-boundary tests/evals for shared context, with deterministic policy enforcement as the required security boundary.
+7. Add Privacy Guard subagent after deterministic shared-context query/action enforcement exists; it may review, flag, revise, or require clarification for Eve outputs and proposed shared-context actions, but deterministic scope enforcement remains authoritative.
 
-#### Phase 5: Productization or Open Source
+#### Phase 5: General Reminders/Actions Foundation
+
+Goal: Add the first non-people Personal OS vertical by supporting general reminders/actions such as "replace the refrigerator water filter" without forcing every reminder to belong to a person. This phase should stretch Tendnote's source-record, memory, retrieval, review, reminder, and Eve-mode architecture in the smallest useful way without replacing the people model with a premature generic abstraction.
+
+Vertical slice issue seeds:
+
+- Add the smallest subject/action generalization needed for non-person reminders/actions.
+- Route fast capture into source records or pending source records before structured promotion.
+- Add review-gated promotion into general reminders/actions.
+- Preserve person Follow-Ups as the relationship-specific action subtype.
+- Extend exact recall, semantic retrieval, snapshots, and Eve responses for general reminders/actions.
+
+#### Phase 6: Asset/Object Memory
+
+Goal: Add the second Personal OS vertical on top of the general reminders/actions foundation by supporting household items, appliances, vehicles, subscriptions, warranties, documents, and maintenance history without turning assets into people or flattening all domains into one vague table.
+
+Deliverables:
+
+- Asset/object records for practical owner-owned things
+- Source-record capture for receipts, photos, serial numbers, maintenance notes, warranties, and subscription details
+- General reminders/actions tied to assets, such as replacing filters, renewing warranties, inspecting a car, or canceling a subscription
+- Asset snapshots as rebuildable generated caches, not source of truth
+- Exact recall, semantic retrieval, and Eve responses over asset/object context with typed result contracts
+
+Vertical slice issue seeds:
+
+- Add asset/object memory domain language and the smallest schema needed for useful asset anchors.
+- Link source records, memories, reminders/actions, and documents to assets without replacing people-first relationship records.
+- Add asset profile/read surface with source-grounded context and reminders/actions.
+- Extend capture, review, recall, semantic retrieval, snapshots, and Eve responses for assets.
+- Add maintenance/subscription reminder flows that reuse the general reminders/actions lifecycle.
+
+#### Phase 7: Personal OS Capture and Today Layer
+
+Goal: Add the mobile-first operating layer for broad personal capture, routing, today's priorities, and slipping/resurfacing across people and the first non-people vertical.
+
+Deliverables:
+
+- Mobile-first capture surface and PWA-oriented access
+- Fast capture confirmation and routing
+- Today dashboard across relationship context, reminders/actions, Calendar context, and review items
+- Slipping/resurfacing rules for stale context, overdue actions, unresolved decisions, and saved items worth revisiting
+- Global search and grounded Eve chat across supported domains
+
+Vertical slice issue seeds:
+
+- Add mobile-first fast capture and confirmation.
+- Add AI-assisted routing from capture into reviewable outcomes.
+- Add Today dashboard with capped, explainable priorities.
+- Add slipping/resurfacing read model.
+- Extend search and Eve chat across supported domains with typed result contracts.
+
+#### Phase 8: Rich Household and Multi-Domain Collaboration
+
+Goal: Build the richer household product workflows on top of the Phase 4 scope foundation and the first Personal OS vertical.
+
+Deliverables:
+
+- Shared household reminders and planning surfaces beyond the minimal foundation
+- Household gift ideas and birthday planning
+- Family and social event tracking
+- Household-aware strategist behavior
+- Shared views over supported Personal OS domains where permissions allow
+
+Vertical slice issue seeds:
+
+- Build shared household reminders page.
+- Add household gift ideas and birthday planning view.
+- Add family and social event tracking.
+- Add household-aware strategist behavior.
+- Add shared views across supported non-people domains where scope rules allow.
+
+#### Future Personal OS Domains
+
+These domains are intentionally not fully sequenced yet. Phase 5 and Phase 6 should preserve enough architectural room for them by keeping source records as evidence, memories as reviewed durable claims, snapshots as rebuildable caches, retrieval results typed, reminders/actions lifecycle-based, provider data minimized, and durable writes review-gated.
+
+Candidate future domains:
+
+- Career memory / brag document for work evidence, wins, metrics, promotion packets, resume bullets, and interview stories
+- Personal knowledge notebook / library for notes, journal entries, quotes, book highlights, pictures, ideas, and saved snippets
+- Goals, habits, routines, and reflection, keeping routines distinct from reminders/actions
+- Decision journal for options, rationale, assumptions, outcomes, and review reminders
+- Broader Personal OS dashboard behavior as more domains become real
+
+Do not introduce a giant generic subject abstraction until a concrete second durable domain needs it. Prefer staged generalization from real verticals, link tables over overloaded records, and domain-specific behavior where it earns its keep.
+
+#### Phase 9: Productization or Open Source
 
 Goal: Decide whether Tendnote stays private, becomes an OSS template, or becomes a product.
 
