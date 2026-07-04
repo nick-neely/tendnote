@@ -9,7 +9,7 @@ export default defineEval({
 
     t.succeeded();
     t.calledSubagent("memory_curator", {
-      output: /review|cleanup|memory/i,
+      output: /review|cleanup|memor(y|ies)/i,
     });
     t.notCalledTool("approve_suggested_memory");
     t.notCalledTool("dismiss_suggested_memory");
@@ -17,6 +17,6 @@ export default defineEval({
     t.notCalledTool("capture_source_record");
     t.notCalledTool("create_followup");
     t.notCalledTool("create_message_draft");
-    t.check(t.reply, includes(/review|proposal|cleanup|memory/i));
+    t.check(t.reply, includes(/review|proposal|cleanup|memor(y|ies)/i));
   },
 });
