@@ -124,4 +124,6 @@ pnpm format         # formatter writes only
 
 - `.github/workflows/pr-verify.yml` is the pull request wrapper.
 - `.github/workflows/reusable-verify.yml` runs database replay, Biome, tests, typecheck, and build as parallel jobs with an aggregate `Verify` job.
-- `.github/workflows/production-migrations.yml` gates production Drizzle migrations behind reusable verification and expects `PRODUCTION_DATABASE_DIRECT_URL` in the production GitHub environment.
+- `.github/workflows/production-migrations.yml` gates production Drizzle migrations behind reusable verification and expects `PRODUCTION_DATABASE_DIRECT_URL` in the production GitHub environment. It always ends with the stable `Production Release Gate` job, which is the GitHub check Vercel Deployment Checks should require before production domain aliasing.
+
+Production schema changes must stay compatible with the currently live Vercel deployment. Use expand/contract releases for destructive changes: add the new shape first, switch application reads/writes after both old and new deployments can tolerate it, and remove old columns or tables only in a later release.
