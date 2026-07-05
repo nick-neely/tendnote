@@ -8,7 +8,18 @@ import { ProviderConnectionsSection } from "./provider-connections-section";
 vi.mock("@/app/actions/integrations", () => ({
   disconnectGoogleCalendarAction: vi.fn(),
   disconnectGoogleContactsAction: vi.fn(),
+  disconnectDiscordAction: vi.fn(),
 }));
+
+const DISCORD_READY_VIEW: ProviderConnectionView = {
+  providerKey: "discord",
+  capabilityKey: "channel",
+  label: "Discord",
+  status: "ready",
+  displayIdentity: null,
+  revocationReason: null,
+  lastErrorMessage: null,
+};
 
 const READY_VIEW: ProviderConnectionView[] = [
   {
@@ -172,6 +183,54 @@ describe("ProviderConnectionsSection", () => {
     expect(html).not.toContain("Connect Gmail (not available yet)");
     // Copy reflects the draft-only, never-sending Gmail boundary.
     expect(html).toContain("never sending");
+  });
+
+  it("renders a live Discord connect control when Discord is configured", () => {
+    const html = renderToStaticMarkup(
+      <ProviderConnectionsSection connections={[DISCORD_READY_VIEW]} discordConnectable />,
+    );
+
+    // A real connect control (not the inert affordance), and copy that promises no
+    // message-content read.
+    expect(html).toContain("Discord");
+    expect(html).toContain("Connect Discord");
+    expect(html).not.toContain("Connect Discord (not available yet)");
+    expect(html).toContain("no messages");
+  });
+
+  it("keeps the Discord connect affordance inert when Discord is not configured", () => {
+    const html = renderToStaticMarkup(
+      <ProviderConnectionsSection connections={[DISCORD_READY_VIEW]} />,
+    );
+
+    expect(html).toContain("Discord");
+    expect(html).toContain("disabled");
+    expect(html).not.toContain("href");
+  });
+
+  it("shows the human-readable Discord identity and a live disconnect control when connected", () => {
+    const html = renderToStaticMarkup(
+      <ProviderConnectionsSection
+        connections={[
+          {
+            providerKey: "discord",
+            capabilityKey: "channel",
+            label: "Discord",
+            status: "connected",
+            // The mirrored display identity is the resolved username, not a raw id.
+            displayIdentity: "nickneely",
+            revocationReason: null,
+            lastErrorMessage: null,
+          },
+        ]}
+        discordConnectable
+      />,
+    );
+
+    expect(html).toContain("Connected");
+    expect(html).toContain("nickneely");
+    expect(html).toContain("Disconnect Discord");
+    expect(html).not.toContain("not available yet");
   });
 
   it("surfaces an error status as visible state without color alone", () => {

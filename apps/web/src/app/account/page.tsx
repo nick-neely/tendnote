@@ -8,7 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { localFallbackOwnerUserId } from "@/lib/access/access-state";
 import { resolveAccountView } from "@/lib/access/account-summary";
 import { getCurrentAccess } from "@/lib/access/current-access";
-import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
+import {
+  discordEnvFromProcess,
+  googleEnvFromProcess,
+  isDiscordConfigured,
+  isGoogleConfigured,
+} from "@/lib/auth/social";
 import { getOwnerCalendarPreview } from "@/lib/integrations/calendar-preview-data";
 import { buildProviderConnectionView } from "@/lib/integrations/provider-connection-view";
 import { getOwnerProviderConnections } from "@/lib/integrations/provider-connections";
@@ -38,6 +43,9 @@ export default async function AccountPage() {
   // affordances stay inert. Both read the same gate — the capabilities differ by the
   // narrow scope each requests, not by separate credentials.
   const googleConfigured = isGoogleConfigured(googleEnvFromProcess());
+  // Discord (identity linking) is connectable only when Discord credentials are
+  // configured server-side; otherwise the affordance stays inert.
+  const discordConfigured = isDiscordConfigured(discordEnvFromProcess());
   // Read-only bounded preview of the connected calendar; hidden when not connected.
   const calendarPreview = await getOwnerCalendarPreview();
 
@@ -103,6 +111,7 @@ export default async function AccountPage() {
           calendarConnectable={googleConfigured}
           contactsConnectable={googleConfigured}
           connections={connections}
+          discordConnectable={discordConfigured}
           ensureLocalDemoAuthSession={usingLocalFallback}
           gmailConnectable={googleConfigured}
         />

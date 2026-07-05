@@ -8,20 +8,25 @@ import {
 import { providerCapabilityKey } from "./provider-connections";
 
 describe("default provider capabilities", () => {
-  it("covers Google Calendar, Gmail, and Google Contacts as distinct capabilities", () => {
+  it("covers Google Calendar, Gmail, Google Contacts, and Discord as distinct capabilities", () => {
     expect(DEFAULT_PROVIDER_CAPABILITIES.map((c) => c.label)).toEqual([
       "Google Calendar",
       "Gmail",
       "Google Contacts",
+      "Discord",
     ]);
     const keys = DEFAULT_PROVIDER_CAPABILITIES.map(providerCapabilityKey);
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys).toContain("google:calendar");
     expect(keys).toContain("google:contacts");
+    expect(keys).toContain("discord:channel");
   });
 
   it("recognises default capabilities and rejects unknown ones", () => {
     expect(isDefaultProviderCapability({ providerKey: "google", capabilityKey: "gmail" })).toBe(
+      true,
+    );
+    expect(isDefaultProviderCapability({ providerKey: "discord", capabilityKey: "channel" })).toBe(
       true,
     );
     expect(isDefaultProviderCapability({ providerKey: "google", capabilityKey: "drive" })).toBe(

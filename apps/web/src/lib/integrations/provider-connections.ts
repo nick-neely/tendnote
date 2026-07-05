@@ -1,6 +1,12 @@
 import "server-only";
 
 import {
+  getDiscordIdentity,
+  linkDiscordIdentity,
+  listDiscordIdentities,
+  unlinkDiscordIdentity,
+} from "@tendnote/db/queries/discord-identities";
+import {
   connectProviderConnection,
   isProviderCapabilityConnected,
   listProviderConnections,
@@ -10,7 +16,14 @@ import {
 } from "@tendnote/db/queries/provider-connections";
 import type { ProviderConnectionStatus } from "@tendnote/domain";
 import { requireAdmittedOwner, requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
+import {
+  discordEnvFromProcess,
+  googleEnvFromProcess,
+  isDiscordConfigured,
+  isGoogleConfigured,
+} from "@/lib/auth/social";
+import { deriveDiscordConnection, reconcileDiscordConnection } from "./discord-connection";
+import { type DisconnectDiscordResult, disconnectDiscord } from "./discord-disconnect";
 import { reconcileGoogleCalendarConnection } from "./google-calendar-connection";
 import {
   type DisconnectGoogleCalendarResult,
@@ -20,6 +33,59 @@ import { reconcileGoogleContactsConnection } from "./google-contacts-connection"
 import { reconcileGoogleGmailConnection } from "./google-gmail-connection";
 
 const GOOGLE_OAUTH_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
+const DISCORD_USER_INFO_URL = "https://discord.com/api/users/@me";
+
+/**
+ * Lazily load the RSC-only Better Auth server + request headers together. Kept in
+ * one place so this module stays inert (and its unit tests stay deterministic) until
+ * a request actually needs them, rather than importing next/headers at module load.
+ */
+async function loadAuthContext() {
+  const [{ getAuth }, { headers }] = await Promise.all([
+    import("@/lib/auth/server"),
+    import("next/headers"),
+  ]);
+  return { auth: getAuth(), requestHeaders: await headers() };
+}
+
+/** The owner's Better Auth linked accounts (providerId + accountId + granted scopes). */
+async function listOwnerLinkedAccounts() {
+  const { auth, requestHeaders } = await loadAuthContext();
+  return (await auth.api.listUserAccounts({ headers: requestHeaders })) ?? [];
+}
+
+/**
+ * Best-effort resolve the linked Discord account's username/global name via
+ * `/users/@me`, for a human-verifiable display identity. Uses the owner's Better
+ * Auth access token; returns null on any failure (missing token, network, non-2xx)
+ * so a fresh link still records a clearly-labeled id fallback rather than failing.
+ */
+async function fetchDiscordUsername(): Promise<string | null> {
+  try {
+    const { auth, requestHeaders } = await loadAuthContext();
+    const token = await auth.api.getAccessToken({
+      body: { providerId: "discord" },
+      headers: requestHeaders,
+    });
+    const accessToken = (token as { accessToken?: string } | null)?.accessToken;
+    if (!accessToken) {
+      return null;
+    }
+    const response = await fetch(DISCORD_USER_INFO_URL, {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const profile = (await response.json()) as {
+      username?: string | null;
+      global_name?: string | null;
+    };
+    return profile.global_name?.trim() || profile.username?.trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Hosted product boundary for reading Provider Connection state (#100, ADR-0069).
@@ -41,6 +107,9 @@ export async function getOwnerProviderConnections() {
   // read as-is. Durable auth/credential error mapping lands with the read and
   // disconnect slices (#108, #109) where real provider errors surface.
   await syncGoogleConnections(ownerUserId).catch(() => {});
+  // Mirror live Better Auth Discord account-link state into the Discord identity
+  // mapping and Provider Connection, on the same best-effort read-path terms.
+  await syncDiscordConnection(ownerUserId).catch(() => {});
   return listProviderConnections({ ownerUserId });
 }
 
@@ -58,11 +127,7 @@ async function syncGoogleConnections(ownerUserId: string): Promise<void> {
   if (!isGoogleConfigured(googleEnvFromProcess())) {
     return;
   }
-  const [{ getAuth }, { headers }] = await Promise.all([
-    import("@/lib/auth/server"),
-    import("next/headers"),
-  ]);
-  const accounts = (await getAuth().api.listUserAccounts({ headers: await headers() })) ?? [];
+  const accounts = await listOwnerLinkedAccounts();
   const existingConnections = await listProviderConnections({ ownerUserId });
   await Promise.all([
     reconcileGoogleCalendarConnection({
@@ -89,6 +154,41 @@ async function syncGoogleConnections(ownerUserId: string): Promise<void> {
       recordError: recordProviderConnectionError,
     }),
   ]);
+}
+
+/**
+ * Reconcile the owner's Better Auth Discord account-link into their persisted
+ * Discord identity mapping (#166) and Discord Provider Connection. No-op unless
+ * Discord is configured; heavy RSC-only deps (Better Auth server, request headers)
+ * are imported lazily so this stays inert — and unit tests stay deterministic —
+ * when Discord is not wired. Identity is the Discord user id from the linked
+ * account, never the session, so the mapping resolves inbound interactions honestly.
+ */
+async function syncDiscordConnection(ownerUserId: string): Promise<void> {
+  if (!isDiscordConfigured(discordEnvFromProcess())) {
+    return;
+  }
+  const accounts = await listOwnerLinkedAccounts();
+  await reconcileDiscordConnection({
+    ownerUserId,
+    accounts,
+    getIdentity: async (discordUserId) => {
+      const identity = await getDiscordIdentity({ discordUserId });
+      return identity
+        ? { ownerUserId: identity.ownerUserId, displayIdentity: identity.displayIdentity }
+        : null;
+    },
+    fetchUsername: fetchDiscordUsername,
+    linkIdentity: async (linkInput) => {
+      await linkDiscordIdentity(linkInput);
+    },
+    connect: async (connectInput) => {
+      await connectProviderConnection(connectInput);
+    },
+    recordError: async (errorInput) => {
+      await recordProviderConnectionError(errorInput);
+    },
+  });
 }
 
 /**
@@ -136,12 +236,7 @@ export async function disconnectOwnerGoogleCalendar(): Promise<DisconnectGoogleC
   return disconnectGoogleCalendar({
     ownerUserId,
     revokeAndUnlink: async () => {
-      const [{ getAuth }, { headers }] = await Promise.all([
-        import("@/lib/auth/server"),
-        import("next/headers"),
-      ]);
-      const requestHeaders = await headers();
-      const auth = getAuth();
+      const { auth, requestHeaders } = await loadAuthContext();
 
       // Best-effort provider-side grant revocation first — it needs the access
       // token that the authoritative unlink below discards. Never throws, so an
@@ -193,5 +288,51 @@ export async function disconnectOwnerGoogleContacts() {
     providerKey: "google",
     capabilityKey: "contacts",
     reason: "user_disconnect",
+  });
+}
+
+/**
+ * Hosted product boundary for disconnecting Discord (ADR-0138).
+ * Resolves the admitted owner via the action gate, then authoritatively unlinks the
+ * Better Auth Discord account (so the reconcile cannot re-link/re-connect), removes
+ * the owner's persisted Discord identity mapping (so inbound interactions fail
+ * closed), and marks the Discord Provider Connection revoked. Scoped to Discord —
+ * unrelated Google capabilities are untouched.
+ */
+export async function disconnectOwnerDiscord(): Promise<DisconnectDiscordResult> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  // Resolve the linked Discord account's id up front so the unlink targets exactly
+  // that account (unambiguous if a second Discord account is ever linked).
+  const linkedDiscord = deriveDiscordConnection(await listOwnerLinkedAccounts());
+
+  return disconnectDiscord({
+    ownerUserId,
+    unlinkAccount: async () => {
+      const { auth, requestHeaders } = await loadAuthContext();
+      // Authoritative: remove the account link (and its token custody). Throws on
+      // failure, failing the whole disconnect rather than reporting a false success.
+      await auth.api.unlinkAccount({
+        body: {
+          providerId: "discord",
+          ...(linkedDiscord ? { accountId: linkedDiscord.discordUserId } : {}),
+        },
+        headers: requestHeaders,
+      });
+    },
+    // Owner-scoped: remove every Discord identity this owner owns. deleteOwned only
+    // touches rows the owner owns, so another owner's mapping is never affected.
+    unlinkIdentity: async () => {
+      const owned = await listDiscordIdentities({ ownerUserId });
+      let removed = false;
+      for (const identity of owned) {
+        const didRemove = await unlinkDiscordIdentity({
+          ownerUserId,
+          discordUserId: identity.discordUserId,
+        });
+        removed = didRemove || removed;
+      }
+      return removed;
+    },
+    markRevoked: markProviderConnectionRevoked,
   });
 }

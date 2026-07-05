@@ -6,6 +6,8 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getRedis } from "@/lib/cache/redis";
 import {
+  discordEnvFromProcess,
+  discordSocialProvider,
   githubEnvFromProcess,
   githubSocialProvider,
   googleEnvFromProcess,
@@ -29,9 +31,14 @@ function createAuth() {
   // Google backs Phase 2C Calendar account linking (ADR-0071). Wired only when
   // credentials are configured; Better Auth owns its OAuth token custody/refresh.
   const google = googleSocialProvider(googleEnvFromProcess());
+  // Discord backs feature-specific identity linking (ADR-0138).
+  // Wired only when credentials are configured; Better Auth owns its OAuth token
+  // custody. Callback URL: <BETTER_AUTH_URL>/api/auth/callback/discord.
+  const discord = discordSocialProvider(discordEnvFromProcess());
   const socialProviders = {
     ...(github ? { github } : {}),
     ...(google ? { google } : {}),
+    ...(discord ? { discord } : {}),
   };
 
   return betterAuth({
@@ -51,18 +58,18 @@ function createAuth() {
         console.info(`[tendnote] Password reset link for ${user.email}: ${url}`);
       },
     },
-    // GitHub (sign-in) and Google (Phase 2C Calendar linking) — each wired only
-    // when its credentials are configured.
+    // GitHub (sign-in), Google (Phase 2C Calendar linking), and Discord (identity
+    // linking) — each wired only when its credentials are configured.
     ...(Object.keys(socialProviders).length > 0 ? { socialProviders } : {}),
     account: {
       // Encrypt OAuth access/refresh tokens at rest (keyed off BETTER_AUTH_SECRET)
       // so Calendar token custody never lands in the DB in plaintext (ADR-0071).
       encryptOAuthTokens: true,
       accountLinking: {
-        // linkSocial connects Google Calendar to the already signed-in Tendnote
-        // user rather than creating a parallel account.
+        // linkSocial connects Google Calendar / Discord to the already signed-in
+        // Tendnote user rather than creating a parallel account.
         enabled: true,
-        trustedProviders: ["github", "google"],
+        trustedProviders: ["github", "google", "discord"],
       },
     },
     databaseHooks: {
