@@ -306,7 +306,7 @@ export function createDiscordRequestOwnerResolver(
   });
 }
 
-/** The env owner map is a dev-only fallback; see `docs/discord-setup.md` §6. */
+/** The env owner map is a dev-only fallback; see `docs/discord-setup.md` §5. */
 export function isDiscordOwnerMapFallbackAllowed(nodeEnv = process.env.NODE_ENV): boolean {
   return nodeEnv !== "production";
 }
