@@ -54,7 +54,12 @@ export function parseDiscordScopes(account: LinkedDiscordAccountLike): string[] 
   return [];
 }
 
-function isDiscordAccount(account: LinkedDiscordAccountLike): boolean {
+/**
+ * Whether a Better Auth linked account is the Discord provider. Coalesces the two
+ * provider-key shapes (`providerId` from `listUserAccounts`, `provider` elsewhere) in
+ * one place so the derivation and the after-link hook filter agree on the rule.
+ */
+export function isDiscordAccount(account: LinkedDiscordAccountLike): boolean {
   return (account.providerId ?? account.provider) === PROVIDER_DISCORD;
 }
 

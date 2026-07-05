@@ -15,14 +15,23 @@ import {
   setProviderConnectionStatus,
 } from "@tendnote/db/queries/provider-connections";
 import type { ProviderConnectionStatus } from "@tendnote/domain";
-import { requireAdmittedOwner, requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import {
+  admittedOwnerOrNull,
+  requireAdmittedOwner,
+  requireAdmittedOwnerForAction,
+} from "@/lib/access/current-access";
 import {
   discordEnvFromProcess,
   googleEnvFromProcess,
   isDiscordConfigured,
   isGoogleConfigured,
 } from "@/lib/auth/social";
-import { deriveDiscordConnection, reconcileDiscordConnection } from "./discord-connection";
+import {
+  deriveDiscordConnection,
+  isDiscordAccount,
+  type LinkedDiscordAccountLike,
+  reconcileDiscordConnection,
+} from "./discord-connection";
 import { type DisconnectDiscordResult, disconnectDiscord } from "./discord-disconnect";
 import { reconcileGoogleCalendarConnection } from "./google-calendar-connection";
 import {
@@ -157,28 +166,31 @@ async function syncGoogleConnections(ownerUserId: string): Promise<void> {
 }
 
 /**
- * Reconcile the owner's Better Auth Discord account-link into their persisted
- * Discord identity mapping (#166) and Discord Provider Connection. No-op unless
- * Discord is configured; heavy RSC-only deps (Better Auth server, request headers)
- * are imported lazily so this stays inert — and unit tests stay deterministic —
- * when Discord is not wired. Identity is the Discord user id from the linked
- * account, never the session, so the mapping resolves inbound interactions honestly.
+ * Run the shared Discord reconcile (ADR-0138) with the production write deps — the
+ * persisted identity mapping (#166) and the Discord Provider Connection. The caller
+ * supplies the owner, the linked-account list, and the username resolver, so the two
+ * trigger points can source those differently while sharing one reconcile
+ * implementation: the /account backstop lists the session's accounts, and the
+ * after-link hook (#174) passes the just-created account row. Identity is always the
+ * Discord user id from the linked account, never the session, so the mapping resolves
+ * inbound interactions honestly. The reconcile itself is idempotent and records a
+ * cross-owner conflict as an actionable error rather than reassigning.
  */
-async function syncDiscordConnection(ownerUserId: string): Promise<void> {
-  if (!isDiscordConfigured(discordEnvFromProcess())) {
-    return;
-  }
-  const accounts = await listOwnerLinkedAccounts();
+async function runDiscordReconcile(input: {
+  ownerUserId: string;
+  accounts: readonly LinkedDiscordAccountLike[];
+  fetchUsername: () => Promise<string | null>;
+}): Promise<void> {
   await reconcileDiscordConnection({
-    ownerUserId,
-    accounts,
+    ownerUserId: input.ownerUserId,
+    accounts: input.accounts,
     getIdentity: async (discordUserId) => {
       const identity = await getDiscordIdentity({ discordUserId });
       return identity
         ? { ownerUserId: identity.ownerUserId, displayIdentity: identity.displayIdentity }
         : null;
     },
-    fetchUsername: fetchDiscordUsername,
+    fetchUsername: input.fetchUsername,
     linkIdentity: async (linkInput) => {
       await linkDiscordIdentity(linkInput);
     },
@@ -189,6 +201,76 @@ async function syncDiscordConnection(ownerUserId: string): Promise<void> {
       await recordProviderConnectionError(errorInput);
     },
   });
+}
+
+/**
+ * Reconcile the owner's Better Auth Discord account-link into their persisted
+ * Discord identity mapping (#166) and Discord Provider Connection. No-op unless
+ * Discord is configured; heavy RSC-only deps (Better Auth server, request headers)
+ * are imported lazily so this stays inert — and unit tests stay deterministic —
+ * when Discord is not wired. Sources the linked accounts from the current session,
+ * so it is the self-healing backstop that runs on every /account load.
+ */
+async function syncDiscordConnection(ownerUserId: string): Promise<void> {
+  if (!isDiscordConfigured(discordEnvFromProcess())) {
+    return;
+  }
+  const accounts = await listOwnerLinkedAccounts();
+  await runDiscordReconcile({ ownerUserId, accounts, fetchUsername: fetchDiscordUsername });
+}
+
+/**
+ * Better Auth `account.create.after` hook target (#174, ADR-0138): reconcile a
+ * freshly linked Discord account into its identity mapping + Provider Connection
+ * immediately, instead of waiting for the next /account load. Runs the same shared
+ * reconcile as the page-load path from the just-created account row — the owner and
+ * Discord user id come straight off the hook payload, so no session round-trip is
+ * needed — keeping both paths idempotent and the page load a self-healing backstop.
+ *
+ * Non-Discord account links (GitHub sign-in, Google linking) are ignored. A
+ * cross-owner conflict is still recorded as an actionable error by the reconcile (not
+ * swallowed). Any unexpected failure is caught and logged rather than thrown: the
+ * OAuth callback/redirect must never fail on this best-effort mirror, and the
+ * /account backstop still recovers.
+ *
+ * Admission gate: the hook fires on ANY authenticated linkSocial, but Better Auth's
+ * `/link-social` endpoint only requires a session — not Private Beta admission — so a
+ * pending (authenticated, non-admitted) user could drive the Discord link directly
+ * and, without this gate, get a resolvable `discord_identities` mapping the agent
+ * capture path would honor. The page path is safe because it resolves the admitted
+ * owner first (`requireAdmittedOwner`); the hook must match that. It resolves the
+ * admitted owner from the linking session and reconciles only when that is this
+ * account's owner — failing closed (skip + log) otherwise. The /account backstop,
+ * itself admitted-gated, reconciles later if the user is admitted afterward.
+ */
+export async function reconcileDiscordAfterLink(
+  account: LinkedDiscordAccountLike & {
+    userId?: string | null;
+  },
+): Promise<void> {
+  if (!isDiscordAccount(account)) {
+    return;
+  }
+  const ownerUserId = account.userId;
+  if (typeof ownerUserId !== "string" || ownerUserId.length === 0) {
+    return;
+  }
+  if (!isDiscordConfigured(discordEnvFromProcess())) {
+    return;
+  }
+  try {
+    if ((await admittedOwnerOrNull()) !== ownerUserId) {
+      console.info("[tendnote] Skipped Discord after-link reconcile for a non-admitted owner");
+      return;
+    }
+    await runDiscordReconcile({
+      ownerUserId,
+      accounts: [account],
+      fetchUsername: fetchDiscordUsername,
+    });
+  } catch (error) {
+    console.error("[tendnote] Discord after-link reconcile failed", error);
+  }
 }
 
 /**

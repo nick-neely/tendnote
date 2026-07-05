@@ -89,6 +89,30 @@ function createAuth() {
           },
         },
       },
+      account: {
+        create: {
+          after: async (account) => {
+            // Reconcile a freshly linked Discord account into its identity mapping +
+            // Provider Connection right away (#174, ADR-0138), rather than waiting for
+            // the next /account load. Imported lazily to keep this module free of the
+            // server-only integrations boundary (and its `next/headers` deps) at load.
+            // The whole body — the dynamic import included — is wrapped so a rejection
+            // never propagates through createWithHooks into the OAuth callback: an
+            // import failure would otherwise fail the redirect. reconcileDiscordAfterLink
+            // ignores non-Discord links, gates on admission, and self-swallows its own
+            // failures; the /account page-load reconcile stays as the self-healing
+            // backstop.
+            try {
+              const { reconcileDiscordAfterLink } = await import(
+                "@/lib/integrations/provider-connections"
+              );
+              await reconcileDiscordAfterLink(account);
+            } catch (error) {
+              console.error("[tendnote] Discord after-link hook failed to run", error);
+            }
+          },
+        },
+      },
     },
     secondaryStorage: redisStorage({
       client: getRedis(),
