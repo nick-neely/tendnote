@@ -211,12 +211,20 @@ account settings page; no owner is ever hand-mapped in production.
    connection is surfaced as an actionable conflict ("linked to a different
    Tendnote account…"), including when a concurrent claim races the pre-check.
 4. **Disconnect.** Clicking **Disconnect** is Discord-scoped only (Google/other
-   capabilities are untouched) and does three things in order:
-   1. authoritatively unlinks the Better Auth Discord account by provider +
+   capabilities are untouched) and does four things in order:
+   1. **best-effort revokes the Discord access token** provider-side via Discord's
+      OAuth2 revocation endpoint (`POST /api/oauth2/token/revoke`,
+      client-authenticated with `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET`), so the
+      grant is invalidated at Discord rather than lingering until expiry. The token
+      is read from the Better Auth account record **only** for this call — no new
+      token custody — and this step runs first because the unlink below discards the
+      token. Mirroring the Google disconnect, a revoke failure (network, or an
+      already-invalid token) is logged and **never blocks** the steps below,
+   2. authoritatively unlinks the Better Auth Discord account by provider +
       account id (so the reconcile can't re-link it),
-   2. removes the owner's persisted `discord_identities` mapping so inbound
+   3. removes the owner's persisted `discord_identities` mapping so inbound
       interactions **fail closed**, and
-   3. marks the Discord Provider Connection `revoked` with an audit entry.
+   4. marks the Discord Provider Connection `revoked` with an audit entry.
 
 ## 5. Owner resolution order
 
@@ -368,10 +376,11 @@ credentials.
 - [ ] **Unmapped-user rejection:** An interaction from a Discord user id with no
       persisted identity (and no dev env-map entry) is rejected **before** any
       Source Record, Memory, Follow-Up, draft, or delivery setting is written.
-- [ ] **Disconnect behavior:** Clicking **Disconnect** unlinks the Better Auth
-      account, removes the `discord_identities` mapping, and marks the connection
-      `revoked`. A subsequent `/capture` from the same Discord user now
-      **fails closed** (rejected), and Google/other capabilities are untouched.
+- [ ] **Disconnect behavior:** Clicking **Disconnect** best-effort revokes the
+      Discord access token provider-side, unlinks the Better Auth account, removes
+      the `discord_identities` mapping, and marks the connection `revoked`. A
+      subsequent `/capture` from the same Discord user now **fails closed**
+      (rejected), and Google/other capabilities are untouched.
 - [ ] **Multi-owner, same guild:** Two Discord users in the **same** guild, each
       connected to a **different** Tendnote owner, each `/capture` to their **own**
       owner. The shared guild grants neither owner visibility into the other's

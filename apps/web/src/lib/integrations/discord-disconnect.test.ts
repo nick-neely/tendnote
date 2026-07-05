@@ -16,6 +16,7 @@ const DISCORD_USER = "111111111111111111";
 function deps(overrides: Partial<Parameters<typeof disconnectDiscord>[0]> = {}) {
   return {
     ownerUserId: OWNER,
+    revokeToken: vi.fn().mockResolvedValue(true),
     unlinkAccount: vi.fn().mockResolvedValue(undefined),
     unlinkIdentity: vi.fn().mockResolvedValue(true),
     markRevoked: vi.fn().mockResolvedValue({ status: "revoked" }),
@@ -37,6 +38,47 @@ describe("disconnectDiscord", () => {
       capabilityKey: "channel",
       reason: "user_disconnect",
     });
+    expect(result).toEqual({ mappingRemoved: true });
+  });
+
+  it("revokes the provider-side token before unlinking (which discards the token)", async () => {
+    const revokeToken = vi.fn().mockResolvedValue(true);
+    const unlinkAccount = vi.fn().mockResolvedValue(undefined);
+    const d = deps({ revokeToken, unlinkAccount });
+
+    await disconnectDiscord(d);
+
+    expect(revokeToken).toHaveBeenCalledTimes(1);
+    // The revoke needs the still-linked account's token, so it must run first.
+    const [revokeOrder] = revokeToken.mock.invocationCallOrder;
+    const [unlinkOrder] = unlinkAccount.mock.invocationCallOrder;
+    expect(revokeOrder).toBeLessThan(unlinkOrder ?? 0);
+  });
+
+  it("still fully disconnects when the provider-side token revoke rejects", async () => {
+    const d = deps({ revokeToken: vi.fn().mockRejectedValue(new Error("revoke failed")) });
+
+    const result = await disconnectDiscord(d);
+
+    // Best-effort revoke: its failure never blocks the authoritative unlink, the
+    // mapping removal, or the revoked-marking.
+    expect(d.unlinkAccount).toHaveBeenCalledTimes(1);
+    expect(d.unlinkIdentity).toHaveBeenCalledTimes(1);
+    // The unrevoked grant is recorded in the audit reason, not just swallowed.
+    expect(d.markRevoked).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "user_disconnect_provider_grant_not_revoked" }),
+    );
+    expect(result).toEqual({ mappingRemoved: true });
+  });
+
+  it("records the unrevoked-grant audit reason when the provider revoke returns false", async () => {
+    const d = deps({ revokeToken: vi.fn().mockResolvedValue(false) });
+
+    const result = await disconnectDiscord(d);
+
+    expect(d.markRevoked).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "user_disconnect_provider_grant_not_revoked" }),
+    );
     expect(result).toEqual({ mappingRemoved: true });
   });
 
@@ -73,6 +115,7 @@ describe("disconnectDiscord", () => {
 
     await disconnectDiscord({
       ownerUserId: OWNER,
+      revokeToken: vi.fn().mockResolvedValue(true),
       unlinkAccount: vi.fn().mockResolvedValue(undefined),
       unlinkIdentity: async () => {
         const owned = await identities.listDiscordIdentities({ ownerUserId: OWNER });

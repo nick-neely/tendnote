@@ -2,9 +2,14 @@ import { PROVIDER_DISCORD } from "@tendnote/domain";
 import { DISCORD_CHANNEL_CAPABILITY } from "./discord-connection";
 
 /**
- * Owner-scoped Discord disconnect (ADR-0138). Disconnect does
- * two authoritative steps plus the audited status transition:
+ * Owner-scoped Discord disconnect (ADR-0138). Disconnect does a best-effort
+ * provider-side token revocation, then two authoritative steps plus the audited
+ * status transition:
  *
+ * 0. Best-effort revoke the linked account's Discord access token provider-side
+ *    (#176), before the unlink discards token custody. Mirrors the Google disconnect
+ *    posture: never blocks the disconnect, and its outcome is threaded into the
+ *    audit reason (step 3) so a grant that wasn't revoked is visible in the trail.
  * 1. Unlink the Better Auth Discord account — removes token custody AND stops the
  *    account-link reconcile from re-linking the identity / re-connecting. This is
  *    the authoritative step: if it fails the whole disconnect fails, so the UI
@@ -19,6 +24,15 @@ import { DISCORD_CHANNEL_CAPABILITY } from "./discord-connection";
 
 export type DisconnectDiscordDeps = {
   ownerUserId: string;
+  /**
+   * Best-effort revoke the linked Discord access token provider-side, before the
+   * authoritative unlink discards token custody. Resolves with whether the provider
+   * acknowledged the revocation. Never blocks the disconnect: the implementation
+   * handles/logs its own failures and surfaces them only as `false`, and this module
+   * additionally swallows any rejection so the unlink / mapping-removal /
+   * revoked-marking always proceed. The outcome is recorded in the audit reason.
+   */
+  revokeToken: () => Promise<boolean>;
   /** Authoritatively unlink the Better Auth Discord account. Rejects on failure. */
   unlinkAccount: () => Promise<void>;
   /**
@@ -43,6 +57,17 @@ export type DisconnectDiscordResult = {
 export async function disconnectDiscord(
   deps: DisconnectDiscordDeps,
 ): Promise<DisconnectDiscordResult> {
+  // Best-effort provider-side token revocation first — it needs the access token the
+  // authoritative unlink below discards. Never blocks disconnect: the dep handles its
+  // own failures (returning `false`), and we additionally swallow any rejection so a
+  // misbehaving dep still can't stop local cleanup. The outcome feeds the audit reason.
+  let providerRevoked = false;
+  try {
+    providerRevoked = await deps.revokeToken();
+  } catch {
+    providerRevoked = false;
+  }
+
   // Authoritative first: if the unlink fails this throws and nothing below runs, so
   // we never report a disconnect we did not actually perform.
   await deps.unlinkAccount();
@@ -50,11 +75,13 @@ export async function disconnectDiscord(
   // Fail-closed the channel: an unmapped Discord user creates no Tendnote context.
   const mappingRemoved = await deps.unlinkIdentity();
 
+  // Thread the revoke outcome into the audit reason (mirrors Google, ADR-0080) so an
+  // unrevoked provider-side grant is visible in the trail, not just a log line.
   await deps.markRevoked({
     ownerUserId: deps.ownerUserId,
     providerKey: PROVIDER_DISCORD,
     capabilityKey: DISCORD_CHANNEL_CAPABILITY,
-    reason: "user_disconnect",
+    reason: providerRevoked ? "user_disconnect" : "user_disconnect_provider_grant_not_revoked",
   });
 
   return { mappingRemoved };

@@ -33,6 +33,7 @@ import {
   reconcileDiscordConnection,
 } from "./discord-connection";
 import { type DisconnectDiscordResult, disconnectDiscord } from "./discord-disconnect";
+import { revokeDiscordToken } from "./discord-revoke";
 import { reconcileGoogleCalendarConnection } from "./google-calendar-connection";
 import {
   type DisconnectGoogleCalendarResult,
@@ -64,6 +65,21 @@ async function listOwnerLinkedAccounts() {
 }
 
 /**
+ * Best-effort read the owner's decrypted access token for a linked provider via
+ * Better Auth (the account row stores it encrypted at rest, #174). Returns null when
+ * no token is available. Shared by the username lookup and the disconnect revoke
+ * paths so the `getAccessToken` shape/cast lives in exactly one place.
+ */
+async function getProviderAccessToken(providerId: string): Promise<string | null> {
+  const { auth, requestHeaders } = await loadAuthContext();
+  const token = await auth.api.getAccessToken({
+    body: { providerId },
+    headers: requestHeaders,
+  });
+  return (token as { accessToken?: string } | null)?.accessToken ?? null;
+}
+
+/**
  * Best-effort resolve the linked Discord account's username/global name via
  * `/users/@me`, for a human-verifiable display identity. Uses the owner's Better
  * Auth access token; returns null on any failure (missing token, network, non-2xx)
@@ -71,12 +87,7 @@ async function listOwnerLinkedAccounts() {
  */
 async function fetchDiscordUsername(): Promise<string | null> {
   try {
-    const { auth, requestHeaders } = await loadAuthContext();
-    const token = await auth.api.getAccessToken({
-      body: { providerId: "discord" },
-      headers: requestHeaders,
-    });
-    const accessToken = (token as { accessToken?: string } | null)?.accessToken;
+    const accessToken = await getProviderAccessToken("discord");
     if (!accessToken) {
       return null;
     }
@@ -318,19 +329,13 @@ export async function disconnectOwnerGoogleCalendar(): Promise<DisconnectGoogleC
   return disconnectGoogleCalendar({
     ownerUserId,
     revokeAndUnlink: async () => {
-      const { auth, requestHeaders } = await loadAuthContext();
-
       // Best-effort provider-side grant revocation first — it needs the access
       // token that the authoritative unlink below discards. Never throws, so an
       // unavailable Google revoke endpoint still lets local unlink/cleanup proceed
       // (ADR-0080).
       let providerRevoked = false;
       try {
-        const token = await auth.api.getAccessToken({
-          body: { providerId: "google" },
-          headers: requestHeaders,
-        });
-        const accessToken = (token as { accessToken?: string } | null)?.accessToken;
+        const accessToken = await getProviderAccessToken("google");
         if (accessToken) {
           // Send the token in the form body (not the URL) so it cannot leak into
           // request logs (ADR-0081). Google's revoke endpoint accepts either.
@@ -347,6 +352,7 @@ export async function disconnectOwnerGoogleCalendar(): Promise<DisconnectGoogleC
 
       // Authoritative: remove the account link (and its token custody). Throws on
       // failure, failing the whole disconnect rather than reporting a false success.
+      const { auth, requestHeaders } = await loadAuthContext();
       await auth.api.unlinkAccount({
         body: { providerId: "google" },
         headers: requestHeaders,
@@ -389,6 +395,36 @@ export async function disconnectOwnerDiscord(): Promise<DisconnectDiscordResult>
 
   return disconnectDiscord({
     ownerUserId,
+    // Best-effort provider-side token revocation (#176), mirroring the Google
+    // disconnect. Reads the linked account's decrypted access token ONLY for this
+    // revoke call (no new token custody), and runs before the unlink below discards
+    // the account. Owns its own failure handling — network/other errors and non-2xx
+    // responses are logged here and surface as `false` — so the pure disconnect layer
+    // stays log-free while the revoke outcome flows into the audit reason.
+    revokeToken: async () => {
+      const env = discordEnvFromProcess();
+      if (!env.clientId || !env.clientSecret) {
+        return false; // no client credentials to authenticate a revoke
+      }
+      try {
+        const accessToken = await getProviderAccessToken("discord");
+        if (!accessToken) {
+          return false; // nothing to revoke
+        }
+        const revoked = await revokeDiscordToken({
+          accessToken,
+          clientId: env.clientId,
+          clientSecret: env.clientSecret,
+        });
+        if (!revoked) {
+          console.warn("[tendnote] Discord token revoke returned a non-success response");
+        }
+        return revoked;
+      } catch (error) {
+        console.warn("[tendnote] Discord token revoke on disconnect failed", error);
+        return false;
+      }
+    },
     unlinkAccount: async () => {
       const { auth, requestHeaders } = await loadAuthContext();
       // Authoritative: remove the account link (and its token custody). Throws on
