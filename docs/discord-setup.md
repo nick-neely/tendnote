@@ -47,12 +47,15 @@ Key distinctions:
   `scheduled_workflow_delivery_settings`. A guild id is intentionally **not
   unique** in `discord_installs`, which is what lets multiple Tendnote users share
   one guild without one owner's state leaking into another's.
-- **Current state (honest scope):** there is **no automated OAuth install
-  callback** that populates `discord_installs` yet — #168 landed the data model,
-  owner+guild-scoped writes, and a fail-closed `deriveDeliveryTarget` read seam
-  only. Bot installation today is the manual invite in [§7](#7-install-or-invite-the-bot),
-  and proactive targets are configured directly on the workflow delivery setting
-  ([§10](#10-proactive-delivery-checklist)), not derived from an install row.
+- **Current state:** the OAuth bot-install callback populates `discord_installs`
+  from a signed-in owner session (#173) — the owner starts the install from
+  [§7](#7-install-the-bot), Discord returns the `guild_id`, and Tendnote
+  records the (owner, guild) row against the session owner (never the guild). The
+  owner then configures a delivery channel and enable/disable state from the
+  owner-scoped **Discord delivery** page ([§6](#6-install-and-delivery-target-state)).
+  Proactive targets for a specific workflow are still configured on the workflow
+  delivery setting ([§10](#10-proactive-delivery-checklist)); the install target is
+  the destination that setting can draw on, not a substitute for it.
 
 ---
 
@@ -89,6 +92,24 @@ its callback URL under **OAuth2 → Redirects**:
 
 Tendnote requests only the `identify` scope for this flow (never `email`), so
 phone-only / no-email Discord accounts link cleanly (ADR-0138).
+
+### OAuth2 redirect (callback) URL — for the bot install
+
+The bot-install flow (#173) is a **separate** OAuth redirect from account linking:
+it authorizes the shared Tendnote bot into a guild (`bot applications.commands`
+scopes) and returns the `guild_id`. Register its callback URL too, under
+**OAuth2 → Redirects**:
+
+| Environment | Install callback URL |
+| --- | --- |
+| Local | `http://localhost:3000/api/integrations/discord/install/callback` |
+| Production | `<BETTER_AUTH_URL>/api/integrations/discord/install/callback` |
+
+This flow reuses the same `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` as account
+linking (§3). The installing Tendnote owner is taken from the signed-in session and
+bound into a signed, single-use `state`; the callback fails closed (records no row)
+when the session is missing, the state is stale/mismatched, or Discord returns no
+guild — no owner is ever inferred from the guild.
 
 ### Interactions endpoint URL — for slash commands / components
 
@@ -242,18 +263,65 @@ token, no request signature, no raw interaction payload.
   Discord target is actually configured, per workflow (see
   [§10](#10-proactive-delivery-checklist)).
 
-> **Current implementation state.** `discord_installs` is a data model + seams
-> only — there is **no OAuth install callback populating it yet**, and no UI reads
-> it. Today, install the bot via the manual invite in
-> [§7](#7-install-or-invite-the-bot), and configure proactive targets directly on
-> the workflow delivery setting.
+### Configure delivery (owner-scoped UI)
 
-## 7. Install or invite the bot
+The bot-install callback (#173) writes the `(owner, guild)` row; the owner then
+manages it from the **Discord delivery** page (`/account/discord`, reached via
+**Set up delivery** on the connected Discord row in **/account → Integrations**).
+There the owner can, per server they installed the bot into:
 
-Invite the Discord application/bot to the server or private testing space used
-for Tendnote, granting only the permissions listed in
-[§2 Bot permissions](#bot-permissions). Do not add broad moderation, admin, or
-unrelated bot permissions.
+- set the **delivery channel ID** the app may post proactive nudges to
+  (`configureDiscordTarget`), and
+- **pause / resume** delivery without removing the install or the Discord identity
+  link (`setDiscordDeliveryEnabled`).
+
+Every action is scoped to the signed-in owner's own row, so two owners sharing one
+guild never see or change each other's target. A fresh install is recorded enabled
+but with no channel — it reads as **Needs a channel** and derives no deliverable
+target until one is set. Re-installing refreshes install metadata without clobbering
+a configured channel or the enabled state.
+
+`deriveDeliveryTarget` reads only an **enabled** install with a **configured**
+channel; a paused or channel-less install yields no target. Proactive delivery for a
+specific workflow is still configured on the workflow delivery setting
+([§10](#10-proactive-delivery-checklist)) — the install target is the destination it
+can draw on, not a replacement for it.
+
+> **Accepted risk (install attribution).** The callback reads `guild_id` from
+> Discord's redirect params without exchanging the OAuth code, so the guild is a
+> hint, not a cryptographically verified fact. The worst case is a **self-scoped
+> phantom install**: a signed-in owner could record a `(owner, guild)` row for a
+> guild the bot isn't actually in. Because the owner comes only from the signed,
+> session-bound `state` (never the guild) and every write is owner-scoped, this can
+> **never** mis-attribute an install to a different owner or leak across owners; it
+> only affects that owner's own rows, and delivery still fails at send time if the
+> bot can't post. Enabling the OAuth code grant + code exchange would upgrade the
+> guild hint to a verified fact if this ever matters.
+
+## 7. Install the bot
+
+Install the Tendnote bot from inside the app so the install is recorded against
+your Tendnote owner (#173):
+
+1. **Connect Discord identity first.** On **/account → Integrations**, connect
+   Discord ([§4](#4-production-owner-identity-connect-discord-better-auth)). The
+   install is attributed to the Discord user id from that link, so it must exist
+   before installing — until it does, the delivery page prompts you to connect.
+2. **Install to a server.** On the **Discord delivery** page (`/account/discord`),
+   click **Install to a server**. Tendnote redirects to Discord's authorization
+   screen requesting only `bot applications.commands` and the narrow permissions in
+   [§2 Bot permissions](#bot-permissions) — no moderation, admin, or unrelated
+   permissions. Pick the server and authorize.
+3. **Return.** Discord redirects back to the install callback with the `guild_id`;
+   Tendnote records the `(owner, guild)` install and returns you to the delivery
+   page to set a channel ([§6](#6-install-and-delivery-target-state)).
+
+The callback fails closed: if you are not signed in, the signed `state` is stale or
+was started from a different account, or Discord returns no server, no row is
+written and no owner is inferred from the guild. Operators still register the
+install callback redirect URL and configure bot permissions in the Developer Portal
+([§2](#2-discord-developer-portal-settings)); those portal steps cannot be done by
+the app.
 
 ## 8. Register slash commands
 

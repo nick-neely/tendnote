@@ -14,7 +14,13 @@ import {
   googleSocialProvider,
 } from "./social";
 
-function getBetterAuthSecret() {
+/**
+ * Resolve the Better Auth signing secret. Required in production; falls back to a
+ * shared local-dev secret otherwise. Exported so flows that must sign with the
+ * same key (e.g. the Discord install `state`, #173) reuse one resolver rather than
+ * duplicating the fallback magic string.
+ */
+export function getBetterAuthSecret() {
   if (process.env.BETTER_AUTH_SECRET) {
     return process.env.BETTER_AUTH_SECRET;
   }

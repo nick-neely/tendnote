@@ -202,6 +202,8 @@ function ProviderConnectionRow({
   const actionLabel = isConnected ? "Disconnect" : "Connect";
   const isCalendar = connection.capabilityKey === "calendar";
   const isContacts = connection.capabilityKey === "contacts";
+  const isDiscordChannel =
+    connection.providerKey === "discord" && connection.capabilityKey === "channel";
   const ConnectButton = action?.ConnectButton;
   const DisconnectButton = action?.DisconnectButton;
   const showConnect = Boolean(connectable && ConnectButton && !isConnected && !isUnavailable);
@@ -289,6 +291,14 @@ function ProviderConnectionRow({
           href="/account/contacts/import"
         >
           Preview latest contacts
+        </a>
+      ) : null}
+      {connectable && isDiscordChannel && connection.status === "connected" ? (
+        <a
+          className="self-start text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-primary underline underline-offset-2"
+          href="/account/discord"
+        >
+          Set up delivery
         </a>
       ) : null}
     </li>
