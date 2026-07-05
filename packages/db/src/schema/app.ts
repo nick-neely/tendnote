@@ -9,6 +9,7 @@ export * from "./app/calendar-suggested-followups";
 export * from "./app/contact-import-provider-refs";
 export * from "./app/context-snapshots";
 export * from "./app/discord-identities";
+export * from "./app/discord-installs";
 export * from "./app/engagement";
 export * from "./app/enums";
 export * from "./app/gmail-draft-actions";

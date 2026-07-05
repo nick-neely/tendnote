@@ -226,6 +226,8 @@ export const phase3ScheduledWorkflow = pgEnum("phase3_scheduled_workflow", [
 
 export const proactiveDeliveryChannel = pgEnum("proactive_delivery_channel", ["discord"]);
 
+export const discordTargetKind = pgEnum("discord_target_kind", ["channel", "dm"]);
+
 export const proactiveDeliveryStatus = pgEnum("proactive_delivery_status", [
   "sent",
   "skipped",
