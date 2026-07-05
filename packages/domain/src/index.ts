@@ -21,6 +21,7 @@ export * from "./privacy";
 export * from "./prompt-nudges";
 export * from "./provider-connection-catalog";
 export * from "./provider-connections";
+export * from "./scheduled-workflow-artifact-scope";
 export * from "./scheduled-workflow-delivery";
 export * from "./semantic-retrieval";
 export * from "./source-records";

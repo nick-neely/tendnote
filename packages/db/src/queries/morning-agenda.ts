@@ -3,6 +3,7 @@ import type {
   ScheduledWorkflowDeliveryArtifact,
   Sensitivity,
 } from "@tendnote/domain";
+import { aggregateArtifactScope } from "@tendnote/domain";
 import { generateBrief } from "./briefs";
 import {
   createDrizzleScheduledWorkflowDeliveryStore,
@@ -66,12 +67,20 @@ export function createMorningAgendaWorkflow(deps: MorningAgendaWorkflowDeps) {
 }
 
 export function toMorningAgendaArtifact(brief: BriefWithItems): ScheduledWorkflowDeliveryArtifact {
+  // The agenda is only as shareable as its least-shareable item: it carries a
+  // household scope only when every brief item is household-visible for the same
+  // household, and fails closed to `private` otherwise (ADR-0142).
+  const { scope, householdId } = aggregateArtifactScope(
+    brief.items.map((item) => ({ scope: item.scope, householdId: item.householdId })),
+  );
   return {
     ownerUserId: brief.ownerUserId,
     workflow: "morning_agenda",
     artifactKind: "morning_agenda",
     artifactId: brief.id,
     sensitivity: maxBriefSensitivity(brief.items.map((item) => item.sensitivity)),
+    scope,
+    householdId,
     persisted: true,
     summary: brief.summary ?? morningAgendaFallbackSummary(brief.items.length),
   };

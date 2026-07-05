@@ -7,6 +7,7 @@ import type {
   ScheduledWorkflowDeliveryArtifact,
   Sensitivity,
 } from "@tendnote/domain";
+import { aggregateArtifactScope } from "@tendnote/domain";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../client";
 import { briefs } from "../schema";
@@ -137,6 +138,16 @@ export function toWeeklyRelationshipReviewArtifact(
   brief: BriefWithItems,
   sections: WeeklyRelationshipReviewSections,
 ): ScheduledWorkflowDeliveryArtifact {
+  // Aggregate over everything the review surfaces (ADR-0142). Brief items carry a
+  // snapshotted scope; the memory-curator proposals and unresolved drafts are
+  // owner-private review surfaces (ADR-0123/0125), so they fail the artifact closed
+  // to `private` whenever present. Only a review built solely from household-visible
+  // brief items for one household stays `household`.
+  const { scope, householdId } = aggregateArtifactScope([
+    ...brief.items.map((item) => ({ scope: item.scope, householdId: item.householdId })),
+    ...sections.curatorProposals.proposals.map(() => ({ scope: "private" as const })),
+    ...sections.unresolvedDrafts.map(() => ({ scope: "private" as const })),
+  ]);
   return {
     ownerUserId: brief.ownerUserId,
     workflow: "weekly_relationship_review",
@@ -146,6 +157,8 @@ export function toWeeklyRelationshipReviewArtifact(
       ...brief.items.map((item) => item.sensitivity),
       ...sections.curatorProposals.proposals.map((proposal) => proposal.sensitivity),
     ]),
+    scope,
+    householdId,
     persisted: true,
     summary: weeklyRelationshipReviewSummary(sections),
   };

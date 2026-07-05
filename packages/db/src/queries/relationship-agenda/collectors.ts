@@ -1,4 +1,8 @@
-import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain/privacy";
+import {
+  scopeForVisibilityChoice,
+  visibilityChoiceForScope,
+  visibilityLabelForScope,
+} from "@tendnote/domain/privacy";
 import type {
   RelationshipAgendaCandidate,
   RelationshipAgendaInput,
@@ -187,6 +191,8 @@ export async function collectDueFollowups(
       sensitivity: "normal",
       visibilityChoice: visibilityChoiceForScope(followup.scope),
       visibilityLabel: visibilityLabelForScope(followup.scope),
+      scope: followup.scope,
+      householdId: followup.householdId,
       rank: 0,
       score: overdue ? 0 : 10,
     });
@@ -295,6 +301,8 @@ export async function collectReviewCandidates(
         sensitivity: memory.sensitivity,
         visibilityChoice: visibilityChoiceForScope(memory.scope),
         visibilityLabel: visibilityLabelForScope(memory.scope),
+        scope: memory.scope,
+        householdId: memory.householdId ?? null,
         rank: 0,
         score: 40,
       });
@@ -334,6 +342,8 @@ export async function collectReviewCandidates(
         sensitivity: sourceRecord?.sensitivity ?? "normal",
         visibilityChoice: visibilityChoiceForScope(followup.scope),
         visibilityLabel: visibilityLabelForScope(followup.scope),
+        scope: followup.scope,
+        householdId: followup.householdId,
         rank: 0,
         score: 45,
       });
@@ -362,6 +372,8 @@ export async function collectReviewCandidates(
         sensitivity: review.sourceRecord.sensitivity,
         visibilityChoice: visibilityChoiceForScope(review.sourceRecord.scope),
         visibilityLabel: visibilityLabelForScope(review.sourceRecord.scope),
+        scope: review.sourceRecord.scope,
+        householdId: review.sourceRecord.householdId ?? null,
         rank: 0,
         score: personless ? 80 : 50,
       });
@@ -411,6 +423,8 @@ export async function collectRecentContext(
       sensitivity: recent.sourceRecord.sensitivity,
       visibilityChoice: visibilityChoiceForScope(recent.sourceRecord.scope),
       visibilityLabel: visibilityLabelForScope(recent.sourceRecord.scope),
+      scope: recent.sourceRecord.scope,
+      householdId: recent.sourceRecord.householdId ?? null,
       rank: 0,
       score: 90,
     });
@@ -488,6 +502,11 @@ export async function mergeSemanticContext(
       sensitivity: result.sensitivity,
       visibilityChoice: result.visibilityChoice,
       visibilityLabel: result.visibilityLabel,
+      // Semantic hits carry a visibility choice but not the backing household id, so
+      // a `household` semantic result fails closed (household scope with a null id)
+      // rather than being treated as household-safe for delivery aggregation.
+      scope: scopeForVisibilityChoice(result.visibilityChoice),
+      householdId: null,
       rank: 0,
       score: 70,
     });

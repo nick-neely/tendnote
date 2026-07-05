@@ -1,4 +1,4 @@
-import type { Sensitivity } from "@tendnote/domain";
+import type { PrivacyScope, Sensitivity } from "@tendnote/domain";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -27,6 +27,14 @@ export type BirthdayGiftPlanningProposalJson = {
   draftProposal: unknown | null;
   sourceRefs: Array<{ kind: string; id: string; label?: string; trust?: string }>;
   sensitivity: Sensitivity;
+  /**
+   * Disclosure scope of the backing person/context, carried on the proposal JSON
+   * so delivery can aggregate the artifact's household-safety (ADR-0142). Optional
+   * for backward compatibility with proposals persisted before this field existed;
+   * an absent scope fails closed to `private`.
+   */
+  scope?: PrivacyScope;
+  householdId?: string | null;
   reviewOnly: true;
 };
 

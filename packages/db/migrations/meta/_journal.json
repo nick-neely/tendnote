@@ -197,6 +197,13 @@
       "when": 1783278002884,
       "tag": "0027_delivery_target_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1783290863665,
+      "tag": "0028_brief_item_scope",
+      "breakpoints": true
     }
   ]
 }
