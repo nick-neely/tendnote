@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Sensitivity } from "./privacy";
+import { type PrivacyScope, privacyScopeSchema, type Sensitivity } from "./privacy";
 
 export const phase3ScheduledWorkflowSchema = z.enum([
   "morning_agenda",
@@ -32,6 +32,25 @@ export const scheduledWorkflowDeliverySettingSchema = z.object({
   enabled: z.boolean().default(true),
   targetId: z.string().min(1),
   allowSensitive: z.boolean().default(false),
+  /**
+   * Disclosure scope of the configured Discord destination. `private` (the
+   * fail-closed default) is an owner-only destination that is safe for the
+   * owner's own artifacts of any scope. A non-private target is a shared channel
+   * that additional household/private gating applies to.
+   */
+  targetScope: privacyScopeSchema.default("private"),
+  /**
+   * Household a `household`-scoped target serves. Household-scoped artifacts are
+   * only delivered when this matches the artifact's household, so an owner's
+   * household channel can never receive another household's content.
+   */
+  targetHouseholdId: z.string().nullable().default(null),
+  /**
+   * Explicit opt-in to post a private owner artifact's safe summary to a
+   * shared/household target. Off by default: private content stays on private
+   * targets unless the owner deliberately allows a summary onto a shared channel.
+   */
+  allowPrivateSummary: z.boolean().default(false),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
@@ -39,11 +58,21 @@ export type ScheduledWorkflowDeliverySetting = z.infer<
   typeof scheduledWorkflowDeliverySettingSchema
 >;
 
-export const upsertScheduledWorkflowDeliverySettingSchema =
-  scheduledWorkflowDeliverySettingSchema.omit({
+export const upsertScheduledWorkflowDeliverySettingSchema = scheduledWorkflowDeliverySettingSchema
+  .omit({
     id: true,
     createdAt: true,
     updatedAt: true,
+  })
+  // Target-scope policy is optional to configure. On a first insert an omitted
+  // value takes the fail-closed default (a `private`, owner-only target), so
+  // callers must opt in to shared/household delivery rather than opt out. On a
+  // conflict-update an omitted value is skipped, preserving the stored policy
+  // (the same preserve-on-undefined semantics as the install record).
+  .partial({
+    targetScope: true,
+    targetHouseholdId: true,
+    allowPrivateSummary: true,
   });
 export type UpsertScheduledWorkflowDeliverySettingInput = z.infer<
   typeof upsertScheduledWorkflowDeliverySettingSchema
@@ -83,6 +112,14 @@ export type ScheduledWorkflowDeliveryArtifact = {
   artifactKind: ScheduledArtifactKind;
   artifactId: string;
   sensitivity: Sensitivity;
+  /**
+   * Visibility scope of the artifact's underlying content. Omitted is treated as
+   * `private` (fail-closed): an artifact of unknown scope is never posted to a
+   * shared/household Discord target.
+   */
+  scope?: PrivacyScope;
+  /** Household the artifact belongs to, required for household-scoped delivery. */
+  householdId?: string | null;
   persisted: true;
   summary: string;
 };

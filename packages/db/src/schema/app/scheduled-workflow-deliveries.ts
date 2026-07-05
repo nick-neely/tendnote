@@ -3,10 +3,12 @@ import { user } from "../auth";
 import { timestamps } from "./common";
 import {
   phase3ScheduledWorkflow,
+  privacyScope,
   proactiveDeliveryChannel,
   proactiveDeliveryStatus,
   scheduledArtifactKind,
 } from "./enums";
+import { householdWorkspaces } from "./households";
 
 export const scheduledWorkflowDeliverySettings = pgTable(
   "scheduled_workflow_delivery_settings",
@@ -20,6 +22,11 @@ export const scheduledWorkflowDeliverySettings = pgTable(
     enabled: boolean("enabled").notNull().default(true),
     targetId: text("target_id").notNull(),
     allowSensitive: boolean("allow_sensitive").notNull().default(false),
+    targetScope: privacyScope("target_scope").notNull().default("private"),
+    targetHouseholdId: uuid("target_household_id").references(() => householdWorkspaces.id, {
+      onDelete: "set null",
+    }),
+    allowPrivateSummary: boolean("allow_private_summary").notNull().default(false),
     ...timestamps,
   },
   (table) => [

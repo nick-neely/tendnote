@@ -117,6 +117,15 @@ export function createScheduledWorkflowDeliveryService(store: ScheduledWorkflowD
   };
 }
 
+/**
+ * Fail-closed Phase 4 delivery policy: decide whether a persisted scheduled
+ * artifact may be proactively posted to its owner's configured Discord target,
+ * returning a skip reason when it may not. Every check gates disclosure before
+ * anything reaches Discord; the nudge itself is summary-only (see
+ * `renderDiscordArtifactNudge`), so an allowed private-summary path never leaks
+ * artifact detail. Owner, sensitivity, and target scope are all evaluated, and
+ * an unknown artifact scope is treated as `private`.
+ */
 function discordDeliverySkipReason(
   setting: ScheduledWorkflowDeliverySetting | null,
   artifact: ScheduledWorkflowDeliveryArtifact,
@@ -129,6 +138,11 @@ function discordDeliverySkipReason(
     return "discord_delivery_disabled";
   }
 
+  // Owner boundary: a target only ever delivers its own owner's artifacts.
+  if (setting.ownerUserId !== artifact.ownerUserId) {
+    return "owner_mismatch";
+  }
+
   if (artifact.sensitivity === "restricted") {
     return "restricted_content_filtered";
   }
@@ -137,7 +151,44 @@ function discordDeliverySkipReason(
     return "sensitive_content_filtered";
   }
 
-  return null;
+  // A private target is owner-only, so it is safe for the owner's artifacts of
+  // any scope. Sharing gates only apply to shared/household destinations.
+  if (setting.targetScope === "private") {
+    return null;
+  }
+
+  const artifactScope = artifact.scope ?? "private";
+
+  if (artifactScope === "household") {
+    // Household content is only deliverable to a target explicitly configured as
+    // household-safe for the artifact's exact household.
+    if (setting.targetScope !== "household") {
+      return "household_target_required";
+    }
+    if (!setting.targetHouseholdId || setting.targetHouseholdId !== artifact.householdId) {
+      return "household_target_mismatch";
+    }
+    return null;
+  }
+
+  // A private artifact on a shared/household destination over-discloses. Only its
+  // safe summary may go through, and only when the owner has explicitly opted in.
+  // The private-summary allowance consents to broadcasting a private summary to a
+  // broader audience — it does NOT also consent to disclosing sensitive material
+  // there, so a `sensitive` artifact never rides this path even when both
+  // `allowSensitive` and `allowPrivateSummary` are set (it can only have reached
+  // here on a target that allows sensitive content). Sensitivity and the
+  // private-summary allowance never compound to a shared send.
+  if (artifactScope === "private") {
+    const allowed = setting.allowPrivateSummary && artifact.sensitivity === "normal";
+    return allowed ? null : "private_content_filtered";
+  }
+
+  // A `shared` (selected-members) artifact has no honest home on a Discord
+  // channel: a shared/household channel can't honor selected-member granularity,
+  // so it is never deliverable there. Reported distinctly so the skip record
+  // reflects what actually happened.
+  return "shared_content_filtered";
 }
 
 function renderDiscordArtifactNudge(artifact: ScheduledWorkflowDeliveryArtifact): string {

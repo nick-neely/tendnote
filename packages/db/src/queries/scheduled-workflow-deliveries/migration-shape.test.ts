@@ -7,6 +7,11 @@ const migration = readFileSync(
   "utf8",
 );
 
+const phase4PolicyMigration = readFileSync(
+  join(__dirname, "../../../migrations/0027_delivery_target_scope.sql"),
+  "utf8",
+);
+
 describe("scheduled workflow delivery migration", () => {
   it("adds per-workflow Discord settings and a recoverable attempt ledger", () => {
     expect(migration).toContain('CREATE TYPE "public"."phase3_scheduled_workflow"');
@@ -27,5 +32,22 @@ describe("scheduled workflow delivery migration", () => {
     );
     expect(migration).toContain('CREATE INDEX "scheduled_workflow_delivery_attempts_artifact_idx"');
     expect(migration).toContain('CREATE INDEX "scheduled_workflow_delivery_attempts_status_idx"');
+  });
+
+  it("adds Phase 4 target-scope delivery policy columns", () => {
+    expect(phase4PolicyMigration).toContain(
+      'ALTER TABLE "scheduled_workflow_delivery_settings" ADD COLUMN "target_scope" "privacy_scope" DEFAULT \'private\' NOT NULL',
+    );
+    expect(phase4PolicyMigration).toContain(
+      'ALTER TABLE "scheduled_workflow_delivery_settings" ADD COLUMN "target_household_id" uuid',
+    );
+    expect(phase4PolicyMigration).toContain(
+      'ALTER TABLE "scheduled_workflow_delivery_settings" ADD COLUMN "allow_private_summary" boolean DEFAULT false NOT NULL',
+    );
+    // The household target is a real FK to a household workspace, matching every
+    // other household reference in the app schema.
+    expect(phase4PolicyMigration).toContain(
+      'REFERENCES "public"."household_workspaces"("id") ON DELETE set null',
+    );
   });
 });

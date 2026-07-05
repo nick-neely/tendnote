@@ -34,6 +34,9 @@ export function createDrizzleScheduledWorkflowDeliveryStore(): ScheduledWorkflow
             enabled: parsed.enabled,
             targetId: parsed.targetId,
             allowSensitive: parsed.allowSensitive,
+            targetScope: parsed.targetScope,
+            targetHouseholdId: parsed.targetHouseholdId,
+            allowPrivateSummary: parsed.allowPrivateSummary,
             updatedAt: new Date(),
           },
         })

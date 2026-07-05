@@ -190,6 +190,13 @@
       "when": 1783275142292,
       "tag": "0026_discord_installs",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1783278002884,
+      "tag": "0027_delivery_target_scope",
+      "breakpoints": true
     }
   ]
 }
