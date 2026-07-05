@@ -3,6 +3,8 @@ import type {
   CaptureSourceRecordResult,
 } from "@tendnote/db/queries/source-records";
 import { captureLoggedContext } from "@tendnote/db/queries/source-records";
+import type { PrivacyScope } from "@tendnote/domain";
+import { resolveDiscordCaptureScope } from "./discord-capture-scope";
 import { modeAllowsTool, resolveEveMode } from "./eve-modes";
 
 export type DiscordOwnerMap = Record<string, string>;
@@ -15,6 +17,12 @@ export type DiscordInteraction =
       content: string;
       personId?: string;
       attachments?: readonly DiscordAttachment[];
+      /** Discord guild the command arrived from. The scope policy reads it only to ignore it. */
+      guildId?: string | null;
+      /** Discord channel the command arrived from. The scope policy reads it only to ignore it. */
+      channelId?: string | null;
+      /** An explicit visibility scope, if a future surface ever plumbs one through Discord. */
+      requestedScope?: PrivacyScope;
     }
   | {
       type: "component" | "modal_submit";
@@ -41,7 +49,10 @@ export type DiscordCaptureResult =
   | {
       type: "captured";
       ownerUserId: string;
-      sourceRecord: Pick<CaptureSourceRecordResult["sourceRecord"], "id" | "status" | "content">;
+      sourceRecord: Pick<
+        CaptureSourceRecordResult["sourceRecord"],
+        "id" | "status" | "content" | "scope"
+      >;
       linkedPersonId: string | null;
       reviewRequired: true;
       durablePromotions: [];
@@ -61,7 +72,8 @@ export type DiscordCaptureResult =
         | "unsupported_command"
         | "empty_capture"
         | "attachments_not_supported"
-        | "mode_forbids_capture";
+        | "mode_forbids_capture"
+        | "household_scope_not_supported";
     };
 
 export type DiscordMessageComponent = {
@@ -192,6 +204,19 @@ export async function handleDiscordCaptureInteraction(
     return { type: "rejected", reason: "mode_forbids_capture" };
   }
 
+  // Deterministic scope decision before any write: Discord capture is always
+  // private owner-scoped context. Guild/channel membership never implies
+  // household or shared visibility, and an explicit non-private request fails
+  // closed rather than being honored (ADR-0140).
+  const scopeDecision = resolveDiscordCaptureScope({
+    guildId: interaction.guildId,
+    channelId: interaction.channelId,
+    requestedScope: interaction.requestedScope,
+  });
+  if (scopeDecision.type === "rejected") {
+    return { type: "rejected", reason: scopeDecision.reason };
+  }
+
   const { sourceRecord } = await captureLoggedContext(
     {
       ownerUserId,
@@ -209,6 +234,7 @@ export async function handleDiscordCaptureInteraction(
       id: sourceRecord.id,
       status: sourceRecord.status,
       content: sourceRecord.content,
+      scope: sourceRecord.scope,
     },
     linkedPersonId: interaction.personId ?? null,
     reviewRequired: true,

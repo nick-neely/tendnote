@@ -31,6 +31,8 @@ type DiscordApiInteraction = {
     resolved?: { attachments?: Record<string, unknown> };
     options?: Array<{ name: string; type: number; value?: string }>;
   };
+  guild_id?: string;
+  channel_id?: string;
   member?: { user?: { id?: string } };
   user?: { id?: string };
 };
@@ -225,6 +227,9 @@ export function discordApiPayloadToCaptureInteraction(
       commandName: "capture",
       discordUserId,
       content: slashOption(payload, "message") ?? "",
+      // The scope policy reads these but never widens scope from them; nothing persists them.
+      guildId: payload.guild_id ?? null,
+      channelId: payload.channel_id ?? null,
       attachments: payload.data.resolved?.attachments
         ? Object.entries(payload.data.resolved.attachments).map(([id, value]) => ({
             id,
@@ -397,6 +402,8 @@ function responseForRejection(reason: string): string {
       return "Discord attachments are not a Tendnote cleanup import path yet.";
     case "empty_capture":
       return "Add text to capture with the command.";
+    case "household_scope_not_supported":
+      return "Discord capture is private to you. Household or shared visibility is set in Tendnote, not from Discord.";
     default:
       return "Tendnote could not capture that Discord interaction.";
   }

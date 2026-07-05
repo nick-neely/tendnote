@@ -86,6 +86,8 @@ describe("Discord interaction channel", () => {
     expect(
       discordApiPayloadToCaptureInteraction({
         type: 2,
+        guild_id: "guild-1",
+        channel_id: "channel-1",
         member: { user: { id: "discord-1" } },
         data: {
           name: "capture",
@@ -97,6 +99,8 @@ describe("Discord interaction channel", () => {
       commandName: "capture",
       discordUserId: "discord-1",
       content: "Lunch with Sam",
+      guildId: "guild-1",
+      channelId: "channel-1",
     });
 
     expect(
@@ -174,6 +178,37 @@ describe("Discord interaction channel", () => {
     });
     expect(captureDeps.captureGlobal).toHaveBeenCalledOnce();
     expect(captureDeps.captureForPerson).not.toHaveBeenCalled();
+  });
+
+  it("captures owner-scoped context for a signed slash command sent from a guild channel", async () => {
+    const body = JSON.stringify({
+      type: 2,
+      guild_id: "guild-shared",
+      channel_id: "channel-shared",
+      member: { user: { id: "discord-1" } },
+      data: {
+        name: "capture",
+        options: [{ name: "message", type: 3, value: "Guild-sent private note." }],
+      },
+    });
+    const signed = signDiscordBody(body);
+    const captureDeps = deps();
+
+    const response = await handleDiscordRequest(
+      new Request("https://example.com/eve/v1/discord", {
+        method: "POST",
+        body,
+        headers: signed.headers,
+      }),
+      { publicKey: signed.publicKeyHex, resolveOwner: ownerResolver, deps: captureDeps },
+    );
+
+    expect(response.status).toBe(200);
+    // Guild/channel membership never widens scope: the capture is still the
+    // caller's own owner-scoped private context.
+    expect(captureDeps.captureGlobal).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerUserId: "owner-1" }),
+    );
   });
 
   it("returns a controlled error for signed malformed JSON", async () => {
