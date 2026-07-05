@@ -1,10 +1,12 @@
 import type { SourceRecord } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
+  createDiscordOwnerResolver,
   type DiscordCaptureDeps,
   decodeDiscordComponentCustomId,
   discordClarificationComponents,
   discordClarificationModal,
+  discordOwnerMapResolver,
   discordReviewComponents,
   encodeDiscordComponentCustomId,
   handleDiscordCaptureInteraction,
@@ -82,7 +84,7 @@ describe("Discord private capture channel", () => {
         content: "Met Jo for coffee and they mentioned moving in August.",
       },
       captureDeps,
-      { "discord-1": "owner-1" },
+      discordOwnerMapResolver({ "discord-1": "owner-1" }),
     );
 
     expect(result).toMatchObject({
@@ -134,7 +136,7 @@ describe("Discord private capture channel", () => {
         value: "I meant Jo Rivera.",
       },
       captureDeps,
-      { "discord-1": "owner-1" },
+      discordOwnerMapResolver({ "discord-1": "owner-1" }),
     );
 
     expect(result).toEqual({
@@ -174,7 +176,7 @@ describe("Discord private capture channel", () => {
           content: "Remember this.",
         },
         captureDeps,
-        { "discord-1": "owner-1" },
+        discordOwnerMapResolver({ "discord-1": "owner-1" }),
       ),
     ).resolves.toEqual({ type: "rejected", reason: "unmapped_discord_user" });
 
@@ -188,7 +190,7 @@ describe("Discord private capture channel", () => {
           attachments: [{ id: "file-1", filename: "contacts.csv" }],
         },
         captureDeps,
-        { "discord-1": "owner-1" },
+        discordOwnerMapResolver({ "discord-1": "owner-1" }),
       ),
     ).resolves.toEqual({ type: "rejected", reason: "attachments_not_supported" });
   });
@@ -215,5 +217,104 @@ describe("Discord private capture channel", () => {
       customId: "clarify:session-1",
       components: [{ components: [{ type: "text_input", customId: "clarification" }] }],
     });
+  });
+});
+
+describe("Discord owner resolution ordering", () => {
+  it("prefers persisted identity over the dev env-map fallback", async () => {
+    const resolve = createDiscordOwnerResolver({
+      resolvePersistedOwner: async (discordUserId) =>
+        discordUserId === "discord-1" ? "persisted-owner" : null,
+      devFallback: discordOwnerMapResolver({ "discord-1": "env-owner" }),
+    });
+
+    await expect(resolve("discord-1")).resolves.toBe("persisted-owner");
+  });
+
+  it("falls back to the dev env map only when persisted identity is absent", async () => {
+    const resolve = createDiscordOwnerResolver({
+      resolvePersistedOwner: async () => null,
+      devFallback: discordOwnerMapResolver({ "discord-2": "env-owner" }),
+    });
+
+    await expect(resolve("discord-2")).resolves.toBe("env-owner");
+  });
+
+  it("fails closed when there is no persisted identity and no dev fallback", async () => {
+    const resolve = createDiscordOwnerResolver({
+      resolvePersistedOwner: async () => null,
+      devFallback: null,
+    });
+
+    await expect(resolve("discord-1")).resolves.toBeNull();
+  });
+
+  it("rejects an unmapped Discord user without writing any Tendnote context", async () => {
+    const captureDeps = deps();
+    const resolve = createDiscordOwnerResolver({
+      resolvePersistedOwner: async () => null,
+      devFallback: null,
+    });
+
+    const result = await handleDiscordCaptureInteraction(
+      {
+        type: "slash_command",
+        commandName: "capture",
+        discordUserId: "unmapped",
+        content: "Remember this.",
+      },
+      captureDeps,
+      resolve,
+    );
+
+    expect(result).toEqual({ type: "rejected", reason: "unmapped_discord_user" });
+    expect(captureDeps.captureGlobal).not.toHaveBeenCalled();
+    expect(captureDeps.captureForPerson).not.toHaveBeenCalled();
+    expect(captureDeps.enqueueExtraction).not.toHaveBeenCalled();
+    expect(captureDeps.parkHitlSession).not.toHaveBeenCalled();
+    expect(captureDeps.resumeHitlSession).not.toHaveBeenCalled();
+  });
+
+  it("resolves two Discord users in the same guild to different owners without cross-writing", async () => {
+    const resolve = createDiscordOwnerResolver({
+      resolvePersistedOwner: async (discordUserId) =>
+        ({ "discord-1": "owner-1", "discord-2": "owner-2" })[discordUserId] ?? null,
+    });
+
+    const depsOne = deps();
+    const resultOne = await handleDiscordCaptureInteraction(
+      {
+        type: "slash_command",
+        commandName: "capture",
+        discordUserId: "discord-1",
+        content: "Owner one context.",
+      },
+      depsOne,
+      resolve,
+    );
+
+    const depsTwo = deps();
+    const resultTwo = await handleDiscordCaptureInteraction(
+      {
+        type: "slash_command",
+        commandName: "capture",
+        discordUserId: "discord-2",
+        content: "Owner two context.",
+      },
+      depsTwo,
+      resolve,
+    );
+
+    expect(resultOne).toMatchObject({ type: "captured", ownerUserId: "owner-1" });
+    expect(resultTwo).toMatchObject({ type: "captured", ownerUserId: "owner-2" });
+    expect(depsOne.captureGlobal).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerUserId: "owner-1" }),
+    );
+    expect(depsTwo.captureGlobal).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerUserId: "owner-2" }),
+    );
+    expect(depsOne.captureGlobal).not.toHaveBeenCalledWith(
+      expect.objectContaining({ ownerUserId: "owner-2" }),
+    );
   });
 });

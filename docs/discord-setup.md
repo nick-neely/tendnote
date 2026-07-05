@@ -58,6 +58,7 @@ Eve-mounted web app.
 DISCORD_PUBLIC_KEY=
 DISCORD_APPLICATION_ID=
 DISCORD_BOT_TOKEN=
+# Dev/private-beta fallback only — see "Owner mapping" below.
 DISCORD_OWNER_USER_MAP=discord-user-id:tendnote-owner-user-id
 ```
 
@@ -67,12 +68,13 @@ DISCORD_OWNER_USER_MAP=discord-user-id:tendnote-owner-user-id
   responses and command registration.
 - `DISCORD_BOT_TOKEN` is required for proactive messages, fallback messages, and
   typing indicators.
-- `DISCORD_OWNER_USER_MAP` maps Discord user ids to Tendnote owner user ids. Use
-  comma-separated `discordUserId:ownerUserId` pairs for local setup, or a JSON
-  object such as `{"discordUserId":"ownerUserId"}` when that is easier for the
-  host environment.
+- `DISCORD_OWNER_USER_MAP` is a **private-beta / dev fallback only**, not the
+  hosted SaaS resolution path (see [§6 Owner mapping](#6-owner-mapping) for the
+  full resolution order). When set for local use, use comma-separated
+  `discordUserId:ownerUserId` pairs, or a JSON object such as
+  `{"discordUserId":"ownerUserId"}`.
 
-All three values are server-only secrets/configuration. Do not prefix them with
+These values are server-only secrets/configuration. Do not prefix them with
 `NEXT_PUBLIC_`.
 
 ## 4. Register slash commands
@@ -108,9 +110,19 @@ Do not add broad moderation, admin, or unrelated bot permissions.
 ## 6. Owner mapping
 
 Discord interactions must map to a Tendnote owner before Eve can capture context.
-Set `DISCORD_OWNER_USER_MAP` in the server environment. This mapping is
-configuration owned by Tendnote operators; never accept an owner id from the
-Discord request body.
+Resolution is **fail-closed**: an interaction from a Discord user id with no owner
+mapping is rejected before any Source Record, Memory, Follow-Up, draft, or
+delivery setting is written. Owner ids are never accepted from the Discord
+request body, slash command options, or any client-supplied field.
+
+Owner resolution order:
+
+1. **Persisted Discord identity (production path).** Owner-scoped rows in the
+   `discord_identities` table map a Discord user id to exactly one Tendnote owner.
+   This is the SaaS resolution path and the only path used in production.
+2. **`DISCORD_OWNER_USER_MAP` env map (private-beta / dev fallback only).**
+   Consulted only when `NODE_ENV !== "production"` and only when no persisted
+   identity exists. Do not rely on it for hosted deployments.
 
 At minimum, verify:
 

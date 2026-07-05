@@ -2,17 +2,25 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import type { SourceRecord } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
+  createDiscordRequestOwnerResolver,
   discordApiPayloadToCaptureInteraction,
   getParkedDiscordHitlSession,
   getResumedDiscordHitlSession,
   handleDiscordRequest,
+  isDiscordOwnerMapFallbackAllowed,
   parkDiscordHitlSession,
   registerDiscordHitlSessionResumeHandler,
   renderDiscordHitlPrompt,
   resumeDiscordHitlSession,
   verifyDiscordSignature,
 } from "../agent/channels/discord";
-import type { DiscordCaptureDeps } from "../agent/lib/discord-capture";
+import {
+  type DiscordCaptureDeps,
+  type DiscordOwnerResolver,
+  discordOwnerMapResolver,
+} from "../agent/lib/discord-capture";
+
+const ownerResolver: DiscordOwnerResolver = discordOwnerMapResolver({ "discord-1": "owner-1" });
 
 function signDiscordBody(body: string) {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
@@ -138,7 +146,7 @@ describe("Discord interaction channel", () => {
       }),
       {
         publicKey: signed.publicKeyHex,
-        ownerMapRaw: "discord-1:owner-1",
+        resolveOwner: ownerResolver,
         deps: captureDeps,
       },
     );
@@ -181,7 +189,7 @@ describe("Discord interaction channel", () => {
       }),
       {
         publicKey: signed.publicKeyHex,
-        ownerMapRaw: "discord-1:owner-1",
+        resolveOwner: ownerResolver,
         deps: captureDeps,
       },
     );
@@ -210,7 +218,7 @@ describe("Discord interaction channel", () => {
       }),
       {
         publicKey: signed.publicKeyHex,
-        ownerMapRaw: "discord-1:owner-1",
+        resolveOwner: ownerResolver,
         deps: captureDeps,
       },
     );
@@ -244,7 +252,7 @@ describe("Discord interaction channel", () => {
       }),
       {
         publicKey: signed.publicKeyHex,
-        ownerMapRaw: "discord-1:owner-1",
+        resolveOwner: ownerResolver,
         deps: captureDeps,
       },
     );
@@ -282,7 +290,7 @@ describe("Discord interaction channel", () => {
       }),
       {
         publicKey: signed.publicKeyHex,
-        ownerMapRaw: "discord-1:owner-1",
+        resolveOwner: ownerResolver,
         deps: captureDeps,
       },
     );
@@ -414,7 +422,7 @@ describe("Discord interaction channel", () => {
       }),
       {
         publicKey: signed.publicKeyHex,
-        ownerMapRaw: "discord-1:owner-1",
+        resolveOwner: ownerResolver,
         deps: { ...deps(), ...forbidden },
       },
     );
@@ -423,6 +431,88 @@ describe("Discord interaction channel", () => {
     for (const fn of Object.values(forbidden)) {
       expect(fn).not.toHaveBeenCalled();
     }
+  });
+
+  it("resolves owners from an injected persisted resolver, isolating two guild users", async () => {
+    const persistedOwners: Record<string, string> = {
+      "discord-1": "owner-1",
+      "discord-2": "owner-2",
+    };
+    const resolveOwner = vi.fn(
+      async (discordUserId: string) => persistedOwners[discordUserId] ?? null,
+    );
+
+    async function captureFor(discordUserId: string, captureDeps: DiscordCaptureDeps) {
+      const body = JSON.stringify({
+        type: 2,
+        member: { user: { id: discordUserId } },
+        data: {
+          name: "capture",
+          options: [{ name: "message", type: 3, value: "Context." }],
+        },
+      });
+      const signed = signDiscordBody(body);
+
+      return handleDiscordRequest(
+        new Request("https://example.com/eve/v1/discord", {
+          method: "POST",
+          body,
+          headers: signed.headers,
+        }),
+        { publicKey: signed.publicKeyHex, resolveOwner, deps: captureDeps },
+      );
+    }
+
+    const depsOne = deps();
+    const depsTwo = deps();
+    await captureFor("discord-1", depsOne);
+    await captureFor("discord-2", depsTwo);
+
+    expect(depsOne.captureGlobal).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerUserId: "owner-1" }),
+    );
+    expect(depsTwo.captureGlobal).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerUserId: "owner-2" }),
+    );
+    expect(depsOne.captureGlobal).not.toHaveBeenCalledWith(
+      expect.objectContaining({ ownerUserId: "owner-2" }),
+    );
+  });
+
+  it("rejects an unmapped Discord user without writing relationship context", async () => {
+    const resolveOwner = vi.fn(async () => null);
+    const captureDeps = deps();
+    const body = JSON.stringify({
+      type: 2,
+      member: { user: { id: "unmapped" } },
+      data: {
+        name: "capture",
+        options: [{ name: "message", type: 3, value: "Should not persist." }],
+      },
+    });
+    const signed = signDiscordBody(body);
+
+    const response = await handleDiscordRequest(
+      new Request("https://example.com/eve/v1/discord", {
+        method: "POST",
+        body,
+        headers: signed.headers,
+      }),
+      { publicKey: signed.publicKeyHex, resolveOwner, deps: captureDeps },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      type: 4,
+      data: {
+        content: "This Discord user is not mapped to a Tendnote owner.",
+        flags: 64,
+      },
+    });
+    expect(resolveOwner).toHaveBeenCalledWith("unmapped");
+    expect(captureDeps.captureGlobal).not.toHaveBeenCalled();
+    expect(captureDeps.captureForPerson).not.toHaveBeenCalled();
+    expect(captureDeps.enqueueExtraction).not.toHaveBeenCalled();
   });
 
   it("rejects unsigned Discord requests before owner mapping or capture", async () => {
@@ -437,5 +527,67 @@ describe("Discord interaction channel", () => {
 
     expect(response.status).toBe(401);
     expect(captureDeps.captureGlobal).not.toHaveBeenCalled();
+  });
+});
+
+describe("Default Discord owner resolution (persisted-first, dev-only env fallback)", () => {
+  it("gates the env-map fallback on NODE_ENV !== production", () => {
+    expect(isDiscordOwnerMapFallbackAllowed("development")).toBe(true);
+    expect(isDiscordOwnerMapFallbackAllowed("test")).toBe(true);
+    expect(isDiscordOwnerMapFallbackAllowed("production")).toBe(false);
+  });
+
+  it("always resolves persisted identity ahead of the env map", async () => {
+    const resolvePersistedOwner: DiscordOwnerResolver = async (discordUserId) =>
+      discordUserId === "discord-1" ? "persisted-owner" : null;
+
+    const resolve = createDiscordRequestOwnerResolver({
+      resolvePersistedOwner,
+      ownerMapRaw: "discord-1:env-owner",
+      nodeEnv: "development",
+    });
+
+    // Persisted wins even though the env map also maps discord-1.
+    await expect(resolve("discord-1")).resolves.toBe("persisted-owner");
+  });
+
+  it("uses the env map only in non-production and only when persisted is absent", async () => {
+    const resolvePersistedOwner: DiscordOwnerResolver = async () => null;
+
+    const devResolve = createDiscordRequestOwnerResolver({
+      resolvePersistedOwner,
+      ownerMapRaw: "discord-2:env-owner",
+      nodeEnv: "development",
+    });
+    await expect(devResolve("discord-2")).resolves.toBe("env-owner");
+
+    // In production the env map must not resolve — fail closed.
+    const prodResolve = createDiscordRequestOwnerResolver({
+      resolvePersistedOwner,
+      ownerMapRaw: "discord-2:env-owner",
+      nodeEnv: "production",
+    });
+    await expect(prodResolve("discord-2")).resolves.toBeNull();
+  });
+
+  it("fails closed in production when there is no persisted identity", async () => {
+    const resolve = createDiscordRequestOwnerResolver({
+      resolvePersistedOwner: async () => null,
+      ownerMapRaw: "discord-1:env-owner",
+      nodeEnv: "production",
+    });
+
+    await expect(resolve("discord-1")).resolves.toBeNull();
+  });
+
+  it("prefers an explicitly injected resolveOwner over persisted and env sources", async () => {
+    const resolve = createDiscordRequestOwnerResolver({
+      resolveOwner: async () => "injected-owner",
+      resolvePersistedOwner: async () => "persisted-owner",
+      ownerMapRaw: "discord-1:env-owner",
+      nodeEnv: "development",
+    });
+
+    await expect(resolve("discord-1")).resolves.toBe("injected-owner");
   });
 });

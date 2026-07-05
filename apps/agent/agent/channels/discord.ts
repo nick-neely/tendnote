@@ -1,15 +1,19 @@
 import { createPublicKey, verify } from "node:crypto";
+import { resolveDiscordIdentityOwner } from "@tendnote/db/queries/discord-identities";
 import { captureSourceRecord } from "@tendnote/db/queries/source-records";
 import { defineChannel, POST } from "eve/channels";
 import { captureSourceRecordForPersonWithEmbeddingDelivery } from "../lib/background-jobs/embedding-schedulers";
 import { enqueueAndPublishExtractionJob } from "../lib/background-jobs/extraction-queue";
 import {
+  createDiscordOwnerResolver,
   type DiscordCaptureDeps,
   type DiscordHitlSessionInput,
   type DiscordInteraction,
   type DiscordMessageComponent,
+  type DiscordOwnerResolver,
   decodeDiscordComponentCustomId,
   discordClarificationModal,
+  discordOwnerMapResolver,
   discordReviewComponents,
   handleDiscordCaptureInteraction,
   parseDiscordOwnerMap,
@@ -81,6 +85,7 @@ export async function handleDiscordRequest(
   request: Request,
   input: {
     publicKey?: string;
+    resolveOwner?: DiscordOwnerResolver;
     ownerMapRaw?: string;
     deps?: DiscordCaptureDeps;
   } = {},
@@ -123,7 +128,7 @@ export async function handleDiscordRequest(
   const result = await handleDiscordCaptureInteraction(
     interaction,
     input.deps ?? defaultDiscordCaptureDeps(),
-    parseDiscordOwnerMap(input.ownerMapRaw ?? process.env.DISCORD_OWNER_USER_MAP),
+    createDiscordRequestOwnerResolver(input),
   );
 
   if (result.type === "captured") {
@@ -259,6 +264,46 @@ function parseDiscordApiInteraction(body: string): DiscordApiInteraction | null 
   } catch {
     return null;
   }
+}
+
+/**
+ * Owner resolution for a Discord request. An explicitly injected `resolveOwner`
+ * wins (tests, custom wiring). Otherwise resolution is always persisted-identity
+ * first, with the `DISCORD_OWNER_USER_MAP` env map (or an explicit `ownerMapRaw`)
+ * applied only as a lower-priority, dev-only fallback — never in production and
+ * never ahead of persisted identity. Unmapped Discord users fail closed.
+ *
+ * `resolvePersistedOwner` and `nodeEnv` are test seams; production passes neither.
+ */
+export function createDiscordRequestOwnerResolver(
+  input: {
+    resolveOwner?: DiscordOwnerResolver;
+    ownerMapRaw?: string;
+    resolvePersistedOwner?: DiscordOwnerResolver;
+    nodeEnv?: string;
+  } = {},
+): DiscordOwnerResolver {
+  if (input.resolveOwner) {
+    return input.resolveOwner;
+  }
+
+  const resolvePersistedOwner =
+    input.resolvePersistedOwner ??
+    ((discordUserId: string) => resolveDiscordIdentityOwner({ discordUserId }));
+
+  return createDiscordOwnerResolver({
+    resolvePersistedOwner,
+    devFallback: isDiscordOwnerMapFallbackAllowed(input.nodeEnv)
+      ? discordOwnerMapResolver(
+          parseDiscordOwnerMap(input.ownerMapRaw ?? process.env.DISCORD_OWNER_USER_MAP),
+        )
+      : null,
+  });
+}
+
+/** The env owner map is a dev-only fallback; see `docs/discord-setup.md` §6. */
+export function isDiscordOwnerMapFallbackAllowed(nodeEnv = process.env.NODE_ENV): boolean {
+  return nodeEnv !== "production";
 }
 
 function defaultDiscordCaptureDeps(): DiscordCaptureDeps {

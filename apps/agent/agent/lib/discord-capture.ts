@@ -87,6 +87,13 @@ export type DiscordHitlSessionInput = {
   value: string | null;
 };
 
+/**
+ * Resolve the Tendnote owner for a Discord user id, or `null` when unmapped.
+ * Resolution always fails closed: `null` rejects the interaction before any write.
+ * See {@link createDiscordOwnerResolver} for the production resolution order.
+ */
+export type DiscordOwnerResolver = (discordUserId: string) => Promise<string | null>;
+
 export function parseDiscordOwnerMap(raw: string | undefined): DiscordOwnerMap {
   if (!raw?.trim()) return {};
 
@@ -112,19 +119,36 @@ export function parseDiscordOwnerMap(raw: string | undefined): DiscordOwnerMap {
   );
 }
 
-export function resolveDiscordOwnerUserId(
-  discordUserId: string,
-  ownerMap: DiscordOwnerMap = parseDiscordOwnerMap(process.env.DISCORD_OWNER_USER_MAP),
-): string | null {
-  return ownerMap[discordUserId] ?? null;
+/** Build a resolver from a static owner map (dev/local fallback path only). */
+export function discordOwnerMapResolver(ownerMap: DiscordOwnerMap): DiscordOwnerResolver {
+  return async (discordUserId) => ownerMap[discordUserId] ?? null;
+}
+
+/**
+ * Compose the production resolution order: persisted owner-scoped Discord identity
+ * first, then an optional dev-only fallback. Fails closed (`null`) when no source
+ * maps the Discord user, so unmapped users never resolve to an owner.
+ */
+export function createDiscordOwnerResolver(input: {
+  resolvePersistedOwner: DiscordOwnerResolver;
+  devFallback?: DiscordOwnerResolver | null;
+}): DiscordOwnerResolver {
+  return async (discordUserId) => {
+    const persisted = await input.resolvePersistedOwner(discordUserId);
+    if (persisted) {
+      return persisted;
+    }
+
+    return input.devFallback ? input.devFallback(discordUserId) : null;
+  };
 }
 
 export async function handleDiscordCaptureInteraction(
   interaction: DiscordInteraction,
   deps: DiscordCaptureDeps,
-  ownerMap?: DiscordOwnerMap,
+  resolveOwner: DiscordOwnerResolver,
 ): Promise<DiscordCaptureResult> {
-  const ownerUserId = resolveDiscordOwnerUserId(interaction.discordUserId, ownerMap);
+  const ownerUserId = await resolveOwner(interaction.discordUserId);
   if (!ownerUserId) {
     return { type: "rejected", reason: "unmapped_discord_user" };
   }
