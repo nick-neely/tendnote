@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createGeneralActionAreaManager } from "../general-action-areas/lifecycle";
 import { createInMemoryGeneralActionLifecycleStore } from "./in-memory-store";
 import { createGeneralActionLifecycle } from "./lifecycle";
 
@@ -8,6 +9,9 @@ const OTHER = "user-2";
 async function setup() {
   const store = createInMemoryGeneralActionLifecycleStore();
   const lifecycle = createGeneralActionLifecycle(store);
+  // The Area manager shares the same composed store, so an Area seeded here is the
+  // one the action lifecycle resolves against.
+  const areas = createGeneralActionAreaManager(store);
 
   async function seedOpen(
     overrides: {
@@ -30,7 +34,7 @@ async function setup() {
       (event) => event.kind,
     );
 
-  return { store, lifecycle, seedOpen, historyKinds };
+  return { store, lifecycle, areas, seedOpen, historyKinds };
 }
 
 describe("create general action", () => {
@@ -146,7 +150,7 @@ describe("edit general action", () => {
 
     await expect(
       lifecycle.editGeneralAction({ ownerUserId: OWNER, generalActionId: action.id, edit: {} }),
-    ).rejects.toThrow(/must change the title, notes, due date, or links/);
+    ).rejects.toThrow(/must change the title, notes, due date, links, or area/);
   });
 
   it("cannot edit a completed action", async () => {
@@ -350,6 +354,109 @@ describe("active listing", () => {
     const resolved = await lifecycle.listResolvedGeneralActions({ ownerUserId: OWNER });
 
     expect(resolved.map((a) => a.status).sort()).toEqual(["completed", "dismissed"]);
+  });
+});
+
+describe("area assignment", () => {
+  it("files a new action under an owned area", async () => {
+    const { lifecycle, areas } = await setup();
+    const home = await areas.createArea({ ownerUserId: OWNER, name: "Home" });
+
+    const action = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Replace the water filter",
+      areaId: home.id,
+    });
+
+    expect(action.areaId).toBe(home.id);
+  });
+
+  it("leaves an action unfiled when no area is given", async () => {
+    const { seedOpen } = await setup();
+    const action = await seedOpen();
+
+    expect(action.areaId).toBeNull();
+  });
+
+  it("assigns and later clears an action's area via edit", async () => {
+    const { lifecycle, areas, seedOpen } = await setup();
+    const home = await areas.createArea({ ownerUserId: OWNER, name: "Home" });
+    const action = await seedOpen();
+
+    const filed = await lifecycle.editGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: action.id,
+      edit: { areaId: home.id },
+    });
+    expect(filed.areaId).toBe(home.id);
+
+    const unfiled = await lifecycle.editGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: action.id,
+      edit: { areaId: null },
+    });
+    expect(unfiled.areaId).toBeNull();
+  });
+
+  it("rejects filing under another owner's area", async () => {
+    const { lifecycle, areas } = await setup();
+    const theirs = await areas.createArea({ ownerUserId: OTHER, name: "Home" });
+
+    await expect(
+      lifecycle.createGeneralAction({
+        ownerUserId: OWNER,
+        title: "Sneaky",
+        areaId: theirs.id,
+      }),
+    ).rejects.toThrow(/no longer exists/);
+  });
+
+  it("rejects filing under an archived area but keeps an action already filed there", async () => {
+    const { lifecycle, areas, seedOpen } = await setup();
+    const home = await areas.createArea({ ownerUserId: OWNER, name: "Home" });
+    const action = await seedOpen();
+    await lifecycle.editGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: action.id,
+      edit: { areaId: home.id },
+    });
+
+    await areas.archiveArea({ ownerUserId: OWNER, areaId: home.id });
+
+    // The action keeps its area even though the area is now archived...
+    const stillFiled = await lifecycle.getGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: action.id,
+    });
+    expect(stillFiled.areaId).toBe(home.id);
+
+    // ...but a new assignment to that archived area is rejected.
+    await expect(
+      lifecycle.createGeneralAction({
+        ownerUserId: OWNER,
+        title: "Too late",
+        areaId: home.id,
+      }),
+    ).rejects.toThrow(/archived/);
+  });
+
+  it("records an edited event that notes the area change", async () => {
+    const { lifecycle, areas, seedOpen, historyKinds } = await setup();
+    const home = await areas.createArea({ ownerUserId: OWNER, name: "Home" });
+    const action = await seedOpen();
+
+    await lifecycle.editGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: action.id,
+      edit: { areaId: home.id },
+    });
+
+    const events = await lifecycle.listGeneralActionHistory({
+      ownerUserId: OWNER,
+      generalActionId: action.id,
+    });
+    expect(await historyKinds(action.id)).toEqual(["created", "edited"]);
+    expect(events.at(-1)?.detailJson).toMatchObject({ editedArea: true });
   });
 });
 

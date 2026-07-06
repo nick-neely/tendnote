@@ -1,10 +1,15 @@
 import {
+  ensureDefaultGeneralActionAreas,
+  listGeneralActionAreas,
+} from "@tendnote/db/queries/general-action-areas";
+import {
   listActiveGeneralActions,
   listResolvedGeneralActions,
 } from "@tendnote/db/queries/general-actions";
 import { ActionsSurface } from "@/components/actions-surface";
 import { AppShell } from "@/components/app-shell";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { toGeneralActionAreaView } from "@/lib/general-action-area-view";
 import { toGeneralActionView } from "@/lib/general-action-view";
 
 // A calm cap on the resolved trail — enough to reopen a recent mistake, not a
@@ -16,9 +21,16 @@ export const dynamic = "force-dynamic";
 export default async function ActionsPage() {
   const ownerUserId = await requireAdmittedOwner();
   const now = new Date();
-  const [active, resolved] = await Promise.all([
+
+  // Seed the owner's default Areas the first time they open Actions (idempotent),
+  // then load every Area — archived included — so the surface can both drive the
+  // filter (active only) and resolve names for Actions filed under a since-archived
+  // Area.
+  await ensureDefaultGeneralActionAreas({ ownerUserId });
+  const [active, resolved, areas] = await Promise.all([
     listActiveGeneralActions({ ownerUserId }),
     listResolvedGeneralActions({ ownerUserId, limit: RESOLVED_LIMIT }),
+    listGeneralActionAreas({ ownerUserId, includeArchived: true }),
   ]);
 
   return (
@@ -35,6 +47,7 @@ export default async function ActionsPage() {
 
         <ActionsSurface
           active={active.map((action) => toGeneralActionView(action, now))}
+          areas={areas.map((area) => toGeneralActionAreaView(area))}
           resolved={resolved.map((action) => toGeneralActionView(action, now))}
           resolvedTruncated={resolved.length >= RESOLVED_LIMIT}
         />

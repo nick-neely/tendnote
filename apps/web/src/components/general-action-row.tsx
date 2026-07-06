@@ -20,6 +20,7 @@ import {
   dismissGeneralActionAction,
   editGeneralActionAction,
 } from "@/app/actions/general-actions";
+import { AreaSelect } from "@/components/general-action-area-select";
 import { ActionHistoryDialog } from "@/components/general-action-history-dialog";
 import {
   ActionLinksField,
@@ -39,6 +40,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionMutationResult, GeneralActionView } from "@/lib/general-action-view";
 
 function linkLabel(link: GeneralActionLink): string {
@@ -89,10 +91,16 @@ function normalizeLinks(links: GeneralActionLink[]): string {
  */
 export function ActionRow({
   action,
+  areas,
+  areaName = null,
   onResolve,
   onUpdate,
 }: {
   action: GeneralActionView;
+  /** Active Areas the Action can be re-filed under. */
+  areas: GeneralActionAreaView[];
+  /** The Action's current Area name (archived included), for the view-mode label. */
+  areaName?: string | null;
   onResolve: (id: string) => void;
   onUpdate: (view: GeneralActionView) => void;
 }) {
@@ -101,6 +109,7 @@ export function ActionRow({
   const [notes, setNotes] = useState(action.notes ?? "");
   const [dueDate, setDueDate] = useState(action.dueAtDate);
   const [links, setLinks] = useState<LinkDraft[]>(toLinkDrafts(action.links));
+  const [areaId, setAreaId] = useState<string | null>(action.areaId);
   const [deferDate, setDeferDate] = useState(action.deferUntilDate);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -160,6 +169,7 @@ export function ActionRow({
     setNotes(action.notes ?? "");
     setDueDate(action.dueAtDate);
     setLinks(toLinkDrafts(action.links));
+    setAreaId(action.areaId);
     setError(null);
     setMode("edit");
   }
@@ -184,6 +194,7 @@ export function ActionRow({
       notes?: string | null;
       dueAt?: string | null;
       links?: GeneralActionLink[];
+      areaId?: string | null;
     } = {};
     if (trimmedTitle && trimmedTitle !== action.title) {
       edit.title = trimmedTitle;
@@ -197,7 +208,16 @@ export function ActionRow({
     if (normalizeLinks(cleanedLinks) !== normalizeLinks(action.links)) {
       edit.links = cleanedLinks;
     }
+    if (areaId !== action.areaId) {
+      edit.areaId = areaId;
+    }
     const hasChange = Object.keys(edit).length > 0;
+    // Show the Action's current Area even if it was archived after filing, so the
+    // picker displays its label without offering it as a new assignment.
+    const editAreas =
+      action.areaId && areaName && !areas.some((area) => area.id === action.areaId)
+        ? [...areas, { id: action.areaId, name: areaName, archived: true }]
+        : areas;
 
     return (
       <form
@@ -232,6 +252,18 @@ export function ActionRow({
             value={dueDate}
           />
         </div>
+        {editAreas.length ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[length:var(--text-small)] text-muted-foreground">Area</span>
+            <AreaSelect
+              areas={editAreas}
+              ariaLabel="Area"
+              onChange={setAreaId}
+              triggerClassName="w-full sm:w-56"
+              value={areaId}
+            />
+          </div>
+        ) : null}
         <ActionLinksField links={links} onChange={setLinks} />
         <div className="flex items-center justify-end gap-1.5">
           <Button onClick={cancelEditing} size="sm" type="button" variant="ghost">
@@ -310,6 +342,11 @@ export function ActionRow({
             </p>
           ) : null}
           <ActionLinks links={action.links} />
+          {areaName ? (
+            <span className="inline-flex w-fit items-center rounded-full bg-secondary px-2 py-0.5 text-[length:var(--text-caption)] text-secondary-foreground">
+              {areaName}
+            </span>
+          ) : null}
         </div>
         <div className="shrink-0 pt-0.5">
           <ActionDueChip surfaceLabel={action.surfaceLabel} surfaceState={action.surfaceState} />

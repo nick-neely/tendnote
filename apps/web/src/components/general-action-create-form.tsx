@@ -3,6 +3,7 @@
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { useId, useState, useTransition } from "react";
 import { createGeneralActionAction } from "@/app/actions/general-actions";
+import { AreaSelect } from "@/components/general-action-area-select";
 import {
   ActionLinksField,
   cleanLinks,
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionView } from "@/lib/general-action-view";
 
 /**
@@ -22,12 +24,23 @@ import type { GeneralActionView } from "@/lib/general-action-view";
  * the richer fields available without cluttering the calm default. On success the
  * new Action is handed to the parent to lead the active list.
  */
-export function CreateActionForm({ onCreate }: { onCreate: (view: GeneralActionView) => void }) {
+export function CreateActionForm({
+  onCreate,
+  areas,
+  defaultAreaId = null,
+}: {
+  onCreate: (view: GeneralActionView) => void;
+  /** Active Areas the new Action can be filed under. */
+  areas: GeneralActionAreaView[];
+  /** Pre-file the new Action under the currently filtered Area, so it stays in view. */
+  defaultAreaId?: string | null;
+}) {
   const detailsId = useId();
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
   const [links, setLinks] = useState<LinkDraft[]>([]);
+  const [areaId, setAreaId] = useState<string | null>(defaultAreaId);
   const [showDetails, setShowDetails] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -39,6 +52,7 @@ export function CreateActionForm({ onCreate }: { onCreate: (view: GeneralActionV
     setDueDate("");
     setNotes("");
     setLinks([]);
+    setAreaId(defaultAreaId);
     setShowDetails(false);
     setError(null);
   }
@@ -57,6 +71,7 @@ export function CreateActionForm({ onCreate }: { onCreate: (view: GeneralActionV
           ...(trimmedNotes ? { notes: trimmedNotes } : {}),
           ...(dueDate ? { dueAt: dueDate } : {}),
           ...(cleanedLinks.length ? { links: cleanedLinks } : {}),
+          ...(areaId ? { areaId } : {}),
         });
         if (!result.ok) {
           setError(result.error);
@@ -105,7 +120,7 @@ export function CreateActionForm({ onCreate }: { onCreate: (view: GeneralActionV
             className="size-3.5 transition-transform data-[open=true]:rotate-180 motion-reduce:transition-none"
             data-open={showDetails}
           />
-          Add date, notes, or links
+          {areas.length ? "Add date, area, notes, or links" : "Add date, notes, or links"}
         </button>
 
         {showDetails ? (
@@ -132,6 +147,18 @@ export function CreateActionForm({ onCreate }: { onCreate: (view: GeneralActionV
                 value={notes}
               />
             </div>
+            {areas.length ? (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[length:var(--text-small)] text-muted-foreground">Area</span>
+                <AreaSelect
+                  areas={areas}
+                  ariaLabel="Area"
+                  onChange={setAreaId}
+                  triggerClassName="w-full sm:w-56"
+                  value={areaId}
+                />
+              </div>
+            ) : null}
             <ActionLinksField links={links} onChange={setLinks} />
           </div>
         ) : null}

@@ -4,6 +4,7 @@ import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-cor
 import { user } from "../auth";
 import { timestamps } from "./common";
 import { generalActionEventKind, generalActionStatus, privacyScope } from "./enums";
+import { generalActionAreas } from "./general-action-areas";
 import { householdWorkspaces } from "./households";
 import { sourceRecords } from "./source-records";
 
@@ -36,6 +37,11 @@ export const generalActions = pgTable(
     sourceRecordId: uuid("source_record_id").references(() => sourceRecords.id, {
       onDelete: "set null",
     }),
+    // At most one primary Area per Action in Phase 5 (ADR 0146, #179). Nullable —
+    // an Action may be unfiled — and set-null on Area delete so the Action survives.
+    areaId: uuid("area_id").references(() => generalActionAreas.id, {
+      onDelete: "set null",
+    }),
     scope: privacyScope("scope").notNull().default("private"),
     householdId: uuid("household_id").references(() => householdWorkspaces.id, {
       onDelete: "set null",
@@ -53,6 +59,7 @@ export const generalActions = pgTable(
   (table) => [
     index("general_actions_owner_status_idx").on(table.ownerUserId, table.status),
     index("general_actions_owner_due_idx").on(table.ownerUserId, table.dueAt),
+    index("general_actions_owner_area_idx").on(table.ownerUserId, table.areaId),
     index("general_actions_household_scope_idx").on(table.householdId, table.scope),
   ],
 );

@@ -31,6 +31,8 @@ export type GeneralActionView = {
   notes: string | null;
   links: GeneralActionLink[];
   status: GeneralActionStatus;
+  /** The Action's primary Area, or null when unfiled. Name resolves in the surface. */
+  areaId: string | null;
   /** ISO due timestamp, or null when unscheduled. */
   dueAtISO: string | null;
   /** `YYYY-MM-DD` for a date input's default value; empty when unscheduled. */
@@ -80,6 +82,7 @@ export function toGeneralActionView(
     status: GeneralActionStatus;
     dueAt: Date | null;
     deferUntil: Date | null;
+    areaId: string | null;
   },
   now: Date = new Date(),
 ): GeneralActionView {
@@ -109,6 +112,7 @@ export function toGeneralActionView(
     notes: action.notes,
     links: action.links,
     status: action.status,
+    areaId: action.areaId,
     dueAtISO: action.dueAt?.toISOString() ?? null,
     dueAtDate: action.dueAt ? toDateInputValue(action.dueAt) : "",
     deferUntilISO: action.deferUntil?.toISOString() ?? null,

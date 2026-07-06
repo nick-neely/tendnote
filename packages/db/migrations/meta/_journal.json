@@ -211,6 +211,13 @@
       "when": 1783347023254,
       "tag": "0029_general_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1783352362499,
+      "tag": "0030_general_action_areas",
+      "breakpoints": true
     }
   ]
 }

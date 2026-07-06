@@ -8,6 +8,7 @@ import {
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { generalActionEvents, generalActions } from "../../schema";
+import { createDrizzleGeneralActionAreaStore } from "../general-action-areas/drizzle-store";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
 import type { GeneralActionLifecycleStore, GeneralActionStore } from "./types";
 
@@ -128,6 +129,7 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
 export function createDrizzleGeneralActionLifecycleStore(): GeneralActionLifecycleStore {
   return {
     ...createDrizzleSourceRecordStore(),
+    ...createDrizzleGeneralActionAreaStore(),
     ...createDrizzleGeneralActionStore(),
   };
 }

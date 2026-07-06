@@ -7,6 +7,7 @@ import type {
   GeneralActionLink,
   GeneralActionStatus,
 } from "@tendnote/domain";
+import type { GeneralActionAreaStore } from "../general-action-areas/types";
 import type {
   InMemorySourceRecordStore,
   SourceRecordResolutionStore,
@@ -22,6 +23,7 @@ export type GeneralActionPatch = Partial<
     | "deferUntil"
     | "links"
     | "status"
+    | "areaId"
     | "completedAt"
     | "lastActorUserId"
   >
@@ -66,14 +68,18 @@ export type GeneralActionStore = {
 
 /**
  * The lifecycle store: the General Action CRUD/history store plus source-record
- * grounding lookup, so a promoted suggestion's grounding can be verified as
- * owner-visible before it is attached (ADRs 0154, 0164). Mirrors the Follow-Up
- * lifecycle-store composition so surfaces share one owner-scoped seam.
+ * grounding lookup and Area resolution, so a promoted suggestion's grounding and an
+ * assigned Area can each be verified owner-visible before they are attached (ADRs
+ * 0146, 0154, 0164). Mirrors the Follow-Up lifecycle-store composition so surfaces
+ * share one owner-scoped seam.
  */
 export type GeneralActionLifecycleStore = GeneralActionStore &
-  Pick<SourceRecordResolutionStore, "getSourceRecord">;
+  Pick<SourceRecordResolutionStore, "getSourceRecord"> &
+  Pick<GeneralActionAreaStore, "getArea">;
 
-export type InMemoryGeneralActionLifecycleStore = InMemorySourceRecordStore & GeneralActionStore;
+export type InMemoryGeneralActionLifecycleStore = InMemorySourceRecordStore &
+  GeneralActionStore &
+  GeneralActionAreaStore;
 
 export type GeneralActionActionInput = {
   ownerUserId: string;
@@ -88,6 +94,8 @@ export type CreateActiveGeneralActionInput = {
   links?: GeneralActionLink[];
   // Source grounding where present; verified owner-visible when provided.
   sourceRecordId?: string | null;
+  // Primary Area where present; verified owner-visible and active when provided.
+  areaId?: string | null;
 };
 
 export type EditGeneralActionInput = GeneralActionActionInput & {

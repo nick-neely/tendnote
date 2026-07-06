@@ -62,6 +62,9 @@ export const generalActionSchema = z.object({
   // from. Null for direct user-created actions (ADRs 0154, 0164). Later slices
   // (#180) promote Suggested General Actions with this set.
   sourceRecordId: z.string().nullable().default(null),
+  // At most one primary Area per Action in Phase 5 — a flat life category, not a
+  // project or tag (ADR 0146, #179). Null when the Action is unfiled.
+  areaId: z.string().nullable().default(null),
   // Visibility scope. Phase 5 #178 is private-only; the column is present so
   // shared/household scopes can be added additively (#180, ADR 0153).
   scope: privacyScopeSchema.default("private"),
@@ -101,6 +104,7 @@ export const generalActionUpdateSchema = z
     status: generalActionStatusSchema,
     dueAt: z.date().nullable(),
     deferUntil: z.date().nullable(),
+    areaId: z.string().nullable(),
     completedAt: z.date().nullable(),
     lastActorUserId: z.string().nullable(),
   })
@@ -203,6 +207,8 @@ export const generalActionEditSchema = z
     notes: z.string().nullable().optional(),
     dueAt: z.date().nullable().optional(),
     links: z.array(generalActionLinkSchema).optional(),
+    // `undefined` leaves the Area unchanged; explicit `null` unfiles the Action.
+    areaId: z.string().nullable().optional(),
   })
   .strict();
 

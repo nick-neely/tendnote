@@ -1,5 +1,6 @@
 import {
   ACTIVE_GENERAL_ACTION_STATUSES,
+  assertAreaNotArchived,
   assertGeneralActionEditable,
   assertResurfaceDate,
   type GeneralAction,
@@ -49,6 +50,26 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
     }
 
     return action;
+  }
+
+  /**
+   * Resolves an Area assignment for an Action, keeping the one-primary-Area rule
+   * owner-safe. A non-null `areaId` must name an Area the owner owns and has not
+   * archived — you cannot file an Action under someone else's Area or a retired one.
+   * `null` clears the Area; `undefined` is never passed here (callers omit instead).
+   */
+  async function resolveAreaId(ownerUserId: string, areaId: string | null): Promise<string | null> {
+    if (areaId === null) {
+      return null;
+    }
+
+    const area = await store.getArea({ ownerUserId, areaId });
+    if (!area) {
+      throw new GeneralActionValidationError("That area no longer exists.");
+    }
+    assertAreaNotArchived(area);
+
+    return area.id;
   }
 
   async function recordEvent(
@@ -115,6 +136,8 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         sourceRecordId = sourceRecord.id;
       }
 
+      const areaId = await resolveAreaId(input.ownerUserId, input.areaId ?? null);
+
       const action = await store.createGeneralAction({
         ownerUserId: input.ownerUserId,
         title: input.title,
@@ -124,6 +147,7 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         dueAt: input.dueAt ?? null,
         deferUntil: null,
         sourceRecordId,
+        areaId,
         scope: "private",
         householdId: null,
         createdByUserId: input.ownerUserId,
@@ -135,6 +159,7 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         scope: action.scope,
         status: action.status,
         grounded: sourceRecordId !== null,
+        filed: areaId !== null,
       });
 
       return action;
@@ -157,10 +182,11 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         edit.title === undefined &&
         edit.notes === undefined &&
         edit.dueAt === undefined &&
-        edit.links === undefined
+        edit.links === undefined &&
+        edit.areaId === undefined
       ) {
         throw new GeneralActionValidationError(
-          "An action edit must change the title, notes, due date, or links.",
+          "An action edit must change the title, notes, due date, links, or area.",
         );
       }
 
@@ -177,6 +203,9 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
       if (edit.links !== undefined) {
         patch.links = edit.links;
       }
+      if (edit.areaId !== undefined) {
+        patch.areaId = await resolveAreaId(action.ownerUserId, edit.areaId);
+      }
 
       const updated = await store.updateGeneralAction({
         ownerUserId: action.ownerUserId,
@@ -189,6 +218,7 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         editedNotes: edit.notes !== undefined,
         editedDueAt: edit.dueAt !== undefined,
         editedLinks: edit.links !== undefined,
+        editedArea: edit.areaId !== undefined,
       });
 
       return updated;

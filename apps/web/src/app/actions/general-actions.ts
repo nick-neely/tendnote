@@ -11,11 +11,11 @@ import {
   reopenGeneralAction,
 } from "@tendnote/db/queries/general-actions";
 import type { GeneralAction } from "@tendnote/domain";
-import { GeneralActionValidationError, generalActionLinkSchema } from "@tendnote/domain";
-import { revalidatePath } from "next/cache";
-import { ZodError, z } from "zod";
+import { generalActionLinkSchema } from "@tendnote/domain";
+import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { parseDateInputValue } from "@/lib/followup-view";
+import { runActionsMutation } from "@/lib/general-action-mutation";
 import {
   type GeneralActionEventView,
   type GeneralActionMutationResult,
@@ -36,6 +36,8 @@ const createActionSchema = z.object({
   notes: z.string().trim().min(1).max(2000).optional(),
   dueAt: dateInputSchema.optional(),
   links: linksSchema.optional(),
+  // The primary Area this Action is filed under; verified owner-visible downstream.
+  areaId: z.uuid().nullable().optional(),
 });
 
 const editActionSchema = z.object({
@@ -45,6 +47,8 @@ const editActionSchema = z.object({
   notes: z.string().trim().min(1).max(2000).nullable().optional(),
   dueAt: dateInputSchema.nullable().optional(),
   links: linksSchema.optional(),
+  // `null` unfiles the Action; `undefined` leaves its Area untouched.
+  areaId: z.uuid().nullable().optional(),
 });
 
 const deferActionSchema = z.object({
@@ -53,49 +57,13 @@ const deferActionSchema = z.object({
 });
 
 /**
- * Re-render the Actions surface after a change so any server-rendered counts and
- * lists reflect it. The interactive list manages its own optimistic state, so this
- * stays scoped to the one page (matches the calm, narrow revalidation the
- * Follow-Up actions favor).
+ * Runs an Action mutation and maps the result to a view. Thin wrapper over the
+ * shared runner so the Action and Area server actions share one result-union path.
  */
-function revalidateActions() {
-  revalidatePath("/actions");
-}
-
-/**
- * Maps a caught error to a user-safe message, or `null` when it is not a
- * validation failure. Zod field errors (a fat-fingered link URL) and curated
- * domain lifecycle errors are surfaced; everything else stays generic.
- */
-function validationMessage(error: unknown): string | null {
-  if (error instanceof ZodError) {
-    return error.issues[0]?.message ?? "Check the highlighted fields and try again.";
-  }
-  if (error instanceof GeneralActionValidationError) {
-    return error.message;
-  }
-  return null;
-}
-
-/**
- * Runs a mutation, returning a validation message as data instead of throwing so
- * the surface can show it. Unknown/infra failures re-throw and the client renders
- * its generic fallback.
- */
-async function runMutation(
-  run: () => Promise<GeneralAction>,
+function runMutation(
+  run: () => Promise<Parameters<typeof toGeneralActionView>[0]>,
 ): Promise<GeneralActionMutationResult> {
-  try {
-    const action = await run();
-    revalidateActions();
-    return { ok: true, view: toGeneralActionView(action) };
-  } catch (error) {
-    const message = validationMessage(error);
-    if (message) {
-      return { ok: false, error: message };
-    }
-    throw error;
-  }
+  return runActionsMutation(run, (action) => toGeneralActionView(action));
 }
 
 export async function createGeneralActionAction(input: {
@@ -103,6 +71,7 @@ export async function createGeneralActionAction(input: {
   notes?: string;
   dueAt?: string;
   links?: { url: string; label?: string }[];
+  areaId?: string | null;
 }): Promise<GeneralActionMutationResult> {
   return runMutation(async () => {
     const parsed = createActionSchema.parse(input);
@@ -113,6 +82,7 @@ export async function createGeneralActionAction(input: {
       notes: parsed.notes,
       dueAt: parsed.dueAt,
       links: parsed.links,
+      areaId: parsed.areaId,
     });
   });
 }
@@ -124,6 +94,7 @@ export async function editGeneralActionAction(input: {
     notes?: string | null;
     dueAt?: string | null;
     links?: { url: string; label?: string }[];
+    areaId?: string | null;
   };
 }): Promise<GeneralActionMutationResult> {
   return runMutation(async () => {
@@ -140,6 +111,7 @@ export async function editGeneralActionAction(input: {
         ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
         ...(parsed.dueAt !== undefined ? { dueAt: parsed.dueAt } : {}),
         ...(parsed.links !== undefined ? { links: parsed.links } : {}),
+        ...(parsed.areaId !== undefined ? { areaId: parsed.areaId } : {}),
       },
     });
   });

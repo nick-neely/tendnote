@@ -8,6 +8,7 @@ import {
   generalActionEventSchema,
   generalActionSchema,
 } from "@tendnote/domain";
+import { createInMemoryGeneralActionAreaStore } from "../general-action-areas/in-memory-store";
 import { createInMemorySourceRecordStore } from "../source-records/in-memory-store";
 import type { GeneralActionStore, InMemoryGeneralActionLifecycleStore } from "./types";
 
@@ -132,12 +133,13 @@ export { ACTIVE_GENERAL_ACTION_STATUSES };
 
 /**
  * Lifecycle store for tests and composition: the General Action store plus a
- * source-record base for grounding verification. Mirrors how the Follow-Up
- * lifecycle store is built.
+ * source-record base for grounding verification and an Area base for Area-assignment
+ * verification. Mirrors how the Follow-Up lifecycle store is built.
  */
 export function createInMemoryGeneralActionLifecycleStore(): InMemoryGeneralActionLifecycleStore {
   return {
     ...createInMemorySourceRecordStore(),
+    ...createInMemoryGeneralActionAreaStore(),
     ...createInMemoryGeneralActionStore(),
   };
 }
