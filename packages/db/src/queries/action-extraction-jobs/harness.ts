@@ -5,6 +5,7 @@ import type {
   SuggestedActionExtractionAdapter,
 } from "@tendnote/domain";
 import { createGeneralActionAreaManager } from "../general-action-areas/lifecycle";
+import type { GeneralActionEmbeddingScheduler } from "../general-actions/types";
 import { createInMemoryActionExtractionJobStore } from "./in-memory-store";
 import { createActionExtractionProcessor } from "./processor";
 
@@ -17,11 +18,15 @@ import { createActionExtractionProcessor } from "./processor";
 export const OWNER = "user-1";
 
 export function createHarness(
-  input: { extractionAdapter?: SuggestedActionExtractionAdapter } = {},
+  input: {
+    extractionAdapter?: SuggestedActionExtractionAdapter;
+    scheduleGeneralActionEmbedding?: GeneralActionEmbeddingScheduler;
+  } = {},
 ) {
   const store = createInMemoryActionExtractionJobStore();
   const processor = createActionExtractionProcessor(store, {
     extractionAdapter: input.extractionAdapter,
+    scheduleGeneralActionEmbedding: input.scheduleGeneralActionEmbedding,
   });
   const areas = createGeneralActionAreaManager(store);
 

@@ -9,6 +9,7 @@ import type {
   SuggestedActionExtractionAdapter,
 } from "@tendnote/domain";
 import type {
+  GeneralActionEmbeddingScheduler,
   GeneralActionLifecycleStore,
   InMemoryGeneralActionLifecycleStore,
 } from "../general-actions/types";
@@ -112,4 +113,11 @@ export type ProcessActionExtractionJobResult = {
 
 export type CreateActionExtractionProcessorOptions = {
   extractionAdapter?: SuggestedActionExtractionAdapter;
+  /**
+   * Embed-on-write for extraction-sourced suggestions: threaded into the review seam so
+   * a Suggested General Action produced by extraction is embedded on write, exactly like
+   * one created through the general-actions barrel. Defaults to a no-op, so unit harnesses
+   * that do not exercise retrieval stay deterministic (ADR 0150; Phase 5 #183/#184).
+   */
+  scheduleGeneralActionEmbedding?: GeneralActionEmbeddingScheduler;
 };

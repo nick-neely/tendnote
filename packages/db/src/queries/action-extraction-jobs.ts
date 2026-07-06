@@ -13,6 +13,7 @@ import type {
   EnqueueActionExtractionJobInput,
   ProcessActionExtractionJobInput,
 } from "./action-extraction-jobs/types";
+import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 
 export type { AiSdkSuggestedActionExtractionAdapterOptions } from "./action-extraction-jobs/ai-sdk-adapter";
 export {
@@ -38,6 +39,9 @@ export function createActionExtractionJobProcessor(
       input.model || input.promptVersion
         ? createAiSdkSuggestedActionExtractionAdapter(input)
         : createDefaultSuggestedActionExtractionAdapter(input.env),
+    // Embed extraction-sourced suggestions on write, reusing the shared semantic
+    // embedding runtime the general-actions barrel uses (ADR 0150; Phase 5 #184).
+    scheduleGeneralActionEmbedding: enqueueAndTriggerSemanticEmbeddingJob,
   });
 }
 

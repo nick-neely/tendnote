@@ -289,7 +289,12 @@ export function createActionExtractionProcessor(
     store,
     extractionAdapter:
       options.extractionAdapter ?? createDeterministicSuggestedActionExtractionAdapter(),
-    review: createSuggestedGeneralActionReview(store),
+    // Thread the embedding scheduler into the review seam so extraction-sourced
+    // suggestions are embedded on write like barrel-path ones (ADR 0150). Optional and
+    // no-op by default, so deterministic unit harnesses are unaffected.
+    review: createSuggestedGeneralActionReview(store, {
+      scheduleGeneralActionEmbedding: options.scheduleGeneralActionEmbedding,
+    }),
   };
 
   return {
