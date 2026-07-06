@@ -1,6 +1,6 @@
 "use client";
 
-import type { GeneralActionLink } from "@tendnote/domain";
+import type { GeneralActionLink, GeneralActionRecurrence } from "@tendnote/domain";
 import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
 import {
   ArchiveIcon,
@@ -10,6 +10,7 @@ import {
   HistoryIcon,
   MoonIcon,
   MoreHorizontalIcon,
+  PauseIcon,
   PencilIcon,
   UsersIcon,
   XIcon,
@@ -21,6 +22,7 @@ import {
   deferGeneralActionAction,
   dismissGeneralActionAction,
   editGeneralActionAction,
+  pauseGeneralActionAction,
   setGeneralActionPeopleAction,
   setGeneralActionVisibilityAction,
 } from "@/app/actions/general-actions";
@@ -41,9 +43,11 @@ import {
   ActionPeopleField,
   type ActionPersonOption,
 } from "@/components/general-action-people-field";
+import { RecurrenceField } from "@/components/general-action-recurrence-field";
 import {
   ActionContextChip,
   ActionDueChip,
+  ActionRoutineChip,
   ActionScopeChip,
   ErrorText,
   GENERIC_ERROR,
@@ -114,6 +118,21 @@ function sameIdSet(a: string[], b: string[]): boolean {
   return b.every((id) => set.has(id));
 }
 
+function sameRecurrence(
+  a: GeneralActionRecurrence | null,
+  b: GeneralActionRecurrence | null,
+): boolean {
+  if (a === null || b === null) {
+    return a === b;
+  }
+  return a.interval === b.interval && a.unit === b.unit;
+}
+
+/** Short calendar label ("Aug 12") for the roll-forward confirmation. */
+function shortDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 /**
  * An active (open or deferred) Action row with inline view / edit / defer / share
  * modes. Every mutation flows through the shared lifecycle server actions; completing,
@@ -149,6 +168,7 @@ export function ActionRow({
   const [title, setTitle] = useState(action.title);
   const [notes, setNotes] = useState(action.notes ?? "");
   const [dueDate, setDueDate] = useState(action.dueAtDate);
+  const [recurrence, setRecurrence] = useState<GeneralActionRecurrence | null>(action.recurrence);
   const [links, setLinks] = useState<LinkDraft[]>(toLinkDrafts(action.links));
   const [hintLabels, setHintLabels] = useState<string[]>(toHintLabels(action.assetHints));
   const [personIds, setPersonIds] = useState<string[]>(action.linkedPeople.map((p) => p.id));
@@ -161,6 +181,9 @@ export function ActionRow({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A brief, self-clearing confirmation after a Routine occurrence rolls forward, so
+  // the in-place update isn't silent — the user sees when it comes back.
+  const [notice, setNotice] = useState<string | null>(null);
   // Which control initiated the in-flight mutation, so the spinner lands on the
   // button the user pressed rather than the whole row.
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -170,6 +193,7 @@ export function ActionRow({
   // a validation failure surfaces the message and leaves the row in place.
   function leaveThen(key: string, run: () => Promise<GeneralActionMutationResult>) {
     setError(null);
+    setNotice(null);
     setBusyKey(key);
     startTransition(async () => {
       try {
@@ -190,8 +214,13 @@ export function ActionRow({
 
   // In-place updates (edit/defer/share) hand the updated view back and return to view
   // mode on success; a validation failure keeps the form open with the message.
-  function runUpdate(key: string, run: () => Promise<GeneralActionMutationResult>) {
+  function runUpdate(
+    key: string,
+    run: () => Promise<GeneralActionMutationResult>,
+    onSuccess?: (view: GeneralActionView) => void,
+  ) {
     setError(null);
+    setNotice(null);
     setBusyKey(key);
     startTransition(async () => {
       try {
@@ -204,6 +233,7 @@ export function ActionRow({
         onUpdate(result.view);
         setMode("view");
         setBusyKey(null);
+        onSuccess?.(result.view);
       } catch {
         setError(GENERIC_ERROR);
         setBusyKey(null);
@@ -215,6 +245,7 @@ export function ActionRow({
     setTitle(action.title);
     setNotes(action.notes ?? "");
     setDueDate(action.dueAtDate);
+    setRecurrence(action.recurrence);
     setLinks(toLinkDrafts(action.links));
     setHintLabels(toHintLabels(action.assetHints));
     setPersonIds(action.linkedPeople.map((p) => p.id));
@@ -250,6 +281,7 @@ export function ActionRow({
       title?: string;
       notes?: string | null;
       dueAt?: string | null;
+      recurrence?: GeneralActionRecurrence | null;
       links?: GeneralActionLink[];
       assetHints?: string[];
       areaId?: string | null;
@@ -262,6 +294,9 @@ export function ActionRow({
     }
     if (dueDate !== action.dueAtDate) {
       edit.dueAt = dueDate ? dueDate : null;
+    }
+    if (!sameRecurrence(recurrence, action.recurrence)) {
+      edit.recurrence = recurrence;
     }
     if (normalizeLinks(cleanedLinks) !== normalizeLinks(action.links)) {
       edit.links = cleanedLinks;
@@ -335,6 +370,7 @@ export function ActionRow({
             value={dueDate}
           />
         </div>
+        <RecurrenceField onChange={setRecurrence} value={recurrence} />
         {editAreas.length ? (
           <div className="flex flex-col gap-1.5">
             <span className="text-[length:var(--text-small)] text-muted-foreground">Area</span>
@@ -471,7 +507,10 @@ export function ActionRow({
   }
 
   const hasContext =
-    action.scope !== "private" || action.linkedPeople.length > 0 || action.assetHints.length > 0;
+    action.isRoutine ||
+    action.scope !== "private" ||
+    action.linkedPeople.length > 0 ||
+    action.assetHints.length > 0;
   // On a row the viewer doesn't own, name who shared it so the absent Edit/Visibility
   // controls read as "not yours to re-author", not a missing feature (ADR 0153).
   const ownerName = action.owned
@@ -496,6 +535,7 @@ export function ActionRow({
           <ActionLinks links={action.links} />
           {hasContext ? (
             <div className="flex flex-wrap items-center gap-1.5">
+              {action.recurrenceLabel ? <ActionRoutineChip label={action.recurrenceLabel} /> : null}
               <ActionScopeChip label={action.visibilityLabel} scope={action.scope} />
               {action.linkedPeople.map((person) => (
                 <ActionContextChip key={person.id} kind="person">
@@ -527,15 +567,29 @@ export function ActionRow({
       <div className="flex items-center justify-end gap-1.5">
         <Button
           disabled={pending}
-          onClick={() =>
-            leaveThen("complete", () => completeGeneralActionAction({ generalActionId: action.id }))
-          }
+          onClick={() => {
+            // Completing a Routine occurrence isn't terminal: it rolls forward and
+            // stays on the list, so update in place rather than animating the row out.
+            const complete = () => completeGeneralActionAction({ generalActionId: action.id });
+            if (action.isRoutine) {
+              runUpdate("complete", complete, (view) => {
+                // Confirm when the occurrence comes back next, then fade the note so
+                // the row stays calm.
+                if (view.dueAtISO) {
+                  setNotice(`Done — next ${shortDay(view.dueAtISO)}`);
+                  window.setTimeout(() => setNotice(null), 5000);
+                }
+              });
+            } else {
+              leaveThen("complete", complete);
+            }
+          }}
           size="sm"
           type="button"
           variant="outline"
         >
           {busyKey === "complete" ? <Spinner /> : <CheckIcon />}
-          Complete
+          {action.isRoutine ? "Done for now" : "Complete"}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -546,7 +600,7 @@ export function ActionRow({
               type="button"
               variant="ghost"
             >
-              {busyKey === "dismiss" || busyKey === "archive" ? (
+              {busyKey === "dismiss" || busyKey === "archive" || busyKey === "pause" ? (
                 <Spinner />
               ) : (
                 <MoreHorizontalIcon />
@@ -558,6 +612,18 @@ export function ActionRow({
               <ClockIcon />
               Set aside
             </DropdownMenuItem>
+            {/* Pausing suspends a Routine's recurrence until resumed — a one-time
+                Action has nothing to pause, so this only shows for Routines (ADR 0148). */}
+            {action.isRoutine ? (
+              <DropdownMenuItem
+                onSelect={() =>
+                  leaveThen("pause", () => pauseGeneralActionAction({ generalActionId: action.id }))
+                }
+              >
+                <PauseIcon />
+                Pause routine
+              </DropdownMenuItem>
+            ) : null}
             {/* Content, people, and visibility belong to the owner; a viewing member
                 can still act on the Action above, but not re-author it (ADR 0153). */}
             {action.owned ? (
@@ -601,6 +667,15 @@ export function ActionRow({
         </DropdownMenu>
       </div>
       {error ? <ErrorText message={error} /> : null}
+      {notice ? (
+        <p
+          className="inline-flex items-center gap-1.5 self-end text-[length:var(--text-caption)] text-muted-foreground"
+          role="status"
+        >
+          <CheckIcon aria-hidden className="size-3 text-primary" />
+          {notice}
+        </p>
+      ) : null}
       <ActionHistoryDialog
         generalActionId={action.id}
         onOpenChange={setHistoryOpen}

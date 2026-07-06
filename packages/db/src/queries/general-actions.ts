@@ -56,6 +56,14 @@ export async function archiveGeneralAction(input: GeneralActionActionInput) {
   return defaultGeneralActionLifecycle.archiveGeneralAction(input);
 }
 
+export async function pauseGeneralAction(input: GeneralActionActionInput) {
+  return defaultGeneralActionLifecycle.pauseGeneralAction(input);
+}
+
+export async function resumeGeneralAction(input: GeneralActionActionInput) {
+  return defaultGeneralActionLifecycle.resumeGeneralAction(input);
+}
+
 export async function deferGeneralAction(input: DeferGeneralActionInput) {
   return defaultGeneralActionLifecycle.deferGeneralAction(input);
 }
@@ -66,6 +74,10 @@ export async function listActiveGeneralActions(input: ListGeneralActionsInput) {
 
 export async function listResolvedGeneralActions(input: ListGeneralActionsInput) {
   return defaultGeneralActionLifecycle.listResolvedGeneralActions(input);
+}
+
+export async function listPausedGeneralActions(input: ListGeneralActionsInput) {
+  return defaultGeneralActionLifecycle.listPausedGeneralActions(input);
 }
 
 export async function getGeneralAction(input: GeneralActionActionInput) {

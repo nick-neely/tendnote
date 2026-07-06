@@ -1,4 +1,8 @@
-import type { GeneralActionAssetHint, GeneralActionLink } from "@tendnote/domain";
+import type {
+  GeneralActionAssetHint,
+  GeneralActionLink,
+  GeneralActionRecurrence,
+} from "@tendnote/domain";
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { user } from "../auth";
@@ -34,6 +38,11 @@ export const generalActions = pgTable(
     dueAt: timestamp("due_at", { withTimezone: true }),
     // Resurface date set when the action is deferred (ADR 0149).
     deferUntil: timestamp("defer_until", { withTimezone: true }),
+    // Simple recurrence cadence ({ interval, unit }). Non-null makes this a Routine,
+    // the product label for a recurring General Action; null is a one-time Action
+    // (ADRs 0147, 0148). Not a schedule engine — just the cadence the completion path
+    // rolls the due date forward by.
+    recurrence: jsonb("recurrence").$type<GeneralActionRecurrence | null>(),
     // Source grounding where present; null for direct user-created actions.
     sourceRecordId: uuid("source_record_id").references(() => sourceRecords.id, {
       onDelete: "set null",

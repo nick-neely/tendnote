@@ -4,6 +4,7 @@ import {
 } from "@tendnote/db/queries/general-action-areas";
 import {
   listActiveGeneralActions,
+  listPausedGeneralActions,
   listResolvedGeneralActions,
 } from "@tendnote/db/queries/general-actions";
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
@@ -29,8 +30,11 @@ export default async function ActionsPage() {
   // filter (active only) and resolve names for Actions filed under a since-archived
   // Area.
   await ensureDefaultGeneralActionAreas({ ownerUserId });
-  const [active, resolved, areas, shareableMembers, people] = await Promise.all([
+  const [active, paused, resolved, areas, shareableMembers, people] = await Promise.all([
     listActiveGeneralActions({ ownerUserId }),
+    // Paused Routines, kept reachable to resume or retire — never on a proactive
+    // surface, so a paused Routine stays quiet (ADR 0148).
+    listPausedGeneralActions({ ownerUserId }),
     listResolvedGeneralActions({ ownerUserId, limit: RESOLVED_LIMIT }),
     listGeneralActionAreas({ ownerUserId, includeArchived: true }),
     // Members the owner can share an Action with — drives the visibility control.
@@ -59,6 +63,7 @@ export default async function ActionsPage() {
         <ActionsSurface
           active={active.map(toView)}
           areas={areas.map((area) => toGeneralActionAreaView(area))}
+          paused={paused.map(toView)}
           people={people.map((person) => ({ id: person.id, displayName: person.displayName }))}
           resolved={resolved.map(toView)}
           resolvedTruncated={resolved.length >= RESOLVED_LIMIT}

@@ -6,6 +6,7 @@ import type {
   GeneralActionEdit,
   GeneralActionEvent,
   GeneralActionLink,
+  GeneralActionRecurrence,
   GeneralActionStatus,
   Person,
   PrivacyScope,
@@ -25,6 +26,7 @@ export type GeneralActionPatch = Partial<
     | "notes"
     | "dueAt"
     | "deferUntil"
+    | "recurrence"
     | "links"
     | "assetHints"
     | "status"
@@ -169,6 +171,8 @@ export type CreateActiveGeneralActionInput = {
   title: string;
   notes?: string | null;
   dueAt?: Date | null;
+  // Simple recurrence cadence; present makes the new action a Routine (ADR 0148).
+  recurrence?: GeneralActionRecurrence | null;
   links?: GeneralActionLink[];
   // Lightweight object/asset hints carried before Asset/Object Memory (ADR 0156).
   assetHints?: GeneralActionAssetHint[];

@@ -2,6 +2,8 @@ import {
   ACTIVE_GENERAL_ACTION_STATUSES,
   assertAreaNotArchived,
   assertGeneralActionEditable,
+  assertPausableRoutine,
+  assertRecurrenceEditAllowed,
   assertResurfaceDate,
   type GeneralAction,
   type GeneralActionEventKind,
@@ -9,6 +11,7 @@ import {
   type GeneralActionStatus,
   GeneralActionValidationError,
   generalActionEditSchema,
+  nextRoutineDueAt,
   type PrivacyScope,
   resolveGeneralActionTransition,
 } from "@tendnote/domain";
@@ -35,6 +38,8 @@ const EVENT_KIND_FOR_ACTION: Record<GeneralActionLifecycleAction, GeneralActionE
   dismiss: "dismissed",
   reopen: "reopened",
   archive: "archived",
+  pause: "paused",
+  resume: "resumed",
 };
 
 /**
@@ -261,8 +266,9 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
     action: GeneralActionLifecycleAction,
     patchExtra: GeneralActionPatch = {},
     detail: Record<string, unknown> = {},
+    preloaded?: GeneralAction,
   ) {
-    const current = await requireAction(input);
+    const current = preloaded ?? (await requireAction(input));
     const status = resolveGeneralActionTransition(current.status, action);
 
     const updated = await store.updateGeneralAction({
@@ -317,6 +323,7 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         status: "open",
         dueAt: input.dueAt ?? null,
         deferUntil: null,
+        recurrence: input.recurrence ?? null,
         sourceRecordId,
         areaId,
         scope,
@@ -349,6 +356,8 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         filed: areaId !== null,
         peopleLinked: personIds.length,
         assetHints: assetHints.length,
+        // Whether this is a Routine (recurring) or a one-time Action (ADR 0148).
+        recurring: action.recurrence !== null,
       });
 
       return hydrate(action);
@@ -377,10 +386,11 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         edit.dueAt === undefined &&
         edit.links === undefined &&
         edit.areaId === undefined &&
-        edit.assetHints === undefined
+        edit.assetHints === undefined &&
+        edit.recurrence === undefined
       ) {
         throw new GeneralActionValidationError(
-          "An action edit must change the title, notes, due date, links, area, or asset hints.",
+          "An action edit must change the title, notes, due date, cadence, links, area, or asset hints.",
         );
       }
 
@@ -400,6 +410,12 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
       if (edit.assetHints !== undefined) {
         patch.assetHints = edit.assetHints;
       }
+      if (edit.recurrence !== undefined) {
+        // A paused Routine can't have its cadence removed in place — that would leave
+        // a paused one-time Action (ADR 0148). Resume first.
+        assertRecurrenceEditAllowed(action.status, edit.recurrence);
+        patch.recurrence = edit.recurrence;
+      }
       if (edit.areaId !== undefined) {
         patch.areaId = await resolveAreaId(action.ownerUserId, edit.areaId);
       }
@@ -417,6 +433,7 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         editedLinks: edit.links !== undefined,
         editedAssetHints: edit.assetHints !== undefined,
         editedArea: edit.areaId !== undefined,
+        editedRecurrence: edit.recurrence !== undefined,
       });
 
       return hydrate(updated);
@@ -506,12 +523,95 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
       return hydrate(updated);
     },
 
-    completeGeneralAction(input: GeneralActionActionInput) {
-      return transition(input, "complete", { completedAt: new Date(), deferUntil: null });
+    /**
+     * Completes an Action. For a one-time Action this is terminal — it moves to
+     * `completed` with a completion timestamp. For a Routine it is not: completing an
+     * occurrence rolls the due date forward one cadence step (anchored on the
+     * completion moment) and keeps the Routine `open`, so it simply comes back next
+     * cycle. The completion is still written to history, so a Routine's completion
+     * trail is preserved without any streak or scoring (ADRs 0147, 0165). Whoever can
+     * see the Action may complete it — a household member completing a shared Routine
+     * occurrence works, keyed on the owner while recording the member as actor (ADR
+     * 0153).
+     */
+    async completeGeneralAction(input: GeneralActionActionInput) {
+      const current = await requireAction(input);
+      if (current.recurrence === null) {
+        return transition(
+          input,
+          "complete",
+          { completedAt: new Date(), deferUntil: null },
+          {},
+          current,
+        );
+      }
+
+      // Routine: validate the occurrence is completable from its current state
+      // (open/deferred, never paused/terminal), then roll forward instead of retiring.
+      resolveGeneralActionTransition(current.status, "complete");
+      const completedAt = new Date();
+      const nextDueAt = nextRoutineDueAt(current.recurrence, completedAt);
+      const updated = await store.updateGeneralAction({
+        ownerUserId: current.ownerUserId,
+        generalActionId: current.id,
+        patch: {
+          status: "open",
+          dueAt: nextDueAt,
+          deferUntil: null,
+          completedAt: null,
+          lastActorUserId: input.ownerUserId,
+        },
+      });
+      await recordEvent(updated, "completed", input.ownerUserId, {
+        previousStatus: current.status,
+        status: updated.status,
+        rolledForward: true,
+        occurrenceCompletedAt: completedAt.toISOString(),
+        previousDueAt: current.dueAt ? current.dueAt.toISOString() : null,
+        nextDueAt: nextDueAt.toISOString(),
+      });
+      return hydrate(updated);
     },
 
     dismissGeneralAction(input: GeneralActionActionInput) {
       return transition(input, "dismiss", { deferUntil: null });
+    },
+
+    /**
+     * Pauses a Routine — sets it aside without retiring it, so it stops surfacing and
+     * stops rolling forward until resumed. Routine-only: a one-time Action has nothing
+     * recurring to suspend and is rejected (ADRs 0147, 0148). Whoever can see the
+     * Routine may pause it, like the other lifecycle actions. Clears any resurface date
+     * on the way out, like the other transitions that leave `deferred`, so a stale
+     * `deferUntil` can't corrupt the resumed row's surfacing order.
+     */
+    async pauseGeneralAction(input: GeneralActionActionInput) {
+      const current = await requireAction(input);
+      assertPausableRoutine(current);
+      return transition(input, "pause", { deferUntil: null }, {}, current);
+    },
+
+    /**
+     * Resumes a paused Routine back to `open` so its cadence surfaces it again. If it
+     * was paused past its due date, the due date is rolled forward one cadence step
+     * from the resume moment — mirroring the completion path — so a resumed Routine
+     * reads "next due <date>" rather than re-surfacing as overdue for a gap the user
+     * deliberately paused (calm register; a paused stretch is not a missed occurrence).
+     * A future or absent due date is left untouched: only an overdue one is rolled.
+     */
+    async resumeGeneralAction(input: GeneralActionActionInput) {
+      const current = await requireAction(input);
+      const patch: GeneralActionPatch = {};
+      const detail: Record<string, unknown> = {};
+      const now = new Date();
+      if (current.recurrence && current.dueAt && current.dueAt.getTime() < now.getTime()) {
+        const nextDueAt = nextRoutineDueAt(current.recurrence, now);
+        patch.dueAt = nextDueAt;
+        detail.rolledForward = true;
+        detail.previousDueAt = current.dueAt.toISOString();
+        detail.nextDueAt = nextDueAt.toISOString();
+      }
+      return transition(input, "resume", patch, detail, current);
     },
 
     reopenGeneralAction(input: GeneralActionActionInput) {
@@ -559,6 +659,21 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
       const actions = await store.listVisibleGeneralActionsForCaller({
         callerUserId: input.ownerUserId,
         statuses: ["completed", "dismissed"],
+        limit: input.limit,
+      });
+      return Promise.all(actions.map((action) => hydrate(action)));
+    },
+
+    /**
+     * The caller's paused Routines (their own plus visible shared/household ones),
+     * kept reachable to resume or archive. Paused is not an active status, so these
+     * never appear in the active list or on proactive surfaces — a paused Routine is
+     * deliberately quiet until the owner brings it back (ADR 0148).
+     */
+    async listPausedGeneralActions(input: ListGeneralActionsInput) {
+      const actions = await store.listVisibleGeneralActionsForCaller({
+        callerUserId: input.ownerUserId,
+        statuses: ["paused"],
         limit: input.limit,
       });
       return Promise.all(actions.map((action) => hydrate(action)));

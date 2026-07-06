@@ -21,9 +21,12 @@ export class GeneralActionValidationError extends Error {
  * date so the action comes back rather than silently disappearing (ADR 0149).
  * Terminal states preserve history without deleting the record (ADR 0165).
  *
- * The review-gated `suggested` state and recurring-Routine states are deferred to
- * later Phase 5 slices; adding enum values is additive so this stays forward
- * friendly (ADRs 0144, 0147, 0148).
+ * `paused` is the one non-terminal set-aside unique to Routines (recurring General
+ * Actions, ADR 0148): a paused Routine stops surfacing and stops rolling forward but
+ * is not retired — the owner resumes it later. A one-time Action is never paused.
+ *
+ * The review-gated `suggested` state is deferred to a later Phase 5 slice; adding
+ * enum values is additive so this stays forward friendly (ADRs 0144, 0147, 0148).
  */
 export const generalActionStatusSchema = z.enum([
   "open",
@@ -31,6 +34,7 @@ export const generalActionStatusSchema = z.enum([
   "completed",
   "dismissed",
   "archived",
+  "paused",
 ]);
 
 /**
@@ -59,6 +63,30 @@ export type GeneralActionAssetHint = z.infer<typeof generalActionAssetHintSchema
 
 /** Hard cap on asset hints per Action. A hint is a passing label, not a catalog. */
 export const MAX_ASSET_HINTS = 20;
+
+/**
+ * The calendar unit a Routine's cadence steps by. Deliberately the four plain units
+ * a person actually says out loud ("every 6 months", "weekly") — SIMPLE recurrence
+ * only: no business-day rules, no per-occurrence exceptions, no multi-step or
+ * calendar-synced schedules (ADR 0147).
+ */
+export const generalActionRecurrenceUnitSchema = z.enum(["day", "week", "month", "year"]);
+export type GeneralActionRecurrenceUnit = z.infer<typeof generalActionRecurrenceUnitSchema>;
+
+/** Upper bound on a cadence interval, so "every N units" can't be an absurd number. */
+export const MAX_RECURRENCE_INTERVAL = 365;
+
+/**
+ * A General Action's simple recurrence cadence: repeat "every `interval` `unit`s"
+ * (e.g. every 6 months, every 2 weeks). Its mere presence is what makes a General
+ * Action a Routine — Routine is a product label over one recurring model, not a
+ * separate table (ADR 0148). Null cadence = a one-time Action.
+ */
+export const generalActionRecurrenceSchema = z.object({
+  interval: z.number().int().min(1).max(MAX_RECURRENCE_INTERVAL),
+  unit: generalActionRecurrenceUnitSchema,
+});
+export type GeneralActionRecurrence = z.infer<typeof generalActionRecurrenceSchema>;
 
 export const generalActionSchema = z.object({
   id: z.string(),
@@ -91,6 +119,11 @@ export const generalActionSchema = z.object({
   // asset records — just labels. Count-bounded here in the domain (not only at the
   // web edge) so no caller can attach an unbounded pile of hints.
   assetHints: z.array(generalActionAssetHintSchema).max(MAX_ASSET_HINTS).default([]),
+  // Simple recurrence cadence. Non-null makes this a Routine (labeled as such in
+  // product UI); null is a one-time Action (ADRs 0147, 0148). A Routine may still be
+  // unscheduled — a cadence without a current due date — until its first completion
+  // anchors one.
+  recurrence: generalActionRecurrenceSchema.nullable().default(null),
   // Creator provenance and actor provenance for lifecycle changes (ADR 0154).
   createdByUserId: z.string().nullable().optional(),
   lastActorUserId: z.string().nullable().optional(),
@@ -127,6 +160,7 @@ export const generalActionUpdateSchema = z
     status: generalActionStatusSchema,
     dueAt: z.date().nullable(),
     deferUntil: z.date().nullable(),
+    recurrence: generalActionRecurrenceSchema.nullable(),
     areaId: z.string().nullable(),
     // Visibility is a mutable patch field so an Action can be re-scoped in place
     // (#180). Defaults-free like the rest of this schema: an absent key is never
@@ -155,13 +189,18 @@ export function isActiveGeneralActionStatus(status: GeneralActionStatus): boolea
 }
 
 /**
- * Statuses a General Action's content (title, notes, links, due date) may still be
- * edited from. Editing a completed, dismissed, or archived action is rejected —
- * those are terminal for content edits; the user reopens first (ADR 0165).
+ * Statuses a General Action's content (title, notes, links, due date, cadence) may
+ * still be edited from. Editing a completed, dismissed, or archived action is
+ * rejected — those are terminal for content edits; the user reopens first (ADR 0165).
+ * A paused Routine remains editable at the domain level for programmatic/Eve callers;
+ * the web surface exposes content edits only on active rows (a paused row offers just
+ * resume/archive), and a paused Routine's cadence can never be *removed* in place —
+ * that would leave a paused one-time Action (see `assertRecurrenceEditAllowed`).
  */
 export const EDITABLE_GENERAL_ACTION_STATUSES: ReadonlySet<GeneralActionStatus> = new Set([
   "open",
   "deferred",
+  "paused",
 ]);
 
 /**
@@ -170,7 +209,14 @@ export const EDITABLE_GENERAL_ACTION_STATUSES: ReadonlySet<GeneralActionStatus> 
  * cannot make invalid status jumps. Mirrors the Follow-Up lifecycle matrix while
  * staying a separate model (ADR 0143).
  */
-export type GeneralActionLifecycleAction = "complete" | "defer" | "dismiss" | "reopen" | "archive";
+export type GeneralActionLifecycleAction =
+  | "complete"
+  | "defer"
+  | "dismiss"
+  | "reopen"
+  | "archive"
+  | "pause"
+  | "resume";
 
 const GENERAL_ACTION_TRANSITIONS: Record<
   GeneralActionLifecycleAction,
@@ -180,10 +226,15 @@ const GENERAL_ACTION_TRANSITIONS: Record<
   defer: { from: new Set(["open", "deferred"]), to: "deferred" },
   dismiss: { from: new Set(["open", "deferred"]), to: "dismissed" },
   reopen: { from: new Set(["completed", "dismissed"]), to: "open" },
+  // Pausing sets a Routine aside without retiring it; resuming brings it back to
+  // open. Only Routines pause (guarded at the lifecycle seam), so these never apply
+  // to a one-time Action (ADR 0148).
+  pause: { from: new Set(["open", "deferred"]), to: "paused" },
+  resume: { from: new Set(["paused"]), to: "open" },
   // Archive preserves history while removing an action from active views. It is
-  // reachable from any non-archived state.
+  // reachable from any non-archived state, a paused Routine included.
   archive: {
-    from: new Set(["open", "deferred", "completed", "dismissed"]),
+    from: new Set(["open", "deferred", "completed", "dismissed", "paused"]),
     to: "archived",
   },
 };
@@ -225,6 +276,124 @@ export function assertResurfaceDate(deferUntil: unknown): Date {
   return deferUntil;
 }
 
+/** Whether a General Action is a Routine — i.e. carries a recurrence cadence (ADR 0148). */
+export function isGeneralActionRoutine(action: Pick<GeneralAction, "recurrence">): boolean {
+  return action.recurrence !== null;
+}
+
+/**
+ * Guards that an action is a Routine before it can be paused. Pausing is a
+ * Routine-only affordance — a one-time Action has nothing recurring to suspend, so
+ * it is dismissed or archived instead (ADRs 0147, 0148).
+ */
+export function assertPausableRoutine(action: Pick<GeneralAction, "recurrence">): void {
+  if (action.recurrence === null) {
+    throw new GeneralActionValidationError("Only a routine can be paused.");
+  }
+}
+
+/** The last calendar day (1–31) of a local month, for month-end clamping. */
+function lastDayOfMonth(year: number, monthIndex: number): number {
+  // Day 0 of the *next* month is the last day of this one; local construction.
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+/**
+ * Adds whole months to a local calendar day, clamping the day to the target month's
+ * length so month-end never overflows: Jan 31 + 1 month → Feb 28 (or 29), not Mar 3.
+ * Returns local midnight of the resulting day.
+ */
+function addMonthsClamped(from: Date, months: number): Date {
+  const targetIndex = from.getMonth() + months;
+  const targetYear = from.getFullYear() + Math.floor(targetIndex / 12);
+  const targetMonth = ((targetIndex % 12) + 12) % 12;
+  const day = Math.min(from.getDate(), lastDayOfMonth(targetYear, targetMonth));
+  return new Date(targetYear, targetMonth, day);
+}
+
+/**
+ * The next due date for a Routine, rolled forward one cadence step from `from`
+ * (normally the completion moment). We anchor on the completion date rather than the
+ * previous due date — "every 6 months" means six months from when you actually did
+ * it, which is calmer and drift-tolerant: a Routine done late is never treated as a
+ * pile of missed occurrences, it simply schedules the next one from now (ADRs 0147,
+ * 0165; a missed occurrence is not a failure).
+ *
+ * The result is local midnight of the target calendar day, matching how due dates
+ * are stored elsewhere. Day/week steps use local wall-clock day arithmetic, so they
+ * stay correct across DST transitions; month/year steps clamp month-end.
+ */
+export function nextRoutineDueAt(recurrence: GeneralActionRecurrence, from: Date): Date {
+  const year = from.getFullYear();
+  const month = from.getMonth();
+  const day = from.getDate();
+
+  switch (recurrence.unit) {
+    case "day":
+      return new Date(year, month, day + recurrence.interval);
+    case "week":
+      return new Date(year, month, day + recurrence.interval * 7);
+    case "month":
+      return addMonthsClamped(from, recurrence.interval);
+    case "year":
+      return addMonthsClamped(from, recurrence.interval * 12);
+  }
+}
+
+/**
+ * Whether an Action is asking for attention *now* on a proactive surface (a brief, a
+ * Today view) at instant `now`. True for a scheduled Action due today or overdue, and
+ * for a deferred one whose resurface date has arrived. False for anything dated in the
+ * future — and, deliberately, false for an unscheduled Action, so a dateless "someday"
+ * item never floods proactive surfaces; it stays discoverable on the Actions ledger
+ * and resurfaces only when the owner gives it a date (ADR 0149). Paused Routines and
+ * terminal Actions never surface. A Routine follows the same rule via its rolled-
+ * forward due date, so its cadence — not a nag — is what brings it back.
+ */
+export function isProactivelySurfacing(
+  action: Pick<GeneralAction, "status" | "dueAt" | "deferUntil">,
+  now: Date,
+): boolean {
+  if (action.status === "deferred") {
+    return action.deferUntil !== null && action.deferUntil.getTime() <= now.getTime();
+  }
+  if (action.status !== "open") {
+    return false;
+  }
+  return action.dueAt !== null && action.dueAt.getTime() <= now.getTime();
+}
+
+/**
+ * A plain-language cadence label for a Routine — "Every week", "Every 6 months". The
+ * canonical phrasing so the UI and, later, Eve describe a Routine's rhythm the same
+ * calm way (never streak or pressure language). The unit values are already the
+ * singular nouns, so they read directly.
+ */
+export function describeRecurrence(recurrence: GeneralActionRecurrence): string {
+  if (recurrence.interval === 1) {
+    return `Every ${recurrence.unit}`;
+  }
+  return `Every ${recurrence.interval} ${recurrence.unit}s`;
+}
+
+/**
+ * Guards the invariant that a paused Action is always a Routine: a paused Routine's
+ * cadence cannot be removed in place, because that would leave a paused *one-time*
+ * Action — a state the model does not allow (pausing is Routine-only). Resume it
+ * first, then make it one-time (ADR 0148). A no-op or a cadence *change* while paused
+ * is fine; only removal is blocked.
+ */
+export function assertRecurrenceEditAllowed(
+  status: GeneralActionStatus,
+  nextRecurrence: GeneralActionRecurrence | null | undefined,
+): void {
+  if (status === "paused" && nextRecurrence === null) {
+    throw new GeneralActionValidationError(
+      "Resume this routine before turning it into a one-time action.",
+    );
+  }
+}
+
 /**
  * Edit payload for a General Action's user-facing content. `undefined` leaves a
  * field unchanged; explicit `null` clears an optional field (notes or due date).
@@ -240,6 +409,10 @@ export const generalActionEditSchema = z
     // Asset hints are content, edited in place alongside notes and links (ADR 0156).
     // `undefined` leaves them unchanged; an explicit array replaces the whole set.
     assetHints: z.array(generalActionAssetHintSchema).max(MAX_ASSET_HINTS).optional(),
+    // Cadence editing turns an Action into a Routine and back: an object sets or
+    // changes the cadence, explicit `null` makes it one-time again, `undefined`
+    // leaves it as is (ADR 0148).
+    recurrence: generalActionRecurrenceSchema.nullable().optional(),
   })
   .strict();
 
@@ -258,6 +431,8 @@ export const generalActionEventKindSchema = z.enum([
   "deferred",
   "dismissed",
   "archived",
+  "paused",
+  "resumed",
 ]);
 
 export const generalActionEventSchema = z.object({

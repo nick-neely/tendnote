@@ -56,6 +56,23 @@ function runStoreContract(name: string, makeStore: () => GeneralActionStore) {
       expect(updated.scope).toBe("private");
     });
 
+    it("round-trips a Routine's cadence and preserves it through a status-only update", async () => {
+      const store = makeStore();
+      const routine = await seed(store, {
+        title: "Replace the filter",
+        recurrence: { interval: 6, unit: "month" },
+      });
+      expect(routine.recurrence).toEqual({ interval: 6, unit: "month" });
+
+      // A defaults-free update must not wipe the cadence column on an unrelated patch.
+      const updated = await store.updateGeneralAction({
+        ownerUserId: OWNER,
+        generalActionId: routine.id,
+        patch: { status: "paused", lastActorUserId: OWNER },
+      });
+      expect(updated.recurrence).toEqual({ interval: 6, unit: "month" });
+    });
+
     it("orders by surfacing time: coalesce(deferUntil, dueAt), unscheduled last", async () => {
       const store = makeStore();
       await seed(store, { title: "Later", dueAt: new Date("2026-09-01T00:00:00Z") });

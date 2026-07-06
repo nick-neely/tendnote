@@ -1,5 +1,6 @@
 "use client";
 
+import type { GeneralActionRecurrence } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { useId, useState, useTransition } from "react";
@@ -18,6 +19,7 @@ import {
   ActionPeopleField,
   type ActionPersonOption,
 } from "@/components/general-action-people-field";
+import { RecurrenceField } from "@/components/general-action-recurrence-field";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
@@ -58,6 +60,7 @@ export function CreateActionForm({
   const detailsId = useId();
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [recurrence, setRecurrence] = useState<GeneralActionRecurrence | null>(null);
   const [notes, setNotes] = useState("");
   const [links, setLinks] = useState<LinkDraft[]>([]);
   const [hintLabels, setHintLabels] = useState<string[]>([]);
@@ -76,6 +79,7 @@ export function CreateActionForm({
   function reset() {
     setTitle("");
     setDueDate("");
+    setRecurrence(null);
     setNotes("");
     setLinks([]);
     setHintLabels([]);
@@ -101,6 +105,7 @@ export function CreateActionForm({
           title: trimmedTitle,
           ...(trimmedNotes ? { notes: trimmedNotes } : {}),
           ...(dueDate ? { dueAt: dueDate } : {}),
+          ...(recurrence ? { recurrence } : {}),
           ...(cleanedLinks.length ? { links: cleanedLinks } : {}),
           ...(cleanedHints.length ? { assetHints: cleanedHints } : {}),
           ...(personIds.length ? { personIds } : {}),
@@ -183,6 +188,7 @@ export function CreateActionForm({
                   value={dueDate}
                 />
               </div>
+              <RecurrenceField onChange={setRecurrence} value={recurrence} />
               <div className="flex flex-col gap-1.5">
                 <span className="text-[length:var(--text-small)] text-muted-foreground">Notes</span>
                 <Textarea

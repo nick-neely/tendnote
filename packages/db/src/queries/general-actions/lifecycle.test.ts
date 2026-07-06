@@ -155,7 +155,9 @@ describe("edit general action", () => {
 
     await expect(
       lifecycle.editGeneralAction({ ownerUserId: OWNER, generalActionId: action.id, edit: {} }),
-    ).rejects.toThrow(/must change the title, notes, due date, links, area, or asset hints/);
+    ).rejects.toThrow(
+      /must change the title, notes, due date, cadence, links, area, or asset hints/,
+    );
   });
 
   it("cannot edit a completed action", async () => {
@@ -953,6 +955,365 @@ describe("household-scoped actions", () => {
         selectedUserIds: [],
       }),
     ).rejects.toThrow(/at least one person/);
+  });
+});
+
+describe("routines (recurring general actions)", () => {
+  const CADENCE = { interval: 6, unit: "month" } as const;
+
+  it("creates a Routine with a cadence and notes it in the created event", async () => {
+    const { lifecycle } = await setup();
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Replace the refrigerator water filter",
+      recurrence: CADENCE,
+    });
+
+    expect(routine.recurrence).toEqual(CADENCE);
+    expect(routine.status).toBe("open");
+    const events = await lifecycle.listGeneralActionHistory({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+    expect(events.at(0)?.detailJson).toMatchObject({ recurring: true });
+  });
+
+  it("rolls the due date forward on completion and keeps the Routine open", async () => {
+    const { lifecycle } = await setup();
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Replace the filter",
+      dueAt: new Date("2026-01-01T00:00:00Z"),
+      recurrence: CADENCE,
+    });
+
+    const completed = await lifecycle.completeGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+
+    // Not terminal: it stays open, comes back next cycle, and never marks a completion
+    // timestamp on the record (that lives in history instead).
+    expect(completed.status).toBe("open");
+    expect(completed.completedAt).toBeNull();
+    // Rolled forward from the completion moment (now), so the next due is in the future.
+    expect(completed.dueAt).toBeInstanceOf(Date);
+    expect(completed.dueAt?.getTime()).toBeGreaterThan(Date.now());
+    // It is still active, not resolved.
+    const active = await lifecycle.listActiveGeneralActions({ ownerUserId: OWNER });
+    expect(active.map((a) => a.id)).toContain(routine.id);
+    const resolved = await lifecycle.listResolvedGeneralActions({ ownerUserId: OWNER });
+    expect(resolved.map((a) => a.id)).not.toContain(routine.id);
+  });
+
+  it("preserves completion history across occurrences", async () => {
+    const { lifecycle, historyKinds } = await setup();
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Water the plants",
+      recurrence: { interval: 1, unit: "week" },
+    });
+
+    await lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+    await lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+
+    // Each occurrence's completion is retained — the trail grows, nothing is lost.
+    await expect(historyKinds(routine.id)).resolves.toEqual(["created", "completed", "completed"]);
+    const events = await lifecycle.listGeneralActionHistory({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+    expect(events.at(-1)?.detailJson).toMatchObject({ rolledForward: true });
+  });
+
+  it("lets a household member complete a shared Routine occurrence, rolling it forward under the owner", async () => {
+    const base = await setup();
+    const household = await base.store.createHouseholdWorkspace({
+      ownerUserId: OWNER,
+      name: "Household",
+      defaultScope: "private",
+    });
+    for (const [userId, role] of [
+      [OWNER, "owner"],
+      [MEMBER, "member"],
+    ] as const) {
+      await base.store.createHouseholdMembership({
+        householdId: household.id,
+        userId,
+        invitedByUserId: OWNER,
+        role,
+        status: "active",
+        invitedAt: new Date("2026-06-01T00:00:00Z"),
+        acceptedAt: new Date("2026-06-01T00:00:00Z"),
+        removedAt: null,
+      });
+    }
+    const routine = await base.lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Take out the recycling",
+      scope: "household",
+      householdId: household.id,
+      recurrence: { interval: 1, unit: "week" },
+    });
+
+    const completed = await base.lifecycle.completeGeneralAction({
+      ownerUserId: MEMBER,
+      generalActionId: routine.id,
+    });
+
+    // Ownership and provenance hold: the member is the actor, the owner stays owner,
+    // and the Routine rolled forward rather than resolving.
+    expect(completed).toMatchObject({ ownerUserId: OWNER, status: "open" });
+    expect(completed.lastActorUserId).toBe(MEMBER);
+    const events = await base.lifecycle.listGeneralActionHistory({
+      ownerUserId: MEMBER,
+      generalActionId: routine.id,
+    });
+    expect(events.at(-1)).toMatchObject({ kind: "completed", actorUserId: MEMBER });
+  });
+
+  it("lets a household member pause and resume a shared Routine, stamping the actor", async () => {
+    const base = await setup();
+    const household = await base.store.createHouseholdWorkspace({
+      ownerUserId: OWNER,
+      name: "Household",
+      defaultScope: "private",
+    });
+    for (const [userId, role] of [
+      [OWNER, "owner"],
+      [MEMBER, "member"],
+    ] as const) {
+      await base.store.createHouseholdMembership({
+        householdId: household.id,
+        userId,
+        invitedByUserId: OWNER,
+        role,
+        status: "active",
+        invitedAt: new Date("2026-06-01T00:00:00Z"),
+        acceptedAt: new Date("2026-06-01T00:00:00Z"),
+        removedAt: null,
+      });
+    }
+    const routine = await base.lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Refill the water softener",
+      scope: "household",
+      householdId: household.id,
+      recurrence: { interval: 1, unit: "month" },
+    });
+
+    // A member who can see a household Routine may pause/resume it (act-not-author,
+    // #180), keyed on the owner while recording the member as actor.
+    const paused = await base.lifecycle.pauseGeneralAction({
+      ownerUserId: MEMBER,
+      generalActionId: routine.id,
+    });
+    expect(paused).toMatchObject({ ownerUserId: OWNER, status: "paused", lastActorUserId: MEMBER });
+
+    const resumed = await base.lifecycle.resumeGeneralAction({
+      ownerUserId: MEMBER,
+      generalActionId: routine.id,
+    });
+    expect(resumed).toMatchObject({ ownerUserId: OWNER, status: "open", lastActorUserId: MEMBER });
+
+    const events = await base.lifecycle.listGeneralActionHistory({
+      ownerUserId: MEMBER,
+      generalActionId: routine.id,
+    });
+    expect(events.map((event) => [event.kind, event.actorUserId])).toEqual([
+      ["created", OWNER],
+      ["paused", MEMBER],
+      ["resumed", MEMBER],
+    ]);
+  });
+
+  it("pauses and resumes a Routine, keeping it out of the active list while paused", async () => {
+    const { lifecycle } = await setup();
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Rotate the mattress",
+      recurrence: { interval: 3, unit: "month" },
+    });
+
+    const paused = await lifecycle.pauseGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+    expect(paused.status).toBe("paused");
+    await expect(lifecycle.listActiveGeneralActions({ ownerUserId: OWNER })).resolves.toEqual([]);
+    await expect(lifecycle.listPausedGeneralActions({ ownerUserId: OWNER })).resolves.toMatchObject(
+      [{ id: routine.id }],
+    );
+
+    const resumed = await lifecycle.resumeGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+    expect(resumed.status).toBe("open");
+    await expect(lifecycle.listPausedGeneralActions({ ownerUserId: OWNER })).resolves.toEqual([]);
+  });
+
+  it("rolls an overdue paused Routine forward on resume instead of re-surfacing it as overdue", async () => {
+    const { lifecycle } = await setup();
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Change the HVAC filter",
+      // Due well in the past, then paused across that due date.
+      dueAt: new Date("2020-01-01T00:00:00Z"),
+      recurrence: { interval: 1, unit: "month" },
+    });
+    await lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+
+    const resumed = await lifecycle.resumeGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+
+    expect(resumed.status).toBe("open");
+    // The deliberately paused gap is not a missed occurrence: the due date is rolled
+    // forward from now, so the resumed Routine reads as next-due, never overdue.
+    expect(resumed.dueAt?.getTime()).toBeGreaterThan(Date.now());
+    const events = await lifecycle.listGeneralActionHistory({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+    expect(events.at(-1)).toMatchObject({ kind: "resumed" });
+    expect(events.at(-1)?.detailJson).toMatchObject({ rolledForward: true });
+  });
+
+  it("leaves a future-dated Routine's due date untouched on resume", async () => {
+    const { lifecycle } = await setup();
+    const future = new Date(Date.now() + 30 * 86_400_000);
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Quarterly review",
+      dueAt: future,
+      recurrence: { interval: 3, unit: "month" },
+    });
+    await lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+
+    const resumed = await lifecycle.resumeGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+    // Only overdue dates are rolled; a still-future one is preserved as chosen.
+    expect(resumed.dueAt?.toISOString()).toBe(future.toISOString());
+  });
+
+  it("clears a resurface date when a deferred Routine is paused, then resumed", async () => {
+    const { lifecycle } = await setup();
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Water the garden",
+      recurrence: { interval: 1, unit: "week" },
+    });
+    // Defer the Routine, giving it a resurface date, then pause it.
+    await lifecycle.deferGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+      deferUntil: new Date("2027-01-01T00:00:00Z"),
+    });
+    const paused = await lifecycle.pauseGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+    // Pausing leaves `deferred`, so it must clear the resurface date like the other
+    // deferred-leaving transitions — a stale value would corrupt surfacing order.
+    expect(paused.status).toBe("paused");
+    expect(paused.deferUntil).toBeNull();
+
+    const resumed = await lifecycle.resumeGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+    expect(resumed.status).toBe("open");
+    expect(resumed.deferUntil).toBeNull();
+  });
+
+  it("refuses to remove a paused Routine's cadence in place", async () => {
+    const { lifecycle } = await setup();
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Rotate the tires",
+      recurrence: { interval: 6, unit: "month" },
+    });
+    await lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+
+    // Turning a paused Routine one-time would leave a paused one-time Action — blocked.
+    await expect(
+      lifecycle.editGeneralAction({
+        ownerUserId: OWNER,
+        generalActionId: routine.id,
+        edit: { recurrence: null },
+      }),
+    ).rejects.toThrow(/Resume this routine/);
+    // The invariant holds: it is still a paused Routine.
+    const still = await lifecycle.getGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+    expect(still.status).toBe("paused");
+    expect(still.recurrence).toEqual({ interval: 6, unit: "month" });
+  });
+
+  it("refuses to pause a one-time Action", async () => {
+    const { lifecycle, seedOpen } = await setup();
+    const action = await seedOpen();
+
+    await expect(
+      lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: action.id }),
+    ).rejects.toThrow(/Only a routine can be paused/);
+  });
+
+  it("cannot complete a paused Routine — it must be resumed first", async () => {
+    const { lifecycle } = await setup();
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Deep clean",
+      recurrence: { interval: 1, unit: "month" },
+    });
+    await lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+
+    await expect(
+      lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id }),
+    ).rejects.toThrow(/Cannot complete/);
+  });
+
+  it("archives a paused Routine and records history", async () => {
+    const { lifecycle, historyKinds } = await setup();
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Old subscription review",
+      recurrence: { interval: 1, unit: "year" },
+    });
+    await lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+
+    const archived = await lifecycle.archiveGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: routine.id,
+    });
+    expect(archived.status).toBe("archived");
+    await expect(historyKinds(routine.id)).resolves.toEqual(["created", "paused", "archived"]);
+  });
+
+  it("edits a one-time Action into a Routine and back via cadence", async () => {
+    const { lifecycle, seedOpen } = await setup();
+    const action = await seedOpen();
+    expect(action.recurrence).toBeNull();
+
+    const madeRoutine = await lifecycle.editGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: action.id,
+      edit: { recurrence: { interval: 2, unit: "week" } },
+    });
+    expect(madeRoutine.recurrence).toEqual({ interval: 2, unit: "week" });
+
+    const backToOneTime = await lifecycle.editGeneralAction({
+      ownerUserId: OWNER,
+      generalActionId: action.id,
+      edit: { recurrence: null },
+    });
+    expect(backToOneTime.recurrence).toBeNull();
   });
 });
 

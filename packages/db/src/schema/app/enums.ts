@@ -113,6 +113,8 @@ export const generalActionStatus = pgEnum("general_action_status", [
   "completed",
   "dismissed",
   "archived",
+  // A Routine set aside without retiring it — non-terminal, resumable (ADR 0148).
+  "paused",
 ]);
 
 export const generalActionEventKind = pgEnum("general_action_event_kind", [
@@ -123,6 +125,8 @@ export const generalActionEventKind = pgEnum("general_action_event_kind", [
   "deferred",
   "dismissed",
   "archived",
+  "paused",
+  "resumed",
 ]);
 
 export const extractionJobStatus = pgEnum("extraction_job_status", [

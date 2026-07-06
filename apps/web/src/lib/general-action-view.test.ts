@@ -13,6 +13,7 @@ function baseAction(overrides: Partial<Parameters<typeof toGeneralActionView>[0]
     assetHints: [],
     linkedPeople: [],
     status: "open" as const,
+    recurrence: null,
     scope: "private" as const,
     ownerUserId: OWNER,
     sharedWithCount: 0,
@@ -67,5 +68,37 @@ describe("toGeneralActionView scope + ownership", () => {
 
     expect(view.linkedPeople).toEqual([{ id: "p1", displayName: "Mara" }]);
     expect(view.assetHints).toEqual([{ label: "refrigerator water filter" }]);
+  });
+});
+
+describe("toGeneralActionView routines + paused state", () => {
+  it("labels a routine with a plain cadence and flags it as a Routine", () => {
+    const routine = toGeneralActionView(
+      baseAction({ recurrence: { interval: 6, unit: "month" } }),
+      { callerUserId: OWNER },
+    );
+    expect(routine.isRoutine).toBe(true);
+    expect(routine.recurrence).toEqual({ interval: 6, unit: "month" });
+    expect(routine.recurrenceLabel).toBe("Every 6 months");
+  });
+
+  it("leaves a one-time action without any cadence label", () => {
+    const oneTime = toGeneralActionView(baseAction(), { callerUserId: OWNER });
+    expect(oneTime.isRoutine).toBe(false);
+    expect(oneTime.recurrenceLabel).toBeNull();
+  });
+
+  it("reads a paused routine as quietly set aside, never overdue", () => {
+    const paused = toGeneralActionView(
+      baseAction({
+        status: "paused",
+        recurrence: { interval: 1, unit: "week" },
+        // Even with a due date in the past, a paused routine never reads as overdue.
+        dueAt: new Date("2020-01-01T00:00:00Z"),
+      }),
+      { callerUserId: OWNER },
+    );
+    expect(paused.surfaceState).toBe("paused");
+    expect(paused.surfaceLabel).toBe("Paused");
   });
 });

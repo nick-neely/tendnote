@@ -3,9 +3,11 @@ import type {
   GeneralActionEvent,
   GeneralActionEventKind,
   GeneralActionLink,
+  GeneralActionRecurrence,
   GeneralActionStatus,
   PrivacyScope,
 } from "@tendnote/domain";
+import { describeRecurrence } from "@tendnote/domain";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { toDateInputValue } from "@/lib/followup-view";
 
@@ -18,7 +20,13 @@ export type GeneralActionPersonView = { id: string; displayName: string };
  * an Action need not have a date, and a deferred one is deliberately set aside
  * (DESIGN.md §3; ADR 0149). Never red, never "overdue/missed" language.
  */
-export type ActionSurfaceState = "overdue" | "today" | "upcoming" | "unscheduled" | "deferred";
+export type ActionSurfaceState =
+  | "overdue"
+  | "today"
+  | "upcoming"
+  | "unscheduled"
+  | "deferred"
+  | "paused";
 
 /**
  * Result of a General Action mutation server action. Validation failures (a bad
@@ -41,6 +49,12 @@ export type GeneralActionView = {
   /** People linked as context — never a Follow-Up conversion (ADR 0155). */
   linkedPeople: GeneralActionPersonView[];
   status: GeneralActionStatus;
+  /** Simple recurrence cadence, or null for a one-time Action (ADR 0148). */
+  recurrence: GeneralActionRecurrence | null;
+  /** Whether this Action is a Routine (has a cadence) — drives the Routine label. */
+  isRoutine: boolean;
+  /** A calm cadence label ("Every 6 months"), or null for a one-time Action. */
+  recurrenceLabel: string | null;
   /** Visibility scope (ADR 0153). Drives the calm scope indicator; private stays bare. */
   scope: PrivacyScope;
   /**
@@ -130,6 +144,7 @@ export function toGeneralActionView(
     assetHints: GeneralActionAssetHint[];
     linkedPeople: GeneralActionPersonView[];
     status: GeneralActionStatus;
+    recurrence: GeneralActionRecurrence | null;
     scope: PrivacyScope;
     ownerUserId: string;
     /** How many members a `shared` Action reaches; 0 otherwise. */
@@ -146,7 +161,12 @@ export function toGeneralActionView(
   let surfaceState: ActionSurfaceState;
   let surfaceLabel: string;
 
-  if (action.status === "deferred" && action.deferUntil) {
+  if (action.status === "paused") {
+    // A paused Routine reads as quietly set aside — never as an overdue backlog,
+    // whatever its last due date was.
+    surfaceState = "paused";
+    surfaceLabel = "Paused";
+  } else if (action.status === "deferred" && action.deferUntil) {
     surfaceState = "deferred";
     surfaceLabel = `Set aside until ${formatDay(action.deferUntil, now)}`;
   } else if (action.dueAt) {
@@ -171,6 +191,9 @@ export function toGeneralActionView(
     assetHints: action.assetHints,
     linkedPeople: action.linkedPeople,
     status: action.status,
+    recurrence: action.recurrence,
+    isRoutine: action.recurrence !== null,
+    recurrenceLabel: action.recurrence ? describeRecurrence(action.recurrence) : null,
     scope: action.scope,
     visibilityLabel: scopeAudienceLabel(action),
     owned: action.ownerUserId === options.callerUserId,
@@ -193,6 +216,8 @@ const EVENT_LABELS: Record<GeneralActionEventKind, string> = {
   deferred: "Set aside",
   dismissed: "Dismissed",
   archived: "Archived",
+  paused: "Paused",
+  resumed: "Resumed",
 };
 
 export type GeneralActionEventView = {

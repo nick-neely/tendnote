@@ -9,12 +9,14 @@ import {
   dismissGeneralAction,
   editGeneralAction,
   listGeneralActionHistory,
+  pauseGeneralAction,
   reopenGeneralAction,
+  resumeGeneralAction,
   setGeneralActionPeople,
   setGeneralActionVisibility,
 } from "@tendnote/db/queries/general-actions";
 import { listActiveHouseholdMembershipsForUser } from "@tendnote/db/queries/households";
-import { generalActionLinkSchema } from "@tendnote/domain";
+import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
 import { scopeForVisibilityChoice, visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
@@ -48,6 +50,8 @@ const createActionSchema = z.object({
   title: z.string().trim().min(1, "Name the action.").max(280),
   notes: z.string().trim().min(1).max(2000).optional(),
   dueAt: dateInputSchema.optional(),
+  // A cadence makes the new action a Routine; absent/null keeps it one-time (ADR 0148).
+  recurrence: generalActionRecurrenceSchema.nullable().optional(),
   links: linksSchema.optional(),
   assetHints: assetHintsSchema.optional(),
   personIds: personIdsSchema.optional(),
@@ -64,6 +68,8 @@ const editActionSchema = z.object({
   // `null` clears the field; `undefined` leaves it untouched.
   notes: z.string().trim().min(1).max(2000).nullable().optional(),
   dueAt: dateInputSchema.nullable().optional(),
+  // `null` makes a Routine one-time again; an object sets/changes cadence (ADR 0148).
+  recurrence: generalActionRecurrenceSchema.nullable().optional(),
   links: linksSchema.optional(),
   assetHints: assetHintsSchema.optional(),
   // `null` unfiles the Action; `undefined` leaves its Area untouched.
@@ -125,6 +131,7 @@ export async function createGeneralActionAction(input: {
   title: string;
   notes?: string;
   dueAt?: string;
+  recurrence?: { interval: number; unit: "day" | "week" | "month" | "year" } | null;
   links?: { url: string; label?: string }[];
   assetHints?: string[];
   personIds?: string[];
@@ -144,6 +151,7 @@ export async function createGeneralActionAction(input: {
       title: parsed.title,
       notes: parsed.notes,
       dueAt: parsed.dueAt,
+      recurrence: parsed.recurrence,
       links: parsed.links,
       assetHints: parsed.assetHints,
       personIds: parsed.personIds,
@@ -161,6 +169,7 @@ export async function editGeneralActionAction(input: {
     title?: string;
     notes?: string | null;
     dueAt?: string | null;
+    recurrence?: { interval: number; unit: "day" | "week" | "month" | "year" } | null;
     links?: { url: string; label?: string }[];
     assetHints?: string[];
     areaId?: string | null;
@@ -179,6 +188,7 @@ export async function editGeneralActionAction(input: {
         ...(parsed.title !== undefined ? { title: parsed.title } : {}),
         ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
         ...(parsed.dueAt !== undefined ? { dueAt: parsed.dueAt } : {}),
+        ...(parsed.recurrence !== undefined ? { recurrence: parsed.recurrence } : {}),
         ...(parsed.links !== undefined ? { links: parsed.links } : {}),
         ...(parsed.assetHints !== undefined ? { assetHints: parsed.assetHints } : {}),
         ...(parsed.areaId !== undefined ? { areaId: parsed.areaId } : {}),
@@ -264,6 +274,20 @@ export async function archiveGeneralActionAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
   return transitionAction(input.generalActionId, archiveGeneralAction);
+}
+
+/** Pauses a Routine (recurring Action). Routine-only downstream (ADR 0148). */
+export async function pauseGeneralActionAction(input: {
+  generalActionId: string;
+}): Promise<GeneralActionMutationResult> {
+  return transitionAction(input.generalActionId, pauseGeneralAction);
+}
+
+/** Resumes a paused Routine back to active. */
+export async function resumeGeneralActionAction(input: {
+  generalActionId: string;
+}): Promise<GeneralActionMutationResult> {
+  return transitionAction(input.generalActionId, resumeGeneralAction);
 }
 
 export async function deferGeneralActionAction(input: {

@@ -1,5 +1,13 @@
 import type { PrivacyScope } from "@tendnote/domain";
-import { HomeIcon, MoonIcon, TagIcon, UserIcon, UsersIcon } from "lucide-react";
+import {
+  HomeIcon,
+  MoonIcon,
+  PauseIcon,
+  RepeatIcon,
+  TagIcon,
+  UserIcon,
+  UsersIcon,
+} from "lucide-react";
 import type { ActionSurfaceState } from "@/lib/general-action-view";
 
 /** Fallback message when an Action mutation fails for an unknown reason. */
@@ -36,6 +44,15 @@ export function ActionDueChip({
     );
   }
 
+  if (surfaceState === "paused") {
+    return (
+      <span className="inline-flex items-center gap-1.5 font-mono text-[length:var(--text-caption)] text-muted-foreground">
+        <PauseIcon aria-hidden className="size-3" />
+        {surfaceLabel}
+      </span>
+    );
+  }
+
   if (surfaceState === "upcoming" || surfaceState === "unscheduled") {
     return (
       <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
@@ -66,6 +83,28 @@ export function ActionScopeChip({ scope, label }: { scope: PrivacyScope; label: 
   return (
     <span className="inline-flex w-fit items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[length:var(--text-caption)] text-muted-foreground">
       <Icon aria-hidden className="size-3" />
+      {label}
+    </span>
+  );
+}
+
+/**
+ * The Routine cue: a quiet cadence label ("Every 6 months") with a repeat glyph, so a
+ * recurring Action reads as a Routine at a glance (ADR 0148). It states the rhythm,
+ * never a streak or a count — calm by default, a missed occurrence is not a failure.
+ * The visible chip stays the glyph + cadence (the word "Routine" would be noise once
+ * the repeat icon is learned), but the accessible name and hover title spell out
+ * "Routine · <cadence>" so the semantics are legible to screen readers and on hover.
+ */
+export function ActionRoutineChip({ label }: { label: string }) {
+  return (
+    <span
+      className="inline-flex w-fit items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[length:var(--text-caption)] text-muted-foreground"
+      title={`Routine · ${label}`}
+    >
+      <RepeatIcon aria-hidden className="size-3 shrink-0" />
+      {/* Spell out "Routine" for screen readers; the visible chip stays glyph + cadence. */}
+      <span className="sr-only">Routine · </span>
       {label}
     </span>
   );

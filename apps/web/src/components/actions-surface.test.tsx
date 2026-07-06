@@ -14,7 +14,9 @@ vi.mock("@/app/actions/general-actions", () => ({
   dismissGeneralActionAction: vi.fn(),
   editGeneralActionAction: vi.fn(),
   listGeneralActionHistoryAction: vi.fn(),
+  pauseGeneralActionAction: vi.fn(),
   reopenGeneralActionAction: vi.fn(),
+  resumeGeneralActionAction: vi.fn(),
 }));
 
 vi.mock("@/app/actions/general-action-areas", () => ({
@@ -39,6 +41,9 @@ function actionView(overrides: Partial<GeneralActionView> = {}): GeneralActionVi
     assetHints: [],
     linkedPeople: [],
     status: "open",
+    recurrence: null,
+    isRoutine: false,
+    recurrenceLabel: null,
     scope: "private",
     visibilityLabel: "Only me",
     owned: true,
@@ -91,6 +96,49 @@ describe("ActionsSurface area filter", () => {
 
     // The default (All) view surfaces the action's area as a quiet label.
     expect(html).toContain("Home");
+  });
+});
+
+describe("ActionsSurface routines", () => {
+  it("shows a routine's cadence label and a Routine-aware complete control", () => {
+    const html = render(
+      [actionView({ isRoutine: true, recurrenceLabel: "Every 6 months" })],
+      [HOME],
+    );
+
+    expect(html).toContain("Every 6 months");
+    // A routine completes an occurrence rather than resolving, so its button reads
+    // differently from a one-time action's "Complete".
+    expect(html).toContain("Done for now");
+    // The word "Routine" is legible to AT even though the visible chip is glyph+cadence.
+    expect(html).toContain("Routine · Every 6 months");
+  });
+
+  it("lists paused routines in their own quiet section with a Resume control", () => {
+    const html = renderToStaticMarkup(
+      <ActionsSurface
+        active={[]}
+        areas={[HOME]}
+        paused={[
+          actionView({
+            id: "p1",
+            status: "paused",
+            isRoutine: true,
+            recurrenceLabel: "Every week",
+            surfaceState: "paused",
+            surfaceLabel: "Paused",
+          }),
+        ]}
+        resolved={[]}
+        resolvedTruncated={false}
+      />,
+    );
+
+    expect(html).toContain("Paused routines");
+    expect(html).toContain("Resume");
+    expect(html).toContain("Every week");
+    // Indefinite micro-copy, contrasting a deferred Action's dated "Set aside until".
+    expect(html).toContain("Resume anytime");
   });
 });
 

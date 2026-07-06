@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AreaManagerDialog } from "@/components/general-action-area-manager";
 import { CreateActionForm } from "@/components/general-action-create-form";
+import { PausedRoutineRow } from "@/components/general-action-paused-row";
 import type { ActionPersonOption } from "@/components/general-action-people-field";
 import { ResolvedActionRow } from "@/components/general-action-resolved-row";
 import { ActionRow } from "@/components/general-action-row";
@@ -63,6 +64,7 @@ function sortActive(actions: GeneralActionView[]): GeneralActionView[] {
 export function ActionsSurface({
   active,
   areas,
+  paused = [],
   people = [],
   resolved,
   resolvedTruncated = false,
@@ -71,6 +73,8 @@ export function ActionsSurface({
   active: GeneralActionView[];
   /** Every Area, archived included — active ones drive the filter and picker; all resolve names. */
   areas: GeneralActionAreaView[];
+  /** Paused Routines, kept reachable to resume or retire (ADR 0148). */
+  paused?: GeneralActionView[];
   /** The owner's people, for linking an Action to a person as context (ADR 0155). */
   people?: ActionPersonOption[];
   resolved: GeneralActionView[];
@@ -81,6 +85,7 @@ export function ActionsSurface({
 }) {
   const router = useRouter();
   const [activeList, setActiveList] = useServerSyncedList(active, actionId, sortActive);
+  const [pausedList, setPausedList] = useServerSyncedList(paused, actionId);
   const [resolvedList, setResolvedList] = useServerSyncedList(resolved, actionId);
   const [areaList, setAreaList] = useServerSyncedList(areas, areaId);
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
@@ -98,6 +103,7 @@ export function ActionsSurface({
   const selectedAreaName = effectiveAreaId ? areaNameById.get(effectiveAreaId) : null;
 
   const visibleActive = filterActionsByArea(activeList, effectiveAreaId);
+  const visiblePaused = filterActionsByArea(pausedList, effectiveAreaId);
   const visibleResolved = filterActionsByArea(resolvedList, effectiveAreaId);
   const { visible: visibleChips, overflow: chipOverflow } = pickVisibleAreaChips(
     activeAreas,
@@ -124,6 +130,17 @@ export function ActionsSurface({
   function removeResolved(id: string) {
     setResolvedList((current) => current.filter((action) => action.id !== id));
     router.refresh();
+  }
+
+  function removePaused(id: string) {
+    setPausedList((current) => current.filter((action) => action.id !== id));
+    router.refresh();
+  }
+
+  // Resuming a paused Routine returns it to the active list under its cadence.
+  function resumePaused(view: GeneralActionView) {
+    setPausedList((current) => current.filter((action) => action.id !== view.id));
+    addActive(view);
   }
 
   function addArea(view: GeneralActionAreaView) {
@@ -237,6 +254,29 @@ export function ActionsSurface({
           like replacing a filter or renewing a subscription.
         </LedgerEmpty>
       )}
+
+      {visiblePaused.length ? (
+        <details className="group">
+          {/* Paused Routines live in their own quiet disclosure — set aside, not
+              resolved, and never counted. Resume returns one to the active list; it
+              stays reachable rather than lost (ADR 0148). */}
+          <summary className="cursor-pointer list-none text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground">
+            Paused routines
+          </summary>
+          <div className="mt-2">
+            <LedgerList>
+              {visiblePaused.map((action) => (
+                <PausedRoutineRow
+                  action={action}
+                  key={action.id}
+                  onResolve={removePaused}
+                  onResume={resumePaused}
+                />
+              ))}
+            </LedgerList>
+          </div>
+        </details>
+      ) : null}
 
       {visibleResolved.length ? (
         <details className="group">
