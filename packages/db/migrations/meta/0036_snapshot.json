@@ -1,6 +1,6 @@
 {
-  "id": "7333f11e-2508-48f6-b236-73e3c92701c7",
-  "prevId": "50ce14d5-e519-4dad-86e6-c5dd30db1090",
+  "id": "3ad97863-570d-48cc-9b5d-96e2f3e6ee26",
+  "prevId": "7aab0bab-2652-40cc-a5d6-c4635b626106",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3164,6 +3164,16 @@
           "primaryKey": false,
           "notNull": false
         },
+        "search_vector": {
+          "name": "search_vector",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "to_tsvector('simple', coalesce(\"title\", '') || ' ' || coalesce(\"notes\", ''))",
+            "type": "stored"
+          }
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3262,6 +3272,21 @@
           "isUnique": false,
           "concurrently": false,
           "method": "btree",
+          "with": {}
+        },
+        "general_actions_search_vector_idx": {
+          "name": "general_actions_search_vector_idx",
+          "columns": [
+            {
+              "expression": "search_vector",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
           "with": {}
         }
       },
@@ -6632,7 +6657,8 @@
       "schema": "public",
       "values": [
         "extraction",
-        "embedding"
+        "embedding",
+        "action_extraction"
       ]
     },
     "public.brief_cadence": {
@@ -6971,7 +6997,8 @@
       "schema": "public",
       "values": [
         "memory",
-        "source_record"
+        "source_record",
+        "general_action"
       ]
     },
     "public.semantic_trust_level": {
@@ -6979,7 +7006,8 @@
       "schema": "public",
       "values": [
         "confirmed_fact",
-        "logged_context"
+        "logged_context",
+        "action_item"
       ]
     },
     "public.sensitivity": {

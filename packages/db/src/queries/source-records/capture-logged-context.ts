@@ -37,6 +37,15 @@ export type CaptureLoggedContextDeps = {
   captureGlobal: (input: CaptureSourceRecordInput) => Promise<CaptureSourceRecordResult>;
   /** Enqueue async suggested-memory extraction for the new Source Record. */
   enqueueExtraction: (input: { ownerUserId: string; sourceRecordId: string }) => Promise<unknown>;
+  /**
+   * Enqueue async action extraction for the new Source Record (ADR-0151). Independent of
+   * memory extraction — the two pipelines run over the same record but neither gates the
+   * other — so it is enqueued alongside and swallowed on failure just the same.
+   */
+  enqueueActionExtraction: (input: {
+    ownerUserId: string;
+    sourceRecordId: string;
+  }) => Promise<unknown>;
 };
 
 export async function captureLoggedContext(
@@ -62,11 +71,22 @@ export async function captureLoggedContext(
         metadataJson,
       });
 
-  // Capture is the synchronous guarantee; suggested-memory extraction is job-backed
-  // (ADR-0017/0018) and must never make the saved note disappear when it is
-  // unavailable — the Source Record is persisted and can be re-enqueued later.
+  // Capture is the synchronous guarantee; both suggested-memory and action extraction are
+  // job-backed (ADR-0017/0018/0151) and must never make the saved note disappear when
+  // they are unavailable — the Source Record is persisted and can be re-enqueued later.
+  // The two enqueues are independent and each best-effort, so one failing never blocks
+  // the capture or the other pipeline.
   try {
     await deps.enqueueExtraction({
+      ownerUserId: input.ownerUserId,
+      sourceRecordId: result.sourceRecord.id,
+    });
+  } catch {
+    // Best-effort: swallow so the capture still succeeds for the user.
+  }
+
+  try {
+    await deps.enqueueActionExtraction({
       ownerUserId: input.ownerUserId,
       sourceRecordId: result.sourceRecord.id,
     });

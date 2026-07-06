@@ -1,4 +1,9 @@
 import {
+  type EnqueueAndTriggerActionExtractionJobInput,
+  type EnqueueAndTriggerActionExtractionJobResult,
+  enqueueAndTriggerActionExtractionJob,
+} from "@tendnote/db/queries/action-extraction-jobs";
+import {
   type BackgroundJobDeliveryStore,
   type BackgroundJobQueueSendAdapter,
   createDrizzleBackgroundJobDeliveryStore,
@@ -49,6 +54,56 @@ export async function enqueueAndPublishExtractionJob(input: {
   const { delivery } = await deliveryStore.createBackgroundJobDelivery({
     ownerUserId: input.ownerUserId,
     jobKind: "extraction",
+    jobId: result.job.id,
+  });
+  await publishBackgroundJobDelivery({
+    store: deliveryStore,
+    queue: input.queue ?? createVercelBackgroundJobQueueAdapter(),
+    ownerUserId: input.ownerUserId,
+    deliveryId: delivery.id,
+  });
+
+  return { ...result, deliveryId: delivery.id };
+}
+
+type EnqueueActionExtraction = (
+  input: EnqueueAndTriggerActionExtractionJobInput,
+) => Promise<EnqueueAndTriggerActionExtractionJobResult>;
+
+/**
+ * Action-extraction twin of {@link enqueueAndPublishExtractionJob} (ADR-0151): enqueue a
+ * Suggested General Action extraction job and, in enqueue_only mode, publish its outbox
+ * delivery through the same shared publish orchestration (ADR-0068). It rides the same
+ * extraction topic and consumer route under the `action_extraction` job kind, so no new
+ * Vercel queue is needed — the consumer dispatches by job kind.
+ */
+export async function enqueueAndPublishActionExtractionJob(input: {
+  ownerUserId: string;
+  sourceRecordId: string;
+  runtimeMode?: EnqueueAndTriggerActionExtractionJobInput["runtimeMode"];
+  deliveryStore?: BackgroundJobDeliveryStore;
+  queue?: BackgroundJobQueueSendAdapter;
+  enqueueActionExtraction?: EnqueueActionExtraction;
+}): Promise<EnqueueAndTriggerActionExtractionJobResult & { deliveryId: string | null }> {
+  const mode =
+    input.runtimeMode ??
+    resolveExtractionRuntimeMode({
+      configured: process.env.TENDNOTE_EXTRACTION_RUNTIME,
+      nodeEnv: process.env.NODE_ENV,
+    });
+  const result = await (input.enqueueActionExtraction ?? enqueueAndTriggerActionExtractionJob)({
+    sourceRecordId: input.sourceRecordId,
+    runtimeMode: mode,
+  });
+
+  if (mode === "inline") {
+    return { ...result, deliveryId: null };
+  }
+
+  const deliveryStore = input.deliveryStore ?? createDrizzleBackgroundJobDeliveryStore();
+  const { delivery } = await deliveryStore.createBackgroundJobDelivery({
+    ownerUserId: input.ownerUserId,
+    jobKind: "action_extraction",
     jobId: result.job.id,
   });
   await publishBackgroundJobDelivery({

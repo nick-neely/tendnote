@@ -7,7 +7,7 @@ const migration = readFileSync(
   "utf8",
 );
 const actionRetrievalMigration = readFileSync(
-  join(import.meta.dirname, "../../../migrations/0034_action_retrieval.sql"),
+  join(import.meta.dirname, "../../../migrations/0036_action_retrieval.sql"),
   "utf8",
 );
 const drizzleStore = readFileSync(join(import.meta.dirname, "drizzle-store.ts"), "utf8");

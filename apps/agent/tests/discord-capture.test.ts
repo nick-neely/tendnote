@@ -38,6 +38,7 @@ function realStoreCaptureDeps() {
       throw new Error("captureForPerson is not exercised by these household-safety tests");
     },
     enqueueExtraction: vi.fn(async () => undefined),
+    enqueueActionExtraction: vi.fn(async () => undefined),
     parkHitlSession: vi.fn(async () => undefined),
     resumeHitlSession: vi.fn(async () => undefined),
   };
@@ -89,6 +90,7 @@ function deps(): DiscordCaptureDeps {
       component: { type: "source_record_review" as const, sourceRecordId: "source-global" },
     })),
     enqueueExtraction: vi.fn(async () => undefined),
+    enqueueActionExtraction: vi.fn(async () => undefined),
     parkHitlSession: vi.fn(async () => undefined),
     resumeHitlSession: vi.fn(async () => undefined),
   };

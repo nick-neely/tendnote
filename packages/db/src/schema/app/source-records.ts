@@ -134,3 +134,34 @@ export const extractionJobs = pgTable(
     index("extraction_jobs_status_run_after_idx").on(table.status, table.runAfter),
   ],
 );
+
+/**
+ * Postgres-owned action extraction jobs (Phase 5, ADRs 0018, 0151). A parallel, fully
+ * separate queue from `extraction_jobs`: memory extraction is person-gated while action
+ * extraction is not, so the two run as independent pipelines over the same source
+ * records rather than sharing one job whose gating would fork. Same inspectable job
+ * shape — created, claimed, retried, completed — keyed by a namespaced idempotency key
+ * (`action:source_record:<id>`) so each source record has at most one action job.
+ */
+export const actionExtractionJobs = pgTable(
+  "action_extraction_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sourceRecordId: uuid("source_record_id")
+      .notNull()
+      .references(() => sourceRecords.id, { onDelete: "cascade" }),
+    status: extractionJobStatus("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("action_extraction_jobs_idempotency_key_idx").on(table.idempotencyKey),
+    index("action_extraction_jobs_source_record_id_idx").on(table.sourceRecordId),
+    index("action_extraction_jobs_status_run_after_idx").on(table.status, table.runAfter),
+  ],
+);

@@ -7,6 +7,7 @@
     "./client": "./src/client.ts",
     "./schema": "./src/schema/index.ts",
     "./queries/access-profiles": "./src/queries/access-profiles.ts",
+    "./queries/action-extraction-jobs": "./src/queries/action-extraction-jobs.ts",
     "./queries/auth-users": "./src/queries/auth-users.ts",
     "./queries/background-job-deliveries": "./src/queries/background-job-deliveries.ts",
     "./queries/birthday-gift-planning": "./src/queries/birthday-gift-planning.ts",
