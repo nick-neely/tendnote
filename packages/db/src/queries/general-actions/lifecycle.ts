@@ -1,6 +1,5 @@
 import {
   ACTIVE_GENERAL_ACTION_STATUSES,
-  assertAreaNotArchived,
   assertGeneralActionEditable,
   assertPausableRoutine,
   assertRecurrenceEditAllowed,
@@ -12,9 +11,17 @@ import {
   GeneralActionValidationError,
   generalActionEditSchema,
   nextRoutineDueAt,
-  type PrivacyScope,
   resolveGeneralActionTransition,
 } from "@tendnote/domain";
+import {
+  buildGeneralActionEditPatch,
+  isEmptyGeneralActionEdit,
+  resolveAreaId,
+  resolveVisibility,
+  verifyOwnedPeople,
+  writeShares,
+} from "./attach";
+import { hydrateGeneralAction } from "./hydrate";
 import type {
   CreateActiveGeneralActionInput,
   DeferGeneralActionInput,
@@ -22,7 +29,6 @@ import type {
   GeneralActionActionInput,
   GeneralActionLifecycleStore,
   GeneralActionPatch,
-  GeneralActionPersonRef,
   GeneralActionWithContext,
   ListGeneralActionsInput,
   SetGeneralActionPeopleInput,
@@ -89,154 +95,9 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
     return action;
   }
 
-  /**
-   * Resolves an Area assignment for an Action, keeping the one-primary-Area rule
-   * owner-safe. A non-null `areaId` must name an Area the owner owns and has not
-   * archived — you cannot file an Action under someone else's Area or a retired one.
-   * `null` clears the Area; `undefined` is never passed here (callers omit instead).
-   */
-  async function resolveAreaId(ownerUserId: string, areaId: string | null): Promise<string | null> {
-    if (areaId === null) {
-      return null;
-    }
-
-    const area = await store.getArea({ ownerUserId, areaId });
-    if (!area) {
-      throw new GeneralActionValidationError("That area no longer exists.");
-    }
-    assertAreaNotArchived(area);
-
-    return area.id;
-  }
-
-  /**
-   * Validates and normalizes a visibility choice, fail-closed. Private clears the
-   * household; a household or shared scope requires the owner's active household, and
-   * a shared scope additionally requires at least one selected active member. Widening
-   * is always explicit — an absent scope stays private (ADR 0153).
-   */
-  async function resolveVisibility(input: {
-    ownerUserId: string;
-    scope?: PrivacyScope;
-    householdId?: string | null;
-    selectedUserIds?: string[];
-  }): Promise<{ scope: PrivacyScope; householdId: string | null }> {
-    const scope = input.scope ?? "private";
-
-    if (scope === "private") {
-      return { scope, householdId: null };
-    }
-
-    // Non-private from here: `householdId` is a concrete string in every branch below,
-    // so no cast is needed downstream.
-    const householdId = input.householdId ?? null;
-    if (!householdId) {
-      throw new GeneralActionValidationError("Sharing an action needs a household.");
-    }
-    const membership = await store.getHouseholdMembership({
-      householdId,
-      userId: input.ownerUserId,
-    });
-    if (membership?.status !== "active") {
-      throw new GeneralActionValidationError(
-        "You must be an active member of that household to share an action.",
-      );
-    }
-
-    if (scope === "shared") {
-      const selected = input.selectedUserIds ?? [];
-      if (selected.length === 0) {
-        throw new GeneralActionValidationError(
-          "Choose at least one person to share this action with.",
-        );
-      }
-      const activeMembers = await store.listHouseholdMemberships({
-        householdId,
-        status: "active",
-      });
-      const activeIds = new Set(activeMembers.map((member) => member.userId));
-      if (selected.some((userId) => !activeIds.has(userId))) {
-        throw new GeneralActionValidationError(
-          "Everyone you share an action with must be an active household member.",
-        );
-      }
-    }
-
-    return { scope, householdId };
-  }
-
-  /** Records a share row per selected member so a shared Action reaches exactly them. */
-  async function writeShares(input: {
-    householdId: string;
-    actionId: string;
-    ownerUserId: string;
-    selectedUserIds: string[];
-  }) {
-    for (const sharedWithUserId of input.selectedUserIds) {
-      await store.createHouseholdRecordShare({
-        householdId: input.householdId,
-        recordKind: "general_action",
-        recordId: input.actionId,
-        sharedWithUserId,
-        sharedByUserId: input.ownerUserId,
-      });
-    }
-  }
-
-  /**
-   * Verifies every person link is one the owner owns and returns the deduped set. A
-   * link is context only — it never turns the Action into a Follow-Up (ADR 0155) —
-   * but it must still be owner-scoped so an Action cannot point at a stranger's
-   * person record.
-   */
-  async function verifyOwnedPeople(ownerUserId: string, personIds: string[]): Promise<string[]> {
-    const unique = [...new Set(personIds)];
-    for (const personId of unique) {
-      const person = await store.getPerson({ ownerUserId, personId });
-      if (!person) {
-        throw new GeneralActionValidationError("You can only link your own people to an action.");
-      }
-    }
-    return unique;
-  }
-
-  /**
-   * Hydrates an action with its linked people (resolved owner-scoped and named for
-   * display) and the audience detail behind its scope — how many members a `shared`
-   * action reaches, and the household's name for a `shared`/`household` one — so the
-   * surface can say *who* can see it, not just that it is shared. A viewing member
-   * sees the names the owner chose to attach, not raw ids or other owner-scoped
-   * fields (ADRs 0153, 0155).
-   */
-  async function hydrate(action: GeneralAction): Promise<GeneralActionWithContext> {
-    const personIds = await store.listGeneralActionPersonIds({
-      ownerUserId: action.ownerUserId,
-      generalActionId: action.id,
-    });
-    const linkedPeople: GeneralActionPersonRef[] = [];
-    for (const personId of personIds) {
-      const person = await store.getPerson({ ownerUserId: action.ownerUserId, personId });
-      if (person) {
-        linkedPeople.push({ id: person.id, displayName: person.displayName });
-      }
-    }
-
-    let sharedWithCount = 0;
-    let householdName: string | null = null;
-    if (action.scope !== "private" && action.householdId) {
-      const household = await store.getHouseholdWorkspace({ householdId: action.householdId });
-      householdName = household?.name ?? null;
-      if (action.scope === "shared") {
-        const shares = await store.listHouseholdRecordShares({
-          householdId: action.householdId,
-          recordKind: "general_action",
-          recordId: action.id,
-        });
-        sharedWithCount = shares.length;
-      }
-    }
-
-    return { ...action, linkedPeople, sharedWithCount, householdName };
+  /** Hydrates an action with linked people and scope audience detail (see {@link hydrateGeneralAction}). */
+  function hydrate(action: GeneralAction): Promise<GeneralActionWithContext> {
+    return hydrateGeneralAction(store, action);
   }
 
   async function recordEvent(
@@ -307,10 +168,10 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         sourceRecordId = sourceRecord.id;
       }
 
-      const areaId = await resolveAreaId(input.ownerUserId, input.areaId ?? null);
-      const { scope, householdId } = await resolveVisibility(input);
+      const areaId = await resolveAreaId(store, input.ownerUserId, input.areaId ?? null);
+      const { scope, householdId } = await resolveVisibility(store, input);
       const personIds = input.personIds
-        ? await verifyOwnedPeople(input.ownerUserId, input.personIds)
+        ? await verifyOwnedPeople(store, input.ownerUserId, input.personIds)
         : [];
       const assetHints = input.assetHints ?? [];
 
@@ -341,7 +202,7 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         });
       }
       if (scope === "shared" && householdId) {
-        await writeShares({
+        await writeShares(store, {
           householdId,
           actionId: action.id,
           ownerUserId: input.ownerUserId,
@@ -380,45 +241,21 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
 
       // A no-op edit would still write a misleading history row, so require at
       // least one field to actually be present.
-      if (
-        edit.title === undefined &&
-        edit.notes === undefined &&
-        edit.dueAt === undefined &&
-        edit.links === undefined &&
-        edit.areaId === undefined &&
-        edit.assetHints === undefined &&
-        edit.recurrence === undefined
-      ) {
+      if (isEmptyGeneralActionEdit(edit)) {
         throw new GeneralActionValidationError(
           "An action edit must change the title, notes, due date, cadence, links, area, or asset hints.",
         );
-      }
-
-      const patch: GeneralActionPatch = { lastActorUserId: input.ownerUserId };
-      if (edit.title !== undefined) {
-        patch.title = edit.title;
-      }
-      if (edit.notes !== undefined) {
-        patch.notes = edit.notes;
-      }
-      if (edit.dueAt !== undefined) {
-        patch.dueAt = edit.dueAt;
-      }
-      if (edit.links !== undefined) {
-        patch.links = edit.links;
-      }
-      if (edit.assetHints !== undefined) {
-        patch.assetHints = edit.assetHints;
       }
       if (edit.recurrence !== undefined) {
         // A paused Routine can't have its cadence removed in place — that would leave
         // a paused one-time Action (ADR 0148). Resume first.
         assertRecurrenceEditAllowed(action.status, edit.recurrence);
-        patch.recurrence = edit.recurrence;
       }
-      if (edit.areaId !== undefined) {
-        patch.areaId = await resolveAreaId(action.ownerUserId, edit.areaId);
-      }
+
+      const patch: GeneralActionPatch = {
+        lastActorUserId: input.ownerUserId,
+        ...(await buildGeneralActionEditPatch(store, action.ownerUserId, edit)),
+      };
 
       const updated = await store.updateGeneralAction({
         ownerUserId: action.ownerUserId,
@@ -452,7 +289,7 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
      */
     async setGeneralActionVisibility(input: SetGeneralActionVisibilityInput) {
       const action = await requireOwnedAction(input);
-      const { scope, householdId } = await resolveVisibility({
+      const { scope, householdId } = await resolveVisibility(store, {
         ownerUserId: input.ownerUserId,
         scope: input.scope,
         householdId: input.householdId,
@@ -477,7 +314,7 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
       });
 
       if (scope === "shared" && householdId) {
-        await writeShares({
+        await writeShares(store, {
           householdId,
           actionId: action.id,
           ownerUserId: input.ownerUserId,
@@ -502,7 +339,7 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
     async setGeneralActionPeople(input: SetGeneralActionPeopleInput) {
       const action = await requireOwnedAction(input);
       assertGeneralActionEditable(action.status);
-      const personIds = await verifyOwnedPeople(input.ownerUserId, input.personIds);
+      const personIds = await verifyOwnedPeople(store, input.ownerUserId, input.personIds);
 
       await store.setGeneralActionPeople({
         ownerUserId: input.ownerUserId,

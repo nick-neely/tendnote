@@ -11,16 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCreateDraft } from "@/components/use-create-draft";
+import { sourceLabel } from "@/lib/source-labels";
 import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
-
-const SOURCE_LABELS: Record<string, string> = {
-  manual: "manual note",
-  agent: "assistant note",
-  contact_import: "imported contact",
-  calendar: "calendar",
-  gmail: "email",
-  seed: "sample data",
-};
 
 const GENERIC_ERROR = "That didn't go through. Try again.";
 
@@ -205,8 +197,7 @@ function SuggestedFollowupReviewCard({
       {source ? (
         <div className="border-t border-accent/20 pt-2.5">
           <p className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
-            From {SOURCE_LABELS[source.sourceType] ?? source.sourceType} · captured{" "}
-            {formatCaptured(source.capturedAt)}
+            From {sourceLabel(source.sourceType)} · captured {formatCaptured(source.capturedAt)}
           </p>
           <p className="mt-1 line-clamp-2 max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
             {source.content}

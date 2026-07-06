@@ -218,6 +218,10 @@ const EVENT_LABELS: Record<GeneralActionEventKind, string> = {
   archived: "Archived",
   paused: "Paused",
   resumed: "Resumed",
+  // Review-gated history (ADRs 0151, 0152).
+  suggested: "Suggested",
+  promoted: "Accepted",
+  ignored: "Ignored",
 };
 
 export type GeneralActionEventView = {

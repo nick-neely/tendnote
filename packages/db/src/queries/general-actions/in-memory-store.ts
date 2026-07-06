@@ -8,6 +8,7 @@ import {
   type GeneralActionEvent,
   generalActionEventSchema,
   generalActionSchema,
+  isReviewGeneralActionStatus,
   scopedRecordVisibility,
 } from "@tendnote/domain";
 import { createInMemoryGeneralActionAreaStore } from "../general-action-areas/in-memory-store";
@@ -38,6 +39,13 @@ export function createInMemoryGeneralActionStore(): GeneralActionStore & Househo
    * with no household is visible to no one (ADR 0153).
    */
   async function canCallerView(input: { callerUserId: string; action: GeneralAction }) {
+    // Review-gated rows are owner-only: a proposal is never scope-visible to a member
+    // until it is accepted (ADRs 0151, 0152, 0153). Mirrors the drizzle store's
+    // `durableVisibleStatus` filter on every visible read.
+    if (isReviewGeneralActionStatus(input.action.status)) {
+      return false;
+    }
+
     const activeMemberships = input.action.householdId
       ? await householdStore.listHouseholdMemberships({
           householdId: input.action.householdId,

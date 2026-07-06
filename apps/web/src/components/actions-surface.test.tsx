@@ -26,6 +26,13 @@ vi.mock("@/app/actions/general-action-areas", () => ({
   unarchiveGeneralActionAreaAction: vi.fn(),
 }));
 
+vi.mock("@/app/actions/suggested-general-actions", () => ({
+  acceptSuggestedGeneralActionAction: vi.fn(),
+  dismissSuggestedGeneralActionAction: vi.fn(),
+  editSuggestedGeneralActionAction: vi.fn(),
+  ignoreSuggestedGeneralActionAction: vi.fn(),
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }));

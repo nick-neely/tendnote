@@ -4,8 +4,9 @@ import {
   generalActionEventSchema,
   generalActionSchema,
   generalActionUpdateSchema,
+  REVIEW_GENERAL_ACTION_STATUSES,
 } from "@tendnote/domain";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import { generalActionEvents, generalActionPeople, generalActions } from "../../schema";
@@ -18,6 +19,13 @@ import type { GeneralActionLifecycleStore, GeneralActionStore } from "./types";
 // Aliased so the scope-visibility predicate can reference the row as `ga`, matching
 // the alias the shared `visibleHouseholdRecordSql` builder expects.
 const visibleGeneralActions = alias(generalActions, "ga");
+
+// Review-gated rows (suggested/ignored proposals) are owner-only: every scope-visible
+// read excludes them so a household member can never fetch or read the history of a
+// proposal that has not been accepted (ADRs 0151, 0152, 0153).
+const durableVisibleStatus = notInArray(visibleGeneralActions.status, [
+  ...REVIEW_GENERAL_ACTION_STATUSES,
+]);
 
 // Shared ordering contract: the soonest-relevant action leads, unscheduled (both
 // dates null) fall to the end, most-recently-created breaks ties. The in-memory
@@ -73,6 +81,7 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
         .where(
           and(
             eq(visibleGeneralActions.id, input.generalActionId),
+            durableVisibleStatus,
             visibleHouseholdRecordSql({
               callerUserId: input.callerUserId,
               tableAlias: "ga",
@@ -133,6 +142,7 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
         .from(visibleGeneralActions)
         .where(
           and(
+            durableVisibleStatus,
             visibleHouseholdRecordSql({
               callerUserId: input.callerUserId,
               tableAlias: "ga",

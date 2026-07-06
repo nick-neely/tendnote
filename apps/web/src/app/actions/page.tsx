@@ -6,6 +6,7 @@ import {
   listActiveGeneralActions,
   listPausedGeneralActions,
   listResolvedGeneralActions,
+  listSuggestedGeneralActionReviews,
 } from "@tendnote/db/queries/general-actions";
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
 import { searchPeople } from "@tendnote/db/queries/people";
@@ -14,6 +15,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { toGeneralActionAreaView } from "@/lib/general-action-area-view";
 import { toGeneralActionView } from "@/lib/general-action-view";
+import { toSuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 
 // A calm cap on the resolved trail — enough to reopen a recent mistake, not a
 // backlog to clear (DESIGN.md calm-by-default).
@@ -30,12 +32,15 @@ export default async function ActionsPage() {
   // filter (active only) and resolve names for Actions filed under a since-archived
   // Area.
   await ensureDefaultGeneralActionAreas({ ownerUserId });
-  const [active, paused, resolved, areas, shareableMembers, people] = await Promise.all([
+  const [active, paused, resolved, suggested, areas, shareableMembers, people] = await Promise.all([
     listActiveGeneralActions({ ownerUserId }),
     // Paused Routines, kept reachable to resume or retire — never on a proactive
     // surface, so a paused Routine stays quiet (ADR 0148).
     listPausedGeneralActions({ ownerUserId }),
     listResolvedGeneralActions({ ownerUserId, limit: RESOLVED_LIMIT }),
+    // Review-gated Suggested actions, shown in their own section above the ledger and
+    // in the shared Review Queue (ADR 0152).
+    listSuggestedGeneralActionReviews({ ownerUserId }),
     listGeneralActionAreas({ ownerUserId, includeArchived: true }),
     // Members the owner can share an Action with — drives the visibility control.
     // Empty (no household) keeps the surface single-user and private-only.
@@ -44,6 +49,7 @@ export default async function ActionsPage() {
     searchPeople({ ownerUserId, limit: 100 }),
   ]);
 
+  const areaNameById = new Map(areas.map((area) => [area.id, area.name]));
   const toView = (action: Parameters<typeof toGeneralActionView>[0]) =>
     toGeneralActionView(action, { now, callerUserId: ownerUserId });
 
@@ -72,6 +78,13 @@ export default async function ActionsPage() {
             name: member.name,
             email: member.email,
           }))}
+          suggested={suggested.map((review) =>
+            toSuggestedGeneralActionReviewView(review, {
+              now,
+              callerUserId: ownerUserId,
+              areaNameById,
+            }),
+          )}
         />
       </div>
     </AppShell>

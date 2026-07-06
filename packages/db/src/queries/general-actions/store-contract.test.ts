@@ -73,6 +73,28 @@ function runStoreContract(name: string, makeStore: () => GeneralActionStore) {
       expect(updated.recurrence).toEqual({ interval: 6, unit: "month" });
     });
 
+    it("filters an owner listing to the requested statuses (the review queue's read path)", async () => {
+      const store = makeStore();
+      await seed(store, { title: "Active", status: "open" });
+      await seed(store, { title: "Proposal", status: "suggested" });
+      await seed(store, { title: "Set-aside proposal", status: "ignored" });
+      await seed(store, { title: "Done", status: "completed" });
+
+      // The Suggested review queue reads exactly this: status-scoped owner listing.
+      const suggested = await store.listGeneralActionsForOwner({
+        ownerUserId: OWNER,
+        statuses: ["suggested"],
+      });
+      expect(suggested.map((action) => action.title)).toEqual(["Proposal"]);
+
+      // Multiple statuses (e.g. the resolved trail) are honored together.
+      const resolved = await store.listGeneralActionsForOwner({
+        ownerUserId: OWNER,
+        statuses: ["completed", "dismissed"],
+      });
+      expect(resolved.map((action) => action.title)).toEqual(["Done"]);
+    });
+
     it("orders by surfacing time: coalesce(deferUntil, dueAt), unscheduled last", async () => {
       const store = makeStore();
       await seed(store, { title: "Later", dueAt: new Date("2026-09-01T00:00:00Z") });

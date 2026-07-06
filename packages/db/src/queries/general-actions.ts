@@ -1,13 +1,18 @@
 import { createDrizzleGeneralActionLifecycleStore } from "./general-actions/drizzle-store";
 import { createGeneralActionLifecycle } from "./general-actions/lifecycle";
+import { createSuggestedGeneralActionReview } from "./general-actions/review";
 import type {
+  AcceptSuggestedGeneralActionInput,
   CreateActiveGeneralActionInput,
   DeferGeneralActionInput,
   EditGeneralActionInput,
+  EditSuggestedGeneralActionInput,
   GeneralActionActionInput,
   ListGeneralActionsInput,
+  ListSuggestedGeneralActionReviewsInput,
   SetGeneralActionPeopleInput,
   SetGeneralActionVisibilityInput,
+  SuggestGeneralActionInput,
 } from "./general-actions/types";
 
 export {
@@ -19,10 +24,13 @@ export {
   createInMemoryGeneralActionStore,
 } from "./general-actions/in-memory-store";
 export { createGeneralActionLifecycle } from "./general-actions/lifecycle";
+export { createSuggestedGeneralActionReview } from "./general-actions/review";
 export type * from "./general-actions/types";
 
 const defaultGeneralActionStore = createDrizzleGeneralActionLifecycleStore();
 const defaultGeneralActionLifecycle = createGeneralActionLifecycle(defaultGeneralActionStore);
+const defaultSuggestedGeneralActionReview =
+  createSuggestedGeneralActionReview(defaultGeneralActionStore);
 
 export async function createGeneralAction(input: CreateActiveGeneralActionInput) {
   return defaultGeneralActionLifecycle.createGeneralAction(input);
@@ -86,4 +94,34 @@ export async function getGeneralAction(input: GeneralActionActionInput) {
 
 export async function listGeneralActionHistory(input: GeneralActionActionInput) {
   return defaultGeneralActionLifecycle.listGeneralActionHistory(input);
+}
+
+export async function suggestGeneralAction(input: SuggestGeneralActionInput) {
+  return defaultSuggestedGeneralActionReview.suggestGeneralAction(input);
+}
+
+export async function listSuggestedGeneralActionReviews(
+  input: ListSuggestedGeneralActionReviewsInput,
+) {
+  return defaultSuggestedGeneralActionReview.listSuggestedGeneralActionReviews(input);
+}
+
+export async function getSuggestedGeneralActionReview(input: GeneralActionActionInput) {
+  return defaultSuggestedGeneralActionReview.getSuggestedGeneralActionReview(input);
+}
+
+export async function acceptSuggestedGeneralAction(input: AcceptSuggestedGeneralActionInput) {
+  return defaultSuggestedGeneralActionReview.acceptSuggestedGeneralAction(input);
+}
+
+export async function editSuggestedGeneralAction(input: EditSuggestedGeneralActionInput) {
+  return defaultSuggestedGeneralActionReview.editSuggestedGeneralAction(input);
+}
+
+export async function dismissSuggestedGeneralAction(input: GeneralActionActionInput) {
+  return defaultSuggestedGeneralActionReview.dismissSuggestedGeneralAction(input);
+}
+
+export async function ignoreSuggestedGeneralAction(input: GeneralActionActionInput) {
+  return defaultSuggestedGeneralActionReview.ignoreSuggestedGeneralAction(input);
 }

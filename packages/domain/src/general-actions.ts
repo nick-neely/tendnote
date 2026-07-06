@@ -25,8 +25,17 @@ export class GeneralActionValidationError extends Error {
  * Actions, ADR 0148): a paused Routine stops surfacing and stops rolling forward but
  * is not retired — the owner resumes it later. A one-time Action is never paused.
  *
- * The review-gated `suggested` state is deferred to a later Phase 5 slice; adding
- * enum values is additive so this stays forward friendly (ADRs 0144, 0147, 0148).
+ * `suggested` and `ignored` are the two review-gated states (ADRs 0144, 0151, 0152).
+ * A `suggested` action is a review-gated proposal — it never surfaces on the active
+ * Actions ledger or any proactive surface until the user accepts it, which promotes
+ * it in place to `open` (a durable Action, or a Routine when it carries a cadence).
+ * `ignored` is the quiet set-aside for a proposal the user doesn't want to act on:
+ * it appears on neither the active nor the resolved ledger and has no transition out
+ * (terminal in place), so a rejected-via-dismiss proposal is actually the *softer*,
+ * recoverable one — `dismissed` stays in the resolved trail and can be reopened,
+ * whereas `ignored` simply clears the proposal from view (a later extraction/Eve turn
+ * can re-propose it). Both `suggested` and `ignored` sit outside the active lifecycle
+ * transition matrix, which only governs durable actions (open/deferred and onward).
  */
 export const generalActionStatusSchema = z.enum([
   "open",
@@ -35,6 +44,8 @@ export const generalActionStatusSchema = z.enum([
   "dismissed",
   "archived",
   "paused",
+  "suggested",
+  "ignored",
 ]);
 
 /**
@@ -186,6 +197,23 @@ export const ACTIVE_GENERAL_ACTION_STATUSES: ReadonlySet<GeneralActionStatus> = 
 
 export function isActiveGeneralActionStatus(status: GeneralActionStatus): boolean {
   return ACTIVE_GENERAL_ACTION_STATUSES.has(status);
+}
+
+/**
+ * Review-gated statuses that are owner-only: a `suggested` proposal and an `ignored`
+ * (set-aside) proposal are never a durable action, so scope-visible reads exclude
+ * them. A household member can never fetch — or read the history of — a proposal that
+ * has not been accepted, even one proposed at household scope, because visibility only
+ * begins at acceptance (ADRs 0151, 0152, 0153). The owner still reaches their own
+ * proposals through owner-scoped reads in the review lifecycle.
+ */
+export const REVIEW_GENERAL_ACTION_STATUSES: ReadonlySet<GeneralActionStatus> = new Set([
+  "suggested",
+  "ignored",
+]);
+
+export function isReviewGeneralActionStatus(status: GeneralActionStatus): boolean {
+  return REVIEW_GENERAL_ACTION_STATUSES.has(status);
 }
 
 /**
@@ -433,6 +461,13 @@ export const generalActionEventKindSchema = z.enum([
   "archived",
   "paused",
   "resumed",
+  // Review-gated history (ADRs 0151, 0152): a proposal was created, promoted into a
+  // durable action on acceptance, or quietly set aside (`ignored`). A review dismiss
+  // reuses `dismissed`, since a rejected proposal and a dismissed action share the
+  // same terminal meaning.
+  "suggested",
+  "promoted",
+  "ignored",
 ]);
 
 export const generalActionEventSchema = z.object({

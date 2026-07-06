@@ -10,6 +10,7 @@ import type {
   GeneralActionStatus,
   Person,
   PrivacyScope,
+  SourceRecord,
 } from "@tendnote/domain";
 import type { GeneralActionAreaStore } from "../general-action-areas/types";
 import type { HouseholdStore } from "../households/types";
@@ -220,4 +221,83 @@ export type SetGeneralActionPeopleInput = GeneralActionActionInput & {
 export type ListGeneralActionsInput = {
   ownerUserId: string;
   limit?: number;
+};
+
+/**
+ * Fixed typed component for a Suggested General Action review item, referencing the
+ * persisted action and its grounding source record by id so review surfaces reload
+ * authoritative records before any accept/edit/dismiss/ignore (ADR 0028, mirroring
+ * the suggested-follow-up review component).
+ */
+export type SuggestedGeneralActionReviewComponent = {
+  type: "suggested_general_action_review";
+  generalActionId: string;
+  sourceRecordId: string | null;
+};
+
+/**
+ * A Suggested General Action presented for review: the hydrated proposal (with its
+ * linked people and scope audience detail) plus the grounding source record, so
+ * review surfaces show the editable metadata and *where the proposal came from*
+ * without leaking raw ids (ADRs 0151, 0152).
+ */
+export type SuggestedGeneralActionReviewResult = {
+  action: GeneralActionWithContext;
+  sourceRecord: SourceRecord | null;
+  component: SuggestedGeneralActionReviewComponent;
+};
+
+/**
+ * Proposes a Suggested General Action: a review-gated `suggested` row grounded in an
+ * owner-scoped source record (ADR 0151), carrying the same editable metadata a durable
+ * Action does — timing, recurrence, Area, people links, asset hints, and a coarse
+ * visibility scope (private or household; a finer selected-shared audience is chosen at
+ * acceptance). It never surfaces on the active ledger until accepted.
+ */
+export type SuggestGeneralActionInput = {
+  ownerUserId: string;
+  title: string;
+  notes?: string | null;
+  dueAt?: Date | null;
+  deferUntil?: Date | null;
+  recurrence?: GeneralActionRecurrence | null;
+  links?: GeneralActionLink[];
+  assetHints?: GeneralActionAssetHint[];
+  personIds?: string[];
+  areaId?: string | null;
+  // Visibility the proposal argues for. Defaults to private, fail-closed (ADR 0153).
+  // `household` requires the proposer's active household; a selected-shared audience is
+  // deferred to acceptance, so `shared` is not proposed directly.
+  scope?: Exclude<PrivacyScope, "shared">;
+  householdId?: string | null;
+  // The source record grounding the proposal — required, since a suggestion must be
+  // grounded (ADR 0151), mirroring suggested follow-ups.
+  sourceRecordId: string;
+  // True only when the user directly asked about a delicate context; restricted source
+  // records are excluded from proactive suggestion by default (ADR 0058).
+  directlyRequested?: boolean;
+};
+
+export type ListSuggestedGeneralActionReviewsInput = {
+  ownerUserId: string;
+  limit?: number;
+};
+
+/**
+ * Accepts a Suggested General Action, promoting it in place to a durable `open`
+ * Action (a Routine when it carries a cadence). An optional edit corrects content
+ * before promotion; an optional scope choice finalizes the audience — including a
+ * selected-shared one that a bare proposal could not carry. Idempotent: re-accepting
+ * an already-promoted proposal is a no-op (ADRs 0151, 0152).
+ */
+export type AcceptSuggestedGeneralActionInput = GeneralActionActionInput & {
+  edit?: GeneralActionEdit;
+  scope?: PrivacyScope;
+  householdId?: string | null;
+  selectedUserIds?: string[];
+};
+
+/** Corrects a Suggested General Action's content in place without accepting it. */
+export type EditSuggestedGeneralActionInput = GeneralActionActionInput & {
+  edit: GeneralActionEdit;
 };

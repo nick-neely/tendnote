@@ -11,6 +11,7 @@ import { ResolvedActionRow } from "@/components/general-action-resolved-row";
 import { ActionRow } from "@/components/general-action-row";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general-action-review";
 import { Button } from "@/components/ui/button";
 import {
   filterActionsByArea,
@@ -19,11 +20,13 @@ import {
 } from "@/lib/general-action-area-filter";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionView } from "@/lib/general-action-view";
+import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 import { useServerSyncedList } from "@/lib/use-server-synced-list";
 import { cn } from "@/lib/utils";
 
 const actionId = (action: GeneralActionView) => action.id;
 const areaId = (area: GeneralActionAreaView) => area.id;
+const reviewActionId = (review: SuggestedGeneralActionReviewView) => review.action.id;
 
 /** The moment an active action next wants attention; unscheduled sorts last. */
 function surfacingKey(action: GeneralActionView): string | null {
@@ -69,6 +72,7 @@ export function ActionsSurface({
   resolved,
   resolvedTruncated = false,
   shareableMembers = [],
+  suggested = [],
 }: {
   active: GeneralActionView[];
   /** Every Area, archived included — active ones drive the filter and picker; all resolve names. */
@@ -82,12 +86,15 @@ export function ActionsSurface({
   resolvedTruncated?: boolean;
   /** Household members an Action can be shared with; empty keeps the surface private-only. */
   shareableMembers?: ShareableActionMember[];
+  /** Review-gated Suggested actions awaiting a yes/no, shown above the active list (ADR 0152). */
+  suggested?: SuggestedGeneralActionReviewView[];
 }) {
   const router = useRouter();
   const [activeList, setActiveList] = useServerSyncedList(active, actionId, sortActive);
   const [pausedList, setPausedList] = useServerSyncedList(paused, actionId);
   const [resolvedList, setResolvedList] = useServerSyncedList(resolved, actionId);
   const [areaList, setAreaList] = useServerSyncedList(areas, areaId);
+  const [suggestedList, setSuggestedList] = useServerSyncedList(suggested, reviewActionId);
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
   const [managerOpen, setManagerOpen] = useState(false);
 
@@ -105,6 +112,11 @@ export function ActionsSurface({
   const visibleActive = filterActionsByArea(activeList, effectiveAreaId);
   const visiblePaused = filterActionsByArea(pausedList, effectiveAreaId);
   const visibleResolved = filterActionsByArea(resolvedList, effectiveAreaId);
+  // Suggested proposals honor the active Area filter too, so filtering by an Area scopes
+  // the whole surface. A proposal without an Area shows only in the unfiltered view.
+  const visibleSuggested = effectiveAreaId
+    ? suggestedList.filter((review) => review.action.areaId === effectiveAreaId)
+    : suggestedList;
   const { visible: visibleChips, overflow: chipOverflow } = pickVisibleAreaChips(
     activeAreas,
     effectiveAreaId,
@@ -130,6 +142,18 @@ export function ActionsSurface({
   function removeResolved(id: string) {
     setResolvedList((current) => current.filter((action) => action.id !== id));
     router.refresh();
+  }
+
+  // A reviewed proposal leaves the Suggested list; an accepted one re-enters as an
+  // active Action on the next server sync (the card triggers router.refresh).
+  function removeSuggested(id: string) {
+    setSuggestedList((current) => current.filter((review) => review.action.id !== id));
+  }
+
+  function updateSuggested(view: SuggestedGeneralActionReviewView) {
+    setSuggestedList((current) =>
+      current.map((review) => (review.action.id === view.action.id ? view : review)),
+    );
   }
 
   function removePaused(id: string) {
@@ -254,6 +278,33 @@ export function ActionsSurface({
           like replacing a filter or renewing a subscription.
         </LedgerEmpty>
       )}
+
+      {/* Suggested proposals sit below the active ledger — the same after-active order the
+          Follow-ups tab uses for its suggestions, so your own actions lead and proposals
+          follow as a gentle offer, never ahead of what you chose (ADR 0152). */}
+      {visibleSuggested.length ? (
+        <section aria-label="Suggested actions" className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-0.5">
+            <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
+              Suggested
+            </h2>
+            <p className="max-w-[68ch] px-1 text-[length:var(--text-caption)] text-muted-foreground leading-[var(--text-small-line)]">
+              Proposed from your notes. Accept to add one to your actions, edit it first, or set it
+              aside — nothing is added until you accept.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2.5">
+            {visibleSuggested.map((review) => (
+              <SuggestedGeneralActionReviewCard
+                key={review.action.id}
+                onResolve={removeSuggested}
+                onUpdate={updateSuggested}
+                review={review}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {visiblePaused.length ? (
         <details className="group">

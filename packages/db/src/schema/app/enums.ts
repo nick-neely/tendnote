@@ -115,6 +115,10 @@ export const generalActionStatus = pgEnum("general_action_status", [
   "archived",
   // A Routine set aside without retiring it — non-terminal, resumable (ADR 0148).
   "paused",
+  // Review-gated states (ADRs 0144, 0151, 0152): a proposal awaiting review, and the
+  // quiet set-aside for one the user neither accepts nor formally dismisses.
+  "suggested",
+  "ignored",
 ]);
 
 export const generalActionEventKind = pgEnum("general_action_event_kind", [
@@ -127,6 +131,10 @@ export const generalActionEventKind = pgEnum("general_action_event_kind", [
   "archived",
   "paused",
   "resumed",
+  // Review-gated history (ADRs 0151, 0152).
+  "suggested",
+  "promoted",
+  "ignored",
 ]);
 
 export const extractionJobStatus = pgEnum("extraction_job_status", [
