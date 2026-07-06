@@ -1219,17 +1219,37 @@ Vertical slice issue seeds:
 6. Add privacy-boundary tests/evals for shared context, with deterministic policy enforcement as the required security boundary.
 7. Add Privacy Guard subagent after deterministic shared-context query/action enforcement exists; it may review, flag, revise, or require clarification for Eve outputs and proposed shared-context actions, but deterministic scope enforcement remains authoritative.
 
-#### Phase 5: General Reminders/Actions Foundation
+#### Phase 5: General Actions Foundation
 
-Goal: Add the first non-people Personal OS vertical by supporting general reminders/actions such as "replace the refrigerator water filter" without forcing every reminder to belong to a person. This phase should stretch Tendnote's source-record, memory, retrieval, review, reminder, and Eve-mode architecture in the smallest useful way without replacing the people model with a premature generic abstraction.
+Goal: Add the first non-people Personal OS vertical by supporting General Actions such as "replace the refrigerator water filter" without forcing every action to belong to a person. This phase should make Actions and Routines useful through direct creation, review-gated capture, Eve, semantic retrieval, household scope, recurrence, Areas, and a narrow Action Today surface while avoiding project-management, external task-system, notification-system, and full mobile Personal OS scope.
+
+Deliverables:
+
+- Separate General Action model from person-centered Follow-Ups, with shared lifecycle vocabulary where useful (ADR 0143)
+- User-facing Actions surface, with Routines as the product label for recurring General Actions and Suggested actions for review proposals (ADR 0148)
+- Bounded Personal OS action model with lifecycle, due/defer timing, recurrence, priority, effort or size, Area, resurfacing semantics, visibility scope, source grounding, provenance, optional person links, and lightweight asset hints (ADRs 0145, 0149, 0154, 0155, 0156)
+- Flat custom Areas seeded with useful defaults, without tags, nested taxonomies, or area-level permissions (ADR 0146)
+- Direct active creation for intentional user form input, plus review-gated Suggested General Actions for Eve, Discord, fast capture, imported/provider-derived context, and extraction outputs (ADRs 0144, 0151, 0152)
+- Source Record action extraction that reuses the existing extraction job pattern and creates Suggested General Actions rather than hidden Source Record action metadata (ADR 0151)
+- Semantic retrieval and Eve-first tools for creating explicit actions, proposing suggested actions, shallow planning, listing due/overdue/deferred/resurfaced actions, searching actions by meaning, and answering cross-domain questions after deterministic scope filtering (ADRs 0150, 0159, 0163)
+- Phase 4 private/shared/household visibility scopes on General Actions and Suggested General Actions, with scope-filtered retrieval, Eve tools, proactive summaries, and Discord delivery (ADRs 0153, 0158)
+- Narrow Action Today surface for due, overdue, and deliberately resurfaced Actions/Routines, plus mobile-usable action creation, review, and lifecycle controls without building the full Phase 7 Today/mobile shell (ADRs 0157, 0161)
+- Lightweight links/notes and action history signals without document management, productivity analytics, gamification, or autonomous priority/cadence changes (ADRs 0164, 0165)
 
 Vertical slice issue seeds:
 
-- Add the smallest subject/action generalization needed for non-person reminders/actions.
-- Route fast capture into source records or pending source records before structured promotion.
-- Add review-gated promotion into general reminders/actions.
-- Preserve person Follow-Ups as the relationship-specific action subtype.
-- Extend exact recall, semantic retrieval, snapshots, and Eve responses for general reminders/actions.
+1. Add General Action, Suggested General Action, Area, recurrence, lifecycle/history, scope, provenance, optional person links, and asset-hint domain/schema foundation without merging the model into Follow-Ups.
+2. Add the Actions surface for direct creation, editing, completion, defer/snooze, archive, Areas, filters, Routines, and mobile-usable basics.
+3. Add Suggested General Actions to the shared Review Queue and Actions surface, with source grounding, editable metadata, accept/edit/dismiss, and idempotent promotion.
+4. Extend Source Record extraction jobs for action extraction that creates Suggested General Actions from Eve, Discord, fast capture, and provider-derived context.
+5. Extend semantic retrieval, exact recall, embeddings, and typed retrieval contracts for General Actions and Suggested General Actions with household scope filtering.
+6. Add Eve tools for explicit action creation, shallow planning, suggested-action proposal, action search/listing, and explicit-turn lifecycle mutations with audit/provenance.
+7. Add narrow Action Today, resurfacing rules, recurring Routine roll-forward/completion history, and scoped scheduled/proactive summaries including Discord delivery where configured.
+8. Add tests/evals for lifecycle, recurrence, scope, review promotion, extraction idempotency, retrieval filtering, Eve behavior, proactive delivery, mobile-usable UI behavior, and out-of-scope guardrails.
+
+Proof scenario:
+
+- A user captures that the refrigerator water filter needs replacing every six months. Tendnote stores source grounding, Eve proposes a Suggested General Action with Home Area, Routine recurrence, household scope, and a lightweight asset hint. The user reviews and accepts it, sees it in Actions, gets it surfaced when due, can retrieve it later through Eve/semantic search, and can receive scope-safe proactive or Discord delivery without introducing full Asset/Object Memory.
 
 #### Phase 6: Asset/Object Memory
 

@@ -60,6 +60,18 @@ _Avoid_: Generated task list, background scanner, daily brief
 A user-visible reminder to reconnect with a person for a specific reason at a specific time or cadence.
 _Avoid_: Task, deal, lead activity
 
+**General Action**:
+A non-person action or reminder for the owner's broader Personal OS context, such as replacing a water filter or renewing a subscription. A general action has its own domain model with source grounding, lifecycle state, due dates or cadence, visibility scope, optional person links, and later links to assets; product UI may label one-time general actions as Actions and recurring general actions as Routines.
+_Avoid_: Follow-up, task, project, todo
+
+**Suggested General Action**:
+A review-gated proposal for a non-person General Action, grounded in a source record or other visible Tendnote context. A suggested general action can be accepted, edited, dismissed, or ignored before it becomes an active General Action.
+_Avoid_: Automatic task, inferred todo, suggested follow-up
+
+**Area**:
+A broad life category used to organize General Actions, such as Home, Health, Finance, Travel, Admin, or Career. An area is not a project, tag, folder tree, permission scope, or household workspace.
+_Avoid_: Project, tag, folder, scope
+
 **Suggested Follow-Up**:
 An agent-proposed follow-up that the user can accept, dismiss, or ignore before it becomes a normal reminder. Suggested follow-ups may appear as review prompts or low-weight brief items, but they are not the same as user-created follow-ups.
 _Avoid_: Automatic task, open reminder
