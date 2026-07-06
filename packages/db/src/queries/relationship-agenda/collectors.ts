@@ -522,6 +522,12 @@ export async function mergeSemanticContext(
     (candidate) =>
       candidate.sensitivity !== "restricted" || shouldIncludeRestrictedSemanticResult(input),
   )) {
+    // General Actions are not relationship-agenda context (ADRs 0143, 0155): the agenda
+    // scopes its semantic call to memory/source_record, so an `action_item` result never
+    // occurs — this guard keeps that invariant explicit and narrows the trust level.
+    if (result.trustLevel === "action_item") {
+      continue;
+    }
     const sourceRefs: RelationshipAgendaSourceRef[] = result.sourceRefs.map((ref) => ({
       kind: ref.kind === "memory" ? "memory" : "source_record",
       id: ref.id,

@@ -2,11 +2,15 @@ import { createHash } from "node:crypto";
 import {
   createRelationshipContextEmbeddingSchema,
   decideApprovedMemoryEmbedding,
+  decideGeneralActionEmbedding,
   decideSourceRecordEmbedding,
+  type GeneralAction,
   type Memory,
   projectApprovedMemoryEmbeddedText,
+  projectGeneralActionEmbeddedText,
   projectSourceRecordEmbeddedText,
   type SemanticRecordKind,
+  type SemanticTrustLevel,
   type SourceRecord,
 } from "@tendnote/domain";
 import type {
@@ -65,7 +69,7 @@ async function reuseOrEmbed(
     recordId: string;
     embeddedText: string;
     personId: string | null;
-    trustLevel: "confirmed_fact" | "logged_context";
+    trustLevel: SemanticTrustLevel;
     sensitivity: SourceRecord["sensitivity"];
     sourceUpdatedAt: Date;
   },
@@ -151,8 +155,11 @@ export async function skipJob(
   job: ProcessEmbeddingJobResult["job"],
   reason: string,
   now: Date,
-  sourceMemory: Memory | null = null,
-  sourceRecord: SourceRecord | null = null,
+  sources: {
+    sourceMemory?: Memory | null;
+    sourceRecord?: SourceRecord | null;
+    sourceGeneralAction?: GeneralAction | null;
+  } = {},
 ): Promise<ProcessEmbeddingJobResult> {
   const updated = await ctx.store.updateEmbeddingJob({
     jobId: job.id,
@@ -176,8 +183,9 @@ export async function skipJob(
     job: updated,
     outcome: "skipped",
     embedding: null,
-    sourceMemory,
-    sourceRecord,
+    sourceMemory: sources.sourceMemory ?? null,
+    sourceRecord: sources.sourceRecord ?? null,
+    sourceGeneralAction: sources.sourceGeneralAction ?? null,
     reason,
   };
 }
@@ -281,4 +289,46 @@ export async function processSourceRecord(
   });
 
   return { embedding, sourceRecord };
+}
+
+/**
+ * Embeds a General Action. Mirrors {@link processApprovedMemory}: skip when the action
+ * is gone or no longer retrievable (terminal, `ignored`, or emptied), reuse a
+ * fingerprint-matching embedding, else embed and upsert. A General Action is not
+ * person-centered context (ADRs 0143, 0155), so its embedding carries no primary
+ * person; scope and the owner-only rule for `suggested` proposals are enforced at the
+ * search seam, not here. It is embedded with `action_item` trust and `normal`
+ * sensitivity (General Actions carry no sensitivity flag).
+ */
+export async function processGeneralAction(
+  ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
+): Promise<EmbeddingProduced | { skipReason: string; sourceGeneralAction: GeneralAction | null }> {
+  const action = await ctx.store.getGeneralActionForEmbedding({
+    ownerUserId: job.ownerUserId,
+    generalActionId: job.recordId,
+  });
+
+  if (!action) {
+    return { skipReason: "general_action_not_found", sourceGeneralAction: null };
+  }
+
+  const decision = decideGeneralActionEmbedding(action);
+
+  if (decision.action === "skip") {
+    return { skipReason: decision.reason, sourceGeneralAction: action };
+  }
+
+  const embedding = await reuseOrEmbed(ctx, {
+    ownerUserId: action.ownerUserId,
+    recordKind: "general_action",
+    recordId: action.id,
+    embeddedText: projectGeneralActionEmbeddedText(action),
+    personId: null,
+    trustLevel: "action_item",
+    sensitivity: "normal",
+    sourceUpdatedAt: action.updatedAt,
+  });
+
+  return { embedding, sourceGeneralAction: action };
 }

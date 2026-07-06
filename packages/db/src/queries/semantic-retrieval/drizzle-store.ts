@@ -2,6 +2,8 @@ import {
   claimableEmbeddingJobStatuses,
   createEmbeddingJobSchema,
   createRelationshipContextEmbeddingSchema,
+  type GeneralActionStatus,
+  generalActionSchema,
   type SemanticRetrievalResult,
   visibilityChoiceForScope,
   visibilityLabelForScope,
@@ -9,6 +11,7 @@ import {
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import {
+  generalActions,
   relationshipContextEmbeddingJobs,
   relationshipContextEmbeddings,
   sourceRecordPeople,
@@ -22,7 +25,7 @@ import type { EmbeddingStore, UpdateEmbeddingJobInput } from "./types";
 const CLAIMABLE_STATUSES = [...claimableEmbeddingJobStatuses];
 
 type SemanticMemorySearchRow = {
-  record_kind: "memory" | "source_record";
+  record_kind: "memory" | "source_record" | "general_action";
   record_id: string;
   owner_user_id: string;
   household_id: string | null;
@@ -31,10 +34,15 @@ type SemanticMemorySearchRow = {
   related_person_display_name: string | null;
   snippet: string;
   similarity: string | number;
-  trust_level: "confirmed_fact" | "logged_context";
+  trust_level: "confirmed_fact" | "logged_context" | "action_item";
   sensitivity: "normal" | "sensitive" | "restricted";
   importance: number;
   updated_at: Date;
+  // Populated only for `general_action` rows so the typed result can narrow the kind to
+  // Action / Routine / Suggested without a second fetch (AC4). Null for every other kind.
+  general_action_status: GeneralActionStatus | null;
+  general_action_is_routine: boolean | null;
+  general_action_area_id: string | null;
 };
 
 function buildJobUpdate(input: UpdateEmbeddingJobInput) {
@@ -174,6 +182,20 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
 
       return job;
     },
+    async getGeneralActionForEmbedding(input) {
+      const [action] = await getDb()
+        .select()
+        .from(generalActions)
+        .where(
+          and(
+            eq(generalActions.id, input.generalActionId),
+            eq(generalActions.ownerUserId, input.ownerUserId),
+          ),
+        )
+        .limit(1);
+
+      return action ? generalActionSchema.parse(action) : null;
+    },
     async upsertRelationshipContextEmbedding(values) {
       const parsed = createRelationshipContextEmbeddingSchema.parse(values);
       const [embedding] = await getDb()
@@ -242,7 +264,10 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
             e.trust_level::text as trust_level,
             e.sensitivity::text as sensitivity,
             m.importance as importance,
-            m.updated_at as updated_at
+            m.updated_at as updated_at,
+            null::text as general_action_status,
+            null::boolean as general_action_is_routine,
+            null::text as general_action_area_id
           from relationship_context_embeddings e
           inner join memories m
             on m.id = e.record_id
@@ -284,7 +309,10 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
             e.trust_level::text as trust_level,
             e.sensitivity::text as sensitivity,
             sr.importance as importance,
-            sr.updated_at as updated_at
+            sr.updated_at as updated_at,
+            null::text as general_action_status,
+            null::boolean as general_action_is_routine,
+            null::text as general_action_area_id
           from relationship_context_embeddings e
           inner join source_records sr
             on sr.id = e.record_id
@@ -360,6 +388,69 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
                 : sql`true`
             })
             and (1 - (e.embedding <=> ${queryVector}::vector)) >= ${input.minimumSimilarity}
+          union all
+          select
+            e.record_kind::text as record_kind,
+            e.record_id::text as record_id,
+            ga.owner_user_id::text as owner_user_id,
+            ga.household_id::text as household_id,
+            ga.scope::text as scope,
+            null::text as related_person_id,
+            null::text as related_person_display_name,
+            ga.title as snippet,
+            (1 - (e.embedding <=> ${queryVector}::vector))::float8 as similarity,
+            e.trust_level::text as trust_level,
+            e.sensitivity::text as sensitivity,
+            0 as importance,
+            ga.updated_at as updated_at,
+            ga.status::text as general_action_status,
+            (ga.recurrence is not null) as general_action_is_routine,
+            ga.area_id::text as general_action_area_id
+          from relationship_context_embeddings e
+          inner join general_actions ga
+            on ga.id = e.record_id
+            and e.record_kind = 'general_action'
+          where
+            e.owner_user_id = ga.owner_user_id
+            and ${kindFilter(input.recordKinds, "general_action")}
+            and e.record_kind = 'general_action'
+            -- General Actions are not person-relationship context (ADRs 0143, 0155): a
+            -- person-scoped query never returns them.
+            and (${input.personId ? sql`false` : sql`true`})
+            -- Scope filtering happens here, pre-retrieval (ADR 0153, AC5). This inlines
+            -- the domain canRetrieveGeneralAction policy in SQL: a durable action
+            -- (open/deferred/paused) is admitted only for a caller who may see it, and a
+            -- suggested proposal only in owner-only review context, never scope-visible to
+            -- a household member (ADRs 0151-0153, AC3). Ignored and terminal never surface.
+            -- The status list is pinned to RETRIEVABLE_GENERAL_ACTION_STATUSES by the
+            -- migration-shape string-assertion test.
+            and (
+              (
+                ${visibleHouseholdRecordSql({
+                  callerUserId: input.ownerUserId,
+                  tableAlias: "ga",
+                  recordKind: "general_action",
+                })}
+                and ga.status in ('open', 'deferred', 'paused')
+              )
+              or (
+                ${input.includeReviewGated}::boolean
+                and ga.owner_user_id = ${input.ownerUserId}
+                and ga.status = 'suggested'
+              )
+            )
+            and e.embedding_model = ${input.embeddingModel}
+            and e.embedding_version = ${input.embeddingVersion}
+            and e.embedding_dimensions = ${input.queryEmbedding.length}
+            -- No updated_at freshness guard here: a General Action's updated_at bumps on
+            -- every lifecycle transition (defer, pause, complete-and-roll-forward) while
+            -- its embedded text (title/notes/cadence) is unchanged, so keying on it would
+            -- wrongly drop an action from retrieval after a harmless status change. The
+            -- content-fingerprint reuse at embed time keeps the vector matched to the last
+            -- content edit, and content edits re-enqueue an embedding job; missing or
+            -- still-processing embeddings fail open (PRD Phase 1D).
+            and e.trust_level = 'action_item'
+            and (1 - (e.embedding <=> ${queryVector}::vector)) >= ${input.minimumSimilarity}
         ) mixed_results
         order by
           round(similarity::numeric, 4) desc,
@@ -375,8 +466,8 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
 }
 
 function kindFilter(
-  kinds: ("memory" | "source_record")[] | undefined,
-  kind: "memory" | "source_record",
+  kinds: ("memory" | "source_record" | "general_action")[] | undefined,
+  kind: "memory" | "source_record" | "general_action",
 ) {
   return !kinds || kinds.includes(kind) ? sql`true` : sql`false`;
 }
@@ -399,5 +490,14 @@ function toSemanticRetrievalResult(row: SemanticMemorySearchRow): SemanticRetrie
       recordKind: row.record_kind,
       recordId: row.record_id,
     },
+    generalAction:
+      row.record_kind === "general_action" && row.general_action_status
+        ? {
+            status: row.general_action_status,
+            isRoutine: Boolean(row.general_action_is_routine),
+            isSuggested: row.general_action_status === "suggested",
+            areaId: row.general_action_area_id,
+          }
+        : null,
   };
 }

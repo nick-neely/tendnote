@@ -6,6 +6,10 @@ const migration = readFileSync(
   join(import.meta.dirname, "../../../migrations/0006_overconfident_squadron_supreme.sql"),
   "utf8",
 );
+const actionRetrievalMigration = readFileSync(
+  join(import.meta.dirname, "../../../migrations/0036_action_retrieval.sql"),
+  "utf8",
+);
 const drizzleStore = readFileSync(join(import.meta.dirname, "drizzle-store.ts"), "utf8");
 
 describe("semantic retrieval migration shape", () => {
@@ -58,5 +62,24 @@ describe("semantic retrieval migration shape", () => {
     expect(drizzleStore).toContain("filtered_person.id is not null");
     expect(drizzleStore).toContain("round(similarity::numeric, 4) desc");
     expect(drizzleStore).toContain("sr.sensitivity <> 'restricted'");
+  });
+
+  it("extends the record-kind and trust-level enums and adds the action search vector", () => {
+    expect(actionRetrievalMigration).toContain(
+      `ALTER TYPE "public"."semantic_record_kind" ADD VALUE 'general_action'`,
+    );
+    expect(actionRetrievalMigration).toContain(
+      `ALTER TYPE "public"."semantic_trust_level" ADD VALUE 'action_item'`,
+    );
+    expect(actionRetrievalMigration).toContain('ADD COLUMN "search_vector" "tsvector"');
+    expect(actionRetrievalMigration).toContain('"general_actions_search_vector_idx"');
+  });
+
+  it("keeps the general-action semantic retrieval policy in the SQL query", () => {
+    expect(drizzleStore).toContain("inner join general_actions ga");
+    expect(drizzleStore).toContain("e.trust_level = 'action_item'");
+    // Durable statuses only for scope-visible reads; suggested is owner-only review.
+    expect(drizzleStore).toContain("ga.status in ('open', 'deferred', 'paused')");
+    expect(drizzleStore).toContain("ga.status = 'suggested'");
   });
 });

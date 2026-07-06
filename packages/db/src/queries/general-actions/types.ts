@@ -301,3 +301,20 @@ export type AcceptSuggestedGeneralActionInput = GeneralActionActionInput & {
 export type EditSuggestedGeneralActionInput = GeneralActionActionInput & {
   edit: GeneralActionEdit;
 };
+
+/**
+ * Enqueues (and, outside production, immediately runs) a semantic-embedding job for a
+ * General Action, so it participates in semantic retrieval on write (ADR 0150; Phase 5
+ * #184). Injected into the lifecycle and review seams so the same embed-on-write trigger
+ * fires from every content-affecting path, mirroring how approved memories embed on save.
+ * Defaults to a no-op in stores/tests that do not exercise retrieval.
+ */
+export type GeneralActionEmbeddingScheduler = (input: {
+  ownerUserId: string;
+  recordKind: "general_action";
+  recordId: string;
+}) => Promise<unknown>;
+
+export type GeneralActionLifecycleDeps = {
+  scheduleGeneralActionEmbedding?: GeneralActionEmbeddingScheduler;
+};

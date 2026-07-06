@@ -21,8 +21,9 @@ function readCalendarSources(): string {
 
 describe("Calendar cache stays out of retrieval", () => {
   it("does not add Calendar to the semantic record kinds", () => {
-    // Only durable memories and retained source records are semantically embedded.
-    expect(semanticRecordKind.enumValues).toEqual(["memory", "source_record"]);
+    // Durable memories, retained source records, and General Actions are semantically
+    // embedded (ADR 0150); Calendar cache is never a semantic record kind.
+    expect(semanticRecordKind.enumValues).toEqual(["memory", "source_record", "general_action"]);
   });
 
   it("the Calendar read/cache seam imports no retrieval or embedding machinery", () => {

@@ -1,19 +1,37 @@
 import { z } from "zod";
+import {
+  describeRecurrence,
+  type GeneralAction,
+  type GeneralActionRecurrence,
+  generalActionRetrievalMetaSchema,
+  isRetrievableGeneralActionStatus,
+} from "./general-actions";
 import type { memoryStatusSchema } from "./memories";
 import { sensitivitySchema, type sourceSchema, visibilityChoiceSchema } from "./privacy";
 import type { sourceRecordRetentionPolicySchema, sourceRecordStatusSchema } from "./source-records";
 
-export const semanticRecordKindSchema = z.enum(["memory", "source_record"]);
+// General Actions join memories and source records as a semantic record kind: they are
+// embedded on write and retrieved by meaning like the others, discriminated on this
+// enum so a consumer can tell them apart (ADR 0150; Phase 5 #184).
+export const semanticRecordKindSchema = z.enum(["memory", "source_record", "general_action"]);
 
-export const semanticTrustLevelSchema = z.enum(["confirmed_fact", "logged_context"]);
+// `action_item` is the General Action trust level: an owner-authored intention that is
+// neither a confirmed fact about a person nor logged relationship context. Kept as its
+// own value so retrieval never mislabels an action's trust register.
+export const semanticTrustLevelSchema = z.enum(["confirmed_fact", "logged_context", "action_item"]);
 
 export const searchSemanticContextSchema = z.object({
   query: z.string().trim().min(1).max(400),
   personId: z.uuid().optional(),
-  recordKinds: z.array(semanticRecordKindSchema).min(1).max(2).optional(),
+  recordKinds: z.array(semanticRecordKindSchema).min(1).max(3).optional(),
   limit: z.number().int().min(1).max(20).default(8),
   minimumSimilarity: z.number().min(0).max(1).default(0),
   directlyRequested: z.boolean().default(false),
+  // Owner-only review context: when true, the caller's own `suggested` General Actions
+  // may participate in retrieval so a review surface can find grounded proposals. A
+  // suggested proposal is never scope-visible to a household member regardless of this
+  // flag — review-gated rows are owner-only until accepted (ADRs 0151–0153, AC3).
+  includeReviewGated: z.boolean().default(false),
 });
 
 export const embeddingJobStatusSchema = z.enum([
@@ -60,6 +78,10 @@ export const semanticRetrievalResultSchema = z.object({
     recordKind: semanticRecordKindSchema,
     recordId: z.string(),
   }),
+  // Present only for `general_action` results: narrows the kind to Action / Routine /
+  // Suggested so a consumer needn't re-fetch the row (AC4). Absent/null for every other
+  // kind, so existing memory/source-record producers need not set it.
+  generalAction: generalActionRetrievalMetaSchema.nullable().optional(),
 });
 
 export const createRelationshipContextEmbeddingSchema = relationshipContextEmbeddingSchema.omit({
@@ -136,6 +158,13 @@ export type SourceRecordEmbeddingPerson = {
   displayName: string;
 };
 
+export type GeneralActionEmbeddingSource = Pick<
+  GeneralAction,
+  "id" | "ownerUserId" | "title" | "notes" | "status" | "areaId" | "assetHints" | "updatedAt"
+> & {
+  recurrence: GeneralActionRecurrence | null;
+};
+
 export type EmbeddingDecision =
   | { action: "embed" }
   | {
@@ -150,6 +179,7 @@ export type EmbeddingDecision =
         | "source_record_not_note_or_summary"
         | "source_record_not_person_linked"
         | "source_record_has_unresolved_mentions"
+        | "general_action_not_retrievable_status"
         | "restricted_content";
     };
 
@@ -252,4 +282,69 @@ function interactionTypeFor(
   const value = sourceRecord.metadataJson.interactionType;
 
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Decides whether a General Action is eligible to be embedded. A General Action is
+ * embedded while it is retrievable — live (open/deferred/paused) or a `suggested`
+ * proposal — and skipped once terminal, `ignored`, or emptied to nothing (mirrors
+ * `decideApprovedMemoryEmbedding` / `decideSourceRecordEmbedding`). General Actions
+ * carry no sensitivity flag, so there is no restricted-content skip here. Scope and the
+ * owner-only rule for suggested proposals are enforced pre-retrieval at the search
+ * seam, not at embed time — an action is embedded once and filtered per caller on read.
+ */
+export function decideGeneralActionEmbedding(
+  action: Pick<GeneralActionEmbeddingSource, "status" | "title" | "notes" | "assetHints"> & {
+    recurrence: GeneralActionRecurrence | null;
+  },
+): EmbeddingDecision {
+  if (!isRetrievableGeneralActionStatus(action.status) && action.status !== "suggested") {
+    return { action: "skip", reason: "general_action_not_retrievable_status" };
+  }
+
+  if (projectGeneralActionEmbeddedText(action).length === 0) {
+    return { action: "skip", reason: "empty_embedded_text" };
+  }
+
+  return { action: "embed" };
+}
+
+/**
+ * Projects the deterministic text a General Action is embedded from: its title, then
+ * any notes, asset-hint labels, and — for a Routine — its cadence, each on a labeled
+ * line. Deterministic (asset hints are sorted) and whitespace-collapsed so the content
+ * fingerprint only changes when the meaningful text does, exactly like the memory and
+ * source-record projections. Title is always present (the schema requires a non-empty
+ * title), so the projection is non-empty for any real action.
+ */
+export function projectGeneralActionEmbeddedText(
+  action: Pick<GeneralActionEmbeddingSource, "title" | "notes" | "assetHints"> & {
+    recurrence: GeneralActionRecurrence | null;
+  },
+): string {
+  const title = action.title.trim();
+  // Title is the only required field and anchors the embedded text; without it the
+  // action has no meaningful content to embed (the schema forbids this — belt and
+  // suspenders so a direct caller can't slip through an empty projection).
+  if (title.length === 0) {
+    return "";
+  }
+
+  const assetText = action.assetHints
+    .map((hint) => hint.label.trim())
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right))
+    .join(", ");
+  const notes = action.notes?.trim() ?? "";
+  const parts = [
+    `Action: ${title}`,
+    notes ? `Notes: ${notes}` : null,
+    assetText ? `Assets: ${assetText}` : null,
+    action.recurrence ? `Cadence: ${describeRecurrence(action.recurrence)}` : null,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts
+    .join("\n")
+    .trim()
+    .replace(/[ \t]+/g, " ");
 }

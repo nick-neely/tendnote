@@ -14,6 +14,7 @@ import type {
   SetGeneralActionVisibilityInput,
   SuggestGeneralActionInput,
 } from "./general-actions/types";
+import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 
 export {
   createDrizzleGeneralActionLifecycleStore,
@@ -28,9 +29,17 @@ export { createSuggestedGeneralActionReview } from "./general-actions/review";
 export type * from "./general-actions/types";
 
 const defaultGeneralActionStore = createDrizzleGeneralActionLifecycleStore();
-const defaultGeneralActionLifecycle = createGeneralActionLifecycle(defaultGeneralActionStore);
-const defaultSuggestedGeneralActionReview =
-  createSuggestedGeneralActionReview(defaultGeneralActionStore);
+// Embed-on-write: content-affecting lifecycle and review paths enqueue (and, outside
+// production, immediately run) a semantic-embedding job so General Actions participate in
+// semantic retrieval, reusing the shared embedding pipeline (ADR 0150; Phase 5 #184).
+const scheduleGeneralActionEmbedding = enqueueAndTriggerSemanticEmbeddingJob;
+const defaultGeneralActionLifecycle = createGeneralActionLifecycle(defaultGeneralActionStore, {
+  scheduleGeneralActionEmbedding,
+});
+const defaultSuggestedGeneralActionReview = createSuggestedGeneralActionReview(
+  defaultGeneralActionStore,
+  { scheduleGeneralActionEmbedding },
+);
 
 export async function createGeneralAction(input: CreateActiveGeneralActionInput) {
   return defaultGeneralActionLifecycle.createGeneralAction(input);
