@@ -10,7 +10,11 @@ import {
 } from "@tendnote/db/queries/source-records";
 import { describe, expect, it, vi } from "vitest";
 import vercelConfig from "../../../vercel.json";
-import { consumeExtractionQueueMessage, enqueueAndPublishExtractionJob } from "./extraction-queue";
+import {
+  consumeExtractionQueueMessage,
+  enqueueAndPublishActionExtractionJob,
+  enqueueAndPublishExtractionJob,
+} from "./extraction-queue";
 import { BACKGROUND_JOB_QUEUE_CONFIG } from "./queue-runtime";
 
 const extractionJob = {
@@ -349,5 +353,95 @@ describe("extraction queue delivery", () => {
         },
       ],
     });
+  });
+});
+
+const actionJob = {
+  id: "00000000-0000-0000-0000-000000000301",
+  sourceRecordId: "source-1",
+  status: "pending",
+  attempts: 0,
+  lastError: null,
+  idempotencyKey: "action:source_record:source-1",
+  runAfter: new Date("2026-06-29T12:00:00.000Z"),
+  claimedAt: null,
+  completedAt: null,
+  createdAt: new Date("2026-06-29T12:00:00.000Z"),
+  updatedAt: new Date("2026-06-29T12:00:00.000Z"),
+} as const;
+
+describe("action extraction queue delivery", () => {
+  it("publishes an action_extraction delivery on the shared extraction topic in enqueue-only mode", async () => {
+    const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
+    const queue = { send: vi.fn().mockResolvedValue({ messageId: "msg-a1" }) };
+
+    const result = await enqueueAndPublishActionExtractionJob({
+      ownerUserId: "user-1",
+      sourceRecordId: "source-1",
+      runtimeMode: "enqueue_only",
+      deliveryStore,
+      queue,
+      enqueueActionExtraction: vi
+        .fn()
+        .mockResolvedValue({ job: actionJob, created: true, processResult: null }),
+    });
+
+    expect(result.deliveryId).toEqual(expect.any(String));
+    // Rides the extraction topic but stays a distinct action_extraction delivery.
+    expect(queue.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: BACKGROUND_JOB_QUEUE_CONFIG.action_extraction.topic,
+        payload: {
+          deliveryId: result.deliveryId,
+          jobKind: "action_extraction",
+          jobId: actionJob.id,
+        },
+      }),
+    );
+    await expect(
+      deliveryStore.getBackgroundJobDeliveryForConsumer(result.deliveryId ?? ""),
+    ).resolves.toMatchObject({
+      jobKind: "action_extraction",
+      jobId: actionJob.id,
+      status: "published",
+    });
+  });
+
+  it("dispatches an action_extraction message to the action processor", async () => {
+    const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
+    const queue = { send: vi.fn().mockResolvedValue({ messageId: "msg-a2" }) };
+    const result = await enqueueAndPublishActionExtractionJob({
+      ownerUserId: "user-1",
+      sourceRecordId: "source-1",
+      runtimeMode: "enqueue_only",
+      deliveryStore,
+      queue,
+      enqueueActionExtraction: vi
+        .fn()
+        .mockResolvedValue({ job: actionJob, created: true, processResult: null }),
+    });
+
+    const claimActionJob = vi.fn().mockResolvedValue({ ...actionJob, status: "running" });
+    const processActionJob = vi
+      .fn()
+      .mockResolvedValue({ outcome: "completed", suggestedActionIds: [] });
+    // Memory processors must not be touched for an action_extraction message.
+    const processJob = vi.fn();
+
+    const consumed = await consumeExtractionQueueMessage({
+      deliveryStore,
+      payload: {
+        deliveryId: result.deliveryId,
+        jobKind: "action_extraction",
+        jobId: actionJob.id,
+      },
+      claimActionJob,
+      processActionJob,
+      processJob,
+    });
+
+    expect(consumed).toMatchObject({ status: "processed" });
+    expect(processActionJob).toHaveBeenCalledWith({ jobId: actionJob.id, claim: false });
+    expect(processJob).not.toHaveBeenCalled();
   });
 });

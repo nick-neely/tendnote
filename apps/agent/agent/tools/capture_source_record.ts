@@ -3,7 +3,10 @@ import { sensitivitySchema } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { captureSourceRecordForPersonWithEmbeddingDelivery } from "../lib/background-jobs/embedding-schedulers";
-import { enqueueAndPublishExtractionJob } from "../lib/background-jobs/extraction-queue";
+import {
+  enqueueAndPublishActionExtractionJob,
+  enqueueAndPublishExtractionJob,
+} from "../lib/background-jobs/extraction-queue";
 import { resolveOwnerUserId } from "../lib/owner";
 
 const inputSchema = z.object({
@@ -54,6 +57,7 @@ export default defineTool({
         captureForPerson: captureSourceRecordForPersonWithEmbeddingDelivery,
         captureGlobal: captureSourceRecord,
         enqueueExtraction: enqueueAndPublishExtractionJob,
+        enqueueActionExtraction: enqueueAndPublishActionExtractionJob,
       },
     );
 

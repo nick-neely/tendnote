@@ -160,7 +160,11 @@ export const embeddingJobStatus = pgEnum("embedding_job_status", [
   "skipped",
 ]);
 
-export const backgroundJobKind = pgEnum("background_job_kind", ["extraction", "embedding"]);
+export const backgroundJobKind = pgEnum("background_job_kind", [
+  "extraction",
+  "embedding",
+  "action_extraction",
+]);
 
 export const backgroundJobDeliveryStatus = pgEnum("background_job_delivery_status", [
   "pending",

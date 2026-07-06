@@ -8,7 +8,10 @@ import {
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { captureSourceRecordForPersonWithEmbeddingDelivery } from "@/lib/background-jobs/embedding-schedulers";
-import { enqueueAndPublishExtractionJob } from "@/lib/background-jobs/extraction-queue";
+import {
+  enqueueAndPublishActionExtractionJob,
+  enqueueAndPublishExtractionJob,
+} from "@/lib/background-jobs/extraction-queue";
 import {
   type SourceRecordReviewView,
   toSourceRecordReviewView,
@@ -43,6 +46,7 @@ export async function captureGlobalAssistantSourceRecord(input: {
       captureForPerson: captureSourceRecordForPersonWithEmbeddingDelivery,
       captureGlobal: captureSourceRecord,
       enqueueExtraction: enqueueAndPublishExtractionJob,
+      enqueueActionExtraction: enqueueAndPublishActionExtractionJob,
     },
   );
 

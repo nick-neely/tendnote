@@ -24,3 +24,4 @@ Domain modeling docs are created lazily when terms or decisions need to be resol
 
 - Keep `AGENTS.md` minimal: only document constraints agents routinely get wrong; omit trivia and anything discoverable by searching the codebase.
 - Keep shared DB/product behavior behind small owner-scoped query/mutation entry points; split adapters, product logic, tests, and schema tables into focused files before monoliths form.
+- Migrations: after `db:generate`, rename drizzle's random tag to a descriptive name (`NNNN_what_it_adds.sql`) and update the matching `meta/_journal.json` tag; `pnpm db:check` must stay clean.
