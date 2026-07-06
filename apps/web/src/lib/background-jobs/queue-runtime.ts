@@ -78,6 +78,19 @@ export const BACKGROUND_JOB_QUEUE_CONFIG = {
     rateLimitKey: "background-job:embedding",
     costCategory: "embedding",
   },
+  // Action extraction shares the extraction topic and route (dispatched by job kind) but
+  // keeps its own rate-limit budget so a burst of action proposals cannot starve memory
+  // extraction, and vice versa. Both are LLM-cost extraction work.
+  action_extraction: {
+    topic: BACKGROUND_JOB_TOPICS.action_extraction,
+    consumerGroup: "tendnote-extraction-processor",
+    maxConcurrency: 2,
+    maxMessagesPerSecond: 2,
+    visibilityTimeoutSeconds: 600,
+    retryAfterSeconds: 60,
+    rateLimitKey: "background-job:action-extraction",
+    costCategory: "llm-extraction",
+  },
 } satisfies Record<
   BackgroundJobKind,
   {
@@ -261,7 +274,9 @@ function parseBackgroundJobQueuePayload(payload: unknown): BackgroundJobQueuePay
   if (
     typeof candidate.deliveryId !== "string" ||
     typeof candidate.jobId !== "string" ||
-    (candidate.jobKind !== "extraction" && candidate.jobKind !== "embedding")
+    (candidate.jobKind !== "extraction" &&
+      candidate.jobKind !== "embedding" &&
+      candidate.jobKind !== "action_extraction")
   ) {
     return null;
   }

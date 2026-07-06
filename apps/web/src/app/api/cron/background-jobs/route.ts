@@ -4,6 +4,7 @@ import { runBackgroundJobRecovery } from "@/lib/background-jobs/recovery";
 const DELIVERY_LIMIT = 25;
 const EXTRACTION_BACKFILL_LIMIT = 5;
 const EMBEDDING_BACKFILL_LIMIT = 5;
+const ACTION_EXTRACTION_BACKFILL_LIMIT = 5;
 
 function isAuthorized(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -23,6 +24,7 @@ export async function GET(request: NextRequest) {
     deliveryLimit: DELIVERY_LIMIT,
     extractionBackfillLimit: EXTRACTION_BACKFILL_LIMIT,
     embeddingBackfillLimit: EMBEDDING_BACKFILL_LIMIT,
+    actionExtractionBackfillLimit: ACTION_EXTRACTION_BACKFILL_LIMIT,
     logger: console,
   });
 

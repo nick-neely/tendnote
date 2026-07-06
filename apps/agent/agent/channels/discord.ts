@@ -3,7 +3,10 @@ import { resolveDiscordIdentityOwner } from "@tendnote/db/queries/discord-identi
 import { captureSourceRecord } from "@tendnote/db/queries/source-records";
 import { defineChannel, POST } from "eve/channels";
 import { captureSourceRecordForPersonWithEmbeddingDelivery } from "../lib/background-jobs/embedding-schedulers";
-import { enqueueAndPublishExtractionJob } from "../lib/background-jobs/extraction-queue";
+import {
+  enqueueAndPublishActionExtractionJob,
+  enqueueAndPublishExtractionJob,
+} from "../lib/background-jobs/extraction-queue";
 import {
   createDiscordOwnerResolver,
   type DiscordCaptureDeps,
@@ -335,6 +338,7 @@ function defaultDiscordCaptureDeps(): DiscordCaptureDeps {
     captureForPerson: captureSourceRecordForPersonWithEmbeddingDelivery,
     captureGlobal: captureSourceRecord,
     enqueueExtraction: enqueueAndPublishExtractionJob,
+    enqueueActionExtraction: enqueueAndPublishActionExtractionJob,
     parkHitlSession: parkDiscordHitlSession,
     resumeHitlSession: resumeDiscordHitlSession,
   };
