@@ -1,0 +1,3 @@
+# Phase 5 General Actions Are Eve And Retrieval First
+
+Phase 5 should treat Eve-first capture, retrieval, and response behavior as core General Action scope rather than a later enhancement. General Actions and Suggested General Actions should participate in semantic retrieval, source-grounded action extraction should reuse the existing extraction job pattern with action-specific promotion, and Eve tools should create explicit actions, propose review-gated actions, list due or resurfaced actions, and answer cross-domain questions only after deterministic household scope enforcement has filtered visible records.
