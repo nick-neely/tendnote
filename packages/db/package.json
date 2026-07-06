@@ -18,6 +18,8 @@
     "./queries/contact-methods": "./src/queries/contact-methods.ts",
     "./queries/cleanup-preview": "./src/queries/cleanup-preview.ts",
     "./queries/context-snapshots": "./src/queries/context-snapshots.ts",
+    "./queries/discord-identities": "./src/queries/discord-identities.ts",
+    "./queries/discord-installs": "./src/queries/discord-installs.ts",
     "./queries/draft-proposals": "./src/queries/draft-proposals.ts",
     "./queries/drafts": "./src/queries/drafts.ts",
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",

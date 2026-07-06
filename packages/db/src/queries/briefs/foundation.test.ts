@@ -38,6 +38,8 @@ function followupItem(
     sourceRefs: [{ kind: "followup", id: "followup-1" }],
     trustLevel: "active_reminder",
     sensitivity: "normal",
+    scope: "private",
+    householdId: null,
     rank: 1,
     status: "active",
     snoozedUntil: null,

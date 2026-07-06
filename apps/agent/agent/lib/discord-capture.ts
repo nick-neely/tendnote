@@ -3,6 +3,8 @@ import type {
   CaptureSourceRecordResult,
 } from "@tendnote/db/queries/source-records";
 import { captureLoggedContext } from "@tendnote/db/queries/source-records";
+import type { PrivacyScope } from "@tendnote/domain";
+import { resolveDiscordCaptureScope } from "./discord-capture-scope";
 import { modeAllowsTool, resolveEveMode } from "./eve-modes";
 
 export type DiscordOwnerMap = Record<string, string>;
@@ -15,6 +17,12 @@ export type DiscordInteraction =
       content: string;
       personId?: string;
       attachments?: readonly DiscordAttachment[];
+      /** Discord guild the command arrived from. The scope policy reads it only to ignore it. */
+      guildId?: string | null;
+      /** Discord channel the command arrived from. The scope policy reads it only to ignore it. */
+      channelId?: string | null;
+      /** An explicit visibility scope, if a future surface ever plumbs one through Discord. */
+      requestedScope?: PrivacyScope;
     }
   | {
       type: "component" | "modal_submit";
@@ -41,7 +49,10 @@ export type DiscordCaptureResult =
   | {
       type: "captured";
       ownerUserId: string;
-      sourceRecord: Pick<CaptureSourceRecordResult["sourceRecord"], "id" | "status" | "content">;
+      sourceRecord: Pick<
+        CaptureSourceRecordResult["sourceRecord"],
+        "id" | "status" | "content" | "scope"
+      >;
       linkedPersonId: string | null;
       reviewRequired: true;
       durablePromotions: [];
@@ -61,7 +72,8 @@ export type DiscordCaptureResult =
         | "unsupported_command"
         | "empty_capture"
         | "attachments_not_supported"
-        | "mode_forbids_capture";
+        | "mode_forbids_capture"
+        | "household_scope_not_supported";
     };
 
 export type DiscordMessageComponent = {
@@ -86,6 +98,13 @@ export type DiscordHitlSessionInput = {
   action: DiscordComponentAction;
   value: string | null;
 };
+
+/**
+ * Resolve the Tendnote owner for a Discord user id, or `null` when unmapped.
+ * Resolution always fails closed: `null` rejects the interaction before any write.
+ * See {@link createDiscordOwnerResolver} for the production resolution order.
+ */
+export type DiscordOwnerResolver = (discordUserId: string) => Promise<string | null>;
 
 export function parseDiscordOwnerMap(raw: string | undefined): DiscordOwnerMap {
   if (!raw?.trim()) return {};
@@ -112,19 +131,36 @@ export function parseDiscordOwnerMap(raw: string | undefined): DiscordOwnerMap {
   );
 }
 
-export function resolveDiscordOwnerUserId(
-  discordUserId: string,
-  ownerMap: DiscordOwnerMap = parseDiscordOwnerMap(process.env.DISCORD_OWNER_USER_MAP),
-): string | null {
-  return ownerMap[discordUserId] ?? null;
+/** Build a resolver from a static owner map (dev/local fallback path only). */
+export function discordOwnerMapResolver(ownerMap: DiscordOwnerMap): DiscordOwnerResolver {
+  return async (discordUserId) => ownerMap[discordUserId] ?? null;
+}
+
+/**
+ * Compose the production resolution order: persisted owner-scoped Discord identity
+ * first, then an optional dev-only fallback. Fails closed (`null`) when no source
+ * maps the Discord user, so unmapped users never resolve to an owner.
+ */
+export function createDiscordOwnerResolver(input: {
+  resolvePersistedOwner: DiscordOwnerResolver;
+  devFallback?: DiscordOwnerResolver | null;
+}): DiscordOwnerResolver {
+  return async (discordUserId) => {
+    const persisted = await input.resolvePersistedOwner(discordUserId);
+    if (persisted) {
+      return persisted;
+    }
+
+    return input.devFallback ? input.devFallback(discordUserId) : null;
+  };
 }
 
 export async function handleDiscordCaptureInteraction(
   interaction: DiscordInteraction,
   deps: DiscordCaptureDeps,
-  ownerMap?: DiscordOwnerMap,
+  resolveOwner: DiscordOwnerResolver,
 ): Promise<DiscordCaptureResult> {
-  const ownerUserId = resolveDiscordOwnerUserId(interaction.discordUserId, ownerMap);
+  const ownerUserId = await resolveOwner(interaction.discordUserId);
   if (!ownerUserId) {
     return { type: "rejected", reason: "unmapped_discord_user" };
   }
@@ -168,6 +204,19 @@ export async function handleDiscordCaptureInteraction(
     return { type: "rejected", reason: "mode_forbids_capture" };
   }
 
+  // Deterministic scope decision before any write: Discord capture is always
+  // private owner-scoped context. Guild/channel membership never implies
+  // household or shared visibility, and an explicit non-private request fails
+  // closed rather than being honored (ADR-0140).
+  const scopeDecision = resolveDiscordCaptureScope({
+    guildId: interaction.guildId,
+    channelId: interaction.channelId,
+    requestedScope: interaction.requestedScope,
+  });
+  if (scopeDecision.type === "rejected") {
+    return { type: "rejected", reason: scopeDecision.reason };
+  }
+
   const { sourceRecord } = await captureLoggedContext(
     {
       ownerUserId,
@@ -185,6 +234,7 @@ export async function handleDiscordCaptureInteraction(
       id: sourceRecord.id,
       status: sourceRecord.status,
       content: sourceRecord.content,
+      scope: sourceRecord.scope,
     },
     linkedPersonId: interaction.personId ?? null,
     reviewRequired: true,
@@ -193,7 +243,7 @@ export async function handleDiscordCaptureInteraction(
   };
 }
 
-export function reviewComponentsForSourceRecord(sourceRecordId: string): DiscordMessageComponent[] {
+function reviewComponentsForSourceRecord(sourceRecordId: string): DiscordMessageComponent[] {
   return discordReviewComponents(sourceRecordId);
 }
 

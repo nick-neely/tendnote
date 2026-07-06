@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { sensitivitySchema } from "./privacy";
+import { privacyScopeSchema, sensitivitySchema } from "./privacy";
 
 /**
  * Persisted brief artifact model shared by daily briefs and the weekly
@@ -115,6 +115,11 @@ export const briefItemSchema = z.object({
   sourceRefs: z.array(briefSourceRefSchema).default([]),
   trustLevel: briefItemTrustLevelSchema,
   sensitivity: sensitivitySchema,
+  // Disclosure scope snapshotted from the backing record (ADR-0142). Fail-closed
+  // `private` default; `householdId` is set only for a `household`-scoped item so
+  // scheduled-workflow delivery can aggregate the brief's household-safety.
+  scope: privacyScopeSchema.default("private"),
+  householdId: z.string().nullable().default(null),
   rank: z.number().int(),
   status: briefItemStatusSchema.default("active"),
   // When the item is snoozed, the moment the snooze expires and the candidate may

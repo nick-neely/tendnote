@@ -77,3 +77,18 @@ export async function requireAdmittedOwnerForAction(): Promise<string> {
 
   return ownerForActionOrThrow(route);
 }
+
+/**
+ * Resolve the admitted owner id, or `null` when the caller is unauthenticated or
+ * pending. Unlike {@link requireAdmittedOwner} it neither redirects nor throws, so
+ * a fail-closed flow (e.g. the Discord install callback) can decide its own
+ * outcome instead of a redirect. Uses the same single owner-resolution path.
+ */
+export async function admittedOwnerOrNull(): Promise<string | null> {
+  const state = await getCurrentAccess();
+  const route = decideAccessRoute(state, {
+    localFallbackOwnerUserId: currentLocalFallbackOwnerUserId(),
+  });
+
+  return route.type === "admitted" ? route.ownerUserId : null;
+}

@@ -7,6 +7,7 @@ import {
   briefItemIdentityKeys,
   type CreateBriefItemInput,
   isBriefItemFeedbackActive,
+  normalizeItemScope,
 } from "@tendnote/domain";
 import type {
   RelationshipAgendaCandidate,
@@ -229,6 +230,11 @@ function toBriefItem(
     sourceRefs: candidate.sourceRefs.map((ref) => ({ kind: ref.kind, id: ref.id })),
     trustLevel: candidate.trustLevel,
     sensitivity: candidate.sensitivity,
+    // Snapshot the backing record's disclosure scope so scheduled-workflow delivery
+    // can aggregate the brief's household-safety (ADR-0142). Candidates with no
+    // scoped backing record (person-derived birthdays) carry no scope and fail
+    // closed to `private`.
+    ...normalizeItemScope(candidate),
     rank,
     status: "active",
     snoozedUntil: null,
@@ -264,6 +270,10 @@ function toCalendarBriefItem(
     sourceRefs: [],
     trustLevel: "logged_context",
     sensitivity: "normal",
+    // A calendar highlight is the owner's own schedule shown back to them in their
+    // own brief — owner-private, never household-shareable to a broader audience.
+    scope: "private",
+    householdId: null,
     rank,
     status: "active",
     snoozedUntil: null,

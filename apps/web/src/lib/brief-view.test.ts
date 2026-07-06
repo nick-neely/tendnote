@@ -18,6 +18,8 @@ function item(overrides: Partial<BriefItem> = {}): BriefItem {
     sourceRefs: [{ kind: "followup", id: "f1" }],
     trustLevel: "active_reminder",
     sensitivity: "normal",
+    scope: "private",
+    householdId: null,
     rank: 1,
     status: "active",
     snoozedUntil: null,

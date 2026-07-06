@@ -36,6 +36,8 @@ function briefItem(kind: BriefItemKind, overrides: Partial<BriefItem> = {}): Bri
     sourceRefs: [{ kind: kind === "due_followup" ? "followup" : "source_record", id: `${kind}-1` }],
     trustLevel: kind === "due_followup" ? "active_reminder" : "logged_context",
     sensitivity: "normal",
+    scope: "private",
+    householdId: null,
     rank: 1,
     status: "active",
     snoozedUntil: null,
@@ -184,6 +186,10 @@ describe("Weekly Relationship Review workflow", () => {
       artifactId: generatedBrief.id,
       persisted: true,
       sensitivity: "sensitive",
+      // Review surfaces (brief items, curator proposals, drafts) are owner-private,
+      // so the artifact fails closed to private (ADR-0142).
+      scope: "private",
+      householdId: null,
     });
     expect(generateBrief).toHaveBeenCalledWith({
       ownerUserId: OWNER,

@@ -1,4 +1,4 @@
-import type { ProviderConnection } from "@tendnote/domain";
+import { DEFAULT_PROVIDER_CAPABILITIES, type ProviderConnection } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { buildProviderConnectionView } from "./provider-connection-view";
 
@@ -24,10 +24,15 @@ function connection(overrides: Partial<ProviderConnection>): ProviderConnection 
 }
 
 describe("buildProviderConnectionView", () => {
-  it("renders the three default capabilities in catalog order, defaulting to ready", () => {
+  it("renders the default capabilities in catalog order, defaulting to ready", () => {
     const view = buildProviderConnectionView([]);
 
-    expect(view.map((row) => row.label)).toEqual(["Google Calendar", "Gmail", "Google Contacts"]);
+    expect(view.map((row) => row.label)).toEqual([
+      "Google Calendar",
+      "Gmail",
+      "Google Contacts",
+      "Discord",
+    ]);
     expect(view.every((row) => row.status === "ready")).toBe(true);
     expect(view.every((row) => row.displayIdentity === null)).toBe(true);
     expect(view.every((row) => row.lastErrorMessage === null)).toBe(true);
@@ -53,7 +58,7 @@ describe("buildProviderConnectionView", () => {
       connection({ capabilityKey: "drive", status: "connected" }),
     ]);
 
-    expect(view).toHaveLength(3);
+    expect(view).toHaveLength(DEFAULT_PROVIDER_CAPABILITIES.length);
     expect(view.some((row) => row.capabilityKey === "drive")).toBe(false);
   });
 

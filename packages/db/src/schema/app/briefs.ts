@@ -18,8 +18,10 @@ import {
   briefItemKind,
   briefItemStatus,
   briefItemTrustLevel,
+  privacyScope,
   sensitivity,
 } from "./enums";
+import { householdWorkspaces } from "./households";
 import { people } from "./people";
 
 /**
@@ -89,6 +91,14 @@ export const briefItems = pgTable(
     sourceRefs: jsonb("source_refs").$type<BriefSourceRef[]>().notNull().default(sql`'[]'::jsonb`),
     trustLevel: briefItemTrustLevel("trust_level").notNull(),
     sensitivity: sensitivity("sensitivity").notNull().default("normal"),
+    // Disclosure scope snapshotted from the backing record so scheduled-workflow
+    // delivery can aggregate a brief's household-safety without re-reading sources
+    // (ADR-0142). Fail-closed default `private`; `household_id` is set only for a
+    // `household`-scoped item.
+    scope: privacyScope("scope").notNull().default("private"),
+    householdId: uuid("household_id").references(() => householdWorkspaces.id, {
+      onDelete: "set null",
+    }),
     rank: integer("rank").notNull(),
     status: briefItemStatus("status").notNull().default("active"),
     snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
@@ -97,5 +107,6 @@ export const briefItems = pgTable(
   (table) => [
     index("brief_items_brief_id_idx").on(table.briefId),
     index("brief_items_owner_status_idx").on(table.ownerUserId, table.status),
+    index("brief_items_household_id_idx").on(table.householdId),
   ],
 );

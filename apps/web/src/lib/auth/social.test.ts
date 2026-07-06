@@ -1,8 +1,10 @@
-import { GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE } from "@tendnote/domain";
+import { DISCORD_IDENTIFY_SCOPE, GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import {
+  discordSocialProvider,
   githubSocialProvider,
   googleSocialProvider,
+  isDiscordConfigured,
   isGithubConfigured,
   isGoogleConfigured,
 } from "./social";
@@ -51,5 +53,34 @@ describe("Google social configuration", () => {
   it("builds no provider config when unconfigured", () => {
     expect(googleSocialProvider({ clientId: "id" })).toBeUndefined();
     expect(googleSocialProvider({})).toBeUndefined();
+  });
+});
+
+describe("Discord social configuration", () => {
+  it("is configured only when both client id and secret are present", () => {
+    expect(isDiscordConfigured({ clientId: "id", clientSecret: "secret" })).toBe(true);
+    expect(isDiscordConfigured({ clientId: "id" })).toBe(false);
+    expect(isDiscordConfigured({ clientSecret: "secret" })).toBe(false);
+    expect(isDiscordConfigured({})).toBe(false);
+  });
+
+  it("disables the default scope and requests identify only (never email) when configured", () => {
+    const provider = discordSocialProvider({ clientId: "id", clientSecret: "secret" });
+
+    expect(provider).toEqual({
+      clientId: "id",
+      clientSecret: "secret",
+      // Without this, Better Auth appends `scope` to its `["identify", "email"]`
+      // default, so `email` would still be requested.
+      disableDefaultScope: true,
+      scope: [DISCORD_IDENTIFY_SCOPE],
+    });
+    // Phone-only / no-email Discord accounts must link without an email identity.
+    expect(provider?.scope).not.toContain("email");
+  });
+
+  it("builds no provider config when unconfigured", () => {
+    expect(discordSocialProvider({ clientId: "id" })).toBeUndefined();
+    expect(discordSocialProvider({})).toBeUndefined();
   });
 });

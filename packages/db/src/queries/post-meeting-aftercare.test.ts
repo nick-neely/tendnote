@@ -160,6 +160,10 @@ describe("Post-Meeting Aftercare workflow", () => {
       sensitivity: "normal",
       persisted: true,
       summary: "One post-meeting aftercare proposal is ready.",
+      // Calendar-derived aftercare is drawn from the owner's private calendar, so
+      // the artifact fails closed to private (ADR-0142).
+      scope: "private",
+      householdId: null,
     });
     await expect(review.listSuggestedFollowups(OWNER)).resolves.toEqual(result.suggestedFollowups);
   });

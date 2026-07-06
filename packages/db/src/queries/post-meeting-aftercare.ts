@@ -2,6 +2,7 @@ import type {
   CalendarSuggestedFollowup,
   ScheduledWorkflowDeliveryArtifact,
 } from "@tendnote/domain";
+import { aggregateArtifactScope } from "@tendnote/domain";
 import {
   listCalendarSuggestedFollowups,
   runCalendarSuggestionWorkflow,
@@ -111,12 +112,20 @@ export function toPostMeetingAftercareArtifact(
     throw new Error("Post-meeting aftercare artifacts require at least one persisted suggestion.");
   }
 
+  // Calendar-derived suggestions are the owner's own meeting aftercare drawn from
+  // their private calendar (Phase 2C); they carry no household visibility, so the
+  // artifact fails closed to `private` (ADR-0142).
+  const { scope, householdId } = aggregateArtifactScope(
+    suggestions.map(() => ({ scope: "private" as const })),
+  );
   return {
     ownerUserId: first.ownerUserId,
     workflow: "post_meeting_aftercare",
     artifactKind: "post_meeting_aftercare",
     artifactId: postMeetingAftercareArtifactId(suggestions),
     sensitivity: "normal",
+    scope,
+    householdId,
     persisted: true,
     summary: postMeetingAftercareSummary(suggestions.length),
   };

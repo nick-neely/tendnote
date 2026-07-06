@@ -3,7 +3,12 @@ import type {
   ScheduledWorkflowDeliveryArtifact,
   Sensitivity,
 } from "@tendnote/domain";
-import { computeNextBriefRun, formatLocalDate } from "@tendnote/domain";
+import {
+  aggregateArtifactScope,
+  computeNextBriefRun,
+  formatLocalDate,
+  normalizeItemScope,
+} from "@tendnote/domain";
 import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { getDb } from "../client";
 import {
@@ -243,6 +248,7 @@ async function birthdayProposal(
     draftProposal: draft.proposal,
     sourceRefs,
     sensitivity: candidate.sensitivity,
+    ...normalizeItemScope(candidate),
     reviewOnly: true,
   };
 }
@@ -302,12 +308,24 @@ async function deliver(
 export function toBirthdayGiftPlanningDeliveryArtifact(
   artifact: BirthdayGiftPlanningArtifact,
 ): ScheduledWorkflowDeliveryArtifact {
+  // The plan is only household-safe when every proposal is household-visible for
+  // one household (ADR-0142). Birthdays are drawn from person profile data, which
+  // is owner-scoped today, so real plans fail closed to `private`; the aggregation
+  // still honors a household scope should a proposal ever carry one.
+  const { scope, householdId } = aggregateArtifactScope(
+    artifact.proposals.map((proposal) => ({
+      scope: proposal.scope,
+      householdId: proposal.householdId,
+    })),
+  );
   return {
     ownerUserId: artifact.ownerUserId,
     workflow: "birthday_gift_planning",
     artifactKind: "birthday_gift_planning",
     artifactId: artifact.id,
     sensitivity: artifact.sensitivity,
+    scope,
+    householdId,
     persisted: true,
     summary: artifact.summary,
   };

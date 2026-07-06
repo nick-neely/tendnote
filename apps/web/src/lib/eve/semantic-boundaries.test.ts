@@ -22,12 +22,14 @@ describe("semantic retrieval product-route boundaries", () => {
       .sort();
 
     // The relationship-data product routes are still only the dashboard and
-    // people pages; account/auth surfaces and Phase 2E's explicit Contacts import
-    // preview entry are allowed alongside them but carry no semantic-search route.
+    // people pages; account/auth surfaces, Phase 2E's explicit Contacts import
+    // preview entry, and the owner-scoped Discord delivery settings (#173) are
+    // allowed alongside them but carry no semantic-search route.
     expect(pageRoutes).toEqual([
       "/",
       "account",
       "account/contacts/import",
+      "account/discord",
       "forgot-password",
       "pending",
       "people",

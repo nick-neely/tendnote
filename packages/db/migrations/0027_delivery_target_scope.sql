@@ -1,0 +1,4 @@
+ALTER TABLE "scheduled_workflow_delivery_settings" ADD COLUMN "target_scope" "privacy_scope" DEFAULT 'private' NOT NULL;--> statement-breakpoint
+ALTER TABLE "scheduled_workflow_delivery_settings" ADD COLUMN "target_household_id" uuid;--> statement-breakpoint
+ALTER TABLE "scheduled_workflow_delivery_settings" ADD COLUMN "allow_private_summary" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "scheduled_workflow_delivery_settings" ADD CONSTRAINT "scheduled_workflow_delivery_settings_target_household_id_household_workspaces_id_fk" FOREIGN KEY ("target_household_id") REFERENCES "public"."household_workspaces"("id") ON DELETE set null ON UPDATE no action;

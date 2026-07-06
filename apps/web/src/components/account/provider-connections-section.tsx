@@ -6,6 +6,7 @@ import {
   ClockIcon,
   type LucideIcon,
   MailIcon,
+  MessageCircleIcon,
   PlugIcon,
   TriangleAlertIcon,
   UsersRoundIcon,
@@ -18,6 +19,8 @@ import { CalendarConnectButton } from "./calendar-connect-button";
 import { CalendarDisconnectButton } from "./calendar-disconnect-button";
 import { ContactsConnectButton } from "./contacts-connect-button";
 import { ContactsDisconnectButton } from "./contacts-disconnect-button";
+import { DiscordConnectButton } from "./discord-connect-button";
+import { DiscordDisconnectButton } from "./discord-disconnect-button";
 import { GmailConnectButton } from "./gmail-connect-button";
 
 /** Revocation reason set when disconnect could not revoke the Google-side grant. */
@@ -48,12 +51,14 @@ const CAPABILITY_ICONS: Record<string, LucideIcon> = {
   calendar: CalendarIcon,
   gmail: MailIcon,
   contacts: UsersRoundIcon,
+  channel: MessageCircleIcon,
 };
 
 type ConnectableConfig = {
   calendarConnectable: boolean;
   contactsConnectable: boolean;
   gmailConnectable: boolean;
+  discordConnectable: boolean;
 };
 
 type CapabilityAction = {
@@ -79,6 +84,24 @@ const GOOGLE_CAPABILITY_ACTIONS: Record<string, CapabilityAction> = {
   },
 };
 
+const DISCORD_CAPABILITY_ACTIONS: Record<string, CapabilityAction> = {
+  channel: {
+    configuredBy: "discordConnectable",
+    ConnectButton: DiscordConnectButton,
+    DisconnectButton: DiscordDisconnectButton,
+  },
+};
+
+/** Live connect/disconnect wiring for a capability, keyed by its provider. */
+const CAPABILITY_ACTIONS: Record<string, Record<string, CapabilityAction>> = {
+  google: GOOGLE_CAPABILITY_ACTIONS,
+  discord: DISCORD_CAPABILITY_ACTIONS,
+};
+
+function capabilityAction(connection: ProviderConnectionView): CapabilityAction | undefined {
+  return CAPABILITY_ACTIONS[connection.providerKey]?.[connection.capabilityKey];
+}
+
 /**
  * Account integration settings: real Provider Connection status rows (#101,
  * ADR-0069). Google Calendar and Gmail can be connected when Google credentials
@@ -91,6 +114,7 @@ export function ProviderConnectionsSection({
   calendarConnectable = false,
   contactsConnectable = false,
   gmailConnectable = false,
+  discordConnectable = false,
   ensureLocalDemoAuthSession = false,
 }: {
   connections: ProviderConnectionView[];
@@ -100,10 +124,13 @@ export function ProviderConnectionsSection({
   contactsConnectable?: boolean;
   /** True only when Google credentials are configured server-side (Phase 2D). */
   gmailConnectable?: boolean;
+  /** True only when Discord credentials are configured server-side. */
+  discordConnectable?: boolean;
   /** True when local fallback access needs a real Better Auth session before OAuth linking. */
   ensureLocalDemoAuthSession?: boolean;
 }) {
-  const anyConnectable = calendarConnectable || gmailConnectable || contactsConnectable;
+  const anyConnectable =
+    calendarConnectable || gmailConnectable || contactsConnectable || discordConnectable;
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground">
@@ -117,6 +144,7 @@ export function ProviderConnectionsSection({
               calendarConnectable,
               contactsConnectable,
               gmailConnectable,
+              discordConnectable,
             })}
             connection={connection}
             ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
@@ -128,16 +156,16 @@ export function ProviderConnectionsSection({
       <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
         {anyConnectable ? (
           <>
-            Connect Google Calendar to let Tendnote read upcoming and recent events — read-only.
-            Connect Gmail to let Tendnote save email drafts you approve — draft-only, never sending.
-            Connect Google Contacts to preview personal contacts before anything is saved. Each
-            connects behind its own narrow Google consent, and none implies the other.
+            Each connects behind its own narrow consent — none implies another. Calendar reads
+            upcoming and recent events (read-only). Gmail saves drafts you approve (never sending).
+            Contacts previews personal contacts before anything&rsquo;s saved. Discord links your
+            identity so captures reach Tendnote (no messages read).
           </>
         ) : (
           <>
-            These aren&rsquo;t connected yet. Add Google credentials to connect Calendar, Gmail, and
-            Contacts, each behind its own narrow permission and your explicit approval. Tendnote
-            isn&rsquo;t reading any Google data.
+            These aren&rsquo;t connected yet. Add the matching provider credentials to connect
+            Calendar, Gmail, Contacts, and Discord, each behind its own narrow permission and your
+            explicit approval. Tendnote isn&rsquo;t reading any of this data.
           </>
         )}
       </p>
@@ -145,15 +173,12 @@ export function ProviderConnectionsSection({
   );
 }
 
-/** Which Google capabilities the account row can start a live connect flow for. */
+/** Which capabilities the account row can start a live connect flow for. */
 function isCapabilityConnectable(
   connection: ProviderConnectionView,
   configured: ConnectableConfig,
 ): boolean {
-  if (connection.providerKey !== "google") {
-    return false;
-  }
-  const action = GOOGLE_CAPABILITY_ACTIONS[connection.capabilityKey];
+  const action = capabilityAction(connection);
   return action ? configured[action.configuredBy] : false;
 }
 
@@ -167,30 +192,7 @@ function ProviderConnectionRow({
   connectable: boolean;
   ensureLocalDemoAuthSession: boolean;
 }) {
-  const status = STATUS_META[connection.status];
-  const StatusIcon = status.Icon;
   const CapabilityIcon = CAPABILITY_ICONS[connection.capabilityKey] ?? PlugIcon;
-  const action =
-    connection.providerKey === "google"
-      ? GOOGLE_CAPABILITY_ACTIONS[connection.capabilityKey]
-      : undefined;
-
-  const isConnected = connection.status === "connected";
-  const isUnavailable = connection.status === "unavailable";
-  const actionLabel = isConnected ? "Disconnect" : "Connect";
-  const isCalendar = connection.capabilityKey === "calendar";
-  const isContacts = connection.capabilityKey === "contacts";
-  const ConnectButton = action?.ConnectButton;
-  const DisconnectButton = action?.DisconnectButton;
-  const showConnect = Boolean(connectable && ConnectButton && !isConnected && !isUnavailable);
-  const showDisconnect = Boolean(connectable && DisconnectButton && isConnected);
-  // After a disconnect that could not revoke the Google-side grant, the user still
-  // has cleanup to finish in their Google Account (ADR-0080).
-  const showCleanupNote =
-    connectable &&
-    isCalendar &&
-    connection.status === "revoked" &&
-    connection.revocationReason === PROVIDER_GRANT_NOT_REVOKED_REASON;
 
   return (
     <li className="flex flex-col gap-2 px-3.5 py-3">
@@ -209,33 +211,132 @@ function ProviderConnectionRow({
           </span>
         </span>
 
-        <span className="flex shrink-0 items-center gap-2.5">
-          <Badge className={status.className} variant={status.variant}>
-            {StatusIcon ? <StatusIcon aria-hidden data-icon="inline-start" /> : null}
-            {status.label}
-          </Badge>
-          {isUnavailable ? null : showConnect && ConnectButton ? (
-            <ConnectButton
-              ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
-              label={connection.label}
-            />
-          ) : showDisconnect && DisconnectButton ? (
-            <DisconnectButton label={connection.label} />
-          ) : (
-            // Inert: no OAuth scopes, no token handling. Disabled (not just styled)
-            // so it is unfocusable and cannot be triggered.
-            <Button
-              aria-label={`${actionLabel} ${connection.label} (not available yet)`}
-              disabled
-              size="sm"
-              variant="outline"
-            >
-              {actionLabel}
-            </Button>
-          )}
-        </span>
+        <ProviderRowControl
+          connectable={connectable}
+          connection={connection}
+          ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
+        />
       </div>
 
+      <ProviderRowNotes connectable={connectable} connection={connection} />
+    </li>
+  );
+}
+
+/** Status badge + the row's single connect/disconnect (or inert) affordance. */
+function ProviderRowControl({
+  connection,
+  connectable,
+  ensureLocalDemoAuthSession,
+}: {
+  connection: ProviderConnectionView;
+  connectable: boolean;
+  ensureLocalDemoAuthSession: boolean;
+}) {
+  const status = STATUS_META[connection.status];
+  const StatusIcon = status.Icon;
+
+  return (
+    <span className="flex shrink-0 items-center gap-2.5">
+      <Badge className={status.className} variant={status.variant}>
+        {StatusIcon ? <StatusIcon aria-hidden data-icon="inline-start" /> : null}
+        {status.label}
+      </Badge>
+      <ProviderConnectAffordance
+        connectable={connectable}
+        connection={connection}
+        ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
+      />
+    </span>
+  );
+}
+
+/**
+ * The single affordance for a row: a live connect or disconnect control when the
+ * capability is wired and configured, nothing for an unavailable capability, and
+ * otherwise an inert disabled button (no OAuth scopes, no token handling — disabled
+ * rather than styled so it is unfocusable and cannot be triggered).
+ */
+function ProviderConnectAffordance({
+  connection,
+  connectable,
+  ensureLocalDemoAuthSession,
+}: {
+  connection: ProviderConnectionView;
+  connectable: boolean;
+  ensureLocalDemoAuthSession: boolean;
+}) {
+  const { ConnectButton, DisconnectButton } = capabilityAction(connection) ?? {};
+  const isConnected = connection.status === "connected";
+  const actionLabel = isConnected ? "Disconnect" : "Connect";
+  // Inert fallback: no OAuth scopes, no token handling. Disabled (not just styled)
+  // so it is unfocusable and cannot be triggered.
+  const inertAffordance = (
+    <Button
+      aria-label={`${actionLabel} ${connection.label} (not available yet)`}
+      disabled
+      size="sm"
+      variant="outline"
+    >
+      {actionLabel}
+    </Button>
+  );
+
+  if (connection.status === "unavailable") {
+    return null;
+  }
+  if (!connectable) {
+    return inertAffordance;
+  }
+  if (ConnectButton && !isConnected) {
+    return (
+      <ConnectButton
+        ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
+        label={connection.label}
+      />
+    );
+  }
+  if (DisconnectButton && isConnected) {
+    return <DisconnectButton label={connection.label} />;
+  }
+  return inertAffordance;
+}
+
+/** Capability-specific footnotes: cleanup/error status notes and live entry points. */
+function ProviderRowNotes({
+  connection,
+  connectable,
+}: {
+  connection: ProviderConnectionView;
+  connectable: boolean;
+}) {
+  return (
+    <>
+      <ProviderRowStatusNotes connectable={connectable} connection={connection} />
+      <ProviderRowEntryPoints connectable={connectable} connection={connection} />
+    </>
+  );
+}
+
+/** Cleanup guidance after a partial disconnect, and any surfaced error detail. */
+function ProviderRowStatusNotes({
+  connection,
+  connectable,
+}: {
+  connection: ProviderConnectionView;
+  connectable: boolean;
+}) {
+  const isCalendar = connection.capabilityKey === "calendar";
+  // After a disconnect that could not revoke the Google-side grant, the user still
+  // has cleanup to finish in their Google Account (ADR-0080).
+  const showCleanupNote =
+    connectable &&
+    isCalendar &&
+    connection.status === "revoked" &&
+    connection.revocationReason === PROVIDER_GRANT_NOT_REVOKED_REASON;
+
+  return (
+    <>
       {showCleanupNote ? (
         <p className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-muted-foreground">
           Tendnote has stopped reading your calendar and cleared its cached events. To fully revoke
@@ -256,12 +357,34 @@ function ProviderConnectionRow({
           {connection.lastErrorMessage}
         </p>
       ) : null}
-      {connectable && isContacts && connection.status === "ready" ? (
+    </>
+  );
+}
+
+/** Live preview/delivery entry points, only ever shown for a configured capability. */
+function ProviderRowEntryPoints({
+  connection,
+  connectable,
+}: {
+  connection: ProviderConnectionView;
+  connectable: boolean;
+}) {
+  if (!connectable) {
+    return null;
+  }
+
+  const isContacts = connection.capabilityKey === "contacts";
+  const isDiscordChannel =
+    connection.providerKey === "discord" && connection.capabilityKey === "channel";
+
+  return (
+    <>
+      {isContacts && connection.status === "ready" ? (
         <p className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-muted-foreground">
           Preview latest contacts before saving anything to Tendnote.
         </p>
       ) : null}
-      {connectable && isContacts && connection.status === "connected" ? (
+      {isContacts && connection.status === "connected" ? (
         <a
           className="self-start text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-primary underline underline-offset-2"
           href="/account/contacts/import"
@@ -269,6 +392,14 @@ function ProviderConnectionRow({
           Preview latest contacts
         </a>
       ) : null}
-    </li>
+      {isDiscordChannel && connection.status === "connected" ? (
+        <a
+          className="self-start text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-primary underline underline-offset-2"
+          href="/account/discord"
+        >
+          Set up delivery
+        </a>
+      ) : null}
+    </>
   );
 }

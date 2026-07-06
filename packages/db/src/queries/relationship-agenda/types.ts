@@ -2,6 +2,7 @@ import type {
   Followup,
   Memory,
   Person,
+  PrivacyScope,
   SemanticRetrievalResult,
   Sensitivity,
   SourceRecord,
@@ -45,6 +46,15 @@ export type RelationshipAgendaCandidate = {
   sensitivity: Sensitivity;
   visibilityChoice?: VisibilityChoice;
   visibilityLabel?: string;
+  /**
+   * Disclosure scope of the backing record, carried through so downstream
+   * aggregation (scheduled-workflow delivery scope) can decide whether an artifact
+   * is household-safe. Omitted for candidates with no scoped backing record (e.g.
+   * person-derived birthdays), which fail closed to `private`.
+   */
+  scope?: PrivacyScope;
+  /** Household the backing record belongs to, paired with a `household` scope. */
+  householdId?: string | null;
   rank: number;
 };
 

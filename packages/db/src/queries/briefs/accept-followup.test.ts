@@ -87,6 +87,8 @@ async function setup() {
       sourceRefs: [{ kind: "followup", id: followupId }],
       trustLevel: "tentative",
       sensitivity: "normal",
+      scope: "private",
+      householdId: null,
       rank: 1,
       status: "active",
       snoozedUntil: null,

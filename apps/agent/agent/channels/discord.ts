@@ -1,15 +1,19 @@
 import { createPublicKey, verify } from "node:crypto";
+import { resolveDiscordIdentityOwner } from "@tendnote/db/queries/discord-identities";
 import { captureSourceRecord } from "@tendnote/db/queries/source-records";
 import { defineChannel, POST } from "eve/channels";
 import { captureSourceRecordForPersonWithEmbeddingDelivery } from "../lib/background-jobs/embedding-schedulers";
 import { enqueueAndPublishExtractionJob } from "../lib/background-jobs/extraction-queue";
 import {
+  createDiscordOwnerResolver,
   type DiscordCaptureDeps,
   type DiscordHitlSessionInput,
   type DiscordInteraction,
   type DiscordMessageComponent,
+  type DiscordOwnerResolver,
   decodeDiscordComponentCustomId,
   discordClarificationModal,
+  discordOwnerMapResolver,
   discordReviewComponents,
   handleDiscordCaptureInteraction,
   parseDiscordOwnerMap,
@@ -27,6 +31,8 @@ type DiscordApiInteraction = {
     resolved?: { attachments?: Record<string, unknown> };
     options?: Array<{ name: string; type: number; value?: string }>;
   };
+  guild_id?: string;
+  channel_id?: string;
   member?: { user?: { id?: string } };
   user?: { id?: string };
 };
@@ -81,6 +87,7 @@ export async function handleDiscordRequest(
   request: Request,
   input: {
     publicKey?: string;
+    resolveOwner?: DiscordOwnerResolver;
     ownerMapRaw?: string;
     deps?: DiscordCaptureDeps;
   } = {},
@@ -123,7 +130,7 @@ export async function handleDiscordRequest(
   const result = await handleDiscordCaptureInteraction(
     interaction,
     input.deps ?? defaultDiscordCaptureDeps(),
-    parseDiscordOwnerMap(input.ownerMapRaw ?? process.env.DISCORD_OWNER_USER_MAP),
+    createDiscordRequestOwnerResolver(input),
   );
 
   if (result.type === "captured") {
@@ -220,37 +227,59 @@ export function discordApiPayloadToCaptureInteraction(
       commandName: "capture",
       discordUserId,
       content: slashOption(payload, "message") ?? "",
-      attachments: payload.data.resolved?.attachments
-        ? Object.entries(payload.data.resolved.attachments).map(([id, value]) => ({
-            id,
-            filename:
-              typeof value === "object" &&
-              value !== null &&
-              "filename" in value &&
-              typeof value.filename === "string"
-                ? value.filename
-                : "attachment",
-          }))
-        : undefined,
+      // The scope policy reads these but never widens scope from them; nothing persists them.
+      guildId: payload.guild_id ?? null,
+      channelId: payload.channel_id ?? null,
+      attachments: slashCommandAttachments(payload),
     };
   }
 
   if (payload.type === 3 || payload.type === 5) {
-    const customId = payload.data?.custom_id ?? firstSubmittedComponentId(payload);
-    if (!customId) return null;
-    const decoded = decodeDiscordComponentCustomId(customId);
-    if (!decoded) return null;
-
-    return {
-      type: payload.type === 3 ? "component" : "modal_submit",
-      discordUserId,
-      sessionId: decoded.sessionId,
-      action: decoded.action,
-      value: firstSubmittedValue(payload),
-    };
+    return componentInteraction(payload, discordUserId);
   }
 
   return null;
+}
+
+/** Filename of a resolved attachment, falling back to a placeholder for malformed shapes. */
+function resolvedAttachmentFilename(value: unknown): string {
+  return typeof value === "object" &&
+    value !== null &&
+    "filename" in value &&
+    typeof value.filename === "string"
+    ? value.filename
+    : "attachment";
+}
+
+/** Map a `/capture` command's resolved attachments to `{ id, filename }`, if any. */
+function slashCommandAttachments(
+  payload: DiscordApiInteraction,
+): { id: string; filename: string }[] | undefined {
+  const resolved = payload.data?.resolved?.attachments;
+  if (!resolved) return undefined;
+  return Object.entries(resolved).map(([id, value]) => ({
+    id,
+    filename: resolvedAttachmentFilename(value),
+  }));
+}
+
+/** Build a component / modal-submit interaction, failing closed on an undecodable custom id. */
+function componentInteraction(
+  payload: DiscordApiInteraction,
+  discordUserId: string,
+): DiscordInteraction | null {
+  const customId = payload.data?.custom_id ?? firstSubmittedComponentId(payload);
+  if (!customId) return null;
+  const decoded = decodeDiscordComponentCustomId(customId);
+  if (!decoded) return null;
+
+  return {
+    type: payload.type === 3 ? "component" : "modal_submit",
+    discordUserId,
+    sessionId: decoded.sessionId,
+    action: decoded.action,
+    value: firstSubmittedValue(payload),
+  };
 }
 
 function parseDiscordApiInteraction(body: string): DiscordApiInteraction | null {
@@ -259,6 +288,46 @@ function parseDiscordApiInteraction(body: string): DiscordApiInteraction | null 
   } catch {
     return null;
   }
+}
+
+/**
+ * Owner resolution for a Discord request. An explicitly injected `resolveOwner`
+ * wins (tests, custom wiring). Otherwise resolution is always persisted-identity
+ * first, with the `DISCORD_OWNER_USER_MAP` env map (or an explicit `ownerMapRaw`)
+ * applied only as a lower-priority, dev-only fallback — never in production and
+ * never ahead of persisted identity. Unmapped Discord users fail closed.
+ *
+ * `resolvePersistedOwner` and `nodeEnv` are test seams; production passes neither.
+ */
+export function createDiscordRequestOwnerResolver(
+  input: {
+    resolveOwner?: DiscordOwnerResolver;
+    ownerMapRaw?: string;
+    resolvePersistedOwner?: DiscordOwnerResolver;
+    nodeEnv?: string;
+  } = {},
+): DiscordOwnerResolver {
+  if (input.resolveOwner) {
+    return input.resolveOwner;
+  }
+
+  const resolvePersistedOwner =
+    input.resolvePersistedOwner ??
+    ((discordUserId: string) => resolveDiscordIdentityOwner({ discordUserId }));
+
+  return createDiscordOwnerResolver({
+    resolvePersistedOwner,
+    devFallback: isDiscordOwnerMapFallbackAllowed(input.nodeEnv)
+      ? discordOwnerMapResolver(
+          parseDiscordOwnerMap(input.ownerMapRaw ?? process.env.DISCORD_OWNER_USER_MAP),
+        )
+      : null,
+  });
+}
+
+/** The env owner map is a dev-only fallback; see `docs/discord-setup.md` §5. */
+export function isDiscordOwnerMapFallbackAllowed(nodeEnv = process.env.NODE_ENV): boolean {
+  return nodeEnv !== "production";
 }
 
 function defaultDiscordCaptureDeps(): DiscordCaptureDeps {
@@ -352,6 +421,8 @@ function responseForRejection(reason: string): string {
       return "Discord attachments are not a Tendnote cleanup import path yet.";
     case "empty_capture":
       return "Add text to capture with the command.";
+    case "household_scope_not_supported":
+      return "Discord capture is private to you. Household or shared visibility is set in Tendnote, not from Discord.";
     default:
       return "Tendnote could not capture that Discord interaction.";
   }

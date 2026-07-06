@@ -176,6 +176,34 @@
       "when": 1783184109214,
       "tag": "0024_shared_followups",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783271932977,
+      "tag": "0025_discord_identities",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783275142292,
+      "tag": "0026_discord_installs",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1783278002884,
+      "tag": "0027_delivery_target_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1783290863665,
+      "tag": "0028_brief_item_scope",
+      "breakpoints": true
     }
   ]
 }

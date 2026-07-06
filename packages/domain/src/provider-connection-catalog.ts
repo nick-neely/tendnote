@@ -11,6 +11,17 @@ import type { ProviderCapabilityRef } from "./provider-connections";
  */
 
 export const PROVIDER_GOOGLE = "google";
+export const PROVIDER_DISCORD = "discord";
+
+/**
+ * The single Discord OAuth scope Tendnote links (ADR: Discord production
+ * hardening). `identify` returns the stable Discord user id (and username) without
+ * requiring `email`, so phone-only / no-email Discord accounts link cleanly and the
+ * Discord user id — never an email — is the identity that inbound interactions
+ * resolve against. Tendnote deliberately does NOT request `email`, `guilds`, or any
+ * message-content scope through the link path.
+ */
+export const DISCORD_IDENTIFY_SCOPE = "identify";
 
 /**
  * The single Google OAuth scope Phase 2C Calendar requests (ADR-0072, ADR-0076):
@@ -42,6 +53,10 @@ export const DEFAULT_PROVIDER_CAPABILITIES = [
   { providerKey: PROVIDER_GOOGLE, capabilityKey: "calendar", label: "Google Calendar" },
   { providerKey: PROVIDER_GOOGLE, capabilityKey: "gmail", label: "Gmail" },
   { providerKey: PROVIDER_GOOGLE, capabilityKey: "contacts", label: "Google Contacts" },
+  // Discord is a single capability: the interaction channel Tendnote captures
+  // context through. Linking establishes the owner an inbound Discord interaction
+  // resolves to; it grants no calendar/mail/contacts-style data read.
+  { providerKey: PROVIDER_DISCORD, capabilityKey: "channel", label: "Discord" },
 ] as const satisfies ReadonlyArray<{
   providerKey: string;
   capabilityKey: string;

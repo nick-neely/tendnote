@@ -232,6 +232,10 @@ describe("Birthday Gift Planning workflow", () => {
       artifactKind: "birthday_gift_planning",
       artifactId: result.artifactRecord.id,
       persisted: true,
+      // Birthdays come from owner-scoped person profile data, so the plan fails
+      // closed to private (ADR-0142).
+      scope: "private",
+      householdId: null,
     });
     expect(proposeDraft).toHaveBeenCalledWith(
       expect.objectContaining({ ownerUserId: OWNER, personId: PERSON_ID, purpose: "birthday" }),
