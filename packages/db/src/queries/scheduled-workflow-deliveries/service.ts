@@ -11,7 +11,7 @@ export type DiscordProactiveDeliverySender = (input: {
   content: string;
 }) => Promise<void>;
 
-export type DeliverDiscordScheduledArtifactInput = {
+type DeliverDiscordScheduledArtifactInput = {
   artifact: ScheduledWorkflowDeliveryArtifact;
   sender: DiscordProactiveDeliverySender;
 };
@@ -151,6 +151,19 @@ function discordDeliverySkipReason(
     return "sensitive_content_filtered";
   }
 
+  return discordScopeSkipReason(setting, artifact);
+}
+
+/**
+ * The target-scope half of the #170 policy matrix, applied once owner and
+ * sensitivity gates have already passed. Decides whether the artifact's scope may
+ * reach the setting's configured target scope; an unknown artifact scope is
+ * treated as `private`. Pure and total over the scope combinations.
+ */
+function discordScopeSkipReason(
+  setting: ScheduledWorkflowDeliverySetting,
+  artifact: ScheduledWorkflowDeliveryArtifact,
+): string | null {
   // A private target is owner-only, so it is safe for the owner's artifacts of
   // any scope. Sharing gates only apply to shared/household destinations.
   if (setting.targetScope === "private") {
@@ -160,15 +173,7 @@ function discordDeliverySkipReason(
   const artifactScope = artifact.scope ?? "private";
 
   if (artifactScope === "household") {
-    // Household content is only deliverable to a target explicitly configured as
-    // household-safe for the artifact's exact household.
-    if (setting.targetScope !== "household") {
-      return "household_target_required";
-    }
-    if (!setting.targetHouseholdId || setting.targetHouseholdId !== artifact.householdId) {
-      return "household_target_mismatch";
-    }
-    return null;
+    return householdScopeSkipReason(setting, artifact);
   }
 
   // A private artifact on a shared/household destination over-discloses. Only its
@@ -189,6 +194,23 @@ function discordDeliverySkipReason(
   // so it is never deliverable there. Reported distinctly so the skip record
   // reflects what actually happened.
   return "shared_content_filtered";
+}
+
+/**
+ * Household content is only deliverable to a target explicitly configured as
+ * household-safe for the artifact's exact household; anything else over-discloses.
+ */
+function householdScopeSkipReason(
+  setting: ScheduledWorkflowDeliverySetting,
+  artifact: ScheduledWorkflowDeliveryArtifact,
+): string | null {
+  if (setting.targetScope !== "household") {
+    return "household_target_required";
+  }
+  if (!setting.targetHouseholdId || setting.targetHouseholdId !== artifact.householdId) {
+    return "household_target_mismatch";
+  }
+  return null;
 }
 
 function renderDiscordArtifactNudge(artifact: ScheduledWorkflowDeliveryArtifact): string {

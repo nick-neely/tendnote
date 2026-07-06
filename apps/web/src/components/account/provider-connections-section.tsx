@@ -192,29 +192,7 @@ function ProviderConnectionRow({
   connectable: boolean;
   ensureLocalDemoAuthSession: boolean;
 }) {
-  const status = STATUS_META[connection.status];
-  const StatusIcon = status.Icon;
   const CapabilityIcon = CAPABILITY_ICONS[connection.capabilityKey] ?? PlugIcon;
-  const action = capabilityAction(connection);
-
-  const isConnected = connection.status === "connected";
-  const isUnavailable = connection.status === "unavailable";
-  const actionLabel = isConnected ? "Disconnect" : "Connect";
-  const isCalendar = connection.capabilityKey === "calendar";
-  const isContacts = connection.capabilityKey === "contacts";
-  const isDiscordChannel =
-    connection.providerKey === "discord" && connection.capabilityKey === "channel";
-  const ConnectButton = action?.ConnectButton;
-  const DisconnectButton = action?.DisconnectButton;
-  const showConnect = Boolean(connectable && ConnectButton && !isConnected && !isUnavailable);
-  const showDisconnect = Boolean(connectable && DisconnectButton && isConnected);
-  // After a disconnect that could not revoke the Google-side grant, the user still
-  // has cleanup to finish in their Google Account (ADR-0080).
-  const showCleanupNote =
-    connectable &&
-    isCalendar &&
-    connection.status === "revoked" &&
-    connection.revocationReason === PROVIDER_GRANT_NOT_REVOKED_REASON;
 
   return (
     <li className="flex flex-col gap-2 px-3.5 py-3">
@@ -233,33 +211,132 @@ function ProviderConnectionRow({
           </span>
         </span>
 
-        <span className="flex shrink-0 items-center gap-2.5">
-          <Badge className={status.className} variant={status.variant}>
-            {StatusIcon ? <StatusIcon aria-hidden data-icon="inline-start" /> : null}
-            {status.label}
-          </Badge>
-          {isUnavailable ? null : showConnect && ConnectButton ? (
-            <ConnectButton
-              ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
-              label={connection.label}
-            />
-          ) : showDisconnect && DisconnectButton ? (
-            <DisconnectButton label={connection.label} />
-          ) : (
-            // Inert: no OAuth scopes, no token handling. Disabled (not just styled)
-            // so it is unfocusable and cannot be triggered.
-            <Button
-              aria-label={`${actionLabel} ${connection.label} (not available yet)`}
-              disabled
-              size="sm"
-              variant="outline"
-            >
-              {actionLabel}
-            </Button>
-          )}
-        </span>
+        <ProviderRowControl
+          connectable={connectable}
+          connection={connection}
+          ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
+        />
       </div>
 
+      <ProviderRowNotes connectable={connectable} connection={connection} />
+    </li>
+  );
+}
+
+/** Status badge + the row's single connect/disconnect (or inert) affordance. */
+function ProviderRowControl({
+  connection,
+  connectable,
+  ensureLocalDemoAuthSession,
+}: {
+  connection: ProviderConnectionView;
+  connectable: boolean;
+  ensureLocalDemoAuthSession: boolean;
+}) {
+  const status = STATUS_META[connection.status];
+  const StatusIcon = status.Icon;
+
+  return (
+    <span className="flex shrink-0 items-center gap-2.5">
+      <Badge className={status.className} variant={status.variant}>
+        {StatusIcon ? <StatusIcon aria-hidden data-icon="inline-start" /> : null}
+        {status.label}
+      </Badge>
+      <ProviderConnectAffordance
+        connectable={connectable}
+        connection={connection}
+        ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
+      />
+    </span>
+  );
+}
+
+/**
+ * The single affordance for a row: a live connect or disconnect control when the
+ * capability is wired and configured, nothing for an unavailable capability, and
+ * otherwise an inert disabled button (no OAuth scopes, no token handling — disabled
+ * rather than styled so it is unfocusable and cannot be triggered).
+ */
+function ProviderConnectAffordance({
+  connection,
+  connectable,
+  ensureLocalDemoAuthSession,
+}: {
+  connection: ProviderConnectionView;
+  connectable: boolean;
+  ensureLocalDemoAuthSession: boolean;
+}) {
+  const { ConnectButton, DisconnectButton } = capabilityAction(connection) ?? {};
+  const isConnected = connection.status === "connected";
+  const actionLabel = isConnected ? "Disconnect" : "Connect";
+  // Inert fallback: no OAuth scopes, no token handling. Disabled (not just styled)
+  // so it is unfocusable and cannot be triggered.
+  const inertAffordance = (
+    <Button
+      aria-label={`${actionLabel} ${connection.label} (not available yet)`}
+      disabled
+      size="sm"
+      variant="outline"
+    >
+      {actionLabel}
+    </Button>
+  );
+
+  if (connection.status === "unavailable") {
+    return null;
+  }
+  if (!connectable) {
+    return inertAffordance;
+  }
+  if (ConnectButton && !isConnected) {
+    return (
+      <ConnectButton
+        ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
+        label={connection.label}
+      />
+    );
+  }
+  if (DisconnectButton && isConnected) {
+    return <DisconnectButton label={connection.label} />;
+  }
+  return inertAffordance;
+}
+
+/** Capability-specific footnotes: cleanup/error status notes and live entry points. */
+function ProviderRowNotes({
+  connection,
+  connectable,
+}: {
+  connection: ProviderConnectionView;
+  connectable: boolean;
+}) {
+  return (
+    <>
+      <ProviderRowStatusNotes connectable={connectable} connection={connection} />
+      <ProviderRowEntryPoints connectable={connectable} connection={connection} />
+    </>
+  );
+}
+
+/** Cleanup guidance after a partial disconnect, and any surfaced error detail. */
+function ProviderRowStatusNotes({
+  connection,
+  connectable,
+}: {
+  connection: ProviderConnectionView;
+  connectable: boolean;
+}) {
+  const isCalendar = connection.capabilityKey === "calendar";
+  // After a disconnect that could not revoke the Google-side grant, the user still
+  // has cleanup to finish in their Google Account (ADR-0080).
+  const showCleanupNote =
+    connectable &&
+    isCalendar &&
+    connection.status === "revoked" &&
+    connection.revocationReason === PROVIDER_GRANT_NOT_REVOKED_REASON;
+
+  return (
+    <>
       {showCleanupNote ? (
         <p className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-muted-foreground">
           Tendnote has stopped reading your calendar and cleared its cached events. To fully revoke
@@ -280,12 +357,34 @@ function ProviderConnectionRow({
           {connection.lastErrorMessage}
         </p>
       ) : null}
-      {connectable && isContacts && connection.status === "ready" ? (
+    </>
+  );
+}
+
+/** Live preview/delivery entry points, only ever shown for a configured capability. */
+function ProviderRowEntryPoints({
+  connection,
+  connectable,
+}: {
+  connection: ProviderConnectionView;
+  connectable: boolean;
+}) {
+  if (!connectable) {
+    return null;
+  }
+
+  const isContacts = connection.capabilityKey === "contacts";
+  const isDiscordChannel =
+    connection.providerKey === "discord" && connection.capabilityKey === "channel";
+
+  return (
+    <>
+      {isContacts && connection.status === "ready" ? (
         <p className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-muted-foreground">
           Preview latest contacts before saving anything to Tendnote.
         </p>
       ) : null}
-      {connectable && isContacts && connection.status === "connected" ? (
+      {isContacts && connection.status === "connected" ? (
         <a
           className="self-start text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-primary underline underline-offset-2"
           href="/account/contacts/import"
@@ -293,7 +392,7 @@ function ProviderConnectionRow({
           Preview latest contacts
         </a>
       ) : null}
-      {connectable && isDiscordChannel && connection.status === "connected" ? (
+      {isDiscordChannel && connection.status === "connected" ? (
         <a
           className="self-start text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-primary underline underline-offset-2"
           href="/account/discord"
@@ -301,6 +400,6 @@ function ProviderConnectionRow({
           Set up delivery
         </a>
       ) : null}
-    </li>
+    </>
   );
 }

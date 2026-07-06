@@ -88,6 +88,31 @@ function normalizedReason(reason: string) {
 }
 
 /**
+ * Share of the smaller reason's significant tokens (>2 chars) that also appear in
+ * the larger. Returns 0 when the smaller side has too few tokens to compare
+ * meaningfully (<4), so a near-empty reason never counts as a match.
+ */
+function significantTokenOverlap(left: string, right: string): number {
+  const leftTokens = new Set(left.split(" ").filter((token) => token.length > 2));
+  const rightTokens = new Set(right.split(" ").filter((token) => token.length > 2));
+  const smaller = leftTokens.size < rightTokens.size ? leftTokens : rightTokens;
+  const larger = leftTokens.size < rightTokens.size ? rightTokens : leftTokens;
+
+  if (smaller.size < 4) {
+    return 0;
+  }
+
+  let shared = 0;
+  for (const token of smaller) {
+    if (larger.has(token)) {
+      shared += 1;
+    }
+  }
+
+  return shared / smaller.size;
+}
+
+/**
  * Whether two candidate reasons say materially the same thing — equal once
  * normalized, one containing the other when both are substantial, or a high
  * token-overlap ratio. Used to fold a semantic hit into an existing candidate
@@ -112,23 +137,7 @@ function materiallySameReason(left: string, right: string) {
     return true;
   }
 
-  const leftTokens = new Set(normalizedLeft.split(" ").filter((token) => token.length > 2));
-  const rightTokens = new Set(normalizedRight.split(" ").filter((token) => token.length > 2));
-  const smaller = leftTokens.size < rightTokens.size ? leftTokens : rightTokens;
-  const larger = leftTokens.size < rightTokens.size ? rightTokens : leftTokens;
-
-  if (smaller.size < 4) {
-    return false;
-  }
-
-  let shared = 0;
-  for (const token of smaller) {
-    if (larger.has(token)) {
-      shared += 1;
-    }
-  }
-
-  return shared / smaller.size >= 0.8;
+  return significantTokenOverlap(normalizedLeft, normalizedRight) >= 0.8;
 }
 
 function overlapsExistingCandidate(
@@ -272,115 +281,162 @@ export async function collectReviewCandidates(
   const candidates: ScoredCandidate[] = [];
 
   if (requested(input, "review_item")) {
-    for (const memory of suggestedMemories.filter(
-      (candidate) => candidate.status === "suggested",
-    )) {
-      const [person, sourceRecord] = await Promise.all([
-        store.getPerson({ ownerUserId: memory.ownerUserId, personId: memory.personId }),
-        store.getSourceRecord({
-          ownerUserId: memory.ownerUserId,
-          sourceRecordId: memory.sourceRecordId,
-        }),
-      ]);
-
-      if (!person) {
-        continue;
-      }
-
-      candidates.push({
-        kind: "review_item",
-        personId: person.id,
-        personDisplayName: person.displayName,
-        title: `Review suggested memory for ${person.displayName}`,
-        reason: memory.content,
-        sourceRefs: [
-          { kind: "memory", id: memory.id },
-          ...(sourceRecord ? [{ kind: "source_record" as const, id: sourceRecord.id }] : []),
-        ],
-        trustLevel: "tentative",
-        sensitivity: memory.sensitivity,
-        visibilityChoice: visibilityChoiceForScope(memory.scope),
-        visibilityLabel: visibilityLabelForScope(memory.scope),
-        scope: memory.scope,
-        householdId: memory.householdId ?? null,
-        rank: 0,
-        score: 40,
-      });
-    }
+    candidates.push(...(await collectSuggestedMemoryReviews(store, suggestedMemories)));
   }
 
   if (requested(input, "suggested_followup")) {
-    for (const followup of suggestedFollowups.filter(
-      (candidate) => candidate.status === "suggested",
-    )) {
-      const [person, sourceRecord] = await Promise.all([
-        store.getPerson({ ownerUserId: followup.ownerUserId, personId: followup.personId }),
-        followup.sourceRecordId
-          ? store.getSourceRecord({
-              ownerUserId: followup.ownerUserId,
-              sourceRecordId: followup.sourceRecordId,
-            })
-          : Promise.resolve(null),
-      ]);
-
-      if (!person) {
-        continue;
-      }
-
-      candidates.push({
-        kind: "suggested_followup",
-        personId: person.id,
-        personDisplayName: person.displayName,
-        title: `Review suggested follow-up for ${person.displayName}`,
-        reason: followup.reason,
-        dueAt: followup.dueAt,
-        sourceRefs: [
-          { kind: "followup", id: followup.id },
-          ...(sourceRecord ? [{ kind: "source_record" as const, id: sourceRecord.id }] : []),
-        ],
-        trustLevel: "tentative",
-        sensitivity: sourceRecord?.sensitivity ?? "normal",
-        visibilityChoice: visibilityChoiceForScope(followup.scope),
-        visibilityLabel: visibilityLabelForScope(followup.scope),
-        scope: followup.scope,
-        householdId: followup.householdId,
-        rank: 0,
-        score: 45,
-      });
-    }
+    candidates.push(...(await collectSuggestedFollowupReviews(store, suggestedFollowups)));
   }
 
   if (requested(input, "review_item")) {
-    for (const review of sourceRecordReviews.filter((candidate) =>
-      ["active", "pending_resolution"].includes(candidate.sourceRecord.status),
-    )) {
-      const primaryPerson = review.linkedPeople[0] ?? null;
-      const personless = primaryPerson === null;
-
-      candidates.push({
-        kind: "review_item",
-        personId: primaryPerson?.id ?? null,
-        personDisplayName: primaryPerson?.displayName ?? null,
-        title: personless
-          ? "Resolve a personless source record"
-          : `Review logged context for ${primaryPerson.displayName}`,
-        reason: personless
-          ? "This source record needs person resolution before it becomes relationship context."
-          : review.sourceRecord.content,
-        sourceRefs: [{ kind: "source_record", id: review.sourceRecord.id }],
-        trustLevel: "logged_context",
-        sensitivity: review.sourceRecord.sensitivity,
-        visibilityChoice: visibilityChoiceForScope(review.sourceRecord.scope),
-        visibilityLabel: visibilityLabelForScope(review.sourceRecord.scope),
-        scope: review.sourceRecord.scope,
-        householdId: review.sourceRecord.householdId ?? null,
-        rank: 0,
-        score: personless ? 80 : 50,
-      });
-    }
+    candidates.push(...collectSourceRecordReviewItems(sourceRecordReviews));
   }
 
   return candidates;
+}
+
+/** Suggested memories still awaiting review, each resolved against its person + source. */
+async function collectSuggestedMemoryReviews(
+  store: RelationshipAgendaStore,
+  suggestedMemories: Awaited<ReturnType<RelationshipAgendaStore["listVisibleSuggestedMemories"]>>,
+): Promise<ScoredCandidate[]> {
+  const candidates: ScoredCandidate[] = [];
+
+  for (const memory of suggestedMemories.filter((candidate) => candidate.status === "suggested")) {
+    const [person, sourceRecord] = await Promise.all([
+      store.getPerson({ ownerUserId: memory.ownerUserId, personId: memory.personId }),
+      store.getSourceRecord({
+        ownerUserId: memory.ownerUserId,
+        sourceRecordId: memory.sourceRecordId,
+      }),
+    ]);
+
+    if (!person) {
+      continue;
+    }
+
+    candidates.push({
+      kind: "review_item",
+      personId: person.id,
+      personDisplayName: person.displayName,
+      title: `Review suggested memory for ${person.displayName}`,
+      reason: memory.content,
+      sourceRefs: [
+        { kind: "memory", id: memory.id },
+        ...(sourceRecord ? [{ kind: "source_record" as const, id: sourceRecord.id }] : []),
+      ],
+      trustLevel: "tentative",
+      sensitivity: memory.sensitivity,
+      visibilityChoice: visibilityChoiceForScope(memory.scope),
+      visibilityLabel: visibilityLabelForScope(memory.scope),
+      scope: memory.scope,
+      householdId: memory.householdId ?? null,
+      rank: 0,
+      score: 40,
+    });
+  }
+
+  return candidates;
+}
+
+/** Suggested follow-ups still awaiting review, each resolved against its person + source. */
+async function collectSuggestedFollowupReviews(
+  store: RelationshipAgendaStore,
+  suggestedFollowups: Awaited<ReturnType<RelationshipAgendaStore["listVisibleSuggestedFollowups"]>>,
+): Promise<ScoredCandidate[]> {
+  const candidates: ScoredCandidate[] = [];
+
+  for (const followup of suggestedFollowups.filter(
+    (candidate) => candidate.status === "suggested",
+  )) {
+    const [person, sourceRecord] = await Promise.all([
+      store.getPerson({ ownerUserId: followup.ownerUserId, personId: followup.personId }),
+      followup.sourceRecordId
+        ? store.getSourceRecord({
+            ownerUserId: followup.ownerUserId,
+            sourceRecordId: followup.sourceRecordId,
+          })
+        : Promise.resolve(null),
+    ]);
+
+    if (!person) {
+      continue;
+    }
+
+    candidates.push({
+      kind: "suggested_followup",
+      personId: person.id,
+      personDisplayName: person.displayName,
+      title: `Review suggested follow-up for ${person.displayName}`,
+      reason: followup.reason,
+      dueAt: followup.dueAt,
+      sourceRefs: [
+        { kind: "followup", id: followup.id },
+        ...(sourceRecord ? [{ kind: "source_record" as const, id: sourceRecord.id }] : []),
+      ],
+      trustLevel: "tentative",
+      sensitivity: sourceRecord?.sensitivity ?? "normal",
+      visibilityChoice: visibilityChoiceForScope(followup.scope),
+      visibilityLabel: visibilityLabelForScope(followup.scope),
+      scope: followup.scope,
+      householdId: followup.householdId,
+      rank: 0,
+      score: 45,
+    });
+  }
+
+  return candidates;
+}
+
+/** Source records still needing attention (including personless records blocking resolution). */
+function collectSourceRecordReviewItems(
+  sourceRecordReviews: Awaited<
+    ReturnType<RelationshipAgendaStore["listVisibleSourceRecordReviews"]>
+  >,
+): ScoredCandidate[] {
+  return sourceRecordReviews
+    .filter((candidate) => ["active", "pending_resolution"].includes(candidate.sourceRecord.status))
+    .map(sourceRecordReviewCandidate);
+}
+
+/** Build the review candidate for one source record, handling the personless case. */
+function sourceRecordReviewCandidate(
+  review: Awaited<ReturnType<RelationshipAgendaStore["listVisibleSourceRecordReviews"]>>[number],
+): ScoredCandidate {
+  const { sourceRecord } = review;
+  const shared = {
+    kind: "review_item" as const,
+    sourceRefs: [{ kind: "source_record" as const, id: sourceRecord.id }],
+    trustLevel: "logged_context" as const,
+    sensitivity: sourceRecord.sensitivity,
+    visibilityChoice: visibilityChoiceForScope(sourceRecord.scope),
+    visibilityLabel: visibilityLabelForScope(sourceRecord.scope),
+    scope: sourceRecord.scope,
+    householdId: sourceRecord.householdId ?? null,
+    rank: 0,
+  };
+
+  const primaryPerson = review.linkedPeople[0] ?? null;
+
+  if (primaryPerson === null) {
+    return {
+      ...shared,
+      personId: null,
+      personDisplayName: null,
+      title: "Resolve a personless source record",
+      reason: "This source record needs person resolution before it becomes relationship context.",
+      score: 80,
+    };
+  }
+
+  return {
+    ...shared,
+    personId: primaryPerson.id,
+    personDisplayName: primaryPerson.displayName,
+    title: `Review logged context for ${primaryPerson.displayName}`,
+    reason: sourceRecord.content,
+    score: 50,
+  };
 }
 
 /**

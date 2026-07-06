@@ -10,9 +10,13 @@
       "exports": ["*"]
     }
   ],
-  // Loaded implicitly by Next's `reactCompiler: true` (apps/web/next.config.ts),
-  // not via a direct import, so the unused-dependency scan can't see it.
-  "ignoreDependencies": ["babel-plugin-react-compiler"],
+  // babel-plugin-react-compiler: loaded implicitly by Next's `reactCompiler: true`
+  //   (apps/web/next.config.ts), not via a direct import.
+  // @tendnote/agent: the web app mounts Eve same-origin via `withEve(..., { eveRoot:
+  //   "../agent" })` in next.config.ts (a filesystem path, not an import), and CI
+  //   deploys web after agent (see "ci: mark web deployment dependent on agent").
+  //   The workspace edge is deliberate but invisible to the import-based scan.
+  "ignoreDependencies": ["babel-plugin-react-compiler", "@tendnote/agent"],
   "entry": ["apps/agent/agent/agent.ts"],
   "dynamicallyLoaded": [
     "apps/agent/agent/channels/**/*.ts",

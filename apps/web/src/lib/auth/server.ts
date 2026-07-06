@@ -1,3 +1,8 @@
+// fallow-ignore-file circular-dependencies -- The account-create after-link hook
+// dynamically imports the integrations boundary (reconcileDiscordAfterLink) to break
+// the *runtime* init cycle (#174, ADR-0138); the boundary re-enters admission checks
+// in current-access, which needs getAuth from here. Fallow counts the deliberate
+// lazy `await import()` edges as a static cycle even though they are runtime-safe.
 import { redisStorage } from "@better-auth/redis-storage";
 import { getDb } from "@tendnote/db/client";
 import { ensureAccessProfile } from "@tendnote/db/queries/access-profiles";

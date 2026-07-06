@@ -68,5 +68,3 @@ export function createDiscordIdentityQueries(store: DiscordIdentityStore) {
     },
   };
 }
-
-export type DiscordIdentityQueries = ReturnType<typeof createDiscordIdentityQueries>;

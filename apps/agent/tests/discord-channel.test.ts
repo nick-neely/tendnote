@@ -73,6 +73,27 @@ function deps(): DiscordCaptureDeps {
   };
 }
 
+/**
+ * POST a signed interaction body through the channel handler with the default
+ * owner map and a fresh capture-deps double. Shared by the cases that only vary
+ * the payload and their assertions on the response + captured calls.
+ */
+async function postSignedInteraction(body: string) {
+  const signed = signDiscordBody(body);
+  const captureDeps = deps();
+
+  const response = await handleDiscordRequest(
+    new Request("https://example.com/eve/v1/discord", {
+      method: "POST",
+      body,
+      headers: signed.headers,
+    }),
+    { publicKey: signed.publicKeyHex, resolveOwner: ownerResolver, deps: captureDeps },
+  );
+
+  return { response, captureDeps };
+}
+
 describe("Discord interaction channel", () => {
   it("verifies Discord Ed25519 request signatures", () => {
     const body = JSON.stringify({ type: 1 });
@@ -139,21 +160,7 @@ describe("Discord interaction channel", () => {
         options: [{ name: "message", type: 3, value: "Lunch with Sam" }],
       },
     });
-    const signed = signDiscordBody(body);
-    const captureDeps = deps();
-
-    const response = await handleDiscordRequest(
-      new Request("https://example.com/eve/v1/discord", {
-        method: "POST",
-        body,
-        headers: signed.headers,
-      }),
-      {
-        publicKey: signed.publicKeyHex,
-        resolveOwner: ownerResolver,
-        deps: captureDeps,
-      },
-    );
+    const { response, captureDeps } = await postSignedInteraction(body);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -191,17 +198,7 @@ describe("Discord interaction channel", () => {
         options: [{ name: "message", type: 3, value: "Guild-sent private note." }],
       },
     });
-    const signed = signDiscordBody(body);
-    const captureDeps = deps();
-
-    const response = await handleDiscordRequest(
-      new Request("https://example.com/eve/v1/discord", {
-        method: "POST",
-        body,
-        headers: signed.headers,
-      }),
-      { publicKey: signed.publicKeyHex, resolveOwner: ownerResolver, deps: captureDeps },
-    );
+    const { response, captureDeps } = await postSignedInteraction(body);
 
     expect(response.status).toBe(200);
     // Guild/channel membership never widens scope: the capture is still the
@@ -213,21 +210,7 @@ describe("Discord interaction channel", () => {
 
   it("returns a controlled error for signed malformed JSON", async () => {
     const body = "{";
-    const signed = signDiscordBody(body);
-    const captureDeps = deps();
-
-    const response = await handleDiscordRequest(
-      new Request("https://example.com/eve/v1/discord", {
-        method: "POST",
-        body,
-        headers: signed.headers,
-      }),
-      {
-        publicKey: signed.publicKeyHex,
-        resolveOwner: ownerResolver,
-        deps: captureDeps,
-      },
-    );
+    const { response, captureDeps } = await postSignedInteraction(body);
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
@@ -242,21 +225,7 @@ describe("Discord interaction channel", () => {
       user: { id: "discord-1" },
       data: { custom_id: "clarify:session-1" },
     });
-    const signed = signDiscordBody(body);
-    const captureDeps = deps();
-
-    const response = await handleDiscordRequest(
-      new Request("https://example.com/eve/v1/discord", {
-        method: "POST",
-        body,
-        headers: signed.headers,
-      }),
-      {
-        publicKey: signed.publicKeyHex,
-        resolveOwner: ownerResolver,
-        deps: captureDeps,
-      },
-    );
+    const { response, captureDeps } = await postSignedInteraction(body);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -276,21 +245,7 @@ describe("Discord interaction channel", () => {
       user: { id: "discord-1" },
       data: { custom_id: "review:source-global" },
     });
-    const signed = signDiscordBody(body);
-    const captureDeps = deps();
-
-    const response = await handleDiscordRequest(
-      new Request("https://example.com/eve/v1/discord", {
-        method: "POST",
-        body,
-        headers: signed.headers,
-      }),
-      {
-        publicKey: signed.publicKeyHex,
-        resolveOwner: ownerResolver,
-        deps: captureDeps,
-      },
-    );
+    const { response, captureDeps } = await postSignedInteraction(body);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -314,21 +269,7 @@ describe("Discord interaction channel", () => {
         components: [{ components: [{ custom_id: "clarification", value: "I meant Sam Lee." }] }],
       },
     });
-    const signed = signDiscordBody(body);
-    const captureDeps = deps();
-
-    const response = await handleDiscordRequest(
-      new Request("https://example.com/eve/v1/discord", {
-        method: "POST",
-        body,
-        headers: signed.headers,
-      }),
-      {
-        publicKey: signed.publicKeyHex,
-        resolveOwner: ownerResolver,
-        deps: captureDeps,
-      },
-    );
+    const { response, captureDeps } = await postSignedInteraction(body);
 
     expect(response.status).toBe(200);
     expect(captureDeps.parkHitlSession).toHaveBeenCalledWith({

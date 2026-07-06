@@ -230,37 +230,56 @@ export function discordApiPayloadToCaptureInteraction(
       // The scope policy reads these but never widens scope from them; nothing persists them.
       guildId: payload.guild_id ?? null,
       channelId: payload.channel_id ?? null,
-      attachments: payload.data.resolved?.attachments
-        ? Object.entries(payload.data.resolved.attachments).map(([id, value]) => ({
-            id,
-            filename:
-              typeof value === "object" &&
-              value !== null &&
-              "filename" in value &&
-              typeof value.filename === "string"
-                ? value.filename
-                : "attachment",
-          }))
-        : undefined,
+      attachments: slashCommandAttachments(payload),
     };
   }
 
   if (payload.type === 3 || payload.type === 5) {
-    const customId = payload.data?.custom_id ?? firstSubmittedComponentId(payload);
-    if (!customId) return null;
-    const decoded = decodeDiscordComponentCustomId(customId);
-    if (!decoded) return null;
-
-    return {
-      type: payload.type === 3 ? "component" : "modal_submit",
-      discordUserId,
-      sessionId: decoded.sessionId,
-      action: decoded.action,
-      value: firstSubmittedValue(payload),
-    };
+    return componentInteraction(payload, discordUserId);
   }
 
   return null;
+}
+
+/** Filename of a resolved attachment, falling back to a placeholder for malformed shapes. */
+function resolvedAttachmentFilename(value: unknown): string {
+  return typeof value === "object" &&
+    value !== null &&
+    "filename" in value &&
+    typeof value.filename === "string"
+    ? value.filename
+    : "attachment";
+}
+
+/** Map a `/capture` command's resolved attachments to `{ id, filename }`, if any. */
+function slashCommandAttachments(
+  payload: DiscordApiInteraction,
+): { id: string; filename: string }[] | undefined {
+  const resolved = payload.data?.resolved?.attachments;
+  if (!resolved) return undefined;
+  return Object.entries(resolved).map(([id, value]) => ({
+    id,
+    filename: resolvedAttachmentFilename(value),
+  }));
+}
+
+/** Build a component / modal-submit interaction, failing closed on an undecodable custom id. */
+function componentInteraction(
+  payload: DiscordApiInteraction,
+  discordUserId: string,
+): DiscordInteraction | null {
+  const customId = payload.data?.custom_id ?? firstSubmittedComponentId(payload);
+  if (!customId) return null;
+  const decoded = decodeDiscordComponentCustomId(customId);
+  if (!decoded) return null;
+
+  return {
+    type: payload.type === 3 ? "component" : "modal_submit",
+    discordUserId,
+    sessionId: decoded.sessionId,
+    action: decoded.action,
+    value: firstSubmittedValue(payload),
+  };
 }
 
 function parseDiscordApiInteraction(body: string): DiscordApiInteraction | null {

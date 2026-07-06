@@ -18,7 +18,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  */
 
 /** Discord's OAuth2 authorization endpoint. */
-export const DISCORD_AUTHORIZE_URL = "https://discord.com/oauth2/authorize";
+const DISCORD_AUTHORIZE_URL = "https://discord.com/oauth2/authorize";
 
 /**
  * Scopes requested for the bot install. `bot` adds the shared application to the

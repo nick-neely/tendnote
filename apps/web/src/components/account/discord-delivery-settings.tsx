@@ -54,53 +54,11 @@ export function DiscordDeliverySettings({ installs }: { installs: DiscordInstall
 }
 
 function DiscordInstallRow({ install }: { install: DiscordInstallView }) {
-  const [channelId, setChannelId] = useState(install.targetChannelId ?? "");
+  // A single shared alert surfaces the most recent save/toggle failure; each
+  // control clears it before starting so only the live failure is ever shown.
   const [error, setError] = useState<string | null>(null);
-  const [savePending, startSave] = useTransition();
-  const [togglePending, startToggle] = useTransition();
-
-  const trimmed = channelId.trim();
-  const dirty = trimmed !== (install.targetChannelId ?? "");
-  // Non-blocking client hint: skip the round-trip on an obviously malformed id.
-  // The server re-validates the snowflake shape regardless (never trusting this).
-  const formatInvalid = trimmed.length > 0 && !isDiscordChannelId(trimmed);
   const status = deliveryStatus(install);
   const StatusIcon = status.Icon;
-  const channelInputId = `discord-channel-${install.guildId}`;
-  const helpId = `discord-channel-help-${install.guildId}`;
-  const hintId = `discord-channel-hint-${install.guildId}`;
-
-  function saveChannel() {
-    if (!trimmed || !dirty || formatInvalid) {
-      return;
-    }
-    setError(null);
-    startSave(async () => {
-      try {
-        await configureDiscordTargetAction({ guildId: install.guildId, targetChannelId: trimmed });
-      } catch {
-        // Surface the failure instead of letting a failed save look like a slow
-        // success; the input keeps the owner's value so they can retry.
-        setError("Couldn't save that channel just now. Check the ID and try again.");
-      }
-    });
-  }
-
-  function toggleEnabled() {
-    setError(null);
-    startToggle(async () => {
-      try {
-        await setDiscordDeliveryEnabledAction({
-          guildId: install.guildId,
-          enabled: !install.enabled,
-        });
-      } catch {
-        // No optimistic flip: the badge reflects real state, and the failure is
-        // surfaced rather than swallowed.
-        setError(`Couldn't ${install.enabled ? "pause" : "resume"} delivery just now. Try again.`);
-      }
-    });
-  }
 
   return (
     <li className="flex flex-col gap-3 px-3.5 py-3.5">
@@ -122,25 +80,112 @@ function DiscordInstallRow({ install }: { install: DiscordInstallView }) {
             {StatusIcon ? <StatusIcon aria-hidden data-icon="inline-start" /> : null}
             {status.label}
           </Badge>
-          <Button
-            aria-label={`${install.enabled ? "Pause" : "Resume"} delivery for this server`}
-            aria-live="polite"
-            disabled={togglePending}
-            onClick={toggleEnabled}
-            size="sm"
-            variant="outline"
-          >
-            {togglePending
-              ? install.enabled
-                ? "Pausing…"
-                : "Resuming…"
-              : install.enabled
-                ? "Pause"
-                : "Resume"}
-          </Button>
+          <PauseResumeControl install={install} onError={setError} />
         </span>
       </div>
 
+      <ChannelIdForm install={install} onError={setError} />
+
+      {error ? (
+        <p
+          className="flex items-start gap-1.5 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-accent"
+          role="alert"
+        >
+          <TriangleAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+          {error}
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
+/** Pause/resume toggle for one install; reports failures up to the shared row alert. */
+function PauseResumeControl({
+  install,
+  onError,
+}: {
+  install: DiscordInstallView;
+  onError: (message: string | null) => void;
+}) {
+  const [togglePending, startToggle] = useTransition();
+
+  function toggleEnabled() {
+    onError(null);
+    startToggle(async () => {
+      try {
+        await setDiscordDeliveryEnabledAction({
+          guildId: install.guildId,
+          enabled: !install.enabled,
+        });
+      } catch {
+        // No optimistic flip: the badge reflects real state, and the failure is
+        // surfaced rather than swallowed.
+        onError(`Couldn't ${install.enabled ? "pause" : "resume"} delivery just now. Try again.`);
+      }
+    });
+  }
+
+  return (
+    <Button
+      aria-label={`${install.enabled ? "Pause" : "Resume"} delivery for this server`}
+      aria-live="polite"
+      disabled={togglePending}
+      onClick={toggleEnabled}
+      size="sm"
+      variant="outline"
+    >
+      {togglePending
+        ? install.enabled
+          ? "Pausing…"
+          : "Resuming…"
+        : install.enabled
+          ? "Pause"
+          : "Resume"}
+    </Button>
+  );
+}
+
+/** Delivery-channel ID field + save control for one install, with its inline format hint. */
+function ChannelIdForm({
+  install,
+  onError,
+}: {
+  install: DiscordInstallView;
+  onError: (message: string | null) => void;
+}) {
+  const [channelId, setChannelId] = useState(install.targetChannelId ?? "");
+  const [savePending, startSave] = useTransition();
+
+  const trimmed = channelId.trim();
+  const dirty = trimmed !== (install.targetChannelId ?? "");
+  // Non-blocking client hint: skip the round-trip on an obviously malformed id.
+  // The server re-validates the snowflake shape regardless (never trusting this).
+  const formatInvalid = trimmed.length > 0 && !isDiscordChannelId(trimmed);
+  // A save is worth attempting only for a changed id whose shape is plausibly valid;
+  // `isDiscordChannelId` already rejects the empty/whitespace case.
+  const canSave = dirty && isDiscordChannelId(trimmed);
+  const channelInputId = `discord-channel-${install.guildId}`;
+  const helpId = `discord-channel-help-${install.guildId}`;
+  const hintId = `discord-channel-hint-${install.guildId}`;
+
+  function saveChannel() {
+    if (!canSave) {
+      return;
+    }
+    onError(null);
+    startSave(async () => {
+      try {
+        await configureDiscordTargetAction({ guildId: install.guildId, targetChannelId: trimmed });
+      } catch {
+        // Surface the failure instead of letting a failed save look like a slow
+        // success; the input keeps the owner's value so they can retry.
+        onError("Couldn't save that channel just now. Check the ID and try again.");
+      }
+    });
+  }
+
+  return (
+    <>
       <form
         className="flex items-end gap-2"
         onSubmit={(event) => {
@@ -166,23 +211,12 @@ function DiscordInstallRow({ install }: { install: DiscordInstallView }) {
             value={channelId}
           />
         </span>
-        <Button
-          disabled={!trimmed || !dirty || formatInvalid || savePending}
-          size="sm"
-          type="submit"
-        >
+        <Button disabled={!canSave || savePending} size="sm" type="submit">
           {savePending ? "Saving…" : "Save"}
         </Button>
       </form>
 
-      {formatInvalid ? (
-        <p
-          className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground"
-          id={hintId}
-        >
-          A channel ID is 17&ndash;20 digits.
-        </p>
-      ) : null}
+      <ChannelFormatHint hintId={hintId} show={formatInvalid} />
 
       <p
         className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-muted-foreground"
@@ -192,17 +226,22 @@ function DiscordInstallRow({ install }: { install: DiscordInstallView }) {
         configured. In Discord, enable Developer Mode (Settings &rarr; Advanced), then right-click
         the channel and choose <span className="whitespace-nowrap">Copy Channel ID</span>.
       </p>
+    </>
+  );
+}
 
-      {error ? (
-        <p
-          className="flex items-start gap-1.5 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-accent"
-          role="alert"
-        >
-          <TriangleAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-          {error}
-        </p>
-      ) : null}
-    </li>
+/** Inline "17–20 digits" hint, shown only while the typed id is malformed. */
+function ChannelFormatHint({ hintId, show }: { hintId: string; show: boolean }) {
+  if (!show) {
+    return null;
+  }
+  return (
+    <p
+      className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground"
+      id={hintId}
+    >
+      A channel ID is 17&ndash;20 digits.
+    </p>
   );
 }
 

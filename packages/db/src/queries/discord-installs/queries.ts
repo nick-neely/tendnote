@@ -128,5 +128,3 @@ function toDeliveryTarget(install: DiscordInstall | null): DiscordDeliveryTarget
     targetId: install.targetChannelId,
   };
 }
-
-export type DiscordInstallQueries = ReturnType<typeof createDiscordInstallQueries>;

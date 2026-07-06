@@ -84,6 +84,93 @@ function setupIntegratedWorkflow(
   return { agenda, calendarContext, store, workflow, generateBrief };
 }
 
+/**
+ * Integrated brief workflow wired to a real (in-memory) delivery service for the
+ * opt-in Discord path, with a single due-follow-up candidate. Optionally
+ * pre-configures the owner's `morning_agenda` Discord target; callers supply their
+ * own sender and drive `generateMorningAgenda` so each case keeps its exact args.
+ */
+async function setupIntegratedDeliveryHarness(options: { configureTarget?: boolean } = {}) {
+  const { generateBrief, store } = setupIntegratedWorkflow({
+    candidates: [
+      candidate("due_followup", {
+        sourceRefs: [{ kind: "followup", id: FOLLOWUP_ID }],
+        trustLevel: "active_reminder",
+      }),
+    ],
+  });
+  const delivery = createScheduledWorkflowDeliveryService(
+    createInMemoryScheduledWorkflowDeliveryStore(),
+  );
+  if (options.configureTarget) {
+    await delivery.configureDiscordWorkflowDelivery({
+      ownerUserId: OWNER,
+      workflow: "morning_agenda",
+      enabled: true,
+      targetId: "discord-morning",
+      allowSensitive: false,
+    });
+  }
+  const workflow = createMorningAgendaWorkflow({
+    generateBrief,
+    deliverDiscordScheduledArtifact: (input) => delivery.deliverDiscordScheduledArtifact(input),
+  });
+  return { store, delivery, workflow };
+}
+
+/**
+ * Run the household-scope Discord delivery path: a fixed household-visible
+ * due-follow-up plus a caller-supplied second item, against a household-safe
+ * target. Shared by the household-scope policy cases, which differ only in that
+ * second item and in what they assert about the resulting artifact + delivery.
+ */
+async function runHouseholdAgendaDelivery(secondCandidate: RelationshipAgendaCandidate) {
+  // No calendar highlights: a calendar item is the owner's own private schedule
+  // and would fail the whole agenda closed to private.
+  const store = createInMemoryBriefStore();
+  const agenda = {
+    getRelationshipAgenda: vi.fn(async () => [
+      candidate("due_followup", {
+        sourceRefs: [{ kind: "followup", id: FOLLOWUP_ID }],
+        trustLevel: "active_reminder",
+        scope: "household",
+        householdId: HOUSEHOLD_ID,
+      }),
+      secondCandidate,
+    ]),
+  };
+  const generator = createBriefGenerator(store, agenda, {
+    calendarContext: vi.fn(async () => []),
+  });
+  const delivery = createScheduledWorkflowDeliveryService(
+    createInMemoryScheduledWorkflowDeliveryStore(),
+  );
+  await delivery.configureDiscordWorkflowDelivery({
+    ownerUserId: OWNER,
+    workflow: "morning_agenda",
+    enabled: true,
+    targetId: "discord-household",
+    allowSensitive: false,
+    targetScope: "household",
+    targetHouseholdId: HOUSEHOLD_ID,
+  });
+  const sender = vi.fn(async () => undefined);
+  const workflow = createMorningAgendaWorkflow({
+    generateBrief: (generationInput) => generator.generateBrief(generationInput),
+    deliverDiscordScheduledArtifact: (input) => delivery.deliverDiscordScheduledArtifact(input),
+  });
+
+  const result = await workflow.generateMorningAgenda({
+    ownerUserId: OWNER,
+    localDate: "2026-07-02",
+    now: NOW,
+    deliverDiscord: true,
+    sender,
+  });
+
+  return { result, sender };
+}
+
 describe("Morning Agenda workflow", () => {
   it("persists a small grounded daily agenda from eligible private context", async () => {
     const { agenda, calendarContext, workflow } = setupIntegratedWorkflow();
@@ -141,29 +228,8 @@ describe("Morning Agenda workflow", () => {
   });
 
   it("attempts opt-in Discord delivery only after a persisted artifact exists", async () => {
-    const { generateBrief, store } = setupIntegratedWorkflow({
-      candidates: [
-        candidate("due_followup", {
-          sourceRefs: [{ kind: "followup", id: FOLLOWUP_ID }],
-          trustLevel: "active_reminder",
-        }),
-      ],
-    });
-    const delivery = createScheduledWorkflowDeliveryService(
-      createInMemoryScheduledWorkflowDeliveryStore(),
-    );
-    await delivery.configureDiscordWorkflowDelivery({
-      ownerUserId: OWNER,
-      workflow: "morning_agenda",
-      enabled: true,
-      targetId: "discord-morning",
-      allowSensitive: false,
-    });
+    const { store, workflow } = await setupIntegratedDeliveryHarness({ configureTarget: true });
     const sender = vi.fn(async () => undefined);
-    const workflow = createMorningAgendaWorkflow({
-      generateBrief,
-      deliverDiscordScheduledArtifact: (input) => delivery.deliverDiscordScheduledArtifact(input),
-    });
 
     const result = await workflow.generateMorningAgenda({
       ownerUserId: OWNER,
@@ -187,22 +253,8 @@ describe("Morning Agenda workflow", () => {
   });
 
   it("keeps the in-app artifact reviewable when Discord delivery is not configured", async () => {
-    const { generateBrief, store } = setupIntegratedWorkflow({
-      candidates: [
-        candidate("due_followup", {
-          sourceRefs: [{ kind: "followup", id: FOLLOWUP_ID }],
-          trustLevel: "active_reminder",
-        }),
-      ],
-    });
-    const delivery = createScheduledWorkflowDeliveryService(
-      createInMemoryScheduledWorkflowDeliveryStore(),
-    );
+    const { store, workflow } = await setupIntegratedDeliveryHarness();
     const sender = vi.fn(async () => undefined);
-    const workflow = createMorningAgendaWorkflow({
-      generateBrief,
-      deliverDiscordScheduledArtifact: (input) => delivery.deliverDiscordScheduledArtifact(input),
-    });
 
     const result = await workflow.generateMorningAgenda({
       ownerUserId: OWNER,
@@ -223,30 +275,9 @@ describe("Morning Agenda workflow", () => {
   });
 
   it("keeps the in-app artifact reviewable when Discord delivery fails", async () => {
-    const { generateBrief, store } = setupIntegratedWorkflow({
-      candidates: [
-        candidate("due_followup", {
-          sourceRefs: [{ kind: "followup", id: FOLLOWUP_ID }],
-          trustLevel: "active_reminder",
-        }),
-      ],
-    });
-    const delivery = createScheduledWorkflowDeliveryService(
-      createInMemoryScheduledWorkflowDeliveryStore(),
-    );
-    await delivery.configureDiscordWorkflowDelivery({
-      ownerUserId: OWNER,
-      workflow: "morning_agenda",
-      enabled: true,
-      targetId: "discord-morning",
-      allowSensitive: false,
-    });
+    const { store, workflow } = await setupIntegratedDeliveryHarness({ configureTarget: true });
     const sender = vi.fn(async () => {
       throw new Error("Discord unavailable");
-    });
-    const workflow = createMorningAgendaWorkflow({
-      generateBrief,
-      deliverDiscordScheduledArtifact: (input) => delivery.deliverDiscordScheduledArtifact(input),
     });
 
     const result = await workflow.generateMorningAgenda({
@@ -267,54 +298,15 @@ describe("Morning Agenda workflow", () => {
   });
 
   it("delivers a purely household-visible agenda to a matching household Discord target", async () => {
-    // No calendar highlights: a calendar item is the owner's own private schedule
-    // and would fail the whole agenda closed to private.
-    const store = createInMemoryBriefStore();
-    const agenda = {
-      getRelationshipAgenda: vi.fn(async () => [
-        candidate("due_followup", {
-          sourceRefs: [{ kind: "followup", id: FOLLOWUP_ID }],
-          trustLevel: "active_reminder",
-          scope: "household",
-          householdId: HOUSEHOLD_ID,
-        }),
-        candidate("review_item", {
-          title: "Review Alex note",
-          sourceRefs: [{ kind: "memory", id: MEMORY_ID }],
-          trustLevel: "tentative",
-          scope: "household",
-          householdId: HOUSEHOLD_ID,
-        }),
-      ]),
-    };
-    const generator = createBriefGenerator(store, agenda, {
-      calendarContext: vi.fn(async () => []),
-    });
-    const delivery = createScheduledWorkflowDeliveryService(
-      createInMemoryScheduledWorkflowDeliveryStore(),
+    const { result, sender } = await runHouseholdAgendaDelivery(
+      candidate("review_item", {
+        title: "Review Alex note",
+        sourceRefs: [{ kind: "memory", id: MEMORY_ID }],
+        trustLevel: "tentative",
+        scope: "household",
+        householdId: HOUSEHOLD_ID,
+      }),
     );
-    await delivery.configureDiscordWorkflowDelivery({
-      ownerUserId: OWNER,
-      workflow: "morning_agenda",
-      enabled: true,
-      targetId: "discord-household",
-      allowSensitive: false,
-      targetScope: "household",
-      targetHouseholdId: HOUSEHOLD_ID,
-    });
-    const sender = vi.fn(async () => undefined);
-    const workflow = createMorningAgendaWorkflow({
-      generateBrief: (generationInput) => generator.generateBrief(generationInput),
-      deliverDiscordScheduledArtifact: (input) => delivery.deliverDiscordScheduledArtifact(input),
-    });
-
-    const result = await workflow.generateMorningAgenda({
-      ownerUserId: OWNER,
-      localDate: "2026-07-02",
-      now: NOW,
-      deliverDiscord: true,
-      sender,
-    });
 
     expect(result.artifact).toMatchObject({ scope: "household", householdId: HOUSEHOLD_ID });
     expect(result.delivery).toMatchObject({
@@ -325,53 +317,16 @@ describe("Morning Agenda workflow", () => {
   });
 
   it("fails an agenda with any private item closed to private, never widening to a household target", async () => {
-    const store = createInMemoryBriefStore();
-    const agenda = {
-      getRelationshipAgenda: vi.fn(async () => [
-        candidate("due_followup", {
-          sourceRefs: [{ kind: "followup", id: FOLLOWUP_ID }],
-          trustLevel: "active_reminder",
-          scope: "household",
-          householdId: HOUSEHOLD_ID,
-        }),
-        // A single private item is enough to fail the whole artifact closed.
-        candidate("review_item", {
-          title: "Private note",
-          sourceRefs: [{ kind: "memory", id: MEMORY_ID }],
-          trustLevel: "tentative",
-          scope: "private",
-          householdId: null,
-        }),
-      ]),
-    };
-    const generator = createBriefGenerator(store, agenda, {
-      calendarContext: vi.fn(async () => []),
-    });
-    const delivery = createScheduledWorkflowDeliveryService(
-      createInMemoryScheduledWorkflowDeliveryStore(),
+    // A single private item is enough to fail the whole artifact closed.
+    const { result, sender } = await runHouseholdAgendaDelivery(
+      candidate("review_item", {
+        title: "Private note",
+        sourceRefs: [{ kind: "memory", id: MEMORY_ID }],
+        trustLevel: "tentative",
+        scope: "private",
+        householdId: null,
+      }),
     );
-    await delivery.configureDiscordWorkflowDelivery({
-      ownerUserId: OWNER,
-      workflow: "morning_agenda",
-      enabled: true,
-      targetId: "discord-household",
-      allowSensitive: false,
-      targetScope: "household",
-      targetHouseholdId: HOUSEHOLD_ID,
-    });
-    const sender = vi.fn(async () => undefined);
-    const workflow = createMorningAgendaWorkflow({
-      generateBrief: (generationInput) => generator.generateBrief(generationInput),
-      deliverDiscordScheduledArtifact: (input) => delivery.deliverDiscordScheduledArtifact(input),
-    });
-
-    const result = await workflow.generateMorningAgenda({
-      ownerUserId: OWNER,
-      localDate: "2026-07-02",
-      now: NOW,
-      deliverDiscord: true,
-      sender,
-    });
 
     expect(result.artifact).toMatchObject({ scope: "private", householdId: null });
     expect(result.delivery).toMatchObject({ type: "skipped", reason: "private_content_filtered" });
@@ -379,54 +334,17 @@ describe("Morning Agenda workflow", () => {
   });
 
   it("keeps the sensitivity gate independent of household scope (no compounding)", async () => {
-    const store = createInMemoryBriefStore();
-    const agenda = {
-      getRelationshipAgenda: vi.fn(async () => [
-        candidate("due_followup", {
-          sourceRefs: [{ kind: "followup", id: FOLLOWUP_ID }],
-          trustLevel: "active_reminder",
-          scope: "household",
-          householdId: HOUSEHOLD_ID,
-        }),
-        candidate("review_item", {
-          title: "Sensitive household note",
-          sourceRefs: [{ kind: "memory", id: MEMORY_ID }],
-          trustLevel: "tentative",
-          sensitivity: "sensitive",
-          scope: "household",
-          householdId: HOUSEHOLD_ID,
-        }),
-      ]),
-    };
-    const generator = createBriefGenerator(store, agenda, {
-      calendarContext: vi.fn(async () => []),
-    });
-    const delivery = createScheduledWorkflowDeliveryService(
-      createInMemoryScheduledWorkflowDeliveryStore(),
-    );
     // Household-safe target, but sensitive content is not allowed on it.
-    await delivery.configureDiscordWorkflowDelivery({
-      ownerUserId: OWNER,
-      workflow: "morning_agenda",
-      enabled: true,
-      targetId: "discord-household",
-      allowSensitive: false,
-      targetScope: "household",
-      targetHouseholdId: HOUSEHOLD_ID,
-    });
-    const sender = vi.fn(async () => undefined);
-    const workflow = createMorningAgendaWorkflow({
-      generateBrief: (generationInput) => generator.generateBrief(generationInput),
-      deliverDiscordScheduledArtifact: (input) => delivery.deliverDiscordScheduledArtifact(input),
-    });
-
-    const result = await workflow.generateMorningAgenda({
-      ownerUserId: OWNER,
-      localDate: "2026-07-02",
-      now: NOW,
-      deliverDiscord: true,
-      sender,
-    });
+    const { result, sender } = await runHouseholdAgendaDelivery(
+      candidate("review_item", {
+        title: "Sensitive household note",
+        sourceRefs: [{ kind: "memory", id: MEMORY_ID }],
+        trustLevel: "tentative",
+        sensitivity: "sensitive",
+        scope: "household",
+        householdId: HOUSEHOLD_ID,
+      }),
+    );
 
     // Scope aggregates to household, but the sensitivity gate (evaluated first)
     // still filters the send: a household target does not license sensitive content.

@@ -243,7 +243,7 @@ export async function handleDiscordCaptureInteraction(
   };
 }
 
-export function reviewComponentsForSourceRecord(sourceRecordId: string): DiscordMessageComponent[] {
+function reviewComponentsForSourceRecord(sourceRecordId: string): DiscordMessageComponent[] {
   return discordReviewComponents(sourceRecordId);
 }
 
