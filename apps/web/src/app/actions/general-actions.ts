@@ -1,5 +1,6 @@
 "use server";
 
+import type { GeneralActionWithContext } from "@tendnote/db/queries/general-actions";
 import {
   archiveGeneralAction,
   completeGeneralAction,
@@ -9,9 +10,12 @@ import {
   editGeneralAction,
   listGeneralActionHistory,
   reopenGeneralAction,
+  setGeneralActionPeople,
+  setGeneralActionVisibility,
 } from "@tendnote/db/queries/general-actions";
-import type { GeneralAction } from "@tendnote/domain";
+import { listActiveHouseholdMembershipsForUser } from "@tendnote/db/queries/households";
 import { generalActionLinkSchema } from "@tendnote/domain";
+import { scopeForVisibilityChoice, visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { parseDateInputValue } from "@/lib/followup-view";
@@ -30,14 +34,28 @@ const actionIdSchema = z.object({ generalActionId: z.uuid() });
 const dateInputSchema = z.string().transform(parseDateInputValue);
 
 const linksSchema = z.array(generalActionLinkSchema).max(10);
+// Asset hints arrive as plain subject labels from the client and become structured
+// `{ label }` stubs (ADR 0156). Bounded like links so the field stays lightweight.
+const assetHintsSchema = z
+  .array(z.string().trim().min(1, "An asset hint can't be blank.").max(120))
+  .max(10)
+  .transform((labels) => labels.map((label) => ({ label })));
+const personIdsSchema = z.array(z.uuid()).max(20);
+// Bounded so a share request can't smuggle an unbounded id list; a household is small.
+const selectedUserIdsSchema = z.array(z.string().min(1)).max(50).optional();
 
 const createActionSchema = z.object({
   title: z.string().trim().min(1, "Name the action.").max(280),
   notes: z.string().trim().min(1).max(2000).optional(),
   dueAt: dateInputSchema.optional(),
   links: linksSchema.optional(),
+  assetHints: assetHintsSchema.optional(),
+  personIds: personIdsSchema.optional(),
   // The primary Area this Action is filed under; verified owner-visible downstream.
   areaId: z.uuid().nullable().optional(),
+  // Visibility choice → scope; households resolve downstream (ADR 0153).
+  visibilityChoice: visibilityChoiceSchema.default("only_me"),
+  selectedUserIds: selectedUserIdsSchema,
 });
 
 const editActionSchema = z.object({
@@ -47,6 +65,7 @@ const editActionSchema = z.object({
   notes: z.string().trim().min(1).max(2000).nullable().optional(),
   dueAt: dateInputSchema.nullable().optional(),
   links: linksSchema.optional(),
+  assetHints: assetHintsSchema.optional(),
   // `null` unfiles the Action; `undefined` leaves its Area untouched.
   areaId: z.uuid().nullable().optional(),
 });
@@ -56,14 +75,50 @@ const deferActionSchema = z.object({
   deferUntil: dateInputSchema,
 });
 
+const visibilityActionSchema = z.object({
+  generalActionId: z.uuid(),
+  visibilityChoice: visibilityChoiceSchema,
+  selectedUserIds: selectedUserIdsSchema,
+});
+
+const peopleActionSchema = z.object({
+  generalActionId: z.uuid(),
+  personIds: personIdsSchema,
+});
+
 /**
- * Runs an Action mutation and maps the result to a view. Thin wrapper over the
- * shared runner so the Action and Area server actions share one result-union path.
+ * Resolves a visibility choice to a persisted scope plus the caller's active
+ * household. A non-private choice binds to the caller's household; the shared
+ * lifecycle then fails closed if it is missing or the member is inactive (ADR 0153).
+ *
+ * Phase 5 treats a user as belonging to at most one household (the product model is a
+ * single household), so we deliberately take the first active membership. If a user
+ * ever holds several, this picks one arbitrarily rather than guessing — surfacing an
+ * explicit household chooser is future multi-household work, not a silent default we
+ * want to pretend is correct here.
+ */
+async function resolveScopeForCaller(
+  ownerUserId: string,
+  visibilityChoice: z.infer<typeof visibilityChoiceSchema>,
+) {
+  const scope = scopeForVisibilityChoice(visibilityChoice);
+  if (scope === "private") {
+    return { scope, householdId: null as string | null };
+  }
+  const memberships = await listActiveHouseholdMembershipsForUser({ userId: ownerUserId });
+  return { scope, householdId: memberships[0]?.householdId ?? null };
+}
+
+/**
+ * Runs an Action mutation and maps the result to a view for the acting caller, so
+ * `owned` reflects whoever is viewing. Thin wrapper over the shared runner so the
+ * Action and Area server actions share one result-union path.
  */
 function runMutation(
+  callerUserId: string,
   run: () => Promise<Parameters<typeof toGeneralActionView>[0]>,
 ): Promise<GeneralActionMutationResult> {
-  return runActionsMutation(run, (action) => toGeneralActionView(action));
+  return runActionsMutation(run, (action) => toGeneralActionView(action, { callerUserId }));
 }
 
 export async function createGeneralActionAction(input: {
@@ -71,18 +126,31 @@ export async function createGeneralActionAction(input: {
   notes?: string;
   dueAt?: string;
   links?: { url: string; label?: string }[];
+  assetHints?: string[];
+  personIds?: string[];
   areaId?: string | null;
+  visibilityChoice?: z.infer<typeof visibilityChoiceSchema>;
+  selectedUserIds?: string[];
 }): Promise<GeneralActionMutationResult> {
-  return runMutation(async () => {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  return runMutation(ownerUserId, async () => {
     const parsed = createActionSchema.parse(input);
-    const ownerUserId = await requireAdmittedOwnerForAction();
+    const { scope, householdId } = await resolveScopeForCaller(
+      ownerUserId,
+      parsed.visibilityChoice,
+    );
     return createGeneralAction({
       ownerUserId,
       title: parsed.title,
       notes: parsed.notes,
       dueAt: parsed.dueAt,
       links: parsed.links,
+      assetHints: parsed.assetHints,
+      personIds: parsed.personIds,
       areaId: parsed.areaId,
+      scope,
+      householdId,
+      selectedUserIds: parsed.selectedUserIds,
     });
   });
 }
@@ -94,15 +162,16 @@ export async function editGeneralActionAction(input: {
     notes?: string | null;
     dueAt?: string | null;
     links?: { url: string; label?: string }[];
+    assetHints?: string[];
     areaId?: string | null;
   };
 }): Promise<GeneralActionMutationResult> {
-  return runMutation(async () => {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  return runMutation(ownerUserId, async () => {
     const parsed = editActionSchema.parse({
       generalActionId: input.generalActionId,
       ...input.edit,
     });
-    const ownerUserId = await requireAdmittedOwnerForAction();
     return editGeneralAction({
       ownerUserId,
       generalActionId: parsed.generalActionId,
@@ -111,21 +180,66 @@ export async function editGeneralActionAction(input: {
         ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
         ...(parsed.dueAt !== undefined ? { dueAt: parsed.dueAt } : {}),
         ...(parsed.links !== undefined ? { links: parsed.links } : {}),
+        ...(parsed.assetHints !== undefined ? { assetHints: parsed.assetHints } : {}),
         ...(parsed.areaId !== undefined ? { areaId: parsed.areaId } : {}),
       },
     });
   });
 }
 
+/** Re-scopes an Action's visibility. Owner-only downstream (ADR 0153). */
+export async function setGeneralActionVisibilityAction(input: {
+  generalActionId: string;
+  visibilityChoice: z.infer<typeof visibilityChoiceSchema>;
+  selectedUserIds?: string[];
+}): Promise<GeneralActionMutationResult> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  return runMutation(ownerUserId, async () => {
+    const parsed = visibilityActionSchema.parse(input);
+    const { scope, householdId } = await resolveScopeForCaller(
+      ownerUserId,
+      parsed.visibilityChoice,
+    );
+    return setGeneralActionVisibility({
+      ownerUserId,
+      generalActionId: parsed.generalActionId,
+      scope,
+      householdId,
+      selectedUserIds: parsed.selectedUserIds,
+    });
+  });
+}
+
+/** Replaces an Action's people links (context, not a Follow-Up). Owner-only (ADR 0155). */
+export async function setGeneralActionPeopleAction(input: {
+  generalActionId: string;
+  personIds: string[];
+}): Promise<GeneralActionMutationResult> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  return runMutation(ownerUserId, async () => {
+    const parsed = peopleActionSchema.parse(input);
+    return setGeneralActionPeople({
+      ownerUserId,
+      generalActionId: parsed.generalActionId,
+      personIds: parsed.personIds,
+    });
+  });
+}
+
 function transitionAction(
   generalActionId: string,
-  run: (input: { ownerUserId: string; generalActionId: string }) => Promise<GeneralAction>,
+  run: (input: {
+    ownerUserId: string;
+    generalActionId: string;
+  }) => Promise<GeneralActionWithContext>,
 ): Promise<GeneralActionMutationResult> {
-  return runMutation(async () => {
-    const parsed = actionIdSchema.parse({ generalActionId });
+  return (async () => {
     const ownerUserId = await requireAdmittedOwnerForAction();
-    return run({ ownerUserId, generalActionId: parsed.generalActionId });
-  });
+    return runMutation(ownerUserId, () => {
+      const parsed = actionIdSchema.parse({ generalActionId });
+      return run({ ownerUserId, generalActionId: parsed.generalActionId });
+    });
+  })();
 }
 
 export async function completeGeneralActionAction(input: {
@@ -156,9 +270,9 @@ export async function deferGeneralActionAction(input: {
   generalActionId: string;
   deferUntil: string;
 }): Promise<GeneralActionMutationResult> {
-  return runMutation(async () => {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  return runMutation(ownerUserId, () => {
     const parsed = deferActionSchema.parse(input);
-    const ownerUserId = await requireAdmittedOwnerForAction();
     return deferGeneralAction({ ownerUserId, ...parsed });
   });
 }

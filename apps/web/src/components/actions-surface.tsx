@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AreaManagerDialog } from "@/components/general-action-area-manager";
 import { CreateActionForm } from "@/components/general-action-create-form";
+import type { ActionPersonOption } from "@/components/general-action-people-field";
 import { ResolvedActionRow } from "@/components/general-action-resolved-row";
 import { ActionRow } from "@/components/general-action-row";
+import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,15 +63,21 @@ function sortActive(actions: GeneralActionView[]): GeneralActionView[] {
 export function ActionsSurface({
   active,
   areas,
+  people = [],
   resolved,
   resolvedTruncated = false,
+  shareableMembers = [],
 }: {
   active: GeneralActionView[];
   /** Every Area, archived included — active ones drive the filter and picker; all resolve names. */
   areas: GeneralActionAreaView[];
+  /** The owner's people, for linking an Action to a person as context (ADR 0155). */
+  people?: ActionPersonOption[];
   resolved: GeneralActionView[];
   /** The initial resolved load hit the server cap, so older ones aren't shown. */
   resolvedTruncated?: boolean;
+  /** Household members an Action can be shared with; empty keeps the surface private-only. */
+  shareableMembers?: ShareableActionMember[];
 }) {
   const router = useRouter();
   const [activeList, setActiveList] = useServerSyncedList(active, actionId, sortActive);
@@ -145,6 +153,8 @@ export function ActionsSurface({
         defaultAreaId={effectiveAreaId}
         key={effectiveAreaId ?? "all"}
         onCreate={addActive}
+        people={people}
+        shareableMembers={shareableMembers}
       />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -204,6 +214,8 @@ export function ActionsSurface({
               key={action.id}
               onResolve={removeActive}
               onUpdate={updateActive}
+              people={people}
+              shareableMembers={shareableMembers}
             />
           ))}
         </LedgerList>

@@ -6,16 +6,37 @@ import {
   generalActionUpdateSchema,
 } from "@tendnote/domain";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
-import { generalActionEvents, generalActions } from "../../schema";
+import { generalActionEvents, generalActionPeople, generalActions } from "../../schema";
 import { createDrizzleGeneralActionAreaStore } from "../general-action-areas/drizzle-store";
+import { createDrizzleHouseholdStore } from "../households/drizzle-store";
+import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
 import type { GeneralActionLifecycleStore, GeneralActionStore } from "./types";
 
+// Aliased so the scope-visibility predicate can reference the row as `ga`, matching
+// the alias the shared `visibleHouseholdRecordSql` builder expects.
+const visibleGeneralActions = alias(generalActions, "ga");
+
+// Shared ordering contract: the soonest-relevant action leads, unscheduled (both
+// dates null) fall to the end, most-recently-created breaks ties. The in-memory
+// store's `surfacingTime` mirrors this expression; keep the two in step.
+const surfacingOrder = [
+  sql`coalesce(${generalActions.deferUntil}, ${generalActions.dueAt}) asc nulls last`,
+  desc(generalActions.createdAt),
+];
+const visibleSurfacingOrder = [
+  sql`coalesce(${visibleGeneralActions.deferUntil}, ${visibleGeneralActions.dueAt}) asc nulls last`,
+  desc(visibleGeneralActions.createdAt),
+];
+
 /**
- * Drizzle-backed General Action CRUD + history store. Owner scoping is enforced in
- * every predicate so a caller can only read or mutate their own actions (AGENTS.md
- * owner-scoped seams).
+ * Drizzle-backed General Action CRUD + history + people-link store. Owner scoping is
+ * enforced in every owner-keyed predicate so a caller can only read or mutate their
+ * own actions; the `Visible` reads apply the shared Phase 4 scope predicate so
+ * household and selected-shared actions surface to the members who may see them
+ * (AGENTS.md owner-scoped seams; ADR 0153).
  */
 export function createDrizzleGeneralActionStore(): GeneralActionStore {
   return {
@@ -39,6 +60,24 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
           and(
             eq(generalActions.id, input.generalActionId),
             eq(generalActions.ownerUserId, input.ownerUserId),
+          ),
+        )
+        .limit(1);
+
+      return action ? generalActionSchema.parse(action) : null;
+    },
+    async getVisibleGeneralAction(input) {
+      const [action] = await getDb()
+        .select()
+        .from(visibleGeneralActions)
+        .where(
+          and(
+            eq(visibleGeneralActions.id, input.generalActionId),
+            visibleHouseholdRecordSql({
+              callerUserId: input.callerUserId,
+              tableAlias: "ga",
+              recordKind: "general_action",
+            }),
           ),
         )
         .limit(1);
@@ -80,17 +119,84 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
               : []),
           ),
         )
-        // Order by surfacing time — a deferred action's resurface date, else its
-        // due date — so the soonest-relevant action leads and unscheduled ones
-        // (both null) fall to the end. This is the shared ordering contract the
-        // in-memory store's `surfacingTime` mirrors; keep the two in step.
-        .orderBy(
-          sql`coalesce(${generalActions.deferUntil}, ${generalActions.dueAt}) asc nulls last`,
-          desc(generalActions.createdAt),
-        );
+        .orderBy(...surfacingOrder);
 
       const rows = await (input.limit === undefined ? query : query.limit(input.limit));
       return rows.map((row) => generalActionSchema.parse(row));
+    },
+    async listVisibleGeneralActionsForCaller(input) {
+      // Scope filtering happens here, pre-retrieval: the predicate keeps private
+      // actions to their owner and admits household / selected-shared ones only for
+      // members who may see them, so nothing out of scope ever reaches the surface.
+      const query = getDb()
+        .select()
+        .from(visibleGeneralActions)
+        .where(
+          and(
+            visibleHouseholdRecordSql({
+              callerUserId: input.callerUserId,
+              tableAlias: "ga",
+              recordKind: "general_action",
+            }),
+            ...(input.statuses && input.statuses.length > 0
+              ? [inArray(visibleGeneralActions.status, input.statuses)]
+              : []),
+          ),
+        )
+        .orderBy(...visibleSurfacingOrder);
+
+      const rows = await (input.limit === undefined ? query : query.limit(input.limit));
+      return rows.map((row) => generalActionSchema.parse(row));
+    },
+    async setGeneralActionPeople(input) {
+      // Replace the whole set in one transaction so a link edit is atomic — no
+      // window where an action shows a half-applied set of people. Owner-keyed: the
+      // ownership check inside the transaction means a direct caller can't rewrite
+      // another owner's links, mirroring `updateGeneralAction`.
+      const unique = [...new Set(input.personIds)];
+      await getDb().transaction(async (tx) => {
+        const [owned] = await tx
+          .select({ id: generalActions.id })
+          .from(generalActions)
+          .where(
+            and(
+              eq(generalActions.id, input.generalActionId),
+              eq(generalActions.ownerUserId, input.ownerUserId),
+            ),
+          )
+          .limit(1);
+        if (!owned) {
+          throw new Error("Action not found.");
+        }
+        await tx
+          .delete(generalActionPeople)
+          .where(eq(generalActionPeople.generalActionId, input.generalActionId));
+        if (unique.length > 0) {
+          await tx.insert(generalActionPeople).values(
+            unique.map((personId) => ({
+              generalActionId: input.generalActionId,
+              personId,
+            })),
+          );
+        }
+      });
+    },
+    async listGeneralActionPersonIds(input) {
+      // Owner-keyed via a join to `general_actions`: returns nothing for an action
+      // the caller does not own.
+      const rows = await getDb()
+        .select({ personId: generalActionPeople.personId })
+        .from(generalActionPeople)
+        .innerJoin(generalActions, eq(generalActions.id, generalActionPeople.generalActionId))
+        .where(
+          and(
+            eq(generalActionPeople.generalActionId, input.generalActionId),
+            eq(generalActions.ownerUserId, input.ownerUserId),
+          ),
+        )
+        .orderBy(asc(generalActionPeople.createdAt));
+
+      return rows.map((row) => row.personId);
     },
     async createGeneralActionEvent(values) {
       const [event] = await getDb()
@@ -122,13 +228,15 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
 }
 
 /**
- * General Action lifecycle store: the CRUD/history store plus the source-record
- * store for grounding verification. Mirrors the Follow-Up lifecycle-store
- * composition (ADR 0154).
+ * General Action lifecycle store: the CRUD/history/visibility store plus the
+ * source-record store for grounding and owner-scoped person resolution, the Area
+ * store for Area assignment, and the household store for scope membership and shares.
+ * Mirrors the Follow-Up lifecycle-store composition (ADRs 0153, 0154).
  */
 export function createDrizzleGeneralActionLifecycleStore(): GeneralActionLifecycleStore {
   return {
     ...createDrizzleSourceRecordStore(),
+    ...createDrizzleHouseholdStore(),
     ...createDrizzleGeneralActionAreaStore(),
     ...createDrizzleGeneralActionStore(),
   };

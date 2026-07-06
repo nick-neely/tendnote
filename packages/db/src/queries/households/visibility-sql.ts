@@ -2,8 +2,8 @@ import { sql } from "drizzle-orm";
 
 export function visibleHouseholdRecordSql(input: {
   callerUserId: string;
-  tableAlias: "m" | "sr" | "f";
-  recordKind: "memory" | "source_record" | "followup";
+  tableAlias: "m" | "sr" | "f" | "ga";
+  recordKind: "memory" | "source_record" | "followup" | "general_action";
 }) {
   const record = sql.raw(input.tableAlias);
 

@@ -1,11 +1,12 @@
-import type { GeneralActionLink } from "@tendnote/domain";
+import type { GeneralActionAssetHint, GeneralActionLink } from "@tendnote/domain";
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
 import { generalActionEventKind, generalActionStatus, privacyScope } from "./enums";
 import { generalActionAreas } from "./general-action-areas";
 import { householdWorkspaces } from "./households";
+import { people } from "./people";
 import { sourceRecords } from "./source-records";
 
 /**
@@ -46,6 +47,13 @@ export const generalActions = pgTable(
     householdId: uuid("household_id").references(() => householdWorkspaces.id, {
       onDelete: "set null",
     }),
+    // Lightweight object/asset hints (subject labels) carried before Asset/Object
+    // Memory exists, so a later phase can link or promote them (ADR 0156). Not
+    // durable asset records — just labels, like `links` is not document management.
+    assetHints: jsonb("asset_hints")
+      .$type<GeneralActionAssetHint[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Creator provenance and actor provenance for lifecycle changes (ADR 0154).
     createdByUserId: text("created_by_user_id").references(() => user.id, {
       onDelete: "set null",
@@ -61,6 +69,35 @@ export const generalActions = pgTable(
     index("general_actions_owner_due_idx").on(table.ownerUserId, table.dueAt),
     index("general_actions_owner_area_idx").on(table.ownerUserId, table.areaId),
     index("general_actions_household_scope_idx").on(table.householdId, table.scope),
+  ],
+);
+
+/**
+ * Optional people links on a General Action: a person is attached as *context* (buy
+ * a gift for them, book their appointment) without the Action becoming a
+ * person-centered Follow-Up (ADR 0155). A lightweight join, not a reconnect
+ * relationship — General Actions never appear in follow-up flows by virtue of a
+ * link. Rows cascade with either side so a deleted Action or person leaves no
+ * dangling link.
+ */
+export const generalActionPeople = pgTable(
+  "general_action_people",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    generalActionId: uuid("general_action_id")
+      .notNull()
+      .references(() => generalActions.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("general_action_people_action_person_idx").on(
+      table.generalActionId,
+      table.personId,
+    ),
+    index("general_action_people_person_idx").on(table.personId),
   ],
 );
 

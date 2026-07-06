@@ -6,6 +6,8 @@ import type {
   EditGeneralActionInput,
   GeneralActionActionInput,
   ListGeneralActionsInput,
+  SetGeneralActionPeopleInput,
+  SetGeneralActionVisibilityInput,
 } from "./general-actions/types";
 
 export {
@@ -28,6 +30,14 @@ export async function createGeneralAction(input: CreateActiveGeneralActionInput)
 
 export async function editGeneralAction(input: EditGeneralActionInput) {
   return defaultGeneralActionLifecycle.editGeneralAction(input);
+}
+
+export async function setGeneralActionVisibility(input: SetGeneralActionVisibilityInput) {
+  return defaultGeneralActionLifecycle.setGeneralActionVisibility(input);
+}
+
+export async function setGeneralActionPeople(input: SetGeneralActionPeopleInput) {
+  return defaultGeneralActionLifecycle.setGeneralActionPeople(input);
 }
 
 export async function completeGeneralAction(input: GeneralActionActionInput) {

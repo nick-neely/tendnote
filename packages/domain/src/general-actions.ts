@@ -44,6 +44,22 @@ export const generalActionLinkSchema = z.object({
 });
 export type GeneralActionLink = z.infer<typeof generalActionLinkSchema>;
 
+/**
+ * A lightweight object/asset hint on a General Action — a plain subject label like
+ * "refrigerator water filter" or "car registration". Deliberately a structured stub
+ * (an object, not a bare string) so a future Asset/Object Memory can attach an id or
+ * richer fields and promote the hint without a data migration. Phase 5 stores no
+ * durable asset records, profiles, warranties, serials, or maintenance history —
+ * only the hint (ADR 0156).
+ */
+export const generalActionAssetHintSchema = z.object({
+  label: z.string().trim().min(1).max(120),
+});
+export type GeneralActionAssetHint = z.infer<typeof generalActionAssetHintSchema>;
+
+/** Hard cap on asset hints per Action. A hint is a passing label, not a catalog. */
+export const MAX_ASSET_HINTS = 20;
+
 export const generalActionSchema = z.object({
   id: z.string(),
   ownerUserId: z.string(),
@@ -65,10 +81,16 @@ export const generalActionSchema = z.object({
   // At most one primary Area per Action in Phase 5 — a flat life category, not a
   // project or tag (ADR 0146, #179). Null when the Action is unfiled.
   areaId: z.string().nullable().default(null),
-  // Visibility scope. Phase 5 #178 is private-only; the column is present so
-  // shared/household scopes can be added additively (#180, ADR 0153).
+  // Visibility scope (ADR 0153). private = owner only; household = every active
+  // member of `householdId`; shared = the owner plus selected members. Fail closed:
+  // a non-private scope always carries a household (#180).
   scope: privacyScopeSchema.default("private"),
   householdId: z.string().nullable().default(null),
+  // Lightweight object/asset hints carried before Asset/Object Memory exists, so a
+  // later phase can link or promote them without rework (ADR 0156). Never durable
+  // asset records — just labels. Count-bounded here in the domain (not only at the
+  // web edge) so no caller can attach an unbounded pile of hints.
+  assetHints: z.array(generalActionAssetHintSchema).max(MAX_ASSET_HINTS).default([]),
   // Creator provenance and actor provenance for lifecycle changes (ADR 0154).
   createdByUserId: z.string().nullable().optional(),
   lastActorUserId: z.string().nullable().optional(),
@@ -101,10 +123,16 @@ export const generalActionUpdateSchema = z
     title: z.string().trim().min(1),
     notes: z.string().nullable(),
     links: z.array(generalActionLinkSchema),
+    assetHints: z.array(generalActionAssetHintSchema).max(MAX_ASSET_HINTS),
     status: generalActionStatusSchema,
     dueAt: z.date().nullable(),
     deferUntil: z.date().nullable(),
     areaId: z.string().nullable(),
+    // Visibility is a mutable patch field so an Action can be re-scoped in place
+    // (#180). Defaults-free like the rest of this schema: an absent key is never
+    // filled, so a content edit can never silently widen or narrow visibility.
+    scope: privacyScopeSchema,
+    householdId: z.string().nullable(),
     completedAt: z.date().nullable(),
     lastActorUserId: z.string().nullable(),
   })
@@ -209,6 +237,9 @@ export const generalActionEditSchema = z
     links: z.array(generalActionLinkSchema).optional(),
     // `undefined` leaves the Area unchanged; explicit `null` unfiles the Action.
     areaId: z.string().nullable().optional(),
+    // Asset hints are content, edited in place alongside notes and links (ADR 0156).
+    // `undefined` leaves them unchanged; an explicit array replaces the whole set.
+    assetHints: z.array(generalActionAssetHintSchema).max(MAX_ASSET_HINTS).optional(),
   })
   .strict();
 

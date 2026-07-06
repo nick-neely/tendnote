@@ -1,10 +1,16 @@
 import type {
+  GeneralActionAssetHint,
   GeneralActionEvent,
   GeneralActionEventKind,
   GeneralActionLink,
   GeneralActionStatus,
+  PrivacyScope,
 } from "@tendnote/domain";
+import { visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { toDateInputValue } from "@/lib/followup-view";
+
+/** A linked person named for a calm chip — id + display name, nothing more (ADR 0155). */
+export type GeneralActionPersonView = { id: string; displayName: string };
 
 /**
  * Where an Action sits in time, so the calm Actions surface can gently flag what's
@@ -30,7 +36,28 @@ export type GeneralActionView = {
   title: string;
   notes: string | null;
   links: GeneralActionLink[];
+  /** Lightweight object/asset hints (subject labels), never durable records (ADR 0156). */
+  assetHints: GeneralActionAssetHint[];
+  /** People linked as context — never a Follow-Up conversion (ADR 0155). */
+  linkedPeople: GeneralActionPersonView[];
   status: GeneralActionStatus;
+  /** Visibility scope (ADR 0153). Drives the calm scope indicator; private stays bare. */
+  scope: PrivacyScope;
+  /**
+   * A calm scope label that says *who*, not just that it's shared — "Only me",
+   * "Specific people · 2", or the household's name (falling back to "Whole
+   * household"). So an owner can read the audience off the chip without opening the
+   * editor.
+   */
+  visibilityLabel: string;
+  /**
+   * Whether the viewing user owns this Action. Only the owner may edit content or
+   * re-scope; a household member who can see a shared/household Action may still act
+   * on it (complete, set aside, dismiss, archive) (ADR 0153).
+   */
+  owned: boolean;
+  /** The Action's owner, so a non-owner row can name who shared it (a co-member). */
+  ownerUserId: string;
   /** The Action's primary Area, or null when unfiled. Name resolves in the surface. */
   areaId: string | null;
   /** ISO due timestamp, or null when unscheduled. */
@@ -69,6 +96,27 @@ function dueState(dueAt: Date, now: Date): "overdue" | "today" | "upcoming" {
 }
 
 /**
+ * The scope label for the calm visibility chip, resolved to say *who* rather than
+ * just the scope name: a member count for a selected-shared Action, the household's
+ * name for a household one (both fall back to the plain scope label). Private returns
+ * "Only me" but the surface never renders a chip for it.
+ */
+function scopeAudienceLabel(action: {
+  scope: PrivacyScope;
+  sharedWithCount: number;
+  householdName: string | null;
+}): string {
+  if (action.scope === "shared") {
+    const base = visibilityLabelForScope("shared");
+    return action.sharedWithCount > 0 ? `${base} · ${action.sharedWithCount}` : base;
+  }
+  if (action.scope === "household") {
+    return action.householdName ?? visibilityLabelForScope("household");
+  }
+  return visibilityLabelForScope("private");
+}
+
+/**
  * Maps a persisted General Action to a serializable view for client components.
  * Dates are pre-resolved server-side (label + date-input value) so the client
  * never re-derives timezones, matching the Follow-Up view seam.
@@ -79,13 +127,22 @@ export function toGeneralActionView(
     title: string;
     notes: string | null;
     links: GeneralActionLink[];
+    assetHints: GeneralActionAssetHint[];
+    linkedPeople: GeneralActionPersonView[];
     status: GeneralActionStatus;
+    scope: PrivacyScope;
+    ownerUserId: string;
+    /** How many members a `shared` Action reaches; 0 otherwise. */
+    sharedWithCount: number;
+    /** The household's name for a `shared`/`household` Action, when one exists. */
+    householdName: string | null;
     dueAt: Date | null;
     deferUntil: Date | null;
     areaId: string | null;
   },
-  now: Date = new Date(),
+  options: { now?: Date; callerUserId: string },
 ): GeneralActionView {
+  const now = options.now ?? new Date();
   let surfaceState: ActionSurfaceState;
   let surfaceLabel: string;
 
@@ -111,7 +168,13 @@ export function toGeneralActionView(
     title: action.title,
     notes: action.notes,
     links: action.links,
+    assetHints: action.assetHints,
+    linkedPeople: action.linkedPeople,
     status: action.status,
+    scope: action.scope,
+    visibilityLabel: scopeAudienceLabel(action),
+    owned: action.ownerUserId === options.callerUserId,
+    ownerUserId: action.ownerUserId,
     areaId: action.areaId,
     dueAtISO: action.dueAt?.toISOString() ?? null,
     dueAtDate: action.dueAt ? toDateInputValue(action.dueAt) : "",

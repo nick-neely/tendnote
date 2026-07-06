@@ -6,6 +6,8 @@ import {
   listActiveGeneralActions,
   listResolvedGeneralActions,
 } from "@tendnote/db/queries/general-actions";
+import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
+import { searchPeople } from "@tendnote/db/queries/people";
 import { ActionsSurface } from "@/components/actions-surface";
 import { AppShell } from "@/components/app-shell";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
@@ -27,11 +29,19 @@ export default async function ActionsPage() {
   // filter (active only) and resolve names for Actions filed under a since-archived
   // Area.
   await ensureDefaultGeneralActionAreas({ ownerUserId });
-  const [active, resolved, areas] = await Promise.all([
+  const [active, resolved, areas, shareableMembers, people] = await Promise.all([
     listActiveGeneralActions({ ownerUserId }),
     listResolvedGeneralActions({ ownerUserId, limit: RESOLVED_LIMIT }),
     listGeneralActionAreas({ ownerUserId, includeArchived: true }),
+    // Members the owner can share an Action with — drives the visibility control.
+    // Empty (no household) keeps the surface single-user and private-only.
+    listShareableHouseholdMembersForUser({ userId: ownerUserId }),
+    // The owner's people, so an Action can link one as context (ADR 0155).
+    searchPeople({ ownerUserId, limit: 100 }),
   ]);
+
+  const toView = (action: Parameters<typeof toGeneralActionView>[0]) =>
+    toGeneralActionView(action, { now, callerUserId: ownerUserId });
 
   return (
     <AppShell>
@@ -41,15 +51,22 @@ export default async function ActionsPage() {
             Actions
           </h1>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            One-time things to get done that aren't tied to a person. Private to you.
+            One-time things to get done that aren't tied to a person — private by default, or shared
+            with your household.
           </p>
         </header>
 
         <ActionsSurface
-          active={active.map((action) => toGeneralActionView(action, now))}
+          active={active.map(toView)}
           areas={areas.map((area) => toGeneralActionAreaView(area))}
-          resolved={resolved.map((action) => toGeneralActionView(action, now))}
+          people={people.map((person) => ({ id: person.id, displayName: person.displayName }))}
+          resolved={resolved.map(toView)}
           resolvedTruncated={resolved.length >= RESOLVED_LIMIT}
+          shareableMembers={shareableMembers.map((member) => ({
+            userId: member.userId,
+            name: member.name,
+            email: member.email,
+          }))}
         />
       </div>
     </AppShell>

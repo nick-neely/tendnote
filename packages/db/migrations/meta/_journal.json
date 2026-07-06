@@ -218,6 +218,13 @@
       "when": 1783352362499,
       "tag": "0030_general_action_areas",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1783354158630,
+      "tag": "0031_household_scoped_general_actions",
+      "breakpoints": true
     }
   ]
 }

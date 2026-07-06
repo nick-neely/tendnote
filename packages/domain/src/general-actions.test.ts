@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertGeneralActionEditable,
   assertResurfaceDate,
+  generalActionAssetHintSchema,
   generalActionEditSchema,
   generalActionLinkSchema,
   generalActionSchema,
@@ -118,6 +119,42 @@ describe("schema shape", () => {
     expect(patch).not.toHaveProperty("links");
     // An explicit null still clears a nullable field.
     expect(generalActionUpdateSchema.parse({ dueAt: null })).toEqual({ dueAt: null });
+  });
+
+  it("carries asset hints as labels and rejects a blank one", () => {
+    const action = generalActionSchema.parse({
+      id: "a1",
+      ownerUserId: "user-1",
+      title: "Replace the refrigerator water filter",
+      assetHints: [{ label: "refrigerator water filter" }],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    expect(action.assetHints).toEqual([{ label: "refrigerator water filter" }]);
+
+    // Absent asset hints default to an empty array, like links.
+    const bare = generalActionSchema.parse({
+      id: "a2",
+      ownerUserId: "user-1",
+      title: "Renew the registration",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    expect(bare.assetHints).toEqual([]);
+
+    expect(() => generalActionAssetHintSchema.parse({ label: "   " })).toThrow();
+  });
+
+  it("update schema carries scope + household only when explicitly re-scoping", () => {
+    // Re-scoping is an explicit patch; an unrelated content update never touches
+    // visibility, so scope/householdId stay absent unless named.
+    expect(generalActionUpdateSchema.parse({ title: "New title" })).not.toHaveProperty("scope");
+    const rescope = generalActionUpdateSchema.parse({
+      scope: "household",
+      householdId: "hh-1",
+      lastActorUserId: "user-1",
+    });
+    expect(rescope).toMatchObject({ scope: "household", householdId: "hh-1" });
   });
 
   it("distinguishes an omitted edit field from an explicit clear", () => {

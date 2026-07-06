@@ -81,3 +81,127 @@ function runStoreContract(name: string, makeStore: () => GeneralActionStore) {
 }
 
 runStoreContract("in-memory", createInMemoryGeneralActionStore);
+
+const MEMBER = "user-2";
+const OUTSIDER = "user-3";
+
+/**
+ * Contract for the scope-visibility and people-link methods added in #180. Like the
+ * base contract this runs against the in-memory store (the drizzle store is source-
+ * guarded in `drizzle-store.test.ts`). The in-memory store bundles a household store,
+ * so the same instance drives memberships, shares, and the visible reads.
+ */
+describe("in-memory store scope + people contract", () => {
+  async function setupHousehold() {
+    const store = createInMemoryGeneralActionStore();
+    const household = await store.createHouseholdWorkspace({
+      ownerUserId: OWNER,
+      name: "Household",
+      defaultScope: "private",
+    });
+    for (const [userId, role] of [
+      [OWNER, "owner"],
+      [MEMBER, "member"],
+    ] as const) {
+      await store.createHouseholdMembership({
+        householdId: household.id,
+        userId,
+        invitedByUserId: OWNER,
+        role,
+        status: "active",
+        invitedAt: new Date("2026-06-01T00:00:00Z"),
+        acceptedAt: new Date("2026-06-01T00:00:00Z"),
+        removedAt: null,
+      });
+    }
+
+    function seed(overrides: Partial<CreateGeneralActionInput> = {}) {
+      return store.createGeneralAction({
+        ownerUserId: OWNER,
+        title: "Action",
+        notes: null,
+        links: [],
+        status: "open",
+        dueAt: null,
+        deferUntil: null,
+        sourceRecordId: null,
+        scope: "private",
+        householdId: null,
+        createdByUserId: OWNER,
+        lastActorUserId: OWNER,
+        completedAt: null,
+        ...overrides,
+      });
+    }
+
+    return { store, household, seed };
+  }
+
+  it("getVisibleGeneralAction admits an active member and refuses an outsider", async () => {
+    const { store, household, seed } = await setupHousehold();
+    const action = await seed({ scope: "household", householdId: household.id });
+
+    await expect(
+      store.getVisibleGeneralAction({ callerUserId: MEMBER, generalActionId: action.id }),
+    ).resolves.toMatchObject({ id: action.id });
+    await expect(
+      store.getVisibleGeneralAction({ callerUserId: OUTSIDER, generalActionId: action.id }),
+    ).resolves.toBeNull();
+  });
+
+  it("listVisibleGeneralActionsForCaller applies scope, then the surfacing-time order", async () => {
+    const { store, household, seed } = await setupHousehold();
+    // A member sees household actions but not the owner's private one, and gets them
+    // due-first with unscheduled last — the same ordering contract as the owner list.
+    await seed({ title: "Private", scope: "private" });
+    const later = await seed({
+      title: "Later",
+      scope: "household",
+      householdId: household.id,
+      dueAt: new Date("2026-09-01T00:00:00Z"),
+    });
+    const unscheduled = await seed({
+      title: "Unscheduled",
+      scope: "household",
+      householdId: household.id,
+    });
+    const sooner = await seed({
+      title: "Sooner",
+      scope: "household",
+      householdId: household.id,
+      dueAt: new Date("2026-07-01T00:00:00Z"),
+    });
+
+    const visible = await store.listVisibleGeneralActionsForCaller({ callerUserId: MEMBER });
+
+    expect(visible.map((action) => action.id)).toEqual([sooner.id, later.id, unscheduled.id]);
+    expect(visible.some((action) => action.title === "Private")).toBe(false);
+  });
+
+  it("round-trips people links owner-keyed and refuses a non-owner", async () => {
+    const { store, seed } = await setupHousehold();
+    const action = await seed();
+    const personId = "00000000-0000-0000-0000-0000000000aa";
+
+    await store.setGeneralActionPeople({
+      ownerUserId: OWNER,
+      generalActionId: action.id,
+      personIds: [personId, personId],
+    });
+    await expect(
+      store.listGeneralActionPersonIds({ ownerUserId: OWNER, generalActionId: action.id }),
+    ).resolves.toEqual([personId]);
+
+    // A non-owner can neither read nor rewrite the links.
+    await expect(
+      store.listGeneralActionPersonIds({ ownerUserId: MEMBER, generalActionId: action.id }),
+    ).resolves.toEqual([]);
+    await expect(
+      store.setGeneralActionPeople({
+        ownerUserId: MEMBER,
+        generalActionId: action.id,
+        personIds: [],
+      }),
+    ).rejects.toThrow(/Action not found/);
+  });
+});

@@ -58,6 +58,7 @@ export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "memory",
   "source_record",
   "followup",
+  "general_action",
 ]);
 
 export const sourceRecordStatus = pgEnum("source_record_status", [

@@ -10,7 +10,7 @@ import type { SourceRecordAuditLogEntry } from "../source-records/types";
 
 export type HouseholdAuditLogEntry = SourceRecordAuditLogEntry;
 
-export type VisibilityRecordKind = "memory" | "source_record" | "followup";
+export type VisibilityRecordKind = "memory" | "source_record" | "followup" | "general_action";
 
 export type HouseholdRecordShare = {
   id: string;
@@ -58,6 +58,16 @@ export type HouseholdStore = {
     recordKind: VisibilityRecordKind;
     recordId: string;
   }) => Promise<HouseholdRecordShare[]>;
+  /**
+   * Clears every share for one record. Re-scoping a record narrows or re-selects
+   * its audience, so stale shares must be removed for the change to be fail-closed —
+   * a member dropped from the selection must lose visibility, never keep it (#180).
+   */
+  deleteHouseholdRecordShares: (input: {
+    householdId: string;
+    recordKind: VisibilityRecordKind;
+    recordId: string;
+  }) => Promise<void>;
   createAuditLogEntry: (
     auditLogEntry: Omit<HouseholdAuditLogEntry, "id" | "createdAt">,
   ) => Promise<HouseholdAuditLogEntry>;

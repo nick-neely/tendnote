@@ -1,6 +1,7 @@
 "use client";
 
 import type { GeneralActionLink } from "@tendnote/domain";
+import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
 import {
   ArchiveIcon,
   CheckIcon,
@@ -10,6 +11,7 @@ import {
   MoonIcon,
   MoreHorizontalIcon,
   PencilIcon,
+  UsersIcon,
   XIcon,
 } from "lucide-react";
 import { useState, useTransition } from "react";
@@ -19,8 +21,15 @@ import {
   deferGeneralActionAction,
   dismissGeneralActionAction,
   editGeneralActionAction,
+  setGeneralActionPeopleAction,
+  setGeneralActionVisibilityAction,
 } from "@/app/actions/general-actions";
 import { AreaSelect } from "@/components/general-action-area-select";
+import {
+  ActionAssetHintsField,
+  cleanHintLabels,
+  toHintLabels,
+} from "@/components/general-action-asset-hints-field";
 import { ActionHistoryDialog } from "@/components/general-action-history-dialog";
 import {
   ActionLinksField,
@@ -28,7 +37,22 @@ import {
   type LinkDraft,
   toLinkDrafts,
 } from "@/components/general-action-links-field";
-import { ActionDueChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import {
+  ActionPeopleField,
+  type ActionPersonOption,
+} from "@/components/general-action-people-field";
+import {
+  ActionContextChip,
+  ActionDueChip,
+  ActionScopeChip,
+  ErrorText,
+  GENERIC_ERROR,
+} from "@/components/general-action-shared";
+import {
+  ActionVisibilityField,
+  AudiencePreview,
+  type ShareableActionMember,
+} from "@/components/general-action-visibility-field";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -82,17 +106,30 @@ function normalizeLinks(links: GeneralActionLink[]): string {
   return JSON.stringify(links.map((link) => ({ url: link.url, label: link.label ?? undefined })));
 }
 
+function sameIdSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const set = new Set(a);
+  return b.every((id) => set.has(id));
+}
+
 /**
- * An active (open or deferred) Action row with inline view / edit / defer modes.
- * Every mutation flows through the shared owner-scoped lifecycle server actions;
- * completing, dismissing, or archiving animates the row out before the parent
- * drops it. Actions sit at the bottom-right of the row where a thumb reaches, and
- * the row stacks cleanly on narrow screens (ADR 0161 mobile-usable).
+ * An active (open or deferred) Action row with inline view / edit / defer / share
+ * modes. Every mutation flows through the shared lifecycle server actions; completing,
+ * dismissing, or archiving animates the row out before the parent drops it. Whoever
+ * can see the Action can act on it (complete, set aside, dismiss, archive) so a
+ * household member can help move a shared Action along, but only the owner may edit
+ * its content, links, people, asset hints, or visibility (ADR 0153). Actions sit at
+ * the bottom-right of the row where a thumb reaches, and the row stacks cleanly on
+ * narrow screens (ADR 0161 mobile-usable).
  */
 export function ActionRow({
   action,
   areas,
   areaName = null,
+  people = [],
+  shareableMembers = [],
   onResolve,
   onUpdate,
 }: {
@@ -101,16 +138,26 @@ export function ActionRow({
   areas: GeneralActionAreaView[];
   /** The Action's current Area name (archived included), for the view-mode label. */
   areaName?: string | null;
+  /** The owner's people, for linking as context (ADR 0155). Owner-only editing. */
+  people?: ActionPersonOption[];
+  /** Household members the Action can be shared with; empty hides the share control. */
+  shareableMembers?: ShareableActionMember[];
   onResolve: (id: string) => void;
   onUpdate: (view: GeneralActionView) => void;
 }) {
-  const [mode, setMode] = useState<"view" | "edit" | "defer">("view");
+  const [mode, setMode] = useState<"view" | "edit" | "defer" | "share">("view");
   const [title, setTitle] = useState(action.title);
   const [notes, setNotes] = useState(action.notes ?? "");
   const [dueDate, setDueDate] = useState(action.dueAtDate);
   const [links, setLinks] = useState<LinkDraft[]>(toLinkDrafts(action.links));
+  const [hintLabels, setHintLabels] = useState<string[]>(toHintLabels(action.assetHints));
+  const [personIds, setPersonIds] = useState<string[]>(action.linkedPeople.map((p) => p.id));
   const [areaId, setAreaId] = useState<string | null>(action.areaId);
   const [deferDate, setDeferDate] = useState(action.deferUntilDate);
+  const [visibilityChoice, setVisibilityChoice] = useState<VisibilityChoice>(
+    visibilityChoiceForScope(action.scope),
+  );
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +188,7 @@ export function ActionRow({
     });
   }
 
-  // In-place updates (edit/defer) hand the updated view back and return to view
+  // In-place updates (edit/defer/share) hand the updated view back and return to view
   // mode on success; a validation failure keeps the form open with the message.
   function runUpdate(key: string, run: () => Promise<GeneralActionMutationResult>) {
     setError(null);
@@ -169,6 +216,8 @@ export function ActionRow({
     setNotes(action.notes ?? "");
     setDueDate(action.dueAtDate);
     setLinks(toLinkDrafts(action.links));
+    setHintLabels(toHintLabels(action.assetHints));
+    setPersonIds(action.linkedPeople.map((p) => p.id));
     setAreaId(action.areaId);
     setError(null);
     setMode("edit");
@@ -180,6 +229,13 @@ export function ActionRow({
     setMode("defer");
   }
 
+  function startSharing() {
+    setVisibilityChoice(visibilityChoiceForScope(action.scope));
+    setSelectedUserIds([]);
+    setError(null);
+    setMode("share");
+  }
+
   function cancelEditing() {
     setMode("view");
     setError(null);
@@ -189,11 +245,13 @@ export function ActionRow({
     const trimmedTitle = title.trim();
     const trimmedNotes = notes.trim();
     const cleanedLinks = cleanLinks(links);
+    const cleanedHints = cleanHintLabels(hintLabels);
     const edit: {
       title?: string;
       notes?: string | null;
       dueAt?: string | null;
       links?: GeneralActionLink[];
+      assetHints?: string[];
       areaId?: string | null;
     } = {};
     if (trimmedTitle && trimmedTitle !== action.title) {
@@ -208,10 +266,17 @@ export function ActionRow({
     if (normalizeLinks(cleanedLinks) !== normalizeLinks(action.links)) {
       edit.links = cleanedLinks;
     }
+    if (cleanedHints.join(" ") !== toHintLabels(action.assetHints).join(" ")) {
+      edit.assetHints = cleanedHints;
+    }
     if (areaId !== action.areaId) {
       edit.areaId = areaId;
     }
-    const hasChange = Object.keys(edit).length > 0;
+    const peopleChanged = !sameIdSet(
+      personIds,
+      action.linkedPeople.map((p) => p.id),
+    );
+    const hasChange = Object.keys(edit).length > 0 || peopleChanged;
     // Show the Action's current Area even if it was archived after filing, so the
     // picker displays its label without offering it as a new assignment.
     const editAreas =
@@ -227,7 +292,25 @@ export function ActionRow({
           if (!trimmedTitle || !hasChange) {
             return;
           }
-          runUpdate("edit", () => editGeneralActionAction({ generalActionId: action.id, edit }));
+          // Content and people links live behind separate lifecycle mutations; apply
+          // content first, then people, and surface whichever ran last so the row
+          // reflects both. Either half short-circuits on its own validation message.
+          runUpdate("edit", async () => {
+            let result: GeneralActionMutationResult | null = null;
+            if (Object.keys(edit).length > 0) {
+              result = await editGeneralActionAction({ generalActionId: action.id, edit });
+              if (!result.ok) {
+                return result;
+              }
+            }
+            if (peopleChanged) {
+              result = await setGeneralActionPeopleAction({
+                generalActionId: action.id,
+                personIds,
+              });
+            }
+            return result ?? { ok: true, view: action };
+          });
         }}
       >
         <Input
@@ -265,6 +348,8 @@ export function ActionRow({
           </div>
         ) : null}
         <ActionLinksField links={links} onChange={setLinks} />
+        <ActionPeopleField onChange={setPersonIds} people={people} selectedIds={personIds} />
+        <ActionAssetHintsField labels={hintLabels} onChange={setHintLabels} />
         <div className="flex items-center justify-end gap-1.5">
           <Button onClick={cancelEditing} size="sm" type="button" variant="ghost">
             Cancel
@@ -272,6 +357,65 @@ export function ActionRow({
           <Button disabled={pending || !trimmedTitle || !hasChange} size="sm" type="submit">
             {busyKey === "edit" ? <Spinner /> : <CheckIcon />}
             Save
+          </Button>
+        </div>
+        {error ? <ErrorText message={error} /> : null}
+      </form>
+    );
+  }
+
+  if (mode === "share") {
+    const selectedMembersRequired =
+      visibilityChoice === "selected_members" && selectedUserIds.length === 0;
+    const currentChoice = visibilityChoiceForScope(action.scope);
+    const changed = visibilityChoice !== currentChoice;
+
+    return (
+      <form
+        className="flex flex-col gap-3 px-4 py-3.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (selectedMembersRequired) {
+            return;
+          }
+          runUpdate("share", () =>
+            setGeneralActionVisibilityAction({
+              generalActionId: action.id,
+              visibilityChoice,
+              ...(selectedUserIds.length ? { selectedUserIds } : {}),
+            }),
+          );
+        }}
+      >
+        <ActionVisibilityField
+          members={shareableMembers}
+          name={`action-visibility-${action.id}`}
+          onChoiceChange={setVisibilityChoice}
+          onSelectedChange={setSelectedUserIds}
+          selectedUserIds={selectedUserIds}
+          value={visibilityChoice}
+        />
+        {visibilityChoice === "selected_members" ? (
+          <p className="text-[length:var(--text-caption)] text-muted-foreground">
+            Choose who can see this again — anyone shared with before is cleared.
+          </p>
+        ) : null}
+        {/* A moment-of-commit preview whenever this differs from the current scope, so
+            widening the audience costs a deliberate beat (ADR 0153). */}
+        {changed ? (
+          <AudiencePreview
+            choice={visibilityChoice}
+            householdSize={shareableMembers.length + 1}
+            selectedCount={selectedUserIds.length}
+          />
+        ) : null}
+        <div className="flex items-center justify-end gap-1.5">
+          <Button onClick={cancelEditing} size="sm" type="button" variant="ghost">
+            Cancel
+          </Button>
+          <Button disabled={pending || selectedMembersRequired} size="sm" type="submit">
+            {busyKey === "share" ? <Spinner /> : <CheckIcon />}
+            Save visibility
           </Button>
         </div>
         {error ? <ErrorText message={error} /> : null}
@@ -326,6 +470,14 @@ export function ActionRow({
     );
   }
 
+  const hasContext =
+    action.scope !== "private" || action.linkedPeople.length > 0 || action.assetHints.length > 0;
+  // On a row the viewer doesn't own, name who shared it so the absent Edit/Visibility
+  // controls read as "not yours to re-author", not a missing feature (ADR 0153).
+  const ownerName = action.owned
+    ? null
+    : (shareableMembers.find((member) => member.userId === action.ownerUserId)?.name ?? null);
+
   return (
     <article
       className="flex flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
@@ -342,6 +494,26 @@ export function ActionRow({
             </p>
           ) : null}
           <ActionLinks links={action.links} />
+          {hasContext ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <ActionScopeChip label={action.visibilityLabel} scope={action.scope} />
+              {action.linkedPeople.map((person) => (
+                <ActionContextChip key={person.id} kind="person">
+                  {person.displayName}
+                </ActionContextChip>
+              ))}
+              {action.assetHints.map((hint) => (
+                <ActionContextChip key={hint.label} kind="asset">
+                  {hint.label}
+                </ActionContextChip>
+              ))}
+            </div>
+          ) : null}
+          {ownerName || !action.owned ? (
+            <span className="text-[length:var(--text-caption)] text-muted-foreground">
+              Shared by {ownerName ?? "a household member"}
+            </span>
+          ) : null}
           {areaName ? (
             <span className="inline-flex w-fit items-center rounded-full bg-secondary px-2 py-0.5 text-[length:var(--text-caption)] text-secondary-foreground">
               {areaName}
@@ -386,10 +558,20 @@ export function ActionRow({
               <ClockIcon />
               Set aside
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={startEditing}>
-              <PencilIcon />
-              Edit
-            </DropdownMenuItem>
+            {/* Content, people, and visibility belong to the owner; a viewing member
+                can still act on the Action above, but not re-author it (ADR 0153). */}
+            {action.owned ? (
+              <DropdownMenuItem onSelect={startEditing}>
+                <PencilIcon />
+                Edit
+              </DropdownMenuItem>
+            ) : null}
+            {action.owned && shareableMembers.length ? (
+              <DropdownMenuItem onSelect={startSharing}>
+                <UsersIcon />
+                Visibility
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem onSelect={() => setHistoryOpen(true)}>
               <HistoryIcon />
               History
