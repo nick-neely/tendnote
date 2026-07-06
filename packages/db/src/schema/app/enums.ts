@@ -106,6 +106,24 @@ export const followupStatus = pgEnum("followup_status", [
   "archived",
 ]);
 
+export const generalActionStatus = pgEnum("general_action_status", [
+  "open",
+  "deferred",
+  "completed",
+  "dismissed",
+  "archived",
+]);
+
+export const generalActionEventKind = pgEnum("general_action_event_kind", [
+  "created",
+  "edited",
+  "completed",
+  "reopened",
+  "deferred",
+  "dismissed",
+  "archived",
+]);
+
 export const extractionJobStatus = pgEnum("extraction_job_status", [
   "pending",
   "running",

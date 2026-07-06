@@ -24,6 +24,7 @@
     "./queries/drafts": "./src/queries/drafts.ts",
     "./queries/extraction-jobs": "./src/queries/extraction-jobs.ts",
     "./queries/followups": "./src/queries/followups.ts",
+    "./queries/general-actions": "./src/queries/general-actions.ts",
     "./queries/gmail-drafts": "./src/queries/gmail-drafts.ts",
     "./queries/households": "./src/queries/households.ts",
     "./queries/memory-curator": "./src/queries/memory-curator.ts",

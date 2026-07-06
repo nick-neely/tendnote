@@ -1,0 +1,143 @@
+"use client";
+
+import { ChevronDownIcon, PlusIcon } from "lucide-react";
+import { useId, useState, useTransition } from "react";
+import { createGeneralActionAction } from "@/app/actions/general-actions";
+import {
+  ActionLinksField,
+  cleanLinks,
+  type LinkDraft,
+} from "@/components/general-action-links-field";
+import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
+import type { GeneralActionView } from "@/lib/general-action-view";
+
+/**
+ * Capture-first create surface for a private one-time Action. The title input is
+ * always in reach so the common case — jot the action, hit enter — takes seconds
+ * (DESIGN.md capture speed). A quiet "Add date, notes, or links" disclosure keeps
+ * the richer fields available without cluttering the calm default. On success the
+ * new Action is handed to the parent to lead the active list.
+ */
+export function CreateActionForm({ onCreate }: { onCreate: (view: GeneralActionView) => void }) {
+  const detailsId = useId();
+  const [title, setTitle] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [links, setLinks] = useState<LinkDraft[]>([]);
+  const [showDetails, setShowDetails] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const trimmedTitle = title.trim();
+
+  function reset() {
+    setTitle("");
+    setDueDate("");
+    setNotes("");
+    setLinks([]);
+    setShowDetails(false);
+    setError(null);
+  }
+
+  function submit() {
+    if (!trimmedTitle) {
+      return;
+    }
+    const trimmedNotes = notes.trim();
+    const cleanedLinks = cleanLinks(links);
+    setError(null);
+    startTransition(async () => {
+      try {
+        const result = await createGeneralActionAction({
+          title: trimmedTitle,
+          ...(trimmedNotes ? { notes: trimmedNotes } : {}),
+          ...(dueDate ? { dueAt: dueDate } : {}),
+          ...(cleanedLinks.length ? { links: cleanedLinks } : {}),
+        });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        onCreate(result.view);
+        reset();
+      } catch {
+        setError(GENERIC_ERROR);
+      }
+    });
+  }
+
+  return (
+    <form
+      className="flex flex-col gap-3 rounded-xl border bg-surface px-4 py-3.5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Input
+          aria-label="What do you want to get done?"
+          className="sm:flex-1"
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="What do you want to get done?"
+          value={title}
+        />
+        <Button className="sm:self-auto" disabled={pending || !trimmedTitle} type="submit">
+          {pending ? <Spinner /> : <PlusIcon />}
+          Add action
+        </Button>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <button
+          aria-controls={detailsId}
+          aria-expanded={showDetails}
+          className="inline-flex items-center gap-1 self-start rounded-md text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          onClick={() => setShowDetails((open) => !open)}
+          type="button"
+        >
+          <ChevronDownIcon
+            aria-hidden
+            className="size-3.5 transition-transform data-[open=true]:rotate-180 motion-reduce:transition-none"
+            data-open={showDetails}
+          />
+          Add date, notes, or links
+        </button>
+
+        {showDetails ? (
+          <div className="flex flex-col gap-3" id={detailsId}>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[length:var(--text-small)] text-muted-foreground">
+                Due date (optional)
+              </span>
+              <Input
+                aria-label="Due date (optional)"
+                className="w-full sm:w-48"
+                onChange={(event) => setDueDate(event.target.value)}
+                type="date"
+                value={dueDate}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[length:var(--text-small)] text-muted-foreground">Notes</span>
+              <Textarea
+                aria-label="Notes"
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Anything worth remembering — a model number, a phone number, what's left to do."
+                rows={2}
+                value={notes}
+              />
+            </div>
+            <ActionLinksField links={links} onChange={setLinks} />
+          </div>
+        ) : null}
+      </div>
+
+      {error ? <ErrorText message={error} /> : null}
+    </form>
+  );
+}

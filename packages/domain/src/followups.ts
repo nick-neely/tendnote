@@ -43,6 +43,32 @@ export type FollowupStatus = z.infer<typeof followupStatusSchema>;
 export type CreateFollowupInput = z.input<typeof createFollowupSchema>;
 
 /**
+ * Validates a bounded update patch for a persisted follow-up. Deliberately carries
+ * **no defaults** — unlike `followupSchema.partial()`, an absent key stays absent
+ * instead of being filled. A partial of the base schema would inject `status: open`,
+ * `scope: private`, and `householdId: null` for keys the caller never set, silently
+ * resetting a snoozed follow-up to open and wiping a shared follow-up's scope and
+ * household on every lifecycle change. A store that sets only the returned keys must
+ * use this schema, not a partial of the base one.
+ */
+export const followupUpdateSchema = z
+  .object({
+    reason: z.string().min(1),
+    dueAt: z.date(),
+    status: followupStatusSchema,
+    cadence: z.string().nullable(),
+    sourceRecordId: z.string().nullable(),
+    lastPromptedAt: z.date().nullable(),
+    householdId: z.string().nullable(),
+    scope: privacyScopeSchema,
+    createdByUserId: z.string().nullable(),
+    lastActorUserId: z.string().nullable(),
+  })
+  .partial();
+
+export type FollowupUpdate = z.infer<typeof followupUpdateSchema>;
+
+/**
  * Statuses that count as active relationship reminders the user still owes. The
  * snapshot read path and dashboard/profile surfaces treat these — and only these
  * — as "active" follow-ups (PRD #42, #16).

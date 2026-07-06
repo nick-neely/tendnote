@@ -2,7 +2,7 @@ import {
   ACTIVE_FOLLOWUP_STATUSES,
   createFollowupSchema,
   type FollowupStatus,
-  followupSchema,
+  followupUpdateSchema,
 } from "@tendnote/domain";
 import { and, asc, eq, inArray, lte } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -67,9 +67,11 @@ export function createDrizzleFollowupStore(): FollowupStore {
       return followup ?? null;
     },
     async updateFollowup(input) {
-      // Validate the patched fields so constraints hold for direct store callers,
-      // matching the in-memory store.
-      const patch = followupSchema.partial().parse(input.patch);
+      // Validate the patched fields so constraints hold for direct store callers.
+      // A defaults-free schema is essential here: a partial of the base schema
+      // would inject default values for absent keys and reset status/scope/
+      // household on update (the same Zod v4 pitfall fixed in general-actions).
+      const patch = followupUpdateSchema.parse(input.patch);
       const [followup] = await getDb()
         .update(followups)
         .set({ ...patch, updatedAt: new Date() })

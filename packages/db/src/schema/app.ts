@@ -12,6 +12,7 @@ export * from "./app/discord-identities";
 export * from "./app/discord-installs";
 export * from "./app/engagement";
 export * from "./app/enums";
+export * from "./app/general-actions";
 export * from "./app/gmail-draft-actions";
 export * from "./app/households";
 export * from "./app/memories";

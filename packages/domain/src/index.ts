@@ -12,6 +12,7 @@ export * from "./drafts";
 export * from "./exact-recall";
 export * from "./extraction-jobs";
 export * from "./followups";
+export * from "./general-actions";
 export * from "./gmail-drafts";
 export * from "./households";
 export * from "./memories";
