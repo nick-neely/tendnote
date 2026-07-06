@@ -41,6 +41,8 @@ describe("search_relationship_context tool", () => {
       query: "backend",
       limit: 5,
       directlyRequested: false,
+      // Review context is pinned off by the tool, never model-forwarded.
+      includeReviewGated: false,
     });
     expect(result.results[0]).toEqual(
       expect.objectContaining({
@@ -149,6 +151,7 @@ describe("search_relationship_context tool", () => {
       recordKinds: ["person", "memory", "source_record"],
       limit: 8,
       directlyRequested: false,
+      includeReviewGated: false,
     });
   });
 
@@ -203,6 +206,7 @@ describe("search_relationship_context tool", () => {
       recordKinds: ["person"],
       limit: 3,
       directlyRequested: true,
+      includeReviewGated: false,
     });
   });
 });

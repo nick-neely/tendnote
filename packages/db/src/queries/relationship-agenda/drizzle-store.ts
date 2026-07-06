@@ -191,6 +191,10 @@ export function createDrizzleRelationshipAgendaStore(): RelationshipAgendaStore 
     async searchSemanticContext(input) {
       return searchSemanticContext({
         ...input,
+        // The relationship agenda is person-centered: it draws on approved memories and
+        // logged source records, never General Actions (ADRs 0143, 0155), so scope the
+        // semantic call to those two kinds.
+        recordKinds: ["memory", "source_record"],
         limit: input.limit ?? 3,
         minimumSimilarity: 0,
         directlyRequested: input.directlyRequested ?? false,

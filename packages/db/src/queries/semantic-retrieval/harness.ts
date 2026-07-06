@@ -1,4 +1,10 @@
-import type { HouseholdMembership, Memory, Sensitivity, SourceRecord } from "@tendnote/domain";
+import type {
+  GeneralAction,
+  HouseholdMembership,
+  Memory,
+  Sensitivity,
+  SourceRecord,
+} from "@tendnote/domain";
 import type { HouseholdRecordShare } from "../households/types";
 import { createInMemoryEmbeddingStore } from "./in-memory-store";
 import { createEmbeddingProcessor } from "./processor";
@@ -102,6 +108,40 @@ export function createHarness(
     });
   }
 
+  async function createGeneralAction(
+    input: Partial<Omit<GeneralAction, "id" | "createdAt" | "updatedAt">> & {
+      ownerUserId?: string;
+    } = {},
+  ) {
+    return store.createGeneralAction({
+      ownerUserId: input.ownerUserId ?? OWNER,
+      title: input.title ?? "Replace the refrigerator water filter",
+      notes: input.notes ?? null,
+      links: input.links ?? [],
+      assetHints: input.assetHints ?? [],
+      status: input.status ?? "open",
+      dueAt: input.dueAt ?? null,
+      deferUntil: input.deferUntil ?? null,
+      recurrence: input.recurrence ?? null,
+      sourceRecordId: input.sourceRecordId ?? null,
+      areaId: input.areaId ?? null,
+      scope: input.scope ?? "private",
+      householdId: input.householdId ?? null,
+      createdByUserId: input.createdByUserId ?? input.ownerUserId ?? OWNER,
+      lastActorUserId: input.lastActorUserId ?? input.ownerUserId ?? OWNER,
+      completedAt: input.completedAt ?? null,
+    });
+  }
+
+  async function embedGeneralAction(actionId: string, ownerUserId = OWNER) {
+    const { job } = await processor.enqueueEmbeddingJob({
+      ownerUserId,
+      recordKind: "general_action",
+      recordId: actionId,
+    });
+    return processor.processEmbeddingJob({ jobId: job.id });
+  }
+
   async function auditActions() {
     const entries = await store.listAuditLogEntries({ ownerUserId: OWNER });
     return entries.map((entry) => entry.action);
@@ -114,6 +154,8 @@ export function createHarness(
     createSourceRecord,
     linkSourceRecord,
     createApprovedMemory,
+    createGeneralAction,
+    embedGeneralAction,
     auditActions,
   };
 }

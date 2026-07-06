@@ -21,12 +21,14 @@ import {
   verifyOwnedPeople,
   writeShares,
 } from "./attach";
+import { makeScheduleGeneralActionEmbedding } from "./embed";
 import { hydrateGeneralAction } from "./hydrate";
 import type {
   CreateActiveGeneralActionInput,
   DeferGeneralActionInput,
   EditGeneralActionInput,
   GeneralActionActionInput,
+  GeneralActionLifecycleDeps,
   GeneralActionLifecycleStore,
   GeneralActionPatch,
   GeneralActionWithContext,
@@ -58,7 +60,15 @@ const EVENT_KIND_FOR_ACTION: Record<GeneralActionLifecycleAction, GeneralActionE
  * context without becoming a Follow-Up (ADR 0155) and carry lightweight asset hints
  * before Asset/Object Memory exists (ADR 0156).
  */
-export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore) {
+export function createGeneralActionLifecycle(
+  store: GeneralActionLifecycleStore,
+  deps: GeneralActionLifecycleDeps = {},
+) {
+  // Embed-on-write: content-affecting paths (create, edit) re-embed the action so
+  // semantic retrieval stays matched to its current title/notes/cadence (ADR 0150).
+  // Defaults to a no-op for stores/tests that do not exercise retrieval.
+  const scheduleActionEmbedding = makeScheduleGeneralActionEmbedding(deps);
+
   /**
    * Loads an action the acting user may touch, or throws. It first tries an
    * owner-scoped read (the common private case), then falls back to a scope-visible
@@ -221,6 +231,8 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         recurring: action.recurrence !== null,
       });
 
+      await scheduleActionEmbedding(action);
+
       return hydrate(action);
     },
 
@@ -272,6 +284,10 @@ export function createGeneralActionLifecycle(store: GeneralActionLifecycleStore)
         editedArea: edit.areaId !== undefined,
         editedRecurrence: edit.recurrence !== undefined,
       });
+
+      // Re-embed: title, notes, asset hints, or cadence may have changed, so the stored
+      // vector must be refreshed to match (ADR 0150).
+      await scheduleActionEmbedding(updated);
 
       return hydrate(updated);
     },

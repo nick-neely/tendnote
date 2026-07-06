@@ -1,12 +1,19 @@
 import type {
   ExactRecallResult,
+  GeneralAction,
   HouseholdMembership,
   Memory,
   Person,
   SourceRecord,
   SourceRecordPerson,
 } from "@tendnote/domain";
-import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain";
+import {
+  canRetrieveGeneralAction,
+  decideGeneralActionEmbedding,
+  generalActionRetrievalMeta,
+  visibilityChoiceForScope,
+  visibilityLabelForScope,
+} from "@tendnote/domain";
 import type { HouseholdRecordShare } from "../households/types";
 import { canViewerSeeSeededHouseholdRecord } from "../households/visibility-memory";
 import type { RelationshipContextSearchStore } from "./types";
@@ -16,6 +23,7 @@ export type InMemoryRelationshipContextSearchSeed = {
   memories?: Memory[];
   sourceRecords?: SourceRecord[];
   sourceRecordPeople?: SourceRecordPerson[];
+  generalActions?: GeneralAction[];
   householdMemberships?: HouseholdMembership[];
   householdRecordShares?: HouseholdRecordShare[];
 };
@@ -27,12 +35,15 @@ export function createInMemoryRelationshipContextSearchStore(
   const memories = seed.memories ?? [];
   const sourceRecords = seed.sourceRecords ?? [];
   const sourceRecordPeople = seed.sourceRecordPeople ?? [];
+  const generalActions = seed.generalActions ?? [];
   const householdMemberships = seed.householdMemberships ?? [];
   const householdRecordShares = seed.householdRecordShares ?? [];
 
   return {
     async searchRelationshipContext(input) {
-      const kinds = new Set(input.recordKinds ?? ["person", "memory", "source_record"]);
+      const kinds = new Set(
+        input.recordKinds ?? ["person", "memory", "source_record", "general_action"],
+      );
       const query = input.query.toLowerCase();
       const results: ExactRecallResult[] = [];
 
@@ -144,6 +155,55 @@ export function createInMemoryRelationshipContextSearchStore(
         }
       }
 
+      if (kinds.has("general_action")) {
+        for (const action of generalActions) {
+          // General Actions are not person context (ADRs 0143, 0155): a person-scoped
+          // query never returns them.
+          if (input.personId) continue;
+          if (decideGeneralActionEmbedding(action).action === "skip") continue;
+
+          // Scope filtering, pre-retrieval (ADR 0153, AC5): the shared retrieval gate
+          // admits a durable action only to a caller who may see it under scope rules,
+          // and a suggested proposal only in owner-only review context, never
+          // scope-visible to a member (ADRs 0151-0153, AC3).
+          if (
+            !canRetrieveGeneralAction({
+              status: action.status,
+              ownerUserId: action.ownerUserId,
+              callerUserId: input.ownerUserId,
+              scopeVisible: canViewerSeeRecord(input.ownerUserId, action, "general_action"),
+              includeReviewGated: Boolean(input.includeReviewGated),
+            })
+          ) {
+            continue;
+          }
+
+          const haystack = `${action.title} ${action.notes ?? ""}`;
+          if (!matchesText(haystack, query)) continue;
+
+          const matchedFields: string[] = [];
+          if (matchesText(action.title, query)) matchedFields.push("title");
+          if (action.notes && matchesText(action.notes, query)) matchedFields.push("notes");
+          if (matchedFields.length === 0) matchedFields.push("title");
+
+          results.push({
+            recordKind: "general_action",
+            recordId: action.id,
+            visibilityChoice: visibilityChoiceForScope(action.scope),
+            visibilityLabel: visibilityLabelForScope(action.scope),
+            relatedPersonId: null,
+            relatedPersonDisplayName: null,
+            label: action.title,
+            snippet: snippet(haystack.trim()),
+            matchedFields,
+            rank: scoreText(haystack, query) + scoreRecency(action.updatedAt),
+            trustLevel: "action_item",
+            sensitivity: "normal",
+            generalAction: generalActionRetrievalMeta(action),
+          });
+        }
+      }
+
       return results.sort(compareResults).slice(0, input.limit);
     },
   };
@@ -156,7 +216,7 @@ export function createInMemoryRelationshipContextSearchStore(
       householdId?: string | null;
       scope: "private" | "shared" | "household";
     },
-    recordKind: "memory" | "source_record",
+    recordKind: "memory" | "source_record" | "general_action",
   ) {
     return canViewerSeeSeededHouseholdRecord({
       callerUserId,

@@ -3,7 +3,7 @@ import type {
   EmbeddingAdapter,
   EmbeddingConfig,
   EmbeddingStore,
-  SearchSemanticContextQueryInput,
+  SearchSemanticContextRequest,
 } from "./types";
 
 export function createSemanticRetrievalQueries(
@@ -12,7 +12,7 @@ export function createSemanticRetrievalQueries(
   config: EmbeddingConfig,
 ) {
   return {
-    async searchSemanticContext(input: SearchSemanticContextQueryInput) {
+    async searchSemanticContext(input: SearchSemanticContextRequest) {
       const parsed = searchSemanticContextSchema.parse(input);
       const queryEmbedding = await adapter.embedText({
         text: parsed.query,

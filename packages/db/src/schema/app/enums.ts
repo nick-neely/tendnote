@@ -145,11 +145,19 @@ export const extractionJobStatus = pgEnum("extraction_job_status", [
   "skipped",
 ]);
 
-export const semanticRecordKind = pgEnum("semantic_record_kind", ["memory", "source_record"]);
+export const semanticRecordKind = pgEnum("semantic_record_kind", [
+  "memory",
+  "source_record",
+  // General Actions are embedded and semantically retrievable alongside relationship
+  // context (ADR 0150; Phase 5 #184).
+  "general_action",
+]);
 
 export const semanticTrustLevel = pgEnum("semantic_trust_level", [
   "confirmed_fact",
   "logged_context",
+  // A General Action is an owner-authored intention — its own trust register.
+  "action_item",
 ]);
 
 export const embeddingJobStatus = pgEnum("embedding_job_status", [

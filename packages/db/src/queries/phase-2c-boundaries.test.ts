@@ -83,9 +83,10 @@ describe("Phase 2C Calendar boundaries (db)", () => {
   });
 
   it("keeps cached/derived Calendar context out of semantic retrieval", () => {
-    // Only durable memories and retained source records are semantically embedded;
-    // Calendar context enters retrieval only after explicit promotion (ADR-0079).
-    expect(semanticRecordKind.enumValues).toEqual(["memory", "source_record"]);
+    // Durable memories, retained source records, and General Actions are semantically
+    // embedded (ADR 0150); Calendar context enters retrieval only after explicit
+    // promotion (ADR-0079), so it is never a semantic record kind.
+    expect(semanticRecordKind.enumValues).toEqual(["memory", "source_record", "general_action"]);
     for (const forbidden of [
       "semantic-retrieval",
       "relationship-context-search",

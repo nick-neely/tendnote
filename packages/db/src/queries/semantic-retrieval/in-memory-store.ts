@@ -1,12 +1,19 @@
 import { randomUUID } from "node:crypto";
 import {
+  canRetrieveGeneralAction,
   claimableEmbeddingJobStatuses,
   createEmbeddingJobSchema,
+  createGeneralActionSchema,
   createRelationshipContextEmbeddingSchema,
+  decideGeneralActionEmbedding,
   decideSourceRecordEmbedding,
   type EmbeddingJob,
+  type GeneralAction,
+  generalActionRetrievalMeta,
+  generalActionSchema,
   type HouseholdMembership,
   projectApprovedMemoryEmbeddedText,
+  projectGeneralActionEmbeddedText,
   projectSourceRecordEmbeddedText,
   type RelationshipContextEmbedding,
   visibilityChoiceForScope,
@@ -28,6 +35,7 @@ export function createInMemoryEmbeddingStore(
   const base = createInMemoryMemoryStore();
   const jobs = new Map<string, EmbeddingJob>();
   const embeddings = new Map<string, RelationshipContextEmbedding>();
+  const generalActionRecords = new Map<string, GeneralAction>();
   const householdMemberships = seed.householdMemberships ?? [];
   const householdRecordShares = seed.householdRecordShares ?? [];
 
@@ -135,6 +143,25 @@ export function createInMemoryEmbeddingStore(
 
       return updated;
     },
+    async createGeneralAction(values) {
+      const parsed = createGeneralActionSchema.parse(values);
+      const now = new Date();
+      const action = generalActionSchema.parse({
+        ...parsed,
+        id: randomUUID(),
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      generalActionRecords.set(action.id, action);
+
+      return action;
+    },
+    async getGeneralActionForEmbedding(input) {
+      const action = generalActionRecords.get(input.generalActionId);
+
+      return action && action.ownerUserId === input.ownerUserId ? action : null;
+    },
     async upsertRelationshipContextEmbedding(values) {
       const parsed = createRelationshipContextEmbeddingSchema.parse(values);
       const existing = embeddings.get(embeddingKey(parsed));
@@ -154,7 +181,7 @@ export function createInMemoryEmbeddingStore(
       return embeddings.get(embeddingKey(input)) ?? null;
     },
     async searchSemanticContext(input) {
-      const kinds = new Set(input.recordKinds ?? ["memory", "source_record"]);
+      const kinds = new Set(input.recordKinds ?? ["memory", "source_record", "general_action"]);
       const results = await Promise.all(
         [...embeddings.values()].map(async (embedding) => {
           if (!kinds.has(embedding.recordKind)) return null;
@@ -162,6 +189,67 @@ export function createInMemoryEmbeddingStore(
           if (embedding.embeddingVersion !== input.embeddingVersion) return null;
           if (embedding.embeddingDimensions !== input.queryEmbedding.length) return null;
           if (embedding.sensitivity === "restricted" && !input.directlyRequested) return null;
+
+          if (embedding.recordKind === "general_action") {
+            // General Actions are not person-relationship context (ADRs 0143, 0155): a
+            // person-scoped query never returns them.
+            if (input.personId) return null;
+            if (embedding.trustLevel !== "action_item") return null;
+
+            const action = generalActionRecords.get(embedding.recordId);
+            if (!action || action.ownerUserId !== embedding.ownerUserId) return null;
+            if (decideGeneralActionEmbedding(action).action === "skip") return null;
+
+            // Scope filtering, pre-retrieval (ADR 0153, AC5): the shared retrieval gate
+            // admits a durable action only to a caller who may see it under scope rules,
+            // and a `suggested` proposal only in owner-only review context — never
+            // scope-visible to a member (ADRs 0151-0153, AC3).
+            if (
+              !canRetrieveGeneralAction({
+                status: action.status,
+                ownerUserId: action.ownerUserId,
+                callerUserId: input.ownerUserId,
+                scopeVisible: canViewerSeeRecord(input.ownerUserId, action, "general_action"),
+                includeReviewGated: Boolean(input.includeReviewGated),
+              })
+            ) {
+              return null;
+            }
+
+            // Content freshness: skip an embedding whose text no longer matches the
+            // action's current projection. Unlike the drizzle store (which cannot rebuild
+            // the projection in SQL), the in-memory store can, so it keeps this stricter
+            // check. No updated_at guard — a status transition bumps updated_at without
+            // changing the embedded text, and re-embedding follows content edits.
+            if (projectGeneralActionEmbeddedText(action) !== embedding.embeddedText) return null;
+
+            const similarity = cosineSimilarity(input.queryEmbedding, embedding.embedding);
+            if (similarity < input.minimumSimilarity) return null;
+
+            return {
+              recordKind: "general_action" as const,
+              recordId: embedding.recordId,
+              visibilityChoice: visibilityChoiceForScope(action.scope),
+              visibilityLabel: visibilityLabelForScope(action.scope),
+              relatedPersonId: null,
+              relatedPersonDisplayName: null,
+              snippet: action.title,
+              similarity,
+              trustLevel: embedding.trustLevel,
+              sensitivity: embedding.sensitivity,
+              sourceRefs: [{ kind: "general_action" as const, id: embedding.recordId }],
+              routing: {
+                personId: null,
+                recordKind: "general_action" as const,
+                recordId: embedding.recordId,
+              },
+              generalAction: generalActionRetrievalMeta(action),
+              tieBreakers: {
+                importance: 0,
+                updatedAt: action.updatedAt,
+              },
+            };
+          }
 
           if (embedding.recordKind === "source_record") {
             if (embedding.trustLevel !== "logged_context") return null;
@@ -242,6 +330,7 @@ export function createInMemoryEmbeddingStore(
                 recordKind: "source_record" as const,
                 recordId: embedding.recordId,
               },
+              generalAction: null,
               tieBreakers: {
                 importance: sourceRecord.importance,
                 updatedAt: sourceRecord.updatedAt,
@@ -292,6 +381,7 @@ export function createInMemoryEmbeddingStore(
               recordKind: "memory" as const,
               recordId: embedding.recordId,
             },
+            generalAction: null,
             tieBreakers: {
               importance: memory.importance,
               updatedAt: memory.updatedAt,
@@ -322,7 +412,7 @@ export function createInMemoryEmbeddingStore(
       householdId?: string | null;
       scope: "private" | "shared" | "household";
     },
-    recordKind: "memory" | "source_record",
+    recordKind: "memory" | "source_record" | "general_action",
   ) {
     return canViewerSeeSeededHouseholdRecord({
       callerUserId,

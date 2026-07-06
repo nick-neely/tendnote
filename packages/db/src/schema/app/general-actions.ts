@@ -4,7 +4,16 @@ import type {
   GeneralActionRecurrence,
 } from "@tendnote/domain";
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  customType,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
 import { generalActionEventKind, generalActionStatus, privacyScope } from "./enums";
@@ -12,6 +21,12 @@ import { generalActionAreas } from "./general-action-areas";
 import { householdWorkspaces } from "./households";
 import { people } from "./people";
 import { sourceRecords } from "./source-records";
+
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
 
 /**
  * General Actions: non-person Personal OS actions such as "replace the
@@ -71,6 +86,15 @@ export const generalActions = pgTable(
       onDelete: "set null",
     }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    // Full-text search vector over the action's title and notes, so General Actions
+    // participate in exact recall alongside people, memories, and source records
+    // (ADR 0150; Phase 5 #184). Generated/maintained by Postgres like the other
+    // search vectors, so it can never drift from the row.
+    searchVector: tsvector("search_vector")
+      .notNull()
+      .generatedAlwaysAs(
+        sql`to_tsvector('simple', coalesce("title", '') || ' ' || coalesce("notes", ''))`,
+      ),
     ...timestamps,
   },
   (table) => [
@@ -78,6 +102,7 @@ export const generalActions = pgTable(
     index("general_actions_owner_due_idx").on(table.ownerUserId, table.dueAt),
     index("general_actions_owner_area_idx").on(table.ownerUserId, table.areaId),
     index("general_actions_household_scope_idx").on(table.householdId, table.scope),
+    index("general_actions_search_vector_idx").using("gin", table.searchVector),
   ],
 );
 

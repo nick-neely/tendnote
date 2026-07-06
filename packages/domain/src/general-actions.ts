@@ -217,6 +217,98 @@ export function isReviewGeneralActionStatus(status: GeneralActionStatus): boolea
 }
 
 /**
+ * The durable statuses whose General Actions participate in retrieval (exact recall and
+ * semantic): a durable action is retrievable while it is still live — `open`, `deferred`,
+ * or a `paused` Routine — so a caller can find what is on their plate; terminal actions
+ * (`completed`, `dismissed`, `archived`) drop out of retrieval like resolved rows drop
+ * off the active ledger. `suggested` is handled separately (owner-only review context,
+ * see {@link canRetrieveGeneralAction}); `ignored` is the quiet set-aside and is never
+ * retrievable. Mirrors how memories retrieve only while `approved` and source records
+ * only while `active`.
+ *
+ * This constant documents the durable-status policy and is the predicate the in-memory
+ * retrieval stores filter on (via {@link canRetrieveGeneralAction}). The drizzle stores
+ * inline the same status list in SQL for the query plan; a string-assertion test
+ * (semantic-retrieval `migration-shape`) pins the SQL to this policy so the two never
+ * drift.
+ */
+export const RETRIEVABLE_GENERAL_ACTION_STATUSES: ReadonlySet<GeneralActionStatus> = new Set([
+  "open",
+  "deferred",
+  "paused",
+]);
+
+export function isRetrievableGeneralActionStatus(status: GeneralActionStatus): boolean {
+  return RETRIEVABLE_GENERAL_ACTION_STATUSES.has(status);
+}
+
+/**
+ * The single retrieval-visibility gate a caller's General Action must pass to appear in
+ * exact recall or semantic search, shared by both in-memory retrieval stores so they
+ * never fork the policy. Two disjoint ways a General Action is retrievable:
+ *
+ * - **Durable + scope-visible:** a live action (`open`/`deferred`/`paused`) that the
+ *   caller may see under the Phase 4 scope rules. `scopeVisible` is the result of the
+ *   household scope predicate, computed by the store; this gate never widens it.
+ * - **Suggested in owner-only review context:** a `suggested` proposal, only when the
+ *   caller both owns it and asked for review context. A proposal is never scope-visible
+ *   to a household member until accepted, so review context can never reach another
+ *   owner's proposal (ADRs 0151–0153).
+ *
+ * `ignored` and terminal actions fall through both branches and never surface. The
+ * drizzle stores express this same `(scopeVisible AND durable) OR (review AND owner AND
+ * suggested)` predicate inline in SQL, citing this helper.
+ */
+export function canRetrieveGeneralAction(input: {
+  status: GeneralActionStatus;
+  ownerUserId: string;
+  callerUserId: string;
+  scopeVisible: boolean;
+  includeReviewGated: boolean;
+}): boolean {
+  const durableVisible = isRetrievableGeneralActionStatus(input.status) && input.scopeVisible;
+  const suggestedForOwner =
+    input.includeReviewGated &&
+    input.status === "suggested" &&
+    input.ownerUserId === input.callerUserId;
+  return durableVisible || suggestedForOwner;
+}
+
+/**
+ * The retrieval-facing shape of a General Action carried on a typed retrieval result,
+ * so a consumer (Eve tools in #185, Action Today in #186) can tell an Action from a
+ * Routine from a Suggested action without re-fetching the row. `recordKind` on the
+ * result already separates General Actions from people, memories, source records, and
+ * Follow-Ups; this narrows *within* General Actions: `isRoutine` marks the recurring
+ * ones (ADR 0148) and `isSuggested` marks the review-gated proposals (ADRs 0151, 0152).
+ * `status` and `areaId` round out the calm, non-leaking metadata a surface renders.
+ */
+export const generalActionRetrievalMetaSchema = z.object({
+  status: generalActionStatusSchema,
+  isRoutine: z.boolean(),
+  isSuggested: z.boolean(),
+  areaId: z.string().nullable(),
+});
+
+export type GeneralActionRetrievalMeta = z.infer<typeof generalActionRetrievalMetaSchema>;
+
+/**
+ * Builds the retrieval metadata for a General Action from its stored fields, so both
+ * retrieval stores (and both adapters) derive Routine/Suggested/Area exactly the same
+ * way rather than re-deriving the booleans inline and drifting.
+ */
+export function generalActionRetrievalMeta(
+  action: Pick<GeneralAction, "status" | "recurrence" | "areaId">,
+): GeneralActionRetrievalMeta {
+  return {
+    status: action.status,
+    isRoutine: action.recurrence !== null,
+    isSuggested: action.status === "suggested",
+    areaId: action.areaId,
+  };
+}
+
+/**
  * Statuses a General Action's content (title, notes, links, due date, cadence) may
  * still be edited from. Editing a completed, dismissed, or archived action is
  * rejected — those are terminal for content edits; the user reopens first (ADR 0165).

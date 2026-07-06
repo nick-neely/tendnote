@@ -7,6 +7,7 @@ import {
   type EmbeddingContext,
   failJob,
   processApprovedMemory,
+  processGeneralAction,
   processSourceRecord,
   skipJob,
 } from "./steps";
@@ -139,20 +140,14 @@ async function processEmbeddingJob(
   }
 
   try {
-    const result =
-      job.recordKind === "memory"
-        ? await processApprovedMemory(ctx, job)
-        : await processSourceRecord(ctx, job);
+    const result = await processJobByKind(ctx, job);
 
     if ("skipReason" in result) {
-      return skipJob(
-        ctx,
-        job,
-        result.skipReason,
-        now,
-        "sourceMemory" in result ? result.sourceMemory : null,
-        "sourceRecord" in result ? result.sourceRecord : null,
-      );
+      return skipJob(ctx, job, result.skipReason, now, {
+        sourceMemory: "sourceMemory" in result ? result.sourceMemory : null,
+        sourceRecord: "sourceRecord" in result ? result.sourceRecord : null,
+        sourceGeneralAction: "sourceGeneralAction" in result ? result.sourceGeneralAction : null,
+      });
     }
 
     if (!result.embedding) {
@@ -184,10 +179,23 @@ async function processEmbeddingJob(
       embedding: result.embedding,
       sourceMemory: result.sourceMemory,
       sourceRecord: result.sourceRecord,
+      sourceGeneralAction: result.sourceGeneralAction,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return failJob(ctx, job, message, now, retryDelayMs);
+  }
+}
+
+/** Dispatches a job to the embedding step for its record kind. */
+function processJobByKind(ctx: EmbeddingContext, job: ProcessEmbeddingJobResult["job"]) {
+  switch (job.recordKind) {
+    case "memory":
+      return processApprovedMemory(ctx, job);
+    case "source_record":
+      return processSourceRecord(ctx, job);
+    case "general_action":
+      return processGeneralAction(ctx, job);
   }
 }
 

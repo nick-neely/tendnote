@@ -11,11 +11,13 @@ import {
   verifyOwnedPeople,
   writeShares,
 } from "./attach";
+import { makeScheduleGeneralActionEmbedding } from "./embed";
 import { hydrateGeneralAction } from "./hydrate";
 import type {
   AcceptSuggestedGeneralActionInput,
   EditSuggestedGeneralActionInput,
   GeneralActionActionInput,
+  GeneralActionLifecycleDeps,
   GeneralActionLifecycleStore,
   GeneralActionPatch,
   ListSuggestedGeneralActionReviewsInput,
@@ -35,7 +37,15 @@ import type {
  * idempotent (there is only ever one action) and the suggested and active paths never
  * fork. Extraction (#183) and Eve (#186) feed this by calling `suggestGeneralAction`.
  */
-export function createSuggestedGeneralActionReview(store: GeneralActionLifecycleStore) {
+export function createSuggestedGeneralActionReview(
+  store: GeneralActionLifecycleStore,
+  deps: GeneralActionLifecycleDeps = {},
+) {
+  // Embed-on-write: a proposal is embedded when suggested (so it can be found in
+  // owner-only review context, AC3), when its content is edited, and on acceptance (in
+  // case an accept-time edit changed the content). Defaults to a no-op (ADR 0150).
+  const scheduleActionEmbedding = makeScheduleGeneralActionEmbedding(deps);
+
   async function buildReviewResult(
     action: GeneralAction,
   ): Promise<SuggestedGeneralActionReviewResult> {
@@ -160,6 +170,8 @@ export function createSuggestedGeneralActionReview(store: GeneralActionLifecycle
         },
       });
 
+      await scheduleActionEmbedding(action);
+
       return buildReviewResult(action);
     },
 
@@ -276,6 +288,8 @@ export function createSuggestedGeneralActionReview(store: GeneralActionLifecycle
         },
       });
 
+      await scheduleActionEmbedding(updated);
+
       return buildReviewResult(updated);
     },
 
@@ -319,6 +333,8 @@ export function createSuggestedGeneralActionReview(store: GeneralActionLifecycle
           editedRecurrence: edit.recurrence !== undefined,
         },
       });
+
+      await scheduleActionEmbedding(updated);
 
       return buildReviewResult(updated);
     },
