@@ -58,7 +58,7 @@ export default defineTool({
     const ownerUserId = resolveOwnerUserId(ctx);
 
     const action = await editGeneralAction({
-      ownerUserId,
+      actorUserId: ownerUserId,
       generalActionId: input.generalActionId,
       edit: buildGeneralActionEdit(input),
     });

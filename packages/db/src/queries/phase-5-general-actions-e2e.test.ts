@@ -49,11 +49,11 @@ async function expectSuggestedActionInvisibleToMember(
 ) {
   expect(await lifecycle.listActiveGeneralActions({ ownerUserId: memberUserId })).toHaveLength(0);
   await expect(
-    lifecycle.getGeneralAction({ ownerUserId: memberUserId, generalActionId: actionId }),
+    lifecycle.getGeneralAction({ actorUserId: memberUserId, generalActionId: actionId }),
   ).rejects.toThrow(/not found/i);
   expect(
     await lifecycle.listGeneralActionHistory({
-      ownerUserId: memberUserId,
+      actorUserId: memberUserId,
       generalActionId: actionId,
     }),
   ).toEqual([]);
@@ -209,7 +209,7 @@ describe("Phase 5 proof scenario (ADR 0167) — the recurring household water fi
     // 4) REVIEW ACCEPT — promotes the proposal *in place* to a durable open Routine (a
     //    cadence makes it a Routine; ADR 0148), keeping its household scope and grounding.
     const accepted = await review.acceptSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: actionId,
     });
     expect(accepted.action.status).toBe("open");
@@ -219,13 +219,13 @@ describe("Phase 5 proof scenario (ADR 0167) — the recurring household water fi
 
     // History records the whole grounded trail: suggested → promoted (no analytics/scoring).
     const historyKinds = (
-      await lifecycle.listGeneralActionHistory({ ownerUserId: OWNER, generalActionId: actionId })
+      await lifecycle.listGeneralActionHistory({ actorUserId: OWNER, generalActionId: actionId })
     ).map((event) => event.kind);
     expect(historyKinds).toEqual(["suggested", "promoted"]);
 
     // Accepting the same proposal again is idempotent — one row, no duplicate Action.
     const reaccepted = await review.acceptSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: actionId,
     });
     expect(reaccepted.action.id).toBe(actionId);
@@ -306,7 +306,7 @@ describe("Phase 5 proof scenario (ADR 0167) — the recurring household water fi
     //    from the completion moment, and records who acted (member) while staying owner-keyed.
     const beforeComplete = new Date();
     const completed = await lifecycle.completeGeneralAction({
-      ownerUserId: MEMBER,
+      actorUserId: MEMBER,
       generalActionId: actionId,
     });
     expect(completed.status).toBe("open");
@@ -321,7 +321,7 @@ describe("Phase 5 proof scenario (ADR 0167) — the recurring household water fi
     );
 
     const completionEvent = (
-      await lifecycle.listGeneralActionHistory({ ownerUserId: OWNER, generalActionId: actionId })
+      await lifecycle.listGeneralActionHistory({ actorUserId: OWNER, generalActionId: actionId })
     ).at(-1);
     expect(completionEvent).toMatchObject({
       kind: "completed",
@@ -414,7 +414,7 @@ describe("Phase 5 privacy under composition — a review-gated household proposa
     expect(ownerReview.map((r) => r.recordId)).toEqual([actionId]);
 
     // --- ACCEPTANCE OPENS THE GATE — every surface flips consistently in one step ---
-    await review.acceptSuggestedGeneralAction({ ownerUserId: OWNER, generalActionId: actionId });
+    await review.acceptSuggestedGeneralAction({ actorUserId: OWNER, generalActionId: actionId });
 
     // ledger + retrieval now show it to the member; the gate opened exactly at acceptance.
     const memberLedger = await lifecycle.listActiveGeneralActions({ ownerUserId: MEMBER });
@@ -424,7 +424,7 @@ describe("Phase 5 privacy under composition — a review-gated household proposa
     // A member reading the now-durable action's history sees the owner-keyed trail.
     expect(
       (
-        await lifecycle.listGeneralActionHistory({ ownerUserId: MEMBER, generalActionId: actionId })
+        await lifecycle.listGeneralActionHistory({ actorUserId: MEMBER, generalActionId: actionId })
       ).map((e) => e.kind),
     ).toEqual(["suggested", "promoted"]);
   });

@@ -225,7 +225,7 @@ describe("update_general_action_status — explicit, single-record mutation", ()
     await updateTool.execute({ generalActionId: ACTION_ID, action: action_ }, ctx);
 
     expect(mocks[fnName]).toHaveBeenCalledWith({
-      ownerUserId: "user-1",
+      actorUserId: "user-1",
       generalActionId: ACTION_ID,
     });
   });
@@ -240,7 +240,7 @@ describe("update_general_action_status — explicit, single-record mutation", ()
 
     const passed = mocks.deferGeneralAction.mock.calls[0]?.[0];
     expect(passed.deferUntil).toBeInstanceOf(Date);
-    expect(passed.ownerUserId).toBe("user-1");
+    expect(passed.actorUserId).toBe("user-1");
   });
 
   it("refuses to defer without a resurface date", async () => {
@@ -261,7 +261,7 @@ describe("edit_general_action — content edit only on named record", () => {
     );
 
     const passed = mocks.editGeneralAction.mock.calls[0]?.[0];
-    expect(passed.ownerUserId).toBe("user-1");
+    expect(passed.actorUserId).toBe("user-1");
     expect(passed.edit.title).toBe("Renew the passport");
     expect(passed.edit.notes).toBeNull();
     expect(passed.edit.dueAt).toBeInstanceOf(Date);

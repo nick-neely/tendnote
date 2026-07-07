@@ -94,7 +94,7 @@ describe("refrigerator water filter proof scenario", () => {
     // And it accepts in place into a durable, household-visible Routine.
     const review = createSuggestedGeneralActionReview(store);
     await review.acceptSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
     const memberView = await lifecycle.listActiveGeneralActions({ ownerUserId: MEMBER });

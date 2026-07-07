@@ -38,7 +38,7 @@ export default defineTool({
     const ownerUserId = resolveOwnerUserId(ctx);
 
     const result = await acceptSuggestedGeneralAction({
-      ownerUserId,
+      actorUserId: ownerUserId,
       generalActionId: input.generalActionId,
       // The correction is a subset of the shared edit fields; map it the same way.
       edit: input.edit ? buildGeneralActionEdit(input.edit) : undefined,

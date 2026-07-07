@@ -36,7 +36,7 @@ async function setup() {
   }
 
   const historyKinds = async (generalActionId: string) =>
-    (await lifecycle.listGeneralActionHistory({ ownerUserId: OWNER, generalActionId })).map(
+    (await lifecycle.listGeneralActionHistory({ actorUserId: OWNER, generalActionId })).map(
       (event) => event.kind,
     );
 
@@ -94,7 +94,7 @@ describe("create general action", () => {
 
     await expect(
       lifecycle.editGeneralAction({
-        ownerUserId: OWNER,
+        actorUserId: OWNER,
         generalActionId: action.id,
         edit: { links: [{ url: "not-a-url" }] },
       }),
@@ -120,7 +120,7 @@ describe("edit general action", () => {
     const action = await seedOpen();
 
     const edited = await lifecycle.editGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       edit: {
         title: "Replace the fridge + freezer water filters",
@@ -140,7 +140,7 @@ describe("edit general action", () => {
     const action = await seedOpen({ notes: "Original note", dueAt: new Date("2026-08-01Z") });
 
     const edited = await lifecycle.editGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       edit: { notes: null },
     });
@@ -155,7 +155,7 @@ describe("edit general action", () => {
     const action = await seedOpen();
 
     await expect(
-      lifecycle.editGeneralAction({ ownerUserId: OWNER, generalActionId: action.id, edit: {} }),
+      lifecycle.editGeneralAction({ actorUserId: OWNER, generalActionId: action.id, edit: {} }),
     ).rejects.toThrow(
       /must change the title, notes, due date, cadence, links, area, or asset hints/,
     );
@@ -164,11 +164,11 @@ describe("edit general action", () => {
   it("cannot edit a completed action", async () => {
     const { lifecycle, seedOpen } = await setup();
     const action = await seedOpen();
-    await lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: action.id });
+    await lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: action.id });
 
     await expect(
       lifecycle.editGeneralAction({
-        ownerUserId: OWNER,
+        actorUserId: OWNER,
         generalActionId: action.id,
         edit: { title: "Too late" },
       }),
@@ -182,7 +182,7 @@ describe("lifecycle transitions", () => {
     const action = await seedOpen();
 
     const completed = await lifecycle.completeGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
 
@@ -195,10 +195,10 @@ describe("lifecycle transitions", () => {
   it("records actor provenance and status transition detail on each history event", async () => {
     const { lifecycle, seedOpen } = await setup();
     const action = await seedOpen();
-    await lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: action.id });
+    await lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: action.id });
 
     const events = await lifecycle.listGeneralActionHistory({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
 
@@ -217,7 +217,7 @@ describe("lifecycle transitions", () => {
     const action = await seedOpen();
 
     const deferred = await lifecycle.deferGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       deferUntil: new Date("2026-10-01T00:00:00Z"),
     });
@@ -233,7 +233,7 @@ describe("lifecycle transitions", () => {
 
     await expect(
       lifecycle.deferGeneralAction({
-        ownerUserId: OWNER,
+        actorUserId: OWNER,
         generalActionId: action.id,
         deferUntil: new Date("not a date"),
       }),
@@ -245,7 +245,7 @@ describe("lifecycle transitions", () => {
     const action = await seedOpen();
 
     const dismissed = await lifecycle.dismissGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
 
@@ -256,10 +256,10 @@ describe("lifecycle transitions", () => {
   it("reopens a completed action and clears its completion time", async () => {
     const { lifecycle, seedOpen, historyKinds } = await setup();
     const action = await seedOpen();
-    await lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: action.id });
+    await lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: action.id });
 
     const reopened = await lifecycle.reopenGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
 
@@ -272,13 +272,13 @@ describe("lifecycle transitions", () => {
     const { lifecycle, seedOpen } = await setup();
     const action = await seedOpen();
     await lifecycle.deferGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       deferUntil: new Date("2026-10-01T00:00:00Z"),
     });
 
     const completed = await lifecycle.completeGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
 
@@ -291,7 +291,7 @@ describe("lifecycle transitions", () => {
     const action = await seedOpen();
 
     const archived = await lifecycle.archiveGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
 
@@ -308,10 +308,10 @@ describe("lifecycle transitions", () => {
   it("rejects invalid transitions", async () => {
     const { lifecycle, seedOpen } = await setup();
     const action = await seedOpen();
-    await lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: action.id });
+    await lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: action.id });
 
     await expect(
-      lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: action.id }),
+      lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: action.id }),
     ).rejects.toThrow(/Cannot complete/);
   });
 });
@@ -342,7 +342,7 @@ describe("active listing", () => {
   it("excludes completed, dismissed, and archived actions", async () => {
     const { lifecycle, seedOpen } = await setup();
     const done = await seedOpen({ title: "Done" });
-    await lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: done.id });
+    await lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: done.id });
     const kept = await seedOpen({ title: "Kept" });
 
     const active = await lifecycle.listActiveGeneralActions({ ownerUserId: OWNER });
@@ -353,11 +353,11 @@ describe("active listing", () => {
   it("lists resolved (completed + dismissed) actions but not archived ones", async () => {
     const { lifecycle, seedOpen } = await setup();
     const done = await seedOpen({ title: "Done" });
-    await lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: done.id });
+    await lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: done.id });
     const dropped = await seedOpen({ title: "Dropped" });
-    await lifecycle.dismissGeneralAction({ ownerUserId: OWNER, generalActionId: dropped.id });
+    await lifecycle.dismissGeneralAction({ actorUserId: OWNER, generalActionId: dropped.id });
     const filed = await seedOpen({ title: "Filed away" });
-    await lifecycle.archiveGeneralAction({ ownerUserId: OWNER, generalActionId: filed.id });
+    await lifecycle.archiveGeneralAction({ actorUserId: OWNER, generalActionId: filed.id });
 
     const resolved = await lifecycle.listResolvedGeneralActions({ ownerUserId: OWNER });
 
@@ -392,14 +392,14 @@ describe("area assignment", () => {
     const action = await seedOpen();
 
     const filed = await lifecycle.editGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       edit: { areaId: home.id },
     });
     expect(filed.areaId).toBe(home.id);
 
     const unfiled = await lifecycle.editGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       edit: { areaId: null },
     });
@@ -424,7 +424,7 @@ describe("area assignment", () => {
     const home = await areas.createArea({ ownerUserId: OWNER, name: "Home" });
     const action = await seedOpen();
     await lifecycle.editGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       edit: { areaId: home.id },
     });
@@ -433,7 +433,7 @@ describe("area assignment", () => {
 
     // The action keeps its area even though the area is now archived...
     const stillFiled = await lifecycle.getGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
     expect(stillFiled.areaId).toBe(home.id);
@@ -454,13 +454,13 @@ describe("area assignment", () => {
     const action = await seedOpen();
 
     await lifecycle.editGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       edit: { areaId: home.id },
     });
 
     const events = await lifecycle.listGeneralActionHistory({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
     expect(await historyKinds(action.id)).toEqual(["created", "edited"]);
@@ -474,14 +474,14 @@ describe("owner scoping", () => {
     const action = await seedOpen();
 
     await expect(
-      lifecycle.getGeneralAction({ ownerUserId: OTHER, generalActionId: action.id }),
+      lifecycle.getGeneralAction({ actorUserId: OTHER, generalActionId: action.id }),
     ).rejects.toThrow(/Action not found/);
     await expect(
-      lifecycle.completeGeneralAction({ ownerUserId: OTHER, generalActionId: action.id }),
+      lifecycle.completeGeneralAction({ actorUserId: OTHER, generalActionId: action.id }),
     ).rejects.toThrow(/Action not found/);
     await expect(
       lifecycle.editGeneralAction({
-        ownerUserId: OTHER,
+        actorUserId: OTHER,
         generalActionId: action.id,
         edit: { title: "hijack" },
       }),
@@ -494,7 +494,7 @@ describe("owner scoping", () => {
 
     await expect(lifecycle.listActiveGeneralActions({ ownerUserId: OTHER })).resolves.toEqual([]);
     await expect(
-      lifecycle.listGeneralActionHistory({ ownerUserId: OTHER, generalActionId: action.id }),
+      lifecycle.listGeneralActionHistory({ actorUserId: OTHER, generalActionId: action.id }),
     ).resolves.toEqual([]);
   });
 });
@@ -523,14 +523,14 @@ describe("asset hints", () => {
     const action = await seedOpen();
 
     const edited = await lifecycle.editGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       edit: { assetHints: [{ label: "car registration" }] },
     });
     expect(edited.assetHints).toEqual([{ label: "car registration" }]);
 
     const events = await lifecycle.listGeneralActionHistory({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
     expect(events.at(-1)?.detailJson).toMatchObject({ editedAssetHints: true });
@@ -595,21 +595,21 @@ describe("people links", () => {
     });
 
     const linked = await lifecycle.setGeneralActionPeople({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       personIds: [person.id],
     });
     expect(linked.linkedPeople).toEqual([{ id: person.id, displayName: "Mara" }]);
 
     const cleared = await lifecycle.setGeneralActionPeople({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       personIds: [],
     });
     expect(cleared.linkedPeople).toEqual([]);
 
     const events = await lifecycle.listGeneralActionHistory({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
     expect(events.at(-1)?.detailJson).toMatchObject({ editedPeople: true, peopleLinked: 0 });
@@ -742,7 +742,7 @@ describe("household-scoped actions", () => {
     // The household owner role grants no window into a member's private actions.
     await expect(ids({ ownerUserId: OWNER })).resolves.not.toContain(memberPrivate.id);
     await expect(
-      lifecycle.getGeneralAction({ ownerUserId: OWNER, generalActionId: memberPrivate.id }),
+      lifecycle.getGeneralAction({ actorUserId: OWNER, generalActionId: memberPrivate.id }),
     ).rejects.toThrow(/Action not found/);
   });
 
@@ -756,7 +756,7 @@ describe("household-scoped actions", () => {
     });
 
     const completed = await lifecycle.completeGeneralAction({
-      ownerUserId: MEMBER,
+      actorUserId: MEMBER,
       generalActionId: action.id,
     });
 
@@ -769,7 +769,7 @@ describe("household-scoped actions", () => {
     });
 
     const events = await lifecycle.listGeneralActionHistory({
-      ownerUserId: MEMBER,
+      actorUserId: MEMBER,
       generalActionId: action.id,
     });
     expect(events.find((event) => event.kind === "completed")?.actorUserId).toBe(MEMBER);
@@ -786,7 +786,7 @@ describe("household-scoped actions", () => {
     });
 
     await expect(
-      lifecycle.completeGeneralAction({ ownerUserId: OTHER_MEMBER, generalActionId: action.id }),
+      lifecycle.completeGeneralAction({ actorUserId: OTHER_MEMBER, generalActionId: action.id }),
     ).rejects.toThrow(/Action not found/);
   });
 
@@ -803,14 +803,14 @@ describe("household-scoped actions", () => {
     // be able to rewrite its content — authoring stays the owner's (ADR 0153).
     await expect(
       lifecycle.editGeneralAction({
-        ownerUserId: MEMBER,
+        actorUserId: MEMBER,
         generalActionId: action.id,
         edit: { title: "hijacked" },
       }),
     ).rejects.toThrow(/Action not found/);
 
     const seen = await lifecycle.getGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
     expect(seen.title).toBe("Household chore");
@@ -838,7 +838,7 @@ describe("household-scoped actions", () => {
 
     await expect(
       lifecycle.setGeneralActionPeople({
-        ownerUserId: MEMBER,
+        actorUserId: MEMBER,
         generalActionId: action.id,
         personIds: [person.id],
       }),
@@ -863,14 +863,14 @@ describe("household-scoped actions", () => {
     });
     // While active, the member can read the action's history.
     await expect(
-      lifecycle.listGeneralActionHistory({ ownerUserId: MEMBER, generalActionId: action.id }),
+      lifecycle.listGeneralActionHistory({ actorUserId: MEMBER, generalActionId: action.id }),
     ).resolves.not.toEqual([]);
 
     await removeHouseholdMember(store, { householdId: household.id, userId: MEMBER });
 
     // Once removed, history closes to them — fail-closed, no residual leak.
     await expect(
-      lifecycle.listGeneralActionHistory({ ownerUserId: MEMBER, generalActionId: action.id }),
+      lifecycle.listGeneralActionHistory({ actorUserId: MEMBER, generalActionId: action.id }),
     ).resolves.toEqual([]);
   });
 
@@ -946,7 +946,7 @@ describe("routines (recurring general actions)", () => {
     expect(routine.recurrence).toEqual(CADENCE);
     expect(routine.status).toBe("open");
     const events = await lifecycle.listGeneralActionHistory({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
     expect(events.at(0)?.detailJson).toMatchObject({ recurring: true });
@@ -962,7 +962,7 @@ describe("routines (recurring general actions)", () => {
     });
 
     const completed = await lifecycle.completeGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
 
@@ -988,13 +988,13 @@ describe("routines (recurring general actions)", () => {
       recurrence: { interval: 1, unit: "week" },
     });
 
-    await lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
-    await lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+    await lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: routine.id });
+    await lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: routine.id });
 
     // Each occurrence's completion is retained — the trail grows, nothing is lost.
     await expect(historyKinds(routine.id)).resolves.toEqual(["created", "completed", "completed"]);
     const events = await lifecycle.listGeneralActionHistory({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
     expect(events.at(-1)?.detailJson).toMatchObject({ rolledForward: true });
@@ -1019,7 +1019,7 @@ describe("routines (recurring general actions)", () => {
     });
 
     const completed = await base.lifecycle.completeGeneralAction({
-      ownerUserId: MEMBER,
+      actorUserId: MEMBER,
       generalActionId: routine.id,
     });
 
@@ -1028,7 +1028,7 @@ describe("routines (recurring general actions)", () => {
     expect(completed).toMatchObject({ ownerUserId: OWNER, status: "open" });
     expect(completed.lastActorUserId).toBe(MEMBER);
     const events = await base.lifecycle.listGeneralActionHistory({
-      ownerUserId: MEMBER,
+      actorUserId: MEMBER,
       generalActionId: routine.id,
     });
     expect(events.at(-1)).toMatchObject({ kind: "completed", actorUserId: MEMBER });
@@ -1055,19 +1055,19 @@ describe("routines (recurring general actions)", () => {
     // A member who can see a household Routine may pause/resume it (act-not-author,
     // #180), keyed on the owner while recording the member as actor.
     const paused = await base.lifecycle.pauseGeneralAction({
-      ownerUserId: MEMBER,
+      actorUserId: MEMBER,
       generalActionId: routine.id,
     });
     expect(paused).toMatchObject({ ownerUserId: OWNER, status: "paused", lastActorUserId: MEMBER });
 
     const resumed = await base.lifecycle.resumeGeneralAction({
-      ownerUserId: MEMBER,
+      actorUserId: MEMBER,
       generalActionId: routine.id,
     });
     expect(resumed).toMatchObject({ ownerUserId: OWNER, status: "open", lastActorUserId: MEMBER });
 
     const events = await base.lifecycle.listGeneralActionHistory({
-      ownerUserId: MEMBER,
+      actorUserId: MEMBER,
       generalActionId: routine.id,
     });
     expect(events.map((event) => [event.kind, event.actorUserId])).toEqual([
@@ -1086,7 +1086,7 @@ describe("routines (recurring general actions)", () => {
     });
 
     const paused = await lifecycle.pauseGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
     expect(paused.status).toBe("paused");
@@ -1096,7 +1096,7 @@ describe("routines (recurring general actions)", () => {
     );
 
     const resumed = await lifecycle.resumeGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
     expect(resumed.status).toBe("open");
@@ -1112,10 +1112,10 @@ describe("routines (recurring general actions)", () => {
       dueAt: new Date("2020-01-01T00:00:00Z"),
       recurrence: { interval: 1, unit: "month" },
     });
-    await lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+    await lifecycle.pauseGeneralAction({ actorUserId: OWNER, generalActionId: routine.id });
 
     const resumed = await lifecycle.resumeGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
 
@@ -1124,7 +1124,7 @@ describe("routines (recurring general actions)", () => {
     // forward from now, so the resumed Routine reads as next-due, never overdue.
     expect(resumed.dueAt?.getTime()).toBeGreaterThan(Date.now());
     const events = await lifecycle.listGeneralActionHistory({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
     expect(events.at(-1)).toMatchObject({ kind: "resumed" });
@@ -1140,10 +1140,10 @@ describe("routines (recurring general actions)", () => {
       dueAt: future,
       recurrence: { interval: 3, unit: "month" },
     });
-    await lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+    await lifecycle.pauseGeneralAction({ actorUserId: OWNER, generalActionId: routine.id });
 
     const resumed = await lifecycle.resumeGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
     // Only overdue dates are rolled; a still-future one is preserved as chosen.
@@ -1159,12 +1159,12 @@ describe("routines (recurring general actions)", () => {
     });
     // Defer the Routine, giving it a resurface date, then pause it.
     await lifecycle.deferGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
       deferUntil: new Date("2027-01-01T00:00:00Z"),
     });
     const paused = await lifecycle.pauseGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
     // Pausing leaves `deferred`, so it must clear the resurface date like the other
@@ -1173,7 +1173,7 @@ describe("routines (recurring general actions)", () => {
     expect(paused.deferUntil).toBeNull();
 
     const resumed = await lifecycle.resumeGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
     expect(resumed.status).toBe("open");
@@ -1187,19 +1187,19 @@ describe("routines (recurring general actions)", () => {
       title: "Rotate the tires",
       recurrence: { interval: 6, unit: "month" },
     });
-    await lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+    await lifecycle.pauseGeneralAction({ actorUserId: OWNER, generalActionId: routine.id });
 
     // Turning a paused Routine one-time would leave a paused one-time Action — blocked.
     await expect(
       lifecycle.editGeneralAction({
-        ownerUserId: OWNER,
+        actorUserId: OWNER,
         generalActionId: routine.id,
         edit: { recurrence: null },
       }),
     ).rejects.toThrow(/Resume this routine/);
     // The invariant holds: it is still a paused Routine.
     const still = await lifecycle.getGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
     expect(still.status).toBe("paused");
@@ -1211,7 +1211,7 @@ describe("routines (recurring general actions)", () => {
     const action = await seedOpen();
 
     await expect(
-      lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: action.id }),
+      lifecycle.pauseGeneralAction({ actorUserId: OWNER, generalActionId: action.id }),
     ).rejects.toThrow(/Only a routine can be paused/);
   });
 
@@ -1222,10 +1222,10 @@ describe("routines (recurring general actions)", () => {
       title: "Deep clean",
       recurrence: { interval: 1, unit: "month" },
     });
-    await lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+    await lifecycle.pauseGeneralAction({ actorUserId: OWNER, generalActionId: routine.id });
 
     await expect(
-      lifecycle.completeGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id }),
+      lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: routine.id }),
     ).rejects.toThrow(/Cannot complete/);
   });
 
@@ -1236,10 +1236,10 @@ describe("routines (recurring general actions)", () => {
       title: "Old subscription review",
       recurrence: { interval: 1, unit: "year" },
     });
-    await lifecycle.pauseGeneralAction({ ownerUserId: OWNER, generalActionId: routine.id });
+    await lifecycle.pauseGeneralAction({ actorUserId: OWNER, generalActionId: routine.id });
 
     const archived = await lifecycle.archiveGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
     expect(archived.status).toBe("archived");
@@ -1252,14 +1252,14 @@ describe("routines (recurring general actions)", () => {
     expect(action.recurrence).toBeNull();
 
     const madeRoutine = await lifecycle.editGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       edit: { recurrence: { interval: 2, unit: "week" } },
     });
     expect(madeRoutine.recurrence).toEqual({ interval: 2, unit: "week" });
 
     const backToOneTime = await lifecycle.editGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       edit: { recurrence: null },
     });
@@ -1303,7 +1303,7 @@ describe("visibility transitions", () => {
     await expect(ids({ ownerUserId: MEMBER })).resolves.not.toContain(action.id);
 
     const widened = await lifecycle.setGeneralActionVisibility({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       scope: "household",
       householdId: household.id,
@@ -1312,7 +1312,7 @@ describe("visibility transitions", () => {
 
     await expect(ids({ ownerUserId: MEMBER })).resolves.toContain(action.id);
     const events = await lifecycle.listGeneralActionHistory({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
     });
     expect(events.at(-1)?.detailJson).toMatchObject({
@@ -1333,7 +1333,7 @@ describe("visibility transitions", () => {
     await expect(ids({ ownerUserId: MEMBER })).resolves.toContain(action.id);
 
     const narrowed = await lifecycle.setGeneralActionVisibility({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       scope: "private",
     });
@@ -1354,7 +1354,7 @@ describe("visibility transitions", () => {
 
     // Re-share with only OTHER_MEMBER — MEMBER must lose visibility, never keep it.
     await lifecycle.setGeneralActionVisibility({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       scope: "shared",
       householdId: household.id,
@@ -1376,13 +1376,13 @@ describe("visibility transitions", () => {
     });
     // MEMBER is in the audience, so history is visible to them.
     await expect(
-      lifecycle.listGeneralActionHistory({ ownerUserId: MEMBER, generalActionId: action.id }),
+      lifecycle.listGeneralActionHistory({ actorUserId: MEMBER, generalActionId: action.id }),
     ).resolves.not.toEqual([]);
 
     // Re-select the audience to exclude MEMBER — their history access closes with
     // their visibility, fail-closed.
     await lifecycle.setGeneralActionVisibility({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       scope: "shared",
       householdId: household.id,
@@ -1390,7 +1390,7 @@ describe("visibility transitions", () => {
     });
 
     await expect(
-      lifecycle.listGeneralActionHistory({ ownerUserId: MEMBER, generalActionId: action.id }),
+      lifecycle.listGeneralActionHistory({ actorUserId: MEMBER, generalActionId: action.id }),
     ).resolves.toEqual([]);
   });
 
@@ -1406,7 +1406,7 @@ describe("visibility transitions", () => {
     // MEMBER can see and act on it, but must not be able to re-scope it.
     await expect(
       lifecycle.setGeneralActionVisibility({
-        ownerUserId: MEMBER,
+        actorUserId: MEMBER,
         generalActionId: action.id,
         scope: "private",
       }),

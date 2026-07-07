@@ -20,7 +20,10 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const followup = await dismissSuggestedFollowup({ ownerUserId, followupId: input.followupId });
+    const followup = await dismissSuggestedFollowup({
+      actorUserId: ownerUserId,
+      followupId: input.followupId,
+    });
 
     return {
       followup: {

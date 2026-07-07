@@ -76,7 +76,10 @@ export function createSuggestedGeneralActionReview(
 
   /** Loads an owner-scoped action and asserts it is still an actionable proposal. */
   async function requireSuggested(input: GeneralActionActionInput): Promise<GeneralAction> {
-    const action = await store.getGeneralAction(input);
+    const action = await store.getGeneralAction({
+      ownerUserId: input.actorUserId,
+      generalActionId: input.generalActionId,
+    });
     if (!action) {
       throw new Error("Suggested action not found.");
     }
@@ -182,7 +185,10 @@ export function createSuggestedGeneralActionReview(
     async getSuggestedGeneralActionReview(
       input: GeneralActionActionInput,
     ): Promise<SuggestedGeneralActionReviewResult | null> {
-      const action = await store.getGeneralAction(input);
+      const action = await store.getGeneralAction({
+        ownerUserId: input.actorUserId,
+        generalActionId: input.generalActionId,
+      });
       if (action?.status !== "suggested") {
         return null;
       }
@@ -211,7 +217,10 @@ export function createSuggestedGeneralActionReview(
     async acceptSuggestedGeneralAction(
       input: AcceptSuggestedGeneralActionInput,
     ): Promise<SuggestedGeneralActionReviewResult> {
-      const existing = await store.getGeneralAction(input);
+      const existing = await store.getGeneralAction({
+        ownerUserId: input.actorUserId,
+        generalActionId: input.generalActionId,
+      });
       if (!existing) {
         throw new Error("Suggested action not found.");
       }
@@ -227,11 +236,20 @@ export function createSuggestedGeneralActionReview(
       const edit = generalActionEditSchema.parse(input.edit ?? {});
       const patch: GeneralActionPatch = {
         status: "open",
-        lastActorUserId: input.ownerUserId,
+        lastActorUserId: input.actorUserId,
         ...(await buildGeneralActionEditPatch(store, existing.ownerUserId, edit)),
       };
 
-      const sharesToWrite = await resolveAcceptScope(store, input, patch);
+      const sharesToWrite = await resolveAcceptScope(
+        store,
+        {
+          ownerUserId: input.actorUserId,
+          scope: input.scope,
+          householdId: input.householdId,
+          selectedUserIds: input.selectedUserIds,
+        },
+        patch,
+      );
 
       const updated = await store.updateGeneralAction({
         ownerUserId: existing.ownerUserId,
@@ -243,7 +261,7 @@ export function createSuggestedGeneralActionReview(
         await writeShares(store, {
           householdId: sharesToWrite.householdId,
           actionId: updated.id,
-          ownerUserId: input.ownerUserId,
+          ownerUserId: input.actorUserId,
           selectedUserIds: sharesToWrite.selectedUserIds,
         });
       }
@@ -254,7 +272,7 @@ export function createSuggestedGeneralActionReview(
         generalActionId: updated.id,
         ownerUserId: updated.ownerUserId,
         kind: "promoted",
-        actorUserId: input.ownerUserId,
+        actorUserId: input.actorUserId,
         detailJson: {
           previousStatus: existing.status,
           status: updated.status,
@@ -284,7 +302,7 @@ export function createSuggestedGeneralActionReview(
       }
 
       const patch: GeneralActionPatch = {
-        lastActorUserId: input.ownerUserId,
+        lastActorUserId: input.actorUserId,
         ...(await buildGeneralActionEditPatch(store, action.ownerUserId, edit)),
       };
 
@@ -298,7 +316,7 @@ export function createSuggestedGeneralActionReview(
         generalActionId: updated.id,
         ownerUserId: updated.ownerUserId,
         kind: "edited",
-        actorUserId: input.ownerUserId,
+        actorUserId: input.actorUserId,
         detailJson: {
           reviewEdit: true,
           editedTitle: edit.title !== undefined,
@@ -332,13 +350,13 @@ export function createSuggestedGeneralActionReview(
       const updated = await store.updateGeneralAction({
         ownerUserId: action.ownerUserId,
         generalActionId: action.id,
-        patch: { status: "dismissed", lastActorUserId: input.ownerUserId },
+        patch: { status: "dismissed", lastActorUserId: input.actorUserId },
       });
       await store.createGeneralActionEvent({
         generalActionId: updated.id,
         ownerUserId: updated.ownerUserId,
         kind: "dismissed",
-        actorUserId: input.ownerUserId,
+        actorUserId: input.actorUserId,
         detailJson: { previousStatus: action.status, status: updated.status, fromSuggestion: true },
       });
       return updated;
@@ -359,13 +377,13 @@ export function createSuggestedGeneralActionReview(
       const updated = await store.updateGeneralAction({
         ownerUserId: action.ownerUserId,
         generalActionId: action.id,
-        patch: { status: "ignored", lastActorUserId: input.ownerUserId },
+        patch: { status: "ignored", lastActorUserId: input.actorUserId },
       });
       await store.createGeneralActionEvent({
         generalActionId: updated.id,
         ownerUserId: updated.ownerUserId,
         kind: "ignored",
-        actorUserId: input.ownerUserId,
+        actorUserId: input.actorUserId,
         detailJson: { previousStatus: action.status, status: updated.status },
       });
       return updated;

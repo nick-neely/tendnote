@@ -80,9 +80,12 @@ export function createGeneralActionLifecycle(
    */
   async function requireAction(input: GeneralActionActionInput): Promise<GeneralAction> {
     const action =
-      (await store.getGeneralAction(input)) ??
+      (await store.getGeneralAction({
+        ownerUserId: input.actorUserId,
+        generalActionId: input.generalActionId,
+      })) ??
       (await store.getVisibleGeneralAction({
-        callerUserId: input.ownerUserId,
+        callerUserId: input.actorUserId,
         generalActionId: input.generalActionId,
       }));
 
@@ -100,7 +103,10 @@ export function createGeneralActionLifecycle(
    * re-scope it or rewrite whose people it links (fail closed; ADR 0153).
    */
   async function requireOwnedAction(input: GeneralActionActionInput): Promise<GeneralAction> {
-    const action = await store.getGeneralAction(input);
+    const action = await store.getGeneralAction({
+      ownerUserId: input.actorUserId,
+      generalActionId: input.generalActionId,
+    });
     if (!action) {
       throw new Error("Action not found.");
     }
@@ -147,10 +153,10 @@ export function createGeneralActionLifecycle(
     const updated = await store.updateGeneralAction({
       ownerUserId: current.ownerUserId,
       generalActionId: current.id,
-      patch: { status, lastActorUserId: input.ownerUserId, ...patchExtra },
+      patch: { status, lastActorUserId: input.actorUserId, ...patchExtra },
     });
 
-    await recordEvent(updated, EVENT_KIND_FOR_ACTION[action], input.ownerUserId, {
+    await recordEvent(updated, EVENT_KIND_FOR_ACTION[action], input.actorUserId, {
       previousStatus: current.status,
       status: updated.status,
       ...detail,
@@ -251,7 +257,7 @@ export function createGeneralActionLifecycle(
       }
 
       const patch: GeneralActionPatch = {
-        lastActorUserId: input.ownerUserId,
+        lastActorUserId: input.actorUserId,
         ...(await buildGeneralActionEditPatch(store, action.ownerUserId, edit)),
       };
 
@@ -261,7 +267,7 @@ export function createGeneralActionLifecycle(
         patch,
       });
 
-      await recordEvent(updated, "edited", input.ownerUserId, {
+      await recordEvent(updated, "edited", input.actorUserId, {
         editedTitle: edit.title !== undefined,
         editedNotes: edit.notes !== undefined,
         editedDueAt: edit.dueAt !== undefined,
@@ -292,7 +298,9 @@ export function createGeneralActionLifecycle(
     async setGeneralActionVisibility(input: SetGeneralActionVisibilityInput) {
       const action = await requireOwnedAction(input);
       const { scope, householdId } = await resolveVisibility(store, {
-        ownerUserId: input.ownerUserId,
+        // Owner-only path: requireOwnedAction guarantees actor == owner, so passing the
+        // actor as the visibility guard's ownerUserId resolves the owner's household.
+        ownerUserId: input.actorUserId,
         scope: input.scope,
         householdId: input.householdId,
         selectedUserIds: input.selectedUserIds,
@@ -312,19 +320,21 @@ export function createGeneralActionLifecycle(
       const updated = await store.updateGeneralAction({
         ownerUserId: action.ownerUserId,
         generalActionId: action.id,
-        patch: { scope, householdId, lastActorUserId: input.ownerUserId },
+        patch: { scope, householdId, lastActorUserId: input.actorUserId },
       });
 
       if (scope === "shared" && householdId) {
         await writeShares(store, {
           householdId,
           actionId: action.id,
-          ownerUserId: input.ownerUserId,
+          // Owner-only path (requireOwnedAction): actor == owner, so the shares are
+          // written as the owner.
+          ownerUserId: input.actorUserId,
           selectedUserIds: input.selectedUserIds ?? [],
         });
       }
 
-      await recordEvent(updated, "edited", input.ownerUserId, {
+      await recordEvent(updated, "edited", input.actorUserId, {
         editedVisibility: true,
         scope: updated.scope,
         previousScope: action.scope,
@@ -341,20 +351,22 @@ export function createGeneralActionLifecycle(
     async setGeneralActionPeople(input: SetGeneralActionPeopleInput) {
       const action = await requireOwnedAction(input);
       assertGeneralActionEditable(action.status);
-      const personIds = await verifyOwnedPeople(store, input.ownerUserId, input.personIds);
+      const personIds = await verifyOwnedPeople(store, input.actorUserId, input.personIds);
 
       await store.setGeneralActionPeople({
-        ownerUserId: input.ownerUserId,
+        // Owner-only path (requireOwnedAction): actor == owner, so the link set is
+        // rewritten under the owner's key.
+        ownerUserId: input.actorUserId,
         generalActionId: action.id,
         personIds,
       });
       const updated = await store.updateGeneralAction({
         ownerUserId: action.ownerUserId,
         generalActionId: action.id,
-        patch: { lastActorUserId: input.ownerUserId },
+        patch: { lastActorUserId: input.actorUserId },
       });
 
-      await recordEvent(updated, "edited", input.ownerUserId, {
+      await recordEvent(updated, "edited", input.actorUserId, {
         editedPeople: true,
         peopleLinked: personIds.length,
       });
@@ -398,10 +410,10 @@ export function createGeneralActionLifecycle(
           dueAt: nextDueAt,
           deferUntil: null,
           completedAt: null,
-          lastActorUserId: input.ownerUserId,
+          lastActorUserId: input.actorUserId,
         },
       });
-      await recordEvent(updated, "completed", input.ownerUserId, {
+      await recordEvent(updated, "completed", input.actorUserId, {
         previousStatus: current.status,
         status: updated.status,
         rolledForward: true,
@@ -467,7 +479,7 @@ export function createGeneralActionLifecycle(
     async deferGeneralAction(input: DeferGeneralActionInput) {
       const deferUntil = assertResurfaceDate(input.deferUntil);
       return transition(
-        { ownerUserId: input.ownerUserId, generalActionId: input.generalActionId },
+        { actorUserId: input.actorUserId, generalActionId: input.generalActionId },
         "defer",
         { deferUntil },
         { deferUntil: deferUntil.toISOString() },
@@ -531,9 +543,12 @@ export function createGeneralActionLifecycle(
      */
     async listGeneralActionHistory(input: GeneralActionActionInput) {
       const action =
-        (await store.getGeneralAction(input)) ??
+        (await store.getGeneralAction({
+          ownerUserId: input.actorUserId,
+          generalActionId: input.generalActionId,
+        })) ??
         (await store.getVisibleGeneralAction({
-          callerUserId: input.ownerUserId,
+          callerUserId: input.actorUserId,
           generalActionId: input.generalActionId,
         }));
       if (!action) {

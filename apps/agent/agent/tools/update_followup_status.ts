@@ -31,20 +31,20 @@ function applyTransition(input: UpdateFollowupInput, ownerUserId: string): Promi
 
   switch (input.status) {
     case "complete":
-      return completeFollowup({ ownerUserId, followupId });
+      return completeFollowup({ actorUserId: ownerUserId, followupId });
     case "dismiss":
-      return dismissFollowup({ ownerUserId, followupId });
+      return dismissFollowup({ actorUserId: ownerUserId, followupId });
     case "reopen":
-      return reopenFollowup({ ownerUserId, followupId });
+      return reopenFollowup({ actorUserId: ownerUserId, followupId });
     case "archive":
-      return archiveFollowup({ ownerUserId, followupId });
+      return archiveFollowup({ actorUserId: ownerUserId, followupId });
     case "snooze": {
       if (!input.dueAt) {
         throw new Error("Snoozing a follow-up needs a new due date.");
       }
 
       // Parsed here; the shared layer rejects anything that isn't a concrete date.
-      return snoozeFollowup({ ownerUserId, followupId, dueAt: new Date(input.dueAt) });
+      return snoozeFollowup({ actorUserId: ownerUserId, followupId, dueAt: new Date(input.dueAt) });
     }
   }
 }

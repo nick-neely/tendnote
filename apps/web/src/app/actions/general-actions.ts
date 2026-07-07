@@ -182,7 +182,7 @@ export async function editGeneralActionAction(input: {
       ...input.edit,
     });
     return editGeneralAction({
-      ownerUserId,
+      actorUserId: ownerUserId,
       generalActionId: parsed.generalActionId,
       edit: {
         ...(parsed.title !== undefined ? { title: parsed.title } : {}),
@@ -211,7 +211,7 @@ export async function setGeneralActionVisibilityAction(input: {
       parsed.visibilityChoice,
     );
     return setGeneralActionVisibility({
-      ownerUserId,
+      actorUserId: ownerUserId,
       generalActionId: parsed.generalActionId,
       scope,
       householdId,
@@ -229,7 +229,7 @@ export async function setGeneralActionPeopleAction(input: {
   return runMutation(ownerUserId, async () => {
     const parsed = peopleActionSchema.parse(input);
     return setGeneralActionPeople({
-      ownerUserId,
+      actorUserId: ownerUserId,
       generalActionId: parsed.generalActionId,
       personIds: parsed.personIds,
     });
@@ -239,7 +239,7 @@ export async function setGeneralActionPeopleAction(input: {
 function transitionAction(
   generalActionId: string,
   run: (input: {
-    ownerUserId: string;
+    actorUserId: string;
     generalActionId: string;
   }) => Promise<GeneralActionWithContext>,
 ): Promise<GeneralActionMutationResult> {
@@ -247,7 +247,7 @@ function transitionAction(
     const ownerUserId = await requireAdmittedOwnerForAction();
     return runMutation(ownerUserId, () => {
       const parsed = actionIdSchema.parse({ generalActionId });
-      return run({ ownerUserId, generalActionId: parsed.generalActionId });
+      return run({ actorUserId: ownerUserId, generalActionId: parsed.generalActionId });
     });
   })();
 }
@@ -297,7 +297,7 @@ export async function deferGeneralActionAction(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   return runMutation(ownerUserId, () => {
     const parsed = deferActionSchema.parse(input);
-    return deferGeneralAction({ ownerUserId, ...parsed });
+    return deferGeneralAction({ actorUserId: ownerUserId, ...parsed });
   });
 }
 
@@ -307,7 +307,7 @@ export async function listGeneralActionHistoryAction(input: {
   const parsed = actionIdSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
   const events = await listGeneralActionHistory({
-    ownerUserId,
+    actorUserId: ownerUserId,
     generalActionId: parsed.generalActionId,
   });
 

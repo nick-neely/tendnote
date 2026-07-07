@@ -30,7 +30,7 @@ export default defineTool({
     const ownerUserId = resolveOwnerUserId(ctx);
 
     const result = await acceptSuggestedFollowup({
-      ownerUserId,
+      actorUserId: ownerUserId,
       followupId: input.followupId,
       // Parse the proposed date here; the shared layer validates it is concrete.
       edit: input.edit

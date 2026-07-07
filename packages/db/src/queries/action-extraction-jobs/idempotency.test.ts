@@ -84,7 +84,7 @@ describe("action extraction idempotency and duplicate prevention", () => {
     await expectResolvedProposalNotReintroduced({
       title: "Replace the refrigerator water filter",
       resolve: (review, generalActionId) =>
-        review.dismissSuggestedGeneralAction({ ownerUserId: OWNER, generalActionId }),
+        review.dismissSuggestedGeneralAction({ actorUserId: OWNER, generalActionId }),
       expectedStatus: "dismissed",
     });
   });
@@ -111,7 +111,7 @@ describe("action extraction idempotency and duplicate prevention", () => {
     await expectResolvedProposalNotReintroduced({
       title: "Water the plants",
       resolve: (review, generalActionId) =>
-        review.ignoreSuggestedGeneralAction({ ownerUserId: OWNER, generalActionId }),
+        review.ignoreSuggestedGeneralAction({ actorUserId: OWNER, generalActionId }),
       expectedStatus: "ignored",
     });
   });

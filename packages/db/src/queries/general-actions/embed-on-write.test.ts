@@ -38,7 +38,7 @@ describe("general action embed-on-write", () => {
     scheduled.length = 0;
 
     await lifecycle.editGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: action.id,
       edit: { title: "New title" },
     });
@@ -72,11 +72,11 @@ describe("general action embed-on-write", () => {
     const actionId = suggested.action.id;
 
     await review.editSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: actionId,
       edit: { notes: "Every 6 months" },
     });
-    await review.acceptSuggestedGeneralAction({ ownerUserId: OWNER, generalActionId: actionId });
+    await review.acceptSuggestedGeneralAction({ actorUserId: OWNER, generalActionId: actionId });
 
     // Suggested → edited → accepted each re-embed the single proposal row.
     expect(scheduled).toEqual([

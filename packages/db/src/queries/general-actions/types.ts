@@ -161,9 +161,11 @@ export type InMemoryGeneralActionLifecycleStore = InMemorySourceRecordStore &
   HouseholdStore;
 
 export type GeneralActionActionInput = {
-  /** The acting user. For a private action this is the owner; for a household or
-   * selected-shared one it may be any member who can see the action (ADR 0153). */
-  ownerUserId: string;
+  /** The acting user, not necessarily the owner. For a private action this is the
+   * owner; for a household or selected-shared one it may be any member who can see the
+   * action (ADR 0153). Owner keying happens internally off the loaded record — this
+   * field only names who is acting (act, not author). */
+  actorUserId: string;
   generalActionId: string;
 };
 
@@ -212,7 +214,9 @@ export type SetGeneralActionVisibilityInput = GeneralActionActionInput & {
   selectedUserIds?: string[];
 };
 
-/** Replaces an Action's people links. The acting user must be able to see the action. */
+/** Replaces an Action's people links. Owner-only downstream: the acting user must own
+ * the action (rewriting whose people it links is an authoring act, not a view-and-act
+ * one; ADR 0153, 0155). */
 export type SetGeneralActionPeopleInput = GeneralActionActionInput & {
   personIds: string[];
 };

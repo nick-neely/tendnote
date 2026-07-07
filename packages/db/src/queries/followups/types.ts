@@ -111,7 +111,10 @@ export type CreateActiveFollowupInput = {
 };
 
 export type FollowupActionInput = {
-  ownerUserId: string;
+  /** The acting user, not necessarily the owner. For a private follow-up this is the
+   * owner; for a shared/household one it may be any member who can see it. Owner keying
+   * happens internally off the loaded record — this field only names who is acting. */
+  actorUserId: string;
   followupId: string;
 };
 

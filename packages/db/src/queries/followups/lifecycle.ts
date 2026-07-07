@@ -36,9 +36,12 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
   /** Loads an owner-scoped follow-up or throws so callers cannot touch another owner's. */
   async function requireFollowup(input: FollowupActionInput) {
     const followup =
-      (await store.getFollowup(input)) ??
+      (await store.getFollowup({
+        ownerUserId: input.actorUserId,
+        followupId: input.followupId,
+      })) ??
       (await store.getVisibleFollowup({
-        callerUserId: input.ownerUserId,
+        callerUserId: input.actorUserId,
         followupId: input.followupId,
       }));
 
@@ -56,7 +59,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
     const updated = await store.updateFollowup({
       ownerUserId: followup.ownerUserId,
       followupId: followup.id,
-      patch: { status, lastActorUserId: input.ownerUserId },
+      patch: { status, lastActorUserId: input.actorUserId },
     });
 
     await store.createAuditLogEntry({
@@ -65,7 +68,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
       entityType: "followup",
       entityId: updated.id,
       metadataJson: {
-        actorUserId: input.ownerUserId,
+        actorUserId: input.actorUserId,
         personId: updated.personId,
         previousStatus: followup.status,
         status: updated.status,
@@ -217,7 +220,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
       const updated = await store.updateFollowup({
         ownerUserId: followup.ownerUserId,
         followupId: followup.id,
-        patch: { ...patch, lastActorUserId: input.ownerUserId },
+        patch: { ...patch, lastActorUserId: input.actorUserId },
       });
 
       await store.createAuditLogEntry({
@@ -226,7 +229,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
         entityType: "followup",
         entityId: updated.id,
         metadataJson: {
-          actorUserId: input.ownerUserId,
+          actorUserId: input.actorUserId,
           personId: updated.personId,
           editedReason: edit.reason !== undefined,
           editedDueAt: edit.dueAt !== undefined,
@@ -261,7 +264,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
       const updated = await store.updateFollowup({
         ownerUserId: followup.ownerUserId,
         followupId: followup.id,
-        patch: { status, dueAt, lastActorUserId: input.ownerUserId },
+        patch: { status, dueAt, lastActorUserId: input.actorUserId },
       });
 
       await store.createAuditLogEntry({
@@ -270,7 +273,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
         entityType: "followup",
         entityId: updated.id,
         metadataJson: {
-          actorUserId: input.ownerUserId,
+          actorUserId: input.actorUserId,
           personId: updated.personId,
           previousStatus: followup.status,
           status: updated.status,

@@ -93,7 +93,7 @@ describe("get_suggested_general_action_review", () => {
 
     expect(result.found).toBe(true);
     expect(mocks.getSuggestedGeneralActionReview).toHaveBeenCalledWith({
-      ownerUserId: "user-1",
+      actorUserId: "user-1",
       generalActionId: ACTION_ID,
     });
   });
@@ -124,7 +124,7 @@ describe("accept_suggested_general_action — only promotes on explicit approval
     );
 
     const passed = mocks.acceptSuggestedGeneralAction.mock.calls[0]?.[0];
-    expect(passed.ownerUserId).toBe("user-1");
+    expect(passed.actorUserId).toBe("user-1");
     expect(passed.edit.title).toBe("Book the lakeside campsite");
     expect(passed.edit.dueAt).toBeInstanceOf(Date);
     expect(result.action.status).toBe("open");
@@ -149,7 +149,7 @@ describe("dismiss_suggested_general_action", () => {
     const result = await dismissTool.execute({ generalActionId: ACTION_ID }, ctx);
 
     expect(mocks.dismissSuggestedGeneralAction).toHaveBeenCalledWith({
-      ownerUserId: "user-1",
+      actorUserId: "user-1",
       generalActionId: ACTION_ID,
     });
     expect(result.action.status).toBe("dismissed");

@@ -90,7 +90,7 @@ export async function editFollowupAction(input: {
   });
   const ownerUserId = await requireAdmittedOwnerForAction();
   const followup = await editFollowup({
-    ownerUserId,
+    actorUserId: ownerUserId,
     followupId: parsed.followupId,
     edit: {
       ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
@@ -104,11 +104,11 @@ export async function editFollowupAction(input: {
 
 async function transitionAction(
   followupId: string,
-  run: (input: { ownerUserId: string; followupId: string }) => Promise<Followup>,
+  run: (input: { actorUserId: string; followupId: string }) => Promise<Followup>,
 ): Promise<FollowupView> {
   const parsed = followupActionSchema.parse({ followupId });
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const followup = await run({ ownerUserId, followupId: parsed.followupId });
+  const followup = await run({ actorUserId: ownerUserId, followupId: parsed.followupId });
 
   revalidatePerson(followup.personId);
   return toFollowupView(followup);
@@ -136,7 +136,7 @@ export async function snoozeFollowupAction(input: {
 }): Promise<FollowupView> {
   const parsed = snoozeFollowupActionSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const followup = await snoozeFollowup({ ownerUserId, ...parsed });
+  const followup = await snoozeFollowup({ actorUserId: ownerUserId, ...parsed });
 
   revalidatePerson(followup.personId);
   return toFollowupView(followup);

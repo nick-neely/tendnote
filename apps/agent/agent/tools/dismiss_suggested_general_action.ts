@@ -20,7 +20,7 @@ export default defineTool({
     const ownerUserId = resolveOwnerUserId(ctx);
 
     const action = await dismissSuggestedGeneralAction({
-      ownerUserId,
+      actorUserId: ownerUserId,
       generalActionId: input.generalActionId,
     });
 

@@ -71,7 +71,11 @@ export async function acceptSuggestedGeneralActionAction(input: {
   const { generalActionId } = actionSchema.parse({ generalActionId: input.generalActionId });
   const edit = parseReviewEdit(input.edit);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await acceptSuggestedGeneralAction({ ownerUserId, generalActionId, edit });
+  const result = await acceptSuggestedGeneralAction({
+    actorUserId: ownerUserId,
+    generalActionId,
+    edit,
+  });
 
   revalidateReviewSurfaces();
   return toView(ownerUserId, result);
@@ -84,7 +88,11 @@ export async function editSuggestedGeneralActionAction(input: {
   const { generalActionId } = actionSchema.parse({ generalActionId: input.generalActionId });
   const edit = parseReviewEdit(input.edit);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await editSuggestedGeneralAction({ ownerUserId, generalActionId, edit });
+  const result = await editSuggestedGeneralAction({
+    actorUserId: ownerUserId,
+    generalActionId,
+    edit,
+  });
 
   revalidateReviewSurfaces();
   return toView(ownerUserId, result);
@@ -95,7 +103,7 @@ export async function dismissSuggestedGeneralActionAction(input: {
 }): Promise<SuggestedGeneralActionResolution> {
   const { generalActionId } = actionSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const action = await dismissSuggestedGeneralAction({ ownerUserId, generalActionId });
+  const action = await dismissSuggestedGeneralAction({ actorUserId: ownerUserId, generalActionId });
 
   revalidateReviewSurfaces();
   return { generalActionId: action.id, status: action.status };
@@ -106,7 +114,7 @@ export async function ignoreSuggestedGeneralActionAction(input: {
 }): Promise<SuggestedGeneralActionResolution> {
   const { generalActionId } = actionSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const action = await ignoreSuggestedGeneralAction({ ownerUserId, generalActionId });
+  const action = await ignoreSuggestedGeneralAction({ actorUserId: ownerUserId, generalActionId });
 
   revalidateReviewSurfaces();
   return { generalActionId: action.id, status: action.status };

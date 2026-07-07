@@ -168,7 +168,7 @@ describe("suggested follow-up review surface", () => {
       [],
     );
     await expect(
-      review.acceptSuggestedFollowup({ ownerUserId: "intruder", followupId: result.followup.id }),
+      review.acceptSuggestedFollowup({ actorUserId: "intruder", followupId: result.followup.id }),
     ).rejects.toThrow(/not found/i);
   });
 });
@@ -179,7 +179,7 @@ describe("accept, edit-before-accept, dismiss", () => {
     const { result } = await seedSuggestion();
 
     const accepted = await review.acceptSuggestedFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: result.followup.id,
     });
 
@@ -197,7 +197,7 @@ describe("accept, edit-before-accept, dismiss", () => {
     const { result } = await seedSuggestion();
 
     const accepted = await review.acceptSuggestedFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: result.followup.id,
       edit: { reason: "Congratulate on the new role.", dueAt: new Date("2026-07-20T00:00:00Z") },
     });
@@ -212,7 +212,7 @@ describe("accept, edit-before-accept, dismiss", () => {
     const { result } = await seedSuggestion();
 
     const edited = await review.editSuggestedFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: result.followup.id,
       edit: { reason: "Maybe grab coffee instead." },
     });
@@ -227,7 +227,7 @@ describe("accept, edit-before-accept, dismiss", () => {
     const { result } = await seedSuggestion();
 
     const dismissed = await review.dismissSuggestedFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: result.followup.id,
     });
 
@@ -240,10 +240,10 @@ describe("accept, edit-before-accept, dismiss", () => {
   it("rejects accepting a follow-up that is no longer suggested", async () => {
     const { review, seedSuggestion } = await setup();
     const { result } = await seedSuggestion();
-    await review.acceptSuggestedFollowup({ ownerUserId: OWNER, followupId: result.followup.id });
+    await review.acceptSuggestedFollowup({ actorUserId: OWNER, followupId: result.followup.id });
 
     await expect(
-      review.acceptSuggestedFollowup({ ownerUserId: OWNER, followupId: result.followup.id }),
+      review.acceptSuggestedFollowup({ actorUserId: OWNER, followupId: result.followup.id }),
     ).rejects.toThrow(/Only suggested follow-ups/);
   });
 });

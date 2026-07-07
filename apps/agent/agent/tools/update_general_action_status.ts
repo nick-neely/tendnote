@@ -43,24 +43,24 @@ function applyTransition(
 
   switch (input.action) {
     case "complete":
-      return completeGeneralAction({ ownerUserId, generalActionId });
+      return completeGeneralAction({ actorUserId: ownerUserId, generalActionId });
     case "dismiss":
-      return dismissGeneralAction({ ownerUserId, generalActionId });
+      return dismissGeneralAction({ actorUserId: ownerUserId, generalActionId });
     case "reopen":
-      return reopenGeneralAction({ ownerUserId, generalActionId });
+      return reopenGeneralAction({ actorUserId: ownerUserId, generalActionId });
     case "archive":
-      return archiveGeneralAction({ ownerUserId, generalActionId });
+      return archiveGeneralAction({ actorUserId: ownerUserId, generalActionId });
     case "pause":
-      return pauseGeneralAction({ ownerUserId, generalActionId });
+      return pauseGeneralAction({ actorUserId: ownerUserId, generalActionId });
     case "resume":
-      return resumeGeneralAction({ ownerUserId, generalActionId });
+      return resumeGeneralAction({ actorUserId: ownerUserId, generalActionId });
     case "defer": {
       if (!input.deferUntil) {
         throw new Error("Deferring an action needs a concrete resurface date.");
       }
       // Parsed here; the shared layer rejects anything that isn't a concrete date.
       return deferGeneralAction({
-        ownerUserId,
+        actorUserId: ownerUserId,
         generalActionId,
         deferUntil: new Date(input.deferUntil),
       });

@@ -22,7 +22,7 @@ export default defineTool({
     const ownerUserId = resolveOwnerUserId(ctx);
 
     const review = await getSuggestedGeneralActionReview({
-      ownerUserId,
+      actorUserId: ownerUserId,
       generalActionId: input.generalActionId,
     });
 

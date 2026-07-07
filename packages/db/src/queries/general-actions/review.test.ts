@@ -47,7 +47,7 @@ async function setup() {
   }
 
   const historyKinds = async (generalActionId: string) =>
-    (await lifecycle.listGeneralActionHistory({ ownerUserId: OWNER, generalActionId })).map(
+    (await lifecycle.listGeneralActionHistory({ actorUserId: OWNER, generalActionId })).map(
       (event) => event.kind,
     );
 
@@ -141,7 +141,7 @@ describe("accept a suggested general action", () => {
     const { result } = await seedSuggested();
 
     const accepted = await review.acceptSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
 
@@ -163,7 +163,7 @@ describe("accept a suggested general action", () => {
     const { result } = await seedSuggested({ recurrence: { interval: 6, unit: "month" } });
 
     const accepted = await review.acceptSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
     expect(accepted.action.status).toBe("open");
@@ -175,7 +175,7 @@ describe("accept a suggested general action", () => {
     const { result } = await seedSuggested();
 
     const accepted = await review.acceptSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
       edit: { title: "Replace the water filter (kitchen)", notes: "Ordered a 2-pack" },
     });
@@ -188,11 +188,11 @@ describe("accept a suggested general action", () => {
     const { result } = await seedSuggested();
 
     const first = await review.acceptSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
     const second = await review.acceptSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
 
@@ -206,13 +206,13 @@ describe("accept a suggested general action", () => {
     const { review, seedSuggested } = await setup();
     const { result } = await seedSuggested();
     await review.ignoreSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
 
     await expect(
       review.acceptSuggestedGeneralAction({
-        ownerUserId: OWNER,
+        actorUserId: OWNER,
         generalActionId: result.action.id,
       }),
     ).rejects.toThrow(/set aside/);
@@ -234,7 +234,7 @@ describe("accept a suggested general action", () => {
     await expect(lifecycle.listActiveGeneralActions({ ownerUserId: MEMBER })).resolves.toEqual([]);
 
     await review.acceptSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
 
@@ -264,21 +264,21 @@ describe("accept a suggested general action", () => {
     ).resolves.toBeNull();
     await expect(
       lifecycle.listGeneralActionHistory({
-        ownerUserId: MEMBER,
+        actorUserId: MEMBER,
         generalActionId: result.action.id,
       }),
     ).resolves.toEqual([]);
 
     // Once accepted, the same member can see it and read its history.
     await review.acceptSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
     await expect(
       store.getVisibleGeneralAction({ callerUserId: MEMBER, generalActionId: result.action.id }),
     ).resolves.toMatchObject({ id: result.action.id });
     const memberHistory = await lifecycle.listGeneralActionHistory({
-      ownerUserId: MEMBER,
+      actorUserId: MEMBER,
       generalActionId: result.action.id,
     });
     expect(memberHistory.map((event) => event.kind)).toEqual(["suggested", "promoted"]);
@@ -291,7 +291,7 @@ describe("edit, dismiss, and ignore a suggested general action", () => {
     const { result } = await seedSuggested();
 
     const edited = await review.editSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
       edit: { title: "Replace the fridge filter" },
     });
@@ -305,7 +305,7 @@ describe("edit, dismiss, and ignore a suggested general action", () => {
     const { result } = await seedSuggested();
     await expect(
       review.editSuggestedGeneralAction({
-        ownerUserId: OWNER,
+        actorUserId: OWNER,
         generalActionId: result.action.id,
         edit: {},
       }),
@@ -317,7 +317,7 @@ describe("edit, dismiss, and ignore a suggested general action", () => {
     const { result } = await seedSuggested();
 
     const dismissed = await review.dismissSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
     expect(dismissed.status).toBe("dismissed");
@@ -331,7 +331,7 @@ describe("edit, dismiss, and ignore a suggested general action", () => {
     const { review, lifecycle, seedSuggested, historyKinds } = await setup();
     const { result } = await seedSuggested();
     await review.dismissSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
 
@@ -339,7 +339,7 @@ describe("edit, dismiss, and ignore a suggested general action", () => {
     // and the `reopened` history event records the change of mind so the promotion is
     // never silent.
     const reopened = await lifecycle.reopenGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
     expect(reopened.status).toBe("open");
@@ -355,7 +355,7 @@ describe("edit, dismiss, and ignore a suggested general action", () => {
     const { result } = await seedSuggested();
 
     const ignored = await review.ignoreSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
     expect(ignored.status).toBe("ignored");
@@ -367,21 +367,21 @@ describe("edit, dismiss, and ignore a suggested general action", () => {
     const { review, seedSuggested } = await setup();
     const { result } = await seedSuggested();
     await review.acceptSuggestedGeneralAction({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       generalActionId: result.action.id,
     });
 
     // Now open, not suggested: edit/dismiss/ignore must refuse.
     await expect(
       review.editSuggestedGeneralAction({
-        ownerUserId: OWNER,
+        actorUserId: OWNER,
         generalActionId: result.action.id,
         edit: { title: "x" },
       }),
     ).rejects.toThrow(/Only suggested actions/);
     await expect(
       review.dismissSuggestedGeneralAction({
-        ownerUserId: OWNER,
+        actorUserId: OWNER,
         generalActionId: result.action.id,
       }),
     ).rejects.toThrow(/Only suggested actions/);
