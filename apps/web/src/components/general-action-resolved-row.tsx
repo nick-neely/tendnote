@@ -1,16 +1,17 @@
 "use client";
 
-import { ArchiveIcon, HistoryIcon, RotateCcwIcon } from "lucide-react";
-import { useState, useTransition } from "react";
+import { RotateCcwIcon } from "lucide-react";
 import {
   archiveGeneralActionAction,
   reopenGeneralActionAction,
 } from "@/app/actions/general-actions";
-import { ActionHistoryDialog } from "@/components/general-action-history-dialog";
-import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import {
+  ActionRowControls,
+  useActionRowTransition,
+} from "@/components/general-action-row-controls";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import type { GeneralActionMutationResult, GeneralActionView } from "@/lib/general-action-view";
+import type { GeneralActionView } from "@/lib/general-action-view";
 
 const RESOLVED_LABEL: Record<string, string> = {
   completed: "Completed",
@@ -31,33 +32,7 @@ export function ResolvedActionRow({
   onReopen: (view: GeneralActionView) => void;
   onResolve: (id: string) => void;
 }) {
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busyKey, setBusyKey] = useState<"reopen" | "archive" | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function run(kind: "reopen" | "archive", action_: () => Promise<GeneralActionMutationResult>) {
-    setError(null);
-    setBusyKey(kind);
-    startTransition(async () => {
-      try {
-        const result = await action_();
-        if (!result.ok) {
-          setError(result.error);
-          setBusyKey(null);
-          return;
-        }
-        if (kind === "reopen") {
-          onReopen(result.view);
-        } else {
-          onResolve(action.id);
-        }
-      } catch {
-        setError(GENERIC_ERROR);
-        setBusyKey(null);
-      }
-    });
-  }
+  const { historyOpen, setHistoryOpen, error, busyKey, pending, run } = useActionRowTransition();
 
   return (
     <article className="flex flex-col gap-2 px-4 py-3">
@@ -69,21 +44,29 @@ export function ResolvedActionRow({
           {RESOLVED_LABEL[action.status] ?? action.status}
         </span>
       </div>
-      <div className="flex items-center justify-end gap-1.5">
-        <Button
-          disabled={pending}
-          onClick={() => setHistoryOpen(true)}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          <HistoryIcon />
-          History
-        </Button>
+      <ActionRowControls
+        action={action}
+        archiveBusy={busyKey === "archive"}
+        error={error}
+        historyOpen={historyOpen}
+        onArchive={() =>
+          run(
+            "archive",
+            () => archiveGeneralActionAction({ generalActionId: action.id }),
+            () => onResolve(action.id),
+          )
+        }
+        onHistoryOpenChange={setHistoryOpen}
+        pending={pending}
+      >
         <Button
           disabled={pending}
           onClick={() =>
-            run("reopen", () => reopenGeneralActionAction({ generalActionId: action.id }))
+            run(
+              "reopen",
+              () => reopenGeneralActionAction({ generalActionId: action.id }),
+              (view) => onReopen(view),
+            )
           }
           size="sm"
           type="button"
@@ -92,26 +75,7 @@ export function ResolvedActionRow({
           {busyKey === "reopen" ? <Spinner /> : <RotateCcwIcon />}
           Reopen
         </Button>
-        <Button
-          disabled={pending}
-          onClick={() =>
-            run("archive", () => archiveGeneralActionAction({ generalActionId: action.id }))
-          }
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          {busyKey === "archive" ? <Spinner /> : <ArchiveIcon />}
-          Archive
-        </Button>
-      </div>
-      {error ? <ErrorText message={error} /> : null}
-      <ActionHistoryDialog
-        generalActionId={action.id}
-        onOpenChange={setHistoryOpen}
-        open={historyOpen}
-        title={action.title}
-      />
+      </ActionRowControls>
     </article>
   );
 }

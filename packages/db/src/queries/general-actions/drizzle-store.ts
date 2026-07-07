@@ -20,6 +20,29 @@ import type { GeneralActionLifecycleStore, GeneralActionStore } from "./types";
 // the alias the shared `visibleHouseholdRecordSql` builder expects.
 const visibleGeneralActions = alias(generalActions, "ga");
 
+/**
+ * Owner-scoped fetch of a single General Action by id. Shared by the lifecycle store's
+ * `getGeneralAction` and the embedding store's `getGeneralActionForEmbedding` so the
+ * owner-scoping predicate stays identical across the two Drizzle stores.
+ */
+export async function selectOwnedGeneralAction(input: {
+  ownerUserId: string;
+  generalActionId: string;
+}) {
+  const [action] = await getDb()
+    .select()
+    .from(generalActions)
+    .where(
+      and(
+        eq(generalActions.id, input.generalActionId),
+        eq(generalActions.ownerUserId, input.ownerUserId),
+      ),
+    )
+    .limit(1);
+
+  return action ? generalActionSchema.parse(action) : null;
+}
+
 // Review-gated rows (suggested/ignored proposals) are owner-only: every scope-visible
 // read excludes them so a household member can never fetch or read the history of a
 // proposal that has not been accepted (ADRs 0151, 0152, 0153).
@@ -61,18 +84,7 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
       return generalActionSchema.parse(action);
     },
     async getGeneralAction(input) {
-      const [action] = await getDb()
-        .select()
-        .from(generalActions)
-        .where(
-          and(
-            eq(generalActions.id, input.generalActionId),
-            eq(generalActions.ownerUserId, input.ownerUserId),
-          ),
-        )
-        .limit(1);
-
-      return action ? generalActionSchema.parse(action) : null;
+      return selectOwnedGeneralAction(input);
     },
     async getVisibleGeneralAction(input) {
       const [action] = await getDb()

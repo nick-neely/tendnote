@@ -1,16 +1,18 @@
 "use client";
 
-import { ArchiveIcon, HistoryIcon, PlayIcon } from "lucide-react";
-import { useState, useTransition } from "react";
+import { PlayIcon } from "lucide-react";
 import {
   archiveGeneralActionAction,
   resumeGeneralActionAction,
 } from "@/app/actions/general-actions";
-import { ActionHistoryDialog } from "@/components/general-action-history-dialog";
-import { ActionRoutineChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import {
+  ActionRowControls,
+  useActionRowTransition,
+} from "@/components/general-action-row-controls";
+import { ActionRoutineChip } from "@/components/general-action-shared";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import type { GeneralActionMutationResult, GeneralActionView } from "@/lib/general-action-view";
+import type { GeneralActionView } from "@/lib/general-action-view";
 
 /**
  * A paused Routine, kept quietly reachable so it can be resumed or retired. Resume
@@ -27,33 +29,7 @@ export function PausedRoutineRow({
   onResume: (view: GeneralActionView) => void;
   onResolve: (id: string) => void;
 }) {
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busyKey, setBusyKey] = useState<"resume" | "archive" | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function run(kind: "resume" | "archive", mutate: () => Promise<GeneralActionMutationResult>) {
-    setError(null);
-    setBusyKey(kind);
-    startTransition(async () => {
-      try {
-        const result = await mutate();
-        if (!result.ok) {
-          setError(result.error);
-          setBusyKey(null);
-          return;
-        }
-        if (kind === "resume") {
-          onResume(result.view);
-        } else {
-          onResolve(action.id);
-        }
-      } catch {
-        setError(GENERIC_ERROR);
-        setBusyKey(null);
-      }
-    });
-  }
+  const { historyOpen, setHistoryOpen, error, busyKey, pending, run } = useActionRowTransition();
 
   return (
     <article className="flex flex-col gap-2 px-4 py-3">
@@ -75,21 +51,29 @@ export function PausedRoutineRow({
           </span>
         </div>
       </div>
-      <div className="flex items-center justify-end gap-1.5">
-        <Button
-          disabled={pending}
-          onClick={() => setHistoryOpen(true)}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          <HistoryIcon />
-          History
-        </Button>
+      <ActionRowControls
+        action={action}
+        archiveBusy={busyKey === "archive"}
+        error={error}
+        historyOpen={historyOpen}
+        onArchive={() =>
+          run(
+            "archive",
+            () => archiveGeneralActionAction({ generalActionId: action.id }),
+            () => onResolve(action.id),
+          )
+        }
+        onHistoryOpenChange={setHistoryOpen}
+        pending={pending}
+      >
         <Button
           disabled={pending}
           onClick={() =>
-            run("resume", () => resumeGeneralActionAction({ generalActionId: action.id }))
+            run(
+              "resume",
+              () => resumeGeneralActionAction({ generalActionId: action.id }),
+              (view) => onResume(view),
+            )
           }
           size="sm"
           type="button"
@@ -98,26 +82,7 @@ export function PausedRoutineRow({
           {busyKey === "resume" ? <Spinner /> : <PlayIcon />}
           Resume
         </Button>
-        <Button
-          disabled={pending}
-          onClick={() =>
-            run("archive", () => archiveGeneralActionAction({ generalActionId: action.id }))
-          }
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          {busyKey === "archive" ? <Spinner /> : <ArchiveIcon />}
-          Archive
-        </Button>
-      </div>
-      {error ? <ErrorText message={error} /> : null}
-      <ActionHistoryDialog
-        generalActionId={action.id}
-        onOpenChange={setHistoryOpen}
-        open={historyOpen}
-        title={action.title}
-      />
+      </ActionRowControls>
     </article>
   );
 }

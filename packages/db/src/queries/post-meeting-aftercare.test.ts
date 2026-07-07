@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { CalendarAttendee, CalendarEventSummary } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
 import type { CalendarReadRequest } from "./calendar";
@@ -14,6 +12,7 @@ import {
   createInMemoryScheduledWorkflowDeliveryStore,
   createScheduledWorkflowDeliveryService,
 } from "./scheduled-workflow-deliveries";
+import { expectNoForbiddenImports } from "./workflow-boundary-fixtures";
 
 const OWNER = "owner-1";
 const NOW = new Date("2026-07-02T18:00:00.000Z");
@@ -293,15 +292,9 @@ describe("Post-Meeting Aftercare workflow", () => {
   });
 
   it("does not import durable memory, active follow-up, draft, or external-send mutations", () => {
-    const source = readFileSync(
-      join(process.cwd(), "src/queries/post-meeting-aftercare.ts"),
-      "utf8",
-    );
-    const importSources = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1] ?? "");
-
-    for (const moduleId of importSources) {
-      expect(moduleId).not.toMatch(/queries\/(followups|memories|source-records|drafts|gmail)/);
-      expect(moduleId).not.toMatch(/sendgrid|twilio|slack|resend|nodemailer/i);
-    }
+    expectNoForbiddenImports("src/queries/post-meeting-aftercare.ts", [
+      /queries\/(followups|memories|source-records|drafts|gmail)/,
+      /sendgrid|twilio|slack|resend|nodemailer/i,
+    ]);
   });
 });

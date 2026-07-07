@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createGeneralActionAreaManager } from "../general-action-areas/lifecycle";
 import { createGeneralActionLifecycle } from "../general-actions/lifecycle";
 import { createSuggestedGeneralActionReview } from "../general-actions/review";
+import { seedHouseholdWithMembers } from "../households/household-fixtures";
 import { createInMemoryActionExtractionJobStore } from "./in-memory-store";
 import { createActionExtractionProcessor } from "./processor";
 
@@ -24,26 +25,14 @@ describe("refrigerator water filter proof scenario", () => {
     // Owner has a Home Area and an active household — the shared-home context the owner
     // themselves scoped the capture to (guild/channel context never widens scope).
     const home = await areas.createArea({ ownerUserId: OWNER, name: "Home" });
-    const household = await store.createHouseholdWorkspace({
+    const household = await seedHouseholdWithMembers(store, {
       ownerUserId: OWNER,
       name: "Home",
-      defaultScope: "private",
+      members: [
+        [OWNER, "owner"],
+        [MEMBER, "member"],
+      ],
     });
-    for (const [userId, role] of [
-      [OWNER, "owner"],
-      [MEMBER, "member"],
-    ] as const) {
-      await store.createHouseholdMembership({
-        householdId: household.id,
-        userId,
-        invitedByUserId: OWNER,
-        role,
-        status: "active",
-        invitedAt: new Date("2026-06-01T00:00:00Z"),
-        acceptedAt: new Date("2026-06-01T00:00:00Z"),
-        removedAt: null,
-      });
-    }
 
     const source = await store.createSourceRecord({
       ownerUserId: OWNER,
@@ -84,15 +73,18 @@ describe("refrigerator water filter proof scenario", () => {
     });
     expect(actions).toHaveLength(1);
     const action = actions[0];
-    expect(action?.status).toBe("suggested");
-    expect(action?.title).toBe("Replace the refrigerator water filter");
-    expect(action?.recurrence).toEqual({ interval: 6, unit: "month" });
-    expect(action?.areaId).toBe(home.id);
-    expect(action?.assetHints).toEqual([{ label: "refrigerator water filter" }]);
-    expect(action?.scope).toBe("household");
-    expect(action?.householdId).toBe(household.id);
-    expect(action?.sourceRecordId).toBe(source.id);
-    expect(action?.notes).toBe("Filter is due; keep the water clean");
+    if (!action) {
+      throw new Error("expected a suggested action");
+    }
+    expect(action.status).toBe("suggested");
+    expect(action.title).toBe("Replace the refrigerator water filter");
+    expect(action.recurrence).toEqual({ interval: 6, unit: "month" });
+    expect(action.areaId).toBe(home.id);
+    expect(action.assetHints).toEqual([{ label: "refrigerator water filter" }]);
+    expect(action.scope).toBe("household");
+    expect(action.householdId).toBe(household.id);
+    expect(action.sourceRecordId).toBe(source.id);
+    expect(action.notes).toBe("Filter is due; keep the water clean");
 
     // Still a proposal: never on the active or resolved Actions ledger until accepted.
     await expect(lifecycle.listActiveGeneralActions({ ownerUserId: OWNER })).resolves.toEqual([]);
@@ -103,9 +95,9 @@ describe("refrigerator water filter proof scenario", () => {
     const review = createSuggestedGeneralActionReview(store);
     await review.acceptSuggestedGeneralAction({
       ownerUserId: OWNER,
-      generalActionId: action?.id ?? "",
+      generalActionId: action.id,
     });
     const memberView = await lifecycle.listActiveGeneralActions({ ownerUserId: MEMBER });
-    expect(memberView.map((a) => a.id)).toEqual([action?.id]);
+    expect(memberView.map((a) => a.id)).toEqual([action.id]);
   });
 });

@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { generalActionViewFixture } from "@/components/general-action-fixtures";
 import { filterActionsByArea } from "@/lib/general-action-area-filter";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionView } from "@/lib/general-action-view";
@@ -26,6 +27,9 @@ vi.mock("@/app/actions/general-action-areas", () => ({
   unarchiveGeneralActionAreaAction: vi.fn(),
 }));
 
+// vitest hoists `vi.mock` factories above imports, so this standard mock boilerplate
+// cannot be shared without fragile dynamic-import gymnastics that obscure the idiom.
+// fallow-ignore-next-line code-duplication
 vi.mock("@/app/actions/suggested-general-actions", () => ({
   acceptSuggestedGeneralActionAction: vi.fn(),
   dismissSuggestedGeneralActionAction: vi.fn(),
@@ -39,32 +43,7 @@ vi.mock("next/navigation", () => ({
 
 import { ActionsSurface } from "./actions-surface";
 
-function actionView(overrides: Partial<GeneralActionView> = {}): GeneralActionView {
-  return {
-    id: "11111111-1111-1111-1111-111111111111",
-    title: "Replace the water filter",
-    notes: null,
-    links: [],
-    assetHints: [],
-    linkedPeople: [],
-    status: "open",
-    recurrence: null,
-    isRoutine: false,
-    recurrenceLabel: null,
-    scope: "private",
-    visibilityLabel: "Only me",
-    owned: true,
-    ownerUserId: "owner-1",
-    areaId: null,
-    dueAtISO: null,
-    dueAtDate: "",
-    deferUntilISO: null,
-    deferUntilDate: "",
-    surfaceState: "unscheduled",
-    surfaceLabel: "No date",
-    ...overrides,
-  };
-}
+const actionView = generalActionViewFixture;
 
 function area(id: string, name: string, archived = false): GeneralActionAreaView {
   return { id, name, archived };

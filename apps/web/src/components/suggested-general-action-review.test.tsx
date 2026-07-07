@@ -1,8 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { generalActionViewFixture } from "@/components/general-action-fixtures";
 import type { GeneralActionView } from "@/lib/general-action-view";
 import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 
+// vitest hoists `vi.mock` factories above imports, so this standard mock boilerplate
+// cannot be shared without fragile dynamic-import gymnastics that obscure the idiom.
+// fallow-ignore-next-line code-duplication
 vi.mock("@/app/actions/suggested-general-actions", () => ({
   acceptSuggestedGeneralActionAction: vi.fn(),
   dismissSuggestedGeneralActionAction: vi.fn(),
@@ -17,30 +21,24 @@ vi.mock("next/navigation", () => ({
 import { SuggestedGeneralActionReviewCard } from "./suggested-general-action-review";
 
 function actionView(overrides: Partial<GeneralActionView> = {}): GeneralActionView {
-  return {
-    id: "11111111-1111-1111-1111-111111111111",
+  return generalActionViewFixture({
     title: "Replace the refrigerator water filter",
     notes: "Model MWF",
-    links: [],
     assetHints: [{ label: "fridge water filter" }],
-    linkedPeople: [],
     status: "suggested",
     recurrence: { interval: 6, unit: "month" },
     isRoutine: true,
     recurrenceLabel: "Every 6 months",
     scope: "household",
     visibilityLabel: "Home",
-    owned: true,
     ownerUserId: "user-1",
     areaId: "area-1",
     dueAtISO: "2026-08-01T00:00:00.000Z",
     dueAtDate: "2026-08-01",
-    deferUntilISO: null,
-    deferUntilDate: "",
     surfaceState: "upcoming",
     surfaceLabel: "Due Aug 1",
     ...overrides,
-  };
+  });
 }
 
 function view(

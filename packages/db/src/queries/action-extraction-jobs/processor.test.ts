@@ -1,6 +1,6 @@
 import { createFakeSuggestedActionExtractionAdapter } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { createHarness, OWNER } from "./harness";
+import { createHarness, enqueueAndProcess, OWNER } from "./harness";
 
 describe("action extraction job lifecycle", () => {
   it("proposes a review-gated Suggested General Action grounded in the source record", async () => {
@@ -89,9 +89,8 @@ describe("action extraction job lifecycle", () => {
       extractionAdapter: adapter,
     });
     const source = await captureRecord();
-    const { job } = await processor.enqueueActionExtractionJob({ sourceRecordId: source.id });
 
-    const result = await processor.processActionExtractionJob({ jobId: job.id });
+    const result = await enqueueAndProcess(processor, source.id);
 
     expect(result.outcome).toBe("completed");
     expect(result.suggestedActionIds).toHaveLength(0);

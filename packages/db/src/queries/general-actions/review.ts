@@ -4,8 +4,10 @@ import {
   generalActionEditSchema,
 } from "@tendnote/domain";
 import {
+  buildCreateGeneralActionValues,
   buildGeneralActionEditPatch,
   isEmptyGeneralActionEdit,
+  resolveAcceptScope,
   resolveAreaId,
   resolveVisibility,
   verifyOwnedPeople,
@@ -126,27 +128,18 @@ export function createSuggestedGeneralActionReview(
         ? await verifyOwnedPeople(store, input.ownerUserId, input.personIds)
         : [];
 
-      const action = await store.createGeneralAction({
-        ownerUserId: input.ownerUserId,
-        title: input.title,
-        notes: input.notes ?? null,
-        links: input.links ?? [],
-        assetHints: input.assetHints ?? [],
-        status: "suggested",
-        dueAt: input.dueAt ?? null,
-        deferUntil: input.deferUntil ?? null,
-        recurrence: input.recurrence ?? null,
-        sourceRecordId: sourceRecord.id,
-        areaId,
-        scope,
-        householdId,
-        // Creator provenance: who proposed it. The accepting user is stamped as actor
-        // on promotion, so accepted-by provenance is preserved without losing the
-        // proposer (ADR 0154).
-        createdByUserId: input.ownerUserId,
-        lastActorUserId: input.ownerUserId,
-        completedAt: null,
-      });
+      // Creator provenance: who proposed it. The accepting user is stamped as actor on
+      // promotion, so accepted-by provenance is preserved without losing the proposer
+      // (ADR 0154). Shared value defaults live in `buildCreateGeneralActionValues`.
+      const action = await store.createGeneralAction(
+        buildCreateGeneralActionValues(input, {
+          status: "suggested",
+          sourceRecordId: sourceRecord.id,
+          areaId,
+          scope,
+          householdId,
+        }),
+      );
 
       if (personIds.length > 0) {
         await store.setGeneralActionPeople({
@@ -238,23 +231,7 @@ export function createSuggestedGeneralActionReview(
         ...(await buildGeneralActionEditPatch(store, existing.ownerUserId, edit)),
       };
 
-      // Finalize visibility only when the accept explicitly chooses a scope; otherwise
-      // keep the proposal's scope. Re-running the shared visibility guard lets a reviewer
-      // widen a proposal to a selected-shared audience the proposal itself couldn't hold.
-      let sharesToWrite: { householdId: string; selectedUserIds: string[] } | null = null;
-      if (input.scope !== undefined) {
-        const { scope, householdId } = await resolveVisibility(store, {
-          ownerUserId: input.ownerUserId,
-          scope: input.scope,
-          householdId: input.householdId,
-          selectedUserIds: input.selectedUserIds,
-        });
-        patch.scope = scope;
-        patch.householdId = householdId;
-        if (scope === "shared" && householdId) {
-          sharesToWrite = { householdId, selectedUserIds: input.selectedUserIds ?? [] };
-        }
-      }
+      const sharesToWrite = await resolveAcceptScope(store, input, patch);
 
       const updated = await store.updateGeneralAction({
         ownerUserId: existing.ownerUserId,

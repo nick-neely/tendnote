@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { GeneralAction, GeneralActionRecurrence } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -14,6 +12,7 @@ import {
   createInMemoryScheduledWorkflowDeliveryStore,
   createScheduledWorkflowDeliveryService,
 } from "./scheduled-workflow-deliveries";
+import { expectNoForbiddenImports } from "./workflow-boundary-fixtures";
 
 const OWNER = "owner-1";
 const HOUSEHOLD_ID = "55555555-5555-5555-5555-555555555555";
@@ -387,14 +386,11 @@ describe("action summary scheduled dispatch (at most once per local day)", () =>
 
 describe("action summary out-of-scope boundaries", () => {
   it("introduces no notification, reminder, or external-send system (out of scope)", () => {
-    const source = readFileSync(join(process.cwd(), "src/queries/action-summary.ts"), "utf8");
-    const importSources = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1] ?? "");
-
-    for (const moduleId of importSources) {
-      // No push/email/SMS, notification center, or provider-side task/calendar writes.
-      expect(moduleId).not.toMatch(/sendgrid|twilio|resend|nodemailer|firebase|apns|web-push/i);
-      expect(moduleId).not.toMatch(/queries\/(gmail|drafts|calendar)/);
-      expect(moduleId).not.toMatch(/notification/i);
-    }
+    // No push/email/SMS, notification center, or provider-side task/calendar writes.
+    expectNoForbiddenImports("src/queries/action-summary.ts", [
+      /sendgrid|twilio|resend|nodemailer|firebase|apns|web-push/i,
+      /queries\/(gmail|drafts|calendar)/,
+      /notification/i,
+    ]);
   });
 });

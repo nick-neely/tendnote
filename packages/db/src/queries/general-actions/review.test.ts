@@ -1,6 +1,7 @@
 import type { SourceRecord } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { createGeneralActionAreaManager } from "../general-action-areas/lifecycle";
+import { seedHouseholdWithMembers } from "../households/household-fixtures";
 import { createInMemoryGeneralActionLifecycleStore } from "./in-memory-store";
 import { createGeneralActionLifecycle } from "./lifecycle";
 import { createSuggestedGeneralActionReview } from "./review";
@@ -51,6 +52,22 @@ async function setup() {
     );
 
   return { store, review, lifecycle, areas, seedSource, seedSuggested, historyKinds };
+}
+
+/**
+ * Assert a promoted proposal is the owner's sole active ledger entry and carries the given
+ * history trail. Shared by the accept- and reopen-in-place cases, which agree on the ledger
+ * shape and differ only in the exact sequence of history kinds.
+ */
+async function expectSoleActiveWithHistory(
+  lifecycle: Awaited<ReturnType<typeof setup>>["lifecycle"],
+  historyKinds: Awaited<ReturnType<typeof setup>>["historyKinds"],
+  actionId: string,
+  expectedHistory: string[],
+) {
+  const active = await lifecycle.listActiveGeneralActions({ ownerUserId: OWNER });
+  expect(active.map((a) => a.id)).toEqual([actionId]);
+  await expect(historyKinds(actionId)).resolves.toEqual(expectedHistory);
 }
 
 describe("suggest a general action", () => {
@@ -135,9 +152,10 @@ describe("accept a suggested general action", () => {
     expect(accepted.action.lastActorUserId).toBe(OWNER);
 
     // It now appears on the active ledger; no second action was created.
-    const active = await lifecycle.listActiveGeneralActions({ ownerUserId: OWNER });
-    expect(active.map((a) => a.id)).toEqual([result.action.id]);
-    await expect(historyKinds(result.action.id)).resolves.toEqual(["suggested", "promoted"]);
+    await expectSoleActiveWithHistory(lifecycle, historyKinds, result.action.id, [
+      "suggested",
+      "promoted",
+    ]);
   });
 
   it("keeps a cadence so an accepted recurring proposal becomes a Routine", async () => {
@@ -202,26 +220,14 @@ describe("accept a suggested general action", () => {
 
   it("finalizes a household scope at acceptance so a member can see the promoted action", async () => {
     const { store, review, lifecycle, seedSuggested } = await setup();
-    const household = await store.createHouseholdWorkspace({
+    const household = await seedHouseholdWithMembers(store, {
       ownerUserId: OWNER,
       name: "Home",
-      defaultScope: "private",
+      members: [
+        [OWNER, "owner"],
+        [MEMBER, "member"],
+      ],
     });
-    for (const [userId, role] of [
-      [OWNER, "owner"],
-      [MEMBER, "member"],
-    ] as const) {
-      await store.createHouseholdMembership({
-        householdId: household.id,
-        userId,
-        invitedByUserId: OWNER,
-        role,
-        status: "active",
-        invitedAt: new Date("2026-06-01T00:00:00Z"),
-        acceptedAt: new Date("2026-06-01T00:00:00Z"),
-        removedAt: null,
-      });
-    }
     const { result } = await seedSuggested({ scope: "household", householdId: household.id });
 
     // A still-suggested household proposal is not on any member's active ledger.
@@ -241,26 +247,14 @@ describe("accept a suggested general action", () => {
 
   it("keeps a still-suggested household proposal owner-only on GET and HISTORY", async () => {
     const { store, review, lifecycle, seedSuggested } = await setup();
-    const household = await store.createHouseholdWorkspace({
+    const household = await seedHouseholdWithMembers(store, {
       ownerUserId: OWNER,
       name: "Home",
-      defaultScope: "private",
+      members: [
+        [OWNER, "owner"],
+        [MEMBER, "member"],
+      ],
     });
-    for (const [userId, role] of [
-      [OWNER, "owner"],
-      [MEMBER, "member"],
-    ] as const) {
-      await store.createHouseholdMembership({
-        householdId: household.id,
-        userId,
-        invitedByUserId: OWNER,
-        role,
-        status: "active",
-        invitedAt: new Date("2026-06-01T00:00:00Z"),
-        acceptedAt: new Date("2026-06-01T00:00:00Z"),
-        removedAt: null,
-      });
-    }
     const { result } = await seedSuggested({ scope: "household", householdId: household.id });
 
     // A member cannot fetch a not-yet-accepted household proposal by id, nor read its
@@ -349,9 +343,7 @@ describe("edit, dismiss, and ignore a suggested general action", () => {
       generalActionId: result.action.id,
     });
     expect(reopened.status).toBe("open");
-    const active = await lifecycle.listActiveGeneralActions({ ownerUserId: OWNER });
-    expect(active.map((a) => a.id)).toEqual([result.action.id]);
-    await expect(historyKinds(result.action.id)).resolves.toEqual([
+    await expectSoleActiveWithHistory(lifecycle, historyKinds, result.action.id, [
       "suggested",
       "dismissed",
       "reopened",

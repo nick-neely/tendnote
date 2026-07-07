@@ -36,6 +36,43 @@ const inputSchema = z.object({
 });
 
 type ListWindow = NonNullable<z.infer<typeof inputSchema>["window"]>;
+type ListLedger = NonNullable<z.infer<typeof inputSchema>["ledger"]>;
+
+/** The owner-scoped list reader for a ledger choice. */
+function readerForLedger(ledger: ListLedger) {
+  if (ledger === "paused") {
+    return listPausedGeneralActions;
+  }
+  if (ledger === "resolved") {
+    return listResolvedGeneralActions;
+  }
+  return listActiveGeneralActions;
+}
+
+/**
+ * Applies the client-side window and Routine filters (active ledger only) and the caller's
+ * post-filter limit. The window filter only makes sense over live surfacing rows, so paused
+ * Routines and resolved actions pass through untouched.
+ */
+function applyActiveListFilters(
+  actions: GeneralActionWithContext[],
+  input: { window?: ListWindow; routinesOnly?: boolean; limit?: number },
+  flags: { windowsActive: boolean; postFilters: boolean },
+): GeneralActionWithContext[] {
+  let result = actions;
+  if (flags.windowsActive && input.window) {
+    const now = new Date();
+    const { window } = input;
+    result = result.filter((action) => matchesWindow(action, window, now));
+  }
+  if (input.routinesOnly) {
+    result = result.filter((action) => action.recurrence !== null);
+  }
+  if (flags.postFilters && input.limit !== undefined) {
+    result = result.slice(0, input.limit);
+  }
+  return result;
+}
 
 /** Local midnight of `daysAhead` from today, for exclusive end-of-window cutoffs. */
 function startOfDay(daysAhead: number): Date {
@@ -52,6 +89,21 @@ function surfacingTime(action: GeneralActionWithContext): Date | null {
   return action.deferUntil ?? action.dueAt;
 }
 
+/** Whether an action's surfacing instant falls before local midnight `daysAhead` from today. */
+function surfacesBefore(action: GeneralActionWithContext, daysAhead: number): boolean {
+  const surfacing = surfacingTime(action);
+  return surfacing !== null && surfacing.getTime() < startOfDay(daysAhead).getTime();
+}
+
+/** Whether a deferred action's resurface date has arrived (as of `now`). */
+function isResurfaced(action: GeneralActionWithContext, now: Date): boolean {
+  return (
+    action.status === "deferred" &&
+    action.deferUntil !== null &&
+    action.deferUntil.getTime() <= now.getTime()
+  );
+}
+
 /** Applies one date/state window to the active ledger. A plain filter, never ranking. */
 function matchesWindow(action: GeneralActionWithContext, window: ListWindow, now: Date): boolean {
   switch (window) {
@@ -60,23 +112,13 @@ function matchesWindow(action: GeneralActionWithContext, window: ListWindow, now
     case "deferred":
       return action.status === "deferred";
     case "resurfaced":
-      return (
-        action.status === "deferred" &&
-        action.deferUntil !== null &&
-        action.deferUntil.getTime() <= now.getTime()
-      );
-    case "overdue": {
-      const surfacing = surfacingTime(action);
-      return surfacing !== null && surfacing.getTime() < startOfDay(0).getTime();
-    }
-    case "today": {
-      const surfacing = surfacingTime(action);
-      return surfacing !== null && surfacing.getTime() < startOfDay(1).getTime();
-    }
-    case "this_week": {
-      const surfacing = surfacingTime(action);
-      return surfacing !== null && surfacing.getTime() < startOfDay(7).getTime();
-    }
+      return isResurfaced(action, now);
+    case "overdue":
+      return surfacesBefore(action, 0);
+    case "today":
+      return surfacesBefore(action, 1);
+    case "this_week":
+      return surfacesBefore(action, 7);
   }
 }
 
@@ -97,34 +139,16 @@ export default defineTool({
     const ownerUserId = resolveOwnerUserId(ctx);
     const ledger = input.ledger ?? "active";
 
-    const read =
-      ledger === "paused"
-        ? listPausedGeneralActions
-        : ledger === "resolved"
-          ? listResolvedGeneralActions
-          : listActiveGeneralActions;
-
     // With a client-side window/Routine filter, a store `limit` could starve the
     // result — windows like 'unscheduled' sort last, so a store LIMIT would truncate
     // them away before the filter runs. Fetch unbounded when we post-filter, then apply
     // the caller's limit after filtering; otherwise push the limit down to the store.
     const windowsActive = input.window !== undefined && ledger === "active";
     const postFilters = windowsActive || Boolean(input.routinesOnly);
-    let actions = await read({ ownerUserId, limit: postFilters ? undefined : input.limit });
 
-    // The window filter only makes sense over the active ledger (open/deferred rows);
-    // paused Routines and resolved actions have no live surfacing window.
-    if (windowsActive && input.window) {
-      const now = new Date();
-      const { window } = input;
-      actions = actions.filter((action) => matchesWindow(action, window, now));
-    }
-    if (input.routinesOnly) {
-      actions = actions.filter((action) => action.recurrence !== null);
-    }
-    if (postFilters && input.limit !== undefined) {
-      actions = actions.slice(0, input.limit);
-    }
+    const read = readerForLedger(ledger);
+    const fetched = await read({ ownerUserId, limit: postFilters ? undefined : input.limit });
+    const actions = applyActiveListFilters(fetched, input, { windowsActive, postFilters });
 
     return {
       found: true as const,

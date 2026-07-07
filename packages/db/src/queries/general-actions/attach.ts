@@ -1,10 +1,17 @@
 import {
   assertAreaNotArchived,
+  type CreateGeneralActionInput,
+  type GeneralActionAssetHint,
   type GeneralActionEdit,
   GeneralActionValidationError,
   type PrivacyScope,
 } from "@tendnote/domain";
-import type { GeneralActionLifecycleStore, GeneralActionPatch } from "./types";
+import type {
+  CreateActiveGeneralActionInput,
+  GeneralActionLifecycleStore,
+  GeneralActionPatch,
+  SuggestGeneralActionInput,
+} from "./types";
 
 /**
  * The owner-scoped verifications a General Action's attachments go through before they
@@ -126,6 +133,43 @@ export async function writeShares(
 }
 
 /**
+ * Finalizes an accept's visibility onto the promotion `patch`, only when the accept
+ * explicitly chose a scope (otherwise the proposal's scope is kept). Re-runs the shared
+ * visibility guard so a reviewer can widen a proposal to a selected-shared audience the
+ * bare proposal could not hold; returns the shares to write when the accepted scope is a
+ * selected-shared one, or `null` otherwise. Mutates `patch` in place with the resolved scope.
+ */
+export async function resolveAcceptScope(
+  store: GeneralActionAttachStore,
+  input: {
+    ownerUserId: string;
+    scope?: PrivacyScope;
+    householdId?: string | null;
+    selectedUserIds?: string[];
+  },
+  patch: GeneralActionPatch,
+): Promise<{ householdId: string; selectedUserIds: string[] } | null> {
+  if (input.scope === undefined) {
+    return null;
+  }
+
+  const { scope, householdId } = await resolveVisibility(store, {
+    ownerUserId: input.ownerUserId,
+    scope: input.scope,
+    householdId: input.householdId,
+    selectedUserIds: input.selectedUserIds,
+  });
+  patch.scope = scope;
+  patch.householdId = householdId;
+
+  if (scope === "shared" && householdId) {
+    return { householdId, selectedUserIds: input.selectedUserIds ?? [] };
+  }
+
+  return null;
+}
+
+/**
  * Verifies every person link is one the owner owns and returns the deduped set. A link
  * is context only — it never turns the Action into a Follow-Up (ADR 0155) — but it must
  * still be owner-scoped so an Action cannot point at a stranger's person record.
@@ -181,6 +225,67 @@ export async function buildGeneralActionEditPatch(
     patch.areaId = await resolveAreaId(store, ownerUserId, edit.areaId);
   }
   return patch;
+}
+
+/**
+ * Resolves optional source grounding, owner-scoped. A present `sourceRecordId` must name a
+ * record the owner can see; absent grounding is `null`. Extracted so the create path stays
+ * a flat orchestration.
+ */
+export async function resolveSourceRecordId(
+  store: Pick<GeneralActionLifecycleStore, "getSourceRecord">,
+  ownerUserId: string,
+  sourceRecordId: string | null | undefined,
+): Promise<string | null> {
+  if (!sourceRecordId) {
+    return null;
+  }
+
+  const sourceRecord = await store.getSourceRecord({ ownerUserId, sourceRecordId });
+  if (!sourceRecord) {
+    throw new Error("Source record not found.");
+  }
+
+  return sourceRecord.id;
+}
+
+/**
+ * Builds the persisted create-values for a new active General Action from the caller input
+ * and the already-resolved attachments, applying the field defaults (private-open, no defer,
+ * creator provenance). Kept a pure function so the lifecycle create path reads as resolve →
+ * build → persist → finalize without inlining a dozen `?? null` defaults.
+ */
+export function buildCreateGeneralActionValues(
+  input: CreateActiveGeneralActionInput | SuggestGeneralActionInput,
+  resolved: {
+    status: "open" | "suggested";
+    sourceRecordId: string | null;
+    areaId: string | null;
+    scope: PrivacyScope;
+    householdId: string | null;
+  },
+): CreateGeneralActionInput {
+  const assetHints: GeneralActionAssetHint[] = input.assetHints ?? [];
+  const deferUntil = "deferUntil" in input ? (input.deferUntil ?? null) : null;
+
+  return {
+    ownerUserId: input.ownerUserId,
+    title: input.title,
+    notes: input.notes ?? null,
+    links: input.links ?? [],
+    assetHints,
+    status: resolved.status,
+    dueAt: input.dueAt ?? null,
+    deferUntil,
+    recurrence: input.recurrence ?? null,
+    sourceRecordId: resolved.sourceRecordId,
+    areaId: resolved.areaId,
+    scope: resolved.scope,
+    householdId: resolved.householdId,
+    createdByUserId: input.ownerUserId,
+    lastActorUserId: input.ownerUserId,
+    completedAt: null,
+  };
 }
 
 /** Whether a validated content edit carries no changes at all, so a no-op can be rejected. */

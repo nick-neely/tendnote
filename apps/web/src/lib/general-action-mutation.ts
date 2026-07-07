@@ -9,7 +9,7 @@ import { ZodError } from "zod";
  * so the client shows its fallback. Shared by the Action and Area server actions so
  * the two never drift.
  */
-export function actionValidationMessage(error: unknown): string | null {
+function actionValidationMessage(error: unknown): string | null {
   if (error instanceof ZodError) {
     return error.issues[0]?.message ?? "Check the highlighted fields and try again.";
   }

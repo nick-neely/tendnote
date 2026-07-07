@@ -49,21 +49,23 @@ export type BackgroundJobRecoveryRunResult = {
   actionExtraction: ProcessorBackfillResult;
 };
 
+/** A backing job is obsolete once it is gone or already terminal (completed/skipped). */
+function jobValidity(job: { status: string } | null): JobValidity {
+  return !job || job.status === "completed" || job.status === "skipped" ? "obsolete" : "active";
+}
+
 export async function inspectDeliveryProcessorJob(
   delivery: BackgroundJobDelivery,
 ): Promise<JobValidity> {
   if (delivery.jobKind === "extraction") {
-    const job = await getExtractionJob(delivery.jobId);
-    return !job || job.status === "completed" || job.status === "skipped" ? "obsolete" : "active";
+    return jobValidity(await getExtractionJob(delivery.jobId));
   }
 
   if (delivery.jobKind === "action_extraction") {
-    const job = await getActionExtractionJob(delivery.jobId);
-    return !job || job.status === "completed" || job.status === "skipped" ? "obsolete" : "active";
+    return jobValidity(await getActionExtractionJob(delivery.jobId));
   }
 
-  const job = await getSemanticEmbeddingJob(delivery.jobId);
-  return !job || job.status === "completed" || job.status === "skipped" ? "obsolete" : "active";
+  return jobValidity(await getSemanticEmbeddingJob(delivery.jobId));
 }
 
 export async function recoverBackgroundJobDeliveries(input: {
@@ -173,7 +175,7 @@ export async function runEmbeddingBackfill(input: {
   });
 }
 
-export async function runActionExtractionBackfill(input: {
+async function runActionExtractionBackfill(input: {
   limit: number;
   now?: Date;
   claimNextJob?: typeof claimNextActionExtractionJob;

@@ -89,3 +89,12 @@ export function createHarness(
     listActionsForSource,
   };
 }
+
+/** Enqueue a source record's action extraction job and process it in one step. */
+export async function enqueueAndProcess(
+  processor: ReturnType<typeof createHarness>["processor"],
+  sourceRecordId: string,
+) {
+  const { job } = await processor.enqueueActionExtractionJob({ sourceRecordId });
+  return processor.processActionExtractionJob({ jobId: job.id });
+}

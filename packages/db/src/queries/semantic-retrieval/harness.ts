@@ -113,23 +113,30 @@ export function createHarness(
       ownerUserId?: string;
     } = {},
   ) {
+    const ownerUserId = input.ownerUserId ?? OWNER;
+    // Spread only the keys the caller actually supplied over the fixture defaults, so an
+    // absent field falls through to its default without a per-field `?? default` ladder.
+    const provided = Object.fromEntries(
+      Object.entries(input).filter(([, value]) => value !== undefined),
+    ) as Partial<typeof input>;
     return store.createGeneralAction({
-      ownerUserId: input.ownerUserId ?? OWNER,
-      title: input.title ?? "Replace the refrigerator water filter",
-      notes: input.notes ?? null,
-      links: input.links ?? [],
-      assetHints: input.assetHints ?? [],
-      status: input.status ?? "open",
-      dueAt: input.dueAt ?? null,
-      deferUntil: input.deferUntil ?? null,
-      recurrence: input.recurrence ?? null,
-      sourceRecordId: input.sourceRecordId ?? null,
-      areaId: input.areaId ?? null,
-      scope: input.scope ?? "private",
-      householdId: input.householdId ?? null,
-      createdByUserId: input.createdByUserId ?? input.ownerUserId ?? OWNER,
-      lastActorUserId: input.lastActorUserId ?? input.ownerUserId ?? OWNER,
-      completedAt: input.completedAt ?? null,
+      ownerUserId,
+      title: "Replace the refrigerator water filter",
+      notes: null,
+      links: [],
+      assetHints: [],
+      status: "open",
+      dueAt: null,
+      deferUntil: null,
+      recurrence: null,
+      sourceRecordId: null,
+      areaId: null,
+      scope: "private",
+      householdId: null,
+      createdByUserId: ownerUserId,
+      lastActorUserId: ownerUserId,
+      completedAt: null,
+      ...provided,
     });
   }
 

@@ -1,7 +1,7 @@
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 
 /** The most chips the calm filter row shows before folding the rest into "+N more". */
-export const AREA_CHIP_CAP = 6;
+const AREA_CHIP_CAP = 6;
 
 /**
  * Filters Actions to a single Area, or returns them untouched when no Area is

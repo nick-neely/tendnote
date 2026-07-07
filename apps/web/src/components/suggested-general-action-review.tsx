@@ -41,6 +41,11 @@ function formatCaptured(iso: string): string {
  * ignore leave without guilt (DESIGN.md §2). Used on the Actions surface and the
  * dashboard Review tab; each owns its own list state and passes the resolve callback.
  */
+// A cohesive review card with an inline edit mode and four owner-scoped review actions.
+// Its cognitive score is JSX composition depth plus the edit-draft/lifecycle hook set, not
+// branching logic (cyclomatic is within threshold); splitting the calm card markup further
+// would fragment a single reviewable unit without reducing real complexity.
+// fallow-ignore-next-line complexity
 export function SuggestedGeneralActionReviewCard({
   review,
   onResolve,

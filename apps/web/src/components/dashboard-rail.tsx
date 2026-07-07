@@ -168,23 +168,11 @@ export function DashboardRail({
               onResolve={resolveReview}
               reviews={memoryReviews}
             />
-            {actionReviews.length > 0 ? (
-              <section className="flex flex-col gap-2.5">
-                <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
-                  Suggested actions
-                </h2>
-                <div className="flex flex-col gap-2.5">
-                  {actionReviews.map((review) => (
-                    <SuggestedGeneralActionReviewCard
-                      key={review.action.id}
-                      onResolve={resolveActionReview}
-                      onUpdate={updateActionReview}
-                      review={review}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null}
+            <SuggestedActionsReviewSection
+              onResolve={resolveActionReview}
+              onUpdate={updateActionReview}
+              reviews={actionReviews}
+            />
           </>
         )}
       </TabsContent>
@@ -194,6 +182,39 @@ export function DashboardRail({
         <PeopleSection people={people} />
       </TabsContent>
     </Tabs>
+  );
+}
+
+/** The Review tab's Suggested-actions block, shown only when proposals are waiting. */
+function SuggestedActionsReviewSection({
+  reviews,
+  onResolve,
+  onUpdate,
+}: {
+  reviews: SuggestedGeneralActionReviewView[];
+  onResolve: (generalActionId: string) => void;
+  onUpdate: (view: SuggestedGeneralActionReviewView) => void;
+}) {
+  if (reviews.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="flex flex-col gap-2.5">
+      <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
+        Suggested actions
+      </h2>
+      <div className="flex flex-col gap-2.5">
+        {reviews.map((review) => (
+          <SuggestedGeneralActionReviewCard
+            key={review.action.id}
+            onResolve={onResolve}
+            onUpdate={onUpdate}
+            review={review}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 

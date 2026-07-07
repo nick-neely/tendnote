@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { BriefItemKind, Sensitivity } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
 import { createBriefGenerator } from "./briefs/generator";
@@ -10,6 +8,7 @@ import {
   createInMemoryScheduledWorkflowDeliveryStore,
   createScheduledWorkflowDeliveryService,
 } from "./scheduled-workflow-deliveries";
+import { expectNoForbiddenImports } from "./workflow-boundary-fixtures";
 
 const OWNER = "owner-1";
 const PERSON_ID = "11111111-1111-1111-1111-111111111111";
@@ -357,12 +356,9 @@ describe("Morning Agenda workflow", () => {
   });
 
   it("does not import autonomous follow-up, memory, source-record, draft, or external-send mutations", () => {
-    const source = readFileSync(join(process.cwd(), "src/queries/morning-agenda.ts"), "utf8");
-    const importSources = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1] ?? "");
-
-    for (const moduleId of importSources) {
-      expect(moduleId).not.toMatch(/queries\/(followups|memories|source-records|drafts|gmail)/);
-      expect(moduleId).not.toMatch(/sendgrid|twilio|slack|resend|nodemailer/i);
-    }
+    expectNoForbiddenImports("src/queries/morning-agenda.ts", [
+      /queries\/(followups|memories|source-records|drafts|gmail)/,
+      /sendgrid|twilio|slack|resend|nodemailer/i,
+    ]);
   });
 });

@@ -37,6 +37,28 @@ const OWNER = "owner-1";
 const MEMBER = "member-1";
 const OUTSIDER = "outsider-1";
 
+/**
+ * A review-gated (suggested) proposal is invisible to a household member on every scoped
+ * read: it is not on their active ledger, a direct GET fails closed, and their history is
+ * empty. Visibility begins only at acceptance (ADRs 0151, 0152, 0153).
+ */
+async function expectSuggestedActionInvisibleToMember(
+  lifecycle: ReturnType<typeof createGeneralActionLifecycle>,
+  memberUserId: string,
+  actionId: string,
+) {
+  expect(await lifecycle.listActiveGeneralActions({ ownerUserId: memberUserId })).toHaveLength(0);
+  await expect(
+    lifecycle.getGeneralAction({ ownerUserId: memberUserId, generalActionId: actionId }),
+  ).rejects.toThrow(/not found/i);
+  expect(
+    await lifecycle.listGeneralActionHistory({
+      ownerUserId: memberUserId,
+      generalActionId: actionId,
+    }),
+  ).toEqual([]);
+}
+
 // Injected "now" for the deterministic proactive-surface assertions. Completion rolls a
 // Routine forward from the real wall clock (the lifecycle stamps `new Date()`), so the
 // post-completion assertions read the real clock rather than this fixed instant.
@@ -172,13 +194,7 @@ describe("Phase 5 proof scenario (ADR 0167) — the recurring household water fi
     //    Not on the owner's ledger, and — even though it is household-scoped — invisible to
     //    the member across visible reads and history (visibility begins at acceptance).
     expect(await lifecycle.listActiveGeneralActions({ ownerUserId: OWNER })).toHaveLength(0);
-    expect(await lifecycle.listActiveGeneralActions({ ownerUserId: MEMBER })).toHaveLength(0);
-    await expect(
-      lifecycle.getGeneralAction({ ownerUserId: MEMBER, generalActionId: actionId }),
-    ).rejects.toThrow(/not found/i);
-    expect(
-      await lifecycle.listGeneralActionHistory({ ownerUserId: MEMBER, generalActionId: actionId }),
-    ).toEqual([]);
+    await expectSuggestedActionInvisibleToMember(lifecycle, MEMBER, actionId);
 
     // The proposal IS in the owner's review queue, grounded in the source record, filed
     // under the matched Area, and carrying the extracted recurrence and asset hint.
@@ -375,15 +391,8 @@ describe("Phase 5 privacy under composition — a review-gated household proposa
     };
 
     // --- MEMBER: invisible everywhere while suggested ---
-    // ledger
-    expect(await lifecycle.listActiveGeneralActions({ ownerUserId: MEMBER })).toHaveLength(0);
-    // direct visible read + history
-    await expect(
-      lifecycle.getGeneralAction({ ownerUserId: MEMBER, generalActionId: actionId }),
-    ).rejects.toThrow(/not found/i);
-    expect(
-      await lifecycle.listGeneralActionHistory({ ownerUserId: MEMBER, generalActionId: actionId }),
-    ).toEqual([]);
+    // ledger, direct visible read + history
+    await expectSuggestedActionInvisibleToMember(lifecycle, MEMBER, actionId);
     // review queue (owner-scoped; a member has none)
     expect(await review.listSuggestedGeneralActionReviews({ ownerUserId: MEMBER })).toHaveLength(0);
     // Today / summary selection (a suggested row is not a durable action, so it never

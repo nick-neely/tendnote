@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createGeneralActionAreaManager } from "../general-action-areas/lifecycle";
+import { removeHouseholdMember, seedHouseholdWithMembers } from "../households/household-fixtures";
 import { createInMemoryGeneralActionLifecycleStore } from "./in-memory-store";
 import { createGeneralActionLifecycle } from "./lifecycle";
 
@@ -631,32 +632,42 @@ describe("people links", () => {
 describe("household-scoped actions", () => {
   async function setupHousehold() {
     const base = await setup();
-    const household = await base.store.createHouseholdWorkspace({
+    const household = await seedHouseholdWithMembers(base.store, {
       ownerUserId: OWNER,
       name: "Household",
-      defaultScope: "private",
+      members: [
+        [OWNER, "owner"],
+        [MEMBER, "member"],
+        [OTHER_MEMBER, "member"],
+      ],
     });
-    for (const [userId, role] of [
-      [OWNER, "owner"],
-      [MEMBER, "member"],
-      [OTHER_MEMBER, "member"],
-    ] as const) {
-      await base.store.createHouseholdMembership({
-        householdId: household.id,
-        userId,
-        invitedByUserId: OWNER,
-        role,
-        status: "active",
-        invitedAt: new Date("2026-06-01T00:00:00Z"),
-        acceptedAt: new Date("2026-06-01T00:00:00Z"),
-        removedAt: null,
-      });
-    }
 
     const ids = async (input: { ownerUserId: string }) =>
       (await base.lifecycle.listActiveGeneralActions(input)).map((a) => a.id);
 
     return { ...base, household, ids };
+  }
+
+  /**
+   * A member who could see a widened-scope action loses it the moment they are removed —
+   * fail-closed, no residual leak. Shared by the selected-shared and household cases, which
+   * differ only in how the action's audience is widened.
+   */
+  async function expectMemberLosesAccessAfterRemoval(
+    env: Awaited<ReturnType<typeof setupHousehold>>,
+    actionInput: { title: string; scope: "shared" | "household"; selectedUserIds?: string[] },
+  ) {
+    const { lifecycle, store, household, ids } = env;
+    const action = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      householdId: household.id,
+      ...actionInput,
+    });
+    await expect(ids({ ownerUserId: MEMBER })).resolves.toContain(action.id);
+
+    await removeHouseholdMember(store, { householdId: household.id, userId: MEMBER });
+
+    await expect(ids({ ownerUserId: MEMBER })).resolves.toEqual([]);
   }
 
   it("creates private, selected-member, and household actions with creator provenance", async () => {
@@ -835,26 +846,11 @@ describe("household-scoped actions", () => {
   });
 
   it("hides a selected-shared action from a member once they are removed", async () => {
-    const { lifecycle, store, household, ids } = await setupHousehold();
-    const action = await lifecycle.createGeneralAction({
-      ownerUserId: OWNER,
+    await expectMemberLosesAccessAfterRemoval(await setupHousehold(), {
       title: "Coordinate",
       scope: "shared",
-      householdId: household.id,
       selectedUserIds: [MEMBER],
     });
-    await expect(ids({ ownerUserId: MEMBER })).resolves.toContain(action.id);
-
-    const membership = await store.getHouseholdMembership({
-      householdId: household.id,
-      userId: MEMBER,
-    });
-    await store.updateHouseholdMembership({
-      membershipId: membership?.id as string,
-      patch: { status: "removed", removedAt: new Date() },
-    });
-
-    await expect(ids({ ownerUserId: MEMBER })).resolves.toEqual([]);
   });
 
   it("closes history to a member removed from the household", async () => {
@@ -870,14 +866,7 @@ describe("household-scoped actions", () => {
       lifecycle.listGeneralActionHistory({ ownerUserId: MEMBER, generalActionId: action.id }),
     ).resolves.not.toEqual([]);
 
-    const membership = await store.getHouseholdMembership({
-      householdId: household.id,
-      userId: MEMBER,
-    });
-    await store.updateHouseholdMembership({
-      membershipId: membership?.id as string,
-      patch: { status: "removed", removedAt: new Date() },
-    });
+    await removeHouseholdMember(store, { householdId: household.id, userId: MEMBER });
 
     // Once removed, history closes to them — fail-closed, no residual leak.
     await expect(
@@ -915,25 +904,10 @@ describe("household-scoped actions", () => {
   });
 
   it("hides shared actions from a member once they are removed from the household", async () => {
-    const { lifecycle, store, household, ids } = await setupHousehold();
-    const action = await lifecycle.createGeneralAction({
-      ownerUserId: OWNER,
+    await expectMemberLosesAccessAfterRemoval(await setupHousehold(), {
       title: "Household chore",
       scope: "household",
-      householdId: household.id,
     });
-    await expect(ids({ ownerUserId: MEMBER })).resolves.toContain(action.id);
-
-    const membership = await store.getHouseholdMembership({
-      householdId: household.id,
-      userId: MEMBER,
-    });
-    await store.updateHouseholdMembership({
-      membershipId: membership?.id as string,
-      patch: { status: "removed", removedAt: new Date() },
-    });
-
-    await expect(ids({ ownerUserId: MEMBER })).resolves.toEqual([]);
   });
 
   it("requires a household to widen scope and at least one member to share", async () => {
@@ -1028,26 +1002,14 @@ describe("routines (recurring general actions)", () => {
 
   it("lets a household member complete a shared Routine occurrence, rolling it forward under the owner", async () => {
     const base = await setup();
-    const household = await base.store.createHouseholdWorkspace({
+    const household = await seedHouseholdWithMembers(base.store, {
       ownerUserId: OWNER,
       name: "Household",
-      defaultScope: "private",
+      members: [
+        [OWNER, "owner"],
+        [MEMBER, "member"],
+      ],
     });
-    for (const [userId, role] of [
-      [OWNER, "owner"],
-      [MEMBER, "member"],
-    ] as const) {
-      await base.store.createHouseholdMembership({
-        householdId: household.id,
-        userId,
-        invitedByUserId: OWNER,
-        role,
-        status: "active",
-        invitedAt: new Date("2026-06-01T00:00:00Z"),
-        acceptedAt: new Date("2026-06-01T00:00:00Z"),
-        removedAt: null,
-      });
-    }
     const routine = await base.lifecycle.createGeneralAction({
       ownerUserId: OWNER,
       title: "Take out the recycling",
@@ -1074,26 +1036,14 @@ describe("routines (recurring general actions)", () => {
 
   it("lets a household member pause and resume a shared Routine, stamping the actor", async () => {
     const base = await setup();
-    const household = await base.store.createHouseholdWorkspace({
+    const household = await seedHouseholdWithMembers(base.store, {
       ownerUserId: OWNER,
       name: "Household",
-      defaultScope: "private",
+      members: [
+        [OWNER, "owner"],
+        [MEMBER, "member"],
+      ],
     });
-    for (const [userId, role] of [
-      [OWNER, "owner"],
-      [MEMBER, "member"],
-    ] as const) {
-      await base.store.createHouseholdMembership({
-        householdId: household.id,
-        userId,
-        invitedByUserId: OWNER,
-        role,
-        status: "active",
-        invitedAt: new Date("2026-06-01T00:00:00Z"),
-        acceptedAt: new Date("2026-06-01T00:00:00Z"),
-        removedAt: null,
-      });
-    }
     const routine = await base.lifecycle.createGeneralAction({
       ownerUserId: OWNER,
       title: "Refill the water softener",

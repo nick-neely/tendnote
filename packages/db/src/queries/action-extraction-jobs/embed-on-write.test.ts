@@ -1,7 +1,7 @@
 import { createFakeSuggestedActionExtractionAdapter } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import type { GeneralActionEmbeddingScheduler } from "../general-actions/types";
-import { createHarness, OWNER } from "./harness";
+import { createHarness, enqueueAndProcess, OWNER } from "./harness";
 
 type ScheduledEmbedding = { ownerUserId: string; recordKind: string; recordId: string };
 
@@ -19,8 +19,7 @@ describe("action extraction embed-on-write", () => {
     });
     const source = await captureRecord();
 
-    const { job } = await processor.enqueueActionExtractionJob({ sourceRecordId: source.id });
-    const result = await processor.processActionExtractionJob({ jobId: job.id });
+    const result = await enqueueAndProcess(processor, source.id);
 
     expect(result.outcome).toBe("completed");
     expect(result.suggestedActionIds).toHaveLength(1);

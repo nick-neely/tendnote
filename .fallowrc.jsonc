@@ -24,7 +24,13 @@
     "apps/agent/agent/schedules/**/*.ts",
     "apps/agent/agent/sandbox/**/*.ts",
     "apps/agent/agent/subagents/**/agent.ts",
-    "apps/agent/agent/tools/**/*.ts"
+    "apps/agent/agent/tools/**/*.ts",
+    // Eve eval suites are discovered and executed by `eve eval` (see apps/agent
+    //   package.json `eval:*` scripts) via a filesystem glob over `*.eval.ts`,
+    //   not via any import edge, so the import-based scan cannot see them. The
+    //   Phase 5 boundary test (apps/agent/tests/phase-5-boundaries.test.ts)
+    //   asserts specific eval files stay present, so they are load-bearing.
+    "apps/agent/evals/**/*.eval.ts"
   ],
   "duplicates": {
     "mode": "mild",

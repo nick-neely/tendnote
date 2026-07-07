@@ -14,9 +14,11 @@ import {
   resolveGeneralActionTransition,
 } from "@tendnote/domain";
 import {
+  buildCreateGeneralActionValues,
   buildGeneralActionEditPatch,
   isEmptyGeneralActionEdit,
   resolveAreaId,
+  resolveSourceRecordId,
   resolveVisibility,
   verifyOwnedPeople,
   writeShares,
@@ -166,18 +168,11 @@ export function createGeneralActionLifecycle(
      * verified before they attach (ADRs 0154, 0155, 0156, 0164).
      */
     async createGeneralAction(input: CreateActiveGeneralActionInput) {
-      let sourceRecordId: string | null = null;
-      if (input.sourceRecordId) {
-        const sourceRecord = await store.getSourceRecord({
-          ownerUserId: input.ownerUserId,
-          sourceRecordId: input.sourceRecordId,
-        });
-        if (!sourceRecord) {
-          throw new Error("Source record not found.");
-        }
-        sourceRecordId = sourceRecord.id;
-      }
-
+      const sourceRecordId = await resolveSourceRecordId(
+        store,
+        input.ownerUserId,
+        input.sourceRecordId,
+      );
       const areaId = await resolveAreaId(store, input.ownerUserId, input.areaId ?? null);
       const { scope, householdId } = await resolveVisibility(store, input);
       const personIds = input.personIds
@@ -185,24 +180,15 @@ export function createGeneralActionLifecycle(
         : [];
       const assetHints = input.assetHints ?? [];
 
-      const action = await store.createGeneralAction({
-        ownerUserId: input.ownerUserId,
-        title: input.title,
-        notes: input.notes ?? null,
-        links: input.links ?? [],
-        assetHints,
-        status: "open",
-        dueAt: input.dueAt ?? null,
-        deferUntil: null,
-        recurrence: input.recurrence ?? null,
-        sourceRecordId,
-        areaId,
-        scope,
-        householdId,
-        createdByUserId: input.ownerUserId,
-        lastActorUserId: input.ownerUserId,
-        completedAt: null,
-      });
+      const action = await store.createGeneralAction(
+        buildCreateGeneralActionValues(input, {
+          status: "open",
+          sourceRecordId,
+          areaId,
+          scope,
+          householdId,
+        }),
+      );
 
       if (personIds.length > 0) {
         await store.setGeneralActionPeople({

@@ -3,7 +3,7 @@
  * where a suggestion came from ("From manual note") without exposing the raw enum. Shared
  * by the suggested-follow-up and Suggested-action review cards so the two never drift.
  */
-export const SOURCE_LABELS: Record<string, string> = {
+const SOURCE_LABELS: Record<string, string> = {
   manual: "manual note",
   agent: "assistant note",
   contact_import: "imported contact",

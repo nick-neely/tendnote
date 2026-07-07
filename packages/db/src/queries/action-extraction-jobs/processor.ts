@@ -2,13 +2,16 @@ import {
   composeExtractedActionNotes,
   createDeterministicSuggestedActionExtractionAdapter,
   decideActionExtraction,
+  type ExtractionJob,
   extractedActionDedupeKey,
   resolveExtractedActionScope,
   type SourceRecord,
+  type SuggestedActionCandidate,
   type SuggestedActionExtractionAdapter,
   validateSuggestedActionCandidates,
 } from "@tendnote/domain";
 import { createSuggestedGeneralActionReview } from "../general-actions/review";
+import type { SuggestGeneralActionInput } from "../general-actions/types";
 import type {
   ActionExtractionJobStore,
   CreateActionExtractionProcessorOptions,
@@ -148,27 +151,53 @@ async function persistSuggestedActions(
       candidateScope: candidate.scope,
     });
 
-    const result = await review.suggestGeneralAction({
-      ownerUserId,
-      title: candidate.title,
-      notes: composeExtractedActionNotes(candidate),
-      dueAt: candidate.dueAt ?? null,
-      deferUntil: candidate.deferUntil ?? null,
-      recurrence: candidate.recurrence ?? null,
-      assetHints: candidate.assetHints ?? [],
-      personIds: candidate.personIds ?? [],
-      areaId: candidate.areaId ?? null,
-      scope,
-      householdId,
-      sourceRecordId: sourceRecord.id,
-      directlyRequested,
-    });
+    const result = await review.suggestGeneralAction(
+      buildExtractedSuggestInput(candidate, {
+        ownerUserId,
+        sourceRecordId: sourceRecord.id,
+        scope,
+        householdId,
+        directlyRequested,
+      }),
+    );
 
     suggestedActionIds.push(result.action.id);
     existingKeys.add(dedupeKey);
   }
 
   return suggestedActionIds;
+}
+
+/**
+ * Maps a validated extraction candidate to the `suggestGeneralAction` input, applying the
+ * candidate's optional-field defaults. Keeps `persistSuggestedActions` a flat dedupe loop
+ * rather than an inlined field-by-field mapping.
+ */
+function buildExtractedSuggestInput(
+  candidate: SuggestedActionCandidate,
+  context: {
+    ownerUserId: string;
+    sourceRecordId: string;
+    scope: SuggestGeneralActionInput["scope"];
+    householdId: string | null;
+    directlyRequested: boolean | undefined;
+  },
+): SuggestGeneralActionInput {
+  return {
+    ownerUserId: context.ownerUserId,
+    title: candidate.title,
+    notes: composeExtractedActionNotes(candidate),
+    dueAt: candidate.dueAt ?? null,
+    deferUntil: candidate.deferUntil ?? null,
+    recurrence: candidate.recurrence ?? null,
+    assetHints: candidate.assetHints ?? [],
+    personIds: candidate.personIds ?? [],
+    areaId: candidate.areaId ?? null,
+    scope: context.scope,
+    householdId: context.householdId,
+    sourceRecordId: context.sourceRecordId,
+    directlyRequested: context.directlyRequested,
+  };
 }
 
 /**
@@ -227,21 +256,11 @@ async function processActionExtractionJob(
     throw new Error("Action extraction job not found.");
   }
 
-  let job = existingJob;
-
-  if (job.status !== "running") {
-    if (!claim) {
-      return { job, outcome: "not_claimable", suggestedActionIds: [] };
-    }
-
-    const claimed = await store.claimActionExtractionJob({ jobId: job.id, now });
-
-    if (!claimed) {
-      return { job, outcome: "not_claimable", suggestedActionIds: [] };
-    }
-
-    job = claimed;
+  const claimResult = await claimJobIfNeeded(store, existingJob, { claim, now });
+  if ("notClaimable" in claimResult) {
+    return { job: claimResult.job, outcome: "not_claimable", suggestedActionIds: [] };
   }
+  const job = claimResult.job;
 
   const sourceRecord = await store.getSourceRecordById(job.sourceRecordId);
 
@@ -258,14 +277,57 @@ async function processActionExtractionJob(
     return skipJob(ctx, job, now, decision.reason);
   }
 
-  try {
-    const suggestedActionIds = await persistSuggestedActions(
-      ctx,
-      sourceRecord,
-      input.directlyRequested,
-    );
+  return runExtractionToCompletion(
+    ctx,
+    job,
+    sourceRecord,
+    input.directlyRequested,
+    now,
+    retryDelayMs,
+  );
+}
 
-    const updated = await store.updateActionExtractionJob({
+/**
+ * Claims a not-yet-running job when claiming is allowed, or reports it as not claimable. A
+ * job already `running` is returned as-is for reprocessing; a claim that loses the race (or
+ * a `claim: false` inspection) returns `notClaimable` with the original row untouched.
+ */
+async function claimJobIfNeeded(
+  store: ActionExtractionJobStore,
+  job: ExtractionJob,
+  opts: { claim: boolean; now: Date },
+): Promise<{ job: ExtractionJob } | { notClaimable: true; job: ExtractionJob }> {
+  if (job.status === "running") {
+    return { job };
+  }
+  if (!opts.claim) {
+    return { notClaimable: true, job };
+  }
+
+  const claimed = await store.claimActionExtractionJob({ jobId: job.id, now: opts.now });
+  if (!claimed) {
+    return { notClaimable: true, job };
+  }
+
+  return { job: claimed };
+}
+
+/**
+ * Runs extraction for a claimed job and records the terminal outcome: proposes the deduped
+ * Suggested General Actions and completes the job, or fails-and-retries on any error.
+ */
+async function runExtractionToCompletion(
+  ctx: ActionExtractionContext,
+  job: ExtractionJob,
+  sourceRecord: SourceRecord,
+  directlyRequested: boolean | undefined,
+  now: Date,
+  retryDelayMs: number,
+): Promise<ProcessActionExtractionJobResult> {
+  try {
+    const suggestedActionIds = await persistSuggestedActions(ctx, sourceRecord, directlyRequested);
+
+    const updated = await ctx.store.updateActionExtractionJob({
       jobId: job.id,
       status: "completed",
       completedAt: now,

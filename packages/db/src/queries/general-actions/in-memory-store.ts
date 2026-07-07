@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import {
-  ACTIVE_GENERAL_ACTION_STATUSES,
   canViewScopedRecord,
   createGeneralActionEventSchema,
   createGeneralActionSchema,
@@ -227,8 +226,6 @@ function surfacingTime(action: GeneralAction): number {
   // Unscheduled actions sort after everything with a concrete date.
   return when ? when.getTime() : Number.POSITIVE_INFINITY;
 }
-
-export { ACTIVE_GENERAL_ACTION_STATUSES };
 
 /**
  * Lifecycle store for tests and composition: the General Action store (with its

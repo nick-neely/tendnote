@@ -127,6 +127,41 @@ function scopeAudienceLabel(action: {
 }
 
 /**
+ * Resolves the calm surfacing cue — state + human label — for an Action: a paused Routine
+ * reads as set aside (never overdue), a deferred one as "Set aside until …", a dated one by
+ * its due state, and an undated one as "No date". Kept separate so the view mapper stays a
+ * flat field projection.
+ */
+function resolveSurfacing(
+  action: { status: GeneralActionStatus; deferUntil: Date | null; dueAt: Date | null },
+  now: Date,
+): { surfaceState: ActionSurfaceState; surfaceLabel: string } {
+  if (action.status === "paused") {
+    // A paused Routine reads as quietly set aside — never as an overdue backlog,
+    // whatever its last due date was.
+    return { surfaceState: "paused", surfaceLabel: "Paused" };
+  }
+  if (action.status === "deferred" && action.deferUntil) {
+    return {
+      surfaceState: "deferred",
+      surfaceLabel: `Set aside until ${formatDay(action.deferUntil, now)}`,
+    };
+  }
+  if (action.dueAt) {
+    const surfaceState = dueState(action.dueAt, now);
+    const day = formatDay(action.dueAt, now);
+    const surfaceLabel =
+      surfaceState === "overdue"
+        ? `Was due ${day}`
+        : surfaceState === "today"
+          ? "Due today"
+          : `Due ${day}`;
+    return { surfaceState, surfaceLabel };
+  }
+  return { surfaceState: "unscheduled", surfaceLabel: "No date" };
+}
+
+/**
  * Maps a persisted General Action to a serializable view for client components.
  * Dates are pre-resolved server-side (label + date-input value) so the client
  * never re-derives timezones, matching the Follow-Up view seam.
@@ -154,30 +189,7 @@ export function toGeneralActionView(
   options: { now?: Date; callerUserId: string },
 ): GeneralActionView {
   const now = options.now ?? new Date();
-  let surfaceState: ActionSurfaceState;
-  let surfaceLabel: string;
-
-  if (action.status === "paused") {
-    // A paused Routine reads as quietly set aside — never as an overdue backlog,
-    // whatever its last due date was.
-    surfaceState = "paused";
-    surfaceLabel = "Paused";
-  } else if (action.status === "deferred" && action.deferUntil) {
-    surfaceState = "deferred";
-    surfaceLabel = `Set aside until ${formatDay(action.deferUntil, now)}`;
-  } else if (action.dueAt) {
-    surfaceState = dueState(action.dueAt, now);
-    const day = formatDay(action.dueAt, now);
-    surfaceLabel =
-      surfaceState === "overdue"
-        ? `Was due ${day}`
-        : surfaceState === "today"
-          ? "Due today"
-          : `Due ${day}`;
-  } else {
-    surfaceState = "unscheduled";
-    surfaceLabel = "No date";
-  }
+  const { surfaceState, surfaceLabel } = resolveSurfacing(action, now);
 
   return {
     id: action.id,

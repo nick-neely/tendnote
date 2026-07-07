@@ -3,7 +3,6 @@ import {
   createEmbeddingJobSchema,
   createRelationshipContextEmbeddingSchema,
   type GeneralActionStatus,
-  generalActionSchema,
   type SemanticRetrievalResult,
   visibilityChoiceForScope,
   visibilityLabelForScope,
@@ -11,13 +10,13 @@ import {
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import {
-  generalActions,
   relationshipContextEmbeddingJobs,
   relationshipContextEmbeddings,
   sourceRecordPeople,
   sourceRecords,
   unresolvedPersonMentions,
 } from "../../schema";
+import { selectOwnedGeneralAction } from "../general-actions/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleMemoryStore } from "../memories/drizzle-store";
 import type { EmbeddingStore, UpdateEmbeddingJobInput } from "./types";
@@ -183,18 +182,7 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
       return job;
     },
     async getGeneralActionForEmbedding(input) {
-      const [action] = await getDb()
-        .select()
-        .from(generalActions)
-        .where(
-          and(
-            eq(generalActions.id, input.generalActionId),
-            eq(generalActions.ownerUserId, input.ownerUserId),
-          ),
-        )
-        .limit(1);
-
-      return action ? generalActionSchema.parse(action) : null;
+      return selectOwnedGeneralAction(input);
     },
     async upsertRelationshipContextEmbedding(values) {
       const parsed = createRelationshipContextEmbeddingSchema.parse(values);

@@ -19,6 +19,7 @@ import {
   visibilityChoiceForScope,
   visibilityLabelForScope,
 } from "@tendnote/domain";
+import { applyJobUpdateFields } from "../extraction-job-queue/in-memory-queue";
 import type { HouseholdRecordShare } from "../households/types";
 import { canViewerSeeSeededHouseholdRecord } from "../households/visibility-memory";
 import { createInMemoryMemoryStore } from "../memories/in-memory-store";
@@ -129,15 +130,7 @@ export function createInMemoryEmbeddingStore(
         throw new Error("Embedding job not found.");
       }
 
-      const updated: EmbeddingJob = {
-        ...job,
-        ...(input.status !== undefined ? { status: input.status } : {}),
-        ...(input.lastError !== undefined ? { lastError: input.lastError } : {}),
-        ...(input.runAfter !== undefined ? { runAfter: input.runAfter } : {}),
-        ...("claimedAt" in input ? { claimedAt: input.claimedAt } : {}),
-        ...("completedAt" in input ? { completedAt: input.completedAt } : {}),
-        updatedAt: new Date(),
-      };
+      const updated = applyJobUpdateFields(job, input);
 
       jobs.set(updated.id, updated);
 

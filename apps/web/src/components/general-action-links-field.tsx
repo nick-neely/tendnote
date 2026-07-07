@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 /** A link being edited; `url`/`label` are raw strings until submit trims them. */
 export type LinkDraft = { url: string; label: string };
 
-export function emptyLink(): LinkDraft {
+function emptyLink(): LinkDraft {
   return { url: "", label: "" };
 }
 

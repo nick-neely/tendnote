@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { DraftProposalResult } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -13,6 +11,7 @@ import {
   createInMemoryScheduledWorkflowDeliveryStore,
   createScheduledWorkflowDeliveryService,
 } from "./scheduled-workflow-deliveries";
+import { expectNoForbiddenImports } from "./workflow-boundary-fixtures";
 
 const OWNER = "owner-1";
 const PERSON_ID = "person-1";
@@ -362,15 +361,9 @@ describe("Birthday Gift Planning workflow", () => {
   });
 
   it("does not import autonomous active reminder, persisted draft, or external-send mutations", () => {
-    const source = readFileSync(
-      join(process.cwd(), "src/queries/birthday-gift-planning.ts"),
-      "utf8",
-    );
-    const importSources = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1] ?? "");
-
-    for (const moduleId of importSources) {
-      expect(moduleId).not.toMatch(/queries\/(followups|drafts|gmail)/);
-      expect(moduleId).not.toMatch(/sendgrid|twilio|slack|resend|nodemailer/i);
-    }
+    expectNoForbiddenImports("src/queries/birthday-gift-planning.ts", [
+      /queries\/(followups|drafts|gmail)/,
+      /sendgrid|twilio|slack|resend|nodemailer/i,
+    ]);
   });
 });
