@@ -19,10 +19,7 @@ export {
   type BackgroundJobQueueLogger,
   type BackgroundJobQueuePayload,
   type BackgroundJobQueueSendAdapter,
-  type BackgroundJobQueueSendInput,
-  type BackgroundJobQueueSendResult,
   backgroundJobQueueIdempotencyKey,
-  buildBackgroundJobQueuePayload,
   publishBackgroundJobDelivery,
 } from "@tendnote/db/queries/background-job-deliveries";
 

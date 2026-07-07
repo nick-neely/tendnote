@@ -12,7 +12,7 @@ import type { AssistantToolView } from "@/lib/eve/tool-result-view";
  * resolved — the positive action ran (approved / accepted / saved).
  * dismissed — the user dismissed it.
  */
-export type ReviewOutcome = "pending" | "resolved" | "dismissed";
+type ReviewOutcome = "pending" | "resolved" | "dismissed";
 
 /**
  * The per-kind copy for one inline review card. Everything else — the state

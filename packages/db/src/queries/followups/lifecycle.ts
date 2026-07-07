@@ -14,7 +14,7 @@ import type {
   SnoozeFollowupInput,
 } from "./types";
 
-export type ListActiveFollowupsInput = {
+type ListActiveFollowupsInput = {
   ownerUserId: string;
   personId?: string;
   dueBefore?: Date;

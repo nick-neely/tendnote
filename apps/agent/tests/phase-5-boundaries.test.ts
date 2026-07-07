@@ -28,14 +28,19 @@ const repoRoot = join(import.meta.dirname, "../../..");
  * journey) is proven by the slice suites and by
  * `packages/db/src/queries/phase-5-general-actions-e2e.test.ts`.
  *
- * DOCUMENTED GAP (AC2 "mobile-usable UI behavior", AC5): the mobile assertions below are
- * SOURCE-LEVEL only — they confirm the Today/Actions surfaces are built with the repo's
- * mobile-first responsive utilities (vertical `flex flex-col` stacking, `sm:` reflow),
- * never fixed-pixel layout. They do NOT exercise real viewport reflow, touch targets, or
- * interaction at a narrow width: that needs a jsdom/browser DOM harness this repo
- * deliberately does not run (its component tests assert serialized view models, not
- * rendered layout). True responsive/interaction coverage is the remaining open gap for
- * ADR 0161 and is called out in the issue close note rather than left implicit.
+ * DOCUMENTED GAP (AC2 "mobile-usable UI behavior", AC5) — NARROWED by #191, not fully closed:
+ * the mobile assertions below stay SOURCE-LEVEL — they confirm the Today/Actions surfaces are
+ * built with the repo's mobile-first responsive utilities (vertical `flex flex-col` stacking,
+ * `sm:` reflow), never fixed-pixel layout. They remain the *absence* boundary; they are no
+ * longer the only mobile coverage. A jsdom component DOM harness now exists (`apps/web/src/test/dom.tsx`,
+ * `*.dom.test.tsx`) and exercises real interaction at a narrow width: the Area filter
+ * click-through (`actions-surface.dom.test.tsx`), the suggestion review-card accept/dismiss/edit
+ * and error states (`chat-general-action-review-card.dom.test.tsx`, `suggested-general-action-review.dom.test.tsx`),
+ * the deep-link scroll/focus/pulse hook (`use-deep-link-highlight.dom.test.tsx`), and the Today
+ * glance's ledger-hop links plus control reachability at a phone width (`action-today-surface.dom.test.tsx`).
+ * What is STILL open: jsdom has no layout engine, so it computes no CSS, media queries, or box
+ * sizes — real pixel reflow at a breakpoint and touch-target sizing are not proven here and would
+ * need a real-browser harness. That thinner residual is the remaining ADR 0161 gap.
  */
 
 /**
@@ -301,10 +306,11 @@ describe("Phase 5 boundary — no external task/calendar writes, no standalone n
 });
 
 describe("Phase 5 boundary — Action surfaces are built mobile-usable (ADR 0161, source-level)", () => {
-  // SOURCE-LEVEL ONLY — see the DOCUMENTED GAP note in the file header. These assert the
-  // surfaces are authored with the repo's mobile-first responsive utilities; they do not
-  // render or measure layout. Real viewport/interaction coverage needs a DOM harness the
-  // repo does not run.
+  // SOURCE-LEVEL absence boundary — see the DOCUMENTED GAP note in the file header. These
+  // assert the surfaces are authored with the repo's mobile-first responsive utilities; they
+  // do not render or measure layout. Real interaction/reachability at a narrow width now has
+  // DOM coverage in the web `*.dom.test.tsx` harness (#191); true pixel reflow stays out of
+  // scope for jsdom.
   const TODAY_SURFACE = read("apps/web/src/components/action-today-surface.tsx");
   const ACTIONS_SURFACE = read("apps/web/src/components/actions-surface.tsx");
 

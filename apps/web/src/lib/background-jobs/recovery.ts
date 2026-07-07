@@ -54,9 +54,7 @@ function jobValidity(job: { status: string } | null): JobValidity {
   return !job || job.status === "completed" || job.status === "skipped" ? "obsolete" : "active";
 }
 
-export async function inspectDeliveryProcessorJob(
-  delivery: BackgroundJobDelivery,
-): Promise<JobValidity> {
+async function inspectDeliveryProcessorJob(delivery: BackgroundJobDelivery): Promise<JobValidity> {
   if (delivery.jobKind === "extraction") {
     return jobValidity(await getExtractionJob(delivery.jobId));
   }
