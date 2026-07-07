@@ -70,7 +70,7 @@ export function createBriefSuggestedFollowupAcceptance(deps: BriefSuggestedFollo
       // The suggested follow-up becomes a real reminder here, through the existing
       // shared review mutation. If it throws, we never reach the acted-on mark.
       const followup = await deps.acceptSuggestedFollowup({
-        ownerUserId: input.ownerUserId,
+        actorUserId: input.ownerUserId,
         followupId: followupRef.id,
         edit: input.edit,
       });

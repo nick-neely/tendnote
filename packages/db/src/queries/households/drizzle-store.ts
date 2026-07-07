@@ -137,6 +137,17 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
           ),
         );
     },
+    async deleteHouseholdRecordShares(input) {
+      await getDb()
+        .delete(householdRecordShares)
+        .where(
+          and(
+            eq(householdRecordShares.householdId, input.householdId),
+            eq(householdRecordShares.recordKind, input.recordKind),
+            eq(householdRecordShares.recordId, input.recordId),
+          ),
+        );
+    },
     async createAuditLogEntry(input) {
       const [entry] = await getDb().insert(auditLog).values(input).returning();
       if (!entry) {

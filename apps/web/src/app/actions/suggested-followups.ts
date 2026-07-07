@@ -54,7 +54,7 @@ export async function acceptSuggestedFollowupAction(input: {
   const { followupId } = followupActionSchema.parse({ followupId: input.followupId });
   const edit = parseFollowupEdit(input.edit);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await acceptSuggestedFollowup({ ownerUserId, followupId, edit });
+  const result = await acceptSuggestedFollowup({ actorUserId: ownerUserId, followupId, edit });
 
   revalidatePerson(result.followup.personId);
   return toSuggestedFollowupReviewView(result);
@@ -67,7 +67,7 @@ export async function editSuggestedFollowupAction(input: {
   const { followupId } = followupActionSchema.parse({ followupId: input.followupId });
   const edit = parseFollowupEdit(input.edit);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await editSuggestedFollowup({ ownerUserId, followupId, edit });
+  const result = await editSuggestedFollowup({ actorUserId: ownerUserId, followupId, edit });
 
   revalidatePerson(result.followup.personId);
   return toSuggestedFollowupReviewView(result);
@@ -78,7 +78,7 @@ export async function dismissSuggestedFollowupAction(input: {
 }): Promise<SuggestedFollowupResolution> {
   const { followupId } = followupActionSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const followup = await dismissSuggestedFollowup({ ownerUserId, followupId });
+  const followup = await dismissSuggestedFollowup({ actorUserId: ownerUserId, followupId });
 
   revalidatePerson(followup.personId);
   return { followupId: followup.id, status: followup.status };

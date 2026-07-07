@@ -12,7 +12,7 @@ import type { AssistantToolView } from "@/lib/eve/tool-result-view";
  * resolved — the positive action ran (approved / accepted / saved).
  * dismissed — the user dismissed it.
  */
-export type ReviewOutcome = "pending" | "resolved" | "dismissed";
+type ReviewOutcome = "pending" | "resolved" | "dismissed";
 
 /**
  * The per-kind copy for one inline review card. Everything else — the state
@@ -37,12 +37,37 @@ export type ReviewActionLabels = {
   resolvedFooter: string;
   /** Footer caption once dismissed. */
   dismissedFooter: string;
+  /**
+   * Where the item can still be reviewed if the inline action fails, phrased as a full
+   * sentence appended to the error, e.g. "You can review it on the person's page." A
+   * follow-up/memory recovers on the person's page; a General Action, on /actions.
+   */
+  errorRecovery: string;
+  /**
+   * Optional override for the pending footer's "Open" link text. Defaults to
+   * "Open{ personName}" so a person-scoped card reads "Open Mark"; a card whose subject
+   * is not a person (a General Action) sets this to name its destination, e.g.
+   * "Open in Actions".
+   */
+  openLabel?: string;
 };
 
 const OUTCOME_TONE: Record<Exclude<ReviewOutcome, "pending">, CardTone> = {
   resolved: "confirmed",
   dismissed: "neutral",
 };
+
+/** An action button's aria-label, naming the person when the card has one. */
+function actionAriaLabel(verb: string, noun: string, personName: string | null): string {
+  return personName ? `${verb} ${noun} for ${personName}` : `${verb} ${noun}`;
+}
+
+/** The body's lead word for the card's current outcome. */
+function reviewLeadWord(outcome: ReviewOutcome, labels: ReviewActionLabels): string {
+  if (outcome === "resolved") return labels.resolvedWord;
+  if (outcome === "dismissed") return "Dismissed";
+  return labels.pendingWord;
+}
 
 /**
  * The one interactive review card behind every in-chat "act on it now" surface. A
@@ -93,18 +118,13 @@ export function ChatReviewActionCard({
         await run();
         setOutcome(next);
       } catch {
-        setError("That didn't go through. You can review it on the person's page.");
+        setError(`That didn't go through. ${labels.errorRecovery}`);
       }
     });
   }
 
   const tone: CardTone = outcome === "pending" ? pendingTone : OUTCOME_TONE[outcome];
-  const leadWord =
-    outcome === "resolved"
-      ? labels.resolvedWord
-      : outcome === "dismissed"
-        ? "Dismissed"
-        : labels.pendingWord;
+  const leadWord = reviewLeadWord(outcome, labels);
 
   return (
     <ResultCard
@@ -138,9 +158,7 @@ export function ChatReviewActionCard({
       {outcome === "pending" ? (
         <div className="flex items-center justify-end gap-1.5">
           <Button
-            aria-label={
-              personName ? `Dismiss ${labels.noun} for ${personName}` : `Dismiss ${labels.noun}`
-            }
+            aria-label={actionAriaLabel("Dismiss", labels.noun, personName)}
             disabled={busy}
             onClick={() => act("dismissed", onDismiss)}
             size="sm"
@@ -151,11 +169,7 @@ export function ChatReviewActionCard({
             Dismiss
           </Button>
           <Button
-            aria-label={
-              personName
-                ? `${labels.primaryAction} ${labels.noun} for ${personName}`
-                : `${labels.primaryAction} ${labels.noun}`
-            }
+            aria-label={actionAriaLabel(labels.primaryAction, labels.noun, personName)}
             disabled={busy}
             onClick={() => act("resolved", onResolve)}
             size="sm"
@@ -249,7 +263,7 @@ function ReviewFooter({
           className="inline-flex items-center gap-0.5 text-[length:var(--text-caption)] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
           href={personHref}
         >
-          Open{personName ? ` ${personName}` : ""}
+          {labels.openLabel ?? `Open${personName ? ` ${personName}` : ""}`}
           <ArrowUpRightIcon aria-hidden className="size-3" />
         </Link>
       ) : null}

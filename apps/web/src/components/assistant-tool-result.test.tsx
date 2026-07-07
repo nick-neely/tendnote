@@ -508,6 +508,103 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).not.toContain('data-tool-view="draft_proposal"');
   });
 
+  it("renders a created General Action as a confirmed card with its timing summary", () => {
+    const html = render({
+      kind: "created_general_action",
+      generalActionId: "ga-1",
+      title: "Replace the fridge water filter",
+      status: "open",
+      isRoutine: false,
+      recurrenceLabel: null,
+      timingLabel: "Due Jul 15, 2026",
+      personNames: ["Priya Shah"],
+      visibilityLabel: "Only me",
+    });
+
+    expect(html).toContain("Added to your actions");
+    expect(html).toContain("Replace the fridge water filter");
+    expect(html).toContain("Due Jul 15, 2026");
+    expect(html).toContain("With Priya Shah");
+    expect(html).toContain("Only me");
+    expect(html).toContain('data-tool-view="created_general_action"');
+    // Deep-links the exact new ledger row rather than the top of the list.
+    expect(html).toContain('href="/actions#action-ga-1"');
+    expect(html).toContain("Open in Actions");
+    // The id appears only inside that deep-link href — never as visible card content.
+    expect(html.split("ga-1")).toHaveLength(2);
+  });
+
+  it("renders a created Routine with its cadence and the routine label", () => {
+    const html = render({
+      kind: "created_general_action",
+      generalActionId: "ga-2",
+      title: "Change the furnace filter",
+      status: "open",
+      isRoutine: true,
+      recurrenceLabel: "Every 6 months",
+      timingLabel: null,
+      personNames: [],
+      visibilityLabel: "Only me",
+    });
+
+    expect(html).toContain("Added a routine");
+    expect(html).toContain("Every 6 months");
+  });
+
+  it("renders a General Action ledger list as an expandable list without raw ids", () => {
+    const html = render({
+      kind: "general_action_list",
+      ledger: "active",
+      window: "this_week",
+      actions: [
+        {
+          generalActionId: "ga-1",
+          title: "Rotate the tires",
+          status: "deferred",
+          isRoutine: false,
+          recurrenceLabel: null,
+          timingLabel: "Set aside until Jul 20, 2026",
+          personNames: [],
+          visibilityLabel: "Only me",
+        },
+        {
+          generalActionId: "ga-2",
+          title: "Change the furnace filter",
+          status: "open",
+          isRoutine: true,
+          recurrenceLabel: "Every 6 months",
+          timingLabel: null,
+          personNames: ["Sam"],
+          visibilityLabel: "Whole household",
+        },
+      ],
+    });
+
+    expect(html).toContain("2 actions");
+    expect(html).toContain("Rotate the tires");
+    expect(html).toContain("Set aside until Jul 20, 2026");
+    expect(html).toContain("Change the furnace filter");
+    expect(html).toContain("Every 6 months");
+    // Raw enum statuses are humanized for the chip.
+    expect(html).toContain("Set aside");
+    expect(html).toContain("Whole household");
+    expect(html).toContain('data-tool-view="general_action_list"');
+    expect(html).not.toContain("ga-1");
+    expect(html).not.toContain("ga-2");
+  });
+
+  it("renders an empty General Action ledger list as a quiet line", () => {
+    const html = render({
+      kind: "general_action_list",
+      ledger: "active",
+      window: null,
+      actions: [],
+    });
+
+    expect(html).toContain("Nothing on your active list");
+    expect(html).not.toContain('data-tool-view="general_action_list"');
+  });
+
   it("renders an unknown tool result as a quiet ambient line", () => {
     const html = render({ kind: "generic", toolName: "some_future_tool" });
 

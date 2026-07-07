@@ -62,6 +62,7 @@ export function ChatReviewCard({
     pendingFooter: "Tentative — not saved until you approve it",
     resolvedFooter: `Confirmed fact${personName ? ` · ${personName}` : ""} — kept in your notebook`,
     dismissedFooter: "Dismissed — not kept. Nothing was saved.",
+    errorRecovery: "You can review it on the person's page.",
   };
 
   return (

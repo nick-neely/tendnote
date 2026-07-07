@@ -17,8 +17,24 @@ function deps(overrides: Partial<CaptureLoggedContextDeps> = {}): CaptureLoggedC
     captureForPerson: vi.fn(async () => captureResult("sr-person")),
     captureGlobal: vi.fn(async () => captureResult("sr-global")),
     enqueueExtraction: vi.fn(async () => undefined),
+    enqueueActionExtraction: vi.fn(async () => undefined),
     ...overrides,
   };
+}
+
+/** A queue enqueue stub that always fails, for the best-effort "still returns" cases. */
+function throwingQueue() {
+  return vi.fn(async () => {
+    throw new Error("queue down");
+  });
+}
+
+/** Capture a simple person-linked note through the given deps. */
+function captureNote(d: CaptureLoggedContextDeps) {
+  return captureLoggedContext(
+    { ownerUserId: OWNER, retainedContent: "note", personId: "p1", captureSurface: "eve" },
+    d,
+  );
 }
 
 describe("captureLoggedContext", () => {
@@ -44,6 +60,11 @@ describe("captureLoggedContext", () => {
     });
     expect(d.captureGlobal).not.toHaveBeenCalled();
     expect(d.enqueueExtraction).toHaveBeenCalledWith({
+      ownerUserId: OWNER,
+      sourceRecordId: "sr-person",
+    });
+    // Action extraction is enqueued for the same record, alongside memory extraction.
+    expect(d.enqueueActionExtraction).toHaveBeenCalledWith({
       ownerUserId: OWNER,
       sourceRecordId: "sr-person",
     });
@@ -96,18 +117,22 @@ describe("captureLoggedContext", () => {
   });
 
   it("still returns the captured record when extraction enqueue fails (best-effort)", async () => {
-    const d = deps({
-      enqueueExtraction: vi.fn(async () => {
-        throw new Error("queue down");
-      }),
-    });
+    const d = deps({ enqueueExtraction: throwingQueue() });
 
-    const result = await captureLoggedContext(
-      { ownerUserId: OWNER, retainedContent: "note", personId: "p1", captureSurface: "eve" },
-      d,
-    );
+    const result = await captureNote(d);
 
     expect(result.sourceRecord.id).toBe("sr-person");
     expect(d.enqueueExtraction).toHaveBeenCalledTimes(1);
+  });
+
+  it("still returns the captured record when action-extraction enqueue fails (best-effort)", async () => {
+    const d = deps({ enqueueActionExtraction: throwingQueue() });
+
+    const result = await captureNote(d);
+
+    expect(result.sourceRecord.id).toBe("sr-person");
+    // Memory extraction still fired even though action extraction threw.
+    expect(d.enqueueExtraction).toHaveBeenCalledTimes(1);
+    expect(d.enqueueActionExtraction).toHaveBeenCalledTimes(1);
   });
 });

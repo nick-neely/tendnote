@@ -76,6 +76,18 @@ export type AssistantToolView =
       proposal: DraftProposalView | null;
       skippedReason: "person_not_found" | "insufficient_context" | "generation_failed" | null;
     }
+  | ({ kind: "created_general_action" } & GeneralActionListItemView)
+  | ({ kind: "suggested_general_action_review" } & SuggestedGeneralActionReviewItemView)
+  | {
+      kind: "suggested_general_action_review_list";
+      reviews: SuggestedGeneralActionReviewItemView[];
+    }
+  | {
+      kind: "general_action_list";
+      ledger: string;
+      window: string | null;
+      actions: GeneralActionListItemView[];
+    }
   | { kind: "generic"; toolName: string };
 
 /** One tentative suggestion the user can approve or dismiss inline. */
@@ -95,6 +107,42 @@ export type SuggestedFollowupReviewItemView = {
   sourceRecordId: string | null;
   personId: string | null;
   personName: string | null;
+};
+
+/**
+ * One tentative Suggested General Action the user can accept or dismiss inline. The
+ * timing/cadence and linked people are resolved to plain labels so the card never
+ * re-derives a timezone or leaks a raw id; the full edit lives on the /actions ledger.
+ */
+export type SuggestedGeneralActionReviewItemView = {
+  generalActionId: string;
+  title: string;
+  status: string;
+  /** Proposed due date, formatted, or null for an unscheduled "someday" proposal. */
+  dueLabel: string | null;
+  isRoutine: boolean;
+  /** Plain cadence label ("Every 6 months") for a Routine proposal; else null. */
+  recurrenceLabel: string | null;
+  /** Names of the people this action is a context link for (bounded, no ids). */
+  personNames: string[];
+  visibilityLabel: string | null;
+};
+
+/**
+ * One General Action as it reads in a ledger list or a created-action confirmation:
+ * its title, a resolved surfacing label (due/set-aside/none), Routine cadence, linked
+ * people, and visibility — everything the surface shows without leaking a raw id.
+ */
+export type GeneralActionListItemView = {
+  generalActionId: string;
+  title: string;
+  status: string;
+  isRoutine: boolean;
+  recurrenceLabel: string | null;
+  /** Resolved surfacing cue ("Due Jul 15", "Set aside until …", "No date"). */
+  timingLabel: string | null;
+  personNames: string[];
+  visibilityLabel: string | null;
 };
 
 export type RelationshipContextSearchResultView = {
@@ -189,44 +237,53 @@ export type DraftProposalView = {
 };
 
 /**
+ * Per-kind stable-key builders. Keyed by `view.kind` so the lookup stays a flat
+ * table rather than a long switch; the mapped type gives each builder the exact
+ * narrowed variant for its kind, so ids are referenced without casts.
+ */
+const assistantToolViewKeyBuilders: {
+  [K in AssistantToolView["kind"]]: (view: Extract<AssistantToolView, { kind: K }>) => string;
+} = {
+  saved_source_record: (view) => `source:${view.sourceRecordId}`,
+  saved_memory: (view) => `memory:${view.memoryId}`,
+  added_person: (view) => `person:${view.personId}`,
+  updated_person: (view) => `person-updated:${view.personId}:${view.updatedFields.join(",")}`,
+  person_context: (view) => `context:${view.personId}`,
+  message_draft: (view) => `draft:${view.draftId}`,
+  suggested_memory_review: (view) => `suggested:${view.memoryId}`,
+  suggested_memory_review_list: (view) =>
+    `suggested-list:${view.reviews.map((review) => review.memoryId).join(":")}`,
+  suggested_followup_review: (view) => `suggested-followup:${view.followupId}`,
+  suggested_followup_review_list: (view) =>
+    `suggested-followup-list:${view.reviews.map((review) => review.followupId).join(":")}`,
+  relationship_context_search: (view) =>
+    `search:${view.results.map((result) => result.recordId).join(":")}`,
+  semantic_context_search: (view) =>
+    `semantic-search:${view.results.map((result) => result.recordId).join(":")}`,
+  relationship_agenda: (view) =>
+    `agenda:${view.candidates.map(relationshipAgendaCandidateKey).join(":")}`,
+  memory_curator_proposals: (view) =>
+    `memory-curator:${view.proposals.map((proposal) => proposal.id).join(":")}`,
+  draft_proposal: (view) =>
+    view.proposal ? `draft-proposal:${view.proposal.id}` : `draft-proposal:skipped`,
+  created_general_action: (view) => `general-action:${view.generalActionId}`,
+  suggested_general_action_review: (view) => `suggested-general-action:${view.generalActionId}`,
+  suggested_general_action_review_list: (view) =>
+    `suggested-general-action-list:${view.reviews
+      .map((review) => review.generalActionId)
+      .join(":")}`,
+  general_action_list: (view) =>
+    `general-action-list:${view.actions.map((action) => action.generalActionId).join(":")}`,
+  generic: (view) => `tool:${view.toolName}`,
+};
+
+/**
  * Stable React key for a rendered view, derived from the persisted record it
  * references so a list of results keys on real ids rather than array position.
  */
 export function assistantToolViewKey(view: AssistantToolView): string {
-  switch (view.kind) {
-    case "saved_source_record":
-      return `source:${view.sourceRecordId}`;
-    case "saved_memory":
-      return `memory:${view.memoryId}`;
-    case "added_person":
-      return `person:${view.personId}`;
-    case "updated_person":
-      return `person-updated:${view.personId}:${view.updatedFields.join(",")}`;
-    case "person_context":
-      return `context:${view.personId}`;
-    case "message_draft":
-      return `draft:${view.draftId}`;
-    case "suggested_memory_review":
-      return `suggested:${view.memoryId}`;
-    case "suggested_memory_review_list":
-      return `suggested-list:${view.reviews.map((review) => review.memoryId).join(":")}`;
-    case "suggested_followup_review":
-      return `suggested-followup:${view.followupId}`;
-    case "suggested_followup_review_list":
-      return `suggested-followup-list:${view.reviews.map((review) => review.followupId).join(":")}`;
-    case "relationship_context_search":
-      return `search:${view.results.map((result) => result.recordId).join(":")}`;
-    case "semantic_context_search":
-      return `semantic-search:${view.results.map((result) => result.recordId).join(":")}`;
-    case "relationship_agenda":
-      return `agenda:${view.candidates.map(relationshipAgendaCandidateKey).join(":")}`;
-    case "memory_curator_proposals":
-      return `memory-curator:${view.proposals.map((proposal) => proposal.id).join(":")}`;
-    case "draft_proposal":
-      return view.proposal ? `draft-proposal:${view.proposal.id}` : `draft-proposal:skipped`;
-    default:
-      return `tool:${view.toolName}`;
-  }
+  const build = assistantToolViewKeyBuilders[view.kind] as (view: AssistantToolView) => string;
+  return build(view);
 }
 
 export function relationshipAgendaCandidateKey(candidate: RelationshipAgendaCandidateView) {
@@ -283,6 +340,8 @@ export function toolViewTier(view: AssistantToolView): ToolViewTier {
       return view.results.length > 0 ? "disclosure" : "line";
     case "relationship_agenda":
       return view.candidates.length > 0 ? "disclosure" : "line";
+    case "general_action_list":
+      return view.actions.length > 0 ? "disclosure" : "line";
     case "memory_curator_proposals":
       return view.proposals.length > 0 ? "card" : "line";
     case "draft_proposal":
@@ -319,6 +378,18 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   create_message_draft: "Drafting a message…",
   create_person: "Adding to your notebook…",
   update_person: "Updating the profile…",
+  create_general_action: "Adding to your actions…",
+  suggest_general_action: "Drafting a suggested action…",
+  plan_suggested_general_actions: "Sketching a few steps…",
+  list_general_actions: "Checking your actions…",
+  get_suggested_general_action_review: "Pulling up the suggested action…",
+  list_suggested_general_action_reviews: "Gathering actions to review…",
+  // Prose mutation tools render no card, but still shimmer with a hand-written label
+  // rather than a slugified tool name while they run.
+  accept_suggested_general_action: "Adding it to your list…",
+  dismiss_suggested_general_action: "Dismissing the suggestion…",
+  edit_general_action: "Updating the action…",
+  update_general_action_status: "Updating the action…",
 };
 
 /** Present-continuous label for an in-flight tool call (the shimmer line). */

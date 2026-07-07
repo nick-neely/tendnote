@@ -1,6 +1,7 @@
 import { getCurrentBrief } from "@tendnote/db/queries/briefs";
 import { listCalendarSuggestedFollowups } from "@tendnote/db/queries/calendar-followups";
 import { listActiveFollowups, listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
+import { listSuggestedGeneralActionReviews } from "@tendnote/db/queries/general-actions";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { searchPeople } from "@tendnote/db/queries/people";
 import type { BriefCadence } from "@tendnote/domain";
@@ -16,6 +17,7 @@ import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
 import { toDashboardFollowupView } from "@/lib/followup-view";
 import { getOwnerCalendarPromptNudges } from "@/lib/integrations/calendar-prompt-nudges";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
+import { toSuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 import { toSuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 
 // The dashboard surfaces the most important open suggestions, not all of them;
@@ -33,6 +35,7 @@ export default async function Home() {
   const [
     people,
     dashboardReviews,
+    dashboardActionReviews,
     dashboardFollowups,
     dashboardFollowupReviews,
     dashboardCalendarSuggestions,
@@ -42,6 +45,7 @@ export default async function Home() {
   ] = await Promise.all([
     searchPeople({ ownerUserId, limit: 8 }),
     getDashboardReviews(ownerUserId),
+    getDashboardActionReviews(ownerUserId),
     getDashboardFollowups(ownerUserId),
     getDashboardFollowupReviews(ownerUserId),
     getDashboardCalendarSuggestions(ownerUserId),
@@ -74,6 +78,7 @@ export default async function Home() {
               bar stays pinned), so the column itself is only height-bounded. */}
           <div className="order-2 lg:h-full lg:min-h-0">
             <DashboardRail
+              actionReviews={dashboardActionReviews}
               birthdays={birthdays}
               dailyBrief={dailyBrief}
               followupReviews={dashboardFollowupReviews}
@@ -172,6 +177,27 @@ async function getDashboardReviews(ownerUserId: string) {
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.warn("Unable to load suggested memory reviews.", error);
+    }
+
+    return [];
+  }
+}
+
+async function getDashboardActionReviews(ownerUserId: string) {
+  try {
+    // A few of the newest Suggested actions for the shared Review Queue. Area names are
+    // resolved on the Actions surface, not here — the rail card is a compact glance.
+    const reviews = await listSuggestedGeneralActionReviews({
+      ownerUserId,
+      limit: DASHBOARD_REVIEW_LIMIT,
+    });
+
+    return reviews.map((review) =>
+      toSuggestedGeneralActionReviewView(review, { callerUserId: ownerUserId }),
+    );
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Unable to load Suggested action reviews.", error);
     }
 
     return [];

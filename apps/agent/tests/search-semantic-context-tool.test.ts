@@ -42,6 +42,8 @@ describe("search_semantic_context tool", () => {
       limit: 5,
       minimumSimilarity: 0,
       directlyRequested: false,
+      // Review context is pinned off by the tool, never model-forwarded.
+      includeReviewGated: false,
     });
     expect(result.results[0]).toEqual(
       expect.objectContaining({
@@ -128,7 +130,23 @@ describe("search_semantic_context tool", () => {
       limit: 8,
       minimumSimilarity: 0.2,
       directlyRequested: true,
+      includeReviewGated: false,
     });
+  });
+
+  it("never forwards a hallucinated includeReviewGated flag (owner-only review stays off)", async () => {
+    searchSemanticContext.mockResolvedValue([]);
+
+    await tool.execute(
+      // A model that hallucinates the owner-only review flag must not be honored: the
+      // tool pins it off, so un-accepted suggested proposals can never leak into a chat.
+      { query: "water filter", includeReviewGated: true } as never,
+      ctx,
+    );
+
+    expect(searchSemanticContext).toHaveBeenLastCalledWith(
+      expect.objectContaining({ includeReviewGated: false }),
+    );
   });
 
   it("includes visibility provenance in model-facing semantic recall summaries", () => {

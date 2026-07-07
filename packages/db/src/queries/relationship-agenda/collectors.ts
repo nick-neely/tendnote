@@ -497,6 +497,73 @@ export async function collectRecentContext(
  * is appended. Restricted matches require an explicit, sensitive request, and a
  * failed search degrades to no results rather than failing the agenda.
  */
+type SemanticContextResult = Awaited<
+  ReturnType<RelationshipAgendaStore["searchSemanticContext"]>
+>[number];
+
+/** The display title for a semantic-context candidate, guarding restricted wording and a missing name. */
+function semanticContextTitle(result: SemanticContextResult): string {
+  if (result.sensitivity === "restricted") {
+    return result.relatedPersonDisplayName
+      ? `Restricted related context for ${result.relatedPersonDisplayName}`
+      : "Restricted related relationship context";
+  }
+  return result.relatedPersonDisplayName
+    ? `Related context for ${result.relatedPersonDisplayName}`
+    : "Related relationship context";
+}
+
+/**
+ * Fold one semantic result into the candidate set: merge it into an overlapping candidate
+ * (unioning source refs and filling any missing visibility), or add it as a fresh
+ * semantic-context candidate.
+ */
+function mergeSemanticResult(candidates: ScoredCandidate[], result: SemanticContextResult): void {
+  // General Actions are not relationship-agenda context (ADRs 0143, 0155): the agenda
+  // scopes its semantic call to memory/source_record, so an `action_item` result never
+  // occurs — this guard keeps that invariant explicit and narrows the trust level.
+  if (result.trustLevel === "action_item") {
+    return;
+  }
+  const sourceRefs: RelationshipAgendaSourceRef[] = result.sourceRefs.map((ref) => ({
+    kind: ref.kind === "memory" ? "memory" : "source_record",
+    id: ref.id,
+  }));
+  const overlap = candidates.find((candidate) =>
+    overlapsExistingCandidate(candidate, sourceRefs, {
+      personId: result.relatedPersonId,
+      reason: result.snippet,
+    }),
+  );
+
+  if (overlap) {
+    overlap.sourceRefs.push(...sourceRefs);
+    overlap.visibilityChoice ??= result.visibilityChoice;
+    overlap.visibilityLabel ??= result.visibilityLabel;
+    return;
+  }
+
+  candidates.push({
+    kind: "semantic_context",
+    personId: result.relatedPersonId,
+    personDisplayName: result.relatedPersonDisplayName,
+    title: semanticContextTitle(result),
+    reason: result.snippet,
+    sourceRefs,
+    trustLevel: result.trustLevel,
+    sensitivity: result.sensitivity,
+    visibilityChoice: result.visibilityChoice,
+    visibilityLabel: result.visibilityLabel,
+    // Semantic hits carry a visibility choice but not the backing household id, so
+    // a `household` semantic result fails closed (household scope with a null id)
+    // rather than being treated as household-safe for delivery aggregation.
+    scope: scopeForVisibilityChoice(result.visibilityChoice),
+    householdId: null,
+    rank: 0,
+    score: 70,
+  });
+}
+
 export async function mergeSemanticContext(
   store: RelationshipAgendaStore,
   input: RelationshipAgendaInput,
@@ -522,49 +589,6 @@ export async function mergeSemanticContext(
     (candidate) =>
       candidate.sensitivity !== "restricted" || shouldIncludeRestrictedSemanticResult(input),
   )) {
-    const sourceRefs: RelationshipAgendaSourceRef[] = result.sourceRefs.map((ref) => ({
-      kind: ref.kind === "memory" ? "memory" : "source_record",
-      id: ref.id,
-    }));
-    const overlap = candidates.find((candidate) =>
-      overlapsExistingCandidate(candidate, sourceRefs, {
-        personId: result.relatedPersonId,
-        reason: result.snippet,
-      }),
-    );
-
-    if (overlap) {
-      overlap.sourceRefs.push(...sourceRefs);
-      overlap.visibilityChoice ??= result.visibilityChoice;
-      overlap.visibilityLabel ??= result.visibilityLabel;
-      continue;
-    }
-
-    candidates.push({
-      kind: "semantic_context",
-      personId: result.relatedPersonId,
-      personDisplayName: result.relatedPersonDisplayName,
-      title:
-        result.sensitivity === "restricted"
-          ? result.relatedPersonDisplayName
-            ? `Restricted related context for ${result.relatedPersonDisplayName}`
-            : "Restricted related relationship context"
-          : result.relatedPersonDisplayName
-            ? `Related context for ${result.relatedPersonDisplayName}`
-            : "Related relationship context",
-      reason: result.snippet,
-      sourceRefs,
-      trustLevel: result.trustLevel,
-      sensitivity: result.sensitivity,
-      visibilityChoice: result.visibilityChoice,
-      visibilityLabel: result.visibilityLabel,
-      // Semantic hits carry a visibility choice but not the backing household id, so
-      // a `household` semantic result fails closed (household scope with a null id)
-      // rather than being treated as household-safe for delivery aggregation.
-      scope: scopeForVisibilityChoice(result.visibilityChoice),
-      householdId: null,
-      rank: 0,
-      score: 70,
-    });
+    mergeSemanticResult(candidates, result);
   }
 }

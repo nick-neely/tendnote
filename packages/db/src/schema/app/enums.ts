@@ -58,6 +58,7 @@ export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "memory",
   "source_record",
   "followup",
+  "general_action",
 ]);
 
 export const sourceRecordStatus = pgEnum("source_record_status", [
@@ -106,6 +107,36 @@ export const followupStatus = pgEnum("followup_status", [
   "archived",
 ]);
 
+export const generalActionStatus = pgEnum("general_action_status", [
+  "open",
+  "deferred",
+  "completed",
+  "dismissed",
+  "archived",
+  // A Routine set aside without retiring it — non-terminal, resumable (ADR 0148).
+  "paused",
+  // Review-gated states (ADRs 0144, 0151, 0152): a proposal awaiting review, and the
+  // quiet set-aside for one the user neither accepts nor formally dismisses.
+  "suggested",
+  "ignored",
+]);
+
+export const generalActionEventKind = pgEnum("general_action_event_kind", [
+  "created",
+  "edited",
+  "completed",
+  "reopened",
+  "deferred",
+  "dismissed",
+  "archived",
+  "paused",
+  "resumed",
+  // Review-gated history (ADRs 0151, 0152).
+  "suggested",
+  "promoted",
+  "ignored",
+]);
+
 export const extractionJobStatus = pgEnum("extraction_job_status", [
   "pending",
   "running",
@@ -114,11 +145,19 @@ export const extractionJobStatus = pgEnum("extraction_job_status", [
   "skipped",
 ]);
 
-export const semanticRecordKind = pgEnum("semantic_record_kind", ["memory", "source_record"]);
+export const semanticRecordKind = pgEnum("semantic_record_kind", [
+  "memory",
+  "source_record",
+  // General Actions are embedded and semantically retrievable alongside relationship
+  // context (ADR 0150; Phase 5 #184).
+  "general_action",
+]);
 
 export const semanticTrustLevel = pgEnum("semantic_trust_level", [
   "confirmed_fact",
   "logged_context",
+  // A General Action is an owner-authored intention — its own trust register.
+  "action_item",
 ]);
 
 export const embeddingJobStatus = pgEnum("embedding_job_status", [
@@ -129,7 +168,11 @@ export const embeddingJobStatus = pgEnum("embedding_job_status", [
   "skipped",
 ]);
 
-export const backgroundJobKind = pgEnum("background_job_kind", ["extraction", "embedding"]);
+export const backgroundJobKind = pgEnum("background_job_kind", [
+  "extraction",
+  "embedding",
+  "action_extraction",
+]);
 
 export const backgroundJobDeliveryStatus = pgEnum("background_job_delivery_status", [
   "pending",
@@ -222,6 +265,8 @@ export const phase3ScheduledWorkflow = pgEnum("phase3_scheduled_workflow", [
   "post_meeting_aftercare",
   "weekly_relationship_review",
   "birthday_gift_planning",
+  // Phase 5 scoped action summary — rides the same per-workflow delivery rails (ADR 0158).
+  "action_summary",
 ]);
 
 export const proactiveDeliveryChannel = pgEnum("proactive_delivery_channel", ["discord"]);
@@ -240,4 +285,5 @@ export const scheduledArtifactKind = pgEnum("scheduled_artifact_kind", [
   "weekly_relationship_review",
   "birthday_gift_planning",
   "brief",
+  "action_summary",
 ]);

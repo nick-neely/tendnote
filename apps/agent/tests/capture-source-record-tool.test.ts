@@ -4,10 +4,12 @@ const {
   captureSourceRecord,
   captureSourceRecordForPersonWithEmbeddingDelivery,
   enqueueAndPublishExtractionJob,
+  enqueueAndPublishActionExtractionJob,
 } = vi.hoisted(() => ({
   captureSourceRecord: vi.fn(),
   captureSourceRecordForPersonWithEmbeddingDelivery: vi.fn(),
   enqueueAndPublishExtractionJob: vi.fn(),
+  enqueueAndPublishActionExtractionJob: vi.fn(),
 }));
 
 // Keep the real captureLoggedContext orchestration (candidate 5) so the assertions
@@ -25,6 +27,7 @@ vi.mock("../agent/lib/background-jobs/embedding-schedulers", () => ({
 }));
 vi.mock("../agent/lib/background-jobs/extraction-queue", () => ({
   enqueueAndPublishExtractionJob,
+  enqueueAndPublishActionExtractionJob,
 }));
 
 const { default: tool } = await import("../agent/tools/capture_source_record");
@@ -54,6 +57,11 @@ describe("capture_source_record tool (casual note → logged context)", () => {
     );
     expect(captureSourceRecordForPersonWithEmbeddingDelivery).not.toHaveBeenCalled();
     expect(enqueueAndPublishExtractionJob).toHaveBeenCalledWith({
+      ownerUserId: "user-1",
+      sourceRecordId: "source-1",
+    });
+    // Action extraction is enqueued for the same record, alongside memory extraction.
+    expect(enqueueAndPublishActionExtractionJob).toHaveBeenCalledWith({
       ownerUserId: "user-1",
       sourceRecordId: "source-1",
     });

@@ -7,6 +7,10 @@ import {
 } from "./ai-sdk-adapter";
 import { createHarness } from "./harness";
 
+// vitest hoists `vi.mock` factories above imports, so this `ai` SDK mock cannot be shared
+// without dynamic-import gymnastics that obscure the idiom; the two extraction pipelines
+// keep separate tests by design (#183).
+// fallow-ignore-next-line code-duplication
 vi.mock("ai", () => ({
   gateway: vi.fn((modelId: string) => ({ modelId })),
   generateText: vi.fn(),

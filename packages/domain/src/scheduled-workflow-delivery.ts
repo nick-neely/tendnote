@@ -1,11 +1,17 @@
 import { z } from "zod";
 import { type PrivacyScope, privacyScopeSchema, type Sensitivity } from "./privacy";
 
+// The `phase3` name is historical: this enum started as the four Phase 3 relationship
+// workflows and now also carries the Phase 5 `action_summary` — the scoped proactive
+// summary of due, overdue, and resurfaced General Actions (ADR 0158). It rides the same
+// per-workflow Discord delivery rails rather than growing a parallel system, so an owner
+// configures and gates its target exactly like the relationship workflows.
 export const phase3ScheduledWorkflowSchema = z.enum([
   "morning_agenda",
   "post_meeting_aftercare",
   "weekly_relationship_review",
   "birthday_gift_planning",
+  "action_summary",
 ]);
 export type Phase3ScheduledWorkflow = z.infer<typeof phase3ScheduledWorkflowSchema>;
 
@@ -21,6 +27,9 @@ export const scheduledArtifactKindSchema = z.enum([
   "weekly_relationship_review",
   "birthday_gift_planning",
   "brief",
+  // The Phase 5 scoped action summary artifact (ADR 0158): due, overdue, and
+  // resurfaced General Actions aggregated for scoped proactive delivery.
+  "action_summary",
 ]);
 export type ScheduledArtifactKind = z.infer<typeof scheduledArtifactKindSchema>;
 

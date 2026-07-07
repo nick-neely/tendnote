@@ -119,6 +119,17 @@ export function createInMemoryHouseholdStore(): HouseholdStore & {
           share.recordId === input.recordId,
       );
     },
+    async deleteHouseholdRecordShares(input) {
+      for (const [id, share] of recordShares) {
+        if (
+          share.householdId === input.householdId &&
+          share.recordKind === input.recordKind &&
+          share.recordId === input.recordId
+        ) {
+          recordShares.delete(id);
+        }
+      }
+    },
     async createAuditLogEntry(input) {
       const entry: HouseholdAuditLogEntry = { ...input, id: randomUUID(), createdAt: new Date() };
       auditLogEntries.push(entry);

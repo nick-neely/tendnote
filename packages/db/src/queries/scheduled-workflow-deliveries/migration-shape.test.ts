@@ -12,6 +12,11 @@ const phase4PolicyMigration = readFileSync(
   "utf8",
 );
 
+const actionSummaryMigration = readFileSync(
+  join(__dirname, "../../../migrations/0037_action_summary_workflow.sql"),
+  "utf8",
+);
+
 describe("scheduled workflow delivery migration", () => {
   it("adds per-workflow Discord settings and a recoverable attempt ledger", () => {
     expect(migration).toContain('CREATE TYPE "public"."phase3_scheduled_workflow"');
@@ -48,6 +53,17 @@ describe("scheduled workflow delivery migration", () => {
     // other household reference in the app schema.
     expect(phase4PolicyMigration).toContain(
       'REFERENCES "public"."household_workspaces"("id") ON DELETE set null',
+    );
+  });
+
+  it("adds the Phase 5 action_summary workflow and artifact kind to the delivery rails", () => {
+    // The scoped action summary rides the same per-workflow Discord rails, so both the
+    // workflow and artifact-kind enums gain the value (ADR 0158).
+    expect(actionSummaryMigration).toContain(
+      'ALTER TYPE "public"."phase3_scheduled_workflow" ADD VALUE \'action_summary\'',
+    );
+    expect(actionSummaryMigration).toContain(
+      'ALTER TYPE "public"."scheduled_artifact_kind" ADD VALUE \'action_summary\'',
     );
   });
 });

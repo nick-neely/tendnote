@@ -12,6 +12,7 @@ import {
   type DashboardReviewView,
 } from "@/components/dashboard-review-section";
 import { DashboardSuggestedFollowupsSection } from "@/components/dashboard-suggested-followups-section";
+import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general-action-review";
 import { TabCount } from "@/components/tab-count";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { BriefView } from "@/lib/brief-view";
@@ -19,6 +20,7 @@ import type { CalendarSuggestionReviewView } from "@/lib/calendar-suggestion-rev
 import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brief";
 import type { DashboardFollowupView } from "@/lib/followup-view";
 import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
+import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 
 // Inactive panels stay mounted (forceMount) so a panel keeps its scroll position
 // and any in-flight optimistic state when you tab away and back; only the active
@@ -36,14 +38,21 @@ const PANEL =
  * Each tab owns its content exclusively — nothing is duplicated across tabs, so
  * no single area bloats. Today (the morning glance: today's signals plus the
  * daily and weekly briefs, which have no tab of their own), Follow-ups (active
- * reminders + suggested follow-ups), Review (suggested memories), and People
- * (fast recall). The rail owns the mutable lists so a calm, neutral count on the
+ * reminders + suggested follow-ups), Review (the shared Review Queue: suggested
+ * memories and Suggested actions, ADR 0152), and People (fast recall). The rail
+ * owns the mutable lists so a calm, neutral count on the
  * Follow-ups and Review tabs stays in sync as items resolve — nothing is hidden
  * behind a click without a count, and the inline approve/dismiss is preserved so
  * no one has to open a person page just to clear a suggestion. Counts are never
  * red and never framed as a backlog; an empty tab teaches the next step instead
  * of nagging.
  */
+// The cohesive tab shell that owns the five resolvable lists and their live counts; the
+// per-section markup is already extracted into child sections. Its score is JSX/tab
+// composition depth plus that list-state hook set, not branching logic (cyclomatic and
+// cognitive are both within threshold); splitting the shell further would scatter the
+// count-syncing state that keeps the tabs honest.
+// fallow-ignore-next-line complexity
 export function DashboardRail({
   people,
   birthdays,
@@ -51,6 +60,7 @@ export function DashboardRail({
   followupReviews: initialFollowupReviews,
   calendarSuggestions: initialCalendarSuggestions,
   reviews: initialReviews,
+  actionReviews: initialActionReviews,
   dailyBrief,
   weeklyBrief,
 }: {
@@ -60,6 +70,7 @@ export function DashboardRail({
   followupReviews: SuggestedFollowupReviewView[];
   calendarSuggestions: CalendarSuggestionReviewView[];
   reviews: DashboardReviewView[];
+  actionReviews: SuggestedGeneralActionReviewView[];
   dailyBrief: BriefView | null;
   weeklyBrief: BriefView | null;
 }) {
@@ -67,6 +78,7 @@ export function DashboardRail({
   const [suggestedFollowups, setSuggestedFollowups] = useState(initialFollowupReviews);
   const [calendarSuggestions, setCalendarSuggestions] = useState(initialCalendarSuggestions);
   const [memoryReviews, setMemoryReviews] = useState(initialReviews);
+  const [actionReviews, setActionReviews] = useState(initialActionReviews);
 
   const resolveFollowup = (id: string) =>
     setFollowups((current) => current.filter((followup) => followup.id !== id));
@@ -76,9 +88,15 @@ export function DashboardRail({
     setCalendarSuggestions((current) => current.filter((suggestion) => suggestion.id !== id));
   const resolveReview = (memoryId: string) =>
     setMemoryReviews((current) => current.filter((review) => review.memory.id !== memoryId));
+  const resolveActionReview = (generalActionId: string) =>
+    setActionReviews((current) => current.filter((review) => review.action.id !== generalActionId));
+  const updateActionReview = (view: SuggestedGeneralActionReviewView) =>
+    setActionReviews((current) =>
+      current.map((review) => (review.action.id === view.action.id ? view : review)),
+    );
 
   const followupCount = followups.length + suggestedFollowups.length + calendarSuggestions.length;
-  const reviewCount = memoryReviews.length;
+  const reviewCount = memoryReviews.length + actionReviews.length;
 
   return (
     <Tabs className="flex min-h-0 flex-col gap-3 lg:h-full" defaultValue="today">
@@ -141,19 +159,27 @@ export function DashboardRail({
         )}
       </TabsContent>
 
-      {/* Review — suggested memories, approve or dismiss in place. */}
+      {/* Review — the shared Review Queue: suggested memories and Suggested actions,
+          each accepted or set aside in place (ADR 0152). */}
       <TabsContent className={PANEL} forceMount value="review">
         {reviewCount === 0 ? (
           <RailEmpty>
-            Nothing waiting to review. When Eve suggests something to remember, it'll show up here
-            for a quick yes or no.
+            Nothing waiting to review. When Eve suggests something to remember or an action to take,
+            it'll show up here for a quick yes or no.
           </RailEmpty>
         ) : (
-          <DashboardReviewSection
-            heading="Needs review"
-            onResolve={resolveReview}
-            reviews={memoryReviews}
-          />
+          <>
+            <DashboardReviewSection
+              heading="Needs review"
+              onResolve={resolveReview}
+              reviews={memoryReviews}
+            />
+            <SuggestedActionsReviewSection
+              onResolve={resolveActionReview}
+              onUpdate={updateActionReview}
+              reviews={actionReviews}
+            />
+          </>
         )}
       </TabsContent>
 
@@ -162,6 +188,39 @@ export function DashboardRail({
         <PeopleSection people={people} />
       </TabsContent>
     </Tabs>
+  );
+}
+
+/** The Review tab's Suggested-actions block, shown only when proposals are waiting. */
+function SuggestedActionsReviewSection({
+  reviews,
+  onResolve,
+  onUpdate,
+}: {
+  reviews: SuggestedGeneralActionReviewView[];
+  onResolve: (generalActionId: string) => void;
+  onUpdate: (view: SuggestedGeneralActionReviewView) => void;
+}) {
+  if (reviews.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="flex flex-col gap-2.5">
+      <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
+        Suggested actions
+      </h2>
+      <div className="flex flex-col gap-2.5">
+        {reviews.map((review) => (
+          <SuggestedGeneralActionReviewCard
+            key={review.action.id}
+            onResolve={onResolve}
+            onUpdate={onUpdate}
+            review={review}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 

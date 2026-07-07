@@ -64,6 +64,7 @@ export function ChatFollowupReviewCard({
     pendingFooter: "Tentative — no reminder until you accept it",
     resolvedFooter: `Active reminder${personName ? ` · ${personName}` : ""} — added to your follow-ups`,
     dismissedFooter: "Dismissed — not kept. No reminder was created.",
+    errorRecovery: "You can review it on the person's page.",
   };
 
   return (

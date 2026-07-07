@@ -52,7 +52,10 @@ export function createSuggestedFollowupReview(store: FollowupLifecycleStore) {
   }
 
   async function requireSuggested(input: FollowupActionInput): Promise<Followup> {
-    const followup = await store.getFollowup(input);
+    const followup = await store.getFollowup({
+      ownerUserId: input.actorUserId,
+      followupId: input.followupId,
+    });
 
     if (!followup) {
       throw new Error("Follow-up not found.");
@@ -138,13 +141,16 @@ export function createSuggestedFollowupReview(store: FollowupLifecycleStore) {
     async getSuggestedFollowupReview(
       input: FollowupActionInput,
     ): Promise<SuggestedFollowupReviewResult | null> {
-      const followup = await store.getFollowup(input);
+      const followup = await store.getFollowup({
+        ownerUserId: input.actorUserId,
+        followupId: input.followupId,
+      });
 
       if (followup?.status !== "suggested") {
         return null;
       }
 
-      return buildReviewResult(input.ownerUserId, followup);
+      return buildReviewResult(followup.ownerUserId, followup);
     },
 
     /**
@@ -159,8 +165,10 @@ export function createSuggestedFollowupReview(store: FollowupLifecycleStore) {
       const edit = followupEditSchema.parse(input.edit ?? {});
       const status = resolveFollowupTransition(followup.status, "accept");
 
+      // Owner-keyed on the loaded record; this is owner-only (requireSuggested), so
+      // actor == owner and the acting user is recorded only as audit provenance.
       const updated = await store.updateFollowup({
-        ownerUserId: input.ownerUserId,
+        ownerUserId: followup.ownerUserId,
         followupId: followup.id,
         patch: {
           status,
@@ -170,7 +178,7 @@ export function createSuggestedFollowupReview(store: FollowupLifecycleStore) {
       });
 
       await store.createAuditLogEntry({
-        ownerUserId: input.ownerUserId,
+        ownerUserId: updated.ownerUserId,
         action: "followup.accept",
         entityType: "followup",
         entityId: updated.id,
@@ -180,7 +188,7 @@ export function createSuggestedFollowupReview(store: FollowupLifecycleStore) {
         },
       });
 
-      return buildReviewResult(input.ownerUserId, updated);
+      return buildReviewResult(updated.ownerUserId, updated);
     },
 
     /** Corrects a suggested follow-up's reason and/or due date without accepting it. */
@@ -194,8 +202,9 @@ export function createSuggestedFollowupReview(store: FollowupLifecycleStore) {
         throw new Error("A follow-up edit must change the reason or the due date.");
       }
 
+      // Owner-keyed on the loaded record (owner-only path); actor == owner here.
       const updated = await store.updateFollowup({
-        ownerUserId: input.ownerUserId,
+        ownerUserId: followup.ownerUserId,
         followupId: followup.id,
         patch: {
           ...(edit.reason !== undefined ? { reason: edit.reason } : {}),
@@ -204,7 +213,7 @@ export function createSuggestedFollowupReview(store: FollowupLifecycleStore) {
       });
 
       await store.createAuditLogEntry({
-        ownerUserId: input.ownerUserId,
+        ownerUserId: updated.ownerUserId,
         action: "followup.review_edit",
         entityType: "followup",
         entityId: updated.id,
@@ -215,7 +224,7 @@ export function createSuggestedFollowupReview(store: FollowupLifecycleStore) {
         },
       });
 
-      return buildReviewResult(input.ownerUserId, updated);
+      return buildReviewResult(updated.ownerUserId, updated);
     },
 
     /**
@@ -227,14 +236,15 @@ export function createSuggestedFollowupReview(store: FollowupLifecycleStore) {
       const followup = await requireSuggested(input);
       const status = resolveFollowupTransition(followup.status, "dismiss");
 
+      // Owner-keyed on the loaded record (owner-only path); actor == owner here.
       const updated = await store.updateFollowup({
-        ownerUserId: input.ownerUserId,
+        ownerUserId: followup.ownerUserId,
         followupId: followup.id,
         patch: { status },
       });
 
       await store.createAuditLogEntry({
-        ownerUserId: input.ownerUserId,
+        ownerUserId: updated.ownerUserId,
         action: "followup.review_dismiss",
         entityType: "followup",
         entityId: updated.id,

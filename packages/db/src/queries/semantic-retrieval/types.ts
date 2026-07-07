@@ -1,11 +1,14 @@
 import type {
   CreateEmbeddingJobInput,
+  CreateGeneralActionInput,
   CreateRelationshipContextEmbeddingInput,
   EmbeddingJob,
   EmbeddingJobStatus,
+  GeneralAction,
   Memory,
   ParsedSearchSemanticContextInput,
   RelationshipContextEmbedding,
+  SearchSemanticContextInput,
   SemanticRecordKind,
   SemanticRetrievalResult,
   SourceRecord,
@@ -39,6 +42,18 @@ export type SearchSemanticContextQueryInput = ParsedSearchSemanticContextInput &
   ownerUserId: string;
 };
 
+/**
+ * The unparsed request shape for the semantic-retrieval entry points (the queries layer
+ * and the public wrapper): a caller supplies the raw {@link SearchSemanticContextInput}
+ * plus their owner id and the schema fills defaults (limit, minimumSimilarity,
+ * directlyRequested, includeReviewGated). The store method keeps the parsed
+ * {@link SearchSemanticContextQueryInput}, so defaults are always resolved by the time a
+ * store runs the query.
+ */
+export type SearchSemanticContextRequest = SearchSemanticContextInput & {
+  ownerUserId: string;
+};
+
 export type UpdateEmbeddingJobInput = {
   jobId: string;
   status?: EmbeddingJobStatus;
@@ -67,6 +82,10 @@ export type EmbeddingStore = MemoryReviewStore &
       ownerUserId: string;
       sourceRecordId: string;
     }) => Promise<UnresolvedPersonMention[]>;
+    getGeneralActionForEmbedding: (input: {
+      ownerUserId: string;
+      generalActionId: string;
+    }) => Promise<GeneralAction | null>;
     upsertRelationshipContextEmbedding: (
       embedding: CreateRelationshipContextEmbeddingInput,
     ) => Promise<RelationshipContextEmbedding>;
@@ -91,6 +110,7 @@ export type InMemoryEmbeddingStore = Omit<
   "listSourceRecordPeople" | "listUnresolvedMentions"
 > &
   EmbeddingStore & {
+    createGeneralAction: (input: CreateGeneralActionInput) => Promise<GeneralAction>;
     listEmbeddingJobs: () => Promise<EmbeddingJob[]>;
     listRelationshipContextEmbeddings: () => Promise<RelationshipContextEmbedding[]>;
   };
@@ -129,4 +149,5 @@ export type ProcessEmbeddingJobResult = {
   reason?: string;
   error?: string;
   sourceRecord?: SourceRecord | null;
+  sourceGeneralAction?: GeneralAction | null;
 };

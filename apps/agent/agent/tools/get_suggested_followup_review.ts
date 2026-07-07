@@ -19,7 +19,10 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const review = await getSuggestedFollowupReview({ ownerUserId, followupId: input.followupId });
+    const review = await getSuggestedFollowupReview({
+      actorUserId: ownerUserId,
+      followupId: input.followupId,
+    });
 
     if (!review) {
       return { found: false as const };

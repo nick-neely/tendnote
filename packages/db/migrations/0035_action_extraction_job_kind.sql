@@ -1,0 +1,1 @@
+ALTER TYPE "public"."background_job_kind" ADD VALUE 'action_extraction';

@@ -95,7 +95,7 @@ describe("create active follow-up", () => {
     const followup = await seedOpen();
 
     await expect(
-      lifecycle.editFollowup({ ownerUserId: OWNER, followupId: followup.id, edit: {} }),
+      lifecycle.editFollowup({ actorUserId: OWNER, followupId: followup.id, edit: {} }),
     ).rejects.toThrow(/must change the reason or the due date/);
   });
 
@@ -119,7 +119,7 @@ describe("create active follow-up", () => {
     // Cadence is stored as inert metadata...
     expect(followup.cadence).toBe("weekly");
     // ...completing it does not spawn a next instance.
-    await lifecycle.completeFollowup({ ownerUserId: OWNER, followupId: followup.id });
+    await lifecycle.completeFollowup({ actorUserId: OWNER, followupId: followup.id });
     await expect(countForPerson()).resolves.toBe(1);
   });
 });
@@ -130,7 +130,7 @@ describe("lifecycle transitions", () => {
     const followup = await seedOpen();
 
     const completed = await lifecycle.completeFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: followup.id,
     });
 
@@ -144,7 +144,7 @@ describe("lifecycle transitions", () => {
     const followup = await seedOpen();
 
     const snoozed = await lifecycle.snoozeFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: followup.id,
       dueAt: new Date("2026-08-01T00:00:00Z"),
     });
@@ -161,7 +161,7 @@ describe("lifecycle transitions", () => {
 
     await expect(
       lifecycle.snoozeFollowup({
-        ownerUserId: OWNER,
+        actorUserId: OWNER,
         followupId: followup.id,
         dueAt: new Date("not a date"),
       }),
@@ -173,7 +173,7 @@ describe("lifecycle transitions", () => {
     const followup = await seedOpen();
 
     const dismissed = await lifecycle.dismissFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: followup.id,
     });
 
@@ -184,10 +184,10 @@ describe("lifecycle transitions", () => {
   it("reopens a completed follow-up", async () => {
     const { lifecycle, seedOpen, auditActions } = await setup();
     const followup = await seedOpen();
-    await lifecycle.completeFollowup({ ownerUserId: OWNER, followupId: followup.id });
+    await lifecycle.completeFollowup({ actorUserId: OWNER, followupId: followup.id });
 
     const reopened = await lifecycle.reopenFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: followup.id,
     });
 
@@ -198,10 +198,10 @@ describe("lifecycle transitions", () => {
   it("reopens a dismissed follow-up", async () => {
     const { lifecycle, seedOpen } = await setup();
     const followup = await seedOpen();
-    await lifecycle.dismissFollowup({ ownerUserId: OWNER, followupId: followup.id });
+    await lifecycle.dismissFollowup({ actorUserId: OWNER, followupId: followup.id });
 
     const reopened = await lifecycle.reopenFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: followup.id,
     });
 
@@ -213,7 +213,7 @@ describe("lifecycle transitions", () => {
     const followup = await seedOpen();
 
     const archived = await lifecycle.archiveFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: followup.id,
     });
 
@@ -232,7 +232,7 @@ describe("lifecycle transitions", () => {
     const followup = await seedOpen();
 
     const edited = await lifecycle.editFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: followup.id,
       edit: { reason: "Congratulate on the promotion.", dueAt: new Date("2026-07-10T00:00:00Z") },
     });
@@ -248,10 +248,10 @@ describe("invalid transitions are rejected", () => {
   it("cannot complete an already completed follow-up", async () => {
     const { lifecycle, seedOpen } = await setup();
     const followup = await seedOpen();
-    await lifecycle.completeFollowup({ ownerUserId: OWNER, followupId: followup.id });
+    await lifecycle.completeFollowup({ actorUserId: OWNER, followupId: followup.id });
 
     await expect(
-      lifecycle.completeFollowup({ ownerUserId: OWNER, followupId: followup.id }),
+      lifecycle.completeFollowup({ actorUserId: OWNER, followupId: followup.id }),
     ).rejects.toThrow(/Cannot complete/);
   });
 
@@ -260,18 +260,18 @@ describe("invalid transitions are rejected", () => {
     const followup = await seedOpen();
 
     await expect(
-      lifecycle.reopenFollowup({ ownerUserId: OWNER, followupId: followup.id }),
+      lifecycle.reopenFollowup({ actorUserId: OWNER, followupId: followup.id }),
     ).rejects.toThrow(/Cannot reopen/);
   });
 
   it("cannot snooze a completed follow-up", async () => {
     const { lifecycle, seedOpen } = await setup();
     const followup = await seedOpen();
-    await lifecycle.completeFollowup({ ownerUserId: OWNER, followupId: followup.id });
+    await lifecycle.completeFollowup({ actorUserId: OWNER, followupId: followup.id });
 
     await expect(
       lifecycle.snoozeFollowup({
-        ownerUserId: OWNER,
+        actorUserId: OWNER,
         followupId: followup.id,
         dueAt: new Date("2026-08-01T00:00:00Z"),
       }),
@@ -281,11 +281,11 @@ describe("invalid transitions are rejected", () => {
   it("cannot edit an archived follow-up", async () => {
     const { lifecycle, seedOpen } = await setup();
     const followup = await seedOpen();
-    await lifecycle.archiveFollowup({ ownerUserId: OWNER, followupId: followup.id });
+    await lifecycle.archiveFollowup({ actorUserId: OWNER, followupId: followup.id });
 
     await expect(
       lifecycle.editFollowup({
-        ownerUserId: OWNER,
+        actorUserId: OWNER,
         followupId: followup.id,
         edit: { reason: "Too late." },
       }),
@@ -295,10 +295,10 @@ describe("invalid transitions are rejected", () => {
   it("cannot archive an already archived follow-up", async () => {
     const { lifecycle, seedOpen } = await setup();
     const followup = await seedOpen();
-    await lifecycle.archiveFollowup({ ownerUserId: OWNER, followupId: followup.id });
+    await lifecycle.archiveFollowup({ actorUserId: OWNER, followupId: followup.id });
 
     await expect(
-      lifecycle.archiveFollowup({ ownerUserId: OWNER, followupId: followup.id }),
+      lifecycle.archiveFollowup({ actorUserId: OWNER, followupId: followup.id }),
     ).rejects.toThrow(/Cannot archive/);
   });
 });
@@ -339,9 +339,9 @@ describe("dashboard active follow-ups", () => {
       status: "suggested",
     });
     const completed = await seedOpen({ reason: "Done one." });
-    await lifecycle.completeFollowup({ ownerUserId: OWNER, followupId: completed.id });
+    await lifecycle.completeFollowup({ actorUserId: OWNER, followupId: completed.id });
     const archived = await seedOpen({ reason: "Archived one." });
-    await lifecycle.archiveFollowup({ ownerUserId: OWNER, followupId: archived.id });
+    await lifecycle.archiveFollowup({ actorUserId: OWNER, followupId: archived.id });
     const kept = await seedOpen({ reason: "Active one." });
 
     const active = await lifecycle.listActiveFollowups({ ownerUserId: OWNER });
@@ -584,7 +584,7 @@ describe("household-scoped follow-ups", () => {
     });
 
     const completed = await lifecycle.completeFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: selected.id,
     });
 
@@ -609,7 +609,7 @@ describe("household-scoped follow-ups", () => {
     });
 
     await expect(
-      lifecycle.completeFollowup({ ownerUserId: OTHER_MEMBER, followupId: selected.id }),
+      lifecycle.completeFollowup({ actorUserId: OTHER_MEMBER, followupId: selected.id }),
     ).rejects.toThrow(/Follow-up not found/);
   });
 });
@@ -620,11 +620,11 @@ describe("owner scoping", () => {
     const followup = await seedOpen();
 
     await expect(
-      lifecycle.completeFollowup({ ownerUserId: "intruder", followupId: followup.id }),
+      lifecycle.completeFollowup({ actorUserId: "intruder", followupId: followup.id }),
     ).rejects.toThrow(/Follow-up not found/);
     await expect(
       lifecycle.editFollowup({
-        ownerUserId: "intruder",
+        actorUserId: "intruder",
         followupId: followup.id,
         edit: { reason: "hijack" },
       }),

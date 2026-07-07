@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type {
   BriefItem,
   BriefItemKind,
@@ -16,6 +14,7 @@ import {
   createWeeklyRelationshipReviewWorkflow,
   type WeeklyRelationshipReviewSections,
 } from "./weekly-relationship-review";
+import { expectNoForbiddenImports } from "./workflow-boundary-fixtures";
 
 const OWNER = "owner-1";
 const PERSON_ID = "person-1";
@@ -354,15 +353,9 @@ describe("Weekly Relationship Review workflow", () => {
   });
 
   it("does not import autonomous follow-up, memory, source-record, draft, or external-send mutations", () => {
-    const source = readFileSync(
-      join(process.cwd(), "src/queries/weekly-relationship-review.ts"),
-      "utf8",
-    );
-    const importSources = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1] ?? "");
-
-    for (const moduleId of importSources) {
-      expect(moduleId).not.toMatch(/queries\/(followups|memories|source-records|gmail)/);
-      expect(moduleId).not.toMatch(/sendgrid|twilio|slack|resend|nodemailer/i);
-    }
+    expectNoForbiddenImports("src/queries/weekly-relationship-review.ts", [
+      /queries\/(followups|memories|source-records|gmail)/,
+      /sendgrid|twilio|slack|resend|nodemailer/i,
+    ]);
   });
 });

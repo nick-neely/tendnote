@@ -7,10 +7,14 @@ import {
   ChatFollowupReviewCard,
   ChatFollowupReviewList,
 } from "@/components/chat-followup-review-card";
+import {
+  ChatGeneralActionReviewCard,
+  ChatGeneralActionReviewList,
+} from "@/components/chat-general-action-review-card";
 import { ChatLoggedNoteCard } from "@/components/chat-logged-note-card";
 import { ChatReviewCard, ChatReviewList } from "@/components/chat-review-card";
 import type { AssistantTurnUnit } from "@/lib/eve/message-views";
-import type { GroupableToolView } from "@/lib/eve/tool-result-view";
+import type { AssistantToolView, GroupableToolView } from "@/lib/eve/tool-result-view";
 
 /**
  * Stable React key for a turn render unit. A group keys off its kind and first
@@ -36,6 +40,34 @@ export function turnUnitKey(messageId: string, unit: AssistantTurnUnit): string 
  * This is the assistant panel's one place that maps tool-result kinds to cards,
  * so new actionable result kinds are added here rather than in the panel shell.
  */
+/**
+ * Per-kind interactive-card renderers for a single tool result. Keyed by `view.kind`;
+ * a kind absent from the table (or a renderer that returns null) falls through to the
+ * read-only {@link AssistantToolResult}. New actionable result kinds are added here.
+ */
+const singleUnitRenderers: {
+  [K in AssistantToolView["kind"]]?: (
+    view: Extract<AssistantToolView, { kind: K }>,
+  ) => React.ReactNode;
+} = {
+  suggested_memory_review: (view) => <ChatReviewCard isNew item={view} />,
+  suggested_memory_review_list: (view) => <ChatReviewList isNew view={view} />,
+  suggested_followup_review: (view) => <ChatFollowupReviewCard isNew item={view} />,
+  suggested_followup_review_list: (view) => <ChatFollowupReviewList isNew view={view} />,
+  suggested_general_action_review: (view) => <ChatGeneralActionReviewCard isNew item={view} />,
+  suggested_general_action_review_list: (view) => <ChatGeneralActionReviewList isNew view={view} />,
+  // The draft card is interactive (inline WYSIWYG edit + copy), so it routes to the
+  // client card rather than the presentational tool-result module.
+  message_draft: (view) => <ChatDraftCard isNew view={view} />,
+  // A logged note linked to a resolved person can be promoted to a memory or dismissed
+  // inline; a personless note has nothing to attach to, so it returns null and falls
+  // through to the read-only logged card.
+  saved_source_record: (view) =>
+    view.linkedPersonId ? (
+      <ChatLoggedNoteCard isNew view={{ ...view, linkedPersonId: view.linkedPersonId }} />
+    ) : null,
+};
+
 export function AssistantTurnUnitView({ unit }: { unit: AssistantTurnUnit }) {
   if (unit.type === "group") {
     return (
@@ -48,35 +80,8 @@ export function AssistantTurnUnitView({ unit }: { unit: AssistantTurnUnit }) {
   }
 
   const { view } = unit.entry;
-
-  if (view.kind === "suggested_memory_review") {
-    return <ChatReviewCard isNew item={view} />;
-  }
-
-  if (view.kind === "suggested_memory_review_list") {
-    return <ChatReviewList isNew view={view} />;
-  }
-
-  if (view.kind === "suggested_followup_review") {
-    return <ChatFollowupReviewCard isNew item={view} />;
-  }
-
-  if (view.kind === "suggested_followup_review_list") {
-    return <ChatFollowupReviewList isNew view={view} />;
-  }
-
-  // The draft card is interactive (inline WYSIWYG edit + copy), so it routes to
-  // the client card rather than the presentational tool-result module.
-  if (view.kind === "message_draft") {
-    return <ChatDraftCard isNew view={view} />;
-  }
-
-  // A logged note linked to a resolved person can be promoted to a memory or
-  // dismissed inline; a personless note has nothing to attach to, so it falls
-  // through to the read-only logged card below.
-  if (view.kind === "saved_source_record" && view.linkedPersonId) {
-    return <ChatLoggedNoteCard isNew view={{ ...view, linkedPersonId: view.linkedPersonId }} />;
-  }
-
-  return <AssistantToolResult isNew view={view} />;
+  const render = singleUnitRenderers[view.kind] as
+    | ((view: AssistantToolView) => React.ReactNode)
+    | undefined;
+  return render?.(view) ?? <AssistantToolResult isNew view={view} />;
 }

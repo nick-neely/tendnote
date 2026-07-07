@@ -162,17 +162,20 @@ describe("background job recovery", () => {
       deliveryLimit: 1,
       extractionBackfillLimit: 1,
       embeddingBackfillLimit: 1,
+      actionExtractionBackfillLimit: 1,
       recoverDeliveries: vi
         .fn()
         .mockResolvedValue({ scanned: 1, republished: 1, failed: 0, abandoned: 0 }),
       backfillExtraction: vi.fn().mockResolvedValue({ scanned: 1, processed: 1, failed: 0 }),
       backfillEmbedding: vi.fn().mockResolvedValue({ scanned: 1, processed: 0, failed: 1 }),
+      backfillActionExtraction: vi.fn().mockResolvedValue({ scanned: 1, processed: 1, failed: 0 }),
     });
 
     expect(result).toEqual({
       deliveries: { scanned: 1, republished: 1, failed: 0, abandoned: 0 },
       extraction: { scanned: 1, processed: 1, failed: 0 },
       embedding: { scanned: 1, processed: 0, failed: 1 },
+      actionExtraction: { scanned: 1, processed: 1, failed: 0 },
     });
   });
 

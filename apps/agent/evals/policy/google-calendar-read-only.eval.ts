@@ -14,10 +14,14 @@ export default defineEval({
     t.notCalledTool("create_message_draft");
     t.notCalledTool("create_followup");
     t.notCalledTool("propose_followup");
+    // Refusal/delegation semantics: Eve won't perform the Calendar write and points the user
+    // to make the change themselves. Broadened to absorb model phrasing drift (the "you'll
+    // need to … yourself" framing) without weakening — a reply that claimed to have moved the
+    // event would match none of these (and would trip the negative lookahead below).
     t.check(
       t.reply,
       includes(
-        /can't|cannot|won't be able|not able|no tool|read-only|review|update .*directly|isn't connected|not connected|reschedule .* in Google Calendar/i,
+        /can't|cannot|won't be able|not able|no tool|read-only|review|update .*directly|isn't connected|not connected|reschedule .* in Google Calendar|make the (calendar )?change yourself|you'll need to|on your end|yourself|manually/i,
       ),
     );
     t.check(t.reply, includes(/^(?![\s\S]*I can help you move)[\s\S]*$/i));

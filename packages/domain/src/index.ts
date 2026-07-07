@@ -1,4 +1,5 @@
 export * from "./access";
+export * from "./action-extraction";
 export * from "./assistant-tool-results";
 export * from "./brief-schedules";
 export * from "./brief-summary";
@@ -12,6 +13,8 @@ export * from "./drafts";
 export * from "./exact-recall";
 export * from "./extraction-jobs";
 export * from "./followups";
+export * from "./general-action-areas";
+export * from "./general-actions";
 export * from "./gmail-drafts";
 export * from "./households";
 export * from "./memories";

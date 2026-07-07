@@ -13,7 +13,7 @@ import type {
   EmbeddingConfig,
   EnqueueEmbeddingJobInput,
   ProcessEmbeddingJobInput,
-  SearchSemanticContextQueryInput,
+  SearchSemanticContextRequest,
 } from "./semantic-retrieval/types";
 
 export { createAiSdkEmbeddingAdapter } from "./semantic-retrieval/ai-sdk-adapter";
@@ -112,6 +112,6 @@ export async function getSemanticEmbeddingJob(jobId: string) {
   return defaultProcessor.getEmbeddingJob(jobId);
 }
 
-export async function searchSemanticContext(input: SearchSemanticContextQueryInput) {
+export async function searchSemanticContext(input: SearchSemanticContextRequest) {
   return defaultSemanticRetrieval.searchSemanticContext(input);
 }

@@ -1,6 +1,7 @@
 import {
   type ExactRecallRecordKind,
   type ExactRecallResult,
+  type GeneralActionStatus,
   visibilityChoiceForScope,
   visibilityLabelForScope,
 } from "@tendnote/domain";
@@ -21,8 +22,12 @@ type SearchRow = {
   snippet: string;
   matched_fields: string[];
   rank: string | number;
-  trust_level: "identity_reference" | "confirmed_fact" | "logged_context";
+  trust_level: "identity_reference" | "confirmed_fact" | "logged_context" | "action_item";
   sensitivity: "normal" | "sensitive" | "restricted";
+  // Populated only for `general_action` rows (AC4). Null for every other kind.
+  general_action_status: GeneralActionStatus | null;
+  general_action_is_routine: boolean | null;
+  general_action_area_id: string | null;
 };
 
 export function createDrizzleRelationshipContextSearchStore(): RelationshipContextSearchStore {
@@ -60,7 +65,10 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
             + (extract(epoch from p.updated_at)::float8 / 1000000000000)
           )::float8 as rank,
           'identity_reference'::text as trust_level,
-          'normal'::text as sensitivity
+          'normal'::text as sensitivity,
+          null::text as general_action_status,
+          null::boolean as general_action_is_routine,
+          null::text as general_action_area_id
         from people p, search_query
         where
           p.owner_user_id = ${input.ownerUserId}
@@ -85,7 +93,10 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
             + (extract(epoch from m.updated_at)::float8 / 1000000000000)
           )::float8 as rank,
           'confirmed_fact'::text as trust_level,
-          m.sensitivity::text as sensitivity
+          m.sensitivity::text as sensitivity,
+          null::text as general_action_status,
+          null::boolean as general_action_is_routine,
+          null::text as general_action_area_id
         from memories m
         left join people p on p.id = m.person_id and p.owner_user_id = ${input.ownerUserId}
         cross join search_query
@@ -118,7 +129,10 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
             + (extract(epoch from sr.updated_at)::float8 / 1000000000000)
           )::float8 as rank,
           'logged_context'::text as trust_level,
-          sr.sensitivity::text as sensitivity
+          sr.sensitivity::text as sensitivity,
+          null::text as general_action_status,
+          null::boolean as general_action_is_routine,
+          null::text as general_action_area_id
         from source_records sr
         left join lateral (
           select p.id, p.display_name
@@ -143,6 +157,68 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           and sr.status = 'active'
           and (${input.directlyRequested}::boolean or sr.sensitivity <> 'restricted')
           and sr.search_vector @@ search_query.query
+        union all
+        select
+          'general_action'::text as record_kind,
+          ga.id::text as record_id,
+          ga.owner_user_id::text as owner_user_id,
+          ga.household_id::text as household_id,
+          ga.scope::text as scope,
+          null::text as related_person_id,
+          null::text as related_person_display_name,
+          ga.title as label,
+          ts_headline(
+            'simple',
+            coalesce(ga.title, '') || ' ' || coalesce(ga.notes, ''),
+            search_query.query,
+            'MaxWords=18, MinWords=6, ShortWord=2'
+          ) as snippet,
+          coalesce(
+            nullif(
+              array_remove(array[
+                case when to_tsvector('simple', coalesce(ga.title, '')) @@ search_query.query then 'title' end,
+                case when to_tsvector('simple', coalesce(ga.notes, '')) @@ search_query.query then 'notes' end
+              ], null),
+              '{}'
+            ),
+            array['title']
+          )::text[] as matched_fields,
+          (
+            ts_rank_cd(ga.search_vector, search_query.query)
+            + (extract(epoch from ga.updated_at)::float8 / 1000000000000)
+          )::float8 as rank,
+          'action_item'::text as trust_level,
+          'normal'::text as sensitivity,
+          ga.status::text as general_action_status,
+          (ga.recurrence is not null) as general_action_is_routine,
+          ga.area_id::text as general_action_area_id
+        from general_actions ga, search_query
+        where
+          ${kindFilter(input.recordKinds, "general_action")}
+          -- General Actions are not person-relationship context (ADRs 0143, 0155): a
+          -- person-scoped query never returns them.
+          and (${input.personId ? sql`false` : sql`true`})
+          -- Scope filtering happens here, pre-retrieval (ADR 0153, AC5). This inlines the
+          -- domain canRetrieveGeneralAction policy in SQL: a durable action
+          -- (open/deferred/paused) is admitted only for a caller who may see it, and a
+          -- suggested proposal only in owner-only review context, never scope-visible to
+          -- a household member (ADRs 0151-0153, AC3). Ignored and terminal never surface.
+          and (
+            (
+              ${visibleHouseholdRecordSql({
+                callerUserId: input.ownerUserId,
+                tableAlias: "ga",
+                recordKind: "general_action",
+              })}
+              and ga.status in ('open', 'deferred', 'paused')
+            )
+            or (
+              ${input.includeReviewGated}::boolean
+              and ga.owner_user_id = ${input.ownerUserId}
+              and ga.status = 'suggested'
+            )
+          )
+          and ga.search_vector @@ search_query.query
         ) mixed_results
         order by rank desc, label asc, record_id asc
         limit ${input.limit}
@@ -171,5 +247,14 @@ function toExactRecallResult(row: SearchRow): ExactRecallResult {
     rank: Number(row.rank),
     trustLevel: row.trust_level,
     sensitivity: row.sensitivity,
+    generalAction:
+      row.record_kind === "general_action" && row.general_action_status
+        ? {
+            status: row.general_action_status,
+            isRoutine: Boolean(row.general_action_is_routine),
+            isSuggested: row.general_action_status === "suggested",
+            areaId: row.general_action_area_id,
+          }
+        : null,
   };
 }

@@ -1,4 +1,10 @@
-import type { HouseholdMembership, Memory, Sensitivity, SourceRecord } from "@tendnote/domain";
+import type {
+  GeneralAction,
+  HouseholdMembership,
+  Memory,
+  Sensitivity,
+  SourceRecord,
+} from "@tendnote/domain";
 import type { HouseholdRecordShare } from "../households/types";
 import { createInMemoryEmbeddingStore } from "./in-memory-store";
 import { createEmbeddingProcessor } from "./processor";
@@ -55,18 +61,25 @@ export function createHarness(
       ownerUserId?: string;
     } = {},
   ) {
+    // Spread only the keys the caller actually supplied over the fixture defaults, so an
+    // absent field falls through to its default without a per-field `?? default` ladder
+    // (mirrors createGeneralAction).
+    const provided = Object.fromEntries(
+      Object.entries(input).filter(([, value]) => value !== undefined),
+    ) as Partial<typeof input>;
     return store.createSourceRecord({
-      ownerUserId: input.ownerUserId ?? OWNER,
-      sourceType: input.sourceType ?? "manual",
-      content: input.content ?? "Mara prefers handmade cooking gifts.",
-      rawContent: input.rawContent ?? "Raw provider text should not be embedded.",
-      retentionPolicy: input.retentionPolicy ?? "retain",
-      status: input.status ?? "active",
-      confidence: input.confidence ?? "medium",
-      sensitivity: input.sensitivity ?? "normal",
-      scope: input.scope ?? "private",
-      importance: input.importance ?? 3,
-      metadataJson: input.metadataJson ?? {},
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Mara prefers handmade cooking gifts.",
+      rawContent: "Raw provider text should not be embedded.",
+      retentionPolicy: "retain",
+      status: "active",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+      ...provided,
     });
   }
 
@@ -102,6 +115,47 @@ export function createHarness(
     });
   }
 
+  async function createGeneralAction(
+    input: Partial<Omit<GeneralAction, "id" | "createdAt" | "updatedAt">> & {
+      ownerUserId?: string;
+    } = {},
+  ) {
+    const ownerUserId = input.ownerUserId ?? OWNER;
+    // Spread only the keys the caller actually supplied over the fixture defaults, so an
+    // absent field falls through to its default without a per-field `?? default` ladder.
+    const provided = Object.fromEntries(
+      Object.entries(input).filter(([, value]) => value !== undefined),
+    ) as Partial<typeof input>;
+    return store.createGeneralAction({
+      ownerUserId,
+      title: "Replace the refrigerator water filter",
+      notes: null,
+      links: [],
+      assetHints: [],
+      status: "open",
+      dueAt: null,
+      deferUntil: null,
+      recurrence: null,
+      sourceRecordId: null,
+      areaId: null,
+      scope: "private",
+      householdId: null,
+      createdByUserId: ownerUserId,
+      lastActorUserId: ownerUserId,
+      completedAt: null,
+      ...provided,
+    });
+  }
+
+  async function embedGeneralAction(actionId: string, ownerUserId = OWNER) {
+    const { job } = await processor.enqueueEmbeddingJob({
+      ownerUserId,
+      recordKind: "general_action",
+      recordId: actionId,
+    });
+    return processor.processEmbeddingJob({ jobId: job.id });
+  }
+
   async function auditActions() {
     const entries = await store.listAuditLogEntries({ ownerUserId: OWNER });
     return entries.map((entry) => entry.action);
@@ -114,6 +168,8 @@ export function createHarness(
     createSourceRecord,
     linkSourceRecord,
     createApprovedMemory,
+    createGeneralAction,
+    embedGeneralAction,
     auditActions,
   };
 }

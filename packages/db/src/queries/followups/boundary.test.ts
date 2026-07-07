@@ -71,16 +71,16 @@ describe("cadence stays inert — no automatic recurrence", () => {
       cadence: "weekly",
     });
     await lifecycle.snoozeFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: followup.id,
       dueAt: new Date("2026-07-22T00:00:00Z"),
     });
     await lifecycle.editFollowup({
-      ownerUserId: OWNER,
+      actorUserId: OWNER,
       followupId: followup.id,
       edit: { reason: "Weekly check-in (updated)." },
     });
-    await lifecycle.completeFollowup({ ownerUserId: OWNER, followupId: followup.id });
+    await lifecycle.completeFollowup({ actorUserId: OWNER, followupId: followup.id });
 
     // Exactly one record ever existed — no recurrence spawned a sibling.
     expect(await countForPerson()).toBe(1);
@@ -159,7 +159,7 @@ describe("suggested follow-ups never become active without explicit acceptance",
 
     expect(await activeCount()).toBe(0);
 
-    await review.acceptSuggestedFollowup({ ownerUserId: OWNER, followupId: followup.id });
+    await review.acceptSuggestedFollowup({ actorUserId: OWNER, followupId: followup.id });
 
     expect(await activeCount()).toBe(1);
   });
@@ -175,7 +175,7 @@ describe("dismissed and archived follow-ups leave the active and review feeds", 
       dueAt,
     });
 
-    await lifecycle.dismissFollowup({ ownerUserId: OWNER, followupId: open.id });
+    await lifecycle.dismissFollowup({ actorUserId: OWNER, followupId: open.id });
 
     expect(await activeCount()).toBe(0);
   });
@@ -189,7 +189,7 @@ describe("dismissed and archived follow-ups leave the active and review feeds", 
       dueAt,
     });
 
-    await lifecycle.archiveFollowup({ ownerUserId: OWNER, followupId: open.id });
+    await lifecycle.archiveFollowup({ actorUserId: OWNER, followupId: open.id });
 
     expect(await activeCount()).toBe(0);
   });
@@ -205,7 +205,7 @@ describe("dismissed and archived follow-ups leave the active and review feeds", 
       sourceRecordId: source.id,
     });
 
-    await review.dismissSuggestedFollowup({ ownerUserId: OWNER, followupId: followup.id });
+    await review.dismissSuggestedFollowup({ actorUserId: OWNER, followupId: followup.id });
 
     expect(await reviewCount()).toBe(0);
     expect(await activeCount()).toBe(0);
@@ -223,7 +223,7 @@ describe("dismissed and archived follow-ups leave the active and review feeds", 
       sourceRecordId: source.id,
     });
 
-    await lifecycle.archiveFollowup({ ownerUserId: OWNER, followupId: followup.id });
+    await lifecycle.archiveFollowup({ actorUserId: OWNER, followupId: followup.id });
 
     expect(await reviewCount()).toBe(0);
     expect(await activeCount()).toBe(0);

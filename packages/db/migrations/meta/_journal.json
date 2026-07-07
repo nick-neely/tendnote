@@ -204,6 +204,69 @@
       "when": 1783290863665,
       "tag": "0028_brief_item_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1783347023254,
+      "tag": "0029_general_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1783352362499,
+      "tag": "0030_general_action_areas",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1783354158630,
+      "tag": "0031_household_scoped_general_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1783357068356,
+      "tag": "0032_recurring_routines",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1783360402119,
+      "tag": "0033_suggested_general_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1783370366485,
+      "tag": "0034_action_extraction_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1783371599956,
+      "tag": "0035_action_extraction_job_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1783372933835,
+      "tag": "0036_action_retrieval",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1783387585200,
+      "tag": "0037_action_summary_workflow",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,9 @@
 import {
+  claimNextActionExtractionJob,
+  getActionExtractionJob,
+  processActionExtractionJob,
+} from "@tendnote/db/queries/action-extraction-jobs";
+import {
   type BackgroundJobDelivery,
   type BackgroundJobDeliveryStore,
   createDrizzleBackgroundJobDeliveryStore,
@@ -41,18 +46,24 @@ export type BackgroundJobRecoveryRunResult = {
   deliveries: DeliveryRecoveryResult;
   extraction: ProcessorBackfillResult;
   embedding: ProcessorBackfillResult;
+  actionExtraction: ProcessorBackfillResult;
 };
 
-export async function inspectDeliveryProcessorJob(
-  delivery: BackgroundJobDelivery,
-): Promise<JobValidity> {
+/** A backing job is obsolete once it is gone or already terminal (completed/skipped). */
+function jobValidity(job: { status: string } | null): JobValidity {
+  return !job || job.status === "completed" || job.status === "skipped" ? "obsolete" : "active";
+}
+
+async function inspectDeliveryProcessorJob(delivery: BackgroundJobDelivery): Promise<JobValidity> {
   if (delivery.jobKind === "extraction") {
-    const job = await getExtractionJob(delivery.jobId);
-    return !job || job.status === "completed" || job.status === "skipped" ? "obsolete" : "active";
+    return jobValidity(await getExtractionJob(delivery.jobId));
   }
 
-  const job = await getSemanticEmbeddingJob(delivery.jobId);
-  return !job || job.status === "completed" || job.status === "skipped" ? "obsolete" : "active";
+  if (delivery.jobKind === "action_extraction") {
+    return jobValidity(await getActionExtractionJob(delivery.jobId));
+  }
+
+  return jobValidity(await getSemanticEmbeddingJob(delivery.jobId));
 }
 
 export async function recoverBackgroundJobDeliveries(input: {
@@ -162,20 +173,40 @@ export async function runEmbeddingBackfill(input: {
   });
 }
 
+async function runActionExtractionBackfill(input: {
+  limit: number;
+  now?: Date;
+  claimNextJob?: typeof claimNextActionExtractionJob;
+  processJob?: typeof processActionExtractionJob;
+  logger?: BackgroundJobQueueLogger;
+}): Promise<ProcessorBackfillResult> {
+  return runProcessorBackfill({
+    jobKind: "action_extraction",
+    limit: input.limit,
+    now: input.now,
+    claimNextJob: input.claimNextJob ?? claimNextActionExtractionJob,
+    processJob: input.processJob ?? processActionExtractionJob,
+    logger: input.logger,
+  });
+}
+
 export async function runBackgroundJobRecovery(input: {
   deliveryLimit: number;
   extractionBackfillLimit: number;
   embeddingBackfillLimit: number;
+  actionExtractionBackfillLimit: number;
   now?: Date;
   logger?: BackgroundJobQueueLogger;
   recoverDeliveries?: typeof recoverBackgroundJobDeliveries;
   backfillExtraction?: typeof runExtractionBackfill;
   backfillEmbedding?: typeof runEmbeddingBackfill;
+  backfillActionExtraction?: typeof runActionExtractionBackfill;
 }): Promise<BackgroundJobRecoveryRunResult> {
   const now = input.now ?? new Date();
   const recoverDeliveries = input.recoverDeliveries ?? recoverBackgroundJobDeliveries;
   const backfillExtraction = input.backfillExtraction ?? runExtractionBackfill;
   const backfillEmbedding = input.backfillEmbedding ?? runEmbeddingBackfill;
+  const backfillActionExtraction = input.backfillActionExtraction ?? runActionExtractionBackfill;
 
   const deliveries = await recoverDeliveries({
     limit: input.deliveryLimit,
@@ -192,12 +223,17 @@ export async function runBackgroundJobRecovery(input: {
     now,
     logger: input.logger,
   });
+  const actionExtraction = await backfillActionExtraction({
+    limit: input.actionExtractionBackfillLimit,
+    now,
+    logger: input.logger,
+  });
 
-  return { deliveries, extraction, embedding };
+  return { deliveries, extraction, embedding, actionExtraction };
 }
 
 async function runProcessorBackfill(input: {
-  jobKind: "extraction" | "embedding";
+  jobKind: "extraction" | "embedding" | "action_extraction";
   limit: number;
   now?: Date;
   claimNextJob: (input?: { now?: Date }) => Promise<{ id: string } | null>;

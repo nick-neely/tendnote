@@ -118,7 +118,7 @@ export function createDiscordInstallQueries(store: DiscordInstallStore) {
 }
 
 function toDeliveryTarget(install: DiscordInstall | null): DiscordDeliveryTarget | null {
-  if (!install || !install.enabled || !install.targetKind || !install.targetChannelId) {
+  if (!install?.enabled || !install.targetKind || !install.targetChannelId) {
     return null;
   }
 

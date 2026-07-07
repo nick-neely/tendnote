@@ -13,6 +13,7 @@
     "./memories": "./src/memories.ts",
     "./context-snapshots": "./src/context-snapshots.ts",
     "./followups": "./src/followups.ts",
+    "./general-actions": "./src/general-actions.ts",
     "./drafts": "./src/drafts.ts",
     "./gmail-drafts": "./src/gmail-drafts.ts",
     "./privacy": "./src/privacy.ts",
