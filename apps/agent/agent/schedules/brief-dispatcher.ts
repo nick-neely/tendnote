@@ -1,3 +1,4 @@
+import { dispatchActionSummary } from "@tendnote/db/queries/action-summary";
 import { dispatchBirthdayGiftPlanning } from "@tendnote/db/queries/birthday-gift-planning";
 import { dispatchDueBriefs } from "@tendnote/db/queries/brief-schedules";
 import { dispatchPostMeetingAftercare } from "@tendnote/db/queries/post-meeting-aftercare";
@@ -52,6 +53,15 @@ export default defineSchedule({
           ...(discordSender ? { discordSender } : {}),
         }).catch((error) => {
           console.error("Birthday gift planning dispatch failed.", error);
+        }),
+        // The Phase 5 scoped action summary rides the same root schedule; the dispatch
+        // itself gates to at most once per local day so it never becomes a nag loop.
+        dispatchActionSummary({
+          ownerUserId,
+          timezone,
+          ...(discordSender ? { discordSender } : {}),
+        }).catch((error) => {
+          console.error("Action summary dispatch failed.", error);
         }),
       ]),
     );

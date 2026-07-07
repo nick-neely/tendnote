@@ -484,6 +484,56 @@ export function isProactivelySurfacing(
 }
 
 /**
+ * Why an Action is asking for attention *now*, for a surface that groups the same
+ * three proactive buckets the narrow Action Today view and the scoped summaries use
+ * (ADRs 0157, 0158). Derived from the exact same boundary as
+ * {@link isProactivelySurfacing} — this only adds the *reason*, never widens *whether*
+ * something surfaces, so the two can never disagree. `overdue` and `due_today` split a
+ * scheduled open action by local calendar day (never by wall-clock instant, so a thing
+ * due today reads "due today" all day rather than flipping to "overdue" as the clock
+ * passes its stored midnight); `resurfaced` is a deferred action whose set-aside date
+ * has come back around (ADR 0149).
+ */
+export type ActionSurfacingReason = "overdue" | "due_today" | "resurfaced";
+
+/**
+ * Classifies why a General Action is on a proactive surface at instant `now`, or
+ * returns null when it is not surfacing at all — an unscheduled someday action, a
+ * future-dated one, a not-yet-arrived deferral, a paused Routine, or a terminal
+ * action. A caller filters and labels in a single pass: a null reason means "leave it
+ * off the surface", so the calm Today view and the summary never re-derive the
+ * boundary. A Routine follows the same rule through its rolled-forward due date, so
+ * its cadence — not a nag — is what brings it back (ADRs 0147, 0149, 0157).
+ */
+export function classifyActionSurfacing(
+  action: Pick<GeneralAction, "status" | "dueAt" | "deferUntil">,
+  now: Date,
+): ActionSurfacingReason | null {
+  if (!isProactivelySurfacing(action, now)) {
+    return null;
+  }
+  // A resurfaced deferral never carries a due date, so it is classified first.
+  if (action.status === "deferred") {
+    return "resurfaced";
+  }
+  // isProactivelySurfacing guarantees an `open` surfacing action has a due date at or
+  // before `now`; the null guard keeps the narrowing honest for the type checker.
+  if (action.dueAt === null) {
+    return null;
+  }
+  return startOfLocalDay(action.dueAt) < startOfLocalDay(now) ? "overdue" : "due_today";
+}
+
+/**
+ * Local-midnight epoch of a date, for whole-day due comparisons. Shared by the
+ * surfacing classifier here and the web view layers so "what day is this due" is
+ * computed one way everywhere (due dates are stored at local midnight).
+ */
+export function startOfLocalDay(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+/**
  * A plain-language cadence label for a Routine — "Every week", "Every 6 months". The
  * canonical phrasing so the UI and, later, Eve describe a Routine's rhythm the same
  * calm way (never streak or pressure language). The unit values are already the

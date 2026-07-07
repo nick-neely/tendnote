@@ -519,8 +519,13 @@ export function ActionRow({
 
   return (
     <article
-      className="flex flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
+      className="flex scroll-mt-24 flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
       data-leaving={leaving}
+      // Deep-link target for the Action Today surface: `/actions#action-<id>` scrolls
+      // to and briefly highlights this row (see useDeepLinkHighlight). tabIndex lets the
+      // highlight move focus here so the jump is announced to assistive tech.
+      id={`action-${action.id}`}
+      tabIndex={-1}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="grid gap-1.5">

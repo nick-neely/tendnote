@@ -61,6 +61,8 @@ describe("active Eve tree", () => {
     expect(code).toMatch(/dispatchBirthdayGiftPlanning/);
     expect(code).toMatch(/dispatchDueBriefs/);
     expect(code).toMatch(/dispatchPostMeetingAftercare/);
+    // The Phase 5 scoped action summary (#186) runs from the same root schedule.
+    expect(code).toMatch(/dispatchActionSummary/);
     expect(code).toMatch(/createDiscordProactiveDeliverySender/);
     expect(code).toMatch(/discordSender/);
     expect(code).toMatch(/weeklyRelationshipReviewDiscordSender/);

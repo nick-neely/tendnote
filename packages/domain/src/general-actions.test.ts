@@ -4,6 +4,7 @@ import {
   assertPausableRoutine,
   assertRecurrenceEditAllowed,
   assertResurfaceDate,
+  classifyActionSurfacing,
   describeRecurrence,
   type GeneralActionRecurrence,
   generalActionAssetHintSchema,
@@ -196,14 +197,90 @@ describe("proactive resurfacing", () => {
     ).toBe(false);
   });
 
-  it("never surfaces paused or terminal actions", () => {
-    for (const status of ["paused", "completed", "dismissed", "archived"] as const) {
+  it("never surfaces paused, terminal, or review-gated actions", () => {
+    // Review-gated `suggested`/`ignored` proposals never surface either — a proposal is
+    // not a durable action until accepted (ADRs 0151, 0152).
+    for (const status of [
+      "paused",
+      "completed",
+      "dismissed",
+      "archived",
+      "suggested",
+      "ignored",
+    ] as const) {
       expect(
         isProactivelySurfacing(
           { status, dueAt: new Date("2026-01-01T00:00:00Z"), deferUntil: null },
           now,
         ),
       ).toBe(false);
+    }
+  });
+});
+
+describe("action surfacing reason", () => {
+  // Due dates are stored at local midnight, so the fixtures use local Date
+  // construction (like the recurrence tests) to stay timezone-independent.
+  const now = new Date(2026, 6, 6, 12, 0, 0);
+
+  it("splits a scheduled open action into overdue and due-today by calendar day", () => {
+    expect(
+      classifyActionSurfacing(
+        { status: "open", dueAt: new Date(2026, 6, 6), deferUntil: null },
+        now,
+      ),
+    ).toBe("due_today");
+    expect(
+      classifyActionSurfacing(
+        { status: "open", dueAt: new Date(2026, 6, 1), deferUntil: null },
+        now,
+      ),
+    ).toBe("overdue");
+  });
+
+  it("labels a deferred action that has come back as resurfaced", () => {
+    expect(
+      classifyActionSurfacing(
+        { status: "deferred", dueAt: null, deferUntil: new Date(2026, 6, 5) },
+        now,
+      ),
+    ).toBe("resurfaced");
+  });
+
+  it("returns null for anything that does not surface — the same boundary as the predicate", () => {
+    // Unscheduled someday action, future-dated one, and a not-yet-arrived deferral.
+    expect(
+      classifyActionSurfacing({ status: "open", dueAt: null, deferUntil: null }, now),
+    ).toBeNull();
+    expect(
+      classifyActionSurfacing(
+        { status: "open", dueAt: new Date(2026, 6, 20), deferUntil: null },
+        now,
+      ),
+    ).toBeNull();
+    expect(
+      classifyActionSurfacing(
+        { status: "deferred", dueAt: null, deferUntil: new Date(2026, 7, 1) },
+        now,
+      ),
+    ).toBeNull();
+  });
+
+  it("never surfaces a paused Routine, a terminal action, or a review-gated proposal", () => {
+    for (const status of [
+      "paused",
+      "completed",
+      "dismissed",
+      "archived",
+      "suggested",
+      "ignored",
+    ] as const) {
+      expect(
+        classifyActionSurfacing(
+          { status, dueAt: new Date("2026-01-01T00:00:00Z"), deferUntil: null },
+          now,
+        ),
+      ).toBeNull();
     }
   });
 });

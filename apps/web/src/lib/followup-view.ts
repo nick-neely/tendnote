@@ -1,4 +1,5 @@
 import type { Followup, FollowupStatus } from "@tendnote/domain";
+import { startOfLocalDay } from "@tendnote/domain";
 import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain/privacy";
 
 /**
@@ -21,10 +22,6 @@ export type FollowupView = {
   visibilityChoice: ReturnType<typeof visibilityChoiceForScope>;
   visibilityLabel: string;
 };
-
-function startOfDay(date: Date): number {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
 
 const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -58,8 +55,8 @@ export function toDateInputValue(date: Date): string {
 }
 
 export function followupDueState(dueAt: Date, now: Date = new Date()): FollowupDueState {
-  const due = startOfDay(dueAt);
-  const today = startOfDay(now);
+  const due = startOfLocalDay(dueAt);
+  const today = startOfLocalDay(now);
 
   if (due < today) {
     return "overdue";

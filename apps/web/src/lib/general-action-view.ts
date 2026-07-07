@@ -7,7 +7,7 @@ import type {
   GeneralActionStatus,
   PrivacyScope,
 } from "@tendnote/domain";
-import { describeRecurrence } from "@tendnote/domain";
+import { describeRecurrence, startOfLocalDay } from "@tendnote/domain";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { toDateInputValue } from "@/lib/followup-view";
 
@@ -85,10 +85,6 @@ export type GeneralActionView = {
   surfaceLabel: string;
 };
 
-function startOfDay(date: Date): number {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
-
 function formatDay(date: Date, now: Date): string {
   return date.toLocaleDateString("en-US", {
     month: "short",
@@ -98,8 +94,8 @@ function formatDay(date: Date, now: Date): string {
 }
 
 function dueState(dueAt: Date, now: Date): "overdue" | "today" | "upcoming" {
-  const due = startOfDay(dueAt);
-  const today = startOfDay(now);
+  const due = startOfLocalDay(dueAt);
+  const today = startOfLocalDay(now);
   if (due < today) {
     return "overdue";
   }

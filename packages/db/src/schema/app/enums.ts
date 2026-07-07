@@ -265,6 +265,8 @@ export const phase3ScheduledWorkflow = pgEnum("phase3_scheduled_workflow", [
   "post_meeting_aftercare",
   "weekly_relationship_review",
   "birthday_gift_planning",
+  // Phase 5 scoped action summary — rides the same per-workflow delivery rails (ADR 0158).
+  "action_summary",
 ]);
 
 export const proactiveDeliveryChannel = pgEnum("proactive_delivery_channel", ["discord"]);
@@ -283,4 +285,5 @@ export const scheduledArtifactKind = pgEnum("scheduled_artifact_kind", [
   "weekly_relationship_review",
   "birthday_gift_planning",
   "brief",
+  "action_summary",
 ]);

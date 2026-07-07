@@ -10,6 +10,7 @@ import {
 } from "@tendnote/db/queries/general-actions";
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
 import { searchPeople } from "@tendnote/db/queries/people";
+import Link from "next/link";
 import { ActionsSurface } from "@/components/actions-surface";
 import { AppShell } from "@/components/app-shell";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
@@ -57,9 +58,17 @@ export default async function ActionsPage() {
     <AppShell>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         <header className="flex flex-col gap-1">
-          <h1 className="text-[length:var(--text-h1)] font-semibold leading-[var(--text-h1-line)] tracking-normal">
-            Actions
-          </h1>
+          <div className="flex items-baseline justify-between gap-4">
+            <h1 className="text-[length:var(--text-h1)] font-semibold leading-[var(--text-h1-line)] tracking-normal">
+              Actions
+            </h1>
+            <Link
+              className="rounded-sm text-[length:var(--text-small)] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              href="/actions/today"
+            >
+              Today
+            </Link>
+          </div>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
             One-time things to get done that aren't tied to a person — private by default, or shared
             with your household.
