@@ -1,18 +1,28 @@
 import { describe, expect, it } from "vitest";
 import acceptSuggestedFollowupTool from "../agent/tools/accept_suggested_followup";
+import acceptSuggestedGeneralActionTool from "../agent/tools/accept_suggested_general_action";
 import approveSuggestedMemoryTool from "../agent/tools/approve_suggested_memory";
 import captureMemoryTool from "../agent/tools/capture_memory";
 import captureSourceRecordTool from "../agent/tools/capture_source_record";
+import createGeneralActionTool from "../agent/tools/create_general_action";
 import createMessageDraftTool from "../agent/tools/create_message_draft";
 import createPersonTool from "../agent/tools/create_person";
+import dismissSuggestedGeneralActionTool from "../agent/tools/dismiss_suggested_general_action";
+import editGeneralActionTool from "../agent/tools/edit_general_action";
 import agendaTool from "../agent/tools/get_relationship_agenda";
 import getSuggestedFollowupReviewTool from "../agent/tools/get_suggested_followup_review";
+import getSuggestedGeneralActionReviewTool from "../agent/tools/get_suggested_general_action_review";
 import getSuggestedMemoryReviewTool from "../agent/tools/get_suggested_memory_review";
+import listGeneralActionsTool from "../agent/tools/list_general_actions";
 import listSuggestedFollowupReviewsTool from "../agent/tools/list_suggested_followup_reviews";
+import listSuggestedGeneralActionReviewsTool from "../agent/tools/list_suggested_general_action_reviews";
 import listSuggestedMemoryReviewsTool from "../agent/tools/list_suggested_memory_reviews";
+import planSuggestedGeneralActionsTool from "../agent/tools/plan_suggested_general_actions";
 import proposeFollowupTool from "../agent/tools/propose_followup";
 import exactSearchTool from "../agent/tools/search_relationship_context";
 import semanticSearchTool from "../agent/tools/search_semantic_context";
+import suggestGeneralActionTool from "../agent/tools/suggest_general_action";
+import updateGeneralActionStatusTool from "../agent/tools/update_general_action_status";
 import updatePersonTool from "../agent/tools/update_person";
 
 /**
@@ -382,6 +392,115 @@ describe("card tools toModelOutput strip rendered content", () => {
       for (const needle of include) {
         expect(serialized).toContain(needle);
       }
+    });
+  }
+});
+
+/**
+ * General Action tools (Phase 5 #185). Unlike the card tools above, the Action *title*
+ * is exactly what the model summarizes, so it is KEPT — what must never reach the model
+ * is the raw record id (and any linked-person id). These pin the id-stripping per-tool,
+ * not just by construction, mirroring the per-tool enumeration precedent above. The
+ * channel still receives the full `execute` output (ids included) for rendering.
+ */
+describe("general action tools toModelOutput strip ids but keep the title", () => {
+  const GA_ID = "66666666-6666-4666-8666-666666666666";
+  const GA_PERSON_ID = "77777777-7777-4777-8777-777777777777";
+  const GA_SOURCE_ID = "88888888-8888-4888-8888-888888888888";
+
+  /** The compact ref shape the General Action tools return (matches toGeneralActionRef). */
+  function gaRef(status = "open") {
+    return {
+      id: GA_ID,
+      title: "Replace the fridge water filter",
+      status,
+      dueAt: null,
+      deferUntil: null,
+      isRoutine: false,
+      recurrence: null,
+      areaId: null,
+      people: [{ id: GA_PERSON_ID, displayName: "Priya Shah" }],
+      visibilityChoice: "only_me" as const,
+      visibilityLabel: "Only me",
+    };
+  }
+
+  const component = {
+    type: "suggested_general_action_review" as const,
+    generalActionId: GA_ID,
+    sourceRecordId: GA_SOURCE_ID,
+  };
+
+  const cases: {
+    name: string;
+    tool: { toModelOutput?: (output: never) => unknown };
+    output: unknown;
+  }[] = [
+    { name: "create_general_action", tool: createGeneralActionTool, output: { action: gaRef() } },
+    {
+      name: "update_general_action_status",
+      tool: updateGeneralActionStatusTool,
+      output: { action: gaRef("completed") },
+    },
+    { name: "edit_general_action", tool: editGeneralActionTool, output: { action: gaRef() } },
+    {
+      name: "suggest_general_action",
+      tool: suggestGeneralActionTool,
+      output: {
+        found: true,
+        component,
+        action: gaRef("suggested"),
+        sourceRecord: { id: GA_SOURCE_ID },
+      },
+    },
+    {
+      name: "plan_suggested_general_actions",
+      tool: planSuggestedGeneralActionsTool,
+      output: { found: true, count: 1, proposed: [{ component, action: gaRef("suggested") }] },
+    },
+    {
+      name: "list_general_actions",
+      tool: listGeneralActionsTool,
+      output: { found: true, ledger: "active", window: null, count: 1, actions: [gaRef()] },
+    },
+    {
+      name: "list_suggested_general_action_reviews",
+      tool: listSuggestedGeneralActionReviewsTool,
+      output: {
+        found: true,
+        count: 1,
+        reviews: [{ component, action: gaRef("suggested"), sourceRecord: null }],
+      },
+    },
+    {
+      name: "get_suggested_general_action_review",
+      tool: getSuggestedGeneralActionReviewTool,
+      output: { found: true, component, action: gaRef("suggested"), sourceRecord: null },
+    },
+    {
+      name: "accept_suggested_general_action",
+      tool: acceptSuggestedGeneralActionTool,
+      output: { component, action: gaRef("open") },
+    },
+    {
+      name: "dismiss_suggested_general_action",
+      tool: dismissSuggestedGeneralActionTool,
+      output: {
+        action: { id: GA_ID, title: "Replace the fridge water filter", status: "dismissed" },
+      },
+    },
+  ];
+
+  for (const { name, tool, output } of cases) {
+    it(`${name} strips the record and person ids but keeps the title`, () => {
+      const model = modelOutput(tool.toModelOutput, output);
+      expect(model.type).toBe("json");
+      const serialized = JSON.stringify(model.value);
+      // The raw record id and any linked-person id never reach the model.
+      expect(serialized).not.toContain(GA_ID);
+      expect(serialized).not.toContain(GA_PERSON_ID);
+      // The title (and person names) are what the model summarizes, so they stay.
+      expect(serialized).toContain("Replace the fridge water filter");
     });
   }
 });

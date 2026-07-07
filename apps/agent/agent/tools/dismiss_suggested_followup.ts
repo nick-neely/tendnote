@@ -30,4 +30,16 @@ export default defineTool({
       },
     };
   },
+  // Strip the raw ids from the model's view (ids are for tool calls only); keep the new
+  // status so the model can confirm the dismissal in prose.
+  toModelOutput(output) {
+    return {
+      type: "json" as const,
+      value: {
+        dismissed: true,
+        status: output.followup.status,
+        guidance: "Confirm briefly that the suggested follow-up was dismissed; name the person.",
+      },
+    };
+  },
 });

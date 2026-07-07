@@ -1,0 +1,318 @@
+import type { GeneralActionWithContext } from "@tendnote/db/queries/general-actions";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  createGeneralAction: vi.fn(),
+  suggestGeneralAction: vi.fn(),
+  listActiveGeneralActions: vi.fn(),
+  listPausedGeneralActions: vi.fn(),
+  listResolvedGeneralActions: vi.fn(),
+  completeGeneralAction: vi.fn(),
+  deferGeneralAction: vi.fn(),
+  dismissGeneralAction: vi.fn(),
+  reopenGeneralAction: vi.fn(),
+  archiveGeneralAction: vi.fn(),
+  pauseGeneralAction: vi.fn(),
+  resumeGeneralAction: vi.fn(),
+  editGeneralAction: vi.fn(),
+}));
+
+vi.mock("@tendnote/db/queries/general-actions", () => mocks);
+
+const { default: createTool } = await import("../agent/tools/create_general_action");
+const { default: suggestTool } = await import("../agent/tools/suggest_general_action");
+const { default: planTool, MAX_SHALLOW_PLAN_ACTIONS } = await import(
+  "../agent/tools/plan_suggested_general_actions"
+);
+const { default: listTool } = await import("../agent/tools/list_general_actions");
+const { default: updateTool } = await import("../agent/tools/update_general_action_status");
+const { default: editTool } = await import("../agent/tools/edit_general_action");
+
+const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
+const ACTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+// A valid RFC-variant UUID: the cap test parses this through the tool's z.uuid() schema.
+const SOURCE_ID = "22222222-2222-4222-8222-222222222222";
+
+/** A hydrated General Action fixture (GeneralActionWithContext) for tool output shaping. */
+function action(overrides: Partial<GeneralActionWithContext> = {}): GeneralActionWithContext {
+  return {
+    id: ACTION_ID,
+    ownerUserId: "user-1",
+    title: "Replace the fridge water filter",
+    notes: null,
+    links: [],
+    status: "open",
+    dueAt: null,
+    deferUntil: null,
+    sourceRecordId: null,
+    areaId: null,
+    scope: "private",
+    householdId: null,
+    assetHints: [],
+    recurrence: null,
+    createdByUserId: "user-1",
+    lastActorUserId: "user-1",
+    completedAt: null,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+    linkedPeople: [],
+    sharedWithCount: 0,
+    householdName: null,
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("create_general_action — explicit active creation", () => {
+  it("creates an unscheduled active action owner-scoped, without a due date", async () => {
+    mocks.createGeneralAction.mockResolvedValue(action());
+
+    const result = await createTool.execute({ title: "Replace the fridge water filter" }, ctx);
+
+    expect(mocks.createGeneralAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: "user-1",
+        title: "Replace the fridge water filter",
+        dueAt: null,
+        recurrence: null,
+      }),
+    );
+    expect(result.action.id).toBe(ACTION_ID);
+    expect(result.action.status).toBe("open");
+    expect(result.action.isRoutine).toBe(false);
+  });
+
+  it("parses a concrete due date and a cadence into a Routine", async () => {
+    mocks.createGeneralAction.mockResolvedValue(
+      action({
+        dueAt: new Date("2026-08-01T00:00:00.000Z"),
+        recurrence: { interval: 6, unit: "month" },
+      }),
+    );
+
+    const result = await createTool.execute(
+      {
+        title: "Change the HVAC filter",
+        dueAt: "2026-08-01",
+        recurrence: { interval: 6, unit: "month" },
+      },
+      ctx,
+    );
+
+    const passed = mocks.createGeneralAction.mock.calls[0]?.[0];
+    expect(passed.dueAt).toBeInstanceOf(Date);
+    expect(passed.recurrence).toEqual({ interval: 6, unit: "month" });
+    expect(result.action.isRoutine).toBe(true);
+    expect(result.action.recurrence).toBe("Every 6 months");
+  });
+
+  it("hides the raw id but keeps the title in the model view", () => {
+    const model = createTool.toModelOutput?.({ action: { ...toRef() } } as never) as {
+      value: unknown;
+    };
+    const serialized = JSON.stringify(model.value);
+    expect(serialized).toContain("Replace the fridge water filter");
+    expect(serialized).not.toContain(ACTION_ID);
+  });
+});
+
+/** The compact ref shape create/edit/update tools return (matches toGeneralActionRef). */
+function toRef() {
+  return {
+    id: ACTION_ID,
+    title: "Replace the fridge water filter",
+    status: "open" as const,
+    dueAt: null,
+    deferUntil: null,
+    isRoutine: false,
+    recurrence: null,
+    areaId: null,
+    people: [],
+    visibilityChoice: "only_me" as const,
+    visibilityLabel: "Only me",
+  };
+}
+
+describe("suggest_general_action — grounded, review-gated proposal", () => {
+  it("proposes a suggestion grounded in a source record, never active", async () => {
+    mocks.suggestGeneralAction.mockResolvedValue({
+      action: action({ status: "suggested" }),
+      sourceRecord: { id: SOURCE_ID },
+      component: {
+        type: "suggested_general_action_review",
+        generalActionId: ACTION_ID,
+        sourceRecordId: SOURCE_ID,
+      },
+    });
+
+    const result = await suggestTool.execute(
+      { title: "Book the campsite", sourceRecordId: SOURCE_ID },
+      ctx,
+    );
+
+    expect(mocks.suggestGeneralAction).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerUserId: "user-1", sourceRecordId: SOURCE_ID }),
+    );
+    expect(mocks.createGeneralAction).not.toHaveBeenCalled();
+    expect(result.action.status).toBe("suggested");
+    expect(result.component.type).toBe("suggested_general_action_review");
+  });
+});
+
+describe("plan_suggested_general_actions — shallow planning", () => {
+  it("proposes each step through the review-gated seam, grounded, never active", async () => {
+    mocks.suggestGeneralAction.mockImplementation(async (input: { title: string }) => ({
+      action: action({ title: input.title, status: "suggested" }),
+      sourceRecord: { id: SOURCE_ID },
+      component: {
+        type: "suggested_general_action_review",
+        generalActionId: ACTION_ID,
+        sourceRecordId: SOURCE_ID,
+      },
+    }));
+
+    const result = await planTool.execute(
+      {
+        sourceRecordId: SOURCE_ID,
+        steps: [
+          { title: "Book the campsite" },
+          { title: "Rent the gear" },
+          { title: "Plan the meals" },
+        ],
+      },
+      ctx,
+    );
+
+    expect(mocks.suggestGeneralAction).toHaveBeenCalledTimes(3);
+    // Every step is grounded in the one planning source record.
+    for (const call of mocks.suggestGeneralAction.mock.calls) {
+      expect(call[0].sourceRecordId).toBe(SOURCE_ID);
+      expect(call[0].ownerUserId).toBe("user-1");
+    }
+    expect(mocks.createGeneralAction).not.toHaveBeenCalled();
+    expect(result.count).toBe(3);
+  });
+
+  it("caps the plan at a small number of steps in its input schema", () => {
+    // inputSchema is the zod object at runtime (the Standard-schema type hides safeParse).
+    const schema = planTool.inputSchema as unknown as {
+      safeParse: (value: unknown) => { success: boolean };
+    };
+    const tooMany = Array.from({ length: MAX_SHALLOW_PLAN_ACTIONS + 1 }, (_, i) => ({
+      title: `Step ${i}`,
+    }));
+    expect(schema.safeParse({ sourceRecordId: SOURCE_ID, steps: tooMany }).success).toBe(false);
+    expect(
+      schema.safeParse({ sourceRecordId: SOURCE_ID, steps: [{ title: "Only step" }] }).success,
+    ).toBe(true);
+  });
+});
+
+describe("update_general_action_status — explicit, single-record mutation", () => {
+  it.each([
+    ["complete", "completeGeneralAction"],
+    ["dismiss", "dismissGeneralAction"],
+    ["reopen", "reopenGeneralAction"],
+    ["archive", "archiveGeneralAction"],
+    ["pause", "pauseGeneralAction"],
+    ["resume", "resumeGeneralAction"],
+  ] as const)("dispatches %s to the shared lifecycle function", async (action_, fnName) => {
+    mocks[fnName].mockResolvedValue(action());
+
+    await updateTool.execute({ generalActionId: ACTION_ID, action: action_ }, ctx);
+
+    expect(mocks[fnName]).toHaveBeenCalledWith({
+      ownerUserId: "user-1",
+      generalActionId: ACTION_ID,
+    });
+  });
+
+  it("defers to a concrete resurface date", async () => {
+    mocks.deferGeneralAction.mockResolvedValue(action({ status: "deferred" }));
+
+    await updateTool.execute(
+      { generalActionId: ACTION_ID, action: "defer", deferUntil: "2026-09-01" },
+      ctx,
+    );
+
+    const passed = mocks.deferGeneralAction.mock.calls[0]?.[0];
+    expect(passed.deferUntil).toBeInstanceOf(Date);
+    expect(passed.ownerUserId).toBe("user-1");
+  });
+
+  it("refuses to defer without a resurface date", async () => {
+    await expect(
+      updateTool.execute({ generalActionId: ACTION_ID, action: "defer" }, ctx),
+    ).rejects.toThrow(/resurface date/i);
+    expect(mocks.deferGeneralAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("edit_general_action — content edit only on named record", () => {
+  it("builds a sparse edit: converts a due date, clears with null, omits unset keys", async () => {
+    mocks.editGeneralAction.mockResolvedValue(action({ title: "Renew the passport" }));
+
+    await editTool.execute(
+      { generalActionId: ACTION_ID, title: "Renew the passport", notes: null, dueAt: "2026-10-01" },
+      ctx,
+    );
+
+    const passed = mocks.editGeneralAction.mock.calls[0]?.[0];
+    expect(passed.ownerUserId).toBe("user-1");
+    expect(passed.edit.title).toBe("Renew the passport");
+    expect(passed.edit.notes).toBeNull();
+    expect(passed.edit.dueAt).toBeInstanceOf(Date);
+    // Untouched fields are absent, so the shared layer never wipes them.
+    expect("areaId" in passed.edit).toBe(false);
+    expect("recurrence" in passed.edit).toBe(false);
+  });
+});
+
+describe("list_general_actions — ledger routing and window filtering", () => {
+  it("routes to the paused ledger for routinesOnly paused reads", async () => {
+    mocks.listPausedGeneralActions.mockResolvedValue([
+      action({ status: "paused", recurrence: { interval: 1, unit: "week" } }),
+    ]);
+
+    const result = await listTool.execute({ ledger: "paused", routinesOnly: true }, ctx);
+
+    expect(mocks.listPausedGeneralActions).toHaveBeenCalledWith({
+      ownerUserId: "user-1",
+      limit: undefined,
+    });
+    expect(mocks.listActiveGeneralActions).not.toHaveBeenCalled();
+    expect(result.count).toBe(1);
+    expect(result.actions[0]?.isRoutine).toBe(true);
+  });
+
+  it("filters the active ledger to unscheduled actions", async () => {
+    mocks.listActiveGeneralActions.mockResolvedValue([
+      action({
+        id: "11111111-1111-1111-1111-111111111111",
+        dueAt: new Date("2026-08-01T00:00:00.000Z"),
+      }),
+      action({ id: "33333333-3333-3333-3333-333333333333", dueAt: null, deferUntil: null }),
+    ]);
+
+    const result = await listTool.execute({ window: "unscheduled" }, ctx);
+
+    expect(result.count).toBe(1);
+    expect(result.actions[0]?.dueAt).toBeNull();
+  });
+
+  it("filters the active ledger to overdue actions by surfacing time", async () => {
+    const past = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    mocks.listActiveGeneralActions.mockResolvedValue([
+      action({ id: "11111111-1111-1111-1111-111111111111", dueAt: past }),
+      action({ id: "33333333-3333-3333-3333-333333333333", dueAt: future }),
+    ]);
+
+    const result = await listTool.execute({ window: "overdue" }, ctx);
+
+    expect(result.count).toBe(1);
+  });
+});
