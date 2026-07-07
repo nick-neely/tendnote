@@ -74,6 +74,12 @@ export function SuggestedFollowupReviewSection({
   );
 }
 
+// A cohesive review card with an inline edit mode and its accept/dismiss/draft actions
+// (the direct sibling of SuggestedGeneralActionReviewCard). Its cognitive score is JSX
+// composition depth plus the edit/draft/transition hook set, not branching logic
+// (cyclomatic is within threshold); splitting the calm card markup further would
+// fragment a single reviewable unit without reducing real complexity.
+// fallow-ignore-next-line complexity
 function SuggestedFollowupReviewCard({
   review,
   onResolve,

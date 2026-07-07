@@ -61,18 +61,25 @@ export function createHarness(
       ownerUserId?: string;
     } = {},
   ) {
+    // Spread only the keys the caller actually supplied over the fixture defaults, so an
+    // absent field falls through to its default without a per-field `?? default` ladder
+    // (mirrors createGeneralAction).
+    const provided = Object.fromEntries(
+      Object.entries(input).filter(([, value]) => value !== undefined),
+    ) as Partial<typeof input>;
     return store.createSourceRecord({
-      ownerUserId: input.ownerUserId ?? OWNER,
-      sourceType: input.sourceType ?? "manual",
-      content: input.content ?? "Mara prefers handmade cooking gifts.",
-      rawContent: input.rawContent ?? "Raw provider text should not be embedded.",
-      retentionPolicy: input.retentionPolicy ?? "retain",
-      status: input.status ?? "active",
-      confidence: input.confidence ?? "medium",
-      sensitivity: input.sensitivity ?? "normal",
-      scope: input.scope ?? "private",
-      importance: input.importance ?? 3,
-      metadataJson: input.metadataJson ?? {},
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Mara prefers handmade cooking gifts.",
+      rawContent: "Raw provider text should not be embedded.",
+      retentionPolicy: "retain",
+      status: "active",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+      ...provided,
     });
   }
 

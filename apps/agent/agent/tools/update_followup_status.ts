@@ -25,28 +25,33 @@ const inputSchema = z.object({
 
 type UpdateFollowupInput = z.infer<typeof inputSchema>;
 
+/**
+ * The shared lifecycle function each validated transition maps to, keyed by status so
+ * dispatch is a flat table lookup rather than a switch. `snooze` also parses its new
+ * due date here; the shared layer rejects anything that isn't a concrete date.
+ */
+const followupTransitions: Record<
+  UpdateFollowupInput["status"],
+  (input: UpdateFollowupInput, ownerUserId: string) => Promise<Followup>
+> = {
+  complete: ({ followupId }, ownerUserId) =>
+    completeFollowup({ actorUserId: ownerUserId, followupId }),
+  dismiss: ({ followupId }, ownerUserId) =>
+    dismissFollowup({ actorUserId: ownerUserId, followupId }),
+  reopen: ({ followupId }, ownerUserId) => reopenFollowup({ actorUserId: ownerUserId, followupId }),
+  archive: ({ followupId }, ownerUserId) =>
+    archiveFollowup({ actorUserId: ownerUserId, followupId }),
+  snooze: ({ followupId, dueAt }, ownerUserId) => {
+    if (!dueAt) {
+      throw new Error("Snoozing a follow-up needs a new due date.");
+    }
+    return snoozeFollowup({ actorUserId: ownerUserId, followupId, dueAt: new Date(dueAt) });
+  },
+};
+
 /** Dispatches one validated transition to its shared lifecycle function. */
 function applyTransition(input: UpdateFollowupInput, ownerUserId: string): Promise<Followup> {
-  const { followupId } = input;
-
-  switch (input.status) {
-    case "complete":
-      return completeFollowup({ actorUserId: ownerUserId, followupId });
-    case "dismiss":
-      return dismissFollowup({ actorUserId: ownerUserId, followupId });
-    case "reopen":
-      return reopenFollowup({ actorUserId: ownerUserId, followupId });
-    case "archive":
-      return archiveFollowup({ actorUserId: ownerUserId, followupId });
-    case "snooze": {
-      if (!input.dueAt) {
-        throw new Error("Snoozing a follow-up needs a new due date.");
-      }
-
-      // Parsed here; the shared layer rejects anything that isn't a concrete date.
-      return snoozeFollowup({ actorUserId: ownerUserId, followupId, dueAt: new Date(input.dueAt) });
-    }
-  }
+  return followupTransitions[input.status](input, ownerUserId);
 }
 
 /**

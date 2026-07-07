@@ -59,171 +59,143 @@ export function AssistantToolResult({
   }
 }
 
+/**
+ * Per-kind line renderers for the ambient tier. Keyed by `view.kind` so the
+ * dispatcher stays a flat table lookup; a kind absent from the table has no line
+ * treatment (the card/disclosure tiers own it) and renders nothing. The mapped
+ * type hands each renderer its exact narrowed variant.
+ */
+const lineViewRenderers: {
+  [K in AssistantToolView["kind"]]?: (
+    view: Extract<AssistantToolView, { kind: K }>,
+    isNew: boolean,
+  ) => React.ReactNode;
+} = {
+  person_context: (view, isNew) => (
+    <ToolActivityLine icon={<BookOpenIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+      Recalled {view.personName ?? "this person"}
+      <span className="text-muted-foreground/80"> · {summarizeTiers(view)}</span>
+      <span className="ml-1.5 font-mono text-[length:var(--text-caption)] text-muted-foreground/70">
+        snapshot {view.snapshotStatus}
+      </span>
+    </ToolActivityLine>
+  ),
+  relationship_context_search: (_view, isNew) => (
+    <ToolActivityLine icon={<SearchIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+      No matching relationship context found
+    </ToolActivityLine>
+  ),
+  semantic_context_search: (_view, isNew) => (
+    <ToolActivityLine icon={<SearchIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+      No semantic matches found
+    </ToolActivityLine>
+  ),
+  relationship_agenda: (_view, isNew) => (
+    <ToolActivityLine icon={<CalendarClockIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+      Nothing on the relationship agenda for that window
+    </ToolActivityLine>
+  ),
+  memory_curator_proposals: (_view, isNew) => (
+    <ToolActivityLine icon={<ClipboardListIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+      No memory cleanup proposals found
+    </ToolActivityLine>
+  ),
+  draft_proposal: (view, isNew) => (
+    <ToolActivityLine
+      icon={<MessageSquareTextIcon aria-hidden className="size-3.5" />}
+      isNew={isNew}
+    >
+      {labelDraftProposalSkip(view.skippedReason)}
+    </ToolActivityLine>
+  ),
+  general_action_list: (view, isNew) => (
+    <ToolActivityLine icon={<ListTodoIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+      {labelEmptyGeneralActionList(view.ledger)}
+    </ToolActivityLine>
+  ),
+  // generic — an unrecognized tool ran to completion; name it and move on.
+  generic: (view, isNew) => (
+    <ToolActivityLine
+      icon={<span aria-hidden className="size-1.5 rounded-full bg-muted-foreground/50" />}
+      isNew={isNew}
+    >
+      {humanizeToolName(view.toolName)}
+    </ToolActivityLine>
+  ),
+};
+
 /** Quiet ambient row: an Eve lookup that happened, kept out of the way. */
 function LineView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) {
-  if (view.kind === "person_context") {
-    return (
-      <ToolActivityLine icon={<BookOpenIcon aria-hidden className="size-3.5" />} isNew={isNew}>
-        Recalled {view.personName ?? "this person"}
-        <span className="text-muted-foreground/80"> · {summarizeTiers(view)}</span>
-        <span className="ml-1.5 font-mono text-[length:var(--text-caption)] text-muted-foreground/70">
-          snapshot {view.snapshotStatus}
-        </span>
-      </ToolActivityLine>
-    );
-  }
-
-  if (view.kind === "relationship_context_search") {
-    return (
-      <ToolActivityLine icon={<SearchIcon aria-hidden className="size-3.5" />} isNew={isNew}>
-        No matching relationship context found
-      </ToolActivityLine>
-    );
-  }
-
-  if (view.kind === "semantic_context_search") {
-    return (
-      <ToolActivityLine icon={<SearchIcon aria-hidden className="size-3.5" />} isNew={isNew}>
-        No semantic matches found
-      </ToolActivityLine>
-    );
-  }
-
-  if (view.kind === "relationship_agenda") {
-    return (
-      <ToolActivityLine icon={<CalendarClockIcon aria-hidden className="size-3.5" />} isNew={isNew}>
-        Nothing on the relationship agenda for that window
-      </ToolActivityLine>
-    );
-  }
-
-  if (view.kind === "memory_curator_proposals") {
-    return (
-      <ToolActivityLine icon={<ClipboardListIcon aria-hidden className="size-3.5" />} isNew={isNew}>
-        No memory cleanup proposals found
-      </ToolActivityLine>
-    );
-  }
-
-  if (view.kind === "draft_proposal") {
-    return (
-      <ToolActivityLine
-        icon={<MessageSquareTextIcon aria-hidden className="size-3.5" />}
-        isNew={isNew}
-      >
-        {labelDraftProposalSkip(view.skippedReason)}
-      </ToolActivityLine>
-    );
-  }
-
-  if (view.kind === "general_action_list") {
-    return (
-      <ToolActivityLine icon={<ListTodoIcon aria-hidden className="size-3.5" />} isNew={isNew}>
-        {labelEmptyGeneralActionList(view.ledger)}
-      </ToolActivityLine>
-    );
-  }
-
-  // generic — an unrecognized tool ran to completion; name it and move on.
-  if (view.kind === "generic") {
-    return (
-      <ToolActivityLine
-        icon={<span aria-hidden className="size-1.5 rounded-full bg-muted-foreground/50" />}
-        isNew={isNew}
-      >
-        {humanizeToolName(view.toolName)}
-      </ToolActivityLine>
-    );
-  }
-
-  return null;
+  const render = lineViewRenderers[view.kind] as
+    | ((view: AssistantToolView, isNew: boolean) => React.ReactNode)
+    | undefined;
+  return render ? render(view, isNew) : null;
 }
 
-/** Collapsible summary for a non-empty result set; expands to the full list. */
-function DisclosureView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) {
-  if (view.kind === "relationship_agenda") {
-    const count = view.candidates.length;
-
-    return (
-      <details
-        className={cn(
-          "group rounded-lg border bg-card [&[open]_.tn-chevron]:rotate-180",
-          isNew &&
-            "fade-in slide-in-from-bottom-1 animate-in duration-200 ease-(--motion-ease-out)",
-        )}
-        data-tool-view={view.kind}
-      >
-        <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg p-3.5 text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-          <CalendarClockIcon aria-hidden className="size-3.5 shrink-0" />
-          <span>{count === 1 ? "Found 1 agenda item" : `Found ${count} agenda items`}</span>
-          <ChevronDownIcon
-            aria-hidden
-            className="tn-chevron ml-auto size-3.5 shrink-0 transition-transform duration-200 ease-(--motion-ease-out)"
-          />
-        </summary>
-        <div className="border-t">
-          <AgendaCalendar candidates={view.candidates} window={view.window ?? null} />
-        </div>
-      </details>
-    );
-  }
-
-  if (view.kind === "general_action_list") {
-    const count = view.actions.length;
-
-    return (
-      <details
-        className={cn(
-          "group rounded-lg border bg-card [&[open]_.tn-chevron]:rotate-180",
-          isNew &&
-            "fade-in slide-in-from-bottom-1 animate-in duration-200 ease-(--motion-ease-out)",
-        )}
-        data-tool-view={view.kind}
-      >
-        <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg p-3.5 text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-          <ListTodoIcon aria-hidden className="size-3.5 shrink-0" />
-          <span>{count === 1 ? "1 action" : `${count} actions`}</span>
-          <ChevronDownIcon
-            aria-hidden
-            className="tn-chevron ml-auto size-3.5 shrink-0 transition-transform duration-200 ease-(--motion-ease-out)"
-          />
-        </summary>
-        <div className="flex flex-col divide-y divide-border/70 border-t px-3.5 pt-3 pb-3.5">
-          {view.actions.map((action) => (
-            <GeneralActionRow action={action} key={action.generalActionId} />
-          ))}
-        </div>
-      </details>
-    );
-  }
-
-  if (view.kind !== "relationship_context_search" && view.kind !== "semantic_context_search") {
-    return null;
-  }
-
-  const count = view.results.length;
-  const isSemantic = view.kind === "semantic_context_search";
-
+/**
+ * The collapsible `<details>` chrome shared by every disclosure tier: the border,
+ * the summary row (icon + one-line count + chevron), and the expanded body. Each
+ * per-kind renderer supplies only the icon, summary text, and body, so the shell
+ * markup lives in exactly one place.
+ */
+function DisclosureShell({
+  icon,
+  summary,
+  toolView,
+  isNew,
+  children,
+}: {
+  icon: React.ReactNode;
+  summary: React.ReactNode;
+  toolView: string;
+  isNew: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <details
       className={cn(
         "group rounded-lg border bg-card [&[open]_.tn-chevron]:rotate-180",
         isNew && "fade-in slide-in-from-bottom-1 animate-in duration-200 ease-(--motion-ease-out)",
       )}
-      data-tool-view={view.kind}
+      data-tool-view={toolView}
     >
       <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg p-3.5 text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        <SearchIcon aria-hidden className="size-3.5 shrink-0" />
-        <span>
-          {count === 1
-            ? `Found 1 ${isSemantic ? "semantic match" : "exact match"}`
-            : `Found ${count} ${isSemantic ? "semantic matches" : "exact matches"}`}
-        </span>
+        {icon}
+        <span>{summary}</span>
         <ChevronDownIcon
           aria-hidden
           className="tn-chevron ml-auto size-3.5 shrink-0 transition-transform duration-200 ease-(--motion-ease-out)"
         />
       </summary>
+      {children}
+    </details>
+  );
+}
+
+/** Summary phrasing for a search disclosure, factored out of its renderer. */
+function searchDisclosureSummary(count: number, isSemantic: boolean): string {
+  const noun = isSemantic ? "semantic match" : "exact match";
+  return count === 1
+    ? `Found 1 ${noun}`
+    : `Found ${count} ${isSemantic ? "semantic matches" : "exact matches"}`;
+}
+
+/** Shared renderer for the two search disclosures (relationship + semantic). */
+function renderSearchDisclosure(
+  view: Extract<
+    AssistantToolView,
+    { kind: "relationship_context_search" | "semantic_context_search" }
+  >,
+  isNew: boolean,
+): React.ReactNode {
+  const isSemantic = view.kind === "semantic_context_search";
+  return (
+    <DisclosureShell
+      icon={<SearchIcon aria-hidden className="size-3.5 shrink-0" />}
+      isNew={isNew}
+      summary={searchDisclosureSummary(view.results.length, isSemantic)}
+      toolView={view.kind}
+    >
       <div className="flex flex-col divide-y divide-border/70 border-t px-3.5 pt-3 pb-3.5">
         {view.results.map((result) => (
           <SearchResultRow
@@ -233,48 +205,108 @@ function DisclosureView({ view, isNew }: { view: AssistantToolView; isNew: boole
           />
         ))}
       </div>
-    </details>
+    </DisclosureShell>
   );
 }
 
-/** Durable, trust-bearing result that earns the Field Notebook card. */
-function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) {
-  if (view.kind === "saved_memory") {
+/**
+ * Per-kind disclosure renderers. Keyed by `view.kind`; a kind absent from the
+ * table has no disclosure treatment and renders nothing.
+ */
+const disclosureViewRenderers: {
+  [K in AssistantToolView["kind"]]?: (
+    view: Extract<AssistantToolView, { kind: K }>,
+    isNew: boolean,
+  ) => React.ReactNode;
+} = {
+  relationship_agenda: (view, isNew) => {
+    const count = view.candidates.length;
     return (
-      <ResultCard
-        footer={
-          <Caption>
-            Confirmed fact{view.personName ? ` · ${view.personName}` : ""}
-            {view.sourceRecordId ? " · grounded in a source record" : ""}
-          </Caption>
-        }
-        icon={<CheckIcon className="size-3" />}
+      <DisclosureShell
+        icon={<CalendarClockIcon aria-hidden className="size-3.5 shrink-0" />}
         isNew={isNew}
-        kind={view.kind}
-        label="Saved to memory"
-        tone="confirmed"
+        summary={count === 1 ? "Found 1 agenda item" : `Found ${count} agenda items`}
+        toolView={view.kind}
       >
-        <Body>{view.content}</Body>
-      </ResultCard>
+        <div className="border-t">
+          <AgendaCalendar candidates={view.candidates} window={view.window ?? null} />
+        </div>
+      </DisclosureShell>
     );
-  }
-
-  if (view.kind === "added_person") {
+  },
+  general_action_list: (view, isNew) => {
+    const count = view.actions.length;
     return (
-      <ResultCard
-        footer={view.relationshipType ? <Caption>{view.relationshipType}</Caption> : undefined}
-        icon={<UserPlusIcon className="size-3" />}
+      <DisclosureShell
+        icon={<ListTodoIcon aria-hidden className="size-3.5 shrink-0" />}
         isNew={isNew}
-        kind={view.kind}
-        label="Added to your notebook"
-        tone="confirmed"
+        summary={count === 1 ? "1 action" : `${count} actions`}
+        toolView={view.kind}
       >
-        <Body>{view.displayName}</Body>
-      </ResultCard>
+        <div className="flex flex-col divide-y divide-border/70 border-t px-3.5 pt-3 pb-3.5">
+          {view.actions.map((action) => (
+            <GeneralActionRow action={action} key={action.generalActionId} />
+          ))}
+        </div>
+      </DisclosureShell>
     );
-  }
+  },
+  relationship_context_search: renderSearchDisclosure,
+  semantic_context_search: renderSearchDisclosure,
+};
 
-  if (view.kind === "updated_person") {
+/** Collapsible summary for a non-empty result set; expands to the full list. */
+function DisclosureView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) {
+  const render = disclosureViewRenderers[view.kind] as
+    | ((view: AssistantToolView, isNew: boolean) => React.ReactNode)
+    | undefined;
+  return render ? render(view, isNew) : null;
+}
+
+/**
+ * Per-kind card renderers for durable, trust-bearing results. Keyed by
+ * `view.kind`; a kind absent from the table earns no card here — notably
+ * `message_draft` (the interactive ChatDraftCard's inline WYSIWYG edit + copy)
+ * and `suggested_memory_review` (the interactive ChatReviewCard), both routed at
+ * the panel level so this presentational module stays free of the client editor
+ * and the `server-only` actions those cards need.
+ */
+const cardViewRenderers: {
+  [K in AssistantToolView["kind"]]?: (
+    view: Extract<AssistantToolView, { kind: K }>,
+    isNew: boolean,
+  ) => React.ReactNode;
+} = {
+  saved_memory: (view, isNew) => (
+    <ResultCard
+      footer={
+        <Caption>
+          Confirmed fact{view.personName ? ` · ${view.personName}` : ""}
+          {view.sourceRecordId ? " · grounded in a source record" : ""}
+        </Caption>
+      }
+      icon={<CheckIcon className="size-3" />}
+      isNew={isNew}
+      kind={view.kind}
+      label="Saved to memory"
+      tone="confirmed"
+    >
+      <Body>{view.content}</Body>
+    </ResultCard>
+  ),
+  added_person: (view, isNew) => (
+    <ResultCard
+      footer={view.relationshipType ? <Caption>{view.relationshipType}</Caption> : undefined}
+      icon={<UserPlusIcon className="size-3" />}
+      isNew={isNew}
+      kind={view.kind}
+      label="Added to your notebook"
+      tone="confirmed"
+    >
+      <Body>{view.displayName}</Body>
+    </ResultCard>
+  ),
+  updated_person: (view, isNew) => {
     const fields = view.updatedFields.map((field) => PERSON_FIELD_LABEL[field] ?? field);
     return (
       <ResultCard
@@ -290,27 +322,23 @@ function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
         <Body>{view.displayName}</Body>
       </ResultCard>
     );
-  }
-
-  if (view.kind === "saved_source_record") {
-    return (
-      <ResultCard
-        footer={<Caption>Logged context — saved for review, not a confirmed fact</Caption>}
-        icon={<NotebookPenIcon className="size-3" />}
-        isNew={isNew}
-        kind={view.kind}
-        label="Logged"
-        tone="neutral"
-      >
-        <Body>
-          <span className="text-muted-foreground">You noted: </span>
-          {view.content}
-        </Body>
-      </ResultCard>
-    );
-  }
-
-  if (view.kind === "created_general_action") {
+  },
+  saved_source_record: (view, isNew) => (
+    <ResultCard
+      footer={<Caption>Logged context — saved for review, not a confirmed fact</Caption>}
+      icon={<NotebookPenIcon className="size-3" />}
+      isNew={isNew}
+      kind={view.kind}
+      label="Logged"
+      tone="neutral"
+    >
+      <Body>
+        <span className="text-muted-foreground">You noted: </span>
+        {view.content}
+      </Body>
+    </ResultCard>
+  ),
+  created_general_action: (view, isNew) => {
     const summary = summarizeGeneralAction(view);
     return (
       <ResultCard
@@ -339,9 +367,8 @@ function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
         <Body>{view.title}</Body>
       </ResultCard>
     );
-  }
-
-  if (view.kind === "memory_curator_proposals") {
+  },
+  memory_curator_proposals: (view, isNew) => {
     const count = view.proposals.length;
     return (
       <ResultCard
@@ -372,10 +399,11 @@ function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
         </div>
       </ResultCard>
     );
-  }
-
-  if (view.kind === "draft_proposal" && view.proposal) {
-    return (
+  },
+  // A skipped draft proposal (no `proposal`) has no card — its skip reason surfaces
+  // on the ambient line tier instead — so this renders nothing in that case.
+  draft_proposal: (view, isNew) =>
+    view.proposal ? (
       <ResultCard
         footer={<Caption>Draft Proposal only · not saved as a Tendnote draft</Caption>}
         icon={<MessageSquareTextIcon className="size-3" />}
@@ -399,17 +427,15 @@ function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
           </Caption>
         </div>
       </ResultCard>
-    );
-  }
+    ) : null,
+};
 
-  // message_draft is rendered by the interactive ChatDraftCard (inline WYSIWYG edit
-  // + copy), routed at the panel level so this presentational module stays free of
-  // the client editor and server actions that card needs.
-  //
-  // suggested_memory_review is rendered by the interactive ChatReviewCard, routed
-  // at the panel level so this presentational module stays free of the server
-  // actions (and their `server-only` import) the inline approve/dismiss needs.
-  return null;
+/** Durable, trust-bearing result that earns the Field Notebook card. */
+function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) {
+  const render = cardViewRenderers[view.kind] as
+    | ((view: AssistantToolView, isNew: boolean) => React.ReactNode)
+    | undefined;
+  return render ? render(view, isNew) : null;
 }
 
 /** Quiet ambient line shared by completed lookups (the line tier). */

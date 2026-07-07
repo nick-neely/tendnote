@@ -11,6 +11,24 @@ import { createDiscordProactiveDeliverySender } from "../channels/discord";
 const ownerUserId = process.env.TENDNOTE_DEV_OWNER_USER_ID ?? "demo-user";
 const timezone = process.env.TENDNOTE_BRIEF_TIMEZONE ?? "UTC";
 
+type DiscordProactiveDeliverySender = ReturnType<typeof createDiscordProactiveDeliverySender>;
+
+/**
+ * The optional `discordSender` field for a single-channel dispatch, present only when a
+ * Discord sender is configured. Kept as a helper so the dispatch handler stays a flat
+ * list of calls rather than repeating the same conditional spread at each call site.
+ */
+function discordDeliveryOption(sender: DiscordProactiveDeliverySender) {
+  return sender ? { discordSender: sender } : {};
+}
+
+/** The two brief-specific Discord delivery fields `dispatchDueBriefs` accepts. */
+function briefDiscordOptions(sender: DiscordProactiveDeliverySender) {
+  return sender
+    ? { morningAgendaDiscordSender: sender, weeklyRelationshipReviewDiscordSender: sender }
+    : {};
+}
+
 /**
  * App-owned brief schedule dispatcher (PRD #65, issue #72, ADR-0066). This is the
  * single static root schedule; per-user daily and weekly timing lives in Tendnote
@@ -36,21 +54,20 @@ export default defineSchedule({
         dispatchDueBriefs({
           ensureOwnerUserId: ownerUserId,
           timezone,
-          ...(discordSender ? { morningAgendaDiscordSender: discordSender } : {}),
-          ...(discordSender ? { weeklyRelationshipReviewDiscordSender: discordSender } : {}),
+          ...briefDiscordOptions(discordSender),
         }).catch((error) => {
           console.error("Brief schedule dispatch failed.", error);
         }),
         dispatchPostMeetingAftercare({
           ownerUserId,
-          ...(discordSender ? { discordSender } : {}),
+          ...discordDeliveryOption(discordSender),
         }).catch((error) => {
           console.error("Post-meeting aftercare dispatch failed.", error);
         }),
         dispatchBirthdayGiftPlanning({
           ownerUserId,
           timezone,
-          ...(discordSender ? { discordSender } : {}),
+          ...discordDeliveryOption(discordSender),
         }).catch((error) => {
           console.error("Birthday gift planning dispatch failed.", error);
         }),
@@ -59,7 +76,7 @@ export default defineSchedule({
         dispatchActionSummary({
           ownerUserId,
           timezone,
-          ...(discordSender ? { discordSender } : {}),
+          ...discordDeliveryOption(discordSender),
         }).catch((error) => {
           console.error("Action summary dispatch failed.", error);
         }),

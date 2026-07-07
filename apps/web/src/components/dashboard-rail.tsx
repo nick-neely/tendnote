@@ -47,6 +47,12 @@ const PANEL =
  * red and never framed as a backlog; an empty tab teaches the next step instead
  * of nagging.
  */
+// The cohesive tab shell that owns the five resolvable lists and their live counts; the
+// per-section markup is already extracted into child sections. Its score is JSX/tab
+// composition depth plus that list-state hook set, not branching logic (cyclomatic and
+// cognitive are both within threshold); splitting the shell further would scatter the
+// count-syncing state that keeps the tabs honest.
+// fallow-ignore-next-line complexity
 export function DashboardRail({
   people,
   birthdays,

@@ -52,6 +52,69 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
     return followup;
   }
 
+  /**
+   * Owner must hold an active membership in the household a non-private follow-up is
+   * scoped to. Private follow-ups need no household; a shared/household scope without a
+   * household, or without an active membership, is rejected.
+   */
+  async function assertHouseholdMembership(
+    ownerUserId: string,
+    scope: "private" | "shared" | "household",
+    householdId: string | null,
+  ) {
+    if (scope === "private") return;
+    if (!householdId) {
+      throw new Error("Shared follow-ups require a household.");
+    }
+    const membership = await store.getHouseholdMembership({ householdId, userId: ownerUserId });
+    if (membership?.status !== "active") {
+      throw new Error("Active household membership required.");
+    }
+  }
+
+  /**
+   * A `shared` follow-up must name at least one recipient, and every named recipient
+   * must be an active member of the household. Non-shared scopes select no members.
+   */
+  async function assertSelectedMembers(
+    scope: "private" | "shared" | "household",
+    householdId: string | null,
+    selectedUserIds: string[],
+  ) {
+    if (scope !== "shared") return;
+    if (selectedUserIds.length === 0) {
+      throw new Error("Select at least one household member to share this follow-up.");
+    }
+    if (!householdId) return;
+
+    const activeMembers = await store.listHouseholdMemberships({ householdId, status: "active" });
+    const activeUserIds = new Set(activeMembers.map((member) => member.userId));
+    const invalidUserIds = selectedUserIds.filter((userId) => !activeUserIds.has(userId));
+    if (invalidUserIds.length > 0) {
+      throw new Error("Selected household members must be active.");
+    }
+  }
+
+  /** Fan out household record shares for a shared follow-up to each selected member. */
+  async function createFollowupShares(
+    followup: { id: string },
+    ownerUserId: string,
+    householdId: string | null,
+    scope: "private" | "shared" | "household",
+    selectedUserIds: string[],
+  ) {
+    if (scope !== "shared" || !householdId) return;
+    for (const selectedUserId of selectedUserIds) {
+      await store.createHouseholdRecordShare({
+        householdId,
+        recordKind: "followup",
+        recordId: followup.id,
+        sharedWithUserId: selectedUserId,
+        sharedByUserId: ownerUserId,
+      });
+    }
+  }
+
   async function transition(input: FollowupActionInput, action: FollowupLifecycleAction) {
     const followup = await requireFollowup(input);
     const status = resolveFollowupTransition(followup.status, action);
@@ -88,37 +151,10 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
       const dueAt = assertConcreteDueAt(input.dueAt);
       const scope = input.scope ?? "private";
       const householdId = scope === "private" ? null : (input.householdId ?? null);
+      const selectedUserIds = input.selectedUserIds ?? [];
 
-      if (scope !== "private") {
-        if (!householdId) {
-          throw new Error("Shared follow-ups require a household.");
-        }
-        const membership = await store.getHouseholdMembership({
-          householdId,
-          userId: input.ownerUserId,
-        });
-        if (membership?.status !== "active") {
-          throw new Error("Active household membership required.");
-        }
-      }
-
-      if (scope === "shared" && (!input.selectedUserIds || input.selectedUserIds.length === 0)) {
-        throw new Error("Select at least one household member to share this follow-up.");
-      }
-
-      if (scope === "shared" && householdId) {
-        const activeMembers = await store.listHouseholdMemberships({
-          householdId,
-          status: "active",
-        });
-        const activeUserIds = new Set(activeMembers.map((member) => member.userId));
-        const invalidUserIds = (input.selectedUserIds ?? []).filter(
-          (userId) => !activeUserIds.has(userId),
-        );
-        if (invalidUserIds.length > 0) {
-          throw new Error("Selected household members must be active.");
-        }
-      }
+      await assertHouseholdMembership(input.ownerUserId, scope, householdId);
+      await assertSelectedMembers(scope, householdId, selectedUserIds);
 
       const person = await store.getPerson({
         ownerUserId: input.ownerUserId,
@@ -142,17 +178,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
         lastActorUserId: input.ownerUserId,
       });
 
-      if (scope === "shared" && householdId) {
-        for (const selectedUserId of input.selectedUserIds ?? []) {
-          await store.createHouseholdRecordShare({
-            householdId,
-            recordKind: "followup",
-            recordId: followup.id,
-            sharedWithUserId: selectedUserId,
-            sharedByUserId: input.ownerUserId,
-          });
-        }
-      }
+      await createFollowupShares(followup, input.ownerUserId, householdId, scope, selectedUserIds);
 
       await store.createAuditLogEntry({
         ownerUserId: input.ownerUserId,

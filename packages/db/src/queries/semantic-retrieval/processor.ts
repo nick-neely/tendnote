@@ -109,45 +109,64 @@ async function enqueueEmbeddingJob(
  * records the outcome: skip, fail, or complete. A job already `running` is
  * processed without re-claiming; anything not claimable returns early untouched.
  */
+/** Applies the per-call defaults (clock, retry delay, claim opt-out) once. */
+function resolveProcessOptions(input: ProcessEmbeddingJobInput) {
+  return {
+    now: input.now ?? new Date(),
+    retryDelayMs: input.retryDelayMs ?? DEFAULT_EMBEDDING_RETRY_DELAY_MS,
+    claim: input.claim ?? true,
+  };
+}
+
+/**
+ * Resolves the job to process: a `running` job is returned as-is (processed without
+ * re-claiming), an unclaimed-but-claimable job is atomically claimed, and anything not
+ * claimable (opt-out, wrong status, or a lost claim race) returns null so the caller
+ * exits untouched.
+ */
+async function claimJobForProcessing(
+  store: EmbeddingStore,
+  job: ProcessEmbeddingJobResult["job"],
+  claim: boolean,
+  now: Date,
+): Promise<ProcessEmbeddingJobResult["job"] | null> {
+  if (job.status === "running") return job;
+  if (!claim || !isClaimableStatus(job.status)) return null;
+  const claimed = await store.claimEmbeddingJob({ jobId: job.id, now });
+  return claimed ?? null;
+}
+
+/** The optional source records a skip decision may carry, defaulted to null. */
+function extractSkipSources(result: Awaited<ReturnType<typeof processJobByKind>>) {
+  return {
+    sourceMemory: "sourceMemory" in result ? result.sourceMemory : null,
+    sourceRecord: "sourceRecord" in result ? result.sourceRecord : null,
+    sourceGeneralAction: "sourceGeneralAction" in result ? result.sourceGeneralAction : null,
+  };
+}
+
 async function processEmbeddingJob(
   ctx: EmbeddingContext,
   input: ProcessEmbeddingJobInput,
 ): Promise<ProcessEmbeddingJobResult> {
   const { store } = ctx;
-  const now = input.now ?? new Date();
-  const retryDelayMs = input.retryDelayMs ?? DEFAULT_EMBEDDING_RETRY_DELAY_MS;
-  const claim = input.claim ?? true;
+  const { now, retryDelayMs, claim } = resolveProcessOptions(input);
   const existingJob = await store.getEmbeddingJob(input.jobId);
 
   if (!existingJob) {
     throw new Error("Embedding job not found.");
   }
 
-  let job = existingJob;
-
-  if (job.status !== "running") {
-    if (!claim || !isClaimableStatus(job.status)) {
-      return { job, outcome: "not_claimable", embedding: null };
-    }
-
-    const claimed = await store.claimEmbeddingJob({ jobId: job.id, now });
-
-    if (!claimed) {
-      return { job, outcome: "not_claimable", embedding: null };
-    }
-
-    job = claimed;
+  const job = await claimJobForProcessing(store, existingJob, claim, now);
+  if (!job) {
+    return { job: existingJob, outcome: "not_claimable", embedding: null };
   }
 
   try {
     const result = await processJobByKind(ctx, job);
 
     if ("skipReason" in result) {
-      return skipJob(ctx, job, result.skipReason, now, {
-        sourceMemory: "sourceMemory" in result ? result.sourceMemory : null,
-        sourceRecord: "sourceRecord" in result ? result.sourceRecord : null,
-        sourceGeneralAction: "sourceGeneralAction" in result ? result.sourceGeneralAction : null,
-      });
+      return skipJob(ctx, job, result.skipReason, now, extractSkipSources(result));
     }
 
     if (!result.embedding) {

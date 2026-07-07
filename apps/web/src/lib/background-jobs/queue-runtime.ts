@@ -150,12 +150,7 @@ export async function consumeBackgroundJobQueueMessage(input: {
   }
 
   const expectedTopic = topicForBackgroundJob(payload.jobKind);
-  if (
-    delivery.jobKind !== payload.jobKind ||
-    delivery.jobId !== payload.jobId ||
-    delivery.topic !== expectedTopic ||
-    (input.metadata?.topicName && input.metadata.topicName !== delivery.topic)
-  ) {
+  if (isPayloadDeliveryMismatch(delivery, payload, expectedTopic, input.metadata?.topicName)) {
     logQueueAnomaly(input.logger, "payload_mismatch", {
       deliveryId: delivery.id,
       deliveryJobKind: delivery.jobKind,
@@ -213,25 +208,12 @@ export async function consumeBackgroundJobQueueMessage(input: {
     return { status: "ignored" as const, reason: "missing_handler" as const };
   }
 
-  if (input.rateLimiter) {
-    const limitConfig = BACKGROUND_JOB_QUEUE_CONFIG[payload.jobKind];
-    const limit = await input.rateLimiter.check({
-      subject: delivery.ownerUserId,
-      costCategory: limitConfig.costCategory,
-      key: limitConfig.rateLimitKey,
-    });
-
-    if (!limit.allowed) {
-      logQueueAnomaly(input.logger, "rate_limited", {
-        deliveryId: delivery.id,
-        jobKind: delivery.jobKind,
-        costCategory: limitConfig.costCategory,
-        reason: limit.reason,
-      });
-      // Defer before claiming: no claimJob, no status write. The transport edge
-      // redelivers later (backpressure), leaving delivery/job status untouched.
-      return { status: "deferred" as const, reason: "rate_limited" as const };
-    }
+  if (
+    (await evaluateRateLimit(input.rateLimiter, input.logger, delivery, payload)) === "deferred"
+  ) {
+    // Defer before claiming: no claimJob, no status write. The transport edge
+    // redelivers later (backpressure), leaving delivery/job status untouched.
+    return { status: "deferred" as const, reason: "rate_limited" as const };
   }
 
   const jobState = await processor.claimJob({
@@ -260,6 +242,57 @@ export async function consumeBackgroundJobQueueMessage(input: {
     metadata: input.metadata,
   });
   return { status: "processed" as const, delivery };
+}
+
+/**
+ * Whether a delivery row disagrees with the queue payload it was addressed by: a
+ * different job kind/id, a topic that doesn't match the payload's expected topic, or a
+ * transport topic name that doesn't match the delivery's own topic. Any mismatch means
+ * the message is not safely processable and is recorded as an anomaly.
+ */
+function isPayloadDeliveryMismatch(
+  delivery: BackgroundJobDelivery,
+  payload: BackgroundJobQueuePayload,
+  expectedTopic: string,
+  messageTopic: string | undefined,
+): boolean {
+  return (
+    delivery.jobKind !== payload.jobKind ||
+    delivery.jobId !== payload.jobId ||
+    delivery.topic !== expectedTopic ||
+    Boolean(messageTopic && messageTopic !== delivery.topic)
+  );
+}
+
+/**
+ * Charge the owner's product budget for this job before it is claimed (ADR-0070).
+ * Returns `"allowed"` when no limiter is configured or the budget permits the job, and
+ * `"deferred"` (after logging the anomaly) when the budget denies it — the caller then
+ * defers the message for redelivery without touching delivery or processor-job status.
+ */
+async function evaluateRateLimit(
+  rateLimiter: ProductRateLimiter | undefined,
+  logger: BackgroundJobQueueLogger | undefined,
+  delivery: BackgroundJobDelivery,
+  payload: BackgroundJobQueuePayload,
+): Promise<"allowed" | "deferred"> {
+  if (!rateLimiter) return "allowed";
+
+  const limitConfig = BACKGROUND_JOB_QUEUE_CONFIG[payload.jobKind];
+  const limit = await rateLimiter.check({
+    subject: delivery.ownerUserId,
+    costCategory: limitConfig.costCategory,
+    key: limitConfig.rateLimitKey,
+  });
+  if (limit.allowed) return "allowed";
+
+  logQueueAnomaly(logger, "rate_limited", {
+    deliveryId: delivery.id,
+    jobKind: delivery.jobKind,
+    costCategory: limitConfig.costCategory,
+    reason: limit.reason,
+  });
+  return "deferred";
 }
 
 function parseBackgroundJobQueuePayload(payload: unknown): BackgroundJobQueuePayload | null {

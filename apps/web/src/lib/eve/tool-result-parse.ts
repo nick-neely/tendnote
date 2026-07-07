@@ -171,210 +171,224 @@ function toRelationshipAgendaCandidate(
 }
 
 /**
+ * One tool's parse-and-map step: validate the persisted output against the shared
+ * contract and, on success, project it to a view. Returns `null` on any shape that
+ * does not match, so the dispatcher can fall back to `generic`.
+ */
+type ToolViewParser = (output: unknown) => AssistantToolView | null;
+
+/**
+ * The persisted-result → view mapping, keyed on the tool that produced it. Each
+ * entry owns one tool's parse+project so the dispatcher stays a flat table lookup
+ * rather than a monolithic switch. Tools that surface the same shape (a proposal
+ * and its later review read) share a single parser reference.
+ */
+const followupReviewParser: ToolViewParser = (output) => {
+  const parsed = assistantToolResultSchemas.get_suggested_followup_review.safeParse(output);
+  if (!parsed.success) return null;
+  return { kind: "suggested_followup_review", ...toFollowupReviewItem(parsed.data) };
+};
+
+const suggestedGeneralActionParser: ToolViewParser = (output) => {
+  const parsed = assistantToolResultSchemas.suggest_general_action.safeParse(output);
+  if (!parsed.success) return null;
+  return {
+    kind: "suggested_general_action_review",
+    ...toSuggestedGeneralActionReviewItem(parsed.data),
+  };
+};
+
+const toolViewParsers: Record<string, ToolViewParser> = {
+  capture_source_record: (output) => {
+    const parsed = assistantToolResultSchemas.capture_source_record.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "saved_source_record",
+      sourceRecordId: parsed.data.sourceRecord.id,
+      content: parsed.data.sourceRecord.content,
+      linkedPersonId: parsed.data.linkedPersonId ?? null,
+    };
+  },
+  capture_memory: (output) => {
+    const parsed = assistantToolResultSchemas.capture_memory.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "saved_memory",
+      memoryId: parsed.data.memory.id,
+      sourceRecordId: parsed.data.memory.sourceRecordId ?? null,
+      personId: parsed.data.person?.id ?? null,
+      personName: parsed.data.person?.displayName ?? null,
+      content: parsed.data.memory.content,
+    };
+  },
+  create_person: (output) => {
+    const parsed = assistantToolResultSchemas.create_person.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "added_person",
+      personId: parsed.data.person.id,
+      displayName: parsed.data.person.displayName,
+      relationshipType: parsed.data.person.relationshipType ?? null,
+    };
+  },
+  update_person: (output) => {
+    const parsed = assistantToolResultSchemas.update_person.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "updated_person",
+      personId: parsed.data.person.id,
+      displayName: parsed.data.person.displayName,
+      relationshipType: parsed.data.person.relationshipType ?? null,
+      updatedFields: parsed.data.updatedFields,
+    };
+  },
+  get_person_context: (output) => {
+    const parsed = assistantToolResultSchemas.get_person_context.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "person_context",
+      personId: parsed.data.person.id,
+      personName: parsed.data.person.displayName,
+      snapshotStatus: parsed.data.snapshotStatus,
+      approvedCount: parsed.data.approvedMemories.length,
+      loggedCount: parsed.data.sourceRecords.length,
+      suggestedCount: parsed.data.suggestedMemories.length,
+    };
+  },
+  create_message_draft: (output) => {
+    const parsed = assistantToolResultSchemas.create_message_draft.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "message_draft",
+      draftId: parsed.data.draft.id,
+      personId: parsed.data.draft.personId ?? null,
+      status: parsed.data.draft.status,
+      body: parsed.data.draft.body,
+      grounding: parsed.data.grounding ?? [],
+    };
+  },
+  get_suggested_memory_review: (output) => {
+    const parsed = assistantToolResultSchemas.get_suggested_memory_review.safeParse(output);
+    if (!parsed.success) return null;
+    return { kind: "suggested_memory_review", ...toReviewItem(parsed.data) };
+  },
+  list_suggested_memory_reviews: (output) => {
+    const parsed = assistantToolResultSchemas.list_suggested_memory_reviews.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "suggested_memory_review_list",
+      reviews: parsed.data.reviews.map(toReviewItem),
+    };
+  },
+  propose_followup: followupReviewParser,
+  get_suggested_followup_review: followupReviewParser,
+  list_suggested_followup_reviews: (output) => {
+    const parsed = assistantToolResultSchemas.list_suggested_followup_reviews.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "suggested_followup_review_list",
+      reviews: parsed.data.reviews.map(toFollowupReviewItem),
+    };
+  },
+  search_relationship_context: (output) => {
+    const parsed = assistantToolResultSchemas.search_relationship_context.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "relationship_context_search",
+      results: parsed.data.results.map((result) => ({
+        ...result,
+        relatedPersonId: result.relatedPersonId ?? null,
+        relatedPersonDisplayName: result.relatedPersonDisplayName ?? null,
+      })),
+    };
+  },
+  search_semantic_context: (output) => {
+    const parsed = assistantToolResultSchemas.search_semantic_context.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "semantic_context_search",
+      results: parsed.data.results.map((result) => ({
+        ...result,
+        relatedPersonId: result.relatedPersonId ?? null,
+        relatedPersonDisplayName: result.relatedPersonDisplayName ?? null,
+      })),
+    };
+  },
+  get_relationship_agenda: (output) => {
+    const parsed = assistantToolResultSchemas.get_relationship_agenda.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "relationship_agenda",
+      candidates: parsed.data.candidates.map(toRelationshipAgendaCandidate),
+      window: parsed.data.window
+        ? { start: parsed.data.window.start, end: parsed.data.window.end }
+        : null,
+    };
+  },
+  propose_memory_cleanup: (output) => {
+    const parsed = assistantToolResultSchemas.propose_memory_cleanup.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "memory_curator_proposals",
+      proposals: parsed.data.proposals.map(toMemoryCuratorProposal),
+    };
+  },
+  propose_message_draft: (output) => {
+    const parsed = assistantToolResultSchemas.propose_message_draft.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "draft_proposal",
+      proposal: parsed.data.proposal ? toDraftProposal(parsed.data.proposal) : null,
+      skippedReason: parsed.data.skippedReason ?? null,
+    };
+  },
+  create_general_action: (output) => {
+    const parsed = assistantToolResultSchemas.create_general_action.safeParse(output);
+    if (!parsed.success) return null;
+    return { kind: "created_general_action", ...toGeneralActionListItem(parsed.data.action) };
+  },
+  suggest_general_action: suggestedGeneralActionParser,
+  get_suggested_general_action_review: suggestedGeneralActionParser,
+  plan_suggested_general_actions: (output) => {
+    const parsed = assistantToolResultSchemas.plan_suggested_general_actions.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "suggested_general_action_review_list",
+      reviews: parsed.data.proposed.map(toSuggestedGeneralActionReviewItem),
+    };
+  },
+  list_suggested_general_action_reviews: (output) => {
+    const parsed =
+      assistantToolResultSchemas.list_suggested_general_action_reviews.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "suggested_general_action_review_list",
+      reviews: parsed.data.reviews.map(toSuggestedGeneralActionReviewItem),
+    };
+  },
+  list_general_actions: (output) => {
+    const parsed = assistantToolResultSchemas.list_general_actions.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "general_action_list",
+      ledger: parsed.data.ledger,
+      window: parsed.data.window ?? null,
+      // The disclosure is a committed-ledger view (active/paused/resolved). Drop any
+      // review-status row so a tentative `suggested`/`ignored` proposal — which carries
+      // no accept/dismiss affordance here — can never masquerade as a committed action.
+      actions: parsed.data.actions
+        .filter((action) => !isGeneralActionReviewStatus(action.status))
+        .map(toGeneralActionListItem),
+    };
+  },
+};
+
+/**
  * Maps one persisted Eve tool result into a renderable view, keyed on the tool
  * that produced it. Parsing is total: any shape that does not match the shared
  * contract falls back to `generic`.
  */
 export function toAssistantToolView(toolResult: EveToolResult): AssistantToolView {
   const { toolName, output } = toolResult;
-
-  switch (toolName) {
-    case "capture_source_record": {
-      const parsed = assistantToolResultSchemas.capture_source_record.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "saved_source_record",
-        sourceRecordId: parsed.data.sourceRecord.id,
-        content: parsed.data.sourceRecord.content,
-        linkedPersonId: parsed.data.linkedPersonId ?? null,
-      };
-    }
-    case "capture_memory": {
-      const parsed = assistantToolResultSchemas.capture_memory.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "saved_memory",
-        memoryId: parsed.data.memory.id,
-        sourceRecordId: parsed.data.memory.sourceRecordId ?? null,
-        personId: parsed.data.person?.id ?? null,
-        personName: parsed.data.person?.displayName ?? null,
-        content: parsed.data.memory.content,
-      };
-    }
-    case "create_person": {
-      const parsed = assistantToolResultSchemas.create_person.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "added_person",
-        personId: parsed.data.person.id,
-        displayName: parsed.data.person.displayName,
-        relationshipType: parsed.data.person.relationshipType ?? null,
-      };
-    }
-    case "update_person": {
-      const parsed = assistantToolResultSchemas.update_person.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "updated_person",
-        personId: parsed.data.person.id,
-        displayName: parsed.data.person.displayName,
-        relationshipType: parsed.data.person.relationshipType ?? null,
-        updatedFields: parsed.data.updatedFields,
-      };
-    }
-    case "get_person_context": {
-      const parsed = assistantToolResultSchemas.get_person_context.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "person_context",
-        personId: parsed.data.person.id,
-        personName: parsed.data.person.displayName,
-        snapshotStatus: parsed.data.snapshotStatus,
-        approvedCount: parsed.data.approvedMemories.length,
-        loggedCount: parsed.data.sourceRecords.length,
-        suggestedCount: parsed.data.suggestedMemories.length,
-      };
-    }
-    case "create_message_draft": {
-      const parsed = assistantToolResultSchemas.create_message_draft.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "message_draft",
-        draftId: parsed.data.draft.id,
-        personId: parsed.data.draft.personId ?? null,
-        status: parsed.data.draft.status,
-        body: parsed.data.draft.body,
-        grounding: parsed.data.grounding ?? [],
-      };
-    }
-    case "get_suggested_memory_review": {
-      const parsed = assistantToolResultSchemas.get_suggested_memory_review.safeParse(output);
-      if (!parsed.success) break;
-      return { kind: "suggested_memory_review", ...toReviewItem(parsed.data) };
-    }
-    case "list_suggested_memory_reviews": {
-      const parsed = assistantToolResultSchemas.list_suggested_memory_reviews.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "suggested_memory_review_list",
-        reviews: parsed.data.reviews.map(toReviewItem),
-      };
-    }
-    case "propose_followup":
-    case "get_suggested_followup_review": {
-      const parsed = assistantToolResultSchemas.get_suggested_followup_review.safeParse(output);
-      if (!parsed.success) break;
-      return { kind: "suggested_followup_review", ...toFollowupReviewItem(parsed.data) };
-    }
-    case "list_suggested_followup_reviews": {
-      const parsed = assistantToolResultSchemas.list_suggested_followup_reviews.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "suggested_followup_review_list",
-        reviews: parsed.data.reviews.map(toFollowupReviewItem),
-      };
-    }
-    case "search_relationship_context": {
-      const parsed = assistantToolResultSchemas.search_relationship_context.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "relationship_context_search",
-        results: parsed.data.results.map((result) => ({
-          ...result,
-          relatedPersonId: result.relatedPersonId ?? null,
-          relatedPersonDisplayName: result.relatedPersonDisplayName ?? null,
-        })),
-      };
-    }
-    case "search_semantic_context": {
-      const parsed = assistantToolResultSchemas.search_semantic_context.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "semantic_context_search",
-        results: parsed.data.results.map((result) => ({
-          ...result,
-          relatedPersonId: result.relatedPersonId ?? null,
-          relatedPersonDisplayName: result.relatedPersonDisplayName ?? null,
-        })),
-      };
-    }
-    case "get_relationship_agenda": {
-      const parsed = assistantToolResultSchemas.get_relationship_agenda.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "relationship_agenda",
-        candidates: parsed.data.candidates.map(toRelationshipAgendaCandidate),
-        window: parsed.data.window
-          ? { start: parsed.data.window.start, end: parsed.data.window.end }
-          : null,
-      };
-    }
-    case "propose_memory_cleanup": {
-      const parsed = assistantToolResultSchemas.propose_memory_cleanup.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "memory_curator_proposals",
-        proposals: parsed.data.proposals.map(toMemoryCuratorProposal),
-      };
-    }
-    case "propose_message_draft": {
-      const parsed = assistantToolResultSchemas.propose_message_draft.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "draft_proposal",
-        proposal: parsed.data.proposal ? toDraftProposal(parsed.data.proposal) : null,
-        skippedReason: parsed.data.skippedReason ?? null,
-      };
-    }
-    case "create_general_action": {
-      const parsed = assistantToolResultSchemas.create_general_action.safeParse(output);
-      if (!parsed.success) break;
-      return { kind: "created_general_action", ...toGeneralActionListItem(parsed.data.action) };
-    }
-    case "suggest_general_action":
-    case "get_suggested_general_action_review": {
-      const parsed = assistantToolResultSchemas.suggest_general_action.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "suggested_general_action_review",
-        ...toSuggestedGeneralActionReviewItem(parsed.data),
-      };
-    }
-    case "plan_suggested_general_actions": {
-      const parsed = assistantToolResultSchemas.plan_suggested_general_actions.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "suggested_general_action_review_list",
-        reviews: parsed.data.proposed.map(toSuggestedGeneralActionReviewItem),
-      };
-    }
-    case "list_suggested_general_action_reviews": {
-      const parsed =
-        assistantToolResultSchemas.list_suggested_general_action_reviews.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "suggested_general_action_review_list",
-        reviews: parsed.data.reviews.map(toSuggestedGeneralActionReviewItem),
-      };
-    }
-    case "list_general_actions": {
-      const parsed = assistantToolResultSchemas.list_general_actions.safeParse(output);
-      if (!parsed.success) break;
-      return {
-        kind: "general_action_list",
-        ledger: parsed.data.ledger,
-        window: parsed.data.window ?? null,
-        // The disclosure is a committed-ledger view (active/paused/resolved). Drop any
-        // review-status row so a tentative `suggested`/`ignored` proposal — which carries
-        // no accept/dismiss affordance here — can never masquerade as a committed action.
-        actions: parsed.data.actions
-          .filter((action) => !isGeneralActionReviewStatus(action.status))
-          .map(toGeneralActionListItem),
-      };
-    }
-    default:
-      break;
-  }
-
-  return { kind: "generic", toolName };
+  return toolViewParsers[toolName]?.(output) ?? { kind: "generic", toolName };
 }

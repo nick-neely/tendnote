@@ -57,6 +57,18 @@ const OUTCOME_TONE: Record<Exclude<ReviewOutcome, "pending">, CardTone> = {
   dismissed: "neutral",
 };
 
+/** An action button's aria-label, naming the person when the card has one. */
+function actionAriaLabel(verb: string, noun: string, personName: string | null): string {
+  return personName ? `${verb} ${noun} for ${personName}` : `${verb} ${noun}`;
+}
+
+/** The body's lead word for the card's current outcome. */
+function reviewLeadWord(outcome: ReviewOutcome, labels: ReviewActionLabels): string {
+  if (outcome === "resolved") return labels.resolvedWord;
+  if (outcome === "dismissed") return "Dismissed";
+  return labels.pendingWord;
+}
+
 /**
  * The one interactive review card behind every in-chat "act on it now" surface. A
  * tentative item (suggested memory, suggested follow-up) or a logged note the user
@@ -112,12 +124,7 @@ export function ChatReviewActionCard({
   }
 
   const tone: CardTone = outcome === "pending" ? pendingTone : OUTCOME_TONE[outcome];
-  const leadWord =
-    outcome === "resolved"
-      ? labels.resolvedWord
-      : outcome === "dismissed"
-        ? "Dismissed"
-        : labels.pendingWord;
+  const leadWord = reviewLeadWord(outcome, labels);
 
   return (
     <ResultCard
@@ -151,9 +158,7 @@ export function ChatReviewActionCard({
       {outcome === "pending" ? (
         <div className="flex items-center justify-end gap-1.5">
           <Button
-            aria-label={
-              personName ? `Dismiss ${labels.noun} for ${personName}` : `Dismiss ${labels.noun}`
-            }
+            aria-label={actionAriaLabel("Dismiss", labels.noun, personName)}
             disabled={busy}
             onClick={() => act("dismissed", onDismiss)}
             size="sm"
@@ -164,11 +169,7 @@ export function ChatReviewActionCard({
             Dismiss
           </Button>
           <Button
-            aria-label={
-              personName
-                ? `${labels.primaryAction} ${labels.noun} for ${personName}`
-                : `${labels.primaryAction} ${labels.noun}`
-            }
+            aria-label={actionAriaLabel(labels.primaryAction, labels.noun, personName)}
             disabled={busy}
             onClick={() => act("resolved", onResolve)}
             size="sm"

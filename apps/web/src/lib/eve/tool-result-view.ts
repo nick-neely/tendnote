@@ -237,54 +237,53 @@ export type DraftProposalView = {
 };
 
 /**
+ * Per-kind stable-key builders. Keyed by `view.kind` so the lookup stays a flat
+ * table rather than a long switch; the mapped type gives each builder the exact
+ * narrowed variant for its kind, so ids are referenced without casts.
+ */
+const assistantToolViewKeyBuilders: {
+  [K in AssistantToolView["kind"]]: (view: Extract<AssistantToolView, { kind: K }>) => string;
+} = {
+  saved_source_record: (view) => `source:${view.sourceRecordId}`,
+  saved_memory: (view) => `memory:${view.memoryId}`,
+  added_person: (view) => `person:${view.personId}`,
+  updated_person: (view) => `person-updated:${view.personId}:${view.updatedFields.join(",")}`,
+  person_context: (view) => `context:${view.personId}`,
+  message_draft: (view) => `draft:${view.draftId}`,
+  suggested_memory_review: (view) => `suggested:${view.memoryId}`,
+  suggested_memory_review_list: (view) =>
+    `suggested-list:${view.reviews.map((review) => review.memoryId).join(":")}`,
+  suggested_followup_review: (view) => `suggested-followup:${view.followupId}`,
+  suggested_followup_review_list: (view) =>
+    `suggested-followup-list:${view.reviews.map((review) => review.followupId).join(":")}`,
+  relationship_context_search: (view) =>
+    `search:${view.results.map((result) => result.recordId).join(":")}`,
+  semantic_context_search: (view) =>
+    `semantic-search:${view.results.map((result) => result.recordId).join(":")}`,
+  relationship_agenda: (view) =>
+    `agenda:${view.candidates.map(relationshipAgendaCandidateKey).join(":")}`,
+  memory_curator_proposals: (view) =>
+    `memory-curator:${view.proposals.map((proposal) => proposal.id).join(":")}`,
+  draft_proposal: (view) =>
+    view.proposal ? `draft-proposal:${view.proposal.id}` : `draft-proposal:skipped`,
+  created_general_action: (view) => `general-action:${view.generalActionId}`,
+  suggested_general_action_review: (view) => `suggested-general-action:${view.generalActionId}`,
+  suggested_general_action_review_list: (view) =>
+    `suggested-general-action-list:${view.reviews
+      .map((review) => review.generalActionId)
+      .join(":")}`,
+  general_action_list: (view) =>
+    `general-action-list:${view.actions.map((action) => action.generalActionId).join(":")}`,
+  generic: (view) => `tool:${view.toolName}`,
+};
+
+/**
  * Stable React key for a rendered view, derived from the persisted record it
  * references so a list of results keys on real ids rather than array position.
  */
 export function assistantToolViewKey(view: AssistantToolView): string {
-  switch (view.kind) {
-    case "saved_source_record":
-      return `source:${view.sourceRecordId}`;
-    case "saved_memory":
-      return `memory:${view.memoryId}`;
-    case "added_person":
-      return `person:${view.personId}`;
-    case "updated_person":
-      return `person-updated:${view.personId}:${view.updatedFields.join(",")}`;
-    case "person_context":
-      return `context:${view.personId}`;
-    case "message_draft":
-      return `draft:${view.draftId}`;
-    case "suggested_memory_review":
-      return `suggested:${view.memoryId}`;
-    case "suggested_memory_review_list":
-      return `suggested-list:${view.reviews.map((review) => review.memoryId).join(":")}`;
-    case "suggested_followup_review":
-      return `suggested-followup:${view.followupId}`;
-    case "suggested_followup_review_list":
-      return `suggested-followup-list:${view.reviews.map((review) => review.followupId).join(":")}`;
-    case "relationship_context_search":
-      return `search:${view.results.map((result) => result.recordId).join(":")}`;
-    case "semantic_context_search":
-      return `semantic-search:${view.results.map((result) => result.recordId).join(":")}`;
-    case "relationship_agenda":
-      return `agenda:${view.candidates.map(relationshipAgendaCandidateKey).join(":")}`;
-    case "memory_curator_proposals":
-      return `memory-curator:${view.proposals.map((proposal) => proposal.id).join(":")}`;
-    case "draft_proposal":
-      return view.proposal ? `draft-proposal:${view.proposal.id}` : `draft-proposal:skipped`;
-    case "created_general_action":
-      return `general-action:${view.generalActionId}`;
-    case "suggested_general_action_review":
-      return `suggested-general-action:${view.generalActionId}`;
-    case "suggested_general_action_review_list":
-      return `suggested-general-action-list:${view.reviews
-        .map((review) => review.generalActionId)
-        .join(":")}`;
-    case "general_action_list":
-      return `general-action-list:${view.actions.map((action) => action.generalActionId).join(":")}`;
-    default:
-      return `tool:${view.toolName}`;
-  }
+  const build = assistantToolViewKeyBuilders[view.kind] as (view: AssistantToolView) => string;
+  return build(view);
 }
 
 export function relationshipAgendaCandidateKey(candidate: RelationshipAgendaCandidateView) {

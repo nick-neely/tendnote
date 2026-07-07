@@ -12,10 +12,12 @@ import {
   generalActionRetrievalMeta,
   generalActionSchema,
   type HouseholdMembership,
+  type Memory,
   projectApprovedMemoryEmbeddedText,
   projectGeneralActionEmbeddedText,
   projectSourceRecordEmbeddedText,
   type RelationshipContextEmbedding,
+  type SourceRecord,
   visibilityChoiceForScope,
   visibilityLabelForScope,
 } from "@tendnote/domain";
@@ -26,6 +28,9 @@ import { createInMemoryMemoryStore } from "../memories/in-memory-store";
 import type { InMemoryEmbeddingStore } from "./types";
 
 const CLAIMABLE_STATUSES = new Set<EmbeddingJob["status"]>(claimableEmbeddingJobStatuses);
+
+/** The parsed request the per-kind embedding matchers operate on. */
+type SemanticSearchInput = Parameters<InMemoryEmbeddingStore["searchSemanticContext"]>[0];
 
 export function createInMemoryEmbeddingStore(
   seed: {
@@ -176,211 +181,7 @@ export function createInMemoryEmbeddingStore(
     async searchSemanticContext(input) {
       const kinds = new Set(input.recordKinds ?? ["memory", "source_record", "general_action"]);
       const results = await Promise.all(
-        [...embeddings.values()].map(async (embedding) => {
-          if (!kinds.has(embedding.recordKind)) return null;
-          if (embedding.embeddingModel !== input.embeddingModel) return null;
-          if (embedding.embeddingVersion !== input.embeddingVersion) return null;
-          if (embedding.embeddingDimensions !== input.queryEmbedding.length) return null;
-          if (embedding.sensitivity === "restricted" && !input.directlyRequested) return null;
-
-          if (embedding.recordKind === "general_action") {
-            // General Actions are not person-relationship context (ADRs 0143, 0155): a
-            // person-scoped query never returns them.
-            if (input.personId) return null;
-            if (embedding.trustLevel !== "action_item") return null;
-
-            const action = generalActionRecords.get(embedding.recordId);
-            if (!action || action.ownerUserId !== embedding.ownerUserId) return null;
-            if (decideGeneralActionEmbedding(action).action === "skip") return null;
-
-            // Scope filtering, pre-retrieval (ADR 0153, AC5): the shared retrieval gate
-            // admits a durable action only to a caller who may see it under scope rules,
-            // and a `suggested` proposal only in owner-only review context — never
-            // scope-visible to a member (ADRs 0151-0153, AC3).
-            if (
-              !canRetrieveGeneralAction({
-                status: action.status,
-                ownerUserId: action.ownerUserId,
-                callerUserId: input.ownerUserId,
-                scopeVisible: canViewerSeeRecord(input.ownerUserId, action, "general_action"),
-                includeReviewGated: Boolean(input.includeReviewGated),
-              })
-            ) {
-              return null;
-            }
-
-            // Content freshness: skip an embedding whose text no longer matches the
-            // action's current projection. Unlike the drizzle store (which cannot rebuild
-            // the projection in SQL), the in-memory store can, so it keeps this stricter
-            // check. No updated_at guard — a status transition bumps updated_at without
-            // changing the embedded text, and re-embedding follows content edits.
-            if (projectGeneralActionEmbeddedText(action) !== embedding.embeddedText) return null;
-
-            const similarity = cosineSimilarity(input.queryEmbedding, embedding.embedding);
-            if (similarity < input.minimumSimilarity) return null;
-
-            return {
-              recordKind: "general_action" as const,
-              recordId: embedding.recordId,
-              visibilityChoice: visibilityChoiceForScope(action.scope),
-              visibilityLabel: visibilityLabelForScope(action.scope),
-              relatedPersonId: null,
-              relatedPersonDisplayName: null,
-              snippet: action.title,
-              similarity,
-              trustLevel: embedding.trustLevel,
-              sensitivity: embedding.sensitivity,
-              sourceRefs: [{ kind: "general_action" as const, id: embedding.recordId }],
-              routing: {
-                personId: null,
-                recordKind: "general_action" as const,
-                recordId: embedding.recordId,
-              },
-              generalAction: generalActionRetrievalMeta(action),
-              tieBreakers: {
-                importance: 0,
-                updatedAt: action.updatedAt,
-              },
-            };
-          }
-
-          if (embedding.recordKind === "source_record") {
-            if (embedding.trustLevel !== "logged_context") return null;
-
-            const sourceRecord = await base.getSourceRecord({
-              ownerUserId: embedding.ownerUserId,
-              sourceRecordId: embedding.recordId,
-            });
-
-            if (!sourceRecord) return null;
-            if (!canViewerSeeRecord(input.ownerUserId, sourceRecord, "source_record")) return null;
-
-            const links = await base.listSourceRecordPeople({
-              sourceRecordId: sourceRecord.id,
-            });
-            const people = (
-              await Promise.all(
-                links.map((link) =>
-                  base.getPerson({
-                    ownerUserId: sourceRecord.ownerUserId,
-                    personId: link.personId,
-                  }),
-                ),
-              )
-            )
-              .filter((person): person is NonNullable<typeof person> => Boolean(person))
-              .map((person) => ({ id: person.id, displayName: person.displayName }));
-            if (input.personId && !people.some((person) => person.id === input.personId)) {
-              return null;
-            }
-            const unresolvedMentions = await base.listUnresolvedMentions({
-              sourceRecordId: sourceRecord.id,
-            });
-            const unresolvedMentionCount = unresolvedMentions.filter(
-              (mention) => mention.status === "unresolved",
-            ).length;
-            const decision = decideSourceRecordEmbedding(
-              sourceRecord,
-              people,
-              unresolvedMentionCount,
-            );
-
-            if (decision.action === "skip") return null;
-            if (sourceRecord.sensitivity !== embedding.sensitivity) return null;
-            if (projectSourceRecordEmbeddedText(sourceRecord, people) !== embedding.embeddedText) {
-              return null;
-            }
-            if (sourceRecord.updatedAt.getTime() !== embedding.sourceUpdatedAt.getTime()) {
-              return null;
-            }
-
-            const similarity = cosineSimilarity(input.queryEmbedding, embedding.embedding);
-
-            if (similarity < input.minimumSimilarity) return null;
-
-            const resultPersonId = input.personId ?? embedding.personId;
-            const person = resultPersonId
-              ? await base.getPerson({
-                  ownerUserId: input.ownerUserId,
-                  personId: resultPersonId,
-                })
-              : null;
-
-            return {
-              recordKind: "source_record" as const,
-              recordId: embedding.recordId,
-              visibilityChoice: visibilityChoiceForScope(sourceRecord.scope),
-              visibilityLabel: visibilityLabelForScope(sourceRecord.scope),
-              relatedPersonId: person?.id ?? null,
-              relatedPersonDisplayName: person?.displayName ?? null,
-              snippet: sourceRecord.content,
-              similarity,
-              trustLevel: embedding.trustLevel,
-              sensitivity: embedding.sensitivity,
-              sourceRefs: [{ kind: "source_record" as const, id: embedding.recordId }],
-              routing: {
-                personId: resultPersonId,
-                recordKind: "source_record" as const,
-                recordId: embedding.recordId,
-              },
-              generalAction: null,
-              tieBreakers: {
-                importance: sourceRecord.importance,
-                updatedAt: sourceRecord.updatedAt,
-              },
-            };
-          }
-
-          if (input.personId && embedding.personId !== input.personId) return null;
-          if (embedding.trustLevel !== "confirmed_fact") return null;
-
-          const memory = await base.getMemory({
-            ownerUserId: embedding.ownerUserId,
-            memoryId: embedding.recordId,
-          });
-
-          if (memory?.status !== "approved") return null;
-          if (!canViewerSeeRecord(input.ownerUserId, memory, "memory")) return null;
-          if (memory.sensitivity === "restricted" && !input.directlyRequested) return null;
-          if (memory.sensitivity !== embedding.sensitivity) return null;
-          if (projectApprovedMemoryEmbeddedText(memory) !== embedding.embeddedText) return null;
-          if (memory.updatedAt.getTime() !== embedding.sourceUpdatedAt.getTime()) return null;
-
-          const similarity = cosineSimilarity(input.queryEmbedding, embedding.embedding);
-
-          if (similarity < input.minimumSimilarity) return null;
-
-          const person = embedding.personId
-            ? await base.getPerson({
-                ownerUserId: input.ownerUserId,
-                personId: embedding.personId,
-              })
-            : null;
-
-          return {
-            recordKind: "memory" as const,
-            recordId: embedding.recordId,
-            visibilityChoice: visibilityChoiceForScope(memory.scope),
-            visibilityLabel: visibilityLabelForScope(memory.scope),
-            relatedPersonId: person?.id ?? null,
-            relatedPersonDisplayName: person?.displayName ?? null,
-            snippet: embedding.embeddedText,
-            similarity,
-            trustLevel: embedding.trustLevel,
-            sensitivity: embedding.sensitivity,
-            sourceRefs: [{ kind: "memory" as const, id: embedding.recordId }],
-            routing: {
-              personId: embedding.personId,
-              recordKind: "memory" as const,
-              recordId: embedding.recordId,
-            },
-            generalAction: null,
-            tieBreakers: {
-              importance: memory.importance,
-              updatedAt: memory.updatedAt,
-            },
-          };
-        }),
+        [...embeddings.values()].map((embedding) => matchEmbedding(embedding, input, kinds)),
       );
 
       return results
@@ -396,6 +197,259 @@ export function createInMemoryEmbeddingStore(
       return [...embeddings.values()];
     },
   };
+
+  /**
+   * Cheap, kind-agnostic gate every embedding must clear before its per-kind matcher
+   * runs: the requested record kinds, the exact model/version/vector-dimensions the
+   * query was embedded with, and the restricted-sensitivity guard.
+   */
+  function passesCommonEmbeddingFilters(
+    embedding: RelationshipContextEmbedding,
+    input: SemanticSearchInput,
+    kinds: Set<string>,
+  ): boolean {
+    if (!kinds.has(embedding.recordKind)) return false;
+    if (embedding.embeddingModel !== input.embeddingModel) return false;
+    if (embedding.embeddingVersion !== input.embeddingVersion) return false;
+    if (embedding.embeddingDimensions !== input.queryEmbedding.length) return false;
+    return !(embedding.sensitivity === "restricted" && !input.directlyRequested);
+  }
+
+  /** Load a person by id under the owner scope, or null when there is no id to resolve. */
+  async function resolvePerson(ownerUserId: string, personId: string | null | undefined) {
+    return personId ? await base.getPerson({ ownerUserId, personId }) : null;
+  }
+
+  /** The result's related-person fields, without per-call optional-chaining noise. */
+  function relatedPersonFields(person: { id: string; displayName: string } | null) {
+    if (!person) return { relatedPersonId: null, relatedPersonDisplayName: null };
+    return { relatedPersonId: person.id, relatedPersonDisplayName: person.displayName };
+  }
+
+  /** Route one embedding to its per-kind matcher, or drop it before that work. */
+  async function matchEmbedding(
+    embedding: RelationshipContextEmbedding,
+    input: SemanticSearchInput,
+    kinds: Set<string>,
+  ) {
+    if (!passesCommonEmbeddingFilters(embedding, input, kinds)) return null;
+    if (embedding.recordKind === "general_action") {
+      return matchGeneralActionEmbedding(embedding, input);
+    }
+    if (embedding.recordKind === "source_record") {
+      return matchSourceRecordEmbedding(embedding, input);
+    }
+    return matchMemoryEmbedding(embedding, input);
+  }
+
+  /**
+   * Whether a durable action is retrievable for this query. General Actions are not
+   * person-relationship context (ADRs 0143, 0155), so a person-scoped query never
+   * returns them; the shared retrieval gate (ADRs 0151-0153) admits a durable action
+   * only to a caller who may see it under scope rules, and a `suggested` proposal only
+   * in owner-only review. Content freshness (projection match) is checked separately —
+   * unlike the drizzle store (which cannot rebuild the projection in SQL), the
+   * in-memory store keeps that stricter check; there is no updated_at guard because a
+   * status transition bumps updated_at without changing the embedded text.
+   */
+  function isGeneralActionEmbeddingRetrievable(
+    embedding: RelationshipContextEmbedding,
+    action: GeneralAction,
+    input: SemanticSearchInput,
+  ): boolean {
+    if (decideGeneralActionEmbedding(action).action === "skip") return false;
+    if (projectGeneralActionEmbeddedText(action) !== embedding.embeddedText) return false;
+    return canRetrieveGeneralAction({
+      status: action.status,
+      ownerUserId: action.ownerUserId,
+      callerUserId: input.ownerUserId,
+      scopeVisible: canViewerSeeRecord(input.ownerUserId, action, "general_action"),
+      includeReviewGated: Boolean(input.includeReviewGated),
+    });
+  }
+
+  function matchGeneralActionEmbedding(
+    embedding: RelationshipContextEmbedding,
+    input: SemanticSearchInput,
+  ) {
+    if (input.personId) return null;
+    if (embedding.trustLevel !== "action_item") return null;
+
+    const action = generalActionRecords.get(embedding.recordId);
+    if (!action || action.ownerUserId !== embedding.ownerUserId) return null;
+    if (!isGeneralActionEmbeddingRetrievable(embedding, action, input)) return null;
+
+    const similarity = cosineSimilarity(input.queryEmbedding, embedding.embedding);
+    if (similarity < input.minimumSimilarity) return null;
+
+    return {
+      recordKind: "general_action" as const,
+      recordId: embedding.recordId,
+      visibilityChoice: visibilityChoiceForScope(action.scope),
+      visibilityLabel: visibilityLabelForScope(action.scope),
+      relatedPersonId: null,
+      relatedPersonDisplayName: null,
+      snippet: action.title,
+      similarity,
+      trustLevel: embedding.trustLevel,
+      sensitivity: embedding.sensitivity,
+      sourceRefs: [{ kind: "general_action" as const, id: embedding.recordId }],
+      routing: {
+        personId: null,
+        recordKind: "general_action" as const,
+        recordId: embedding.recordId,
+      },
+      generalAction: generalActionRetrievalMeta(action),
+      tieBreakers: {
+        importance: 0,
+        updatedAt: action.updatedAt,
+      },
+    };
+  }
+
+  /** Resolve the linked, viewer-visible people for a source record (id + name only). */
+  async function sourceRecordPeople(sourceRecord: SourceRecord) {
+    const links = await base.listSourceRecordPeople({ sourceRecordId: sourceRecord.id });
+    const people = await Promise.all(
+      links.map((link) =>
+        base.getPerson({ ownerUserId: sourceRecord.ownerUserId, personId: link.personId }),
+      ),
+    );
+    return people
+      .filter((person): person is NonNullable<typeof person> => Boolean(person))
+      .map((person) => ({ id: person.id, displayName: person.displayName }));
+  }
+
+  /**
+   * Freshness/eligibility gate for a logged source record: the embedding decision must
+   * still say "embed", and the projected text, sensitivity, and source timestamp must
+   * all still match the persisted embedding (a stale embedding is skipped).
+   */
+  async function isSourceRecordEmbeddingFresh(
+    embedding: RelationshipContextEmbedding,
+    sourceRecord: SourceRecord,
+    people: { id: string; displayName: string }[],
+  ): Promise<boolean> {
+    const unresolvedMentions = await base.listUnresolvedMentions({
+      sourceRecordId: sourceRecord.id,
+    });
+    const unresolvedMentionCount = unresolvedMentions.filter(
+      (mention) => mention.status === "unresolved",
+    ).length;
+    if (decideSourceRecordEmbedding(sourceRecord, people, unresolvedMentionCount).action === "skip")
+      return false;
+    if (sourceRecord.sensitivity !== embedding.sensitivity) return false;
+    if (projectSourceRecordEmbeddedText(sourceRecord, people) !== embedding.embeddedText)
+      return false;
+    return sourceRecord.updatedAt.getTime() === embedding.sourceUpdatedAt.getTime();
+  }
+
+  async function matchSourceRecordEmbedding(
+    embedding: RelationshipContextEmbedding,
+    input: SemanticSearchInput,
+  ) {
+    if (embedding.trustLevel !== "logged_context") return null;
+
+    const sourceRecord = await base.getSourceRecord({
+      ownerUserId: embedding.ownerUserId,
+      sourceRecordId: embedding.recordId,
+    });
+    if (!sourceRecord) return null;
+    if (!canViewerSeeRecord(input.ownerUserId, sourceRecord, "source_record")) return null;
+
+    const people = await sourceRecordPeople(sourceRecord);
+    if (input.personId && !people.some((person) => person.id === input.personId)) return null;
+    if (!(await isSourceRecordEmbeddingFresh(embedding, sourceRecord, people))) return null;
+
+    const similarity = cosineSimilarity(input.queryEmbedding, embedding.embedding);
+    if (similarity < input.minimumSimilarity) return null;
+
+    const resultPersonId = input.personId ?? embedding.personId;
+    const person = await resolvePerson(input.ownerUserId, resultPersonId);
+
+    return {
+      recordKind: "source_record" as const,
+      recordId: embedding.recordId,
+      visibilityChoice: visibilityChoiceForScope(sourceRecord.scope),
+      visibilityLabel: visibilityLabelForScope(sourceRecord.scope),
+      ...relatedPersonFields(person),
+      snippet: sourceRecord.content,
+      similarity,
+      trustLevel: embedding.trustLevel,
+      sensitivity: embedding.sensitivity,
+      sourceRefs: [{ kind: "source_record" as const, id: embedding.recordId }],
+      routing: {
+        personId: resultPersonId,
+        recordKind: "source_record" as const,
+        recordId: embedding.recordId,
+      },
+      generalAction: null,
+      tieBreakers: {
+        importance: sourceRecord.importance,
+        updatedAt: sourceRecord.updatedAt,
+      },
+    };
+  }
+
+  /**
+   * Freshness/eligibility gate for an approved memory: it must be approved, viewer
+   * visible, not restricted (unless directly requested), and its sensitivity, projected
+   * text, and source timestamp must still match the persisted embedding.
+   */
+  function isMemoryEmbeddingFresh(
+    embedding: RelationshipContextEmbedding,
+    memory: Memory,
+    input: SemanticSearchInput,
+  ): boolean {
+    if (memory.status !== "approved") return false;
+    if (!canViewerSeeRecord(input.ownerUserId, memory, "memory")) return false;
+    if (memory.sensitivity === "restricted" && !input.directlyRequested) return false;
+    if (memory.sensitivity !== embedding.sensitivity) return false;
+    if (projectApprovedMemoryEmbeddedText(memory) !== embedding.embeddedText) return false;
+    return memory.updatedAt.getTime() === embedding.sourceUpdatedAt.getTime();
+  }
+
+  async function matchMemoryEmbedding(
+    embedding: RelationshipContextEmbedding,
+    input: SemanticSearchInput,
+  ) {
+    if (input.personId && embedding.personId !== input.personId) return null;
+    if (embedding.trustLevel !== "confirmed_fact") return null;
+
+    const memory = await base.getMemory({
+      ownerUserId: embedding.ownerUserId,
+      memoryId: embedding.recordId,
+    });
+    if (!memory || !isMemoryEmbeddingFresh(embedding, memory, input)) return null;
+
+    const similarity = cosineSimilarity(input.queryEmbedding, embedding.embedding);
+    if (similarity < input.minimumSimilarity) return null;
+
+    const person = await resolvePerson(input.ownerUserId, embedding.personId);
+
+    return {
+      recordKind: "memory" as const,
+      recordId: embedding.recordId,
+      visibilityChoice: visibilityChoiceForScope(memory.scope),
+      visibilityLabel: visibilityLabelForScope(memory.scope),
+      ...relatedPersonFields(person),
+      snippet: embedding.embeddedText,
+      similarity,
+      trustLevel: embedding.trustLevel,
+      sensitivity: embedding.sensitivity,
+      sourceRefs: [{ kind: "memory" as const, id: embedding.recordId }],
+      routing: {
+        personId: embedding.personId,
+        recordKind: "memory" as const,
+        recordId: embedding.recordId,
+      },
+      generalAction: null,
+      tieBreakers: {
+        importance: memory.importance,
+        updatedAt: memory.updatedAt,
+      },
+    };
+  }
 
   function canViewerSeeRecord(
     callerUserId: string,
