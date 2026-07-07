@@ -37,6 +37,19 @@ export type ReviewActionLabels = {
   resolvedFooter: string;
   /** Footer caption once dismissed. */
   dismissedFooter: string;
+  /**
+   * Where the item can still be reviewed if the inline action fails, phrased as a full
+   * sentence appended to the error, e.g. "You can review it on the person's page." A
+   * follow-up/memory recovers on the person's page; a General Action, on /actions.
+   */
+  errorRecovery: string;
+  /**
+   * Optional override for the pending footer's "Open" link text. Defaults to
+   * "Open{ personName}" so a person-scoped card reads "Open Mark"; a card whose subject
+   * is not a person (a General Action) sets this to name its destination, e.g.
+   * "Open in Actions".
+   */
+  openLabel?: string;
 };
 
 const OUTCOME_TONE: Record<Exclude<ReviewOutcome, "pending">, CardTone> = {
@@ -93,7 +106,7 @@ export function ChatReviewActionCard({
         await run();
         setOutcome(next);
       } catch {
-        setError("That didn't go through. You can review it on the person's page.");
+        setError(`That didn't go through. ${labels.errorRecovery}`);
       }
     });
   }
@@ -249,7 +262,7 @@ function ReviewFooter({
           className="inline-flex items-center gap-0.5 text-[length:var(--text-caption)] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
           href={personHref}
         >
-          Open{personName ? ` ${personName}` : ""}
+          {labels.openLabel ?? `Open${personName ? ` ${personName}` : ""}`}
           <ArrowUpRightIcon aria-hidden className="size-3" />
         </Link>
       ) : null}

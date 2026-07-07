@@ -7,6 +7,10 @@ import {
   ChatFollowupReviewCard,
   ChatFollowupReviewList,
 } from "@/components/chat-followup-review-card";
+import {
+  ChatGeneralActionReviewCard,
+  ChatGeneralActionReviewList,
+} from "@/components/chat-general-action-review-card";
 import { ChatLoggedNoteCard } from "@/components/chat-logged-note-card";
 import { ChatReviewCard, ChatReviewList } from "@/components/chat-review-card";
 import type { AssistantTurnUnit } from "@/lib/eve/message-views";
@@ -63,6 +67,14 @@ export function AssistantTurnUnitView({ unit }: { unit: AssistantTurnUnit }) {
 
   if (view.kind === "suggested_followup_review_list") {
     return <ChatFollowupReviewList isNew view={view} />;
+  }
+
+  if (view.kind === "suggested_general_action_review") {
+    return <ChatGeneralActionReviewCard isNew item={view} />;
+  }
+
+  if (view.kind === "suggested_general_action_review_list") {
+    return <ChatGeneralActionReviewList isNew view={view} />;
   }
 
   // The draft card is interactive (inline WYSIWYG edit + copy), so it routes to

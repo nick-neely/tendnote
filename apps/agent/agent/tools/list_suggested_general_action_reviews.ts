@@ -17,9 +17,9 @@ const inputSchema = z.object({
 /**
  * Thin wrapper over the shared suggested-General-Action review reader (ADRs 0151,
  * 0152). Returns each open proposal as a fixed typed review component referencing
- * persisted ids (the interactive review card is deferred to #186; for now the model
- * describes the proposals in prose). Suggestions are TENTATIVE — present them for
- * review, never as active actions.
+ * persisted ids; the chat renders each open proposal as an interactive review card
+ * (Accept/Dismiss). Suggestions are TENTATIVE — present them for review, never as
+ * active actions.
  */
 export default defineTool({
   description:
@@ -41,10 +41,8 @@ export default defineTool({
     };
   },
   // Keep titles/status so the model can summarize and act on a specific one when asked;
-  // ids never reach the model.
-  // TODO(#186): per-suggestion review cards are not wired into the chat surface yet, so
-  // the model must describe the pending suggestions in prose. Once #186 renders the
-  // cards, tell the model to summarize and defer detail to them.
+  // ids never reach the model. Each pending suggestion renders as its own review card
+  // (Accept/Dismiss), so the model says how many are up and defers detail to them.
   toModelOutput(output) {
     return {
       type: "json" as const,
@@ -52,7 +50,7 @@ export default defineTool({
         count: output.count,
         reviews: output.reviews.map((review) => toGeneralActionModelRef(review.action)),
         guidance:
-          "These are TENTATIVE suggestions, not active actions. Describe what's pending briefly in prose; add any to the active ledger only on explicit approval.",
+          "These are TENTATIVE suggestions, each shown as a review card the user can accept or dismiss. Say how many are up for review; don't relist them. None is active until accepted.",
       },
     };
   },

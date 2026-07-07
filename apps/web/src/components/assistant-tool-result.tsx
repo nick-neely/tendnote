@@ -1,11 +1,14 @@
 import {
+  ArrowUpRightIcon,
   BookOpenIcon,
   CalendarClockIcon,
   CheckIcon,
   ChevronDownIcon,
   ClipboardListIcon,
+  ListTodoIcon,
   MessageSquareTextIcon,
   NotebookPenIcon,
+  RepeatIcon,
   SearchIcon,
   UserIcon,
   UserPenIcon,
@@ -15,9 +18,11 @@ import Link from "next/link";
 import { AgendaCalendar } from "@/components/agenda-calendar";
 import { Body, Caption, ResultCard } from "@/components/assistant-result-card";
 import { labelSensitivity } from "@/lib/eve/agenda-format";
+import { formatLinkedPeople, joinGeneralActionMeta } from "@/lib/eve/general-action-meta";
 import { formatFieldList, PERSON_FIELD_LABEL } from "@/lib/eve/person-fields";
 import {
   type AssistantToolView,
+  type GeneralActionListItemView,
   type RelationshipContextSearchResultView,
   type SemanticContextSearchResultView,
   toolViewTier,
@@ -111,6 +116,14 @@ function LineView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
     );
   }
 
+  if (view.kind === "general_action_list") {
+    return (
+      <ToolActivityLine icon={<ListTodoIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+        {labelEmptyGeneralActionList(view.ledger)}
+      </ToolActivityLine>
+    );
+  }
+
   // generic — an unrecognized tool ran to completion; name it and move on.
   if (view.kind === "generic") {
     return (
@@ -150,6 +163,35 @@ function DisclosureView({ view, isNew }: { view: AssistantToolView; isNew: boole
         </summary>
         <div className="border-t">
           <AgendaCalendar candidates={view.candidates} window={view.window ?? null} />
+        </div>
+      </details>
+    );
+  }
+
+  if (view.kind === "general_action_list") {
+    const count = view.actions.length;
+
+    return (
+      <details
+        className={cn(
+          "group rounded-lg border bg-card [&[open]_.tn-chevron]:rotate-180",
+          isNew &&
+            "fade-in slide-in-from-bottom-1 animate-in duration-200 ease-(--motion-ease-out)",
+        )}
+        data-tool-view={view.kind}
+      >
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg p-3.5 text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+          <ListTodoIcon aria-hidden className="size-3.5 shrink-0" />
+          <span>{count === 1 ? "1 action" : `${count} actions`}</span>
+          <ChevronDownIcon
+            aria-hidden
+            className="tn-chevron ml-auto size-3.5 shrink-0 transition-transform duration-200 ease-(--motion-ease-out)"
+          />
+        </summary>
+        <div className="flex flex-col divide-y divide-border/70 border-t px-3.5 pt-3 pb-3.5">
+          {view.actions.map((action) => (
+            <GeneralActionRow action={action} key={action.generalActionId} />
+          ))}
         </div>
       </details>
     );
@@ -264,6 +306,37 @@ function CardView({ view, isNew }: { view: AssistantToolView; isNew: boolean }) 
           <span className="text-muted-foreground">You noted: </span>
           {view.content}
         </Body>
+      </ResultCard>
+    );
+  }
+
+  if (view.kind === "created_general_action") {
+    const summary = summarizeGeneralAction(view);
+    return (
+      <ResultCard
+        footer={
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            {summary ? <Caption>{summary}</Caption> : <span />}
+            {/* Deep-link the exact new row so the ledger scroll-and-pulse fires, instead
+                of dropping the user at the top of the list (useDeepLinkHighlight). */}
+            <Link
+              className="inline-flex items-center gap-0.5 text-[length:var(--text-caption)] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+              href={`/actions#action-${view.generalActionId}`}
+            >
+              Open in Actions
+              <ArrowUpRightIcon aria-hidden className="size-3" />
+            </Link>
+          </div>
+        }
+        icon={
+          view.isRoutine ? <RepeatIcon className="size-3" /> : <ListTodoIcon className="size-3" />
+        }
+        isNew={isNew}
+        kind={view.kind}
+        label={view.isRoutine ? "Added a routine" : "Added to your actions"}
+        tone="confirmed"
+      >
+        <Body>{view.title}</Body>
       </ResultCard>
     );
   }
@@ -421,6 +494,84 @@ function SearchResultRow({
           .filter(Boolean)
           .join(" · ")}
       </Caption>
+    </div>
+  );
+}
+
+/** The quiet empty-state line for a ledger read that came back with nothing. */
+function labelEmptyGeneralActionList(ledger: string): string {
+  switch (ledger) {
+    case "paused":
+      return "No paused routines";
+    case "resolved":
+      return "Nothing finished recently";
+    default:
+      return "Nothing on your active list";
+  }
+}
+
+/** Humanized status word for a ledger row's chip (the store's raw enum stays hidden). */
+function labelGeneralActionStatus(status: string): string {
+  switch (status) {
+    case "open":
+      return "Open";
+    case "deferred":
+      return "Set aside";
+    case "completed":
+      return "Done";
+    case "dismissed":
+      return "Dismissed";
+    case "archived":
+      return "Archived";
+    case "paused":
+      return "Paused";
+    case "suggested":
+      return "Suggested";
+    case "ignored":
+      return "Ignored";
+    default:
+      return status;
+  }
+}
+
+/**
+ * The calm caption under a created action or a ledger row: cadence, timing, linked
+ * people, and visibility, joined with dots and any empty part dropped — so an
+ * unscheduled, personless action reads as a clean title with no dangling separators.
+ * Shares the people/join formatting with the review card (see general-action-meta).
+ */
+function summarizeGeneralAction(
+  action: Pick<
+    GeneralActionListItemView,
+    "isRoutine" | "recurrenceLabel" | "timingLabel" | "personNames" | "visibilityLabel"
+  >,
+): string | null {
+  return joinGeneralActionMeta([
+    action.isRoutine ? (action.recurrenceLabel ?? "Routine") : action.timingLabel,
+    formatLinkedPeople(action.personNames),
+    action.visibilityLabel,
+  ]);
+}
+
+/** One General Action in a ledger list: title, a status chip, and a calm summary line. */
+function GeneralActionRow({ action }: { action: GeneralActionListItemView }) {
+  const summary = summarizeGeneralAction(action);
+  return (
+    <div className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          {action.isRoutine ? (
+            <RepeatIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          ) : (
+            <ListTodoIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
+          <span className="truncate font-medium text-foreground">{action.title}</span>
+        </span>
+        <span className="shrink-0 rounded-full border px-1.5 py-0.5 text-[length:var(--text-caption)] text-muted-foreground">
+          {labelGeneralActionStatus(action.status)}
+        </span>
+      </div>
+      {summary ? <Caption>{summary}</Caption> : null}
     </div>
   );
 }

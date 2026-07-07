@@ -49,9 +49,8 @@ export default defineTool({
       action: toGeneralActionRef(result.action),
     };
   },
-  // TODO(#186): a rich General Action card is not wired into the chat surface yet, so
-  // the model must state the result in prose. Once #186 renders the card, switch this
-  // guidance to defer detail to the card like the Follow-Up tools do.
+  // Accepting from a tool call (rather than the card's own Accept button) settles the
+  // proposal without rendering a new card, so the model confirms the promotion in prose.
   toModelOutput(output) {
     return {
       type: "json" as const,

@@ -1,15 +1,21 @@
 import {
   assistantToolResultSchemas,
   type DraftProposalToolResult,
+  type GeneralActionRefOutput,
+  type GeneralActionStatus,
+  isReviewGeneralActionStatus,
   type MemoryCuratorToolResult,
   type RelationshipAgendaToolResult,
   type SuggestedFollowupReviewItemOutput,
+  type SuggestedGeneralActionReviewItemOutput,
   type SuggestedMemoryReviewItemOutput,
 } from "@tendnote/domain";
 import type {
   AssistantToolView,
+  GeneralActionListItemView,
   RelationshipAgendaCandidateView,
   SuggestedFollowupReviewItemView,
+  SuggestedGeneralActionReviewItemView,
   SuggestedReviewItemView,
 } from "./tool-result-view";
 
@@ -89,6 +95,64 @@ function toFollowupReviewItem(
     sourceRecordId: parsed.sourceRecord?.id ?? null,
     personId: parsed.person?.id ?? parsed.followup.personId ?? null,
     personName: parsed.person?.displayName ?? null,
+  };
+}
+
+/**
+ * The calm surfacing cue for a General Action, mirroring the /actions ledger's
+ * `resolveSurfacing` vocabulary: a paused Routine reads as set aside, a deferred one as
+ * "Set aside until …", a dated one by its due date, and an undated one has no cue (the
+ * card/list leaves it as a plain "someday" action). Kept null-returning so an
+ * unscheduled action shows no timing chip rather than an empty one.
+ */
+function formatGeneralActionTiming(action: GeneralActionRefOutput): string | null {
+  if (action.status === "paused") {
+    return "Paused";
+  }
+  if (action.status === "deferred" && action.deferUntil) {
+    return `Set aside until ${formatDueLabel(action.deferUntil)}`;
+  }
+  if (action.dueAt) {
+    return `Due ${formatDueLabel(action.dueAt)}`;
+  }
+  return null;
+}
+
+/**
+ * Whether a ledger row is a review-status proposal (`suggested`/`ignored`) rather than a
+ * committed action. The ref's status is a plain string across the seam; this narrows it
+ * against the domain's review-status set so the disclosure can drop tentative rows.
+ */
+function isGeneralActionReviewStatus(status: string): boolean {
+  return isReviewGeneralActionStatus(status as GeneralActionStatus);
+}
+
+function toGeneralActionListItem(action: GeneralActionRefOutput): GeneralActionListItemView {
+  return {
+    generalActionId: action.id,
+    title: action.title,
+    status: action.status,
+    isRoutine: action.isRoutine,
+    recurrenceLabel: action.recurrence,
+    timingLabel: formatGeneralActionTiming(action),
+    personNames: action.people.map((person) => person.displayName),
+    visibilityLabel: action.visibilityLabel,
+  };
+}
+
+function toSuggestedGeneralActionReviewItem(
+  parsed: SuggestedGeneralActionReviewItemOutput,
+): SuggestedGeneralActionReviewItemView {
+  const { action } = parsed;
+  return {
+    generalActionId: action.id,
+    title: action.title,
+    status: action.status,
+    dueLabel: action.dueAt ? formatDueLabel(action.dueAt) : null,
+    isRoutine: action.isRoutine,
+    recurrenceLabel: action.recurrence,
+    personNames: action.people.map((person) => person.displayName),
+    visibilityLabel: action.visibilityLabel,
   };
 }
 
@@ -260,6 +324,52 @@ export function toAssistantToolView(toolResult: EveToolResult): AssistantToolVie
         kind: "draft_proposal",
         proposal: parsed.data.proposal ? toDraftProposal(parsed.data.proposal) : null,
         skippedReason: parsed.data.skippedReason ?? null,
+      };
+    }
+    case "create_general_action": {
+      const parsed = assistantToolResultSchemas.create_general_action.safeParse(output);
+      if (!parsed.success) break;
+      return { kind: "created_general_action", ...toGeneralActionListItem(parsed.data.action) };
+    }
+    case "suggest_general_action":
+    case "get_suggested_general_action_review": {
+      const parsed = assistantToolResultSchemas.suggest_general_action.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "suggested_general_action_review",
+        ...toSuggestedGeneralActionReviewItem(parsed.data),
+      };
+    }
+    case "plan_suggested_general_actions": {
+      const parsed = assistantToolResultSchemas.plan_suggested_general_actions.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "suggested_general_action_review_list",
+        reviews: parsed.data.proposed.map(toSuggestedGeneralActionReviewItem),
+      };
+    }
+    case "list_suggested_general_action_reviews": {
+      const parsed =
+        assistantToolResultSchemas.list_suggested_general_action_reviews.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "suggested_general_action_review_list",
+        reviews: parsed.data.reviews.map(toSuggestedGeneralActionReviewItem),
+      };
+    }
+    case "list_general_actions": {
+      const parsed = assistantToolResultSchemas.list_general_actions.safeParse(output);
+      if (!parsed.success) break;
+      return {
+        kind: "general_action_list",
+        ledger: parsed.data.ledger,
+        window: parsed.data.window ?? null,
+        // The disclosure is a committed-ledger view (active/paused/resolved). Drop any
+        // review-status row so a tentative `suggested`/`ignored` proposal — which carries
+        // no accept/dismiss affordance here — can never masquerade as a committed action.
+        actions: parsed.data.actions
+          .filter((action) => !isGeneralActionReviewStatus(action.status))
+          .map(toGeneralActionListItem),
       };
     }
     default:

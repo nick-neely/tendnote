@@ -87,9 +87,8 @@ export default defineTool({
 
     return { action: toGeneralActionRef(action) };
   },
-  // TODO(#186): a rich General Action card is not wired into the chat surface yet, so
-  // the model must state the result in prose. Once #186 renders the card, switch this
-  // guidance to defer detail to the card like the Follow-Up tools do.
+  // A status change has no card — the model confirms the transition in prose. (The
+  // ledger-list and review cards render separately; a lone transition does not.)
   toModelOutput(output) {
     return {
       type: "json" as const,

@@ -99,10 +99,8 @@ export default defineTool({
     };
   },
   // Keep the titles/status so the model can frame the plan and act on a specific step
-  // when the user asks; ids never reach the model.
-  // TODO(#186): per-step review cards are not wired into the chat surface yet, so the
-  // model must lay out the proposed steps in prose. Once #186 renders the cards, tell
-  // the model to summarize and defer detail to them.
+  // when the user asks; ids never reach the model. Each step renders as its own
+  // interactive review card (Accept/Dismiss), so the model frames the plan and defers.
   toModelOutput(output) {
     return {
       type: "json" as const,
@@ -111,7 +109,7 @@ export default defineTool({
         count: output.count,
         steps: output.proposed.map((item) => toGeneralActionModelRef(item.action)),
         guidance:
-          "These are TENTATIVE suggestions, not active actions. Lay out the proposed steps briefly in prose; add any of them to the active ledger only on the user's explicit say-so.",
+          "These are TENTATIVE suggestions, each shown as its own review card the user can accept or dismiss. Frame the plan in a sentence or two; don't relist every step. None is active until they accept it.",
       },
     };
   },

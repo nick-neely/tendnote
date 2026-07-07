@@ -86,10 +86,8 @@ export default defineTool({
     };
   },
   // Drop the id from the model's view (it never surfaces ids); keep the title/status so
-  // the user can ask you to accept or dismiss it.
-  // TODO(#186): a rich review card is not wired into the chat surface yet, so the model
-  // must describe the proposal in prose. Once #186 renders the card, tell the model to
-  // offer it briefly and defer detail to the card.
+  // the user can ask you to accept or dismiss it. The chat renders an interactive review
+  // card with Accept/Dismiss buttons, so the model offers it briefly and defers detail.
   toModelOutput(output) {
     return {
       type: "json" as const,
@@ -97,7 +95,7 @@ export default defineTool({
         proposed: true,
         action: toGeneralActionModelRef(output.action),
         guidance:
-          "It's a TENTATIVE suggestion, not an active action. Describe it briefly in prose for the user to consider; add it to the active ledger only on their explicit say-so.",
+          "It's a TENTATIVE suggestion shown as a review card the user can accept or dismiss. Offer it in one sentence; don't restate its details. It's not an active action until they accept it.",
       },
     };
   },

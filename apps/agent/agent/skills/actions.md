@@ -46,8 +46,9 @@ your own.
   steps only, **never sub-tasks, dependencies, phases, projects, or a kanban board**, and
   **never active Actions**.
 - **Review suggestions** with `list_suggested_general_action_reviews`, or
-  `get_suggested_general_action_review` for one, and describe the pending proposals in
-  prose (a dedicated review card is not wired into chat yet — see #186).
+  `get_suggested_general_action_review` for one. Each pending proposal renders in chat as
+  an interactive review card the user can Accept or Dismiss, so say how many are up for
+  review rather than relisting them in prose.
 - **Accept or dismiss only on explicit user instruction.** On approval use
   `accept_suggested_general_action` (optionally with a correction) — this promotes it
   onto the active ledger. On rejection use `dismiss_suggested_general_action`. **Never

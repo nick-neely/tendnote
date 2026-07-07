@@ -700,6 +700,214 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     });
   });
 
+  // Shared ref factory mirroring the agent's toGeneralActionRef output.
+  function gaRef(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "ga-1",
+      title: "Replace the fridge water filter",
+      status: "open",
+      dueAt: null,
+      deferUntil: null,
+      isRoutine: false,
+      recurrence: null,
+      areaId: null,
+      people: [] as { id: string; displayName: string }[],
+      visibilityChoice: "only_me",
+      visibilityLabel: "Only me",
+      ...overrides,
+    };
+  }
+
+  it("renders a create_general_action result as a created-action view without ids", () => {
+    const view = toAssistantToolView({
+      toolName: "create_general_action",
+      output: {
+        action: gaRef({ people: [{ id: "person-1", displayName: "Priya Shah" }] }),
+        component: { type: "general_action_created", generalActionId: "ga-1" },
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "created_general_action",
+      generalActionId: "ga-1",
+      title: "Replace the fridge water filter",
+      status: "open",
+      isRoutine: false,
+      recurrenceLabel: null,
+      timingLabel: null,
+      personNames: ["Priya Shah"],
+      visibilityLabel: "Only me",
+    });
+  });
+
+  it("resolves a created Routine's cadence and a dated action's timing label", () => {
+    const routine = toAssistantToolView({
+      toolName: "create_general_action",
+      output: { action: gaRef({ isRoutine: true, recurrence: "Every 6 months" }) },
+    });
+    expect(routine).toMatchObject({ isRoutine: true, recurrenceLabel: "Every 6 months" });
+
+    const dated = toAssistantToolView({
+      toolName: "create_general_action",
+      output: { action: gaRef({ dueAt: "2026-07-15T00:00:00.000Z" }) },
+    });
+    const dueLabel = new Date("2026-07-15T00:00:00.000Z").toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    expect(dated).toMatchObject({ timingLabel: `Due ${dueLabel}` });
+  });
+
+  it("renders suggest_general_action and get_suggested_general_action_review as review items", () => {
+    const dueLabel = new Date("2026-07-15T00:00:00.000Z").toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    const output = {
+      found: true,
+      component: { type: "suggested_general_action_review", generalActionId: "ga-1" },
+      action: gaRef({ status: "suggested", dueAt: "2026-07-15T00:00:00.000Z" }),
+      sourceRecord: { id: "source-1" },
+    };
+
+    const expected = {
+      kind: "suggested_general_action_review",
+      generalActionId: "ga-1",
+      title: "Replace the fridge water filter",
+      status: "suggested",
+      dueLabel,
+      isRoutine: false,
+      recurrenceLabel: null,
+      personNames: [],
+      visibilityLabel: "Only me",
+    };
+
+    expect(toAssistantToolView({ toolName: "suggest_general_action", output })).toEqual(expected);
+    expect(
+      toAssistantToolView({ toolName: "get_suggested_general_action_review", output }),
+    ).toEqual(expected);
+  });
+
+  it("degrades a resolved (found: false) suggested-action review to a generic view", () => {
+    const view = toAssistantToolView({
+      toolName: "get_suggested_general_action_review",
+      output: { found: false },
+    });
+
+    expect(view).toEqual({ kind: "generic", toolName: "get_suggested_general_action_review" });
+  });
+
+  it("maps a plan and a review list into one review item per proposed action", () => {
+    const plan = toAssistantToolView({
+      toolName: "plan_suggested_general_actions",
+      output: {
+        found: true,
+        count: 2,
+        proposed: [
+          { action: gaRef({ id: "ga-1", title: "Book the campsite", status: "suggested" }) },
+          { action: gaRef({ id: "ga-2", title: "Rent the gear", status: "suggested" }) },
+        ],
+      },
+    });
+    expect(plan).toMatchObject({
+      kind: "suggested_general_action_review_list",
+      reviews: [
+        { generalActionId: "ga-1", title: "Book the campsite" },
+        { generalActionId: "ga-2", title: "Rent the gear" },
+      ],
+    });
+
+    const list = toAssistantToolView({
+      toolName: "list_suggested_general_action_reviews",
+      output: {
+        found: true,
+        reviews: [
+          {
+            action: gaRef({ id: "ga-3", title: "Renew the registration", status: "suggested" }),
+            sourceRecord: { id: "s3" },
+          },
+        ],
+      },
+    });
+    expect(list).toMatchObject({
+      kind: "suggested_general_action_review_list",
+      reviews: [{ generalActionId: "ga-3", title: "Renew the registration" }],
+    });
+  });
+
+  it("maps a list_general_actions result into a bounded ledger list without ids", () => {
+    const view = toAssistantToolView({
+      toolName: "list_general_actions",
+      output: {
+        found: true,
+        ledger: "active",
+        window: "this_week",
+        count: 1,
+        actions: [
+          gaRef({
+            id: "ga-9",
+            title: "Rotate the tires",
+            status: "deferred",
+            deferUntil: "2026-07-20T00:00:00.000Z",
+            people: [{ id: "person-2", displayName: "Sam" }],
+          }),
+        ],
+      },
+    });
+
+    const deferLabel = new Date("2026-07-20T00:00:00.000Z").toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    expect(view).toEqual({
+      kind: "general_action_list",
+      ledger: "active",
+      window: "this_week",
+      actions: [
+        {
+          generalActionId: "ga-9",
+          title: "Rotate the tires",
+          status: "deferred",
+          isRoutine: false,
+          recurrenceLabel: null,
+          timingLabel: `Set aside until ${deferLabel}`,
+          personNames: ["Sam"],
+          visibilityLabel: "Only me",
+        },
+      ],
+    });
+    expect(JSON.stringify(view)).not.toContain("person-2");
+  });
+
+  it("drops review-status rows so a suggested proposal never poses as a committed ledger action", () => {
+    const view = toAssistantToolView({
+      toolName: "list_general_actions",
+      output: {
+        found: true,
+        ledger: "active",
+        window: null,
+        count: 3,
+        actions: [
+          gaRef({ id: "ga-open", title: "Rotate the tires", status: "open" }),
+          gaRef({ id: "ga-suggested", title: "Book the campsite", status: "suggested" }),
+          gaRef({ id: "ga-ignored", title: "Old idea", status: "ignored" }),
+        ],
+      },
+    });
+
+    expect(view).toMatchObject({
+      kind: "general_action_list",
+      actions: [{ generalActionId: "ga-open", title: "Rotate the tires" }],
+    });
+    // The tentative rows — which carry no accept/dismiss affordance in the read-only
+    // disclosure — are gone entirely.
+    expect(JSON.stringify(view)).not.toContain("Book the campsite");
+    expect(JSON.stringify(view)).not.toContain("Old idea");
+  });
+
   it("degrades an unknown tool to a generic view", () => {
     const view = toAssistantToolView({ toolName: "some_future_tool", output: { whatever: true } });
 
@@ -886,6 +1094,35 @@ describe("toolViewTier (how much weight a result earns)", () => {
         personName: null,
       }),
     ).toBe("card");
+    expect(
+      toolViewTier({
+        kind: "created_general_action",
+        generalActionId: "ga-1",
+        title: "Replace the fridge water filter",
+        status: "open",
+        isRoutine: false,
+        recurrenceLabel: null,
+        timingLabel: null,
+        personNames: [],
+        visibilityLabel: "Only me",
+      }),
+    ).toBe("card");
+    // The interactive review kinds are panel-routed, but keep the durable card weight as
+    // their default so a stray one never recedes to an ambient line.
+    const reviewItem = {
+      generalActionId: "ga-1",
+      title: "Book the campsite",
+      status: "suggested",
+      dueLabel: null,
+      isRoutine: false,
+      recurrenceLabel: null,
+      personNames: [] as string[],
+      visibilityLabel: "Only me",
+    };
+    expect(toolViewTier({ kind: "suggested_general_action_review", ...reviewItem })).toBe("card");
+    expect(
+      toolViewTier({ kind: "suggested_general_action_review_list", reviews: [reviewItem] }),
+    ).toBe("card");
   });
 
   it("recedes ambient lookups to a quiet line", () => {
@@ -962,6 +1199,28 @@ describe("toolViewTier (how much weight a result earns)", () => {
       }),
     ).toBe("disclosure");
     expect(toolViewTier({ kind: "relationship_agenda", candidates: [] })).toBe("line");
+    expect(
+      toolViewTier({
+        kind: "general_action_list",
+        ledger: "active",
+        window: null,
+        actions: [
+          {
+            generalActionId: "ga-1",
+            title: "Rotate the tires",
+            status: "open",
+            isRoutine: false,
+            recurrenceLabel: null,
+            timingLabel: null,
+            personNames: [],
+            visibilityLabel: "Only me",
+          },
+        ],
+      }),
+    ).toBe("disclosure");
+    expect(
+      toolViewTier({ kind: "general_action_list", ledger: "active", window: null, actions: [] }),
+    ).toBe("line");
     expect(
       toolViewTier({
         kind: "memory_curator_proposals",
@@ -1042,6 +1301,21 @@ describe("activeToolLabel (in-flight tool → working copy)", () => {
     // must have a hand-written shimmer label, so the label map can't silently drift
     // behind the contract and fall back to the slugified tool name.
     for (const toolName of RENDERED_TOOL_NAMES) {
+      const fallback = `${toolName.replace(/_/g, " ")}…`;
+      expect(activeToolLabel(toolName)).not.toBe(fallback);
+    }
+  });
+
+  it("has an explicit working label for the prose General Action mutation tools", () => {
+    // These four render no card, so they are absent from RENDERED_TOOL_NAMES — but they
+    // still run and shimmer, and must not fall back to a slugified tool name mid-flight.
+    const proseMutationTools = [
+      "accept_suggested_general_action",
+      "dismiss_suggested_general_action",
+      "edit_general_action",
+      "update_general_action_status",
+    ];
+    for (const toolName of proseMutationTools) {
       const fallback = `${toolName.replace(/_/g, " ")}…`;
       expect(activeToolLabel(toolName)).not.toBe(fallback);
     }

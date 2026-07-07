@@ -159,7 +159,8 @@ export default defineTool({
     };
   },
   // Ids are for the model's follow-up tool calls, not the reply. Project the list down
-  // to id-free refs and remind the model to summarize.
+  // to id-free refs; the chat renders the matches as an expandable list, so the model
+  // summarizes rather than reprinting every row.
   toModelOutput(output) {
     return {
       type: "json" as const,
@@ -169,7 +170,7 @@ export default defineTool({
         count: output.count,
         actions: output.actions.map(toGeneralActionModelRef),
         guidance:
-          "A plain ledger list, not priority ranking. Summarize what's there naturally; act on a specific action (complete, defer, edit) only on the user's explicit say-so.",
+          "A plain ledger list (not priority ranking), shown to the user as an expandable list. Summarize briefly — how many, the gist — rather than reprinting each row; act on a specific action (complete, defer, edit) only on the user's explicit say-so.",
       },
     };
   },

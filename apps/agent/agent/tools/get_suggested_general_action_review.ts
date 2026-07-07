@@ -11,8 +11,8 @@ const inputSchema = z.object({
 /**
  * Thin wrapper to load one suggested General Action by id as a fixed typed review
  * component (ADRs 0151, 0152). Returns `found: false` when it is missing or no longer
- * suggested, so a stale proposal is never presented (the interactive card is deferred
- * to #186; for now the model describes the proposal in prose).
+ * suggested, so a stale proposal is never presented. When found, the chat renders it as
+ * an interactive review card (Accept/Dismiss); when gone, the model says so in prose.
  */
 export default defineTool({
   description:
@@ -37,8 +37,8 @@ export default defineTool({
       sourceRecord: review.sourceRecord ? { id: review.sourceRecord.id } : null,
     };
   },
-  // TODO(#186): a review card is not wired into the chat surface yet, so the model must
-  // describe the proposal in prose. Once #186 renders the card, defer detail to it.
+  // When found, the chat renders an interactive review card (Accept/Dismiss); when gone,
+  // there's nothing to render, so the model simply says so in prose.
   toModelOutput(output) {
     if (!output.found || !output.action) {
       return {
@@ -55,7 +55,7 @@ export default defineTool({
         found: true,
         action: toGeneralActionModelRef(output.action),
         guidance:
-          "TENTATIVE, not an active action. Describe it briefly in prose for the user; accept it onto the active ledger only on their explicit say-so.",
+          "TENTATIVE, not an active action — it's shown as a review card the user can accept or dismiss. Point to it in a sentence; don't restate its details.",
       },
     };
   },

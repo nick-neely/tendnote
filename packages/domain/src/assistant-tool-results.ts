@@ -175,6 +175,60 @@ export const relationshipAgendaToolResult = z.object({
   window: z.object({ start: z.string(), end: z.string() }).nullish(),
 });
 
+/**
+ * The compact, id-carrying General Action reference every General Action tool returns
+ * to the channel (mirrors the agent's `toGeneralActionRef`). The web parses this exact
+ * shape to render created actions, suggested-action review cards, and ledger lists; the
+ * `component` field and any other extra keys the tool attaches are stripped by the
+ * object schema so only the minimized contract crosses the seam (ADRs 0028, 0148).
+ */
+export const generalActionRef = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string(),
+  dueAt: z.string().nullable(),
+  deferUntil: z.string().nullable(),
+  isRoutine: z.boolean(),
+  recurrence: z.string().nullable(),
+  areaId: z.string().nullable(),
+  people: z.array(z.object({ id: z.string(), displayName: z.string() })),
+  visibilityChoice: z.enum(["only_me", "selected_members", "whole_household"]).nullable(),
+  visibilityLabel: z.string().nullable(),
+});
+
+export const createdGeneralActionToolResult = z.object({
+  action: generalActionRef,
+});
+
+export const suggestedGeneralActionReviewItem = z.object({
+  action: generalActionRef,
+  sourceRecord: z.object({ id: z.string() }).nullish(),
+});
+
+export const suggestedGeneralActionToolResult = z.object({
+  found: z.literal(true),
+  ...suggestedGeneralActionReviewItem.shape,
+});
+
+/** A shallow plan is a small batch of ordinary suggestions; each proposed step renders
+ *  as its own review card, so the list and the plan share one contract. */
+export const plannedGeneralActionsToolResult = z.object({
+  found: z.literal(true),
+  proposed: z.array(z.object({ action: generalActionRef })),
+});
+
+export const suggestedGeneralActionListToolResult = z.object({
+  found: z.literal(true),
+  reviews: z.array(suggestedGeneralActionReviewItem),
+});
+
+export const generalActionListToolResult = z.object({
+  found: z.literal(true),
+  ledger: z.string(),
+  window: z.string().nullish(),
+  actions: z.array(generalActionRef),
+});
+
 export const memoryCuratorToolResult = memoryCuratorProposalResultSchema;
 export const draftProposalToolResult = draftProposalResultSchema;
 
@@ -200,6 +254,12 @@ export const assistantToolResultSchemas = {
   get_relationship_agenda: relationshipAgendaToolResult,
   propose_memory_cleanup: memoryCuratorToolResult,
   propose_message_draft: draftProposalToolResult,
+  create_general_action: createdGeneralActionToolResult,
+  suggest_general_action: suggestedGeneralActionToolResult,
+  get_suggested_general_action_review: suggestedGeneralActionToolResult,
+  plan_suggested_general_actions: plannedGeneralActionsToolResult,
+  list_suggested_general_action_reviews: suggestedGeneralActionListToolResult,
+  list_general_actions: generalActionListToolResult,
 } as const satisfies Record<string, z.ZodTypeAny>;
 
 /** A tool name that persists a typed, rendered result (vs. a `generic` fallback). */
@@ -210,6 +270,11 @@ export const RENDERED_TOOL_NAMES = Object.keys(assistantToolResultSchemas) as Re
 
 export type SuggestedMemoryReviewItemOutput = z.infer<typeof suggestedMemoryReviewItem>;
 export type SuggestedFollowupReviewItemOutput = z.infer<typeof suggestedFollowupReviewItem>;
+export type GeneralActionRefOutput = z.infer<typeof generalActionRef>;
+export type SuggestedGeneralActionReviewItemOutput = z.infer<
+  typeof suggestedGeneralActionReviewItem
+>;
+export type GeneralActionListToolResult = z.infer<typeof generalActionListToolResult>;
 export type RelationshipAgendaToolResult = z.infer<typeof relationshipAgendaToolResult>;
 export type MemoryCuratorToolResult = z.infer<typeof memoryCuratorToolResult>;
 export type DraftProposalToolResult = z.infer<typeof draftProposalToolResult>;

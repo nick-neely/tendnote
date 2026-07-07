@@ -79,9 +79,8 @@ export default defineTool({
 
     return { action: toGeneralActionRef(action) };
   },
-  // TODO(#186): a rich General Action card is not wired into the chat surface yet, so
-  // the model must state the result in prose. Once #186 renders the card, switch this
-  // guidance to defer detail to the card like the Follow-Up tools do.
+  // The chat renders a confirmation card carrying the action's title, timing, and
+  // cadence, so the model only acknowledges it — it must not reprint what the card shows.
   toModelOutput(output) {
     return {
       type: "json" as const,
@@ -89,7 +88,7 @@ export default defineTool({
         created: true,
         action: toGeneralActionModelRef(output.action),
         guidance:
-          "The action is now on the active ledger. Confirm briefly in prose what you added (and, if set, when).",
+          "It's on the active ledger and shown to the user as a card. Acknowledge it in one short sentence; don't restate the title, date, or cadence the card already shows.",
       },
     };
   },
