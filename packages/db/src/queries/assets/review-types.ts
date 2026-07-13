@@ -1,0 +1,237 @@
+import type {
+  Asset,
+  AssetAuditSource,
+  AssetEdit,
+  AssetMemory,
+  AssetMemoryEdit,
+  AssetMemoryScope,
+  AssetMemoryStatus,
+  AssetMemoryValue,
+  AssetReviewGroup,
+  CreateAssetMemoryInput,
+  CreateAssetReviewGroupInput,
+  PrivacyScope,
+  SourceRecord,
+} from "@tendnote/domain";
+import type { SourceRecordResolutionStore } from "../source-records/types";
+import type { AssetLifecycleStore } from "./types";
+
+/** Bounded patch the review layer may apply to a persisted Asset Memory. */
+export type AssetMemoryPatch = Partial<
+  Pick<
+    AssetMemory,
+    "assetId" | "status" | "label" | "value" | "notes" | "scope" | "householdId" | "lastActorUserId"
+  >
+>;
+
+/**
+ * Owner-scoped Asset Memory + Asset Review Group storage (#198). Every method is
+ * owner-keyed except `listVisibleAssetMemoriesForAsset`, which widens to the
+ * caller's scope-visible *active* memories — per-record filtering, so a household
+ * Asset can hold a private detail its members never see. Later slices (#199
+ * evidence, #200 actions/Eve) extend this seam additively rather than reaching
+ * for the tables.
+ */
+export type AssetReviewStore = {
+  createAssetMemory: (input: CreateAssetMemoryInput) => Promise<AssetMemory>;
+  getAssetMemory: (input: { ownerUserId: string; memoryId: string }) => Promise<AssetMemory | null>;
+  updateAssetMemory: (input: {
+    ownerUserId: string;
+    memoryId: string;
+    patch: AssetMemoryPatch;
+  }) => Promise<AssetMemory>;
+  /**
+   * The owner's memories, optionally narrowed by asset, review group, and status.
+   * Ordering contract both stores MUST honor: oldest first (a stable ledger of
+   * facts), id as tiebreak.
+   */
+  listAssetMemoriesForOwner: (input: {
+    ownerUserId: string;
+    assetId?: string;
+    reviewGroupId?: string;
+    statuses?: AssetMemoryStatus[];
+  }) => Promise<AssetMemory[]>;
+  /**
+   * The *active* memories on one asset the caller may see under per-record scope
+   * rules (private = owner; household = active members). Suggested/dismissed
+   * memories never surface here — review is owner-only. Same ordering contract.
+   */
+  listVisibleAssetMemoriesForAsset: (input: {
+    callerUserId: string;
+    assetId: string;
+  }) => Promise<AssetMemory[]>;
+  createAssetReviewGroup: (input: CreateAssetReviewGroupInput) => Promise<AssetReviewGroup>;
+  getAssetReviewGroup: (input: {
+    ownerUserId: string;
+    groupId: string;
+  }) => Promise<AssetReviewGroup | null>;
+  /** The pending group anchored to an asset, for idempotent accept re-reads. */
+  getAssetReviewGroupByAsset: (input: {
+    ownerUserId: string;
+    assetId: string;
+  }) => Promise<AssetReviewGroup | null>;
+  /** Re-points a group's anchor when duplicate review links to an existing Asset. */
+  updateAssetReviewGroupAsset: (input: {
+    ownerUserId: string;
+    groupId: string;
+    assetId: string;
+  }) => Promise<AssetReviewGroup>;
+  /**
+   * The owner's review groups that still have at least one pending member — a
+   * `suggested` anchor asset or a `suggested` memory — newest first. Resolved
+   * groups drop out of the queue; their records keep the group id for provenance.
+   */
+  listPendingAssetReviewGroupsForOwner: (input: {
+    ownerUserId: string;
+    limit?: number;
+  }) => Promise<AssetReviewGroup[]>;
+};
+
+/**
+ * Everything the review lifecycle composes over: Asset CRUD/audit/visibility +
+ * households (via the lifecycle store), the memory/group store, and source-record
+ * grounding lookups (ADR 0151).
+ */
+export type AssetReviewLifecycleStore = AssetLifecycleStore &
+  AssetReviewStore &
+  Pick<SourceRecordResolutionStore, "getSourceRecord">;
+
+/** One proposed memory riding a suggestion call: the reviewable content. */
+export type SuggestAssetMemoryContent = {
+  label: string;
+  value?: AssetMemoryValue | null;
+  notes?: string | null;
+  /** Defaults to the anchor's scope where supported (household), else private. */
+  scope?: AssetMemoryScope;
+};
+
+/**
+ * Proposes a Suggested Asset (with optional Suggested Asset Memories) from one
+ * source context, opening an Asset Review Group in the shared Review Queue. The
+ * asset row is persisted `suggested` — owner-only, absent from every surface —
+ * until review accepts it, links it to an existing Asset, or dismisses it.
+ */
+export type SuggestAssetInput = {
+  ownerUserId: string;
+  name: string;
+  kind: Asset["kind"];
+  // Visibility the proposal argues for (private or household; a selected-shared
+  // audience is chosen at acceptance, mirroring Suggested General Actions).
+  scope?: Exclude<PrivacyScope, "shared">;
+  householdId?: string | null;
+  // Grounding is mandatory: a suggestion must come from somewhere (ADR 0151).
+  sourceRecordId: string;
+  // Restricted source records don't feed proactive suggestions unless the user
+  // asked directly (ADR 0058).
+  directlyRequested?: boolean;
+  memories?: SuggestAssetMemoryContent[];
+  source?: AssetAuditSource;
+};
+
+/**
+ * Proposes Suggested Asset Memories for an Asset the owner already has (or can
+ * see), opening a review group anchored to that existing asset — no duplicate
+ * asset row, no duplicate prompt.
+ */
+export type SuggestAssetMemoriesInput = {
+  ownerUserId: string;
+  assetId: string;
+  sourceRecordId: string;
+  directlyRequested?: boolean;
+  memories: SuggestAssetMemoryContent[];
+  source?: AssetAuditSource;
+};
+
+/** Creates a durable, active Asset Memory from explicit user intent (#196). */
+export type CreateActiveAssetMemoryInput = {
+  ownerUserId: string;
+  assetId: string;
+  label: string;
+  value?: AssetMemoryValue | null;
+  notes?: string | null;
+  scope?: AssetMemoryScope;
+  sourceRecordId?: string | null;
+  source?: AssetAuditSource;
+};
+
+export type AssetMemoryActionInput = {
+  /** Review is owner-only: proposals belong to their owner until accepted. */
+  actorUserId: string;
+  memoryId: string;
+};
+
+export type AcceptSuggestedAssetMemoryInput = AssetMemoryActionInput & {
+  edit?: AssetMemoryEdit;
+  source?: AssetAuditSource;
+};
+
+export type EditSuggestedAssetMemoryInput = AssetMemoryActionInput & {
+  edit: AssetMemoryEdit;
+  source?: AssetAuditSource;
+};
+
+export type SuggestedAssetActionInput = {
+  actorUserId: string;
+  assetId: string;
+  source?: AssetAuditSource;
+};
+
+export type AcceptSuggestedAssetInput = SuggestedAssetActionInput & {
+  edit?: AssetEdit;
+  // Optional final audience — including the selected-shared one a bare proposal
+  // cannot carry. Absent keeps the scope the proposal argued for.
+  scope?: PrivacyScope;
+  householdId?: string | null;
+  selectedUserIds?: string[];
+};
+
+export type EditSuggestedAssetInput = SuggestedAssetActionInput & {
+  edit: AssetEdit;
+};
+
+export type AssetReviewGroupActionInput = {
+  actorUserId: string;
+  groupId: string;
+  source?: AssetAuditSource;
+};
+
+/** Resolves duplicate review by linking the group to an existing Asset. */
+export type LinkAssetReviewGroupInput = AssetReviewGroupActionInput & {
+  targetAssetId: string;
+};
+
+export type ListAssetReviewGroupsInput = {
+  ownerUserId: string;
+  limit?: number;
+};
+
+/**
+ * Fixed typed component for an Asset Review Group item, referencing persisted ids
+ * only (ADR 0028) so review surfaces reload authoritative records before acting.
+ */
+export type AssetReviewGroupComponent = {
+  type: "asset_review_group";
+  groupId: string;
+  assetId: string;
+  sourceRecordId: string | null;
+};
+
+/**
+ * An Asset Review Group presented for review: the anchor asset (a pending
+ * Suggested Asset, or the existing/linked Asset gaining details), the pending
+ * Suggested Asset Memories, the deterministic duplicate-review candidates for a
+ * pending anchor, and the grounding source record (#198).
+ */
+export type AssetReviewGroupResult = {
+  group: AssetReviewGroup;
+  /** The group's anchor asset. Never null — a group cannot outlive its anchor. */
+  asset: Asset;
+  /** Whether the anchor is itself still a pending Suggested Asset. */
+  assetPending: boolean;
+  /** The group's still-pending Suggested Asset Memories, oldest first. */
+  memories: AssetMemory[];
+  /** Existing Assets the pending anchor likely duplicates; empty once resolved. */
+  duplicateCandidates: Asset[];
+  sourceRecord: SourceRecord | null;
+  component: AssetReviewGroupComponent;
+};

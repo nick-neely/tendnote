@@ -3,11 +3,14 @@ import {
   ASSET_KIND_OPTIONS,
   AssetValidationError,
   assertAssetEditable,
+  assetAuditEventKindSchema,
   assetKindSchema,
   assetLabelForKind,
   assetSchema,
+  assetStatusSchema,
   assetUpdateSchema,
   createAssetSchema,
+  isDurableAssetStatus,
   resolveAssetTransition,
 } from "./assets";
 
@@ -46,6 +49,46 @@ describe("asset lifecycle transitions", () => {
   it("allows edits only while active", () => {
     expect(() => assertAssetEditable("active")).not.toThrow();
     expect(() => assertAssetEditable("archived")).toThrow(AssetValidationError);
+  });
+});
+
+describe("review-gated asset statuses (#198)", () => {
+  it("accepts the review-gated statuses alongside the durable ones", () => {
+    for (const status of ["active", "archived", "suggested", "dismissed"]) {
+      expect(assetStatusSchema.parse(status)).toBe(status);
+    }
+  });
+
+  it("treats only active and archived as durable — proposals never surface as records", () => {
+    expect(isDurableAssetStatus("active")).toBe(true);
+    expect(isDurableAssetStatus("archived")).toBe(true);
+    expect(isDurableAssetStatus("suggested")).toBe(false);
+    expect(isDurableAssetStatus("dismissed")).toBe(false);
+  });
+
+  it("rejects archiving or restoring a proposal — review resolves it first", () => {
+    expect(() => resolveAssetTransition("suggested", "archive")).toThrow(AssetValidationError);
+    expect(() => resolveAssetTransition("dismissed", "restore")).toThrow(AssetValidationError);
+  });
+
+  it("keeps a suggested asset out of the plain content-edit path (review edits it)", () => {
+    expect(() => assertAssetEditable("suggested")).toThrow(AssetValidationError);
+  });
+
+  it("carries review and memory audit kinds for the internal trail", () => {
+    for (const kind of [
+      "suggested",
+      "promoted",
+      "dismissed",
+      "linked_existing",
+      "memory_created",
+      "memory_suggested",
+      "memory_edited",
+      "memory_promoted",
+      "memory_dismissed",
+    ]) {
+      expect(assetAuditEventKindSchema.parse(kind)).toBe(kind);
+    }
   });
 });
 

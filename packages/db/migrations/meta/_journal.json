@@ -274,6 +274,13 @@
       "when": 1783830925407,
       "tag": "0038_asset_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1783915207649,
+      "tag": "0039_asset_memory_review",
+      "breakpoints": true
     }
   ]
 }

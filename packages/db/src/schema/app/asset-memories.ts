@@ -1,0 +1,62 @@
+import type { AssetMemoryValue } from "@tendnote/domain";
+import { index, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { user } from "../auth";
+import { assetReviewGroups } from "./asset-review-groups";
+import { assets } from "./assets";
+import { timestamps } from "./common";
+import { assetMemoryStatus, privacyScope } from "./enums";
+import { householdWorkspaces } from "./households";
+import { sourceRecords } from "./source-records";
+
+/**
+ * Asset Memories (#196, #198): durable, reviewed personal context anchored to one
+ * Asset — model numbers, filter sizes, purchase/warranty/renewal dates, receipt
+ * amounts, maintenance notes. `label` names the fact; `value_json` carries the
+ * typed exact value (text/date/amount union validated in the domain schema);
+ * `notes` the freeform context. A memory is born `suggested` when inferred and
+ * only becomes `active` through review or explicit creation — inference never
+ * silently becomes truth. Visibility is per-record and never broader than the
+ * Asset's own scope (the child-scope ceiling).
+ */
+export const assetMemories = pgTable(
+  "asset_memories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    assetId: uuid("asset_id")
+      .notNull()
+      .references(() => assets.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    status: assetMemoryStatus("status").notNull().default("suggested"),
+    label: text("label").notNull(),
+    valueJson: jsonb("value_json").$type<AssetMemoryValue | null>(),
+    notes: text("notes"),
+    // Per-record visibility, at or below the Asset's scope. This slice supports
+    // private/household; a selected-shared memory audience is a later, additive step.
+    scope: privacyScope("scope").notNull().default("private"),
+    householdId: uuid("household_id").references(() => householdWorkspaces.id, {
+      onDelete: "set null",
+    }),
+    // Evidence/source grounding: where this memory was inferred or captured from.
+    sourceRecordId: uuid("source_record_id").references(() => sourceRecords.id, {
+      onDelete: "set null",
+    }),
+    // The Asset Review Group a suggested memory arrived in, for grouped review.
+    reviewGroupId: uuid("review_group_id").references(() => assetReviewGroups.id, {
+      onDelete: "set null",
+    }),
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    lastActorUserId: text("last_actor_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps,
+  },
+  (table) => [
+    index("asset_memories_asset_status_idx").on(table.assetId, table.status),
+    index("asset_memories_owner_status_idx").on(table.ownerUserId, table.status),
+    index("asset_memories_review_group_idx").on(table.reviewGroupId),
+  ],
+);

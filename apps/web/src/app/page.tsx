@@ -1,3 +1,4 @@
+import { listAssetReviewGroups } from "@tendnote/db/queries/assets";
 import { getCurrentBrief } from "@tendnote/db/queries/briefs";
 import { listCalendarSuggestedFollowups } from "@tendnote/db/queries/calendar-followups";
 import { listActiveFollowups, listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
@@ -10,6 +11,7 @@ import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { DashboardRail } from "@/components/dashboard-rail";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { toAssetReviewGroupView } from "@/lib/asset-review-view";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
 import { toCalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
@@ -36,6 +38,7 @@ export default async function Home() {
     people,
     dashboardReviews,
     dashboardActionReviews,
+    dashboardAssetReviews,
     dashboardFollowups,
     dashboardFollowupReviews,
     dashboardCalendarSuggestions,
@@ -46,6 +49,7 @@ export default async function Home() {
     searchPeople({ ownerUserId, limit: 8 }),
     getDashboardReviews(ownerUserId),
     getDashboardActionReviews(ownerUserId),
+    getDashboardAssetReviews(ownerUserId),
     getDashboardFollowups(ownerUserId),
     getDashboardFollowupReviews(ownerUserId),
     getDashboardCalendarSuggestions(ownerUserId),
@@ -79,6 +83,7 @@ export default async function Home() {
           <div className="order-2 lg:h-full lg:min-h-0">
             <DashboardRail
               actionReviews={dashboardActionReviews}
+              assetReviews={dashboardAssetReviews}
               birthdays={birthdays}
               dailyBrief={dailyBrief}
               followupReviews={dashboardFollowupReviews}
@@ -177,6 +182,21 @@ async function getDashboardReviews(ownerUserId: string) {
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.warn("Unable to load suggested memory reviews.", error);
+    }
+
+    return [];
+  }
+}
+
+async function getDashboardAssetReviews(ownerUserId: string) {
+  try {
+    // A few of the newest pending Asset Review Groups — grouped asset review in
+    // the shared queue, one card per source context (#198).
+    const groups = await listAssetReviewGroups({ ownerUserId, limit: DASHBOARD_REVIEW_LIMIT });
+    return groups.map((group) => toAssetReviewGroupView(group));
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Unable to load asset review groups.", error);
     }
 
     return [];

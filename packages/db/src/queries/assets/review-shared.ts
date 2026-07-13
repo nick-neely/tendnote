@@ -1,0 +1,294 @@
+import {
+  type Asset,
+  type AssetAuditSource,
+  type AssetMemory,
+  type AssetMemoryScope,
+  AssetValidationError,
+  canUseSensitiveContext,
+  defaultMemoryScopeForAsset,
+  findAssetDuplicateCandidates,
+  isDurableAssetStatus,
+  requireMemoryScopeWithinAsset,
+  type SourceRecord,
+} from "@tendnote/domain";
+import { recordAudit } from "./lifecycle";
+import type {
+  AssetMemoryActionInput,
+  AssetReviewGroupResult,
+  AssetReviewLifecycleStore,
+  SuggestAssetMemoryContent,
+  SuggestedAssetActionInput,
+} from "./review-types";
+
+/**
+ * Shared loaders, guards, and the result builder for the review-gated Asset
+ * Memory seam (#198). Every review step module composes these so the review
+ * invariants — owner-only proposals, mandatory grounding, durable anchors,
+ * fail-closed denials — live in exactly one place. Module-scope on purpose
+ * (fallow factory pattern): the `createAssetReview` factory stays thin and each
+ * step stays an individually-measurable unit.
+ */
+
+export const SET_ASIDE = "This suggestion was set aside; propose it again to act on it.";
+export const ACCEPT_ANCHOR_FIRST =
+  "Accept the suggested asset first, or link it to an existing one.";
+const ARCHIVED_ANCHOR = "This asset is archived — restore it before adding details.";
+
+/** Loads the mandatory grounding source and applies the restricted-context gate. */
+export async function requireGrounding(
+  store: AssetReviewLifecycleStore,
+  input: { ownerUserId: string; sourceRecordId: string; directlyRequested?: boolean },
+): Promise<SourceRecord> {
+  const sourceRecord = await store.getSourceRecord({
+    ownerUserId: input.ownerUserId,
+    sourceRecordId: input.sourceRecordId,
+  });
+  if (!sourceRecord) {
+    throw new Error("An asset suggestion must be grounded in a source record.");
+  }
+  if (
+    !canUseSensitiveContext({
+      sensitivity: sourceRecord.sensitivity,
+      directlyRequested: input.directlyRequested,
+    })
+  ) {
+    throw new Error(
+      "Restricted context isn't used for proactive asset suggestions unless you ask directly.",
+    );
+  }
+  return sourceRecord;
+}
+
+/**
+ * Loads a group's anchor asset for its owner: the owner's own row (the common
+ * case, including a pending proposal) or a scope-visible durable asset owned by
+ * a co-member after duplicate review linked to it.
+ */
+export async function loadAnchor(
+  store: AssetReviewLifecycleStore,
+  ownerUserId: string,
+  assetId: string,
+): Promise<Asset | null> {
+  return (
+    (await store.getAsset({ ownerUserId, assetId })) ??
+    (await store.getVisibleAsset({ callerUserId: ownerUserId, assetId }))
+  );
+}
+
+/** Loads a durable, active anchor for a memory write, or throws fail-closed. */
+export async function requireActiveAnchor(
+  store: AssetReviewLifecycleStore,
+  ownerUserId: string,
+  assetId: string,
+): Promise<Asset> {
+  const anchor = await loadAnchor(store, ownerUserId, assetId);
+  if (!anchor || !isDurableAssetStatus(anchor.status)) {
+    throw new Error("Asset not found.");
+  }
+  if (anchor.status !== "active") {
+    throw new AssetValidationError(ARCHIVED_ANCHOR);
+  }
+  return anchor;
+}
+
+/** Owner-keyed group load, or the deterministic denial. */
+export async function requireGroup(
+  store: AssetReviewLifecycleStore,
+  input: { ownerUserId: string; groupId: string },
+) {
+  const group = await store.getAssetReviewGroup(input);
+  if (!group) {
+    throw new Error("Asset review group not found.");
+  }
+  return group;
+}
+
+/** The group behind a suggested asset row — every proposal is born with one. */
+export async function requireGroupForAsset(
+  store: AssetReviewLifecycleStore,
+  input: { ownerUserId: string; assetId: string },
+) {
+  const group = await store.getAssetReviewGroupByAsset(input);
+  if (!group) {
+    throw new Error("Asset review group not found.");
+  }
+  return group;
+}
+
+/** Owner-keyed load of a still-pending Suggested Asset. */
+export async function requireSuggestedAsset(
+  store: AssetReviewLifecycleStore,
+  input: SuggestedAssetActionInput,
+): Promise<Asset> {
+  const asset = await store.getAsset({
+    ownerUserId: input.actorUserId,
+    assetId: input.assetId,
+  });
+  if (!asset) {
+    throw new Error("Asset not found.");
+  }
+  if (asset.status !== "suggested") {
+    throw new AssetValidationError("Only a suggested asset can be reviewed.");
+  }
+  return asset;
+}
+
+/** Owner-keyed load of a still-pending Suggested Asset Memory. */
+export async function requireSuggestedMemory(
+  store: AssetReviewLifecycleStore,
+  input: AssetMemoryActionInput,
+): Promise<AssetMemory> {
+  const memory = await store.getAssetMemory({
+    ownerUserId: input.actorUserId,
+    memoryId: input.memoryId,
+  });
+  if (!memory) {
+    throw new Error("Asset memory not found.");
+  }
+  if (memory.status === "dismissed") {
+    throw new Error(SET_ASIDE);
+  }
+  if (memory.status !== "suggested") {
+    throw new AssetValidationError("Only a suggested detail can be reviewed.");
+  }
+  return memory;
+}
+
+/** The group's still-pending memories, owner-scoped, oldest first. */
+export function listPendingMemories(
+  store: AssetReviewLifecycleStore,
+  group: { ownerUserId: string; id: string },
+) {
+  return store.listAssetMemoriesForOwner({
+    ownerUserId: group.ownerUserId,
+    reviewGroupId: group.id,
+    statuses: ["suggested"],
+  });
+}
+
+/**
+ * Builds the group's review result: the anchor, its pending Suggested Asset
+ * Memories, the deterministic duplicate candidates for a pending anchor
+ * (computed at read time against the assets the owner can currently see, so a
+ * just-created asset still raises the prompt), and the grounding source record.
+ */
+export async function buildGroupResult(
+  store: AssetReviewLifecycleStore,
+  group: {
+    id: string;
+    ownerUserId: string;
+    assetId: string;
+    sourceRecordId: string | null;
+    createdAt: Date;
+  },
+): Promise<AssetReviewGroupResult> {
+  const asset = await loadAnchor(store, group.ownerUserId, group.assetId);
+  if (!asset) {
+    throw new Error("Asset not found.");
+  }
+  const assetPending = asset.status === "suggested";
+
+  const [memories, sourceRecord, existingAssets] = await Promise.all([
+    listPendingMemories(store, group),
+    group.sourceRecordId
+      ? store.getSourceRecord({
+          ownerUserId: group.ownerUserId,
+          sourceRecordId: group.sourceRecordId,
+        })
+      : Promise.resolve(null),
+    assetPending
+      ? store.listVisibleAssetsForCaller({
+          callerUserId: group.ownerUserId,
+          statuses: ["active"],
+        })
+      : Promise.resolve([]),
+  ]);
+
+  return {
+    group,
+    asset,
+    assetPending,
+    memories,
+    duplicateCandidates: assetPending
+      ? findAssetDuplicateCandidates({
+          name: asset.name,
+          assets: existingAssets,
+          excludeAssetId: asset.id,
+        })
+      : [],
+    sourceRecord,
+    component: {
+      type: "asset_review_group",
+      groupId: group.id,
+      assetId: group.assetId,
+      sourceRecordId: group.sourceRecordId,
+    },
+  };
+}
+
+/**
+ * Persists one Suggested Asset Memory into a group: scope defaults to the
+ * anchor's (where this slice supports it), the child-scope ceiling is enforced
+ * fail-closed, and the write lands in the anchor's audit trail.
+ */
+export async function writeSuggestedMemory(
+  store: AssetReviewLifecycleStore,
+  input: {
+    ownerUserId: string;
+    anchor: Asset;
+    groupId: string;
+    sourceRecordId: string;
+    content: SuggestAssetMemoryContent;
+    auditSource: AssetAuditSource;
+  },
+): Promise<AssetMemory> {
+  const scope: AssetMemoryScope =
+    input.content.scope ?? defaultMemoryScopeForAsset(input.anchor.scope);
+  requireMemoryScopeWithinAsset({ memoryScope: scope, assetScope: input.anchor.scope });
+
+  const memory = await store.createAssetMemory({
+    assetId: input.anchor.id,
+    ownerUserId: input.ownerUserId,
+    status: "suggested",
+    label: input.content.label,
+    value: input.content.value ?? null,
+    notes: input.content.notes ?? null,
+    scope,
+    householdId: scope === "household" ? input.anchor.householdId : null,
+    sourceRecordId: input.sourceRecordId,
+    reviewGroupId: input.groupId,
+    createdByUserId: input.ownerUserId,
+    lastActorUserId: input.ownerUserId,
+  });
+
+  await recordAudit(store, input.anchor, {
+    kind: "memory_suggested",
+    actorUserId: input.ownerUserId,
+    source: input.auditSource,
+    detail: { memoryId: memory.id, label: memory.label, scope: memory.scope, grounded: true },
+  });
+
+  return memory;
+}
+
+/** Dismisses one suggested memory in place, recording who and why. */
+export async function dismissMemory(
+  store: AssetReviewLifecycleStore,
+  memory: AssetMemory,
+  input: { actorUserId: string; source?: AssetAuditSource; cascade?: boolean },
+): Promise<void> {
+  await store.updateAssetMemory({
+    ownerUserId: memory.ownerUserId,
+    memoryId: memory.id,
+    patch: { status: "dismissed", lastActorUserId: input.actorUserId },
+  });
+  const anchor = await loadAnchor(store, memory.ownerUserId, memory.assetId);
+  if (anchor) {
+    await recordAudit(store, anchor, {
+      kind: "memory_dismissed",
+      actorUserId: input.actorUserId,
+      source: input.source ?? "user",
+      detail: { memoryId: memory.id, label: memory.label, cascade: input.cascade ?? false },
+    });
+  }
+}

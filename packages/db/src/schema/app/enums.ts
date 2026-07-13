@@ -61,6 +61,8 @@ export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "general_action",
   // Phase 6 Asset Memory: Assets ride the same share rails as other scoped records (#197).
   "asset",
+  // Asset Memories are independently scoped child records under an Asset (#198).
+  "asset_memory",
 ]);
 
 // Phase 6 Asset Memory (#196/#197): the small fixed Asset Kind set — practical
@@ -75,14 +77,35 @@ export const assetKind = pgEnum("asset_kind", [
 ]);
 
 // Archive is the normal inactive path; hard delete stays reserved for
-// correction/privacy cases in a later slice (#196).
-export const assetStatus = pgEnum("asset_status", ["active", "archived"]);
+// correction/privacy cases in a later slice (#196). `suggested`/`dismissed` are
+// the review-gated proposal states (#198) — never durable records; every
+// scope-visible read filters to active/archived.
+export const assetStatus = pgEnum("asset_status", ["active", "archived", "suggested", "dismissed"]);
 
 export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
   "created",
   "edited",
   "archived",
   "restored",
+  // Review-gated trail (#198): proposal life, duplicate-review resolution, and
+  // asset-keyed Asset Memory writes (memory id rides in detail JSON).
+  "suggested",
+  "promoted",
+  "dismissed",
+  "linked_existing",
+  "memory_created",
+  "memory_suggested",
+  "memory_edited",
+  "memory_promoted",
+  "memory_dismissed",
+]);
+
+// Asset Memory lifecycle (#198): suggested (review-gated) → active on accept;
+// dismissed is the resolved husk of a rejected suggestion.
+export const assetMemoryStatus = pgEnum("asset_memory_status", [
+  "suggested",
+  "active",
+  "dismissed",
 ]);
 
 // Where an Asset write originated. Coarse on purpose — provenance detail rides in

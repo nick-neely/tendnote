@@ -76,9 +76,26 @@ export function assetLabelForKind(kind: AssetKind): string {
  * An Asset's lifecycle state. Archive is the normal inactive path — a sold
  * vehicle or canceled subscription keeps its history without staying active; hard
  * delete stays reserved for correction/privacy cases in a later slice (#196).
+ *
+ * `suggested` and `dismissed` are the review-gated states (#198): a Suggested
+ * Asset is an inferred proposal awaiting review, and `dismissed` is the resolved
+ * husk of one the user rejected (or linked to an existing Asset instead). Neither
+ * is ever a durable record — see {@link isDurableAssetStatus}.
  */
-export const assetStatusSchema = z.enum(["active", "archived"]);
+export const assetStatusSchema = z.enum(["active", "archived", "suggested", "dismissed"]);
 export type AssetStatus = z.infer<typeof assetStatusSchema>;
+
+/**
+ * The durable statuses — the only ones that are a real Asset. Every scope-visible
+ * read (Assets surface, profile, member reads) filters to these, so a proposal is
+ * owner-only until accepted and a dismissed proposal disappears entirely,
+ * mirroring the General Action review-status rule (ADRs 0151, 0152, 0153).
+ */
+export const DURABLE_ASSET_STATUSES: readonly AssetStatus[] = ["active", "archived"];
+
+export function isDurableAssetStatus(status: AssetStatus): boolean {
+  return DURABLE_ASSET_STATUSES.includes(status);
+}
 
 /**
  * The core Asset record: a practical owner- or household-scoped thing Tendnote
@@ -201,10 +218,27 @@ export function isEmptyAssetEdit(edit: AssetEdit): boolean {
  * Kinds of internal Asset Audit events. Asset Audit is internal-first — it exists
  * so asset writes can be debugged and future trusted-agent modes held accountable
  * (#196), distinct from any user-facing Asset History. `created`/`edited`/
- * `archived`/`restored` cover this slice's writes; later slices append review,
- * link, and evidence kinds additively.
+ * `archived`/`restored` cover the foundation slice's writes; the review slice
+ * (#198) appends the proposal trail (`suggested`/`promoted`/`dismissed`), the
+ * duplicate-review resolution (`linked_existing`), and the Asset Memory writes
+ * (`memory_*`). Memory events stay asset-keyed — the memory id rides in
+ * `detailJson` — so one trail tells an Asset's whole story.
  */
-export const assetAuditEventKindSchema = z.enum(["created", "edited", "archived", "restored"]);
+export const assetAuditEventKindSchema = z.enum([
+  "created",
+  "edited",
+  "archived",
+  "restored",
+  "suggested",
+  "promoted",
+  "dismissed",
+  "linked_existing",
+  "memory_created",
+  "memory_suggested",
+  "memory_edited",
+  "memory_promoted",
+  "memory_dismissed",
+]);
 export type AssetAuditEventKind = z.infer<typeof assetAuditEventKindSchema>;
 
 /**

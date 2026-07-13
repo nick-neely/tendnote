@@ -98,6 +98,30 @@ function runStoreContract(name: string, makeStore: () => AssetStore) {
         store.listAssetAuditEvents({ ownerUserId: OWNER, assetId: asset.id }),
       ).resolves.toHaveLength(1);
     });
+
+    it("keeps review-gated rows out of every scope-visible read (#198)", async () => {
+      const store = makeStore();
+      const suggested = await seed(store, { name: "Fridge filter", status: "suggested" });
+      const dismissed = await seed(store, { name: "Rejected filter", status: "dismissed" });
+
+      // The owner still reaches proposals through owner-keyed reads…
+      await expect(
+        store.getAsset({ ownerUserId: OWNER, assetId: suggested.id }),
+      ).resolves.toMatchObject({ status: "suggested" });
+
+      // …but no visible read — not even the owner's own, not even asked by
+      // status — ever returns a non-durable row.
+      await expect(
+        store.getVisibleAsset({ callerUserId: OWNER, assetId: suggested.id }),
+      ).resolves.toBeNull();
+      await expect(
+        store.getVisibleAsset({ callerUserId: OWNER, assetId: dismissed.id }),
+      ).resolves.toBeNull();
+      await expect(store.listVisibleAssetsForCaller({ callerUserId: OWNER })).resolves.toEqual([]);
+      await expect(
+        store.listVisibleAssetsForCaller({ callerUserId: OWNER, statuses: ["suggested"] }),
+      ).resolves.toEqual([]);
+    });
   });
 }
 

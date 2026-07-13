@@ -5,6 +5,7 @@ import {
   AssetValidationError,
   assertAssetEditable,
   assetEditSchema,
+  isDurableAssetStatus,
   isEmptyAssetEdit,
   type PrivacyScope,
   resolveAssetTransition,
@@ -24,9 +25,11 @@ import type {
 /**
  * Validates and normalizes an Asset's visibility choice through the shared
  * record-visibility guard (the same rules General Actions apply), with asset
- * wording and the asset validation error type (ADR 0153).
+ * wording and the asset validation error type (ADR 0153). Shared with the review
+ * lifecycle (#198) so a proposal's argued scope and an accept-time audience
+ * resolve through the exact same rules.
  */
-async function resolveAssetVisibility(
+export async function resolveAssetVisibility(
   store: AssetLifecycleStore,
   input: {
     ownerUserId: string;
@@ -43,7 +46,7 @@ async function resolveAssetVisibility(
 }
 
 /** Records a share row per selected member so a shared Asset reaches exactly them. */
-async function writeAssetShares(
+export async function writeAssetShares(
   store: AssetLifecycleStore,
   input: {
     householdId: string;
@@ -74,10 +77,13 @@ async function findVisibleAsset(
   store: AssetLifecycleStore,
   input: { callerUserId: string; assetId: string },
 ): Promise<Asset | null> {
-  return (
+  const asset =
     (await store.getAsset({ ownerUserId: input.callerUserId, assetId: input.assetId })) ??
-    (await store.getVisibleAsset(input))
-  );
+    (await store.getVisibleAsset(input));
+  // Durable records only: a suggested proposal (or a dismissed husk) is never a
+  // surface-readable Asset, even for its owner — review reaches proposals through
+  // its own owner-scoped seam (#198).
+  return asset && isDurableAssetStatus(asset.status) ? asset : null;
 }
 
 /** Loads an asset the acting user may touch, or throws the deterministic denial. */
@@ -114,9 +120,10 @@ async function requireOwnedAsset(
 /**
  * Records an internal Asset Audit event for a write: what happened, who acted,
  * where the write came from, and the scope the asset held at write time (#197).
- * Audit is internal-first — never a user-facing history feed (#196).
+ * Audit is internal-first — never a user-facing history feed (#196). Shared with
+ * the review lifecycle (#198) so proposal and memory writes ride the same trail.
  */
-async function recordAudit(
+export async function recordAudit(
   store: AssetLifecycleStore,
   asset: Asset,
   event: {

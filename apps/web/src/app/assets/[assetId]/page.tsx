@@ -1,4 +1,5 @@
-import { getAsset } from "@tendnote/db/queries/assets";
+import { getAsset, listAssetMemories } from "@tendnote/db/queries/assets";
+import type { AssetMemory } from "@tendnote/domain";
 import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,8 +7,9 @@ import { AppShell } from "@/components/app-shell";
 import { AssetProfileControls } from "@/components/asset-profile-controls";
 import { ASSET_KIND_ICONS, AssetArchivedBadge } from "@/components/asset-shared";
 import { ActionScopeChip } from "@/components/general-action-shared";
-import { LedgerEmpty } from "@/components/person-ledger";
+import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { formatAssetMemoryValue } from "@/lib/asset-memory-value";
 import { type AssetView, toAssetView } from "@/lib/asset-view";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +34,9 @@ export default async function AssetProfilePage({
     notFound();
   }
 
+  // The reviewed details this caller may see — filtered per record, so a
+  // household asset can carry a private detail its members never see (#198).
+  const memories = await listAssetMemories({ callerUserId, assetId });
   const view = toAssetView(asset, { callerUserId });
 
   return (
@@ -55,9 +60,17 @@ export default async function AssetProfilePage({
           description="Confirmed details worth keeping — model numbers, sizes, warranty dates."
           title="Memories"
         >
-          <LedgerEmpty>
-            Nothing remembered about this yet. The details you confirm will live here.
-          </LedgerEmpty>
+          {memories.length > 0 ? (
+            <LedgerList>
+              {memories.map((memory) => (
+                <AssetMemoryRow key={memory.id} memory={memory} />
+              ))}
+            </LedgerList>
+          ) : (
+            <LedgerEmpty>
+              Nothing remembered about this yet. The details you confirm will live here.
+            </LedgerEmpty>
+          )}
         </ProfileSection>
 
         <ProfileSection
@@ -117,6 +130,31 @@ function ArchivedNote({ view }: { view: AssetView }) {
       {view.archivedLabel ?? "This asset is archived"} — it keeps its history and stays out of
       active views until you restore it.
     </p>
+  );
+}
+
+/**
+ * One reviewed Asset Memory: the fact's name in quiet mono, the exact value in
+ * ink, freeform notes underneath — Personal Ledger density, human content first.
+ */
+function AssetMemoryRow({ memory }: { memory: AssetMemory }) {
+  const valueLabel = formatAssetMemoryValue(memory.value);
+  return (
+    <div className="flex flex-col gap-0.5 px-4 py-3">
+      <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
+        {memory.label}
+      </span>
+      {valueLabel ? (
+        <span className="font-medium text-[length:var(--text-body)] leading-[var(--text-body-line)]">
+          {valueLabel}
+        </span>
+      ) : null}
+      {memory.notes ? (
+        <p className="max-w-[68ch] text-pretty text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+          {memory.notes}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

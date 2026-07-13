@@ -4,6 +4,7 @@ import {
   assetUpdateSchema,
   createAssetAuditEventSchema,
   createAssetSchema,
+  DURABLE_ASSET_STATUSES,
 } from "@tendnote/domain";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -11,11 +12,20 @@ import { getDb } from "../../client";
 import { assetAuditEvents, assets } from "../../schema";
 import { createDrizzleHouseholdStore } from "../households/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
+import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
+import { createDrizzleAssetReviewStore } from "./drizzle-review-store";
+import type { AssetReviewLifecycleStore } from "./review-types";
 import type { AssetLifecycleStore, AssetStore } from "./types";
 
 // Aliased so the scope-visibility predicate can reference the row as `a`, matching
 // the alias the shared `visibleHouseholdRecordSql` builder expects.
 const visibleAssets = alias(assets, "a");
+
+// Review-gated rows (suggested proposals and dismissed husks) are owner-only:
+// every scope-visible read filters to durable statuses, so a proposal never
+// reaches any surface — not a member's, not even the owner's own Assets ledger —
+// until it is accepted (#198; mirrors the General Action durable-status rule).
+const durableVisibleStatus = inArray(visibleAssets.status, [...DURABLE_ASSET_STATUSES]);
 
 // Shared ordering contract: case-insensitive name ascending — a browsable ledger,
 // not a feed — with most-recently-created breaking ties. The in-memory store's
@@ -56,6 +66,7 @@ export function createDrizzleAssetStore(): AssetStore {
         .where(
           and(
             eq(visibleAssets.id, input.assetId),
+            durableVisibleStatus,
             visibleHouseholdRecordSql({
               callerUserId: input.callerUserId,
               tableAlias: "a",
@@ -91,6 +102,7 @@ export function createDrizzleAssetStore(): AssetStore {
         .from(visibleAssets)
         .where(
           and(
+            durableVisibleStatus,
             visibleHouseholdRecordSql({
               callerUserId: input.callerUserId,
               tableAlias: "a",
@@ -147,5 +159,18 @@ export function createDrizzleAssetLifecycleStore(): AssetLifecycleStore {
   return {
     ...createDrizzleHouseholdStore(),
     ...createDrizzleAssetStore(),
+  };
+}
+
+/**
+ * Asset review lifecycle store (#198): the lifecycle store plus the Asset
+ * Memory / Asset Review Group store and source-record grounding lookups —
+ * everything `createAssetReview` composes over.
+ */
+export function createDrizzleAssetReviewLifecycleStore(): AssetReviewLifecycleStore {
+  return {
+    ...createDrizzleSourceRecordStore(),
+    ...createDrizzleAssetLifecycleStore(),
+    ...createDrizzleAssetReviewStore(),
   };
 }

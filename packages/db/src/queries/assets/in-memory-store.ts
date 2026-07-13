@@ -9,6 +9,7 @@ import {
   canViewScopedRecord,
   createAssetAuditEventSchema,
   createAssetSchema,
+  isDurableAssetStatus,
   type PrivacyScope,
   scopedRecordVisibility,
 } from "@tendnote/domain";
@@ -21,11 +22,15 @@ import type { AssetStore } from "./types";
  * scope reads and share writes stay consistent across the composed seam — the
  * exact composition the General Action in-memory store uses (ADR 0153). Backs the
  * lifecycle tests and the store contract so the drizzle store cannot drift.
+ *
+ * Accepts an existing household store so the composed review store (#198) shares
+ * the same membership/share state; defaults to its own for standalone use.
  */
-export function createInMemoryAssetStore(): AssetStore & HouseholdStore {
+export function createInMemoryAssetStore(
+  householdStore: HouseholdStore = createInMemoryHouseholdStore(),
+): AssetStore & HouseholdStore {
   const assets = new Map<string, Asset>();
   const auditEvents: AssetAuditEvent[] = [];
-  const householdStore = createInMemoryHouseholdStore();
 
   /**
    * Whether `callerUserId` may see `asset` under the Phase 4 scope rules: private
@@ -34,6 +39,13 @@ export function createInMemoryAssetStore(): AssetStore & HouseholdStore {
    * asset with no household is visible to no one (ADR 0153).
    */
   async function canCallerView(input: { callerUserId: string; asset: Asset }) {
+    // Review-gated rows are owner-only: a Suggested Asset (and a dismissed
+    // proposal husk) is never scope-visible, even at household scope, until it
+    // is accepted — mirroring the General Action durable-status rule (#198).
+    if (!isDurableAssetStatus(input.asset.status)) {
+      return false;
+    }
+
     const activeMemberships = input.asset.householdId
       ? await householdStore.listHouseholdMemberships({
           householdId: input.asset.householdId,
