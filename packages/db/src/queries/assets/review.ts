@@ -1,9 +1,15 @@
 import type { AssetEvidence, AssetMemory } from "@tendnote/domain";
-import type { AddAssetEvidenceInput, RemoveAssetEvidenceInput } from "./evidence-types";
+import type {
+  AddAssetEvidenceInput,
+  AddAssetEvidenceToNewAssetInput,
+  RemoveAssetEvidenceInput,
+} from "./evidence-types";
 import { acceptSuggestedAsset, dismissSuggestedAsset, editSuggestedAsset } from "./review-assets";
 import {
   addAssetEvidence,
+  addAssetEvidenceToNewAsset,
   getAssetEvidenceFileForCaller,
+  listAssetEvidenceCaptureTargets,
   removeAssetEvidence,
 } from "./review-evidence";
 import { linkAssetReviewGroup } from "./review-link";
@@ -170,6 +176,20 @@ export function createAssetReview(store: AssetReviewLifecycleStore) {
      * (#201) — attaching to an active Asset or a still-open review group.
      */
     addAssetEvidence: (input: AddAssetEvidenceInput) => addAssetEvidence(store, input),
+    /**
+     * The unclear-destination arm of the same capture path (#201): the user
+     * named something new, so the capture opens a review-gated Suggested Asset
+     * and the evidence rides its review group.
+     */
+    addAssetEvidenceToNewAsset: (input: AddAssetEvidenceToNewAssetInput) =>
+      addAssetEvidenceToNewAsset(store, input),
+    /**
+     * The destinations a capture surface may offer (#201): the owner's own
+     * active assets plus their still-open review groups — the owner/active/open
+     * rule in one owner-scoped entry point.
+     */
+    listAssetEvidenceCaptureTargets: (input: { ownerUserId: string }) =>
+      listAssetEvidenceCaptureTargets(store, input),
     removeAssetEvidence: (input: RemoveAssetEvidenceInput) => removeAssetEvidence(store, input),
     /**
      * The evidence on one asset the caller may see — per-record scope filtering

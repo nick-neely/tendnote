@@ -10,12 +10,20 @@ import {
 } from "@tendnote/domain";
 import type {
   AddAssetEvidenceInput,
+  AddAssetEvidenceToNewAssetInput,
   AssetEvidenceFilePayload,
   RemoveAssetEvidenceInput,
 } from "./evidence-types";
 import { recordAudit } from "./lifecycle";
-import { loadAnchor, requireActiveAnchor, requireGroup, SET_ASIDE } from "./review-shared";
-import type { AssetReviewLifecycleStore } from "./review-types";
+import {
+  buildGroupResult,
+  loadAnchor,
+  openSuggestedAssetProposal,
+  requireActiveAnchor,
+  requireGroup,
+  SET_ASIDE,
+} from "./review-shared";
+import type { AssetReviewGroupResult, AssetReviewLifecycleStore } from "./review-types";
 
 /**
  * The shared Asset Evidence Capture steps (#200): one write path whether
@@ -125,6 +133,88 @@ export async function addAssetEvidence(
   });
 
   return evidence;
+}
+
+/**
+ * Captures Asset Evidence to a destination that doesn't exist yet (#201): opens
+ * a review-gated Suggested Asset proposal — never a silently-created active
+ * asset — and attaches the capture to its Asset Review Group through
+ * {@link addAssetEvidence}, so the shared-path invariants (file vetting, scope
+ * ceiling, audit provenance) never fork. The upload is vetted *before* the
+ * proposal persists, so a rejected file leaves nothing behind. The proposal
+ * argues private visibility; acceptance chooses the final audience. Explicit
+ * user intent (they named the thing) is the provenance — the group records a
+ * null source, paralleling the ungrounded action-hint promotion path (#199).
+ */
+export async function addAssetEvidenceToNewAsset(
+  store: AssetReviewLifecycleStore,
+  input: AddAssetEvidenceToNewAssetInput,
+): Promise<{ evidence: AssetEvidence; group: AssetReviewGroupResult }> {
+  if (input.file) {
+    assertAssetEvidenceFileAccepted(input.file);
+    assertAssetEvidenceFileSignature(input.file);
+  }
+
+  const { group } = await openSuggestedAssetProposal(store, {
+    ownerUserId: input.ownerUserId,
+    actorUserId: input.ownerUserId,
+    name: input.asset.name,
+    kind: input.asset.kind,
+    scope: "private",
+    householdId: null,
+    sourceRecordId: null,
+    auditSource: input.source ?? "user",
+    auditDetail: { via: "evidence_capture" },
+  });
+
+  const { asset: _asset, ...evidenceFields } = input;
+  const evidence = await addAssetEvidence(store, {
+    ...evidenceFields,
+    reviewGroupId: group.id,
+  });
+
+  return { evidence, group: await buildGroupResult(store, group) };
+}
+
+/** The destinations a capture surface may offer (#201). */
+export type AssetEvidenceCaptureTargets = {
+  /** The owner's own active assets — capture is an owner act. */
+  assets: Asset[];
+  /** Still-open review groups, each with its anchor proposal, newest first. */
+  reviews: { groupId: string; asset: Asset }[];
+};
+
+/**
+ * The destinations a chat capture can choose from (#201): the owner's own
+ * *active* assets — capture is an owner act, so a co-member's asset the caller
+ * can merely see is not offered (the same gate the Asset Profile applies) —
+ * plus the owner's still-open Asset Review Groups with their anchor proposals.
+ * The owner/active/open rule lives here, in one owner-scoped entry point, so
+ * no surface re-derives it.
+ */
+export async function listAssetEvidenceCaptureTargets(
+  store: AssetReviewLifecycleStore,
+  input: { ownerUserId: string },
+): Promise<AssetEvidenceCaptureTargets> {
+  const [visible, groups] = await Promise.all([
+    store.listVisibleAssetsForCaller({ callerUserId: input.ownerUserId, statuses: ["active"] }),
+    store.listPendingAssetReviewGroupsForOwner({ ownerUserId: input.ownerUserId }),
+  ]);
+
+  const reviews: AssetEvidenceCaptureTargets["reviews"] = [];
+  for (const group of groups) {
+    const anchor = await loadAnchor(store, input.ownerUserId, group.assetId);
+    // A pending group's anchor always exists; archived anchors are filtered
+    // defensively — the capture write would refuse them anyway.
+    if (anchor && anchor.status !== "archived" && anchor.status !== "dismissed") {
+      reviews.push({ groupId: group.id, asset: anchor });
+    }
+  }
+
+  return {
+    assets: visible.filter((asset) => asset.ownerUserId === input.ownerUserId),
+    reviews,
+  };
 }
 
 /**

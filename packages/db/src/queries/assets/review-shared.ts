@@ -65,10 +65,12 @@ export async function requireGrounding(
  * Opens a Suggested Asset proposal — the one shared write triple behind every
  * inferred or promoted asset proposal: the `suggested` asset row, its Asset
  * Review Group, and the `suggested` audit event with grounding provenance.
- * `suggestAsset` (#198) and the action-hint bridge (#199) both route here so
- * the proposal invariant never forks between modules. Visibility must already
- * be resolved (`resolveAssetVisibility`); grounding may be null only for the
- * bridge's explicitly-exempt user-intent path.
+ * `suggestAsset` (#198), the action-hint bridge (#199), and evidence capture to
+ * a new asset (#201) all route here so the proposal invariant never forks
+ * between modules. Visibility must already be resolved
+ * (`resolveAssetVisibility`); grounding may be null only for the
+ * explicitly-exempt user-intent paths — the bridge's ungrounded promotion and
+ * the capture flow where the user names the thing themselves.
  */
 export async function openSuggestedAssetProposal(
   store: AssetReviewLifecycleStore,

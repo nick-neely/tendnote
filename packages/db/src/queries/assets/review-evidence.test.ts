@@ -549,3 +549,119 @@ describe("evidence on an asset review group (#200)", () => {
     ).rejects.toThrow(AssetValidationError);
   });
 });
+
+describe("addAssetEvidenceToNewAsset (#201)", () => {
+  it("opens a review-gated Suggested Asset and attaches the capture to its group", async () => {
+    const { review, auditKinds } = setup();
+
+    const { evidence, group } = await review.addAssetEvidenceToNewAsset({
+      ownerUserId: OWNER,
+      asset: { name: "Dishwasher", kind: "appliance" },
+      kind: "receipt",
+      label: "Home Depot receipt",
+      file: RECEIPT_FILE,
+      money: { amount: 42.99, currency: "usd" },
+    });
+
+    // Review-gated write: the new destination is a pending proposal, never a
+    // silently-created active asset (#196 story 26).
+    expect(group.asset.status).toBe("suggested");
+    expect(group.assetPending).toBe(true);
+    expect(group.asset.name).toBe("Dishwasher");
+
+    // The capture rides the proposal's review group through the shared path.
+    expect(evidence.assetId).toBe(group.asset.id);
+    expect(evidence.reviewGroupId).toBe(group.group.id);
+    expect(evidence.money).toEqual({ amount: 42.99, currency: "USD" });
+
+    // The proposal is in the owner's Review Queue with its evidence in view.
+    const pending = await review.listAssetReviewGroups({ ownerUserId: OWNER });
+    expect(pending.map((entry) => entry.group.id)).toContain(group.group.id);
+    expect(pending[0]?.evidence.map((entry) => entry.id)).toEqual([evidence.id]);
+
+    expect(await auditKinds(group.asset.id)).toEqual(
+      expect.arrayContaining(["suggested", "evidence_added"]),
+    );
+  });
+
+  it("rejects mislabeled bytes before anything persists — no half-created proposal", async () => {
+    const { review } = setup();
+
+    await expect(
+      review.addAssetEvidenceToNewAsset({
+        ownerUserId: OWNER,
+        asset: { name: "Dishwasher", kind: "appliance" },
+        kind: "photo",
+        label: "Not really a JPEG",
+        file: {
+          fileName: "receipt.jpg",
+          mimeType: "image/jpeg",
+          sizeBytes: 4,
+          bytes: new Uint8Array([0x00, 0x01, 0x02, 0x03]),
+        },
+      }),
+    ).rejects.toThrow(AssetValidationError);
+
+    // The vet runs before the proposal opens: no Suggested Asset husk, no group.
+    expect(await review.listAssetReviewGroups({ ownerUserId: OWNER })).toEqual([]);
+  });
+
+  it("keeps the proposal and its evidence private until acceptance widens them", async () => {
+    const { review } = setup();
+
+    const { evidence, group } = await review.addAssetEvidenceToNewAsset({
+      ownerUserId: OWNER,
+      asset: { name: "Espresso machine", kind: "appliance" },
+      kind: "photo",
+      label: "Serial plate",
+      file: RECEIPT_FILE,
+    });
+
+    // The proposal argues private; a wider audience is a review-time decision.
+    expect(group.asset.scope).toBe("private");
+    expect(evidence.scope).toBe("private");
+    expect(evidence.householdId).toBeNull();
+  });
+});
+
+describe("listAssetEvidenceCaptureTargets (#201)", () => {
+  it("offers only the owner's own active assets and still-open review groups", async () => {
+    const ctx = setup();
+
+    // The owner's own active asset: offered.
+    const mine = await ctx.seedAsset({ name: "Refrigerator" });
+    // The owner's archived asset: read-only history, never a capture target.
+    const retired = await ctx.seedAsset({ name: "Old dryer" });
+    await ctx.lifecycle.archiveAsset({ actorUserId: OWNER, assetId: retired.id });
+    // A co-member's household asset the owner can SEE but does not own:
+    // capture is an owner act (the profile's gate), so it is not offered.
+    const household = await ctx.seedHousehold();
+    await ctx.lifecycle.createAsset({
+      ownerUserId: MEMBER,
+      name: "Shared TV",
+      kind: "appliance",
+      scope: "household",
+      householdId: household.id,
+    });
+
+    // One still-open review group, and one that review has since resolved.
+    const open = await ctx.seedSuggestedGroup({ name: "Fridge filter" });
+    const resolved = await ctx.seedSuggestedGroup({ name: "Espresso machine" });
+    await ctx.review.acceptAssetReviewGroup({ actorUserId: OWNER, groupId: resolved.group.id });
+
+    const targets = await ctx.review.listAssetEvidenceCaptureTargets({ ownerUserId: OWNER });
+
+    // Owned + active only — the accepted proposal is now a durable asset and
+    // moves from the review list to the asset list.
+    expect(targets.assets.map((asset) => asset.name).sort()).toEqual([
+      "Espresso machine",
+      "Refrigerator",
+    ]);
+    expect(targets.assets.map((asset) => asset.id)).toContain(mine.id);
+    expect(targets.assets.every((asset) => asset.ownerUserId === OWNER)).toBe(true);
+
+    // Only the still-open group remains a review destination, with its anchor.
+    expect(targets.reviews.map((entry) => entry.groupId)).toEqual([open.group.id]);
+    expect(targets.reviews[0]?.asset.name).toBe("Fridge filter");
+  });
+});

@@ -33,7 +33,7 @@ import { useMutationSubmit } from "@/lib/use-mutation-submit";
 /** Where a capture lands: an existing Asset, or a still-open review group (#200). */
 export type AssetEvidenceCaptureTarget = { assetId: string } | { reviewGroupId: string };
 
-type Draft =
+export type Draft =
   | { mode: "file"; file: File; previewUrl: string | null }
   | { mode: "link" }
   | { mode: "note" };
@@ -289,8 +289,12 @@ function EvidenceDropZone({
  * narrowing. Small on purpose; every field beyond the label is optional. Only
  * the fields that gate submission (label, link, note) are controlled — the
  * optional metadata is read straight off the form on submit.
+ *
+ * Exported for Eve's chat plus-menu capture (#201), which supplies its own
+ * destination step but shares this exact details form — so what evidence *is*
+ * never reads two ways between the profile, the review card, and chat.
  */
-function EvidenceDetailsForm({
+export function EvidenceDetailsForm({
   draft,
   assetScope,
   pending,
@@ -514,13 +518,19 @@ function EvidenceMetadataDisclosure() {
   );
 }
 
-/** The picked upload, named and sized, with an escape hatch back to the zone. */
-function PickedFileStrip({
+/**
+ * The picked upload, named and sized, with an escape hatch. Shared with Eve's
+ * chat capture panel (#201), where the escape discards the capture instead of
+ * returning to the drop zone — `clearLabel` names whichever it is.
+ */
+export function PickedFileStrip({
   draft,
   onClear,
+  clearLabel = "Choose a different file",
 }: {
   draft: Extract<Draft, { mode: "file" }>;
   onClear: () => void;
+  clearLabel?: string;
 }) {
   return (
     <div className="flex items-center gap-3">
@@ -548,7 +558,7 @@ function PickedFileStrip({
         </span>
       </div>
       <Button
-        aria-label="Choose a different file"
+        aria-label={clearLabel}
         onClick={onClear}
         size="icon-sm"
         type="button"
