@@ -1,6 +1,6 @@
 import { AssetValidationError } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { seedHouseholdWithMembers } from "../households/household-fixtures";
+import { createAuditKindsReader, seedOwnerMemberHousehold } from "./asset-test-fixtures";
 import { createInMemoryAssetReviewLifecycleStore } from "./in-memory-review-store";
 import { createAssetLifecycle } from "./lifecycle";
 import { createAssetReview } from "./review";
@@ -48,18 +48,8 @@ function setup() {
     });
   }
 
-  function seedHousehold() {
-    return seedHouseholdWithMembers(store, {
-      ownerUserId: OWNER,
-      members: [
-        [OWNER, "owner"],
-        [MEMBER, "member"],
-      ],
-    });
-  }
-
-  const auditKinds = async (assetId: string, ownerUserId = OWNER) =>
-    (await lifecycle.listAssetAudit({ ownerUserId, assetId })).map((event) => event.kind);
+  const seedHousehold = () => seedOwnerMemberHousehold(store, OWNER, MEMBER);
+  const auditKinds = createAuditKindsReader(lifecycle, OWNER);
 
   /** An existing durable asset plus a memory-only review group anchored to it. */
   async function seedExistingAssetGroup() {

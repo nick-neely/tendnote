@@ -103,6 +103,41 @@ export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
   // Evidence capture trail (#200): the evidence id rides in detail JSON.
   "evidence_added",
   "evidence_removed",
+  // Related Asset Link and Asset Person Link trails (#202): the link id and the
+  // other record's id ride in detail JSON.
+  "link_added",
+  "link_suggested",
+  "link_promoted",
+  "link_dismissed",
+  "link_removed",
+  "person_link_added",
+  "person_link_removed",
+]);
+
+// The fixed Related Asset Link relation set (#202): subject-first ("the filter
+// *fits* the refrigerator"). Fixed like Asset Kinds — never a user taxonomy.
+export const assetLinkRelation = pgEnum("asset_link_relation", [
+  "fits",
+  "uses",
+  "part_of",
+  "replaces",
+  "covers",
+  "stored_with",
+]);
+
+// Related Asset Link lifecycle (#202), mirroring asset_memory_status: suggested
+// (review-gated) → active on accept or explicit create; dismissed is the husk.
+export const assetLinkStatus = pgEnum("asset_link_status", ["suggested", "active", "dismissed"]);
+
+// The fixed Asset Person Link relation set (#202): contextual only — a person
+// link never confers ownership or visibility.
+export const assetPersonRelation = pgEnum("asset_person_relation", [
+  "recommended",
+  "borrowed",
+  "uses",
+  "stores",
+  "services",
+  "knows_about",
 ]);
 
 // Asset Memory lifecycle (#198): suggested (review-gated) → active on accept;

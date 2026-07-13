@@ -4,12 +4,22 @@ import type {
   PromoteGeneralActionAssetHintInput,
 } from "./assets/action-link-types";
 import { createAssetActionLinks } from "./assets/action-links";
+import { createDrizzleAssetLinkStore } from "./assets/drizzle-link-store";
 import {
   createDrizzleAssetLifecycleStore,
   createDrizzleAssetReviewLifecycleStore,
 } from "./assets/drizzle-store";
 import type { AddAssetEvidenceInput, RemoveAssetEvidenceInput } from "./assets/evidence-types";
+import { createAssetHistory } from "./assets/history";
 import { createAssetLifecycle } from "./assets/lifecycle";
+import type {
+  AddAssetLinkInput,
+  AddAssetPersonLinkInput,
+  AssetLinkActionInput,
+  ListAssetContextInput,
+  SuggestAssetLinkInput,
+} from "./assets/link-types";
+import { createAssetContextLinks } from "./assets/links";
 import { createAssetReview } from "./assets/review";
 import type {
   AcceptSuggestedAssetInput,
@@ -33,11 +43,13 @@ import type {
   ListAssetsInput,
 } from "./assets/types";
 import { createDrizzleGeneralActionStore } from "./general-actions/drizzle-store";
+import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 
 export type * from "./assets/action-link-types";
 export { createAssetActionLinks } from "./assets/action-links";
 export { createDrizzleGeneralActionAssetLinkStore } from "./assets/drizzle-action-link-store";
 export { createDrizzleAssetEvidenceStore } from "./assets/drizzle-evidence-store";
+export { createDrizzleAssetLinkStore } from "./assets/drizzle-link-store";
 export { createDrizzleAssetReviewStore } from "./assets/drizzle-review-store";
 export {
   createDrizzleAssetLifecycleStore,
@@ -45,8 +57,10 @@ export {
   createDrizzleAssetStore,
 } from "./assets/drizzle-store";
 export type * from "./assets/evidence-types";
+export { createAssetHistory } from "./assets/history";
 export { createInMemoryAssetActionLinkStore } from "./assets/in-memory-action-link-store";
 export { createInMemoryAssetEvidenceStore } from "./assets/in-memory-evidence-store";
+export { createInMemoryAssetLinkStore } from "./assets/in-memory-link-store";
 export {
   createInMemoryAssetReviewLifecycleStore,
   createInMemoryAssetReviewStore,
@@ -54,6 +68,8 @@ export {
 } from "./assets/in-memory-review-store";
 export { createInMemoryAssetStore } from "./assets/in-memory-store";
 export { createAssetLifecycle } from "./assets/lifecycle";
+export type * from "./assets/link-types";
+export { createAssetContextLinks } from "./assets/links";
 export { createAssetReview } from "./assets/review";
 export type * from "./assets/review-types";
 export type * from "./assets/types";
@@ -61,6 +77,15 @@ export type * from "./assets/types";
 const defaultAssetLifecycle = createAssetLifecycle(createDrizzleAssetLifecycleStore());
 const defaultAssetReview = createAssetReview(createDrizzleAssetReviewLifecycleStore());
 const defaultAssetActionLinks = createAssetActionLinks({
+  ...createDrizzleAssetReviewLifecycleStore(),
+  ...createDrizzleGeneralActionStore(),
+});
+const defaultAssetContextLinks = createAssetContextLinks({
+  ...createDrizzleAssetReviewLifecycleStore(),
+  ...createDrizzleSourceRecordStore(),
+  ...createDrizzleAssetLinkStore(),
+});
+const defaultAssetHistory = createAssetHistory({
   ...createDrizzleAssetReviewLifecycleStore(),
   ...createDrizzleGeneralActionStore(),
 });
@@ -192,4 +217,46 @@ export async function listAssetEvidence(input: { callerUserId: string; assetId: 
 
 export async function getAssetEvidenceFile(input: { callerUserId: string; evidenceId: string }) {
   return defaultAssetReview.getAssetEvidenceFile(input);
+}
+
+// --- Related Asset Links, Asset Person Links, and Asset History (#202) ---
+
+export async function addAssetLink(input: AddAssetLinkInput) {
+  return defaultAssetContextLinks.addAssetLink(input);
+}
+
+export async function suggestAssetLink(input: SuggestAssetLinkInput) {
+  return defaultAssetContextLinks.suggestAssetLink(input);
+}
+
+export async function acceptSuggestedAssetLink(input: AssetLinkActionInput) {
+  return defaultAssetContextLinks.acceptSuggestedAssetLink(input);
+}
+
+export async function dismissSuggestedAssetLink(input: AssetLinkActionInput) {
+  return defaultAssetContextLinks.dismissSuggestedAssetLink(input);
+}
+
+export async function removeAssetLink(input: AssetLinkActionInput) {
+  return defaultAssetContextLinks.removeAssetLink(input);
+}
+
+export async function listRelatedAssetLinks(input: ListAssetContextInput) {
+  return defaultAssetContextLinks.listRelatedAssetLinks(input);
+}
+
+export async function addAssetPersonLink(input: AddAssetPersonLinkInput) {
+  return defaultAssetContextLinks.addAssetPersonLink(input);
+}
+
+export async function removeAssetPersonLink(input: AssetLinkActionInput) {
+  return defaultAssetContextLinks.removeAssetPersonLink(input);
+}
+
+export async function listAssetPersonLinks(input: ListAssetContextInput) {
+  return defaultAssetContextLinks.listAssetPersonLinks(input);
+}
+
+export async function listAssetHistory(input: ListAssetContextInput & { limit?: number }) {
+  return defaultAssetHistory.listAssetHistory(input);
 }

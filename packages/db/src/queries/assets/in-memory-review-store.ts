@@ -17,7 +17,9 @@ import { createInMemorySourceRecordStore } from "../source-records/in-memory-sto
 import type { InMemorySourceRecordStore } from "../source-records/types";
 import type { AssetEvidenceStore } from "./evidence-types";
 import { createInMemoryAssetEvidenceStore } from "./in-memory-evidence-store";
+import { createInMemoryAssetLinkStore } from "./in-memory-link-store";
 import { createInMemoryAssetStore } from "./in-memory-store";
+import type { AssetLinkStore } from "./link-types";
 import type { AssetReviewStore, GeneralActionAssetLinkStore } from "./review-types";
 import type { AssetStore } from "./types";
 
@@ -270,6 +272,7 @@ export function createInMemoryAssetReviewLifecycleStore(): AssetStore &
   AssetReviewStore &
   AssetEvidenceStore &
   GeneralActionAssetLinkStore &
+  AssetLinkStore &
   HouseholdStore &
   InMemorySourceRecordStore {
   const householdStore = createInMemoryHouseholdStore();
@@ -289,5 +292,6 @@ export function createInMemoryAssetReviewLifecycleStore(): AssetStore &
     ...reviewStore,
     ...evidenceStore,
     ...createInMemoryGeneralActionAssetLinkStore(),
+    ...createInMemoryAssetLinkStore(),
   };
 }

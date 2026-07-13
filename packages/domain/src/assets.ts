@@ -222,8 +222,10 @@ export function isEmptyAssetEdit(edit: AssetEdit): boolean {
  * (#198) appends the proposal trail (`suggested`/`promoted`/`dismissed`), the
  * duplicate-review resolution (`linked_existing`), and the Asset Memory writes
  * (`memory_*`); the evidence slice (#200) appends the capture trail
- * (`evidence_*`). Memory and evidence events stay asset-keyed — the child id
- * rides in `detailJson` — so one trail tells an Asset's whole story.
+ * (`evidence_*`); the profile-context slice (#202) appends the Related Asset
+ * Link trail (`link_*`) and the Asset Person Link trail (`person_link_*`).
+ * Memory, evidence, and link events stay asset-keyed — the child id rides in
+ * `detailJson` — so one trail tells an Asset's whole story.
  */
 export const assetAuditEventKindSchema = z.enum([
   "created",
@@ -241,6 +243,13 @@ export const assetAuditEventKindSchema = z.enum([
   "memory_dismissed",
   "evidence_added",
   "evidence_removed",
+  "link_added",
+  "link_suggested",
+  "link_promoted",
+  "link_dismissed",
+  "link_removed",
+  "person_link_added",
+  "person_link_removed",
 ]);
 export type AssetAuditEventKind = z.infer<typeof assetAuditEventKindSchema>;
 
