@@ -1,5 +1,6 @@
 export * from "./access";
 export * from "./action-extraction";
+export * from "./assets";
 export * from "./assistant-tool-results";
 export * from "./brief-schedules";
 export * from "./brief-summary";

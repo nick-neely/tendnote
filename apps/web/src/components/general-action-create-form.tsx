@@ -3,7 +3,7 @@
 import type { GeneralActionRecurrence } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
-import { useId, useState, useTransition } from "react";
+import { useId, useState } from "react";
 import { createGeneralActionAction } from "@/app/actions/general-actions";
 import { AreaSelect } from "@/components/general-action-area-select";
 import {
@@ -32,6 +32,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionView } from "@/lib/general-action-view";
+import { useMutationSubmit } from "@/lib/use-mutation-submit";
 
 /**
  * Assembles the create-action server-action payload, including only the optional fields the
@@ -106,8 +107,7 @@ export function CreateActionForm({
   const [visibilityChoice, setVisibilityChoice] = useState<VisibilityChoice>("only_me");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [showDetails, setShowDetails] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const { error, setError, pending, submit } = useMutationSubmit(GENERIC_ERROR);
 
   const trimmedTitle = title.trim();
   const selectedMembersRequired =
@@ -128,7 +128,7 @@ export function CreateActionForm({
     setError(null);
   }
 
-  function submit() {
+  function submitAction() {
     if (!trimmedTitle || selectedMembersRequired) {
       return;
     }
@@ -144,20 +144,13 @@ export function CreateActionForm({
       visibilityChoice,
       selectedUserIds,
     });
-    setError(null);
-    startTransition(async () => {
-      try {
-        const result = await createGeneralActionAction(payload);
-        if (!result.ok) {
-          setError(result.error);
-          return;
-        }
-        onCreate(result.view);
+    submit(
+      () => createGeneralActionAction(payload),
+      (view) => {
+        onCreate(view);
         reset();
-      } catch {
-        setError(GENERIC_ERROR);
-      }
-    });
+      },
+    );
   }
 
   return (
@@ -165,7 +158,7 @@ export function CreateActionForm({
       className="flex flex-col gap-3 rounded-xl border bg-surface px-4 py-3.5"
       onSubmit={(event) => {
         event.preventDefault();
-        submit();
+        submitAction();
       }}
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

@@ -59,7 +59,35 @@ export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "source_record",
   "followup",
   "general_action",
+  // Phase 6 Asset Memory: Assets ride the same share rails as other scoped records (#197).
+  "asset",
 ]);
+
+// Phase 6 Asset Memory (#196/#197): the small fixed Asset Kind set — practical
+// owner-/household-scoped resources only, never a taxonomy the user manages.
+export const assetKind = pgEnum("asset_kind", [
+  "item",
+  "appliance",
+  "vehicle",
+  "subscription",
+  "service",
+  "property",
+]);
+
+// Archive is the normal inactive path; hard delete stays reserved for
+// correction/privacy cases in a later slice (#196).
+export const assetStatus = pgEnum("asset_status", ["active", "archived"]);
+
+export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
+  "created",
+  "edited",
+  "archived",
+  "restored",
+]);
+
+// Where an Asset write originated. Coarse on purpose — provenance detail rides in
+// the audit event's detail JSON.
+export const assetAuditSource = pgEnum("asset_audit_source", ["user", "assistant", "system"]);
 
 export const sourceRecordStatus = pgEnum("source_record_status", [
   "pending_resolution",

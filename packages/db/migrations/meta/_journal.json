@@ -267,6 +267,13 @@
       "when": 1783387585200,
       "tag": "0037_action_summary_workflow",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1783830925407,
+      "tag": "0038_asset_foundation",
+      "breakpoints": true
     }
   ]
 }

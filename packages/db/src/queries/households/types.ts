@@ -10,7 +10,15 @@ import type { SourceRecordAuditLogEntry } from "../source-records/types";
 
 export type HouseholdAuditLogEntry = SourceRecordAuditLogEntry;
 
-export type VisibilityRecordKind = "memory" | "source_record" | "followup" | "general_action";
+export type VisibilityRecordKind =
+  | "memory"
+  | "source_record"
+  | "followup"
+  | "general_action"
+  | "asset";
+
+/** The per-record-kind SQL alias the shared visibility predicate is built against. */
+export type VisibilityRecordTableAlias = "m" | "sr" | "f" | "ga" | "a";
 
 export type HouseholdRecordShare = {
   id: string;

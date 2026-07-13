@@ -284,6 +284,9 @@ describe("Phase 5 boundary — no external task/calendar writes, no standalone n
     // files, blobs, or durable asset records (ADRs 0156, 0164). Concrete storage/upload
     // identifiers plus the structural table check carry the proof (the ADR comments
     // legitimately name "warranty"/"serials" as excluded, so those words are not scanned).
+    // The blanket `CREATE TABLE "assets"` absence check retired with Phase 6 (#196/#197),
+    // which deliberately introduces the durable Asset record; the Phase 5 boundary that
+    // remains is that the *actions path* never grows attachments or file storage.
     for (const forbidden of [
       "multipart",
       "presigned",
@@ -298,7 +301,6 @@ describe("Phase 5 boundary — no external task/calendar writes, no standalone n
     for (const forbidden of [
       'CREATE TABLE "general_action_attachments"',
       'CREATE TABLE "general_action_files"',
-      'CREATE TABLE "assets"',
     ]) {
       expect(allMigrationsText).not.toContain(forbidden);
     }

@@ -15,9 +15,8 @@ import {
   setGeneralActionPeople,
   setGeneralActionVisibility,
 } from "@tendnote/db/queries/general-actions";
-import { listActiveHouseholdMembershipsForUser } from "@tendnote/db/queries/households";
 import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
-import { scopeForVisibilityChoice, visibilityChoiceSchema } from "@tendnote/domain/privacy";
+import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { parseDateInputValue } from "@/lib/followup-view";
@@ -28,6 +27,7 @@ import {
   toGeneralActionEventView,
   toGeneralActionView,
 } from "@/lib/general-action-view";
+import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
 
 const actionIdSchema = z.object({ generalActionId: z.uuid() });
 
@@ -91,29 +91,6 @@ const peopleActionSchema = z.object({
   generalActionId: z.uuid(),
   personIds: personIdsSchema,
 });
-
-/**
- * Resolves a visibility choice to a persisted scope plus the caller's active
- * household. A non-private choice binds to the caller's household; the shared
- * lifecycle then fails closed if it is missing or the member is inactive (ADR 0153).
- *
- * Phase 5 treats a user as belonging to at most one household (the product model is a
- * single household), so we deliberately take the first active membership. If a user
- * ever holds several, this picks one arbitrarily rather than guessing — surfacing an
- * explicit household chooser is future multi-household work, not a silent default we
- * want to pretend is correct here.
- */
-async function resolveScopeForCaller(
-  ownerUserId: string,
-  visibilityChoice: z.infer<typeof visibilityChoiceSchema>,
-) {
-  const scope = scopeForVisibilityChoice(visibilityChoice);
-  if (scope === "private") {
-    return { scope, householdId: null as string | null };
-  }
-  const memberships = await listActiveHouseholdMembershipsForUser({ userId: ownerUserId });
-  return { scope, householdId: memberships[0]?.householdId ?? null };
-}
 
 /**
  * Runs an Action mutation and maps the result to a view for the acting caller, so

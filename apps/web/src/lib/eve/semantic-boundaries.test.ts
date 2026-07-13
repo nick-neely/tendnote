@@ -22,10 +22,11 @@ describe("semantic retrieval product-route boundaries", () => {
       .sort();
 
     // The relationship-data product routes are the dashboard and people pages
-    // plus the Phase 5 private Actions surface (#178) and its narrow Action Today
-    // glance (#186); account/auth surfaces, Phase 2E's explicit Contacts import
-    // preview entry, and the owner-scoped Discord delivery settings (#173) are
-    // allowed alongside them but carry no semantic-search route.
+    // plus the Phase 5 private Actions surface (#178), its narrow Action Today
+    // glance (#186), and the Phase 6 Assets surface and Asset Profile (#197);
+    // account/auth surfaces, Phase 2E's explicit Contacts import preview entry,
+    // and the owner-scoped Discord delivery settings (#173) are allowed alongside
+    // them but carry no semantic-search route.
     expect(pageRoutes).toEqual([
       "/",
       "account",
@@ -33,6 +34,8 @@ describe("semantic retrieval product-route boundaries", () => {
       "account/discord",
       "actions",
       "actions/today",
+      "assets",
+      "assets/[assetId]",
       "forgot-password",
       "pending",
       "people",
