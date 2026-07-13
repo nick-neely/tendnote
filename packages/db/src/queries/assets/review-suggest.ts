@@ -2,7 +2,7 @@ import {
   type AssetMemory,
   type AssetMemoryScope,
   AssetValidationError,
-  requireMemoryScopeWithinAsset,
+  requireChildScopeWithinAsset,
 } from "@tendnote/domain";
 import { recordAudit, resolveAssetVisibility } from "./lifecycle";
 import {
@@ -142,7 +142,7 @@ export async function createActiveAssetMemory(
 
   // Explicit creation defaults to private — widening is always a choice.
   const scope: AssetMemoryScope = input.scope ?? "private";
-  requireMemoryScopeWithinAsset({ memoryScope: scope, assetScope: anchor.scope });
+  requireChildScopeWithinAsset({ childScope: scope, assetScope: anchor.scope });
 
   const memory = await store.createAssetMemory({
     assetId: anchor.id,

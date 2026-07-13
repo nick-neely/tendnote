@@ -1,6 +1,6 @@
 import { z } from "zod";
+import { assetChildScopeSchema } from "./asset-child-scope";
 import { AssetValidationError } from "./assets";
-import type { PrivacyScope } from "./privacy";
 
 /**
  * An Asset Memory's lifecycle (#198). A memory is born `suggested` when inferred
@@ -38,11 +38,11 @@ export const assetMemoryValueSchema = z.discriminatedUnion("type", [
 export type AssetMemoryValue = z.infer<typeof assetMemoryValueSchema>;
 
 /**
- * Visibility a memory can hold in this slice: private or household. A
- * selected-shared memory audience is deferred — additive later, never assumed —
- * so no memory share rows exist yet (#198).
+ * Visibility a memory can hold in this slice: the shared Asset child scope
+ * (private or household) under the child-scope ceiling in `asset-child-scope.ts`,
+ * which memories and evidence apply identically (#198, #200).
  */
-export const assetMemoryScopeSchema = z.enum(["private", "household"]);
+export const assetMemoryScopeSchema = assetChildScopeSchema;
 export type AssetMemoryScope = z.infer<typeof assetMemoryScopeSchema>;
 
 /** A memory needs substance: a typed value, freeform notes, or both. */
@@ -158,50 +158,6 @@ export function resolveAssetMemoryContentPatch(
   };
 }
 
-// How wide each scope reaches, for the child-scope ceiling: a household record
-// reaches every active member, a shared one a selected few, a private one only
-// its owner. Children may sit at or below their Asset's rank, never above.
-const SCOPE_REACH: Record<PrivacyScope, number> = { private: 0, shared: 1, household: 2 };
-
-/**
- * The child-scope ceiling (#196): an Asset's scope is the broadest visibility any
- * child record may hold. A private memory under a household Asset is fine; a
- * household memory under a private (or selected-shared) Asset would widen the
- * audience and is rejected fail-closed.
- */
-export function requireMemoryScopeWithinAsset(input: {
-  memoryScope: AssetMemoryScope;
-  assetScope: PrivacyScope;
-}): void {
-  if (SCOPE_REACH[input.memoryScope] > SCOPE_REACH[input.assetScope]) {
-    throw new AssetValidationError(
-      "A detail can't be more visible than its asset — narrow it or widen the asset first.",
-    );
-  }
-}
-
-/**
- * The visibility a new memory defaults to under an Asset: the Asset's own scope
- * where this slice supports it (household), otherwise private. Fail-closed — a
- * selected-shared Asset defaults its details to private rather than guessing an
- * audience this slice cannot represent.
- */
-export function defaultMemoryScopeForAsset(assetScope: PrivacyScope): AssetMemoryScope {
-  return assetScope === "household" ? "household" : "private";
-}
-
-/**
- * Re-resolves a memory's visibility when duplicate review re-anchors it to an
- * existing Asset (#198): the memory keeps its scope where the target allows it and
- * is clamped to private otherwise, adopting the target's household. Deterministic
- * and fail-closed — linking never widens who can see a detail.
- */
-export function resolveLinkedMemoryVisibility(input: {
-  memoryScope: AssetMemoryScope;
-  target: { scope: PrivacyScope; householdId: string | null };
-}): { scope: AssetMemoryScope; householdId: string | null } {
-  if (input.memoryScope === "household" && input.target.scope === "household") {
-    return { scope: "household", householdId: input.target.householdId };
-  }
-  return { scope: "private", householdId: null };
-}
+// The child-scope ceiling, default, and link-clamp rules moved to
+// `asset-child-scope.ts` (#200) — one rule set for every Asset child record, so
+// memories and evidence can never drift apart.

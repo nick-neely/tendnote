@@ -1,5 +1,7 @@
 export * from "./access";
 export * from "./action-extraction";
+export * from "./asset-child-scope";
+export * from "./asset-evidence";
 export * from "./asset-memories";
 export * from "./asset-review";
 export * from "./assets";

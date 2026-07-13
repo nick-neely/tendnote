@@ -63,6 +63,8 @@ export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "asset",
   // Asset Memories are independently scoped child records under an Asset (#198).
   "asset_memory",
+  // Asset Evidence is independently scoped under an Asset, like memories (#200).
+  "asset_evidence",
 ]);
 
 // Phase 6 Asset Memory (#196/#197): the small fixed Asset Kind set — practical
@@ -98,6 +100,9 @@ export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
   "memory_edited",
   "memory_promoted",
   "memory_dismissed",
+  // Evidence capture trail (#200): the evidence id rides in detail JSON.
+  "evidence_added",
+  "evidence_removed",
 ]);
 
 // Asset Memory lifecycle (#198): suggested (review-gated) → active on accept;
@@ -106,6 +111,17 @@ export const assetMemoryStatus = pgEnum("asset_memory_status", [
   "suggested",
   "active",
   "dismissed",
+]);
+
+// The small fixed Asset Evidence kind set (#200): what a piece of evidence is,
+// never a folder taxonomy — evidence grounds Assets, it is not a document library.
+export const assetEvidenceKind = pgEnum("asset_evidence_kind", [
+  "receipt",
+  "photo",
+  "manual",
+  "warranty",
+  "link",
+  "note",
 ]);
 
 // Where an Asset write originated. Coarse on purpose — provenance detail rides in

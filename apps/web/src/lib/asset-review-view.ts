@@ -2,6 +2,7 @@ import type { AssetReviewGroupResult } from "@tendnote/db/queries/assets";
 import type { AssetKind, AssetMemoryValue, PrivacyScope } from "@tendnote/domain";
 import { assetLabelForKind } from "@tendnote/domain";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
+import { type AssetEvidenceView, toAssetEvidenceView } from "./asset-evidence-view";
 import { formatAssetMemoryValue } from "./asset-memory-value";
 
 /**
@@ -25,6 +26,8 @@ export type AssetReviewGroupView = {
     pending: boolean;
   };
   memories: AssetReviewMemoryView[];
+  /** Evidence captured into this group — reviewed alongside what it grounds (#200). */
+  evidence: AssetEvidenceView[];
   /** Existing assets the pending anchor likely duplicates — the link prompt. */
   duplicates: Array<{ id: string; name: string; kindLabel: string }>;
   source: { id: string; content: string; sourceType: string; capturedAt: string } | null;
@@ -70,6 +73,10 @@ export function toAssetReviewGroupView(result: AssetReviewGroupResult): AssetRev
       pending: result.assetPending,
     },
     memories: result.memories.map(toAssetReviewMemoryView),
+    // Review is owner-only, so the group's owner is always the viewing caller.
+    evidence: result.evidence.map((record) =>
+      toAssetEvidenceView(record, { callerUserId: result.group.ownerUserId }),
+    ),
     duplicates: result.duplicateCandidates.map((asset) => ({
       id: asset.id,
       name: asset.name,

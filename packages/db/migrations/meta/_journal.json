@@ -281,6 +281,13 @@
       "when": 1783915207649,
       "tag": "0039_asset_memory_review",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1783930797390,
+      "tag": "0040_asset_evidence_capture",
+      "breakpoints": true
     }
   ]
 }

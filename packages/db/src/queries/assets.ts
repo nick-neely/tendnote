@@ -2,6 +2,7 @@ import {
   createDrizzleAssetLifecycleStore,
   createDrizzleAssetReviewLifecycleStore,
 } from "./assets/drizzle-store";
+import type { AddAssetEvidenceInput, RemoveAssetEvidenceInput } from "./assets/evidence-types";
 import { createAssetLifecycle } from "./assets/lifecycle";
 import { createAssetReview } from "./assets/review";
 import type {
@@ -26,12 +27,15 @@ import type {
   ListAssetsInput,
 } from "./assets/types";
 
+export { createDrizzleAssetEvidenceStore } from "./assets/drizzle-evidence-store";
 export { createDrizzleAssetReviewStore } from "./assets/drizzle-review-store";
 export {
   createDrizzleAssetLifecycleStore,
   createDrizzleAssetReviewLifecycleStore,
   createDrizzleAssetStore,
 } from "./assets/drizzle-store";
+export type * from "./assets/evidence-types";
+export { createInMemoryAssetEvidenceStore } from "./assets/in-memory-evidence-store";
 export {
   createInMemoryAssetReviewLifecycleStore,
   createInMemoryAssetReviewStore,
@@ -133,4 +137,22 @@ export async function dismissAssetReviewGroup(input: AssetReviewGroupActionInput
 
 export async function linkAssetReviewGroup(input: LinkAssetReviewGroupInput) {
   return defaultAssetReview.linkAssetReviewGroup(input);
+}
+
+// --- Shared Asset Evidence Capture (#200) ---
+
+export async function addAssetEvidence(input: AddAssetEvidenceInput) {
+  return defaultAssetReview.addAssetEvidence(input);
+}
+
+export async function removeAssetEvidence(input: RemoveAssetEvidenceInput) {
+  return defaultAssetReview.removeAssetEvidence(input);
+}
+
+export async function listAssetEvidence(input: { callerUserId: string; assetId: string }) {
+  return defaultAssetReview.listAssetEvidence(input);
+}
+
+export async function getAssetEvidenceFile(input: { callerUserId: string; evidenceId: string }) {
+  return defaultAssetReview.getAssetEvidenceFile(input);
 }

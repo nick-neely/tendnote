@@ -221,8 +221,9 @@ export function isEmptyAssetEdit(edit: AssetEdit): boolean {
  * `archived`/`restored` cover the foundation slice's writes; the review slice
  * (#198) appends the proposal trail (`suggested`/`promoted`/`dismissed`), the
  * duplicate-review resolution (`linked_existing`), and the Asset Memory writes
- * (`memory_*`). Memory events stay asset-keyed — the memory id rides in
- * `detailJson` — so one trail tells an Asset's whole story.
+ * (`memory_*`); the evidence slice (#200) appends the capture trail
+ * (`evidence_*`). Memory and evidence events stay asset-keyed — the child id
+ * rides in `detailJson` — so one trail tells an Asset's whole story.
  */
 export const assetAuditEventKindSchema = z.enum([
   "created",
@@ -238,6 +239,8 @@ export const assetAuditEventKindSchema = z.enum([
   "memory_edited",
   "memory_promoted",
   "memory_dismissed",
+  "evidence_added",
+  "evidence_removed",
 ]);
 export type AssetAuditEventKind = z.infer<typeof assetAuditEventKindSchema>;
 

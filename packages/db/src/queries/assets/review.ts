@@ -1,5 +1,11 @@
-import type { AssetMemory } from "@tendnote/domain";
+import type { AssetEvidence, AssetMemory } from "@tendnote/domain";
+import type { AddAssetEvidenceInput, RemoveAssetEvidenceInput } from "./evidence-types";
 import { acceptSuggestedAsset, dismissSuggestedAsset, editSuggestedAsset } from "./review-assets";
+import {
+  addAssetEvidence,
+  getAssetEvidenceFileForCaller,
+  removeAssetEvidence,
+} from "./review-evidence";
 import { linkAssetReviewGroup } from "./review-link";
 import {
   acceptSuggestedAssetMemory,
@@ -158,6 +164,25 @@ export function createAssetReview(store: AssetReviewLifecycleStore) {
      */
     listAssetMemories: (input: { callerUserId: string; assetId: string }): Promise<AssetMemory[]> =>
       store.listVisibleAssetMemoriesForAsset(input),
+    /**
+     * Shared Asset Evidence Capture (#200): one write path for every surface —
+     * profile drop zone, mobile capture, review card, and later Eve's plus-menu
+     * (#201) — attaching to an active Asset or a still-open review group.
+     */
+    addAssetEvidence: (input: AddAssetEvidenceInput) => addAssetEvidence(store, input),
+    removeAssetEvidence: (input: RemoveAssetEvidenceInput) => removeAssetEvidence(store, input),
+    /**
+     * The evidence on one asset the caller may see — per-record scope filtering
+     * under a durable anchor, applied pre-surface, so a household Asset can hold
+     * a private receipt its members never learn exists (#196).
+     */
+    listAssetEvidence: (input: {
+      callerUserId: string;
+      assetId: string;
+    }): Promise<AssetEvidence[]> => store.listVisibleAssetEvidenceForAsset(input),
+    /** Stored upload bytes, gated by the caller's visibility of the record. */
+    getAssetEvidenceFile: (input: { callerUserId: string; evidenceId: string }) =>
+      getAssetEvidenceFileForCaller(store, input),
     acceptSuggestedAsset: (input: AcceptSuggestedAssetInput) => acceptSuggestedAsset(store, input),
     editSuggestedAsset: (input: EditSuggestedAssetInput) => editSuggestedAsset(store, input),
     dismissSuggestedAsset: (input: SuggestedAssetActionInput) =>

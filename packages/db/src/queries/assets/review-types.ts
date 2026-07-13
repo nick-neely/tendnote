@@ -2,6 +2,7 @@ import type {
   Asset,
   AssetAuditSource,
   AssetEdit,
+  AssetEvidence,
   AssetMemory,
   AssetMemoryEdit,
   AssetMemoryScope,
@@ -14,6 +15,7 @@ import type {
   SourceRecord,
 } from "@tendnote/domain";
 import type { SourceRecordResolutionStore } from "../source-records/types";
+import type { AssetEvidenceStore } from "./evidence-types";
 import type { AssetLifecycleStore } from "./types";
 
 /** Bounded patch the review layer may apply to a persisted Asset Memory. */
@@ -89,11 +91,12 @@ export type AssetReviewStore = {
 
 /**
  * Everything the review lifecycle composes over: Asset CRUD/audit/visibility +
- * households (via the lifecycle store), the memory/group store, and source-record
- * grounding lookups (ADR 0151).
+ * households (via the lifecycle store), the memory/group store, the evidence
+ * store (#200), and source-record grounding lookups (ADR 0151).
  */
 export type AssetReviewLifecycleStore = AssetLifecycleStore &
   AssetReviewStore &
+  AssetEvidenceStore &
   Pick<SourceRecordResolutionStore, "getSourceRecord">;
 
 /** One proposed memory riding a suggestion call: the reviewable content. */
@@ -230,6 +233,8 @@ export type AssetReviewGroupResult = {
   assetPending: boolean;
   /** The group's still-pending Suggested Asset Memories, oldest first. */
   memories: AssetMemory[];
+  /** The Asset Evidence captured into this group, oldest first (#200). */
+  evidence: AssetEvidence[];
   /** Existing Assets the pending anchor likely duplicates; empty once resolved. */
   duplicateCandidates: Asset[];
   sourceRecord: SourceRecord | null;

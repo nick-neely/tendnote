@@ -13,6 +13,8 @@ import { createInMemoryHouseholdStore } from "../households/in-memory-store";
 import type { HouseholdStore } from "../households/types";
 import { createInMemorySourceRecordStore } from "../source-records/in-memory-store";
 import type { InMemorySourceRecordStore } from "../source-records/types";
+import type { AssetEvidenceStore } from "./evidence-types";
+import { createInMemoryAssetEvidenceStore } from "./in-memory-evidence-store";
 import { createInMemoryAssetStore } from "./in-memory-store";
 import type { AssetReviewStore } from "./review-types";
 import type { AssetStore } from "./types";
@@ -195,6 +197,7 @@ export function createInMemoryAssetReviewStore(deps: {
  */
 export function createInMemoryAssetReviewLifecycleStore(): AssetStore &
   AssetReviewStore &
+  AssetEvidenceStore &
   HouseholdStore &
   InMemorySourceRecordStore {
   const householdStore = createInMemoryHouseholdStore();
@@ -203,9 +206,15 @@ export function createInMemoryAssetReviewLifecycleStore(): AssetStore &
     getOwnedAsset: (input) => assetStore.getAsset(input),
     householdStore,
   });
+  const evidenceStore = createInMemoryAssetEvidenceStore({
+    getOwnedAsset: (input) => assetStore.getAsset(input),
+    getVisibleAsset: (input) => assetStore.getVisibleAsset(input),
+    householdStore,
+  });
   return {
     ...createInMemorySourceRecordStore(),
     ...assetStore,
     ...reviewStore,
+    ...evidenceStore,
   };
 }

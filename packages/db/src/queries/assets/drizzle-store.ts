@@ -13,6 +13,7 @@ import { assetAuditEvents, assets } from "../../schema";
 import { createDrizzleHouseholdStore } from "../households/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
+import { createDrizzleAssetEvidenceStore } from "./drizzle-evidence-store";
 import { createDrizzleAssetReviewStore } from "./drizzle-review-store";
 import type { AssetReviewLifecycleStore } from "./review-types";
 import type { AssetLifecycleStore, AssetStore } from "./types";
@@ -164,13 +165,14 @@ export function createDrizzleAssetLifecycleStore(): AssetLifecycleStore {
 
 /**
  * Asset review lifecycle store (#198): the lifecycle store plus the Asset
- * Memory / Asset Review Group store and source-record grounding lookups —
- * everything `createAssetReview` composes over.
+ * Memory / Asset Review Group store, the Asset Evidence store (#200), and
+ * source-record grounding lookups — everything `createAssetReview` composes over.
  */
 export function createDrizzleAssetReviewLifecycleStore(): AssetReviewLifecycleStore {
   return {
     ...createDrizzleSourceRecordStore(),
     ...createDrizzleAssetLifecycleStore(),
     ...createDrizzleAssetReviewStore(),
+    ...createDrizzleAssetEvidenceStore(),
   };
 }

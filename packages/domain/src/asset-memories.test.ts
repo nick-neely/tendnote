@@ -4,11 +4,11 @@ import {
   assetMemorySchema,
   assetMemoryValueSchema,
   createAssetMemorySchema,
-  defaultMemoryScopeForAsset,
+  defaultChildScopeForAsset,
   isEmptyAssetMemoryEdit,
-  requireMemoryScopeWithinAsset,
+  requireChildScopeWithinAsset,
   resolveAssetMemoryContentPatch,
-  resolveLinkedMemoryVisibility,
+  resolveLinkedChildVisibility,
 } from "./index";
 
 const BASE = {
@@ -125,45 +125,45 @@ describe("edit-before-accept content patches", () => {
 describe("child-scope ceiling (#196)", () => {
   it("allows a memory as narrow as or narrower than its asset", () => {
     expect(() =>
-      requireMemoryScopeWithinAsset({ memoryScope: "private", assetScope: "household" }),
+      requireChildScopeWithinAsset({ childScope: "private", assetScope: "household" }),
     ).not.toThrow();
     expect(() =>
-      requireMemoryScopeWithinAsset({ memoryScope: "household", assetScope: "household" }),
+      requireChildScopeWithinAsset({ childScope: "household", assetScope: "household" }),
     ).not.toThrow();
     expect(() =>
-      requireMemoryScopeWithinAsset({ memoryScope: "private", assetScope: "private" }),
+      requireChildScopeWithinAsset({ childScope: "private", assetScope: "private" }),
     ).not.toThrow();
   });
 
   it("rejects a memory broader than its asset", () => {
     expect(() =>
-      requireMemoryScopeWithinAsset({ memoryScope: "household", assetScope: "private" }),
+      requireChildScopeWithinAsset({ childScope: "household", assetScope: "private" }),
     ).toThrow(AssetValidationError);
     expect(() =>
-      requireMemoryScopeWithinAsset({ memoryScope: "household", assetScope: "shared" }),
+      requireChildScopeWithinAsset({ childScope: "household", assetScope: "shared" }),
     ).toThrow(AssetValidationError);
   });
 
   it("defaults a memory to its asset's scope where this slice supports it, else private", () => {
-    expect(defaultMemoryScopeForAsset("household")).toBe("household");
-    expect(defaultMemoryScopeForAsset("shared")).toBe("private");
-    expect(defaultMemoryScopeForAsset("private")).toBe("private");
+    expect(defaultChildScopeForAsset("household")).toBe("household");
+    expect(defaultChildScopeForAsset("shared")).toBe("private");
+    expect(defaultChildScopeForAsset("private")).toBe("private");
   });
 
   it("clamps a linked memory's visibility to what the target asset allows", () => {
     const householdTarget = { scope: "household", householdId: "hh-1" } as const;
     expect(
-      resolveLinkedMemoryVisibility({ memoryScope: "household", target: householdTarget }),
+      resolveLinkedChildVisibility({ childScope: "household", target: householdTarget }),
     ).toEqual({ scope: "household", householdId: "hh-1" });
     expect(
-      resolveLinkedMemoryVisibility({
-        memoryScope: "household",
+      resolveLinkedChildVisibility({
+        childScope: "household",
         target: { scope: "private", householdId: null },
       }),
     ).toEqual({ scope: "private", householdId: null });
     expect(
-      resolveLinkedMemoryVisibility({
-        memoryScope: "private",
+      resolveLinkedChildVisibility({
+        childScope: "private",
         target: householdTarget,
       }),
     ).toEqual({ scope: "private", householdId: null });

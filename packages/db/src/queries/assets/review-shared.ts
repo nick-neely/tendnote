@@ -5,10 +5,10 @@ import {
   type AssetMemoryScope,
   AssetValidationError,
   canUseSensitiveContext,
-  defaultMemoryScopeForAsset,
+  defaultChildScopeForAsset,
   findAssetDuplicateCandidates,
   isDurableAssetStatus,
-  requireMemoryScopeWithinAsset,
+  requireChildScopeWithinAsset,
   type SourceRecord,
 } from "@tendnote/domain";
 import { recordAudit } from "./lifecycle";
@@ -188,8 +188,12 @@ export async function buildGroupResult(
   }
   const assetPending = asset.status === "suggested";
 
-  const [memories, sourceRecord, existingAssets] = await Promise.all([
+  const [memories, evidence, sourceRecord, existingAssets] = await Promise.all([
     listPendingMemories(store, group),
+    store.listAssetEvidenceForOwner({
+      ownerUserId: group.ownerUserId,
+      reviewGroupId: group.id,
+    }),
     group.sourceRecordId
       ? store.getSourceRecord({
           ownerUserId: group.ownerUserId,
@@ -209,6 +213,7 @@ export async function buildGroupResult(
     asset,
     assetPending,
     memories,
+    evidence,
     duplicateCandidates: assetPending
       ? findAssetDuplicateCandidates({
           name: asset.name,
@@ -243,8 +248,8 @@ export async function writeSuggestedMemory(
   },
 ): Promise<AssetMemory> {
   const scope: AssetMemoryScope =
-    input.content.scope ?? defaultMemoryScopeForAsset(input.anchor.scope);
-  requireMemoryScopeWithinAsset({ memoryScope: scope, assetScope: input.anchor.scope });
+    input.content.scope ?? defaultChildScopeForAsset(input.anchor.scope);
+  requireChildScopeWithinAsset({ childScope: scope, assetScope: input.anchor.scope });
 
   const memory = await store.createAssetMemory({
     assetId: input.anchor.id,

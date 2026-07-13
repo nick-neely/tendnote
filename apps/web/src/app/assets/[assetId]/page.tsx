@@ -1,14 +1,16 @@
-import { getAsset, listAssetMemories } from "@tendnote/db/queries/assets";
+import { getAsset, listAssetEvidence, listAssetMemories } from "@tendnote/db/queries/assets";
 import type { AssetMemory } from "@tendnote/domain";
 import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { AssetEvidenceSection } from "@/components/asset-evidence-section";
 import { AssetProfileControls } from "@/components/asset-profile-controls";
 import { ASSET_KIND_ICONS, AssetArchivedBadge } from "@/components/asset-shared";
 import { ActionScopeChip } from "@/components/general-action-shared";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { toAssetEvidenceView } from "@/lib/asset-evidence-view";
 import { formatAssetMemoryValue } from "@/lib/asset-memory-value";
 import { type AssetView, toAssetView } from "@/lib/asset-view";
 
@@ -34,10 +36,15 @@ export default async function AssetProfilePage({
     notFound();
   }
 
-  // The reviewed details this caller may see — filtered per record, so a
-  // household asset can carry a private detail its members never see (#198).
-  const memories = await listAssetMemories({ callerUserId, assetId });
+  // The reviewed details and evidence this caller may see — each filtered per
+  // record, so a household asset can carry a private detail or receipt its
+  // members never see (#198, #200).
+  const [memories, evidence] = await Promise.all([
+    listAssetMemories({ callerUserId, assetId }),
+    listAssetEvidence({ callerUserId, assetId }),
+  ]);
   const view = toAssetView(asset, { callerUserId });
+  const evidenceViews = evidence.map((record) => toAssetEvidenceView(record, { callerUserId }));
 
   return (
     <AppShell>
@@ -77,7 +84,12 @@ export default async function AssetProfilePage({
           description="Receipts, manuals, photos, and links that ground what Tendnote remembers."
           title="Evidence"
         >
-          <LedgerEmpty>No receipts, manuals, or photos attached yet.</LedgerEmpty>
+          <AssetEvidenceSection
+            assetId={assetId}
+            assetScope={view.scope}
+            canCapture={view.owned && !view.archived}
+            initialEvidence={evidenceViews}
+          />
         </ProfileSection>
 
         <ProfileSection

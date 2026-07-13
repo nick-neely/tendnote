@@ -723,7 +723,9 @@ describe("memory visibility filtering", () => {
     });
 
     const ownerSees = await review.listAssetMemories({ callerUserId: OWNER, assetId: asset.id });
-    expect(ownerSees.map((memory) => memory.label)).toEqual(["Filter model", "Paid"]);
+    // Sorted: both rows can share a created-at millisecond, and the random-id
+    // tiebreak is unordered — this test is about filtering, not ordering.
+    expect(ownerSees.map((memory) => memory.label).sort()).toEqual(["Filter model", "Paid"]);
 
     // The member sees the household detail, never the private one.
     const memberSees = await review.listAssetMemories({ callerUserId: MEMBER, assetId: asset.id });

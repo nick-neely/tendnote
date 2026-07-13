@@ -16,6 +16,7 @@ import {
   linkAssetReviewGroupAction,
 } from "@/app/actions/asset-review";
 import { MemoryEditForm } from "@/components/asset-memory-edit-form";
+import { AssetReviewEvidenceBlock, DismissGroupButton } from "@/components/asset-review-evidence";
 import { AssetKindBadge } from "@/components/asset-shared";
 import { ActionScopeChip, GENERIC_ERROR } from "@/components/general-action-shared";
 import { Button } from "@/components/ui/button";
@@ -124,6 +125,14 @@ export function AssetReviewGroupCard({
         </ul>
       ) : null}
 
+      {/* Evidence captured for this group — attachable before the destination
+          Asset is accepted, reviewed alongside what it grounds (#200). */}
+      <AssetReviewEvidenceBlock
+        disabled={pending}
+        onEvidenceChange={(evidence) => onUpdate?.({ ...review, evidence })}
+        review={review}
+      />
+
       {review.source ? (
         <div className="border-t border-accent/20 pt-2.5">
           <p className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
@@ -149,16 +158,14 @@ export function AssetReviewGroupCard({
           className="flex flex-wrap items-center justify-end gap-1.5"
           role="group"
         >
-          <Button
+          {/* Dismissing a pending proposal deletes its captured evidence with it —
+              the reviewer confirms that explicitly, never by accident (#196). */}
+          <DismissGroupButton
+            batchable={batchable}
             disabled={pending}
-            onClick={() => run(() => dismissAssetReviewGroupAction({ groupId: review.groupId }))}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <XIcon />
-            {batchable ? "Dismiss all" : "Dismiss"}
-          </Button>
+            evidenceAtRisk={review.asset.pending ? review.evidence.length : 0}
+            onDismiss={() => run(() => dismissAssetReviewGroupAction({ groupId: review.groupId }))}
+          />
           <Button
             disabled={pending}
             onClick={() => run(() => acceptAssetReviewGroupAction({ groupId: review.groupId }))}

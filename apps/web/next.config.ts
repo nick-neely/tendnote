@@ -4,6 +4,13 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactCompiler: true,
   transpilePackages: ["@tendnote/db", "@tendnote/domain"],
+  experimental: {
+    serverActions: {
+      // Asset Evidence uploads (#200): the domain caps files at 10 MB
+      // (ASSET_EVIDENCE_MAX_FILE_BYTES); leave headroom for multipart overhead.
+      bodySizeLimit: "12mb",
+    },
+  },
 };
 
 // Mount the Eve agent (apps/agent) at the same origin. In dev withEve spawns

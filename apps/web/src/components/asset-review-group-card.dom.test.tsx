@@ -33,6 +33,15 @@ vi.mock("@/app/actions/asset-review", () => ({
   linkAssetReviewGroupAction: (...args: unknown[]) => linkAssetReviewGroupAction(...args),
 }));
 
+// The card embeds the shared evidence capture block (#200); its server actions
+// are exercised by asset-evidence-capture.dom.test.tsx.
+const addAssetEvidenceAction = vi.fn();
+const removeAssetEvidenceAction = vi.fn();
+vi.mock("@/app/actions/asset-evidence", () => ({
+  addAssetEvidenceAction: (...args: unknown[]) => addAssetEvidenceAction(...args),
+  removeAssetEvidenceAction: (...args: unknown[]) => removeAssetEvidenceAction(...args),
+}));
+
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh, push: vi.fn() }),
@@ -76,6 +85,7 @@ function reviewFixture(overrides: Partial<AssetReviewGroupView> = {}): AssetRevi
         notes: null,
       },
     ],
+    evidence: [],
     duplicates: [{ id: "asset-9", name: "Refrigerator water filter", kindLabel: "Appliance" }],
     source: {
       id: "source-1",
@@ -275,5 +285,131 @@ describe("AssetReviewGroupCard", () => {
     // A single pending member drops the "all" from the batch labels.
     expect(screen.getByRole("button", { name: /^Accept$/ })).toBeDefined();
     expect(screen.getByRole("button", { name: /^Dismiss$/ })).toBeDefined();
+  });
+
+  it("attaches evidence to the group before its asset is accepted (#200)", async () => {
+    URL.createObjectURL = vi.fn(() => "blob:preview");
+    URL.revokeObjectURL = vi.fn();
+    const attached = {
+      id: "ev-1",
+      kind: "photo" as const,
+      kindLabel: "Photo",
+      label: "filter-label",
+      hasFile: true,
+      fileName: "filter-label.png",
+      isImage: true,
+      fileHref: "/api/asset-evidence/ev-1/file",
+      sizeLabel: "4 KB",
+      url: null,
+      capturedText: null,
+      moneyLabel: null,
+      purchasedOnLabel: null,
+      renewsOnLabel: null,
+      scope: "private" as const,
+      owned: true,
+      addedLabel: "Added Jul 13",
+    };
+    addAssetEvidenceAction.mockResolvedValue({ ok: true, view: attached });
+    const onUpdate = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <AssetReviewGroupCard onResolve={vi.fn()} onUpdate={onUpdate} review={reviewFixture()} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /attach evidence/i }));
+    await user.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      new File([new Uint8Array(4)], "filter-label.png", { type: "image/png" }),
+    );
+    await user.click(screen.getByRole("button", { name: /^attach evidence$/i }));
+
+    // The capture routed through the shared action, targeted at the group —
+    // never a separate chat/review attachment path.
+    await waitFor(() => expect(addAssetEvidenceAction).toHaveBeenCalled());
+    const formData = addAssetEvidenceAction.mock.calls[0]?.[0] as FormData;
+    expect(formData.get("reviewGroupId")).toBe("group-1");
+    // The card reports the appended strip upward; pending members are untouched.
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ evidence: [attached], pendingCount: 4 }),
+      ),
+    );
+  });
+
+  it("dismisses a group with evidence only through an informed, armed confirm (#196)", async () => {
+    dismissAssetReviewGroupAction.mockResolvedValue(resolved());
+    const user = userEvent.setup();
+    const view = reviewFixture({
+      evidence: [
+        {
+          id: "ev-3",
+          kind: "photo" as const,
+          kindLabel: "Photo",
+          label: "Filter label photo",
+          hasFile: true,
+          fileName: "label.png",
+          isImage: true,
+          fileHref: "/api/asset-evidence/ev-3/file",
+          sizeLabel: "4 KB",
+          url: null,
+          capturedText: null,
+          moneyLabel: null,
+          purchasedOnLabel: null,
+          renewsOnLabel: null,
+          scope: "private" as const,
+          owned: true,
+          addedLabel: "Added Jul 13",
+        },
+      ],
+    });
+    render(<AssetReviewGroupCard onResolve={vi.fn()} review={view} />);
+
+    // First click never dismisses: it arms a confirm that says what's at stake.
+    await user.click(screen.getByRole("button", { name: /^Dismiss all$/ }));
+    expect(dismissAssetReviewGroupAction).not.toHaveBeenCalled();
+
+    const confirmButton = screen.getByRole("button", {
+      name: /Dismiss all — deletes 1 attachment\?/,
+    });
+    // Disarmed for a beat, so a double-click can't land the second step.
+    await user.click(confirmButton);
+    expect(dismissAssetReviewGroupAction).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(confirmButton).toHaveProperty("disabled", false));
+    await user.click(confirmButton);
+    await waitFor(() =>
+      expect(dismissAssetReviewGroupAction).toHaveBeenCalledWith({ groupId: "group-1" }),
+    );
+  });
+
+  it("renders attached evidence in the strip with its metadata line", () => {
+    const view = reviewFixture({
+      evidence: [
+        {
+          id: "ev-2",
+          kind: "receipt" as const,
+          kindLabel: "Receipt",
+          label: "Home Depot receipt",
+          hasFile: true,
+          fileName: "receipt.jpg",
+          isImage: true,
+          fileHref: "/api/asset-evidence/ev-2/file",
+          sizeLabel: "47 KB",
+          url: null,
+          capturedText: null,
+          moneyLabel: "$42.99",
+          purchasedOnLabel: "Mar 14, 2026",
+          renewsOnLabel: null,
+          scope: "private" as const,
+          owned: true,
+          addedLabel: "Added Jul 13",
+        },
+      ],
+    });
+    render(<AssetReviewGroupCard onResolve={vi.fn()} review={view} />);
+
+    expect(screen.getByText("Home Depot receipt")).toBeDefined();
+    expect(screen.getByText(/Receipt · 47 KB · \$42\.99 · bought Mar 14, 2026/)).toBeDefined();
+    expect(screen.getByRole("button", { name: /remove Home Depot receipt/i })).toBeDefined();
   });
 });

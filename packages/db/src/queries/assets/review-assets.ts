@@ -188,5 +188,25 @@ export async function dismissSuggestedAsset(
     });
   }
 
+  // Evidence captured for the rejected proposal goes with it — rows and bytes
+  // both — so no invisible document bucket forms under a dismissed husk (#200).
+  // The reviewer dismisses the card that *shows* this evidence, so nothing is
+  // discarded sight unseen.
+  for (const record of await store.listAssetEvidenceForOwner({
+    ownerUserId: input.actorUserId,
+    assetId: asset.id,
+  })) {
+    await store.deleteAssetEvidence({
+      ownerUserId: record.ownerUserId,
+      evidenceId: record.id,
+    });
+    await recordAudit(store, updated, {
+      kind: "evidence_removed",
+      actorUserId: input.actorUserId,
+      source: input.source ?? "user",
+      detail: { evidenceId: record.id, kind: record.kind, label: record.label, cascade: true },
+    });
+  }
+
   return buildGroupResult(store, group);
 }

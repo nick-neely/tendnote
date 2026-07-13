@@ -2,7 +2,7 @@ import {
   type Asset,
   AssetValidationError,
   isDurableAssetStatus,
-  resolveLinkedMemoryVisibility,
+  resolveLinkedChildVisibility,
 } from "@tendnote/domain";
 import { recordAudit } from "./lifecycle";
 import { buildGroupResult, listPendingMemories, loadAnchor, requireGroup } from "./review-shared";
@@ -46,9 +46,10 @@ async function resolveAnchorAsLinked(
     anchor: Asset;
     target: Asset;
     memoriesLinked: number;
+    evidenceLinked: number;
   },
 ): Promise<void> {
-  const { input, anchor, target, memoriesLinked } = args;
+  const { input, anchor, target, memoriesLinked, evidenceLinked } = args;
   const husk = await store.updateAsset({
     ownerUserId: anchor.ownerUserId,
     assetId: anchor.id,
@@ -58,13 +59,13 @@ async function resolveAnchorAsLinked(
     kind: "linked_existing",
     actorUserId: input.actorUserId,
     source: input.source ?? "user",
-    detail: { targetAssetId: target.id, memoriesLinked, resolvedAs: "link" },
+    detail: { targetAssetId: target.id, memoriesLinked, evidenceLinked, resolvedAs: "link" },
   });
   await recordAudit(store, target, {
     kind: "linked_existing",
     actorUserId: input.actorUserId,
     source: input.source ?? "user",
-    detail: { fromAssetId: anchor.id, memoriesLinked },
+    detail: { fromAssetId: anchor.id, memoriesLinked, evidenceLinked },
   });
 }
 
@@ -96,7 +97,7 @@ export async function linkAssetReviewGroup(
   const pending = await listPendingMemories(store, group);
   for (const memory of pending) {
     // Visibility is clamped to what the target allows — linking never widens.
-    const visibility = resolveLinkedMemoryVisibility({ memoryScope: memory.scope, target });
+    const visibility = resolveLinkedChildVisibility({ childScope: memory.scope, target });
     await store.updateAssetMemory({
       ownerUserId: memory.ownerUserId,
       memoryId: memory.id,
@@ -109,7 +110,32 @@ export async function linkAssetReviewGroup(
     });
   }
 
-  await resolveAnchorAsLinked(store, { input, anchor, target, memoriesLinked: pending.length });
+  // The group's captured evidence rides along, under the same clamp (#200).
+  const evidence = await store.listAssetEvidenceForOwner({
+    ownerUserId: group.ownerUserId,
+    reviewGroupId: group.id,
+  });
+  for (const record of evidence) {
+    const visibility = resolveLinkedChildVisibility({ childScope: record.scope, target });
+    await store.updateAssetEvidence({
+      ownerUserId: record.ownerUserId,
+      evidenceId: record.id,
+      patch: {
+        assetId: target.id,
+        scope: visibility.scope,
+        householdId: visibility.householdId,
+        lastActorUserId: input.actorUserId,
+      },
+    });
+  }
+
+  await resolveAnchorAsLinked(store, {
+    input,
+    anchor,
+    target,
+    memoriesLinked: pending.length,
+    evidenceLinked: evidence.length,
+  });
 
   const updatedGroup = await store.updateAssetReviewGroupAsset({
     ownerUserId: group.ownerUserId,
