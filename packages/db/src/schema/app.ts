@@ -1,5 +1,6 @@
 export * from "./app/access-profiles";
 export * from "./app/asset-evidence";
+export * from "./app/asset-links";
 export * from "./app/asset-memories";
 export * from "./app/asset-review-groups";
 export * from "./app/assets";

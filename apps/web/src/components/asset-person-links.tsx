@@ -1,0 +1,175 @@
+"use client";
+
+import type { AssetPersonRelation } from "@tendnote/domain";
+import { ASSET_PERSON_RELATION_OPTIONS } from "@tendnote/domain";
+import { XIcon } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { addAssetPersonLinkAction, removeAssetPersonLinkAction } from "@/app/actions/asset-links";
+import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import type { AssetLinkMutationResult, AssetPersonLinkView } from "@/lib/asset-link-view";
+import { useMutationSubmit } from "@/lib/use-mutation-submit";
+
+/** One of the viewer's people, offered by the add form: id + name only. */
+export type LinkablePersonOption = { id: string; displayName: string };
+
+/**
+ * The Asset Profile's People section (#202): contextual person links — who
+ * recommended, borrowed, uses, stores, services, or knows about this asset.
+ * Each row reads "‹Marcus› — borrowed it" and deep-links to the person. Links
+ * are the viewer's own (people are theirs alone) and never make anyone an
+ * owner or widen who can see the asset.
+ */
+export function AssetPersonLinks({
+  assetId,
+  links,
+  people,
+  canLink,
+}: {
+  assetId: string;
+  links: AssetPersonLinkView[];
+  /** The viewer's own people, for the add form. */
+  people: LinkablePersonOption[];
+  /** Linking needs the asset active; viewers of an archive just read. */
+  canLink: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      {links.length > 0 ? (
+        <LedgerList>
+          {links.map((link) => (
+            <AssetPersonLinkRow key={link.linkId} link={link} />
+          ))}
+        </LedgerList>
+      ) : (
+        <LedgerEmpty>
+          No people linked yet. Remember who recommended this, borrowed it, or services it.
+        </LedgerEmpty>
+      )}
+      {canLink && people.length > 0 ? (
+        <AddAssetPersonLinkForm assetId={assetId} people={people} />
+      ) : null}
+    </div>
+  );
+}
+
+/** One person row: name as the link, the relation phrase in quiet mono, removal inline. */
+function AssetPersonLinkRow({ link }: { link: AssetPersonLinkView }) {
+  const router = useRouter();
+  const { error, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+
+  function remove() {
+    submit(
+      () => removeAssetPersonLinkAction({ linkId: link.linkId }),
+      () => router.refresh(),
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1 px-4 py-3">
+      <div className="flex items-center justify-between gap-4">
+        <p className="min-w-0 text-[length:var(--text-body)] leading-[var(--text-body-line)]">
+          <Link
+            className="rounded-sm font-medium underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            href={`/people/${link.personId}`}
+          >
+            {link.displayName}
+          </Link>
+          <span className="ml-2 font-mono text-[length:var(--text-caption)] text-muted-foreground">
+            {link.relationLabel}
+          </span>
+        </p>
+        <Button
+          aria-label={`Remove link to ${link.displayName}`}
+          className="shrink-0"
+          disabled={pending}
+          onClick={remove}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          {pending ? <Spinner /> : <XIcon />}
+        </Button>
+      </div>
+      {error ? <ErrorText message={error} /> : null}
+    </div>
+  );
+}
+
+/** The add form, sentence-shaped: "‹Person› ‹relation›" → Link. */
+function AddAssetPersonLinkForm({
+  assetId,
+  people,
+}: {
+  assetId: string;
+  people: LinkablePersonOption[];
+}) {
+  const router = useRouter();
+  const [personId, setPersonId] = useState(people[0]?.id ?? "");
+  const [relation, setRelation] = useState<AssetPersonRelation>("recommended");
+  const { error, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+
+  function add() {
+    if (!personId) {
+      return;
+    }
+    submit(
+      (): Promise<AssetLinkMutationResult> =>
+        addAssetPersonLinkAction({ assetId, personId, relation }),
+      () => router.refresh(),
+    );
+  }
+
+  return (
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        add();
+      }}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Select onValueChange={setPersonId} value={personId}>
+          <SelectTrigger aria-label="Person to link" className="w-fit min-w-36" size="sm">
+            <SelectValue placeholder="Someone" />
+          </SelectTrigger>
+          <SelectContent>
+            {people.map((person) => (
+              <SelectItem key={person.id} value={person.id}>
+                {person.displayName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select onValueChange={(next) => setRelation(next as AssetPersonRelation)} value={relation}>
+          <SelectTrigger aria-label="Relation" className="w-fit min-w-32" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ASSET_PERSON_RELATION_OPTIONS.map((option) => (
+              <SelectItem key={option.relation} value={option.relation}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button disabled={pending || !personId} size="sm" type="submit" variant="outline">
+          {pending ? <Spinner /> : null}
+          Link
+        </Button>
+      </div>
+      {error ? <ErrorText message={error} /> : null}
+    </form>
+  );
+}

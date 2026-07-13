@@ -1,22 +1,32 @@
 import {
   getAsset,
   listAssetEvidence,
+  listAssetHistory,
   listAssetMemories,
+  listAssetPersonLinks,
+  listAssets,
   listLinkedGeneralActionsForAsset,
+  listRelatedAssetLinks,
 } from "@tendnote/db/queries/assets";
+import { searchPeople } from "@tendnote/db/queries/people";
 import type { AssetMemory } from "@tendnote/domain";
 import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { AssetEvidenceSection } from "@/components/asset-evidence-section";
+import { AssetHistory } from "@/components/asset-history";
+import { AssetPersonLinks } from "@/components/asset-person-links";
 import { AssetProfileControls } from "@/components/asset-profile-controls";
 import { AssetRelatedActions } from "@/components/asset-related-actions";
+import { AssetRelatedLinks } from "@/components/asset-related-links";
 import { ASSET_KIND_ICONS, AssetArchivedBadge } from "@/components/asset-shared";
 import { ActionScopeChip } from "@/components/general-action-shared";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { toAssetEvidenceView } from "@/lib/asset-evidence-view";
+import { toAssetHistoryEntryView } from "@/lib/asset-history-view";
+import { toAssetPersonLinkView, toRelatedAssetLinkView } from "@/lib/asset-link-view";
 import { formatAssetMemoryValue } from "@/lib/asset-memory-value";
 import { toAssetRelatedActionView } from "@/lib/asset-related-action-view";
 import { type AssetView, toAssetView } from "@/lib/asset-view";
@@ -24,11 +34,13 @@ import { type AssetView, toAssetView } from "@/lib/asset-view";
 export const dynamic = "force-dynamic";
 
 /**
- * The Asset Profile (Phase 6 #197–#200): the asset's core metadata, visibility
- * audience, and archive state, plus its reviewed memories, captured evidence, and
- * the related General Actions its hints came from. Deterministic denial is a
- * plain 404 — a non-visible asset and a missing one are indistinguishable
- * (ADR 0153).
+ * The Asset Profile (Phase 6 #197–#202): the coherent read home for one Asset —
+ * its core metadata, visibility audience, and archive state, then everything the
+ * caller may know about it: reviewed memories, captured evidence, related
+ * General Actions, lightweight Related Asset Links and Person Links, and the
+ * derived Asset History. Every section is filtered per record for this caller.
+ * Deterministic denial is a plain 404 — a non-visible asset and a missing one
+ * are indistinguishable (ADR 0153).
  */
 export default async function AssetProfilePage({
   params,
@@ -43,18 +55,42 @@ export default async function AssetProfilePage({
     notFound();
   }
 
-  // The reviewed details, evidence, and related General Actions this caller may
-  // see — each filtered per record, so a household asset can carry a private
-  // detail, receipt, or action its members never see (#198, #199, #200).
-  const [memories, evidence, relatedActions] = await Promise.all([
+  // Everything this caller may see about the asset — each read filtered per
+  // record, so a household asset can carry a private detail, receipt, action,
+  // link, or person its members never see (#198–#202).
+  const [
+    memories,
+    evidence,
+    relatedActions,
+    relatedLinks,
+    personLinks,
+    history,
+    visibleAssets,
+    people,
+  ] = await Promise.all([
     listAssetMemories({ callerUserId, assetId }),
     listAssetEvidence({ callerUserId, assetId }),
     listLinkedGeneralActionsForAsset({ callerUserId, assetId }),
+    listRelatedAssetLinks({ callerUserId, assetId }),
+    listAssetPersonLinks({ callerUserId, assetId }),
+    listAssetHistory({ callerUserId, assetId }),
+    // Link candidates: the active assets this caller can see (self excluded below).
+    listAssets({ callerUserId, statuses: ["active"] }),
+    // The caller's own people, for contextual person links.
+    searchPeople({ ownerUserId: callerUserId, limit: 100 }),
   ]);
   const now = new Date();
   const view = toAssetView(asset, { callerUserId });
   const evidenceViews = evidence.map((record) => toAssetEvidenceView(record, { callerUserId }));
   const relatedActionViews = relatedActions.map((entry) => toAssetRelatedActionView(entry, now));
+  const relatedLinkViews = relatedLinks.map((entry) => toRelatedAssetLinkView(entry));
+  const personLinkViews = personLinks.map((entry) => toAssetPersonLinkView(entry));
+  const historyViews = history.map((entry) => toAssetHistoryEntryView(entry, now));
+  const linkableAssets = visibleAssets
+    .filter((candidate) => candidate.id !== assetId)
+    .map((candidate) => ({ id: candidate.id, name: candidate.name }));
+  // Links are context anyone who can see the asset may add — while it's active.
+  const canLink = !view.archived;
 
   return (
     <AppShell>
@@ -107,6 +143,37 @@ export default async function AssetProfilePage({
           title="Related actions"
         >
           <AssetRelatedActions actions={relatedActionViews} />
+        </ProfileSection>
+
+        <ProfileSection
+          description="What this fits, uses, replaces, covers, or is stored with — context, not a hierarchy."
+          title="Related assets"
+        >
+          <AssetRelatedLinks
+            assetId={assetId}
+            canLink={canLink}
+            linkableAssets={linkableAssets}
+            links={relatedLinkViews}
+          />
+        </ProfileSection>
+
+        <ProfileSection
+          description="Who recommended it, borrowed it, or services it — context that never changes who can see this."
+          title="People"
+        >
+          <AssetPersonLinks
+            assetId={assetId}
+            canLink={canLink}
+            links={personLinkViews}
+            people={people.map((person) => ({ id: person.id, displayName: person.displayName }))}
+          />
+        </ProfileSection>
+
+        <ProfileSection
+          description="What happened over time — drawn from this asset's own story, its confirmed details, and its related actions."
+          title="History"
+        >
+          <AssetHistory entries={historyViews} />
         </ProfileSection>
       </div>
     </AppShell>
