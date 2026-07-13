@@ -4,6 +4,7 @@ import type {
   AssetEvidence,
   AssetEvidenceKind,
   AssetEvidenceMoney,
+  AssetKind,
   CreateAssetEvidenceInput,
 } from "@tendnote/domain";
 
@@ -102,6 +103,22 @@ export type AddAssetEvidenceInput = {
   scope?: AssetChildScope;
   sourceRecordId?: string | null;
   source?: AssetAuditSource;
+};
+
+/**
+ * Captures one piece of Asset Evidence to a *new* destination (#201): the user
+ * named a thing Tendnote doesn't track yet, so the capture opens a review-gated
+ * Suggested Asset proposal and the evidence rides its Asset Review Group. The
+ * proposal argues private visibility; a wider audience is chosen at acceptance,
+ * exactly as other Suggested Assets resolve. Explicit user intent (the user
+ * typed the name) is the provenance, so the group records a null source —
+ * paralleling the action-hint promotion bridge (#199).
+ */
+export type AddAssetEvidenceToNewAssetInput = Omit<
+  AddAssetEvidenceInput,
+  "assetId" | "reviewGroupId" | "scope"
+> & {
+  asset: { name: string; kind: AssetKind };
 };
 
 export type RemoveAssetEvidenceInput = {

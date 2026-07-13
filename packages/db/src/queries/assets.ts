@@ -8,7 +8,11 @@ import {
   createDrizzleAssetLifecycleStore,
   createDrizzleAssetReviewLifecycleStore,
 } from "./assets/drizzle-store";
-import type { AddAssetEvidenceInput, RemoveAssetEvidenceInput } from "./assets/evidence-types";
+import type {
+  AddAssetEvidenceInput,
+  AddAssetEvidenceToNewAssetInput,
+  RemoveAssetEvidenceInput,
+} from "./assets/evidence-types";
 import { createAssetLifecycle } from "./assets/lifecycle";
 import { createAssetReview } from "./assets/review";
 import type {
@@ -180,6 +184,14 @@ export async function getPromotedFromGeneralAction(input: {
 
 export async function addAssetEvidence(input: AddAssetEvidenceInput) {
   return defaultAssetReview.addAssetEvidence(input);
+}
+
+export async function addAssetEvidenceToNewAsset(input: AddAssetEvidenceToNewAssetInput) {
+  return defaultAssetReview.addAssetEvidenceToNewAsset(input);
+}
+
+export async function listAssetEvidenceCaptureTargets(input: { ownerUserId: string }) {
+  return defaultAssetReview.listAssetEvidenceCaptureTargets(input);
 }
 
 export async function removeAssetEvidence(input: RemoveAssetEvidenceInput) {

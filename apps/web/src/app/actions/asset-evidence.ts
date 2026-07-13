@@ -1,11 +1,28 @@
 "use server";
 
 import type { AddAssetEvidenceInput } from "@tendnote/db/queries/assets";
-import { addAssetEvidence, removeAssetEvidence } from "@tendnote/db/queries/assets";
-import { assertAssetEvidenceFileAccepted, assetEvidenceKindSchema } from "@tendnote/domain";
+import {
+  addAssetEvidence,
+  addAssetEvidenceToNewAsset,
+  listAssetEvidenceCaptureTargets,
+  removeAssetEvidence,
+} from "@tendnote/db/queries/assets";
+import {
+  assertAssetEvidenceFileAccepted,
+  assetEvidenceKindSchema,
+  assetKindSchema,
+  assetLabelForKind,
+} from "@tendnote/domain";
+import { visibilityLabelForScope } from "@tendnote/domain/privacy";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { type AssetEvidenceMutationResult, toAssetEvidenceView } from "@/lib/asset-evidence-view";
+import type { EvidenceDestination } from "@/lib/asset-evidence-destination";
+import {
+  type AssetEvidenceMutationResult,
+  type AssetEvidenceView,
+  toAssetEvidenceView,
+} from "@/lib/asset-evidence-view";
 import { runAssetsMutation } from "@/lib/asset-mutation";
 
 /**
@@ -66,16 +83,15 @@ async function readUploadedFile(formData: FormData): Promise<AddAssetEvidenceInp
   };
 }
 
-/** Maps parsed fields + upload into the seam's capture input. */
-function toCaptureInput(
-  ownerUserId: string,
-  target: z.infer<typeof targetSchema>,
+/**
+ * Maps parsed fields + upload into the evidence part of a capture input — shared
+ * by the existing-target and new-asset arms so the field mapping never forks.
+ */
+function toEvidenceFields(
   fields: z.infer<typeof evidenceFieldsSchema>,
   file: AddAssetEvidenceInput["file"],
-): AddAssetEvidenceInput {
+): Omit<AddAssetEvidenceInput, "ownerUserId" | "assetId" | "reviewGroupId"> {
   return {
-    ownerUserId,
-    ...target,
     kind: fields.kind,
     label: fields.label,
     file,
@@ -91,6 +107,16 @@ function toCaptureInput(
     // narrows to private. Widening beyond the anchor is impossible either way.
     ...(fields.keepPrivate === "true" ? { scope: "private" as const } : {}),
   };
+}
+
+/** Maps parsed fields + upload into the seam's capture input. */
+function toCaptureInput(
+  ownerUserId: string,
+  target: z.infer<typeof targetSchema>,
+  fields: z.infer<typeof evidenceFieldsSchema>,
+  file: AddAssetEvidenceInput["file"],
+): AddAssetEvidenceInput {
+  return { ownerUserId, ...target, ...toEvidenceFields(fields, file) };
 }
 
 /**
@@ -116,6 +142,85 @@ export async function addAssetEvidenceAction(
     },
     (evidence) => toAssetEvidenceView(evidence, { callerUserId: ownerUserId }),
   );
+}
+
+// The chat capture's new-asset arm names the thing being proposed; `kind` and
+// `label` stay the evidence's own fields, so these carry an `asset` prefix.
+const newAssetSchema = z.object({
+  assetName: z.string({ error: "Name the asset." }).trim().min(1, "Name the asset.").max(200),
+  assetKind: assetKindSchema,
+});
+
+export type AssetEvidenceToNewAssetResult =
+  | { ok: true; view: { evidence: AssetEvidenceView; assetName: string } }
+  | { ok: false; error: string };
+
+/**
+ * Captures one piece of Asset Evidence to a brand-new destination (#201): a
+ * review-gated Suggested Asset named by the user, opened with the capture riding
+ * its Asset Review Group. Nothing becomes durable until the queue accepts it.
+ */
+export async function addAssetEvidenceToNewAssetAction(
+  formData: FormData,
+): Promise<AssetEvidenceToNewAssetResult> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  return runAssetsMutation(
+    async () => {
+      const asset = newAssetSchema.parse({
+        assetName: formData.get("assetName"),
+        assetKind: formData.get("assetKind"),
+      });
+      const fields = evidenceFieldsSchema.parse(Object.fromEntries(formData.entries()));
+      const file = await readUploadedFile(formData);
+      // A brand-new proposal is private until acceptance widens it, so the
+      // keep-private narrowing has nothing to narrow — the scope choice drops.
+      const { scope: _scope, ...evidenceFields } = toEvidenceFields(fields, file);
+      const result = await addAssetEvidenceToNewAsset({
+        ownerUserId,
+        asset: { name: asset.assetName, kind: asset.assetKind },
+        ...evidenceFields,
+      });
+      // A new proposal lands in the Review Queue on the dashboard rail too.
+      revalidatePath("/");
+      return result;
+    },
+    ({ evidence, group }) => ({
+      evidence: toAssetEvidenceView(evidence, { callerUserId: ownerUserId }),
+      assetName: group.asset.name,
+    }),
+  );
+}
+
+/**
+ * The chat capture's destination candidates (#201), mapped to serializable
+ * views. The owner/active/open rule lives in the owner-scoped seam
+ * (`listAssetEvidenceCaptureTargets`), not here; every write re-resolves
+ * authoritative records through the seam.
+ */
+export async function listAssetEvidenceDestinationsAction(): Promise<EvidenceDestination[]> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const targets = await listAssetEvidenceCaptureTargets({ ownerUserId });
+
+  const assetDestinations: EvidenceDestination[] = targets.assets.map((asset) => ({
+    targetKind: "asset",
+    id: asset.id,
+    name: asset.name,
+    kind: asset.kind,
+    kindLabel: assetLabelForKind(asset.kind),
+    scope: asset.scope,
+    visibilityLabel: visibilityLabelForScope(asset.scope),
+  }));
+
+  const reviewDestinations: EvidenceDestination[] = targets.reviews.map(({ groupId, asset }) => ({
+    targetKind: "review",
+    groupId,
+    assetName: asset.name,
+    kind: asset.kind,
+    kindLabel: assetLabelForKind(asset.kind),
+    scope: asset.scope,
+  }));
+
+  return [...assetDestinations, ...reviewDestinations];
 }
 
 /** Removes one piece of evidence — the row and its bytes. Owner-only downstream. */

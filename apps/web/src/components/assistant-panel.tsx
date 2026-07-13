@@ -19,7 +19,9 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { AssistantCaptureMenu } from "@/components/assistant-capture-menu";
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
+import { AssistantEvidenceCapture } from "@/components/assistant-evidence-capture";
 import { sendNudgeToAgent } from "@/components/assistant-nudge";
 import { AssistantPromptNudges } from "@/components/assistant-prompt-nudges";
 import { AssistantTurnUnitView, turnUnitKey } from "@/components/assistant-turn-unit";
@@ -312,8 +314,20 @@ function AssistantComposer({
   status: AgentStatus;
   onSubmit: (message: PromptInputMessage) => void;
 }) {
+  // A plus-menu pick opens the Asset Evidence capture panel above the composer
+  // (#201). Evidence routes through the shared capture server actions — never
+  // into the Eve turn — so chat gets no attachment model of its own. The menu
+  // stays disabled while a capture is open so a second pick can't discard a
+  // half-filled form.
+  const [captureFile, setCaptureFile] = useState<File | null>(null);
+
   return (
     <div className="border-t p-3 sm:p-4">
+      {captureFile ? (
+        <div className="pb-3">
+          <AssistantEvidenceCapture file={captureFile} onClose={() => setCaptureFile(null)} />
+        </div>
+      ) : null}
       <PromptInput onSubmit={onSubmit}>
         <PromptInputBody>
           <PromptInputTextarea
@@ -326,6 +340,7 @@ function AssistantComposer({
         </PromptInputBody>
         <PromptInputFooter>
           <PromptInputTools>
+            <AssistantCaptureMenu disabled={captureFile !== null} onPick={setCaptureFile} />
             <span className="text-[length:var(--text-caption)] text-muted-foreground">
               Enter to save · Shift + Enter for a new line
             </span>
