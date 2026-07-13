@@ -35,7 +35,14 @@ export function ResolvedActionRow({
   const { historyOpen, setHistoryOpen, error, busyKey, pending, run } = useActionRowTransition();
 
   return (
-    <article className="flex flex-col gap-2 px-4 py-3">
+    // Deep-link target (`/actions#action-<id>`), like the active rows: an asset
+    // profile's related-actions list can land on a resolved row too (#199).
+    // tabIndex lets the highlight move focus here so the jump is announced.
+    <article
+      className="flex scroll-mt-24 flex-col gap-2 px-4 py-3"
+      id={`action-${action.id}`}
+      tabIndex={-1}
+    >
       <div className="flex items-start justify-between gap-4">
         <p className="max-w-[60ch] text-pretty text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
           {action.title}

@@ -7,6 +7,8 @@ import {
   canViewScopedRecord,
   createAssetMemorySchema,
   createAssetReviewGroupSchema,
+  createGeneralActionAssetLinkSchema,
+  type GeneralActionAssetLink,
   scopedRecordVisibility,
 } from "@tendnote/domain";
 import { createInMemoryHouseholdStore } from "../households/in-memory-store";
@@ -16,7 +18,7 @@ import type { InMemorySourceRecordStore } from "../source-records/types";
 import type { AssetEvidenceStore } from "./evidence-types";
 import { createInMemoryAssetEvidenceStore } from "./in-memory-evidence-store";
 import { createInMemoryAssetStore } from "./in-memory-store";
-import type { AssetReviewStore } from "./review-types";
+import type { AssetReviewStore, GeneralActionAssetLinkStore } from "./review-types";
 import type { AssetStore } from "./types";
 
 /**
@@ -190,14 +192,84 @@ export function createInMemoryAssetReviewStore(deps: {
 }
 
 /**
+ * Minimal General Action ↔ Asset link store over a map (#199), mirroring the
+ * drizzle link store's behavior: idempotent creation per (action, asset) pair,
+ * oldest-first reads, and collision-deleting re-points for duplicate review.
+ */
+export function createInMemoryGeneralActionAssetLinkStore(): GeneralActionAssetLinkStore {
+  const links = new Map<string, GeneralActionAssetLink>();
+
+  /** Oldest first, id tiebreak — the shared ordering contract with drizzle. */
+  function byCreatedThenId(a: GeneralActionAssetLink, b: GeneralActionAssetLink): number {
+    return a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id);
+  }
+
+  function findPair(generalActionId: string, assetId: string): GeneralActionAssetLink | undefined {
+    for (const link of links.values()) {
+      if (link.generalActionId === generalActionId && link.assetId === assetId) {
+        return link;
+      }
+    }
+    return undefined;
+  }
+
+  return {
+    async createGeneralActionAssetLink(values) {
+      const parsed = createGeneralActionAssetLinkSchema.parse(values);
+      const existing = findPair(parsed.generalActionId, parsed.assetId);
+      if (existing) {
+        return existing;
+      }
+      const link: GeneralActionAssetLink = { ...parsed, id: randomUUID(), createdAt: new Date() };
+      links.set(link.id, link);
+      return link;
+    },
+    async listGeneralActionAssetLinksForActions(input) {
+      const wanted = new Set(input.generalActionIds);
+      return [...links.values()]
+        .filter((link) => wanted.has(link.generalActionId))
+        .sort(byCreatedThenId);
+    },
+    async listGeneralActionAssetLinksForAsset(input) {
+      return [...links.values()]
+        .filter((link) => link.assetId === input.assetId)
+        .sort(byCreatedThenId);
+    },
+    async repointGeneralActionAssetLinks(input) {
+      let repointed = 0;
+      for (const link of [...links.values()]) {
+        if (link.ownerUserId !== input.ownerUserId || link.assetId !== input.fromAssetId) {
+          continue;
+        }
+        // The action already links to the target — the stale row just goes.
+        if (findPair(link.generalActionId, input.toAssetId)) {
+          links.delete(link.id);
+          continue;
+        }
+        links.set(link.id, { ...link, assetId: input.toAssetId });
+        repointed += 1;
+      }
+      return repointed;
+    },
+    async deleteGeneralActionAssetLink(input) {
+      const link = links.get(input.linkId);
+      if (link && link.ownerUserId === input.ownerUserId) {
+        links.delete(input.linkId);
+      }
+    },
+  };
+}
+
+/**
  * The full in-memory review lifecycle store: one shared household store under the
  * asset store (scope/shares) and the review store (memory visibility), plus a
- * source-record base for grounding — the composition `createAssetReview` and the
- * review tests run against.
+ * source-record base for grounding and the action-link rows (#199) — the
+ * composition `createAssetReview` and the review tests run against.
  */
 export function createInMemoryAssetReviewLifecycleStore(): AssetStore &
   AssetReviewStore &
   AssetEvidenceStore &
+  GeneralActionAssetLinkStore &
   HouseholdStore &
   InMemorySourceRecordStore {
   const householdStore = createInMemoryHouseholdStore();
@@ -216,5 +288,6 @@ export function createInMemoryAssetReviewLifecycleStore(): AssetStore &
     ...assetStore,
     ...reviewStore,
     ...evidenceStore,
+    ...createInMemoryGeneralActionAssetLinkStore(),
   };
 }

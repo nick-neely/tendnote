@@ -31,6 +31,12 @@ export type AssetReviewGroupView = {
   /** Existing assets the pending anchor likely duplicates — the link prompt. */
   duplicates: Array<{ id: string; name: string; kindLabel: string }>;
   source: { id: string; content: string; sourceType: string; capturedAt: string } | null;
+  /**
+   * The General Action this proposal was promoted from (#199), so the card can
+   * ground an action-hint promotion even when it carries no source record. Null
+   * for proposals that did not come from an action hint.
+   */
+  fromAction: { id: string; title: string } | null;
   /** Pending members left to review: the anchor (if pending) plus each memory. */
   pendingCount: number;
 };
@@ -60,7 +66,10 @@ function toAssetReviewMemoryView(memory: {
   };
 }
 
-export function toAssetReviewGroupView(result: AssetReviewGroupResult): AssetReviewGroupView {
+export function toAssetReviewGroupView(
+  result: AssetReviewGroupResult,
+  options: { fromAction?: { id: string; title: string } | null } = {},
+): AssetReviewGroupView {
   return {
     groupId: result.group.id,
     asset: {
@@ -90,6 +99,7 @@ export function toAssetReviewGroupView(result: AssetReviewGroupResult): AssetRev
           capturedAt: result.sourceRecord.createdAt.toISOString(),
         }
       : null,
+    fromAction: options.fromAction ?? null,
     pendingCount: result.memories.length + (result.assetPending ? 1 : 0),
   };
 }

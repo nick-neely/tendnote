@@ -1,10 +1,11 @@
+import { listLinkedAssetsForGeneralActions } from "@tendnote/db/queries/assets";
 import { listActiveGeneralActions } from "@tendnote/db/queries/general-actions";
 import Link from "next/link";
 import { ActionTodaySurface } from "@/components/action-today-surface";
 import { AppShell } from "@/components/app-shell";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { groupActionTodayItems, selectActionTodayItems } from "@/lib/action-today";
-import { toGeneralActionView } from "@/lib/general-action-view";
+import { toGeneralActionLinkedAssetView, toGeneralActionView } from "@/lib/general-action-view";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +21,19 @@ export default async function ActionTodayPage() {
   const now = new Date();
 
   const active = await listActiveGeneralActions({ ownerUserId });
+  // The Assets these actions' hints became (#199), scope-filtered per caller.
+  const linkedAssetsByAction = await listLinkedAssetsForGeneralActions({
+    callerUserId: ownerUserId,
+    generalActionIds: active.map((action) => action.id),
+  });
   const items = selectActionTodayItems(
     active.map((action) => ({
       action,
-      view: toGeneralActionView(action, { now, callerUserId: ownerUserId }),
+      view: toGeneralActionView(action, {
+        now,
+        callerUserId: ownerUserId,
+        linkedAssets: (linkedAssetsByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView),
+      }),
     })),
     now,
   );

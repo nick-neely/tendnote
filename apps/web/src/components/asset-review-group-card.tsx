@@ -40,6 +40,37 @@ function formatCaptured(iso: string): string {
 }
 
 /**
+ * Where this group came from (#199): the General Action whose hint was promoted
+ * (grounding a promotion even when it carries no source record), and/or the
+ * captured source record. Renders nothing for an ungrounded direct suggestion.
+ */
+function GroundingBlock({ review }: { review: AssetReviewGroupView }) {
+  if (!review.fromAction && !review.source) {
+    return null;
+  }
+  return (
+    <div className="border-t border-accent/20 pt-2.5">
+      {review.fromAction ? (
+        <p className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
+          From action · {review.fromAction.title}
+        </p>
+      ) : null}
+      {review.source ? (
+        <>
+          <p className="mt-1 first:mt-0 font-mono text-[length:var(--text-caption)] text-muted-foreground">
+            From {sourceLabel(review.source.sourceType)} · captured{" "}
+            {formatCaptured(review.source.capturedAt)}
+          </p>
+          <p className="mt-1 line-clamp-2 max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+            {review.source.content}
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * An Asset Review Group in the shared Review Queue (#198): one source context
  * reviewed together — the Suggested Asset (or the existing Asset gaining
  * details), its Suggested Asset Memories, the duplicate link-to-existing prompt,
@@ -133,17 +164,7 @@ export function AssetReviewGroupCard({
         review={review}
       />
 
-      {review.source ? (
-        <div className="border-t border-accent/20 pt-2.5">
-          <p className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
-            From {sourceLabel(review.source.sourceType)} · captured{" "}
-            {formatCaptured(review.source.capturedAt)}
-          </p>
-          <p className="mt-1 line-clamp-2 max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-            {review.source.content}
-          </p>
-        </div>
-      ) : null}
+      <GroundingBlock review={review} />
 
       <div className="flex flex-col gap-2 border-t border-accent/20 pt-3">
         {/* Name the outcome plainly so nothing is resolved blind (calm, honest). */}

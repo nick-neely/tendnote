@@ -25,6 +25,17 @@ export function useDeepLinkHighlight(): void {
         return;
       }
 
+      // A target inside a collapsed disclosure (the Resolved/Paused sections)
+      // must be revealed before it can be scrolled to — open every containing
+      // <details> so the deep link never lands on a closed section (#199).
+      for (
+        let details = target.closest("details");
+        details;
+        details = details.parentElement?.closest("details") ?? null
+      ) {
+        details.open = true;
+      }
+
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       target.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
       target.focus({ preventScroll: true });

@@ -11,6 +11,8 @@ import type {
   AssetReviewGroup,
   CreateAssetMemoryInput,
   CreateAssetReviewGroupInput,
+  CreateGeneralActionAssetLinkInput,
+  GeneralActionAssetLink,
   PrivacyScope,
   SourceRecord,
 } from "@tendnote/domain";
@@ -90,13 +92,48 @@ export type AssetReviewStore = {
 };
 
 /**
+ * General Action ↔ Asset link rows (#199): the durable bridge an asset hint
+ * grows into. The two `list*` reads return raw rows — per-record visibility
+ * filtering of both sides happens in the query layer (`action-links.ts`), which
+ * is the only surface-facing reader; nothing here reaches a surface directly.
+ * Ordering contract for both lists: oldest first, id as tiebreak.
+ */
+export type GeneralActionAssetLinkStore = {
+  /** Idempotent on (generalActionId, assetId): re-linking returns the existing row. */
+  createGeneralActionAssetLink: (
+    input: CreateGeneralActionAssetLinkInput,
+  ) => Promise<GeneralActionAssetLink>;
+  listGeneralActionAssetLinksForActions: (input: {
+    generalActionIds: string[];
+  }) => Promise<GeneralActionAssetLink[]>;
+  listGeneralActionAssetLinksForAsset: (input: {
+    assetId: string;
+  }) => Promise<GeneralActionAssetLink[]>;
+  /**
+   * Re-points the owner's links from a would-be duplicate onto the link target
+   * during duplicate review (#199). A row that would collide with an existing
+   * (action, target) pair is deleted instead — the link already exists. Returns
+   * how many rows now point at the target.
+   */
+  repointGeneralActionAssetLinks: (input: {
+    ownerUserId: string;
+    fromAssetId: string;
+    toAssetId: string;
+  }) => Promise<number>;
+  /** Owner-keyed hard delete, for clearing a stale link to a dismissed husk. */
+  deleteGeneralActionAssetLink: (input: { ownerUserId: string; linkId: string }) => Promise<void>;
+};
+
+/**
  * Everything the review lifecycle composes over: Asset CRUD/audit/visibility +
  * households (via the lifecycle store), the memory/group store, the evidence
- * store (#200), and source-record grounding lookups (ADR 0151).
+ * store (#200), action links (#199), and source-record grounding lookups (ADR
+ * 0151).
  */
 export type AssetReviewLifecycleStore = AssetLifecycleStore &
   AssetReviewStore &
   AssetEvidenceStore &
+  GeneralActionAssetLinkStore &
   Pick<SourceRecordResolutionStore, "getSourceRecord">;
 
 /** One proposed memory riding a suggestion call: the reviewable content. */

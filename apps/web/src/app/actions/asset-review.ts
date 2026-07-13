@@ -16,7 +16,8 @@ import { assetEditSchema, assetMemoryEditSchema } from "@tendnote/domain";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { type AssetReviewGroupView, toAssetReviewGroupView } from "@/lib/asset-review-view";
+import { toAssetReviewGroupViewWithOrigin } from "@/lib/asset-review-origin";
+import type { AssetReviewGroupView } from "@/lib/asset-review-view";
 
 const groupIdSchema = z.object({ groupId: z.uuid() });
 const assetIdSchema = z.object({ assetId: z.uuid() });
@@ -27,13 +28,14 @@ const memoryIdSchema = z.object({ memoryId: z.uuid() });
 
 /**
  * Every mutation ends here: re-render the surfaces that show review state so
- * they all agree, then map the result to the serializable card view. Named for
- * both effects — this is deliberately not a pure mapper.
+ * they all agree, then map the result to the serializable card view (with its
+ * promoted-from action origin, #199). Named for both effects — this is
+ * deliberately not a pure mapper.
  */
-function revalidateAndView(result: AssetReviewGroupResult): AssetReviewGroupView {
+function revalidateAndView(result: AssetReviewGroupResult): Promise<AssetReviewGroupView> {
   revalidatePath("/");
   revalidatePath("/assets");
-  return toAssetReviewGroupView(result);
+  return toAssetReviewGroupViewWithOrigin(result);
 }
 
 export async function acceptSuggestedAssetAction(input: {

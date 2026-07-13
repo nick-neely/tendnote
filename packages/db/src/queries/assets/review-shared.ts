@@ -3,11 +3,13 @@ import {
   type AssetAuditSource,
   type AssetMemory,
   type AssetMemoryScope,
+  type AssetReviewGroup,
   AssetValidationError,
   canUseSensitiveContext,
   defaultChildScopeForAsset,
   findAssetDuplicateCandidates,
   isDurableAssetStatus,
+  type PrivacyScope,
   requireChildScopeWithinAsset,
   type SourceRecord,
 } from "@tendnote/domain";
@@ -57,6 +59,65 @@ export async function requireGrounding(
     );
   }
   return sourceRecord;
+}
+
+/**
+ * Opens a Suggested Asset proposal — the one shared write triple behind every
+ * inferred or promoted asset proposal: the `suggested` asset row, its Asset
+ * Review Group, and the `suggested` audit event with grounding provenance.
+ * `suggestAsset` (#198) and the action-hint bridge (#199) both route here so
+ * the proposal invariant never forks between modules. Visibility must already
+ * be resolved (`resolveAssetVisibility`); grounding may be null only for the
+ * bridge's explicitly-exempt user-intent path.
+ */
+export async function openSuggestedAssetProposal(
+  store: AssetReviewLifecycleStore,
+  input: {
+    ownerUserId: string;
+    actorUserId: string;
+    name: string;
+    kind: Asset["kind"];
+    scope: PrivacyScope;
+    householdId: string | null;
+    sourceRecordId: string | null;
+    auditSource: AssetAuditSource;
+    /** Extra provenance for the `suggested` audit event (per-caller fields). */
+    auditDetail?: Record<string, unknown>;
+  },
+): Promise<{ asset: Asset; group: AssetReviewGroup }> {
+  const asset = await store.createAsset({
+    ownerUserId: input.ownerUserId,
+    name: input.name,
+    kind: input.kind,
+    status: "suggested",
+    scope: input.scope,
+    householdId: input.householdId,
+    archivedAt: null,
+    createdByUserId: input.ownerUserId,
+    lastActorUserId: input.actorUserId,
+  });
+
+  const group = await store.createAssetReviewGroup({
+    ownerUserId: input.ownerUserId,
+    assetId: asset.id,
+    sourceRecordId: input.sourceRecordId,
+  });
+
+  await recordAudit(store, asset, {
+    kind: "suggested",
+    actorUserId: input.actorUserId,
+    source: input.auditSource,
+    detail: {
+      name: asset.name,
+      kind: asset.kind,
+      scope: asset.scope,
+      grounded: input.sourceRecordId !== null,
+      reviewGroupId: group.id,
+      ...input.auditDetail,
+    },
+  });
+
+  return { asset, group };
 }
 
 /**

@@ -47,9 +47,10 @@ async function resolveAnchorAsLinked(
     target: Asset;
     memoriesLinked: number;
     evidenceLinked: number;
+    actionsLinked: number;
   },
 ): Promise<void> {
-  const { input, anchor, target, memoriesLinked, evidenceLinked } = args;
+  const { input, anchor, target, memoriesLinked, evidenceLinked, actionsLinked } = args;
   const husk = await store.updateAsset({
     ownerUserId: anchor.ownerUserId,
     assetId: anchor.id,
@@ -59,13 +60,19 @@ async function resolveAnchorAsLinked(
     kind: "linked_existing",
     actorUserId: input.actorUserId,
     source: input.source ?? "user",
-    detail: { targetAssetId: target.id, memoriesLinked, evidenceLinked, resolvedAs: "link" },
+    detail: {
+      targetAssetId: target.id,
+      memoriesLinked,
+      evidenceLinked,
+      actionsLinked,
+      resolvedAs: "link",
+    },
   });
   await recordAudit(store, target, {
     kind: "linked_existing",
     actorUserId: input.actorUserId,
     source: input.source ?? "user",
-    detail: { fromAssetId: anchor.id, memoriesLinked, evidenceLinked },
+    detail: { fromAssetId: anchor.id, memoriesLinked, evidenceLinked, actionsLinked },
   });
 }
 
@@ -129,12 +136,21 @@ export async function linkAssetReviewGroup(
     });
   }
 
+  // Any General Actions whose hints resolved to the would-be duplicate follow
+  // it onto the target — an already-linked action keeps its single link (#199).
+  const actionsLinked = await store.repointGeneralActionAssetLinks({
+    ownerUserId: anchor.ownerUserId,
+    fromAssetId: anchor.id,
+    toAssetId: target.id,
+  });
+
   await resolveAnchorAsLinked(store, {
     input,
     anchor,
     target,
     memoriesLinked: pending.length,
     evidenceLinked: evidence.length,
+    actionsLinked,
   });
 
   const updatedGroup = await store.updateAssetReviewGroupAsset({

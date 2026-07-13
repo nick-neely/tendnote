@@ -1,4 +1,9 @@
-import { getAsset, listAssetEvidence, listAssetMemories } from "@tendnote/db/queries/assets";
+import {
+  getAsset,
+  listAssetEvidence,
+  listAssetMemories,
+  listLinkedGeneralActionsForAsset,
+} from "@tendnote/db/queries/assets";
 import type { AssetMemory } from "@tendnote/domain";
 import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
@@ -6,21 +11,23 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { AssetEvidenceSection } from "@/components/asset-evidence-section";
 import { AssetProfileControls } from "@/components/asset-profile-controls";
+import { AssetRelatedActions } from "@/components/asset-related-actions";
 import { ASSET_KIND_ICONS, AssetArchivedBadge } from "@/components/asset-shared";
 import { ActionScopeChip } from "@/components/general-action-shared";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { toAssetEvidenceView } from "@/lib/asset-evidence-view";
 import { formatAssetMemoryValue } from "@/lib/asset-memory-value";
+import { toAssetRelatedActionView } from "@/lib/asset-related-action-view";
 import { type AssetView, toAssetView } from "@/lib/asset-view";
 
 export const dynamic = "force-dynamic";
 
 /**
- * The minimal Asset Profile (Phase 6 #197): the asset's core metadata, visibility
- * audience, and archive state, plus quiet placeholder sections where memories,
- * evidence, and related actions will attach in later slices. Deterministic denial
- * is a plain 404 — a non-visible asset and a missing one are indistinguishable
+ * The Asset Profile (Phase 6 #197–#200): the asset's core metadata, visibility
+ * audience, and archive state, plus its reviewed memories, captured evidence, and
+ * the related General Actions its hints came from. Deterministic denial is a
+ * plain 404 — a non-visible asset and a missing one are indistinguishable
  * (ADR 0153).
  */
 export default async function AssetProfilePage({
@@ -36,15 +43,18 @@ export default async function AssetProfilePage({
     notFound();
   }
 
-  // The reviewed details and evidence this caller may see — each filtered per
-  // record, so a household asset can carry a private detail or receipt its
-  // members never see (#198, #200).
-  const [memories, evidence] = await Promise.all([
+  // The reviewed details, evidence, and related General Actions this caller may
+  // see — each filtered per record, so a household asset can carry a private
+  // detail, receipt, or action its members never see (#198, #199, #200).
+  const [memories, evidence, relatedActions] = await Promise.all([
     listAssetMemories({ callerUserId, assetId }),
     listAssetEvidence({ callerUserId, assetId }),
+    listLinkedGeneralActionsForAsset({ callerUserId, assetId }),
   ]);
+  const now = new Date();
   const view = toAssetView(asset, { callerUserId });
   const evidenceViews = evidence.map((record) => toAssetEvidenceView(record, { callerUserId }));
+  const relatedActionViews = relatedActions.map((entry) => toAssetRelatedActionView(entry, now));
 
   return (
     <AppShell>
@@ -96,7 +106,7 @@ export default async function AssetProfilePage({
           description="Reminders connected to this asset — replacements, renewals, maintenance."
           title="Related actions"
         >
-          <LedgerEmpty>No related actions yet.</LedgerEmpty>
+          <AssetRelatedActions actions={relatedActionViews} />
         </ProfileSection>
       </div>
     </AppShell>

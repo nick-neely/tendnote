@@ -1,3 +1,4 @@
+import { listLinkedAssetsForGeneralActions } from "@tendnote/db/queries/assets";
 import {
   ensureDefaultGeneralActionAreas,
   listGeneralActionAreas,
@@ -15,7 +16,7 @@ import { ActionsSurface } from "@/components/actions-surface";
 import { AppShell } from "@/components/app-shell";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { toGeneralActionAreaView } from "@/lib/general-action-area-view";
-import { toGeneralActionView } from "@/lib/general-action-view";
+import { toGeneralActionLinkedAssetView, toGeneralActionView } from "@/lib/general-action-view";
 import { toSuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 
 // A calm cap on the resolved trail — enough to reopen a recent mistake, not a
@@ -51,8 +52,19 @@ export default async function ActionsPage() {
   ]);
 
   const areaNameById = new Map(areas.map((area) => [area.id, area.name]));
+
+  // The Assets these actions' hints became (#199) — one batched read, filtered
+  // per record for this caller, so the rows can pair hint chips with real Assets.
+  const linkedAssetsByAction = await listLinkedAssetsForGeneralActions({
+    callerUserId: ownerUserId,
+    generalActionIds: [...active, ...paused, ...resolved].map((action) => action.id),
+  });
   const toView = (action: Parameters<typeof toGeneralActionView>[0]) =>
-    toGeneralActionView(action, { now, callerUserId: ownerUserId });
+    toGeneralActionView(action, {
+      now,
+      callerUserId: ownerUserId,
+      linkedAssets: (linkedAssetsByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView),
+    });
 
   return (
     <AppShell>

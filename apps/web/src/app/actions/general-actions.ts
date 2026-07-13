@@ -1,5 +1,9 @@
 "use server";
 
+import {
+  listLinkedAssetsForGeneralActions,
+  promoteGeneralActionAssetHint,
+} from "@tendnote/db/queries/assets";
 import type { GeneralActionWithContext } from "@tendnote/db/queries/general-actions";
 import {
   archiveGeneralAction,
@@ -8,6 +12,7 @@ import {
   deferGeneralAction,
   dismissGeneralAction,
   editGeneralAction,
+  getGeneralAction,
   listGeneralActionHistory,
   pauseGeneralAction,
   reopenGeneralAction,
@@ -17,6 +22,7 @@ import {
 } from "@tendnote/db/queries/general-actions";
 import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
 import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { parseDateInputValue } from "@/lib/followup-view";
@@ -25,6 +31,7 @@ import {
   type GeneralActionEventView,
   type GeneralActionMutationResult,
   toGeneralActionEventView,
+  toGeneralActionLinkedAssetView,
   toGeneralActionView,
 } from "@/lib/general-action-view";
 import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
@@ -94,14 +101,27 @@ const peopleActionSchema = z.object({
 
 /**
  * Runs an Action mutation and maps the result to a view for the acting caller, so
- * `owned` reflects whoever is viewing. Thin wrapper over the shared runner so the
- * Action and Area server actions share one result-union path.
+ * `owned` reflects whoever is viewing. The refreshed view re-hydrates the action's
+ * linked Assets (#199) so a mutation never quietly drops the asset chips from the
+ * row it returns. Thin wrapper over the shared runner so the Action and Area
+ * server actions share one result-union path.
  */
 function runMutation(
   callerUserId: string,
   run: () => Promise<Parameters<typeof toGeneralActionView>[0]>,
 ): Promise<GeneralActionMutationResult> {
-  return runActionsMutation(run, (action) => toGeneralActionView(action, { callerUserId }));
+  return runActionsMutation(
+    async () => {
+      const action = await run();
+      const linkedByAction = await listLinkedAssetsForGeneralActions({
+        callerUserId,
+        generalActionIds: [action.id],
+      });
+      const linkedAssets = (linkedByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView);
+      return { action, linkedAssets };
+    },
+    ({ action, linkedAssets }) => toGeneralActionView(action, { callerUserId, linkedAssets }),
+  );
 }
 
 export async function createGeneralActionAction(input: {
@@ -171,6 +191,30 @@ export async function editGeneralActionAction(input: {
         ...(parsed.areaId !== undefined ? { areaId: parsed.areaId } : {}),
       },
     });
+  });
+}
+
+/**
+ * Promotes one of an Action's asset hints into a review-gated Suggested Asset
+ * (#199). Opens (or idempotently re-reads) an Asset Review Group in the shared
+ * Review Queue — never a silent durable write — and returns the refreshed action
+ * view, whose `linkedAssets` now carries the pending (or already-linked) state.
+ */
+export async function promoteAssetHintAction(input: {
+  generalActionId: string;
+  hintLabel: string;
+}): Promise<GeneralActionMutationResult> {
+  const parsed = z
+    .object({ generalActionId: z.uuid(), hintLabel: z.string().trim().min(1).max(120) })
+    .parse(input);
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  return runMutation(ownerUserId, async () => {
+    await promoteGeneralActionAssetHint({ actorUserId: ownerUserId, ...parsed });
+    // The proposal lands in the shared Review Queue and (once accepted) on the
+    // Assets surface — re-render both alongside the Actions page.
+    revalidatePath("/");
+    revalidatePath("/assets");
+    return getGeneralAction({ actorUserId: ownerUserId, generalActionId: parsed.generalActionId });
   });
 }
 

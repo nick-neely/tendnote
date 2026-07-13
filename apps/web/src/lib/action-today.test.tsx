@@ -18,6 +18,7 @@ function view(overrides: Partial<GeneralActionView> = {}): GeneralActionView {
     notes: null,
     links: [],
     assetHints: [],
+    linkedAssets: [],
     linkedPeople: [],
     status: "open",
     recurrence: null,

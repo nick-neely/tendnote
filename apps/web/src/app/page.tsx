@@ -11,7 +11,7 @@ import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { DashboardRail } from "@/components/dashboard-rail";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
-import { toAssetReviewGroupView } from "@/lib/asset-review-view";
+import { toAssetReviewGroupViewWithOrigin } from "@/lib/asset-review-origin";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
 import { toCalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
@@ -193,7 +193,7 @@ async function getDashboardAssetReviews(ownerUserId: string) {
     // A few of the newest pending Asset Review Groups — grouped asset review in
     // the shared queue, one card per source context (#198).
     const groups = await listAssetReviewGroups({ ownerUserId, limit: DASHBOARD_REVIEW_LIMIT });
-    return groups.map((group) => toAssetReviewGroupView(group));
+    return Promise.all(groups.map((group) => toAssetReviewGroupViewWithOrigin(group)));
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.warn("Unable to load asset review groups.", error);

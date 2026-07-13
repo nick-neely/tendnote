@@ -8,7 +8,9 @@ import {
   UserIcon,
   UsersIcon,
 } from "lucide-react";
-import type { ActionSurfaceState } from "@/lib/general-action-view";
+import Link from "next/link";
+import { ASSET_KIND_ICONS } from "@/components/asset-shared";
+import type { ActionSurfaceState, GeneralActionLinkedAssetView } from "@/lib/general-action-view";
 
 /** Fallback message when an Action mutation fails for an unknown reason. */
 export const GENERIC_ERROR = "That didn't go through. Try again.";
@@ -128,6 +130,44 @@ export function ActionContextChip({
     <span className="inline-flex max-w-[24ch] items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-[length:var(--text-caption)] text-muted-foreground">
       <Icon aria-hidden className="size-3 shrink-0" />
       <span className="truncate">{children}</span>
+    </span>
+  );
+}
+
+/**
+ * A hint that grew into a real Asset (#199): the chip becomes a quiet deep link
+ * into the Asset Profile, named and glyphed by the Asset itself. Same size as
+ * the read-only context chips, but the linked state carries a persistent cue —
+ * ink-colored name with an always-on underline — so a real Asset reads as
+ * navigable at rest, not only on hover (touch has no hover).
+ */
+export function ActionLinkedAssetChip({ asset }: { asset: GeneralActionLinkedAssetView }) {
+  const Icon = ASSET_KIND_ICONS[asset.kind];
+  return (
+    <Link
+      className="inline-flex max-w-[24ch] items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-[length:var(--text-caption)] text-muted-foreground transition-colors hover:border-primary/45 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      href={`/assets/${asset.assetId}`}
+      title={`${asset.kindLabel} · ${asset.name}`}
+    >
+      <Icon aria-hidden className="size-3 shrink-0" />
+      <span className="truncate text-foreground underline decoration-border underline-offset-2 transition-colors hover:decoration-foreground/60">
+        {asset.name}
+      </span>
+    </Link>
+  );
+}
+
+/**
+ * A hint whose promotion is still in the Review Queue (#199): the hint chip with
+ * a quiet "in review" word — state by text, never color alone — so the owner
+ * knows it's on its way without being nagged to go accept it.
+ */
+export function ActionPendingAssetChip({ label }: { label: string }) {
+  return (
+    <span className="inline-flex max-w-[28ch] items-center gap-1 rounded-md border border-dashed border-border bg-card px-2 py-0.5 text-[length:var(--text-caption)] text-muted-foreground">
+      <TagIcon aria-hidden className="size-3 shrink-0" />
+      <span className="truncate">{label}</span>
+      <span className="shrink-0 text-muted-foreground/80">· in review</span>
     </span>
   );
 }

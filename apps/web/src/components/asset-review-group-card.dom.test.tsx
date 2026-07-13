@@ -93,6 +93,7 @@ function reviewFixture(overrides: Partial<AssetReviewGroupView> = {}): AssetRevi
       sourceType: "manual",
       capturedAt: "2026-07-01T12:00:00.000Z",
     },
+    fromAction: null,
     pendingCount: 4,
     ...overrides,
   };
@@ -115,6 +116,20 @@ describe("AssetReviewGroupCard", () => {
     expect(screen.getByText("Mar 14, 2026")).toBeDefined();
     expect(screen.getByRole("button", { name: /Link to Refrigerator water filter/ })).toBeDefined();
     expect(screen.getByText(/New fridge filter is EDR3RXD1/)).toBeDefined();
+  });
+
+  it("names the originating action for a promoted hint, even without a source record", () => {
+    render(
+      <AssetReviewGroupCard
+        onResolve={vi.fn()}
+        review={reviewFixture({
+          source: null,
+          fromAction: { id: "action-1", title: "Replace the refrigerator water filter" },
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/From action · Replace the refrigerator water filter/)).toBeDefined();
   });
 
   it("batch-accepts the group and resolves the card", async () => {

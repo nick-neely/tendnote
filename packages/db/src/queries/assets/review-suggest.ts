@@ -7,6 +7,7 @@ import {
 import { recordAudit, resolveAssetVisibility } from "./lifecycle";
 import {
   buildGroupResult,
+  openSuggestedAssetProposal,
   requireActiveAnchor,
   requireGrounding,
   writeSuggestedMemory,
@@ -45,38 +46,18 @@ export async function suggestAsset(
     householdId: input.householdId,
   });
 
-  const asset = await store.createAsset({
-    ownerUserId: input.ownerUserId,
-    name: input.name,
-    kind: input.kind,
-    status: "suggested",
-    scope,
-    householdId,
-    archivedAt: null,
-    createdByUserId: input.ownerUserId,
-    lastActorUserId: input.ownerUserId,
-  });
-
-  const group = await store.createAssetReviewGroup({
-    ownerUserId: input.ownerUserId,
-    assetId: asset.id,
-    sourceRecordId: sourceRecord.id,
-  });
-
   // Inferred proposals default to `system` provenance; Eve passes `assistant`.
   const auditSource = input.source ?? "system";
-  await recordAudit(store, asset, {
-    kind: "suggested",
+  const { asset, group } = await openSuggestedAssetProposal(store, {
+    ownerUserId: input.ownerUserId,
     actorUserId: input.ownerUserId,
-    source: auditSource,
-    detail: {
-      name: asset.name,
-      kind: asset.kind,
-      scope: asset.scope,
-      grounded: true,
-      reviewGroupId: group.id,
-      memoriesSuggested: input.memories?.length ?? 0,
-    },
+    name: input.name,
+    kind: input.kind,
+    scope,
+    householdId,
+    sourceRecordId: sourceRecord.id,
+    auditSource,
+    auditDetail: { memoriesSuggested: input.memories?.length ?? 0 },
   });
 
   for (const content of input.memories ?? []) {

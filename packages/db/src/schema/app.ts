@@ -17,6 +17,7 @@ export * from "./app/discord-installs";
 export * from "./app/engagement";
 export * from "./app/enums";
 export * from "./app/general-action-areas";
+export * from "./app/general-action-assets";
 export * from "./app/general-actions";
 export * from "./app/gmail-draft-actions";
 export * from "./app/households";
