@@ -91,6 +91,8 @@ const defaultAssetContextLinks = createAssetContextLinks({
 });
 const defaultAssetHistory = createAssetHistory({
   ...createDrizzleAssetReviewLifecycleStore(),
+  ...createDrizzleSourceRecordStore(),
+  ...createDrizzleAssetLinkStore(),
   ...createDrizzleGeneralActionStore(),
 });
 

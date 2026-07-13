@@ -101,6 +101,8 @@ export type RelatedAssetLink = {
   pending: boolean;
   /** Whether the caller owns this link, so surfaces can offer remove/review. */
   owned: boolean;
+  /** When the link was made — the moment Asset History retells (#202). */
+  createdAt: Date;
 };
 
 export type AddAssetPersonLinkInput = {
@@ -117,6 +119,8 @@ export type AssetPersonLinkEntry = {
   linkId: string;
   relation: AssetPersonRelation;
   person: { id: string; displayName: string };
+  /** When the link was made — the moment Asset History retells (#202). */
+  createdAt: Date;
 };
 
 export type ListAssetContextInput = {

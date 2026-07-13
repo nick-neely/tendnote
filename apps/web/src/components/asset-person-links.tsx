@@ -5,7 +5,7 @@ import { ASSET_PERSON_RELATION_OPTIONS } from "@tendnote/domain";
 import { XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { addAssetPersonLinkAction, removeAssetPersonLinkAction } from "@/app/actions/asset-links";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
@@ -44,12 +44,24 @@ export function AssetPersonLinks({
   /** Linking needs the asset active; viewers of an archive just read. */
   canLink: boolean;
 }) {
+  // Removing the row a keyboard user was standing on would drop focus to <body>;
+  // the section takes it back so the next Tab continues where they were.
+  const sectionRef = useRef<HTMLDivElement>(null);
+
   return (
-    <div className="flex flex-col gap-3">
+    <div
+      className="flex flex-col gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      ref={sectionRef}
+      tabIndex={-1}
+    >
       {links.length > 0 ? (
         <LedgerList>
           {links.map((link) => (
-            <AssetPersonLinkRow key={link.linkId} link={link} />
+            <AssetPersonLinkRow
+              key={link.linkId}
+              link={link}
+              onRemoved={() => sectionRef.current?.focus()}
+            />
           ))}
         </LedgerList>
       ) : (
@@ -64,15 +76,29 @@ export function AssetPersonLinks({
   );
 }
 
-/** One person row: name as the link, the relation phrase in quiet mono, removal inline. */
-function AssetPersonLinkRow({ link }: { link: AssetPersonLinkView }) {
+/**
+ * One person row, read as one sentence — "Alex Morgan recommended it." — with
+ * the name as the link. The relation is prose, never a mono chip: mono is
+ * reserved for machine facts (DESIGN.md §4), and a related-asset link next to it
+ * already reads as a plain sentence. Removal stays inline.
+ */
+function AssetPersonLinkRow({
+  link,
+  onRemoved,
+}: {
+  link: AssetPersonLinkView;
+  onRemoved: () => void;
+}) {
   const router = useRouter();
   const { error, pending, submit } = useMutationSubmit(GENERIC_ERROR);
 
   function remove() {
     submit(
       () => removeAssetPersonLinkAction({ linkId: link.linkId }),
-      () => router.refresh(),
+      () => {
+        onRemoved();
+        router.refresh();
+      },
     );
   }
 
@@ -85,10 +111,8 @@ function AssetPersonLinkRow({ link }: { link: AssetPersonLinkView }) {
             href={`/people/${link.personId}`}
           >
             {link.displayName}
-          </Link>
-          <span className="ml-2 font-mono text-[length:var(--text-caption)] text-muted-foreground">
-            {link.relationLabel}
-          </span>
+          </Link>{" "}
+          {link.relationLabel}.
         </p>
         <Button
           aria-label={`Remove link to ${link.displayName}`}

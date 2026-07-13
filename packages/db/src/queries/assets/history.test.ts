@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createGeneralActionLifecycle } from "../general-actions/lifecycle";
 import { seedHouseholdWithMembers } from "../households/household-fixtures";
+import { seedPerson, seedSourceRecord } from "./asset-test-fixtures";
 import { createAssetHistory } from "./history";
 import { createInMemoryAssetActionLinkStore } from "./in-memory-action-link-store";
 import { createAssetLifecycle } from "./lifecycle";
+import { createAssetContextLinks } from "./links";
 import { createAssetReview } from "./review";
 
 const OWNER = "user-1";
@@ -25,6 +27,7 @@ function setup() {
   const assetLifecycle = createAssetLifecycle(store);
   const actionLifecycle = createGeneralActionLifecycle(store);
   const review = createAssetReview(store);
+  const links = createAssetContextLinks(store);
 
   function seedHousehold() {
     return seedHouseholdWithMembers(store, {
@@ -36,7 +39,7 @@ function setup() {
     });
   }
 
-  return { store, history, assetLifecycle, actionLifecycle, review, seedHousehold };
+  return { store, history, assetLifecycle, actionLifecycle, review, links, seedHousehold };
 }
 
 describe("listAssetHistory", () => {
@@ -156,6 +159,128 @@ describe("listAssetHistory", () => {
     expect(ownerEntries.some((entry) => entry.type === "action" && entry.event === "created")).toBe(
       true,
     );
+  });
+
+  it("tells the story of an asset whose activity is evidence and links — never an empty history", async () => {
+    const { history, assetLifecycle, review, links, store } = setup();
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Refrigerator",
+      kind: "appliance",
+    });
+    const filter = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Water filter",
+      kind: "item",
+    });
+    await review.addAssetEvidence({
+      ownerUserId: OWNER,
+      assetId: asset.id,
+      kind: "receipt",
+      label: "Costco receipt",
+      url: "https://example.com/receipt",
+    });
+    await links.addAssetLink({
+      actorUserId: OWNER,
+      fromAssetId: asset.id,
+      toAssetId: filter.id,
+      relation: "uses",
+    });
+    const person = await seedPerson(store, OWNER);
+    await links.addAssetPersonLink({
+      actorUserId: OWNER,
+      assetId: asset.id,
+      personId: person.id,
+      relation: "recommended",
+    });
+
+    const entries = await history.listAssetHistory({ callerUserId: OWNER, assetId: asset.id });
+
+    expect(entries).toContainEqual(
+      expect.objectContaining({ type: "evidence", kind: "receipt", label: "Costco receipt" }),
+    );
+    expect(entries).toContainEqual(
+      expect.objectContaining({
+        type: "asset-link",
+        otherAssetName: "Water filter",
+        relation: "uses",
+        direction: "outgoing",
+      }),
+    );
+    expect(entries).toContainEqual(
+      expect.objectContaining({ type: "person-link", displayName: "Marcus" }),
+    );
+  });
+
+  it("leaves a suggested link out until review confirms it — a suggestion has not happened yet", async () => {
+    const { history, assetLifecycle, links, store } = setup();
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Refrigerator",
+      kind: "appliance",
+    });
+    const filter = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Water filter",
+      kind: "item",
+    });
+    const source = await seedSourceRecord(store, OWNER);
+    const suggested = await links.suggestAssetLink({
+      ownerUserId: OWNER,
+      fromAssetId: asset.id,
+      toAssetId: filter.id,
+      relation: "uses",
+      sourceRecordId: source.id,
+    });
+
+    await expect(
+      history.listAssetHistory({ callerUserId: OWNER, assetId: asset.id }),
+    ).resolves.not.toContainEqual(expect.objectContaining({ type: "asset-link" }));
+
+    await links.acceptSuggestedAssetLink({ actorUserId: OWNER, linkId: suggested.id });
+
+    const entries = await history.listAssetHistory({ callerUserId: OWNER, assetId: asset.id });
+    expect(entries).toContainEqual(
+      expect.objectContaining({ type: "asset-link", otherAssetName: "Water filter" }),
+    );
+  });
+
+  it("keeps a private receipt and the owner's people out of a member's story", async () => {
+    const { history, assetLifecycle, review, links, store, seedHousehold } = setup();
+    const household = await seedHousehold();
+    const asset = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Refrigerator",
+      kind: "appliance",
+      scope: "household",
+      householdId: household.id,
+    });
+    await review.addAssetEvidence({
+      ownerUserId: OWNER,
+      assetId: asset.id,
+      kind: "receipt",
+      label: "Costco receipt",
+      url: "https://example.com/receipt",
+      scope: "private",
+    });
+    const person = await seedPerson(store, OWNER);
+    await links.addAssetPersonLink({
+      actorUserId: OWNER,
+      assetId: asset.id,
+      personId: person.id,
+      relation: "recommended",
+    });
+
+    const memberEntries = await history.listAssetHistory({
+      callerUserId: MEMBER,
+      assetId: asset.id,
+    });
+    expect(memberEntries.some((entry) => entry.type === "evidence")).toBe(false);
+    expect(memberEntries.some((entry) => entry.type === "person-link")).toBe(false);
+
+    const ownerEntries = await history.listAssetHistory({ callerUserId: OWNER, assetId: asset.id });
+    expect(ownerEntries.some((entry) => entry.type === "evidence")).toBe(true);
+    expect(ownerEntries.some((entry) => entry.type === "person-link")).toBe(true);
   });
 
   it("returns nothing for an asset the caller cannot see", async () => {

@@ -9,6 +9,14 @@ import {
   PromptInputActionMenuItem,
   PromptInputActionMenuTrigger,
 } from "@/components/ai-elements/prompt-input";
+import { cn } from "@/lib/utils";
+
+/**
+ * Every entry clears the 44px touch floor: "Take a photo" is the phone-only
+ * path, so this menu is reached by thumb more than by mouse — the dropdown
+ * default (~28px) is a mis-tap waiting to happen (DESIGN.md §8).
+ */
+const CAPTURE_ENTRY = "min-h-11 gap-2.5 px-3 text-[length:var(--text-small)]";
 
 /**
  * The Eve composer's plus-menu (#201): three ways to pick Asset Evidence —
@@ -56,20 +64,26 @@ export function AssistantCaptureMenu({
         <PromptInputActionMenuTrigger aria-label="Attach asset evidence" disabled={disabled}>
           <PlusIcon className="size-4" />
         </PromptInputActionMenuTrigger>
-        <PromptInputActionMenuContent>
+        <PromptInputActionMenuContent className="min-w-48">
           {/* Camera-first entry where a camera is in hand (mirrors the drop zone). */}
           <PromptInputActionMenuItem
-            className="sm:hidden"
+            className={cn(CAPTURE_ENTRY, "sm:hidden")}
             onSelect={() => cameraRef.current?.click()}
           >
             <CameraIcon aria-hidden className="size-4" />
             Take a photo
           </PromptInputActionMenuItem>
-          <PromptInputActionMenuItem onSelect={() => photoRef.current?.click()}>
+          <PromptInputActionMenuItem
+            className={CAPTURE_ENTRY}
+            onSelect={() => photoRef.current?.click()}
+          >
             <ImageIcon aria-hidden className="size-4" />
             Photo library
           </PromptInputActionMenuItem>
-          <PromptInputActionMenuItem onSelect={() => fileRef.current?.click()}>
+          <PromptInputActionMenuItem
+            className={CAPTURE_ENTRY}
+            onSelect={() => fileRef.current?.click()}
+          >
             <PaperclipIcon aria-hidden className="size-4" />
             Attach a file
           </PromptInputActionMenuItem>

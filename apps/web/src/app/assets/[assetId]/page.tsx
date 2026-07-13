@@ -170,7 +170,7 @@ export default async function AssetProfilePage({
         </ProfileSection>
 
         <ProfileSection
-          description="What happened over time — drawn from this asset's own story, its confirmed details, and its related actions."
+          description="What happened over time — drawn from this asset's own story, its confirmed details, its evidence and links, and its related actions."
           title="History"
         >
           <AssetHistory entries={historyViews} />

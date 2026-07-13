@@ -262,6 +262,7 @@ async function resolveRelatedAssetLink(
     otherAsset,
     pending: link.status === "suggested",
     owned: link.ownerUserId === input.callerUserId,
+    createdAt: link.createdAt,
   };
 }
 
@@ -272,8 +273,11 @@ async function resolveRelatedAssetLink(
  * triple is owner-scoped, so two household members may each hold the same
  * relationship — reads dedupe per (from, to, relation), preferring the
  * caller's own row so their remove and review controls always work.
+ *
+ * Exported for the Asset History read (#202), which retells exactly the links
+ * this profile shows — one read, so the two can never disagree.
  */
-async function listRelatedAssetLinks(
+export async function listRelatedAssetLinks(
   store: AssetContextLinkStore,
   input: ListAssetContextInput,
 ): Promise<RelatedAssetLink[]> {
@@ -377,8 +381,11 @@ async function addAssetPersonLink(
  * reads another member's people through a shared asset — each named through the
  * caller's own person record. A link whose person has since been deleted is
  * skipped rather than rendered nameless.
+ *
+ * Exported for the Asset History read (#202), on the same terms as
+ * `listRelatedAssetLinks`.
  */
-async function listAssetPersonLinks(
+export async function listAssetPersonLinks(
   store: AssetContextLinkStore,
   input: ListAssetContextInput,
 ): Promise<AssetPersonLinkEntry[]> {
@@ -404,6 +411,7 @@ async function listAssetPersonLinks(
       linkId: link.id,
       relation: link.relation,
       person: { id: person.id, displayName: person.displayName },
+      createdAt: link.createdAt,
     });
   }
   return entries;

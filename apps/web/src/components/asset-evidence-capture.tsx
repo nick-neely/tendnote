@@ -29,6 +29,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { type AssetEvidenceView, formatEvidenceSize } from "@/lib/asset-evidence-view";
 import { useMutationSubmit } from "@/lib/use-mutation-submit";
+import { cn } from "@/lib/utils";
 
 /** Where a capture lands: an existing Asset, or a still-open review group (#200). */
 export type AssetEvidenceCaptureTarget = { assetId: string } | { reviewGroupId: string };
@@ -301,6 +302,8 @@ export function EvidenceDetailsForm({
   error,
   submit,
   onBack,
+  backLabel = "Choose a different file",
+  framed = true,
 }: {
   draft: Draft;
   assetScope: PrivacyScope;
@@ -308,6 +311,10 @@ export function EvidenceDetailsForm({
   error: string | null;
   submit: (formData: FormData) => void;
   onBack: () => void;
+  /** Names where `onBack` goes — chat's back is a discard, not a re-pick (#201). */
+  backLabel?: string;
+  /** False inside a surface that already frames it — cards never nest (DESIGN.md §6). */
+  framed?: boolean;
 }) {
   const [kind, setKind] = useState<AssetEvidenceKind>(() => guessKind(draft));
   const [label, setLabel] = useState(() =>
@@ -335,10 +342,12 @@ export function EvidenceDetailsForm({
 
   return (
     <form
-      className="flex flex-col gap-3 rounded-xl border bg-surface px-4 py-3.5"
+      className={cn("flex flex-col gap-3", framed && "rounded-xl border bg-surface px-4 py-3.5")}
       onSubmit={handleSubmit}
     >
-      {draft.mode === "file" ? <PickedFileStrip draft={draft} onClear={onBack} /> : null}
+      {draft.mode === "file" ? (
+        <PickedFileStrip clearLabel={backLabel} draft={draft} onClear={onBack} />
+      ) : null}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <EvidenceLabelInput draft={draft} onChange={setLabel} value={label} />

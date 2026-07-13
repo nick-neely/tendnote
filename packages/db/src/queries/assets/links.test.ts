@@ -1,6 +1,11 @@
 import { AssetValidationError } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { createAuditKindsReader, seedOwnerMemberHousehold } from "./asset-test-fixtures";
+import {
+  createAuditKindsReader,
+  seedOwnerMemberHousehold,
+  seedPerson,
+  seedSourceRecord,
+} from "./asset-test-fixtures";
 import { createInMemoryAssetReviewLifecycleStore } from "./in-memory-review-store";
 import { createAssetLifecycle } from "./lifecycle";
 import { createAssetContextLinks } from "./links";
@@ -214,19 +219,7 @@ describe("suggestAssetLink (inferred, review-gated)", () => {
   async function seedGroundedPair(context: ReturnType<typeof setup>) {
     const fridge = await context.seedAsset();
     const filter = await context.seedAsset({ name: "Water filter", kind: "item" });
-    const source = await context.store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
-      content: "The EDR3RXD1 filter fits the kitchen fridge.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
-    });
+    const source = await seedSourceRecord(context.store, OWNER);
     return { fridge, filter, source };
   }
 
@@ -423,19 +416,7 @@ describe("cross-owner triples", () => {
       scope: "household",
       householdId: household.id,
     });
-    const source = await context.store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
-      content: "The EDR3RXD1 filter fits the kitchen fridge.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
-    });
+    const source = await seedSourceRecord(context.store, OWNER);
     return { fridge, filter, source };
   }
 
@@ -527,24 +508,6 @@ describe("cross-owner triples", () => {
 });
 
 describe("asset person links", () => {
-  function seedPerson(
-    store: ReturnType<typeof setup>["store"],
-    ownerUserId: string,
-    displayName = "Marcus",
-  ) {
-    return store.createPerson({
-      ownerUserId,
-      displayName,
-      firstName: null,
-      lastName: null,
-      birthday: null,
-      relationshipType: "friend",
-      closenessLevel: 3,
-      profileBlurb: null,
-      source: "manual",
-    });
-  }
-
   /** A washer with the caller's own person linked as its borrower. */
   async function seedBorrowedWasher(context: ReturnType<typeof setup>) {
     const washer = await context.seedAsset({ name: "Pressure washer", kind: "item" });
@@ -571,6 +534,8 @@ describe("asset person links", () => {
         linkId: link.id,
         relation: "borrowed",
         person: { id: person.id, displayName: "Marcus" },
+        // The moment the link was made — what Asset History retells (#202).
+        createdAt: link.createdAt,
       },
     ]);
   });

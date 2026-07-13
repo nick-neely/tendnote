@@ -21,6 +21,7 @@ function linkEntry(overrides: Partial<RelatedAssetLink> = {}): RelatedAssetLink 
     },
     pending: false,
     owned: true,
+    createdAt: new Date("2026-07-02T00:00:00Z"),
     ...overrides,
   };
 }
@@ -64,6 +65,7 @@ describe("toAssetPersonLinkView", () => {
       linkId: "person-link-1",
       relation: "borrowed",
       person: { id: "person-1", displayName: "Marcus" },
+      createdAt: new Date("2026-07-02T00:00:00Z"),
     });
     expect(view).toEqual({
       linkId: "person-link-1",

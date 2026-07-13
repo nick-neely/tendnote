@@ -1,20 +1,20 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import type { AssetPersonLinkView, RelatedAssetLinkView } from "@/lib/asset-link-view";
-import { render, screen, userEvent, waitFor } from "@/test/dom";
+import { render, screen, userEvent, waitFor, within } from "@/test/dom";
 
 /**
  * DOM behavior for the Asset Profile's two link sections (#202), which share
  * the asset-links server-action module.
  *
  * Related Asset Links: each link reads as one calm sentence deep-linking to the
- * other asset's profile; pending inferred suggestions are review-gated with
- * inline accept/set-aside; owners can remove their links; and the add form
- * links outward with the fixed relation set.
+ * other asset's profile; pending inferred suggestions sit apart in their own
+ * review-needed strip with inline accept/set-aside; owners can remove their
+ * links; and the add form links outward with the fixed relation set.
  *
- * People: contextual person links read as "‹Name› — relation" rows deep-linking
- * to the person; the viewer removes their own links and adds one of their
- * people with a fixed contextual relation — never ownership or visibility.
+ * People: contextual person links read as one sentence — "Marcus borrowed it." —
+ * deep-linking to the person; the viewer removes their own links and adds one of
+ * their people with a fixed contextual relation — never ownership or visibility.
  */
 
 const addAssetLinkAction = vi.fn();
@@ -45,6 +45,7 @@ import { AssetRelatedLinks } from "./asset-related-links";
 const ASSET_ID = "00000000-0000-0000-0000-000000000001";
 const OTHER_ID = "00000000-0000-0000-0000-000000000002";
 const PERSON_ID = "20000000-0000-0000-0000-000000000001";
+const SUGGESTED_LINK_ID = "10000000-0000-0000-0000-000000000009";
 
 function linkView(overrides: Partial<RelatedAssetLinkView> = {}): RelatedAssetLinkView {
   return {
@@ -81,23 +82,40 @@ describe("AssetRelatedLinks (#202)", () => {
     expect(screen.getByText(/Fits/)).toBeTruthy();
   });
 
-  it("marks a pending suggestion and resolves it through accept", async () => {
+  it("holds pending suggestions apart from confirmed context and resolves one through accept", async () => {
     const user = userEvent.setup();
     acceptSuggestedAssetLinkAction.mockResolvedValue({ ok: true, view: null });
-    renderRelatedLinks({ links: [linkView({ pending: true })] });
+    renderRelatedLinks({
+      links: [
+        linkView(),
+        linkView({
+          linkId: SUGGESTED_LINK_ID,
+          otherAssetName: "Garage shelf",
+          phraseBefore: "Stored with ",
+          pending: true,
+        }),
+      ],
+    });
 
-    expect(screen.getByText("Suggested")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /Add link/ }));
+    // What Tendnote *thinks* never reads at the weight of what the user confirmed:
+    // suggestions live in their own review-needed strip, marked in words too.
+    const suggestions = screen.getByRole("region", { name: /suggested links/i });
+    expect(within(suggestions).getByRole("link", { name: "Garage shelf" })).toBeTruthy();
+    expect(within(suggestions).queryByRole("link", { name: "Refrigerator" })).toBeNull();
+    expect(within(suggestions).getByText("Suggested")).toBeTruthy();
+
+    await user.click(within(suggestions).getByRole("button", { name: /Add link/ }));
 
     await waitFor(() =>
-      expect(acceptSuggestedAssetLinkAction).toHaveBeenCalledWith({
-        linkId: "10000000-0000-0000-0000-000000000001",
-      }),
+      expect(acceptSuggestedAssetLinkAction).toHaveBeenCalledWith({ linkId: SUGGESTED_LINK_ID }),
     );
     await waitFor(() => expect(refresh).toHaveBeenCalled());
+    // The button the user pressed is gone; focus lands on the section, never on
+    // <body> — a keyboard user keeps their place (DESIGN.md §8).
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
   });
 
-  it("sets a pending suggestion aside without accepting it", async () => {
+  it("sets a pending suggestion aside without accepting it, keeping focus in the section", async () => {
     const user = userEvent.setup();
     dismissSuggestedAssetLinkAction.mockResolvedValue({ ok: true, view: null });
     renderRelatedLinks({ links: [linkView({ pending: true })] });
@@ -109,6 +127,7 @@ describe("AssetRelatedLinks (#202)", () => {
         linkId: "10000000-0000-0000-0000-000000000001",
       }),
     );
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
   });
 
   it("lets the link's owner remove it, and hides removal from other viewers", async () => {
@@ -190,13 +209,18 @@ function renderPersonLinks(props: Partial<Parameters<typeof AssetPersonLinks>[0]
 }
 
 describe("AssetPersonLinks (#202)", () => {
-  it("renders a person link as a quiet sentence deep-linking to the person", () => {
+  it("renders a person link as one plain sentence deep-linking to the person", () => {
     // Without the add form, so the row's relation phrase is the only "borrowed it".
     renderPersonLinks({ canLink: false, links: [personLinkView()] });
 
     const link = screen.getByRole("link", { name: "Marcus" });
     expect(link.getAttribute("href")).toBe(`/people/${PERSON_ID}`);
-    expect(screen.getByText("borrowed it")).toBeTruthy();
+
+    // "Marcus borrowed it." — prose, not a mono relation chip: mono is reserved
+    // for machine facts (DESIGN.md §4), and asset links next to it read as prose.
+    const sentence = link.closest("p");
+    expect(sentence?.textContent).toBe("Marcus borrowed it.");
+    expect(sentence?.querySelector(".font-mono")).toBeNull();
   });
 
   it("removes a person link and refreshes the profile", async () => {

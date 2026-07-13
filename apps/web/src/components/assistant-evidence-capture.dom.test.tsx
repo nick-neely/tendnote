@@ -167,6 +167,26 @@ describe("AssistantEvidenceCapture", () => {
     );
   });
 
+  it("takes focus when the pick opens it, and names the file's escape a discard", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    listAssetEvidenceDestinationsAction.mockResolvedValue([assetDestination()]);
+    render(<AssistantEvidenceCapture file={pngFile()} onClose={onClose} />);
+
+    // The plus-menu that had focus is gone; the panel catches it, so a keyboard
+    // user is never dropped to <body> to tab the whole page back (DESIGN.md §8).
+    const panel = screen.getByRole("region", { name: /attach asset evidence/i });
+    await waitFor(() => expect(panel.contains(document.activeElement)).toBe(true));
+
+    // The details form is unframed inside the panel — one card, never nested
+    // (DESIGN.md §6) — and its file escape says what it does: it discards.
+    await screen.findByText("Attach to Refrigerator");
+    expect(screen.queryByRole("button", { name: /choose a different file/i })).toBeNull();
+    await user.click(screen.getByRole("button", { name: /discard capture/i }));
+    expect(onClose).toHaveBeenCalled();
+    expect(addAssetEvidenceAction).not.toHaveBeenCalled();
+  });
+
   it("preselects the destination when exactly one candidate is clear from context", async () => {
     const user = userEvent.setup();
     listAssetEvidenceDestinationsAction.mockResolvedValue([assetDestination()]);

@@ -49,6 +49,7 @@ export function AssistantEvidenceCapture({ file, onClose }: { file: File; onClos
   const [choice, setChoice] = useState<EvidenceCaptureChoice | null>(null);
   const [done, setDone] = useState<CaptureDone | null>(null);
   const { error, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+  const panelRef = useCapturePanelFocus();
 
   // Vet the pick before anything else renders — the same domain gate the drop
   // zone and the seam apply, so a refused file never reaches a destination step.
@@ -66,7 +67,9 @@ export function AssistantEvidenceCapture({ file, onClose }: { file: File; onClos
   return (
     <section
       aria-label="Attach asset evidence"
-      className="flex flex-col gap-3 rounded-xl border bg-surface px-4 py-3.5"
+      className="flex flex-col gap-3 rounded-xl border bg-surface px-4 py-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      ref={panelRef}
+      tabIndex={-1}
     >
       {done ? (
         <CaptureDoneNote done={done} onClose={onClose} />
@@ -128,16 +131,41 @@ function CaptureFlow({
   return (
     <>
       <ChosenDestinationLine choice={choice} onChange={() => onChoose(null)} pending={pending} />
+      {/* Unframed: the panel already is the card, and cards never nest (DESIGN.md
+          §6). Back here means discard — the pick came from the composer's
+          plus-menu, so there is no earlier step in the panel to return to; the
+          destination is changed by the line above, not by clearing the file. */}
       <EvidenceDetailsForm
         assetScope={choice.kind === "existing" ? choice.destination.scope : "private"}
+        backLabel="Discard capture"
         draft={draft}
         error={error}
+        framed={false}
         onBack={onClose}
         pending={pending}
         submit={(formData) => submit(formData, choice)}
       />
     </>
   );
+}
+
+/**
+ * Lands keyboard focus on the panel the moment a plus-menu pick opens it: the
+ * menu that had focus is gone, and without this the user is dropped back to
+ * <body> and must tab the whole page to reach the capture they just started.
+ * The panel names itself ("Attach asset evidence"), so focus arrives somewhere
+ * that announces what it is; the details form's own autofocus takes over from
+ * here when a clear destination preselects.
+ */
+function useCapturePanelFocus() {
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    // One frame late, so the closing menu's own focus restoration can't land
+    // after ours and put the user back on the plus button.
+    const frame = requestAnimationFrame(() => panelRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return panelRef;
 }
 
 /** The domain gate's message for a refused pick, or null when accepted. */
