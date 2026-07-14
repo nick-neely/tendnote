@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { deriveMemoryDraft, draftToValue, formatAssetMemoryValue } from "./asset-memory-value";
+import {
+  deriveMemoryDraft,
+  draftToValue,
+  formatAssetMemoryValue,
+  valueDraftFor,
+} from "./asset-memory-value";
 
 describe("formatAssetMemoryValue", () => {
   it("renders exact text values verbatim", () => {
@@ -77,6 +82,49 @@ describe("deriveMemoryDraft", () => {
     expect(draft.canAccept).toBe(true);
     expect(draft.buildEdit()).toEqual({
       value: { type: "amount", amount: 18.5, currency: "USD" },
+    });
+  });
+});
+
+describe("interval values (#203)", () => {
+  const sixMonths = { type: "interval", interval: 6, unit: "month" } as const;
+
+  it("reads a cadence in the same voice a Routine's chip uses", () => {
+    expect(formatAssetMemoryValue(sixMonths)).toBe("Every 6 months");
+    expect(formatAssetMemoryValue({ type: "interval", interval: 1, unit: "year" })).toBe(
+      "Every year",
+    );
+  });
+
+  it("round-trips a cadence through its editable draft", () => {
+    const draft = valueDraftFor(sixMonths);
+    expect(draft).toBe("6 months");
+    expect(draftToValue(sixMonths, draft)).toEqual({ ok: true, value: sixMonths });
+  });
+
+  it("accepts the singular and a missing space", () => {
+    expect(draftToValue(sixMonths, "1 year")).toEqual({
+      ok: true,
+      value: { type: "interval", interval: 1, unit: "year" },
+    });
+    expect(draftToValue(sixMonths, "3months")).toEqual({
+      ok: true,
+      value: { type: "interval", interval: 3, unit: "month" },
+    });
+  });
+
+  it("refuses a cadence a Routine could not hold, rather than silently clamping it", () => {
+    expect(draftToValue(sixMonths, "every so often")).toEqual({
+      ok: false,
+      message: "Enter an interval like “6 months”.",
+    });
+    expect(draftToValue(sixMonths, "0 months")).toEqual({
+      ok: false,
+      message: "Enter an interval like “6 months”.",
+    });
+    expect(draftToValue(sixMonths, "9999 months")).toEqual({
+      ok: false,
+      message: "Enter an interval like “6 months”.",
     });
   });
 });

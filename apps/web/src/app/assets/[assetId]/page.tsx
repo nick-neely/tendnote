@@ -6,6 +6,7 @@ import {
   listAssetPersonLinks,
   listAssets,
   listLinkedGeneralActionsForAsset,
+  listPendingAssetActionProposals,
   listRelatedAssetLinks,
 } from "@tendnote/db/queries/assets";
 import { searchPeople } from "@tendnote/db/queries/people";
@@ -14,6 +15,7 @@ import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { AssetActionProposals } from "@/components/asset-action-proposals";
 import { AssetEvidenceSection } from "@/components/asset-evidence-section";
 import { AssetHistory } from "@/components/asset-history";
 import { AssetPersonLinks } from "@/components/asset-person-links";
@@ -24,6 +26,7 @@ import { ASSET_KIND_ICONS, AssetArchivedBadge } from "@/components/asset-shared"
 import { ActionScopeChip } from "@/components/general-action-shared";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { toPendingAssetActionProposalView } from "@/lib/asset-action-proposal-view";
 import { toAssetEvidenceView } from "@/lib/asset-evidence-view";
 import { toAssetHistoryEntryView } from "@/lib/asset-history-view";
 import { toAssetPersonLinkView, toRelatedAssetLinkView } from "@/lib/asset-link-view";
@@ -42,26 +45,24 @@ export const dynamic = "force-dynamic";
  * Deterministic denial is a plain 404 — a non-visible asset and a missing one
  * are indistinguishable (ADR 0153).
  */
-export default async function AssetProfilePage({
-  params,
-}: {
-  params: Promise<{ assetId: string }>;
-}) {
-  const { assetId } = await params;
-  const callerUserId = await requireAdmittedOwner();
-
+/**
+ * Everything this caller may see about one Asset, already projected to views. Each read
+ * is filtered per record, so a household Asset can carry a private detail, receipt,
+ * action, link, or person its members never see (#198–#203). Kept beside the page rather
+ * than inside it so the component stays a layout — the reads and their projections are
+ * one concern, and the JSX is another.
+ */
+async function loadAssetProfile(callerUserId: string, assetId: string) {
   const asset = await getAsset({ callerUserId, assetId });
   if (!asset) {
-    notFound();
+    return null;
   }
 
-  // Everything this caller may see about the asset — each read filtered per
-  // record, so a household asset can carry a private detail, receipt, action,
-  // link, or person its members never see (#198–#202).
   const [
     memories,
     evidence,
     relatedActions,
+    pendingActionProposals,
     relatedLinks,
     personLinks,
     history,
@@ -71,6 +72,8 @@ export default async function AssetProfilePage({
     listAssetMemories({ callerUserId, assetId }),
     listAssetEvidence({ callerUserId, assetId }),
     listLinkedGeneralActionsForAsset({ callerUserId, assetId }),
+    // Review state, so owner-only and never a co-member's to see (#203).
+    listPendingAssetActionProposals({ actorUserId: callerUserId, assetId }),
     listRelatedAssetLinks({ callerUserId, assetId }),
     listAssetPersonLinks({ callerUserId, assetId }),
     listAssetHistory({ callerUserId, assetId }),
@@ -79,18 +82,59 @@ export default async function AssetProfilePage({
     // The caller's own people, for contextual person links.
     searchPeople({ ownerUserId: callerUserId, limit: 100 }),
   ]);
+
   const now = new Date();
   const view = toAssetView(asset, { callerUserId });
-  const evidenceViews = evidence.map((record) => toAssetEvidenceView(record, { callerUserId }));
-  const relatedActionViews = relatedActions.map((entry) => toAssetRelatedActionView(entry, now));
-  const relatedLinkViews = relatedLinks.map((entry) => toRelatedAssetLinkView(entry));
-  const personLinkViews = personLinks.map((entry) => toAssetPersonLinkView(entry));
-  const historyViews = history.map((entry) => toAssetHistoryEntryView(entry, now));
-  const linkableAssets = visibleAssets
-    .filter((candidate) => candidate.id !== assetId)
-    .map((candidate) => ({ id: candidate.id, name: candidate.name }));
-  // Links are context anyone who can see the asset may add — while it's active.
-  const canLink = !view.archived;
+  return {
+    memories,
+    people,
+    view,
+    // Proposing reminders is owner-only review state, and pointless on an archived
+    // asset — a sold car should not be proposing oil changes (#203).
+    canPropose: view.owned && !view.archived,
+    // Links are context anyone who can see the asset may add — while it's active.
+    canLink: !view.archived,
+    evidenceViews: evidence.map((record) => toAssetEvidenceView(record, { callerUserId })),
+    relatedActionViews: relatedActions.map((entry) => toAssetRelatedActionView(entry, now)),
+    proposalViews: pendingActionProposals.map((entry) =>
+      toPendingAssetActionProposalView(entry, now),
+    ),
+    relatedLinkViews: relatedLinks.map((entry) => toRelatedAssetLinkView(entry)),
+    personLinkViews: personLinks.map((entry) => toAssetPersonLinkView(entry)),
+    historyViews: history.map((entry) => toAssetHistoryEntryView(entry, now)),
+    linkableAssets: visibleAssets
+      .filter((candidate) => candidate.id !== assetId)
+      .map((candidate) => ({ id: candidate.id, name: candidate.name })),
+  };
+}
+
+export default async function AssetProfilePage({
+  params,
+}: {
+  params: Promise<{ assetId: string }>;
+}) {
+  const { assetId } = await params;
+  const callerUserId = await requireAdmittedOwner();
+
+  const profile = await loadAssetProfile(callerUserId, assetId);
+  if (!profile) {
+    notFound();
+  }
+
+  const {
+    memories,
+    people,
+    view,
+    canPropose,
+    canLink,
+    evidenceViews,
+    relatedActionViews,
+    proposalViews,
+    relatedLinkViews,
+    personLinkViews,
+    historyViews,
+    linkableAssets,
+  } = profile;
 
   return (
     <AppShell>
@@ -142,6 +186,13 @@ export default async function AssetProfilePage({
           description="Reminders connected to this asset — replacements, renewals, maintenance."
           title="Related actions"
         >
+          {/* Proposals first, above the ledger of real ones: they are the only thing here
+              waiting on the owner, and once accepted they simply join the list below. */}
+          <AssetActionProposals
+            assetId={assetId}
+            canPropose={canPropose}
+            proposals={proposalViews}
+          />
           <AssetRelatedActions actions={relatedActionViews} />
         </ProfileSection>
 

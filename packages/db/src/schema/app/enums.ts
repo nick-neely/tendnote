@@ -112,6 +112,11 @@ export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
   "link_removed",
   "person_link_added",
   "person_link_removed",
+  // A Suggested General Action proposed from a reviewed Asset Memory (#203). The
+  // action id, the memory id, and the proposal reason ride in detail JSON. Only the
+  // *proposal* is audited here — the action's own lifecycle stays authoritative on
+  // the action side, so Asset History never forks into a second maintenance log.
+  "action_proposed",
 ]);
 
 // The fixed Related Asset Link relation set (#202): subject-first ("the filter

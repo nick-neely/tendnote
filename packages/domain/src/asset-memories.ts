@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { assetChildScopeSchema } from "./asset-child-scope";
 import { AssetValidationError } from "./assets";
+import { generalActionRecurrenceUnitSchema, MAX_RECURRENCE_INTERVAL } from "./general-actions";
 
 /**
  * An Asset Memory's lifecycle (#198). A memory is born `suggested` when inferred
@@ -15,13 +16,28 @@ export type AssetMemoryStatus = z.infer<typeof assetMemoryStatusSchema>;
 /**
  * The typed value an Asset Memory can carry alongside (or instead of) freeform
  * notes: exact text (model numbers, filter sizes), a calendar date (purchase,
- * warranty, renewal), or a lightweight amount for receipts/renewals — recall
- * metadata only, never budgets or financial reporting (#196).
+ * warranty, renewal), a recurring interval (a maintenance or replacement cadence),
+ * or a lightweight amount for receipts/renewals — recall metadata only, never
+ * budgets or financial reporting (#196).
+ *
+ * `date` and `interval` are the two *timed* facts, and the only ones that can
+ * propose a Suggested General Action (#203): a date proposes a one-time reminder,
+ * an interval proposes a Routine. Everything else is recall, not a reminder.
  */
 export const assetMemoryValueSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string().trim().min(1).max(500) }).strict(),
   // A plain calendar date ("2026-03-14") — asset facts are day-precise, never timestamps.
   z.object({ type: z.literal("date"), date: z.iso.date() }).strict(),
+  // A cadence ("every 6 months"), borrowing the General Action recurrence unit and
+  // bounds outright so an interval memory maps 1:1 onto a Routine's cadence — the
+  // proposal path never has to translate between two rhythm vocabularies (#203).
+  z
+    .object({
+      type: z.literal("interval"),
+      interval: z.number().int().min(1).max(MAX_RECURRENCE_INTERVAL),
+      unit: generalActionRecurrenceUnitSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("amount"),

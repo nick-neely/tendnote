@@ -384,6 +384,101 @@ describe("action summary scheduled dispatch (at most once per local day)", () =>
   });
 });
 
+describe("asset-linked actions in the scoped proactive summary (#203)", () => {
+  // An asset-linked action IS a General Action — the link lives in a side table and
+  // changes nothing about the row. These tests pin that as a guarantee rather than an
+  // accident: Phase 6 added no asset-aware branch here, and must never need one.
+
+  it("surfaces an asset-derived action exactly like any other due action", () => {
+    // What an Asset Memory's warranty date proposes, once accepted: an ordinary
+    // `open` action with a due date. It earns its place on the summary by its timing,
+    // not by being about a thing.
+    const warranty = action({
+      id: "warranty",
+      title: "Check the warranty on Refrigerator water filter",
+      dueAt: new Date(2026, 6, 6),
+    });
+
+    expect(selectActionSummaryItems([warranty], NOW)).toEqual([
+      {
+        reason: "due_today",
+        action: { id: "warranty", title: warranty.title, scope: "private", householdId: null },
+      },
+    ]);
+  });
+
+  it("surfaces an asset-derived Routine on its cadence, overdue included", () => {
+    const filter = action({
+      id: "filter",
+      title: "Replace Refrigerator water filter",
+      recurrence: { interval: 6, unit: "month" },
+      dueAt: new Date(2026, 6, 1),
+    });
+
+    expect(selectActionSummaryItems([filter], NOW).map((item) => item.reason)).toEqual(["overdue"]);
+  });
+
+  it("never surfaces an asset-derived action that is still only proposed", () => {
+    // A proposal from an Asset Memory is a `suggested` row. It must not reach a
+    // proactive summary before the owner has accepted it — the review gate is the
+    // whole point, and it holds here without any asset-specific check.
+    const proposed = action({
+      id: "proposed",
+      title: "Replace Refrigerator water filter",
+      status: "suggested",
+      dueAt: new Date(2026, 6, 6),
+    });
+
+    expect(selectActionSummaryItems([proposed], NOW)).toEqual([]);
+  });
+
+  it("keeps the delivered summary count-only — an asset name never reaches Discord", () => {
+    // The safety property behind `sensitivity: "normal"`. An asset-linked action's
+    // title names a thing the owner owns; the payload must stay a bare count so a
+    // private asset can never be disclosed by a summary delivered to a shared channel.
+    const artifact = toActionSummaryArtifact({
+      ownerUserId: OWNER,
+      localDate: LOCAL_DATE,
+      items: selectActionSummaryItems(
+        [
+          action({ title: "Replace Refrigerator water filter", dueAt: new Date(2026, 6, 6) }),
+          action({ title: "Renew the household streaming plan", dueAt: new Date(2026, 6, 6) }),
+        ],
+        NOW,
+      ),
+    });
+
+    expect(artifact.summary).toBe("2 actions are ready for today.");
+    expect(artifact.summary).not.toMatch(/refrigerator|filter|streaming/i);
+  });
+
+  it("fails the summary's scope closed when a private asset action joins a household one", () => {
+    // A private replacement reminder (from a private memory under a household Asset)
+    // pulls the whole summary back to private — the least-shareable-item rule, which
+    // asset-linked actions ride like everything else.
+    const householdAction = action({
+      title: "Service the furnace",
+      dueAt: new Date(2026, 6, 6),
+      scope: "household",
+      householdId: HOUSEHOLD_ID,
+    });
+    const privateAssetAction = action({
+      title: "Replace the bedroom air purifier filter",
+      dueAt: new Date(2026, 6, 6),
+      scope: "private",
+    });
+
+    const artifact = toActionSummaryArtifact({
+      ownerUserId: OWNER,
+      localDate: LOCAL_DATE,
+      items: selectActionSummaryItems([householdAction, privateAssetAction], NOW),
+    });
+
+    expect(artifact.scope).toBe("private");
+    expect(artifact.householdId).toBeNull();
+  });
+});
+
 describe("action summary out-of-scope boundaries", () => {
   it("introduces no notification, reminder, or external-send system (out of scope)", () => {
     // No push/email/SMS, notification center, or provider-side task/calendar writes.

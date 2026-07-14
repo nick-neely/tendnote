@@ -250,6 +250,8 @@ export const assetAuditEventKindSchema = z.enum([
   "link_removed",
   "person_link_added",
   "person_link_removed",
+  // A Suggested General Action proposed from a reviewed Asset Memory (#203).
+  "action_proposed",
 ]);
 export type AssetAuditEventKind = z.infer<typeof assetAuditEventKindSchema>;
 

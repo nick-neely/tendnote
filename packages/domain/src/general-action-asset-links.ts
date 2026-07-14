@@ -7,6 +7,11 @@ import { z } from "zod";
  * side is scope-filtered independently when the other is displayed. `hintLabel`
  * preserves which hint the link came from, so promotion stays idempotent per
  * hint and surfaces can pair a hint chip with the Asset it became.
+ *
+ * The two provenance columns are mutually exclusive in practice and name the two
+ * ways a link is born: `hintLabel` for a Phase 5 hint promoted into an Asset
+ * (#199), `assetMemoryId` for an action *proposed from* a reviewed Asset Memory
+ * (#203). A link with neither is a plain association.
  */
 export const generalActionAssetLinkSchema = z.object({
   id: z.string(),
@@ -16,6 +21,12 @@ export const generalActionAssetLinkSchema = z.object({
   generalActionId: z.string(),
   assetId: z.string(),
   hintLabel: z.string().trim().min(1).max(120).nullable().default(null),
+  /**
+   * The reviewed Asset Memory this action was proposed from (#203), or null. This
+   * is what keeps proposal generation idempotent: one memory proposes one action,
+   * and a memory whose proposal was already reviewed is never re-proposed.
+   */
+  assetMemoryId: z.string().nullable().default(null),
   createdAt: z.date(),
 });
 

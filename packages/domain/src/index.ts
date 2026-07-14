@@ -1,5 +1,6 @@
 export * from "./access";
 export * from "./action-extraction";
+export * from "./asset-action-proposals";
 export * from "./asset-child-scope";
 export * from "./asset-evidence";
 export * from "./asset-history";
@@ -25,6 +26,7 @@ export * from "./general-action-asset-links";
 export * from "./general-actions";
 export * from "./gmail-drafts";
 export * from "./households";
+export * from "./local-calendar-dates";
 export * from "./memories";
 export * from "./memory-curator";
 export * from "./people";
