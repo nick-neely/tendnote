@@ -1,6 +1,6 @@
 {
-  "id": "cabbcc87-d33a-4272-a34d-123df4b8f05d",
-  "prevId": "05cf3bd0-9f0f-44ae-b8d5-502b81953473",
+  "id": "4f25a2dd-a1ee-49ea-813e-750f1daf29f7",
+  "prevId": "46398c38-c7a5-41f2-839c-58db7bb28abc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4556,6 +4556,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "asset_memory_id": {
+          "name": "asset_memory_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4615,6 +4621,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "general_action_assets_asset_memory_idx": {
+          "name": "general_action_assets_asset_memory_idx",
+          "columns": [
+            {
+              "expression": "asset_memory_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -4650,6 +4671,19 @@
           "tableTo": "assets",
           "columnsFrom": [
             "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "general_action_assets_asset_memory_id_asset_memories_id_fk": {
+          "name": "general_action_assets_asset_memory_id_asset_memories_id_fk",
+          "tableFrom": "general_action_assets",
+          "tableTo": "asset_memories",
+          "columnsFrom": [
+            "asset_memory_id"
           ],
           "columnsTo": [
             "id"
@@ -8519,7 +8553,8 @@
         "link_dismissed",
         "link_removed",
         "person_link_added",
-        "person_link_removed"
+        "person_link_removed",
+        "action_proposed"
       ]
     },
     "public.asset_audit_source": {
