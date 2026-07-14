@@ -3,6 +3,7 @@ export * from "./app/asset-evidence";
 export * from "./app/asset-links";
 export * from "./app/asset-memories";
 export * from "./app/asset-review-groups";
+export * from "./app/asset-snapshots";
 export * from "./app/assets";
 export * from "./app/audit-log";
 export * from "./app/background-job-deliveries";

@@ -11,6 +11,7 @@ import {
   resolveAssetTransition,
 } from "@tendnote/domain";
 import { resolveRecordVisibility } from "../households/record-visibility";
+import { type AssetEmbeddingDeps, makeScheduleAssetEmbedding } from "./embed";
 import type {
   AssetActionInput,
   AssetLifecycleStore,
@@ -206,7 +207,11 @@ async function transitionAsset(
  * lightweight anchor: memories, evidence, links, snapshots, and search build on
  * this seam in later slices without reworking it (#196).
  */
-export function createAssetLifecycle(store: AssetLifecycleStore) {
+export function createAssetLifecycle(store: AssetLifecycleStore, deps: AssetEmbeddingDeps = {}) {
+  // Assets are semantically retrievable, so every write that changes what an asset
+  // *is* — or whether it is durable at all — re-enqueues its embedding (#204).
+  const embed = makeScheduleAssetEmbedding(deps);
+
   return {
     /**
      * Creates an active Asset as a lightweight anchor: name + kind + visibility,
@@ -244,6 +249,7 @@ export function createAssetLifecycle(store: AssetLifecycleStore) {
         source: input.source ?? "user",
         detail: { name: asset.name, kind: asset.kind, scope: asset.scope },
       });
+      await embed.asset(asset);
 
       return hydrateAsset(store, asset);
     },
@@ -288,18 +294,26 @@ export function createAssetLifecycle(store: AssetLifecycleStore) {
         source: input.source ?? "user",
         detail,
       });
+      // A renamed or re-kinded asset embeds different text — re-embed it.
+      await embed.asset(updated);
 
       return hydrateAsset(store, updated);
     },
 
     /** Archives an Asset — the normal inactive path; history stays intact (#196). */
-    archiveAsset(input: AssetActionInput & { source?: AssetAuditSource }) {
-      return transitionAsset(store, input, "archive");
+    async archiveAsset(input: AssetActionInput & { source?: AssetAuditSource }) {
+      const archived = await transitionAsset(store, input, "archive");
+      await embed.asset({ id: archived.id, ownerUserId: archived.ownerUserId });
+
+      return archived;
     },
 
     /** Restores an archived Asset back to active. */
-    restoreAsset(input: AssetActionInput & { source?: AssetAuditSource }) {
-      return transitionAsset(store, input, "restore");
+    async restoreAsset(input: AssetActionInput & { source?: AssetAuditSource }) {
+      const restored = await transitionAsset(store, input, "restore");
+      await embed.asset({ id: restored.id, ownerUserId: restored.ownerUserId });
+
+      return restored;
     },
 
     /**

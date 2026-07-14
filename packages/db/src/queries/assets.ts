@@ -86,8 +86,17 @@ export { createAssetReview } from "./assets/review";
 export type * from "./assets/review-types";
 export type * from "./assets/types";
 
-const defaultAssetLifecycle = createAssetLifecycle(createDrizzleAssetLifecycleStore());
-const defaultAssetReview = createAssetReview(createDrizzleAssetReviewLifecycleStore());
+// Assets and their reviewed memories participate in semantic retrieval, so every
+// durable write enqueues (and, outside production, immediately runs) an embedding job
+// on the shared pipeline (#204) — the same trigger General Actions use.
+const scheduleAssetEmbedding = enqueueAndTriggerSemanticEmbeddingJob;
+
+const defaultAssetLifecycle = createAssetLifecycle(createDrizzleAssetLifecycleStore(), {
+  scheduleAssetEmbedding,
+});
+const defaultAssetReview = createAssetReview(createDrizzleAssetReviewLifecycleStore(), {
+  scheduleAssetEmbedding,
+});
 const defaultAssetActionLinks = createAssetActionLinks({
   ...createDrizzleAssetReviewLifecycleStore(),
   ...createDrizzleGeneralActionStore(),

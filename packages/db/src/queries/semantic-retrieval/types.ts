@@ -1,4 +1,8 @@
 import type {
+  Asset,
+  AssetMemory,
+  CreateAssetInput,
+  CreateAssetMemoryInput,
   CreateEmbeddingJobInput,
   CreateGeneralActionInput,
   CreateRelationshipContextEmbeddingInput,
@@ -86,6 +90,20 @@ export type EmbeddingStore = MemoryReviewStore &
       ownerUserId: string;
       generalActionId: string;
     }) => Promise<GeneralAction | null>;
+    getAssetForEmbedding: (input: {
+      ownerUserId: string;
+      assetId: string;
+    }) => Promise<Asset | null>;
+    /**
+     * The memory *and* the asset it hangs off, in one read: the embedded text folds in
+     * the asset's name and kind (so "the kitchen fridge" can reach the fridge's filter
+     * size), and the embed decision needs the asset's status (a fact about an
+     * un-reviewed asset must not become retrievable).
+     */
+    getAssetMemoryForEmbedding: (input: {
+      ownerUserId: string;
+      assetMemoryId: string;
+    }) => Promise<{ memory: AssetMemory; asset: Asset } | null>;
     upsertRelationshipContextEmbedding: (
       embedding: CreateRelationshipContextEmbeddingInput,
     ) => Promise<RelationshipContextEmbedding>;
@@ -111,6 +129,8 @@ export type InMemoryEmbeddingStore = Omit<
 > &
   EmbeddingStore & {
     createGeneralAction: (input: CreateGeneralActionInput) => Promise<GeneralAction>;
+    createAsset: (input: CreateAssetInput) => Promise<Asset>;
+    createAssetMemory: (input: CreateAssetMemoryInput) => Promise<AssetMemory>;
     listEmbeddingJobs: () => Promise<EmbeddingJob[]>;
     listRelationshipContextEmbeddings: () => Promise<RelationshipContextEmbedding[]>;
   };
@@ -150,4 +170,6 @@ export type ProcessEmbeddingJobResult = {
   error?: string;
   sourceRecord?: SourceRecord | null;
   sourceGeneralAction?: GeneralAction | null;
+  sourceAsset?: Asset | null;
+  sourceAssetMemory?: AssetMemory | null;
 };

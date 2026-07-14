@@ -7,6 +7,8 @@ import {
   type EmbeddingContext,
   failJob,
   processApprovedMemory,
+  processAsset,
+  processAssetMemory,
   processGeneralAction,
   processSourceRecord,
   skipJob,
@@ -142,6 +144,8 @@ function extractSkipSources(result: Awaited<ReturnType<typeof processJobByKind>>
     sourceMemory: "sourceMemory" in result ? result.sourceMemory : null,
     sourceRecord: "sourceRecord" in result ? result.sourceRecord : null,
     sourceGeneralAction: "sourceGeneralAction" in result ? result.sourceGeneralAction : null,
+    sourceAsset: "sourceAsset" in result ? result.sourceAsset : null,
+    sourceAssetMemory: "sourceAssetMemory" in result ? result.sourceAssetMemory : null,
   };
 }
 
@@ -199,6 +203,8 @@ async function processEmbeddingJob(
       sourceMemory: result.sourceMemory,
       sourceRecord: result.sourceRecord,
       sourceGeneralAction: result.sourceGeneralAction,
+      sourceAsset: result.sourceAsset,
+      sourceAssetMemory: result.sourceAssetMemory,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -215,6 +221,10 @@ function processJobByKind(ctx: EmbeddingContext, job: ProcessEmbeddingJobResult[
       return processSourceRecord(ctx, job);
     case "general_action":
       return processGeneralAction(ctx, job);
+    case "asset":
+      return processAsset(ctx, job);
+    case "asset_memory":
+      return processAssetMemory(ctx, job);
   }
 }
 

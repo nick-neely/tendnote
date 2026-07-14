@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { briefItemKind, semanticRecordKind } from "../schema/app/enums";
+import { briefItemKind } from "../schema/app/enums";
+import { expectCalendarIsNotASemanticRecordKind } from "./calendar-boundary-fixtures";
 
 /**
  * Consolidated Phase 2C Calendar boundary regression (PRD #105, ADR-0072/0075/
@@ -86,7 +87,7 @@ describe("Phase 2C Calendar boundaries (db)", () => {
     // Durable memories, retained source records, and General Actions are semantically
     // embedded (ADR 0150); Calendar context enters retrieval only after explicit
     // promotion (ADR-0079), so it is never a semantic record kind.
-    expect(semanticRecordKind.enumValues).toEqual(["memory", "source_record", "general_action"]);
+    expectCalendarIsNotASemanticRecordKind();
     for (const forbidden of [
       "semantic-retrieval",
       "relationship-context-search",

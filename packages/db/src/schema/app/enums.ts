@@ -258,6 +258,10 @@ export const semanticRecordKind = pgEnum("semantic_record_kind", [
   // General Actions are embedded and semantically retrievable alongside relationship
   // context (ADR 0150; Phase 5 #184).
   "general_action",
+  // Assets and their reviewed memories share the same embedding pipeline, but are
+  // retrieved through the typed Asset Search contract, not relationship retrieval (#204).
+  "asset",
+  "asset_memory",
 ]);
 
 export const semanticTrustLevel = pgEnum("semantic_trust_level", [
@@ -265,6 +269,10 @@ export const semanticTrustLevel = pgEnum("semantic_trust_level", [
   "logged_context",
   // A General Action is an owner-authored intention — its own trust register.
   "action_item",
+  // An Asset is an anchor for a thing the user owns; an Asset Memory is a reviewed
+  // fact about that thing. Distinct registers so retrieval never mislabels either (#204).
+  "asset_anchor",
+  "asset_fact",
 ]);
 
 export const embeddingJobStatus = pgEnum("embedding_job_status", [

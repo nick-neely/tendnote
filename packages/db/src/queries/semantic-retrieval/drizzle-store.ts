@@ -1,4 +1,6 @@
 import {
+  assetMemorySchema,
+  assetSchema,
   claimableEmbeddingJobStatuses,
   createEmbeddingJobSchema,
   createRelationshipContextEmbeddingSchema,
@@ -10,12 +12,15 @@ import {
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import {
+  assetMemories,
+  assets,
   relationshipContextEmbeddingJobs,
   relationshipContextEmbeddings,
   sourceRecordPeople,
   sourceRecords,
   unresolvedPersonMentions,
 } from "../../schema";
+import { selectOwnedAsset } from "../assets/drizzle-store";
 import { selectOwnedGeneralAction } from "../general-actions/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleMemoryStore } from "../memories/drizzle-store";
@@ -183,6 +188,35 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
     },
     async getGeneralActionForEmbedding(input) {
       return selectOwnedGeneralAction(input);
+    },
+    async getAssetForEmbedding(input) {
+      return selectOwnedAsset(input);
+    },
+    async getAssetMemoryForEmbedding(input) {
+      // The memory and its anchor in one read: the embedded text folds in the asset's
+      // name and kind, and the embed decision needs the asset's status.
+      const [row] = await getDb()
+        .select({ memory: assetMemories, asset: assets })
+        .from(assetMemories)
+        .innerJoin(assets, eq(assets.id, assetMemories.assetId))
+        .where(
+          and(
+            eq(assetMemories.id, input.assetMemoryId),
+            eq(assetMemories.ownerUserId, input.ownerUserId),
+          ),
+        )
+        .limit(1);
+
+      if (!row) {
+        return null;
+      }
+
+      const { valueJson, ...memory } = row.memory;
+
+      return {
+        memory: assetMemorySchema.parse({ ...memory, value: valueJson }),
+        asset: assetSchema.parse(row.asset),
+      };
     },
     async upsertRelationshipContextEmbedding(values) {
       const parsed = createRelationshipContextEmbeddingSchema.parse(values);

@@ -1,4 +1,5 @@
 import type { AssetEvidence, AssetMemory } from "@tendnote/domain";
+import { type AssetEmbeddingDeps, makeScheduleAssetEmbedding } from "./embed";
 import type {
   AddAssetEvidenceInput,
   AddAssetEvidenceToNewAssetInput,
@@ -153,12 +154,30 @@ async function dismissAssetReviewGroup(
  * each step takes the store explicitly, and the review invariants — owner-only,
  * grounded, durable-anchor, fail-closed — live in `review-shared.ts`.
  */
-export function createAssetReview(store: AssetReviewLifecycleStore) {
+export function createAssetReview(store: AssetReviewLifecycleStore, deps: AssetEmbeddingDeps = {}) {
+  // A memory becomes (or stops being) semantically retrievable as it moves through
+  // review, and its embedded text changes when it is edited — so every write that
+  // touches either re-enqueues its embedding (#204). Eligibility is re-checked by the
+  // processor, so a dismissed memory is skipped rather than embedded.
+  const embed = makeScheduleAssetEmbedding(deps);
+
   return {
     suggestAsset: (input: SuggestAssetInput) => suggestAsset(store, input),
-    suggestAssetMemories: (input: SuggestAssetMemoriesInput) => suggestAssetMemories(store, input),
-    createActiveAssetMemory: (input: CreateActiveAssetMemoryInput) =>
-      createActiveAssetMemory(store, input),
+    async suggestAssetMemories(input: SuggestAssetMemoriesInput) {
+      const group = await suggestAssetMemories(store, input);
+      for (const memory of group.memories) {
+        await embed.memory(memory);
+      }
+
+      return group;
+    },
+
+    async createActiveAssetMemory(input: CreateActiveAssetMemoryInput) {
+      const memory = await createActiveAssetMemory(store, input);
+      await embed.memory(memory);
+
+      return memory;
+    },
     listAssetReviewGroups: (input: ListAssetReviewGroupsInput) =>
       listAssetReviewGroups(store, input),
     getAssetReviewGroup: (input: { actorUserId: string; groupId: string }) =>
@@ -203,16 +222,43 @@ export function createAssetReview(store: AssetReviewLifecycleStore) {
     /** Stored upload bytes, gated by the caller's visibility of the record. */
     getAssetEvidenceFile: (input: { callerUserId: string; evidenceId: string }) =>
       getAssetEvidenceFileForCaller(store, input),
-    acceptSuggestedAsset: (input: AcceptSuggestedAssetInput) => acceptSuggestedAsset(store, input),
+    async acceptSuggestedAsset(input: AcceptSuggestedAssetInput) {
+      const group = await acceptSuggestedAsset(store, input);
+      // The anchor is durable for the first time, so it — and every memory hanging
+      // off it, which the processor previously skipped as un-anchored — becomes
+      // retrievable now.
+      await embed.asset(group.asset);
+      for (const memory of group.memories) {
+        await embed.memory(memory);
+      }
+
+      return group;
+    },
     editSuggestedAsset: (input: EditSuggestedAssetInput) => editSuggestedAsset(store, input),
     dismissSuggestedAsset: (input: SuggestedAssetActionInput) =>
       dismissSuggestedAsset(store, input),
-    acceptSuggestedAssetMemory: (input: AcceptSuggestedAssetMemoryInput) =>
-      acceptSuggestedAssetMemory(store, input),
-    editSuggestedAssetMemory: (input: EditSuggestedAssetMemoryInput) =>
-      editSuggestedAssetMemory(store, input),
-    dismissSuggestedAssetMemory: (input: AssetMemoryActionInput) =>
-      dismissSuggestedAssetMemory(store, input),
+    async acceptSuggestedAssetMemory(input: AcceptSuggestedAssetMemoryInput) {
+      const group = await acceptSuggestedAssetMemory(store, input);
+      // The accepted memory has dropped out of the group's *pending* list, so it is
+      // named from the input; the owner comes from the anchor the seam just verified.
+      await embed.memory({ id: input.memoryId, ownerUserId: group.asset.ownerUserId });
+
+      return group;
+    },
+    async editSuggestedAssetMemory(input: EditSuggestedAssetMemoryInput) {
+      const group = await editSuggestedAssetMemory(store, input);
+      // Edited text embeds differently — re-enqueue so the vector follows the fact.
+      await embed.memory({ id: input.memoryId, ownerUserId: group.asset.ownerUserId });
+
+      return group;
+    },
+    async dismissSuggestedAssetMemory(input: AssetMemoryActionInput) {
+      const group = await dismissSuggestedAssetMemory(store, input);
+      // Re-enqueued so the processor skips it and the stale vector stops being served.
+      await embed.memory({ id: input.memoryId, ownerUserId: group.asset.ownerUserId });
+
+      return group;
+    },
     acceptAssetReviewGroup: (input: AssetReviewGroupActionInput) =>
       acceptAssetReviewGroup(store, input),
     dismissAssetReviewGroup: (input: AssetReviewGroupActionInput) =>
