@@ -11,7 +11,7 @@
     }
   ],
   "functions": {
-    "apps/web/src/app/api/queue/extraction/route.ts": {
+    "src/app/api/queue/extraction/route.ts": {
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",
@@ -19,7 +19,7 @@
         }
       ]
     },
-    "apps/web/src/app/api/queue/embedding/route.ts": {
+    "src/app/api/queue/embedding/route.ts": {
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",
