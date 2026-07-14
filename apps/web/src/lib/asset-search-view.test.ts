@@ -1,6 +1,19 @@
 import type { AssetSearchResult } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { toAssetSearchResultView } from "@/lib/asset-search-view";
+import {
+  type AssetSearchResultView,
+  isExactAssetSearchResult,
+  toAssetSearchResultView,
+} from "@/lib/asset-search-view";
+
+/** A mapped view, for the grouping predicate the results list runs on. */
+function view(overrides: Partial<AssetSearchResultView> = {}): AssetSearchResultView {
+  const mapped = toAssetSearchResultView(result());
+  if (!mapped) {
+    throw new Error("Expected a browsable result.");
+  }
+  return { ...mapped, ...overrides };
+}
 
 function result(overrides: Partial<AssetSearchResult> = {}): AssetSearchResult {
   return {
@@ -29,15 +42,28 @@ describe("toAssetSearchResultView", () => {
     expect(toAssetSearchResultView(result())?.value).toBe("RPWFE");
   });
 
-  it("renders an amount and a date exactly as stored", () => {
+  it("reads an amount and a date the way the Asset Profile reads them", () => {
+    // The same fact may not have two spellings in one product: a search result and the
+    // Memories section it links to must agree. `describeAssetMemoryValue` stays the
+    // canonical *machine* projection (snapshot prose, embedded text); the view speaks
+    // to a person.
     expect(
       toAssetSearchResultView(
         result({ value: { type: "amount", amount: 1299.99, currency: "USD" } }),
       )?.value,
-    ).toBe("1299.99 USD");
+    ).toBe("$1,299.99");
     expect(
       toAssetSearchResultView(result({ value: { type: "date", date: "2027-01-04" } }))?.value,
-    ).toBe("2027-01-04");
+    ).toBe("Jan 4, 2027");
+  });
+
+  it("separates exact and structured hits from meaning-only ones", () => {
+    // What the results list groups on: "the stored value *is* what you typed" and "this
+    // seemed related" are different claims and must not read as one list.
+    expect(isExactAssetSearchResult(view({ matchKinds: ["structured"] }))).toBe(true);
+    expect(isExactAssetSearchResult(view({ matchKinds: ["exact"] }))).toBe(true);
+    expect(isExactAssetSearchResult(view({ matchKinds: ["exact", "semantic"] }))).toBe(true);
+    expect(isExactAssetSearchResult(view({ matchKinds: ["semantic"] }))).toBe(false);
   });
 
   it("refuses a suggested memory rather than labeling one", () => {

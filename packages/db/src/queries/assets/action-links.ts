@@ -320,6 +320,15 @@ async function listLinkedAssetsForGeneralActions(
  * related-actions read (#199). The asset must itself be durable and visible;
  * each linked action is then filtered independently under the General Action
  * scope rules (review-state actions never surface). Oldest link first.
+ *
+ * A `dismissed` action is dropped, and that is a product rule, not an oversight.
+ * Dismissal is how the owner says "no" to a proposal (#203) — and a "no" that
+ * leaves a permanent, unremovable "Dismissed" row in the asset's related-actions
+ * ledger is not a rejection, it is a tombstone. The asset keeps no residue of what
+ * it was refused; the dismissal itself still lives in Asset History and on the
+ * Actions surface's resolved trail, where a reversible record belongs. Completed
+ * and archived actions do stay: those are things that actually happened to the
+ * thing, which is exactly what a profile is for.
  */
 async function listLinkedGeneralActionsForAsset(
   store: AssetActionLinkStore,
@@ -337,7 +346,7 @@ async function listLinkedGeneralActionsForAsset(
       callerUserId: input.callerUserId,
       generalActionId: link.generalActionId,
     });
-    if (!action) {
+    if (!action || action.status === "dismissed") {
       continue;
     }
     linked.push({ linkId: link.id, hintLabel: link.hintLabel, action });

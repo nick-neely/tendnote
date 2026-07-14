@@ -282,6 +282,50 @@ describe("Asset Search — fuzzy intent", () => {
     expect(results.map((result) => result.recordId)).toContain("memory-warranty");
   });
 
+  it("refuses to call a faintly-similar record 'Related' — the semantic tier has a floor", async () => {
+    // Cosine similarity is never zero over a warm index: every record is a *little* bit
+    // like every query. Without a floor, "boiler" returns the user's entire asset list
+    // stamped "Related", which is not a search result — it is noise wearing a claim.
+    const results = await search({
+      assets: [asset()],
+      memories: [
+        memory(),
+        memory({ id: "memory-ambient", label: "Ambient", value: null, notes: "unrelated" }),
+      ],
+      embeddings: [
+        // cos([1,2,2,2], [1,0,0,0]) ≈ 0.28 — real, and far below anything worth saying.
+        {
+          ownerUserId: OWNER,
+          recordKind: "asset_memory",
+          recordId: "memory-ambient",
+          embedding: [1, 2, 2, 2],
+        },
+      ],
+    }).searchAssets({ ownerUserId: OWNER, query: "anything for the kitchen fridge" });
+
+    expect(results.map((result) => result.recordId)).not.toContain("memory-ambient");
+  });
+
+  it("still surfaces a genuinely close record by meaning alone", async () => {
+    const results = await search({
+      assets: [asset()],
+      memories: [
+        memory({ id: "memory-close", label: "Cooling notes", value: null, notes: "cold" }),
+      ],
+      embeddings: [
+        // cos([1,1,1,1], [1,0,0,0]) = 0.5 — over the floor, and a claim worth making.
+        {
+          ownerUserId: OWNER,
+          recordKind: "asset_memory",
+          recordId: "memory-close",
+          embedding: [1, 1, 1, 1],
+        },
+      ],
+    }).searchAssets({ ownerUserId: OWNER, query: "anything for the kitchen fridge" });
+
+    expect(results.map((result) => result.recordId)).toContain("memory-close");
+  });
+
   it("ranks an exact structured hit above a merely semantic one", async () => {
     const results = await search({
       assets: [asset()],

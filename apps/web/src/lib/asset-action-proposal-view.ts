@@ -40,10 +40,36 @@ export function toPendingAssetActionProposalView(
 
 /**
  * What one proposal pass produced. A pass that proposes nothing is a normal, calm
- * outcome — every dated detail already has its reminder, or none of them carries a
- * date at all — so it reports a count rather than raising an error.
+ * outcome, so it reports counts rather than raising an error — but it must report
+ * *which* calm outcome, because there are two and they are not interchangeable.
  */
-export type AssetActionProposalSummary = { proposed: number };
+export type AssetActionProposalSummary = {
+  proposed: number;
+  /** Dated details that had already had their say — accepted, pending, or turned down. */
+  alreadySpokenFor: number;
+};
+
+/**
+ * What to tell the owner when a pass proposes nothing, or null when it proposed
+ * something and the new rows speak for themselves.
+ *
+ * The distinction is a trust one. "The dated details here already have reminders" is a
+ * comfortable sentence, and it is *false* the moment the owner has dismissed a proposal:
+ * the detail has no reminder — it was refused, and saying otherwise tells the user their
+ * rejection created the thing they rejected. So a settled detail is described by what
+ * actually happened to it (it has been through review) rather than by an outcome we did
+ * not check; and an asset with no timed details at all is told the plain truth about
+ * where reminders come from, which is also the only sentence that teaches the next step.
+ */
+export function describeProposalOutcome(summary: AssetActionProposalSummary): string | null {
+  if (summary.proposed > 0) {
+    return null;
+  }
+  if (summary.alreadySpokenFor > 0) {
+    return "Nothing new to suggest — every dated detail here has already been through review.";
+  }
+  return "Nothing to suggest yet — reminders come from details with a date or a cadence, like a warranty expiry or a filter interval.";
+}
 
 /** The proposal pass's result union, matching the shared surface-mutation contract. */
 export type AssetActionProposalMutationResult =

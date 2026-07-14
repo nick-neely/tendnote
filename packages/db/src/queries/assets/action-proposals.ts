@@ -278,6 +278,8 @@ type ProposableSelection = {
   memories: AssetMemory[];
   /** memory id → the ignored proposal's link row, cleared as the memory proposes again. */
   staleLinkByMemory: Map<string, string>;
+  /** How many memories were skipped because a prior proposal already settled them. */
+  alreadySpokenFor: number;
 };
 
 /**
@@ -290,10 +292,15 @@ function selectProposableMemories(
   memories: AssetMemory[],
   prior: Map<string, PriorProposal>,
 ): ProposableSelection {
-  const selection: ProposableSelection = { memories: [], staleLinkByMemory: new Map() };
+  const selection: ProposableSelection = {
+    memories: [],
+    staleLinkByMemory: new Map(),
+    alreadySpokenFor: 0,
+  };
   for (const memory of memories) {
     const previous = prior.get(memory.id);
     if (previous && !previous.revivable) {
+      selection.alreadySpokenFor += 1;
       continue;
     }
     if (previous) {
@@ -376,12 +383,15 @@ async function proposeAssetMemoryActions(
   const reviewed = await listProposableMemories(store, asset, input.assetMemoryIds);
   const links = await store.listGeneralActionAssetLinksForAsset({ assetId: asset.id });
   const prior = await indexPriorProposals(store, asset.ownerUserId, links);
-  const { memories, staleLinkByMemory } = selectProposableMemories(reviewed, prior);
+  const { memories, staleLinkByMemory, alreadySpokenFor } = selectProposableMemories(
+    reviewed,
+    prior,
+  );
 
   const plans = planAssetMemoryActionProposals({ asset, memories, now });
   const memoriesById = new Map(memories.map((memory) => [memory.id, memory]));
 
-  const result: AssetActionProposalResult = { asset, proposed: [] };
+  const result: AssetActionProposalResult = { asset, proposed: [], alreadySpokenFor };
   for (const plan of plans) {
     const memory = memoriesById.get(plan.assetMemoryId);
     if (!memory) {

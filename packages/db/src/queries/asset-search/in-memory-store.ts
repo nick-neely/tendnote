@@ -1,4 +1,6 @@
 import {
+  ASSET_SEMANTIC_SIMILARITY_FLOOR,
+  ASSET_SEMANTIC_TIER_LIMIT,
   type Asset,
   type AssetEvidence,
   type AssetMemory,
@@ -396,7 +398,9 @@ function searchAssetEmbeddings(
     // see it. Access is decided by the anchor and per-record visibility gates the two
     // builders below apply — never by vector ownership (mirrors the relationship store).
     const similarity = cosineSimilarity(embedding.embedding, input.queryEmbedding);
-    if (similarity <= 0) {
+    // The relevance floor, mirroring the SQL: a hit below it is ambient similarity, not
+    // a claim — and "Related" on a record that isn't is worse than no row at all.
+    if (similarity < ASSET_SEMANTIC_SIMILARITY_FLOOR) {
       return [];
     }
 
@@ -408,7 +412,13 @@ function searchAssetEmbeddings(
     return candidate ? [{ ...candidate, sourceScore: similarity }] : [];
   });
 
-  return Promise.resolve(candidates);
+  // The tier cap, mirroring the SQL's `limit`: a broad meaning-shaped query may not bury
+  // the exact and structured hits it is fused with.
+  return Promise.resolve(
+    candidates
+      .sort((left, right) => right.sourceScore - left.sourceScore)
+      .slice(0, ASSET_SEMANTIC_TIER_LIMIT),
+  );
 }
 
 type EmbeddedCandidate = Omit<AssetSearchCandidate, "sourceScore">;

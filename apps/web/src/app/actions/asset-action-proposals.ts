@@ -28,6 +28,11 @@ export async function proposeAssetMemoryActionsAction(input: {
 
   return runAssetsMutation(
     () => proposeAssetMemoryActions({ actorUserId, assetId, source: "user" }),
-    (outcome) => ({ proposed: outcome.proposed.length }),
+    (outcome) => ({
+      proposed: outcome.proposed.length,
+      // Carried through so an empty pass can say which kind of empty it was — see
+      // `describeProposalOutcome`.
+      alreadySpokenFor: outcome.alreadySpokenFor,
+    }),
   );
 }

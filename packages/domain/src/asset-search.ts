@@ -244,6 +244,26 @@ export function buildAssetSearchTsQuery(plan: AssetSearchQueryPlan): string | nu
 }
 
 /**
+ * The relevance floor the semantic tier must clear, and the most rows it may
+ * contribute — the *retrieval-side* bound on the weakest signal.
+ *
+ * Cosine similarity over a warm index is never zero: every embedded record is related
+ * to every query by some small amount, so the `similarity > 0` this replaces admitted
+ * the entire corpus and stamped all of it "Related". The floor is the point below which
+ * a hit is ambient similarity rather than a claim worth making; the cap keeps one broad
+ * meaning-shaped query from returning an unbounded tier.
+ *
+ * These bound the tier; they do not decide relevance on their own — that is
+ * {@link passesSemanticGate}, which asks the question a threshold cannot: *related to
+ * what?*
+ *
+ * Shared by both stores so the SQL and the in-memory twin can never disagree about
+ * what reaches the fusion.
+ */
+export const ASSET_SEMANTIC_SIMILARITY_FLOOR = 0.45;
+export const ASSET_SEMANTIC_TIER_LIMIT = 10;
+
+/**
  * How much each signal is trusted when the three disagree. A typed value match is
  * the most precise thing Asset Search can say ("the filter *is* RPWFE"); lexical
  * text is next; a meaning-only hit is the weakest claim and must never outrank an
@@ -265,6 +285,67 @@ const MATCH_KIND_PRECISION: readonly AssetSearchMatchKind[] = ["structured", "ex
  */
 const MULTI_SIGNAL_BONUS = 0.15;
 
+/** A record found only by meaning — no exact text hit, no typed-value hit. */
+function isMeaningOnly(kinds: ReadonlySet<AssetSearchMatchKind>): boolean {
+  return kinds.has("semantic") && !kinds.has("exact") && !kinds.has("structured");
+}
+
+/**
+ * The Assets a query actually landed on: the anchors carrying at least one record the
+ * user's own words found — exactly, or by its typed value.
+ */
+function anchorsFoundExactly(
+  merged: Iterable<{ best: AssetSearchCandidate; kinds: Set<AssetSearchMatchKind> }>,
+): Set<string> {
+  const anchors = new Set<string>();
+  for (const { best, kinds } of merged) {
+    if (!isMeaningOnly(kinds)) {
+      anchors.add(best.assetId);
+    }
+  }
+  return anchors;
+}
+
+/**
+ * The relevance gate on the weakest signal, and the answer to "why is my whole asset
+ * list showing up stamped *Related*?".
+ *
+ * A relevance floor alone cannot carry this. Cosine similarity is a *continuum*: with a
+ * warm index every record is somewhat like every query, so wherever the floor is set,
+ * a broad query still drags in records about things the user never asked about — and a
+ * search result that claims "Related" about an unrelated thing corrodes the trust
+ * register that is the whole point of this surface. (It is also the reason the offline
+ * dev embedding fixture — which makes every text ~0.99 similar to every other — cannot
+ * be tuned out of the problem: no threshold is the right threshold.)
+ *
+ * So the tier is gated *structurally*, on the one relationship every Asset Search
+ * candidate already carries: the Asset it hangs off.
+ *
+ * **A meaning-only record surfaces when its Asset was itself found by the user's own
+ * words — or when nothing was.**
+ *
+ * That keeps the flagship fuzzy case whole: "anything for the kitchen fridge" finds the
+ * refrigerator by name, so the refrigerator's filter size — which matches no word typed —
+ * still rides in on meaning, which is exactly what the semantic tier is *for*. And it
+ * ends the noise: typing "boiler" can no longer return the fridge's purchase price
+ * merely because a vector said the two were 0.6 alike. When the query matches nothing
+ * exactly at all, the tier opens fully and meaning is all there is — an honest fallback,
+ * and the results say so ("Close in meaning — nothing here matched your words exactly").
+ *
+ * Corroboration is untouched: a record found exactly *and* semantically was never
+ * meaning-only, and keeps both signals and its multi-signal bonus.
+ */
+function passesSemanticGate(
+  kinds: ReadonlySet<AssetSearchMatchKind>,
+  assetId: string,
+  exactAnchors: ReadonlySet<string>,
+): boolean {
+  if (!isMeaningOnly(kinds) || exactAnchors.size === 0) {
+    return true;
+  }
+  return exactAnchors.has(assetId);
+}
+
 /**
  * Fuses the three signals into one ranked, deduplicated result list — the whole
  * point of "one Asset Search experience" (#196 user story 51). A record found by
@@ -274,7 +355,9 @@ const MULTI_SIGNAL_BONUS = 0.15;
  * Pure and deterministic: the same candidates always produce the same order (score,
  * then label, then id), so a search result is explainable and repeatable. The limit
  * is applied *after* fusion, never before — otherwise a record about to be promoted
- * by a second signal could be cut before that signal was counted.
+ * by a second signal could be cut before that signal was counted. The semantic gate
+ * (see {@link passesSemanticGate}) likewise runs after the merge, so a record that a
+ * second signal was about to corroborate is never cut for being meaning-only.
  */
 export function mergeAssetSearchResults(input: {
   candidates: readonly AssetSearchCandidate[];
@@ -317,7 +400,10 @@ export function mergeAssetSearchResults(input: {
     }
   }
 
+  const exactAnchors = anchorsFoundExactly(merged.values());
+
   return [...merged.values()]
+    .filter(({ best, kinds }) => passesSemanticGate(kinds, best.assetId, exactAnchors))
     .map(({ best, bestScore, kinds, fields }) => ({
       recordKind: best.recordKind,
       recordId: best.recordId,

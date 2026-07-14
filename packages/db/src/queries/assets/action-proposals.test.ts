@@ -248,6 +248,74 @@ describe("proposal idempotency", () => {
     expect(again.proposed).toHaveLength(0);
   });
 
+  it("reports a dismissed detail as spoken-for, so the surface cannot claim it has a reminder", async () => {
+    // The empty pass after a dismissal is *not* "these already have reminders" — the
+    // detail has none; it was refused. The seam reports the count so the profile can say
+    // what actually happened instead of inventing a comfortable, false one.
+    const { propose, actionReview, seedProposed } = setup();
+    const { asset, actionId } = await seedProposed();
+    await actionReview.dismissSuggestedGeneralAction({
+      actorUserId: OWNER,
+      generalActionId: actionId,
+    });
+
+    const again = await propose(asset.id);
+
+    expect(again.proposed).toHaveLength(0);
+    expect(again.alreadySpokenFor).toBe(1);
+  });
+
+  it("reports nothing spoken-for when no detail has ever proposed", async () => {
+    // The other empty pass, and a different sentence: this asset simply carries no dated
+    // detail. Conflating the two is what let the profile lie after a dismissal.
+    const { propose, seedAsset, seedMemory } = setup();
+    const asset = await seedAsset();
+    await seedMemory(asset.id, { label: "Filter size", value: { type: "text", text: "RPWFE" } });
+
+    const pass = await propose(asset.id);
+
+    expect(pass.proposed).toHaveLength(0);
+    expect(pass.alreadySpokenFor).toBe(0);
+  });
+
+  it("keeps a dismissed proposal out of the asset's related actions — a refusal is not a tombstone", async () => {
+    // Dismissal is how the owner says "no". A permanent, unremovable "Dismissed" row in
+    // the profile's ledger turns that "no" into a monument to it; the resolved trail
+    // lives on the Actions surface and in Asset History, where it can be reopened.
+    const { propose, actionReview, links, seedProposed } = setup();
+    const { asset, actionId } = await seedProposed();
+    await actionReview.dismissSuggestedGeneralAction({
+      actorUserId: OWNER,
+      generalActionId: actionId,
+    });
+
+    await propose(asset.id);
+
+    expect(
+      await links.listLinkedGeneralActionsForAsset({ callerUserId: OWNER, assetId: asset.id }),
+    ).toEqual([]);
+  });
+
+  it("still keeps a completed action — that is something that happened to the thing", async () => {
+    const { actionLifecycle, links, seedProposed, accept } = setup();
+    // A one-off dated proposal, not a Routine: completing a Routine rolls it forward,
+    // and what this pins is that a *terminal* completion still reads as the asset's
+    // history — only a refusal is erased.
+    const { asset, actionId } = await seedProposed({
+      label: "Warranty expires",
+      value: { type: "date", date: "2027-01-04" },
+    });
+    await accept(actionId);
+    await actionLifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: actionId });
+
+    const linked = await links.listLinkedGeneralActionsForAsset({
+      callerUserId: OWNER,
+      assetId: asset.id,
+    });
+
+    expect(linked.map((entry) => entry.action.status)).toEqual(["completed"]);
+  });
+
   it("revives a memory whose proposal was set aside — ignore is not a one-way door", async () => {
     // The lifecycle's own contract for an ignored proposal is "propose it again to act
     // on it" (accepting an ignored row throws). If proposal generation treated ignore as

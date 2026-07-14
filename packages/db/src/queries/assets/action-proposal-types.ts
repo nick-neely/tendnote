@@ -36,14 +36,22 @@ export type AssetActionProposal = {
 };
 
 /**
- * The result of one proposal pass: what it proposed, and nothing else. A memory that
- * already had its say, and one with nothing to propose, are both simply absent —
- * silence is the honest answer for a filter size, and an empty pass is a calm result,
- * not a failure.
+ * The result of one proposal pass: what it proposed, and how many details were already
+ * spoken for. An empty pass is a calm result, not a failure — but it has two very
+ * different causes, and a surface that cannot tell them apart is forced to guess.
+ *
+ * `alreadySpokenFor` is that distinction, and it is what keeps the profile honest: a
+ * pass that proposed nothing because every dated detail has *already had its say*
+ * (pending, accepted — or turned down) is a different sentence from a pass that proposed
+ * nothing because no detail here carries a date at all. Telling the user "these already
+ * have reminders" when they just rejected the only proposal is a lie the seam should
+ * never have made possible.
  */
 export type AssetActionProposalResult = {
   asset: Asset;
   proposed: AssetActionProposal[];
+  /** Reviewed memories skipped because a prior proposal already settled them. */
+  alreadySpokenFor: number;
 };
 
 export type ListPendingAssetActionProposalsInput = {

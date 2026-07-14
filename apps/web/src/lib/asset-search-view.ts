@@ -1,5 +1,5 @@
 import type { AssetSearchResult } from "@tendnote/domain";
-import { describeAssetMemoryValue } from "@tendnote/domain";
+import { formatAssetMemoryValue } from "@/lib/asset-memory-value";
 
 /**
  * One Asset Search result, flattened for rendering. The exact stored value is lifted
@@ -60,19 +60,30 @@ export function toAssetSearchResultView(result: AssetSearchResult): AssetSearchR
     archived: result.assetStatus === "archived",
     label: result.label,
     snippet: result.snippet,
-    value: describeAssetMemoryValue(result.value) || null,
+    // The *view* projection, not the machine one. `describeAssetMemoryValue` is the
+    // canonical text a snapshot or an embedding is built from ("2026-08-28", "47.99
+    // USD") and must stay that way; a person reading a search result should see the
+    // same "Aug 28, 2026" and "$47.99" the Memories section shows them one click later.
+    // One fact cannot have two spellings across two surfaces of the same product.
+    value: formatAssetMemoryValue(result.value),
     matchKinds: result.matchKinds,
     trustLevel: result.trustLevel,
     visibilityLabel: result.visibilityLabel,
   };
 }
 
-/** What each signal means, in the user's words rather than the engine's. */
-export const ASSET_MATCH_KIND_LABEL: Record<AssetSearchResult["matchKinds"][number], string> = {
-  structured: "Exact value",
-  exact: "Exact text",
-  semantic: "Related",
-};
+/**
+ * Whether a result was found by an *exact* signal — the record literally contains what
+ * the user typed, or its stored value literally is it — as opposed to by meaning alone.
+ *
+ * This is the search's most valuable claim, and grouping is how the results surface it:
+ * "the filter *is* RPWFE" and "this seemed related to what you meant" are different
+ * kinds of statement, and a trust register that renders them as one undifferentiated
+ * list is asking the user to take both on faith.
+ */
+export function isExactAssetSearchResult(result: AssetSearchResultView): boolean {
+  return result.matchKinds.some((kind) => kind === "structured" || kind === "exact");
+}
 
 /** The trust register of a browsable result, said plainly. */
 export const ASSET_TRUST_LABEL: Record<BrowsableAssetTrustLevel, string> = {

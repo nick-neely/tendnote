@@ -68,7 +68,9 @@ describe("AssetActionProposals (#203)", () => {
     acceptSuggestedGeneralActionAction.mockResolvedValue({});
     render(<AssetActionProposals assetId={ASSET_ID} canPropose proposals={[proposal()]} />);
 
-    await user.click(screen.getByRole("button", { name: /Add .* to your actions/ }));
+    // The verbs are named, not glyphs — the same two words the suggested links above
+    // this section use (#202), so the profile speaks one review language.
+    await user.click(screen.getByRole("button", { name: "Add reminder" }));
 
     await waitFor(() => {
       expect(acceptSuggestedGeneralActionAction).toHaveBeenCalledWith({
@@ -78,6 +80,23 @@ describe("AssetActionProposals (#203)", () => {
     // No asset-side promotion call exists — acceptance flips the action row in place.
     expect(proposeAssetMemoryActionsAction).not.toHaveBeenCalled();
     expect(refresh).toHaveBeenCalled();
+  });
+
+  it("keeps focus in the section and announces the outcome when a row resolves", async () => {
+    const user = userEvent.setup();
+    ignoreSuggestedGeneralActionAction.mockResolvedValue({});
+    render(<AssetActionProposals assetId={ASSET_ID} canPropose proposals={[proposal()]} />);
+
+    await user.click(screen.getByRole("button", { name: "Set aside" }));
+
+    await waitFor(() => {
+      // The resolved row takes its own buttons out of the document; without a catch,
+      // focus falls to <body> and a keyboard user loses their place entirely.
+      expect(document.activeElement).not.toBe(document.body);
+    });
+    expect(screen.getByRole("status").textContent).toContain(
+      "Set aside “Replace Refrigerator water filter”",
+    );
   });
 
   it("sets a proposal aside through the existing ignore path", async () => {
@@ -103,22 +122,48 @@ describe("AssetActionProposals (#203)", () => {
     expect(screen.getByRole("button", { name: /Suggest reminders/ })).toBeTruthy();
   });
 
-  it("says so calmly when a pass finds nothing new, rather than failing", async () => {
+  it("never claims a rejected detail already has a reminder", async () => {
     const user = userEvent.setup();
-    proposeAssetMemoryActionsAction.mockResolvedValue({ ok: true, view: { proposed: 0 } });
+    // The pass proposed nothing because the detail already had its say — which includes
+    // the detail whose proposal the owner just turned down. Telling them "it already has
+    // a reminder" would be a lie about the thing they themselves refused.
+    proposeAssetMemoryActionsAction.mockResolvedValue({
+      ok: true,
+      view: { proposed: 0, alreadySpokenFor: 1 },
+    });
     render(<AssetActionProposals assetId={ASSET_ID} canPropose proposals={[]} />);
 
     await user.click(screen.getByRole("button", { name: /Suggest reminders/ }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Nothing new to suggest/)).toBeTruthy();
+      expect(screen.getByText(/already been through review/)).toBeTruthy();
+    });
+    expect(screen.queryByText(/already have reminders/)).toBeNull();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("teaches where reminders come from when no detail carries a date", async () => {
+    const user = userEvent.setup();
+    proposeAssetMemoryActionsAction.mockResolvedValue({
+      ok: true,
+      view: { proposed: 0, alreadySpokenFor: 0 },
+    });
+    render(<AssetActionProposals assetId={ASSET_ID} canPropose proposals={[]} />);
+
+    await user.click(screen.getByRole("button", { name: /Suggest reminders/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/details with a date or a cadence/)).toBeTruthy();
     });
     expect(refresh).not.toHaveBeenCalled();
   });
 
   it("refreshes the profile when a pass proposes something", async () => {
     const user = userEvent.setup();
-    proposeAssetMemoryActionsAction.mockResolvedValue({ ok: true, view: { proposed: 2 } });
+    proposeAssetMemoryActionsAction.mockResolvedValue({
+      ok: true,
+      view: { proposed: 2, alreadySpokenFor: 0 },
+    });
     render(<AssetActionProposals assetId={ASSET_ID} canPropose proposals={[]} />);
 
     await user.click(screen.getByRole("button", { name: /Suggest reminders/ }));
@@ -126,6 +171,7 @@ describe("AssetActionProposals (#203)", () => {
     await waitFor(() => {
       expect(refresh).toHaveBeenCalled();
     });
+    expect(screen.getByRole("status").textContent).toContain("2 reminders suggested");
   });
 
   it("surfaces a curated refusal inline", async () => {

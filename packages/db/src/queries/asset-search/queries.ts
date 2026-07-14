@@ -19,7 +19,10 @@ import type { AssetSearchQueryInput, AssetSearchStore, SearchAssetsRequest } fro
  *
  * The three tiers are deliberately not equal. Exact and structured recall are the
  * guarantee; the semantic tier is an enhancement layered on top. That asymmetry is
- * enforced below by failing the semantic tier open.
+ * enforced in two places: the semantic tier fails *open* below (a cold index degrades
+ * search to exact recall rather than breaking it), and the pure fusion gates
+ * meaning-only records to the Assets the query actually found, so the weakest signal can
+ * enhance an answer but never become the noise floor of one (`passesSemanticGate`).
  */
 export function createAssetSearch(
   store: AssetSearchStore,

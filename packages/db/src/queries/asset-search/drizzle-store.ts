@@ -1,4 +1,6 @@
 import {
+  ASSET_SEMANTIC_SIMILARITY_FLOOR,
+  ASSET_SEMANTIC_TIER_LIMIT,
   type AssetKind,
   type AssetMemoryValue,
   type AssetSearchCandidate,
@@ -9,7 +11,7 @@ import {
   visibilityChoiceForScope,
   visibilityLabelForScope,
 } from "@tendnote/domain";
-import { sql } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import type {
@@ -89,16 +91,37 @@ function planIsEmpty(tsQuery: string | null, structured: StructuredPlan): boolea
 }
 
 async function searchAssetRecords(input: SearchAssetRecordsInput) {
+  const query = buildAssetSearchRecordsQuery(input);
+  if (!query) {
+    return [];
+  }
+
+  const rows = await getDb().execute(query);
+
+  return (rows as unknown as SearchRow[]).flatMap(toCandidates);
+}
+
+/**
+ * The lexical + structured query as SQL, or null when the plan names nothing at all.
+ *
+ * Built as its own step — rather than inline at the call site — so the generated SQL and
+ * its bound parameters can be rendered and asserted without a database. That is not
+ * ceremony: the store's structured tier binds user-typed identifiers, and a parameter
+ * bound as a JS array instead of a list of scalars is a *runtime* Postgres error
+ * ("malformed array literal") that no in-memory twin can ever reproduce. The pinning test
+ * beside this file renders exactly this SQL.
+ */
+export function buildAssetSearchRecordsQuery(input: SearchAssetRecordsInput): SQL | null {
   const tsQuery = buildAssetSearchTsQuery(input.plan);
   const structured = toStructuredPlan(input);
 
   if (planIsEmpty(tsQuery, structured)) {
-    return [];
+    return null;
   }
 
   const { amount, currency, date, identifiers } = structured;
 
-  const rows = await getDb().execute(sql`
+  return sql`
         with search_query as (
           select ${tsQuery ? sql`to_tsquery('simple', ${tsQuery})` : sql`null::tsquery`} as query
         )
@@ -227,15 +250,25 @@ async function searchAssetRecords(input: SearchAssetRecordsInput) {
         ) matches
         order by coalesce(exact_rank, 0) desc, label asc, record_id asc
         limit ${RECORD_TIER_ROW_LIMIT}
-      `);
-
-  return (rows as unknown as SearchRow[]).flatMap(toCandidates);
+      `;
 }
 
 async function searchAssetEmbeddings(input: SearchAssetEmbeddingsInput) {
+  const rows = await getDb().execute(buildAssetSearchEmbeddingsQuery(input));
+
+  return (rows as unknown as Array<SearchRow & { similarity: number }>).map((row) => ({
+    ...baseCandidate(row),
+    matchedFields: ["semantic"],
+    matchKind: "semantic" as const,
+    sourceScore: Number(row.similarity),
+  }));
+}
+
+/** The semantic query as SQL, rendered and asserted by the same pinning test. */
+export function buildAssetSearchEmbeddingsQuery(input: SearchAssetEmbeddingsInput): SQL {
   const queryVector = `[${input.queryEmbedding.join(",")}]`;
 
-  const rows = await getDb().execute(sql`
+  return sql`
         select * from (
           select
             'asset'::text as record_kind,
@@ -320,17 +353,13 @@ async function searchAssetEmbeddings(input: SearchAssetEmbeddingsInput) {
               )
             )
         ) matches
-        where similarity > 0
+        -- The relevance floor, not a null-guard: every embedded record is *slightly*
+        -- similar to every query, so an unbounded semantic tier returns the whole
+        -- corpus stamped "Related" (see ASSET_SEMANTIC_SIMILARITY_FLOOR).
+        where similarity >= ${ASSET_SEMANTIC_SIMILARITY_FLOOR}
         order by round(similarity::numeric, 4) desc, label asc, record_id asc
-        limit ${RECORD_TIER_ROW_LIMIT}
-      `);
-
-  return (rows as unknown as Array<SearchRow & { similarity: number }>).map((row) => ({
-    ...baseCandidate(row),
-    matchedFields: ["semantic"],
-    matchKind: "semantic" as const,
-    sourceScore: Number(row.similarity),
-  }));
+        limit ${ASSET_SEMANTIC_TIER_LIMIT}
+      `;
 }
 
 /**
@@ -361,10 +390,27 @@ function assetVisibleSql(input: {
     and ${input.assetId ? sql`a.id = ${input.assetId}` : sql`true`}
     and ${
       input.assetKinds && input.assetKinds.length > 0
-        ? sql`a.kind::text = any(${input.assetKinds})`
+        ? sql`a.kind::text = any(${textArraySql(input.assetKinds)})`
         : sql`true`
     }
   )`;
+}
+
+/**
+ * A list of strings as a Postgres `text[]` literal — one bound parameter per element.
+ *
+ * Never interpolate a JS array straight into a `sql` template: drizzle binds it as a
+ * *single scalar* parameter, and Postgres then tries to read that scalar as an array
+ * literal — `any($1)` with `$1 = '%RPWFE%'` fails at runtime with "malformed array
+ * literal", taking the search (and the page it renders on) down with it. Spelling the
+ * array out keeps every element a scalar parameter, which is also what keeps a
+ * user-typed identifier safely un-interpolated.
+ */
+function textArraySql(values: readonly string[]): SQL {
+  return sql`array[${sql.join(
+    values.map((value) => sql`${value}`),
+    sql`, `,
+  )}]::text[]`;
 }
 
 function kindFilter(input: { recordKinds?: AssetSearchRecordKind[] }, kind: AssetSearchRecordKind) {
@@ -388,7 +434,11 @@ function memoryStructuredMatchSql(
       : null,
     date ? sql`(am.value_json->>'type' = 'date' and am.value_json->>'date' = ${date})` : null,
     identifiers.length > 0
-      ? sql`(am.value_json->>'type' = 'text' and upper(am.value_json->>'text') like any(${identifiers.map((identifier) => `%${identifier}%`)}))`
+      ? sql`(am.value_json->>'type' = 'text' and upper(am.value_json->>'text') like any(${textArraySql(
+          // The plan already upper-cases identifiers; the pattern is built here so the
+          // `%` wildcards can never reach the query as an interpolated string.
+          identifiers.map((identifier) => `%${identifier.toUpperCase()}%`),
+        )}))`
       : null,
   ].filter((clause): clause is NonNullable<typeof clause> => clause !== null);
 

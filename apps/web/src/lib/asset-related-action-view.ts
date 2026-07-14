@@ -15,13 +15,18 @@ export type AssetRelatedActionView = {
   recurrenceLabel: string | null;
   /** One quiet meta line: "Due Jul 12", "Completed", "Paused", "No date", … */
   metaLabel: string;
-  /** True for completed/dismissed/archived actions, so the row can read as history. */
+  /** True for completed/archived actions, so the row can read as history. */
   resolved: boolean;
 };
 
+/**
+ * The resolutions an asset's ledger keeps. `dismissed` is deliberately absent: a
+ * dismissed action is a proposal the owner refused, and the seam already drops it
+ * (`listLinkedGeneralActionsForAsset`) so the profile carries no tombstone of what it
+ * was told "no" to. Completed and archived are things that happened to the thing.
+ */
 const RESOLVED_LABELS: Partial<Record<string, string>> = {
   completed: "Completed",
-  dismissed: "Dismissed",
   archived: "Archived",
 };
 

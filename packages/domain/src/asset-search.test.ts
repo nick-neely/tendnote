@@ -126,6 +126,95 @@ describe("mergeAssetSearchResults", () => {
     expect(results[0]?.matchedFields).toEqual(["label", "notes", "value"]);
   });
 
+  it("drops a meaning-only record hanging off a thing the query never found", () => {
+    // The noise the semantic tier used to produce: type "boiler", and the fridge's
+    // purchase price arrives stamped "Related" because a vector called them alike. A
+    // threshold cannot fix this — similarity is a continuum — so the gate asks the
+    // question a threshold cannot: related to *what*?
+    const results = mergeAssetSearchResults({
+      candidates: [
+        candidate({ recordKind: "asset", recordId: "asset-boiler", assetId: "asset-boiler" }),
+        candidate({
+          recordId: "memory-fridge-price",
+          assetId: "asset-fridge",
+          matchKind: "semantic",
+          sourceScore: 0.9,
+        }),
+      ],
+      limit: 10,
+    });
+
+    expect(results.map((result) => result.recordId)).toEqual(["asset-boiler"]);
+  });
+
+  it("keeps a meaning-only record whose asset the query DID find — the flagship fuzzy case", () => {
+    // "anything for the kitchen fridge" finds the refrigerator by name; the filter size
+    // matches no word typed and rides in on meaning alone. That is what the semantic
+    // tier is *for*, and gating it away would be the wrong cure for the noise above.
+    const results = mergeAssetSearchResults({
+      candidates: [
+        candidate({ recordKind: "asset", recordId: "asset-fridge", assetId: "asset-fridge" }),
+        candidate({
+          recordId: "memory-filter",
+          assetId: "asset-fridge",
+          matchKind: "semantic",
+          sourceScore: 0.9,
+        }),
+      ],
+      limit: 10,
+    });
+
+    expect(results.map((result) => result.recordId)).toContain("memory-filter");
+  });
+
+  it("opens the semantic tier fully when nothing matched exactly — meaning is all there is", () => {
+    const results = mergeAssetSearchResults({
+      candidates: [
+        candidate({
+          recordId: "memory-a",
+          assetId: "asset-a",
+          matchKind: "semantic",
+          sourceScore: 0.8,
+        }),
+        candidate({
+          recordId: "memory-b",
+          assetId: "asset-b",
+          matchKind: "semantic",
+          sourceScore: 0.7,
+        }),
+      ],
+      limit: 10,
+    });
+
+    expect(results.map((result) => result.recordId)).toEqual(["memory-a", "memory-b"]);
+  });
+
+  it("never gates a record a second signal corroborated", () => {
+    // Found exactly *and* semantically on an asset nothing else matched: it is not
+    // meaning-only, so the gate must not touch it — corroboration is the fusion's point.
+    const results = mergeAssetSearchResults({
+      candidates: [
+        candidate({ recordKind: "asset", recordId: "asset-boiler", assetId: "asset-boiler" }),
+        candidate({
+          recordId: "memory-corroborated",
+          assetId: "asset-other",
+          matchKind: "exact",
+          sourceScore: 0.4,
+        }),
+        candidate({
+          recordId: "memory-corroborated",
+          assetId: "asset-other",
+          matchKind: "semantic",
+          sourceScore: 0.9,
+        }),
+      ],
+      limit: 10,
+    });
+
+    const corroborated = results.find((result) => result.recordId === "memory-corroborated");
+    expect(corroborated?.matchKinds).toEqual(["exact", "semantic"]);
+  });
+
   it("ranks a precise structured hit above a merely semantic one", () => {
     const results = mergeAssetSearchResults({
       candidates: [

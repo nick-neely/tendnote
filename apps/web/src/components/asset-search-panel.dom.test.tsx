@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { AssetSearchPanel } from "@/components/asset-search-panel";
+import { AssetSearchPanel, type AssetSearchRunner } from "@/components/asset-search-panel";
 import type { AssetSearchResultView } from "@/lib/asset-search-view";
 import { render, screen, userEvent, waitFor } from "@/test/dom";
 
@@ -64,15 +64,71 @@ describe("AssetSearchPanel", () => {
     expect(screen.getByText("Filter size")).toBeTruthy();
   });
 
-  it("says why each result matched, so a fused search is not magic", async () => {
+  it("groups exact hits apart from meaning-only ones, so the two claims never read alike", async () => {
     const user = userEvent.setup();
-    renderPanel([result({ matchKinds: ["structured", "semantic"] })]);
+    renderPanel([
+      result({ matchKinds: ["structured"] }),
+      result({
+        key: "asset:asset-2",
+        recordKind: "asset",
+        recordId: "asset-2",
+        assetId: "asset-2",
+        assetName: "Garage dehumidifier",
+        label: "Garage dehumidifier",
+        value: null,
+        snippet: "Garage dehumidifier",
+        matchKinds: ["semantic"],
+        trustLevel: "asset_anchor",
+      }),
+    ]);
 
-    await user.type(screen.getByRole("searchbox", { name: /search your things/i }), "fridge");
+    await user.type(screen.getByRole("searchbox", { name: /search your things/i }), "filter");
 
     await waitFor(() => {
-      expect(screen.getByText(/Exact value \+ Related/)).toBeTruthy();
+      expect(screen.getByRole("region", { name: "Exact matches" })).toBeTruthy();
     });
+    const related = screen.getByRole("region", { name: "Related" });
+    // The fuzzy hit lives under "Related" and nowhere else; the exact one is not there.
+    expect(related.textContent).toContain("Garage dehumidifier");
+    expect(related.textContent).not.toContain("Refrigerator");
+  });
+
+  it("marks a structured hit at the value it certifies", async () => {
+    const user = userEvent.setup();
+    renderPanel([result({ matchKinds: ["structured"] })]);
+
+    await user.type(screen.getByRole("searchbox", { name: /search your things/i }), "RPWFE");
+
+    await waitFor(() => {
+      expect(screen.getByText("Exact value")).toBeTruthy();
+    });
+  });
+
+  it("shows a failed query inline and offers a retry — it never takes the page down", async () => {
+    const user = userEvent.setup();
+    const search = vi
+      .fn<AssetSearchRunner>()
+      .mockRejectedValueOnce(new Error("malformed array literal"))
+      .mockResolvedValue({ results: [result()] });
+
+    render(
+      <AssetSearchPanel search={search}>
+        <p>Browse list</p>
+      </AssetSearchPanel>,
+    );
+
+    await user.type(screen.getByRole("searchbox", { name: /search your things/i }), "21-2100");
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("didn't run");
+    });
+
+    await user.click(screen.getByRole("button", { name: /Try again/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("asset-search-results")).toBeTruthy();
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("labels trust and visibility on every row", async () => {

@@ -1,4 +1,4 @@
-import { SparklesIcon } from "lucide-react";
+import { NotebookPenIcon } from "lucide-react";
 
 export type AssetSnapshotCardProps = {
   /** How the snapshot was produced. `fallback` means missing or stale. */
@@ -22,6 +22,11 @@ export type AssetSnapshotCardProps = {
  * below carry on — never showing stale prose, and never showing an error that implies
  * the profile itself is broken. The user's facts are unaffected, so the page should not
  * act as if anything is wrong.
+ *
+ * The glyph is a pen, not a sparkle. Sparkles are explicitly banned (PRODUCT.md
+ * anti-references, DESIGN.md §2) — and they would be dishonest here anyway: this card is
+ * not magic, it is *written* prose standing on records the user can go read. A pen says
+ * that; a sparkle says "trust the machine".
  */
 export function AssetSnapshotCard({ status, summary, citationCount }: AssetSnapshotCardProps) {
   if (status === "fallback" || !summary?.trim()) {
@@ -35,7 +40,7 @@ export function AssetSnapshotCard({ status, summary, citationCount }: AssetSnaps
       data-testid="asset-snapshot"
     >
       <p className="flex items-center gap-1.5 text-muted-foreground text-xs">
-        <SparklesIcon aria-hidden className="size-3" />
+        <NotebookPenIcon aria-hidden className="size-3 shrink-0" />
         Generated summary — the records below are the source of truth
       </p>
 
