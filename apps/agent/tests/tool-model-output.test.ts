@@ -548,17 +548,36 @@ describe("general action tools toModelOutput strip ids but keep the title", () =
     });
 
     it("tells the model to say so plainly when a pass proposes nothing", () => {
-      // An empty pass means every dated detail already has its reminder — a calm,
-      // correct answer. The model must not paper over it by inventing one.
+      // An empty pass on an asset with no timed detail is a calm, correct answer. The model
+      // must not paper over it by inventing a reminder.
       const model = modelOutput(proposeAssetActionsTool.toModelOutput, {
         found: true,
         proposed: [],
+        alreadySpokenFor: 0,
         asset: { id: ASSET_ID, name: "Refrigerator water filter" },
       });
 
       const value = model.value as { proposed: unknown[]; guidance: string };
       expect(value.proposed).toEqual([]);
       expect(value.guidance).toMatch(/do not invent a reminder/i);
+    });
+
+    it("says WHY an empty pass was empty, so the model cannot invent a reason", () => {
+      // The two empty passes are different sentences, and the seam already knows which is
+      // which. Given only "nothing to propose", the model made a reason up — it told the user
+      // their recurring detail was "missing a date" and offered to fix it, which is both false
+      // and, since the user had dismissed that very reminder, the start of a nag.
+      const model = modelOutput(proposeAssetActionsTool.toModelOutput, {
+        found: true,
+        proposed: [],
+        alreadySpokenFor: 1,
+        asset: { id: ASSET_ID, name: "Toyota Corolla" },
+      });
+
+      const guidance = (model.value as { guidance: string }).guidance;
+      expect(guidance).toMatch(/already (proposed|dealt with)/i);
+      expect(guidance).toMatch(/do NOT re-propose/i);
+      expect(guidance).toMatch(/do NOT invent a reason/i);
     });
   });
 });

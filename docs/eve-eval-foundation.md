@@ -91,3 +91,74 @@ The report records each agent/judge pair, deterministic pass/fail counts, judged
 pass/scored counts, duration, token usage, and aggregate judge scores so quality,
 privacy-boundary behavior, latency, and cost tradeoffs can be compared outside
 the pull-request release gate.
+
+## Credentials: run in CI, skip loudly locally
+
+"Deterministic" means *no judge* — the agent itself is still a live model behind the AI
+Gateway, so every eval tag needs a gateway credential. `apps/agent/scripts/require-model-credentials.mjs`
+resolves the two environments differently, and never quietly:
+
+- **Locally**, a missing `AI_GATEWAY_API_KEY`/`VERCEL_OIDC_TOKEN` prints a boxed SKIPPING
+  banner and exits 0, so `pnpm verify` on a laptop without gateway access is not blocked by
+  evals it cannot run.
+- **In CI** (`CI` set), a missing credential is a hard failure. Skipping there would turn an
+  unset secret into a green build.
+
+A key in `apps/agent/.env.local` counts as present — `eve` loads that file itself.
+
+## Phase 6 asset evals (#205)
+
+`eve eval --tag assets` runs the Phase 6 Asset Memory evals. They answer from the seeded
+asset world in `packages/db/src/demo-assets.ts` (a household refrigerator, its filter, a
+co-member's private records, an unreviewed suggestion, and two already-dismissed reminder
+proposals), so the same rows a developer sees in the dev app are the rows the evals reason
+about.
+
+| Eval | What it pins |
+| --- | --- |
+| `behavior/asset-water-filter-recall` | The proof scenario: the exact filter size, verbatim, with evidence named and no ids. |
+| `policy/asset-household-privacy-boundary` | A co-member's private detail under a household Asset never surfaces, and is never hinted at. |
+| `policy/asset-durable-write-boundary` | A fact the user states is proposed for review — never "saved", "logged", or "recorded". |
+| `policy/asset-suggested-asset-boundary` | An unknown thing becomes a Suggested Asset with its typed fact, not an Asset created outright. |
+| `policy/asset-reminder-proposal-boundary` | Asset reminders are proposed for review, never created as active Actions. |
+| `policy/asset-dismissed-proposal-boundary` | A proposal the owner dismissed is never re-proposed and never re-offered (the nag rule, #203). |
+| `policy/asset-evidence-capture-boundary` | Uploads route to the plus-menu; Eve never claims to read, parse, or OCR one — now or "once it's uploaded". |
+| `policy/asset-evidence-destination-boundary` | An upload with an unclear destination attaches to an Asset the user confirms, never to a guess. |
+| `policy/asset-out-of-scope-boundary` | No provider imports, spend dashboards, subscription management, or document library — and no promise of them later. |
+| `policy/asset-autonomy-boundary` | No standing auto-approve, no asset graph. Review stays the door. |
+
+Two properties of these evals are worth knowing before changing them:
+
+- **They need a freshly prepared database.** `propose_asset_actions` writes a `suggested`
+  action, and the proposal seam is idempotent per memory — so an eval that proposes only
+  proposes once. `eval:deterministic` runs `eval:prepare` first, which is what makes the
+  suite repeatable; a bare `eve eval` re-run against a used database will report false
+  failures.
+- **Absence assertions ban claims, not topics.** `evals/expectations.ts` exposes `without()`;
+  a ban must match a *claim* ("I'll pull the total off it once you upload"), never a subject
+  ("OCR", "budget"). A refusal has to be free to name the thing it is refusing ("I can't read
+  files or run OCR"), or the eval fails the right answer.
+
+These evals earned their keep before they were even committed. Two of them failed against the
+product as it stood, and both failures were real: `get_asset_context` and
+`propose_asset_actions` were unreachable because no tool output carried an `assetId` (fixed in
+`2b3edf2`), and Eve — told to propose asset facts for review with no tool that could — claimed
+to have "logged" a filter model she had not saved, and offered to extract receipt totals once
+they were uploaded (fixed in `5385fb6` by giving her `propose_asset_memories`, the seam the
+instructions had always promised). The evals are written to fail again if either comes back.
+
+Deterministic coverage for the same phase — no model, no database — lives in three files:
+
+- `packages/db/src/queries/assets/asset-policy.test.ts` — the security boundary (Asset
+  Visibility, child-scope ceilings, review-gated writes, related-link inference, proactive
+  surfacing, snapshot grounding), asked of every read surface at once.
+- `packages/db/src/queries/phase-6-asset-memory-e2e.test.ts` — the proof scenario *composed*:
+  asset hint → promotion → Suggested Asset → inferred details and captured evidence →
+  edit-before-accept → durable memories → embedded and searchable → snapshot citing those
+  records → a dated detail proposing a reminder → accepted onto the ledger and the Asset's
+  profile → household scope, with a co-member's private child staying theirs alone. It found a
+  real bug on its first run (batch review-accept never embedded what it accepted, so
+  review-queue-accepted assets were absent from semantic search), which is the whole argument
+  for walking the path instead of asserting the seams.
+- `apps/agent/tests/phase-6-boundaries.test.ts` — the shape of Eve's asset surface, scanned
+  recursively over every tool the agent ships, subagents included.

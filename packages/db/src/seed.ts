@@ -1,4 +1,19 @@
+import { generateDeterministicAssetSnapshot } from "@tendnote/domain";
+import { eq } from "drizzle-orm";
 import { closeDb, getDb } from "./client";
+import {
+  DEMO_STALE_FRIDGE_SNAPSHOT,
+  demoAssetEvidence,
+  demoAssetGeneralActions,
+  demoAssetLinks,
+  demoAssetMemories,
+  demoAssets,
+  demoFridgeAssetId,
+  demoGeneralActionAssets,
+  demoHouseholdMemberships,
+  demoHouseholdWorkspaces,
+  demoMemberUserId,
+} from "./demo-assets";
 import {
   demoContactMethods,
   demoExtractionJobs,
@@ -13,10 +28,25 @@ import {
   demoSourceRecords,
   demoUnresolvedPersonMentions,
 } from "./demo-data";
+import { createAssetSnapshot } from "./queries/asset-snapshots/builder";
+import { createDrizzleAssetSnapshotStore } from "./queries/asset-snapshots/drizzle-store";
+import { createDrizzleAssetLinkStore } from "./queries/assets/drizzle-link-store";
+import { createDrizzleAssetReviewLifecycleStore } from "./queries/assets/drizzle-store";
+import { createDrizzleGeneralActionStore } from "./queries/general-actions/drizzle-store";
+import { createDrizzleSourceRecordStore } from "./queries/source-records/drizzle-store";
 import {
+  assetEvidence,
+  assetLinks,
+  assetMemories,
+  assetSnapshots,
+  assets,
   contactMethods,
   extractionJobs,
   followups,
+  generalActionAssets,
+  generalActions,
+  householdMemberships,
+  householdWorkspaces,
   interactions,
   memories,
   messageDrafts,
@@ -31,27 +61,93 @@ import {
 
 const ownerUserId = "demo-user";
 
+const demoUsers = [
+  { id: ownerUserId, name: "Demo User", email: "demo@tendnote.local" },
+  // The household co-member. Present so the demo world can hold records the owner is
+  // not allowed to see — the only way a visibility boundary can be demonstrated at all.
+  { id: demoMemberUserId, name: "Riley Chen", email: "riley@tendnote.local" },
+];
+
+type Db = ReturnType<typeof getDb>;
+
+/**
+ * Seeds the demo world, one bounded slice at a time.
+ *
+ * The slices are separate functions on purpose: a single seed() touching twenty tables was
+ * one long function nobody could read, and each slice here can be read, reasoned about, and
+ * grown on its own.
+ */
 async function seed() {
   const db = getDb();
 
-  await db
-    .insert(user)
-    .values({
-      id: ownerUserId,
-      name: "Demo User",
-      email: "demo@tendnote.local",
-      emailVerified: true,
-    })
-    .onConflictDoUpdate({
-      target: user.id,
-      set: {
-        name: "Demo User",
-        email: "demo@tendnote.local",
-        emailVerified: true,
-        updatedAt: new Date(),
-      },
-    });
+  await seedUsers(db);
+  await seedPeopleWorld(db);
+  await seedSourceRecordWorld(db);
+  await seedExtractionWorld(db);
+  await seedEngagementWorld(db);
+  await seedEmbeddingWorld(db);
+  await seedAssetHousehold(db);
+  await seedAssetRecords(db);
+  await seedAssetActions(db);
+  await seedStaleAssetSnapshot(db);
+}
 
+/**
+ * Builds the fridge's snapshot cache for real, then rewrites its prose to a version that has
+ * fallen behind the records (it names the filter cartridge the fridge used to take).
+ *
+ * The order is the whole trick. Freshness is a fingerprint of the *records*, so a snapshot row
+ * invented from nothing would simply be rebuilt on the next read and the lie would evaporate
+ * before anyone could be misled by it. Built first and overwritten second, the row keeps a
+ * fingerprint that still matches — which is precisely the state a genuinely stale cache is in,
+ * and the only state in which the question can be asked at all: when the summary and the records
+ * disagree, which one does the answer come from? Snapshots are a rebuildable cache, never source
+ * truth (#196), and this is the fixture that makes that claim falsifiable.
+ *
+ * Generation is pinned to the deterministic generator rather than the default: seeding must not
+ * depend on a gateway credential, a network round trip, or a model's mood.
+ */
+async function seedStaleAssetSnapshot(db: Db) {
+  const snapshots = createAssetSnapshot(
+    {
+      ...createDrizzleAssetReviewLifecycleStore(),
+      ...createDrizzleAssetLinkStore(),
+      getPerson: createDrizzleSourceRecordStore().getPerson,
+      getGeneralAction: createDrizzleGeneralActionStore().getGeneralAction,
+      getVisibleGeneralAction: createDrizzleGeneralActionStore().getVisibleGeneralAction,
+      ...createDrizzleAssetSnapshotStore(),
+    },
+    { generator: generateDeterministicAssetSnapshot },
+  );
+
+  await snapshots.getAssetSnapshot({ callerUserId: ownerUserId, assetId: demoFridgeAssetId });
+
+  await db
+    .update(assetSnapshots)
+    .set({ summary: DEMO_STALE_FRIDGE_SNAPSHOT, updatedAt: new Date() })
+    .where(eq(assetSnapshots.assetId, demoFridgeAssetId));
+}
+
+/** The demo owner and the household co-member. */
+async function seedUsers(db: Db) {
+  for (const demoUser of demoUsers) {
+    await db
+      .insert(user)
+      .values({ ...demoUser, emailVerified: true })
+      .onConflictDoUpdate({
+        target: user.id,
+        set: {
+          name: demoUser.name,
+          email: demoUser.email,
+          emailVerified: true,
+          updatedAt: new Date(),
+        },
+      });
+  }
+}
+
+/** The people the demo world knows, with their contact methods. */
+async function seedPeopleWorld(db: Db) {
   for (const person of demoPeople) {
     await db
       .insert(people)
@@ -88,7 +184,10 @@ async function seed() {
         },
       });
   }
+}
 
+/** Logged context: source records, who they mention, and what is still unresolved. */
+async function seedSourceRecordWorld(db: Db) {
   for (const sourceRecord of demoSourceRecords) {
     await db
       .insert(sourceRecords)
@@ -142,7 +241,10 @@ async function seed() {
         },
       });
   }
+}
 
+/** The extraction queue and the memories it produced. */
+async function seedExtractionWorld(db: Db) {
   for (const extractionJob of demoExtractionJobs) {
     await db
       .insert(extractionJobs)
@@ -186,7 +288,10 @@ async function seed() {
         },
       });
   }
+}
 
+/** Interactions, follow-ups, and drafts — the relationship engagement layer. */
+async function seedEngagementWorld(db: Db) {
   for (const interaction of demoInteractions) {
     await db
       .insert(interactions)
@@ -242,7 +347,10 @@ async function seed() {
         },
       });
   }
+}
 
+/** Semantic retrieval: the embeddings and the jobs that wrote them. */
+async function seedEmbeddingWorld(db: Db) {
   for (const embedding of demoRelationshipContextEmbeddings) {
     await db
       .insert(relationshipContextEmbeddings)
@@ -288,6 +396,91 @@ async function seed() {
           updatedAt: new Date(),
         },
       });
+  }
+}
+
+/**
+ * The Phase 6 Asset Memory world (`demo-assets.ts`): the household and its co-member, the
+ * refrigerator and its filter, their reviewed details, evidence, links, and the actions —
+ * including the proposals the owner already dismissed. Seeded in dependency order; every row
+ * is keyed by a fixed id, so re-seeding updates rather than duplicates.
+ */
+async function seedAssetHousehold(db: Db) {
+  for (const household of demoHouseholdWorkspaces) {
+    await db
+      .insert(householdWorkspaces)
+      .values(household)
+      .onConflictDoUpdate({
+        target: householdWorkspaces.id,
+        set: { ...household, updatedAt: new Date() },
+      });
+  }
+
+  for (const membership of demoHouseholdMemberships) {
+    await db
+      .insert(householdMemberships)
+      .values(membership)
+      .onConflictDoUpdate({
+        target: householdMemberships.id,
+        set: { ...membership, updatedAt: new Date() },
+      });
+  }
+}
+
+/** The Assets themselves, and the child records that hang under them. */
+async function seedAssetRecords(db: Db) {
+  for (const asset of demoAssets) {
+    await db
+      .insert(assets)
+      .values(asset)
+      .onConflictDoUpdate({ target: assets.id, set: { ...asset, updatedAt: new Date() } });
+  }
+
+  for (const memory of demoAssetMemories) {
+    await db
+      .insert(assetMemories)
+      .values(memory)
+      .onConflictDoUpdate({
+        target: assetMemories.id,
+        set: { ...memory, updatedAt: new Date() },
+      });
+  }
+
+  for (const evidence of demoAssetEvidence) {
+    await db
+      .insert(assetEvidence)
+      .values(evidence)
+      .onConflictDoUpdate({
+        target: assetEvidence.id,
+        set: { ...evidence, updatedAt: new Date() },
+      });
+  }
+}
+
+/** Related Asset Links, and the General Actions an Asset's details produced. */
+async function seedAssetActions(db: Db) {
+  for (const link of demoAssetLinks) {
+    await db
+      .insert(assetLinks)
+      .values(link)
+      .onConflictDoUpdate({ target: assetLinks.id, set: { ...link, updatedAt: new Date() } });
+  }
+
+  for (const action of demoAssetGeneralActions) {
+    await db
+      .insert(generalActions)
+      .values(action)
+      .onConflictDoUpdate({
+        target: generalActions.id,
+        set: { ...action, updatedAt: new Date() },
+      });
+  }
+
+  for (const link of demoGeneralActionAssets) {
+    await db
+      .insert(generalActionAssets)
+      .values(link)
+      .onConflictDoUpdate({ target: generalActionAssets.id, set: link });
   }
 }
 
