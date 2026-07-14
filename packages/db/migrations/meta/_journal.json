@@ -267,6 +267,55 @@
       "when": 1783387585200,
       "tag": "0037_action_summary_workflow",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1783830925407,
+      "tag": "0038_asset_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1783915207649,
+      "tag": "0039_asset_memory_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1783930797390,
+      "tag": "0040_asset_evidence_capture",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1783947853463,
+      "tag": "0041_general_action_asset_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1783981393283,
+      "tag": "0042_asset_context_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1783986164983,
+      "tag": "0043_asset_action_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1783992378438,
+      "tag": "0044_asset_search_and_snapshots",
+      "breakpoints": true
     }
   ]
 }

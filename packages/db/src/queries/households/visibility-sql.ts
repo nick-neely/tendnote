@@ -1,9 +1,10 @@
 import { sql } from "drizzle-orm";
+import type { VisibilityRecordKind, VisibilityRecordTableAlias } from "./types";
 
 export function visibleHouseholdRecordSql(input: {
   callerUserId: string;
-  tableAlias: "m" | "sr" | "f" | "ga";
-  recordKind: "memory" | "source_record" | "followup" | "general_action";
+  tableAlias: VisibilityRecordTableAlias;
+  recordKind: VisibilityRecordKind;
 }) {
   const record = sql.raw(input.tableAlias);
 

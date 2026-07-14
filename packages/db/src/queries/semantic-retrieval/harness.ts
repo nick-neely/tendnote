@@ -1,4 +1,6 @@
 import type {
+  CreateAssetInput,
+  CreateAssetMemoryInput,
   GeneralAction,
   HouseholdMembership,
   Memory,
@@ -156,6 +158,62 @@ export function createHarness(
     return processor.processEmbeddingJob({ jobId: job.id });
   }
 
+  async function createAsset(provided: Partial<CreateAssetInput> = {}) {
+    const ownerUserId = provided.ownerUserId ?? OWNER;
+
+    return store.createAsset({
+      ownerUserId,
+      name: "Refrigerator",
+      kind: "appliance",
+      status: "active",
+      scope: "private",
+      householdId: null,
+      archivedAt: null,
+      createdByUserId: ownerUserId,
+      lastActorUserId: ownerUserId,
+      ...provided,
+    });
+  }
+
+  async function createAssetMemory(
+    provided: Partial<CreateAssetMemoryInput> & { assetId: string },
+  ) {
+    const ownerUserId = provided.ownerUserId ?? OWNER;
+
+    return store.createAssetMemory({
+      ownerUserId,
+      status: "active",
+      label: "Filter size",
+      value: { type: "text", text: "RPWFE" },
+      notes: null,
+      scope: "private",
+      householdId: null,
+      sourceRecordId: null,
+      reviewGroupId: null,
+      createdByUserId: ownerUserId,
+      lastActorUserId: ownerUserId,
+      ...provided,
+    });
+  }
+
+  async function embedAsset(assetId: string, ownerUserId = OWNER) {
+    const { job } = await processor.enqueueEmbeddingJob({
+      ownerUserId,
+      recordKind: "asset",
+      recordId: assetId,
+    });
+    return processor.processEmbeddingJob({ jobId: job.id });
+  }
+
+  async function embedAssetMemory(assetMemoryId: string, ownerUserId = OWNER) {
+    const { job } = await processor.enqueueEmbeddingJob({
+      ownerUserId,
+      recordKind: "asset_memory",
+      recordId: assetMemoryId,
+    });
+    return processor.processEmbeddingJob({ jobId: job.id });
+  }
+
   async function auditActions() {
     const entries = await store.listAuditLogEntries({ ownerUserId: OWNER });
     return entries.map((entry) => entry.action);
@@ -170,6 +228,10 @@ export function createHarness(
     createApprovedMemory,
     createGeneralAction,
     embedGeneralAction,
+    createAsset,
+    createAssetMemory,
+    embedAsset,
+    embedAssetMemory,
     auditActions,
   };
 }

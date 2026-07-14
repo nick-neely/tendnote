@@ -1,6 +1,9 @@
 import { z } from "zod";
+import { assetMemoryValueSchema } from "./asset-memories";
+import { assetKindSchema } from "./assets";
 import { draftProposalResultSchema } from "./draft-proposals";
 import { memoryCuratorProposalResultSchema } from "./memory-curator";
+import { privacyScopeSchema } from "./privacy";
 
 /**
  * The single source of truth for the persisted Eve tool-result contract that the
@@ -222,6 +225,70 @@ export const suggestedGeneralActionListToolResult = z.object({
   reviews: z.array(suggestedGeneralActionReviewItem),
 });
 
+/**
+ * Reminders proposed from an Asset's reviewed details (#203). Each proposal is an
+ * ordinary Suggested General Action, so it renders as the same review card every other
+ * proposal does — there is no asset-specific review card, because there is no
+ * asset-specific review path. The asset rides along only to name what the pass was
+ * about; an empty `proposed` list is a normal, calm result.
+ */
+export const assetActionProposalsToolResult = z.object({
+  found: z.literal(true),
+  asset: z.object({ id: z.string(), name: z.string() }),
+  proposed: z.array(z.object({ action: generalActionRef })),
+});
+
+/**
+ * Asset facts Eve proposed for review (#196 story 57). This is the persisted shape of
+ * one Asset Review Group as it leaves the tool: the anchor Asset (an existing one the
+ * user named, or a still-`suggested` one when nothing matched), the Suggested Asset
+ * Memories waiting on it, and the duplicate candidates the #198 matcher found. It
+ * carries exactly what the shared Asset Review Group card already renders in the Review
+ * tab, so a proposal made in chat is reviewed by the *same* card rather than a chat-only
+ * lookalike — one review surface, accepted/edited/dismissed/linked in one place.
+ *
+ * Nothing in here is durable. Every record referenced is `suggested` until the user
+ * accepts it, which is the whole point: Eve proposes an asset fact, it never saves one.
+ */
+export const assetMemoryProposalToolResult = z.object({
+  found: z.literal(true),
+  groupId: z.string(),
+  asset: z.object({
+    id: z.string(),
+    name: z.string(),
+    kind: assetKindSchema,
+    kindLabel: z.string(),
+    scope: privacyScopeSchema,
+    visibilityLabel: z.string(),
+    /** True while the anchor itself is a pending Suggested Asset (nothing matched). */
+    pending: z.boolean(),
+  }),
+  memories: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      // The typed value, unformatted: the surface formats it for display, so the
+      // exact stored fact (a model number, a date, a cadence) never round-trips
+      // through prose on its way to the review card.
+      value: assetMemoryValueSchema.nullable(),
+      notes: z.string().nullable(),
+    }),
+  ),
+  /** Existing Assets the pending anchor may duplicate — the link-to-existing prompt. */
+  duplicates: z.array(z.object({ id: z.string(), name: z.string(), kindLabel: z.string() })),
+  /** The grounding source record: the user's own words, captured for this proposal. */
+  source: z
+    .object({
+      id: z.string(),
+      content: z.string(),
+      sourceType: z.string(),
+      capturedAt: z.string(),
+    })
+    .nullable(),
+  /** Members still awaiting review: the anchor (when pending) plus each memory. */
+  pendingCount: z.number(),
+});
+
 export const generalActionListToolResult = z.object({
   found: z.literal(true),
   ledger: z.string(),
@@ -237,6 +304,67 @@ export const draftProposalToolResult = draftProposalResultSchema;
  * with these and the agent guard asserts its rendered-tool set matches the keys, so
  * a new rendered tool (or a renamed one) can't silently fall back to `generic`.
  */
+/**
+ * Unified Asset Search results (#204). Grounded records only — every entry is a real
+ * row with its trust register, the signals that found it, and the visibility it was
+ * read under. There is no "answer" field: Eve writes the prose, and it must write it
+ * from these records.
+ */
+export const assetSearchToolResult = z.object({
+  query: z.string(),
+  results: z.array(
+    z.object({
+      recordKind: z.enum(["asset", "asset_memory", "asset_evidence"]),
+      recordId: z.string(),
+      assetId: z.string(),
+      assetName: z.string(),
+      assetKind: z.string(),
+      label: z.string(),
+      snippet: z.string(),
+      value: z.string().nullable(),
+      matchKinds: z.array(z.enum(["structured", "exact", "semantic"])),
+      trustLevel: z.enum(["asset_anchor", "asset_fact", "suggested_asset_fact", "asset_evidence"]),
+      visibilityChoice: z.enum(["only_me", "selected_members", "whole_household"]),
+      visibilityLabel: z.string(),
+    }),
+  ),
+});
+
+/**
+ * Snapshot-backed Asset context (#204). `summary` is *generated prose* and is labeled
+ * as such by `snapshotStatus`; `facts` are the reviewed records it stands on. The two
+ * are deliberately separate fields so a consumer — and Eve — can never mistake the
+ * cache for the truth.
+ */
+export const assetContextToolResult = z.object({
+  assetId: z.string(),
+  assetName: z.string(),
+  assetKind: z.string(),
+  assetStatus: z.string(),
+  visibilityLabel: z.string(),
+  snapshotStatus: z.enum(["fresh", "rebuilt", "fallback"]),
+  summary: z.string().nullable(),
+  facts: z.array(
+    z.object({
+      memoryId: z.string(),
+      label: z.string(),
+      value: z.string().nullable(),
+      notes: z.string().nullable(),
+      visibilityLabel: z.string(),
+    }),
+  ),
+  evidence: z.array(z.object({ evidenceId: z.string(), kind: z.string(), label: z.string() })),
+  relatedAssets: z.array(z.object({ assetId: z.string(), relation: z.string(), name: z.string() })),
+  actions: z.array(
+    z.object({
+      actionId: z.string(),
+      title: z.string(),
+      status: z.string(),
+      dueAt: z.string().nullable(),
+    }),
+  ),
+});
+
 export const assistantToolResultSchemas = {
   capture_source_record: sourceRecordToolResult,
   capture_memory: memoryToolResult,
@@ -260,6 +388,10 @@ export const assistantToolResultSchemas = {
   plan_suggested_general_actions: plannedGeneralActionsToolResult,
   list_suggested_general_action_reviews: suggestedGeneralActionListToolResult,
   list_general_actions: generalActionListToolResult,
+  propose_asset_actions: assetActionProposalsToolResult,
+  propose_asset_memories: assetMemoryProposalToolResult,
+  search_assets: assetSearchToolResult,
+  get_asset_context: assetContextToolResult,
 } as const satisfies Record<string, z.ZodTypeAny>;
 
 /** A tool name that persists a typed, rendered result (vs. a `generic` fallback). */
@@ -275,6 +407,7 @@ export type SuggestedGeneralActionReviewItemOutput = z.infer<
   typeof suggestedGeneralActionReviewItem
 >;
 export type GeneralActionListToolResult = z.infer<typeof generalActionListToolResult>;
+export type AssetMemoryProposalToolResult = z.infer<typeof assetMemoryProposalToolResult>;
 export type RelationshipAgendaToolResult = z.infer<typeof relationshipAgendaToolResult>;
 export type MemoryCuratorToolResult = z.infer<typeof memoryCuratorToolResult>;
 export type DraftProposalToolResult = z.infer<typeof draftProposalToolResult>;

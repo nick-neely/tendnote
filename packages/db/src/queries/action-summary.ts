@@ -38,6 +38,16 @@ export type ActionSummaryItem = {
  * future-dated one, a not-yet-arrived deferral, a paused Routine, and every terminal
  * action are all excluded here exactly as they are on the Action Today surface — the
  * summary and the view can never disagree about what is "on today" (ADRs 0149, 0157).
+ *
+ * Asset-linked actions (#203) need no branch here, and that is the design, not an
+ * omission. An action proposed from an Asset Memory — a warranty check, a filter
+ * replacement Routine — is an ordinary `general_actions` row once accepted; the asset
+ * link lives in a side table and changes nothing about its timing, status, or scope.
+ * So it becomes eligible for this summary by being *due*, exactly like every other
+ * action, and a still-`suggested` proposal is excluded by the same status gate that
+ * excludes every other proposal. Phase 6 adds no asset-aware selection rule, and must
+ * never need one: the moment asset actions require special surfacing, Tendnote has
+ * grown the standalone asset notification system #196 explicitly forbids.
  */
 export function selectActionSummaryItems(
   actions: ReadonlyArray<GeneralAction>,

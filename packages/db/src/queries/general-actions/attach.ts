@@ -6,6 +6,7 @@ import {
   GeneralActionValidationError,
   type PrivacyScope,
 } from "@tendnote/domain";
+import { resolveRecordVisibility } from "../households/record-visibility";
 import type {
   CreateActiveGeneralActionInput,
   GeneralActionLifecycleStore,
@@ -68,47 +69,11 @@ export async function resolveVisibility(
     selectedUserIds?: string[];
   },
 ): Promise<{ scope: PrivacyScope; householdId: string | null }> {
-  const scope = input.scope ?? "private";
-
-  if (scope === "private") {
-    return { scope, householdId: null };
-  }
-
-  // Non-private from here: `householdId` is a concrete string in every branch below.
-  const householdId = input.householdId ?? null;
-  if (!householdId) {
-    throw new GeneralActionValidationError("Sharing an action needs a household.");
-  }
-  const membership = await store.getHouseholdMembership({
-    householdId,
-    userId: input.ownerUserId,
+  return resolveRecordVisibility(store, input, {
+    recordNoun: "action",
+    recordNounWithArticle: "an action",
+    fail: (message) => new GeneralActionValidationError(message),
   });
-  if (membership?.status !== "active") {
-    throw new GeneralActionValidationError(
-      "You must be an active member of that household to share an action.",
-    );
-  }
-
-  if (scope === "shared") {
-    const selected = input.selectedUserIds ?? [];
-    if (selected.length === 0) {
-      throw new GeneralActionValidationError(
-        "Choose at least one person to share this action with.",
-      );
-    }
-    const activeMembers = await store.listHouseholdMemberships({
-      householdId,
-      status: "active",
-    });
-    const activeIds = new Set(activeMembers.map((member) => member.userId));
-    if (selected.some((userId) => !activeIds.has(userId))) {
-      throw new GeneralActionValidationError(
-        "Everyone you share an action with must be an active household member.",
-      );
-    }
-  }
-
-  return { scope, householdId };
 }
 
 /** Records a share row per selected member so a shared Action reaches exactly them. */

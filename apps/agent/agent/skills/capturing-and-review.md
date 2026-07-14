@@ -1,5 +1,5 @@
 ---
-description: Use when the user logs a note, says remember/save/note/keep track of something, adds a person, edits a person's profile details (name, birthday, relationship, closeness), or wants to see, approve, or dismiss suggested memories ("what do I have to review?", "anything to review for Mara?").
+description: Use when the user logs a note, says remember/save/note/keep track of something, adds a person, edits a person's profile details (name, birthday, relationship, closeness), or wants to see, approve, or dismiss suggested memories ("what do I have to review?", "anything to review for Mara?"). For a fact about a thing the user owns (an appliance, vehicle, subscription, service, or household item), the capture path is different — see the recall skill's asset section.
 ---
 
 # Adding people
@@ -48,6 +48,15 @@ Choose the right action for what the user is doing:
   provenance. Include source, confidence, sensitivity, and timestamp.
 - **Never invent a durable fact.** When you are unsure, capture a source record or
   ask, instead of stating something as confirmed.
+
+**A fact about a thing is not a note about a person.** "The filter in my kitchen fridge
+is EDR1RXD1", "the dishwasher warranty ends in March", "the car is due for an oil change
+every 6 months" are **Asset** facts: they do not go to `capture_source_record` or
+`capture_memory`, which are for people. Use `search_assets` to find the thing, then
+`propose_asset_memories` — the fact becomes a **review card**, never a save. Say it is
+waiting for review; never say you saved, logged, or recorded it. Even an explicit
+"remember that the filter is EDR1RXD1" is proposed, not saved: there is no tool that
+writes an asset fact directly. The recall skill has the full workflow.
 
 When you log a casual note, the background extractor mines it into **suggested
 memories** the user reviews later. The user can also approve a logged note inline the

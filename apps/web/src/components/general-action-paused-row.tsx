@@ -32,7 +32,13 @@ export function PausedRoutineRow({
   const { historyOpen, setHistoryOpen, error, busyKey, pending, run } = useActionRowTransition();
 
   return (
-    <article className="flex flex-col gap-2 px-4 py-3">
+    // Deep-link target (`/actions#action-<id>`): a paused Routine can be linked
+    // from an asset profile's related actions, so it anchors like every row (#199).
+    <article
+      className="flex scroll-mt-24 flex-col gap-2 px-4 py-3"
+      id={`action-${action.id}`}
+      tabIndex={-1}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="grid gap-1.5">
           <p className="max-w-[60ch] text-pretty text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">

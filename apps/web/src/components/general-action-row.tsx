@@ -32,6 +32,7 @@ import {
   cleanHintLabels,
   toHintLabels,
 } from "@/components/general-action-asset-hints-field";
+import { ActionContextStrip } from "@/components/general-action-context-strip";
 import { ActionHistoryDialog } from "@/components/general-action-history-dialog";
 import {
   ActionLinksField,
@@ -44,14 +45,7 @@ import {
   type ActionPersonOption,
 } from "@/components/general-action-people-field";
 import { RecurrenceField } from "@/components/general-action-recurrence-field";
-import {
-  ActionContextChip,
-  ActionDueChip,
-  ActionRoutineChip,
-  ActionScopeChip,
-  ErrorText,
-  GENERIC_ERROR,
-} from "@/components/general-action-shared";
+import { ActionDueChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
   AudiencePreview,
@@ -460,26 +454,6 @@ function ActionDeferForm({
   );
 }
 
-/** The quiet context strip under an Action's title: cadence, scope, linked people, asset hints. */
-function ActionContextStrip({ action }: { action: GeneralActionView }) {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {action.recurrenceLabel ? <ActionRoutineChip label={action.recurrenceLabel} /> : null}
-      <ActionScopeChip label={action.visibilityLabel} scope={action.scope} />
-      {action.linkedPeople.map((person) => (
-        <ActionContextChip key={person.id} kind="person">
-          {person.displayName}
-        </ActionContextChip>
-      ))}
-      {action.assetHints.map((hint) => (
-        <ActionContextChip key={hint.label} kind="asset">
-          {hint.label}
-        </ActionContextChip>
-      ))}
-    </div>
-  );
-}
-
 /** The overflow menu: set aside, pause (Routines), owner-only edit/visibility, history, dismiss, archive. */
 function ActionOverflowMenu({
   action,
@@ -702,7 +676,8 @@ export function ActionRow({
     action.isRoutine ||
     action.scope !== "private" ||
     action.linkedPeople.length > 0 ||
-    action.assetHints.length > 0;
+    action.assetHints.length > 0 ||
+    action.linkedAssets.length > 0;
   // On a row the viewer doesn't own, name who shared it so the absent Edit/Visibility
   // controls read as "not yours to re-author", not a missing feature (ADR 0153).
   const ownerName = action.owned
@@ -730,7 +705,7 @@ export function ActionRow({
             </p>
           ) : null}
           <ActionLinks links={action.links} />
-          {hasContext ? <ActionContextStrip action={action} /> : null}
+          {hasContext ? <ActionContextStrip action={action} onUpdate={onUpdate} /> : null}
           {ownerName || !action.owned ? (
             <span className="text-[length:var(--text-caption)] text-muted-foreground">
               Shared by {ownerName ?? "a household member"}

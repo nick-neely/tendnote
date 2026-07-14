@@ -28,6 +28,7 @@ vi.mock("@/app/actions/general-actions", () => ({
   editGeneralActionAction: vi.fn(),
   listGeneralActionHistoryAction: vi.fn(),
   pauseGeneralActionAction: vi.fn(),
+  promoteAssetHintAction: vi.fn(),
   reopenGeneralActionAction: vi.fn(),
   resumeGeneralActionAction: vi.fn(),
 }));

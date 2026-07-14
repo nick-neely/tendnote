@@ -68,6 +68,10 @@ _Avoid_: Follow-up, task, project, todo
 A review-gated proposal for a non-person General Action, grounded in a source record or other visible Tendnote context. A suggested general action can be accepted, edited, dismissed, or ignored before it becomes an active General Action.
 _Avoid_: Automatic task, inferred todo, suggested follow-up
 
+**Asset**:
+A practical owner- or household-scoped thing Tendnote tracks over time — an appliance, vehicle, subscription, service, property, or kept item — with a fixed kind, visibility scope, active/archive lifecycle, and internal audit trail; Asset Memories, evidence, and links attach to it in later Phase 6 slices. An asset is never a person, project, document library, or generic object.
+_Avoid_: Person, project, document, inventory item, financial asset
+
 **Area**:
 A broad life category used to organize General Actions, such as Home, Health, Finance, Travel, Admin, or Career. An area is not a project, tag, folder tree, permission scope, or household workspace.
 _Avoid_: Project, tag, folder, scope

@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./access": "./src/access.ts",
+    "./assets": "./src/assets.ts",
     "./brief-schedules": "./src/brief-schedules.ts",
     "./brief-summary": "./src/brief-summary.ts",
     "./briefs": "./src/briefs.ts",

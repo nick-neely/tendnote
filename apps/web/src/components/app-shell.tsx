@@ -1,5 +1,6 @@
 import {
   BookUserIcon,
+  BoxIcon,
   CircleDotIcon,
   CircleUserRoundIcon,
   HomeIcon,
@@ -24,6 +25,11 @@ const navItems = [
     href: "/actions",
     label: "Actions",
     icon: CircleDotIcon,
+  },
+  {
+    href: "/assets",
+    label: "Assets",
+    icon: BoxIcon,
   },
   {
     href: "/account",

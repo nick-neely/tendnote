@@ -81,6 +81,36 @@ describe("useDeepLinkHighlight", () => {
     expect(document.activeElement).not.toBe(target);
   });
 
+  it("opens every collapsed disclosure containing the target before landing", () => {
+    // A resolved action row lives inside a closed <details>; the deep link from an
+    // asset profile must reveal it rather than landing at the top of the page (#199).
+    window.location.hash = "#action-9";
+    setMatchMedia(true);
+
+    function DetailsHarness() {
+      useDeepLinkHighlight();
+      return (
+        <details>
+          <summary>Resolved</summary>
+          <details>
+            <summary>Inner</summary>
+            <div id="action-9" tabIndex={-1}>
+              the resolved row
+            </div>
+          </details>
+        </details>
+      );
+    }
+    render(<DetailsHarness />);
+
+    const target = document.getElementById("action-9");
+    for (const details of Array.from(document.querySelectorAll("details"))) {
+      expect(details.open).toBe(true);
+    }
+    expect(target?.scrollIntoView).toHaveBeenCalled();
+    expect(document.activeElement).toBe(target);
+  });
+
   it("re-highlights when the hash changes in place", () => {
     window.location.hash = "";
     render(<Harness targetId="action-7" />);

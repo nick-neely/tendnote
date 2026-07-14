@@ -1064,6 +1064,94 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
   });
 });
 
+/**
+ * Asset facts Eve proposed (#196 story 57). The parse has one job the whole feature
+ * rests on: hand the chat the *same* `AssetReviewGroupView` the Review tab's card takes,
+ * so the proposal is reviewed by the #198 card rather than a chat-only lookalike. If it
+ * degraded to `generic`, the user would be told a fact is "waiting for review" with no
+ * card to review it on.
+ */
+describe("toAssistantToolView (asset facts proposed for review)", () => {
+  const proposal = {
+    found: true,
+    groupId: "group-1",
+    asset: {
+      id: "asset-1",
+      name: "Kitchen refrigerator",
+      kind: "appliance",
+      kindLabel: "Appliance",
+      scope: "private",
+      visibilityLabel: "Only me",
+      pending: false,
+    },
+    memories: [
+      {
+        id: "memory-1",
+        label: "Filter model",
+        value: { type: "text", text: "EDR1RXD1" },
+        notes: null,
+      },
+    ],
+    duplicates: [],
+    source: {
+      id: "source-1",
+      content: "The filter in my kitchen fridge is EDR1RXD1",
+      sourceType: "agent",
+      capturedAt: "2026-07-13T00:00:00.000Z",
+    },
+    pendingCount: 1,
+  };
+
+  it("renders a proposal as the shared Asset Review Group card view", () => {
+    const view = toAssistantToolView({ toolName: "propose_asset_memories", output: proposal });
+
+    expect(view.kind).toBe("asset_review_group");
+    if (view.kind !== "asset_review_group") throw new Error("expected an asset review group");
+
+    expect(view.review.groupId).toBe("group-1");
+    expect(view.review.asset.name).toBe("Kitchen refrigerator");
+    // The exact part number, formatted for reading but never altered.
+    expect(view.review.memories[0]?.valueLabel).toBe("EDR1RXD1");
+    expect(view.review.memories[0]?.value).toEqual({ type: "text", text: "EDR1RXD1" });
+    // The user's own words ride along, so the card can show what Eve heard.
+    expect(view.review.source?.content).toBe("The filter in my kitchen fridge is EDR1RXD1");
+    // A fresh proposal has no evidence and was not promoted from an action hint (#199).
+    expect(view.review.evidence).toEqual([]);
+    expect(view.review.fromAction).toBeNull();
+  });
+
+  it("carries the pending anchor and its duplicate prompt when the asset is new", () => {
+    const view = toAssistantToolView({
+      toolName: "propose_asset_memories",
+      output: {
+        ...proposal,
+        asset: { ...proposal.asset, pending: true },
+        duplicates: [{ id: "asset-2", name: "Refrigerator", kindLabel: "Appliance" }],
+        pendingCount: 2,
+      },
+    });
+
+    if (view.kind !== "asset_review_group") throw new Error("expected an asset review group");
+    expect(view.review.asset.pending).toBe(true);
+    // The #198 link-to-existing prompt: the user is asked, not silently duplicated.
+    expect(view.review.duplicates[0]?.name).toBe("Refrigerator");
+    expect(view.review.pendingCount).toBe(2);
+  });
+
+  it("keys the view on the persisted review group", () => {
+    const view = toAssistantToolView({ toolName: "propose_asset_memories", output: proposal });
+    expect(assistantToolViewKey(view)).toBe("asset-review-group:group-1");
+  });
+
+  it("degrades to generic rather than inventing a proposal from a malformed payload", () => {
+    const view = toAssistantToolView({
+      toolName: "propose_asset_memories",
+      output: { found: true, groupId: "group-1" },
+    });
+    expect(view.kind).toBe("generic");
+  });
+});
+
 describe("toolViewTier (how much weight a result earns)", () => {
   it("keeps durable, trust-bearing results as cards", () => {
     expect(

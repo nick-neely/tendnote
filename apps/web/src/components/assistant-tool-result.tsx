@@ -8,6 +8,7 @@ import {
   ListTodoIcon,
   MessageSquareTextIcon,
   NotebookPenIcon,
+  PackageIcon,
   RepeatIcon,
   SearchIcon,
   UserIcon,
@@ -17,6 +18,7 @@ import {
 import Link from "next/link";
 import { AgendaCalendar } from "@/components/agenda-calendar";
 import { Body, Caption, ResultCard } from "@/components/assistant-result-card";
+import { AssetFactRow, AssetSearchResultRow } from "@/components/eve-asset-cards";
 import { labelSensitivity } from "@/lib/eve/agenda-format";
 import { formatLinkedPeople, joinGeneralActionMeta } from "@/lib/eve/general-action-meta";
 import { formatFieldList, PERSON_FIELD_LABEL } from "@/lib/eve/person-fields";
@@ -111,6 +113,16 @@ const lineViewRenderers: {
   general_action_list: (view, isNew) => (
     <ToolActivityLine icon={<ListTodoIcon aria-hidden className="size-3.5" />} isNew={isNew}>
       {labelEmptyGeneralActionList(view.ledger)}
+    </ToolActivityLine>
+  ),
+  asset_search: (_view, isNew) => (
+    <ToolActivityLine icon={<SearchIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+      Nothing found on your things
+    </ToolActivityLine>
+  ),
+  asset_context: (_view, isNew) => (
+    <ToolActivityLine icon={<PackageIcon aria-hidden className="size-3.5" />} isNew={isNew}>
+      No such asset
     </ToolActivityLine>
   ),
   // generic — an unrecognized tool ran to completion; name it and move on.
@@ -253,6 +265,23 @@ const disclosureViewRenderers: {
   },
   relationship_context_search: renderSearchDisclosure,
   semantic_context_search: renderSearchDisclosure,
+  asset_search: (view, isNew) => {
+    const count = view.results.length;
+    return (
+      <DisclosureShell
+        icon={<PackageIcon aria-hidden className="size-3.5 shrink-0" />}
+        isNew={isNew}
+        summary={count === 1 ? "1 match on your things" : `${count} matches on your things`}
+        toolView={view.kind}
+      >
+        <div className="flex flex-col divide-y divide-border/70 border-t px-3.5 pt-3 pb-3.5">
+          {view.results.map((result) => (
+            <AssetSearchResultRow key={`${result.recordKind}:${result.recordId}`} result={result} />
+          ))}
+        </div>
+      </DisclosureShell>
+    );
+  },
 };
 
 /** Collapsible summary for a non-empty result set; expands to the full list. */
@@ -428,6 +457,7 @@ const cardViewRenderers: {
         </div>
       </ResultCard>
     ) : null,
+  asset_context: (view, isNew) => <AssetContextCard isNew={isNew} view={view} />,
 };
 
 /** Durable, trust-bearing result that earns the Field Notebook card. */
@@ -665,4 +695,72 @@ function labelTrust(result: SearchResultView) {
 
 function humanizeToolName(toolName: string): string {
   return toolName.replace(/_/g, " ");
+}
+
+/**
+ * The loaded Asset, as a chat card. Its layout carries the trust model: the reviewed
+ * facts lead (they are the records — the part number the user came for), the evidence
+ * is *named* rather than asserted, and the generated summary comes last, explicitly
+ * labeled as a cache. A stale summary is dropped at parse time and simply does not
+ * appear, so the card never shows prose that has outlived its facts.
+ */
+function AssetContextCard({
+  view,
+  isNew,
+}: {
+  view: Extract<AssistantToolView, { kind: "asset_context" }>;
+  isNew: boolean;
+}) {
+  return (
+    <ResultCard
+      footer={<Caption>{assetContextFooter(view)}</Caption>}
+      icon={<PackageIcon className="size-3" />}
+      isNew={isNew}
+      kind={view.kind}
+      label={view.assetName ?? "Asset"}
+      tone="confirmed"
+    >
+      <div className="flex flex-col gap-3">
+        {view.facts.length > 0 ? (
+          <div className="flex flex-col divide-y divide-border/70">
+            {view.facts.map((fact) => (
+              <AssetFactRow fact={fact} key={fact.memoryId} />
+            ))}
+          </div>
+        ) : (
+          <Body>Nothing recorded about this yet.</Body>
+        )}
+
+        {view.evidence.length > 0 ? (
+          <Caption>
+            On file: {view.evidence.map((item) => `${item.label} (${item.kind})`).join(", ")}
+          </Caption>
+        ) : null}
+
+        {view.actions.length > 0 ? (
+          <Caption>Related work: {view.actions.map((action) => action.title).join(", ")}</Caption>
+        ) : null}
+
+        {view.summary ? (
+          <div className="border-border/70 border-t pt-2.5">
+            <Caption>Summary — generated from the facts above, not a source of truth</Caption>
+            <p className="mt-1 whitespace-pre-line text-muted-foreground text-sm">{view.summary}</p>
+          </div>
+        ) : null}
+      </div>
+    </ResultCard>
+  );
+}
+
+/** What the card stands on, counted: facts, evidence, and whether the summary survived. */
+function assetContextFooter(view: Extract<AssistantToolView, { kind: "asset_context" }>): string {
+  const facts =
+    view.facts.length === 1 ? "1 confirmed fact" : `${view.facts.length} confirmed facts`;
+  const evidence =
+    view.evidence.length > 0
+      ? ` · ${view.evidence.length === 1 ? "1 item" : `${view.evidence.length} items`} of evidence on file`
+      : "";
+  const stale = view.snapshotStatus === "fallback" ? " · summary unavailable" : "";
+
+  return `${facts}${evidence}${stale}`;
 }

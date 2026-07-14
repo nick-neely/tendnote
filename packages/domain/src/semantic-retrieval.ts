@@ -1,4 +1,7 @@
 import { z } from "zod";
+import type { AssetMemory } from "./asset-memories";
+import { describeAssetMemoryValue } from "./asset-snapshots";
+import { type Asset, assetLabelForKind, isDurableAssetStatus } from "./assets";
 import {
   describeRecurrence,
   type GeneralAction,
@@ -6,24 +9,66 @@ import {
   generalActionRetrievalMetaSchema,
   isRetrievableGeneralActionStatus,
 } from "./general-actions";
+import { JOB_CREATE_OMIT, jobQueueMechanicsShape } from "./job-queue";
 import type { memoryStatusSchema } from "./memories";
 import { sensitivitySchema, type sourceSchema, visibilityChoiceSchema } from "./privacy";
 import type { sourceRecordRetentionPolicySchema, sourceRecordStatusSchema } from "./source-records";
 
 // General Actions join memories and source records as a semantic record kind: they are
 // embedded on write and retrieved by meaning like the others, discriminated on this
-// enum so a consumer can tell them apart (ADR 0150; Phase 5 #184).
-export const semanticRecordKindSchema = z.enum(["memory", "source_record", "general_action"]);
+// enum so a consumer can tell them apart (ADR 0150; Phase 5 #184). Assets and Asset
+// Memories join them in Phase 6 (#204): they share this one embedding pipeline — the
+// jobs, the fingerprinting, the adapter — but are retrieved through their own typed
+// Asset Search contract, never through relationship retrieval.
+export const semanticRecordKindSchema = z.enum([
+  "memory",
+  "source_record",
+  "general_action",
+  "asset",
+  "asset_memory",
+]);
+
+/**
+ * The subset of embeddable kinds that relationship retrieval may be asked for.
+ * Assets are embedded in the same table but are *not* relationship context — a
+ * relationship search can neither request nor return them (#204). Asset Search owns
+ * its own typed contract in `asset-search.ts`.
+ */
+export const relationshipSemanticRecordKindSchema = z.enum([
+  "memory",
+  "source_record",
+  "general_action",
+]);
 
 // `action_item` is the General Action trust level: an owner-authored intention that is
 // neither a confirmed fact about a person nor logged relationship context. Kept as its
-// own value so retrieval never mislabels an action's trust register.
-export const semanticTrustLevelSchema = z.enum(["confirmed_fact", "logged_context", "action_item"]);
+// own value so retrieval never mislabels an action's trust register. `asset_anchor` and
+// `asset_fact` are the Asset registers: a thing the user owns, and a reviewed fact about
+// that thing (#204).
+export const semanticTrustLevelSchema = z.enum([
+  "confirmed_fact",
+  "logged_context",
+  "action_item",
+  "asset_anchor",
+  "asset_fact",
+]);
+
+/**
+ * The trust registers relationship retrieval can actually return. Assets are embedded
+ * in the same table with their own registers, but they are not relationship context —
+ * so the relationship result contract excludes them rather than leaving it to
+ * convention (#204).
+ */
+export const relationshipSemanticTrustLevelSchema = z.enum([
+  "confirmed_fact",
+  "logged_context",
+  "action_item",
+]);
 
 export const searchSemanticContextSchema = z.object({
   query: z.string().trim().min(1).max(400),
   personId: z.uuid().optional(),
-  recordKinds: z.array(semanticRecordKindSchema).min(1).max(3).optional(),
+  recordKinds: z.array(relationshipSemanticRecordKindSchema).min(1).max(3).optional(),
   limit: z.number().int().min(1).max(20).default(8),
   minimumSimilarity: z.number().min(0).max(1).default(0),
   directlyRequested: z.boolean().default(false),
@@ -61,8 +106,10 @@ export const relationshipContextEmbeddingSchema = z.object({
   updatedAt: z.date(),
 });
 
+// Relationship retrieval only ever yields relationship kinds — an Asset can never
+// arrive here, so the result contract says so rather than leaving it to convention.
 export const semanticRetrievalResultSchema = z.object({
-  recordKind: semanticRecordKindSchema,
+  recordKind: relationshipSemanticRecordKindSchema,
   recordId: z.string(),
   visibilityChoice: visibilityChoiceSchema,
   visibilityLabel: z.string(),
@@ -70,12 +117,14 @@ export const semanticRetrievalResultSchema = z.object({
   relatedPersonDisplayName: z.string().nullable(),
   snippet: z.string(),
   similarity: z.number(),
-  trustLevel: semanticTrustLevelSchema,
+  trustLevel: relationshipSemanticTrustLevelSchema,
   sensitivity: sensitivitySchema,
-  sourceRefs: z.array(z.object({ kind: semanticRecordKindSchema, id: z.string() })).min(1),
+  sourceRefs: z
+    .array(z.object({ kind: relationshipSemanticRecordKindSchema, id: z.string() }))
+    .min(1),
   routing: z.object({
     personId: z.string().nullable(),
-    recordKind: semanticRecordKindSchema,
+    recordKind: relationshipSemanticRecordKindSchema,
     recordId: z.string(),
   }),
   // Present only for `general_action` results: narrows the kind to Action / Routine /
@@ -96,21 +145,12 @@ export const embeddingJobSchema = z.object({
   recordKind: semanticRecordKindSchema,
   recordId: z.string(),
   status: embeddingJobStatusSchema.default("pending"),
-  attempts: z.number().int().min(0).default(0),
-  lastError: z.string().nullable().optional(),
-  idempotencyKey: z.string().min(1),
-  runAfter: z.date(),
-  claimedAt: z.date().nullable().optional(),
-  completedAt: z.date().nullable().optional(),
+  ...jobQueueMechanicsShape,
   createdAt: z.date(),
   updatedAt: z.date(),
 });
 
-export const createEmbeddingJobSchema = embeddingJobSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const createEmbeddingJobSchema = embeddingJobSchema.omit(JOB_CREATE_OMIT);
 
 export type SemanticRecordKind = z.infer<typeof semanticRecordKindSchema>;
 export type SemanticTrustLevel = z.infer<typeof semanticTrustLevelSchema>;
@@ -180,8 +220,116 @@ export type EmbeddingDecision =
         | "source_record_not_person_linked"
         | "source_record_has_unresolved_mentions"
         | "general_action_not_retrievable_status"
+        | "asset_not_durable"
+        | "asset_memory_not_retrievable_status"
         | "restricted_content";
     };
+
+export type AssetEmbeddingSource = Pick<
+  Asset,
+  "id" | "ownerUserId" | "name" | "kind" | "status" | "updatedAt"
+>;
+
+export type AssetMemoryEmbeddingSource = Pick<
+  AssetMemory,
+  "id" | "ownerUserId" | "assetId" | "status" | "label" | "value" | "notes" | "updatedAt"
+>;
+
+/**
+ * An Asset is embedded while it is durable — active or archived. Archived things stay
+ * retrievable on purpose: "what filter did the old fridge take?" is exactly the kind of
+ * recall Asset Memory exists for; the *read* seam decides whether to show archived
+ * results, not the embedder. Suggested and dismissed proposals are never embedded — an
+ * un-reviewed guess must not be findable as if it were a thing the user owns (#204).
+ */
+export function decideAssetEmbedding(
+  asset: Pick<AssetEmbeddingSource, "status" | "name" | "kind">,
+): EmbeddingDecision {
+  if (!isDurableAssetStatus(asset.status)) {
+    return { action: "skip", reason: "asset_not_durable" };
+  }
+
+  if (projectAssetEmbeddedText(asset).length === 0) {
+    return { action: "skip", reason: "empty_embedded_text" };
+  }
+
+  return { action: "embed" };
+}
+
+/**
+ * The deterministic text an Asset is embedded from: its name and kind. Deliberately
+ * thin — the Asset row is an *anchor*, and its facts live in Asset Memories, each
+ * embedded on its own so a query can land on the precise fact rather than a blur of
+ * everything the asset knows.
+ */
+export function projectAssetEmbeddedText(
+  asset: Pick<AssetEmbeddingSource, "name" | "kind">,
+): string {
+  const name = asset.name.trim();
+  if (name.length === 0) {
+    return "";
+  }
+
+  return `Asset: ${name}\nKind: ${assetLabelForKind(asset.kind)}`.replace(/[ \t]+/g, " ");
+}
+
+/**
+ * An Asset Memory is embedded while it is retrievable — `active` (a reviewed fact) or
+ * `suggested` (a proposal). A suggested memory is embedded so an owner-only review
+ * surface can find grounded proposals; it is never scope-visible to a household member,
+ * and the read seam — not the embedder — enforces that (mirrors Suggested General
+ * Actions, ADRs 0151–0153). A dismissed husk is not retrievable.
+ */
+export function decideAssetMemoryEmbedding(
+  memory: Pick<AssetMemoryEmbeddingSource, "status" | "label" | "value" | "notes">,
+  asset: Pick<AssetEmbeddingSource, "name" | "kind" | "status">,
+): EmbeddingDecision {
+  if (memory.status === "dismissed") {
+    return { action: "skip", reason: "asset_memory_not_retrievable_status" };
+  }
+
+  // A memory is only as retrievable as the thing it hangs off: a fact about a
+  // suggested (un-reviewed) asset must not be findable either.
+  if (!isDurableAssetStatus(asset.status)) {
+    return { action: "skip", reason: "asset_not_durable" };
+  }
+
+  if (projectAssetMemoryEmbeddedText(memory, asset).length === 0) {
+    return { action: "skip", reason: "empty_embedded_text" };
+  }
+
+  return { action: "embed" };
+}
+
+/**
+ * The deterministic text an Asset Memory is embedded from: the asset it belongs to,
+ * then the fact itself and its notes. The asset's name and kind are folded in on
+ * purpose — it is what makes "anything for the kitchen fridge" retrieve the *fridge's*
+ * filter size rather than every filter size on file. Whitespace-collapsed so the
+ * content fingerprint only moves when the meaningful text does.
+ */
+export function projectAssetMemoryEmbeddedText(
+  memory: Pick<AssetMemoryEmbeddingSource, "label" | "value" | "notes">,
+  asset: Pick<AssetEmbeddingSource, "name" | "kind">,
+): string {
+  const label = memory.label.trim();
+  if (label.length === 0) {
+    return "";
+  }
+
+  const value = describeAssetMemoryValue(memory.value);
+  const notes = memory.notes?.trim() ?? "";
+  const parts = [
+    `Asset: ${asset.name.trim()} (${assetLabelForKind(asset.kind)})`,
+    value ? `${label}: ${value}` : label,
+    notes ? `Notes: ${notes}` : null,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts
+    .join("\n")
+    .trim()
+    .replace(/[ \t]+/g, " ");
+}
 
 export function decideApprovedMemoryEmbedding(
   memory: ApprovedMemoryEmbeddingSource,

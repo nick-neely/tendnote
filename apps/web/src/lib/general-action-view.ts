@@ -1,4 +1,6 @@
+import type { GeneralActionLinkedAsset } from "@tendnote/db/queries/assets";
 import type {
+  AssetKind,
   GeneralActionAssetHint,
   GeneralActionEvent,
   GeneralActionEventKind,
@@ -7,12 +9,42 @@ import type {
   GeneralActionStatus,
   PrivacyScope,
 } from "@tendnote/domain";
-import { describeRecurrence, startOfLocalDay } from "@tendnote/domain";
+import { assetLabelForKind, describeRecurrence, startOfLocalDay } from "@tendnote/domain";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { toDateInputValue } from "@/lib/followup-view";
 
 /** A linked person named for a calm chip — id + display name, nothing more (ADR 0155). */
 export type GeneralActionPersonView = { id: string; displayName: string };
+
+/**
+ * A linked Asset named for the action's context strip (#199): a real record the
+ * chip can deep-link to, unlike a bare hint label. `pending` marks a promotion
+ * still waiting in review (owner-only) — shown as a quiet in-review state, never
+ * a navigable Asset.
+ */
+export type GeneralActionLinkedAssetView = {
+  assetId: string;
+  name: string;
+  kind: AssetKind;
+  kindLabel: string;
+  /** The hint this link came from, so the strip can pair chip and hint. */
+  hintLabel: string | null;
+  pending: boolean;
+};
+
+/** Maps a bridge read entry to its serializable chip view. */
+export function toGeneralActionLinkedAssetView(
+  entry: GeneralActionLinkedAsset,
+): GeneralActionLinkedAssetView {
+  return {
+    assetId: entry.asset.id,
+    name: entry.asset.name,
+    kind: entry.asset.kind,
+    kindLabel: assetLabelForKind(entry.asset.kind),
+    hintLabel: entry.hintLabel,
+    pending: entry.pending,
+  };
+}
 
 /**
  * Where an Action sits in time, so the calm Actions surface can gently flag what's
@@ -46,6 +78,8 @@ export type GeneralActionView = {
   links: GeneralActionLink[];
   /** Lightweight object/asset hints (subject labels), never durable records (ADR 0156). */
   assetHints: GeneralActionAssetHint[];
+  /** Assets this action is linked to — promoted hints, scope-filtered per viewer (#199). */
+  linkedAssets: GeneralActionLinkedAssetView[];
   /** People linked as context — never a Follow-Up conversion (ADR 0155). */
   linkedPeople: GeneralActionPersonView[];
   status: GeneralActionStatus;
@@ -130,9 +164,10 @@ function scopeAudienceLabel(action: {
  * Resolves the calm surfacing cue — state + human label — for an Action: a paused Routine
  * reads as set aside (never overdue), a deferred one as "Set aside until …", a dated one by
  * its due state, and an undated one as "No date". Kept separate so the view mapper stays a
- * flat field projection.
+ * flat field projection. Exported for the Asset Profile's related-actions view (#199) so
+ * both surfaces phrase an action's timing identically.
  */
-function resolveSurfacing(
+export function resolveSurfacing(
   action: { status: GeneralActionStatus; deferUntil: Date | null; dueAt: Date | null },
   now: Date,
 ): { surfaceState: ActionSurfaceState; surfaceLabel: string } {
@@ -186,7 +221,7 @@ export function toGeneralActionView(
     deferUntil: Date | null;
     areaId: string | null;
   },
-  options: { now?: Date; callerUserId: string },
+  options: { now?: Date; callerUserId: string; linkedAssets?: GeneralActionLinkedAssetView[] },
 ): GeneralActionView {
   const now = options.now ?? new Date();
   const { surfaceState, surfaceLabel } = resolveSurfacing(action, now);
@@ -197,6 +232,7 @@ export function toGeneralActionView(
     notes: action.notes,
     links: action.links,
     assetHints: action.assetHints,
+    linkedAssets: options.linkedAssets ?? [],
     linkedPeople: action.linkedPeople,
     status: action.status,
     recurrence: action.recurrence,

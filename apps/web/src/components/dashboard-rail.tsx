@@ -4,6 +4,7 @@ import type { Person } from "@tendnote/domain";
 import { ArrowRightIcon, CakeIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { AssetReviewGroupCard } from "@/components/asset-review-group-card";
 import { DashboardBriefSection } from "@/components/dashboard-brief-section";
 import { DashboardCalendarSuggestionsSection } from "@/components/dashboard-calendar-suggestions-section";
 import { DashboardFollowupsSection } from "@/components/dashboard-followups-section";
@@ -15,6 +16,7 @@ import { DashboardSuggestedFollowupsSection } from "@/components/dashboard-sugge
 import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general-action-review";
 import { TabCount } from "@/components/tab-count";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { AssetReviewGroupView } from "@/lib/asset-review-view";
 import type { BriefView } from "@/lib/brief-view";
 import type { CalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
 import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brief";
@@ -61,6 +63,7 @@ export function DashboardRail({
   calendarSuggestions: initialCalendarSuggestions,
   reviews: initialReviews,
   actionReviews: initialActionReviews,
+  assetReviews: initialAssetReviews = [],
   dailyBrief,
   weeklyBrief,
 }: {
@@ -71,6 +74,8 @@ export function DashboardRail({
   calendarSuggestions: CalendarSuggestionReviewView[];
   reviews: DashboardReviewView[];
   actionReviews: SuggestedGeneralActionReviewView[];
+  /** Pending Asset Review Groups — grouped asset suggestions (#198). */
+  assetReviews?: AssetReviewGroupView[];
   dailyBrief: BriefView | null;
   weeklyBrief: BriefView | null;
 }) {
@@ -79,6 +84,7 @@ export function DashboardRail({
   const [calendarSuggestions, setCalendarSuggestions] = useState(initialCalendarSuggestions);
   const [memoryReviews, setMemoryReviews] = useState(initialReviews);
   const [actionReviews, setActionReviews] = useState(initialActionReviews);
+  const [assetReviews, setAssetReviews] = useState(initialAssetReviews);
 
   const resolveFollowup = (id: string) =>
     setFollowups((current) => current.filter((followup) => followup.id !== id));
@@ -94,9 +100,16 @@ export function DashboardRail({
     setActionReviews((current) =>
       current.map((review) => (review.action.id === view.action.id ? view : review)),
     );
+  const resolveAssetReview = (groupId: string) =>
+    setAssetReviews((current) => current.filter((review) => review.groupId !== groupId));
+  const updateAssetReview = (view: AssetReviewGroupView) =>
+    setAssetReviews((current) =>
+      current.map((review) => (review.groupId === view.groupId ? view : review)),
+    );
 
   const followupCount = followups.length + suggestedFollowups.length + calendarSuggestions.length;
-  const reviewCount = memoryReviews.length + actionReviews.length;
+  // Each Asset Review Group counts once: grouped review is one unit of work.
+  const reviewCount = memoryReviews.length + actionReviews.length + assetReviews.length;
 
   return (
     <Tabs className="flex min-h-0 flex-col gap-3 lg:h-full" defaultValue="today">
@@ -164,8 +177,8 @@ export function DashboardRail({
       <TabsContent className={PANEL} forceMount value="review">
         {reviewCount === 0 ? (
           <RailEmpty>
-            Nothing waiting to review. When Eve suggests something to remember or an action to take,
-            it'll show up here for a quick yes or no.
+            Nothing waiting to review. When Eve suggests something to remember, an action to take,
+            or a thing to track, it'll show up here for a quick yes or no.
           </RailEmpty>
         ) : (
           <>
@@ -178,6 +191,11 @@ export function DashboardRail({
               onResolve={resolveActionReview}
               onUpdate={updateActionReview}
               reviews={actionReviews}
+            />
+            <AssetReviewSection
+              onResolve={resolveAssetReview}
+              onUpdate={updateAssetReview}
+              reviews={assetReviews}
             />
           </>
         )}
@@ -214,6 +232,39 @@ function SuggestedActionsReviewSection({
         {reviews.map((review) => (
           <SuggestedGeneralActionReviewCard
             key={review.action.id}
+            onResolve={onResolve}
+            onUpdate={onUpdate}
+            review={review}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** The Review tab's grouped asset-suggestions block (#198), shown only when waiting. */
+function AssetReviewSection({
+  reviews,
+  onResolve,
+  onUpdate,
+}: {
+  reviews: AssetReviewGroupView[];
+  onResolve: (groupId: string) => void;
+  onUpdate: (view: AssetReviewGroupView) => void;
+}) {
+  if (reviews.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="flex flex-col gap-2.5">
+      <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
+        Suggested assets
+      </h2>
+      <div className="flex flex-col gap-2.5">
+        {reviews.map((review) => (
+          <AssetReviewGroupCard
+            key={review.groupId}
             onResolve={onResolve}
             onUpdate={onUpdate}
             review={review}

@@ -24,12 +24,16 @@ import type { GeneralActionStore, InMemoryGeneralActionLifecycleStore } from "./
  * instance the visibility reads consult and the lifecycle writes shares to, so scope
  * state stays consistent across the composed seam (ADR 0153).
  */
-export function createInMemoryGeneralActionStore(): GeneralActionStore & HouseholdStore {
+export function createInMemoryGeneralActionStore(
+  // Injectable so a cross-domain composition (the asset action-link store, #199)
+  // can share one household instance across every scoped read; defaults to a
+  // fresh store for standalone use.
+  householdStore: HouseholdStore = createInMemoryHouseholdStore(),
+): GeneralActionStore & HouseholdStore {
   const actions = new Map<string, GeneralAction>();
   const events: GeneralActionEvent[] = [];
   // Person links as (generalActionId -> ordered set of personIds).
   const peopleLinks = new Map<string, string[]>();
-  const householdStore = createInMemoryHouseholdStore();
 
   /**
    * Whether `callerUserId` may see `action` under the Phase 4 scope rules: private is

@@ -14,6 +14,7 @@ export function generalActionViewFixture(
     notes: null,
     links: [],
     assetHints: [],
+    linkedAssets: [],
     linkedPeople: [],
     status: "open",
     recurrence: null,

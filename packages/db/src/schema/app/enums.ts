@@ -59,7 +59,114 @@ export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "source_record",
   "followup",
   "general_action",
+  // Phase 6 Asset Memory: Assets ride the same share rails as other scoped records (#197).
+  "asset",
+  // Asset Memories are independently scoped child records under an Asset (#198).
+  "asset_memory",
+  // Asset Evidence is independently scoped under an Asset, like memories (#200).
+  "asset_evidence",
 ]);
+
+// Phase 6 Asset Memory (#196/#197): the small fixed Asset Kind set — practical
+// owner-/household-scoped resources only, never a taxonomy the user manages.
+export const assetKind = pgEnum("asset_kind", [
+  "item",
+  "appliance",
+  "vehicle",
+  "subscription",
+  "service",
+  "property",
+]);
+
+// Archive is the normal inactive path; hard delete stays reserved for
+// correction/privacy cases in a later slice (#196). `suggested`/`dismissed` are
+// the review-gated proposal states (#198) — never durable records; every
+// scope-visible read filters to active/archived.
+export const assetStatus = pgEnum("asset_status", ["active", "archived", "suggested", "dismissed"]);
+
+export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
+  "created",
+  "edited",
+  "archived",
+  "restored",
+  // Review-gated trail (#198): proposal life, duplicate-review resolution, and
+  // asset-keyed Asset Memory writes (memory id rides in detail JSON).
+  "suggested",
+  "promoted",
+  "dismissed",
+  "linked_existing",
+  "memory_created",
+  "memory_suggested",
+  "memory_edited",
+  "memory_promoted",
+  "memory_dismissed",
+  // Evidence capture trail (#200): the evidence id rides in detail JSON.
+  "evidence_added",
+  "evidence_removed",
+  // Related Asset Link and Asset Person Link trails (#202): the link id and the
+  // other record's id ride in detail JSON.
+  "link_added",
+  "link_suggested",
+  "link_promoted",
+  "link_dismissed",
+  "link_removed",
+  "person_link_added",
+  "person_link_removed",
+  // A Suggested General Action proposed from a reviewed Asset Memory (#203). The
+  // action id, the memory id, and the proposal reason ride in detail JSON. Only the
+  // *proposal* is audited here — the action's own lifecycle stays authoritative on
+  // the action side, so Asset History never forks into a second maintenance log.
+  "action_proposed",
+]);
+
+// The fixed Related Asset Link relation set (#202): subject-first ("the filter
+// *fits* the refrigerator"). Fixed like Asset Kinds — never a user taxonomy.
+export const assetLinkRelation = pgEnum("asset_link_relation", [
+  "fits",
+  "uses",
+  "part_of",
+  "replaces",
+  "covers",
+  "stored_with",
+]);
+
+// Related Asset Link lifecycle (#202), mirroring asset_memory_status: suggested
+// (review-gated) → active on accept or explicit create; dismissed is the husk.
+export const assetLinkStatus = pgEnum("asset_link_status", ["suggested", "active", "dismissed"]);
+
+// The fixed Asset Person Link relation set (#202): contextual only — a person
+// link never confers ownership or visibility.
+export const assetPersonRelation = pgEnum("asset_person_relation", [
+  "recommended",
+  "borrowed",
+  "uses",
+  "stores",
+  "services",
+  "knows_about",
+]);
+
+// Asset Memory lifecycle (#198): suggested (review-gated) → active on accept;
+// dismissed is the resolved husk of a rejected suggestion.
+export const assetMemoryStatus = pgEnum("asset_memory_status", [
+  "suggested",
+  "active",
+  "dismissed",
+]);
+
+// The small fixed Asset Evidence kind set (#200): what a piece of evidence is,
+// never a folder taxonomy — evidence grounds Assets, it is not a document library.
+export const assetEvidenceKind = pgEnum("asset_evidence_kind", [
+  "receipt",
+  "photo",
+  "manual",
+  "warranty",
+  "link",
+  "note",
+]);
+
+// Where an Asset write originated. Coarse on purpose — provenance detail rides in
+// the audit event's detail JSON.
+export const assetAuditSource = pgEnum("asset_audit_source", ["user", "assistant", "system"]);
 
 export const sourceRecordStatus = pgEnum("source_record_status", [
   "pending_resolution",
@@ -151,6 +258,10 @@ export const semanticRecordKind = pgEnum("semantic_record_kind", [
   // General Actions are embedded and semantically retrievable alongside relationship
   // context (ADR 0150; Phase 5 #184).
   "general_action",
+  // Assets and their reviewed memories share the same embedding pipeline, but are
+  // retrieved through the typed Asset Search contract, not relationship retrieval (#204).
+  "asset",
+  "asset_memory",
 ]);
 
 export const semanticTrustLevel = pgEnum("semantic_trust_level", [
@@ -158,6 +269,10 @@ export const semanticTrustLevel = pgEnum("semantic_trust_level", [
   "logged_context",
   // A General Action is an owner-authored intention — its own trust register.
   "action_item",
+  // An Asset is an anchor for a thing the user owns; an Asset Memory is a reviewed
+  // fact about that thing. Distinct registers so retrieval never mislabels either (#204).
+  "asset_anchor",
+  "asset_fact",
 ]);
 
 export const embeddingJobStatus = pgEnum("embedding_job_status", [

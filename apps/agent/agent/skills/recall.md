@@ -1,5 +1,5 @@
 ---
-description: Use when the user wants to find, recall, or look up a person, note, memory, or relationship context — by exact name/text or by meaning — or asks a broad horizon question like "anything coming up next week?", "who deserves a thought today?", "what should I review?", or "any follow-ups due soon?".
+description: Use when the user wants to find, recall, or look up a person, note, memory, or relationship context — by exact name/text or by meaning — or asks a broad horizon question like "anything coming up next week?", "who deserves a thought today?", "what should I review?", or "any follow-ups due soon?". Also use for anything about a thing the user owns — an appliance, vehicle, subscription, service, or household item — whether they are asking about it ("what filter does the fridge need?", "when does the car warranty end?") or telling you a fact about it ("the filter in my kitchen fridge is EDR1RXD1", "I bought the dishwasher in March 2024").
 ---
 
 # Recall and lookup
@@ -94,3 +94,83 @@ Agenda candidates include display names, source references, trust level, sensiti
 and typed kinds. Phrase active reminders as committed follow-ups, birthdays as stored
 profile data, and tentative or restricted candidates with their labels. Never show raw
 ids.
+
+## Assets — things the user owns
+
+Asset recall is a **separate seam** from relationship recall. A question about an
+appliance, vehicle, subscription, service, or household item — "what filter does the
+fridge need?", "when does the car warranty end?", "what did I pay for the dishwasher?",
+"what's expiring soon?" — goes to the asset tools, never to
+`search_relationship_context` or `search_semantic_context`.
+
+- Use `search_assets` for **any** asset question. It is one unified search over exact
+  text, exact structured values, and fuzzy intent — you never choose a mode. Type the
+  user's words; a serial, model, filter size, amount (`$1,299.99`), or ISO date
+  (`2026-03-14`) is matched against the stored value exactly.
+- Use `get_asset_context` only **after** an Asset is known and the user wants its full
+  picture. It returns the reviewed facts, the evidence on file, related assets, and
+  linked actions — plus a generated snapshot.
+- **An `assetId` comes from a search result, never from your head.** Every asset result
+  carries one; copy it exactly into `get_asset_context` or `propose_asset_actions`. An
+  asset's *name* is not its id, and a guessed id is a failed call — if a search did not
+  find the thing, say so instead of inventing a handle for it. (The ids are for tool
+  calls only; never write one in a reply.)
+
+### Phrasing asset results
+
+State exact values **verbatim**. A filter size, model number, serial, price, or date is
+the whole point of the answer: report it exactly as stored and never guess, round, or
+reconstruct one. If a fact is not there, say so plainly — a wrong part number is worse
+than no answer.
+
+Phrase results by trust register:
+
+- an **Asset Memory** (`asset_fact`) is a confirmed fact — state it plainly;
+- an **Asset** (`asset_anchor`) is just the thing itself, not a claim about it;
+- **Asset Evidence** (`asset_evidence`) is grounding material — say the receipt or
+  manual is *on file*; never assert what it says, and never claim to have read it;
+- a **suggested** Asset Memory (`suggested_asset_fact`) is a proposal, never a fact.
+  It only appears in explicit review context — phrase it as something to review.
+
+An **Asset Snapshot** summary is a generated cache, **not source truth**. Never take a
+model number, serial, filter size, price, or date from it — those come from the facts.
+When `snapshotStatus` is `fallback`, the snapshot is missing or stale: answer from the
+records and do not mention the cache.
+
+Asset visibility uses the same labels as the rest of recall ("Only me", "Specific
+people", "Whole household"). A household Asset can carry a private detail its members
+never see; if a record is not in the result, it does not exist as far as the answer is
+concerned — never hint that hidden context exists.
+
+### Telling you a fact — propose it, never save it
+
+Asset **writes stay review-gated**. When the user tells you something about a thing they
+own, the fact goes to `propose_asset_memories`, which puts it in the review queue as a
+card they accept, edit, or dismiss:
+
+1. `search_assets` first, to find the thing they named.
+2. `propose_asset_memories` with the `assetId` from that result and the fact itself —
+   `{label: "Filter model", value: {type: "text", text: "EDR1RXD1"}}`. When the search
+   found nothing to anchor to, pass `newAsset` instead and the Asset is proposed too.
+3. Copy the value **character for character** from what they said. Never correct,
+   expand, reformat, or complete a part number — a wrong one is worse than none.
+
+There is **no tool that saves an asset fact**, and you must not act as if there were.
+Say it is **waiting for review** ("I've put that up for review", "it's in your review
+queue for you to accept"). Never say you *logged*, *saved*, *recorded*, *noted*, or now
+*remember* it; never restate a proposed fact in a later turn as though it were stored —
+until the user accepts it, you do not know it, and `search_assets` will not return it.
+If a later turn asks about it and you have no record, say plainly that it is still
+waiting for review rather than inventing what you "saved" earlier.
+
+The one thing that is *not* this path: an explicit reminder the user asks for ("remind
+me to change the filter every 6 months") is `create_general_action`. A dated or
+recurring fact that suggests a reminder is `propose_asset_actions` — also review-gated.
+
+### Files are never read
+
+If the user offers a receipt, manual, or photo, they can attach it as Asset Evidence
+from the composer plus-menu — but it is **stored, not read**. Never offer to extract the
+total, the model number, or anything else from an upload, before or after it is saved:
+you have no ability to see a file's contents. Say the receipt is *on file* and ask them
+for the value if they want it recorded, then propose it like any other fact.
