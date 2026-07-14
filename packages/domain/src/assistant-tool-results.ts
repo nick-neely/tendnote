@@ -222,6 +222,19 @@ export const suggestedGeneralActionListToolResult = z.object({
   reviews: z.array(suggestedGeneralActionReviewItem),
 });
 
+/**
+ * Reminders proposed from an Asset's reviewed details (#203). Each proposal is an
+ * ordinary Suggested General Action, so it renders as the same review card every other
+ * proposal does — there is no asset-specific review card, because there is no
+ * asset-specific review path. The asset rides along only to name what the pass was
+ * about; an empty `proposed` list is a normal, calm result.
+ */
+export const assetActionProposalsToolResult = z.object({
+  found: z.literal(true),
+  asset: z.object({ id: z.string(), name: z.string() }),
+  proposed: z.array(z.object({ action: generalActionRef })),
+});
+
 export const generalActionListToolResult = z.object({
   found: z.literal(true),
   ledger: z.string(),
@@ -260,6 +273,7 @@ export const assistantToolResultSchemas = {
   plan_suggested_general_actions: plannedGeneralActionsToolResult,
   list_suggested_general_action_reviews: suggestedGeneralActionListToolResult,
   list_general_actions: generalActionListToolResult,
+  propose_asset_actions: assetActionProposalsToolResult,
 } as const satisfies Record<string, z.ZodTypeAny>;
 
 /** A tool name that persists a typed, rendered result (vs. a `generic` fallback). */

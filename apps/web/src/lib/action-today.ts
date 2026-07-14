@@ -1,6 +1,6 @@
 import type { ActionSurfacingReason } from "@tendnote/domain";
 import { classifyActionSurfacing } from "@tendnote/domain";
-import type { GeneralActionView } from "@/lib/general-action-view";
+import type { GeneralActionLinkedAssetView, GeneralActionView } from "@/lib/general-action-view";
 
 /**
  * One surfacing Action on the narrow Action Today surface: its serialized view plus the
@@ -44,6 +44,22 @@ const GROUP_HEADING: Record<ActionSurfacingReason, string> = {
  */
 export function actionTodayCaption(item: ActionTodayItem): string {
   return item.view.surfaceLabel;
+}
+
+/**
+ * The Assets a Today row names — the thing the work is about (#203). "Replace the
+ * filter" is a different job depending on *which* filter, and the whole point of Asset
+ * Memory is that Tendnote now knows; a row that has an Asset should say so, and let the
+ * glance carry through to the Profile where the model number and the receipt live.
+ *
+ * Pending proposals are deliberately dropped. A hint still working its way through
+ * asset review is review state, and Today is not a review surface — showing an "in
+ * review" chip here would put a second, unactionable to-do on a page whose only job is
+ * to name what is on today. The Actions ledger already shows that state, where it can
+ * be acted on. Only durable, navigable Assets earn a chip on the glance.
+ */
+export function actionTodayAssets(item: ActionTodayItem): GeneralActionLinkedAssetView[] {
+  return item.view.linkedAssets.filter((asset) => !asset.pending);
 }
 
 /**

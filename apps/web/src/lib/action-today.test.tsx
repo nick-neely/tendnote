@@ -2,11 +2,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ActionTodaySurface } from "@/components/action-today-surface";
 import {
+  actionTodayAssets,
   actionTodayCaption,
   groupActionTodayItems,
   selectActionTodayItems,
 } from "@/lib/action-today";
-import type { GeneralActionView } from "@/lib/general-action-view";
+import type { GeneralActionLinkedAssetView, GeneralActionView } from "@/lib/general-action-view";
 
 // Local-midnight fixtures, matching how due dates are stored (timezone-independent).
 const NOW = new Date(2026, 6, 6, 9, 0, 0);
@@ -164,5 +165,99 @@ describe("action today surface", () => {
     const html = renderToStaticMarkup(<ActionTodaySurface groups={[]} />);
     expect(html).toContain("Nothing on today");
     expect(html).toContain("/actions");
+  });
+});
+
+describe("asset-linked actions on Action Today (#203)", () => {
+  const FILTER_ASSET: GeneralActionLinkedAssetView = {
+    assetId: "asset-1",
+    name: "Refrigerator water filter",
+    kind: "item",
+    kindLabel: "Item",
+    hintLabel: null,
+    pending: false,
+  };
+
+  it("selects an asset-derived action by its timing, like any other action", () => {
+    // What a reviewed Asset Memory proposes and the owner accepts: an ordinary action.
+    // It reaches Today because it is due — never because it is about a thing.
+    const items = selectActionTodayItems(
+      [
+        entry(
+          { status: "open", dueAt: new Date(2026, 6, 6), deferUntil: null },
+          view({
+            id: "filter",
+            title: "Replace Refrigerator water filter",
+            linkedAssets: [FILTER_ASSET],
+            surfaceLabel: "Due today",
+          }),
+        ),
+      ],
+      NOW,
+    );
+
+    expect(items.map((item) => item.reason)).toEqual(["due_today"]);
+  });
+
+  it("keeps an asset-derived Routine on today when its cadence comes due", () => {
+    const items = selectActionTodayItems(
+      [
+        entry(
+          { status: "open", dueAt: new Date(2026, 6, 1), deferUntil: null },
+          view({
+            id: "routine",
+            title: "Replace Refrigerator water filter",
+            isRoutine: true,
+            recurrenceLabel: "Every 6 months",
+            linkedAssets: [FILTER_ASSET],
+            surfaceLabel: "Was due Jul 1",
+          }),
+        ),
+      ],
+      NOW,
+    );
+
+    expect(items.map((item) => item.reason)).toEqual(["overdue"]);
+  });
+
+  it("names the Asset on the row and deep-links to its Profile", () => {
+    const groups = groupActionTodayItems([
+      {
+        reason: "due_today",
+        view: view({
+          id: "filter",
+          title: "Replace Refrigerator water filter",
+          linkedAssets: [FILTER_ASSET],
+          surfaceLabel: "Due today",
+        }),
+      },
+    ]);
+
+    const html = renderToStaticMarkup(<ActionTodaySurface groups={groups} />);
+
+    // The row carries both destinations: the ledger to act, the Profile to look it up.
+    expect(html).toContain("/actions#action-filter");
+    expect(html).toContain("/assets/asset-1");
+    expect(html).toContain("Refrigerator water filter");
+  });
+
+  it("drops an Asset still in review — Today is a glance, not a review surface", () => {
+    const pending: GeneralActionLinkedAssetView = {
+      ...FILTER_ASSET,
+      assetId: "asset-pending",
+      pending: true,
+    };
+    const item = {
+      reason: "due_today" as const,
+      view: view({ id: "p", linkedAssets: [pending], surfaceLabel: "Due today" }),
+    };
+
+    expect(actionTodayAssets(item)).toEqual([]);
+
+    const html = renderToStaticMarkup(
+      <ActionTodaySurface groups={groupActionTodayItems([item])} />,
+    );
+    expect(html).not.toContain("/assets/asset-pending");
+    expect(html).not.toContain("in review");
   });
 });

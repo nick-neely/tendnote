@@ -4,6 +4,11 @@ import type {
   PromoteGeneralActionAssetHintInput,
 } from "./assets/action-link-types";
 import { createAssetActionLinks } from "./assets/action-links";
+import type {
+  ListPendingAssetActionProposalsInput,
+  ProposeAssetMemoryActionsInput,
+} from "./assets/action-proposal-types";
+import { createAssetActionProposals } from "./assets/action-proposals";
 import { createDrizzleAssetLinkStore } from "./assets/drizzle-link-store";
 import {
   createDrizzleAssetLifecycleStore,
@@ -47,10 +52,13 @@ import type {
   ListAssetsInput,
 } from "./assets/types";
 import { createDrizzleGeneralActionStore } from "./general-actions/drizzle-store";
+import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 
 export type * from "./assets/action-link-types";
 export { createAssetActionLinks } from "./assets/action-links";
+export type * from "./assets/action-proposal-types";
+export { createAssetActionProposals } from "./assets/action-proposals";
 export { createDrizzleGeneralActionAssetLinkStore } from "./assets/drizzle-action-link-store";
 export { createDrizzleAssetEvidenceStore } from "./assets/drizzle-evidence-store";
 export { createDrizzleAssetLinkStore } from "./assets/drizzle-link-store";
@@ -84,6 +92,18 @@ const defaultAssetActionLinks = createAssetActionLinks({
   ...createDrizzleAssetReviewLifecycleStore(),
   ...createDrizzleGeneralActionStore(),
 });
+// The proposal seam also *writes* General Actions, so it composes the source-record
+// store for the person/grounding reads the shared hydration path needs, and takes the
+// same embed-on-write scheduler the General Action lifecycle and review seams take —
+// an asset-derived proposal is embedded when suggested, exactly like any other (#203).
+const defaultAssetActionProposals = createAssetActionProposals(
+  {
+    ...createDrizzleAssetReviewLifecycleStore(),
+    ...createDrizzleSourceRecordStore(),
+    ...createDrizzleGeneralActionStore(),
+  },
+  { scheduleGeneralActionEmbedding: enqueueAndTriggerSemanticEmbeddingJob },
+);
 const defaultAssetContextLinks = createAssetContextLinks({
   ...createDrizzleAssetReviewLifecycleStore(),
   ...createDrizzleSourceRecordStore(),
@@ -192,6 +212,19 @@ export async function promoteGeneralActionAssetHint(input: PromoteGeneralActionA
 
 export async function listLinkedAssetsForGeneralActions(input: ListLinkedAssetsInput) {
   return defaultAssetActionLinks.listLinkedAssetsForGeneralActions(input);
+}
+
+/**
+ * Proposes Suggested General Actions from an Asset's reviewed, timed memories (#203).
+ * Every proposal lands in review — this can never create an active action.
+ */
+export async function proposeAssetMemoryActions(input: ProposeAssetMemoryActionsInput) {
+  return defaultAssetActionProposals.proposeAssetMemoryActions(input);
+}
+
+/** The owner's still-suggested asset-derived actions, for the Asset Profile (#203). */
+export async function listPendingAssetActionProposals(input: ListPendingAssetActionProposalsInput) {
+  return defaultAssetActionProposals.listPendingAssetActionProposals(input);
 }
 
 export async function listLinkedGeneralActionsForAsset(input: ListLinkedActionsInput) {

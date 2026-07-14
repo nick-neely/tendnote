@@ -1,5 +1,5 @@
 import type { Followup, FollowupStatus } from "@tendnote/domain";
-import { startOfLocalDay } from "@tendnote/domain";
+import { parseLocalCalendarDate, startOfLocalDay } from "@tendnote/domain";
 import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain/privacy";
 
 /**
@@ -26,20 +26,18 @@ export type FollowupView = {
 const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * Parses a date input's `YYYY-MM-DD` value to local midnight. Date inputs carry no
- * timezone, so resolving them with `new Date(str)` (UTC midnight) and then reading
- * the parts in local time shifts the day backward west of UTC. Constructing a
- * local Date keeps the chosen calendar day stable end to end (issue #44).
+ * Parses a date input's `YYYY-MM-DD` value to local midnight, over the shared calendar
+ * date parser — the one place that conversion lives, so the day can never shift here and
+ * hold elsewhere (issue #44). This wrapper adds only the throwing contract its callers
+ * rely on, distinguishing a malformed shape from an impossible date.
  */
 export function parseDateInputValue(value: string): Date {
   if (!DATE_INPUT_PATTERN.test(value)) {
     throw new Error("Expected a YYYY-MM-DD date.");
   }
 
-  const [year, month, day] = value.split("-").map(Number) as [number, number, number];
-  const date = new Date(year, month - 1, day);
-
-  if (Number.isNaN(date.getTime())) {
+  const date = parseLocalCalendarDate(value);
+  if (!date) {
     throw new Error("Expected a valid date.");
   }
 

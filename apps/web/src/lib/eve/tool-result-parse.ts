@@ -357,6 +357,16 @@ const toolViewParsers: Record<string, ToolViewParser> = {
       reviews: parsed.data.proposed.map(toSuggestedGeneralActionReviewItem),
     };
   },
+  propose_asset_actions: (output) => {
+    const parsed = assistantToolResultSchemas.propose_asset_actions.safeParse(output);
+    if (!parsed.success) return null;
+    // An asset-derived proposal IS a Suggested General Action, so it renders as the
+    // same review card — one review surface, no asset-specific card to drift (#203).
+    return {
+      kind: "suggested_general_action_review_list",
+      reviews: parsed.data.proposed.map(toSuggestedGeneralActionReviewItem),
+    };
+  },
   list_suggested_general_action_reviews: (output) => {
     const parsed =
       assistantToolResultSchemas.list_suggested_general_action_reviews.safeParse(output);

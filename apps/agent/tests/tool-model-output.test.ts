@@ -18,6 +18,7 @@ import listSuggestedFollowupReviewsTool from "../agent/tools/list_suggested_foll
 import listSuggestedGeneralActionReviewsTool from "../agent/tools/list_suggested_general_action_reviews";
 import listSuggestedMemoryReviewsTool from "../agent/tools/list_suggested_memory_reviews";
 import planSuggestedGeneralActionsTool from "../agent/tools/plan_suggested_general_actions";
+import proposeAssetActionsTool from "../agent/tools/propose_asset_actions";
 import proposeFollowupTool from "../agent/tools/propose_followup";
 import exactSearchTool from "../agent/tools/search_relationship_context";
 import semanticSearchTool from "../agent/tools/search_semantic_context";
@@ -407,6 +408,7 @@ describe("general action tools toModelOutput strip ids but keep the title", () =
   const GA_ID = "66666666-6666-4666-8666-666666666666";
   const GA_PERSON_ID = "77777777-7777-4777-8777-777777777777";
   const GA_SOURCE_ID = "88888888-8888-4888-8888-888888888888";
+  const ASSET_ID = "99999999-9999-4999-8999-999999999999";
 
   /** The compact ref shape the General Action tools return (matches toGeneralActionRef). */
   function gaRef(status = "open") {
@@ -489,6 +491,15 @@ describe("general action tools toModelOutput strip ids but keep the title", () =
         action: { id: GA_ID, title: "Replace the fridge water filter", status: "dismissed" },
       },
     },
+    {
+      name: "propose_asset_actions",
+      tool: proposeAssetActionsTool,
+      output: {
+        found: true,
+        proposed: [{ action: gaRef("suggested") }],
+        asset: { id: ASSET_ID, name: "Refrigerator water filter" },
+      },
+    },
   ];
 
   for (const { name, tool, output } of cases) {
@@ -503,4 +514,51 @@ describe("general action tools toModelOutput strip ids but keep the title", () =
       expect(serialized).toContain("Replace the fridge water filter");
     });
   }
+
+  /**
+   * `propose_asset_actions` (#203) carries two things the other proposal tools do not:
+   * the Asset the pass was about, and an empty result that is a real answer rather than
+   * a failure. Both are load-bearing for the review gate — the model must name the thing
+   * without leaking its id, and must not invent a reminder when the pass proposed none.
+   */
+  describe("propose_asset_actions toModelOutput", () => {
+    it("names the asset without leaking its id", () => {
+      const model = modelOutput(proposeAssetActionsTool.toModelOutput, {
+        found: true,
+        proposed: [{ action: gaRef("suggested") }],
+        asset: { id: ASSET_ID, name: "Refrigerator water filter" },
+      });
+
+      const serialized = JSON.stringify(model.value);
+      expect(serialized).toContain("Refrigerator water filter");
+      expect(serialized).not.toContain(ASSET_ID);
+    });
+
+    it("frames proposals as tentative review cards, never as active actions", () => {
+      const model = modelOutput(proposeAssetActionsTool.toModelOutput, {
+        found: true,
+        proposed: [{ action: gaRef("suggested") }],
+        asset: { id: ASSET_ID, name: "Refrigerator water filter" },
+      });
+
+      const guidance = (model.value as { guidance: string }).guidance;
+      expect(guidance).toMatch(/TENTATIVE/);
+      expect(guidance).toMatch(/accept/i);
+      expect(guidance).toMatch(/not active actions until/i);
+    });
+
+    it("tells the model to say so plainly when a pass proposes nothing", () => {
+      // An empty pass means every dated detail already has its reminder — a calm,
+      // correct answer. The model must not paper over it by inventing one.
+      const model = modelOutput(proposeAssetActionsTool.toModelOutput, {
+        found: true,
+        proposed: [],
+        asset: { id: ASSET_ID, name: "Refrigerator water filter" },
+      });
+
+      const value = model.value as { proposed: unknown[]; guidance: string };
+      expect(value.proposed).toEqual([]);
+      expect(value.guidance).toMatch(/do not invent a reminder/i);
+    });
+  });
 });

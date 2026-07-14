@@ -384,6 +384,7 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   list_general_actions: "Checking your actions…",
   get_suggested_general_action_review: "Pulling up the suggested action…",
   list_suggested_general_action_reviews: "Gathering actions to review…",
+  propose_asset_actions: "Checking what this asset needs…",
   // Prose mutation tools render no card, but still shimmer with a hand-written label
   // rather than a slugified tool name while they run.
   accept_suggested_general_action: "Adding it to your list…",

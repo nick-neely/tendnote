@@ -1,4 +1,10 @@
 import type { AssetMemoryEdit, AssetMemoryValue } from "@tendnote/domain";
+import {
+  describeRecurrence,
+  generalActionRecurrenceUnitSchema,
+  MAX_RECURRENCE_INTERVAL,
+  parseLocalCalendarDate,
+} from "@tendnote/domain";
 
 /**
  * The one codec for typed Asset Memory values (#198): how a value is *formatted*
@@ -6,34 +12,50 @@ import type { AssetMemoryEdit, AssetMemoryValue } from "@tendnote/domain";
  * draft. Format, draft, and parse live together so the three can never disagree
  * about what a value type means — the review card, the group view, and the
  * Asset Profile all read from here.
+ *
+ * Every function switches exhaustively on the value type rather than falling through
+ * to a default, so a new variant is a compile error here instead of silently
+ * rendering as the wrong kind of fact.
  */
+
+/** A cadence drafted for the one value input: "6 months", "1 year". */
+function intervalDraft(value: Extract<AssetMemoryValue, { type: "interval" }>): string {
+  return `${value.interval} ${value.unit}${value.interval === 1 ? "" : "s"}`;
+}
 
 /** Formats a typed memory value for calm display. Exact facts, plainly rendered. */
 export function formatAssetMemoryValue(value: AssetMemoryValue | null): string | null {
   if (value === null) {
     return null;
   }
-  if (value.type === "text") {
-    return value.text;
-  }
-  if (value.type === "date") {
-    // A plain calendar date — parse as local so the day never shifts.
-    const [year, month, day] = value.date.split("-").map(Number);
-    if (!year || !month || !day) {
-      return value.date;
+  switch (value.type) {
+    case "text":
+      return value.text;
+    case "date": {
+      // A plain calendar date, parsed as local so the day never shifts — one shared
+      // parser, so a malformed row degrades to its raw text rather than a wrong day.
+      const date = parseLocalCalendarDate(value.date);
+      return (
+        date?.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }) ?? value.date
+      );
     }
-    return new Date(year, month - 1, day).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: value.currency }).format(
-      value.amount,
-    );
-  } catch {
-    return `${value.amount} ${value.currency}`;
+    case "interval":
+      // The same phrasing a Routine's cadence chip uses ("Every 6 months"), so the
+      // detail and the reminder it proposes read in one voice (#203).
+      return describeRecurrence({ interval: value.interval, unit: value.unit });
+    case "amount":
+      try {
+        return new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: value.currency,
+        }).format(value.amount);
+      } catch {
+        return `${value.amount} ${value.currency}`;
+      }
   }
 }
 
@@ -42,13 +64,16 @@ export function valueDraftFor(value: AssetMemoryValue | null): string {
   if (value === null) {
     return "";
   }
-  if (value.type === "text") {
-    return value.text;
+  switch (value.type) {
+    case "text":
+      return value.text;
+    case "date":
+      return value.date;
+    case "interval":
+      return intervalDraft(value);
+    case "amount":
+      return String(value.amount);
   }
-  if (value.type === "date") {
-    return value.date;
-  }
-  return String(value.amount);
 }
 
 /**
@@ -71,20 +96,51 @@ export function draftToValue(current: AssetMemoryValue | null, draft: string): D
   if (current === null || trimmed === "") {
     return { ok: true, value: null };
   }
-  if (current.type === "text") {
-    return { ok: true, value: { type: "text", text: trimmed } };
-  }
-  if (current.type === "date") {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-      return { ok: false, message: "Enter a valid date." };
+  switch (current.type) {
+    case "text":
+      return { ok: true, value: { type: "text", text: trimmed } };
+    case "date":
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return { ok: false, message: "Enter a valid date." };
+      }
+      return { ok: true, value: { type: "date", date: trimmed } };
+    case "interval":
+      return parseIntervalDraft(trimmed);
+    case "amount": {
+      const amount = Number(trimmed);
+      if (!Number.isFinite(amount) || amount < 0) {
+        return { ok: false, message: "Enter a valid amount." };
+      }
+      return { ok: true, value: { type: "amount", amount, currency: current.currency } };
     }
-    return { ok: true, value: { type: "date", date: trimmed } };
   }
-  const amount = Number(trimmed);
-  if (!Number.isFinite(amount) || amount < 0) {
-    return { ok: false, message: "Enter a valid amount." };
+}
+
+/**
+ * The cadence vocabulary is the recurrence enum's, derived — never re-spelled. A unit
+ * added to `generalActionRecurrenceUnitSchema` becomes parseable here automatically,
+ * instead of silently failing to parse against a hand-copied alternation.
+ */
+const RECURRENCE_UNITS = generalActionRecurrenceUnitSchema.options;
+const INTERVAL_DRAFT = new RegExp(`^(\\d+)\\s*(${RECURRENCE_UNITS.join("|")})s?$`, "i");
+
+const INTERVAL_REFUSAL = "Enter an interval like “6 months”.";
+
+/**
+ * Parses a cadence draft ("6 months", "1 year") back into an interval value. Bounded by
+ * the shared recurrence limit, so an edited detail can never hold a cadence a Routine
+ * itself would refuse — the reminder it proposes must always be one the ledger can carry.
+ */
+function parseIntervalDraft(draft: string): DraftValueResult {
+  const match = INTERVAL_DRAFT.exec(draft);
+  const interval = Number(match?.[1]);
+  // Narrowed against the enum's own members, so the unit is typed without a cast.
+  const unit = RECURRENCE_UNITS.find((candidate) => candidate === match?.[2]?.toLowerCase());
+
+  if (!unit || interval < 1 || interval > MAX_RECURRENCE_INTERVAL) {
+    return { ok: false, message: INTERVAL_REFUSAL };
   }
-  return { ok: true, value: { type: "amount", amount, currency: current.currency } };
+  return { ok: true, value: { type: "interval", interval, unit } };
 }
 
 /** The draft strings behind one detail's edit form. */
