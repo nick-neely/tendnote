@@ -1,5 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm turbo run build --filter=@tendnote/web...",
+  "outputDirectory": "apps/web/.next",
   "crons": [
     {
       "path": "/api/cron/background-jobs",
@@ -7,7 +11,7 @@
     }
   ],
   "functions": {
-    "src/app/api/queue/extraction/route.ts": {
+    "apps/web/src/app/api/queue/extraction/route.ts": {
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",
@@ -15,7 +19,7 @@
         }
       ]
     },
-    "src/app/api/queue/embedding/route.ts": {
+    "apps/web/src/app/api/queue/embedding/route.ts": {
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",
