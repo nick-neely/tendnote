@@ -1,5 +1,9 @@
 import type { AssetEvidence, AssetMemory } from "@tendnote/domain";
-import { type AssetEmbeddingDeps, makeScheduleAssetEmbedding } from "./embed";
+import {
+  type AssetEmbeddingDeps,
+  makeScheduleAssetEmbedding,
+  type ScheduleAssetEmbedding,
+} from "./embed";
 import type {
   AddAssetEvidenceInput,
   AddAssetEvidenceToNewAssetInput,
@@ -72,9 +76,23 @@ async function getAssetReviewGroup(
  * Batch-accepts a whole low-risk group: the pending anchor first (details need
  * a durable asset), then every pending memory. Member-level idempotency makes
  * the batch idempotent too — re-running it changes nothing.
+ *
+ * It takes the embedding scheduler because acceptance is the moment these records become
+ * *retrievable*, and that is not optional. The embedding processor skips any asset that is not
+ * durable and any memory whose anchor is not durable (`decideAssetEmbedding`,
+ * `decideAssetMemoryEmbedding`), so everything enqueued while this group was still a proposal was
+ * thrown away on purpose. If the accept does not re-enqueue, nothing ever will: the asset and its
+ * facts land on the profile and never enter semantic retrieval at all.
+ *
+ * The scheduler is a parameter rather than a factory wrapper for exactly the reason this bug
+ * existed. The single-record accepts embed in `createAssetReview`'s wrappers, and this step calls
+ * the *unwrapped* module functions — so the batch path silently opted out of an invariant it had
+ * no way to know about. A step that must always be wrapped is a step whose contract is a comment;
+ * making the scheduler an argument makes it a signature instead.
  */
 async function acceptAssetReviewGroup(
   store: AssetReviewLifecycleStore,
+  embed: ScheduleAssetEmbedding,
   input: AssetReviewGroupActionInput,
 ): Promise<AssetReviewGroupResult> {
   const group = await requireGroup(store, {
@@ -86,20 +104,26 @@ async function acceptAssetReviewGroup(
     ownerUserId: input.actorUserId,
     assetId: group.assetId,
   });
+  // Read before the writes: accepted memories drop out of the pending list.
+  const pending = await listPendingMemories(store, group);
+
   if (anchor?.status === "suggested") {
-    await acceptSuggestedAsset(store, {
+    const accepted = await acceptSuggestedAsset(store, {
       actorUserId: input.actorUserId,
       assetId: anchor.id,
       source: input.source,
     });
+    // Durable for the first time, so the anchor itself is retrievable now.
+    await embed.asset(accepted.asset);
   }
 
-  for (const memory of await listPendingMemories(store, group)) {
+  for (const memory of pending) {
     await acceptSuggestedAssetMemory(store, {
       actorUserId: input.actorUserId,
       memoryId: memory.id,
       source: input.source,
     });
+    await embed.memory(memory);
   }
 
   return buildGroupResult(store, group);
@@ -109,9 +133,16 @@ async function acceptAssetReviewGroup(
  * Batch-dismisses a whole group: a pending anchor cascades its details; a
  * durable (existing-asset) anchor is left untouched and only the pending
  * details are set aside.
+ *
+ * Dismissal re-enqueues too, for the mirror-image reason: a suggestion hanging off an asset the
+ * user *already* has was embedded when it was proposed (that is how the owner's review surface
+ * finds grounded proposals), so setting it aside must let the processor drop the vector — the
+ * single-record dismiss already does this. A rejected guess that stays semantically retrievable
+ * is a fact the user thought they had deleted.
  */
 async function dismissAssetReviewGroup(
   store: AssetReviewLifecycleStore,
+  embed: ScheduleAssetEmbedding,
   input: AssetReviewGroupActionInput,
 ): Promise<AssetReviewGroupResult> {
   const group = await requireGroup(store, {
@@ -123,16 +154,29 @@ async function dismissAssetReviewGroup(
     ownerUserId: input.actorUserId,
     assetId: group.assetId,
   });
+  const pending = await listPendingMemories(store, group);
+
   if (anchor?.status === "suggested") {
-    return dismissSuggestedAsset(store, {
+    const husk = await dismissSuggestedAsset(store, {
       actorUserId: input.actorUserId,
       assetId: anchor.id,
       source: input.source,
     });
+    // The proposal and everything it cascaded: re-enqueued so the processor drops whatever it
+    // holds for them. Nothing under a suggested anchor is embedded *today* — which is exactly
+    // why this must not rely on that: the moment an accept path changes, "harmless because of
+    // another bug" stops being harmless.
+    await embed.asset(anchor);
+    for (const memory of pending) {
+      await embed.memory(memory);
+    }
+
+    return husk;
   }
 
-  for (const memory of await listPendingMemories(store, group)) {
+  for (const memory of pending) {
     await dismissMemory(store, memory, { actorUserId: input.actorUserId, source: input.source });
+    await embed.memory(memory);
   }
 
   return buildGroupResult(store, group);
@@ -260,9 +304,20 @@ export function createAssetReview(store: AssetReviewLifecycleStore, deps: AssetE
       return group;
     },
     acceptAssetReviewGroup: (input: AssetReviewGroupActionInput) =>
-      acceptAssetReviewGroup(store, input),
+      acceptAssetReviewGroup(store, embed, input),
     dismissAssetReviewGroup: (input: AssetReviewGroupActionInput) =>
-      dismissAssetReviewGroup(store, input),
-    linkAssetReviewGroup: (input: LinkAssetReviewGroupInput) => linkAssetReviewGroup(store, input),
+      dismissAssetReviewGroup(store, embed, input),
+    async linkAssetReviewGroup(input: LinkAssetReviewGroupInput) {
+      const group = await linkAssetReviewGroup(store, input);
+      // Duplicate review re-anchored these still-pending details onto an asset that is already
+      // durable — which is the same state change acceptance makes, and makes them eligible for
+      // embedding for the first time. The husk they left behind is not durable, so the processor
+      // will drop anything held for it on its own.
+      for (const memory of group.memories) {
+        await embed.memory(memory);
+      }
+
+      return group;
+    },
   };
 }
