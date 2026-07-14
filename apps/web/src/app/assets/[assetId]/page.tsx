@@ -1,3 +1,4 @@
+import { getAssetSnapshot } from "@tendnote/db/queries/asset-snapshots";
 import {
   getAsset,
   listAssetEvidence,
@@ -9,7 +10,7 @@ import {
   listRelatedAssetLinks,
 } from "@tendnote/db/queries/assets";
 import { searchPeople } from "@tendnote/db/queries/people";
-import type { AssetMemory } from "@tendnote/domain";
+import type { AssetMemory, AssetSnapshotSupportingReferences } from "@tendnote/domain";
 import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -21,6 +22,7 @@ import { AssetProfileControls } from "@/components/asset-profile-controls";
 import { AssetRelatedActions } from "@/components/asset-related-actions";
 import { AssetRelatedLinks } from "@/components/asset-related-links";
 import { ASSET_KIND_ICONS, AssetArchivedBadge } from "@/components/asset-shared";
+import { AssetSnapshotCard, type AssetSnapshotCardProps } from "@/components/asset-snapshot-card";
 import { ActionScopeChip } from "@/components/general-action-shared";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
@@ -55,40 +57,19 @@ export default async function AssetProfilePage({
     notFound();
   }
 
-  // Everything this caller may see about the asset — each read filtered per
-  // record, so a household asset can carry a private detail, receipt, action,
-  // link, or person its members never see (#198–#202).
-  const [
+  const {
     memories,
-    evidence,
-    relatedActions,
-    relatedLinks,
-    personLinks,
-    history,
-    visibleAssets,
+    evidenceViews,
+    relatedActionViews,
+    relatedLinkViews,
+    personLinkViews,
+    historyViews,
+    linkableAssets,
     people,
-  ] = await Promise.all([
-    listAssetMemories({ callerUserId, assetId }),
-    listAssetEvidence({ callerUserId, assetId }),
-    listLinkedGeneralActionsForAsset({ callerUserId, assetId }),
-    listRelatedAssetLinks({ callerUserId, assetId }),
-    listAssetPersonLinks({ callerUserId, assetId }),
-    listAssetHistory({ callerUserId, assetId }),
-    // Link candidates: the active assets this caller can see (self excluded below).
-    listAssets({ callerUserId, statuses: ["active"] }),
-    // The caller's own people, for contextual person links.
-    searchPeople({ ownerUserId: callerUserId, limit: 100 }),
-  ]);
-  const now = new Date();
+    snapshot,
+  } = await loadAssetProfile(callerUserId, assetId);
+
   const view = toAssetView(asset, { callerUserId });
-  const evidenceViews = evidence.map((record) => toAssetEvidenceView(record, { callerUserId }));
-  const relatedActionViews = relatedActions.map((entry) => toAssetRelatedActionView(entry, now));
-  const relatedLinkViews = relatedLinks.map((entry) => toRelatedAssetLinkView(entry));
-  const personLinkViews = personLinks.map((entry) => toAssetPersonLinkView(entry));
-  const historyViews = history.map((entry) => toAssetHistoryEntryView(entry, now));
-  const linkableAssets = visibleAssets
-    .filter((candidate) => candidate.id !== assetId)
-    .map((candidate) => ({ id: candidate.id, name: candidate.name }));
   // Links are context anyone who can see the asset may add — while it's active.
   const canLink = !view.archived;
 
@@ -109,72 +90,21 @@ export default async function AssetProfilePage({
 
         <AssetProfileControls asset={view} />
 
-        <ProfileSection
-          description="Confirmed details worth keeping — model numbers, sizes, warranty dates."
-          title="Memories"
-        >
-          {memories.length > 0 ? (
-            <LedgerList>
-              {memories.map((memory) => (
-                <AssetMemoryRow key={memory.id} memory={memory} />
-              ))}
-            </LedgerList>
-          ) : (
-            <LedgerEmpty>
-              Nothing remembered about this yet. The details you confirm will live here.
-            </LedgerEmpty>
-          )}
-        </ProfileSection>
+        <AssetSnapshotCard {...toSnapshotCardProps(snapshot)} />
 
-        <ProfileSection
-          description="Receipts, manuals, photos, and links that ground what Tendnote remembers."
-          title="Evidence"
-        >
-          <AssetEvidenceSection
-            assetId={assetId}
-            assetScope={view.scope}
-            canCapture={view.owned && !view.archived}
-            initialEvidence={evidenceViews}
-          />
-        </ProfileSection>
-
-        <ProfileSection
-          description="Reminders connected to this asset — replacements, renewals, maintenance."
-          title="Related actions"
-        >
-          <AssetRelatedActions actions={relatedActionViews} />
-        </ProfileSection>
-
-        <ProfileSection
-          description="What this fits, uses, replaces, covers, or is stored with — context, not a hierarchy."
-          title="Related assets"
-        >
-          <AssetRelatedLinks
-            assetId={assetId}
-            canLink={canLink}
-            linkableAssets={linkableAssets}
-            links={relatedLinkViews}
-          />
-        </ProfileSection>
-
-        <ProfileSection
-          description="Who recommended it, borrowed it, or services it — context that never changes who can see this."
-          title="People"
-        >
-          <AssetPersonLinks
-            assetId={assetId}
-            canLink={canLink}
-            links={personLinkViews}
-            people={people.map((person) => ({ id: person.id, displayName: person.displayName }))}
-          />
-        </ProfileSection>
-
-        <ProfileSection
-          description="What happened over time — drawn from this asset's own story, its confirmed details, and its related actions."
-          title="History"
-        >
-          <AssetHistory entries={historyViews} />
-        </ProfileSection>
+        <AssetProfileSections
+          assetId={assetId}
+          canLink={canLink}
+          evidenceViews={evidenceViews}
+          historyViews={historyViews}
+          linkableAssets={linkableAssets}
+          memories={memories}
+          people={people}
+          personLinkViews={personLinkViews}
+          relatedActionViews={relatedActionViews}
+          relatedLinkViews={relatedLinkViews}
+          view={view}
+        />
       </div>
     </AppShell>
   );
@@ -269,5 +199,206 @@ function ProfileSection({
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * How many records a snapshot's prose stands on. Counting them is what turns "generated
+ * summary" from a disclaimer into a fact the user can check.
+ */
+/**
+ * The snapshot card's props, derived in one place. `citationCount` is what turns
+ * "generated summary" from a disclaimer into a fact the user can check: it is the number
+ * of real records the prose was built from.
+ */
+function toSnapshotCardProps(
+  snapshot: Awaited<ReturnType<typeof loadAssetProfile>>["snapshot"],
+): AssetSnapshotCardProps {
+  return {
+    status: snapshot.status,
+    summary: snapshot.snapshot?.summary ?? null,
+    citationCount: countSnapshotCitations(snapshot.snapshot?.supportingReferences),
+  };
+}
+
+function countSnapshotCitations(references: AssetSnapshotSupportingReferences | undefined): number {
+  if (!references) {
+    return 0;
+  }
+
+  return (
+    references.assetMemoryIds.length +
+    references.assetEvidenceIds.length +
+    references.relatedAssetLinkIds.length +
+    references.assetPersonLinkIds.length +
+    references.generalActionIds.length
+  );
+}
+
+/**
+ * Everything this caller may see about one Asset, loaded in parallel and mapped to
+ * views. Each read is filtered per record, so a household asset can carry a private
+ * detail, receipt, action, link, or person its members never see (#198–#202). Split out
+ * of the page component so the page stays layout and the reads stay one named seam.
+ */
+async function loadAssetProfile(callerUserId: string, assetId: string) {
+  // Everything this caller may see about the asset — each read filtered per
+  // record, so a household asset can carry a private detail, receipt, action,
+  // link, or person its members never see (#198–#202).
+  const [
+    memories,
+    evidence,
+    relatedActions,
+    relatedLinks,
+    personLinks,
+    history,
+    visibleAssets,
+    people,
+    snapshot,
+  ] = await Promise.all([
+    listAssetMemories({ callerUserId, assetId }),
+    listAssetEvidence({ callerUserId, assetId }),
+    listLinkedGeneralActionsForAsset({ callerUserId, assetId }),
+    listRelatedAssetLinks({ callerUserId, assetId }),
+    listAssetPersonLinks({ callerUserId, assetId }),
+    listAssetHistory({ callerUserId, assetId }),
+    // Link candidates: the active assets this caller can see (self excluded below).
+    listAssets({ callerUserId, statuses: ["active"] }),
+    // The caller's own people, for contextual person links.
+    searchPeople({ ownerUserId: callerUserId, limit: 100 }),
+    // The snapshot-backed summary. Read-through and fail-open: a stale, missing, or
+    // failed snapshot degrades to no card at all, and the records below still render.
+    getAssetSnapshot({ callerUserId, assetId }),
+  ]);
+  const now = new Date();
+  const evidenceViews = evidence.map((record) => toAssetEvidenceView(record, { callerUserId }));
+  const relatedActionViews = relatedActions.map((entry) => toAssetRelatedActionView(entry, now));
+  const relatedLinkViews = relatedLinks.map((entry) => toRelatedAssetLinkView(entry));
+  const personLinkViews = personLinks.map((entry) => toAssetPersonLinkView(entry));
+  const historyViews = history.map((entry) => toAssetHistoryEntryView(entry, now));
+  const linkableAssets = visibleAssets
+    .filter((candidate) => candidate.id !== assetId)
+    .map((candidate) => ({ id: candidate.id, name: candidate.name }));
+
+  return {
+    memories,
+    evidenceViews,
+    relatedActionViews,
+    relatedLinkViews,
+    personLinkViews,
+    historyViews,
+    linkableAssets,
+    people,
+    snapshot,
+  };
+}
+
+/** The reviewed facts: the confirmed details this asset is actually known by. */
+function AssetMemoriesSection({ memories }: { memories: AssetMemory[] }) {
+  return (
+    <ProfileSection
+      description="Confirmed details worth keeping — model numbers, sizes, warranty dates."
+      title="Memories"
+    >
+      {memories.length > 0 ? (
+        <LedgerList>
+          {memories.map((memory) => (
+            <AssetMemoryRow key={memory.id} memory={memory} />
+          ))}
+        </LedgerList>
+      ) : (
+        <LedgerEmpty>
+          Nothing remembered about this yet. The details you confirm will live here.
+        </LedgerEmpty>
+      )}
+    </ProfileSection>
+  );
+}
+
+/**
+ * The Asset Profile's read sections, in the order a user actually asks about a thing:
+ * what is known about it, what grounds that, what work it implies, what it relates to,
+ * who is involved, and what has happened. Grouped out of the page so the page itself
+ * stays a shell — header, snapshot, sections — rather than a 150-line render.
+ */
+function AssetProfileSections({
+  assetId,
+  view,
+  memories,
+  evidenceViews,
+  relatedActionViews,
+  relatedLinkViews,
+  personLinkViews,
+  historyViews,
+  linkableAssets,
+  people,
+  canLink,
+}: {
+  assetId: string;
+  view: AssetView;
+  memories: AssetMemory[];
+  evidenceViews: Awaited<ReturnType<typeof loadAssetProfile>>["evidenceViews"];
+  relatedActionViews: Awaited<ReturnType<typeof loadAssetProfile>>["relatedActionViews"];
+  relatedLinkViews: Awaited<ReturnType<typeof loadAssetProfile>>["relatedLinkViews"];
+  personLinkViews: Awaited<ReturnType<typeof loadAssetProfile>>["personLinkViews"];
+  historyViews: Awaited<ReturnType<typeof loadAssetProfile>>["historyViews"];
+  linkableAssets: Awaited<ReturnType<typeof loadAssetProfile>>["linkableAssets"];
+  people: Awaited<ReturnType<typeof loadAssetProfile>>["people"];
+  canLink: boolean;
+}) {
+  return (
+    <>
+      <AssetMemoriesSection memories={memories} />
+
+      <ProfileSection
+        description="Receipts, manuals, photos, and links that ground what Tendnote remembers."
+        title="Evidence"
+      >
+        <AssetEvidenceSection
+          assetId={assetId}
+          assetScope={view.scope}
+          canCapture={view.owned && !view.archived}
+          initialEvidence={evidenceViews}
+        />
+      </ProfileSection>
+
+      <ProfileSection
+        description="Reminders connected to this asset — replacements, renewals, maintenance."
+        title="Related actions"
+      >
+        <AssetRelatedActions actions={relatedActionViews} />
+      </ProfileSection>
+
+      <ProfileSection
+        description="What this fits, uses, replaces, covers, or is stored with — context, not a hierarchy."
+        title="Related assets"
+      >
+        <AssetRelatedLinks
+          assetId={assetId}
+          canLink={canLink}
+          linkableAssets={linkableAssets}
+          links={relatedLinkViews}
+        />
+      </ProfileSection>
+
+      <ProfileSection
+        description="Who recommended it, borrowed it, or services it — context that never changes who can see this."
+        title="People"
+      >
+        <AssetPersonLinks
+          assetId={assetId}
+          canLink={canLink}
+          links={personLinkViews}
+          people={people.map((person) => ({ id: person.id, displayName: person.displayName }))}
+        />
+      </ProfileSection>
+
+      <ProfileSection
+        description="What happened over time — drawn from this asset's own story, its confirmed details, and its related actions."
+        title="History"
+      >
+        <AssetHistory entries={historyViews} />
+      </ProfileSection>
+    </>
   );
 }

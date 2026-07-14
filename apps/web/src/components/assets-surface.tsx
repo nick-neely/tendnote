@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { CreateAssetForm } from "@/components/asset-create-form";
+import { AssetSearchPanel, type AssetSearchRunner } from "@/components/asset-search-panel";
 import { AssetArchivedBadge, AssetKindBadge } from "@/components/asset-shared";
 import { ActionScopeChip } from "@/components/general-action-shared";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
@@ -54,10 +55,16 @@ export function filterAssets(assets: AssetView[], filters: AssetFilters): AssetV
 export function AssetsSurface({
   assets,
   shareableMembers = [],
+  search,
 }: {
   assets: AssetView[];
   /** Household members an Asset can be shared with; empty keeps the surface private-only. */
   shareableMembers?: ShareableActionMember[];
+  /**
+   * The unified Asset Search runner (#204). Optional: without it the surface is pure
+   * browse, exactly as before — search is additive, never a dependency.
+   */
+  search?: AssetSearchRunner;
 }) {
   const router = useRouter();
   const [list, setList] = useServerSyncedList(assets, assetId);
@@ -71,10 +78,10 @@ export function AssetsSurface({
     router.refresh();
   }
 
-  return (
-    <div className="flex flex-col gap-4">
-      <CreateAssetForm onCreate={addAsset} shareableMembers={shareableMembers} />
-
+  // Browsing: the chip-filtered list. While a search query is live this steps aside,
+  // because results span memories and evidence — records a browse row cannot represent.
+  const browse = (
+    <>
       <AssetFilterRows filters={filters} list={list} onChange={setFilters} />
 
       {visible.length ? (
@@ -86,6 +93,14 @@ export function AssetsSurface({
       ) : (
         <AssetsEmpty filtered={filtered} onClear={() => setFilters(DEFAULT_ASSET_FILTERS)} />
       )}
+    </>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <CreateAssetForm onCreate={addAsset} shareableMembers={shareableMembers} />
+
+      {search ? <AssetSearchPanel search={search}>{browse}</AssetSearchPanel> : browse}
     </div>
   );
 }

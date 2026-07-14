@@ -1,5 +1,6 @@
 import { listAssets } from "@tendnote/db/queries/assets";
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
+import { searchAssetsAction } from "@/app/actions/assets";
 import { AppShell } from "@/components/app-shell";
 import { AssetsSurface } from "@/components/assets-surface";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
@@ -34,6 +35,7 @@ export default async function AssetsPage() {
         </header>
 
         <AssetsSurface
+          search={searchAssetsAction}
           assets={assets.map((asset) => toAssetView(asset, { callerUserId: ownerUserId, now }))}
           shareableMembers={shareableMembers.map((member) => ({
             userId: member.userId,

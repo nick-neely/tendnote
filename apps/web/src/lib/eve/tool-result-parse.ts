@@ -381,6 +381,55 @@ const toolViewParsers: Record<string, ToolViewParser> = {
         .map(toGeneralActionListItem),
     };
   },
+  search_assets: (output) => {
+    const parsed = assistantToolResultSchemas.search_assets.safeParse(output);
+    if (!parsed.success) return null;
+    return {
+      kind: "asset_search",
+      query: parsed.data.query,
+      results: parsed.data.results.map((result) => ({
+        recordKind: result.recordKind,
+        recordId: result.recordId,
+        assetId: result.assetId,
+        assetName: result.assetName,
+        label: result.label,
+        snippet: result.snippet,
+        value: result.value,
+        matchKinds: result.matchKinds,
+        trustLevel: result.trustLevel,
+        visibilityLabel: result.visibilityLabel,
+      })),
+    };
+  },
+  get_asset_context: (output) => {
+    const parsed = assistantToolResultSchemas.get_asset_context.safeParse(output);
+    if (!parsed.success) {
+      // A `found: false` result carries none of the asset fields, so it fails the
+      // schema by design — render it as the empty state rather than a generic line.
+      return {
+        kind: "asset_context",
+        found: false,
+        assetName: null,
+        snapshotStatus: null,
+        summary: null,
+        facts: [],
+        evidence: [],
+        actions: [],
+      };
+    }
+    return {
+      kind: "asset_context",
+      found: true,
+      assetName: parsed.data.assetName,
+      snapshotStatus: parsed.data.snapshotStatus,
+      // A fallback snapshot is stale or missing: the card must not show cached prose
+      // as if it were current, so it is dropped and the facts carry the answer.
+      summary: parsed.data.snapshotStatus === "fallback" ? null : parsed.data.summary,
+      facts: parsed.data.facts,
+      evidence: parsed.data.evidence,
+      actions: parsed.data.actions,
+    };
+  },
 };
 
 /**

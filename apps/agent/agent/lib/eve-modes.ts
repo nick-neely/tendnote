@@ -51,7 +51,9 @@ export type EveToolName =
   | "list_suggested_followup_reviews"
   | "propose_followup"
   | "create_message_draft"
-  | "cleanup_preview";
+  | "cleanup_preview"
+  | "search_assets"
+  | "get_asset_context";
 
 export type EveSkillName =
   | "capturing-and-review"
@@ -98,6 +100,10 @@ const modeDefinitions = {
       "create_message_draft",
       "list_suggested_memory_reviews",
       "get_suggested_memory_review",
+      // Asset recall is read-only and grounded, so it rides the default web-chat mode:
+      // "what filter does the fridge need?" must work without selecting a person (#204).
+      "search_assets",
+      "get_asset_context",
     ],
     skills: [
       "recall",

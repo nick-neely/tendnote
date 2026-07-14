@@ -1,5 +1,6 @@
 "use server";
 
+import { searchAssets } from "@tendnote/db/queries/asset-search";
 import type { AssetWithContext } from "@tendnote/db/queries/assets";
 import { archiveAsset, createAsset, editAsset, restoreAsset } from "@tendnote/db/queries/assets";
 import { assetKindSchema } from "@tendnote/domain";
@@ -7,6 +8,7 @@ import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { runAssetsMutation } from "@/lib/asset-mutation";
+import { type AssetSearchResultView, toAssetSearchResultView } from "@/lib/asset-search-view";
 import { type AssetMutationResult, toAssetView } from "@/lib/asset-view";
 import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
 
@@ -101,4 +103,42 @@ export async function restoreAssetAction(input: { assetId: string }): Promise<As
     const parsed = assetIdSchema.parse(input);
     return restoreAsset({ actorUserId: ownerUserId, assetId: parsed.assetId });
   });
+}
+
+const searchAssetsActionSchema = z.object({
+  query: z.string().trim().min(1).max(400),
+  includeArchived: z.boolean().default(false),
+});
+
+/**
+ * Unified Asset Search for the Assets surface (#204). One query runs exact text, exact
+ * structured values, and fuzzy intent together — the user never picks a mode.
+ *
+ * A thin caller over the shared owner-scoped seam: visibility filtering, the review
+ * gate, and ranking all live there, so this surface cannot widen what it may see. An
+ * empty or over-long query is simply no results rather than an error — a search box is
+ * not a place to throw.
+ */
+export async function searchAssetsAction(input: {
+  query: string;
+  includeArchived?: boolean;
+}): Promise<{ results: AssetSearchResultView[] }> {
+  const callerUserId = await requireAdmittedOwnerForAction();
+  const parsed = searchAssetsActionSchema.safeParse(input);
+  if (!parsed.success) {
+    return { results: [] };
+  }
+
+  const results = await searchAssets({
+    ownerUserId: callerUserId,
+    query: parsed.data.query,
+    includeArchived: parsed.data.includeArchived,
+    limit: 20,
+  });
+
+  return {
+    results: results
+      .map(toAssetSearchResultView)
+      .filter((result): result is AssetSearchResultView => result !== null),
+  };
 }

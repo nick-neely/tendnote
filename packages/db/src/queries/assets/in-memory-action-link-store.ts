@@ -4,10 +4,7 @@ import type {
   GeneralActionStore,
   InMemoryGeneralActionLifecycleStore,
 } from "../general-actions/types";
-import type { AssetEvidenceStore } from "./evidence-types";
 import { createInMemoryAssetReviewLifecycleStore } from "./in-memory-review-store";
-import type { AssetReviewStore, GeneralActionAssetLinkStore } from "./review-types";
-import type { AssetStore } from "./types";
 
 /**
  * The full in-memory bridge store (#199): the asset review lifecycle composition
@@ -16,10 +13,9 @@ import type { AssetStore } from "./types";
  * passed straight through), keeping scope rules in agreement across both domains
  * — what `createAssetActionLinks` and its tests run against.
  */
-export function createInMemoryAssetActionLinkStore(): AssetStore &
-  AssetReviewStore &
-  AssetEvidenceStore &
-  GeneralActionAssetLinkStore &
+export function createInMemoryAssetActionLinkStore(): ReturnType<
+  typeof createInMemoryAssetReviewLifecycleStore
+> &
   GeneralActionStore &
   InMemoryGeneralActionLifecycleStore {
   const reviewLifecycleStore = createInMemoryAssetReviewLifecycleStore();

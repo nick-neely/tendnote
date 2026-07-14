@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { JOB_CREATE_OMIT, jobQueueMechanicsShape } from "./job-queue";
 import { canExtractFromSourceRecord, type SourceRecord } from "./source-records";
 
 export const extractionJobStatusSchema = z.enum([
@@ -13,21 +14,12 @@ export const extractionJobSchema = z.object({
   id: z.string(),
   sourceRecordId: z.string().min(1),
   status: extractionJobStatusSchema.default("pending"),
-  attempts: z.number().int().min(0).default(0),
-  lastError: z.string().nullable().optional(),
-  idempotencyKey: z.string().min(1),
-  runAfter: z.date(),
-  claimedAt: z.date().nullable().optional(),
-  completedAt: z.date().nullable().optional(),
+  ...jobQueueMechanicsShape,
   createdAt: z.date(),
   updatedAt: z.date(),
 });
 
-export const createExtractionJobSchema = extractionJobSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const createExtractionJobSchema = extractionJobSchema.omit(JOB_CREATE_OMIT);
 
 export type ExtractionJob = z.infer<typeof extractionJobSchema>;
 export type ExtractionJobStatus = z.infer<typeof extractionJobStatusSchema>;

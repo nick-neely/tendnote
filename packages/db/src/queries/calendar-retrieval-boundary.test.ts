@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { semanticRecordKind } from "../schema/app/enums";
+import { expectCalendarIsNotASemanticRecordKind } from "./calendar-boundary-fixtures";
 
 /**
  * Phase 2C retrieval boundary (ADR-0079): cached Calendar events are not approved
@@ -21,9 +21,10 @@ function readCalendarSources(): string {
 
 describe("Calendar cache stays out of retrieval", () => {
   it("does not add Calendar to the semantic record kinds", () => {
-    // Durable memories, retained source records, and General Actions are semantically
-    // embedded (ADR 0150); Calendar cache is never a semantic record kind.
-    expect(semanticRecordKind.enumValues).toEqual(["memory", "source_record", "general_action"]);
+    // The exact list of embedded kinds is pinned in
+    // `semantic-retrieval/migration-shape.test.ts`; this is the negative half of the
+    // guard — no Calendar kind, under any name (ADR 0150, ADR-0079).
+    expectCalendarIsNotASemanticRecordKind();
   });
 
   it("the Calendar read/cache seam imports no retrieval or embedding machinery", () => {

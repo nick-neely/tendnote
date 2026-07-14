@@ -1,4 +1,5 @@
 import type { AssetEvidenceMoney } from "@tendnote/domain";
+import { sql } from "drizzle-orm";
 import {
   customType,
   date,
@@ -30,6 +31,12 @@ import { sourceRecords } from "./source-records";
  * Asset can hold a private receipt its members never see. Deliberately not a
  * document library, folder system, or finance ledger.
  */
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
+
 export const assetEvidence = pgTable(
   "asset_evidence",
   {
@@ -73,12 +80,24 @@ export const assetEvidence = pgTable(
     lastActorUserId: text("last_actor_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    // Exact-recall vector over what the evidence *says it is*: its label, its file
+    // name, any retained captured text, and a receipt amount (#204). The
+    // purchase/renewal dates are deliberately absent — casting a `date` to text is
+    // locale-dependent and therefore not immutable, so a generated column cannot hold
+    // it. Dates are matched in the structured tier instead, by comparing the column
+    // directly, which is both exact and index-friendly.
+    searchVector: tsvector("search_vector")
+      .notNull()
+      .generatedAlwaysAs(
+        sql`to_tsvector('simple', coalesce("label", '') || ' ' || coalesce("file_name", '') || ' ' || coalesce("captured_text", '') || ' ' || coalesce("money_json"->>'amount', ''))`,
+      ),
     ...timestamps,
   },
   (table) => [
     index("asset_evidence_asset_idx").on(table.assetId, table.createdAt),
     index("asset_evidence_owner_idx").on(table.ownerUserId),
     index("asset_evidence_review_group_idx").on(table.reviewGroupId),
+    index("asset_evidence_search_vector_idx").using("gin", table.searchVector),
   ],
 );
 

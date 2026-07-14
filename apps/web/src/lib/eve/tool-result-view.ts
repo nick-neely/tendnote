@@ -88,7 +88,51 @@ export type AssistantToolView =
       window: string | null;
       actions: GeneralActionListItemView[];
     }
+  | {
+      kind: "asset_search";
+      query: string;
+      results: AssetSearchResultView[];
+    }
+  | {
+      kind: "asset_context";
+      found: boolean;
+      assetName: string | null;
+      /** Whether the shown summary is a live cache or a stale/missing one. */
+      snapshotStatus: "fresh" | "rebuilt" | "fallback" | null;
+      summary: string | null;
+      facts: AssetFactView[];
+      evidence: { evidenceId: string; kind: string; label: string }[];
+      actions: { actionId: string; title: string; status: string; dueAt: string | null }[];
+    }
   | { kind: "generic"; toolName: string };
+
+/**
+ * One grounded Asset Search result. `value` is the exact stored value — the answer to
+ * "what filter does the fridge need?" — kept as its own field so the card can show it
+ * as the fact it is rather than burying it in a snippet. `matchKinds` explains *why*
+ * this row was found, which is what makes a fused search legible instead of magic.
+ */
+export type AssetSearchResultView = {
+  recordKind: "asset" | "asset_memory" | "asset_evidence";
+  recordId: string;
+  assetId: string;
+  assetName: string;
+  label: string;
+  snippet: string;
+  value: string | null;
+  matchKinds: ("structured" | "exact" | "semantic")[];
+  trustLevel: "asset_anchor" | "asset_fact" | "suggested_asset_fact" | "asset_evidence";
+  visibilityLabel: string;
+};
+
+/** One reviewed fact about an Asset — a confirmed record, never snapshot prose. */
+export type AssetFactView = {
+  memoryId: string;
+  label: string;
+  value: string | null;
+  notes: string | null;
+  visibilityLabel: string;
+};
 
 /** One tentative suggestion the user can approve or dismiss inline. */
 export type SuggestedReviewItemView = {
@@ -274,6 +318,9 @@ const assistantToolViewKeyBuilders: {
       .join(":")}`,
   general_action_list: (view) =>
     `general-action-list:${view.actions.map((action) => action.generalActionId).join(":")}`,
+  asset_search: (view) =>
+    `asset-search:${view.results.map((result) => `${result.recordKind}:${result.recordId}`).join("|")}`,
+  asset_context: (view) => `asset-context:${view.assetName ?? "unknown"}`,
   generic: (view) => `tool:${view.toolName}`,
 };
 
@@ -342,6 +389,12 @@ export function toolViewTier(view: AssistantToolView): ToolViewTier {
       return view.candidates.length > 0 ? "disclosure" : "line";
     case "general_action_list":
       return view.actions.length > 0 ? "disclosure" : "line";
+    case "asset_search":
+      return view.results.length > 0 ? "disclosure" : "line";
+    case "asset_context":
+      // A loaded asset profile is trust-bearing — the user must see which facts are
+      // records and which prose is only a cache — so it earns the card.
+      return view.found ? "card" : "line";
     case "memory_curator_proposals":
       return view.proposals.length > 0 ? "card" : "line";
     case "draft_proposal":
@@ -390,6 +443,8 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   dismiss_suggested_general_action: "Dismissing the suggestion…",
   edit_general_action: "Updating the action…",
   update_general_action_status: "Updating the action…",
+  search_assets: "Searching your things…",
+  get_asset_context: "Pulling up what you know about it…",
 };
 
 /** Present-continuous label for an in-flight tool call (the shimmer line). */

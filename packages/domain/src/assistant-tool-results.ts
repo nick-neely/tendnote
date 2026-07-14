@@ -237,6 +237,67 @@ export const draftProposalToolResult = draftProposalResultSchema;
  * with these and the agent guard asserts its rendered-tool set matches the keys, so
  * a new rendered tool (or a renamed one) can't silently fall back to `generic`.
  */
+/**
+ * Unified Asset Search results (#204). Grounded records only — every entry is a real
+ * row with its trust register, the signals that found it, and the visibility it was
+ * read under. There is no "answer" field: Eve writes the prose, and it must write it
+ * from these records.
+ */
+export const assetSearchToolResult = z.object({
+  query: z.string(),
+  results: z.array(
+    z.object({
+      recordKind: z.enum(["asset", "asset_memory", "asset_evidence"]),
+      recordId: z.string(),
+      assetId: z.string(),
+      assetName: z.string(),
+      assetKind: z.string(),
+      label: z.string(),
+      snippet: z.string(),
+      value: z.string().nullable(),
+      matchKinds: z.array(z.enum(["structured", "exact", "semantic"])),
+      trustLevel: z.enum(["asset_anchor", "asset_fact", "suggested_asset_fact", "asset_evidence"]),
+      visibilityChoice: z.enum(["only_me", "selected_members", "whole_household"]),
+      visibilityLabel: z.string(),
+    }),
+  ),
+});
+
+/**
+ * Snapshot-backed Asset context (#204). `summary` is *generated prose* and is labeled
+ * as such by `snapshotStatus`; `facts` are the reviewed records it stands on. The two
+ * are deliberately separate fields so a consumer — and Eve — can never mistake the
+ * cache for the truth.
+ */
+export const assetContextToolResult = z.object({
+  assetId: z.string(),
+  assetName: z.string(),
+  assetKind: z.string(),
+  assetStatus: z.string(),
+  visibilityLabel: z.string(),
+  snapshotStatus: z.enum(["fresh", "rebuilt", "fallback"]),
+  summary: z.string().nullable(),
+  facts: z.array(
+    z.object({
+      memoryId: z.string(),
+      label: z.string(),
+      value: z.string().nullable(),
+      notes: z.string().nullable(),
+      visibilityLabel: z.string(),
+    }),
+  ),
+  evidence: z.array(z.object({ evidenceId: z.string(), kind: z.string(), label: z.string() })),
+  relatedAssets: z.array(z.object({ assetId: z.string(), relation: z.string(), name: z.string() })),
+  actions: z.array(
+    z.object({
+      actionId: z.string(),
+      title: z.string(),
+      status: z.string(),
+      dueAt: z.string().nullable(),
+    }),
+  ),
+});
+
 export const assistantToolResultSchemas = {
   capture_source_record: sourceRecordToolResult,
   capture_memory: memoryToolResult,
@@ -260,6 +321,8 @@ export const assistantToolResultSchemas = {
   plan_suggested_general_actions: plannedGeneralActionsToolResult,
   list_suggested_general_action_reviews: suggestedGeneralActionListToolResult,
   list_general_actions: generalActionListToolResult,
+  search_assets: assetSearchToolResult,
+  get_asset_context: assetContextToolResult,
 } as const satisfies Record<string, z.ZodTypeAny>;
 
 /** A tool name that persists a typed, rendered result (vs. a `generic` fallback). */

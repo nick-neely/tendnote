@@ -1,5 +1,6 @@
 import type { AssetMemoryValue } from "@tendnote/domain";
-import { index, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { customType, index, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { assetReviewGroups } from "./asset-review-groups";
 import { assets } from "./assets";
@@ -7,6 +8,12 @@ import { timestamps } from "./common";
 import { assetMemoryStatus, privacyScope } from "./enums";
 import { householdWorkspaces } from "./households";
 import { sourceRecords } from "./source-records";
+
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
 
 /**
  * Asset Memories (#196, #198): durable, reviewed personal context anchored to one
@@ -52,11 +59,21 @@ export const assetMemories = pgTable(
     lastActorUserId: text("last_actor_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    // Exact-recall vector over the fact itself: its label, its freeform notes, and the
+    // scalar inside its typed value. Folding `value_json` in is what makes a serial
+    // number, model name, filter size, receipt amount, or date findable by typing it
+    // literally — the exact-recall tier of unified Asset Search (#204).
+    searchVector: tsvector("search_vector")
+      .notNull()
+      .generatedAlwaysAs(
+        sql`to_tsvector('simple', coalesce("label", '') || ' ' || coalesce("notes", '') || ' ' || coalesce("value_json"->>'text', '') || ' ' || coalesce("value_json"->>'date', '') || ' ' || coalesce("value_json"->>'amount', ''))`,
+      ),
     ...timestamps,
   },
   (table) => [
     index("asset_memories_asset_status_idx").on(table.assetId, table.status),
     index("asset_memories_owner_status_idx").on(table.ownerUserId, table.status),
     index("asset_memories_review_group_idx").on(table.reviewGroupId),
+    index("asset_memories_search_vector_idx").using("gin", table.searchVector),
   ],
 );

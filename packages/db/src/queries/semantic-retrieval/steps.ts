@@ -1,12 +1,18 @@
 import { createHash } from "node:crypto";
 import {
+  type Asset,
+  type AssetMemory,
   createRelationshipContextEmbeddingSchema,
   decideApprovedMemoryEmbedding,
+  decideAssetEmbedding,
+  decideAssetMemoryEmbedding,
   decideGeneralActionEmbedding,
   decideSourceRecordEmbedding,
   type GeneralAction,
   type Memory,
   projectApprovedMemoryEmbeddedText,
+  projectAssetEmbeddedText,
+  projectAssetMemoryEmbeddedText,
   projectGeneralActionEmbeddedText,
   projectSourceRecordEmbeddedText,
   type SemanticRecordKind,
@@ -159,6 +165,8 @@ export async function skipJob(
     sourceMemory?: Memory | null;
     sourceRecord?: SourceRecord | null;
     sourceGeneralAction?: GeneralAction | null;
+    sourceAsset?: Asset | null;
+    sourceAssetMemory?: AssetMemory | null;
   } = {},
 ): Promise<ProcessEmbeddingJobResult> {
   const updated = await ctx.store.updateEmbeddingJob({
@@ -186,6 +194,8 @@ export async function skipJob(
     sourceMemory: sources.sourceMemory ?? null,
     sourceRecord: sources.sourceRecord ?? null,
     sourceGeneralAction: sources.sourceGeneralAction ?? null,
+    sourceAsset: sources.sourceAsset ?? null,
+    sourceAssetMemory: sources.sourceAssetMemory ?? null,
     reason,
   };
 }
@@ -331,4 +341,87 @@ export async function processGeneralAction(
   });
 
   return { embedding, sourceGeneralAction: action };
+}
+
+/**
+ * Embeds an Asset anchor. Mirrors {@link processGeneralAction}: skip when the asset is
+ * gone or not durable (a `suggested`/`dismissed` proposal must never be retrievable as
+ * a thing the user owns), reuse a fingerprint-matching embedding, else embed and upsert.
+ * An Asset is not person-centered context, so its embedding carries no person; scope is
+ * enforced at the Asset Search seam, not here — an asset is embedded once and filtered
+ * per caller on read (#204).
+ */
+export async function processAsset(
+  ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
+): Promise<EmbeddingProduced | { skipReason: string; sourceAsset: Asset | null }> {
+  const asset = await ctx.store.getAssetForEmbedding({
+    ownerUserId: job.ownerUserId,
+    assetId: job.recordId,
+  });
+
+  if (!asset) {
+    return { skipReason: "asset_not_found", sourceAsset: null };
+  }
+
+  const decision = decideAssetEmbedding(asset);
+
+  if (decision.action === "skip") {
+    return { skipReason: decision.reason, sourceAsset: asset };
+  }
+
+  const embedding = await reuseOrEmbed(ctx, {
+    ownerUserId: asset.ownerUserId,
+    recordKind: "asset",
+    recordId: asset.id,
+    embeddedText: projectAssetEmbeddedText(asset),
+    personId: null,
+    trustLevel: "asset_anchor",
+    sensitivity: "normal",
+    sourceUpdatedAt: asset.updatedAt,
+  });
+
+  return { embedding, sourceAsset: asset };
+}
+
+/**
+ * Embeds an Asset Memory — the fact itself, folded together with the asset it belongs
+ * to, so a fuzzy question about the thing ("anything for the kitchen fridge") retrieves
+ * the precise fact rather than the asset blur. Skips when the memory is gone, dismissed,
+ * or its asset is not durable. Suggested memories *are* embedded so an owner-only review
+ * surface can find grounded proposals; the search seam — never the embedder — enforces
+ * that they stay owner-only (#204).
+ */
+export async function processAssetMemory(
+  ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
+): Promise<EmbeddingProduced | { skipReason: string; sourceAssetMemory: AssetMemory | null }> {
+  const found = await ctx.store.getAssetMemoryForEmbedding({
+    ownerUserId: job.ownerUserId,
+    assetMemoryId: job.recordId,
+  });
+
+  if (!found) {
+    return { skipReason: "asset_memory_not_found", sourceAssetMemory: null };
+  }
+
+  const { memory, asset } = found;
+  const decision = decideAssetMemoryEmbedding(memory, asset);
+
+  if (decision.action === "skip") {
+    return { skipReason: decision.reason, sourceAssetMemory: memory };
+  }
+
+  const embedding = await reuseOrEmbed(ctx, {
+    ownerUserId: memory.ownerUserId,
+    recordKind: "asset_memory",
+    recordId: memory.id,
+    embeddedText: projectAssetMemoryEmbeddedText(memory, asset),
+    personId: null,
+    trustLevel: "asset_fact",
+    sensitivity: "normal",
+    sourceUpdatedAt: memory.updatedAt,
+  });
+
+  return { embedding, sourceAssetMemory: memory };
 }

@@ -41,6 +41,21 @@ const nameOrder = [sql`lower(${visibleAssets.name}) asc`, desc(visibleAssets.cre
  * household and selected-shared assets surface to exactly the members who may see
  * them (AGENTS.md owner-scoped seams; ADR 0153).
  */
+/**
+ * The owner-keyed read of one Asset. Shared so every seam that needs an owner's asset —
+ * the lifecycle store here, the semantic embedding store — issues the same query rather
+ * than re-deriving the predicate (mirrors `selectOwnedGeneralAction`).
+ */
+export async function selectOwnedAsset(input: { ownerUserId: string; assetId: string }) {
+  const [asset] = await getDb()
+    .select()
+    .from(assets)
+    .where(and(eq(assets.id, input.assetId), eq(assets.ownerUserId, input.ownerUserId)))
+    .limit(1);
+
+  return asset ? assetSchema.parse(asset) : null;
+}
+
 export function createDrizzleAssetStore(): AssetStore {
   return {
     async createAsset(values) {
@@ -53,14 +68,7 @@ export function createDrizzleAssetStore(): AssetStore {
       }
       return assetSchema.parse(asset);
     },
-    async getAsset(input) {
-      const [asset] = await getDb()
-        .select()
-        .from(assets)
-        .where(and(eq(assets.id, input.assetId), eq(assets.ownerUserId, input.ownerUserId)))
-        .limit(1);
-      return asset ? assetSchema.parse(asset) : null;
-    },
+    getAsset: selectOwnedAsset,
     async getVisibleAsset(input) {
       const [asset] = await getDb()
         .select()

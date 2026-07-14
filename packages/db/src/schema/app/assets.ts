@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { customType, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
 import {
@@ -10,6 +10,12 @@ import {
   privacyScope,
 } from "./enums";
 import { householdWorkspaces } from "./households";
+
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
 
 /**
  * Assets: practical owner- or household-scoped things Tendnote tracks over time —
@@ -46,12 +52,19 @@ export const assets = pgTable(
     lastActorUserId: text("last_actor_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    // Exact-recall vector over the asset's name — the lexical tier of unified Asset
+    // Search (#204). Generated and maintained by Postgres, like every other search
+    // vector in the schema, so it can never drift from the row.
+    searchVector: tsvector("search_vector")
+      .notNull()
+      .generatedAlwaysAs(sql`to_tsvector('simple', coalesce("name", ''))`),
     ...timestamps,
   },
   (table) => [
     index("assets_owner_status_idx").on(table.ownerUserId, table.status),
     index("assets_owner_kind_idx").on(table.ownerUserId, table.kind),
     index("assets_household_scope_idx").on(table.householdId, table.scope),
+    index("assets_search_vector_idx").using("gin", table.searchVector),
   ],
 );
 

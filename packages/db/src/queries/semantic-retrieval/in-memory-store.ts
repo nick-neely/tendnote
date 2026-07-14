@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
+  type Asset,
+  type AssetMemory,
+  assetMemorySchema,
+  assetSchema,
   canRetrieveGeneralAction,
   claimableEmbeddingJobStatuses,
+  createAssetMemorySchema,
+  createAssetSchema,
   createEmbeddingJobSchema,
   createGeneralActionSchema,
   createRelationshipContextEmbeddingSchema,
@@ -42,6 +48,8 @@ export function createInMemoryEmbeddingStore(
   const jobs = new Map<string, EmbeddingJob>();
   const embeddings = new Map<string, RelationshipContextEmbedding>();
   const generalActionRecords = new Map<string, GeneralAction>();
+  const assetRecords = new Map<string, Asset>();
+  const assetMemoryRecords = new Map<string, AssetMemory>();
   const householdMemberships = seed.householdMemberships ?? [];
   const householdRecordShares = seed.householdRecordShares ?? [];
 
@@ -159,6 +167,49 @@ export function createInMemoryEmbeddingStore(
       const action = generalActionRecords.get(input.generalActionId);
 
       return action && action.ownerUserId === input.ownerUserId ? action : null;
+    },
+    async createAsset(values) {
+      const parsed = createAssetSchema.parse(values);
+      const now = new Date();
+      const asset = assetSchema.parse({
+        ...parsed,
+        id: randomUUID(),
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      assetRecords.set(asset.id, asset);
+
+      return asset;
+    },
+    async createAssetMemory(values) {
+      const parsed = createAssetMemorySchema.parse(values);
+      const now = new Date();
+      const memory = assetMemorySchema.parse({
+        ...parsed,
+        id: randomUUID(),
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      assetMemoryRecords.set(memory.id, memory);
+
+      return memory;
+    },
+    async getAssetForEmbedding(input) {
+      const asset = assetRecords.get(input.assetId);
+
+      return asset && asset.ownerUserId === input.ownerUserId ? asset : null;
+    },
+    async getAssetMemoryForEmbedding(input) {
+      const memory = assetMemoryRecords.get(input.assetMemoryId);
+      if (!memory || memory.ownerUserId !== input.ownerUserId) {
+        return null;
+      }
+
+      const asset = assetRecords.get(memory.assetId);
+
+      return asset ? { memory, asset } : null;
     },
     async upsertRelationshipContextEmbedding(values) {
       const parsed = createRelationshipContextEmbeddingSchema.parse(values);
