@@ -69,7 +69,9 @@ export function AssetActionProposals({
         <SuggestedReminders onResolved={resolved} proposals={proposals} />
       ) : null}
       {canPropose ? <ProposeControl assetId={assetId} onOutcome={setAnnouncement} /> : null}
-      <p aria-atomic className="sr-only" role="status">
+      {/* Named, because the pending spinner is also a `status` region: without a name the
+          two are indistinguishable to anything querying by role, including tests. */}
+      <p aria-atomic aria-label="Reminder proposals" className="sr-only" role="status">
         {announcement}
       </p>
     </div>

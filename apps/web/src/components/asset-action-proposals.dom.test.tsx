@@ -94,7 +94,7 @@ describe("AssetActionProposals (#203)", () => {
       // focus falls to <body> and a keyboard user loses their place entirely.
       expect(document.activeElement).not.toBe(document.body);
     });
-    expect(screen.getByRole("status").textContent).toContain(
+    expect(screen.getByRole("status", { name: "Reminder proposals" }).textContent).toContain(
       "Set aside “Replace Refrigerator water filter”",
     );
   });
@@ -171,7 +171,9 @@ describe("AssetActionProposals (#203)", () => {
     await waitFor(() => {
       expect(refresh).toHaveBeenCalled();
     });
-    expect(screen.getByRole("status").textContent).toContain("2 reminders suggested");
+    expect(screen.getByRole("status", { name: "Reminder proposals" }).textContent).toContain(
+      "2 reminders suggested",
+    );
   });
 
   it("surfaces a curated refusal inline", async () => {
