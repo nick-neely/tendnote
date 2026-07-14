@@ -6,14 +6,27 @@ const { getAssetSnapshot } = vi.hoisted(() => ({ getAssetSnapshot: vi.fn() }));
 const { proposeAssetMemoryActions } = vi.hoisted(() => ({
   proposeAssetMemoryActions: vi.fn(),
 }));
+const { suggestAsset, suggestAssetMemories } = vi.hoisted(() => ({
+  suggestAsset: vi.fn(),
+  suggestAssetMemories: vi.fn(),
+}));
+const { captureSourceRecord } = vi.hoisted(() => ({ captureSourceRecord: vi.fn() }));
 
 vi.mock("@tendnote/db/queries/asset-search", () => ({ searchAssets }));
 vi.mock("@tendnote/db/queries/asset-snapshots", () => ({ getAssetSnapshot }));
-vi.mock("@tendnote/db/queries/assets", () => ({ proposeAssetMemoryActions }));
+vi.mock("@tendnote/db/queries/assets", () => ({
+  proposeAssetMemoryActions,
+  suggestAsset,
+  suggestAssetMemories,
+}));
+vi.mock("@tendnote/db/queries/source-records", () => ({ captureSourceRecord }));
 
 const { default: searchAssetsTool } = await import("../agent/tools/search_assets");
 const { default: getAssetContextTool } = await import("../agent/tools/get_asset_context");
 const { default: proposeAssetActionsTool } = await import("../agent/tools/propose_asset_actions");
+const { default: proposeAssetMemoriesTool, MAX_ASSET_MEMORY_PROPOSALS } = await import(
+  "../agent/tools/propose_asset_memories"
+);
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 
@@ -349,5 +362,223 @@ describe("propose_asset_actions tool", () => {
     await expect(proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx)).rejects.toThrow(
       /archived/i,
     );
+  });
+});
+
+/**
+ * The tool Eve's instructions promised and did not have. Without it the model, told to
+ * "propose an Asset Memory for review", improvised: it told the user it had *logged* the
+ * ice-maker cartridge model, then had no record of it the next turn. These tests pin the
+ * two things that made that a lie — that a fact reaches the store at all, and that it
+ * reaches it only as a proposal.
+ */
+describe("propose_asset_memories tool", () => {
+  const GROUP_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const SOURCE_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const SAID = "The filter in my kitchen fridge is EDR1RXD1";
+
+  function groupResult(overrides: Record<string, unknown> = {}) {
+    return {
+      group: { id: GROUP_ID, ownerUserId: "user-1", assetId: ASSET_ID, sourceRecordId: SOURCE_ID },
+      asset: {
+        id: ASSET_ID,
+        name: "Kitchen refrigerator",
+        kind: "appliance",
+        scope: "private",
+        status: "active",
+      },
+      assetPending: false,
+      memories: [
+        {
+          id: MEMORY_ID,
+          label: "Filter model",
+          value: { type: "text", text: "EDR1RXD1" },
+          notes: null,
+        },
+      ],
+      evidence: [],
+      duplicateCandidates: [],
+      sourceRecord: {
+        id: SOURCE_ID,
+        content: SAID,
+        sourceType: "agent",
+        createdAt: new Date("2026-07-13T00:00:00.000Z"),
+      },
+      ...overrides,
+    };
+  }
+
+  const detail = {
+    label: "Filter model",
+    value: { type: "text" as const, text: "EDR1RXD1" },
+  };
+
+  beforeEach(() => {
+    captureSourceRecord.mockResolvedValue({ sourceRecord: { id: SOURCE_ID, content: SAID } });
+  });
+
+  it("anchors the fact to the asset the model resolved, as a suggestion", async () => {
+    suggestAssetMemories.mockResolvedValue(groupResult());
+
+    const output = await proposeAssetMemoriesTool.execute(
+      { assetId: ASSET_ID, saidByUser: SAID, details: [detail] },
+      ctx,
+    );
+
+    expect(suggestAssetMemories).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: "user-1",
+        assetId: ASSET_ID,
+        sourceRecordId: SOURCE_ID,
+        source: "assistant",
+        memories: [{ label: "Filter model", value: detail.value, notes: null }],
+      }),
+    );
+    // No new asset row when the user named one they already have — the #198 duplicate
+    // prompt exists for the case where we *couldn't* resolve it, not as a routine.
+    expect(suggestAsset).not.toHaveBeenCalled();
+    expect(output.asset.pending).toBe(false);
+    expect(output.pendingCount).toBe(1);
+  });
+
+  it("grounds every proposal in the user's own words (ADR 0151)", async () => {
+    suggestAssetMemories.mockResolvedValue(groupResult());
+
+    const output = await proposeAssetMemoriesTool.execute(
+      { assetId: ASSET_ID, saidByUser: SAID, details: [detail] },
+      ctx,
+    );
+
+    // Captured verbatim, as an assistant-written note — never `captureLoggedContext`,
+    // whose person-memory and action extraction has nothing to do with a fridge filter.
+    expect(captureSourceRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: "user-1",
+        retainedContent: SAID,
+        sourceType: "agent",
+      }),
+    );
+    // And it rides to the review card, so the user checks the fact against what they said.
+    expect(output.source?.content).toBe(SAID);
+  });
+
+  it("proposes a new (suggested) asset when there was nothing to anchor to", async () => {
+    suggestAsset.mockResolvedValue(
+      groupResult({
+        assetPending: true,
+        asset: {
+          id: ASSET_ID,
+          name: "Kitchen refrigerator",
+          kind: "appliance",
+          scope: "private",
+          status: "suggested",
+        },
+      }),
+    );
+
+    const output = await proposeAssetMemoriesTool.execute(
+      {
+        newAsset: { name: "Kitchen refrigerator", kind: "appliance" as const },
+        saidByUser: SAID,
+        details: [detail],
+      },
+      ctx,
+    );
+
+    expect(suggestAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: "user-1",
+        name: "Kitchen refrigerator",
+        kind: "appliance",
+        sourceRecordId: SOURCE_ID,
+        source: "assistant",
+      }),
+    );
+    expect(output.asset.pending).toBe(true);
+    // The anchor is itself a pending member: the user reviews the thing and the fact.
+    expect(output.pendingCount).toBe(2);
+  });
+
+  it("refuses to write anything when the model named no asset at all", async () => {
+    await expect(
+      proposeAssetMemoriesTool.execute({ saidByUser: SAID, details: [detail] }, ctx),
+    ).rejects.toThrow(/name the thing these facts belong to/i);
+
+    // Nothing was written — not even the grounding note. A fact with nothing to hang on
+    // would land in the queue as an "Untitled" husk the user has to clean up.
+    expect(captureSourceRecord).not.toHaveBeenCalled();
+    expect(suggestAsset).not.toHaveBeenCalled();
+    expect(suggestAssetMemories).not.toHaveBeenCalled();
+  });
+
+  it("refuses a guessed asset name in the id slot", () => {
+    expect(
+      inputParser(proposeAssetMemoriesTool).safeParse({
+        assetId: "Kitchen fridge",
+        saidByUser: SAID,
+        details: [detail],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("cannot fan out into a bulk extraction pass", () => {
+    const details = Array.from({ length: MAX_ASSET_MEMORY_PROPOSALS + 1 }, () => detail);
+
+    expect(
+      inputParser(proposeAssetMemoriesTool).safeParse({
+        assetId: ASSET_ID,
+        saidByUser: SAID,
+        details,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("tells the model, in the result itself, that nothing was saved", async () => {
+    suggestAssetMemories.mockResolvedValue(groupResult());
+
+    const output = await proposeAssetMemoriesTool.execute(
+      { assetId: ASSET_ID, saidByUser: SAID, details: [detail] },
+      ctx,
+    );
+    const modelView = proposeAssetMemoriesTool.toModelOutput?.(output) as {
+      value: {
+        saved: boolean;
+        proposed: boolean;
+        details: Array<{ value: string }>;
+        guidance: string;
+      };
+    };
+
+    // The exact failure this tool exists to prevent: "Got it — I've logged the filter."
+    expect(modelView.value.saved).toBe(false);
+    expect(modelView.value.proposed).toBe(true);
+    expect(modelView.value.guidance).toMatch(/nothing was saved/i);
+    expect(modelView.value.guidance).toMatch(/waiting for their review/i);
+    // The part number survives the round trip exactly — it is the whole point.
+    expect(modelView.value.details[0]?.value).toBe("EDR1RXD1");
+  });
+
+  it("never hands the model a raw database error", async () => {
+    suggestAssetMemories.mockRejectedValue(LEAKY_STORE_ERROR);
+
+    await expect(
+      proposeAssetMemoriesTool.execute(
+        { assetId: ASSET_ID, saidByUser: SAID, details: [detail] },
+        ctx,
+      ),
+    ).rejects.toThrow(/could not read the user's records/i);
+  });
+
+  it("still passes a curated domain refusal through to the model", async () => {
+    suggestAssetMemories.mockRejectedValue(
+      new AssetValidationError("This asset is archived — restore it before adding details."),
+    );
+
+    await expect(
+      proposeAssetMemoriesTool.execute(
+        { assetId: ASSET_ID, saidByUser: SAID, details: [detail] },
+        ctx,
+      ),
+    ).rejects.toThrow(/archived/i);
   });
 });

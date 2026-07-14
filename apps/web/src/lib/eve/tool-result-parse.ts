@@ -1,4 +1,5 @@
 import {
+  type AssetMemoryProposalToolResult,
   assistantToolResultSchemas,
   type DraftProposalToolResult,
   type GeneralActionRefOutput,
@@ -10,6 +11,8 @@ import {
   type SuggestedGeneralActionReviewItemOutput,
   type SuggestedMemoryReviewItemOutput,
 } from "@tendnote/domain";
+import { formatAssetMemoryValue } from "@/lib/asset-memory-value";
+import type { AssetReviewGroupView } from "@/lib/asset-review-view";
 import type {
   AssistantToolView,
   GeneralActionListItemView,
@@ -58,6 +61,36 @@ function toMemoryCuratorProposal(
     sourceRefs: proposal.sourceRefs,
     sensitivity: proposal.sensitivity,
     reviewOnly: proposal.reviewOnly,
+  };
+}
+
+/**
+ * The Asset Review Group Eve just proposed, as the card view the Review tab already
+ * uses — so an asset fact proposed in chat is reviewed by the same card, with the same
+ * edit-before-accept, per-detail accept/dismiss, link-to-existing, and batch accept.
+ *
+ * Two fields are structurally empty rather than dropped: a just-proposed group has no
+ * Asset Evidence yet (the card's capture strip is how it gets some), and it was not
+ * promoted from a General Action hint (#199) — it came from the user's sentence, which
+ * rides in `source`. The formatted value label is computed here, from the typed value,
+ * so the exact stored fact never reaches the card as pre-rendered prose.
+ */
+function toAssetReviewGroupChatView(parsed: AssetMemoryProposalToolResult): AssetReviewGroupView {
+  return {
+    groupId: parsed.groupId,
+    asset: parsed.asset,
+    memories: parsed.memories.map((memory) => ({
+      id: memory.id,
+      label: memory.label,
+      value: memory.value,
+      valueLabel: formatAssetMemoryValue(memory.value),
+      notes: memory.notes,
+    })),
+    evidence: [],
+    duplicates: parsed.duplicates,
+    source: parsed.source,
+    fromAction: null,
+    pendingCount: parsed.pendingCount,
   };
 }
 
@@ -390,6 +423,11 @@ const toolViewParsers: Record<string, ToolViewParser> = {
         .filter((action) => !isGeneralActionReviewStatus(action.status))
         .map(toGeneralActionListItem),
     };
+  },
+  propose_asset_memories: (output) => {
+    const parsed = assistantToolResultSchemas.propose_asset_memories.safeParse(output);
+    if (!parsed.success) return null;
+    return { kind: "asset_review_group", review: toAssetReviewGroupChatView(parsed.data) };
   },
   search_assets: (output) => {
     const parsed = assistantToolResultSchemas.search_assets.safeParse(output);

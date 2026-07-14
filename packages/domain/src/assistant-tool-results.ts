@@ -1,6 +1,9 @@
 import { z } from "zod";
+import { assetMemoryValueSchema } from "./asset-memories";
+import { assetKindSchema } from "./assets";
 import { draftProposalResultSchema } from "./draft-proposals";
 import { memoryCuratorProposalResultSchema } from "./memory-curator";
+import { privacyScopeSchema } from "./privacy";
 
 /**
  * The single source of truth for the persisted Eve tool-result contract that the
@@ -235,6 +238,57 @@ export const assetActionProposalsToolResult = z.object({
   proposed: z.array(z.object({ action: generalActionRef })),
 });
 
+/**
+ * Asset facts Eve proposed for review (#196 story 57). This is the persisted shape of
+ * one Asset Review Group as it leaves the tool: the anchor Asset (an existing one the
+ * user named, or a still-`suggested` one when nothing matched), the Suggested Asset
+ * Memories waiting on it, and the duplicate candidates the #198 matcher found. It
+ * carries exactly what the shared Asset Review Group card already renders in the Review
+ * tab, so a proposal made in chat is reviewed by the *same* card rather than a chat-only
+ * lookalike — one review surface, accepted/edited/dismissed/linked in one place.
+ *
+ * Nothing in here is durable. Every record referenced is `suggested` until the user
+ * accepts it, which is the whole point: Eve proposes an asset fact, it never saves one.
+ */
+export const assetMemoryProposalToolResult = z.object({
+  found: z.literal(true),
+  groupId: z.string(),
+  asset: z.object({
+    id: z.string(),
+    name: z.string(),
+    kind: assetKindSchema,
+    kindLabel: z.string(),
+    scope: privacyScopeSchema,
+    visibilityLabel: z.string(),
+    /** True while the anchor itself is a pending Suggested Asset (nothing matched). */
+    pending: z.boolean(),
+  }),
+  memories: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      // The typed value, unformatted: the surface formats it for display, so the
+      // exact stored fact (a model number, a date, a cadence) never round-trips
+      // through prose on its way to the review card.
+      value: assetMemoryValueSchema.nullable(),
+      notes: z.string().nullable(),
+    }),
+  ),
+  /** Existing Assets the pending anchor may duplicate — the link-to-existing prompt. */
+  duplicates: z.array(z.object({ id: z.string(), name: z.string(), kindLabel: z.string() })),
+  /** The grounding source record: the user's own words, captured for this proposal. */
+  source: z
+    .object({
+      id: z.string(),
+      content: z.string(),
+      sourceType: z.string(),
+      capturedAt: z.string(),
+    })
+    .nullable(),
+  /** Members still awaiting review: the anchor (when pending) plus each memory. */
+  pendingCount: z.number(),
+});
+
 export const generalActionListToolResult = z.object({
   found: z.literal(true),
   ledger: z.string(),
@@ -335,6 +389,7 @@ export const assistantToolResultSchemas = {
   list_suggested_general_action_reviews: suggestedGeneralActionListToolResult,
   list_general_actions: generalActionListToolResult,
   propose_asset_actions: assetActionProposalsToolResult,
+  propose_asset_memories: assetMemoryProposalToolResult,
   search_assets: assetSearchToolResult,
   get_asset_context: assetContextToolResult,
 } as const satisfies Record<string, z.ZodTypeAny>;
@@ -352,6 +407,7 @@ export type SuggestedGeneralActionReviewItemOutput = z.infer<
   typeof suggestedGeneralActionReviewItem
 >;
 export type GeneralActionListToolResult = z.infer<typeof generalActionListToolResult>;
+export type AssetMemoryProposalToolResult = z.infer<typeof assetMemoryProposalToolResult>;
 export type RelationshipAgendaToolResult = z.infer<typeof relationshipAgendaToolResult>;
 export type MemoryCuratorToolResult = z.infer<typeof memoryCuratorToolResult>;
 export type DraftProposalToolResult = z.infer<typeof draftProposalToolResult>;

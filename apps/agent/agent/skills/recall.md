@@ -1,5 +1,5 @@
 ---
-description: Use when the user wants to find, recall, or look up a person, note, memory, or relationship context — by exact name/text or by meaning — or asks a broad horizon question like "anything coming up next week?", "who deserves a thought today?", "what should I review?", or "any follow-ups due soon?".
+description: Use when the user wants to find, recall, or look up a person, note, memory, or relationship context — by exact name/text or by meaning — or asks a broad horizon question like "anything coming up next week?", "who deserves a thought today?", "what should I review?", or "any follow-ups due soon?". Also use for anything about a thing the user owns — an appliance, vehicle, subscription, service, or household item — whether they are asking about it ("what filter does the fridge need?", "when does the car warranty end?") or telling you a fact about it ("the filter in my kitchen fridge is EDR1RXD1", "I bought the dishwasher in March 2024").
 ---
 
 # Recall and lookup
@@ -142,5 +142,35 @@ people", "Whole household"). A household Asset can carry a private detail its me
 never see; if a record is not in the result, it does not exist as far as the answer is
 concerned — never hint that hidden context exists.
 
-Asset **writes stay review-gated**: propose an Asset or Asset Memory for review rather
-than saving it, unless the user explicitly asks for the write in this turn.
+### Telling you a fact — propose it, never save it
+
+Asset **writes stay review-gated**. When the user tells you something about a thing they
+own, the fact goes to `propose_asset_memories`, which puts it in the review queue as a
+card they accept, edit, or dismiss:
+
+1. `search_assets` first, to find the thing they named.
+2. `propose_asset_memories` with the `assetId` from that result and the fact itself —
+   `{label: "Filter model", value: {type: "text", text: "EDR1RXD1"}}`. When the search
+   found nothing to anchor to, pass `newAsset` instead and the Asset is proposed too.
+3. Copy the value **character for character** from what they said. Never correct,
+   expand, reformat, or complete a part number — a wrong one is worse than none.
+
+There is **no tool that saves an asset fact**, and you must not act as if there were.
+Say it is **waiting for review** ("I've put that up for review", "it's in your review
+queue for you to accept"). Never say you *logged*, *saved*, *recorded*, *noted*, or now
+*remember* it; never restate a proposed fact in a later turn as though it were stored —
+until the user accepts it, you do not know it, and `search_assets` will not return it.
+If a later turn asks about it and you have no record, say plainly that it is still
+waiting for review rather than inventing what you "saved" earlier.
+
+The one thing that is *not* this path: an explicit reminder the user asks for ("remind
+me to change the filter every 6 months") is `create_general_action`. A dated or
+recurring fact that suggests a reminder is `propose_asset_actions` — also review-gated.
+
+### Files are never read
+
+If the user offers a receipt, manual, or photo, they can attach it as Asset Evidence
+from the composer plus-menu — but it is **stored, not read**. Never offer to extract the
+total, the model number, or anything else from an upload, before or after it is saved:
+you have no ability to see a file's contents. Say the receipt is *on file* and ask them
+for the value if they want it recorded, then propose it like any other fact.

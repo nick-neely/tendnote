@@ -2,6 +2,7 @@
 
 import { AssistantToolGroup } from "@/components/assistant-tool-group";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
+import { ChatAssetReviewCard } from "@/components/chat-asset-review-card";
 import { ChatDraftCard } from "@/components/chat-draft-card";
 import {
   ChatFollowupReviewCard,
@@ -56,6 +57,9 @@ const singleUnitRenderers: {
   suggested_followup_review_list: (view) => <ChatFollowupReviewList isNew view={view} />,
   suggested_general_action_review: (view) => <ChatGeneralActionReviewCard isNew item={view} />,
   suggested_general_action_review_list: (view) => <ChatGeneralActionReviewList isNew view={view} />,
+  // Asset facts Eve proposed: the Review tab's own group card, rendered in the
+  // conversation. Accepting here and accepting in the queue are the same act (#198).
+  asset_review_group: (view) => <ChatAssetReviewCard isNew review={view.review} />,
   // The draft card is interactive (inline WYSIWYG edit + copy), so it routes to the
   // client card rather than the presentational tool-result module.
   message_draft: (view) => <ChatDraftCard isNew view={view} />,

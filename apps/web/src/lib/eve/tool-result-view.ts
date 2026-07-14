@@ -1,3 +1,5 @@
+import type { AssetReviewGroupView } from "@/lib/asset-review-view";
+
 /**
  * Renderable, refresh-stable view of one persisted Eve tool result. Each kind
  * references persisted ids (ADR 0028) so the web chat can show what Eve saved,
@@ -93,6 +95,13 @@ export type AssistantToolView =
       query: string;
       results: AssetSearchResultView[];
     }
+  /**
+   * Asset facts Eve proposed for review (#196 story 57). The payload is the *same*
+   * `AssetReviewGroupView` the Review tab's card takes, so the proposal is reviewed in
+   * chat by the very card that reviews it in the queue — one review surface, not a
+   * chat-only imitation that could drift from it.
+   */
+  | { kind: "asset_review_group"; review: AssetReviewGroupView }
   | {
       kind: "asset_context";
       found: boolean;
@@ -320,6 +329,7 @@ const assistantToolViewKeyBuilders: {
     `general-action-list:${view.actions.map((action) => action.generalActionId).join(":")}`,
   asset_search: (view) =>
     `asset-search:${view.results.map((result) => `${result.recordKind}:${result.recordId}`).join("|")}`,
+  asset_review_group: (view) => `asset-review-group:${view.review.groupId}`,
   asset_context: (view) => `asset-context:${view.assetName ?? "unknown"}`,
   generic: (view) => `tool:${view.toolName}`,
 };
@@ -438,6 +448,7 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   get_suggested_general_action_review: "Pulling up the suggested action…",
   list_suggested_general_action_reviews: "Gathering actions to review…",
   propose_asset_actions: "Checking what this asset needs…",
+  propose_asset_memories: "Putting that up for review…",
   // Prose mutation tools render no card, but still shimmer with a hand-written label
   // rather than a slugified tool name while they run.
   accept_suggested_general_action: "Adding it to your list…",
