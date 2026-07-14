@@ -3,23 +3,32 @@ import { describeAssetMemoryValue, visibilityLabelForScope } from "@tendnote/dom
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 export default defineTool({
   description:
     "Loads everything the caller may see about one known Asset: its reviewed Asset Memories (the confirmed facts), the Asset Evidence on file, related assets, and the linked General Actions — plus a generated Asset Snapshot summary. Use this after `search_assets` has identified the asset and the user wants its full picture ('tell me about the fridge', 'what do I know about the car?'). The `summary` is a GENERATED CACHE, not a source of truth: never quote a model number, serial, filter size, price, or date from it — take every specific fact from `facts`, which are the real records. When `snapshotStatus` is `fallback` the summary is missing or stale; answer from `facts` alone and do not mention the cache. Evidence is grounding material: say a receipt or manual is on file, never assert what it says. Records the caller cannot see are simply absent — never imply that hidden context exists. Do not use this to search across assets (`search_assets`), for people (`get_person_context`), or to write anything.",
   inputSchema: z.object({
-    assetId: z.string().min(1).describe("The Asset's id, from a prior `search_assets` result."),
+    // A uuid, not a name — the shape the store actually holds. A free-form string let a
+    // guessed asset *name* through to a uuid column, where the driver refused it and the
+    // raw failed query came back as the tool result. The seam denies a malformed id
+    // deterministically now; the schema stops the call one layer earlier, and says why.
+    assetId: z
+      .uuid()
+      .describe(
+        "The Asset's id, copied exactly from a prior `search_assets` result. Never a " +
+          "name, and never guessed — search first if you do not have one.",
+      ),
   }),
   async execute(input, ctx) {
     const callerUserId = resolveOwnerUserId(ctx);
-    const { status, snapshot, context } = await getAssetSnapshot({
-      callerUserId,
-      assetId: input.assetId,
-    });
+    const { status, snapshot, context } = await withModelSafeStoreErrors(() =>
+      getAssetSnapshot({ callerUserId, assetId: input.assetId }),
+    );
 
     if (!context.asset) {
-      // Deterministic denial: an asset the caller cannot see and one that does not
-      // exist are indistinguishable (ADR 0153).
+      // Deterministic denial: an asset the caller cannot see, one that does not exist,
+      // and one whose id could never exist are indistinguishable (ADR 0153).
       return {
         found: false as const,
         component: { type: "asset_context", found: false },

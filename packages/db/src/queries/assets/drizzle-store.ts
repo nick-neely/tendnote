@@ -35,6 +35,28 @@ const durableVisibleStatus = inArray(visibleAssets.status, [...DURABLE_ASSET_STA
 const nameOrder = [sql`lower(${visibleAssets.name}) asc`, desc(visibleAssets.createdAt)];
 
 /**
+ * Postgres compares a `uuid` column against a uuid, not against text: hand it
+ * `"Kitchen refrigerator"` and it raises `22P02` instead of returning no rows. Callers
+ * do arrive with an id they did not read off a record — the assistant guesses one, a URL
+ * is hand-edited — and a guess must be *denied*, not crashed on.
+ *
+ * The adapter is the only layer that knows the column's type, so it is the layer that
+ * turns a malformed id into the same deterministic denial as an id that names nothing
+ * (ADR 0153): an asset the caller cannot see, one that does not exist, and one whose id
+ * could never exist are indistinguishable. The in-memory twin already behaves this way —
+ * a string simply matches no row — so this is also what keeps the two stores honest.
+ *
+ * The blast radius of *not* doing this is not just a 500: a driver error escaping a seam
+ * carries the failed SQL and its bound parameters in its message, and any surface that
+ * echoes an error message then leaks the schema — and the caller's own values — with it.
+ */
+const PERSISTED_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isPersistedAssetId(assetId: string): boolean {
+  return PERSISTED_ID_PATTERN.test(assetId);
+}
+
+/**
  * Drizzle-backed Asset CRUD + internal-audit store. Owner scoping is enforced in
  * every owner-keyed predicate so a caller can only read or mutate their own
  * assets; the `Visible` reads apply the shared Phase 4 scope predicate so
@@ -47,6 +69,10 @@ const nameOrder = [sql`lower(${visibleAssets.name}) asc`, desc(visibleAssets.cre
  * than re-deriving the predicate (mirrors `selectOwnedGeneralAction`).
  */
 export async function selectOwnedAsset(input: { ownerUserId: string; assetId: string }) {
+  if (!isPersistedAssetId(input.assetId)) {
+    return null;
+  }
+
   const [asset] = await getDb()
     .select()
     .from(assets)
@@ -70,6 +96,10 @@ export function createDrizzleAssetStore(): AssetStore {
     },
     getAsset: selectOwnedAsset,
     async getVisibleAsset(input) {
+      if (!isPersistedAssetId(input.assetId)) {
+        return null;
+      }
+
       const [asset] = await getDb()
         .select()
         .from(visibleAssets)

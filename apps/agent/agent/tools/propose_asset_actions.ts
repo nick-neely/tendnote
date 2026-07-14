@@ -4,12 +4,13 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   assetId: z
     .uuid()
     .describe(
-      "The Asset whose reviewed details should propose reminders — resolved from an asset search or the profile the user is looking at, never guessed.",
+      "The Asset whose reviewed details should propose reminders — copied exactly from a `search_assets` or `get_asset_context` result, or the profile the user is looking at, never guessed.",
     ),
   assetMemoryIds: z
     .array(z.uuid())
@@ -41,13 +42,15 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const result = await proposeAssetMemoryActions({
-      actorUserId: ownerUserId,
-      assetId: input.assetId,
-      assetMemoryIds: input.assetMemoryIds,
-      // Provenance: this pass came from the assistant, not a click on the profile.
-      source: "assistant",
-    });
+    const result = await withModelSafeStoreErrors(() =>
+      proposeAssetMemoryActions({
+        actorUserId: ownerUserId,
+        assetId: input.assetId,
+        assetMemoryIds: input.assetMemoryIds,
+        // Provenance: this pass came from the assistant, not a click on the profile.
+        source: "assistant",
+      }),
+    );
 
     return {
       found: true as const,

@@ -6,6 +6,7 @@ import {
 } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 export default defineTool({
   description:
@@ -21,7 +22,11 @@ export default defineTool({
       // Pin includeReviewGated to false *after* spreading input: review context is an
       // owner-only caller decision, never model-forwarded, so a hallucinated flag can
       // never surface an un-reviewed proposal as if it were a fact.
-      .parse(await searchAssets({ ...input, includeReviewGated: false, ownerUserId }));
+      .parse(
+        await withModelSafeStoreErrors(() =>
+          searchAssets({ ...input, includeReviewGated: false, ownerUserId }),
+        ),
+      );
 
     return {
       query: input.query,
@@ -32,9 +37,18 @@ export default defineTool({
       },
     };
   },
-  // Record ids are for the chat component and your follow-up tool calls, not your
-  // reply. Strip them from the model's view; the channel still gets the full
-  // structured output for rendering.
+  /**
+   * `toModelOutput` REPLACES the tool result the model sees — the raw output goes only
+   * to the chat card. So whatever a follow-up tool needs as input has to be *here*, or
+   * the model cannot call that tool at all: this projection is the only place an
+   * `assetId` can enter Eve's context, and `get_asset_context` and
+   * `propose_asset_actions` both require one. Omitting ids did not hide them from the
+   * user — it made the model invent them, and a guessed id is a failed call.
+   *
+   * Keeping ids out of the *reply* is a different rule, enforced where it belongs:
+   * `instructions/base.md` ("Never show raw record ids or UUIDs to the user"). The
+   * projection stays honest about what the ids are for.
+   */
   toModelOutput(output) {
     return {
       type: "json",
@@ -42,6 +56,13 @@ export default defineTool({
         count: output.results.length,
         results: output.results.map((result) => ({
           kind: result.recordKind,
+          // The handle every asset follow-up takes. Pass it through verbatim; never
+          // retype, shorten, or invent one.
+          assetId: result.assetId,
+          // Only an Asset Memory id is actionable downstream (`propose_asset_actions`
+          // narrows by `assetMemoryIds`), so an asset or evidence row's id is not
+          // offered here as one — a wrong id in that slot is a failed call.
+          memoryId: result.recordKind === "asset_memory" ? result.recordId : null,
           asset: result.assetName,
           assetKind: result.assetKind,
           label: result.label,
@@ -54,6 +75,11 @@ export default defineTool({
           visibility: result.visibilityLabel,
           visibilityChoice: result.visibilityChoice,
         })),
+        guidance:
+          "`assetId` and `memoryId` are handles for your follow-up tool calls " +
+          "(`get_asset_context`, `propose_asset_actions`) — copy them exactly. Never " +
+          "write an id in your reply, and never guess one: an asset you did not find " +
+          "here has no id you can use.",
       },
     };
   },

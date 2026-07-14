@@ -1,21 +1,50 @@
-import { describe, expect, it, vi } from "vitest";
+import { AssetValidationError } from "@tendnote/domain";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { searchAssets } = vi.hoisted(() => ({ searchAssets: vi.fn() }));
 const { getAssetSnapshot } = vi.hoisted(() => ({ getAssetSnapshot: vi.fn() }));
+const { proposeAssetMemoryActions } = vi.hoisted(() => ({
+  proposeAssetMemoryActions: vi.fn(),
+}));
 
 vi.mock("@tendnote/db/queries/asset-search", () => ({ searchAssets }));
 vi.mock("@tendnote/db/queries/asset-snapshots", () => ({ getAssetSnapshot }));
+vi.mock("@tendnote/db/queries/assets", () => ({ proposeAssetMemoryActions }));
 
 const { default: searchAssetsTool } = await import("../agent/tools/search_assets");
 const { default: getAssetContextTool } = await import("../agent/tools/get_asset_context");
+const { default: proposeAssetActionsTool } = await import("../agent/tools/propose_asset_actions");
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
+
+const ASSET_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const MEMORY_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+/**
+ * What a drizzle failure actually looks like: the failed SQL *and the bound parameters*
+ * are the error's message. This is the string that reached the model verbatim when Eve
+ * guessed an asset name as an id, and no tool may ever hand it back.
+ */
+const LEAKY_STORE_ERROR = new Error(
+  'Failed query: select "id", "owner_user_id" from "assets" where "assets"."id" = $1 ' +
+    "params: Kitchen refrigerator,demo-user,1",
+);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+/** `inputSchema` is the zod object at runtime (the Standard-schema type hides safeParse). */
+function inputParser(tool: { inputSchema: unknown }) {
+  return tool.inputSchema as { safeParse: (value: unknown) => { success: boolean } };
+}
 
 function assetMemoryResult(overrides: Record<string, unknown> = {}) {
   return {
     recordKind: "asset_memory",
-    recordId: "memory-1",
-    assetId: "asset-1",
+    recordId: MEMORY_ID,
+    assetId: ASSET_ID,
     assetName: "Refrigerator",
     assetKind: "appliance",
     assetStatus: "active",
@@ -29,8 +58,8 @@ function assetMemoryResult(overrides: Record<string, unknown> = {}) {
     visibilityChoice: "whole_household",
     visibilityLabel: "Whole household",
     citations: [
-      { kind: "asset_memory", id: "memory-1" },
-      { kind: "asset", id: "asset-1" },
+      { kind: "asset_memory", id: MEMORY_ID },
+      { kind: "asset", id: ASSET_ID },
     ],
     ...overrides,
   };
@@ -81,7 +110,7 @@ describe("search_assets tool", () => {
     expect(result.results[0]).not.toHaveProperty("generatedAnswer");
   });
 
-  it("gives the model the exact stored value and hides raw ids", async () => {
+  it("gives the model the exact stored value", async () => {
     searchAssets.mockResolvedValue([assetMemoryResult()]);
 
     const output = await searchAssetsTool.execute(
@@ -97,16 +126,67 @@ describe("search_assets tool", () => {
     expect(entry?.value).toBe("RPWFE");
     expect(entry?.trust).toBe("asset_fact");
     expect(entry?.visibility).toBe("Whole household");
-    // Ids are for tool calls and the chat card, never the model's reply.
-    expect(entry).not.toHaveProperty("recordId");
-    expect(entry).not.toHaveProperty("assetId");
+  });
+
+  /**
+   * The reachability contract. `toModelOutput` REPLACES the model's view of the result,
+   * so search is the *only* place an `assetId` can enter Eve's context — and
+   * `get_asset_context` and `propose_asset_actions` both require one. Strip it and those
+   * tools are dead code the model can only reach by inventing an id, which is exactly
+   * what it did: it called `get_asset_context` with `{"assetId": "Kitchen refrigerator"}`.
+   */
+  it("hands the model the ids its follow-up tools require", async () => {
+    searchAssets.mockResolvedValue([assetMemoryResult()]);
+
+    const output = await searchAssetsTool.execute(
+      { query: "fridge filter", limit: 8, includeArchived: false },
+      ctx,
+    );
+    const modelView = searchAssetsTool.toModelOutput?.(output) as {
+      value: { results: Array<Record<string, unknown>>; guidance: string };
+    };
+    const [entry] = modelView.value.results;
+
+    expect(entry?.assetId).toBe(ASSET_ID);
+    // The record-level handle `propose_asset_actions` narrows by.
+    expect(entry?.memoryId).toBe(MEMORY_ID);
+    // Reaching a tool is not licence to print an id: the reply-side rule is carried by
+    // the guidance here and by `instructions/base.md`, not by hiding the id.
+    expect(modelView.value.guidance).toMatch(/never write an id in your reply/i);
+  });
+
+  it("offers a memory handle only for records that are Asset Memories", async () => {
+    // An asset row's or an evidence row's id in `assetMemoryIds` is a wrong id in that
+    // slot — a failed call. Only the kind that can be narrowed by gets a `memoryId`.
+    searchAssets.mockResolvedValue([
+      assetMemoryResult({ recordKind: "asset", recordId: ASSET_ID, value: null }),
+    ]);
+
+    const output = await searchAssetsTool.execute(
+      { query: "fridge", limit: 8, includeArchived: false },
+      ctx,
+    );
+    const modelView = searchAssetsTool.toModelOutput?.(output) as {
+      value: { results: Array<Record<string, unknown>> };
+    };
+
+    expect(modelView.value.results[0]?.assetId).toBe(ASSET_ID);
+    expect(modelView.value.results[0]?.memoryId).toBeNull();
+  });
+
+  it("never hands the model a raw database error", async () => {
+    searchAssets.mockRejectedValue(LEAKY_STORE_ERROR);
+
+    await expect(
+      searchAssetsTool.execute({ query: "fridge", limit: 8, includeArchived: false }, ctx),
+    ).rejects.toThrow(/could not read the user's records/i);
   });
 });
 
 describe("get_asset_context tool", () => {
   const snapshotContext = {
     asset: {
-      id: "asset-1",
+      id: ASSET_ID,
       ownerUserId: "user-1",
       name: "Refrigerator",
       kind: "appliance",
@@ -115,7 +195,7 @@ describe("get_asset_context tool", () => {
     },
     memories: [
       {
-        id: "memory-1",
+        id: MEMORY_ID,
         label: "Filter size",
         value: { type: "text", text: "RPWFE" },
         notes: null,
@@ -135,7 +215,7 @@ describe("get_asset_context tool", () => {
       context: snapshotContext,
     });
 
-    const result = await getAssetContextTool.execute({ assetId: "asset-1" }, ctx);
+    const result = await getAssetContextTool.execute({ assetId: ASSET_ID }, ctx);
 
     expect(result.found).toBe(true);
     expect(result.facts?.[0]).toMatchObject({ label: "Filter size", value: "RPWFE" });
@@ -150,7 +230,7 @@ describe("get_asset_context tool", () => {
       context: snapshotContext,
     });
 
-    const output = await getAssetContextTool.execute({ assetId: "asset-1" }, ctx);
+    const output = await getAssetContextTool.execute({ assetId: ASSET_ID }, ctx);
     const modelView = getAssetContextTool.toModelOutput?.(output) as {
       value: { snapshot: { available: boolean; guidance: string } };
     };
@@ -166,7 +246,7 @@ describe("get_asset_context tool", () => {
       context: snapshotContext,
     });
 
-    const output = await getAssetContextTool.execute({ assetId: "asset-1" }, ctx);
+    const output = await getAssetContextTool.execute({ assetId: ASSET_ID }, ctx);
     const modelView = getAssetContextTool.toModelOutput?.(output) as {
       value: { snapshot: { available: boolean }; facts: Array<Record<string, unknown>> };
     };
@@ -190,9 +270,84 @@ describe("get_asset_context tool", () => {
       },
     });
 
-    const result = await getAssetContextTool.execute({ assetId: "someone-elses" }, ctx);
+    const result = await getAssetContextTool.execute(
+      { assetId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" },
+      ctx,
+    );
 
     expect(result.found).toBe(false);
     expect(result).not.toHaveProperty("facts");
+  });
+
+  /**
+   * The malformed-id seam. A free-form `assetId` let a guessed asset *name* through to a
+   * uuid column, where Postgres raised 22P02 — and the tool result the model got back was
+   * the failed query text and its bound parameters. Two layers close it: the schema
+   * refuses a non-uuid before the call, and the store denies one deterministically if it
+   * ever gets there another way. A malformed id is `found: false`, never an error.
+   */
+  it("refuses an id that is not an id, before it can reach the store", () => {
+    // The exact input Eve sent when it had no id to copy: the asset's *name*.
+    expect(
+      inputParser(getAssetContextTool).safeParse({ assetId: "Kitchen refrigerator" }).success,
+    ).toBe(false);
+    expect(getAssetSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("never hands the model a raw database error", async () => {
+    getAssetSnapshot.mockRejectedValue(LEAKY_STORE_ERROR);
+
+    const call = getAssetContextTool.execute({ assetId: ASSET_ID }, ctx);
+
+    await expect(call).rejects.toThrow(/could not read the user's records/i);
+    // The schema, the SQL, and the user's own bound values stay out of the context.
+    await expect(call).rejects.not.toThrow(/Failed query|params:|select/i);
+  });
+});
+
+describe("propose_asset_actions tool", () => {
+  it("proposes from the asset the model resolved, as the assistant", async () => {
+    proposeAssetMemoryActions.mockResolvedValue({
+      asset: { id: ASSET_ID, name: "Kitchen refrigerator" },
+      proposed: [],
+      alreadySpokenFor: 0,
+    });
+
+    await proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx);
+
+    expect(proposeAssetMemoryActions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: "user-1",
+        assetId: ASSET_ID,
+        source: "assistant",
+      }),
+    );
+  });
+
+  it("refuses a guessed asset name in the id slot", () => {
+    expect(
+      inputParser(proposeAssetActionsTool).safeParse({ assetId: "Kitchen fridge" }).success,
+    ).toBe(false);
+    expect(proposeAssetMemoryActions).not.toHaveBeenCalled();
+  });
+
+  it("never hands the model a raw database error", async () => {
+    proposeAssetMemoryActions.mockRejectedValue(LEAKY_STORE_ERROR);
+
+    await expect(proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx)).rejects.toThrow(
+      /could not read the user's records/i,
+    );
+  });
+
+  it("still passes a curated domain refusal through to the model", async () => {
+    // The rule is not "swallow errors" — it is "only a sentence the domain wrote for a
+    // person may reach the model". An archived asset must still say why it refused.
+    proposeAssetMemoryActions.mockRejectedValue(
+      new AssetValidationError("This asset is archived — restore it before proposing reminders."),
+    );
+
+    await expect(proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx)).rejects.toThrow(
+      /archived/i,
+    );
   });
 });
