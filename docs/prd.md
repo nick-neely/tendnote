@@ -1249,27 +1249,75 @@ Vertical slice issue seeds:
 
 Proof scenario:
 
-- A user captures that the refrigerator water filter needs replacing every six months. Tendnote stores source grounding, Eve proposes a Suggested General Action with Home Area, Routine recurrence, household scope, and a lightweight asset hint. The user reviews and accepts it, sees it in Actions, gets it surfaced when due, can retrieve it later through Eve/semantic search, and can receive scope-safe proactive or Discord delivery without introducing full Asset/Object Memory.
+- A user captures that the refrigerator water filter needs replacing every six months. Tendnote stores source grounding, Eve proposes a Suggested General Action with Home Area, Routine recurrence, household scope, and a lightweight asset hint. The user reviews and accepts it, sees it in Actions, gets it surfaced when due, can retrieve it later through Eve/semantic search, and can receive scope-safe proactive or Discord delivery without introducing full Asset Memory.
 
-#### Phase 6: Asset/Object Memory
+#### Phase 6: Asset Memory
 
-Goal: Add the second Personal OS vertical on top of the general reminders/actions foundation by supporting household items, appliances, vehicles, subscriptions, warranties, documents, and maintenance history without turning assets into people or flattening all domains into one vague table.
+Goal: Add the second Personal OS vertical on top of the general reminders/actions foundation by supporting Assets such as household items, appliances, vehicles, subscriptions, services, warranties, evidence, and maintenance history without turning assets into people, building a document manager, or flattening all domains into one vague table.
 
 Deliverables:
 
-- Asset/object records for practical owner-owned things
-- Source-record capture for receipts, photos, serial numbers, maintenance notes, warranties, and subscription details
-- General reminders/actions tied to assets, such as replacing filters, renewing warranties, inspecting a car, or canceling a subscription
-- Asset snapshots as rebuildable generated caches, not source of truth
-- Exact recall, semantic retrieval, and Eve responses over asset/object context with typed result contracts
+- Asset records for practical owner- or household-scoped managed resources, including items, appliances, vehicles, subscriptions, services, and property/place anchors where needed (ADR 0170)
+- Asset Visibility using Phase 4 private/shared/household scopes, where an Asset's scope is the broadest allowed visibility for child records and child records may be narrower (ADR 0179)
+- Asset lifecycle with archive as the normal inactive path and hard delete reserved for correction/privacy cases (ADR 0177)
+- Asset Memory as durable reviewed personal context anchored to Assets, with a small typed shape for structured values and freeform notes while keeping Relationship Memory as the person-centered variant of Memory (ADR 0181)
+- Suggested Assets and Suggested Asset Memories for inferred asset context, with direct creation reserved for explicit user intent and low-friction batch review for grouped low-risk suggestions (ADRs 0169, 0176)
+- Asset review reuse of the existing Review Queue, with expanded grouped-review UX for asset suggestions, evidence, links, duplicate prompts, and asset-derived Suggested General Actions rather than a separate asset inbox (ADR 0191)
+- Asset Duplicate Review during capture/review to suggest linking to existing Assets before creating near-duplicates, while deferring full Asset merge (ADR 0189)
+- Promotion or linking of Phase 5 General Action asset hints into lightweight Asset anchors before detailed Asset Memories exist (ADR 0168)
+- Lightweight Related Asset Links for explicit or reviewed relationships such as fits, uses, part of, replaces, covers, or stored with, without full asset hierarchy or graph behavior; inferred links are review-gated by default (ADRs 0174, 0175)
+- Lightweight Asset Person Links for useful context without making people the owners of assets or the source of asset visibility (ADR 0178)
+- Asset Evidence for receipts, photos, serial numbers, maintenance notes, warranties, manuals, links, retained extracted text, and subscription details, including a polished mobile-friendly image/upload/drop-zone foundation and lightweight Eve chat plus-menu capture without introducing document-library, file-manager, or full OCR/document-intelligence behavior (ADRs 0171, 0184, 0185)
+- Lightweight amount, currency, purchase date, renewal date, and receipt metadata for recall and evidence without finance, budget, reporting, tax, or subscription-management behavior (ADR 0182)
+- General Actions tied to Assets, such as replacing filters, renewing warranties, inspecting a car, or canceling a subscription, while reusing the Phase 5 action lifecycle; reviewed Asset Memories can propose Suggested General Actions for expirations, renewals, and maintenance intervals (ADR 0183)
+- Dedicated Assets surface and Asset Profiles as the coherent read home for asset context, with strong desktop/mobile browsing, sorting, filtering, pagination or incremental loading, and Actions, Review, Eve, and mobile capture deep-linking into the same profiles and review flows (ADR 0186)
+- Internal Asset Audit for writes, reviews, and automated proposals, distinct from user-facing Asset History (ADR 0192)
+- Asset Snapshots as rebuildable generated caches with citations to supporting records, not source of truth (ADR 0180)
+- Unified Asset Search UX over exact text, structured values, and fuzzy intent, backed by distinct typed exact-recall and semantic-retrieval contracts for UI and Eve (ADR 0187)
+- Proactive asset surfacing through existing review items, Suggested General Actions, scoped proactive summaries, and due asset-related General Actions without adding a standalone asset notification system or autonomous asset manager (ADR 0188)
+- Eve responses over asset context with typed result contracts
+- Targeted Eve asset evals and deterministic policy tests for scope, citations, snapshot boundaries, review-gated writes, related links, proactive surfacing, and shared Asset Evidence Capture (ADR 0193)
 
 Vertical slice issue seeds:
 
-- Add asset/object memory domain language and the smallest schema needed for useful asset anchors.
-- Link source records, memories, reminders/actions, and documents to assets without replacing people-first relationship records.
-- Add asset profile/read surface with source-grounded context and reminders/actions.
-- Extend capture, review, recall, semantic retrieval, snapshots, and Eve responses for assets.
-- Add maintenance/subscription reminder flows that reuse the general reminders/actions lifecycle.
+- Add Asset, Asset Kind, Asset Memory, Asset Evidence, Suggested Asset, and Suggested Asset Memory domain language plus the smallest schema needed for useful asset anchors.
+- Add internal Asset Audit for created, edited, accepted, dismissed, linked, archived, and proposed asset changes with actor, source, scope, and provenance.
+- Add Asset Visibility with deterministic scope filtering across Asset Memories, Asset Evidence, Related Asset Links, Asset Person Links, related General Actions, retrieval, and Eve outputs.
+- Add Asset archive/inactive behavior before hard delete, preserving useful memories, evidence, related links, actions, and history according to scope.
+- Expand Review Queue UX for grouped asset review by source/upload/session/Eve turn, including batch actions, inline edits, link-to-existing-asset prompts, and Assets-surface deep links.
+- Add Asset Duplicate Review so suggested or captured asset context can link to existing Assets before creating new anchors, while deferring full merge.
+- Link source records, Relationship Memories where relevant, General Actions, Asset Evidence, lightweight Related Asset Links, and lightweight Asset Person Links to Assets without replacing people-first relationship records.
+- Add the shared Asset Evidence Capture foundation with mobile image capture, drop-zone upload, Eve chat plus-menu camera/gallery/file entry points, evidence metadata, and attachment to Assets or asset review items, while deferring full OCR, image understanding, bulk document import, and document inboxes.
+- Add the Assets surface and Asset profile/read surface with source-grounded Asset Memories, Asset Evidence, related General Actions, links, archive state, Asset History, snapshot-backed summaries, responsive desktop/mobile UX, sorting/filtering, and pagination or incremental loading.
+- Extend capture, grouped review, Asset Search, exact recall, semantic retrieval, snapshots, and Eve responses for Assets and Asset Memories.
+- Add maintenance/subscription reminder flows that reuse the General Action lifecycle.
+- Add scoped proactive asset surfacing through existing review/action/proactive-summary channels, with capped explainable behavior tied to visible records.
+- Add asset policy tests and Eve evals for visibility filtering, citation/provenance, snapshot cache behavior, review-gated mutations, suggested action generation, related-link proposals, proactive surfacing, and Eve plus-menu evidence capture.
+
+First implementation chain:
+
+1. Asset domain/schema foundation, including Asset Kind, Asset Memory, Asset Evidence, Suggested Asset records, Suggested Asset Memory records, visibility scope, audit, archive state, and lightweight links.
+2. Review Queue expansion for grouped asset review, including Suggested Assets, Suggested Asset Memories, Related Asset Links, Asset Evidence, duplicate-review prompts, batch actions, and link-to-existing-asset flows.
+3. Shared Asset Evidence Capture foundation, including mobile image capture, drop-zone upload, Eve chat plus-menu camera/gallery/file entry points, evidence metadata, and attachment to Assets or asset review items.
+4. Assets surface and Asset Profiles, including responsive desktop/mobile browsing, sorting, filtering, pagination or incremental loading, archive state, Asset History, Asset Evidence, related actions, related assets, person links, and snapshot-backed summaries.
+5. General Action integration, including asset-linked actions, asset history rendering from action history, maintenance/subscription reminder proposals from reviewed Asset Memories, and Action Today/proactive-summary compatibility.
+6. Asset Search, exact recall, semantic retrieval, Asset Snapshots, and Eve asset tools/responses with typed result contracts and citations.
+7. Proactive asset surfacing, deterministic policy tests, and targeted Eve asset evals covering scope, provenance, snapshot boundaries, review-gated writes, related links, suggested actions, and shared Asset Evidence Capture.
+
+Proof scenario:
+
+- A user captures that the refrigerator water filter needs replacing every six months. Phase 5 may already have a General Action with a lightweight asset hint; Phase 6 promotes or links that hint to a real Asset. The user can add filter size, model, warranty, manual, receipt, or maintenance evidence later as reviewed Asset Memories and Asset Evidence, see replacement history on the Asset profile, ask Eve "what filter does the fridge need?", and preserve household scope across retrieval and proactive surfaces (ADR 0172). Cars and subscriptions are secondary scenarios, not the first implementation anchor.
+
+Deferred Asset Memory follow-ups:
+
+- Explicit automation or trusted-agent modes that reduce review friction for low-risk asset updates or related links. Phase 6 should keep review-gated defaults, grouped review, audit, and future undo semantics compatible with this direction rather than silently auto-applying inferred context.
+- Richer Asset Evidence intelligence, including OCR, image understanding, receipt parsing, manual/warranty extraction, bulk import, document inboxes, arbitrary file Q&A, and general multimodal chat memory.
+- External asset-context imports from providers such as Gmail receipts, Google Drive, Amazon/order history, banking/card transactions, Home Assistant, merchant accounts, or warranty/service portals. These are high-value follow-ups, but Phase 6 should first prove the manual/upload/link/source-record Asset Memory model while keeping provider-compatible provenance and minimization boundaries.
+- Full related-asset graph behavior, including asset hierarchies, component trees, inherited permissions, inventory rollups, cascading lifecycle rules, and graph workflows. Phase 6 only includes lightweight explicit or reviewed links.
+- Full Asset merge workflows that reconcile memories, evidence, actions, links, snapshots, embeddings, and audit history. Phase 6 only includes duplicate review/link-before-create prompts.
+- Full finance or subscription-management behavior, including budgets, spend analytics, tax workflows, renewal negotiation, account balances, subscription dashboards, and cancellation automation. Phase 6 only keeps lightweight amount, renewal, and receipt metadata for recall/evidence.
+- Standalone document library or file manager behavior. Asset Evidence should stay grounded in Asset profiles and review flows until a later Personal OS capture/document phase earns its own product surface.
+- Broader mobile Personal OS capture and Today behavior beyond the Asset Evidence capture foundation. Phase 7 remains the larger mobile-first operating layer.
 
 #### Phase 7: Personal OS Capture and Today Layer
 

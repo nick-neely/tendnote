@@ -1,0 +1,3 @@
+# Phase 6 Adds Dedicated Assets Surface
+
+Phase 6 should add a dedicated Assets surface with Asset Profiles as the coherent home for Asset Memories, Asset Evidence, related General Actions, Related Asset Links, Asset Person Links, archive state, Asset History, and snapshot-backed summaries. The Assets surface should have strong desktop and mobile UX for scanning, sorting, filtering by Asset Kind, lifecycle state, visibility, due-action/review status, and handling larger lists through pagination or incremental loading. Actions, Review, Eve, and mobile capture should remain contextual entry points that deep-link into Assets and asset review flows, rather than replacing the need for a dedicated asset read surface.
