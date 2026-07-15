@@ -19,8 +19,8 @@
     "@tendnote/db": "workspace:*",
     "@tendnote/domain": "workspace:*",
     "@vercel/queue": "^0.3.1",
-    "ai": "7.0.2",
-    "eve": "^0.24.0",
+    "ai": "7.0.28",
+    "eve": "^0.24.3",
     "zod": "^4.1.13"
   },
   "devDependencies": {
