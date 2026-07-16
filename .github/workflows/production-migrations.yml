@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  VERCEL_CLI_VERSION: 48.4.0
+  VERCEL_CLI_VERSION: 56.2.1
   VERCEL_ORG_ID: team_8INDibYV08yytiZJHcMuAaYO
   VERCEL_PROJECT_ID: prj_hdGusP01mnLoDvQc3CQ1gha2at7E
 
