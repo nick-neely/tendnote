@@ -1,9 +1,6 @@
-import { listAssetReviewGroups } from "@tendnote/db/queries/assets";
 import { getCurrentBrief } from "@tendnote/db/queries/briefs";
 import { listCalendarSuggestedFollowups } from "@tendnote/db/queries/calendar-followups";
 import { listActiveFollowups, listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
-import { listSuggestedGeneralActionReviews } from "@tendnote/db/queries/general-actions";
-import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { searchPeople } from "@tendnote/db/queries/people";
 import type { BriefCadence } from "@tendnote/domain";
 import { AppShell } from "@/components/app-shell";
@@ -11,21 +8,14 @@ import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { DashboardRail } from "@/components/dashboard-rail";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
-import { toAssetReviewGroupViewWithOrigin } from "@/lib/asset-review-origin";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
 import { toCalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
 import { toDashboardFollowupView } from "@/lib/followup-view";
 import { getOwnerCalendarPromptNudges } from "@/lib/integrations/calendar-prompt-nudges";
+import { loadOwnerReviewQueue } from "@/lib/review-queue.server";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
-import { toSuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
-import { toSuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
-
-// The dashboard surfaces the most important open suggestions, not all of them;
-// the long tail still lives on each person's ledger. Keeping the rail short keeps
-// it a calm prompt, not a backlog (PRD: 1–3 timely things by default).
-const DASHBOARD_REVIEW_LIMIT = 6;
 
 // A handful of the soonest active reminders — a calm prompt, not a task feed (#45).
 const DASHBOARD_FOLLOWUP_LIMIT = 5;
@@ -37,9 +27,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const requestedTab = (await searchParams)?.tab;
   const [
     people,
-    dashboardReviews,
-    dashboardActionReviews,
-    dashboardAssetReviews,
+    reviewQueue,
     dashboardFollowups,
     dashboardFollowupReviews,
     dashboardCalendarSuggestions,
@@ -48,9 +36,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     calendarNudges,
   ] = await Promise.all([
     searchPeople({ ownerUserId, limit: 8 }),
-    getDashboardReviews(ownerUserId),
-    getDashboardActionReviews(ownerUserId),
-    getDashboardAssetReviews(ownerUserId),
+    loadOwnerReviewQueue(ownerUserId),
     getDashboardFollowups(ownerUserId),
     getDashboardFollowupReviews(ownerUserId),
     getDashboardCalendarSuggestions(ownerUserId),
@@ -83,15 +69,13 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
               bar stays pinned), so the column itself is only height-bounded. */}
           <div className="order-2 lg:h-full lg:min-h-0">
             <DashboardRail
-              actionReviews={dashboardActionReviews}
-              assetReviews={dashboardAssetReviews}
               birthdays={birthdays}
               dailyBrief={dailyBrief}
               followupReviews={dashboardFollowupReviews}
               followups={dashboardFollowups}
               calendarSuggestions={dashboardCalendarSuggestions}
               people={people}
-              reviews={dashboardReviews}
+              reviewQueue={reviewQueue}
               weeklyBrief={weeklyBrief}
               initialTab={requestedTab === "review" ? "review" : "today"}
             />
@@ -165,61 +149,6 @@ async function getDashboardCalendarSuggestions(ownerUserId: string) {
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.warn("Unable to load Calendar suggested follow-ups.", error);
-    }
-
-    return [];
-  }
-}
-
-async function getDashboardReviews(ownerUserId: string) {
-  try {
-    // No personId → every open suggestion across people, ranked by importance
-    // then recency in the store. Person names are resolved by the caller.
-    const reviews = await listSuggestedMemoryReviews({
-      ownerUserId,
-      limit: DASHBOARD_REVIEW_LIMIT,
-    });
-
-    return reviews.map(toSuggestedMemoryReviewView);
-  } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("Unable to load suggested memory reviews.", error);
-    }
-
-    return [];
-  }
-}
-
-async function getDashboardAssetReviews(ownerUserId: string) {
-  try {
-    // A few of the newest pending Asset Review Groups — grouped asset review in
-    // the shared queue, one card per source context (#198).
-    const groups = await listAssetReviewGroups({ ownerUserId, limit: DASHBOARD_REVIEW_LIMIT });
-    return Promise.all(groups.map((group) => toAssetReviewGroupViewWithOrigin(group)));
-  } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("Unable to load asset review groups.", error);
-    }
-
-    return [];
-  }
-}
-
-async function getDashboardActionReviews(ownerUserId: string) {
-  try {
-    // A few of the newest Suggested actions for the shared Review Queue. Area names are
-    // resolved on the Actions surface, not here — the rail card is a compact glance.
-    const reviews = await listSuggestedGeneralActionReviews({
-      ownerUserId,
-      limit: DASHBOARD_REVIEW_LIMIT,
-    });
-
-    return reviews.map((review) =>
-      toSuggestedGeneralActionReviewView(review, { callerUserId: ownerUserId }),
-    );
-  } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("Unable to load Suggested action reviews.", error);
     }
 
     return [];
