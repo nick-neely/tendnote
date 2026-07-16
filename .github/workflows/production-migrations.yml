@@ -206,7 +206,7 @@ jobs:
     needs:
       - staged-deployment
       - release-gate
-    if: needs.release-gate.result == 'success'
+    if: always() && needs.release-gate.result == 'success' && needs.staged-deployment.result == 'success'
     steps:
       - name: Promote verified deployment to production
         env:
