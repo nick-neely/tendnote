@@ -11,14 +11,16 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "fallow": "fallow audit",
-    "fallow:ci": "fallow audit --ci",
+    "fallow:ci": "fallow audit --ci --coverage coverage/coverage-final.json",
     "fallow:dead-code": "fallow dead-code",
     "fallow:dupes": "fallow dupes",
     "fallow:health": "fallow health --score --hotspots",
+    "fallow:coverage:check": "node scripts/assert-fallow-coverage.mjs",
+    "coverage:ci": "node scripts/collect-test-coverage.mjs",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "typecheck": "turbo typecheck",
-    "test": "turbo test",
+    "test": "vitest run scripts/*.test.ts && turbo test",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
@@ -30,9 +32,12 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
+    "@vitest/coverage-istanbul": "^4.1.9",
     "fallow": "^2.102.0",
+    "istanbul-lib-coverage": "^3.2.2",
     "turbo": "^2.6.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
   },
   "volta": {
     "node": "24.18.0"

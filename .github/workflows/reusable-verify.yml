@@ -111,6 +111,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Fallow uses this Istanbul map for exact per-function CRAP scores. Keep
+      # coverage collection immediately before the audit so it cannot regress
+      # to reference-based coverage estimates unnoticed. The four suites run
+      # concurrently; the complete local run measured about 20 seconds.
+      - name: Collect test coverage
+        run: pnpm coverage:ci
+
+      - name: Confirm exact CRAP scoring
+        run: pnpm fallow:coverage:check
+
       - name: Run Fallow audit
         run: pnpm fallow:ci
 
