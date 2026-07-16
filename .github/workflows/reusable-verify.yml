@@ -113,8 +113,9 @@ jobs:
 
       # Fallow uses this Istanbul map for exact per-function CRAP scores. Keep
       # coverage collection immediately before the audit so it cannot regress
-      # to reference-based coverage estimates unnoticed. The four suites run
-      # concurrently; the complete local run measured about 20 seconds.
+      # to reference-based coverage estimates unnoticed. Workspaces run one at
+      # a time: four concurrent Vitest processes overwhelm the two-core runner
+      # and can destabilize async DOM tests instead of making this job faster.
       - name: Collect test coverage
         run: pnpm coverage:ci
 

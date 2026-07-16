@@ -8,10 +8,10 @@ const { createCoverageMap } = istanbulCoverage;
 const repoRoot = resolve(import.meta.dirname, "..");
 const coverageRoot = join(repoRoot, "coverage");
 const workspaces = [
+  { directory: "packages/domain", include: ["src/**/*.ts"] },
+  { directory: "packages/db", include: ["src/**/*.ts"] },
   { directory: "apps/agent", include: ["agent/**/*.ts", "scripts/**/*.mjs"] },
   { directory: "apps/web", include: ["src/**/*.{ts,tsx}"] },
-  { directory: "packages/db", include: ["src/**/*.ts"] },
-  { directory: "packages/domain", include: ["src/**/*.ts"] },
 ];
 
 function collectWorkspace({ directory, include }) {
@@ -49,7 +49,10 @@ function collectWorkspace({ directory, include }) {
 await rm(coverageRoot, { recursive: true, force: true });
 await mkdir(coverageRoot, { recursive: true });
 
-const reports = await Promise.all(workspaces.map(collectWorkspace));
+const reports = [];
+for (const workspace of workspaces) {
+  reports.push(await collectWorkspace(workspace));
+}
 const merged = createCoverageMap({});
 for (const report of reports) {
   merged.merge(JSON.parse(await readFile(report, "utf8")));

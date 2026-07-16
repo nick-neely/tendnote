@@ -24,6 +24,13 @@ describe("Fallow CI coverage contract (#193)", () => {
     expect(collector).toContain("coverage-final.json");
   });
 
+  it("collects workspaces sequentially so CI resource contention cannot destabilize DOM tests", () => {
+    const collector = read("scripts/collect-test-coverage.mjs");
+
+    expect(collector).not.toContain("Promise.all(workspaces.map(collectWorkspace))");
+    expect(collector).toContain("reports.push(await collectWorkspace(workspace))");
+  });
+
   it("proves exact covered and uncovered CRAP behavior before the audit", () => {
     const rootPackage = JSON.parse(read("package.json"));
     const workflow = read(".github/workflows/reusable-verify.yml");
