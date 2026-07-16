@@ -17,7 +17,7 @@ function item(family: ReviewQueueItem["family"], id: string): ReviewQueueItem {
 }
 
 describe("Review Queue", () => {
-  it("collects owner-scoped families into one globally bounded, stable order", async () => {
+  it("collects owner-scoped families into one globally bounded, fair order", async () => {
     const loadMemories = vi
       .fn()
       .mockResolvedValue([
@@ -42,12 +42,41 @@ describe("Review Queue", () => {
     expect(loadAssetGroups).toHaveBeenCalledWith({ ownerUserId: "owner-1", limit: 4 });
     expect(queue.items.map(({ family, id }) => `${family}:${id}`)).toEqual([
       "suggested-memory:memory-first",
-      "suggested-memory:memory-second",
       "suggested-general-action:action-first",
-      "suggested-general-action:action-second",
+      "asset-review-group:asset-first",
+      "suggested-memory:memory-second",
     ]);
     expect(queue.count).toBe(4);
     expect(queue.failures).toEqual([]);
+  });
+
+  it("does not let saturated memory reviews hide action and Asset work", async () => {
+    const queue = await loadReviewQueue(
+      { ownerUserId: "owner-1", limit: 6 },
+      {
+        loadMemories: vi
+          .fn()
+          .mockResolvedValue(
+            Array.from({ length: 6 }, (_, index) =>
+              item("suggested-memory", `memory-${index + 1}`),
+            ),
+          ),
+        loadGeneralActions: vi
+          .fn()
+          .mockResolvedValue([item("suggested-general-action", "action-1")]),
+        loadAssetGroups: vi.fn().mockResolvedValue([item("asset-review-group", "asset-1")]),
+      },
+    );
+
+    expect(queue.items.map(({ family, id }) => `${family}:${id}`)).toEqual([
+      "suggested-memory:memory-1",
+      "suggested-general-action:action-1",
+      "asset-review-group:asset-1",
+      "suggested-memory:memory-2",
+      "suggested-memory:memory-3",
+      "suggested-memory:memory-4",
+    ]);
+    expect(queue.count).toBe(6);
   });
 
   it("keeps successful families when one family fails", async () => {

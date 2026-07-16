@@ -44,6 +44,38 @@ export type ReviewQueueDependencies = {
   loadAssetGroups: (input: LoadFamilyInput) => Promise<ReviewQueueItem[]>;
 };
 
+function interleaveFamilies(
+  families: PromiseSettledResult<ReviewQueueItem[]>[],
+  limit: number,
+): ReviewQueueItem[] {
+  const items: ReviewQueueItem[] = [];
+
+  for (let familyIndex = 0; items.length < limit; familyIndex += 1) {
+    let addedItem = false;
+
+    for (const family of families) {
+      if (family.status !== "fulfilled") {
+        continue;
+      }
+
+      const item = family.value[familyIndex];
+      if (item) {
+        items.push(item);
+        addedItem = true;
+      }
+      if (items.length === limit) {
+        break;
+      }
+    }
+
+    if (!addedItem) {
+      break;
+    }
+  }
+
+  return items;
+}
+
 /**
  * The Review Queue's owner-scoped public collection seam.
  *
@@ -67,9 +99,9 @@ export async function loadReviewQueue(
     "suggested-general-action",
     "asset-review-group",
   ];
-  const items = families
-    .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
-    .slice(0, limit);
+  // Stable round-robin keeps each loader's trust-aware ordering while ensuring a
+  // saturated family cannot consume the calm global bound by itself.
+  const items = interleaveFamilies(families, limit);
   const failures = families.flatMap((result, index) => {
     const failedFamily = names[index];
     return result.status === "rejected" && failedFamily ? [failedFamily] : [];

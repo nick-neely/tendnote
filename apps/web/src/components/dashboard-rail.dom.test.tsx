@@ -14,6 +14,7 @@ type MockActionCardProps = {
 type MockAssetCardProps = {
   review: { groupId: string; asset: { name: string } };
   onResolve: (id: string) => void;
+  onUpdate: (review: MockAssetCardProps["review"]) => void;
 };
 
 vi.mock("@/app/actions/memory-review", () => ({
@@ -47,9 +48,15 @@ vi.mock("@/components/suggested-general-action-review", () => ({
   ),
 }));
 vi.mock("@/components/asset-review-group-card", () => ({
-  AssetReviewGroupCard: ({ review, onResolve }: MockAssetCardProps) => (
+  AssetReviewGroupCard: ({ review, onResolve, onUpdate }: MockAssetCardProps) => (
     <article data-testid={`asset-${review.groupId}`}>
       {review.asset.name}
+      <button
+        onClick={() => onUpdate({ ...review, asset: { name: "Existing boiler" } })}
+        type="button"
+      >
+        Link asset
+      </button>
       <button onClick={() => onResolve(review.groupId)} type="button">
         Resolve asset
       </button>
@@ -142,6 +149,25 @@ describe("DashboardRail Review Queue", () => {
     expect(screen.queryByTestId("action-shared-id")).toBeNull();
     expect(screen.getByText("Memory content")).toBeDefined();
     expect(screen.getByRole("tab", { name: "Review2" })).toBeDefined();
+  });
+
+  it("updates only the grouped Asset selected when family ids collide", () => {
+    renderRail({
+      items: [
+        queueItem("suggested-memory", "shared-id"),
+        queueItem("suggested-general-action", "shared-id"),
+        queueItem("asset-review-group", "shared-id"),
+      ],
+      count: 3,
+      failures: [],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Link asset" }));
+
+    expect(screen.getByTestId("asset-shared-id").textContent).toContain("Existing boiler");
+    expect(screen.getByTestId("action-shared-id").textContent).toContain("Action title");
+    expect(screen.getByText("Memory content")).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Review3" })).toBeDefined();
   });
 
   it("routes memory and grouped Asset resolution through their discriminated identities", async () => {
