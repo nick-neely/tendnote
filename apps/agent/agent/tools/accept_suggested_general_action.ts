@@ -4,6 +4,7 @@ import { z } from "zod";
 import { buildGeneralActionEdit } from "../lib/general-action-edit";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   generalActionId: z.uuid().describe("The persisted suggested action id to accept."),
@@ -37,12 +38,14 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const result = await acceptSuggestedGeneralAction({
-      actorUserId: ownerUserId,
-      generalActionId: input.generalActionId,
-      // The correction is a subset of the shared edit fields; map it the same way.
-      edit: input.edit ? buildGeneralActionEdit(input.edit) : undefined,
-    });
+    const result = await withModelSafeStoreErrors(() =>
+      acceptSuggestedGeneralAction({
+        actorUserId: ownerUserId,
+        generalActionId: input.generalActionId,
+        // The correction is a subset of the shared edit fields; map it the same way.
+        edit: input.edit ? buildGeneralActionEdit(input.edit) : undefined,
+      }),
+    );
 
     return {
       component: result.component,

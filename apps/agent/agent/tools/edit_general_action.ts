@@ -5,6 +5,7 @@ import { z } from "zod";
 import { buildGeneralActionEdit } from "../lib/general-action-edit";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   generalActionId: z
@@ -57,11 +58,13 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const action = await editGeneralAction({
-      actorUserId: ownerUserId,
-      generalActionId: input.generalActionId,
-      edit: buildGeneralActionEdit(input),
-    });
+    const action = await withModelSafeStoreErrors(() =>
+      editGeneralAction({
+        actorUserId: ownerUserId,
+        generalActionId: input.generalActionId,
+        edit: buildGeneralActionEdit(input),
+      }),
+    );
 
     return { action: toGeneralActionRef(action) };
   },

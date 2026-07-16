@@ -8,10 +8,12 @@ import {
   reopenGeneralAction,
   resumeGeneralAction,
 } from "@tendnote/db/queries/general-actions";
+import { GeneralActionValidationError } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   generalActionId: z
@@ -56,7 +58,9 @@ function applyTransition(
       return resumeGeneralAction({ actorUserId: ownerUserId, generalActionId });
     case "defer": {
       if (!input.deferUntil) {
-        throw new Error("Deferring an action needs a concrete resurface date.");
+        throw new GeneralActionValidationError(
+          "Deferring an action needs a concrete resurface date.",
+        );
       }
       // Parsed here; the shared layer rejects anything that isn't a concrete date.
       return deferGeneralAction({
@@ -83,7 +87,7 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const action = await applyTransition(input, ownerUserId);
+    const action = await withModelSafeStoreErrors(() => applyTransition(input, ownerUserId));
 
     return { action: toGeneralActionRef(action) };
   },

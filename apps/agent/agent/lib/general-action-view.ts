@@ -37,13 +37,14 @@ export function toGeneralActionRef(action: GeneralActionWithContext) {
 export type GeneralActionRef = ReturnType<typeof toGeneralActionRef>;
 
 /**
- * The model-facing projection of a General Action reference: drops the raw id (the
- * model is told never to surface ids) and the linked-people ids, keeping the title,
- * status, timing, cadence, and person names it needs to write a natural reply. The
- * channel still receives the full {@link toGeneralActionRef} output for rendering.
+ * The model-facing projection of a General Action reference. The persisted action id
+ * is deliberately retained because several follow-up tools require it; the always-on
+ * instructions keep ids out of prose. Linked-person ids remain omitted because no
+ * General Action follow-up tool consumes them.
  */
 export function toGeneralActionModelRef(ref: GeneralActionRef) {
   return {
+    id: ref.id,
     title: ref.title,
     status: ref.status,
     dueAt: ref.dueAt,

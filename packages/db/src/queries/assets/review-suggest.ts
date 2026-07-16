@@ -1,9 +1,4 @@
-import {
-  type AssetMemory,
-  type AssetMemoryScope,
-  AssetValidationError,
-  requireChildScopeWithinAsset,
-} from "@tendnote/domain";
+import { type AssetMemory, AssetValidationError } from "@tendnote/domain";
 import { recordAudit, resolveAssetVisibility } from "./lifecycle";
 import {
   buildGroupResult,
@@ -19,6 +14,7 @@ import type {
   SuggestAssetInput,
   SuggestAssetMemoriesInput,
 } from "./review-types";
+import { resolveAssetChildVisibility, writeAssetChildShares } from "./review-visibility";
 
 /**
  * The write entry points for Asset Memory (#198): inferred context enters as
@@ -121,9 +117,13 @@ export async function createActiveAssetMemory(
 ): Promise<AssetMemory> {
   const anchor = await requireActiveAnchor(store, input.ownerUserId, input.assetId);
 
-  // Explicit creation defaults to private — widening is always a choice.
-  const scope: AssetMemoryScope = input.scope ?? "private";
-  requireChildScopeWithinAsset({ childScope: scope, assetScope: anchor.scope });
+  const visibility = await resolveAssetChildVisibility(store, {
+    ownerUserId: input.ownerUserId,
+    anchor,
+    // Explicit creation remains private unless the user widens it.
+    scope: input.scope ?? "private",
+    selectedUserIds: input.selectedUserIds,
+  });
 
   const memory = await store.createAssetMemory({
     assetId: anchor.id,
@@ -132,12 +132,19 @@ export async function createActiveAssetMemory(
     label: input.label,
     value: input.value ?? null,
     notes: input.notes ?? null,
-    scope,
-    householdId: scope === "household" ? anchor.householdId : null,
+    scope: visibility.scope,
+    householdId: visibility.householdId,
     sourceRecordId: input.sourceRecordId ?? null,
     reviewGroupId: null,
     createdByUserId: input.ownerUserId,
     lastActorUserId: input.ownerUserId,
+  });
+
+  await writeAssetChildShares(store, {
+    ...visibility,
+    ownerUserId: input.ownerUserId,
+    recordKind: "asset_memory",
+    recordId: memory.id,
   });
 
   await recordAudit(store, anchor, {

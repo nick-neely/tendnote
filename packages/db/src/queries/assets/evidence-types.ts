@@ -101,6 +101,8 @@ export type AddAssetEvidenceInput = {
   renewsOn?: string | null;
   /** Defaults to the anchor's scope where supported (household), else private. */
   scope?: AssetChildScope;
+  /** Required when choosing a selected-member audience under a household Asset. */
+  selectedUserIds?: string[];
   sourceRecordId?: string | null;
   source?: AssetAuditSource;
 };

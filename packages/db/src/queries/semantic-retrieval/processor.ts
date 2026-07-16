@@ -28,7 +28,7 @@ export { fingerprintEmbeddedText } from "./steps";
 export const DEFAULT_EMBEDDING_RETRY_DELAY_MS = 5 * 60 * 1000;
 export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
   model: "fake-semantic-retrieval",
-  version: "v1",
+  version: "v2",
 };
 
 const CLAIMABLE_STATUSES = new Set(claimableEmbeddingJobStatuses);

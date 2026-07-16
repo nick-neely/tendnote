@@ -10,6 +10,7 @@ import {
   listPendingAssetActionProposals,
   listRelatedAssetLinks,
 } from "@tendnote/db/queries/assets";
+import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
 import { searchPeople } from "@tendnote/db/queries/people";
 import type { AssetMemory, AssetSnapshotSupportingReferences } from "@tendnote/domain";
 import { ArrowLeftIcon } from "lucide-react";
@@ -65,6 +66,7 @@ async function loadAssetProfile(callerUserId: string, assetId: string) {
     visibleAssets,
     people,
     snapshot,
+    shareableMembers,
   ] = await Promise.all([
     listAssetMemories({ callerUserId, assetId }),
     listAssetEvidence({ callerUserId, assetId }),
@@ -81,15 +83,26 @@ async function loadAssetProfile(callerUserId: string, assetId: string) {
     // The snapshot-backed summary. Read-through and fail-open: a stale, missing, or
     // failed snapshot degrades to no card at all, and the records below still render.
     getAssetSnapshot({ callerUserId, assetId }),
+    listShareableHouseholdMembersForUser({ userId: callerUserId }),
   ]);
 
   const now = new Date();
   const view = toAssetView(asset, { callerUserId });
+  const parentAudience = new Set([asset.ownerUserId, ...asset.sharedWithUserIds]);
+  const evidenceAudienceMembers =
+    asset.scope === "shared"
+      ? shareableMembers.filter((member) => parentAudience.has(member.userId))
+      : shareableMembers;
   return {
     memories,
     people,
     view,
     snapshot,
+    shareableMembers: evidenceAudienceMembers.map((member) => ({
+      userId: member.userId,
+      name: member.name,
+      email: member.email,
+    })),
     // Proposing reminders is owner-only review state, and pointless on an archived
     // asset — a sold car should not be proposing oil changes (#203).
     canPropose: view.owned && !view.archived,
@@ -331,6 +344,7 @@ function AssetProfileSections({ assetId, profile }: { assetId: string; profile: 
           assetScope={view.scope}
           canCapture={view.owned && !view.archived}
           initialEvidence={evidenceViews}
+          shareableMembers={profile.shareableMembers}
         />
       </ProfileSection>
 

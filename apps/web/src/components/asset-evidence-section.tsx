@@ -7,6 +7,7 @@ import { removeAssetEvidenceAction } from "@/app/actions/asset-evidence";
 import { AssetEvidenceCapture } from "@/components/asset-evidence-capture";
 import { AssetEvidenceRow } from "@/components/asset-evidence-shared";
 import { GENERIC_ERROR } from "@/components/general-action-shared";
+import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import type { AssetEvidenceView } from "@/lib/asset-evidence-view";
 import { useMutationSubmit } from "@/lib/use-mutation-submit";
@@ -23,12 +24,14 @@ export function AssetEvidenceSection({
   assetScope,
   initialEvidence,
   canCapture,
+  shareableMembers = [],
 }: {
   assetId: string;
   assetScope: PrivacyScope;
   initialEvidence: AssetEvidenceView[];
   /** Capture is for the asset's owner while it is active; viewers just read. */
   canCapture: boolean;
+  shareableMembers?: ShareableActionMember[];
 }) {
   const router = useRouter();
   const [evidence, setEvidence] = useState(initialEvidence);
@@ -78,6 +81,7 @@ export function AssetEvidenceSection({
             setEvidence((current) => [...current, view]);
             router.refresh();
           }}
+          shareableMembers={shareableMembers}
           target={{ assetId }}
         />
       ) : null}

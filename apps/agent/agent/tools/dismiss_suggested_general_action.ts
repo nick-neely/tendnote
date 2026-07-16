@@ -2,6 +2,7 @@ import { dismissSuggestedGeneralAction } from "@tendnote/db/queries/general-acti
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   generalActionId: z.uuid().describe("The persisted suggested action id to dismiss."),
@@ -19,10 +20,12 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const action = await dismissSuggestedGeneralAction({
-      actorUserId: ownerUserId,
-      generalActionId: input.generalActionId,
-    });
+    const action = await withModelSafeStoreErrors(() =>
+      dismissSuggestedGeneralAction({
+        actorUserId: ownerUserId,
+        generalActionId: input.generalActionId,
+      }),
+    );
 
     return {
       action: {
@@ -39,6 +42,7 @@ export default defineTool({
       type: "json" as const,
       value: {
         dismissed: true,
+        id: output.action.id,
         title: output.action.title,
         status: output.action.status,
         guidance: "Confirm briefly in prose that the suggestion was set aside.",

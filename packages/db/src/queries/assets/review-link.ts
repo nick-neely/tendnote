@@ -1,9 +1,4 @@
-import {
-  type Asset,
-  AssetValidationError,
-  isDurableAssetStatus,
-  resolveLinkedChildVisibility,
-} from "@tendnote/domain";
+import { type Asset, AssetValidationError, isDurableAssetStatus } from "@tendnote/domain";
 import { recordAudit } from "./lifecycle";
 import { buildGroupResult, listPendingMemories, loadAnchor, requireGroup } from "./review-shared";
 import type {
@@ -11,6 +6,10 @@ import type {
   AssetReviewLifecycleStore,
   LinkAssetReviewGroupInput,
 } from "./review-types";
+import {
+  replaceReanchoredAssetChildShares,
+  resolveReanchoredAssetChildVisibility,
+} from "./review-visibility";
 
 /**
  * Duplicate review's link-to-existing resolution (#198): instead of promoting a
@@ -104,7 +103,11 @@ export async function linkAssetReviewGroup(
   const pending = await listPendingMemories(store, group);
   for (const memory of pending) {
     // Visibility is clamped to what the target allows — linking never widens.
-    const visibility = resolveLinkedChildVisibility({ childScope: memory.scope, target });
+    const visibility = await resolveReanchoredAssetChildVisibility(store, {
+      child: memory,
+      recordKind: "asset_memory",
+      target,
+    });
     await store.updateAssetMemory({
       ownerUserId: memory.ownerUserId,
       memoryId: memory.id,
@@ -115,6 +118,13 @@ export async function linkAssetReviewGroup(
         lastActorUserId: input.actorUserId,
       },
     });
+    await replaceReanchoredAssetChildShares(store, {
+      ...visibility,
+      previousHouseholdId: memory.householdId,
+      ownerUserId: memory.ownerUserId,
+      recordKind: "asset_memory",
+      recordId: memory.id,
+    });
   }
 
   // The group's captured evidence rides along, under the same clamp (#200).
@@ -123,7 +133,11 @@ export async function linkAssetReviewGroup(
     reviewGroupId: group.id,
   });
   for (const record of evidence) {
-    const visibility = resolveLinkedChildVisibility({ childScope: record.scope, target });
+    const visibility = await resolveReanchoredAssetChildVisibility(store, {
+      child: record,
+      recordKind: "asset_evidence",
+      target,
+    });
     await store.updateAssetEvidence({
       ownerUserId: record.ownerUserId,
       evidenceId: record.id,
@@ -133,6 +147,13 @@ export async function linkAssetReviewGroup(
         householdId: visibility.householdId,
         lastActorUserId: input.actorUserId,
       },
+    });
+    await replaceReanchoredAssetChildShares(store, {
+      ...visibility,
+      previousHouseholdId: record.householdId,
+      ownerUserId: record.ownerUserId,
+      recordKind: "asset_evidence",
+      recordId: record.id,
     });
   }
 

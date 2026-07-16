@@ -67,8 +67,8 @@ describe("asset memory schema", () => {
     expect(() => createAssetMemorySchema.parse({ ...BASE, value: null })).toThrow();
   });
 
-  it("restricts memory visibility to private or household in this slice", () => {
-    expect(() => createAssetMemorySchema.parse({ ...BASE, scope: "shared" })).toThrow();
+  it("supports private, selected-member, and household visibility", () => {
+    expect(createAssetMemorySchema.parse({ ...BASE, scope: "shared" }).scope).toBe("shared");
   });
 
   it("round-trips a persisted memory", () => {
@@ -146,7 +146,7 @@ describe("child-scope ceiling (#196)", () => {
 
   it("defaults a memory to its asset's scope where this slice supports it, else private", () => {
     expect(defaultChildScopeForAsset("household")).toBe("household");
-    expect(defaultChildScopeForAsset("shared")).toBe("private");
+    expect(defaultChildScopeForAsset("shared")).toBe("shared");
     expect(defaultChildScopeForAsset("private")).toBe("private");
   });
 
@@ -167,5 +167,20 @@ describe("child-scope ceiling (#196)", () => {
         target: householdTarget,
       }),
     ).toEqual({ scope: "private", householdId: null });
+    expect(
+      resolveLinkedChildVisibility({
+        childScope: "shared",
+        target: { scope: "shared", householdId: "hh-1" },
+      }),
+    ).toEqual({ scope: "shared", householdId: "hh-1" });
+    expect(resolveLinkedChildVisibility({ childScope: "shared", target: householdTarget })).toEqual(
+      { scope: "shared", householdId: "hh-1" },
+    );
+    expect(
+      resolveLinkedChildVisibility({
+        childScope: "household",
+        target: { scope: "shared", householdId: "hh-1" },
+      }),
+    ).toEqual({ scope: "shared", householdId: "hh-1" });
   });
 });

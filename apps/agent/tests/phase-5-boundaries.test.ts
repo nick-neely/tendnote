@@ -372,6 +372,44 @@ describe("Phase 5 boundary — Eve exposes a bounded, single-record General Acti
       expect(existsSync(join(repoRoot, evalFile)), `${evalFile} present`).toBe(true);
     }
   });
+
+  it("gives every id-taking tool a reachable persisted action id", () => {
+    const projection = stripComments(read("apps/agent/agent/lib/general-action-view.ts"));
+    expect(projection).toMatch(/id:\s*ref\.id/);
+
+    const idSources = [
+      "list_general_actions.ts",
+      "list_suggested_general_action_reviews.ts",
+      "get_suggested_general_action_review.ts",
+      "plan_suggested_general_actions.ts",
+    ];
+    for (const file of idSources) {
+      expect(stripComments(read(`apps/agent/agent/tools/${file}`))).toMatch(
+        /toGeneralActionModelRef/,
+      );
+    }
+
+    const idConsumers = [
+      "update_general_action_status.ts",
+      "edit_general_action.ts",
+      "get_suggested_general_action_review.ts",
+      "accept_suggested_general_action.ts",
+      "dismiss_suggested_general_action.ts",
+    ];
+    for (const file of idConsumers) {
+      expect(stripComments(read(`apps/agent/agent/tools/${file}`))).toMatch(
+        /generalActionId:\s*z\s*\.uuid\(/,
+      );
+    }
+  });
+
+  it("curates store failures before every General Action tool can return them to the model", () => {
+    for (const path of GENERAL_ACTION_TOOL_FILES) {
+      expect(stripComments(read(path)), `${path} wraps its store calls`).toMatch(
+        /withModelSafeStoreErrors/,
+      );
+    }
+  });
 });
 
 describe("Phase 5 boundary — the governing ADRs are present", () => {

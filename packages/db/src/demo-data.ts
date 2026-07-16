@@ -23,7 +23,7 @@ const at = (iso: string) => new Date(iso);
 const now = at("2026-06-24T12:00:00.000Z");
 const demoOwnerUserId = "demo-user";
 const embeddingModel = "fake-semantic-retrieval";
-const embeddingVersion = "v1";
+const embeddingVersion = "v2";
 
 type DemoPerson = typeof people.$inferInsert;
 type DemoContactMethod = typeof contactMethods.$inferInsert;

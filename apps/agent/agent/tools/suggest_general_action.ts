@@ -4,6 +4,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   title: z
@@ -65,18 +66,20 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const result = await suggestGeneralAction({
-      ownerUserId,
-      title: input.title,
-      notes: input.notes ?? null,
-      dueAt: input.dueAt ? new Date(input.dueAt) : null,
-      recurrence: input.recurrence ?? null,
-      areaId: input.areaId ?? null,
-      personIds: input.personIds,
-      links: input.links,
-      sourceRecordId: input.sourceRecordId,
-      directlyRequested: input.directlyRequested,
-    });
+    const result = await withModelSafeStoreErrors(() =>
+      suggestGeneralAction({
+        ownerUserId,
+        title: input.title,
+        notes: input.notes ?? null,
+        dueAt: input.dueAt ? new Date(input.dueAt) : null,
+        recurrence: input.recurrence ?? null,
+        areaId: input.areaId ?? null,
+        personIds: input.personIds,
+        links: input.links,
+        sourceRecordId: input.sourceRecordId,
+        directlyRequested: input.directlyRequested,
+      }),
+    );
 
     return {
       found: true as const,

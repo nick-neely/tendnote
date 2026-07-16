@@ -27,6 +27,8 @@ export type AssetPatch = Partial<
 export type AssetWithContext = Asset & {
   /** How many members a `shared` Asset is shared with; 0 for other scopes. */
   sharedWithCount: number;
+  /** Selected member ids for a `shared` Asset; empty for other scopes. */
+  sharedWithUserIds: string[];
   /** The household's name for a `shared`/`household` Asset, when one exists. */
   householdName: string | null;
 };

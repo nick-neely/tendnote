@@ -4,6 +4,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   title: z
@@ -64,18 +65,20 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const action = await createGeneralAction({
-      ownerUserId,
-      title: input.title,
-      notes: input.notes ?? null,
-      // Parsed here; the shared layer treats a General Action as unscheduled when absent.
-      dueAt: input.dueAt ? new Date(input.dueAt) : null,
-      recurrence: input.recurrence ?? null,
-      areaId: input.areaId ?? null,
-      personIds: input.personIds,
-      links: input.links,
-      sourceRecordId: input.sourceRecordId ?? null,
-    });
+    const action = await withModelSafeStoreErrors(() =>
+      createGeneralAction({
+        ownerUserId,
+        title: input.title,
+        notes: input.notes ?? null,
+        // Parsed here; the shared layer treats a General Action as unscheduled when absent.
+        dueAt: input.dueAt ? new Date(input.dueAt) : null,
+        recurrence: input.recurrence ?? null,
+        areaId: input.areaId ?? null,
+        personIds: input.personIds,
+        links: input.links,
+        sourceRecordId: input.sourceRecordId ?? null,
+      }),
+    );
 
     return { action: toGeneralActionRef(action) };
   },

@@ -109,13 +109,13 @@ describe("create_general_action — explicit active creation", () => {
     expect(result.action.recurrence).toBe("Every 6 months");
   });
 
-  it("hides the raw id but keeps the title in the model view", () => {
+  it("keeps the action id for follow-up tool calls and the title for prose", () => {
     const model = createTool.toModelOutput?.({ action: { ...toRef() } } as never) as {
       value: unknown;
     };
     const serialized = JSON.stringify(model.value);
     expect(serialized).toContain("Replace the fridge water filter");
-    expect(serialized).not.toContain(ACTION_ID);
+    expect(serialized).toContain(ACTION_ID);
   });
 });
 

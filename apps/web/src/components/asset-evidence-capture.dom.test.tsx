@@ -182,21 +182,27 @@ describe("AssetEvidenceCapture", () => {
     expect(formData.get("url")).toBe("https://example.com/manual.pdf");
   });
 
-  it("offers the keep-private narrowing only under a household asset", async () => {
+  it("offers a real child audience choice under a household asset", async () => {
     const user = userEvent.setup();
     addAssetEvidenceAction.mockResolvedValue({ ok: true, view: evidenceView() });
     const { unmount } = render(
-      <AssetEvidenceCapture assetScope="household" onAdded={vi.fn()} target={{ assetId: "a-1" }} />,
+      <AssetEvidenceCapture
+        assetScope="household"
+        onAdded={vi.fn()}
+        shareableMembers={[{ userId: "member-1", name: "Mara", email: "mara@example.com" }]}
+        target={{ assetId: "a-1" }}
+      />,
     );
 
     await user.upload(browseInput(), pngFile());
-    const checkbox = screen.getByRole("checkbox", { name: /keep this just for me/i });
-    await user.click(checkbox);
+    await user.click(screen.getByRole("radio", { name: /specific people/i }));
+    await user.click(screen.getByRole("checkbox", { name: /mara/i }));
     await user.click(screen.getByRole("button", { name: /attach evidence/i }));
 
     await waitFor(() => expect(addAssetEvidenceAction).toHaveBeenCalled());
     const formData = addAssetEvidenceAction.mock.calls[0]?.[0] as FormData;
-    expect(formData.get("keepPrivate")).toBe("true");
+    expect(formData.get("visibilityChoice")).toBe("selected_members");
+    expect(formData.getAll("selectedUserIds")).toEqual(["member-1"]);
     unmount();
 
     // A private asset has nothing to narrow — the choice never renders.
@@ -204,7 +210,34 @@ describe("AssetEvidenceCapture", () => {
       <AssetEvidenceCapture assetScope="private" onAdded={vi.fn()} target={{ assetId: "a-1" }} />,
     );
     await user.upload(browseInput(), pngFile());
-    expect(screen.queryByRole("checkbox", { name: /keep this just for me/i })).toBeNull();
+    expect(screen.queryByRole("group", { name: /visibility/i })).toBeNull();
+  });
+
+  it("shows and allows narrowing the inherited audience under a shared asset", async () => {
+    const user = userEvent.setup();
+    addAssetEvidenceAction.mockResolvedValue({ ok: true, view: evidenceView() });
+    render(
+      <AssetEvidenceCapture
+        assetScope="shared"
+        onAdded={vi.fn()}
+        shareableMembers={[
+          { userId: "member-1", name: "Mara", email: "mara@example.com" },
+          { userId: "member-2", name: "Noah", email: "noah@example.com" },
+        ]}
+        target={{ assetId: "a-1" }}
+      />,
+    );
+
+    await user.upload(browseInput(), pngFile());
+    expect(screen.getByRole("checkbox", { name: /mara/i })).toHaveProperty("checked", true);
+    expect(screen.getByRole("checkbox", { name: /noah/i })).toHaveProperty("checked", true);
+    await user.click(screen.getByRole("checkbox", { name: /noah/i }));
+    await user.click(screen.getByRole("button", { name: /attach evidence/i }));
+
+    await waitFor(() => expect(addAssetEvidenceAction).toHaveBeenCalled());
+    const formData = addAssetEvidenceAction.mock.calls[0]?.[0] as FormData;
+    expect(formData.get("visibilityChoice")).toBe("selected_members");
+    expect(formData.getAll("selectedUserIds")).toEqual(["member-1"]);
   });
 
   it("renders a validation failure inline and keeps the form editable", async () => {

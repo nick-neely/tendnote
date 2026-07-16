@@ -27,6 +27,36 @@ function assertEvalDatabaseName(name: string) {
   }
 }
 
+const DROP_RETRY_ATTEMPTS = 8;
+const DROP_RETRY_DELAY_MS = 250;
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function shouldRetryDrop(error: unknown, attempt: number) {
+  return (error as { code?: string }).code === "55006" && attempt < DROP_RETRY_ATTEMPTS;
+}
+
+async function dropEvalDatabase(admin: ReturnType<typeof postgres>) {
+  for (let attempt = 1; attempt <= DROP_RETRY_ATTEMPTS; attempt += 1) {
+    await admin`
+      select pg_terminate_backend(pid)
+      from pg_stat_activity
+      where datname = ${evalDatabaseName}
+        and pid <> pg_backend_pid()
+    `;
+
+    try {
+      await admin.unsafe(`drop database if exists "${evalDatabaseName}"`);
+      return;
+    } catch (error) {
+      if (!shouldRetryDrop(error, attempt)) throw error;
+      await delay(DROP_RETRY_DELAY_MS);
+    }
+  }
+}
+
 async function resetEvalDatabase() {
   assertEvalDatabaseName(evalDatabaseName);
 
@@ -36,13 +66,10 @@ async function resetEvalDatabase() {
   });
 
   try {
-    await admin`
-      select pg_terminate_backend(pid)
-      from pg_stat_activity
-      where datname = ${evalDatabaseName}
-        and pid <> pg_backend_pid()
-    `;
-    await admin.unsafe(`drop database if exists "${evalDatabaseName}"`);
+    // Eve's local runtime can still be closing a workflow connection after the
+    // eval process exits. Re-terminate and retry only the guarded eval database
+    // while that short shutdown race settles.
+    await dropEvalDatabase(admin);
     await admin.unsafe(`create database "${evalDatabaseName}"`);
   } finally {
     await admin.end();

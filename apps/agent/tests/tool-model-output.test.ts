@@ -404,7 +404,7 @@ describe("card tools toModelOutput strip rendered content", () => {
  * not just by construction, mirroring the per-tool enumeration precedent above. The
  * channel still receives the full `execute` output (ids included) for rendering.
  */
-describe("general action tools toModelOutput strip ids but keep the title", () => {
+describe("general action tools toModelOutput keep tool-call ids private from prose", () => {
   const GA_ID = "66666666-6666-4666-8666-666666666666";
   const GA_PERSON_ID = "77777777-7777-4777-8777-777777777777";
   const GA_SOURCE_ID = "88888888-8888-4888-8888-888888888888";
@@ -503,12 +503,13 @@ describe("general action tools toModelOutput strip ids but keep the title", () =
   ];
 
   for (const { name, tool, output } of cases) {
-    it(`${name} strips the record and person ids but keeps the title`, () => {
+    it(`${name} exposes the action id for follow-up tool calls but strips person ids`, () => {
       const model = modelOutput(tool.toModelOutput, output);
       expect(model.type).toBe("json");
       const serialized = JSON.stringify(model.value);
-      // The raw record id and any linked-person id never reach the model.
-      expect(serialized).not.toContain(GA_ID);
+      // The model needs the action id to call an id-taking mutation. Linked-person ids
+      // remain unnecessary implementation detail and stay out of its context.
+      expect(serialized).toContain(GA_ID);
       expect(serialized).not.toContain(GA_PERSON_ID);
       // The title (and person names) are what the model summarizes, so they stay.
       expect(serialized).toContain("Replace the fridge water filter");
