@@ -1,61 +1,49 @@
 "use client";
 
-import type { AssetKind, PrivacyScope } from "@tendnote/domain";
-import { ASSET_KIND_OPTIONS } from "@tendnote/domain";
-import { visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { ChevronRightIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import {
+  AssetBrowseControls,
+  type AssetFilters,
+  DEFAULT_ASSET_FILTERS,
+  filterAssets,
+} from "@/components/asset-browse-controls";
 import { CreateAssetForm } from "@/components/asset-create-form";
 import { AssetSearchPanel, type AssetSearchRunner } from "@/components/asset-search-panel";
 import { AssetArchivedBadge, AssetKindBadge } from "@/components/asset-shared";
 import { ActionScopeChip } from "@/components/general-action-shared";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
-import type { AssetView } from "@/lib/asset-view";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import type { AssetBrowseRunner, AssetView } from "@/lib/asset-view";
 import { useServerSyncedList } from "@/lib/use-server-synced-list";
 import { cn } from "@/lib/utils";
 
 const assetId = (asset: AssetView) => asset.id;
 
 /** The three lifecycle views the surface offers. Active leads; archive is quiet history. */
-export type AssetStateFilter = "active" | "archived" | "all";
-
-export type AssetFilters = {
-  kind: AssetKind | null;
-  state: AssetStateFilter;
-  scope: PrivacyScope | null;
-};
-
-/**
- * Applies the surface's kind/lifecycle/visibility filters to a loaded list. A
- * pure helper so the render path and tests share one filtering truth — scope
- * *security* filtering already happened server-side; this only narrows what the
- * caller may already see.
- */
-export function filterAssets(assets: AssetView[], filters: AssetFilters): AssetView[] {
-  return assets.filter(
-    (asset) =>
-      (filters.kind === null || asset.kind === filters.kind) &&
-      (filters.state === "all" || asset.status === filters.state) &&
-      (filters.scope === null || asset.scope === filters.scope),
-  );
-}
+export { filterAssets } from "@/components/asset-browse-controls";
 
 /**
  * The Assets surface: a capture-first create form leading the assets the caller
  * can see, with calm chip filters for kind, lifecycle state, and visibility
- * (Phase 6 #197). Rows deep-link into the Asset Profile. Filter groups appear
+ * (Phase 6 #197/#207). Rows deep-link into the Asset Profile. Filter groups appear
  * only when they have something to narrow — a single-kind, all-active, all-private
  * list shows no filter chrome at all (DESIGN.md calm-by-default). Every mutation
  * flows through the shared owner-scoped lifecycle via server actions; this
  * component owns the optimistic list state, mirroring ActionsSurface.
  */
+// fallow-ignore-next-line complexity
 export function AssetsSurface({
   assets,
   shareableMembers = [],
   search,
+  reviewCount = 0,
+  nextOffset = null,
+  browse: browseRunner,
 }: {
   assets: AssetView[];
   /** Household members an Asset can be shared with; empty keeps the surface private-only. */
@@ -65,13 +53,48 @@ export function AssetsSurface({
    * browse, exactly as before — search is additive, never a dependency.
    */
   search?: AssetSearchRunner;
+  reviewCount?: number;
+  nextOffset?: number | null;
+  browse?: AssetBrowseRunner;
 }) {
   const router = useRouter();
   const [list, setList] = useServerSyncedList(assets, assetId);
   const [filters, setFilters] = useState<AssetFilters>(DEFAULT_ASSET_FILTERS);
+  const [pageNextOffset, setPageNextOffset] = useState(nextOffset);
+  const [browseError, setBrowseError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
 
-  const visible = filterAssets(list, filters);
-  const filtered = filters.kind !== null || filters.state !== "active" || filters.scope !== null;
+  useEffect(() => setPageNextOffset(nextOffset), [nextOffset]);
+
+  const visible = browseRunner ? list : filterAssets(list, filters);
+  const filtered =
+    filters.kind !== null ||
+    filters.state !== "active" ||
+    filters.scope !== null ||
+    filters.due !== null ||
+    filters.review !== null;
+
+  function requestPage(nextFilters: AssetFilters, offset?: number, append = false) {
+    setFilters(nextFilters);
+    if (!browseRunner) return;
+    setBrowseError(null);
+    startTransition(async () => {
+      try {
+        const page = await browseRunner({ ...nextFilters, offset });
+        setList((current) =>
+          append
+            ? [
+                ...current,
+                ...page.assets.filter((asset) => !current.some((row) => row.id === asset.id)),
+              ]
+            : page.assets,
+        );
+        setPageNextOffset(page.nextOffset);
+      } catch {
+        setBrowseError("The asset list couldn't be updated. Try again.");
+      }
+    });
+  }
 
   function addAsset(view: AssetView) {
     setList((current) => [view, ...current.filter((asset) => asset.id !== view.id)]);
@@ -82,7 +105,22 @@ export function AssetsSurface({
   // because results span memories and evidence — records a browse row cannot represent.
   const browse = (
     <>
-      <AssetFilterRows filters={filters} list={list} onChange={setFilters} />
+      {reviewCount > 0 ? (
+        <Link
+          className="flex items-center justify-between rounded-lg bg-accent-soft px-3 py-2 text-[length:var(--text-small)] text-accent-soft-foreground transition-colors hover:bg-accent-soft/75 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 motion-reduce:transition-none"
+          href="/?tab=review"
+        >
+          <span>{reviewCount === 1 ? "1 asset review" : `${reviewCount} asset reviews`}</span>
+          <span aria-hidden>Open review →</span>
+        </Link>
+      ) : null}
+      <AssetBrowseControls
+        filtered={filtered}
+        filters={filters}
+        list={list}
+        onChange={requestPage}
+        serverBacked={Boolean(browseRunner)}
+      />
 
       {visible.length ? (
         <LedgerList>
@@ -91,8 +129,21 @@ export function AssetsSurface({
           ))}
         </LedgerList>
       ) : (
-        <AssetsEmpty filtered={filtered} onClear={() => setFilters(DEFAULT_ASSET_FILTERS)} />
+        <AssetsEmpty filtered={filtered} onClear={() => requestPage(DEFAULT_ASSET_FILTERS)} />
       )}
+      {browseError ? <p className="text-sm text-destructive">{browseError}</p> : null}
+      {pageNextOffset !== null ? (
+        <div className="flex justify-center pt-1">
+          <Button
+            disabled={pending}
+            onClick={() => requestPage(filters, pageNextOffset, true)}
+            type="button"
+            variant="outline"
+          >
+            {pending ? "Loading…" : "Load more assets"}
+          </Button>
+        </div>
+      ) : null}
     </>
   );
 
@@ -102,127 +153,6 @@ export function AssetsSurface({
 
       {search ? <AssetSearchPanel search={search}>{browse}</AssetSearchPanel> : browse}
     </div>
-  );
-}
-
-/** The untouched-surface view: Active assets of every kind and visibility. */
-const DEFAULT_ASSET_FILTERS: AssetFilters = { kind: null, state: "active", scope: null };
-
-/**
- * The surface's calm chip filter rows for kind, lifecycle state, and visibility.
- * Each group appears only when it has something to narrow — a single-kind,
- * all-active, all-private list shows no filter chrome at all (DESIGN.md
- * calm-by-default).
- */
-function AssetFilterRows({
-  list,
-  filters,
-  onChange,
-}: {
-  list: AssetView[];
-  filters: AssetFilters;
-  onChange: (filters: AssetFilters) => void;
-}) {
-  // Only offer kind chips that can narrow the *current lifecycle view* — a kind
-  // whose only assets are archived must not offer a dead end from the Active
-  // view. The currently selected kind always keeps its chip so a selection never
-  // becomes invisible (and un-clearable) when a state switch empties it.
-  const presentKinds = useMemo(() => {
-    const stateVisible = filterAssets(list, { kind: null, state: filters.state, scope: null });
-    const kinds = new Set(stateVisible.map((asset) => asset.kind));
-    if (filters.kind !== null) {
-      kinds.add(filters.kind);
-    }
-    return ASSET_KIND_OPTIONS.filter((option) => kinds.has(option.kind));
-  }, [list, filters.state, filters.kind]);
-  const hasArchived = list.some((asset) => asset.archived);
-  const hasNonPrivate = list.some((asset) => asset.scope !== "private");
-
-  if (presentKinds.length <= 1 && !hasArchived && !hasNonPrivate) {
-    return null;
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      {presentKinds.length > 1 ? (
-        <FilterChipGroup label="Filter by kind">
-          <FilterChip
-            onSelect={() => onChange({ ...filters, kind: null })}
-            selected={filters.kind === null}
-          >
-            All kinds
-          </FilterChip>
-          {presentKinds.map((option) => (
-            <FilterChip
-              key={option.kind}
-              onSelect={() => onChange({ ...filters, kind: option.kind })}
-              selected={filters.kind === option.kind}
-            >
-              {option.label}
-            </FilterChip>
-          ))}
-        </FilterChipGroup>
-      ) : null}
-      {hasArchived ? <AssetStateFilterRow filters={filters} onChange={onChange} /> : null}
-      {hasNonPrivate ? <AssetScopeFilterRow filters={filters} onChange={onChange} /> : null}
-    </div>
-  );
-}
-
-/** Lifecycle chips: Active leads; archive stays one quiet chip away, never hidden. */
-function AssetStateFilterRow({
-  filters,
-  onChange,
-}: {
-  filters: AssetFilters;
-  onChange: (filters: AssetFilters) => void;
-}) {
-  const options: ReadonlyArray<{ state: AssetStateFilter; label: string }> = [
-    { state: "active", label: "Active" },
-    { state: "archived", label: "Archived" },
-    { state: "all", label: "Everything" },
-  ];
-  return (
-    <FilterChipGroup label="Filter by state">
-      {options.map((option) => (
-        <FilterChip
-          key={option.state}
-          onSelect={() => onChange({ ...filters, state: option.state })}
-          selected={filters.state === option.state}
-        >
-          {option.label}
-        </FilterChip>
-      ))}
-    </FilterChipGroup>
-  );
-}
-
-/** Visibility chips, labeled by the shared scope vocabulary so the words can't drift. */
-function AssetScopeFilterRow({
-  filters,
-  onChange,
-}: {
-  filters: AssetFilters;
-  onChange: (filters: AssetFilters) => void;
-}) {
-  const options: ReadonlyArray<{ scope: PrivacyScope | null; label: string }> = [
-    { scope: null, label: "Any visibility" },
-    ...(["private", "shared", "household"] as const).map((scope) => ({
-      scope,
-      label: visibilityLabelForScope(scope),
-    })),
-  ];
-  return (
-    <FilterChipGroup label="Filter by visibility">
-      {options.map((option) => (
-        <FilterChip
-          key={option.label}
-          onSelect={() => onChange({ ...filters, scope: option.scope })}
-          selected={filters.scope === option.scope}
-        >
-          {option.label}
-        </FilterChip>
-      ))}
-    </FilterChipGroup>
   );
 }
 
@@ -278,6 +208,16 @@ function AssetRow({ asset }: { asset: AssetView }) {
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <AssetKindBadge kind={asset.kind} label={asset.kindLabel} />
           <ActionScopeChip label={asset.visibilityLabel} scope={asset.scope} />
+          {asset.needsReview ? (
+            <Badge className="bg-accent-soft text-accent-soft-foreground" variant="secondary">
+              Needs review
+            </Badge>
+          ) : null}
+          {asset.nextDueActionLabel ? (
+            <span className="text-[length:var(--text-caption)] text-muted-foreground">
+              {asset.nextDueActionLabel}
+            </span>
+          ) : null}
           <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
             {asset.addedLabel}
           </span>
@@ -285,54 +225,5 @@ function AssetRow({ asset }: { asset: AssetView }) {
       </div>
       <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground/60" />
     </Link>
-  );
-}
-
-/**
- * A labeled row of filter chips; the label is visible, quiet, and sentence case.
- * The label is its own flex item with the chips in a nested wrapping container,
- * so wrapped chips stay aligned to the chip column instead of sliding under the
- * label at narrow widths.
- */
-function FilterChipGroup({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: a toggle-button filter group, not a form fieldset
-    <div aria-label={label} className="flex items-start gap-1.5" role="group">
-      <span className="min-w-20 shrink-0 pt-1 text-[length:var(--text-caption)] text-muted-foreground">
-        {label.replace("Filter by ", "").replace(/^./, (c) => c.toUpperCase())}
-      </span>
-      <div className="flex flex-1 flex-wrap items-center gap-1.5">{children}</div>
-    </div>
-  );
-}
-
-/**
- * A quiet, keyboard-operable filter pill. Selection is carried by fill *and*
- * `aria-pressed` (never color alone; DESIGN.md §8) — the same vocabulary as the
- * Actions surface Area chips, so filtering reads identically across surfaces.
- */
-function FilterChip({
-  selected,
-  onSelect,
-  children,
-}: {
-  selected: boolean;
-  onSelect: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      aria-pressed={selected}
-      className={cn(
-        "rounded-full border px-3 py-1 text-[length:var(--text-small)] transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-        selected
-          ? "border-primary bg-primary font-medium text-primary-foreground"
-          : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
-      )}
-      onClick={onSelect}
-      type="button"
-    >
-      {children}
-    </button>
   );
 }

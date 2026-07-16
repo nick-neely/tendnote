@@ -6,10 +6,18 @@ import {
   createAssetSchema,
   DURABLE_ASSET_STATUSES,
 } from "@tendnote/domain";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
-import { assetAuditEvents, assets } from "../../schema";
+import {
+  assetAuditEvents,
+  assetEvidence,
+  assetMemories,
+  assets,
+  householdRecordShares,
+  relationshipContextEmbeddingJobs,
+  relationshipContextEmbeddings,
+} from "../../schema";
 import { createDrizzleHouseholdStore } from "../households/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
@@ -133,6 +141,87 @@ export function createDrizzleAssetStore(): AssetStore {
       }
       return assetSchema.parse(asset);
     },
+    async deleteAsset(input) {
+      return getDb().transaction(async (tx) => {
+        const [owned] = await tx
+          .select({ id: assets.id })
+          .from(assets)
+          .where(and(eq(assets.id, input.assetId), eq(assets.ownerUserId, input.ownerUserId)))
+          .limit(1);
+        if (!owned) return false;
+
+        const memoryRows = await tx
+          .select({ id: assetMemories.id })
+          .from(assetMemories)
+          .where(eq(assetMemories.assetId, input.assetId));
+        const memoryIds = memoryRows.map((row) => row.id);
+        const evidenceRows = await tx
+          .select({ id: assetEvidence.id })
+          .from(assetEvidence)
+          .where(eq(assetEvidence.assetId, input.assetId));
+        const evidenceIds = evidenceRows.map((row) => row.id);
+        const semanticRecord = or(
+          and(
+            eq(relationshipContextEmbeddings.recordKind, "asset"),
+            eq(relationshipContextEmbeddings.recordId, input.assetId),
+          ),
+          ...(memoryIds.length
+            ? [
+                and(
+                  eq(relationshipContextEmbeddings.recordKind, "asset_memory"),
+                  inArray(relationshipContextEmbeddings.recordId, memoryIds),
+                ),
+              ]
+            : []),
+        );
+        const semanticJob = or(
+          and(
+            eq(relationshipContextEmbeddingJobs.recordKind, "asset"),
+            eq(relationshipContextEmbeddingJobs.recordId, input.assetId),
+          ),
+          ...(memoryIds.length
+            ? [
+                and(
+                  eq(relationshipContextEmbeddingJobs.recordKind, "asset_memory"),
+                  inArray(relationshipContextEmbeddingJobs.recordId, memoryIds),
+                ),
+              ]
+            : []),
+        );
+        await tx.delete(relationshipContextEmbeddings).where(semanticRecord);
+        await tx.delete(relationshipContextEmbeddingJobs).where(semanticJob);
+        await tx
+          .delete(householdRecordShares)
+          .where(
+            or(
+              and(
+                eq(householdRecordShares.recordKind, "asset"),
+                eq(householdRecordShares.recordId, input.assetId),
+              ),
+              ...(memoryIds.length
+                ? [
+                    and(
+                      eq(householdRecordShares.recordKind, "asset_memory"),
+                      inArray(householdRecordShares.recordId, memoryIds),
+                    ),
+                  ]
+                : []),
+              ...(evidenceIds.length
+                ? [
+                    and(
+                      eq(householdRecordShares.recordKind, "asset_evidence"),
+                      inArray(householdRecordShares.recordId, evidenceIds),
+                    ),
+                  ]
+                : []),
+            ),
+          );
+        await tx
+          .delete(assets)
+          .where(and(eq(assets.id, input.assetId), eq(assets.ownerUserId, input.ownerUserId)));
+        return true;
+      });
+    },
     async listVisibleAssetsForCaller(input) {
       // Scope filtering happens here, pre-retrieval: the predicate keeps private
       // assets to their owner and admits household / selected-shared ones only for
@@ -161,7 +250,8 @@ export function createDrizzleAssetStore(): AssetStore {
         )
         .orderBy(...nameOrder);
 
-      const rows = await (input.limit === undefined ? query : query.limit(input.limit));
+      const offsetQuery = input.offset === undefined ? query : query.offset(input.offset);
+      const rows = await (input.limit === undefined ? offsetQuery : offsetQuery.limit(input.limit));
       return rows.map((row) => assetSchema.parse(row));
     },
     async createAssetAuditEvent(values) {

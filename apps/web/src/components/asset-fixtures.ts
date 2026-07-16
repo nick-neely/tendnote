@@ -19,6 +19,8 @@ export function assetViewFixture(overrides: Partial<AssetView> = {}): AssetView 
     ownerUserId: "owner-1",
     addedLabel: "Added Jul 1",
     archivedLabel: null,
+    needsReview: false,
+    nextDueActionLabel: null,
     ...overrides,
   };
 }

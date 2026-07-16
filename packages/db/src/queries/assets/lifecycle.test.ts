@@ -196,6 +196,18 @@ describe("list assets", () => {
     const forMember = await lifecycle.listAssets({ callerUserId: MEMBER });
     expect(forMember.map((asset) => asset.id)).toEqual([streaming.id]);
   });
+
+  it("pages the stable visible ordering without widening scope", async () => {
+    const { lifecycle, seedAsset } = setup();
+    await seedAsset({ name: "Alpha" });
+    await seedAsset({ name: "Bravo" });
+    await seedAsset({ name: "Charlie" });
+    await seedAsset({ name: "Delta" });
+
+    const page = await lifecycle.listAssets({ callerUserId: OWNER, limit: 2, offset: 1 });
+
+    expect(page.map((asset) => asset.name)).toEqual(["Bravo", "Charlie"]);
+  });
 });
 
 describe("edit asset", () => {
@@ -256,6 +268,35 @@ describe("edit asset", () => {
     await expect(
       lifecycle.editAsset({ actorUserId: MEMBER, assetId: asset.id, edit: { name: "Nope" } }),
     ).rejects.toThrow("Asset not found.");
+  });
+});
+
+describe("hard delete asset", () => {
+  it("permanently removes an owned asset and its audit trail", async () => {
+    const { lifecycle, seedAsset } = setup();
+    const asset = await seedAsset();
+
+    await lifecycle.hardDeleteAsset({ actorUserId: OWNER, assetId: asset.id });
+
+    await expect(
+      lifecycle.getAsset({ callerUserId: OWNER, assetId: asset.id }),
+    ).resolves.toBeNull();
+    await expect(
+      lifecycle.listAssetAudit({ ownerUserId: OWNER, assetId: asset.id }),
+    ).resolves.toEqual([]);
+  });
+
+  it("does not let a household member hard-delete another owner's asset", async () => {
+    const { lifecycle, seedAsset, seedHousehold } = setup();
+    const household = await seedHousehold();
+    const asset = await seedAsset({ scope: "household", householdId: household.id });
+
+    await expect(
+      lifecycle.hardDeleteAsset({ actorUserId: MEMBER, assetId: asset.id }),
+    ).rejects.toThrow("Asset not found.");
+    await expect(
+      lifecycle.getAsset({ callerUserId: OWNER, assetId: asset.id }),
+    ).resolves.toMatchObject({ id: asset.id });
   });
 });
 

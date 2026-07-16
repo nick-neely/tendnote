@@ -2,14 +2,27 @@
 
 import { searchAssets } from "@tendnote/db/queries/asset-search";
 import type { AssetWithContext } from "@tendnote/db/queries/assets";
-import { archiveAsset, createAsset, editAsset, restoreAsset } from "@tendnote/db/queries/assets";
+import {
+  archiveAsset,
+  browseAssets,
+  createAsset,
+  editAsset,
+  hardDeleteAsset,
+  restoreAsset,
+} from "@tendnote/db/queries/assets";
 import { assetKindSchema } from "@tendnote/domain";
 import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { runAssetsMutation } from "@/lib/asset-mutation";
 import { type AssetSearchResultView, toAssetSearchResultView } from "@/lib/asset-search-view";
-import { type AssetMutationResult, toAssetView } from "@/lib/asset-view";
+import {
+  type AssetBrowsePageView,
+  type AssetBrowseRequest,
+  type AssetMutationResult,
+  toAssetBrowseView,
+  toAssetView,
+} from "@/lib/asset-view";
 import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
 
 const assetIdSchema = z.object({ assetId: z.uuid() });
@@ -105,10 +118,49 @@ export async function restoreAssetAction(input: { assetId: string }): Promise<As
   });
 }
 
+/** Human-only correction/privacy delete; intentionally not exposed as an Eve tool. */
+export async function hardDeleteAssetAction(input: { assetId: string }): Promise<void> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const parsed = assetIdSchema.parse(input);
+  await hardDeleteAsset({ actorUserId: ownerUserId, assetId: parsed.assetId });
+}
+
 const searchAssetsActionSchema = z.object({
   query: z.string().trim().min(1).max(400),
   includeArchived: z.boolean().default(false),
 });
+
+const browseAssetsActionSchema = z.object({
+  kind: assetKindSchema.nullable(),
+  state: z.enum(["active", "archived", "all"]),
+  scope: z.enum(["private", "shared", "household"]).nullable(),
+  due: z.enum(["with_due_action", "without_due_action"]).nullable(),
+  review: z.enum(["needs_review", "ready"]).nullable(),
+  sort: z.enum(["name", "due_action", "needs_review", "recently_added"]),
+  offset: z.number().int().min(0).optional(),
+});
+
+/** Server-backed Assets ledger page; every filter and sort stays truthful past page one. */
+export async function browseAssetsAction(input: AssetBrowseRequest): Promise<AssetBrowsePageView> {
+  const callerUserId = await requireAdmittedOwnerForAction();
+  const parsed = browseAssetsActionSchema.parse(input);
+  const page = await browseAssets({
+    callerUserId,
+    kinds: parsed.kind ? [parsed.kind] : undefined,
+    statuses: parsed.state === "all" ? undefined : [parsed.state],
+    scopes: parsed.scope ? [parsed.scope] : undefined,
+    due: parsed.due ?? undefined,
+    review: parsed.review ?? undefined,
+    sort: parsed.sort,
+    offset: parsed.offset,
+  });
+  const now = new Date();
+  return {
+    assets: page.items.map((item) => toAssetBrowseView(item, { callerUserId, now })),
+    reviewCount: page.reviewCount,
+    nextOffset: page.nextOffset,
+  };
+}
 
 /**
  * Unified Asset Search for the Assets surface (#204). One query runs exact text, exact

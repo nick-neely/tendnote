@@ -9,6 +9,8 @@ import type {
   ProposeAssetMemoryActionsInput,
 } from "./assets/action-proposal-types";
 import { createAssetActionProposals } from "./assets/action-proposals";
+import { createAssetBrowser } from "./assets/browse";
+import { createDrizzleAssetBrowseStore } from "./assets/drizzle-browse-store";
 import { createDrizzleAssetLinkStore } from "./assets/drizzle-link-store";
 import {
   createDrizzleAssetLifecycleStore,
@@ -59,7 +61,10 @@ export type * from "./assets/action-link-types";
 export { createAssetActionLinks } from "./assets/action-links";
 export type * from "./assets/action-proposal-types";
 export { createAssetActionProposals } from "./assets/action-proposals";
+export { createAssetBrowser } from "./assets/browse";
+export type * from "./assets/browse-types";
 export { createDrizzleGeneralActionAssetLinkStore } from "./assets/drizzle-action-link-store";
+export { createDrizzleAssetBrowseStore } from "./assets/drizzle-browse-store";
 export { createDrizzleAssetEvidenceStore } from "./assets/drizzle-evidence-store";
 export { createDrizzleAssetLinkStore } from "./assets/drizzle-link-store";
 export { createDrizzleAssetReviewStore } from "./assets/drizzle-review-store";
@@ -94,6 +99,7 @@ const scheduleAssetEmbedding = enqueueAndTriggerSemanticEmbeddingJob;
 const defaultAssetLifecycle = createAssetLifecycle(createDrizzleAssetLifecycleStore(), {
   scheduleAssetEmbedding,
 });
+const defaultAssetBrowser = createAssetBrowser(createDrizzleAssetBrowseStore());
 const defaultAssetReview = createAssetReview(createDrizzleAssetReviewLifecycleStore(), {
   scheduleAssetEmbedding,
 });
@@ -141,12 +147,33 @@ export async function restoreAsset(input: AssetActionInput) {
   return defaultAssetLifecycle.restoreAsset(input);
 }
 
+export async function hardDeleteAsset(input: AssetActionInput) {
+  return defaultAssetLifecycle.hardDeleteAsset(input);
+}
+
 export async function getAsset(input: { callerUserId: string; assetId: string }) {
   return defaultAssetLifecycle.getAsset(input);
 }
 
 export async function listAssets(input: ListAssetsInput) {
   return defaultAssetLifecycle.listAssets(input);
+}
+
+export async function browseAssets(input: import("./assets/browse-types").BrowseAssetsInput) {
+  const page = await defaultAssetBrowser.browseAssets(input);
+  const hydrated = await Promise.all(
+    page.items.map(async (item) => {
+      const asset = await defaultAssetLifecycle.getAsset({
+        callerUserId: input.callerUserId,
+        assetId: item.asset.id,
+      });
+      if (!asset) {
+        throw new Error("Asset disappeared while loading the browse page.");
+      }
+      return { ...item, asset };
+    }),
+  );
+  return { ...page, items: hydrated };
 }
 
 export async function listAssetAudit(input: ListAssetAuditInput) {

@@ -322,6 +322,19 @@ export function createAssetLifecycle(store: AssetLifecycleStore, deps: AssetEmbe
     },
 
     /**
+     * Permanently removes an owned Asset for correction/privacy. Owner-only and
+     * intentionally separate from archive, the normal inactive lifecycle path.
+     */
+    async hardDeleteAsset(input: AssetActionInput): Promise<void> {
+      const asset = await requireOwnedAsset(store, input);
+      const deleted = await store.deleteAsset({
+        ownerUserId: asset.ownerUserId,
+        assetId: asset.id,
+      });
+      if (!deleted) throw new Error("Asset not found.");
+    },
+
+    /**
      * Loads one asset the caller may see, hydrated for a profile read, or `null`.
      * Deterministic denial: a non-visible asset and a missing one are the same
      * `null`, so a caller can never distinguish "hidden from me" from "does not

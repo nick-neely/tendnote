@@ -78,8 +78,8 @@ export const assetKind = pgEnum("asset_kind", [
   "property",
 ]);
 
-// Archive is the normal inactive path; hard delete stays reserved for
-// correction/privacy cases in a later slice (#196). `suggested`/`dismissed` are
+// Archive is the normal inactive path; hard delete is reserved for the
+// correction/privacy escape hatch (#207). `suggested`/`dismissed` are
 // the review-gated proposal states (#198) — never durable records; every
 // scope-visible read filters to active/archived.
 export const assetStatus = pgEnum("asset_status", ["active", "archived", "suggested", "dismissed"]);

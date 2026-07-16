@@ -86,4 +86,17 @@ describe("assets drizzle store guards", () => {
   it("owner-keys the audit trail read and write", () => {
     expect(source).toContain("assetAuditEvents.ownerUserId, input.ownerUserId");
   });
+
+  it("hard-deletes the owned anchor and explicitly removes non-FK semantic rows", () => {
+    expect(source).toContain("relationshipContextEmbeddings");
+    expect(source).toContain("relationshipContextEmbeddingJobs");
+    expect(source).toContain('recordKind, "asset_memory"');
+    expect(source).toContain("householdRecordShares");
+    expect(source).toContain('recordKind, "asset_evidence"');
+    expect(source).not.toContain(
+      "eq(relationshipContextEmbeddings.ownerUserId, input.ownerUserId), semanticRecord",
+    );
+    expect(source).toContain(".delete(assets)");
+    expect(source).toContain(".transaction(");
+  });
 });
