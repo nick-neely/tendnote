@@ -61,11 +61,14 @@ The reset script refuses to reset any database whose name does not begin with
 path.
 
 The bounded retry addresses live-model sampling variance without weakening an
-eval gate: one retry failure remains a suite failure, and passing evals are never
-rerun. CI runs the same deterministic command in the reusable verify workflow. The job
-uses Postgres only, passes `AI_GATEWAY_API_KEY` for the agent model, does not run
-judge-backed or model-comparison tags, writes `.eve/evals/junit.xml`, and uploads
-`apps/agent/.eve/evals/` only when the deterministic eval job fails.
+eval run: one retry failure remains a suite failure, and passing evals are never
+rerun. Because these evaluations make real model calls, they are intentionally
+outside normal PR and production CI. Run the **Run Eve model evaluations**
+workflow manually when changing Eve behavior, prompts, tools, or model routing.
+The workflow uses Postgres only, passes `AI_GATEWAY_API_KEY` for the agent model,
+does not run judge-backed or model-comparison tags, writes
+`.eve/evals/junit.xml`, and uploads `apps/agent/.eve/evals/` when the evaluation
+job fails.
 
 ## Judge-Backed Quality Evals
 
