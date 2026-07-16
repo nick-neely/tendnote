@@ -53,6 +53,8 @@ export type AssetStore = {
     assetId: string;
     patch: AssetPatch;
   }) => Promise<Asset>;
+  /** Owner-keyed correction/privacy delete. Normal lifecycle cleanup uses archive. */
+  deleteAsset: (input: { ownerUserId: string; assetId: string }) => Promise<boolean>;
   /**
    * Lists every asset the caller may see under scope rules, optionally narrowed
    * by kind, lifecycle status, and visibility scope. Scope filtering happens
@@ -66,6 +68,7 @@ export type AssetStore = {
     statuses?: AssetStatus[];
     scopes?: PrivacyScope[];
     limit?: number;
+    offset?: number;
   }) => Promise<Asset[]>;
   createAssetAuditEvent: (input: CreateAssetAuditEventInput) => Promise<AssetAuditEvent>;
   /** The append-only internal audit trail for one asset, oldest first. Owner-keyed. */
@@ -125,6 +128,7 @@ export type ListAssetsInput = {
   statuses?: AssetStatus[];
   scopes?: PrivacyScope[];
   limit?: number;
+  offset?: number;
 };
 
 export type ListAssetAuditInput = {

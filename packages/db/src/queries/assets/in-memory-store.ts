@@ -106,6 +106,19 @@ export function createInMemoryAssetStore(
       assets.set(updated.id, updated);
       return updated;
     },
+    async deleteAsset(input) {
+      const asset = assets.get(input.assetId);
+      if (!asset || asset.ownerUserId !== input.ownerUserId) {
+        return false;
+      }
+      assets.delete(input.assetId);
+      for (let index = auditEvents.length - 1; index >= 0; index -= 1) {
+        if (auditEvents[index]?.assetId === input.assetId) {
+          auditEvents.splice(index, 1);
+        }
+      }
+      return true;
+    },
     async listVisibleAssetsForCaller(input) {
       const visible: Asset[] = [];
       for (const asset of assets.values()) {
@@ -117,7 +130,10 @@ export function createInMemoryAssetStore(
         }
       }
       visible.sort(byNameThenCreated);
-      return input.limit === undefined ? visible : visible.slice(0, input.limit);
+      const offset = input.offset ?? 0;
+      return input.limit === undefined
+        ? visible.slice(offset)
+        : visible.slice(offset, offset + input.limit);
     },
     async createAssetAuditEvent(values) {
       const parsed = createAssetAuditEventSchema.parse(values);

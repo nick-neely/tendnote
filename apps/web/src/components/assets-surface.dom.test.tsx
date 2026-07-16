@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { assetViewFixture } from "@/components/asset-fixtures";
-import { render, screen, userEvent } from "@/test/dom";
+import { render, screen, userEvent, waitFor } from "@/test/dom";
 
 /**
  * DOM click-through for the Assets surface filters (#197): drives the real user
@@ -22,6 +22,7 @@ vi.mock("@/app/actions/assets", () => ({
   createAssetAction: vi.fn(),
   editAssetAction: vi.fn(),
   restoreAssetAction: vi.fn(),
+  browseAssetsAction: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -52,6 +53,55 @@ const ARCHIVED_PLAN = assetViewFixture({
 });
 
 describe("AssetsSurface filters (DOM)", () => {
+  it("surfaces review and due-action context with an incremental loading affordance", () => {
+    render(
+      <AssetsSurface
+        assets={[
+          assetViewFixture({
+            id: "a-review",
+            name: "Boiler",
+            needsReview: true,
+            nextDueActionLabel: "Next action Sep 2",
+          }),
+        ]}
+        nextOffset={24}
+        reviewCount={2}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: /2 asset reviews/i })).toBeDefined();
+    expect(screen.getByText("Needs review")).toBeDefined();
+    expect(screen.getByText("Next action Sep 2")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Load more assets" })).toBeDefined();
+  });
+
+  it("requests server-filtered results and appends the next bounded page", async () => {
+    const user = userEvent.setup();
+    const dueAsset = assetViewFixture({ id: "a-due", name: "Boiler" });
+    const moreAsset = assetViewFixture({ id: "a-more", name: "Water softener" });
+    const browse = vi
+      .fn()
+      .mockResolvedValueOnce({ assets: [dueAsset], reviewCount: 0, nextOffset: 24 })
+      .mockResolvedValueOnce({ assets: [moreAsset], reviewCount: 0, nextOffset: null });
+    render(<AssetsSurface assets={[FRIDGE]} browse={browse} nextOffset={24} />);
+
+    await user.click(screen.getByRole("button", { name: "Has due action" }));
+    await waitFor(() => expect(screen.getByText("Boiler")).toBeDefined());
+    expect(screen.queryByText("Kitchen refrigerator")).toBeNull();
+    expect(browse).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ due: "with_due_action", offset: undefined }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load more assets" }));
+    await waitFor(() => expect(screen.getByText("Water softener")).toBeDefined());
+    expect(screen.getByText("Boiler")).toBeDefined();
+    expect(browse).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ due: "with_due_action", offset: 24 }),
+    );
+  });
+
   it("narrows the ledger by kind and restores it with the All chip", async () => {
     const user = userEvent.setup();
     render(<AssetsSurface assets={[FRIDGE, CAR]} />);
@@ -117,13 +167,18 @@ describe("AssetsSurface filters (DOM)", () => {
     expect(screen.queryByRole("button", { name: "Subscription" })).toBeNull();
   });
 
-  it("keeps capture and every filter group reachable at the mobile base layer", () => {
+  it("keeps capture and every filter group reachable behind a compact mobile control", async () => {
+    const user = userEvent.setup();
     render(<AssetsSurface assets={[FRIDGE, CAR, ARCHIVED_PLAN]} />);
 
     expect(
       screen.getByRole("textbox", { name: "What do you want to keep track of?" }),
     ).toBeDefined();
     expect(screen.getByRole("button", { name: /Add asset/ })).toBeDefined();
+    const filters = screen.getByRole("button", { name: /Filters and sort/ });
+    expect(filters.getAttribute("aria-expanded")).toBe("false");
+    await user.click(filters);
+    expect(filters.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("group", { name: "Filter by kind" })).toBeDefined();
     expect(screen.getByRole("group", { name: "Filter by state" })).toBeDefined();
     expect(screen.getByRole("group", { name: "Filter by visibility" })).toBeDefined();

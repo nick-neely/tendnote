@@ -5,6 +5,7 @@ import {
   listAssetHistory,
   listAssetMemories,
   listAssetPersonLinks,
+  listAssetReviewGroups,
   listAssets,
   listLinkedGeneralActionsForAsset,
   listPendingAssetActionProposals,
@@ -24,6 +25,7 @@ import { AssetPersonLinks } from "@/components/asset-person-links";
 import { AssetProfileControls } from "@/components/asset-profile-controls";
 import { AssetRelatedActions } from "@/components/asset-related-actions";
 import { AssetRelatedLinks } from "@/components/asset-related-links";
+import { AssetRemove } from "@/components/asset-remove";
 import { ASSET_KIND_ICONS, AssetArchivedBadge } from "@/components/asset-shared";
 import { AssetSnapshotCard, type AssetSnapshotCardProps } from "@/components/asset-snapshot-card";
 import { ActionScopeChip } from "@/components/general-action-shared";
@@ -67,6 +69,7 @@ async function loadAssetProfile(callerUserId: string, assetId: string) {
     people,
     snapshot,
     shareableMembers,
+    reviewGroups,
   ] = await Promise.all([
     listAssetMemories({ callerUserId, assetId }),
     listAssetEvidence({ callerUserId, assetId }),
@@ -84,6 +87,7 @@ async function loadAssetProfile(callerUserId: string, assetId: string) {
     // failed snapshot degrades to no card at all, and the records below still render.
     getAssetSnapshot({ callerUserId, assetId }),
     listShareableHouseholdMembersForUser({ userId: callerUserId }),
+    listAssetReviewGroups({ ownerUserId: callerUserId }),
   ]);
 
   const now = new Date();
@@ -119,6 +123,9 @@ async function loadAssetProfile(callerUserId: string, assetId: string) {
     linkableAssets: visibleAssets
       .filter((candidate) => candidate.id !== assetId)
       .map((candidate) => ({ id: candidate.id, name: candidate.name })),
+    reviewItemCount: reviewGroups
+      .filter((group) => group.asset.id === assetId)
+      .reduce((count, group) => count + Number(group.assetPending) + group.memories.length, 0),
   };
 }
 
@@ -163,6 +170,22 @@ export default async function AssetProfilePage({
         <AssetSnapshotCard {...toSnapshotCardProps(snapshot)} />
 
         <AssetProfileSections assetId={assetId} profile={profile} />
+
+        {view.owned ? (
+          <AssetRemove
+            assetId={assetId}
+            assetName={view.name}
+            summary={{
+              memories: profile.memories.length,
+              evidence: profile.evidenceViews.length,
+              reviewItems: profile.reviewItemCount,
+              linkedRecords:
+                profile.relatedActionViews.length +
+                profile.relatedLinkViews.length +
+                profile.personLinkViews.length,
+            }}
+          />
+        ) : null}
       </div>
     </AppShell>
   );

@@ -1,4 +1,10 @@
-import type { AssetWithContext } from "@tendnote/db/queries/assets";
+import type {
+  AssetBrowseRow,
+  AssetBrowseSort,
+  AssetDueFilter,
+  AssetReviewFilter,
+  AssetWithContext,
+} from "@tendnote/db/queries/assets";
 import type { AssetKind, AssetStatus, PrivacyScope } from "@tendnote/domain";
 import { assetLabelForKind } from "@tendnote/domain";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
@@ -10,6 +16,24 @@ import { visibilityLabelForScope } from "@tendnote/domain/privacy";
  * the client shows a generic fallback — mirroring the General Action result union.
  */
 export type AssetMutationResult = { ok: true; view: AssetView } | { ok: false; error: string };
+
+export type AssetBrowseRequest = {
+  kind: AssetKind | null;
+  state: "active" | "archived" | "all";
+  scope: PrivacyScope | null;
+  due: AssetDueFilter | null;
+  review: AssetReviewFilter | null;
+  sort: AssetBrowseSort;
+  offset?: number;
+};
+
+export type AssetBrowsePageView = {
+  assets: AssetView[];
+  reviewCount: number;
+  nextOffset: number | null;
+};
+
+export type AssetBrowseRunner = (input: AssetBrowseRequest) => Promise<AssetBrowsePageView>;
 
 export type AssetView = {
   id: string;
@@ -35,6 +59,10 @@ export type AssetView = {
   addedLabel: string;
   /** "Archived Jul 10" when archived, otherwise null. */
   archivedLabel: string | null;
+  /** An unresolved Asset Review Group is anchored to this durable asset. */
+  needsReview?: boolean;
+  /** Calm display label for the soonest visible linked action with a due date. */
+  nextDueActionLabel?: string | null;
 };
 
 function formatDay(date: Date, now: Date): string {
@@ -85,5 +113,20 @@ export function toAssetView(
     ownerUserId: asset.ownerUserId,
     addedLabel: `Added ${formatDay(asset.createdAt, now)}`,
     archivedLabel: asset.archivedAt ? `Archived ${formatDay(asset.archivedAt, now)}` : null,
+  };
+}
+
+/** Maps one enriched browse row while keeping date copy consistent across pages. */
+export function toAssetBrowseView(
+  row: AssetBrowseRow & { asset: AssetWithContext },
+  options: { callerUserId: string; now?: Date },
+): AssetView {
+  const now = options.now ?? new Date();
+  return {
+    ...toAssetView(row.asset, { ...options, now }),
+    needsReview: row.needsReview,
+    nextDueActionLabel: row.nextDueActionAt
+      ? `Next action ${formatDay(row.nextDueActionAt, now)}`
+      : null,
   };
 }

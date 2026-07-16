@@ -32,8 +32,9 @@ const DASHBOARD_FOLLOWUP_LIMIT = 5;
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams?: Promise<{ tab?: string }> }) {
   const ownerUserId = await requireAdmittedOwner();
+  const requestedTab = (await searchParams)?.tab;
   const [
     people,
     dashboardReviews,
@@ -92,6 +93,7 @@ export default async function Home() {
               people={people}
               reviews={dashboardReviews}
               weeklyBrief={weeklyBrief}
+              initialTab={requestedTab === "review" ? "review" : "today"}
             />
           </div>
         </div>

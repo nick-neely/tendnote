@@ -1,10 +1,10 @@
-import { listAssets } from "@tendnote/db/queries/assets";
+import { browseAssets } from "@tendnote/db/queries/assets";
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
-import { searchAssetsAction } from "@/app/actions/assets";
+import { browseAssetsAction, searchAssetsAction } from "@/app/actions/assets";
 import { AppShell } from "@/components/app-shell";
 import { AssetsSurface } from "@/components/assets-surface";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
-import { toAssetView } from "@/lib/asset-view";
+import { toAssetBrowseView } from "@/lib/asset-view";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +14,8 @@ export default async function AssetsPage() {
 
   // All lifecycle states load together: the surface defaults to Active and keeps
   // archived assets one calm filter chip away rather than a separate fetch.
-  const [assets, shareableMembers] = await Promise.all([
-    listAssets({ callerUserId: ownerUserId }),
+  const [page, shareableMembers] = await Promise.all([
+    browseAssets({ callerUserId: ownerUserId, statuses: ["active"] }),
     // Members the owner can share an Asset with — drives the visibility control.
     // Empty (no household) keeps the surface single-user and private-only.
     listShareableHouseholdMembersForUser({ userId: ownerUserId }),
@@ -35,8 +35,13 @@ export default async function AssetsPage() {
         </header>
 
         <AssetsSurface
+          browse={browseAssetsAction}
           search={searchAssetsAction}
-          assets={assets.map((asset) => toAssetView(asset, { callerUserId: ownerUserId, now }))}
+          assets={page.items.map((item) =>
+            toAssetBrowseView(item, { callerUserId: ownerUserId, now }),
+          )}
+          nextOffset={page.nextOffset}
+          reviewCount={page.reviewCount}
           shareableMembers={shareableMembers.map((member) => ({
             userId: member.userId,
             name: member.name,

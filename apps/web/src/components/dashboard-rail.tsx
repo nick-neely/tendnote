@@ -66,6 +66,7 @@ export function DashboardRail({
   assetReviews: initialAssetReviews = [],
   dailyBrief,
   weeklyBrief,
+  initialTab = "today",
 }: {
   people: Person[];
   birthdays: UpcomingBirthday[];
@@ -78,6 +79,7 @@ export function DashboardRail({
   assetReviews?: AssetReviewGroupView[];
   dailyBrief: BriefView | null;
   weeklyBrief: BriefView | null;
+  initialTab?: "today" | "followups" | "review" | "people";
 }) {
   const [followups, setFollowups] = useState(initialFollowups);
   const [suggestedFollowups, setSuggestedFollowups] = useState(initialFollowupReviews);
@@ -112,7 +114,7 @@ export function DashboardRail({
   const reviewCount = memoryReviews.length + actionReviews.length + assetReviews.length;
 
   return (
-    <Tabs className="flex min-h-0 flex-col gap-3 lg:h-full" defaultValue="today">
+    <Tabs className="flex min-h-0 flex-col gap-3 lg:h-full" defaultValue={initialTab}>
       <TabsList className="w-full shrink-0">
         <TabsTrigger className="group/tab" value="today">
           Today
