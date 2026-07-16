@@ -1,14 +1,14 @@
-import {
-  type BackgroundJobDeliveryStore,
-  type BackgroundJobQueueSendAdapter,
-  createDrizzleBackgroundJobDeliveryStore,
-  publishBackgroundJobDelivery,
+import type {
+  BackgroundJobDeliveryStore,
+  BackgroundJobQueueSendAdapter,
 } from "@tendnote/db/queries/background-job-deliveries";
 import {
-  type EnqueueAndTriggerSemanticEmbeddingJobInput,
-  type EnqueueAndTriggerSemanticEmbeddingJobResult,
-  enqueueAndTriggerSemanticEmbeddingJob,
-  resolveSemanticEmbeddingRuntimeMode,
+  BACKGROUND_JOB_FAMILIES,
+  enqueueAndPublishBackgroundJob,
+} from "@tendnote/db/queries/background-jobs";
+import type {
+  EnqueueAndTriggerSemanticEmbeddingJobInput,
+  EnqueueAndTriggerSemanticEmbeddingJobResult,
 } from "@tendnote/db/queries/semantic-retrieval";
 import { createVercelBackgroundJobQueueAdapter } from "./queue-adapter";
 
@@ -18,8 +18,8 @@ type EnqueueEmbedding = (
 
 /**
  * Enqueue a semantic-embedding job and, in enqueue_only mode, publish its outbox
- * delivery through the shared @tendnote/db publish orchestration (ADR-0068). Eve and
- * the web go through the same publish path now; only the concrete Vercel transport is
+ * delivery through the shared @tendnote/db execution module (ADR-0068). Eve and the web go
+ * through the same enqueue → publish path now; only the concrete Vercel transport is
  * injected per app.
  */
 export async function enqueueAndPublishSemanticEmbeddingJob(input: {
@@ -31,35 +31,22 @@ export async function enqueueAndPublishSemanticEmbeddingJob(input: {
   queue?: BackgroundJobQueueSendAdapter;
   enqueueEmbedding?: EnqueueEmbedding;
 }): Promise<EnqueueAndTriggerSemanticEmbeddingJobResult & { deliveryId: string | null }> {
-  const mode =
-    input.runtimeMode ??
-    resolveSemanticEmbeddingRuntimeMode({
-      configured: process.env.TENDNOTE_EMBEDDING_RUNTIME,
-      nodeEnv: process.env.NODE_ENV,
-    });
-  const result = await (input.enqueueEmbedding ?? enqueueAndTriggerSemanticEmbeddingJob)({
-    ownerUserId: input.ownerUserId,
-    recordKind: input.recordKind,
-    recordId: input.recordId,
-    runtimeMode: mode,
-  });
-
-  if (mode === "inline") {
-    return { ...result, deliveryId: null };
-  }
-
-  const deliveryStore = input.deliveryStore ?? createDrizzleBackgroundJobDeliveryStore();
-  const { delivery } = await deliveryStore.createBackgroundJobDelivery({
-    ownerUserId: input.ownerUserId,
-    jobKind: "embedding",
-    jobId: result.job.id,
-  });
-  await publishBackgroundJobDelivery({
-    store: deliveryStore,
-    queue: input.queue ?? createVercelBackgroundJobQueueAdapter(),
-    ownerUserId: input.ownerUserId,
-    deliveryId: delivery.id,
-  });
-
-  return { ...result, deliveryId: delivery.id };
+  // Eve callers consume only the enqueue result + deliveryId; drop the shared path's
+  // publishResult so this wrapper's surface stays exactly what it was before ADR-0068.
+  const { publishResult, ...result } = await enqueueAndPublishBackgroundJob(
+    BACKGROUND_JOB_FAMILIES.embedding,
+    {
+      ownerUserId: input.ownerUserId,
+      enqueueInput: {
+        ownerUserId: input.ownerUserId,
+        recordKind: input.recordKind,
+        recordId: input.recordId,
+      },
+      runtimeMode: input.runtimeMode,
+      deliveryStore: input.deliveryStore,
+      queue: input.queue ?? createVercelBackgroundJobQueueAdapter(),
+      enqueue: input.enqueueEmbedding,
+    },
+  );
+  return result;
 }

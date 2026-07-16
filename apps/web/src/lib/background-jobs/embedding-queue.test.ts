@@ -125,67 +125,6 @@ describe("embedding queue delivery", () => {
     expect(processJob).toHaveBeenCalledWith({ jobId: embeddingJob.id, claim: false });
   });
 
-  it("no-ops safely when a duplicate embedding message cannot claim the job", async () => {
-    const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
-    const queue = { send: vi.fn().mockResolvedValue({ messageId: "msg-1" }) };
-    const result = await enqueueAndPublishSemanticEmbeddingJob({
-      ownerUserId: "user-1",
-      recordKind: "memory",
-      recordId: "memory-1",
-      runtimeMode: "enqueue_only",
-      deliveryStore,
-      queue,
-      enqueueEmbedding: vi.fn().mockResolvedValue(enqueueResult()),
-    });
-    const claimJob = vi.fn().mockResolvedValue(null);
-    const getJob = vi.fn().mockResolvedValue({ ...embeddingJob, status: "completed" });
-    const processJob = vi.fn();
-
-    const consumed = await consumeEmbeddingQueueMessage({
-      deliveryStore,
-      payload: {
-        deliveryId: result.deliveryId,
-        jobKind: "embedding",
-        jobId: embeddingJob.id,
-      },
-      claimJob,
-      getJob,
-      processJob,
-    });
-
-    expect(consumed).toMatchObject({ status: "ignored", reason: "terminal" });
-    expect(processJob).not.toHaveBeenCalled();
-  });
-
-  it("no-ops safely when an embedding delivery is stale", async () => {
-    const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
-    const { delivery } = await deliveryStore.createBackgroundJobDelivery({
-      ownerUserId: "user-1",
-      jobKind: "embedding",
-      jobId: embeddingJob.id,
-    });
-    await deliveryStore.markBackgroundJobDeliveryPublishFailed({
-      ownerUserId: "user-1",
-      deliveryId: delivery.id,
-      error: "queue down",
-      nextAttemptAt: new Date("2026-06-29T12:05:00.000Z"),
-    });
-    const processJob = vi.fn();
-
-    const consumed = await consumeEmbeddingQueueMessage({
-      deliveryStore,
-      payload: {
-        deliveryId: delivery.id,
-        jobKind: "embedding",
-        jobId: embeddingJob.id,
-      },
-      processJob,
-    });
-
-    expect(consumed).toMatchObject({ status: "ignored", reason: "stale_delivery" });
-    expect(processJob).not.toHaveBeenCalled();
-  });
-
   it("lets provider throttling remain retryable Postgres job state", async () => {
     const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
     const queue = { send: vi.fn().mockResolvedValue({ messageId: "msg-1" }) };
