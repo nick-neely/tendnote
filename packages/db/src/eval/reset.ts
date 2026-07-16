@@ -7,7 +7,18 @@ function baseAdminUrl() {
   const explicit = process.env.TENDNOTE_EVAL_ADMIN_DATABASE_URL;
   if (explicit) return explicit;
 
-  return process.env.DATABASE_URL ?? fallbackAdminUrl;
+  const candidate = process.env.DATABASE_URL ?? fallbackAdminUrl;
+  const url = new URL(candidate);
+
+  // Retry runners execute with DATABASE_URL pointed at the eval database. A
+  // database cannot drop itself, so use PostgreSQL's maintenance database for
+  // the guarded reset when that happens.
+  if (url.pathname === `/${evalDatabaseName}`) {
+    url.pathname = "/postgres";
+    return url.toString();
+  }
+
+  return candidate;
 }
 
 function evalDatabaseUrl() {
