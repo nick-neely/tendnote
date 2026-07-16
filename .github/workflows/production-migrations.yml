@@ -63,7 +63,6 @@ jobs:
       - changes
       - verify
     if: needs.changes.outputs.database == 'true' && needs.verify.result == 'success'
-    environment: production
     env:
       NODE_VERSION: 24
       PNPM_VERSION: 10.32.1
