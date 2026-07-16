@@ -14,7 +14,7 @@ import {
   recordProviderConnectionError,
   setProviderConnectionStatus,
 } from "@tendnote/db/queries/provider-connections";
-import type { ProviderConnectionStatus } from "@tendnote/domain";
+import { PROVIDER_DISCORD, PROVIDER_GOOGLE, type ProviderConnectionStatus } from "@tendnote/domain";
 import {
   admittedOwnerOrNull,
   requireAdmittedOwner,
@@ -27,20 +27,21 @@ import {
   isGoogleConfigured,
 } from "@/lib/auth/social";
 import {
+  type CapabilityReconcileContext,
+  type LinkedProviderAccount,
+  reconcileOwnerCapabilities,
+} from "./capability-lifecycle";
+import {
   deriveDiscordConnection,
   isDiscordAccount,
   type LinkedDiscordAccountLike,
-  reconcileDiscordConnection,
 } from "./discord-connection";
 import { type DisconnectDiscordResult, disconnectDiscord } from "./discord-disconnect";
 import { revokeDiscordToken } from "./discord-revoke";
-import { reconcileGoogleCalendarConnection } from "./google-calendar-connection";
 import {
   type DisconnectGoogleCalendarResult,
   disconnectGoogleCalendar,
 } from "./google-calendar-disconnect";
-import { reconcileGoogleContactsConnection } from "./google-contacts-connection";
-import { reconcileGoogleGmailConnection } from "./google-gmail-connection";
 
 const GOOGLE_OAUTH_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 const DISCORD_USER_INFO_URL = "https://discord.com/api/users/@me";
@@ -117,117 +118,89 @@ async function fetchDiscordUsername(): Promise<string | null> {
  */
 export async function getOwnerProviderConnections() {
   const ownerUserId = await requireAdmittedOwner();
-  // Mirror live Google account-link state into the Calendar connection before
-  // reading, so returning from the linkSocial flow shows `connected` (ADR-0071).
-  // This is a read-path write by design: the mirror is owner-scoped (it persists
-  // only for the just-resolved admitted owner, from that same session's accounts)
-  // and idempotent (no row change ⇒ no audit entry), so it cannot affect another
-  // owner. Best-effort: a transient provider/auth hiccup must not break the
-  // account page (ADR-0081), so failures are swallowed and the persisted state is
-  // read as-is. Durable auth/credential error mapping lands with the read and
-  // disconnect slices (#108, #109) where real provider errors surface.
-  await syncGoogleConnections(ownerUserId).catch(() => {});
-  // Mirror live Better Auth Discord account-link state into the Discord identity
-  // mapping and Provider Connection, on the same best-effort read-path terms.
-  await syncDiscordConnection(ownerUserId).catch(() => {});
+  // Mirror live provider account-link state into each capability's connection before
+  // reading, so returning from the linkSocial flow shows `connected` (ADR-0071/0138).
+  // This is a read-path write by design: the mirror is owner-scoped (it persists only
+  // for the just-resolved admitted owner, from that same session's accounts) and
+  // idempotent (no row change ⇒ no audit entry), so it cannot affect another owner.
+  // Best-effort: a transient provider/auth hiccup must not break the account page
+  // (ADR-0081), so per-capability failures are swallowed and the persisted state is
+  // read as-is.
+  await reconcileOwnerProviderConnections(ownerUserId).catch(() => {});
   return listProviderConnections({ ownerUserId });
 }
 
-/**
- * Reconcile the owner's Better Auth Google account-link into their Calendar and
- * Gmail Provider Connections (Phase 2C/2D, ADR-0071/0090). Lists the shared Google
- * account link once, then mirrors each capability from its own granted scope, so
- * Calendar and Gmail connect independently and neither implies the other. No-op
- * unless Google is configured; the heavy/RSC-only deps (Better Auth server, request
- * headers) are imported lazily so this stays inert — and unit tests stay
- * deterministic — when Google is not wired. Identity and scopes come from the linked
- * Google account, never the session.
- */
-async function syncGoogleConnections(ownerUserId: string): Promise<void> {
-  if (!isGoogleConfigured(googleEnvFromProcess())) {
-    return;
+/** Providers whose server credentials are configured, per their env gate. */
+function enabledProviders(): Set<string> {
+  const providers = new Set<string>();
+  if (isGoogleConfigured(googleEnvFromProcess())) {
+    providers.add(PROVIDER_GOOGLE);
   }
-  const accounts = await listOwnerLinkedAccounts();
-  const existingConnections = await listProviderConnections({ ownerUserId });
-  await Promise.all([
-    reconcileGoogleCalendarConnection({
-      ownerUserId,
-      accounts,
-      connect: connectProviderConnection,
-    }),
-    reconcileGoogleGmailConnection({
-      ownerUserId,
-      accounts,
-      connect: connectProviderConnection,
-      // Downgrade a stale Gmail row when the shared Google account was unlinked (e.g.
-      // by a Calendar disconnect), so Gmail status stays honest (ADR-0090).
-      isConnected: isProviderCapabilityConnected,
-      revoke: markProviderConnectionRevoked,
-    }),
-    reconcileGoogleContactsConnection({
-      ownerUserId,
-      accounts,
-      existingConnections,
-      connect: connectProviderConnection,
-      isConnected: isProviderCapabilityConnected,
-      revoke: markProviderConnectionRevoked,
-      recordError: recordProviderConnectionError,
-    }),
-  ]);
+  if (isDiscordConfigured(discordEnvFromProcess())) {
+    providers.add(PROVIDER_DISCORD);
+  }
+  return providers;
 }
 
 /**
- * Run the shared Discord reconcile (ADR-0138) with the production write deps — the
- * persisted identity mapping (#166) and the Discord Provider Connection. The caller
- * supplies the owner, the linked-account list, and the username resolver, so the two
- * trigger points can source those differently while sharing one reconcile
- * implementation: the /account backstop lists the session's accounts, and the
- * after-link hook (#174) passes the just-created account row. Identity is always the
- * Discord user id from the linked account, never the session, so the mapping resolves
- * inbound interactions honestly. The reconcile itself is idempotent and records a
- * cross-owner conflict as an actionable error rather than reassigning.
+ * Build the reconcile context that binds the catalog's capability lifecycle registry to
+ * production write deps (ADR-0069/0071/0090/0138). Every capability's reconcile draws
+ * from this one context: the shared Better Auth linked-account list read once, the
+ * owner-scoped connect/revoke/error mutations, and the Discord identity resolvers.
+ * Identity and scopes always come from the linked provider account, never the session,
+ * so a mirrored connection honestly reflects which account it reads. Heavy RSC-only
+ * deps (Better Auth server, request headers) load lazily inside the injected callbacks.
  */
-async function runDiscordReconcile(input: {
+function buildReconcileContext(input: {
   ownerUserId: string;
-  accounts: readonly LinkedDiscordAccountLike[];
-  fetchUsername: () => Promise<string | null>;
-}): Promise<void> {
-  await reconcileDiscordConnection({
+  accounts: readonly LinkedProviderAccount[];
+  existingConnections: CapabilityReconcileContext["existingConnections"];
+  enabled: ReadonlySet<string>;
+}): CapabilityReconcileContext {
+  return {
     ownerUserId: input.ownerUserId,
     accounts: input.accounts,
+    existingConnections: input.existingConnections,
+    enabledProviders: input.enabled,
+    connect: connectProviderConnection,
+    isConnected: isProviderCapabilityConnected,
+    revoke: markProviderConnectionRevoked,
+    recordError: recordProviderConnectionError,
     getIdentity: async (discordUserId) => {
       const identity = await getDiscordIdentity({ discordUserId });
       return identity
         ? { ownerUserId: identity.ownerUserId, displayIdentity: identity.displayIdentity }
         : null;
     },
-    fetchUsername: input.fetchUsername,
+    fetchUsername: fetchDiscordUsername,
     linkIdentity: async (linkInput) => {
       await linkDiscordIdentity(linkInput);
     },
-    connect: async (connectInput) => {
-      await connectProviderConnection(connectInput);
-    },
-    recordError: async (errorInput) => {
-      await recordProviderConnectionError(errorInput);
-    },
-  });
+  };
 }
 
 /**
- * Reconcile the owner's Better Auth Discord account-link into their persisted
- * Discord identity mapping (#166) and Discord Provider Connection. No-op unless
- * Discord is configured; heavy RSC-only deps (Better Auth server, request headers)
- * are imported lazily so this stays inert — and unit tests stay deterministic —
- * when Discord is not wired. Sources the linked accounts from the current session,
- * so it is the self-healing backstop that runs on every /account load.
+ * Reconcile every offered capability (Calendar, Gmail, Contacts, Discord) from the
+ * owner's live provider account-links, driven by the catalog lifecycle registry. Lists
+ * the shared linked-account set once and mirrors each capability from its own granted
+ * scope / identity, so Calendar, Gmail, and Contacts connect independently and Discord
+ * links its owner-scoped identity — each behind its own explicit adapter. No-op when no
+ * provider is configured, so this stays inert (and unit tests stay deterministic) until
+ * a provider is wired. Per-capability failures are isolated so one provider's transient
+ * failure never blocks another's mirror.
  */
-async function syncDiscordConnection(ownerUserId: string): Promise<void> {
-  if (!isDiscordConfigured(discordEnvFromProcess())) {
+async function reconcileOwnerProviderConnections(ownerUserId: string): Promise<void> {
+  const enabled = enabledProviders();
+  if (enabled.size === 0) {
     return;
   }
-  const accounts = await listOwnerLinkedAccounts();
-  await runDiscordReconcile({ ownerUserId, accounts, fetchUsername: fetchDiscordUsername });
+  const [accounts, existingConnections] = await Promise.all([
+    listOwnerLinkedAccounts(),
+    listProviderConnections({ ownerUserId }),
+  ]);
+  await reconcileOwnerCapabilities(
+    buildReconcileContext({ ownerUserId, accounts, existingConnections, enabled }),
+  );
 }
 
 /**
@@ -266,7 +239,11 @@ export async function reconcileDiscordAfterLink(
   if (typeof ownerUserId !== "string" || ownerUserId.length === 0) {
     return;
   }
-  if (!isDiscordConfigured(discordEnvFromProcess())) {
+  // Same configured-provider gate as the page-load path: no Discord credentials ⇒ no
+  // mirror. Sourced from `enabledProviders()` so the two paths share one gate rather
+  // than restating the `isDiscordConfigured` check.
+  const enabled = enabledProviders();
+  if (!enabled.has(PROVIDER_DISCORD)) {
     return;
   }
   try {
@@ -274,13 +251,28 @@ export async function reconcileDiscordAfterLink(
       console.info("[tendnote] Skipped Discord after-link reconcile for a non-admitted owner");
       return;
     }
-    await runDiscordReconcile({
-      ownerUserId,
-      accounts: [account],
-      fetchUsername: fetchDiscordUsername,
-    });
+    // Same catalog-driven reconcile as the page-load path, scoped to Discord: the
+    // just-created account row is the only linked account, and the reconcile is scoped
+    // to Discord, so no other capability runs. The reconcile records a cross-owner
+    // conflict as an actionable error itself; an unexpected reconcile failure is isolated
+    // and logged via `onError`, so the OAuth callback/redirect never fails on this
+    // best-effort mirror.
+    await reconcileOwnerCapabilities(
+      buildReconcileContext({
+        ownerUserId,
+        accounts: [account],
+        existingConnections: [],
+        enabled: new Set([PROVIDER_DISCORD]),
+      }),
+      {
+        onError: (_ref, error) =>
+          console.error("[tendnote] Discord after-link reconcile failed", error),
+      },
+    );
   } catch (error) {
-    console.error("[tendnote] Discord after-link reconcile failed", error);
+    // Guards the pre-reconcile admission check (`admittedOwnerOrNull`); reconcile errors
+    // are handled by `onError` above, so this is a distinct failure surface.
+    console.error("[tendnote] Discord after-link admission check failed", error);
   }
 }
 

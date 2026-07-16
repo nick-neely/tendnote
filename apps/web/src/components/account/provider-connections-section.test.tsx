@@ -1,7 +1,12 @@
+import { DEFAULT_PROVIDER_CAPABILITIES, providerCapabilityKey } from "@tendnote/domain";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { capabilityDisconnectKind } from "@/lib/integrations/capability-lifecycle";
 import type { ProviderConnectionView } from "@/lib/integrations/provider-connection-view";
-import { ProviderConnectionsSection } from "./provider-connections-section";
+import {
+  capabilityHasDisconnectAffordance,
+  ProviderConnectionsSection,
+} from "./provider-connections-section";
 
 // The disconnect button imports a server action whose module chain reaches
 // `server-only`; stub the action so this presentational test renders client-side.
@@ -253,5 +258,18 @@ describe("ProviderConnectionsSection", () => {
 
     expect(html).toContain("Needs attention");
     expect(html).toContain("same linked Google account");
+  });
+
+  it("wires a disconnect affordance for exactly the capabilities the catalog marks disconnectable", () => {
+    // The catalog's declared disconnect kind and the UI's disconnect wiring are the two
+    // sources of disconnect truth; this cross-check fails if they drift (e.g. a
+    // disconnectable capability with no button, or Gmail growing an unexpected one).
+    for (const capability of DEFAULT_PROVIDER_CAPABILITIES) {
+      const label = providerCapabilityKey(capability);
+      expect(
+        capabilityHasDisconnectAffordance(capability),
+        `disconnect affordance mismatch for ${label}`,
+      ).toBe(capabilityDisconnectKind(capability) !== null);
+    }
   });
 });

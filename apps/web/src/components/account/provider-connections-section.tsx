@@ -14,6 +14,7 @@ import {
 import type { ComponentType } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { capabilityDisconnectKind } from "@/lib/integrations/capability-lifecycle";
 import type { ProviderConnectionView } from "@/lib/integrations/provider-connection-view";
 import { CalendarConnectButton } from "./calendar-connect-button";
 import { CalendarDisconnectButton } from "./calendar-disconnect-button";
@@ -98,8 +99,24 @@ const CAPABILITY_ACTIONS: Record<string, Record<string, CapabilityAction>> = {
   discord: DISCORD_CAPABILITY_ACTIONS,
 };
 
-function capabilityAction(connection: ProviderConnectionView): CapabilityAction | undefined {
-  return CAPABILITY_ACTIONS[connection.providerKey]?.[connection.capabilityKey];
+function capabilityAction(ref: {
+  providerKey: string;
+  capabilityKey: string;
+}): CapabilityAction | undefined {
+  return CAPABILITY_ACTIONS[ref.providerKey]?.[ref.capabilityKey];
+}
+
+/**
+ * Whether this row wires a live disconnect control. Exported so a test can cross-check
+ * it against the catalog's declared disconnect kind (`capabilityDisconnectKind`): the
+ * UI must offer a disconnect affordance for exactly the capabilities the catalog marks
+ * disconnectable, so the two sources of disconnect truth cannot drift.
+ */
+export function capabilityHasDisconnectAffordance(ref: {
+  providerKey: string;
+  capabilityKey: string;
+}): boolean {
+  return Boolean(capabilityAction(ref)?.DisconnectButton);
 }
 
 /**
@@ -326,12 +343,20 @@ function ProviderRowStatusNotes({
   connection: ProviderConnectionView;
   connectable: boolean;
 }) {
-  const isCalendar = connection.capabilityKey === "calendar";
+  // The "finish revocation at the provider" note belongs to the `provider_grant`
+  // disconnect semantics (revoke-the-grant-then-unlink), which the catalog declares —
+  // not to a `capabilityKey === "calendar"` literal. Keyed off the descriptor so it
+  // stays correct if another capability ever adopts that disconnect kind (ADR-0080).
+  const isProviderGrantDisconnect =
+    capabilityDisconnectKind({
+      providerKey: connection.providerKey,
+      capabilityKey: connection.capabilityKey,
+    }) === "provider_grant";
   // After a disconnect that could not revoke the Google-side grant, the user still
   // has cleanup to finish in their Google Account (ADR-0080).
   const showCleanupNote =
     connectable &&
-    isCalendar &&
+    isProviderGrantDisconnect &&
     connection.status === "revoked" &&
     connection.revocationReason === PROVIDER_GRANT_NOT_REVOKED_REASON;
 
