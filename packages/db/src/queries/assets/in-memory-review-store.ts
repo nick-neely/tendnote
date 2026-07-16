@@ -50,13 +50,20 @@ export function createInMemoryAssetReviewStore(deps: {
           status: "active",
         })
       : [];
+    const shares = input.memory.householdId
+      ? await deps.householdStore.listHouseholdRecordShares({
+          householdId: input.memory.householdId,
+          recordKind: "asset_memory",
+          recordId: input.memory.id,
+        })
+      : [];
     return canViewScopedRecord({
       callerUserId: input.callerUserId,
       record: scopedRecordVisibility({
         ownerUserId: input.memory.ownerUserId,
         scope: input.memory.scope,
         householdId: input.memory.householdId,
-        shares: [],
+        shares,
       }),
       activeMemberships,
     });

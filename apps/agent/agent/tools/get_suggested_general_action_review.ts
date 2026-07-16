@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   generalActionId: z.uuid().describe("The persisted suggested action id to pull up."),
@@ -21,10 +22,12 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const review = await getSuggestedGeneralActionReview({
-      actorUserId: ownerUserId,
-      generalActionId: input.generalActionId,
-    });
+    const review = await withModelSafeStoreErrors(() =>
+      getSuggestedGeneralActionReview({
+        actorUserId: ownerUserId,
+        generalActionId: input.generalActionId,
+      }),
+    );
 
     if (!review) {
       return { found: false as const };

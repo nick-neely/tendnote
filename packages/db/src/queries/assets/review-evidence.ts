@@ -1,12 +1,9 @@
 import {
   type Asset,
-  type AssetChildScope,
   type AssetEvidence,
   AssetValidationError,
   assertAssetEvidenceFileAccepted,
   assertAssetEvidenceFileSignature,
-  defaultChildScopeForAsset,
-  requireChildScopeWithinAsset,
 } from "@tendnote/domain";
 import type {
   AddAssetEvidenceInput,
@@ -24,6 +21,7 @@ import {
   SET_ASIDE,
 } from "./review-shared";
 import type { AssetReviewGroupResult, AssetReviewLifecycleStore } from "./review-types";
+import { resolveAssetChildVisibility, writeAssetChildShares } from "./review-visibility";
 
 /**
  * The shared Asset Evidence Capture steps (#200): one write path whether
@@ -91,8 +89,12 @@ export async function addAssetEvidence(
     assertAssetEvidenceFileSignature(input.file);
   }
 
-  const scope: AssetChildScope = input.scope ?? defaultChildScopeForAsset(anchor.scope);
-  requireChildScopeWithinAsset({ childScope: scope, assetScope: anchor.scope });
+  const visibility = await resolveAssetChildVisibility(store, {
+    ownerUserId: input.ownerUserId,
+    anchor,
+    scope: input.scope,
+    selectedUserIds: input.selectedUserIds,
+  });
 
   const evidence = await store.createAssetEvidence({
     values: {
@@ -108,14 +110,21 @@ export async function addAssetEvidence(
       money: input.money ?? null,
       purchasedOn: input.purchasedOn ?? null,
       renewsOn: input.renewsOn ?? null,
-      scope,
-      householdId: scope === "household" ? anchor.householdId : null,
+      scope: visibility.scope,
+      householdId: visibility.householdId,
       sourceRecordId: input.sourceRecordId ?? null,
       reviewGroupId,
       createdByUserId: input.ownerUserId,
       lastActorUserId: input.ownerUserId,
     },
     fileBytes: input.file?.bytes,
+  });
+
+  await writeAssetChildShares(store, {
+    ...visibility,
+    ownerUserId: input.ownerUserId,
+    recordKind: "asset_evidence",
+    recordId: evidence.id,
   });
 
   await recordAudit(store, anchor, {

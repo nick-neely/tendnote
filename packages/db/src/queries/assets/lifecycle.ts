@@ -159,7 +159,12 @@ async function hydrateAsset(store: AssetLifecycleStore, asset: Asset): Promise<A
     asset.scope !== "private" && asset.householdId
       ? await store.getHouseholdWorkspace({ householdId: asset.householdId })
       : null;
-  return { ...asset, sharedWithCount: shares.length, householdName: household?.name ?? null };
+  return {
+    ...asset,
+    sharedWithCount: shares.length,
+    sharedWithUserIds: shares.map((share) => share.sharedWithUserId),
+    householdName: household?.name ?? null,
+  };
 }
 
 /**

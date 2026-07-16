@@ -39,6 +39,7 @@ import { createAssetReview } from "./review";
 
 const OWNER = "owner-user";
 const MEMBER = "member-user";
+const OTHER_MEMBER = "other-member-user";
 const OUTSIDER = "outsider-user";
 
 /** A fixed instant, so a proposal's timing is a fact rather than a race with the clock. */
@@ -282,6 +283,82 @@ describe("Phase 6 policy — the child-scope ceiling", () => {
       "Compressor repair quote",
       "Filter size",
     ]);
+  });
+
+  it("lets memories and evidence use a selected audience without widening to the household", async () => {
+    const { store, lifecycle, review, household } = await setupWorld();
+    await store.createHouseholdMembership({
+      householdId: household.id,
+      userId: OTHER_MEMBER,
+      invitedByUserId: OWNER,
+      role: "member",
+      status: "active",
+      invitedAt: NOW,
+      acceptedAt: NOW,
+      removedAt: null,
+    });
+    const sharedAsset = await lifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Selected refrigerator",
+      kind: "appliance",
+      scope: "shared",
+      householdId: household.id,
+      selectedUserIds: [MEMBER],
+    });
+
+    const memory = await review.createActiveAssetMemory({
+      ownerUserId: OWNER,
+      assetId: sharedAsset.id,
+      label: "Filter size",
+      value: { type: "text", text: "EDR1RXD1" },
+      scope: "shared",
+      selectedUserIds: [MEMBER],
+    });
+    const evidence = await review.addAssetEvidence({
+      ownerUserId: OWNER,
+      assetId: sharedAsset.id,
+      kind: "receipt",
+      label: "Filter receipt",
+      capturedText: "EDR1RXD1",
+    });
+
+    expect(memory.scope).toBe("shared");
+    expect(evidence.scope).toBe("shared");
+    expect(
+      (await review.listAssetMemories({ callerUserId: MEMBER, assetId: sharedAsset.id })).map(
+        (record) => record.id,
+      ),
+    ).toContain(memory.id);
+    expect(
+      (await review.listAssetEvidence({ callerUserId: MEMBER, assetId: sharedAsset.id })).map(
+        (record) => record.id,
+      ),
+    ).toContain(evidence.id);
+    expect(
+      await review.listAssetMemories({ callerUserId: OTHER_MEMBER, assetId: sharedAsset.id }),
+    ).toEqual([]);
+    expect(
+      await review.listAssetEvidence({ callerUserId: OTHER_MEMBER, assetId: sharedAsset.id }),
+    ).toEqual([]);
+  });
+
+  it("supports a selected child audience beneath a household asset", async () => {
+    const { review, fridge } = await setupWorld();
+    const memory = await review.createActiveAssetMemory({
+      ownerUserId: OWNER,
+      assetId: fridge.id,
+      label: "Private household detail",
+      notes: "Visible to one selected member.",
+      scope: "shared",
+      selectedUserIds: [MEMBER],
+    });
+
+    expect(memory.scope).toBe("shared");
+    expect(
+      (await review.listAssetMemories({ callerUserId: MEMBER, assetId: fridge.id })).map(
+        (record) => record.id,
+      ),
+    ).toContain(memory.id);
   });
 
   it("keeps a private child record out of Asset Search for everyone but its owner", async () => {

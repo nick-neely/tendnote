@@ -19,6 +19,7 @@ function asset(overrides: Partial<AssetWithContext> = {}): AssetWithContext {
     createdAt: new Date("2026-07-01T00:00:00"),
     updatedAt: new Date("2026-07-01T00:00:00"),
     sharedWithCount: 0,
+    sharedWithUserIds: [],
     householdName: null,
     ...overrides,
   };

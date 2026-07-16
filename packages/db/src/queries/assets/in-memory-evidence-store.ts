@@ -41,13 +41,20 @@ export function createInMemoryAssetEvidenceStore(deps: {
           status: "active",
         })
       : [];
+    const shares = input.record.householdId
+      ? await deps.householdStore.listHouseholdRecordShares({
+          householdId: input.record.householdId,
+          recordKind: "asset_evidence",
+          recordId: input.record.id,
+        })
+      : [];
     return canViewScopedRecord({
       callerUserId: input.callerUserId,
       record: scopedRecordVisibility({
         ownerUserId: input.record.ownerUserId,
         scope: input.record.scope,
         householdId: input.record.householdId,
-        shares: [],
+        shares,
       }),
       activeMemberships,
     });

@@ -53,8 +53,8 @@ describe("default semantic embedding configuration", () => {
 
     const result = await adapter.embedText({ text: "Alex likes keyboards", ...config });
 
-    expect(config).toEqual({ model: "fake-semantic-retrieval", version: "v1" });
-    expect(result.vector).toHaveLength(4);
+    expect(config).toEqual({ model: "fake-semantic-retrieval", version: "v2" });
+    expect(result.vector).toHaveLength(64);
     expect(embedMock).not.toHaveBeenCalled();
   });
 

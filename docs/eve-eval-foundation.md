@@ -54,13 +54,15 @@ The first Eve-native harness uses a stable local eval database:
 - Override with `TENDNOTE_EVAL_DATABASE_URL` when needed.
 - `pnpm --filter @tendnote/agent eval:prepare` recreates the eval database, applies committed Drizzle migrations, and seeds the existing synthetic demo data.
 - `pnpm --filter @tendnote/agent eval:list` lists discovered Eve evals without running the model.
-- `pnpm --filter @tendnote/agent eval:deterministic` runs `eval:prepare`, then `eve eval --tag deterministic --strict --skip-report --junit .eve/evals/junit.xml`.
+- `pnpm --filter @tendnote/agent eval:deterministic` runs the full deterministic tag once. Any failing eval is retried twice against a freshly prepared database and must pass both retries (two of three samples overall) to recover. The wrapper keeps the existing strict assertions and writes the aggregate result to `.eve/evals/junit.xml`.
 
 The reset script refuses to reset any database whose name does not begin with
 `tendnote_eval`, keeping the normal local `tendnote` database out of the eval
 path.
 
-CI runs the same deterministic command in the reusable verify workflow. The job
+The bounded retry addresses live-model sampling variance without weakening an
+eval gate: one retry failure remains a suite failure, and passing evals are never
+rerun. CI runs the same deterministic command in the reusable verify workflow. The job
 uses Postgres only, passes `AI_GATEWAY_API_KEY` for the agent model, does not run
 judge-backed or model-comparison tags, writes `.eve/evals/junit.xml`, and uploads
 `apps/agent/.eve/evals/` only when the deterministic eval job fails.

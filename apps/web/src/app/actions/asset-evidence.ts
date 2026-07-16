@@ -13,7 +13,11 @@ import {
   assetKindSchema,
   assetLabelForKind,
 } from "@tendnote/domain";
-import { visibilityLabelForScope } from "@tendnote/domain/privacy";
+import {
+  scopeForVisibilityChoice,
+  visibilityChoiceSchema,
+  visibilityLabelForScope,
+} from "@tendnote/domain/privacy";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
@@ -57,8 +61,8 @@ const evidenceFieldsSchema = z.object({
   currency: z.preprocess(blankAsUndefined, z.string().trim().length(3).optional()),
   purchasedOn: z.preprocess(blankAsUndefined, z.iso.date().optional()),
   renewsOn: z.preprocess(blankAsUndefined, z.iso.date().optional()),
-  // "Keep this just for me" under a household asset.
-  keepPrivate: z.preprocess(blankAsUndefined, z.enum(["true", "false"]).optional()),
+  visibilityChoice: z.preprocess(blankAsUndefined, visibilityChoiceSchema.optional()),
+  selectedUserIds: z.array(z.string().min(1)).max(50).optional(),
 });
 
 const targetSchema = z.union([
@@ -97,16 +101,29 @@ function toEvidenceFields(
     file,
     url: fields.url ?? null,
     capturedText: fields.capturedText ?? null,
-    money:
-      fields.amount !== undefined
-        ? { amount: fields.amount, currency: (fields.currency ?? "USD").toUpperCase() }
-        : null,
+    money: toEvidenceMoney(fields),
     purchasedOn: fields.purchasedOn ?? null,
     renewsOn: fields.renewsOn ?? null,
-    // Absent lets the seam default to the anchor's scope; the explicit choice
-    // narrows to private. Widening beyond the anchor is impossible either way.
-    ...(fields.keepPrivate === "true" ? { scope: "private" as const } : {}),
+    // Absent lets the seam inherit the anchor. Every explicit choice is re-checked
+    // against the authoritative parent Asset in the owner-scoped seam.
+    ...toEvidenceVisibility(fields),
   };
+}
+
+function toEvidenceMoney(
+  fields: z.infer<typeof evidenceFieldsSchema>,
+): AddAssetEvidenceInput["money"] {
+  if (fields.amount === undefined) return null;
+  return { amount: fields.amount, currency: (fields.currency ?? "USD").toUpperCase() };
+}
+
+function toEvidenceVisibility(
+  fields: z.infer<typeof evidenceFieldsSchema>,
+): Partial<Pick<AddAssetEvidenceInput, "scope" | "selectedUserIds">> {
+  if (!fields.visibilityChoice) return {};
+  const scope = scopeForVisibilityChoice(fields.visibilityChoice);
+  if (!fields.selectedUserIds?.length) return { scope };
+  return { scope, selectedUserIds: fields.selectedUserIds };
 }
 
 /** Maps parsed fields + upload into the seam's capture input. */
@@ -136,7 +153,10 @@ export async function addAssetEvidenceAction(
           ? { reviewGroupId: formData.get("reviewGroupId") }
           : { assetId: formData.get("assetId") },
       );
-      const fields = evidenceFieldsSchema.parse(Object.fromEntries(formData.entries()));
+      const fields = evidenceFieldsSchema.parse({
+        ...Object.fromEntries(formData.entries()),
+        selectedUserIds: formData.getAll("selectedUserIds").map(String),
+      });
       const file = await readUploadedFile(formData);
       return addAssetEvidence(toCaptureInput(ownerUserId, target, fields, file));
     },
@@ -170,11 +190,18 @@ export async function addAssetEvidenceToNewAssetAction(
         assetName: formData.get("assetName"),
         assetKind: formData.get("assetKind"),
       });
-      const fields = evidenceFieldsSchema.parse(Object.fromEntries(formData.entries()));
+      const fields = evidenceFieldsSchema.parse({
+        ...Object.fromEntries(formData.entries()),
+        selectedUserIds: formData.getAll("selectedUserIds").map(String),
+      });
       const file = await readUploadedFile(formData);
       // A brand-new proposal is private until acceptance widens it, so the
       // keep-private narrowing has nothing to narrow — the scope choice drops.
-      const { scope: _scope, ...evidenceFields } = toEvidenceFields(fields, file);
+      const {
+        scope: _scope,
+        selectedUserIds: _selectedUserIds,
+        ...evidenceFields
+      } = toEvidenceFields(fields, file);
       const result = await addAssetEvidenceToNewAsset({
         ownerUserId,
         asset: { name: asset.assetName, kind: asset.assetKind },

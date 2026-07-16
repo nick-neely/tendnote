@@ -95,9 +95,9 @@ describe("semantic retrieval hardening", () => {
     expect(embedding).toEqual({
       vector: expect.arrayContaining([expect.any(Number)]),
       model: "fake-semantic-retrieval",
-      version: "v1",
+      version: "v2",
     });
-    expect(embedding.vector).toHaveLength(4);
+    expect(embedding.vector).toHaveLength(64);
     expect(moduleSource).toContain("createFakeEmbeddingAdapter()");
     expect(moduleSource).not.toMatch(/OPENAI_API_KEY|ANTHROPIC_API_KEY|GOOGLE_API_KEY/);
     expect(moduleSource).toContain("AI_GATEWAY_API_KEY");

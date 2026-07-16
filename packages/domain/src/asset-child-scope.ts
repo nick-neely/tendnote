@@ -3,12 +3,11 @@ import { AssetValidationError } from "./assets";
 import type { PrivacyScope } from "./privacy";
 
 /**
- * The visibility a child record under an Asset (an Asset Memory, Asset Evidence)
- * can hold in Phase 6: private or household. A selected-shared child audience is
- * deferred — additive later, never assumed — so no child share rows exist yet
- * (#198, #200).
+ * The visibility a child record under an Asset (an Asset Memory or Asset Evidence)
+ * can hold. The ceiling below decides which of the full privacy scopes fit beneath
+ * a particular parent Asset.
  */
-export const assetChildScopeSchema = z.enum(["private", "household"]);
+export const assetChildScopeSchema = z.enum(["private", "shared", "household"]);
 export type AssetChildScope = z.infer<typeof assetChildScopeSchema>;
 
 // How wide each scope reaches, for the child-scope ceiling: a household record
@@ -36,26 +35,31 @@ export function requireChildScopeWithinAsset(input: {
 
 /**
  * The visibility a new child record defaults to under an Asset: the Asset's own
- * scope where this slice supports it (household), otherwise private. Fail-closed —
- * a selected-shared Asset defaults its children to private rather than guessing an
- * audience this slice cannot represent.
+ * scope. The persistence seam resolves and materializes selected-member share rows.
  */
 export function defaultChildScopeForAsset(assetScope: PrivacyScope): AssetChildScope {
-  return assetScope === "household" ? "household" : "private";
+  return assetScope;
 }
 
 /**
  * Re-resolves a child record's visibility when duplicate review re-anchors it to
  * an existing Asset (#198): the record keeps its scope where the target allows it
- * and is clamped to private otherwise, adopting the target's household.
+ * and is clamped to private otherwise, adopting the target's household for either
+ * non-private scope.
  * Deterministic and fail-closed — linking never widens who can see a detail.
  */
 export function resolveLinkedChildVisibility(input: {
   childScope: AssetChildScope;
   target: { scope: PrivacyScope; householdId: string | null };
 }): { scope: AssetChildScope; householdId: string | null } {
-  if (input.childScope === "household" && input.target.scope === "household") {
-    return { scope: "household", householdId: input.target.householdId };
+  if (SCOPE_REACH[input.childScope] <= SCOPE_REACH[input.target.scope]) {
+    return {
+      scope: input.childScope,
+      householdId: input.childScope === "private" ? null : input.target.householdId,
+    };
   }
-  return { scope: "private", householdId: null };
+  return {
+    scope: input.target.scope,
+    householdId: input.target.scope === "private" ? null : input.target.householdId,
+  };
 }

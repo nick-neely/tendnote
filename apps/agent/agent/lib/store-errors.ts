@@ -1,4 +1,4 @@
-import { AssetValidationError } from "@tendnote/domain";
+import { AssetValidationError, GeneralActionValidationError } from "@tendnote/domain";
 
 /**
  * What a tool may say when a store call fails for a reason that is not the caller's to
@@ -31,7 +31,7 @@ export async function withModelSafeStoreErrors<T>(run: () => Promise<T>): Promis
   try {
     return await run();
   } catch (error) {
-    if (error instanceof AssetValidationError) {
+    if (error instanceof AssetValidationError || error instanceof GeneralActionValidationError) {
       throw error;
     }
 

@@ -216,7 +216,7 @@ describe("shared child-scope ceiling", () => {
       requireChildScopeWithinAsset({ childScope: "household", assetScope: "private" }),
     ).toThrow(AssetValidationError);
     expect(defaultChildScopeForAsset("household")).toBe("household");
-    expect(defaultChildScopeForAsset("shared")).toBe("private");
+    expect(defaultChildScopeForAsset("shared")).toBe("shared");
     expect(
       resolveLinkedChildVisibility({
         childScope: "household",

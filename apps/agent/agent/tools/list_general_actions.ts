@@ -8,6 +8,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
   ledger: z
@@ -147,7 +148,9 @@ export default defineTool({
     const postFilters = windowsActive || Boolean(input.routinesOnly);
 
     const read = readerForLedger(ledger);
-    const fetched = await read({ ownerUserId, limit: postFilters ? undefined : input.limit });
+    const fetched = await withModelSafeStoreErrors(() =>
+      read({ ownerUserId, limit: postFilters ? undefined : input.limit }),
+    );
     const actions = applyActiveListFilters(fetched, input, { windowsActive, postFilters });
 
     return {

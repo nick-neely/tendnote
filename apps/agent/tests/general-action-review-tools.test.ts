@@ -79,9 +79,9 @@ describe("list_suggested_general_action_reviews", () => {
     });
     expect(result.count).toBe(1);
     expect(result.reviews[0]?.component.type).toBe("suggested_general_action_review");
-    // Model view summarizes without ids.
+    // The model view carries the persisted action id for accept/dismiss follow-ups.
     const model = listReviewsTool.toModelOutput?.(result as never) as { value: unknown };
-    expect(JSON.stringify(model.value)).not.toContain(ACTION_ID);
+    expect(JSON.stringify(model.value)).toContain(ACTION_ID);
   });
 });
 

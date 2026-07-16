@@ -4,6 +4,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 /**
  * Hard cap on how many Suggested General Actions one planning call may propose.
@@ -75,17 +76,19 @@ export default defineTool({
     // writes. Sequential keeps the persisted/embedded order stable and predictable.
     const proposed = [];
     for (const step of input.steps) {
-      const result = await suggestGeneralAction({
-        ownerUserId,
-        title: step.title,
-        notes: step.notes ?? null,
-        dueAt: step.dueAt ? new Date(step.dueAt) : null,
-        recurrence: step.recurrence ?? null,
-        areaId: step.areaId ?? null,
-        personIds: step.personIds,
-        sourceRecordId: input.sourceRecordId,
-        directlyRequested: input.directlyRequested,
-      });
+      const result = await withModelSafeStoreErrors(() =>
+        suggestGeneralAction({
+          ownerUserId,
+          title: step.title,
+          notes: step.notes ?? null,
+          dueAt: step.dueAt ? new Date(step.dueAt) : null,
+          recurrence: step.recurrence ?? null,
+          areaId: step.areaId ?? null,
+          personIds: step.personIds,
+          sourceRecordId: input.sourceRecordId,
+          directlyRequested: input.directlyRequested,
+        }),
+      );
       proposed.push({
         component: result.component,
         action: toGeneralActionRef(result.action),

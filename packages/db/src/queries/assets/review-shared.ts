@@ -2,15 +2,12 @@ import {
   type Asset,
   type AssetAuditSource,
   type AssetMemory,
-  type AssetMemoryScope,
   type AssetReviewGroup,
   AssetValidationError,
   canUseSensitiveContext,
-  defaultChildScopeForAsset,
   findAssetDuplicateCandidates,
   isDurableAssetStatus,
   type PrivacyScope,
-  requireChildScopeWithinAsset,
   type SourceRecord,
 } from "@tendnote/domain";
 import { recordAudit } from "./lifecycle";
@@ -21,6 +18,7 @@ import type {
   SuggestAssetMemoryContent,
   SuggestedAssetActionInput,
 } from "./review-types";
+import { resolveAssetChildVisibility, writeAssetChildShares } from "./review-visibility";
 
 /**
  * Shared loaders, guards, and the result builder for the review-gated Asset
@@ -310,9 +308,12 @@ export async function writeSuggestedMemory(
     auditSource: AssetAuditSource;
   },
 ): Promise<AssetMemory> {
-  const scope: AssetMemoryScope =
-    input.content.scope ?? defaultChildScopeForAsset(input.anchor.scope);
-  requireChildScopeWithinAsset({ childScope: scope, assetScope: input.anchor.scope });
+  const visibility = await resolveAssetChildVisibility(store, {
+    ownerUserId: input.ownerUserId,
+    anchor: input.anchor,
+    scope: input.content.scope,
+    selectedUserIds: input.content.selectedUserIds,
+  });
 
   const memory = await store.createAssetMemory({
     assetId: input.anchor.id,
@@ -321,12 +322,19 @@ export async function writeSuggestedMemory(
     label: input.content.label,
     value: input.content.value ?? null,
     notes: input.content.notes ?? null,
-    scope,
-    householdId: scope === "household" ? input.anchor.householdId : null,
+    scope: visibility.scope,
+    householdId: visibility.householdId,
     sourceRecordId: input.sourceRecordId,
     reviewGroupId: input.groupId,
     createdByUserId: input.ownerUserId,
     lastActorUserId: input.ownerUserId,
+  });
+
+  await writeAssetChildShares(store, {
+    ...visibility,
+    ownerUserId: input.ownerUserId,
+    recordKind: "asset_memory",
+    recordId: memory.id,
   });
 
   await recordAudit(store, input.anchor, {

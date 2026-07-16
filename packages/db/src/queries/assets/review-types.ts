@@ -143,6 +143,8 @@ export type SuggestAssetMemoryContent = {
   notes?: string | null;
   /** Defaults to the anchor's scope where supported (household), else private. */
   scope?: AssetMemoryScope;
+  /** Required when choosing a selected-member audience under a household Asset. */
+  selectedUserIds?: string[];
 };
 
 /**
@@ -190,6 +192,8 @@ export type CreateActiveAssetMemoryInput = {
   value?: AssetMemoryValue | null;
   notes?: string | null;
   scope?: AssetMemoryScope;
+  /** Required when choosing a selected-member audience under a household Asset. */
+  selectedUserIds?: string[];
   sourceRecordId?: string | null;
   source?: AssetAuditSource;
 };

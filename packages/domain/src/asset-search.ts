@@ -314,9 +314,10 @@ function anchorsFoundExactly(
  * warm index every record is somewhat like every query, so wherever the floor is set,
  * a broad query still drags in records about things the user never asked about — and a
  * search result that claims "Related" about an unrelated thing corrodes the trust
- * register that is the whole point of this surface. (It is also the reason the offline
- * dev embedding fixture — which makes every text ~0.99 similar to every other — cannot
- * be tuned out of the problem: no threshold is the right threshold.)
+ * register that is the whole point of this surface. Revisited after the offline fixture
+ * gained signed, distributed embeddings (#209): the floor is now locally meaningful,
+ * but the structural gate remains because broad-query relevance and production-model
+ * drift still cannot be expressed safely by one universal cosine threshold.
  *
  * So the tier is gated *structurally*, on the one relationship every Asset Search
  * candidate already carries: the Asset it hangs off.

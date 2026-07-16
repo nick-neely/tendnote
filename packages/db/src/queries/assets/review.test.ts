@@ -653,6 +653,88 @@ describe("duplicate review: link to an existing asset", () => {
     expect(memories.every((memory) => memory.householdId === null)).toBe(true);
   });
 
+  it("rebuilds linked child shares within a selected-shared target audience", async () => {
+    const { review, store, seedSuggestedAsset, seedHousehold, lifecycle } = setup();
+    const household = await seedHousehold();
+    const sharedTarget = await lifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Refrigerator water filter",
+      kind: "appliance",
+      scope: "shared",
+      householdId: household.id,
+      selectedUserIds: [MEMBER],
+    });
+    const result = await seedSuggestedAsset({
+      name: "fridge filter",
+      scope: "household",
+      householdId: household.id,
+    });
+
+    await review.linkAssetReviewGroup({
+      actorUserId: OWNER,
+      groupId: result.group.id,
+      targetAssetId: sharedTarget.id,
+    });
+
+    const memories = await store.listAssetMemoriesForOwner({
+      ownerUserId: OWNER,
+      assetId: sharedTarget.id,
+    });
+    expect(memories.every((memory) => memory.scope === "shared")).toBe(true);
+    for (const memory of memories) {
+      const shares = await store.listHouseholdRecordShares({
+        householdId: household.id,
+        recordKind: "asset_memory",
+        recordId: memory.id,
+      });
+      expect(shares.map((share) => share.sharedWithUserId)).toEqual([MEMBER]);
+    }
+  });
+
+  it("narrows a shared child to private when re-anchoring across households", async () => {
+    const { review, store, seedSource, seedHousehold, lifecycle } = setup();
+    const firstHousehold = await seedHousehold();
+    const secondHousehold = await seedOwnerMemberHousehold(store, OUTSIDER, OWNER);
+    const target = await lifecycle.createAsset({
+      ownerUserId: OUTSIDER,
+      name: "Garage refrigerator",
+      kind: "appliance",
+      scope: "household",
+      householdId: secondHousehold.id,
+    });
+    const source = await seedSource();
+    const result = await review.suggestAsset({
+      ownerUserId: OWNER,
+      name: "fridge filter",
+      kind: "appliance",
+      scope: "household",
+      householdId: firstHousehold.id,
+      sourceRecordId: source.id,
+      memories: [
+        {
+          label: "Filter model",
+          value: { type: "text", text: "EDR3RXD1" },
+          scope: "shared",
+          selectedUserIds: [MEMBER],
+        },
+      ],
+    });
+
+    const linked = await review.linkAssetReviewGroup({
+      actorUserId: OWNER,
+      groupId: result.group.id,
+      targetAssetId: target.id,
+    });
+    expect(linked.memories[0]?.scope).toBe("private");
+    expect(linked.memories[0]?.householdId).toBeNull();
+    const staleShares = await store.listHouseholdRecordShares({
+      householdId: firstHousehold.id,
+      recordKind: "asset_memory",
+      recordId: linked.memories[0]?.id ?? "missing",
+    });
+    expect(staleShares).toEqual([]);
+  });
+
   it("rejects linking to itself, to a non-visible target, or from a durable anchor", async () => {
     const { review, lifecycle, existing, result } = await linkSetup();
 
@@ -792,5 +874,26 @@ describe("explicit asset memory creation", () => {
         scope: "household",
       }),
     ).rejects.toThrow(AssetValidationError);
+  });
+
+  it("keeps explicit memories private unless the user widens them", async () => {
+    const { review, lifecycle, seedHousehold } = setup();
+    const household = await seedHousehold();
+    const asset = await lifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Toyota Corolla",
+      kind: "vehicle",
+      scope: "household",
+      householdId: household.id,
+    });
+
+    const memory = await review.createActiveAssetMemory({
+      ownerUserId: OWNER,
+      assetId: asset.id,
+      label: "Parking spot",
+      notes: "Level two",
+    });
+    expect(memory.scope).toBe("private");
+    expect(memory.householdId).toBeNull();
   });
 });

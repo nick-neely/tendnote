@@ -9,15 +9,19 @@ import {
   AssetValidationError,
   assertAssetEvidenceFileAccepted,
 } from "@tendnote/domain";
+import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
 import { CameraIcon, Link2Icon, StickyNoteIcon, UploadIcon, XIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { addAssetEvidenceAction } from "@/app/actions/asset-evidence";
 import { ASSET_EVIDENCE_KIND_ICONS } from "@/components/asset-evidence-shared";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import {
+  ActionVisibilityField,
+  AudiencePreview,
+  type ShareableActionMember,
+} from "@/components/general-action-visibility-field";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -27,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { VisibilityChoiceControl } from "@/components/visibility-choice-control";
 import { type AssetEvidenceView, formatEvidenceSize } from "@/lib/asset-evidence-view";
 import { useMutationSubmit } from "@/lib/use-mutation-submit";
 import { cn } from "@/lib/utils";
@@ -65,8 +70,8 @@ function labelFromFileName(name: string): string {
  * Desktop leads with a real drop zone (drag, click, keyboard — the same target);
  * small screens add a camera entry that opens the device camera directly. A link
  * or note lives one quiet step away. Picking anything opens the inline details
- * form — kind, label, optional money/date metadata, and the keep-it-private
- * choice under a household asset. Inline on purpose: capture surfaces avoid
+ * form — kind, label, optional money/date metadata, and an audience choice under
+ * a non-private asset. Inline on purpose: capture surfaces avoid
  * modal-first flows (DESIGN.md §5).
  */
 export function AssetEvidenceCapture({
@@ -74,6 +79,7 @@ export function AssetEvidenceCapture({
   assetScope,
   onAdded,
   onCancel,
+  shareableMembers = [],
 }: {
   target: AssetEvidenceCaptureTarget;
   /** The anchor's visibility — household offers the "keep private" narrowing. */
@@ -81,6 +87,7 @@ export function AssetEvidenceCapture({
   onAdded: (view: AssetEvidenceView) => void;
   /** Renders a Cancel affordance when the capture sits behind a toggle. */
   onCancel?: () => void;
+  shareableMembers?: ShareableActionMember[];
 }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const { error, setError, pending, submit } = useMutationSubmit(GENERIC_ERROR);
@@ -153,6 +160,7 @@ export function AssetEvidenceCapture({
         setError(null);
       }}
       pending={pending}
+      shareableMembers={shareableMembers}
       submit={(formData) => {
         if ("assetId" in target) {
           formData.set("assetId", target.assetId);
@@ -304,6 +312,7 @@ export function EvidenceDetailsForm({
   onBack,
   backLabel = "Choose a different file",
   framed = true,
+  shareableMembers = [],
 }: {
   draft: Draft;
   assetScope: PrivacyScope;
@@ -315,12 +324,80 @@ export function EvidenceDetailsForm({
   backLabel?: string;
   /** False inside a surface that already frames it — cards never nest (DESIGN.md §6). */
   framed?: boolean;
+  shareableMembers?: ShareableActionMember[];
+}) {
+  const form = useEvidenceDetailsForm({
+    draft,
+    assetScope,
+    initialSelectedUserIds:
+      assetScope === "shared" ? shareableMembers.map((member) => member.userId) : [],
+    pending,
+    submit,
+  });
+
+  return (
+    <form
+      className={cn("flex flex-col gap-3", framed && "rounded-xl border bg-surface px-4 py-3.5")}
+      onSubmit={form.handleSubmit}
+    >
+      {draft.mode === "file" ? (
+        <PickedFileStrip clearLabel={backLabel} draft={draft} onClear={onBack} />
+      ) : null}
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <EvidenceLabelInput draft={draft} onChange={form.setLabel} value={form.label} />
+        <EvidenceKindSelect onChange={form.setKind} value={form.kind} />
+      </div>
+
+      <EvidenceSubstanceField draft={draft} onChange={form.setSubstance} value={form.substance} />
+      <EvidenceMetadataDisclosure />
+
+      <EvidenceVisibilityFields
+        assetScope={assetScope}
+        choice={form.visibilityChoice}
+        members={shareableMembers}
+        onChoiceChange={form.setVisibilityChoice}
+        onSelectedChange={form.setSelectedUserIds}
+        selectedUserIds={form.selectedUserIds}
+      />
+
+      {error ? <ErrorText message={error} /> : null}
+
+      <div className="flex items-center justify-end gap-1.5">
+        <Button disabled={pending} onClick={onBack} size="sm" type="button" variant="ghost">
+          Cancel
+        </Button>
+        <Button disabled={form.disabled} size="sm" type="submit">
+          {pending ? <Spinner /> : <UploadIcon />}
+          Attach evidence
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function useEvidenceDetailsForm({
+  draft,
+  assetScope,
+  initialSelectedUserIds,
+  pending,
+  submit,
+}: {
+  draft: Draft;
+  assetScope: PrivacyScope;
+  initialSelectedUserIds: string[];
+  pending: boolean;
+  submit: (formData: FormData) => void;
 }) {
   const [kind, setKind] = useState<AssetEvidenceKind>(() => guessKind(draft));
   const [label, setLabel] = useState(() =>
     draft.mode === "file" ? labelFromFileName(draft.file.name) : "",
   );
   const [substance, setSubstance] = useState("");
+  const [visibilityChoice, setVisibilityChoice] = useState<VisibilityChoice>(() =>
+    visibilityChoiceForScope(assetScope),
+  );
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>(initialSelectedUserIds);
 
   const missingSubstance = draft.mode !== "file" && substance.trim() === "";
   const disabled = pending || !label.trim() || missingSubstance;
@@ -330,52 +407,81 @@ export function EvidenceDetailsForm({
     if (disabled) {
       return;
     }
-    // Named fields (label, url/capturedText, amount, dates, keepPrivate) ride
-    // the form itself; the picked file and the select-held kind are added here.
+    // Named fields ride the form; controlled visibility state is added here so the
+    // same details form works in profile, review, and chat capture surfaces.
     const formData = new FormData(event.currentTarget);
     formData.set("kind", kind);
+    formData.set("visibilityChoice", visibilityChoice);
+    for (const userId of selectedUserIds) {
+      formData.append("selectedUserIds", userId);
+    }
     if (draft.mode === "file") {
       formData.set("file", draft.file, draft.file.name);
     }
     submit(formData);
   }
 
+  return {
+    disabled,
+    handleSubmit,
+    kind,
+    label,
+    selectedUserIds,
+    setKind,
+    setLabel,
+    setSelectedUserIds,
+    setSubstance,
+    setVisibilityChoice,
+    substance,
+    visibilityChoice,
+  };
+}
+
+function EvidenceVisibilityFields({
+  assetScope,
+  choice,
+  members,
+  onChoiceChange,
+  onSelectedChange,
+  selectedUserIds,
+}: {
+  assetScope: PrivacyScope;
+  choice: VisibilityChoice;
+  members: ShareableActionMember[];
+  onChoiceChange: (choice: VisibilityChoice) => void;
+  onSelectedChange: (userIds: string[]) => void;
+  selectedUserIds: string[];
+}) {
+  if (assetScope === "private") return null;
+  const canSelectMembers = members.length > 0;
+  const constrainedChoices: VisibilityChoice[] =
+    assetScope === "shared" ? ["only_me", "selected_members"] : ["only_me", "whole_household"];
+
   return (
-    <form
-      className={cn("flex flex-col gap-3", framed && "rounded-xl border bg-surface px-4 py-3.5")}
-      onSubmit={handleSubmit}
-    >
-      {draft.mode === "file" ? (
-        <PickedFileStrip clearLabel={backLabel} draft={draft} onClear={onBack} />
-      ) : null}
-
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <EvidenceLabelInput draft={draft} onChange={setLabel} value={label} />
-        <EvidenceKindSelect onChange={setKind} value={kind} />
-      </div>
-
-      <EvidenceSubstanceField draft={draft} onChange={setSubstance} value={substance} />
-      <EvidenceMetadataDisclosure />
-
-      {assetScope === "household" ? (
-        <Label className="flex w-fit items-center gap-2 text-[length:var(--text-small)] font-normal">
-          <Checkbox name="keepPrivate" value="true" />
-          Keep this just for me
-        </Label>
-      ) : null}
-
-      {error ? <ErrorText message={error} /> : null}
-
-      <div className="flex items-center justify-end gap-1.5">
-        <Button disabled={pending} onClick={onBack} size="sm" type="button" variant="ghost">
-          Cancel
-        </Button>
-        <Button disabled={disabled} size="sm" type="submit">
-          {pending ? <Spinner /> : <UploadIcon />}
-          Attach evidence
-        </Button>
-      </div>
-    </form>
+    <div className="flex flex-col gap-2.5">
+      {canSelectMembers ? (
+        <ActionVisibilityField
+          members={members}
+          name="evidence-visibility"
+          onChoiceChange={onChoiceChange}
+          onSelectedChange={onSelectedChange}
+          selectedUserIds={selectedUserIds}
+          value={choice}
+        />
+      ) : (
+        <VisibilityChoiceControl
+          choices={constrainedChoices}
+          name="evidence-visibility"
+          onChoiceChange={onChoiceChange}
+          value={choice}
+        />
+      )}
+      <AudiencePreview
+        choice={choice}
+        householdSize={members.length + 1}
+        selectedCount={selectedUserIds.length}
+      />
+    </div>
   );
 }
 

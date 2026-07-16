@@ -49,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
             Tendnote
           </Link>
-          <nav className="flex items-center gap-1">
+          <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
             {navItems.map((item) => {
               const Icon = item.icon;
 
@@ -65,10 +65,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
       </header>
-      <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:py-8">
+      <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pt-6 pb-24 sm:px-6 md:pb-6 lg:py-8">
         {children}
       </main>
       <Separator />
+      <nav
+        aria-label="Mobile primary"
+        className="fixed bottom-0 z-20 grid w-full grid-cols-5 border-t bg-background/98 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      >
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              className="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[length:var(--text-caption)] text-muted-foreground transition-colors motion-reduce:transition-none hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50"
+              href={item.href}
+              key={item.href}
+            >
+              <Icon aria-hidden className="size-5" />
+              <span className="max-w-full truncate">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }
