@@ -171,3 +171,7 @@ _Avoid_: Household scope, public, team-wide
 **Household Scope**:
 A visibility scope for records available to all current Household Members. Household scope is broader than shared scope but still private to the Household Workspace.
 _Avoid_: Public, shared with selected members, organization-wide
+
+**Job Family**:
+A category of Postgres-owned background job that shares Tendnote's job execution mechanics — runtime mode, outbox delivery, queue publication, claim interpretation, terminal behavior, rate-limit deferral, and recovery — while keeping its own domain processor. The current job families are Suggested Memory extraction, Suggested General Action extraction, and semantic embedding, enumerated in a closed registry. A job family is not a generic event type, message topic, or queue.
+_Avoid_: Event type, message topic, queue, generic worker

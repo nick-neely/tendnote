@@ -14,6 +14,7 @@
     "./queries/assets": "./src/queries/assets.ts",
     "./queries/auth-users": "./src/queries/auth-users.ts",
     "./queries/background-job-deliveries": "./src/queries/background-job-deliveries.ts",
+    "./queries/background-jobs": "./src/queries/background-jobs.ts",
     "./queries/birthday-gift-planning": "./src/queries/birthday-gift-planning.ts",
     "./queries/brief-schedules": "./src/queries/brief-schedules.ts",
     "./queries/briefs": "./src/queries/briefs.ts",
