@@ -5,13 +5,15 @@ import {
   normalizePhoneContactValue,
 } from "@tendnote/domain";
 import type { ContactMethodDuplicateMatch } from "../contact-methods/types";
+import { buildCandidateDecisions, candidateFingerprint } from "./decisions";
 import type {
   ContactImportApplyDeps,
   ContactImportApplyResult,
+  ContactImportCandidateConfirmation,
   ContactImportCandidateConflict,
   ContactImportCandidateMatchSignal,
-  ContactImportCandidateResolution,
   ContactImportFuzzyMatch,
+  ContactImportNotImportedCandidate,
   ContactImportPreviewCandidate,
   ContactImportPreviewDeps,
   ContactImportPreviewSession,
@@ -111,12 +113,27 @@ export async function createContactImportPreviewSession(
   };
 }
 
+/**
+ * The Contact Import Preview workflow's owner-scoped apply seam.
+ *
+ * Deletion test: removing this module would scatter candidate identity,
+ * confirmation eligibility, target and create-person policy, birthday
+ * reconciliation, provider-drift protection, ephemeral-row handling, owner-wide
+ * deduplication, minimized provenance, and audit behavior across the server
+ * action and the review UI. Those policies belong together here, behind one
+ * interface, with provider and persistence adapters kept internal.
+ *
+ * Apply rebuilds the preview from a fresh provider fetch so unconfirmed rows
+ * stay ephemeral and every write re-derives from authoritative candidate state.
+ * Every confirmation must carry the fingerprint the owner reviewed; apply always
+ * checks it, so a drifted provider response is reported as stale (never silently
+ * reinterpreted) — the guarantee is owned here, not volunteered by callers.
+ */
 export async function applyContactImportCandidates(
   input: {
     ownerUserId: string;
-    candidateIds?: string[];
     mode?: "safe_bulk" | "explicit";
-    resolutions?: ContactImportCandidateResolution[];
+    confirmations: ContactImportCandidateConfirmation[];
   },
   deps: ContactImportApplyDeps,
 ): Promise<ContactImportApplyResult> {
@@ -127,31 +144,56 @@ export async function applyContactImportCandidates(
   if (preview.errorMessage) {
     return emptyApplyResult(preview.errorMessage);
   }
-  const resolutions = new Map(
-    input.resolutions?.map((resolution) => [resolution.candidateId, resolution]),
-  );
-  const requestedIds = new Set(input.candidateIds ?? []);
   const mode = input.mode ?? "safe_bulk";
-  const candidates = preview.candidates.filter((candidate) =>
-    resolutions.size > 0
-      ? resolutions.has(candidate.id)
-      : requestedIds.size > 0
-        ? requestedIds.has(candidate.id)
-        : candidate.safeBulkEligible,
+  const candidatesById = new Map(preview.candidates.map((candidate) => [candidate.id, candidate]));
+  // Dedupe by candidate id so a repeated confirmation in one request cannot
+  // trigger a double write; the last confirmation for an id wins.
+  const confirmations = new Map(
+    input.confirmations.map((confirmation) => [confirmation.candidateId, confirmation]),
   );
-  const confirmed = candidates.filter((candidate) =>
-    mode === "safe_bulk"
-      ? candidate.safeBulkEligible
-      : canExplicitlyConfirm(candidate, resolutions.get(candidate.id)),
-  );
-  const results: ContactImportApplyResult["candidates"] = [];
 
-  for (const candidate of confirmed) {
-    const resolution = resolutions.get(candidate.id);
-    if (resolution?.action === "skip") {
+  const results: ContactImportApplyResult["candidates"] = [];
+  const notImported: ContactImportNotImportedCandidate[] = [];
+
+  for (const [candidateId, confirmation] of confirmations) {
+    const candidate = candidatesById.get(candidateId);
+    if (!candidate) {
+      // Stale or invalid identity: never present in the fresh preview.
+      notImported.push({ candidateId, reason: "unknown" });
       continue;
     }
-    const targetPersonId = resolution?.targetPersonId ?? candidate.matchedPerson?.id ?? null;
+
+    if (confirmation.expectedFingerprint !== candidate.fingerprint) {
+      // Provider data drifted after the owner reviewed it; report it as stale.
+      notImported.push({ candidateId, reason: "stale" });
+      continue;
+    }
+
+    if (confirmation.action === "skip") {
+      notImported.push({ candidateId, reason: "skipped" });
+      continue;
+    }
+
+    const confirmable =
+      mode === "safe_bulk"
+        ? candidate.safeBulkEligible
+        : canExplicitlyConfirm(candidate, confirmation);
+    if (!confirmable) {
+      notImported.push({ candidateId, reason: "ineligible" });
+      continue;
+    }
+
+    // A requested target must be one the workflow offered; anything else is a
+    // drift between UI and policy and must not attach to an arbitrary person.
+    const requestedTargetPersonId = confirmation.targetPersonId ?? null;
+    if (
+      requestedTargetPersonId &&
+      !candidate.decisions.targets.some((target) => target.personId === requestedTargetPersonId)
+    ) {
+      notImported.push({ candidateId, reason: "missing_target" });
+      continue;
+    }
+    const targetPersonId = requestedTargetPersonId ?? candidate.matchedPerson?.id ?? null;
     const existingPerson = targetPersonId
       ? await deps.getPerson({
           ownerUserId: input.ownerUserId,
@@ -159,10 +201,14 @@ export async function applyContactImportCandidates(
         })
       : null;
     if (targetPersonId && !existingPerson) {
+      notImported.push({ candidateId, reason: "missing_target" });
       continue;
     }
-    const canCreatePerson = Boolean(resolution?.createPerson && canCreateForCandidate(candidate));
+    const canCreatePerson = Boolean(
+      confirmation.createPerson && candidate.decisions.canCreatePerson,
+    );
     if (!existingPerson && !canCreatePerson) {
+      notImported.push({ candidateId, reason: "ineligible" });
       continue;
     }
     const person =
@@ -170,7 +216,7 @@ export async function applyContactImportCandidates(
       (await deps.createPerson({
         ownerUserId: input.ownerUserId,
         displayName: candidate.displayName,
-        birthday: resolution?.birthdayChoice === "skip" ? null : candidate.birthday,
+        birthday: confirmation.birthdayChoice === "skip" ? null : candidate.birthday,
         source: "contact_import",
       }));
     const createdPerson = !existingPerson;
@@ -181,7 +227,7 @@ export async function applyContactImportCandidates(
 
     if (!createdPerson && candidate.birthday) {
       if (person.birthday) {
-        if (person.birthday !== candidate.birthday && resolution?.birthdayChoice === "provider") {
+        if (person.birthday !== candidate.birthday && confirmation.birthdayChoice === "provider") {
           const updated = await deps.updatePerson({
             ownerUserId: input.ownerUserId,
             personId: person.id,
@@ -296,14 +342,12 @@ export async function applyContactImportCandidates(
         addedPhones,
         addedBirthday,
         skipped,
-        resolution: resolution
-          ? {
-              action: resolution.action,
-              targetPersonId: resolution.targetPersonId ?? null,
-              createPerson: resolution.createPerson ?? null,
-              birthdayChoice: resolution.birthdayChoice ?? null,
-            }
-          : null,
+        resolution: {
+          action: confirmation.action ?? "apply",
+          targetPersonId: confirmation.targetPersonId ?? null,
+          createPerson: confirmation.createPerson ?? null,
+          birthdayChoice: confirmation.birthdayChoice ?? null,
+        },
       },
     });
 
@@ -330,6 +374,7 @@ export async function applyContactImportCandidates(
     ),
     addedBirthdays: results.filter((result) => result.addedBirthday).length,
     candidates: results,
+    notImported,
     undoAvailable: false,
   };
 }
@@ -343,31 +388,23 @@ function emptyApplyResult(errorMessage?: string): ContactImportApplyResult {
     addedBirthdays: 0,
     errorMessage,
     candidates: [],
+    notImported: [],
     undoAvailable: false,
   };
 }
 
 function canExplicitlyConfirm(
   candidate: ContactImportPreviewCandidate,
-  resolution?: ContactImportCandidateResolution,
+  confirmation: ContactImportCandidateConfirmation,
 ): boolean {
-  if (!resolution) {
-    return candidate.reviewState === "safe_recommendation";
-  }
-  if (resolution.action === "skip") {
+  if (candidate.safeBulkEligible) {
     return true;
   }
-  if (candidate.reviewState === "safe_recommendation") {
+  if (confirmation.targetPersonId) {
+    // Target validity is enforced against the allowed set at apply time.
     return true;
   }
-  if (resolution.targetPersonId) {
-    return true;
-  }
-  return Boolean(resolution.createPerson && canCreateForCandidate(candidate));
-}
-
-function canCreateForCandidate(candidate: ContactImportPreviewCandidate): boolean {
-  return candidate.reviewState === "individual_review" || candidate.reviewState === "weak_match";
+  return Boolean(confirmation.createPerson && candidate.decisions.canCreatePerson);
 }
 
 async function findWriteTimeDuplicate(input: {
@@ -499,6 +536,16 @@ async function buildCandidate(input: {
               ? "individual_review"
               : "weak_match";
   const safeBulkEligible = reviewState === "safe_recommendation";
+  const summaryMatchedPerson = matchedPerson
+    ? { id: matchedPerson.id, displayName: matchedPerson.displayName }
+    : null;
+  const decisions = buildCandidateDecisions({
+    reviewState,
+    safeBulkEligible,
+    matchedPerson: summaryMatchedPerson,
+    advisoryMatches,
+    conflicts,
+  });
 
   return {
     id: stableCandidateId(contact.providerContactId),
@@ -518,12 +565,22 @@ async function buildCandidate(input: {
     reasons,
     reviewState,
     safeBulkEligible,
+    decisions,
+    fingerprint: candidateFingerprint({
+      providerContactId: contact.providerContactId,
+      displayName: contact.displayName,
+      emails,
+      phones,
+      birthday,
+      reviewState,
+      safeBulkEligible,
+      matchedPersonId: summaryMatchedPerson?.id ?? null,
+      decisions,
+    }),
     matchSignals,
     advisoryMatches,
     conflicts,
-    matchedPerson: matchedPerson
-      ? { id: matchedPerson.id, displayName: matchedPerson.displayName }
-      : null,
+    matchedPerson: summaryMatchedPerson,
   };
 }
 

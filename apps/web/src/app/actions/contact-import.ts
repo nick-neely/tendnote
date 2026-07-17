@@ -3,18 +3,19 @@
 import {
   applyOwnerContactImportCandidates,
   type ContactImportApplyResult,
-  type ContactImportCandidateResolution,
+  type ContactImportCandidateConfirmation,
 } from "@tendnote/db/queries/contacts-import-preview";
 import { revalidatePath } from "next/cache";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { createOwnerContactImportAdapter } from "@/lib/integrations/contact-import-preview-data";
 
 export type ConfirmSafeContactImportInput = {
-  candidateIds: string[];
+  candidates: Array<{ candidateId: string; fingerprint: string }>;
 };
 
 export type ConfirmContactImportCandidateInput = {
   candidateId: string;
+  fingerprint: string;
   targetPersonId?: string | null;
   createPerson?: boolean;
   birthdayChoice?: "provider" | "existing" | "skip";
@@ -31,8 +32,11 @@ export async function confirmSafeContactImportCandidatesAction(
   const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await applyOwnerContactImportCandidates({
     ownerUserId,
-    candidateIds: input.candidateIds,
     mode: "safe_bulk",
+    confirmations: input.candidates.map((candidate) => ({
+      candidateId: candidate.candidateId,
+      expectedFingerprint: candidate.fingerprint,
+    })),
     adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
   });
 
@@ -50,9 +54,8 @@ export async function confirmContactImportCandidateAction(
   const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await applyOwnerContactImportCandidates({
     ownerUserId,
-    candidateIds: [input.candidateId],
     mode: "explicit",
-    resolutions: [toResolution(input)],
+    confirmations: [toConfirmation(input)],
     adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
   });
 
@@ -60,11 +63,14 @@ export async function confirmContactImportCandidateAction(
   return result;
 }
 
-function toResolution(input: ConfirmContactImportCandidateInput): ContactImportCandidateResolution {
+function toConfirmation(
+  input: ConfirmContactImportCandidateInput,
+): ContactImportCandidateConfirmation {
   const targetPersonId = input.targetPersonId?.trim() ?? "";
 
   return {
     candidateId: input.candidateId,
+    expectedFingerprint: input.fingerprint,
     action: "apply",
     targetPersonId: targetPersonId || null,
     createPerson: input.createPerson ?? false,

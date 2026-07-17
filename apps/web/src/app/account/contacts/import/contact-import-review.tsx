@@ -29,6 +29,7 @@ import {
   TriangleAlertIcon,
   UsersRoundIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -68,14 +69,25 @@ export function ContactImportReview({
   candidates: Candidate[];
   fetchedCount: number;
 }) {
+  const router = useRouter();
   const reduceMotion = useReducedMotion();
   // Session-only working set. Seeded once from the server snapshot; skips and
   // confirms mutate it locally and it resets on the next page load.
   const [data, setData] = useState<Candidate[]>(() => candidates);
   const [removingIds, setRemovingIds] = useState<ReadonlySet<string>>(() => new Set());
+  // Rows whose provider data drifted after the owner reviewed them. Persisted so
+  // the "refresh to retry" state survives the toast and a silent retry loop is
+  // visible on the row itself. Cleared by a refresh (the page remounts).
+  const [staleIds, setStaleIds] = useState<ReadonlySet<string>>(() => new Set());
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Re-fetch the server preview: dynamic route → fresh provider data, new
+  // fingerprints, and (via the page's key on the session id) a full remount.
+  const refreshPreview = useCallback(() => {
+    router.refresh();
+  }, [router]);
 
   // Stable original ordering so re-added rows (undo / server no-op) land back
   // in place rather than at the end.
@@ -144,10 +156,32 @@ export function ContactImportReview({
           toast.error(result.errorMessage);
           return;
         }
-        const importedIds = new Set(result.candidates.map((entry) => entry.candidateId));
-        const notImported = confirmed.filter((candidate) => !importedIds.has(candidate.id));
+        // Reconcile honestly against the workflow's own result: reinsert every
+        // row that was not imported, and persistently mark drifted rows.
+        const notImportedIds = new Set(result.notImported.map((entry) => entry.candidateId));
+        const notImported = confirmed.filter((candidate) => notImportedIds.has(candidate.id));
         if (notImported.length > 0) {
           reinsert(notImported);
+        }
+        const staleRowIds = result.notImported
+          .filter((entry) => entry.reason === "stale")
+          .map((entry) => entry.candidateId);
+        const importedRowIds = result.candidates.map((entry) => entry.candidateId);
+        setStaleIds((prev) => {
+          const next = new Set(prev);
+          for (const id of importedRowIds) {
+            next.delete(id);
+          }
+          for (const id of staleRowIds) {
+            next.add(id);
+          }
+          return next;
+        });
+        if (staleRowIds.length > 0) {
+          // One canonical stale message, kept distinct from any success toast.
+          toast.error(STALE_NOTE, {
+            action: { label: "Refresh preview", onClick: refreshPreview },
+          });
         }
         onDone(result, notImported);
       } catch {
@@ -157,29 +191,43 @@ export function ContactImportReview({
         setBusy(false);
       }
     },
-    [busy, reinsert, removeRows],
+    [busy, reinsert, refreshPreview, removeRows],
+  );
+
+  // Shared outcome handling for the two single-candidate confirm paths. Stale
+  // drift is surfaced centrally (toast + persistent row marker), so only a
+  // non-stale failure needs a per-row message here.
+  const reportSingleConfirm = useCallback(
+    (candidate: Candidate, result: ContactImportApplyResult, notImported: Candidate[]) => {
+      if (notImported.length > 0 || result.candidates.length === 0) {
+        if (!isStale(result, candidate.id)) {
+          toast.error(`Couldn't import ${candidate.displayName}.`);
+        }
+        return;
+      }
+      const [entry] = result.candidates;
+      toast.success(
+        entry?.createdPerson
+          ? `Added ${candidate.displayName}`
+          : `Updated ${candidate.displayName}`,
+      );
+    },
+    [],
   );
 
   const confirmSafeRow = useCallback(
     (candidate: Candidate) => {
       void runConfirm(
         [candidate],
-        () => confirmContactImportCandidateAction({ candidateId: candidate.id }),
-        (result, notImported) => {
-          if (notImported.length > 0 || result.candidates.length === 0) {
-            toast.error(`Couldn't import ${candidate.displayName}.`);
-            return;
-          }
-          const [entry] = result.candidates;
-          toast.success(
-            entry?.createdPerson
-              ? `Added ${candidate.displayName}`
-              : `Updated ${candidate.displayName}`,
-          );
-        },
+        () =>
+          confirmContactImportCandidateAction({
+            candidateId: candidate.id,
+            fingerprint: candidate.fingerprint,
+          }),
+        (result, notImported) => reportSingleConfirm(candidate, result, notImported),
       );
     },
-    [runConfirm],
+    [reportSingleConfirm, runConfirm],
   );
 
   const applyResolution = useCallback(
@@ -189,25 +237,15 @@ export function ContactImportReview({
         () =>
           confirmContactImportCandidateAction({
             candidateId: candidate.id,
+            fingerprint: candidate.fingerprint,
             targetPersonId: resolution.targetPersonId,
             createPerson: resolution.createPerson,
             birthdayChoice: resolution.birthdayChoice,
           }),
-        (result, notImported) => {
-          if (notImported.length > 0 || result.candidates.length === 0) {
-            toast.error(`Couldn't import ${candidate.displayName}.`);
-            return;
-          }
-          const [entry] = result.candidates;
-          toast.success(
-            entry?.createdPerson
-              ? `Added ${candidate.displayName}`
-              : `Updated ${candidate.displayName}`,
-          );
-        },
+        (result, notImported) => reportSingleConfirm(candidate, result, notImported),
       );
     },
-    [runConfirm],
+    [reportSingleConfirm, runConfirm],
   );
 
   const skipRow = useCallback(
@@ -275,6 +313,12 @@ export function ContactImportReview({
                 <span className="truncate text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
                   {primaryContact(candidate)}
                 </span>
+                {staleIds.has(candidate.id) ? (
+                  <span className="mt-1 flex items-start gap-1.5 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-accent">
+                    <TriangleAlertIcon aria-hidden className="mt-0.5 size-3 shrink-0" />
+                    <span className="text-pretty">{STALE_NOTE}</span>
+                  </span>
+                ) : null}
               </div>
             </div>
           );
@@ -341,7 +385,7 @@ export function ContactImportReview({
         ),
       },
     ],
-    [busy, confirmSafeRow],
+    [busy, confirmSafeRow, staleIds],
   );
 
   const table = useReactTable({
@@ -376,14 +420,23 @@ export function ContactImportReview({
     if (bulkTargets.length === 0) {
       return;
     }
-    const ids = bulkTargets.map((candidate) => candidate.id);
     void runConfirm(
       bulkTargets,
-      () => confirmSafeContactImportCandidatesAction({ candidateIds: ids }),
+      () =>
+        confirmSafeContactImportCandidatesAction({
+          candidates: bulkTargets.map((candidate) => ({
+            candidateId: candidate.id,
+            fingerprint: candidate.fingerprint,
+          })),
+        }),
       (result) => {
         table.resetRowSelection();
+        // Stale drift gets its own distinct toast (from runConfirm); the success
+        // toast stays clean and only speaks to what actually landed.
         if (result.importedCount === 0) {
-          toast.info("No contacts were imported.");
+          if (!result.notImported.some((entry) => entry.reason === "stale")) {
+            toast.info("No contacts were imported.");
+          }
           return;
         }
         const detail = [
@@ -594,18 +647,16 @@ function ResolutionZone({
   onApply: (resolution: ResolutionChoice) => void;
   onSkip: () => void;
 }) {
-  const targetOptions = reviewTargetOptions(candidate);
-  const canCreate =
-    candidate.reviewState === "individual_review" || candidate.reviewState === "weak_match";
-  // Advisory matches are only "possible" people, so the owner picks one; a
-  // confirmed contact-method match is a single known person applied directly.
-  const needsTargetChoice = candidate.reviewState === "advisory_match";
-  const birthdayConflict = candidate.conflicts.some((conflict) => conflict.type === "birthday");
-  const hasNamedTarget = targetOptions.length > 0;
-  // A contact matched to more than one person can't be attached safely here.
-  const unresolvableTarget = !hasNamedTarget && !canCreate;
+  // Every eligibility rule below is decided by the workflow and read straight
+  // from `decisions`; the UI never re-derives who can be a target, whether a new
+  // person may be created, or when a birthday choice is required.
+  const { targets, targetChoiceRequired, canCreatePerson, birthdayChoiceRequired, resolvable } =
+    candidate.decisions;
+  const hasNamedTarget = targets.length > 0;
+  // Skip-only: matched to more than one person, or otherwise unresolvable here.
+  const unresolvableTarget = !resolvable;
   const [targetPersonId, setTargetPersonId] = useState(
-    needsTargetChoice ? "" : (targetOptions[0]?.id ?? ""),
+    targetChoiceRequired ? "" : (targets[0]?.personId ?? ""),
   );
   const [birthdayChoice, setBirthdayChoice] = useState<"existing" | "provider">("existing");
 
@@ -641,30 +692,40 @@ function ResolutionZone({
 
       {hasNamedTarget ? (
         <div className="flex flex-col gap-2">
-          {needsTargetChoice ? (
+          {targetChoiceRequired ? (
             <fieldset className="flex flex-col gap-1.5">
               <legend className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-foreground">
                 Choose target person
               </legend>
-              {targetOptions.map((target) => (
-                <label
-                  className="flex items-center gap-2 text-[length:var(--text-small)] leading-[var(--text-small-line)]"
-                  key={target.id}
-                >
-                  <input
-                    checked={targetPersonId === target.id}
-                    className={RADIO_CLASS}
-                    name={`target-${candidate.id}`}
-                    onChange={() => setTargetPersonId(target.id)}
-                    type="radio"
-                    value={target.id}
-                  />
-                  <span>{target.label}</span>
-                </label>
-              ))}
+              {/* Heavily-matched contacts stay calm: cap the height and scroll
+                  the overflow rather than letting the row grow unbounded. */}
+              <div
+                className={
+                  targets.length > TARGET_LIST_CAP
+                    ? "flex max-h-44 flex-col gap-1.5 overflow-y-auto pr-1"
+                    : "flex flex-col gap-1.5"
+                }
+              >
+                {targets.map((target) => (
+                  <label
+                    className="flex items-center gap-2 text-[length:var(--text-small)] leading-[var(--text-small-line)]"
+                    key={target.personId}
+                  >
+                    <input
+                      checked={targetPersonId === target.personId}
+                      className={RADIO_CLASS}
+                      name={`target-${candidate.id}`}
+                      onChange={() => setTargetPersonId(target.personId)}
+                      type="radio"
+                      value={target.personId}
+                    />
+                    <span>{target.label}</span>
+                  </label>
+                ))}
+              </div>
             </fieldset>
           ) : null}
-          {birthdayConflict ? (
+          {birthdayChoiceRequired ? (
             <fieldset className="flex flex-col gap-1.5">
               <legend className="text-[length:var(--text-small)] font-medium text-muted-foreground">
                 Birthday
@@ -693,11 +754,11 @@ function ResolutionZone({
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              disabled={busy || (needsTargetChoice && !targetPersonId)}
+              disabled={busy || (targetChoiceRequired && !targetPersonId)}
               onClick={() =>
                 onApply({
                   targetPersonId: targetPersonId || null,
-                  birthdayChoice: birthdayConflict ? birthdayChoice : undefined,
+                  birthdayChoice: birthdayChoiceRequired ? birthdayChoice : undefined,
                 })
               }
               size="sm"
@@ -712,7 +773,7 @@ function ResolutionZone({
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          {canCreate ? (
+          {canCreatePerson ? (
             <Button
               disabled={busy}
               onClick={() => onApply({ createPerson: true })}
@@ -832,6 +893,10 @@ function EmptyState({ children }: { children: React.ReactNode }) {
 const RADIO_CLASS =
   "size-4 shrink-0 rounded-full [accent-color:var(--primary)] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
+// Above this many possible targets, scroll the radio list instead of growing
+// the row; keeps heavily-matched contacts calm.
+const TARGET_LIST_CAP = 4;
+
 // Review-needed states sort ahead of safe ones so the work surfaces first.
 function reviewStateOrder(state: Candidate["reviewState"]): number {
   const order: Record<Candidate["reviewState"], number> = {
@@ -863,25 +928,16 @@ function primaryContact(candidate: Candidate): string {
   return candidate.emails[0] ?? candidate.phones[0] ?? "No email or phone";
 }
 
-function reviewTargetOptions(candidate: Candidate): Array<{ id: string; label: string }> {
-  const targets = [
-    candidate.matchedPerson
-      ? { id: candidate.matchedPerson.id, label: candidate.matchedPerson.displayName }
-      : null,
-    ...candidate.advisoryMatches.map((match) => ({
-      id: match.personId,
-      label: `${match.displayName} (${match.reason})`,
-    })),
-  ].filter((target): target is { id: string; label: string } => target !== null);
-  const seen = new Set<string>();
+// The one canonical phrase for provider drift (fingerprint mismatch). Reused by
+// the toast and the persistent row marker so the concept reads identically.
+const STALE_NOTE = "Changed in Google Contacts since you previewed — refresh to retry.";
 
-  return targets.filter((target) => {
-    if (seen.has(target.id)) {
-      return false;
-    }
-    seen.add(target.id);
-    return true;
-  });
+// Whether the workflow refused this candidate because its provider data drifted
+// after the owner reviewed it.
+function isStale(result: ContactImportApplyResult, candidateId: string): boolean {
+  return result.notImported.some(
+    (entry) => entry.candidateId === candidateId && entry.reason === "stale",
+  );
 }
 
 function plural(count: number, one: string, many: string): string {
