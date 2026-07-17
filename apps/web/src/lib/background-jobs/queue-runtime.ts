@@ -170,7 +170,7 @@ export async function consumeBackgroundJobQueueMessage(input: {
   }
 
   if ((input.metadata?.deliveryCount ?? 1) > 1) {
-    logQueueAnomaly(input.logger, "duplicate_delivery", {
+    input.logger?.info?.("background_job_queue.redelivery", {
       deliveryId: delivery.id,
       jobKind: delivery.jobKind,
       deliveryCount: input.metadata?.deliveryCount,
@@ -213,13 +213,28 @@ export async function consumeBackgroundJobQueueMessage(input: {
     return { status: "ignored" as const, reason: jobState.status };
   }
 
-  await processor.processJob({
-    ownerUserId: delivery.ownerUserId,
-    deliveryId: delivery.id,
-    jobId: delivery.jobId,
-    metadata: input.metadata,
-  });
+  try {
+    await processor.processJob({
+      ownerUserId: delivery.ownerUserId,
+      deliveryId: delivery.id,
+      jobId: delivery.jobId,
+      metadata: input.metadata,
+    });
+  } catch (error) {
+    input.logger?.error?.("background_job_queue.processor_failed", {
+      deliveryId: delivery.id,
+      jobKind: delivery.jobKind,
+      jobId: delivery.jobId,
+      error: backgroundJobErrorMessage(error),
+    });
+    throw error;
+  }
   return { status: "processed" as const, delivery };
+}
+
+function backgroundJobErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.slice(0, 2_000);
 }
 
 /**
