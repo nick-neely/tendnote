@@ -1,9 +1,9 @@
-import { getRedis } from "@/lib/cache/redis";
 import {
   createRedisRateLimitStore as createSharedRedisRateLimitStore,
   type RateLimitRedis,
   type RateLimitStore,
 } from "@tendnote/rate-limit";
+import { getRedis } from "@/lib/cache/redis";
 
 export type { RateLimitRedis } from "@tendnote/rate-limit";
 
