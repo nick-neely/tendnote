@@ -13,15 +13,10 @@ function getDatabaseUrl() {
   return process.env.DATABASE_URL ?? localDatabaseUrl;
 }
 
-export function resolveDatabaseDriver(input: {
-  databaseUrl: string;
-  configuredDriver?: string;
-}): "postgres" {
-  // The URL is intentionally part of this public configuration seam so a future
-  // adapter can make an explicit, tested choice. Hostname heuristics are forbidden:
-  // Neon supports regular Postgres connections, and choosing neon-http from the host
-  // silently disabled every lifecycle path that relies on interactive transactions.
-  void input.databaseUrl;
+export function resolveDatabaseDriver(input: { configuredDriver?: string }): "postgres" {
+  // Hostname heuristics are forbidden: Neon supports regular Postgres connections,
+  // and choosing neon-http from the host silently disabled every lifecycle path that
+  // relies on interactive transactions.
   const configured = input.configuredDriver?.trim();
 
   if (!configured || configured === "postgres") {
@@ -45,7 +40,6 @@ export function getDb(): Database {
 
   if (!db) {
     resolveDatabaseDriver({
-      databaseUrl: url,
       configuredDriver: process.env.DATABASE_DRIVER,
     });
     postgresClient = postgres(url, {

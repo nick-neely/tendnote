@@ -22,10 +22,6 @@ export function hasSuggestedActionExtractionCredentials(
   return Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
 }
 
-function configuredExtractionModel(options: AiSdkSuggestedActionExtractionAdapterOptions) {
-  return resolveExtractionModel(options.model ?? options.env?.TENDNOTE_EXTRACTION_MODEL);
-}
-
 function requireExtractionCredentials(env: SuggestedActionExtractionEnv) {
   if (!hasSuggestedActionExtractionCredentials(env)) {
     throw new Error(
@@ -72,13 +68,13 @@ export function createAiSdkSuggestedActionExtractionAdapter(
 ): SuggestedActionExtractionAdapter {
   const env = options.env ?? process.env;
   const promptVersion = options.promptVersion ?? suggestedActionExtractionPromptVersion;
+  const model = resolveExtractionModel(options.model ?? env.TENDNOTE_EXTRACTION_MODEL);
 
   return {
     kind: "llm",
-    model: configuredExtractionModel(options),
+    model,
     promptVersion,
     async extractActions(input): Promise<SuggestedActionExtractionAdapterResult> {
-      const model = configuredExtractionModel(options);
       requireExtractionCredentials(env);
 
       const result = await generateText({

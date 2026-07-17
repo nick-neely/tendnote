@@ -30,10 +30,6 @@ export function shouldRunLiveSuggestedMemoryExtractionSmoke(
   );
 }
 
-function configuredExtractionModel(options: AiSdkSuggestedMemoryExtractionAdapterOptions) {
-  return resolveExtractionModel(options.model ?? options.env?.TENDNOTE_EXTRACTION_MODEL);
-}
-
 function requireExtractionCredentials(env: SuggestedMemoryExtractionEnv) {
   if (!hasSuggestedMemoryExtractionCredentials(env)) {
     throw new Error(
@@ -68,13 +64,13 @@ export function createAiSdkSuggestedMemoryExtractionAdapter(
 ): SuggestedMemoryExtractionAdapter {
   const env = options.env ?? process.env;
   const promptVersion = options.promptVersion ?? suggestedMemoryExtractionPromptVersion;
+  const model = resolveExtractionModel(options.model ?? env.TENDNOTE_EXTRACTION_MODEL);
 
   return {
     kind: "llm",
-    model: configuredExtractionModel(options),
+    model,
     promptVersion,
     async extractCandidates(input): Promise<SuggestedMemoryExtractionAdapterResult> {
-      const model = configuredExtractionModel(options);
       requireExtractionCredentials(env);
 
       const result = await generateText({
