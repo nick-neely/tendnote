@@ -94,26 +94,33 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
       const sharedWithUserIds = [...new Set(input.sharedWithUserIds)];
 
       return getDb().transaction(async (tx) => {
-        const [action] = await tx.insert(generalActions).values(actionValues).returning();
-        if (!action) {
-          throw new Error("Failed to create action.");
+        const action = await persistAction();
+        await persistPeople(action.id);
+        await persistShares(action);
+        await persistInitialEvent(action.id);
+        return generalActionSchema.parse(action);
+
+        async function persistAction() {
+          const [action] = await tx.insert(generalActions).values(actionValues).returning();
+          if (!action) throw new Error("Failed to create action.");
+          return action;
         }
 
-        if (personIds.length > 0) {
-          await tx.insert(generalActionPeople).values(
-            personIds.map((personId) => ({
-              generalActionId: action.id,
-              personId,
-            })),
-          );
+        async function persistPeople(generalActionId: string) {
+          if (personIds.length === 0) return;
+          await tx
+            .insert(generalActionPeople)
+            .values(personIds.map((personId) => ({ generalActionId, personId })));
         }
 
-        if (action.scope === "shared" && action.householdId && sharedWithUserIds.length > 0) {
+        async function persistShares(action: typeof generalActions.$inferSelect) {
+          const householdId = action.householdId;
+          if (action.scope !== "shared" || !householdId || sharedWithUserIds.length === 0) return;
           await tx
             .insert(householdRecordShares)
             .values(
               sharedWithUserIds.map((sharedWithUserId) => ({
-                householdId: action.householdId as string,
+                householdId,
                 recordKind: "general_action" as const,
                 recordId: action.id,
                 sharedWithUserId,
@@ -123,21 +130,14 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
             .onConflictDoNothing();
         }
 
-        const [event] = await tx
-          .insert(generalActionEvents)
-          .values(
-            createGeneralActionEventSchema.parse({
-              ...input.event,
-              generalActionId: action.id,
-            }),
-          )
-          .returning();
-        if (!event) {
-          throw new Error("Failed to record action history.");
+        async function persistInitialEvent(generalActionId: string) {
+          const [event] = await tx
+            .insert(generalActionEvents)
+            .values(createGeneralActionEventSchema.parse({ ...input.event, generalActionId }))
+            .returning();
+          if (!event) throw new Error("Failed to record action history.");
+          generalActionEventSchema.parse(event);
         }
-
-        generalActionEventSchema.parse(event);
-        return generalActionSchema.parse(action);
       });
     },
     async getGeneralAction(input) {

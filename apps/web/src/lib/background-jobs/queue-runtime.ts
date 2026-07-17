@@ -9,6 +9,7 @@ import {
   topicForBackgroundJob,
 } from "@tendnote/db/queries/background-job-deliveries";
 import type {
+  BackgroundJobProcessorJobState,
   BackgroundJobQueueConsumerMetadata,
   BackgroundJobQueueProcessor,
 } from "@tendnote/db/queries/background-jobs";
@@ -128,6 +129,53 @@ export async function consumeBackgroundJobQueueMessage(input: {
     return { status: "ignored" as const, reason: "missing_delivery" as const };
   }
 
+  const invalidDeliveryResult = await validatePublishedDelivery(input, delivery, payload);
+  if (invalidDeliveryResult) return invalidDeliveryResult;
+
+  if ((input.metadata?.deliveryCount ?? 1) > 1) {
+    input.logger?.info?.("background_job_queue.redelivery", {
+      deliveryId: delivery.id,
+      jobKind: delivery.jobKind,
+      deliveryCount: input.metadata?.deliveryCount,
+    });
+  }
+
+  const processor = input.processors.find((candidate) => candidate.jobKind === payload.jobKind);
+  if (!processor) {
+    logQueueAnomaly(input.logger, "missing_handler", {
+      deliveryId: delivery.id,
+      jobKind: delivery.jobKind,
+    });
+    return { status: "ignored" as const, reason: "missing_handler" as const };
+  }
+
+  if (
+    (await evaluateRateLimit(input.rateLimiter, input.logger, delivery, payload)) === "deferred"
+  ) {
+    // Defer before claiming: no claimJob, no status write. The transport edge
+    // redelivers later (backpressure), leaving delivery/job status untouched.
+    return { status: "deferred" as const, reason: "rate_limited" as const };
+  }
+
+  const jobState = await processor.claimJob({
+    ownerUserId: delivery.ownerUserId,
+    deliveryId: delivery.id,
+    jobId: delivery.jobId,
+  });
+
+  if (jobState.status !== "ready") {
+    return handleUnreadyProcessorJob(input, delivery, jobState);
+  }
+
+  await processClaimedJob(input, delivery, processor);
+  return { status: "processed" as const, delivery };
+}
+
+async function validatePublishedDelivery(
+  input: Parameters<typeof consumeBackgroundJobQueueMessage>[0],
+  delivery: BackgroundJobDelivery,
+  payload: BackgroundJobQueuePayload,
+) {
   const expectedTopic = topicForBackgroundJob(payload.jobKind);
   if (isPayloadDeliveryMismatch(delivery, payload, expectedTopic, input.metadata?.topicName)) {
     logQueueAnomaly(input.logger, "payload_mismatch", {
@@ -170,58 +218,39 @@ export async function consumeBackgroundJobQueueMessage(input: {
     return { status: "ignored" as const, reason: "stale_delivery" as const };
   }
 
-  if ((input.metadata?.deliveryCount ?? 1) > 1) {
-    input.logger?.info?.("background_job_queue.redelivery", {
-      deliveryId: delivery.id,
-      jobKind: delivery.jobKind,
-      deliveryCount: input.metadata?.deliveryCount,
-    });
-  }
+  return null;
+}
 
-  const processor = input.processors.find((candidate) => candidate.jobKind === payload.jobKind);
-  if (!processor) {
-    logQueueAnomaly(input.logger, "missing_handler", {
-      deliveryId: delivery.id,
-      jobKind: delivery.jobKind,
-    });
-    return { status: "ignored" as const, reason: "missing_handler" as const };
-  }
-
-  if (
-    (await evaluateRateLimit(input.rateLimiter, input.logger, delivery, payload)) === "deferred"
-  ) {
-    // Defer before claiming: no claimJob, no status write. The transport edge
-    // redelivers later (backpressure), leaving delivery/job status untouched.
-    return { status: "deferred" as const, reason: "rate_limited" as const };
-  }
-
-  const jobState = await processor.claimJob({
-    ownerUserId: delivery.ownerUserId,
-    deliveryId: delivery.id,
-    jobId: delivery.jobId,
-  });
-
-  if (jobState.status !== "ready") {
-    const reason = jobState.reason ?? `Processor job is ${jobState.status.replaceAll("_", " ")}.`;
-    if (jobState.status === "retry_pending") {
-      input.logger?.info?.("background_job_queue.retry_pending", {
-        deliveryId: delivery.id,
-        jobKind: delivery.jobKind,
-        jobId: delivery.jobId,
-      });
-      return { status: "ignored" as const, reason: "retry_pending" as const };
-    }
-    logQueueAnomaly(input.logger, "processor_job_not_ready", {
+async function handleUnreadyProcessorJob(
+  input: Parameters<typeof consumeBackgroundJobQueueMessage>[0],
+  delivery: BackgroundJobDelivery,
+  jobState: Exclude<BackgroundJobProcessorJobState, { status: "ready" }>,
+) {
+  const reason = jobState.reason ?? `Processor job is ${jobState.status.replaceAll("_", " ")}.`;
+  if (jobState.status === "retry_pending") {
+    input.logger?.info?.("background_job_queue.retry_pending", {
       deliveryId: delivery.id,
       jobKind: delivery.jobKind,
       jobId: delivery.jobId,
-      jobStatus: jobState.status,
-      reason,
     });
-    await recordDeliveryAnomaly(input.store, delivery, reason);
-    return { status: "ignored" as const, reason: jobState.status };
+    return { status: "ignored" as const, reason: "retry_pending" as const };
   }
+  logQueueAnomaly(input.logger, "processor_job_not_ready", {
+    deliveryId: delivery.id,
+    jobKind: delivery.jobKind,
+    jobId: delivery.jobId,
+    jobStatus: jobState.status,
+    reason,
+  });
+  await recordDeliveryAnomaly(input.store, delivery, reason);
+  return { status: "ignored" as const, reason: jobState.status };
+}
 
+async function processClaimedJob(
+  input: Parameters<typeof consumeBackgroundJobQueueMessage>[0],
+  delivery: BackgroundJobDelivery,
+  processor: BackgroundJobQueueProcessor,
+) {
   try {
     await processor.processJob({
       ownerUserId: delivery.ownerUserId,
@@ -238,7 +267,6 @@ export async function consumeBackgroundJobQueueMessage(input: {
     });
     throw error;
   }
-  return { status: "processed" as const, delivery };
 }
 
 /**
