@@ -4,13 +4,13 @@ import {
   createDrizzleBackgroundJobDeliveryStore,
 } from "@tendnote/db/queries/background-job-deliveries";
 import { BACKGROUND_JOB_FAMILIES } from "@tendnote/db/queries/background-jobs";
+import { classifyBackgroundJobFailure } from "./failure-observability";
 import {
   type BackgroundJobQueueLogger,
   type BackgroundJobQueueSendAdapter,
   createVercelBackgroundJobQueueAdapter,
   publishBackgroundJobDelivery,
 } from "./queue-runtime";
-import { classifyBackgroundJobFailure } from "./failure-observability";
 
 type JobValidity = "active" | "obsolete";
 
