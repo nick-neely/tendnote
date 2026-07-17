@@ -16,7 +16,7 @@ import { applyContactImportCandidates } from "./contacts-import-preview/service"
 import type {
   ContactImportApplyDeps,
   ContactImportAuditEntry,
-  ContactImportCandidateResolution,
+  ContactImportCandidateConfirmation,
   ContactImportPreviewAdapter,
   ContactImportProviderReferenceInput,
 } from "./contacts-import-preview/types";
@@ -62,9 +62,8 @@ export async function createContactImportAuditLogEntry(entry: ContactImportAudit
 
 export async function applyOwnerContactImportCandidates(input: {
   ownerUserId: string;
-  candidateIds?: string[];
   mode?: "safe_bulk" | "explicit";
-  resolutions?: ContactImportCandidateResolution[];
+  confirmations: ContactImportCandidateConfirmation[];
   adapter?: ContactImportPreviewAdapter;
 }) {
   const db = getDb();

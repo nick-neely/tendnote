@@ -99,7 +99,8 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("1 confirmed");
     expect(html).toContain("2 logged");
     expect(html).toContain("1 to review");
-    expect(html).toContain("snapshot fresh");
+    // Snapshot freshness reads in plain language, not "snapshot: fresh" mono jargon.
+    expect(html).toContain("up to date");
   });
 
   it("renders exact recall person results as grounded links", () => {
@@ -611,5 +612,149 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     // The humanized name carries it; no card chrome and no redundant "Done".
     expect(html).toContain("some future tool");
     expect(html).not.toContain('data-tool-view="generic"');
+  });
+
+  it("renders a malformed known-tool result as a visibly degraded line, not routine housekeeping", () => {
+    const benign = render({ kind: "generic", toolName: "capture_memory" });
+    const malformed = render({ kind: "generic", toolName: "capture_memory", malformed: true });
+
+    // A possibly-failed save is called out, not disguised as a quiet lookup…
+    // (renderToStaticMarkup escapes the apostrophe, so assert the apostrophe-free part.)
+    expect(malformed).toContain("capture memory");
+    expect(malformed).toContain("return a readable result");
+    // …and it reads differently from the benign fallback for the same tool name.
+    expect(malformed).not.toBe(benign);
+    expect(benign).not.toContain("return a readable result");
+  });
+
+  it("renders a well-formed negative outcome as an honest neutral line, never an alarm", () => {
+    const note = render({
+      kind: "generic",
+      toolName: "create_message_draft",
+      note: "No draft was created",
+    });
+    const malformed = render({
+      kind: "generic",
+      toolName: "create_message_draft",
+      malformed: true,
+    });
+
+    // The honest copy is shown plainly — no "didn't return a readable result" alarm, no
+    // raw tool name — and it reads differently from the degraded malformed treatment.
+    expect(note).toContain("No draft was created");
+    expect(note).not.toContain("return a readable result");
+    expect(note).not.toContain("create message draft");
+    expect(note).not.toBe(malformed);
+  });
+
+  it("renders search_assets matches as a disclosure with exact values and no raw ids", () => {
+    const html = render({
+      kind: "asset_search",
+      query: "fridge filter",
+      results: [
+        {
+          recordKind: "asset_memory",
+          recordId: "memory-1",
+          assetId: "asset-1",
+          assetName: "Kitchen refrigerator",
+          label: "Filter model",
+          snippet: "The filter is EDR1RXD1.",
+          value: "EDR1RXD1",
+          matchKinds: ["structured", "exact"],
+          trustLevel: "asset_fact",
+          visibilityLabel: "Only me",
+        },
+      ],
+    });
+
+    expect(html).toContain("1 match on your things");
+    expect(html).toContain("Kitchen refrigerator");
+    expect(html).toContain("EDR1RXD1");
+    expect(html).toContain('data-tool-view="asset_search"');
+    // The persisted record id stays out of the rendered output entirely; the asset id
+    // appears only inside the navigation href, never as visible card content.
+    expect(html).not.toContain("memory-1");
+    expect(html).toContain('href="/assets/asset-1"');
+    expect(html.split("asset-1")).toHaveLength(2);
+  });
+
+  it("renders an empty search_assets result as a quiet line", () => {
+    const html = render({ kind: "asset_search", query: "nothing", results: [] });
+
+    expect(html).toContain("Nothing found on your things");
+    expect(html).not.toContain('data-tool-view="asset_search"');
+  });
+
+  it("renders a fresh asset context leading with facts and labeling the summary as a cache", () => {
+    const html = render({
+      kind: "asset_context",
+      found: true,
+      assetName: "Kitchen refrigerator",
+      snapshotStatus: "fresh",
+      summary: "A kitchen fridge; the filter is EDR1RXD1.",
+      facts: [
+        {
+          memoryId: "m1",
+          label: "Filter model",
+          value: "EDR1RXD1",
+          notes: null,
+          visibilityLabel: "Only me",
+        },
+      ],
+      evidence: [{ evidenceId: "e1", kind: "photo", label: "Filter photo" }],
+      actions: [{ actionId: "a1", title: "Replace filter", status: "open", dueAt: null }],
+    });
+
+    expect(html).toContain("Kitchen refrigerator");
+    expect(html).toContain("Filter model");
+    expect(html).toContain("EDR1RXD1");
+    expect(html).toContain("1 confirmed fact");
+    // The generated summary is present but explicitly framed as derived, not truth.
+    expect(html).toContain("not a source of truth");
+    expect(html).toContain("A kitchen fridge; the filter is EDR1RXD1.");
+    expect(html).toContain('data-tool-view="asset_context"');
+    expect(html).not.toContain("m1");
+  });
+
+  it("never renders a stale (nulled) asset-context summary, and flags it unavailable", () => {
+    const html = render({
+      kind: "asset_context",
+      found: true,
+      assetName: "Kitchen refrigerator",
+      snapshotStatus: "fallback",
+      summary: null,
+      facts: [
+        {
+          memoryId: "m1",
+          label: "Filter model",
+          value: "EDR1RXD1",
+          notes: null,
+          visibilityLabel: "Only me",
+        },
+      ],
+      evidence: [],
+      actions: [],
+    });
+
+    // The reviewed fact stands; no summary block, and the footer says so.
+    expect(html).toContain("EDR1RXD1");
+    expect(html).not.toContain("not a source of truth");
+    expect(html).toContain("summary unavailable");
+  });
+
+  it("renders a not-found asset context as a quiet line", () => {
+    const html = render({
+      kind: "asset_context",
+      found: false,
+      assetName: null,
+      snapshotStatus: null,
+      summary: null,
+      facts: [],
+      evidence: [],
+      actions: [],
+    });
+
+    expect(html).toContain("No such asset");
+    expect(html).not.toContain('data-tool-view="asset_context"');
   });
 });

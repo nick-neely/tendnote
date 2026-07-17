@@ -7,62 +7,80 @@ import {
   dismissSuggestedMemoryAction,
   saveSuggestedMemoryAction,
 } from "@/app/actions/memory-review";
+import { AssetReviewGroupCard } from "@/components/asset-review-group-card";
+import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general-action-review";
 import { Button } from "@/components/ui/button";
+import type { ReviewQueueIdentity, ReviewQueueItem } from "@/lib/review-queue";
 import type { SuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 
-/** A pending suggestion as shown on the dashboard rail. */
-export type DashboardReviewView = SuggestedMemoryReviewView;
-
-/**
- * Pending suggested-memory reviews surfaced inline on the dashboard so the common
- * case — approve or dismiss — happens without opening each person. The full
- * review (edit, sensitivity, archive) still lives on the person's ledger, which
- * the person name links to.
- *
- * Controlled by the dashboard rail (see DashboardFollowupsSection): the rail owns
- * the list so the Review tab count and the Overview peek stay in sync. Renders
- * nothing when empty; the rail shows the teaching empty state for an empty tab.
- */
-export function DashboardReviewSection({
-  reviews,
+export function ReviewQueueSection({
+  items,
   onResolve,
-  heading = "Needs review",
-  headingAction,
+  onUpdate,
 }: {
-  reviews: DashboardReviewView[];
-  onResolve: (memoryId: string) => void;
-  heading?: string;
-  headingAction?: React.ReactNode;
+  items: ReviewQueueItem[];
+  onResolve: (identity: ReviewQueueIdentity) => void;
+  onUpdate: (item: ReviewQueueItem) => void;
 }) {
-  if (reviews.length === 0) {
-    return null;
-  }
-
   return (
     <section className="flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="px-1 text-[length:var(--text-small)] font-medium text-muted-foreground">
-          {heading}
-        </h2>
-        {headingAction}
-      </div>
-      <div className="overflow-hidden rounded-xl border bg-surface">
-        <ul className="divide-y">
-          {reviews.map((review) => (
-            <ReviewRow key={review.memory.id} onResolve={onResolve} review={review} />
-          ))}
-        </ul>
-      </div>
+      <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
+        Needs review
+      </h2>
+      <ul aria-label="Review queue" className="flex flex-col gap-2.5">
+        {items.map((item) => (
+          <li data-queue-family={item.family} key={`${item.family}:${item.id}`}>
+            <ReviewQueueCard item={item} onResolve={onResolve} onUpdate={onUpdate} />
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
 
-function ReviewRow({
+function ReviewQueueCard({
+  item,
+  onResolve,
+  onUpdate,
+}: {
+  item: ReviewQueueItem;
+  onResolve: (identity: ReviewQueueIdentity) => void;
+  onUpdate: (item: ReviewQueueItem) => void;
+}) {
+  if (item.family === "suggested-memory") {
+    return (
+      <SuggestedMemoryQueueCard
+        onResolve={() => onResolve({ family: item.family, id: item.id })}
+        review={item.review}
+      />
+    );
+  }
+
+  if (item.family === "suggested-general-action") {
+    return (
+      <SuggestedGeneralActionReviewCard
+        onResolve={() => onResolve({ family: item.family, id: item.id })}
+        onUpdate={(review) => onUpdate({ ...item, review })}
+        review={item.review}
+      />
+    );
+  }
+
+  return (
+    <AssetReviewGroupCard
+      onResolve={() => onResolve({ family: item.family, id: item.id })}
+      onUpdate={(review) => onUpdate({ ...item, review })}
+      review={item.review}
+    />
+  );
+}
+
+function SuggestedMemoryQueueCard({
   review,
   onResolve,
 }: {
-  review: DashboardReviewView;
-  onResolve: (memoryId: string) => void;
+  review: SuggestedMemoryReviewView;
+  onResolve: () => void;
 }) {
   const { memory } = review;
   const personName = review.personName ?? "Someone";
@@ -76,7 +94,7 @@ function ReviewRow({
       try {
         await action();
         setLeaving(true);
-        window.setTimeout(() => onResolve(memory.id), 200);
+        window.setTimeout(onResolve, 200);
       } catch {
         setError("That didn't go through. Try again.");
       }
@@ -84,8 +102,8 @@ function ReviewRow({
   }
 
   return (
-    <li
-      className="flex flex-col gap-2.5 px-4 py-3 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0"
+    <article
+      className="flex flex-col gap-2.5 rounded-xl border bg-surface px-4 py-3 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0"
       data-leaving={leaving}
       data-memory-id={memory.id}
     >
@@ -135,6 +153,6 @@ function ReviewRow({
           {error}
         </p>
       ) : null}
-    </li>
+    </article>
   );
 }

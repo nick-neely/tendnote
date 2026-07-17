@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { GroupableToolView } from "@/lib/eve/tool-result-view";
+import type { GroupableToolView } from "@/components/assistant-results/registry";
 import { AssistantToolGroup } from "./assistant-tool-group";
 
 function savedMemory(

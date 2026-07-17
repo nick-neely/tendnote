@@ -8,13 +8,18 @@ import {
   type BackgroundJobQueueSendAdapter,
   topicForBackgroundJob,
 } from "@tendnote/db/queries/background-job-deliveries";
+import type {
+  BackgroundJobQueueConsumerMetadata,
+  BackgroundJobQueueProcessor,
+} from "@tendnote/db/queries/background-jobs";
 import { send as sendVercelQueueMessage } from "@vercel/queue";
 import type { CostCategory, ProductRateLimiter } from "@/lib/rate-limit";
 
-// The outbox-publish orchestration and its transport seam now live in @tendnote/db
-// (shared by Eve and the web so the publish path is no longer re-inlined per app).
-// Re-export them here so existing web consumers keep importing from "./queue-runtime";
-// the rate-limit-aware consumer runtime below stays web-owned.
+// The outbox-publish orchestration and its transport seam live in @tendnote/db (shared by
+// Eve and the web so the publish path is no longer re-inlined per app); the shared
+// execution module there also owns the per-family processor contract and claim translation.
+// Re-export them here so existing web consumers keep importing from "./queue-runtime"; the
+// rate-limit-aware consumer runtime below stays web-owned.
 export {
   type BackgroundJobQueueLogger,
   type BackgroundJobQueuePayload,
@@ -22,37 +27,11 @@ export {
   backgroundJobQueueIdempotencyKey,
   publishBackgroundJobDelivery,
 } from "@tendnote/db/queries/background-job-deliveries";
-
-export type BackgroundJobQueueConsumerMetadata = {
-  topicName?: string;
-  messageId?: string;
-  deliveryCount?: number;
-  consumerGroup?: string;
-};
-
-export type BackgroundJobProcessorJobState =
-  | { status: "ready" }
-  | { status: "not_found" | "terminal" | "not_claimable"; reason?: string };
-
-export type BackgroundJobQueueProcessor = {
-  jobKind: BackgroundJobKind;
-  /**
-   * Reload and claim the owner-scoped processor job from Postgres. Duplicate or
-   * stale queue messages must return a non-ready state through the processor's
-   * normal claim/idempotency rules rather than processing twice.
-   */
-  claimJob: (input: {
-    ownerUserId: string;
-    deliveryId: string;
-    jobId: string;
-  }) => Promise<BackgroundJobProcessorJobState>;
-  processJob: (input: {
-    ownerUserId: string;
-    deliveryId: string;
-    jobId: string;
-    metadata?: BackgroundJobQueueConsumerMetadata;
-  }) => Promise<void>;
-};
+export type {
+  BackgroundJobProcessorJobState,
+  BackgroundJobQueueConsumerMetadata,
+  BackgroundJobQueueProcessor,
+} from "@tendnote/db/queries/background-jobs";
 
 export const BACKGROUND_JOB_QUEUE_CONFIG = {
   extraction: {

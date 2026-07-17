@@ -1,12 +1,12 @@
 import { RENDERED_TOOL_NAMES } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { toAssistantToolView } from "./tool-result-parse";
 import {
-  activeToolLabel,
   assistantToolViewKey,
   relationshipAgendaCandidateKey,
+  toAssistantToolView,
   toolViewTier,
-} from "./tool-result-view";
+} from "@/components/assistant-results/registry";
+import { activeToolLabel } from "./active-tool-label";
 
 describe("toAssistantToolView (Eve tool output → renderable view)", () => {
   it("renders a capture_source_record result as logged context with its persisted id", () => {
@@ -95,13 +95,19 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     });
   });
 
-  it("degrades a failed update_person result to a generic view", () => {
+  it("renders a well-formed update_person no-op as an honest neutral line, not an error", () => {
     const view = toAssistantToolView({
       toolName: "update_person",
       output: { updated: false, component: { type: "person_update_failed", personId: "person-9" } },
     });
 
-    expect(view).toEqual({ kind: "generic", toolName: "update_person" });
+    // `updated: false` is a recognized negative (the schema pins `updated` to true), so
+    // it is an honest "nothing happened" — a neutral note, never the malformed alarm.
+    expect(view).toEqual({
+      kind: "generic",
+      toolName: "update_person",
+      note: "No changes were needed",
+    });
   });
 
   it("renders a get_person_context result with per-tier counts and snapshot status", () => {
@@ -606,13 +612,19 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     });
   });
 
-  it("degrades a declined create_message_draft result to a generic view", () => {
+  it("renders a declined create_message_draft as an honest neutral line, not an error", () => {
     const view = toAssistantToolView({
       toolName: "create_message_draft",
       output: { created: false, reason: "insufficient_context" },
     });
 
-    expect(view).toEqual({ kind: "generic", toolName: "create_message_draft" });
+    // `created: false` is an honest negative outcome — no draft was made — so it reads
+    // as a calm neutral note, never the malformed/possibly-failed treatment.
+    expect(view).toEqual({
+      kind: "generic",
+      toolName: "create_message_draft",
+      note: "No draft was created",
+    });
   });
 
   it("renders propose_message_draft as an ephemeral grounded Draft Proposal", () => {
@@ -790,13 +802,19 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     ).toEqual(expected);
   });
 
-  it("degrades a resolved (found: false) suggested-action review to a generic view", () => {
+  it("renders a resolved (found: false) suggested-action review as an honest neutral line", () => {
     const view = toAssistantToolView({
       toolName: "get_suggested_general_action_review",
       output: { found: false },
     });
 
-    expect(view).toEqual({ kind: "generic", toolName: "get_suggested_general_action_review" });
+    // The proposal is already handled — a well-formed negative, not corruption — so it
+    // reads as a calm neutral note, never the malformed alarm.
+    expect(view).toEqual({
+      kind: "generic",
+      toolName: "get_suggested_general_action_review",
+      note: "No suggested action to review",
+    });
   });
 
   it("maps a plan and a review list into one review item per proposed action", () => {
@@ -908,16 +926,19 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     expect(JSON.stringify(view)).not.toContain("Old idea");
   });
 
-  it("degrades an unknown tool to a generic view", () => {
+  it("degrades an unknown tool to a benign generic view, with no malformed flag", () => {
     const view = toAssistantToolView({ toolName: "some_future_tool", output: { whatever: true } });
 
+    // An unrecognized tool that ran to completion is benign housekeeping, not a failure.
     expect(view).toEqual({ kind: "generic", toolName: "some_future_tool" });
   });
 
-  it("degrades malformed output for a known tool to a generic view instead of guessing", () => {
+  it("degrades a known tool's malformed payload to a MALFORMED generic, not routine housekeeping", () => {
     const view = toAssistantToolView({ toolName: "capture_memory", output: { memory: null } });
 
-    expect(view).toEqual({ kind: "generic", toolName: "capture_memory" });
+    // A capture_memory whose payload failed its schema is a possibly-failed save; it
+    // must read as degraded, distinct from the benign unknown-tool line above.
+    expect(view).toEqual({ kind: "generic", toolName: "capture_memory", malformed: true });
   });
 
   it("keys a view on its persisted record id, not array position", () => {
@@ -1149,6 +1170,171 @@ describe("toAssistantToolView (asset facts proposed for review)", () => {
       output: { found: true, groupId: "group-1" },
     });
     expect(view.kind).toBe("generic");
+  });
+});
+
+/**
+ * Unified Asset Search and snapshot-backed Asset context (#204). These cross the same
+ * interface production does — `toAssistantToolView` → view — and cover the paths the
+ * epic calls out: a grounded search, an empty search, a fresh context, the
+ * stale-snapshot rule (a `fallback` summary is dropped), and a not-found context.
+ */
+describe("toAssistantToolView (asset search and context)", () => {
+  it("renders search_assets as grounded records, preserving exact values and trust", () => {
+    const view = toAssistantToolView({
+      toolName: "search_assets",
+      output: {
+        query: "fridge filter",
+        results: [
+          {
+            recordKind: "asset_memory",
+            recordId: "memory-1",
+            assetId: "asset-1",
+            assetName: "Kitchen refrigerator",
+            assetKind: "appliance",
+            label: "Filter model",
+            snippet: "The filter is EDR1RXD1.",
+            value: "EDR1RXD1",
+            matchKinds: ["structured", "exact"],
+            trustLevel: "asset_fact",
+            visibilityChoice: "only_me",
+            visibilityLabel: "Only me",
+          },
+        ],
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "asset_search",
+      query: "fridge filter",
+      results: [
+        {
+          recordKind: "asset_memory",
+          recordId: "memory-1",
+          assetId: "asset-1",
+          assetName: "Kitchen refrigerator",
+          label: "Filter model",
+          snippet: "The filter is EDR1RXD1.",
+          // The exact stored value survives verbatim — Eve writes prose from it, not over it.
+          value: "EDR1RXD1",
+          matchKinds: ["structured", "exact"],
+          trustLevel: "asset_fact",
+          visibilityLabel: "Only me",
+        },
+      ],
+    });
+    // A non-empty search collapses behind a disclosure; an empty one recedes to a line.
+    expect(toolViewTier(view)).toBe("disclosure");
+  });
+
+  it("renders an empty search_assets result as a quiet line", () => {
+    const view = toAssistantToolView({
+      toolName: "search_assets",
+      output: { query: "nothing", results: [] },
+    });
+
+    expect(view).toEqual({ kind: "asset_search", query: "nothing", results: [] });
+    expect(toolViewTier(view)).toBe("line");
+  });
+
+  it("renders a fresh get_asset_context as a found card, facts and summary intact", () => {
+    const view = toAssistantToolView({
+      toolName: "get_asset_context",
+      output: {
+        assetId: "asset-1",
+        assetName: "Kitchen refrigerator",
+        assetKind: "appliance",
+        assetStatus: "active",
+        visibilityLabel: "Only me",
+        snapshotStatus: "fresh",
+        summary: "A kitchen fridge; the filter is EDR1RXD1.",
+        facts: [
+          {
+            memoryId: "m1",
+            label: "Filter model",
+            value: "EDR1RXD1",
+            notes: null,
+            visibilityLabel: "Only me",
+          },
+        ],
+        evidence: [{ evidenceId: "e1", kind: "photo", label: "Filter photo" }],
+        relatedAssets: [{ assetId: "asset-2", relation: "pairs_with", name: "Water line" }],
+        actions: [{ actionId: "a1", title: "Replace filter", status: "open", dueAt: null }],
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "asset_context",
+      found: true,
+      assetName: "Kitchen refrigerator",
+      snapshotStatus: "fresh",
+      summary: "A kitchen fridge; the filter is EDR1RXD1.",
+      facts: [
+        {
+          memoryId: "m1",
+          label: "Filter model",
+          value: "EDR1RXD1",
+          notes: null,
+          visibilityLabel: "Only me",
+        },
+      ],
+      evidence: [{ evidenceId: "e1", kind: "photo", label: "Filter photo" }],
+      actions: [{ actionId: "a1", title: "Replace filter", status: "open", dueAt: null }],
+    });
+    expect(toolViewTier(view)).toBe("card");
+  });
+
+  it("drops a fallback snapshot's summary so stale prose is never shown as current", () => {
+    const view = toAssistantToolView({
+      toolName: "get_asset_context",
+      output: {
+        assetId: "asset-1",
+        assetName: "Kitchen refrigerator",
+        assetKind: "appliance",
+        assetStatus: "active",
+        visibilityLabel: "Only me",
+        snapshotStatus: "fallback",
+        summary: "Stale cached prose that has outlived its facts.",
+        facts: [
+          {
+            memoryId: "m1",
+            label: "Filter model",
+            value: "EDR1RXD1",
+            notes: null,
+            visibilityLabel: "Only me",
+          },
+        ],
+        evidence: [],
+        relatedAssets: [],
+        actions: [],
+      },
+    });
+
+    if (view.kind !== "asset_context") throw new Error("expected an asset context view");
+    // The reviewed fact stands; the stale summary is dropped rather than shown as truth.
+    expect(view.summary).toBeNull();
+    expect(view.snapshotStatus).toBe("fallback");
+    expect(view.facts[0]?.value).toBe("EDR1RXD1");
+    expect(JSON.stringify(view)).not.toContain("Stale cached prose");
+  });
+
+  it("renders a not-found (found: false) get_asset_context as a safe empty state", () => {
+    const view = toAssistantToolView({
+      toolName: "get_asset_context",
+      output: { found: false },
+    });
+
+    expect(view).toEqual({
+      kind: "asset_context",
+      found: false,
+      assetName: null,
+      snapshotStatus: null,
+      summary: null,
+      facts: [],
+      evidence: [],
+      actions: [],
+    });
+    expect(toolViewTier(view)).toBe("line");
   });
 });
 

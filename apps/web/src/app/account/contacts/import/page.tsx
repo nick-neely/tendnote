@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { getOwnerContactImportPreview } from "@/lib/integrations/contact-import-preview-data";
 import { ContactImportReview } from "./contact-import-review";
+import { RefreshPreviewButton } from "./refresh-preview-button";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +20,16 @@ export default async function ContactsImportPage() {
           >
             Back to account
           </Link>
-          <div className="flex flex-col gap-1">
-            <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
-              Contact import preview
-            </h1>
-            <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
-              Review contacts from Google before anything is saved to Tendnote.
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
+                Contact import preview
+              </h1>
+              <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
+                Review contacts from Google before anything is saved to Tendnote.
+              </p>
+            </div>
+            {preview.connected && !preview.errorMessage ? <RefreshPreviewButton /> : null}
           </div>
         </header>
 
@@ -41,6 +45,7 @@ export default async function ContactsImportPage() {
           <ContactImportReview
             candidates={preview.candidates}
             fetchedCount={preview.fetchedCount}
+            key={preview.id}
           />
         )}
       </div>

@@ -4,25 +4,25 @@ import type { Person } from "@tendnote/domain";
 import { ArrowRightIcon, CakeIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { AssetReviewGroupCard } from "@/components/asset-review-group-card";
 import { DashboardBriefSection } from "@/components/dashboard-brief-section";
 import { DashboardCalendarSuggestionsSection } from "@/components/dashboard-calendar-suggestions-section";
 import { DashboardFollowupsSection } from "@/components/dashboard-followups-section";
-import {
-  DashboardReviewSection,
-  type DashboardReviewView,
-} from "@/components/dashboard-review-section";
 import { DashboardSuggestedFollowupsSection } from "@/components/dashboard-suggested-followups-section";
-import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general-action-review";
+import { ReviewQueueSection } from "@/components/review-queue-section";
 import { TabCount } from "@/components/tab-count";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { AssetReviewGroupView } from "@/lib/asset-review-view";
 import type { BriefView } from "@/lib/brief-view";
 import type { CalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
 import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brief";
 import type { DashboardFollowupView } from "@/lib/followup-view";
+import {
+  type ReviewQueue,
+  type ReviewQueueIdentity,
+  type ReviewQueueItem,
+  resolveReviewQueueItem,
+  updateReviewQueueItem,
+} from "@/lib/review-queue";
 import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
-import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 
 // Inactive panels stay mounted (forceMount) so a panel keeps its scroll position
 // and any in-flight optimistic state when you tab away and back; only the active
@@ -41,15 +41,15 @@ const PANEL =
  * no single area bloats. Today (the morning glance: today's signals plus the
  * daily and weekly briefs, which have no tab of their own), Follow-ups (active
  * reminders + suggested follow-ups), Review (the shared Review Queue: suggested
- * memories and Suggested actions, ADR 0152), and People (fast recall). The rail
- * owns the mutable lists so a calm, neutral count on the
+ * memories, Suggested actions, and grouped Asset review, ADRs 0152/0191), and
+ * People (fast recall). The rail owns the mutable collections so a calm, neutral count on the
  * Follow-ups and Review tabs stays in sync as items resolve — nothing is hidden
  * behind a click without a count, and the inline approve/dismiss is preserved so
  * no one has to open a person page just to clear a suggestion. Counts are never
  * red and never framed as a backlog; an empty tab teaches the next step instead
  * of nagging.
  */
-// The cohesive tab shell that owns the five resolvable lists and their live counts; the
+// The cohesive tab shell that owns the follow-up lists, unified Review Queue, and live counts; the
 // per-section markup is already extracted into child sections. Its score is JSX/tab
 // composition depth plus that list-state hook set, not branching logic (cyclomatic and
 // cognitive are both within threshold); splitting the shell further would scatter the
@@ -61,9 +61,7 @@ export function DashboardRail({
   followups: initialFollowups,
   followupReviews: initialFollowupReviews,
   calendarSuggestions: initialCalendarSuggestions,
-  reviews: initialReviews,
-  actionReviews: initialActionReviews,
-  assetReviews: initialAssetReviews = [],
+  reviewQueue: initialReviewQueue,
   dailyBrief,
   weeklyBrief,
   initialTab = "today",
@@ -73,10 +71,7 @@ export function DashboardRail({
   followups: DashboardFollowupView[];
   followupReviews: SuggestedFollowupReviewView[];
   calendarSuggestions: CalendarSuggestionReviewView[];
-  reviews: DashboardReviewView[];
-  actionReviews: SuggestedGeneralActionReviewView[];
-  /** Pending Asset Review Groups — grouped asset suggestions (#198). */
-  assetReviews?: AssetReviewGroupView[];
+  reviewQueue: ReviewQueue;
   dailyBrief: BriefView | null;
   weeklyBrief: BriefView | null;
   initialTab?: "today" | "followups" | "review" | "people";
@@ -84,9 +79,7 @@ export function DashboardRail({
   const [followups, setFollowups] = useState(initialFollowups);
   const [suggestedFollowups, setSuggestedFollowups] = useState(initialFollowupReviews);
   const [calendarSuggestions, setCalendarSuggestions] = useState(initialCalendarSuggestions);
-  const [memoryReviews, setMemoryReviews] = useState(initialReviews);
-  const [actionReviews, setActionReviews] = useState(initialActionReviews);
-  const [assetReviews, setAssetReviews] = useState(initialAssetReviews);
+  const [reviewQueue, setReviewQueue] = useState(initialReviewQueue);
 
   const resolveFollowup = (id: string) =>
     setFollowups((current) => current.filter((followup) => followup.id !== id));
@@ -94,24 +87,12 @@ export function DashboardRail({
     setSuggestedFollowups((current) => current.filter((review) => review.followup.id !== id));
   const resolveCalendarSuggestion = (id: string) =>
     setCalendarSuggestions((current) => current.filter((suggestion) => suggestion.id !== id));
-  const resolveReview = (memoryId: string) =>
-    setMemoryReviews((current) => current.filter((review) => review.memory.id !== memoryId));
-  const resolveActionReview = (generalActionId: string) =>
-    setActionReviews((current) => current.filter((review) => review.action.id !== generalActionId));
-  const updateActionReview = (view: SuggestedGeneralActionReviewView) =>
-    setActionReviews((current) =>
-      current.map((review) => (review.action.id === view.action.id ? view : review)),
-    );
-  const resolveAssetReview = (groupId: string) =>
-    setAssetReviews((current) => current.filter((review) => review.groupId !== groupId));
-  const updateAssetReview = (view: AssetReviewGroupView) =>
-    setAssetReviews((current) =>
-      current.map((review) => (review.groupId === view.groupId ? view : review)),
-    );
+  const resolveReview = (identity: ReviewQueueIdentity) =>
+    setReviewQueue((current) => resolveReviewQueueItem(current, identity));
+  const updateReview = (item: ReviewQueueItem) =>
+    setReviewQueue((current) => updateReviewQueueItem(current, item));
 
   const followupCount = followups.length + suggestedFollowups.length + calendarSuggestions.length;
-  // Each Asset Review Group counts once: grouped review is one unit of work.
-  const reviewCount = memoryReviews.length + actionReviews.length + assetReviews.length;
 
   return (
     <Tabs className="flex min-h-0 flex-col gap-3 lg:h-full" defaultValue={initialTab}>
@@ -125,7 +106,7 @@ export function DashboardRail({
         </TabsTrigger>
         <TabsTrigger className="group/tab" value="review">
           Review
-          <TabCount count={reviewCount} />
+          <TabCount count={reviewQueue.count} />
         </TabsTrigger>
         <TabsTrigger className="group/tab" value="people">
           People
@@ -177,29 +158,17 @@ export function DashboardRail({
       {/* Review — the shared Review Queue: suggested memories and Suggested actions,
           each accepted or set aside in place (ADR 0152). */}
       <TabsContent className={PANEL} forceMount value="review">
-        {reviewCount === 0 ? (
+        {reviewQueue.count === 0 ? (
           <RailEmpty>
             Nothing waiting to review. When Eve suggests something to remember, an action to take,
             or a thing to track, it'll show up here for a quick yes or no.
           </RailEmpty>
         ) : (
-          <>
-            <DashboardReviewSection
-              heading="Needs review"
-              onResolve={resolveReview}
-              reviews={memoryReviews}
-            />
-            <SuggestedActionsReviewSection
-              onResolve={resolveActionReview}
-              onUpdate={updateActionReview}
-              reviews={actionReviews}
-            />
-            <AssetReviewSection
-              onResolve={resolveAssetReview}
-              onUpdate={updateAssetReview}
-              reviews={assetReviews}
-            />
-          </>
+          <ReviewQueueSection
+            items={reviewQueue.items}
+            onResolve={resolveReview}
+            onUpdate={updateReview}
+          />
         )}
       </TabsContent>
 
@@ -208,72 +177,6 @@ export function DashboardRail({
         <PeopleSection people={people} />
       </TabsContent>
     </Tabs>
-  );
-}
-
-/** The Review tab's Suggested-actions block, shown only when proposals are waiting. */
-function SuggestedActionsReviewSection({
-  reviews,
-  onResolve,
-  onUpdate,
-}: {
-  reviews: SuggestedGeneralActionReviewView[];
-  onResolve: (generalActionId: string) => void;
-  onUpdate: (view: SuggestedGeneralActionReviewView) => void;
-}) {
-  if (reviews.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="flex flex-col gap-2.5">
-      <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
-        Suggested actions
-      </h2>
-      <div className="flex flex-col gap-2.5">
-        {reviews.map((review) => (
-          <SuggestedGeneralActionReviewCard
-            key={review.action.id}
-            onResolve={onResolve}
-            onUpdate={onUpdate}
-            review={review}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/** The Review tab's grouped asset-suggestions block (#198), shown only when waiting. */
-function AssetReviewSection({
-  reviews,
-  onResolve,
-  onUpdate,
-}: {
-  reviews: AssetReviewGroupView[];
-  onResolve: (groupId: string) => void;
-  onUpdate: (view: AssetReviewGroupView) => void;
-}) {
-  if (reviews.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="flex flex-col gap-2.5">
-      <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
-        Suggested assets
-      </h2>
-      <div className="flex flex-col gap-2.5">
-        {reviews.map((review) => (
-          <AssetReviewGroupCard
-            key={review.groupId}
-            onResolve={onResolve}
-            onUpdate={onUpdate}
-            review={review}
-          />
-        ))}
-      </div>
-    </section>
   );
 }
 

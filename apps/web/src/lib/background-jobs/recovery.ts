@@ -1,23 +1,9 @@
 import {
-  claimNextActionExtractionJob,
-  getActionExtractionJob,
-  processActionExtractionJob,
-} from "@tendnote/db/queries/action-extraction-jobs";
-import {
   type BackgroundJobDelivery,
   type BackgroundJobDeliveryStore,
   createDrizzleBackgroundJobDeliveryStore,
 } from "@tendnote/db/queries/background-job-deliveries";
-import {
-  claimNextExtractionJob,
-  getExtractionJob,
-  processExtractionJob,
-} from "@tendnote/db/queries/extraction-jobs";
-import {
-  claimNextSemanticEmbeddingJob,
-  getSemanticEmbeddingJob,
-  processSemanticEmbeddingJob,
-} from "@tendnote/db/queries/semantic-retrieval";
+import { BACKGROUND_JOB_FAMILIES } from "@tendnote/db/queries/background-jobs";
 import {
   type BackgroundJobQueueLogger,
   type BackgroundJobQueueSendAdapter,
@@ -28,6 +14,10 @@ import {
 type JobValidity = "active" | "obsolete";
 
 type DeliveryJobInspector = (delivery: BackgroundJobDelivery) => Promise<JobValidity>;
+
+/** The claim-next + process seam a bounded backfill drives, shared across families. */
+type BackfillClaimNextJob = (input: { now?: Date }) => Promise<{ id: string } | null>;
+type BackfillProcessJob = (input: { jobId: string; claim: false }) => Promise<{ outcome: string }>;
 
 export type DeliveryRecoveryResult = {
   scanned: number;
@@ -55,15 +45,9 @@ function jobValidity(job: { status: string } | null): JobValidity {
 }
 
 async function inspectDeliveryProcessorJob(delivery: BackgroundJobDelivery): Promise<JobValidity> {
-  if (delivery.jobKind === "extraction") {
-    return jobValidity(await getExtractionJob(delivery.jobId));
-  }
-
-  if (delivery.jobKind === "action_extraction") {
-    return jobValidity(await getActionExtractionJob(delivery.jobId));
-  }
-
-  return jobValidity(await getSemanticEmbeddingJob(delivery.jobId));
+  // Registry-driven: each family reports its own job state through the same seam, so
+  // recovery no longer re-lists the per-family `getJob` functions by hand.
+  return jobValidity(await BACKGROUND_JOB_FAMILIES[delivery.jobKind].getJob(delivery.jobId));
 }
 
 export async function recoverBackgroundJobDeliveries(input: {
@@ -139,55 +123,52 @@ export async function recoverBackgroundJobDeliveries(input: {
   return result;
 }
 
-export async function runExtractionBackfill(input: {
+type ProcessorBackfillInput = {
   limit: number;
   now?: Date;
-  claimNextJob?: typeof claimNextExtractionJob;
-  processJob?: typeof processExtractionJob;
+  claimNextJob?: BackfillClaimNextJob;
+  processJob?: BackfillProcessJob;
   logger?: BackgroundJobQueueLogger;
-}): Promise<ProcessorBackfillResult> {
+};
+
+/**
+ * Bounded queue-less backfill for one job family, defaulting the claim-next/process seam
+ * from the registry so each family's wrapper is a one-line binding rather than a copy of
+ * the loop. Tests still inject `claimNextJob`/`processJob` to drive the loop directly.
+ */
+function runFamilyBackfill(
+  jobKind: keyof typeof BACKGROUND_JOB_FAMILIES,
+  input: ProcessorBackfillInput,
+): Promise<ProcessorBackfillResult> {
+  const family = BACKGROUND_JOB_FAMILIES[jobKind];
   return runProcessorBackfill({
-    jobKind: "extraction",
+    jobKind,
     limit: input.limit,
     now: input.now,
-    claimNextJob: input.claimNextJob ?? claimNextExtractionJob,
-    processJob: input.processJob ?? processExtractionJob,
+    claimNextJob: input.claimNextJob ?? family.claimNextJob,
+    processJob: input.processJob ?? family.processJob,
     logger: input.logger,
   });
 }
 
-export async function runEmbeddingBackfill(input: {
-  limit: number;
-  now?: Date;
-  claimNextJob?: typeof claimNextSemanticEmbeddingJob;
-  processJob?: typeof processSemanticEmbeddingJob;
-  logger?: BackgroundJobQueueLogger;
-}): Promise<ProcessorBackfillResult> {
-  return runProcessorBackfill({
-    jobKind: "embedding",
-    limit: input.limit,
-    now: input.now,
-    claimNextJob: input.claimNextJob ?? claimNextSemanticEmbeddingJob,
-    processJob: input.processJob ?? processSemanticEmbeddingJob,
-    logger: input.logger,
-  });
+// Named per-family exports kept for the cron route and the recovery assembly's override
+// seam; each just binds the shared backfill to its registry key.
+export function runExtractionBackfill(
+  input: ProcessorBackfillInput,
+): Promise<ProcessorBackfillResult> {
+  return runFamilyBackfill("extraction", input);
 }
 
-async function runActionExtractionBackfill(input: {
-  limit: number;
-  now?: Date;
-  claimNextJob?: typeof claimNextActionExtractionJob;
-  processJob?: typeof processActionExtractionJob;
-  logger?: BackgroundJobQueueLogger;
-}): Promise<ProcessorBackfillResult> {
-  return runProcessorBackfill({
-    jobKind: "action_extraction",
-    limit: input.limit,
-    now: input.now,
-    claimNextJob: input.claimNextJob ?? claimNextActionExtractionJob,
-    processJob: input.processJob ?? processActionExtractionJob,
-    logger: input.logger,
-  });
+export function runEmbeddingBackfill(
+  input: ProcessorBackfillInput,
+): Promise<ProcessorBackfillResult> {
+  return runFamilyBackfill("embedding", input);
+}
+
+function runActionExtractionBackfill(
+  input: ProcessorBackfillInput,
+): Promise<ProcessorBackfillResult> {
+  return runFamilyBackfill("action_extraction", input);
 }
 
 export async function runBackgroundJobRecovery(input: {
@@ -236,8 +217,8 @@ async function runProcessorBackfill(input: {
   jobKind: "extraction" | "embedding" | "action_extraction";
   limit: number;
   now?: Date;
-  claimNextJob: (input?: { now?: Date }) => Promise<{ id: string } | null>;
-  processJob: (input: { jobId: string; claim: false }) => Promise<{ outcome: string }>;
+  claimNextJob: BackfillClaimNextJob;
+  processJob: BackfillProcessJob;
   logger?: BackgroundJobQueueLogger;
 }): Promise<ProcessorBackfillResult> {
   const result: ProcessorBackfillResult = { scanned: 0, processed: 0, failed: 0 };
