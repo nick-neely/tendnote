@@ -1,5 +1,3 @@
-const localDemoOwnerUserId = "demo-user";
-
 type OwnerScopedContext = {
   session: { auth: { current?: { principalId?: string | null } | null } };
 };
@@ -11,9 +9,11 @@ type OwnerScopedContext = {
  * owner-scoped entry points).
  */
 export function resolveOwnerUserId(ctx: OwnerScopedContext): string {
-  return (
-    ctx.session.auth.current?.principalId ??
-    process.env.TENDNOTE_DEV_OWNER_USER_ID ??
-    localDemoOwnerUserId
-  );
+  const ownerUserId = ctx.session.auth.current?.principalId?.trim();
+
+  if (!ownerUserId) {
+    throw new Error("An authenticated Tendnote owner is required.");
+  }
+
+  return ownerUserId;
 }
