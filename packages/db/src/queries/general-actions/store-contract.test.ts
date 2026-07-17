@@ -73,6 +73,42 @@ function runStoreContract(name: string, makeStore: () => GeneralActionStore) {
       expect(updated.recurrence).toEqual({ interval: 6, unit: "month" });
     });
 
+    it("creates the action, people links, and first event through one bundle", async () => {
+      const store = makeStore();
+      const action = await store.createGeneralActionBundle({
+        action: {
+          ownerUserId: OWNER,
+          title: "Help Jason move",
+          notes: null,
+          links: [],
+          status: "open",
+          dueAt: null,
+          deferUntil: null,
+          sourceRecordId: null,
+          scope: "private",
+          householdId: null,
+          createdByUserId: OWNER,
+          lastActorUserId: OWNER,
+          completedAt: null,
+        },
+        personIds: ["00000000-0000-0000-0000-0000000000aa"],
+        sharedWithUserIds: [],
+        event: {
+          ownerUserId: OWNER,
+          kind: "created",
+          actorUserId: OWNER,
+          detailJson: { peopleLinked: 1 },
+        },
+      });
+
+      await expect(
+        store.listGeneralActionPersonIds({ ownerUserId: OWNER, generalActionId: action.id }),
+      ).resolves.toEqual(["00000000-0000-0000-0000-0000000000aa"]);
+      await expect(
+        store.listGeneralActionEvents({ ownerUserId: OWNER, generalActionId: action.id }),
+      ).resolves.toMatchObject([{ kind: "created", detailJson: { peopleLinked: 1 } }]);
+    });
+
     it("filters an owner listing to the requested statuses (the review queue's read path)", async () => {
       const store = makeStore();
       await seed(store, { title: "Active", status: "open" });

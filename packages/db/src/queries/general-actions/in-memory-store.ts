@@ -35,6 +35,30 @@ export function createInMemoryGeneralActionStore(
   // Person links as (generalActionId -> ordered set of personIds).
   const peopleLinks = new Map<string, string[]>();
 
+  function persistAction(values: Parameters<GeneralActionStore["createGeneralAction"]>[0]) {
+    const parsed = createGeneralActionSchema.parse(values);
+    const now = new Date();
+    const action: GeneralAction = {
+      ...parsed,
+      id: randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    actions.set(action.id, action);
+    return action;
+  }
+
+  function persistEvent(values: Parameters<GeneralActionStore["createGeneralActionEvent"]>[0]) {
+    const parsed = createGeneralActionEventSchema.parse(values);
+    const event: GeneralActionEvent = generalActionEventSchema.parse({
+      ...parsed,
+      id: randomUUID(),
+      createdAt: new Date(),
+    });
+    events.push(event);
+    return event;
+  }
+
   /**
    * Whether `callerUserId` may see `action` under the Phase 4 scope rules: private is
    * owner-only; household is any active member of the action's household; shared is
@@ -78,18 +102,42 @@ export function createInMemoryGeneralActionStore(
 
   return {
     async createGeneralAction(values) {
-      const parsed = createGeneralActionSchema.parse(values);
-      const now = new Date();
-      const action: GeneralAction = {
-        ...parsed,
-        id: randomUUID(),
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      actions.set(action.id, action);
-
-      return action;
+      return persistAction(values);
+    },
+    async createGeneralActionBundle(input) {
+      const action = persistAction(input.action);
+      const eventCount = events.length;
+      try {
+        const personIds = [...new Set(input.personIds)];
+        if (personIds.length > 0) {
+          peopleLinks.set(action.id, personIds);
+        }
+        if (action.scope === "shared" && action.householdId) {
+          for (const sharedWithUserId of new Set(input.sharedWithUserIds)) {
+            await householdStore.createHouseholdRecordShare({
+              householdId: action.householdId,
+              recordKind: "general_action",
+              recordId: action.id,
+              sharedWithUserId,
+              sharedByUserId: action.ownerUserId,
+            });
+          }
+        }
+        persistEvent({ ...input.event, generalActionId: action.id });
+        return action;
+      } catch (error) {
+        actions.delete(action.id);
+        peopleLinks.delete(action.id);
+        events.splice(eventCount);
+        if (action.householdId) {
+          await householdStore.deleteHouseholdRecordShares({
+            householdId: action.householdId,
+            recordKind: "general_action",
+            recordId: action.id,
+          });
+        }
+        throw error;
+      }
     },
     async getGeneralAction(input) {
       const action = actions.get(input.generalActionId);
@@ -177,16 +225,7 @@ export function createInMemoryGeneralActionStore(
       return [...(peopleLinks.get(input.generalActionId) ?? [])];
     },
     async createGeneralActionEvent(values) {
-      const parsed = createGeneralActionEventSchema.parse(values);
-      const event: GeneralActionEvent = generalActionEventSchema.parse({
-        ...parsed,
-        id: randomUUID(),
-        createdAt: new Date(),
-      });
-
-      events.push(event);
-
-      return event;
+      return persistEvent(values);
     },
     async listGeneralActionEvents(input) {
       return events

@@ -134,35 +134,28 @@ export function createSuggestedGeneralActionReview(
       // Creator provenance: who proposed it. The accepting user is stamped as actor on
       // promotion, so accepted-by provenance is preserved without losing the proposer
       // (ADR 0154). Shared value defaults live in `buildCreateGeneralActionValues`.
-      const action = await store.createGeneralAction(
-        buildCreateGeneralActionValues(input, {
-          status: "suggested",
-          sourceRecordId: sourceRecord.id,
-          areaId,
-          scope,
-          householdId,
-        }),
-      );
-
-      if (personIds.length > 0) {
-        await store.setGeneralActionPeople({
-          ownerUserId: input.ownerUserId,
-          generalActionId: action.id,
-          personIds,
-        });
-      }
-
-      await store.createGeneralActionEvent({
-        generalActionId: action.id,
-        ownerUserId: action.ownerUserId,
-        kind: "suggested",
-        actorUserId: input.ownerUserId,
-        detailJson: {
-          scope: action.scope,
-          grounded: true,
-          filed: areaId !== null,
-          peopleLinked: personIds.length,
-          recurring: action.recurrence !== null,
+      const actionValues = buildCreateGeneralActionValues(input, {
+        status: "suggested",
+        sourceRecordId: sourceRecord.id,
+        areaId,
+        scope,
+        householdId,
+      });
+      const action = await store.createGeneralActionBundle({
+        action: actionValues,
+        personIds,
+        sharedWithUserIds: [],
+        event: {
+          ownerUserId: actionValues.ownerUserId,
+          kind: "suggested",
+          actorUserId: input.ownerUserId,
+          detailJson: {
+            scope: actionValues.scope,
+            grounded: true,
+            filed: areaId !== null,
+            peopleLinked: personIds.length,
+            recurring: actionValues.recurrence !== null,
+          },
         },
       });
 
