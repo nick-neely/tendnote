@@ -4,10 +4,10 @@
 // in current-access, which needs getAuth from here. Fallow counts the deliberate
 // lazy `await import()` edges as a static cycle even though they are runtime-safe.
 import { redisStorage } from "@better-auth/redis-storage";
+import { createTendnoteAuth, resolveBetterAuthSecret } from "@tendnote/auth";
 import { getDb } from "@tendnote/db/client";
 import { ensureAccessProfile } from "@tendnote/db/queries/access-profiles";
 import * as schema from "@tendnote/db/schema";
-import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getRedis } from "@/lib/cache/redis";
 import {
@@ -26,15 +26,7 @@ import {
  * duplicating the fallback magic string.
  */
 export function getBetterAuthSecret() {
-  if (process.env.BETTER_AUTH_SECRET) {
-    return process.env.BETTER_AUTH_SECRET;
-  }
-
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("BETTER_AUTH_SECRET is required in production.");
-  }
-
-  return "tendnote-local-dev-secret-change-before-production";
+  return resolveBetterAuthSecret();
 }
 
 function createAuth() {
@@ -52,10 +44,7 @@ function createAuth() {
     ...(discord ? { discord } : {}),
   };
 
-  return betterAuth({
-    appName: "Tendnote",
-    baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
-    secret: getBetterAuthSecret(),
+  return createTendnoteAuth({
     database: drizzleAdapter(getDb(), {
       provider: "pg",
       schema,
@@ -123,7 +112,6 @@ function createAuth() {
       client: getRedis(),
       keyPrefix: "tendnote:better-auth:",
     }),
-    trustedOrigins: [process.env.BETTER_AUTH_URL ?? "http://localhost:3000"],
   });
 }
 

@@ -19,6 +19,7 @@
     "@streamdown/mermaid": "^1.0.2",
     "@tanstack/react-table": "^8.21.3",
     "@tendnote/agent": "workspace:*",
+    "@tendnote/auth": "workspace:*",
     "@tendnote/db": "workspace:*",
     "@tendnote/domain": "workspace:*",
     "@tiptap/core": "^3.27.1",
