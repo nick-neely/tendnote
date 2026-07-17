@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { toAssistantToolView } from "./tool-result-parse";
+import { toAssistantToolView } from "@/components/assistant-results/registry";
 
 function readTsFilesRecursive(dir: string): string[] {
   if (!existsSync(dir)) {

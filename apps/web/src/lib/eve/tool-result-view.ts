@@ -113,7 +113,23 @@ export type AssistantToolView =
       evidence: { evidenceId: string; kind: string; label: string }[];
       actions: { actionId: string; title: string; status: string; dueAt: string | null }[];
     }
-  | { kind: "generic"; toolName: string };
+  /**
+   * The safe fallback for output that did not project to a typed view. Three honest,
+   * visually distinct outcomes share this kind:
+   *
+   * - benign unrecognized tool (`malformed`/`note` both absent) — a quiet housekeeping
+   *   line naming the tool that ran;
+   * - a *well-formed negative* outcome of a known tool (`note` set) — an honest,
+   *   neutral line in plain copy ("No draft was created", "Nothing to review"); the
+   *   tool succeeded and returned a real "nothing happened" result, so it is never
+   *   dressed up as an error;
+   * - a *malformed* payload of a known tool (`malformed: true`) — a schema-invalid,
+   *   possibly-failed result shown as visibly degraded, never as routine.
+   *
+   * `note` and `malformed` are mutually exclusive: a recognized negative is not a
+   * failure, and a failure has no honest copy to show.
+   */
+  | { kind: "generic"; toolName: string; malformed?: boolean; note?: string };
 
 /**
  * One grounded Asset Search result. `value` is the exact stored value — the answer to
@@ -290,176 +306,8 @@ export type DraftProposalView = {
 };
 
 /**
- * Per-kind stable-key builders. Keyed by `view.kind` so the lookup stays a flat
- * table rather than a long switch; the mapped type gives each builder the exact
- * narrowed variant for its kind, so ids are referenced without casts.
+ * Visual weight a rendered tool result earns (see the result-module registry).
+ * Each module owns the tier for its own kind; `toolViewTier` in the registry is the
+ * thin dispatcher over these.
  */
-const assistantToolViewKeyBuilders: {
-  [K in AssistantToolView["kind"]]: (view: Extract<AssistantToolView, { kind: K }>) => string;
-} = {
-  saved_source_record: (view) => `source:${view.sourceRecordId}`,
-  saved_memory: (view) => `memory:${view.memoryId}`,
-  added_person: (view) => `person:${view.personId}`,
-  updated_person: (view) => `person-updated:${view.personId}:${view.updatedFields.join(",")}`,
-  person_context: (view) => `context:${view.personId}`,
-  message_draft: (view) => `draft:${view.draftId}`,
-  suggested_memory_review: (view) => `suggested:${view.memoryId}`,
-  suggested_memory_review_list: (view) =>
-    `suggested-list:${view.reviews.map((review) => review.memoryId).join(":")}`,
-  suggested_followup_review: (view) => `suggested-followup:${view.followupId}`,
-  suggested_followup_review_list: (view) =>
-    `suggested-followup-list:${view.reviews.map((review) => review.followupId).join(":")}`,
-  relationship_context_search: (view) =>
-    `search:${view.results.map((result) => result.recordId).join(":")}`,
-  semantic_context_search: (view) =>
-    `semantic-search:${view.results.map((result) => result.recordId).join(":")}`,
-  relationship_agenda: (view) =>
-    `agenda:${view.candidates.map(relationshipAgendaCandidateKey).join(":")}`,
-  memory_curator_proposals: (view) =>
-    `memory-curator:${view.proposals.map((proposal) => proposal.id).join(":")}`,
-  draft_proposal: (view) =>
-    view.proposal ? `draft-proposal:${view.proposal.id}` : `draft-proposal:skipped`,
-  created_general_action: (view) => `general-action:${view.generalActionId}`,
-  suggested_general_action_review: (view) => `suggested-general-action:${view.generalActionId}`,
-  suggested_general_action_review_list: (view) =>
-    `suggested-general-action-list:${view.reviews
-      .map((review) => review.generalActionId)
-      .join(":")}`,
-  general_action_list: (view) =>
-    `general-action-list:${view.actions.map((action) => action.generalActionId).join(":")}`,
-  asset_search: (view) =>
-    `asset-search:${view.results.map((result) => `${result.recordKind}:${result.recordId}`).join("|")}`,
-  asset_review_group: (view) => `asset-review-group:${view.review.groupId}`,
-  asset_context: (view) => `asset-context:${view.assetName ?? "unknown"}`,
-  generic: (view) => `tool:${view.toolName}`,
-};
-
-/**
- * Stable React key for a rendered view, derived from the persisted record it
- * references so a list of results keys on real ids rather than array position.
- */
-export function assistantToolViewKey(view: AssistantToolView): string {
-  const build = assistantToolViewKeyBuilders[view.kind] as (view: AssistantToolView) => string;
-  return build(view);
-}
-
-export function relationshipAgendaCandidateKey(candidate: RelationshipAgendaCandidateView) {
-  const sourceKey = candidate.sourceRefs
-    .map((sourceRef) => `${sourceRef.kind}:${sourceRef.id}`)
-    .join(":");
-
-  return sourceKey || `${candidate.kind}:${candidate.rank}:${candidate.personId ?? "personless"}`;
-}
-
-/**
- * Durable, trust-bearing record kinds that fold into a collapsed group when a turn
- * produces several of them (see {@link groupTurnToolEntries}). These are the saves
- * the user already confirmed by acting — the noisy "added a person, then saved six
- * things" turn — so grouping them quiets the transcript without hiding the
- * interactive review cards, which stay individual and actionable.
- */
-export type GroupableToolKind =
-  | "saved_memory"
-  | "saved_source_record"
-  | "added_person"
-  | "updated_person";
-
-/** One durable view of a groupable kind, narrowed for the group renderer. */
-export type GroupableToolView = Extract<AssistantToolView, { kind: GroupableToolKind }>;
-
-const GROUPABLE_TOOL_KINDS = new Set<AssistantToolView["kind"]>([
-  "saved_memory",
-  "saved_source_record",
-  "added_person",
-  "updated_person",
-]);
-
-export function isGroupableToolKind(kind: AssistantToolView["kind"]): kind is GroupableToolKind {
-  return GROUPABLE_TOOL_KINDS.has(kind);
-}
-
-/** Visual weight a rendered tool result earns (see assistant-tool-result.tsx). */
 export type ToolViewTier = "line" | "card" | "disclosure";
-
-/**
- * Tiers a tool result by how much the user needs to notice it. Ambient lookups
- * recede to a quiet inline line; durable, trust-bearing state changes (saved
- * memory, added person, logged note, tentative suggestion) keep the card; a
- * non-empty result set collapses behind a one-line summary the user can expand.
- */
-export function toolViewTier(view: AssistantToolView): ToolViewTier {
-  switch (view.kind) {
-    case "generic":
-    case "person_context":
-      return "line";
-    case "relationship_context_search":
-    case "semantic_context_search":
-      return view.results.length > 0 ? "disclosure" : "line";
-    case "relationship_agenda":
-      return view.candidates.length > 0 ? "disclosure" : "line";
-    case "general_action_list":
-      return view.actions.length > 0 ? "disclosure" : "line";
-    case "asset_search":
-      return view.results.length > 0 ? "disclosure" : "line";
-    case "asset_context":
-      // A loaded asset profile is trust-bearing — the user must see which facts are
-      // records and which prose is only a cache — so it earns the card.
-      return view.found ? "card" : "line";
-    case "memory_curator_proposals":
-      return view.proposals.length > 0 ? "card" : "line";
-    case "draft_proposal":
-      return view.proposal ? "card" : "line";
-    case "message_draft":
-      // A persisted, durable draft earns the card — the user must see what was
-      // written (and the Tendnote-only boundary) and act on it.
-      return "card";
-    default:
-      return "card";
-  }
-}
-
-const ACTIVE_TOOL_LABELS: Record<string, string> = {
-  search_people: "Searching people…",
-  search_relationship_context: "Searching your notebook…",
-  search_semantic_context: "Searching by meaning…",
-  get_relationship_agenda: "Checking your relationship agenda…",
-  propose_memory_cleanup: "Reviewing memory cleanup candidates…",
-  propose_message_draft: "Drafting options…",
-  get_person_context: "Recalling…",
-  get_suggested_memory_review: "Checking for suggestions…",
-  list_suggested_memory_reviews: "Gathering suggestions to review…",
-  propose_followup: "Drafting a follow-up to review…",
-  get_suggested_followup_review: "Checking suggested follow-ups…",
-  list_suggested_followup_reviews: "Gathering follow-ups to review…",
-  accept_suggested_followup: "Setting the reminder…",
-  dismiss_suggested_followup: "Dismissing the suggestion…",
-  create_followup: "Setting a reminder…",
-  list_due_followups: "Checking what's due…",
-  update_followup_status: "Updating the reminder…",
-  capture_source_record: "Logging…",
-  capture_memory: "Saving to memory…",
-  create_message_draft: "Drafting a message…",
-  create_person: "Adding to your notebook…",
-  update_person: "Updating the profile…",
-  create_general_action: "Adding to your actions…",
-  suggest_general_action: "Drafting a suggested action…",
-  plan_suggested_general_actions: "Sketching a few steps…",
-  list_general_actions: "Checking your actions…",
-  get_suggested_general_action_review: "Pulling up the suggested action…",
-  list_suggested_general_action_reviews: "Gathering actions to review…",
-  propose_asset_actions: "Checking what this asset needs…",
-  propose_asset_memories: "Putting that up for review…",
-  // Prose mutation tools render no card, but still shimmer with a hand-written label
-  // rather than a slugified tool name while they run.
-  accept_suggested_general_action: "Adding it to your list…",
-  dismiss_suggested_general_action: "Dismissing the suggestion…",
-  edit_general_action: "Updating the action…",
-  update_general_action_status: "Updating the action…",
-  search_assets: "Searching your things…",
-  get_asset_context: "Pulling up what you know about it…",
-};
-
-/** Present-continuous label for an in-flight tool call (the shimmer line). */
-export function activeToolLabel(toolName: string): string {
-  return ACTIVE_TOOL_LABELS[toolName] ?? `${toolName.replace(/_/g, " ")}…`;
-}

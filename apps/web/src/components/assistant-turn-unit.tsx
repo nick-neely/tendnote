@@ -1,5 +1,9 @@
 "use client";
 
+import type {
+  GroupableToolView,
+  InteractiveResultKind,
+} from "@/components/assistant-results/registry";
 import { AssistantToolGroup } from "@/components/assistant-tool-group";
 import { AssistantToolResult } from "@/components/assistant-tool-result";
 import { ChatAssetReviewCard } from "@/components/chat-asset-review-card";
@@ -15,7 +19,7 @@ import {
 import { ChatLoggedNoteCard } from "@/components/chat-logged-note-card";
 import { ChatReviewCard, ChatReviewList } from "@/components/chat-review-card";
 import type { AssistantTurnUnit } from "@/lib/eve/message-views";
-import type { AssistantToolView, GroupableToolView } from "@/lib/eve/tool-result-view";
+import type { AssistantToolView } from "@/lib/eve/tool-result-view";
 
 /**
  * Stable React key for a turn render unit. A group keys off its kind and first
@@ -42,14 +46,17 @@ export function turnUnitKey(messageId: string, unit: AssistantTurnUnit): string 
  * so new actionable result kinds are added here rather than in the panel shell.
  */
 /**
- * Per-kind interactive-card renderers for a single tool result. Keyed by `view.kind`;
- * a kind absent from the table (or a renderer that returns null) falls through to the
- * read-only {@link AssistantToolResult}. New actionable result kinds are added here.
+ * The interactive-card adapter for the {@link InteractiveResultKind} set: the client
+ * cards that carry an inline action affordance and import `server-only` review
+ * mutations, so they live at this client seam rather than in the presentational
+ * result-module registry. The map is *non-optional* over exactly the interactive
+ * kinds, so the guarantee is real at compile time: a renderer for any other kind is a
+ * type error, and an interactive kind missing its card fails to type-check here
+ * rather than silently rendering nothing. A renderer that returns null (a personless
+ * logged note) falls through to the read-only {@link AssistantToolResult}.
  */
 const singleUnitRenderers: {
-  [K in AssistantToolView["kind"]]?: (
-    view: Extract<AssistantToolView, { kind: K }>,
-  ) => React.ReactNode;
+  [K in InteractiveResultKind]: (view: Extract<AssistantToolView, { kind: K }>) => React.ReactNode;
 } = {
   suggested_memory_review: (view) => <ChatReviewCard isNew item={view} />,
   suggested_memory_review_list: (view) => <ChatReviewList isNew view={view} />,
@@ -84,8 +91,8 @@ export function AssistantTurnUnitView({ unit }: { unit: AssistantTurnUnit }) {
   }
 
   const { view } = unit.entry;
-  const render = singleUnitRenderers[view.kind] as
-    | ((view: AssistantToolView) => React.ReactNode)
-    | undefined;
-  return render?.(view) ?? <AssistantToolResult isNew view={view} />;
+  const renderers = singleUnitRenderers as Partial<
+    Record<AssistantToolView["kind"], (view: AssistantToolView) => React.ReactNode>
+  >;
+  return renderers[view.kind]?.(view) ?? <AssistantToolResult isNew view={view} />;
 }

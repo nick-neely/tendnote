@@ -36,8 +36,11 @@ const PHASE_1G_FILES = [
   "apps/web/src/components/draft-message-button.tsx",
   "apps/web/src/components/use-create-draft.ts",
   // The Eve draft-result render path — the surfaces that show a draft to the user.
+  // The draft result module owns the Message Draft / Draft Proposal projection and
+  // rendering; the registry dispatches to it and the presentational host renders it.
   "apps/web/src/lib/eve/tool-result-view.ts",
-  "apps/web/src/lib/eve/tool-result-parse.ts",
+  "apps/web/src/components/assistant-results/follow-up-draft.tsx",
+  "apps/web/src/components/assistant-results/registry.tsx",
   "apps/web/src/components/assistant-tool-result.tsx",
   "apps/agent/agent/tools/create_message_draft.ts",
 ];
