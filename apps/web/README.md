@@ -10,12 +10,11 @@ Next.js App Router workspace for Tendnote: the dashboard, people pages, Better A
 - `src/components` — dashboard rail, person detail, chat review cards, draft surfaces, the account provider-connection and Google integration sections, and auth forms.
 - `src/components/ui` — shadcn/ui components.
 - `src/components/ai-elements` — AI Elements chat primitives.
-- `src/lib/auth` — Better Auth setup; `src/lib/access` — Private Beta Access resolution and Eve ingress gating; `src/lib/integrations` — provider connections, Google Calendar connect/preview/disconnect, and Gmail draft externalization; `src/lib/background-jobs` — queue runtime and recovery; `src/lib/eve` — persisted Eve tool-result rendering.
-- `src/proxy.ts` — validates the Better Auth session on `/eve/v1/*`, requires an admitted owner, and injects the trusted owner header.
+- `src/lib/auth` — Better Auth web setup over the shared `@tendnote/auth` security baseline; `src/lib/access` — Private Beta Access resolution; `src/lib/integrations` — provider connections, Google Calendar connect/preview/disconnect, and Gmail draft externalization; `src/lib/background-jobs` — queue runtime and recovery; `src/lib/eve` — persisted Eve tool-result rendering and hosted-boundary policy coverage.
 
 ## Eve chat
 
-`next.config.ts` wraps Next with `withEve()`, which spawns `apps/agent` and proxies `/eve/v1/*` to it same-origin. The assistant panel streams turns directly via `useEveAgent` — no separate agent URL. See [`docs/architecture.md`](../../docs/architecture.md).
+`next.config.ts` wraps Next with `withEve()`, which mounts `apps/agent` at `/eve/v1/*` same-origin. On Vercel that path routes directly to the Eve service before Next filesystem routing, so the Eve channel owns session verification, beta admission, and ingress limiting. The assistant panel streams turns directly via `useEveAgent` — no separate agent URL. See [`docs/architecture.md`](../../docs/architecture.md).
 
 ## Integrations
 
