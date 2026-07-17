@@ -1,17 +1,12 @@
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  NotebookPenIcon,
-  UserPenIcon,
-  UserPlusIcon,
-} from "lucide-react";
+import { CheckIcon, NotebookPenIcon, UserPenIcon, UserPlusIcon } from "lucide-react";
 import { Body, CARD_TONE, Caption, type CardTone } from "@/components/assistant-result-card";
-import { formatFieldList, PERSON_FIELD_LABEL } from "@/lib/eve/person-fields";
 import {
   assistantToolViewKey,
   type GroupableToolKind,
   type GroupableToolView,
-} from "@/lib/eve/tool-result-view";
+} from "@/components/assistant-results/registry";
+import { DisclosureShell } from "@/components/assistant-results/shells";
+import { formatFieldList, PERSON_FIELD_LABEL } from "@/lib/eve/person-fields";
 import { cn } from "@/lib/utils";
 
 /**
@@ -69,39 +64,33 @@ export function AssistantToolGroup({
   const shared = sharedPersonName(views);
 
   return (
-    <details
-      className={cn(
-        "group rounded-xl border [&[open]_.tn-chevron]:rotate-180",
-        t.surface,
-        isNew && "fade-in slide-in-from-bottom-1 animate-in duration-200 ease-(--motion-ease-out)",
-      )}
-      data-tool-view={`${kind}_group`}
-    >
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+    <DisclosureShell
+      footer={<Caption>{groupFooter(kind, views)}</Caption>}
+      icon={
         <span
           aria-hidden
           className={cn("flex size-5 shrink-0 items-center justify-center rounded-full", t.chip)}
         >
           {meta.icon}
         </span>
+      }
+      isNew={isNew}
+      size="lg"
+      summary={
         <span className={cn("min-w-0 text-[length:var(--text-small)] font-medium", t.label)}>
           {meta.label(views.length)}
           {shared ? <span className="font-normal text-muted-foreground"> · {shared}</span> : null}
         </span>
-        <ChevronDownIcon
-          aria-hidden
-          className="tn-chevron ml-auto size-3.5 shrink-0 transition-transform duration-200 ease-(--motion-ease-out)"
-        />
-      </summary>
+      }
+      tone={meta.tone}
+      toolView={`${kind}_group`}
+    >
       <div className={cn("flex flex-col divide-y border-t px-3 pt-2 pb-3", t.divider)}>
         {views.map((view) => (
           <GroupRow key={assistantToolViewKey(view)} showPerson={!shared} view={view} />
         ))}
       </div>
-      <div className={cn("border-t px-3 py-2", t.divider)}>
-        <Caption>{groupFooter(kind, views)}</Caption>
-      </div>
-    </details>
+    </DisclosureShell>
   );
 }
 

@@ -1,11 +1,17 @@
 import type { EveDynamicToolPart, EveMessage, EveMessagePart } from "eve/react";
-import { toAssistantToolView } from "./tool-result-parse";
+// This lib→components import is deliberate: message-views is the chat view-model glue
+// that turns Eve message parts into renderable turn units, and the result-module
+// registry is the single source for projection and grouping. Co-locating each kind's
+// projection with its (JSX) rendering is the whole point of the registry, so the
+// projection dispatcher necessarily lives in the component layer; this module is only
+// used by the client assistant panel, so the direction costs nothing.
 import {
-  type AssistantToolView,
-  activeToolLabel,
   type GroupableToolKind,
   isGroupableToolKind,
-} from "./tool-result-view";
+  toAssistantToolView,
+} from "@/components/assistant-results/registry";
+import { activeToolLabel } from "./active-tool-label";
+import type { AssistantToolView } from "./tool-result-view";
 
 function isTextPart(part: EveMessagePart): part is Extract<EveMessagePart, { type: "text" }> {
   return part.type === "text";
