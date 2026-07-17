@@ -28,6 +28,7 @@ describe("applyOwnerContactImportCandidates with neon-http", () => {
       addedContactMethods: 0,
       addedBirthdays: 0,
       candidates: [],
+      notImported: [],
       undoAvailable: false,
     });
 
@@ -35,7 +36,9 @@ describe("applyOwnerContactImportCandidates with neon-http", () => {
       applyOwnerContactImportCandidates({
         ownerUserId: "owner-1",
         mode: "explicit",
-        resolutions: [{ candidateId: "candidate-1", action: "skip" }],
+        confirmations: [
+          { candidateId: "candidate-1", expectedFingerprint: "fp-1", action: "skip" },
+        ],
         adapter: { fetchContacts: vi.fn() },
       }),
     ).resolves.toMatchObject({ importedCount: 0 });
@@ -44,7 +47,9 @@ describe("applyOwnerContactImportCandidates with neon-http", () => {
       expect.objectContaining({
         ownerUserId: "owner-1",
         mode: "explicit",
-        resolutions: [{ candidateId: "candidate-1", action: "skip" }],
+        confirmations: [
+          { candidateId: "candidate-1", expectedFingerprint: "fp-1", action: "skip" },
+        ],
       }),
       expect.objectContaining({
         isProviderCapabilityConnected: expect.any(Function),

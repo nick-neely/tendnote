@@ -15,6 +15,9 @@ vi.mock("@/app/actions/contact-import", () => ({
   confirmContactImportCandidateAction: vi.fn(),
   confirmSafeContactImportCandidatesAction: vi.fn(),
 }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 
 import ContactsImportPage from "./page";
 
@@ -45,6 +48,14 @@ describe("ContactsImportPage", () => {
           reasons: ["Matches Safe Contact by saved contact method"],
           reviewState: "safe_recommendation",
           safeBulkEligible: true,
+          decisions: {
+            targets: [{ personId: "person-safe", label: "Safe Contact", kind: "matched" }],
+            targetChoiceRequired: false,
+            canCreatePerson: false,
+            birthdayChoiceRequired: false,
+            resolvable: true,
+          },
+          fingerprint: "fp-safe",
           matchSignals: [
             {
               type: "email",
@@ -69,6 +80,14 @@ describe("ContactsImportPage", () => {
           reasons: ["Matches Conflict Contact by saved contact method"],
           reviewState: "conflict",
           safeBulkEligible: false,
+          decisions: {
+            targets: [{ personId: "person-conflict", label: "Conflict Contact", kind: "matched" }],
+            targetChoiceRequired: false,
+            canCreatePerson: false,
+            birthdayChoiceRequired: true,
+            resolvable: true,
+          },
+          fingerprint: "fp-conflict",
           matchSignals: [
             {
               type: "email",
@@ -93,6 +112,14 @@ describe("ContactsImportPage", () => {
           reasons: ["Includes an email address"],
           reviewState: "individual_review",
           safeBulkEligible: false,
+          decisions: {
+            targets: [],
+            targetChoiceRequired: false,
+            canCreatePerson: true,
+            birthdayChoiceRequired: false,
+            resolvable: true,
+          },
+          fingerprint: "fp-new",
           matchSignals: [],
           advisoryMatches: [],
           conflicts: [],
@@ -106,6 +133,8 @@ describe("ContactsImportPage", () => {
     // Unified table + toolbar rather than the old split sections + banner.
     expect(html).toContain("Confirm safe recommendations");
     expect(html).toContain("Filter by name, email, or phone");
+    // A visible recovery affordance, not only a transient toast.
+    expect(html).toContain("Refresh preview");
     // Every candidate shares one table.
     expect(html).toContain("Safe Contact");
     expect(html).toContain("Conflict Contact");
@@ -159,6 +188,20 @@ describe("ContactsImportPage", () => {
           reasons: ["Possible match: Mara Chen", "Includes an email address"],
           reviewState: "advisory_match",
           safeBulkEligible: false,
+          decisions: {
+            targets: [
+              {
+                personId: "person-mara",
+                label: "Mara Chen (Similar name and shared email initials)",
+                kind: "advisory",
+              },
+            ],
+            targetChoiceRequired: true,
+            canCreatePerson: false,
+            birthdayChoiceRequired: false,
+            resolvable: true,
+          },
+          fingerprint: "fp-fuzzy",
           matchSignals: [],
           advisoryMatches: [
             {
@@ -180,5 +223,60 @@ describe("ContactsImportPage", () => {
     expect(html).toContain("Choose target person");
     expect(html).toContain("Advisory: Mara Chen");
     expect(html).toContain("Similar name and shared email initials");
+    // Advisory rows may only attach to a chosen person — never spawn a new one.
+    expect(html).not.toContain("Create new person");
+  });
+
+  it("presents only the decisions a skip-only candidate allows", async () => {
+    getOwnerContactImportPreview.mockResolvedValue({
+      id: "session-1",
+      connected: true,
+      mode: "prioritized",
+      query: "",
+      fetchedCount: 1,
+      shownCount: 1,
+      hiddenCount: 0,
+      candidates: [
+        {
+          id: "ambiguous",
+          displayName: "Shared Email",
+          providerContactId: "people/shared",
+          emails: ["shared@example.com"],
+          phones: [],
+          birthday: null,
+          priority: "existing_person_match",
+          score: 80,
+          reasons: ["Matches more than one Tendnote person"],
+          reviewState: "ambiguous_duplicate",
+          safeBulkEligible: false,
+          decisions: {
+            targets: [],
+            targetChoiceRequired: false,
+            canCreatePerson: false,
+            birthdayChoiceRequired: false,
+            resolvable: false,
+          },
+          fingerprint: "fp-ambiguous",
+          matchSignals: [],
+          advisoryMatches: [],
+          conflicts: [
+            {
+              type: "duplicate_contact_method",
+              message: "This contact method is already attached to more than one Tendnote person.",
+            },
+          ],
+          matchedPerson: null,
+        },
+      ],
+    });
+
+    const html = renderToStaticMarkup(await ContactsImportPage());
+
+    // Skip-only: no create, no apply, no target chooser — just guidance + Skip.
+    expect(html).toContain("This contact matches more than one person");
+    expect(html).toContain("Skip");
+    expect(html).not.toContain("Create new person");
+    expect(html).not.toContain("Apply resolution");
+    expect(html).not.toContain("Choose target person");
   });
 });

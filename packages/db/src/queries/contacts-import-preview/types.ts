@@ -79,6 +79,32 @@ export type ContactImportCandidateConflict = {
   message: string;
 };
 
+/** A person the owner may attach this candidate to during manual resolution. */
+export type ContactImportCandidateTarget = {
+  personId: string;
+  label: string;
+  kind: "matched" | "advisory";
+};
+
+/**
+ * The authoritative set of manual-resolution decisions the preview allows for
+ * one candidate. The review UI presents exactly these choices; it never
+ * re-derives eligibility, so the workflow and the UI cannot drift. Whether a row
+ * is a one-click safe add is carried by `safeBulkEligible`, not repeated here.
+ */
+export type ContactImportCandidateDecisions = {
+  /** People this candidate may be attached to, deduped and labeled. */
+  targets: ContactImportCandidateTarget[];
+  /** The owner must actively choose among `targets` before applying. */
+  targetChoiceRequired: boolean;
+  /** Creating a brand-new person is an allowed resolution. */
+  canCreatePerson: boolean;
+  /** A birthday conflict must be resolved (keep existing vs. use the provider value). */
+  birthdayChoiceRequired: boolean;
+  /** At least one safe resolution exists; false means the row can only be skipped. */
+  resolvable: boolean;
+};
+
 export type ContactImportPreviewCandidate = {
   id: string;
   displayName: string;
@@ -91,6 +117,14 @@ export type ContactImportPreviewCandidate = {
   reasons: string[];
   reviewState: ContactImportCandidateReviewState;
   safeBulkEligible: boolean;
+  /** Authoritative allowed decisions for this candidate; the UI renders only these. */
+  decisions: ContactImportCandidateDecisions;
+  /**
+   * Stable digest of the decision-relevant candidate state (identity, written
+   * fields, match, and allowed decisions). Confirmation carries it back and apply
+   * refuses (reporting the row as stale) when provider data drifts in between.
+   */
+  fingerprint: string;
   matchSignals: ContactImportCandidateMatchSignal[];
   advisoryMatches: ContactImportFuzzyMatch[];
   conflicts: ContactImportCandidateConflict[];
@@ -132,6 +166,19 @@ export type ContactImportApplyDeps = ContactImportPreviewDeps & {
   createAuditLogEntry: (entry: ContactImportAuditEntry) => Promise<void>;
 };
 
+/** Why a requested candidate was not imported, so the UI can reconcile honestly. */
+export type ContactImportNotImportedReason =
+  | "stale"
+  | "unknown"
+  | "ineligible"
+  | "missing_target"
+  | "skipped";
+
+export type ContactImportNotImportedCandidate = {
+  candidateId: string;
+  reason: ContactImportNotImportedReason;
+};
+
 export type ContactImportApplyResult = {
   importedCount: number;
   createdPeople: number;
@@ -150,12 +197,21 @@ export type ContactImportApplyResult = {
     addedBirthday: string | null;
     skipped: string[];
   }>;
+  /** Requested candidates that were not imported, each with a reconciliation reason. */
+  notImported: ContactImportNotImportedCandidate[];
   undoAvailable: false;
 };
 
-export type ContactImportCandidateResolution = {
+/**
+ * One owner confirmation for a single candidate. The fingerprint is required:
+ * apply always checks it, so every processed candidate is drift-guarded and the
+ * guarantee is owned by the workflow rather than volunteered by callers.
+ */
+export type ContactImportCandidateConfirmation = {
   candidateId: string;
-  action: "apply" | "skip";
+  /** The candidate fingerprint the owner reviewed; apply refuses on a mismatch. */
+  expectedFingerprint: string;
+  action?: "apply" | "skip";
   targetPersonId?: string | null;
   createPerson?: boolean;
   birthdayChoice?: "provider" | "existing" | "skip";

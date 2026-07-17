@@ -112,6 +112,14 @@ _Avoid_: Contact sync, address book mirror, import ledger
 A proposed contact import outcome that the user can confirm, skip, or resolve before it changes Tendnote relationship data.
 _Avoid_: Synced contact, automatic person, imported truth
 
+**Candidate Decisions**:
+The authoritative set of manual-resolution choices the Contact Import workflow allows for one candidate — which people it may attach to, whether the owner must choose among them, whether a new person may be created, and whether a birthday conflict must be resolved. The review UI presents exactly these decisions; it never re-derives eligibility, so the workflow and the UI cannot drift.
+_Avoid_: Client eligibility rules, UI policy, computed affordances
+
+**Candidate Fingerprint**:
+A stable digest of the decision-relevant state a Contact Import Candidate was reviewed against (identity, the fields that would be written, its match, and its candidate decisions). Confirmation carries the fingerprint back, and apply refuses the row as stale if a fresh provider response drifted from it — so a changed provider record can never silently change a confirmed outcome.
+_Avoid_: Version number, etag, content hash of the raw provider record
+
 **Private Beta Access**:
 The account-level gate that decides whether a signed-up user may enter Tendnote during the early hosted product phase. It controls product access only; it is not the same as relationship data ownership, integration authorization, or payment status.
 _Avoid_: Public signup, environment allowlist, owner scope

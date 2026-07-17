@@ -48,9 +48,11 @@ describe("Phase 2E Contacts import boundary - no external write or inference sid
     expect(CONTACT_IMPORT_SURFACES).toEqual([
       "apps/web/src/app/account/contacts/import/contact-import-review.tsx",
       "apps/web/src/app/account/contacts/import/page.tsx",
+      "apps/web/src/app/account/contacts/import/refresh-preview-button.tsx",
       "apps/web/src/app/actions/contact-import.ts",
       "apps/web/src/lib/integrations/contact-import-preview-data.ts",
       "packages/db/src/queries/contacts-import-preview.ts",
+      "packages/db/src/queries/contacts-import-preview/decisions.ts",
       "packages/db/src/queries/contacts-import-preview/fake-adapter.ts",
       "packages/db/src/queries/contacts-import-preview/google-adapter.ts",
       "packages/db/src/queries/contacts-import-preview/service.ts",
