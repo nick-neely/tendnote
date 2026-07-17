@@ -22,6 +22,7 @@
     "@tendnote/auth": "workspace:*",
     "@tendnote/db": "workspace:*",
     "@tendnote/domain": "workspace:*",
+    "@tendnote/rate-limit": "workspace:*",
     "@tiptap/core": "^3.27.1",
     "@tiptap/pm": "^3.27.1",
     "@tiptap/react": "^3.27.1",
