@@ -10,6 +10,7 @@ import {
   createVercelBackgroundJobQueueAdapter,
   publishBackgroundJobDelivery,
 } from "./queue-runtime";
+import { classifyBackgroundJobFailure } from "./failure-observability";
 
 type JobValidity = "active" | "obsolete";
 
@@ -241,9 +242,8 @@ async function runProcessorBackfill(input: {
       input.logger?.error?.("background_job_recovery.processor_failed", {
         jobKind: input.jobKind,
         jobId: job.id,
-        error: (processResult.error ?? processResult.reason ?? "Background job failed.").slice(
-          0,
-          2_000,
+        errorCode: classifyBackgroundJobFailure(
+          processResult.error ?? processResult.reason ?? "Background job failed.",
         ),
       });
     } else {

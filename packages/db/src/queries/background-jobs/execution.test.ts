@@ -154,13 +154,13 @@ describe("createBackgroundJobProcessor (shared claim translation)", () => {
       terminal.claimJob({ ownerUserId: "u", deliveryId: "d", jobId: "j" }),
     ).resolves.toEqual({ status: "terminal", reason: "Fake job is completed." });
 
-    const notClaimable = createBackgroundJobProcessor(family, {
+    const retryPending = createBackgroundJobProcessor(family, {
       claimJob: vi.fn().mockResolvedValue(null),
       getJob: vi.fn().mockResolvedValue({ status: "failed" as const }),
     });
     await expect(
-      notClaimable.claimJob({ ownerUserId: "u", deliveryId: "d", jobId: "j" }),
-    ).resolves.toEqual({ status: "not_claimable", reason: "Fake job is failed." });
+      retryPending.claimJob({ ownerUserId: "u", deliveryId: "d", jobId: "j" }),
+    ).resolves.toEqual({ status: "retry_pending", reason: "Fake job is retry pending." });
   });
 
   it("rethrows a failed processing outcome using the processor error", async () => {

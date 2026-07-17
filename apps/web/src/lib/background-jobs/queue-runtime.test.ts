@@ -430,7 +430,45 @@ describe("background job queue runtime", () => {
       deliveryId: delivery.id,
       jobKind: "action_extraction",
       jobId: delivery.jobId,
-      error: "provider rejected schema",
+      errorCode: "provider_failure",
     });
+  });
+
+  it("treats a failed job redelivery as recovery-owned retry pending", async () => {
+    const store = createInMemoryBackgroundJobDeliveryStore();
+    const queue = createQueue();
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    const { delivery } = await store.createBackgroundJobDelivery({
+      ownerUserId: "user-1",
+      jobKind: "extraction",
+      jobId: "00000000-0000-0000-0000-000000000204",
+    });
+    await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: "user-1",
+      deliveryId: delivery.id,
+    });
+
+    const result = await consumeBackgroundJobQueueMessage({
+      store,
+      payload: { deliveryId: delivery.id, jobKind: "extraction", jobId: delivery.jobId },
+      processors: [
+        {
+          jobKind: "extraction",
+          claimJob: vi.fn().mockResolvedValue({ status: "retry_pending" as const }),
+          processJob: vi.fn(),
+        },
+      ],
+      logger,
+    });
+
+    expect(result).toEqual({ status: "ignored", reason: "retry_pending" });
+    expect(logger.info).toHaveBeenCalledWith("background_job_queue.retry_pending", {
+      deliveryId: delivery.id,
+      jobKind: "extraction",
+      jobId: delivery.jobId,
+    });
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

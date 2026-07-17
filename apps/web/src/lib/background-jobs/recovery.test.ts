@@ -141,7 +141,7 @@ describe("background job recovery", () => {
     expect(logger.error).toHaveBeenCalledWith("background_job_recovery.processor_failed", {
       jobKind: "extraction",
       jobId: "job-2",
-      error: "missing extraction model",
+      errorCode: "configuration_missing",
     });
   });
 

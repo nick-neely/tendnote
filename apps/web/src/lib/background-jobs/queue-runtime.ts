@@ -14,6 +14,7 @@ import type {
 } from "@tendnote/db/queries/background-jobs";
 import { send as sendVercelQueueMessage } from "@vercel/queue";
 import type { CostCategory, ProductRateLimiter } from "@/lib/rate-limit";
+import { classifyBackgroundJobFailure } from "./failure-observability";
 
 // The outbox-publish orchestration and its transport seam live in @tendnote/db (shared by
 // Eve and the web so the publish path is no longer re-inlined per app); the shared
@@ -202,6 +203,14 @@ export async function consumeBackgroundJobQueueMessage(input: {
 
   if (jobState.status !== "ready") {
     const reason = jobState.reason ?? `Processor job is ${jobState.status.replaceAll("_", " ")}.`;
+    if (jobState.status === "retry_pending") {
+      input.logger?.info?.("background_job_queue.retry_pending", {
+        deliveryId: delivery.id,
+        jobKind: delivery.jobKind,
+        jobId: delivery.jobId,
+      });
+      return { status: "ignored" as const, reason: "retry_pending" as const };
+    }
     logQueueAnomaly(input.logger, "processor_job_not_ready", {
       deliveryId: delivery.id,
       jobKind: delivery.jobKind,
@@ -225,16 +234,11 @@ export async function consumeBackgroundJobQueueMessage(input: {
       deliveryId: delivery.id,
       jobKind: delivery.jobKind,
       jobId: delivery.jobId,
-      error: backgroundJobErrorMessage(error),
+      errorCode: classifyBackgroundJobFailure(error),
     });
     throw error;
   }
   return { status: "processed" as const, delivery };
-}
-
-function backgroundJobErrorMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.slice(0, 2_000);
 }
 
 /**
