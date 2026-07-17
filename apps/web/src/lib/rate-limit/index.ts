@@ -1,22 +1,8 @@
 import { createProductRateLimiter, type ProductRateLimiter } from "./limiter";
 import { createRedisRateLimitStore } from "./redis-store";
 
-export { RATE_LIMIT_COST_CATEGORIES } from "./cost-categories";
-export { createFakeRateLimitStore, type FakeRateLimitStore } from "./fake-store";
-export {
-  createProductRateLimiter,
-  DEFAULT_RATE_LIMIT_KEY_PREFIX,
-  type ProductRateLimiter,
-  type ProductRateLimiterOptions,
-} from "./limiter";
-export { createRedisRateLimitStore, type RateLimitRedis } from "./redis-store";
-export type {
-  CostCategory,
-  CostCategoryBudget,
-  RateLimitRequest,
-  RateLimitResult,
-  RateLimitStore,
-} from "./types";
+export type { ProductRateLimiter } from "./limiter";
+export type { CostCategory } from "./types";
 
 let limiter: ProductRateLimiter | undefined;
 

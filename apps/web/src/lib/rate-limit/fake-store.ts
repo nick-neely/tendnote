@@ -1,1 +1,1 @@
-export { createFakeRateLimitStore, type FakeRateLimitStore } from "@tendnote/rate-limit";
+export { createFakeRateLimitStore } from "@tendnote/rate-limit";
