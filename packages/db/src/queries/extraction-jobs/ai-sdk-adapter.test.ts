@@ -173,25 +173,30 @@ describe("AI SDK suggested-memory extraction adapter", () => {
     expect(generateTextMock).not.toHaveBeenCalled();
   });
 
-  it("fails before calling the model when the extraction model is not configured", async () => {
+  it("uses the production extraction default when no dedicated model is configured", async () => {
+    generateTextMock.mockResolvedValue({
+      output: { candidates: [] },
+    } as Awaited<ReturnType<typeof generateText>>);
     const adapter = createDefaultSuggestedMemoryExtractionAdapter({
       AI_GATEWAY_API_KEY: "test-key",
     });
 
-    await expect(
-      adapter.extractCandidates({
-        sourceRecord: {
-          id: "source-1",
-          ownerUserId: "owner-1",
-          content: "Mark likes trail running.",
-          sensitivity: "normal",
-          confidence: "medium",
-          importance: 3,
-        },
-        resolvedPeople: [{ id: "person-1", displayName: "Mark" }],
-      }),
-    ).rejects.toThrow(/Missing TENDNOTE_EXTRACTION_MODEL/);
-    expect(generateTextMock).not.toHaveBeenCalled();
+    await adapter.extractCandidates({
+      sourceRecord: {
+        id: "source-1",
+        ownerUserId: "owner-1",
+        content: "Mark likes trail running.",
+        sensitivity: "normal",
+        confidence: "medium",
+        importance: 3,
+      },
+      resolvedPeople: [{ id: "person-1", displayName: "Mark" }],
+    });
+
+    expect(adapter.model).toBe("google/gemini-3.1-flash-lite");
+    expect(generateTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ model: { modelId: "google/gemini-3.1-flash-lite" } }),
+    );
   });
 
   it("turns missing production config into a retryable extraction job failure", async () => {
@@ -216,9 +221,7 @@ describe("AI SDK suggested-memory extraction adapter", () => {
     });
 
     expect(result.outcome).toBe("failed");
-    expect(result.error).toMatch(
-      /Missing TENDNOTE_EXTRACTION_MODEL|Missing AI Gateway credentials/,
-    );
+    expect(result.error).toMatch(/Missing AI Gateway credentials/);
     expect(result.job).toMatchObject({
       status: "failed",
       attempts: 1,
@@ -231,14 +234,14 @@ describe("AI SDK suggested-memory extraction adapter", () => {
     ).resolves.toEqual([]);
   });
 
-  it("requires an explicit flag plus credentials and model for live smoke checks", () => {
+  it("requires an explicit flag plus credentials for live smoke checks", () => {
     expect(shouldRunLiveSuggestedMemoryExtractionSmoke({})).toBe(false);
     expect(
       shouldRunLiveSuggestedMemoryExtractionSmoke({
         TENDNOTE_RUN_LIVE_EXTRACTION_SMOKE: "1",
-        TENDNOTE_EXTRACTION_MODEL: "openai/gpt-5.4",
+        AI_GATEWAY_API_KEY: "test-key",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldRunLiveSuggestedMemoryExtractionSmoke({
         TENDNOTE_RUN_LIVE_EXTRACTION_SMOKE: "1",

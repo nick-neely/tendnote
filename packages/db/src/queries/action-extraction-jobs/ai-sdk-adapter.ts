@@ -6,6 +6,7 @@ import {
   suggestedActionExtractionPromptVersion,
 } from "@tendnote/domain";
 import { gateway, generateText, Output } from "ai";
+import { resolveExtractionModel } from "../extraction-model";
 
 type SuggestedActionExtractionEnv = Record<string, string | undefined>;
 
@@ -19,20 +20,6 @@ export function hasSuggestedActionExtractionCredentials(
   env: SuggestedActionExtractionEnv = process.env,
 ) {
   return Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
-}
-
-function configuredExtractionModel(options: AiSdkSuggestedActionExtractionAdapterOptions) {
-  return options.model?.trim() || options.env?.TENDNOTE_EXTRACTION_MODEL?.trim();
-}
-
-function requireExtractionModel(options: AiSdkSuggestedActionExtractionAdapterOptions) {
-  const model = configuredExtractionModel(options);
-
-  if (!model) {
-    throw new Error("Missing TENDNOTE_EXTRACTION_MODEL for suggested-action extraction.");
-  }
-
-  return model;
 }
 
 function requireExtractionCredentials(env: SuggestedActionExtractionEnv) {
@@ -81,13 +68,13 @@ export function createAiSdkSuggestedActionExtractionAdapter(
 ): SuggestedActionExtractionAdapter {
   const env = options.env ?? process.env;
   const promptVersion = options.promptVersion ?? suggestedActionExtractionPromptVersion;
+  const model = resolveExtractionModel(options.model ?? env.TENDNOTE_EXTRACTION_MODEL);
 
   return {
     kind: "llm",
-    model: configuredExtractionModel(options),
+    model,
     promptVersion,
     async extractActions(input): Promise<SuggestedActionExtractionAdapterResult> {
-      const model = requireExtractionModel(options);
       requireExtractionCredentials(env);
 
       const result = await generateText({

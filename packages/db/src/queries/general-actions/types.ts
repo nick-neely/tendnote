@@ -47,6 +47,13 @@ export type GeneralActionPatch = Partial<
  */
 export type GeneralActionPersonRef = Pick<Person, "id" | "displayName">;
 
+export type CreateGeneralActionBundleInput = {
+  action: CreateGeneralActionInput;
+  personIds: string[];
+  sharedWithUserIds: string[];
+  event: Omit<CreateGeneralActionEventInput, "generalActionId">;
+};
+
 /**
  * A persisted Action hydrated for a surface read: its optional people links, and the
  * audience detail behind its scope so the surface can say *who* can see it, not just
@@ -72,6 +79,12 @@ export type GeneralActionWithContext = GeneralAction & {
  */
 export type GeneralActionStore = {
   createGeneralAction: (input: CreateGeneralActionInput) => Promise<GeneralAction>;
+  /**
+   * Persists a newly created action, its people/audience links, and its first history
+   * event as one unit. Production implements this with one database transaction so a
+   * failed attachment can never expose a partial action.
+   */
+  createGeneralActionBundle: (input: CreateGeneralActionBundleInput) => Promise<GeneralAction>;
   getGeneralAction: (input: {
     ownerUserId: string;
     generalActionId: string;

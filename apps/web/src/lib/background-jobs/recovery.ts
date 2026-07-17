@@ -4,6 +4,7 @@ import {
   createDrizzleBackgroundJobDeliveryStore,
 } from "@tendnote/db/queries/background-job-deliveries";
 import { BACKGROUND_JOB_FAMILIES } from "@tendnote/db/queries/background-jobs";
+import { classifyBackgroundJobFailure } from "./failure-observability";
 import {
   type BackgroundJobQueueLogger,
   type BackgroundJobQueueSendAdapter,
@@ -17,7 +18,11 @@ type DeliveryJobInspector = (delivery: BackgroundJobDelivery) => Promise<JobVali
 
 /** The claim-next + process seam a bounded backfill drives, shared across families. */
 type BackfillClaimNextJob = (input: { now?: Date }) => Promise<{ id: string } | null>;
-type BackfillProcessJob = (input: { jobId: string; claim: false }) => Promise<{ outcome: string }>;
+type BackfillProcessJob = (input: { jobId: string; claim: false }) => Promise<{
+  outcome: string;
+  error?: string;
+  reason?: string;
+}>;
 
 export type DeliveryRecoveryResult = {
   scanned: number;
@@ -234,6 +239,13 @@ async function runProcessorBackfill(input: {
 
     if (processResult.outcome === "failed") {
       result.failed += 1;
+      input.logger?.error?.("background_job_recovery.processor_failed", {
+        jobKind: input.jobKind,
+        jobId: job.id,
+        errorCode: classifyBackgroundJobFailure(
+          processResult.error ?? processResult.reason ?? "Background job failed.",
+        ),
+      });
     } else {
       result.processed += 1;
     }

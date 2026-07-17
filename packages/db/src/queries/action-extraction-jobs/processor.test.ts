@@ -109,14 +109,14 @@ describe("action extraction job lifecycle", () => {
     const { job } = await processor.enqueueActionExtractionJob({ sourceRecordId: source.id });
 
     // Fail on the second proposal so the first is persisted but the job fails.
-    const realCreate = store.createGeneralAction;
+    const realCreate = store.createGeneralActionBundle;
     let calls = 0;
-    store.createGeneralAction = async (values) => {
+    store.createGeneralActionBundle = async (input) => {
       calls += 1;
       if (calls === 2) {
         throw new Error("transient failure");
       }
-      return realCreate(values);
+      return realCreate(input);
     };
 
     const failed = await processor.processActionExtractionJob({ jobId: job.id });
@@ -127,7 +127,7 @@ describe("action extraction job lifecycle", () => {
 
     // Repair and retry after the backoff; the failed job must be claimable again and must
     // not re-propose the action that already exists.
-    store.createGeneralAction = realCreate;
+    store.createGeneralActionBundle = realCreate;
     const retried = await processor.processActionExtractionJob({
       jobId: job.id,
       now: new Date(Date.now() + 10 * 60 * 1000),

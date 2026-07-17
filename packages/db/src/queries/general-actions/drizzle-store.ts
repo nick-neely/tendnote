@@ -9,7 +9,12 @@ import {
 import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
-import { generalActionEvents, generalActionPeople, generalActions } from "../../schema";
+import {
+  generalActionEvents,
+  generalActionPeople,
+  generalActions,
+  householdRecordShares,
+} from "../../schema";
 import { createDrizzleGeneralActionAreaStore } from "../general-action-areas/drizzle-store";
 import { createDrizzleHouseholdStore } from "../households/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
@@ -82,6 +87,58 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
       }
 
       return generalActionSchema.parse(action);
+    },
+    async createGeneralActionBundle(input) {
+      const actionValues = createGeneralActionSchema.parse(input.action);
+      const personIds = [...new Set(input.personIds)];
+      const sharedWithUserIds = [...new Set(input.sharedWithUserIds)];
+
+      return getDb().transaction(async (tx) => {
+        const action = await persistAction();
+        await persistPeople(action.id);
+        await persistShares(action);
+        await persistInitialEvent(action.id);
+        return generalActionSchema.parse(action);
+
+        async function persistAction() {
+          const [action] = await tx.insert(generalActions).values(actionValues).returning();
+          if (!action) throw new Error("Failed to create action.");
+          return action;
+        }
+
+        async function persistPeople(generalActionId: string) {
+          if (personIds.length === 0) return;
+          await tx
+            .insert(generalActionPeople)
+            .values(personIds.map((personId) => ({ generalActionId, personId })));
+        }
+
+        async function persistShares(action: typeof generalActions.$inferSelect) {
+          const householdId = action.householdId;
+          if (action.scope !== "shared" || !householdId || sharedWithUserIds.length === 0) return;
+          await tx
+            .insert(householdRecordShares)
+            .values(
+              sharedWithUserIds.map((sharedWithUserId) => ({
+                householdId,
+                recordKind: "general_action" as const,
+                recordId: action.id,
+                sharedWithUserId,
+                sharedByUserId: action.ownerUserId,
+              })),
+            )
+            .onConflictDoNothing();
+        }
+
+        async function persistInitialEvent(generalActionId: string) {
+          const [event] = await tx
+            .insert(generalActionEvents)
+            .values(createGeneralActionEventSchema.parse({ ...input.event, generalActionId }))
+            .returning();
+          if (!event) throw new Error("Failed to record action history.");
+          generalActionEventSchema.parse(event);
+        }
+      });
     },
     async getGeneralAction(input) {
       return selectOwnedGeneralAction(input);

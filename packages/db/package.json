@@ -60,7 +60,6 @@
     "db:eval:reset": "TMPDIR=/tmp tsx src/eval/reset.ts"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2",
     "@tendnote/domain": "workspace:*",
     "ai": "7.0.2",
     "drizzle-orm": "^0.45.2",

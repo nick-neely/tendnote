@@ -123,19 +123,26 @@ describe("background job recovery", () => {
     const processJob = vi
       .fn()
       .mockResolvedValueOnce({ outcome: "completed" })
-      .mockResolvedValueOnce({ outcome: "failed" });
+      .mockResolvedValueOnce({ outcome: "failed", error: "missing extraction model" });
+    const logger = { info: vi.fn(), error: vi.fn() };
 
     const result = await runExtractionBackfill({
       limit: 2,
       claimNextJob,
       processJob,
       now: new Date("2026-06-29T12:00:00.000Z"),
+      logger,
     });
 
     expect(result).toEqual({ scanned: 2, processed: 1, failed: 1 });
     expect(claimNextJob).toHaveBeenCalledTimes(2);
     expect(processJob).toHaveBeenCalledWith({ jobId: "job-1", claim: false });
     expect(processJob).toHaveBeenCalledWith({ jobId: "job-2", claim: false });
+    expect(logger.error).toHaveBeenCalledWith("background_job_recovery.processor_failed", {
+      jobKind: "extraction",
+      jobId: "job-2",
+      errorCode: "configuration_missing",
+    });
   });
 
   it("runs embedding backfill through the shared processor seam with a cap", async () => {

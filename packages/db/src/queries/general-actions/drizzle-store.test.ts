@@ -44,6 +44,12 @@ describe("general actions drizzle store guards", () => {
     expect(source).toContain("generalActionPeople");
   });
 
+  it("creates an action and its initial attachments in one transaction", () => {
+    expect(source).toContain("async createGeneralActionBundle(input)");
+    expect(source).toContain("householdRecordShares");
+    expect(source).toContain("generalActionEvents");
+  });
+
   it("owner-keys the people-link reads and writes", () => {
     // The link methods must key on the action's owner — set-people guards ownership
     // inside its transaction, list-person-ids joins `general_actions` — so a direct

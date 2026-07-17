@@ -20,7 +20,10 @@ export type BackgroundJobQueueConsumerMetadata = {
  */
 export type BackgroundJobProcessorJobState =
   | { status: "ready" }
-  | { status: "not_found" | "terminal" | "not_claimable"; reason?: string };
+  | {
+      status: "not_found" | "terminal" | "retry_pending" | "not_claimable";
+      reason?: string;
+    };
 
 /**
  * The per-family seam the shared consumer dispatches to: claim the owner-scoped job, then
@@ -98,6 +101,9 @@ export function createBackgroundJobProcessor(
       }
       if (job.status === "completed" || job.status === "skipped") {
         return { status: "terminal" as const, reason: `${family.noun} is ${job.status}.` };
+      }
+      if (job.status === "failed") {
+        return { status: "retry_pending" as const, reason: `${family.noun} is retry pending.` };
       }
 
       return { status: "not_claimable" as const, reason: `${family.noun} is ${job.status}.` };

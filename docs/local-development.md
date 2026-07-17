@@ -46,6 +46,7 @@ pnpm db:migrate
 Semantic embeddings run through the same job lifecycle in every environment. Local development processes embedding jobs inline by default, so newly captured notes and approved memories become searchable immediately.
 
 - With `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` set, embeddings use `TENDNOTE_EMBEDDING_MODEL` (default `openai/text-embedding-3-small`) through the AI SDK.
+- Suggested Memory and General Action extraction use `TENDNOTE_EXTRACTION_MODEL` when set and otherwise default to `google/gemini-3.1-flash-lite`; an omitted tuning override never disables extraction.
 - Without gateway credentials, local development falls back to deterministic fake vectors so capture and search still work offline.
 - Set `TENDNOTE_EMBEDDING_RUNTIME=enqueue_only` to leave jobs for a worker instead of processing inline.
 

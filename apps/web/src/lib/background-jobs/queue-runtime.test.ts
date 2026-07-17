@@ -135,7 +135,7 @@ describe("background job queue runtime", () => {
 
   it("logs invalid, missing, mismatched, stale, and obsolete messages without processing", async () => {
     const store = createInMemoryBackgroundJobDeliveryStore();
-    const logger = { warn: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn() };
     const claimJob = vi.fn().mockResolvedValue({ status: "ready" as const });
     const processJob = vi.fn().mockResolvedValue(undefined);
     const processors = [{ jobKind: "embedding" as const, claimJob, processJob }];
@@ -213,7 +213,7 @@ describe("background job queue runtime", () => {
   it("reloads processor state so duplicate delivery no-ops after the job is terminal", async () => {
     const store = createInMemoryBackgroundJobDeliveryStore();
     const queue = createQueue();
-    const logger = { warn: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn() };
     const first = await store.createBackgroundJobDelivery({
       ownerUserId: "user-1",
       jobKind: "extraction",
@@ -266,9 +266,13 @@ describe("background job queue runtime", () => {
         deliveryId: unrelated.delivery.id,
       }),
     ).resolves.toMatchObject({ status: "pending" });
-    expect(logger.warn).toHaveBeenCalledWith(
+    expect(logger.info).toHaveBeenCalledWith(
+      "background_job_queue.redelivery",
+      expect.objectContaining({ deliveryCount: 2 }),
+    );
+    expect(logger.warn).not.toHaveBeenCalledWith(
       "background_job_queue.anomaly",
-      expect.objectContaining({ reason: "duplicate_delivery", deliveryCount: 2 }),
+      expect.objectContaining({ reason: "duplicate_delivery" }),
     );
   });
 
@@ -385,5 +389,86 @@ describe("background job queue runtime", () => {
     expect(result.status).toBe("processed");
     expect(claimJob).toHaveBeenCalledTimes(1);
     expect(processJob).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs processor failures with the durable job and delivery identifiers", async () => {
+    const store = createInMemoryBackgroundJobDeliveryStore();
+    const queue = createQueue();
+    const logger = { error: vi.fn() };
+    const { delivery } = await store.createBackgroundJobDelivery({
+      ownerUserId: "user-1",
+      jobKind: "action_extraction",
+      jobId: "00000000-0000-0000-0000-000000000203",
+    });
+    await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: "user-1",
+      deliveryId: delivery.id,
+    });
+
+    await expect(
+      consumeBackgroundJobQueueMessage({
+        store,
+        payload: {
+          deliveryId: delivery.id,
+          jobKind: "action_extraction",
+          jobId: delivery.jobId,
+        },
+        processors: [
+          {
+            jobKind: "action_extraction",
+            claimJob: vi.fn().mockResolvedValue({ status: "ready" as const }),
+            processJob: vi.fn().mockRejectedValue(new Error("provider rejected schema")),
+          },
+        ],
+        logger,
+      }),
+    ).rejects.toThrow("provider rejected schema");
+
+    expect(logger.error).toHaveBeenCalledWith("background_job_queue.processor_failed", {
+      deliveryId: delivery.id,
+      jobKind: "action_extraction",
+      jobId: delivery.jobId,
+      errorCode: "provider_failure",
+    });
+  });
+
+  it("treats a failed job redelivery as recovery-owned retry pending", async () => {
+    const store = createInMemoryBackgroundJobDeliveryStore();
+    const queue = createQueue();
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    const { delivery } = await store.createBackgroundJobDelivery({
+      ownerUserId: "user-1",
+      jobKind: "extraction",
+      jobId: "00000000-0000-0000-0000-000000000204",
+    });
+    await publishBackgroundJobDelivery({
+      store,
+      queue,
+      ownerUserId: "user-1",
+      deliveryId: delivery.id,
+    });
+
+    const result = await consumeBackgroundJobQueueMessage({
+      store,
+      payload: { deliveryId: delivery.id, jobKind: "extraction", jobId: delivery.jobId },
+      processors: [
+        {
+          jobKind: "extraction",
+          claimJob: vi.fn().mockResolvedValue({ status: "retry_pending" as const }),
+          processJob: vi.fn(),
+        },
+      ],
+      logger,
+    });
+
+    expect(result).toEqual({ status: "ignored", reason: "retry_pending" });
+    expect(logger.info).toHaveBeenCalledWith("background_job_queue.retry_pending", {
+      deliveryId: delivery.id,
+      jobKind: "extraction",
+      jobId: delivery.jobId,
+    });
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

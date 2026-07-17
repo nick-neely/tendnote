@@ -186,41 +186,32 @@ export function createGeneralActionLifecycle(
         : [];
       const assetHints = input.assetHints ?? [];
 
-      const action = await store.createGeneralAction(
-        buildCreateGeneralActionValues(input, {
-          status: "open",
-          sourceRecordId,
-          areaId,
-          scope,
-          householdId,
-        }),
-      );
-
-      if (personIds.length > 0) {
-        await store.setGeneralActionPeople({
+      const actionValues = buildCreateGeneralActionValues(input, {
+        status: "open",
+        sourceRecordId,
+        areaId,
+        scope,
+        householdId,
+      });
+      const action = await store.createGeneralActionBundle({
+        action: actionValues,
+        personIds,
+        sharedWithUserIds: scope === "shared" ? (input.selectedUserIds ?? []) : [],
+        event: {
           ownerUserId: input.ownerUserId,
-          generalActionId: action.id,
-          personIds,
-        });
-      }
-      if (scope === "shared" && householdId) {
-        await writeShares(store, {
-          householdId,
-          actionId: action.id,
-          ownerUserId: input.ownerUserId,
-          selectedUserIds: input.selectedUserIds ?? [],
-        });
-      }
-
-      await recordEvent(action, "created", input.ownerUserId, {
-        scope: action.scope,
-        status: action.status,
-        grounded: sourceRecordId !== null,
-        filed: areaId !== null,
-        peopleLinked: personIds.length,
-        assetHints: assetHints.length,
-        // Whether this is a Routine (recurring) or a one-time Action (ADR 0148).
-        recurring: action.recurrence !== null,
+          kind: "created",
+          actorUserId: input.ownerUserId,
+          detailJson: {
+            scope: actionValues.scope,
+            status: actionValues.status,
+            grounded: sourceRecordId !== null,
+            filed: areaId !== null,
+            peopleLinked: personIds.length,
+            assetHints: assetHints.length,
+            // Whether this is a Routine (recurring) or a one-time Action (ADR 0148).
+            recurring: actionValues.recurrence !== null,
+          },
+        },
       });
 
       await scheduleActionEmbedding(action);
