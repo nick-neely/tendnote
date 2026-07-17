@@ -3,13 +3,13 @@
 import { CalendarRangeIcon, CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
 import {
   acceptCalendarSuggestedFollowupAction,
   dismissCalendarSuggestedFollowupAction,
 } from "@/app/actions/suggested-followups";
 import { Button } from "@/components/ui/button";
 import type { CalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
+import { useResolvingAction } from "@/lib/use-resolving-action";
 
 /**
  * Reviewable Calendar-derived follow-up suggestions (#118). These are provider
@@ -60,25 +60,10 @@ function CalendarSuggestionRow({
   const displayName =
     suggestion.personName ?? suggestion.unresolvedAttendee ?? "Unresolved attendee";
   const canAccept = Boolean(suggestion.personId);
-  const [leaving, setLeaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function run(action: () => Promise<unknown>) {
-    setError(null);
-    startTransition(async () => {
-      try {
-        await action();
-        setLeaving(true);
-        window.setTimeout(() => {
-          onResolve(suggestion.id);
-          router.refresh();
-        }, 200);
-      } catch {
-        setError("That didn't go through. Try again.");
-      }
-    });
-  }
+  const { leaving, error, pending, run } = useResolvingAction(() => {
+    onResolve(suggestion.id);
+    router.refresh();
+  });
 
   return (
     <li

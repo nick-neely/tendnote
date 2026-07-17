@@ -102,28 +102,24 @@ function summarizeGeneralAction(
   ]);
 }
 
-/** Humanized status word for a ledger row's chip (the store's raw enum stays hidden). */
+/**
+ * Humanized status words for a ledger row's chip (the store's raw enum stays
+ * hidden). A lookup rather than a branch: an unknown status is passed through
+ * verbatim, so a new store enum degrades to its raw word instead of throwing.
+ */
+const GENERAL_ACTION_STATUS_LABELS: Record<string, string> = {
+  open: "Open",
+  deferred: "Set aside",
+  completed: "Done",
+  dismissed: "Dismissed",
+  archived: "Archived",
+  paused: "Paused",
+  suggested: "Suggested",
+  ignored: "Ignored",
+};
+
 function labelGeneralActionStatus(status: string): string {
-  switch (status) {
-    case "open":
-      return "Open";
-    case "deferred":
-      return "Set aside";
-    case "completed":
-      return "Done";
-    case "dismissed":
-      return "Dismissed";
-    case "archived":
-      return "Archived";
-    case "paused":
-      return "Paused";
-    case "suggested":
-      return "Suggested";
-    case "ignored":
-      return "Ignored";
-    default:
-      return status;
-  }
+  return GENERAL_ACTION_STATUS_LABELS[status] ?? status;
 }
 
 /** The quiet empty-state line for a ledger read that came back with nothing. */

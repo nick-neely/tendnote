@@ -2,13 +2,13 @@
 
 import { CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
-import { useState, useTransition } from "react";
 import {
   acceptSuggestedFollowupAction,
   dismissSuggestedFollowupAction,
 } from "@/app/actions/suggested-followups";
 import { Button } from "@/components/ui/button";
 import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
+import { useResolvingAction } from "@/lib/use-resolving-action";
 
 /**
  * Reviewable suggested follow-ups on the dashboard rail (issue #48): a small set
@@ -63,22 +63,7 @@ function ReviewRow({
 }) {
   const { followup } = review;
   const personName = review.personName ?? "Someone";
-  const [leaving, setLeaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function run(action: () => Promise<unknown>) {
-    setError(null);
-    startTransition(async () => {
-      try {
-        await action();
-        setLeaving(true);
-        window.setTimeout(() => onResolve(followup.id), 200);
-      } catch {
-        setError("That didn't go through. Try again.");
-      }
-    });
-  }
+  const { leaving, error, pending, run } = useResolvingAction(() => onResolve(followup.id));
 
   return (
     <li

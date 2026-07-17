@@ -2,7 +2,6 @@
 
 import { CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
-import { useState, useTransition } from "react";
 import {
   dismissSuggestedMemoryAction,
   saveSuggestedMemoryAction,
@@ -12,6 +11,7 @@ import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general
 import { Button } from "@/components/ui/button";
 import type { ReviewQueueIdentity, ReviewQueueItem } from "@/lib/review-queue";
 import type { SuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
+import { useResolvingAction } from "@/lib/use-resolving-action";
 
 export function ReviewQueueSection({
   items,
@@ -84,22 +84,7 @@ function SuggestedMemoryQueueCard({
 }) {
   const { memory } = review;
   const personName = review.personName ?? "Someone";
-  const [leaving, setLeaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function run(action: () => Promise<unknown>) {
-    setError(null);
-    startTransition(async () => {
-      try {
-        await action();
-        setLeaving(true);
-        window.setTimeout(onResolve, 200);
-      } catch {
-        setError("That didn't go through. Try again.");
-      }
-    });
-  }
+  const { leaving, error, pending, run } = useResolvingAction(onResolve);
 
   return (
     <article
