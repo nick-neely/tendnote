@@ -25,12 +25,12 @@ function readTsFilesRecursive(dir: string): string[] {
 // covered. External send / draft creation must not appear anywhere in it.
 const webChatSurface = [
   ...readTsFilesRecursive(join(process.cwd(), "src/lib/eve")),
-  // The browser streams turns straight to the same-origin Eve mount, so the
-  // web→Eve send path is now the panel (agent.send) and the auth proxy plus its
-  // ingress-decision module.
+  // The browser streams turns straight to the same-origin Eve service. Vercel
+  // routes that service before Next filesystem routing, so auth terminates in the
+  // agent channel rather than a web proxy.
   readFileSync(join(process.cwd(), "src/components/assistant-panel.tsx"), "utf8"),
-  readFileSync(join(process.cwd(), "src/proxy.ts"), "utf8"),
-  readFileSync(join(process.cwd(), "src/lib/access/eve-ingress.ts"), "utf8"),
+  readFileSync(join(process.cwd(), "../agent/agent/channels/eve.ts"), "utf8"),
+  readFileSync(join(process.cwd(), "../agent/agent/lib/eve-auth.ts"), "utf8"),
 ];
 
 // Outbound send/draft implementations. Provider names require an API boundary

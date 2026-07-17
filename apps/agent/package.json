@@ -16,11 +16,16 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@better-auth/redis-storage": "^1.6.20",
+    "@tendnote/auth": "workspace:*",
     "@tendnote/db": "workspace:*",
     "@tendnote/domain": "workspace:*",
+    "@tendnote/rate-limit": "workspace:*",
     "@vercel/queue": "^0.3.1",
     "ai": "7.0.28",
+    "better-auth": "^1.6.20",
     "eve": "^0.24.3",
+    "ioredis": "^5.8.2",
     "zod": "^4.1.13"
   },
   "devDependencies": {
