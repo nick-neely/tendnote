@@ -272,7 +272,7 @@ export function isGroupableToolKind(kind: AssistantToolView["kind"]): kind is Gr
  * Each owning module also declares `interactive: true`, and the registry
  * completeness test asserts the module flags and this tuple stay in lock-step.
  */
-export const INTERACTIVE_KINDS = [
+const INTERACTIVE_KINDS = [
   "saved_source_record",
   "message_draft",
   "suggested_memory_review",

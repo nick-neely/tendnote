@@ -40,3 +40,45 @@ export async function revokeDiscordToken(input: RevokeDiscordTokenInput): Promis
   });
   return response.ok;
 }
+
+export type RevokeDiscordTokenBestEffortDeps = {
+  /** App Discord credentials; absent ids/secrets mean no revoke can be authenticated. */
+  env: { clientId?: string; clientSecret?: string };
+  /** Reads the linked account's decrypted access token, ONLY for this revoke call. */
+  getAccessToken: () => Promise<string | null | undefined>;
+  /** Injectable for tests; defaults to `console.warn`. */
+  warn?: (message: string, ...rest: unknown[]) => void;
+};
+
+/**
+ * The best-effort revoke used by the Discord disconnect path (#176), mirroring the
+ * Google disconnect. Owns every failure mode — missing client credentials, no token
+ * to revoke, a non-2xx response, and network/other errors all resolve `false` and are
+ * logged here — so the pure disconnect layer stays log-free while the revoke outcome
+ * still flows into the audit reason. Never throws.
+ */
+export async function revokeDiscordTokenBestEffort(
+  deps: RevokeDiscordTokenBestEffortDeps,
+): Promise<boolean> {
+  const warn = deps.warn ?? console.warn;
+  const { clientId, clientSecret } = deps.env;
+  if (!clientId || !clientSecret) {
+    return false; // no client credentials to authenticate a revoke
+  }
+
+  try {
+    const accessToken = await deps.getAccessToken();
+    if (!accessToken) {
+      return false; // nothing to revoke
+    }
+
+    const revoked = await revokeDiscordToken({ accessToken, clientId, clientSecret });
+    if (!revoked) {
+      warn("[tendnote] Discord token revoke returned a non-success response");
+    }
+    return revoked;
+  } catch (error) {
+    warn("[tendnote] Discord token revoke on disconnect failed", error);
+    return false;
+  }
+}

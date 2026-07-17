@@ -1,6 +1,4 @@
-import type { Person } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
-import type { InMemoryContactMethodSeed } from "../contact-methods";
 import { createInMemoryContactMethodStore as createContactMethodStore } from "../contact-methods";
 import { createInMemoryPeopleStore, createPeopleQueries } from "../people";
 import {
@@ -8,10 +6,23 @@ import {
   createFakeContactImportPreviewAdapter,
 } from "./fake-adapter";
 import { applyContactImportCandidates, createContactImportPreviewSession } from "./service";
+import {
+  advisoryFixture,
+  driftedMaraContacts,
+  MARA_EMAIL,
+  maraEmailFixture,
+  maraEmailMethodSeed,
+  OWNER,
+  type PreviewFixture,
+  peopleBehindSearchPage,
+  personFixture,
+  phoneMatchFixture,
+  phoneMethodSeed,
+  sharedEmailFixture,
+} from "./test-fixtures";
 import type {
   ContactImportApplyDeps,
   ContactImportCandidateConfirmation,
-  ContactImportFuzzyMatcher,
   ContactImportPreviewCandidate,
   ContactImportPreviewDeps,
   ContactImportPreviewSession,
@@ -40,32 +51,9 @@ function safeConfirmations(
     .map((candidate) => confirmationFor(candidate));
 }
 
-const OWNER = "owner-1";
-const NOW = new Date("2026-01-01T00:00:00Z");
-
-function personFixture(input: Partial<Person> & { id: string; displayName: string }): Person {
-  return {
-    ownerUserId: OWNER,
-    firstName: null,
-    lastName: null,
-    birthday: null,
-    relationshipType: "friend",
-    closenessLevel: 3,
-    profileBlurb: null,
-    source: "manual",
-    createdAt: NOW,
-    updatedAt: NOW,
-    ...input,
-  };
-}
-
-function createDeps(input: {
-  connected?: boolean;
-  contacts?: GoogleContactsPreviewContact[];
-  people?: Person[];
-  contactMethods?: InMemoryContactMethodSeed["contactMethods"];
-  fuzzyMatcher?: ContactImportFuzzyMatcher;
-}): ContactImportPreviewDeps & { peopleStore: ReturnType<typeof createInMemoryPeopleStore> } {
+function createDeps(
+  input: PreviewFixture,
+): ContactImportPreviewDeps & { peopleStore: ReturnType<typeof createInMemoryPeopleStore> } {
   const peopleStore = createInMemoryPeopleStore({ people: input.people });
   const people = createPeopleQueries(peopleStore);
   const contactMethods = createContactMethodStore({
@@ -179,14 +167,7 @@ describe("createContactImportPreviewSession", () => {
   });
 
   it("keeps exact owner-wide contact-method matches prioritized even beyond the people search page", async () => {
-    const people = Array.from({ length: 55 }, (_, index) =>
-      personFixture({
-        id: `person-${String(index).padStart(2, "0")}`,
-        displayName: `Aardvark ${String(index).padStart(2, "0")}`,
-      }),
-    );
-    people.push(personFixture({ id: "person-mara", displayName: "Mara Chen" }));
-    const deps = createDeps({ people });
+    const deps = createDeps({ people: peopleBehindSearchPage(55) });
 
     const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
 
@@ -199,27 +180,7 @@ describe("createContactImportPreviewSession", () => {
   });
 
   it("uses normalized email and strong phone signals for deterministic matches", async () => {
-    const deps = createDeps({
-      contacts: [
-        {
-          providerContactId: "people/phone",
-          displayName: "Phone Match",
-          phones: ["+1 (312) 555-7777"],
-        },
-      ],
-      people: [personFixture({ id: "person-phone", displayName: "Phone Match" })],
-      contactMethods: [
-        {
-          id: "cm-phone",
-          ownerUserId: OWNER,
-          personId: "person-phone",
-          type: "phone",
-          value: "+13125557777",
-          normalizedValue: "+13125557777",
-          isPrimary: true,
-        },
-      ],
-    });
+    const deps = createDeps(phoneMatchFixture());
 
     const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
 
@@ -239,39 +200,7 @@ describe("createContactImportPreviewSession", () => {
   });
 
   it("flags owner-wide duplicate contact methods across multiple people as ambiguous and not bulk safe", async () => {
-    const deps = createDeps({
-      contacts: [
-        {
-          providerContactId: "people/shared",
-          displayName: "Shared Email",
-          emails: ["shared@example.com"],
-        },
-      ],
-      people: [
-        personFixture({ id: "person-one", displayName: "One" }),
-        personFixture({ id: "person-two", displayName: "Two" }),
-      ],
-      contactMethods: [
-        {
-          id: "cm-one",
-          ownerUserId: OWNER,
-          personId: "person-one",
-          type: "email",
-          value: "shared@example.com",
-          normalizedValue: "shared@example.com",
-          isPrimary: true,
-        },
-        {
-          id: "cm-two",
-          ownerUserId: OWNER,
-          personId: "person-two",
-          type: "email",
-          value: "shared@example.com",
-          normalizedValue: "shared@example.com",
-          isPrimary: true,
-        },
-      ],
-    });
+    const deps = createDeps(sharedEmailFixture());
 
     const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
 
@@ -293,7 +222,7 @@ describe("createContactImportPreviewSession", () => {
         {
           providerContactId: "people/birthday-conflict",
           displayName: "Mara Chen",
-          emails: ["mara.chen@example.com"],
+          emails: [MARA_EMAIL],
           birthday: "--05-20",
         },
       ],
@@ -344,7 +273,7 @@ describe("createContactImportPreviewSession", () => {
         {
           providerContactId: "people/conflict",
           displayName: "Mara Chen",
-          emails: ["mara.chen@example.com"],
+          emails: [MARA_EMAIL],
           phones: ["+1 (312) 555-0101"],
           birthday: "--05-20",
         },
@@ -359,24 +288,8 @@ describe("createContactImportPreviewSession", () => {
         personFixture({ id: "person-phone", displayName: "Phone Match" }),
       ],
       contactMethods: [
-        {
-          id: "cm-mara",
-          ownerUserId: OWNER,
-          personId: "person-mara",
-          type: "email",
-          value: "mara.chen@example.com",
-          normalizedValue: "mara.chen@example.com",
-          isPrimary: true,
-        },
-        {
-          id: "cm-phone",
-          ownerUserId: OWNER,
-          personId: "person-phone",
-          type: "phone",
-          value: "+13125557777",
-          normalizedValue: "+13125557777",
-          isPrimary: true,
-        },
+        maraEmailMethodSeed(),
+        phoneMethodSeed({ id: "cm-phone", personId: "person-phone", value: "+13125557777" }),
       ],
     });
 
@@ -525,16 +438,9 @@ describe("createContactImportPreviewSession", () => {
   });
 
   it("can fuzzy-rank possible matches beyond the first 50 people", async () => {
-    const people = Array.from({ length: 75 }, (_, index) =>
-      personFixture({
-        id: `person-${String(index).padStart(2, "0")}`,
-        displayName: `Aardvark ${String(index).padStart(2, "0")}`,
-      }),
-    );
-    people.push(personFixture({ id: "person-mara", displayName: "Mara Chen" }));
     const deps = createDeps({
       contacts: [{ providerContactId: "people/fuzzy", displayName: "M Chen" }],
-      people,
+      people: peopleBehindSearchPage(75),
       contactMethods: [],
       fuzzyMatcher: createFakeContactImportFuzzyMatcher({
         "people/fuzzy": [
@@ -720,23 +626,13 @@ describe("createContactImportPreviewSession", () => {
         {
           providerContactId: "people/safe-existing",
           displayName: "Mara Chen",
-          emails: ["mara.chen@example.com"],
+          emails: [MARA_EMAIL],
           phones: ["+1 (312) 555-0101"],
           birthday: "--04-18",
         },
       ],
       people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
-      contactMethods: [
-        {
-          id: "cm-mara",
-          ownerUserId: OWNER,
-          personId: "person-mara",
-          type: "email",
-          value: "mara.chen@example.com",
-          normalizedValue: "mara.chen@example.com",
-          isPrimary: true,
-        },
-      ],
+      contactMethods: [maraEmailMethodSeed()],
     });
 
     const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
@@ -838,7 +734,7 @@ describe("createContactImportPreviewSession", () => {
         {
           providerContactId: "people/safe-existing",
           displayName: "Mara Chen",
-          emails: ["mara.chen@example.com"],
+          emails: [MARA_EMAIL],
           phones: ["+1 (312) 555-0101"],
         },
       ],
@@ -846,17 +742,7 @@ describe("createContactImportPreviewSession", () => {
         personFixture({ id: "person-mara", displayName: "Mara Chen" }),
         personFixture({ id: "person-other", displayName: "Other Person" }),
       ],
-      contactMethods: [
-        {
-          id: "cm-mara",
-          ownerUserId: OWNER,
-          personId: "person-mara",
-          type: "email",
-          value: "mara.chen@example.com",
-          normalizedValue: "mara.chen@example.com",
-          isPrimary: true,
-        },
-      ],
+      contactMethods: [maraEmailMethodSeed()],
     });
     const duplicateLookup = vi
       .fn()
@@ -951,6 +837,57 @@ describe("createContactImportPreviewSession", () => {
     });
   });
 
+  it("reports a skipped birthday honestly when a new person is created without one", async () => {
+    const deps = createApplyDeps({
+      contacts: [
+        {
+          providerContactId: "people/new-skip-birthday",
+          displayName: "Skip Birthday",
+          emails: ["skip-birthday@example.com"],
+          birthday: "--03-14",
+        },
+      ],
+      people: [],
+      contactMethods: [],
+    });
+    const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+
+    const result = await applyContactImportCandidates(
+      {
+        ownerUserId: OWNER,
+        mode: "explicit",
+        confirmations: [
+          confirmationFor(preview.candidates[0], {
+            action: "apply",
+            createPerson: true,
+            birthdayChoice: "skip",
+          }),
+        ],
+      },
+      deps,
+    );
+
+    // The create wrote no birthday, so the outcome, the tally, and the audit entry
+    // must all say so — a skipped birthday is never reported as added.
+    expect(result).toMatchObject({ importedCount: 1, createdPeople: 1, addedBirthdays: 0 });
+    expect(result.candidates[0]).toMatchObject({
+      createdPerson: true,
+      addedBirthday: null,
+      skipped: ["birthday"],
+    });
+    expect(deps.contactAuditEntries[0]?.metadataJson).toMatchObject({
+      createdPerson: true,
+      addedBirthday: null,
+    });
+
+    const [created] = await deps.searchPeople({
+      ownerUserId: OWNER,
+      query: "Skip Birthday",
+      limit: 10,
+    });
+    expect(created?.birthday).toBeNull();
+  });
+
   it("does not create a fallback person when an explicit target ID is invalid", async () => {
     const deps = createApplyDeps({
       contacts: [
@@ -993,7 +930,7 @@ describe("createContactImportPreviewSession", () => {
         {
           providerContactId: "people/conflict",
           displayName: "Mara Chen",
-          emails: ["mara.chen@example.com"],
+          emails: [MARA_EMAIL],
           birthday: "--05-20",
         },
         {
@@ -1037,22 +974,12 @@ describe("createContactImportPreviewSession", () => {
         {
           providerContactId: "people/conflict",
           displayName: "Mara Chen",
-          emails: ["mara.chen@example.com"],
+          emails: [MARA_EMAIL],
           birthday: "--05-20",
         },
       ],
       people: [personFixture({ id: "person-mara", displayName: "Mara Chen", birthday: "--04-18" })],
-      contactMethods: [
-        {
-          id: "cm-mara",
-          ownerUserId: OWNER,
-          personId: "person-mara",
-          type: "email",
-          value: "mara.chen@example.com",
-          normalizedValue: "mara.chen@example.com",
-          isPrimary: true,
-        },
-      ],
+      contactMethods: [maraEmailMethodSeed()],
     });
     const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
 
@@ -1087,27 +1014,7 @@ describe("createContactImportPreviewSession", () => {
   });
 
   it("links advisory candidates only after an explicit target-person choice", async () => {
-    const deps = createApplyDeps({
-      contacts: [
-        {
-          providerContactId: "people/advisory",
-          displayName: "M Chen",
-          emails: ["mchen@example.com"],
-        },
-      ],
-      people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
-      contactMethods: [],
-      fuzzyMatcher: createFakeContactImportFuzzyMatcher({
-        "people/advisory": [
-          {
-            personId: "person-mara",
-            displayName: "Mara Chen",
-            confidence: "high",
-            reason: "Similar name",
-          },
-        ],
-      }),
-    });
+    const deps = createApplyDeps(advisoryFixture());
     const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
 
     const result = await applyContactImportCandidates(
@@ -1169,27 +1076,7 @@ describe("createContactImportPreviewSession", () => {
 
 describe("Contact Import workflow decisions", () => {
   it("exposes only the safe one-click decision for a strong existing match", async () => {
-    const deps = createDeps({
-      contacts: [
-        {
-          providerContactId: "people/phone",
-          displayName: "Phone Match",
-          phones: ["+1 (312) 555-7777"],
-        },
-      ],
-      people: [personFixture({ id: "person-phone", displayName: "Phone Match" })],
-      contactMethods: [
-        {
-          id: "cm-phone",
-          ownerUserId: OWNER,
-          personId: "person-phone",
-          type: "phone",
-          value: "+13125557777",
-          normalizedValue: "+13125557777",
-          isPrimary: true,
-        },
-      ],
-    });
+    const deps = createDeps(phoneMatchFixture());
 
     const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
 
@@ -1209,7 +1096,7 @@ describe("Contact Import workflow decisions", () => {
         {
           providerContactId: "people/birthday-conflict",
           displayName: "Mara Chen",
-          emails: ["mara.chen@example.com"],
+          emails: [MARA_EMAIL],
           birthday: "--05-20",
         },
       ],
@@ -1283,39 +1170,7 @@ describe("Contact Import workflow decisions", () => {
   });
 
   it("marks an ambiguous multi-person duplicate as skip-only", async () => {
-    const deps = createDeps({
-      contacts: [
-        {
-          providerContactId: "people/shared",
-          displayName: "Shared Email",
-          emails: ["shared@example.com"],
-        },
-      ],
-      people: [
-        personFixture({ id: "person-one", displayName: "One" }),
-        personFixture({ id: "person-two", displayName: "Two" }),
-      ],
-      contactMethods: [
-        {
-          id: "cm-one",
-          ownerUserId: OWNER,
-          personId: "person-one",
-          type: "email",
-          value: "shared@example.com",
-          normalizedValue: "shared@example.com",
-          isPrimary: true,
-        },
-        {
-          id: "cm-two",
-          ownerUserId: OWNER,
-          personId: "person-two",
-          type: "email",
-          value: "shared@example.com",
-          normalizedValue: "shared@example.com",
-          isPrimary: true,
-        },
-      ],
-    });
+    const deps = createDeps(sharedEmailFixture());
 
     const session = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
 
@@ -1351,40 +1206,13 @@ describe("Contact Import workflow decisions", () => {
 
 describe("Contact Import apply drift guard and reconciliation", () => {
   it("refuses a confirmation when provider data drifts after the owner reviewed it", async () => {
-    const deps = createApplyDeps({
-      contacts: [
-        {
-          providerContactId: "people/mara",
-          displayName: "Mara Chen",
-          emails: ["mara.chen@example.com"],
-        },
-      ],
-      people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
-      contactMethods: [
-        {
-          id: "cm-mara",
-          ownerUserId: OWNER,
-          personId: "person-mara",
-          type: "email",
-          value: "mara.chen@example.com",
-          normalizedValue: "mara.chen@example.com",
-          isPrimary: true,
-        },
-      ],
-    });
+    const deps = createApplyDeps(maraEmailFixture());
     const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
     const reviewed = preview.candidates[0];
     expect(reviewed?.safeBulkEligible).toBe(true);
 
     // The provider now returns an extra phone the owner never saw.
-    deps.adapter = createFakeContactImportPreviewAdapter([
-      {
-        providerContactId: "people/mara",
-        displayName: "Mara Chen",
-        emails: ["mara.chen@example.com"],
-        phones: ["+1 (312) 555-9999"],
-      },
-    ]);
+    deps.adapter = createFakeContactImportPreviewAdapter(driftedMaraContacts());
 
     const result = await applyContactImportCandidates(
       { ownerUserId: OWNER, confirmations: [confirmationFor(reviewed)] },
@@ -1398,28 +1226,7 @@ describe("Contact Import apply drift guard and reconciliation", () => {
   });
 
   it("applies the reviewed decision when the fingerprint still matches", async () => {
-    const deps = createApplyDeps({
-      contacts: [
-        {
-          providerContactId: "people/mara",
-          displayName: "Mara Chen",
-          emails: ["mara.chen@example.com"],
-          phones: ["+1 (312) 555-0101"],
-        },
-      ],
-      people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
-      contactMethods: [
-        {
-          id: "cm-mara",
-          ownerUserId: OWNER,
-          personId: "person-mara",
-          type: "email",
-          value: "mara.chen@example.com",
-          normalizedValue: "mara.chen@example.com",
-          isPrimary: true,
-        },
-      ],
-    });
+    const deps = createApplyDeps(maraEmailFixture({ contact: { phones: ["+1 (312) 555-0101"] } }));
     const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
     const reviewed = preview.candidates[0];
 
@@ -1433,31 +1240,15 @@ describe("Contact Import apply drift guard and reconciliation", () => {
   });
 
   it("refuses to attach to a target the workflow never offered", async () => {
-    const deps = createApplyDeps({
-      contacts: [
-        {
-          providerContactId: "people/mara",
-          displayName: "Mara Chen",
-          emails: ["mara.chen@example.com"],
-          birthday: "--05-20",
-        },
-      ],
-      people: [
-        personFixture({ id: "person-mara", displayName: "Mara Chen", birthday: "--04-18" }),
-        personFixture({ id: "person-bob", displayName: "Unrelated Bob" }),
-      ],
-      contactMethods: [
-        {
-          id: "cm-mara",
-          ownerUserId: OWNER,
-          personId: "person-mara",
-          type: "email",
-          value: "mara.chen@example.com",
-          normalizedValue: "mara.chen@example.com",
-          isPrimary: true,
-        },
-      ],
-    });
+    const deps = createApplyDeps(
+      maraEmailFixture({
+        contact: { birthday: "--05-20" },
+        people: [
+          personFixture({ id: "person-mara", displayName: "Mara Chen", birthday: "--04-18" }),
+          personFixture({ id: "person-bob", displayName: "Unrelated Bob" }),
+        ],
+      }),
+    );
     const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
     const reviewed = preview.candidates[0];
 
@@ -1478,27 +1269,7 @@ describe("Contact Import apply drift guard and reconciliation", () => {
   });
 
   it("reconciles unknown, ineligible, and imported candidates in one honest result", async () => {
-    const deps = createApplyDeps({
-      contacts: [
-        {
-          providerContactId: "people/advisory",
-          displayName: "M Chen",
-          emails: ["mchen@example.com"],
-        },
-      ],
-      people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
-      contactMethods: [],
-      fuzzyMatcher: createFakeContactImportFuzzyMatcher({
-        "people/advisory": [
-          {
-            personId: "person-mara",
-            displayName: "Mara Chen",
-            confidence: "high",
-            reason: "Similar name",
-          },
-        ],
-      }),
-    });
+    const deps = createApplyDeps(advisoryFixture());
     const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
     const advisory = preview.candidates[0];
 
@@ -1528,40 +1299,13 @@ describe("Contact Import apply drift guard and reconciliation", () => {
   });
 
   it("refuses a stale row again on retry without a refresh (no write)", async () => {
-    const deps = createApplyDeps({
-      contacts: [
-        {
-          providerContactId: "people/mara",
-          displayName: "Mara Chen",
-          emails: ["mara.chen@example.com"],
-        },
-      ],
-      people: [personFixture({ id: "person-mara", displayName: "Mara Chen" })],
-      contactMethods: [
-        {
-          id: "cm-mara",
-          ownerUserId: OWNER,
-          personId: "person-mara",
-          type: "email",
-          value: "mara.chen@example.com",
-          normalizedValue: "mara.chen@example.com",
-          isPrimary: true,
-        },
-      ],
-    });
+    const deps = createApplyDeps(maraEmailFixture());
     const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
     const reviewed = preview.candidates[0];
 
     // Provider drifts, then the owner retries with the same reviewed fingerprint
     // (no refresh) twice: both attempts must be refused and never write.
-    deps.adapter = createFakeContactImportPreviewAdapter([
-      {
-        providerContactId: "people/mara",
-        displayName: "Mara Chen",
-        emails: ["mara.chen@example.com"],
-        phones: ["+1 (312) 555-9999"],
-      },
-    ]);
+    deps.adapter = createFakeContactImportPreviewAdapter(driftedMaraContacts());
 
     const first = await applyContactImportCandidates(
       { ownerUserId: OWNER, confirmations: [confirmationFor(reviewed)] },

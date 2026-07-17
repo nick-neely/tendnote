@@ -37,7 +37,7 @@ import {
   type LinkedDiscordAccountLike,
 } from "./discord-connection";
 import { type DisconnectDiscordResult, disconnectDiscord } from "./discord-disconnect";
-import { revokeDiscordToken } from "./discord-revoke";
+import { revokeDiscordTokenBestEffort } from "./discord-revoke";
 import {
   type DisconnectGoogleCalendarResult,
   disconnectGoogleCalendar,
@@ -390,33 +390,14 @@ export async function disconnectOwnerDiscord(): Promise<DisconnectDiscordResult>
     // Best-effort provider-side token revocation (#176), mirroring the Google
     // disconnect. Reads the linked account's decrypted access token ONLY for this
     // revoke call (no new token custody), and runs before the unlink below discards
-    // the account. Owns its own failure handling — network/other errors and non-2xx
-    // responses are logged here and surface as `false` — so the pure disconnect layer
-    // stays log-free while the revoke outcome flows into the audit reason.
-    revokeToken: async () => {
-      const env = discordEnvFromProcess();
-      if (!env.clientId || !env.clientSecret) {
-        return false; // no client credentials to authenticate a revoke
-      }
-      try {
-        const accessToken = await getProviderAccessToken("discord");
-        if (!accessToken) {
-          return false; // nothing to revoke
-        }
-        const revoked = await revokeDiscordToken({
-          accessToken,
-          clientId: env.clientId,
-          clientSecret: env.clientSecret,
-        });
-        if (!revoked) {
-          console.warn("[tendnote] Discord token revoke returned a non-success response");
-        }
-        return revoked;
-      } catch (error) {
-        console.warn("[tendnote] Discord token revoke on disconnect failed", error);
-        return false;
-      }
-    },
+    // the account. `revokeDiscordTokenBestEffort` owns the failure handling and its
+    // logging, so the pure disconnect layer stays log-free while the revoke outcome
+    // flows into the audit reason.
+    revokeToken: () =>
+      revokeDiscordTokenBestEffort({
+        env: discordEnvFromProcess(),
+        getAccessToken: () => getProviderAccessToken("discord"),
+      }),
     unlinkAccount: async () => {
       const { auth, requestHeaders } = await loadAuthContext();
       // Authoritative: remove the account link (and its token custody). Throws on

@@ -2,7 +2,7 @@ import type { AssetReviewGroupView } from "@/lib/asset-review-view";
 import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 import type { SuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 
-export const REVIEW_QUEUE_LIMIT = 6;
+const REVIEW_QUEUE_LIMIT = 6;
 
 export type ReviewQueueFamily =
   | "suggested-memory"

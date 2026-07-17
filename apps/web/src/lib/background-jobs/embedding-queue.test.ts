@@ -32,6 +32,26 @@ function enqueueResult(): EnqueueAndTriggerSemanticEmbeddingJobResult {
   };
 }
 
+/**
+ * Enqueue-and-publish an embedding job against a fresh in-memory delivery store and a
+ * queue that always accepts. The shared starting point for the consume-path tests, which
+ * each assert on what happens *after* a delivery exists.
+ */
+async function enqueueDelivery() {
+  const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
+  const queue = { send: vi.fn().mockResolvedValue({ messageId: "msg-1" }) };
+  const result = await enqueueAndPublishSemanticEmbeddingJob({
+    ownerUserId: "user-1",
+    recordKind: "memory",
+    recordId: "memory-1",
+    runtimeMode: "enqueue_only",
+    deliveryStore,
+    queue,
+    enqueueEmbedding: vi.fn().mockResolvedValue(enqueueResult()),
+  });
+  return { deliveryStore, queue, result };
+}
+
 describe("embedding queue delivery", () => {
   it("creates an embedding delivery intent and publishes the queue pointer", async () => {
     const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
@@ -92,17 +112,7 @@ describe("embedding queue delivery", () => {
   });
 
   it("claims and processes only the delivered embedding job id", async () => {
-    const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
-    const queue = { send: vi.fn().mockResolvedValue({ messageId: "msg-1" }) };
-    const result = await enqueueAndPublishSemanticEmbeddingJob({
-      ownerUserId: "user-1",
-      recordKind: "memory",
-      recordId: "memory-1",
-      runtimeMode: "enqueue_only",
-      deliveryStore,
-      queue,
-      enqueueEmbedding: vi.fn().mockResolvedValue(enqueueResult()),
-    });
+    const { deliveryStore, result } = await enqueueDelivery();
     const claimJob = vi.fn().mockResolvedValue({ ...embeddingJob, status: "running" });
     const processJob = vi.fn().mockResolvedValue({
       job: { ...embeddingJob, status: "completed" },
@@ -126,17 +136,7 @@ describe("embedding queue delivery", () => {
   });
 
   it("lets provider throttling remain retryable Postgres job state", async () => {
-    const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
-    const queue = { send: vi.fn().mockResolvedValue({ messageId: "msg-1" }) };
-    const result = await enqueueAndPublishSemanticEmbeddingJob({
-      ownerUserId: "user-1",
-      recordKind: "memory",
-      recordId: "memory-1",
-      runtimeMode: "enqueue_only",
-      deliveryStore,
-      queue,
-      enqueueEmbedding: vi.fn().mockResolvedValue(enqueueResult()),
-    });
+    const { deliveryStore, result } = await enqueueDelivery();
     const retryAt = new Date("2026-06-29T12:05:00.000Z");
     const claimJob = vi.fn().mockResolvedValue({ ...embeddingJob, status: "running" });
     const processJob = vi.fn().mockResolvedValue({

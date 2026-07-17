@@ -2,11 +2,11 @@
 
 import { CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
-import { useState, useTransition } from "react";
 import { completeFollowupAction, dismissFollowupAction } from "@/app/actions/followups";
 import { DueChip } from "@/components/followup-due-chip";
 import { Button } from "@/components/ui/button";
 import type { DashboardFollowupView } from "@/lib/followup-view";
+import { useResolvingAction } from "@/lib/use-resolving-action";
 
 /**
  * Due and upcoming active follow-ups on the dashboard rail (issue #45). A calm,
@@ -63,22 +63,7 @@ function FollowupRow({
   onResolve: (id: string) => void;
 }) {
   const personName = followup.personName ?? "Someone";
-  const [leaving, setLeaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function run(action: () => Promise<unknown>) {
-    setError(null);
-    startTransition(async () => {
-      try {
-        await action();
-        setLeaving(true);
-        window.setTimeout(() => onResolve(followup.id), 200);
-      } catch {
-        setError("That didn't go through. Try again.");
-      }
-    });
-  }
+  const { leaving, error, pending, run } = useResolvingAction(() => onResolve(followup.id));
 
   return (
     <li

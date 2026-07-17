@@ -28,7 +28,6 @@ export {
   publishBackgroundJobDelivery,
 } from "@tendnote/db/queries/background-job-deliveries";
 export type {
-  BackgroundJobProcessorJobState,
   BackgroundJobQueueConsumerMetadata,
   BackgroundJobQueueProcessor,
 } from "@tendnote/db/queries/background-jobs";
