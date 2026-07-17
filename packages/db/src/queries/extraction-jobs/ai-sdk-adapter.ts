@@ -6,6 +6,7 @@ import {
   suggestedMemoryExtractionPromptVersion,
 } from "@tendnote/domain";
 import { gateway, generateText, Output } from "ai";
+import { resolveExtractionModel } from "../extraction-model";
 
 type SuggestedMemoryExtractionEnv = Record<string, string | undefined>;
 
@@ -25,24 +26,12 @@ export function shouldRunLiveSuggestedMemoryExtractionSmoke(
   env: SuggestedMemoryExtractionEnv = process.env,
 ) {
   return (
-    env.TENDNOTE_RUN_LIVE_EXTRACTION_SMOKE === "1" &&
-    Boolean(env.TENDNOTE_EXTRACTION_MODEL) &&
-    hasSuggestedMemoryExtractionCredentials(env)
+    env.TENDNOTE_RUN_LIVE_EXTRACTION_SMOKE === "1" && hasSuggestedMemoryExtractionCredentials(env)
   );
 }
 
 function configuredExtractionModel(options: AiSdkSuggestedMemoryExtractionAdapterOptions) {
-  return options.model?.trim() || options.env?.TENDNOTE_EXTRACTION_MODEL?.trim();
-}
-
-function requireExtractionModel(options: AiSdkSuggestedMemoryExtractionAdapterOptions) {
-  const model = configuredExtractionModel(options);
-
-  if (!model) {
-    throw new Error("Missing TENDNOTE_EXTRACTION_MODEL for suggested-memory extraction.");
-  }
-
-  return model;
+  return resolveExtractionModel(options.model ?? options.env?.TENDNOTE_EXTRACTION_MODEL);
 }
 
 function requireExtractionCredentials(env: SuggestedMemoryExtractionEnv) {
@@ -85,7 +74,7 @@ export function createAiSdkSuggestedMemoryExtractionAdapter(
     model: configuredExtractionModel(options),
     promptVersion,
     async extractCandidates(input): Promise<SuggestedMemoryExtractionAdapterResult> {
-      const model = requireExtractionModel(options);
+      const model = configuredExtractionModel(options);
       requireExtractionCredentials(env);
 
       const result = await generateText({

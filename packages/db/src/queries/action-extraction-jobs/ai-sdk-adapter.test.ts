@@ -88,15 +88,20 @@ describe("AI SDK suggested-action extraction adapter", () => {
     expect(generateTextMock).not.toHaveBeenCalled();
   });
 
-  it("fails before calling the model when the extraction model is not configured", async () => {
+  it("uses the production extraction default when no dedicated model is configured", async () => {
+    generateTextMock.mockResolvedValue({
+      output: { candidates: [] },
+    } as Awaited<ReturnType<typeof generateText>>);
     const adapter = createDefaultSuggestedActionExtractionAdapter({
       AI_GATEWAY_API_KEY: "test-key",
     });
 
-    await expect(
-      adapter.extractActions({ sourceRecord, resolvedPeople: [], availableAreas: [] }),
-    ).rejects.toThrow(/Missing TENDNOTE_EXTRACTION_MODEL/);
-    expect(generateTextMock).not.toHaveBeenCalled();
+    await adapter.extractActions({ sourceRecord, resolvedPeople: [], availableAreas: [] });
+
+    expect(adapter.model).toBe("google/gemini-3.1-flash-lite");
+    expect(generateTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ model: { modelId: "google/gemini-3.1-flash-lite" } }),
+    );
   });
 
   it("turns missing production config into a retryable action job failure", async () => {
@@ -117,9 +122,7 @@ describe("AI SDK suggested-action extraction adapter", () => {
     });
 
     expect(result.outcome).toBe("failed");
-    expect(result.error).toMatch(
-      /Missing TENDNOTE_EXTRACTION_MODEL|Missing AI Gateway credentials/,
-    );
+    expect(result.error).toMatch(/Missing AI Gateway credentials/);
     expect(result.job).toMatchObject({ status: "failed", attempts: 1, claimedAt: null });
     expect(result.job.runAfter?.toISOString()).toBe("2026-01-01T00:01:00.000Z");
     await expect(harness.listActionsForSource(source.id)).resolves.toHaveLength(0);

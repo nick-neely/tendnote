@@ -6,6 +6,7 @@ import {
   suggestedActionExtractionPromptVersion,
 } from "@tendnote/domain";
 import { gateway, generateText, Output } from "ai";
+import { resolveExtractionModel } from "../extraction-model";
 
 type SuggestedActionExtractionEnv = Record<string, string | undefined>;
 
@@ -22,17 +23,7 @@ export function hasSuggestedActionExtractionCredentials(
 }
 
 function configuredExtractionModel(options: AiSdkSuggestedActionExtractionAdapterOptions) {
-  return options.model?.trim() || options.env?.TENDNOTE_EXTRACTION_MODEL?.trim();
-}
-
-function requireExtractionModel(options: AiSdkSuggestedActionExtractionAdapterOptions) {
-  const model = configuredExtractionModel(options);
-
-  if (!model) {
-    throw new Error("Missing TENDNOTE_EXTRACTION_MODEL for suggested-action extraction.");
-  }
-
-  return model;
+  return resolveExtractionModel(options.model ?? options.env?.TENDNOTE_EXTRACTION_MODEL);
 }
 
 function requireExtractionCredentials(env: SuggestedActionExtractionEnv) {
@@ -87,7 +78,7 @@ export function createAiSdkSuggestedActionExtractionAdapter(
     model: configuredExtractionModel(options),
     promptVersion,
     async extractActions(input): Promise<SuggestedActionExtractionAdapterResult> {
-      const model = requireExtractionModel(options);
+      const model = configuredExtractionModel(options);
       requireExtractionCredentials(env);
 
       const result = await generateText({
