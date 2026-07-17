@@ -29,7 +29,7 @@ export function getBetterAuthSecret() {
   return resolveBetterAuthSecret();
 }
 
-function createAuth() {
+function createSocialProviders() {
   const github = githubSocialProvider(githubEnvFromProcess());
   // Google backs Phase 2C Calendar account linking (ADR-0071). Wired only when
   // credentials are configured; Better Auth owns its OAuth token custody/refresh.
@@ -38,11 +38,60 @@ function createAuth() {
   // Wired only when credentials are configured; Better Auth owns its OAuth token
   // custody. Callback URL: <BETTER_AUTH_URL>/api/auth/callback/discord.
   const discord = discordSocialProvider(discordEnvFromProcess());
-  const socialProviders = {
+  return {
     ...(github ? { github } : {}),
     ...(google ? { google } : {}),
     ...(discord ? { discord } : {}),
   };
+}
+
+function createDatabaseHooks() {
+  return {
+    user: {
+      create: {
+        after: async (user: { id: string }) => {
+          // Every new signup gets a durable access profile: the first user
+          // bootstraps as the initial allowed owner, later users start pending
+          // until Private Beta Access is granted (ADR-0067).
+          await ensureAccessProfile({ userId: user.id });
+        },
+      },
+    },
+    account: {
+      create: {
+        after: async (
+          account: Parameters<
+            Awaited<
+              typeof import("@/lib/integrations/provider-connections")
+            >["reconcileDiscordAfterLink"]
+          >[0],
+        ) => {
+          // Reconcile a freshly linked Discord account into its identity mapping +
+          // Provider Connection right away (#174, ADR-0138), rather than waiting for
+          // the next /account load. Imported lazily to keep this module free of the
+          // server-only integrations boundary (and its `next/headers` deps) at load.
+          // The whole body — the dynamic import included — is wrapped so a rejection
+          // never propagates through createWithHooks into the OAuth callback: an
+          // import failure would otherwise fail the redirect. reconcileDiscordAfterLink
+          // ignores non-Discord links, gates on admission, and self-swallows its own
+          // failures; the /account page-load reconcile stays as the self-healing
+          // backstop.
+          try {
+            const { reconcileDiscordAfterLink } = await import(
+              "@/lib/integrations/provider-connections"
+            );
+            await reconcileDiscordAfterLink(account);
+          } catch (error) {
+            console.error("[tendnote] Discord after-link hook failed to run", error);
+          }
+        },
+      },
+    },
+  };
+}
+
+function createAuth() {
+  const socialProviders = createSocialProviders();
 
   return createTendnoteAuth({
     database: drizzleAdapter(getDb(), {
@@ -72,42 +121,7 @@ function createAuth() {
         trustedProviders: ["github", "google", "discord"],
       },
     },
-    databaseHooks: {
-      user: {
-        create: {
-          after: async (user) => {
-            // Every new signup gets a durable access profile: the first user
-            // bootstraps as the initial allowed owner, later users start pending
-            // until Private Beta Access is granted (ADR-0067).
-            await ensureAccessProfile({ userId: user.id });
-          },
-        },
-      },
-      account: {
-        create: {
-          after: async (account) => {
-            // Reconcile a freshly linked Discord account into its identity mapping +
-            // Provider Connection right away (#174, ADR-0138), rather than waiting for
-            // the next /account load. Imported lazily to keep this module free of the
-            // server-only integrations boundary (and its `next/headers` deps) at load.
-            // The whole body — the dynamic import included — is wrapped so a rejection
-            // never propagates through createWithHooks into the OAuth callback: an
-            // import failure would otherwise fail the redirect. reconcileDiscordAfterLink
-            // ignores non-Discord links, gates on admission, and self-swallows its own
-            // failures; the /account page-load reconcile stays as the self-healing
-            // backstop.
-            try {
-              const { reconcileDiscordAfterLink } = await import(
-                "@/lib/integrations/provider-connections"
-              );
-              await reconcileDiscordAfterLink(account);
-            } catch (error) {
-              console.error("[tendnote] Discord after-link hook failed to run", error);
-            }
-          },
-        },
-      },
-    },
+    databaseHooks: createDatabaseHooks(),
     secondaryStorage: redisStorage({
       client: getRedis(),
       keyPrefix: "tendnote:better-auth:",
