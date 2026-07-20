@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  composeExtractedActionNotes,
   createDeterministicSuggestedActionExtractionAdapter,
   decideActionExtraction,
   extractedActionDedupeKey,
@@ -71,6 +70,43 @@ describe("validateSuggestedActionCandidates", () => {
     expect(result.validCandidates[0]?.areaId).toBe("area-1");
   });
 
+  it("preserves source-grounded reason wording without accepting priority or effort labels", () => {
+    const result = validateSuggestedActionCandidates(
+      {
+        candidates: [
+          {
+            title: "Call the plumber",
+            reason: "The source says this is urgent and should be a quick call",
+            priority: "high",
+            effort: "small",
+            dueAt: "2026-07-21T15:00:00.000Z",
+            deferUntil: "2026-07-20T15:00:00.000Z",
+            recurrence: { interval: 1, unit: "month" },
+            areaId: "area-1",
+            assetHints: [{ label: "kitchen sink" }],
+            personIds: ["person-1"],
+            scope: "household",
+          },
+        ],
+      },
+      base,
+    );
+
+    expect(result.validCandidates).toEqual([
+      {
+        title: "Call the plumber",
+        reason: "The source says this is urgent and should be a quick call",
+        dueAt: new Date("2026-07-21T15:00:00.000Z"),
+        deferUntil: new Date("2026-07-20T15:00:00.000Z"),
+        recurrence: { interval: 1, unit: "month" },
+        areaId: "area-1",
+        assetHints: [{ label: "kitchen sink" }],
+        personIds: ["person-1"],
+        scope: "household",
+      },
+    ]);
+  });
+
   it("counts a candidate with no title as invalid without flagging the envelope", () => {
     const result = validateSuggestedActionCandidates(
       { candidates: [{ reason: "no title" }] },
@@ -138,26 +174,6 @@ describe("extractedActionDedupeKey", () => {
     expect(extractedActionDedupeKey("  Replace The Filter ")).toBe(
       extractedActionDedupeKey("replace the filter"),
     );
-  });
-});
-
-describe("composeExtractedActionNotes", () => {
-  it("returns null when there is nothing to say", () => {
-    expect(composeExtractedActionNotes({})).toBeNull();
-  });
-
-  it("combines reason with priority and effort tags", () => {
-    expect(
-      composeExtractedActionNotes({
-        reason: "Filter is overdue",
-        priority: "high",
-        effort: "small",
-      }),
-    ).toBe("Filter is overdue\n\nPriority: high · Effort: small");
-  });
-
-  it("keeps a bare reason", () => {
-    expect(composeExtractedActionNotes({ reason: "Overdue" })).toBe("Overdue");
   });
 });
 

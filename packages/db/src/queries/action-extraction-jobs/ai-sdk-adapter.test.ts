@@ -74,6 +74,9 @@ describe("AI SDK suggested-action extraction adapter", () => {
     expect(generateTextMock).toHaveBeenCalledWith(
       expect.objectContaining({ prompt: expect.stringContaining("Home: area-1") }),
     );
+    const prompt = vi.mocked(generateText).mock.calls[0]?.[0].prompt;
+    expect(prompt).toContain("Preserve explicit urgency or difficulty wording");
+    expect(prompt).not.toMatch(/priority|effort|low\/normal\/high|small\/medium\/large/i);
   });
 
   it("fails before calling the model when provider credentials are missing", async () => {

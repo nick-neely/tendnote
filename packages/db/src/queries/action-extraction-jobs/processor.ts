@@ -1,5 +1,4 @@
 import {
-  composeExtractedActionNotes,
   createDeterministicSuggestedActionExtractionAdapter,
   decideActionExtraction,
   type ExtractionJob,
@@ -186,7 +185,9 @@ function buildExtractedSuggestInput(
   return {
     ownerUserId: context.ownerUserId,
     title: candidate.title,
-    notes: composeExtractedActionNotes(candidate),
+    // Explicit urgency or difficulty wording may remain naturally in this grounded
+    // reason, but extraction never appends normalized labels or classifications.
+    notes: candidate.reason ?? null,
     dueAt: candidate.dueAt ?? null,
     deferUntil: candidate.deferUntil ?? null,
     recurrence: candidate.recurrence ?? null,

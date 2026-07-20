@@ -15,7 +15,7 @@ import { canExtractFromSourceRecord, type SourceRecord } from "./source-records"
  * turns action-like captured context into review-gated Suggested General Actions rather
  * than hidden Source Record action metadata (ADR 0151).
  */
-export const suggestedActionExtractionPromptVersion = "suggested-action-extraction.v1";
+export const suggestedActionExtractionPromptVersion = "suggested-action-extraction.v2";
 
 /** An existing owner Area a candidate may file under; extraction never creates Areas. */
 export type SuggestedActionExtractionArea = {
@@ -39,33 +39,16 @@ export type SuggestedActionExtractionInput = {
 };
 
 /**
- * A coarse priority the adapter may propose. The Phase 5 General Action model has no
- * dedicated priority column (that would be schema scope owned elsewhere), so a proposed
- * priority is preserved in the proposal's notes rather than a structured field — the
- * information reaches the reviewer without inventing durable columns (ADR 0156 keeps
- * Phase 5 bounded).
- */
-export const extractedActionPrioritySchema = z.enum(["low", "normal", "high"]);
-export type ExtractedActionPriority = z.infer<typeof extractedActionPrioritySchema>;
-
-/** A coarse effort/size the adapter may propose; folded into notes like priority. */
-export const extractedActionEffortSchema = z.enum(["small", "medium", "large"]);
-export type ExtractedActionEffort = z.infer<typeof extractedActionEffortSchema>;
-
-/**
  * A single proposed action distilled from a source record. Only `title` is required;
- * every other field is optional enrichment. `reason`, `priority`, and `effort` are
- * captured into the proposal's notes (the model has no columns for them in Phase 5),
- * while timing, recurrence, Area, asset hints, people links, and scope map onto real
- * Suggested General Action fields. `scope` is deliberately limited to private/household
- * — a selected-shared audience is chosen only at acceptance, and extraction defaults
- * private and fails closed (ADRs 0140, 0151, 0153).
+ * every other field is optional enrichment. `reason` is captured into the proposal's
+ * notes, while timing, recurrence, Area, asset hints, people links, and scope map onto
+ * real Suggested General Action fields. `scope` is deliberately limited to
+ * private/household — a selected-shared audience is chosen only at acceptance, and
+ * extraction defaults private and fails closed (ADRs 0140, 0151, 0153).
  */
 export const suggestedActionCandidateSchema = z.object({
   title: z.string().trim().min(1).max(200),
   reason: z.string().trim().min(1).max(1000).optional(),
-  priority: extractedActionPrioritySchema.optional(),
-  effort: extractedActionEffortSchema.optional(),
   dueAt: z.coerce.date().optional(),
   deferUntil: z.coerce.date().optional(),
   recurrence: generalActionRecurrenceSchema.optional(),
@@ -244,33 +227,6 @@ export function resolveExtractedActionScope(input: {
  */
 export function extractedActionDedupeKey(title: string): string {
   return title.trim().toLowerCase();
-}
-
-/**
- * Builds the proposal's notes from the free-text `reason` plus any proposed priority and
- * effort, so metadata the model can suggest but the Phase 5 model cannot store durably
- * still reaches the reviewer. Returns null when there is nothing to say.
- */
-export function composeExtractedActionNotes(
-  candidate: Pick<SuggestedActionCandidate, "reason" | "priority" | "effort">,
-): string | null {
-  const tags: string[] = [];
-  if (candidate.priority) {
-    tags.push(`Priority: ${candidate.priority}`);
-  }
-  if (candidate.effort) {
-    tags.push(`Effort: ${candidate.effort}`);
-  }
-
-  const parts: string[] = [];
-  if (candidate.reason) {
-    parts.push(candidate.reason);
-  }
-  if (tags.length > 0) {
-    parts.push(tags.join(" · "));
-  }
-
-  return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
 /**
