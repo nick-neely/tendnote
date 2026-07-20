@@ -68,6 +68,10 @@ _Avoid_: Follow-up, task, project, todo
 A review-gated proposal for a non-person General Action, grounded in a source record or other visible Tendnote context. A suggested general action can be accepted, edited, dismissed, or ignored before it becomes an active General Action.
 _Avoid_: Automatic task, inferred todo, suggested follow-up
 
+**Saved Item**:
+An owner- or household-scoped piece of source-grounded context that Eve keeps when a capture has no better supported destination yet, including an open question that does not need its own decision system. A saved item may have an explicit date to bring it back and an active/archive lifecycle, but it is not a task, project, tag, document inbox, or replacement for a person, General Action, or Asset.
+_Avoid_: Inbox item, generic record, task, bookmark collection
+
 **Asset**:
 A practical owner- or household-scoped thing Tendnote tracks over time — an appliance, vehicle, subscription, service, property, or kept item — with a fixed kind, visibility scope, active/archive lifecycle, and internal audit trail; Asset Memories, evidence, and links attach to it in later Phase 6 slices. An asset is never a person, project, document library, or generic object.
 _Avoid_: Person, project, document, inventory item, financial asset
@@ -87,6 +91,10 @@ _Avoid_: Task inbox, pipeline, work queue
 **Assistant Surface**:
 The conversational Tendnote interface where the assistant can respond with natural language and structured components for reviewing memories, source records, follow-ups, briefs, or drafts.
 _Avoid_: Raw chatbot, task manager
+
+**Agent-Backed Surface**:
+A purpose-built Tendnote interface that uses the same owner-scoped agent capabilities and product functions as Eve while presenting controls and results suited to its task. An agent-backed surface is not a chat skin, a separate autonomous agent, or a place to duplicate product policy in the client.
+_Avoid_: Chat-only UI, autonomous workflow, client-side agent policy
 
 **Daily Brief**:
 A small set of relationship suggestions for today. It should stay capped and useful rather than becoming a task feed.
