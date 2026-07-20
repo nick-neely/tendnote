@@ -52,6 +52,10 @@ _Avoid_: Semantic search, recommendation, generated summary
 Finding stored relationship context by meaning or theme when the user does not know the exact words, such as gift ideas, career updates, or stressful life events. Semantic retrieval can surface grounded context, but it is not the same as proactive relationship agenda ranking.
 _Avoid_: Exact recall, recommendation engine, daily brief
 
+**Global Recall**:
+An owner-scoped federated read capability shared by Eve and structured search that returns typed, permission-filtered Exact and Related results across supported Tendnote domains with canonical record references, grounding, and deep links. Global recall finds existing visible records; it does not create importance, expose raw evidence as its own result family, or turn generated prose into retrieval truth.
+_Avoid_: Chat history search, recommendation feed, generated answer store, universal database search
+
 **Relationship Agenda**:
 A read-only, cross-person view of existing upcoming or review-worthy relationship context for a time window. A relationship agenda can help Eve answer broad questions, but it is not a suggestion generator, follow-up creator, or persisted brief.
 _Avoid_: Generated task list, background scanner, daily brief
