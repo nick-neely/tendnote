@@ -5,7 +5,12 @@ import { createHarness, enqueueAndProcess, OWNER } from "./harness";
 describe("action extraction job lifecycle", () => {
   it("proposes a review-gated Suggested General Action grounded in the source record", async () => {
     const adapter = createFakeSuggestedActionExtractionAdapter([
-      { title: "Replace the refrigerator water filter", reason: "It is overdue" },
+      {
+        title: "Replace the refrigerator water filter",
+        reason: "The source says this is urgent but quick",
+        priority: "high",
+        effort: "small",
+      },
     ]);
     const { processor, captureRecord, listActionsForSource } = createHarness({
       extractionAdapter: adapter,
@@ -27,7 +32,7 @@ describe("action extraction job lifecycle", () => {
     expect(actions[0]?.status).toBe("suggested");
     expect(actions[0]?.scope).toBe("private");
     expect(actions[0]?.sourceRecordId).toBe(source.id);
-    expect(actions[0]?.notes).toBe("It is overdue");
+    expect(actions[0]?.notes).toBe("The source says this is urgent but quick");
     expect(actions[0]?.createdByUserId).toBe(OWNER);
   });
 

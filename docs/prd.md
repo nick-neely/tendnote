@@ -1227,14 +1227,14 @@ Deliverables:
 
 - Separate General Action model from person-centered Follow-Ups, with shared lifecycle vocabulary where useful (ADR 0143)
 - User-facing Actions surface, with Routines as the product label for recurring General Actions and Suggested actions for review proposals (ADR 0148)
-- Bounded Personal OS action model with lifecycle, due/defer timing, recurrence, priority, effort or size, Area, resurfacing semantics, visibility scope, source grounding, provenance, optional person links, and lightweight asset hints (ADRs 0145, 0149, 0154, 0155, 0156)
+- Bounded Personal OS action model with lifecycle, due/defer timing, recurrence, Area, resurfacing semantics, visibility scope, source grounding, provenance, optional person links, and lightweight asset hints, while deferring priority and effort classifications (ADRs 0145, 0149, 0154, 0155, 0156)
 - Flat custom Areas seeded with useful defaults, without tags, nested taxonomies, or area-level permissions (ADR 0146)
 - Direct active creation for intentional user form input, plus review-gated Suggested General Actions for Eve, Discord, fast capture, imported/provider-derived context, and extraction outputs (ADRs 0144, 0151, 0152)
 - Source Record action extraction that reuses the existing extraction job pattern and creates Suggested General Actions rather than hidden Source Record action metadata (ADR 0151)
 - Semantic retrieval and Eve-first tools for creating explicit actions, proposing suggested actions, shallow planning, listing due/overdue/deferred/resurfaced actions, searching actions by meaning, and answering cross-domain questions after deterministic scope filtering (ADRs 0150, 0159, 0163)
 - Phase 4 private/shared/household visibility scopes on General Actions and Suggested General Actions, with scope-filtered retrieval, Eve tools, proactive summaries, and Discord delivery (ADRs 0153, 0158)
 - Narrow Action Today surface for due, overdue, and deliberately resurfaced Actions/Routines, plus mobile-usable action creation, review, and lifecycle controls without building the full Phase 7 Today/mobile shell (ADRs 0157, 0161)
-- Lightweight links/notes and action history signals without document management, productivity analytics, gamification, or autonomous priority/cadence changes (ADRs 0164, 0165)
+- Lightweight links/notes and action history signals without document management, productivity analytics, gamification, predictive prioritization, priority or effort classifications, or autonomous cadence changes (ADRs 0164, 0165)
 
 Vertical slice issue seeds:
 
