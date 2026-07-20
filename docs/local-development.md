@@ -4,7 +4,8 @@ Detailed setup for running Tendnote locally. For a high-level overview, start wi
 
 ## Prerequisites
 
-- Node.js and `pnpm`
+- Node.js 24 (`volta` pins `24.18.0`; CI uses Node 24)
+- pnpm 10.32.1 (pinned by `packageManager`; `corepack enable` picks it up automatically)
 - Docker (for local Postgres and Redis)
 
 ## Setup
@@ -16,7 +17,12 @@ pnpm db:migrate     # apply committed migrations
 pnpm db:seed        # load demo data
 ```
 
-Run `pnpm db:generate` only when you change the Drizzle schema and need a new migration file; committed migrations cover a fresh setup.
+Run `pnpm db:generate` only when you change the Drizzle schema and need a new migration file; committed migrations cover a fresh setup. Two more database commands are useful day to day:
+
+```bash
+pnpm db:check    # drizzle-kit check — migration drift; CI runs this too
+pnpm db:studio   # Drizzle Studio against the local database
+```
 
 ## Running the apps
 
@@ -50,20 +56,32 @@ Semantic embeddings run through the same job lifecycle in every environment. Loc
 - Without gateway credentials, local development falls back to deterministic fake vectors so capture and search still work offline.
 - Set `TENDNOTE_EMBEDDING_RUNTIME=enqueue_only` to leave jobs for a worker instead of processing inline.
 
+Several other model overrides follow the same fallback chain — the specific variable, then `TENDNOTE_AGENT_MODEL`, then `anthropic/claude-haiku-4.5`. All are optional tuning knobs:
+
+| Variable | Used by |
+| --- | --- |
+| `TENDNOTE_SNAPSHOT_MODEL` | Person and asset context snapshots |
+| `TENDNOTE_BRIEF_SUMMARY_MODEL` | The presentation-only brief summary line |
+| `TENDNOTE_DRAFT_MODEL` | Message drafting |
+
 In production, extraction and embedding jobs are delivered through Vercel Queues with an outbox-style ledger and a recovery cron. None of that is needed locally — inline processing and deterministic adapters cover the path, and `pnpm verify` never touches a live queue. See [`background-job-delivery.md`](background-job-delivery.md) for the production foundation and the optional live smoke test.
 
 ## Eve evals
 
-Phase 2F Eve-native evals run against a stable isolated Postgres database named
+Eve-native evals run against a stable isolated Postgres database named
 `tendnote_eval`, not the normal `tendnote` local database. The deterministic
 command hard-resets that database, applies committed Drizzle migrations, loads
 the same synthetic demo fixture data used by local development, and then runs
 strict Eve evals with `DATABASE_URL` pointed at the eval database:
 
 ```bash
-pnpm --filter @tendnote/agent eval:list
-pnpm --filter @tendnote/agent eval:deterministic
+pnpm --filter @tendnote/agent eval:list              # list Eve-native evals
+pnpm --filter @tendnote/agent eval:deterministic     # strict deterministic evals
+pnpm --filter @tendnote/agent eval:judged            # judged evals; skips silently without credentials
+pnpm --filter @tendnote/agent eval:model-comparison  # compare models across the suite
 ```
+
+`eval:deterministic` requires model credentials and fails fast without them; `eval:judged` skips silently when neither `AI_GATEWAY_API_KEY` nor `VERCEL_OIDC_TOKEN` is available, so it is safe to run unconfigured.
 
 Override `TENDNOTE_EVAL_DATABASE_URL` when the eval database is not on the
 default Docker Postgres port. The reset guard only permits database names that
@@ -71,7 +89,7 @@ begin with `tendnote_eval`.
 
 ## Private beta access
 
-Hosted environments gate the app behind Private Beta Access (Phase 2A). Local development does not need the Vercel Flags provider: with no authenticated session it admits the dev fallback owner (`TENDNOTE_DEV_OWNER_USER_ID`, defaulting to `demo-user`), so the app shell and Eve chat work without sign-in. See [`architecture.md`](architecture.md#access-and-private-beta).
+Hosted environments gate the app behind Private Beta Access. Local development does not need the Vercel Flags provider: with no authenticated session it admits the dev fallback owner (`TENDNOTE_DEV_OWNER_USER_ID`, defaulting to `demo-user`), so the app shell and Eve chat work without sign-in. See [`architecture.md`](architecture.md#access-and-private-beta).
 
 Google capability linking still goes through Better Auth's `linkSocial` endpoint, which requires a real Better Auth session cookie. When you start a Google connect flow while using the local fallback owner, the account page first calls the dev-only `/api/dev/demo-session` bridge. That bridge creates or reuses a Better Auth user with the same id as the fallback owner, mints a local session cookie, and then lets `linkSocial` continue. Set `TENDNOTE_DEV_OWNER_EMAIL` in `apps/web/.env.local` to the Gmail address you use for local Google linking; the bridge also updates an existing fallback user when this local email changes. The route is unavailable in production.
 
@@ -93,9 +111,15 @@ The root `.env` is read **only** by `docker compose`; Next.js and `eve dev` do n
 
 Connecting Google Calendar or Gmail needs an operator to configure a Google Cloud OAuth client, consent screen, callback URLs, and the exact scopes Tendnote uses: Calendar event-read and Gmail compose. Set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `apps/web/.env.local`. This is human-in-the-loop work that code slices cannot complete. See [`google-setup.md`](google-setup.md) for the step-by-step guide and local/hosted smoke checklists.
 
+## Discord
+
+Discord capture and proactive delivery need a Discord application: `DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY`, and `DISCORD_BOT_TOKEN` in `apps/agent/.env.local`, plus `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` in `apps/web/.env.local` for account linking. `DISCORD_OWNER_USER_MAP` is a dev-only owner-resolution fallback and is never the hosted path. See [`discord-setup.md`](discord-setup.md) for the full walkthrough.
+
+`TENDNOTE_BRIEF_TIMEZONE` (default `UTC`) sets the local-date boundary the scheduled-workflow dispatcher uses when deciding what is due.
+
 ## Private beta flags
 
-Phase 2A keeps hosted access private by default through the Vercel-managed `private-beta-access` boolean flag. The app sends the trusted Better Auth user entity on every evaluation:
+Hosted access is private by default through the Vercel-managed `private-beta-access` boolean flag. The app sends the trusted Better Auth user entity on every evaluation:
 
 ```text
 user.id
@@ -121,10 +145,27 @@ pnpm format:check   # formatter check only
 pnpm format         # formatter writes only
 ```
 
+### Fallow
+
+`pnpm verify` does **not** run Fallow, but CI does — so a clean local `verify` can still fail the PR gate. CI runs `pnpm coverage:ci` (Istanbul coverage, which Fallow consumes), then `pnpm fallow:coverage:check`, then `pnpm fallow:ci`. To see what that gate sees before pushing:
+
+```bash
+pnpm fallow             # full audit
+pnpm fallow:health      # health score and hotspots
+pnpm fallow:dead-code   # unused files, exports, types, dependencies
+pnpm fallow:dupes       # duplicate code
+```
+
+To reproduce the CI gate exactly, run `pnpm coverage:ci && pnpm fallow:coverage:check && pnpm fallow:ci`.
+
 ## CI workflows
 
 - `.github/workflows/pr-verify.yml` is the pull request wrapper.
-- `.github/workflows/reusable-verify.yml` runs Quality and Test-and-Fallow in parallel, adds database drift/replay checks only for relevant changes, and ends with an aggregate `Verify` job. Vercel owns the deployable production build.
+- `.github/workflows/reusable-verify.yml` runs three jobs in parallel and ends with an aggregate `Verify` job. Vercel owns the deployable production build.
+  - **Quality** — `pnpm lint`, `pnpm typecheck`.
+  - **Test and Fallow** — `pnpm coverage:ci`, `pnpm fallow:coverage:check`, `pnpm fallow:ci`.
+  - **Database** (only when database paths change) — `pnpm db:check` for drift, then `pnpm db:migrate` against a pgvector service container.
+- `.github/workflows/eve-evals.yml` runs the deterministic Eve evals; it is `workflow_dispatch` only, so it never gates a PR.
 - The `main` ruleset requires the stable PR `Verify` check and Vercel deployment before merge. After merge, `.github/workflows/production-migrations.yml` waits only for a deployable staged production build, applies Drizzle migrations when database paths changed, and expects `PRODUCTION_DATABASE_DIRECT_URL` in the production GitHub environment. It always ends with the stable `Production Release Gate` job, which Vercel Deployment Checks should require before production domain aliasing. Documentation-only changes skip the staged deployment and migration lanes.
 
 Production schema changes must stay compatible with the currently live Vercel deployment. Use expand/contract releases for destructive changes: add the new shape first, switch application reads/writes after both old and new deployments can tolerate it, and remove old columns or tables only in a later release.

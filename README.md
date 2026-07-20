@@ -1,39 +1,45 @@
 # Tendnote
 
-Tendnote is a personal relationship memory and follow-up assistant — a private, consent-first notebook for the people in your life, not a sales CRM. It remembers context about the people you care about, surfaces it when you need it, and helps you follow up thoughtfully without turning relationships into tasks.
+Tendnote is a private, consent-first memory for your life — the people you care about, the things you own, and the work you keep meaning to get to. It remembers context you give it, surfaces it when it's useful, and helps you follow up thoughtfully.
 
-## What it does today
+It is not a sales CRM. There are no pipelines, no lead scores, and no autonomous outreach. Nothing leaves Tendnote without you approving it.
 
-Phase 1 proves the full private relationship loop with no external accounts or outbound actions:
+## What it does
 
-- **Capture** people, source records, and memories through the web app or the Eve chat agent.
-- **Review** agent-suggested memories and follow-ups inline — approve, edit, or dismiss from the person ledger, the dashboard rail, or chat, with raw record ids never shown.
-- **Recall** snapshot-backed person context, and search stored context by exact text or by meaning (pgvector).
-- **Follow up** with person-linked reminders you create or Eve suggests — complete, snooze, dismiss, or reopen.
-- **Plan** across people with a read-only relationship agenda ("anything coming up next week?").
-- **Brief** yourself with small persisted daily and weekly relationship briefs.
-- **Draft** thoughtful messages inside Tendnote — source-grounded, reviewable, and never sent externally.
+### People
 
-Hosted accounts are live behind a private-beta gate (Phase 2A): sign-up, sign-in, password reset, and an access-gated app shell, with unadmitted users held on a pending page.
+- **Capture** people, notes, and memories through the web app or by talking to Eve, the built-in assistant.
+- **Review** what Eve suggests before it becomes real — approve, edit, or dismiss suggested memories and follow-ups from the person page, the dashboard review queue, or chat.
+- **Recall** a person's context as a snapshot, search your stored context by exact wording, or search it by meaning.
+- **Follow up** with person-linked reminders you create or Eve proposes — complete, snooze, dismiss, or reopen.
+- **Plan** across everyone with a read-only agenda: "anything coming up next week?"
+- **Get briefed** with small persisted daily and weekly relationship briefs.
+- **Draft** thoughtful messages inside Tendnote — grounded in the memories and records that justify them, reviewable, and never sent for you.
 
-**Google Calendar is connected (Phase 2C).** From the account page an owner links Google Calendar through Better Auth, and Tendnote reads it **read-only**:
+### Actions and routines
 
-- **Calendar context** in Eve ("what's on my calendar?", "when am I meeting Maya?") and as minimized highlights in the daily and weekly briefs, all through one shared owner-scoped, cache-aside reader — never raw provider payloads, never stored as memory.
-- **Calendar-derived follow-up suggestions** after recent meetings, generated deterministically and held for review (accept or dismiss); nothing becomes an active reminder or external action on its own.
-- **Disconnect** revokes the Google grant, clears the cached events, and blocks further reads.
+Durable to-dos for *yourself*, separate from person follow-ups. Create one-off Actions ("renew the passport"), Routines on a simple cadence ("replace the water filter every 6 months"), or unscheduled "someday" items. Group them into Areas, work them from a focused Today view, and let Eve propose grounded suggestions you review before anything becomes active.
 
-Gmail draft creation is connected behind explicit approval with narrow `gmail.compose` consent. Contacts and shared household context remain later phases. See [`docs/prd.md`](docs/prd.md) for the full roadmap and [`docs/google-setup.md`](docs/google-setup.md) for OAuth setup.
+### Assets
 
-## How it's built
+The things you own, and what you know about them. An Asset holds typed memories (model numbers, purchase dates, warranty windows), evidence files like receipts and photos, links to related people and Actions, and a rebuildable context snapshot. Eve can propose asset facts and maintenance or renewal reminders — all review-gated.
 
-A lean Turborepo with pnpm workspaces:
+### Sharing and scope
 
-- `apps/web` — Next.js App Router UI, dashboard, people pages, Better Auth sign-up/sign-in, and a Vercel Flags private-beta access gate. The account page manages provider connections, including the Google Calendar connect/preview/disconnect flow. Also hosts the background-job queue consumers and recovery cron.
-- `apps/agent` — the Eve agent (tools — including a read-only Google Calendar read — skills, the brief dispatcher schedule, evals), mounted into the web app same-origin via `withEve()`, so the browser streams chat turns with no separate agent URL. See [`apps/agent/README.md`](apps/agent/README.md).
-- `packages/db` — Drizzle schema, migrations, and owner-scoped queries over Postgres (with pgvector) — including provider connections and the short-lived Google Calendar read cache — plus Postgres-owned background jobs (extraction, embeddings) delivered through a shared Vercel Queues + outbox foundation.
-- `packages/domain` / `packages/config` — shared types/validation and shared config.
+Every record carries a visibility scope: private, shared with selected household members, or visible to a whole household workspace. Scope is enforced in the query layer, so retrieval, search, and Eve all honor it. Household *management* (creating a household, inviting members) is not yet a product surface — households are provisioned through seed data today.
 
-See [`docs/architecture.md`](docs/architecture.md) for details and [`AGENTS.md`](AGENTS.md) for agent-facing guidance.
+### Connected services
+
+All connections are opt-in, individually consented, and narrowly scoped.
+
+| Service | What Tendnote does | What it never does |
+| --- | --- | --- |
+| **Google Calendar** | Reads events read-only for calendar context in chat, brief highlights, and deterministic post-meeting follow-up suggestions | Write to your calendar, store raw provider payloads, create people from attendees |
+| **Gmail** | Creates or updates a Gmail draft from a Tendnote draft you approved | Send email, read your mail, reconcile mailbox state |
+| **Google Contacts** | Powers an explicit import preview you confirm row by row | Auto-create people, store raw People API payloads |
+| **Discord** | Optional private capture channel and proactive delivery of briefs, aftercare, and action summaries | Read channels it wasn't invited to, act without your configured delivery targets |
+
+Disconnecting revokes the grant, clears cached data, and blocks further reads.
 
 ## Quick start
 
@@ -42,10 +48,28 @@ pnpm docker:up      # local Postgres (pgvector) + Redis
 pnpm install
 pnpm db:migrate     # apply committed migrations
 pnpm db:seed        # load demo data
-pnpm dev            # web app on :3000, Eve agent mounted same-origin
+pnpm dev            # web app on :3000, Eve mounted same-origin
 ```
 
-The only secret a typical local session needs is `AI_GATEWAY_API_KEY` in `apps/agent/.env.local`, and only to drive the conversational agent. For full setup, environment variables, and troubleshooting, see [`docs/local-development.md`](docs/local-development.md).
+Requires Node 24 and pnpm 10.32.1 (both pinned in `package.json`), plus Docker.
+
+The only secret a typical local session needs is `AI_GATEWAY_API_KEY` in `apps/agent/.env.local`, and only to drive the conversational assistant. Everything else has a working local default. For full setup, environment variables, and troubleshooting, see [`docs/local-development.md`](docs/local-development.md).
+
+## How it's built
+
+A lean Turborepo with pnpm workspaces:
+
+| Workspace | What's in it |
+| --- | --- |
+| [`apps/web`](apps/web/README.md) | Next.js App Router UI — dashboard, people, actions, assets, account and integration settings, Better Auth, the private-beta gate, and the background-job queue consumers |
+| [`apps/agent`](apps/agent/README.md) | Eve — tools, skills, subagents, the Discord channel, and the scheduled-workflow dispatcher. Mounted same-origin into the web app via `withEve()`, so the browser streams chat with no separate agent URL |
+| `packages/db` | Drizzle schema, migrations, and owner-scoped queries over Postgres with pgvector, plus the background-job stores |
+| `packages/domain` | Shared Zod schemas and domain types |
+| `packages/auth` | Shared Better Auth server baseline, so the web app and Eve verify the same sessions |
+| `packages/rate-limit` | Cost-category product rate limiting with a pluggable store |
+| `packages/config` | Shared TypeScript configuration |
+
+See [`docs/architecture.md`](docs/architecture.md) for how the pieces fit together and [`docs/security.md`](docs/security.md) for the privacy and trust boundaries.
 
 ## Quality gates
 
@@ -53,4 +77,16 @@ The only secret a typical local session needs is `AI_GATEWAY_API_KEY` in `apps/a
 pnpm verify   # typecheck, lint, test, build
 ```
 
-Tendnote uses Biome for linting, formatting, and import organization. See [`docs/local-development.md`](docs/local-development.md#quality-gates) for the individual commands and CI setup.
+CI runs a stricter path than `pnpm verify`: it collects Istanbul coverage (`pnpm coverage:ci`) and runs the Fallow codebase-intelligence gate (`pnpm fallow:coverage:check`, `pnpm fallow:ci`). Run `pnpm fallow` locally to see what that gate sees.
+
+Tendnote uses Biome for linting, formatting, and import organization. See [`docs/local-development.md`](docs/local-development.md#quality-gates) for individual commands, eval commands, and CI setup.
+
+## Docs
+
+- [`docs/local-development.md`](docs/local-development.md) — setup, environment variables, evals, CI
+- [`docs/architecture.md`](docs/architecture.md) — system design and boundaries
+- [`docs/security.md`](docs/security.md) — privacy model and trust boundaries
+- [`docs/google-setup.md`](docs/google-setup.md) — Google OAuth client setup
+- [`docs/discord-setup.md`](docs/discord-setup.md) — Discord app, capture, and delivery setup
+- [`docs/background-job-delivery.md`](docs/background-job-delivery.md) — production queue foundation
+- [`docs/prd.md`](docs/prd.md) — product roadmap · [`AGENTS.md`](AGENTS.md) — agent-facing guidance

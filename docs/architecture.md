@@ -1,48 +1,140 @@
 # Tendnote Architecture
 
-Tendnote is a lean pnpm/Turborepo workspace:
+Tendnote is a lean pnpm/Turborepo workspace. Two apps sit on top of five shared packages, and every durable read or write goes through owner-scoped query helpers in `@tendnote/db`.
 
-- `apps/web`: Next.js App Router UI, Better Auth route handler and auth pages (sign-up, sign-in, password reset, account, pending), the Vercel Flags private-beta access gate (`src/lib/access`, plus the `.well-known/vercel/flags` discovery endpoint), shadcn/ui, AI Elements, the dashboard (assistant panel beside a tabbed rail — Today's birthdays and the daily/weekly briefs, follow-ups, memory review, and people), and the people list and person profile pages. The account page also manages provider connections — including Google Calendar connect, preview, and disconnect plus Gmail draft externalization (`src/lib/integrations`). It also hosts the background-job queue consumers (`/api/queue/*`) and recovery cron (`/api/cron/background-jobs`). The assistant panel streams chat turns from the same-origin Eve mount via `useEveAgent`. `next.config.ts` wraps the config with `withEve()` (mounting `apps/agent`); the Eve channel gates its own hosted service routes; `src/lib/eve` renders persisted tool results.
-- `apps/agent`: Eve filesystem agent with instructions, skills, evals, the implemented tools (including a read-only Google Calendar read, `tools/list_calendar_events.ts`, over the shared reader composed in `lib/calendar.ts`), the `channels/eve.ts` HTTP channel the web app mounts same-origin via `withEve()`, and the `schedules/brief-dispatcher.ts` that generates persisted briefs. See [`apps/agent/README.md`](../apps/agent/README.md).
-- `packages/db`: Drizzle schema, migrations, local Postgres/Neon-compatible clients, owner-scoped query helpers (people, memories, source records, context snapshots, follow-ups, relationship agenda, briefs, brief schedules, drafts, Gmail draft actions, Exact Recall, semantic retrieval, access profiles, provider connections, the short-lived Google Calendar read cache and cache-aside reader, and calendar-derived suggested follow-ups), Postgres-owned background job stores (suggested-memory extraction and semantic embeddings) plus the shared background-job delivery (outbox) publish, and seed data.
-- `packages/domain`: Shared Zod schemas and TypeScript domain types.
-- `packages/config`: Shared TypeScript configuration.
-- `biome.json`: Root lint, format, and import-order configuration.
+## Workspace
 
-Local development defaults to Docker Postgres (pgvector) and Docker Redis. Production can use Neon by setting `DATABASE_URL` to the Neon connection string.
+| Workspace | Responsibility |
+| --- | --- |
+| `apps/web` | Next.js App Router UI, Better Auth routes and auth pages, the private-beta access gate, the dashboard/people/actions/assets surfaces, integration settings, background-job queue consumers, and the recovery cron |
+| `apps/agent` | Eve — instructions, tools, subagents, skills, the `eve` and `discord` channels, and the scheduled-workflow dispatcher. See [`apps/agent/README.md`](../apps/agent/README.md) |
+| `packages/db` | Drizzle schema and migrations, Postgres/Neon clients, owner-scoped queries, background-job stores, and seed data |
+| `packages/domain` | Shared Zod schemas and TypeScript domain types |
+| `packages/auth` | Shared Better Auth server baseline, so the web app and Eve verify identical sessions |
+| `packages/rate-limit` | Cost-category product rate limiting over a pluggable store |
+| `packages/config` | Shared TypeScript configuration |
+
+`biome.json` at the root owns lint, format, and import-order configuration.
+
+Local development runs Docker Postgres (pgvector) and Docker Redis. Production can use Neon by pointing `DATABASE_URL` at the Neon connection string.
+
+### Import direction
+
+```
+apps/web  ─┐
+           ├─→  @tendnote/auth  @tendnote/db  @tendnote/domain  @tendnote/rate-limit
+apps/agent ─┘
+                     @tendnote/db  ─→  @tendnote/domain
+```
+
+- `packages/auth` and `packages/rate-limit` may import infrastructure libraries but never app modules.
+- `packages/domain` stays independent of apps and of database implementation code.
+- Eve-specific code stays in `apps/agent`.
+- `@tendnote/db` has **no root barrel** — consumers import explicit subpaths (`./client`, `./schema`, `./queries/*`) so Eve's bundle stays lean.
+
+## Data model at a glance
+
+Tendnote stores three kinds of subject — **people**, **assets**, and **general actions** — plus the context attached to them.
+
+- **Source records** are logged raw context. **Memories** are approved durable facts. Extraction turns the former into suggestions for the latter.
+- **Follow-ups** are reminders to reconnect with a *person*. **General Actions** are durable to-dos for the *owner*; a Routine is a General Action with a simple cadence, and Areas group them.
+- **Assets** carry typed asset memories, evidence files, links to people and actions, and rebuildable snapshots (ADR 0180, 0181).
+- **Context snapshots** are rebuildable caches, never truth.
+
+Every record carries an owner and a visibility scope. An asset's scope is a ceiling for its child records (ADR 0179), and assets may link people without owning them (ADR 0178).
 
 ## Retrieval and background jobs
 
-Tendnote retrieves relationship context in layers, all behind owner-scoped query helpers in `packages/db`: snapshot-backed person context, Postgres full-text Exact Recall over canonical records, and pgvector semantic retrieval over approved memories and eligible logged source records. Hard filters (owner, scope, sensitivity, memory status) are applied before any ranking.
+Tendnote retrieves context in layers, all behind owner-scoped query helpers:
 
-Suggested-memory extraction and semantic embeddings run as Postgres-owned jobs that share the same lifecycle. Local development processes them inline so capture and approval stay responsive while newly captured context becomes searchable immediately; production can leave the work for a separate worker (`TENDNOTE_EMBEDDING_RUNTIME=enqueue_only`). Mutations enqueue or mark embedding work stale rather than blocking on an embedding API call (ADR 0013). Suggested-memory extraction runs through an LLM adapter as the production path, falling back to a deterministic adapter for tests and offline local development (ADR 0063). The offline adapter's model version is part of every embedding idempotency key and read filter. When that fixture version changes, old local vectors are intentionally ignored; reset the disposable local Postgres volume and rerun `pnpm db:migrate && pnpm db:seed` to rebuild them (after preserving any local-only data you care about). Both apps publish outbox deliveries through one shared owner-scoped `publishBackgroundJobDelivery` in `packages/db` (the queue transport is injected, so the data layer stays provider-agnostic and never imports the queue provider); the rate-limit-aware queue consumers stay in `apps/web`. The production queue delivery foundation, recovery path, and optional live smoke test are documented in `docs/background-job-delivery.md`.
+1. **Snapshot-backed context** — precomputed person and asset context.
+2. **Exact Recall** — Postgres full-text search over canonical records.
+3. **Semantic retrieval** — pgvector over approved memories, eligible logged source records, and General Actions.
+4. **Asset search** — unified exact-text, exact-structured-value, and fuzzy matching (ADR 0187).
 
-## Briefs and schedules
+Hard filters — owner, scope, sensitivity, memory status — are applied **before** any ranking, not after.
 
-Daily and weekly relationship briefs are persisted records selected deterministically from the shared relationship agenda (due follow-ups, birthdays, review items, recent context, semantic matches); an optional LLM summary line is presentation-only and never chooses items (ADR 0062). Generation is idempotent per owner, local date, and cadence. A single static Eve dispatcher schedule (`agent/schedules/brief-dispatcher.ts`) claims due Tendnote-owned schedule rows and calls the shared owner-scoped generator directly rather than starting a chat session per brief (ADR 0066). Message drafts (Phase 1G) are Tendnote-owned only: they persist the source references that grounded them and are never sent or pushed to an external service.
+Suggested-memory extraction, action extraction, and semantic embeddings run as Postgres-owned jobs sharing one lifecycle. Local development processes them inline so capture and approval stay responsive and new context is searchable immediately; production can leave the work to a separate worker (`TENDNOTE_EMBEDDING_RUNTIME=enqueue_only`). Mutations enqueue or mark embedding work stale rather than blocking on an embedding API call (ADR 0013). Extraction runs through an LLM adapter in production and a deterministic adapter for tests and offline local development (ADR 0063).
 
-## Provider connections and Google integrations
+> **Local gotcha:** the offline adapter's model version is part of every embedding idempotency key and read filter. When that fixture version changes, old local vectors are intentionally ignored — reset the disposable local Postgres volume and rerun `pnpm db:migrate && pnpm db:seed` to rebuild them.
 
-A Provider Connection is a user-scoped record of an external integration's authorization and consent boundaries, distinct from Better Auth sign-in and Private Beta Access (ADR 0069). Google capabilities are linked through Better Auth (`linkSocial`) from the account page, and the linked account's identity and granted scopes mirror into capability-specific Provider Connections. Calendar uses `calendar.events.readonly` for event reads (ADR 0071). Gmail uses incremental `gmail.compose` consent for draft create/update only, tracked separately as `google/gmail` (ADR 0090). Contacts uses incremental `contacts.readonly` consent for personal contact preview only, tracked separately as `google/contacts` and blocked if the linked Google identity differs from the existing Google capability identity.
+Both apps publish outbox deliveries through one shared owner-scoped `publishBackgroundJobDelivery` in `packages/db` (ADR 0194). The queue transport is injected, so the data layer stays provider-agnostic and never imports the queue provider; the rate-limit-aware consumers live in `apps/web`. See [`background-job-delivery.md`](background-job-delivery.md) for the production foundation, recovery path, and optional live smoke test.
 
-Calendar is **read-only** and read through one shared owner-scoped seam (`readConnectedOwnerCalendar`) that web previews, Eve's `list_calendar_events` tool, the brief generator, and the suggestion workflow all go through, so provider behavior never forks (ADR 0072, 0074, 0075). The reader is cache-aside over a short-lived, minimized event cache: live Google is the source of truth, the cache stores only normalized `CalendarEventSummary` rows (never raw payloads) keyed by owner + connection + calendar + bounded window, and it is not retrieval truth (ADR 0079). The cache is bounded — served fresh within its TTL, served stale only within a fallback window on live failure, pruned past that horizon on each live read, and fully cleared when the connection is revoked. The provider adapter and the access token are injected by the caller (token custody stays in Better Auth), so the shared seam never reaches for Google credentials itself. Calendar failures degrade gracefully: a disconnected or temporarily-unavailable calendar yields no context rather than throwing (ADR 0081).
+## Scheduled workflows
 
-Disconnect revokes the Google grant, unlinks the Better Auth account (so reads are blocked and the account-link reconcile cannot re-connect), and clears the cached events — cache-clearing is bound to the connection's revoke mutation, so any path that reaches `revoked` performs it (ADR 0080). Calendar-derived follow-up suggestions are generated deterministically from recent confirmed meetings, matched to existing people (never creating any), capped and deduped, and held for review; an optional LLM step may refine the reason but cannot widen scope, bypass caps, or create anything (ADR 0077, 0078, 0082).
+A single static Eve dispatcher schedule (`agent/schedules/brief-dispatcher.ts`) claims due Tendnote-owned schedule rows and calls shared owner-scoped generators directly, rather than starting a chat session per workflow (ADR 0066). It dispatches:
 
-Gmail draft creation externalizes approved, source-grounded Tendnote message drafts rather than creating a parallel Gmail-native drafting path (ADR 0083). Gmail draft actions persist minimized non-secret provider state, including the source Tendnote draft id, Gmail draft id, subject, confirmed recipient, status, version, and non-secret errors; message body remains on the Tendnote draft row and raw Gmail payloads, mailbox labels, thread metadata, and history are never stored (ADR 0084, ADR 0094). Gmail can create or update drafts after explicit approval/current user intent, but it never sends email, reads Gmail history, reconciles sent/deleted/edited draft state, exposes CC/BCC/attachments in the first slice, or background-retries failed writes (ADR 0088, ADR 0089, ADR 0091, ADR 0095).
+| Workflow | What it produces |
+| --- | --- |
+| Morning agenda / weekly relationship review | Persisted daily and weekly briefs |
+| Post-meeting aftercare | Review-gated follow-up suggestions after confirmed meetings |
+| Birthday and gift planning | Grounded, review-gated planning prompts |
+| Scoped action summary | A digest of due and overdue General Actions |
+
+Briefs are selected **deterministically** from the shared relationship agenda — due follow-ups, birthdays, review items, recent context, semantic matches. An optional LLM summary line is presentation-only and never chooses items (ADR 0062). Generation is idempotent per owner, local date, and cadence. Each workflow can optionally deliver to Discord.
+
+## Eve
+
+Eve is a filesystem agent mounted into the web app, not a separate product surface.
+
+**Modes** (`agent/lib/eve-modes.ts`) narrow behavior per entry point — `discord_capture`, `selected_person`, `drafting`, `scheduled_workflow`, `cleanup_preview` — across four callers: `web`, `discord`, `schedule`, `sandbox`. A mode can only restrict what Eve may do; it never widens it.
+
+**Subagents** are narrow and proposal-only. `memory_curator` proposes cleanup, `message_drafter` proposes ephemeral drafts, `relationship_strategist` proposes follow-ups from agenda/calendar/draft context, and `privacy_guard` reviews without any tools at all — deterministic scope enforcement in the query layer stays authoritative regardless of what any model says.
+
+**Cleanup Preview** is a sandbox: it parses messy pasted text, CSV, or vCard input into review-only candidates and writes nothing.
+
+Eve sessions provide short-term multi-turn continuity; durable product state stays in source records, memories, actions, and assets (ADR 0029, 0030).
+
+## Web chat to Eve
+
+`apps/web/next.config.ts` wraps Next with `withEve()`, which spawns the Eve agent and mounts `/eve/v1/*` at the same origin. The assistant panel streams turns directly with `useEveAgent` (`eve/react`) — no server-side turn proxy, no Eve URL, no CORS (ADR 0061).
+
+On Vercel, `withEve()` routes that prefix to the separate Eve service **before** Next filesystem routing. Next middleware therefore never sees these requests, which makes `channels/eve.ts` the hosted trust boundary: it reads the browser's Better Auth cookie, verifies the session using the shared database/Redis configuration, requires persisted Private Beta Access, charges the shared Eve ingress budget, and stamps the verified user id onto the session principal. Missing auth fails closed; only loopback development can resolve the configured demo owner (ADR 0194).
 
 ## Access and private beta
 
-Hosted access runs behind a Private Beta Access gate (Phase 2A). A Tendnote-owned access profile in Postgres is authoritative: an admitted user stays admitted regardless of the flag. Unadmitted users are evaluated against a server-side Vercel Flags flag (`private-beta-access`) using the trusted Better Auth session entity, so the browser cannot influence targeting; a grant is persisted durably so admission survives later flag-provider failures, and an unavailable provider fails closed (ADR 0067). Pending users land on `/pending` and never reach the app shell, relationship data, or Eve. Server-side resolution lives in `src/lib/access`; the Eve service independently verifies the same Better Auth cookie and persisted access decision at its channel boundary. Local development admits the dev fallback owner only through Eve's loopback authenticator.
+Hosted access runs behind a Private Beta Access gate. A Tendnote-owned access profile in Postgres is authoritative: an admitted user stays admitted regardless of the flag. Unadmitted users are evaluated against a server-side Vercel Flags flag (`private-beta-access`) using the **trusted Better Auth session entity**, so the browser cannot influence targeting. A grant is persisted durably so admission survives later flag-provider failures, and an unavailable provider fails closed (ADR 0067).
 
-## Web chat to agent
+Pending users land on `/pending` and never reach the app shell, relationship data, or Eve. Server-side resolution lives in `apps/web/src/lib/access`; the Eve channel independently verifies the same cookie and persisted decision at its own boundary. Local development admits the dev fallback owner only through Eve's loopback authenticator.
 
-`apps/web/next.config.ts` wraps Next with `withEve()`, which spawns the Eve agent (`apps/agent`) and mounts `/eve/v1/*` at the same origin. The assistant panel streams turns directly with `useEveAgent` (`eve/react`) — no server-side turn proxy, no Eve URL, no CORS (ADR 0061). On Vercel, `withEve()` routes that prefix to the separate Eve service before Next filesystem routing. Therefore `channels/eve.ts` is the hosted trust boundary: it reads the browser's Better Auth cookie, verifies the session using the shared database/Redis configuration, requires persisted Private Beta Access, charges the shared Eve ingress budget, and stamps the verified user id onto the session principal. Missing auth fails closed; only loopback development can resolve the configured demo owner (ADR 0194). Eve sessions provide short-term multi-turn continuity; durable product state stays in source records, memories, and follow-ups (ADR 0029, ADR 0030).
+## Provider connections and integrations
 
-Import direction:
+A **Provider Connection** is a user-scoped record of an external integration's authorization and consent boundaries, distinct from Better Auth sign-in and from Private Beta Access (ADR 0069). Google and Discord capabilities are linked through Better Auth (`linkSocial`) from the account page, and the linked account's identity and granted scopes mirror into capability-specific Provider Connections. Each capability is consented separately and tracked separately.
 
-- Apps may import `@tendnote/auth`, `@tendnote/db`, `@tendnote/domain`, and `@tendnote/rate-limit`.
-- `packages/auth` and `packages/rate-limit` may import infrastructure libraries but never app modules.
-- `packages/db` may import `@tendnote/domain`.
-- `packages/domain` must stay independent of apps and database implementation code.
-- Eve-specific code stays in `apps/agent`.
+### Google Calendar — read-only
+
+Calendar is read through **one** shared owner-scoped seam, `readConnectedOwnerCalendar`, that web previews, Eve's `list_calendar_events`, the brief generator, and the suggestion workflow all use, so provider behavior never forks (ADR 0072, 0074, 0075).
+
+The reader is cache-aside over a short-lived, minimized event cache. Live Google is the source of truth; the cache stores only normalized `CalendarEventSummary` rows — never raw payloads — keyed by owner, connection, calendar, and bounded window, and **it is not retrieval truth** (ADR 0079). It is served fresh within its TTL, served stale only within a fallback window on live failure, pruned past that horizon on each live read, and fully cleared on revoke.
+
+The provider adapter and access token are injected by the caller — token custody stays in Better Auth — so the shared seam never reaches for Google credentials itself. Failures degrade gracefully: a disconnected or temporarily unavailable calendar yields no context rather than throwing (ADR 0081).
+
+Disconnect revokes the Google grant, unlinks the Better Auth account (so reads are blocked and account-link reconcile cannot re-connect), and clears cached events. Cache-clearing is bound to the connection's revoke mutation, so any path reaching `revoked` performs it (ADR 0080).
+
+Calendar-derived follow-up suggestions are generated deterministically from recent confirmed meetings, matched to existing people (never creating any), capped, deduped, and held for review. An optional LLM step may refine the reason but cannot widen scope, bypass caps, or create anything (ADR 0077, 0078, 0082).
+
+### Gmail — drafts only
+
+Gmail externalizes approved, source-grounded Tendnote message drafts rather than creating a parallel Gmail-native drafting path (ADR 0083). It uses incremental `gmail.compose` consent, tracked separately as `google/gmail` (ADR 0090).
+
+Gmail draft actions persist minimized non-secret provider state — source Tendnote draft id, Gmail draft id, subject, confirmed recipient, status, version, non-secret errors. The message body stays on the Tendnote draft row; raw Gmail payloads, mailbox labels, thread metadata, and history are never stored (ADR 0084, 0094). Gmail can create or update drafts after explicit approval, but never sends email, reads Gmail history, reconciles sent/deleted/edited draft state, exposes CC/BCC/attachments in the first slice, or background-retries failed writes (ADR 0088, 0089, 0091, 0095).
+
+### Google Contacts — preview only
+
+Contacts uses incremental `contacts.readonly` consent, tracked separately as `google/contacts`, and is blocked if the linked Google identity differs from the existing Google capability identity. It reads only for an explicit preview flow; unconfirmed provider rows are not durable relationship data, raw People API payloads are not stored, and confirmed imported people and contact fields remain Tendnote-owned after disconnect.
+
+### Discord — capture and delivery
+
+The Discord channel verifies Ed25519 interaction signatures against `DISCORD_PUBLIC_KEY` before doing anything else. Capture writes a **source record** for review — never a memory directly — and enqueues extraction, action-extraction, and embedding jobs. Human-in-the-loop uses an ephemeral clarification modal and a "review in Tendnote" button.
+
+Proactive delivery POSTs to configured channel targets with `DISCORD_BOT_TOKEN` and returns `null` when unconfigured, so delivery is strictly opt-in. Hosted owner identity resolves through Better Auth Discord account linking; `DISCORD_OWNER_USER_MAP` is a dev/private-beta fallback only, not the hosted resolution path. See [`discord-setup.md`](discord-setup.md).
+
+## Household scope
+
+Every record carries a visibility scope: **private**, **shared with selected members**, or **whole household**. Scope is enforced deterministically in the query layer, so retrieval, search, Eve tools, and UI all inherit it rather than each re-implementing it. `packages/db/src/queries/households.ts` owns membership and share mutations.
+
+Household *management* is not yet a product surface — there is no route or server action to create a household or invite a member, and households are provisioned through seed data today. The enforcement substrate is complete and tested; the onboarding UI is not built.
+
+## Rate limiting
+
+`@tendnote/rate-limit` defines cost categories rather than per-route limits: `eve-ingress` (30/60s), `server-action` (60/60s), `llm-extraction` (20/60s), `embedding` (60/60s), and `provider-call` (60/60s). The store is pluggable — Redis in the web app, a fake in tests — so limits are testable without infrastructure.
