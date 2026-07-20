@@ -13,6 +13,17 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
+## Wayfinding operations
+
+Used by `/wayfinder`. The **map** is a single issue with native child issues as tickets.
+
+- **Map**: create one issue labelled `wayfinder:map`, holding Destination, Notes, Decisions so far, Not yet specified, and Out of scope.
+- **Child ticket**: create the ticket with `gh issue create --parent <map-number>` and one of `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, or `wayfinder:task`.
+- **Blocking**: use GitHub native issue dependencies. Resolve the blocker database id with `gh api repos/<owner>/<repo>/issues/<blocker-number> --jq .id`, then add the edge with `gh api --method POST repos/<owner>/<repo>/issues/<blocked-number>/dependencies/blocked_by -F issue_id=<blocker-db-id>`. The database id is not the issue number or node id.
+- **Frontier query**: list the map's open children and keep only unassigned tickets whose `issue_dependencies_summary.blocked_by` count is zero. The first child in map order wins.
+- **Claim**: `gh issue edit <number> --add-assignee @me` before doing any ticket work.
+- **Resolve**: post the answer as a resolution comment, close the ticket, then append a one-line gist and named link to the map's Decisions-so-far section.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
