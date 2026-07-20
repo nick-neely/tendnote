@@ -1321,7 +1321,7 @@ Deferred Asset Memory follow-ups:
 
 #### Phase 7: Personal OS Capture and Today Layer
 
-Goal: Add the mobile-first operating layer for broad personal capture, routing, today's priorities, and slipping/resurfacing across people and the first non-people vertical.
+Goal: Add the mobile-first operating layer for broad personal capture, routing, a calm Today shortlist, and slipping/resurfacing across people and the first non-people vertical.
 
 Deliverables:
 
@@ -1341,11 +1341,20 @@ Agent-backed surface contract:
 - A clear, bounded purpose-built control is explicit user intent and does not need conversational reconfirmation. Shared mutations still enforce ownership, freshness, validation, audit, and approval policy, while consequential external actions retain their dedicated preview and confirmation gates.
 - Capability fallbacks are defined at the server boundary rather than improvised by clients: Today may use deterministic ordering, search may identify an exact or structured fallback, generation-only behavior reports unavailable, and mutations whose arguments depended on failed reasoning fail closed. Minimized operational traces cover capability identity/version, authenticated owner, timing, outcome, and failures under bounded retention; durable product audit remains required for mutations and persisted generated artifacts retain their source references and generation provenance.
 
+Today candidate and curation contract:
+
+- Today may consider visible active Follow-Ups that are due or overdue; birthdays inside a deterministic preparation window; due, overdue, or deliberately resurfaced General Actions and Routines; same-day Calendar events and narrowly relevant recent-event context; persisted review items; active Saved Items whose `bringBackAt` has arrived; undated active Saved Items that pass deterministic age and cooldown gates; and source-grounded relationship context that has a concrete deterministic stale or resurfacing reason. Archived, completed, or dismissed records, restricted proactive content, raw Source Records, and bare People or Assets are ineligible; a Person or Asset appears only through an eligible attached record.
+- Deterministic owner-scoped policy owns visibility, lifecycle and sensitivity gates, due and preparation windows, cooldown and prior-feedback suppression, deduplication, per-family bounds, mandatory inclusion, and the bounded candidate pool. Each candidate carries authoritative identity, source references, allowed actions, and factual reason codes. Eve may rank optional candidates for relevance and cross-domain balance and phrase their explanations, but it cannot add an ineligible record, remove a mandatory record, alter an action, or persist a hidden score. On failure, Today orders time-bound items first, then explicit bring-backs, then the oldest eligible items while balancing domains.
+- Today shows at most five items and normally targets three. When more than five time-bound items qualify, deterministic policy fills the cap with the oldest overdue items followed by chronological due order, and the surface offers a quiet count-and-link to the relevant complete domain surfaces; Eve does not choose which time-bound items survive the cap, and omission never mutates or dismisses a record.
+- Eligibility refreshes when Today opens and immediately after an owner action. Eve recuration runs only when the eligible candidate fingerprint changes, the owner explicitly refreshes, or the owner's local day rolls over; otherwise ordering remains stable for the visit. There is no background reshuffling, unread count, or persisted priority or effort classification.
+- Every item shows one concise `why today` explanation derived from its factual reason code, such as due timing, an explicit bring-back, a birthday preparation window, record age plus cooldown, or time awaiting review. Eve may make the wording natural but must not infer importance, urgency, intent, or emotional significance; deterministic copy remains available as fallback.
+- `Act` uses the backing record's real domain control, such as completing a General Action or Follow-Up, opening a review item, viewing a Calendar event, or opening its supporting record; Today has no generic completion mutation. `Later` creates Today-only suppression until an owner-selected time without changing the underlying due date, `bringBackAt`, recurrence, or lifecycle. `Not today` suppresses the candidate only for the rest of the owner's local day; permanent removal requires an explicit domain action. Feedback keys to authoritative candidate identity plus reason, so a materially changed record may become eligible again without inventing priority or effort.
+
 Vertical slice issue seeds:
 
 - Add mobile-first fast capture and confirmation.
 - Add AI-assisted routing from capture into reviewable outcomes.
-- Add Today dashboard with capped, explainable priorities.
+- Add Today dashboard with a capped, explainable cross-domain shortlist.
 - Add slipping/resurfacing read model.
 - Extend search and Eve chat across supported domains with typed result contracts.
 

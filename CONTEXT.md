@@ -100,6 +100,10 @@ _Avoid_: Chat-only UI, autonomous workflow, client-side agent policy
 A named, owner-scoped operation with a typed input and output that may use agent reasoning while leaving product policy authoritative; Eve and Agent-Backed Surfaces reach it through thin channel adapters rather than hidden chat turns. Read-only results may remain ephemeral when they carry authoritative record references, source grounding, and trust metadata, but actionable, reviewable, or reloadable output must first become a persisted domain or review artifact.
 _Avoid_: Hidden prompt workflow, UI agent, chat simulation
 
+**Today**:
+The owner's capped cross-domain mobile home shortlist of visible, currently eligible record references. Today may use ephemeral Eve curation inside deterministic policy, but it is not a persisted brief, task backlog, priority queue, or source of truth.
+_Avoid_: Daily Brief, task inbox, backlog, generated priority list
+
 **Daily Brief**:
 A small set of relationship suggestions for today. It should stay capped and useful rather than becoming a task feed.
 _Avoid_: Pipeline, queue, inbox
