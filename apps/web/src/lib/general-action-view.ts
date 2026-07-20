@@ -9,7 +9,8 @@ import type {
   GeneralActionStatus,
   PrivacyScope,
 } from "@tendnote/domain";
-import { assetLabelForKind, describeRecurrence, startOfLocalDay } from "@tendnote/domain";
+import { assetLabelForKind } from "@tendnote/domain/assets";
+import { describeRecurrence, startOfLocalDay } from "@tendnote/domain/general-actions";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { toDateInputValue } from "@/lib/followup-view";
 

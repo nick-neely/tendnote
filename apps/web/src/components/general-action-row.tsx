@@ -480,11 +480,14 @@ function ActionOverflowMenu({
   onDismiss: () => void;
   onArchive: () => void;
 }) {
+  const mobileItemClassName = "max-sm:min-h-11";
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           aria-label="More actions"
+          className="max-sm:min-h-11 max-sm:min-w-11"
           disabled={pending}
           size="icon-sm"
           type="button"
@@ -498,14 +501,14 @@ function ActionOverflowMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={onSetAside}>
+        <DropdownMenuItem className={mobileItemClassName} onSelect={onSetAside}>
           <ClockIcon />
           Set aside
         </DropdownMenuItem>
         {/* Pausing suspends a Routine's recurrence until resumed — a one-time
             Action has nothing to pause, so this only shows for Routines (ADR 0148). */}
         {action.isRoutine ? (
-          <DropdownMenuItem onSelect={onPause}>
+          <DropdownMenuItem className={mobileItemClassName} onSelect={onPause}>
             <PauseIcon />
             Pause routine
           </DropdownMenuItem>
@@ -513,27 +516,27 @@ function ActionOverflowMenu({
         {/* Content, people, and visibility belong to the owner; a viewing member
             can still act on the Action above, but not re-author it (ADR 0153). */}
         {action.owned ? (
-          <DropdownMenuItem onSelect={onEdit}>
+          <DropdownMenuItem className={mobileItemClassName} onSelect={onEdit}>
             <PencilIcon />
             Edit
           </DropdownMenuItem>
         ) : null}
         {action.owned && shareableMembers.length ? (
-          <DropdownMenuItem onSelect={onShare}>
+          <DropdownMenuItem className={mobileItemClassName} onSelect={onShare}>
             <UsersIcon />
             Visibility
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem onSelect={onHistory}>
+        <DropdownMenuItem className={mobileItemClassName} onSelect={onHistory}>
           <HistoryIcon />
           History
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onDismiss}>
+        <DropdownMenuItem className={mobileItemClassName} onSelect={onDismiss}>
           <XIcon />
           Dismiss
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onArchive}>
+        <DropdownMenuItem className={mobileItemClassName} onSelect={onArchive}>
           <ArchiveIcon />
           Archive
         </DropdownMenuItem>
@@ -723,6 +726,7 @@ export function ActionRow({
       </div>
       <div className="flex items-center justify-end gap-1.5">
         <Button
+          className="max-sm:min-h-11"
           disabled={pending}
           onClick={() => {
             if (action.isRoutine) {

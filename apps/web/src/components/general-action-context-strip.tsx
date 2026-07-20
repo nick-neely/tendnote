@@ -1,6 +1,6 @@
 "use client";
 
-import { assetHintLabelsMatch } from "@tendnote/domain";
+import { assetHintLabelsMatch } from "@tendnote/domain/general-action-asset-links";
 import { PlusIcon } from "lucide-react";
 import { useState, useTransition } from "react";
 import { promoteAssetHintAction } from "@/app/actions/general-actions";

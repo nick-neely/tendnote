@@ -21,6 +21,7 @@
     "format:check": "biome format .",
     "typecheck": "turbo typecheck",
     "test": "vitest run scripts/*.test.ts && turbo test",
+    "test:browser": "pnpm --filter @tendnote/web test:browser",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",

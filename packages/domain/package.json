@@ -15,6 +15,8 @@
     "./context-snapshots": "./src/context-snapshots.ts",
     "./followups": "./src/followups.ts",
     "./general-actions": "./src/general-actions.ts",
+    "./general-action-asset-links": "./src/general-action-asset-links.ts",
+    "./local-calendar-dates": "./src/local-calendar-dates.ts",
     "./drafts": "./src/drafts.ts",
     "./gmail-drafts": "./src/gmail-drafts.ts",
     "./privacy": "./src/privacy.ts",

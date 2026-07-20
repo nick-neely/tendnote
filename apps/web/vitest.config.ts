@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 // Mirror the tsconfig `@/*` -> `./src/*` path alias so component tests can import
 // app modules the same way the app does. Scoped to `@/` so workspace packages
@@ -12,5 +12,8 @@ export default defineConfig({
         replacement: `${fileURLToPath(new URL("./src", import.meta.url))}/`,
       },
     ],
+  },
+  test: {
+    exclude: [...configDefaults.exclude, "**/*.browser.test.{ts,tsx}"],
   },
 });

@@ -1,5 +1,6 @@
 import type { Followup, FollowupStatus } from "@tendnote/domain";
-import { parseLocalCalendarDate, startOfLocalDay } from "@tendnote/domain";
+import { startOfLocalDay } from "@tendnote/domain/general-actions";
+import { parseLocalCalendarDate } from "@tendnote/domain/local-calendar-dates";
 import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain/privacy";
 
 /**

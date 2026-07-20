@@ -1,7 +1,7 @@
 "use client";
 
 import type { GeneralActionRecurrence, GeneralActionRecurrenceUnit } from "@tendnote/domain";
-import { MAX_RECURRENCE_INTERVAL } from "@tendnote/domain";
+import { MAX_RECURRENCE_INTERVAL } from "@tendnote/domain/general-actions";
 import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import {
