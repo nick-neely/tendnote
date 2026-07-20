@@ -93,8 +93,12 @@ The conversational Tendnote interface where the assistant can respond with natur
 _Avoid_: Raw chatbot, task manager
 
 **Agent-Backed Surface**:
-A purpose-built Tendnote interface that uses the same owner-scoped agent capabilities and product functions as Eve while presenting controls and results suited to its task. An agent-backed surface is not a chat skin, a separate autonomous agent, or a place to duplicate product policy in the client.
+A purpose-built Tendnote interface that shares Eve's owner-scoped product functions, grounding, audit, and approval policy while presenting controls and results suited to its task. Deterministic policy owns eligibility and caps; the surface calls product functions directly for structured intent and limits agent reasoning to interpretation, generation, semantic retrieval, or ranking and explanation within a validated candidate set.
 _Avoid_: Chat-only UI, autonomous workflow, client-side agent policy
+
+**Agent Capability**:
+A named, owner-scoped operation with a typed input and output that may use agent reasoning while leaving product policy authoritative; Eve and Agent-Backed Surfaces reach it through thin channel adapters rather than hidden chat turns. Read-only results may remain ephemeral when they carry authoritative record references, source grounding, and trust metadata, but actionable, reviewable, or reloadable output must first become a persisted domain or review artifact.
+_Avoid_: Hidden prompt workflow, UI agent, chat simulation
 
 **Daily Brief**:
 A small set of relationship suggestions for today. It should stay capped and useful rather than becoming a task feed.

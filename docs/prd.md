@@ -1331,6 +1331,16 @@ Deliverables:
 - Slipping/resurfacing rules for stale context, overdue actions, unresolved decisions, and saved items worth revisiting
 - Global search and grounded Eve chat across supported domains
 
+Agent-backed surface contract:
+
+- Today, search, review, and resurfacing are purpose-built surfaces over the same owner-scoped product functions as Eve, not hidden chat turns or separate agents. When a control or query already expresses structured intent, its authenticated server boundary calls the shared function directly; the client never supplies the authoritative owner scope or reimplements product policy.
+- Reasoning that is actually needed is exposed as a named Agent Capability with typed, channel-neutral input and output. Eve reaches it through a thin tool adapter and purpose-built surfaces through thin server adapters, so channels may present the result differently without changing its facts, eligible actions, grounding, trust state, or approval requirements.
+- Deterministic server policy remains authoritative for visibility, lifecycle eligibility, mandatory inclusion or exclusion, shortlist caps, and approval gates. An Agent Capability may interpret, generate, semantically retrieve, rank, or explain only within its validated scope; its output is revalidated before use and may not create eligibility or authorize a mutation.
+- Opening Today may automatically invoke its declared read-only ranking and explanation capability over an already policy-filtered, bounded candidate set. It performs no writes or new provider access, observes a tight timeout, and falls back visibly to stable deterministic ordering; other capabilities require the intent expressed by their control or query.
+- Read-only search, ranking, and explanation results may remain ephemeral when they include typed authoritative-record references, source grounding, and trust metadata. Any output that is actionable, reviewable, reloadable, or expected to survive refresh must first be persisted as the appropriate domain or review artifact, and controls must reload that authoritative record before acting.
+- A clear, bounded purpose-built control is explicit user intent and does not need conversational reconfirmation. Shared mutations still enforce ownership, freshness, validation, audit, and approval policy, while consequential external actions retain their dedicated preview and confirmation gates.
+- Capability fallbacks are defined at the server boundary rather than improvised by clients: Today may use deterministic ordering, search may identify an exact or structured fallback, generation-only behavior reports unavailable, and mutations whose arguments depended on failed reasoning fail closed. Minimized operational traces cover capability identity/version, authenticated owner, timing, outcome, and failures under bounded retention; durable product audit remains required for mutations and persisted generated artifacts retain their source references and generation provenance.
+
 Vertical slice issue seeds:
 
 - Add mobile-first fast capture and confirmation.
