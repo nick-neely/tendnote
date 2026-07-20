@@ -2,6 +2,12 @@ name: Reusable verify
 
 on:
   workflow_call:
+    inputs:
+      run_database:
+        description: Run migration drift and clean replay checks
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -22,6 +28,7 @@ env:
 jobs:
   database:
     name: Database
+    if: inputs.run_database
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -61,8 +68,8 @@ jobs:
       - name: Replay migrations
         run: pnpm db:migrate
 
-  lint:
-    name: Lint and format
+  quality:
+    name: Quality
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -85,8 +92,11 @@ jobs:
       - name: Lint and format
         run: pnpm lint
 
-  fallow:
-    name: Fallow
+      - name: Typecheck
+        run: pnpm typecheck
+
+  test_fallow:
+    name: Test and Fallow
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -108,12 +118,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Fallow uses this Istanbul map for exact per-function CRAP scores. Keep
-      # coverage collection immediately before the audit so it cannot regress
-      # to reference-based coverage estimates unnoticed. Workspaces run one at
-      # a time: four concurrent Vitest processes overwhelm the two-core runner
-      # and can destabilize async DOM tests instead of making this job faster.
-      - name: Collect test coverage
+      # This is the canonical CI test pass. Fallow uses its Istanbul map for
+      # exact per-function CRAP scores, so running a second non-coverage test
+      # job would repeat the same suites without adding another behavior gate.
+      # Workspaces stay serial within this two-core runner; concurrent Vitest
+      # processes can destabilize async DOM tests under coverage.
+      - name: Run tests with coverage
         run: pnpm coverage:ci
 
       - name: Confirm exact CRAP scoring
@@ -122,128 +132,25 @@ jobs:
       - name: Run Fallow audit
         run: pnpm fallow:ci
 
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Test
-        run: pnpm test
-
-  typecheck:
-    name: Typecheck
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: pgvector/pgvector:pg17
-        env:
-          POSTGRES_DB: tendnote
-          POSTGRES_USER: tendnote
-          POSTGRES_PASSWORD: tendnote
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U tendnote -d tendnote"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Cache Next.js build artifacts
-        uses: actions/cache@v6
-        with:
-          path: apps/web/.next/cache
-          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**', 'apps/web/next.config.*', 'apps/web/postcss.config.*', 'apps/web/tsconfig*.json', 'packages/**/src/**', 'package.json', 'pnpm-workspace.yaml', 'turbo.json') }}
-          restore-keys: |
-            next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-            next-${{ runner.os }}-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Replay migrations
-        run: pnpm db:migrate
-
-      - name: Build
-        run: pnpm build
-
   verify:
     name: Verify
     runs-on: ubuntu-latest
     if: always()
     needs:
       - database
-      - lint
-      - fallow
-      - test
-      - typecheck
-      - build
+      - quality
+      - test_fallow
     steps:
       - name: Check verification results
         run: |
-          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" || "${{ contains(needs.*.result, 'skipped') }}" == "true" ]]; then
-            echo "One or more verification jobs failed, were cancelled, or were skipped."
+          if [[ "${{ needs.quality.result }}" != "success" || "${{ needs.test_fallow.result }}" != "success" ]]; then
+            echo "Quality or test-and-Fallow verification did not succeed."
             exit 1
           fi
+
+          if [[ "${{ inputs.run_database }}" == "true" && "${{ needs.database.result }}" != "success" ]]; then
+            echo "Database verification was required but did not succeed. Result: ${{ needs.database.result }}"
+            exit 1
+          fi
+
+          echo "Verification passed."
