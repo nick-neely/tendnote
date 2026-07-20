@@ -16,12 +16,15 @@ describe("Fallow CI coverage contract (#193)", () => {
     expect(rootPackage.scripts["coverage:ci"]).toBe("node scripts/collect-test-coverage.mjs");
     expect(rootPackage.devDependencies).toHaveProperty("@vitest/coverage-istanbul");
     expect(rootPackage.devDependencies).toHaveProperty("istanbul-lib-coverage");
+    expect(collector).toContain('"packages/auth"');
+    expect(collector).toContain('"packages/rate-limit"');
     expect(collector).toContain('"apps/agent"');
     expect(collector).toContain('"apps/web"');
     expect(collector).toContain('"packages/db"');
     expect(collector).toContain('"packages/domain"');
     expect(collector).toContain("--coverage.provider=istanbul");
     expect(collector).toContain("coverage-final.json");
+    expect(collector).toContain('["exec", "vitest", "run", "scripts"]');
   });
 
   it("collects workspaces sequentially so CI resource contention cannot destabilize DOM tests", () => {
@@ -40,7 +43,9 @@ describe("Fallow CI coverage contract (#193)", () => {
       "node scripts/assert-fallow-coverage.mjs",
     );
     expect(workflow).toMatch(
-      /- name: Collect test coverage\s+run: pnpm coverage:ci\s+\n?\s*- name: Confirm exact CRAP scoring\s+run: pnpm fallow:coverage:check\s+\n?\s*- name: Run Fallow audit/,
+      /- name: Run tests with coverage\s+run: pnpm coverage:ci\s+\n?\s*- name: Confirm exact CRAP scoring\s+run: pnpm fallow:coverage:check\s+\n?\s*- name: Run Fallow audit/,
     );
+    expect(workflow).not.toMatch(/\n {2}test:\n/);
+    expect(workflow).not.toMatch(/\n {2}build:\n/);
   });
 });

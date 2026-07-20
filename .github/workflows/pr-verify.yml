@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       verify: ${{ steps.filter.outputs.verify }}
+      database: ${{ steps.filter.outputs.database }}
     steps:
       - name: Check paths
         id: filter
@@ -30,9 +31,8 @@ jobs:
               - '.fallowrc*'
               - 'apps/**'
               - 'packages/**'
-              - 'docs/**'
               - 'public/**'
-              - 'README.md'
+              - 'scripts/**'
               - 'biome.json'
               - 'components.json'
               - 'docker-compose.yml'
@@ -41,17 +41,44 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
               - 'tsconfig*.json'
+            database:
+              - '.github/workflows/**'
+              - 'packages/db/src/schema/**'
+              - 'packages/db/migrations/**'
+              - 'packages/db/drizzle.config.ts'
+              - 'packages/db/package.json'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
 
   verify:
     needs: changes
     if: needs.changes.outputs.verify == 'true'
     uses: ./.github/workflows/reusable-verify.yml
+    with:
+      run_database: ${{ needs.changes.outputs.database == 'true' }}
 
-  verify-skipped:
+  gate:
     name: Verify
-    needs: changes
-    if: needs.changes.outputs.verify != 'true'
+    needs:
+      - changes
+      - verify
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: No verification needed
-        run: echo "No application, package, workflow, or documentation paths changed."
+      - name: Check PR verification
+        run: |
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "Change detection failed."
+            exit 1
+          fi
+
+          if [[ "${{ needs.changes.outputs.verify }}" == "true" && "${{ needs.verify.result }}" != "success" ]]; then
+            echo "Verification was required but did not succeed. Result: ${{ needs.verify.result }}"
+            exit 1
+          fi
+
+          if [[ "${{ needs.changes.outputs.verify }}" != "true" ]]; then
+            echo "No application, package, workflow, or CI script paths changed."
+          fi
+
+          echo "PR verification gate passed."
