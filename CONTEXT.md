@@ -21,7 +21,7 @@ The minimized source record text Tendnote keeps for retrieval, grounding, and re
 _Avoid_: Raw dump, full transcript
 
 **Pending Source Record**:
-A source record captured before Tendnote has resolved the person or decided whether the record should be retained. Pending source records can appear in review, but should not feed normal profiles, briefs, or drafts until resolved.
+A source record captured before Tendnote has resolved its person, destination, or another consequential field needed for the intended outcome. Pending source records can appear in review, but should not feed normal profiles, briefs, or drafts until resolved.
 _Avoid_: Orphan memory, unresolved fact
 
 **Personless Source Record**:
@@ -71,6 +71,10 @@ _Avoid_: Automatic task, inferred todo, suggested follow-up
 **Saved Item**:
 An owner- or household-scoped, source-grounded note, link, or open question that Eve keeps when an explicit capture has no better supported destination. A saved item is private by default, may have a date to bring it back, follows an active/archive lifecycle, and may resolve into linked domain records, but it is not a task, project, tag, document inbox, or replacement for a person, General Action, or Asset.
 _Avoid_: Inbox item, generic record, task, bookmark collection
+
+**Capture Outcome**:
+A domain record or review artifact produced from one explicit typed or dictated capture. One capture may have multiple explicitly requested outcomes, while outcomes inferred beyond the owner's instruction remain review-gated.
+_Avoid_: Parsed intent, agent action, capture result
 
 **Asset**:
 A practical owner- or household-scoped thing Tendnote tracks over time — an appliance, vehicle, subscription, service, property, or kept item — with a fixed kind, visibility scope, active/archive lifecycle, and internal audit trail; Asset Memories, evidence, and links attach to it in later Phase 6 slices. An asset is never a person, project, document library, or generic object.
