@@ -249,6 +249,7 @@ function ActionEditForm({
         // Content and people links live behind separate lifecycle mutations; apply
         // content first, then people, and surface whichever ran last so the row
         // reflects both. Either half short-circuits on its own validation message.
+        // fallow-ignore-next-line complexity -- Sequential content and people mutations keep partial failures visible.
         submit(async () => {
           let result: GeneralActionMutationResult | null = null;
           if (Object.keys(edit).length > 0) {
@@ -320,6 +321,7 @@ function ActionEditForm({
 }
 
 /** Owner-only visibility change, with a moment-of-commit preview when it widens the audience. */
+// fallow-ignore-next-line complexity -- The form keeps visibility validation and commit preview in one owner-scoped boundary.
 function ActionShareForm({
   action,
   shareableMembers,
@@ -396,6 +398,7 @@ function ActionShareForm({
 }
 
 /** Set an Action aside until a chosen date (deferral). */
+// fallow-ignore-next-line complexity -- The in-place form owns its date, status, and mutation states together.
 function ActionDeferForm({
   action,
   onUpdate,

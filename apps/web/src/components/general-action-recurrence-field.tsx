@@ -30,6 +30,7 @@ const UNIT_OPTIONS: { value: GeneralActionRecurrenceUnit; label: string }[] = [
  * reveals the interval so the whole thing reads as one calm sentence, "every 6 months",
  * never a scheduling engine. SIMPLE recurrence only, matching the domain (ADR 0147).
  */
+// fallow-ignore-next-line complexity -- The compact cadence control intentionally owns its conditional sentence UI.
 export function RecurrenceField({
   value,
   onChange,

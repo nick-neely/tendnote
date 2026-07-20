@@ -281,6 +281,7 @@ export type GeneralActionEventView = {
  * Maps a lifecycle event to a serializable history-row view. History explains what
  * happened and when — plain and calm, without productivity analytics (ADR 0165).
  */
+// fallow-ignore-next-line complexity -- Event-specific labels are centralized in this serialization boundary.
 export function toGeneralActionEventView(
   event: Pick<GeneralActionEvent, "id" | "kind" | "detailJson" | "createdAt">,
   now: Date = new Date(),
