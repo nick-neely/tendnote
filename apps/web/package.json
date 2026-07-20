@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "biome check src next.config.ts postcss.config.mjs components.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "test:browser": "vitest run --config vitest.browser.config.ts"
   },
   "dependencies": {
     "@better-auth/redis-storage": "^1.6.20",
@@ -63,8 +64,10 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/browser-playwright": "^4.1.9",
     "babel-plugin-react-compiler": "1.0.0",
     "jsdom": "^29.1.1",
+    "playwright": "1.61.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.0.16"

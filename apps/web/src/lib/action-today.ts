@@ -1,5 +1,5 @@
 import type { ActionSurfacingReason } from "@tendnote/domain";
-import { classifyActionSurfacing } from "@tendnote/domain";
+import { classifyActionSurfacing } from "@tendnote/domain/general-actions";
 import type { GeneralActionLinkedAssetView, GeneralActionView } from "@/lib/general-action-view";
 
 /**

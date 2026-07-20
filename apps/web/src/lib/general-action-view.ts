@@ -9,7 +9,8 @@ import type {
   GeneralActionStatus,
   PrivacyScope,
 } from "@tendnote/domain";
-import { assetLabelForKind, describeRecurrence, startOfLocalDay } from "@tendnote/domain";
+import { assetLabelForKind } from "@tendnote/domain/assets";
+import { describeRecurrence, startOfLocalDay } from "@tendnote/domain/general-actions";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { toDateInputValue } from "@/lib/followup-view";
 
@@ -280,6 +281,7 @@ export type GeneralActionEventView = {
  * Maps a lifecycle event to a serializable history-row view. History explains what
  * happened and when — plain and calm, without productivity analytics (ADR 0165).
  */
+// fallow-ignore-next-line complexity -- Event-specific labels are centralized in this serialization boundary.
 export function toGeneralActionEventView(
   event: Pick<GeneralActionEvent, "id" | "kind" | "detailJson" | "createdAt">,
   now: Date = new Date(),

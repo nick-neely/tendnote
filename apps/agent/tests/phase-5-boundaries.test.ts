@@ -28,7 +28,7 @@ const repoRoot = join(import.meta.dirname, "../../..");
  * journey) is proven by the slice suites and by
  * `packages/db/src/queries/phase-5-general-actions-e2e.test.ts`.
  *
- * DOCUMENTED GAP (AC2 "mobile-usable UI behavior", AC5) — NARROWED by #191, not fully closed:
+ * DOCUMENTED GAP (AC2 "mobile-usable UI behavior", AC5) — CLOSED by #191 and #192:
  * the mobile assertions below stay SOURCE-LEVEL — they confirm the Today/Actions surfaces are
  * built with the repo's mobile-first responsive utilities (vertical `flex flex-col` stacking,
  * `sm:` reflow), never fixed-pixel layout. They remain the *absence* boundary; they are no
@@ -38,9 +38,12 @@ const repoRoot = join(import.meta.dirname, "../../..");
  * and error states (`chat-general-action-review-card.dom.test.tsx`, `suggested-general-action-review.dom.test.tsx`),
  * the deep-link scroll/focus/pulse hook (`use-deep-link-highlight.dom.test.tsx`), and the Today
  * glance's ledger-hop links plus control reachability at a phone width (`action-today-surface.dom.test.tsx`).
- * What is STILL open: jsdom has no layout engine, so it computes no CSS, media queries, or box
- * sizes — real pixel reflow at a breakpoint and touch-target sizing are not proven here and would
- * need a real-browser harness. That thinner residual is the remaining ADR 0161 gap.
+ * The remaining layout-engine gap is covered by the bounded Chromium component contracts in
+ * `action-mobile-contracts.browser.test.tsx`: they compute real CSS at 390px for Actions and
+ * Today overflow/reflow, enforce 44px mobile lifecycle hit areas, and prove the Today-to-ledger
+ * deep link scrolls, focuses, and pulses inside a real scroll container. The browser suite runs
+ * separately from coverage so these four contracts do not duplicate the jsdom interaction suite
+ * or distort Fallow's canonical Istanbul map. No ADR 0161 test gap remains.
  */
 
 /**

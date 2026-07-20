@@ -8,6 +8,12 @@
     {
       "file": "apps/web/src/components/ui/**",
       "exports": ["*"]
+    },
+    {
+      // Vitest Browser Mode resolves these named stubs through Vite aliases in
+      // vitest.browser.config.ts, so the import-based scan cannot see the uses.
+      "file": "apps/web/src/test/browser-actions.ts",
+      "exports": ["*"]
     }
   ],
   // babel-plugin-react-compiler: loaded implicitly by Next's `reactCompiler: true`
