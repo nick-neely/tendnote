@@ -1,0 +1,3 @@
+# Phase 7 PWA Is Online-Required
+
+Phase Seven makes iOS the reference mobile PWA experience while keeping core flows available in supported mobile browsers and on Android where practical. The installed shell may cache only versioned static assets and short-lived unsynced composer drafts; Today data, Eve, authentication, and every durable read or write remain network-required, with deterministic and honest failure states instead of stale data, queued offline mutations, or full offline synchronization. This trades offline capture convenience for a substantially smaller privacy, conflict-resolution, and trust surface while preserving drafts through transient failures and safe application updates.
