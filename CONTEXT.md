@@ -72,6 +72,10 @@ _Avoid_: Notification body, record summary, lock-screen note
 The bounded interval after an intended notification time during which its alert is still useful enough to deliver. Expiry suppresses only the stale alert; it never resolves, defers, or hides the authoritative record.
 _Avoid_: Retry window, reminder expiry, overdue grace period
 
+**Reminder Installation**:
+One owner-scoped browser or installed PWA registration that has explicitly opted into reminder delivery. Each installation is an independent delivery target with its own subscription lifecycle and preview preference; it identifies a browser installation, not inferred physical hardware.
+_Avoid_: Physical device, preferred device, fingerprint
+
 **General Action**:
 A non-person action or reminder for the owner's broader Personal OS context, such as replacing a water filter or renewing a subscription. A general action has its own domain model with source grounding, lifecycle state, due dates or cadence, visibility scope, optional person links, and later links to assets; product UI may label one-time general actions as Actions and recurring general actions as Routines.
 _Avoid_: Follow-up, task, project, todo
