@@ -17,6 +17,7 @@ export * from "./briefs";
 export * from "./calendar";
 export * from "./calendar-followups";
 export * from "./context-snapshots";
+export * from "./conversational-capture";
 export * from "./draft-generation";
 export * from "./draft-proposals";
 export * from "./drafts";

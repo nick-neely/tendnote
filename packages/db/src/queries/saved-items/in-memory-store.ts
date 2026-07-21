@@ -24,10 +24,12 @@ export function createInMemorySavedItemRecordStore() {
       const now = new Date();
       const item = savedItemSchema.parse({
         ...values,
-        id: randomUUID(),
+        id: values.id ?? randomUUID(),
         createdAt: now,
         updatedAt: now,
       });
+      const existing = records.get(item.id);
+      if (existing) return existing;
       records.set(item.id, item);
       return item;
     },
@@ -86,6 +88,7 @@ export function createInMemorySavedItemLifecycleStore(): InMemorySavedItemLifecy
     ...sourceStore,
     ...householdStore,
     ...recordStore,
+    createSourceRecordAuditLogEntry: sourceStore.createAuditLogEntry,
     async listAuditLogEntries(input: { ownerUserId: string }) {
       return sourceStore.listAuditLogEntries(input);
     },
@@ -143,9 +146,11 @@ export function createInMemorySavedItemLifecycleStore(): InMemorySavedItemLifecy
       const event: SavedItemEvent = {
         ...input,
         detailJson: input.detailJson ?? {},
-        id: randomUUID(),
+        id: input.id ?? randomUUID(),
         createdAt: new Date(),
       };
+      const existing = events.find((candidate) => candidate.id === event.id);
+      if (existing) return existing;
       events.push(event);
       return event;
     },

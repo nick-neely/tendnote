@@ -64,6 +64,7 @@ export const savedItemSchema = savedItemContentFields
 
 export const createSavedItemSchema = savedItemContentFields
   .extend({
+    id: z.string().optional(),
     ownerUserId: z.string().min(1),
     status: savedItemStatusSchema.default("active"),
     bringBackAt: z.date().nullable().default(null),

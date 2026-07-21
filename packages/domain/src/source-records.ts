@@ -36,11 +36,13 @@ export const sourceRecordSchema = z.object({
   updatedAt: z.date(),
 });
 
-export const createSourceRecordSchema = sourceRecordSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const createSourceRecordSchema = sourceRecordSchema
+  .omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({ id: z.string().optional() });
 
 export const sourceRecordPersonSchema = z.object({
   id: z.string(),

@@ -6,6 +6,9 @@ export type MobileFailureKind =
   | "offline"
   | "authentication"
   | "app_server"
+  | "capture_change"
+  | "capture_save"
+  | "capture_undo"
   | "eve"
   | "cache_mismatch";
 
@@ -24,6 +27,21 @@ const FAILURE_COPY: Record<MobileFailureKind, { action: string; body: string; he
     action: "Try again",
     body: "Your records could not be loaded. Unsaved text is still available while you retry.",
     heading: "Tendnote couldn't load",
+  },
+  capture_change: {
+    action: "Try change again",
+    body: "The change was not saved. The original Saved Item and its source evidence are unchanged.",
+    heading: "Change wasn't saved",
+  },
+  capture_save: {
+    action: "Try saving again",
+    body: "No Saved Item was confirmed. Your text remains on this device so you can retry or copy it.",
+    heading: "Capture wasn't saved",
+  },
+  capture_undo: {
+    action: "Try Undo again",
+    body: "Tendnote could not confirm whether Undo completed. Retry safely to reconcile the Saved Item's state.",
+    heading: "Undo wasn't confirmed",
   },
   eve: {
     action: "Try Eve again",

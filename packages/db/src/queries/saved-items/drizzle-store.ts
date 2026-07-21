@@ -79,7 +79,16 @@ export function createDrizzleSavedItemStore(): SavedItemStore {
       const [item] = await getDb()
         .insert(savedItems)
         .values(createSavedItemSchema.parse(values))
+        .onConflictDoNothing({ target: savedItems.id })
         .returning();
+      if (!item && values.id) {
+        const existing = await getDb()
+          .select()
+          .from(savedItems)
+          .where(and(eq(savedItems.id, values.id), eq(savedItems.ownerUserId, values.ownerUserId)))
+          .limit(1);
+        if (existing[0]) return savedItemSchema.parse(existing[0]);
+      }
       if (!item) throw new Error("Failed to create Saved Item.");
       return savedItemSchema.parse(item);
     },
@@ -191,8 +200,28 @@ export function createDrizzleSavedItemStore(): SavedItemStore {
       return rows.map((row) => savedItemSchema.parse(row));
     },
     async createSavedItemEvent(values) {
-      const parsed = savedItemEventSchema.omit({ id: true, createdAt: true }).parse(values);
-      const [event] = await getDb().insert(savedItemEvents).values(parsed).returning();
+      const parsed = savedItemEventSchema
+        .omit({ createdAt: true })
+        .extend({ id: savedItemEventSchema.shape.id.optional() })
+        .parse(values);
+      const [created] = await getDb()
+        .insert(savedItemEvents)
+        .values(parsed)
+        .onConflictDoNothing({ target: savedItemEvents.id })
+        .returning();
+      let event = created;
+      if (!event && parsed.id) {
+        [event] = await getDb()
+          .select()
+          .from(savedItemEvents)
+          .where(
+            and(
+              eq(savedItemEvents.id, parsed.id),
+              eq(savedItemEvents.ownerUserId, parsed.ownerUserId),
+            ),
+          )
+          .limit(1);
+      }
       if (!event) throw new Error("Failed to record Saved Item audit event.");
       return savedItemEventSchema.parse(event);
     },
@@ -348,9 +377,11 @@ export function createDrizzleSavedItemStore(): SavedItemStore {
 }
 
 export function createDrizzleSavedItemLifecycleStore(): SavedItemLifecycleStore {
+  const sourceRecordStore = createDrizzleSourceRecordStore();
   return {
-    ...createDrizzleSourceRecordStore(),
+    ...sourceRecordStore,
     ...createDrizzleHouseholdStore(),
     ...createDrizzleSavedItemStore(),
+    createSourceRecordAuditLogEntry: sourceRecordStore.createAuditLogEntry,
   };
 }

@@ -13,6 +13,7 @@ import Link from "next/link";
 import { type ReactNode, useRef, useState } from "react";
 import {
   CaptureFlow,
+  type CaptureHandlers,
   EveFlow,
   type FocusedFlow,
   MenuFlow,
@@ -24,18 +25,18 @@ import { cn } from "@/lib/utils";
 
 export function MobileShell({
   children,
+  captureHandlers,
   mobileEve,
   mobileHome,
   mobileReview,
   ownerUserId,
-  onCaptureSubmit,
 }: {
+  captureHandlers?: CaptureHandlers;
   children: ReactNode;
   mobileEve?: ReactNode;
   mobileHome: boolean;
   mobileReview: boolean;
   ownerUserId: string;
-  onCaptureSubmit?: (value: string) => Promise<void>;
 }) {
   const [flow, setFlow] = useState<FocusedFlow | null>(null);
   const [eveDraftRevision, setEveDraftRevision] = useState(0);
@@ -81,7 +82,7 @@ export function MobileShell({
         <SearchFlow onClose={closeFlow} query={searchQuery} setQuery={setSearchQuery} />
       ) : null}
       {flow === "capture" ? (
-        <CaptureFlow onClose={closeFlow} onSubmit={onCaptureSubmit} ownerUserId={ownerUserId} />
+        <CaptureFlow handlers={captureHandlers} onClose={closeFlow} ownerUserId={ownerUserId} />
       ) : null}
       {flow === "eve" ? <EveFlow onClose={closeFlow}>{mobileEve}</EveFlow> : null}
       {flow === "menu" ? <MenuFlow onClose={closeFlow} /> : null}

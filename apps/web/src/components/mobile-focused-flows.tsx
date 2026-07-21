@@ -2,8 +2,9 @@
 
 import { ArrowLeftIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, type RefObject, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useRef } from "react";
 import { appDestinations } from "@/components/app-destinations";
+import { type CaptureHandlers, MobileCaptureFlow } from "@/components/mobile-capture-flow";
 import { MobileFailureState } from "@/components/mobile-failure-state";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,9 +14,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useLocalComposerDraft } from "@/lib/local-composer-draft";
 
 export type FocusedFlow = "eve" | "search" | "capture" | "menu";
+
+export type { CaptureHandlers } from "@/components/mobile-capture-flow";
 
 function FullScreenFlow({
   children,
@@ -106,34 +108,15 @@ export function SearchFlow({
 }
 
 export function CaptureFlow({
+  handlers,
   onClose,
-  onSubmit,
   ownerUserId,
 }: {
+  handlers?: CaptureHandlers;
   onClose: () => void;
-  onSubmit?: (value: string) => Promise<void>;
   ownerUserId: string;
 }) {
-  const draft = useLocalComposerDraft(ownerUserId, "capture");
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [failure, setFailure] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  async function submit() {
-    if (!onSubmit || !draft.value.trim() || pending) return;
-    setPending(true);
-    setFailure(false);
-    try {
-      await onSubmit(draft.value);
-      draft.clear();
-      setSaved(true);
-    } catch {
-      setFailure(true);
-    } finally {
-      setPending(false);
-    }
-  }
 
   return (
     <FullScreenFlow
@@ -142,64 +125,7 @@ export function CaptureFlow({
       onClose={onClose}
       title="Capture"
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-        {saved ? (
-          <div className="flex flex-1 flex-col justify-center gap-3" role="status">
-            <h3 className="font-semibold text-xl">Capture saved</h3>
-            <p className="text-muted-foreground text-sm">The unsaved device draft was cleared.</p>
-          </div>
-        ) : (
-          <>
-            {draft.restored ? (
-              <p className="text-muted-foreground text-sm" role="status">
-                Unsaved draft restored on this device.
-              </p>
-            ) : null}
-            <label className="font-medium text-sm" htmlFor="mobile-capture-input">
-              What should Tendnote keep?
-            </label>
-            <textarea
-              className="min-h-40 w-full resize-none rounded-xl border bg-background p-4 text-base leading-6 outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
-              id="mobile-capture-input"
-              onChange={(event) => draft.setValue(event.target.value)}
-              placeholder="Capture a note, reminder, link, or open question…"
-              ref={inputRef}
-              value={draft.value}
-            />
-            <p className="text-muted-foreground text-xs">
-              This text is unsaved and stays only on this device for up to 24 hours.
-            </p>
-            {failure ? <MobileFailureState kind="app_server" onRetry={submit} /> : null}
-            {!onSubmit ? (
-              <p className="text-muted-foreground text-xs" role="status">
-                Capture routing is temporarily unavailable. Your draft remains safe to copy or
-                discard.
-              </p>
-            ) : null}
-            <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-4">
-              <Button
-                className="min-h-11"
-                onClick={draft.clear}
-                size="lg"
-                type="button"
-                variant="ghost"
-              >
-                Discard draft
-              </Button>
-              <Button
-                aria-busy={pending}
-                className="min-h-11"
-                disabled={!onSubmit || !draft.value.trim() || pending}
-                onClick={submit}
-                size="lg"
-                type="button"
-              >
-                {pending ? "Saving…" : "Save capture"}
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
+      <MobileCaptureFlow handlers={handlers} inputRef={inputRef} ownerUserId={ownerUserId} />
     </FullScreenFlow>
   );
 }

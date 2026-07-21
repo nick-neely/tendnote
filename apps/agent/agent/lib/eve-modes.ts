@@ -24,6 +24,8 @@ export type EveModeContext = {
 };
 
 export type EveCapability =
+  | "capture_saved_item"
+  | "change_saved_item_capture"
   | "capture_source_record"
   | "review_suggestions"
   | "person_scoped_recall"
@@ -33,9 +35,12 @@ export type EveCapability =
   | "memory_cleanup_proposal"
   | "scheduled_artifact_proposal"
   | "cleanup_preview"
-  | "sandbox_parse";
+  | "sandbox_parse"
+  | "undo_saved_item_capture";
 
 export type EveToolName =
+  | "capture_saved_item"
+  | "change_saved_item_capture"
   | "capture_source_record"
   | "list_suggested_memory_reviews"
   | "get_suggested_memory_review"
@@ -53,9 +58,10 @@ export type EveToolName =
   | "create_message_draft"
   | "cleanup_preview"
   | "search_assets"
-  | "get_asset_context";
+  | "get_asset_context"
+  | "undo_saved_item_capture";
 
-export type EveSkillName =
+type EveSkillName =
   | "capturing-and-review"
   | "recall"
   | "followups"
@@ -91,6 +97,9 @@ const modeDefinitions = {
   selected_person: {
     mode: "selected_person",
     tools: [
+      "capture_saved_item",
+      "change_saved_item_capture",
+      "undo_saved_item_capture",
       "search_people",
       "get_person_context",
       "search_relationship_context",
@@ -114,6 +123,9 @@ const modeDefinitions = {
       "relationship-repair",
     ],
     capabilities: [
+      "capture_saved_item",
+      "change_saved_item_capture",
+      "undo_saved_item_capture",
       "person_scoped_recall",
       "propose_followup",
       "draft_proposal",

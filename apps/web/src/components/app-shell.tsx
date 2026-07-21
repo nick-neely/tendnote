@@ -3,27 +3,39 @@
 import { MessageSquareTextIcon } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
+import {
+  captureExplicitSavedItemAction,
+  changeExplicitSavedItemCaptureAction,
+  undoExplicitSavedItemCaptureAction,
+} from "@/app/actions/conversational-capture";
 import { appDestinations } from "@/components/app-destinations";
 import { MobileFailureState } from "@/components/mobile-failure-state";
+import type { CaptureHandlers } from "@/components/mobile-focused-flows";
 import { MobileShell } from "@/components/mobile-shell";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
+const defaultCaptureHandlers: CaptureHandlers = {
+  change: changeExplicitSavedItemCaptureAction,
+  submit: captureExplicitSavedItemAction,
+  undo: undoExplicitSavedItemCaptureAction,
+};
+
 export function AppShell({
+  captureHandlers = defaultCaptureHandlers,
   children,
   mobileEve,
   mobileHome = false,
   mobileReview = false,
   ownerUserId,
-  onCaptureSubmit,
 }: {
+  captureHandlers?: CaptureHandlers;
   children: ReactNode;
   mobileEve?: ReactNode;
   mobileHome?: boolean;
   mobileReview?: boolean;
   ownerUserId: string;
-  onCaptureSubmit?: (value: string) => Promise<void>;
 }) {
   const online = useOnlineState();
 
@@ -61,11 +73,11 @@ export function AppShell({
       ) : null}
 
       <MobileShell
+        captureHandlers={captureHandlers}
         mobileEve={mobileEve}
         mobileHome={mobileHome}
         mobileReview={mobileReview}
         ownerUserId={ownerUserId}
-        onCaptureSubmit={onCaptureSubmit}
       >
         {children}
       </MobileShell>

@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen, userEvent, waitFor } from "@/test/dom";
+
+vi.mock("@/app/actions/conversational-capture", () => ({
+  captureExplicitSavedItemAction: vi.fn(),
+  changeExplicitSavedItemCaptureAction: vi.fn(),
+  undoExplicitSavedItemCaptureAction: vi.fn(),
+}));
+
 import { AppShell } from "./app-shell";
 
 describe("AppShell Phase Seven mobile navigation", () => {
@@ -121,8 +128,23 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
   it("clears the Capture draft only after a successful submission", async () => {
     const user = userEvent.setup();
+    const confirmation = {
+      destination: "Saved Items" as const,
+      groundedBySourceRecordId: "source-1",
+      interpreted: { kind: "Note" as const, visibility: "Only me" as const },
+      change: { kind: "edit_saved_item" as const, savedItemId: "saved-1" },
+      undo: { kind: "archive_saved_item" as const, savedItemId: "saved-1" },
+    };
     render(
-      <AppShell mobileHome onCaptureSubmit={async () => undefined} ownerUserId="owner-1">
+      <AppShell
+        captureHandlers={{
+          change: vi.fn(),
+          submit: async () => ({ confirmation }),
+          undo: vi.fn(),
+        }}
+        mobileHome
+        ownerUserId="owner-1"
+      >
         <p>Desktop dashboard</p>
       </AppShell>,
     );
@@ -137,5 +159,201 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await user.click(screen.getByRole("button", { name: "Back to Today" }));
     await user.click(screen.getByRole("button", { name: "Capture" }));
     expect(screen.queryByText("Unsaved draft restored on this device.")).toBeNull();
+  });
+
+  it("keeps one interaction id across a failed retry and shows grounded Change and Undo controls", async () => {
+    const user = userEvent.setup();
+    const confirmation = {
+      destination: "Saved Items" as const,
+      groundedBySourceRecordId: "source-1",
+      interpreted: { kind: "Open question" as const, visibility: "Only me" as const },
+      change: { kind: "edit_saved_item" as const, savedItemId: "saved-1" },
+      undo: { kind: "archive_saved_item" as const, savedItemId: "saved-1" },
+    };
+    const submit = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ confirmation });
+    const change = vi.fn().mockResolvedValue({ ok: true });
+    const undo = vi.fn().mockResolvedValue({ ok: true });
+    render(
+      <AppShell captureHandlers={{ change, submit, undo }} mobileHome ownerUserId="owner-1">
+        <p>Desktop dashboard</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    await user.click(screen.getByRole("button", { name: "Dictated transcript" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "What should Tendnote keep?" }),
+      "Where can I buy this filter?",
+    );
+    await user.click(screen.getByRole("button", { name: "Save capture" }));
+    expect(await screen.findByDisplayValue("Where can I buy this filter?")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Capture wasn't saved" })).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Try saving again" }));
+    expect(await screen.findByText("Original capture retained as source evidence")).toBeDefined();
+    expect(screen.getByText("Open question")).toBeDefined();
+    expect(screen.getByText("Only me")).toBeDefined();
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(submit.mock.calls[1]?.[0].interactionId).toBe(submit.mock.calls[0]?.[0].interactionId);
+    expect(submit.mock.calls[1]?.[0].inputMode).toBe("dictated");
+
+    await user.click(screen.getByRole("button", { name: "Change" }));
+    const changeInput = screen.getByRole("textbox", { name: "Change saved wording" });
+    await user.clear(changeInput);
+    await user.type(changeInput, "Where should I buy this filter?");
+    await user.click(screen.getByRole("button", { name: "Save change" }));
+    await waitFor(() =>
+      expect(change).toHaveBeenCalledWith({
+        savedItemId: "saved-1",
+        originalText: "Where should I buy this filter?",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByRole("heading", { name: "Capture undone" })).toBeDefined();
+    expect(undo).toHaveBeenCalledWith({ savedItemId: "saved-1" });
+  });
+
+  it("adds a live dictated transcript without retaining audio provenance", async () => {
+    const user = userEvent.setup();
+    const stopRecognition = vi.fn();
+    let recognition:
+      | {
+          onend: (() => void) | null;
+          onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
+        }
+      | undefined;
+    class FakeRecognition {
+      continuous = false;
+      interimResults = false;
+      lang = "";
+      onend: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null =
+        null;
+      constructor() {
+        recognition = this;
+      }
+      start() {}
+      stop() {
+        stopRecognition();
+        this.onend?.();
+      }
+    }
+    Object.defineProperty(globalThis, "webkitSpeechRecognition", {
+      configurable: true,
+      value: FakeRecognition,
+    });
+    const confirmation = {
+      destination: "Saved Items" as const,
+      groundedBySourceRecordId: "source-1",
+      interpreted: { kind: "Note" as const, visibility: "Only me" as const },
+      change: { kind: "edit_saved_item" as const, savedItemId: "saved-1" },
+      undo: { kind: "archive_saved_item" as const, savedItemId: "saved-1" },
+    };
+    const submit = vi.fn().mockResolvedValue({ confirmation });
+    render(
+      <AppShell
+        captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }}
+        mobileHome
+        ownerUserId="owner-1"
+      >
+        <p>Desktop dashboard</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    await user.click(screen.getByRole("button", { name: "Start dictation" }));
+    recognition?.onresult?.({ results: [{ 0: { transcript: "Remember filter model 9000" } }] });
+    recognition?.onend?.();
+    expect(await screen.findByDisplayValue("Remember filter model 9000")).toBeDefined();
+    expect(screen.getByText("Dictated transcript added.")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Save capture" }));
+    expect(submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputMode: "dictated",
+        originalText: "Remember filter model 9000",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Back to Today" }));
+    expect(stopRecognition).toHaveBeenCalledTimes(1);
+    Reflect.deleteProperty(globalThis, "webkitSpeechRecognition");
+  });
+
+  it("starts a distinct interaction after discarding a failed capture", async () => {
+    const user = userEvent.setup();
+    const confirmation = {
+      destination: "Saved Items" as const,
+      groundedBySourceRecordId: "source-2",
+      interpreted: { kind: "Note" as const, visibility: "Only me" as const },
+      change: { kind: "edit_saved_item" as const, savedItemId: "saved-2" },
+      undo: { kind: "archive_saved_item" as const, savedItemId: "saved-2" },
+    };
+    const submit = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("ambiguous failure"))
+      .mockResolvedValueOnce({ confirmation });
+    render(
+      <AppShell
+        captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }}
+        mobileHome
+        ownerUserId="owner-1"
+      >
+        <p>Desktop dashboard</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    const input = screen.getByRole("textbox", { name: "What should Tendnote keep?" });
+    await user.type(input, "First draft");
+    await user.click(screen.getByRole("button", { name: "Save capture" }));
+    expect(await screen.findByRole("heading", { name: "Capture wasn't saved" })).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Discard draft" }));
+    expect(screen.queryByRole("heading", { name: "Capture wasn't saved" })).toBeNull();
+    await user.type(input, "Separate draft");
+    await user.click(screen.getByRole("button", { name: "Save capture" }));
+
+    expect(submit.mock.calls[1]?.[0].interactionId).not.toBe(
+      submit.mock.calls[0]?.[0].interactionId,
+    );
+    expect(await screen.findByRole("heading", { name: "Capture saved" })).toBeDefined();
+  });
+
+  it("never turns a failed Change retry into Undo after Cancel", async () => {
+    const user = userEvent.setup();
+    const confirmation = {
+      destination: "Saved Items" as const,
+      groundedBySourceRecordId: "source-1",
+      interpreted: { kind: "Note" as const, visibility: "Only me" as const },
+      change: { kind: "edit_saved_item" as const, savedItemId: "saved-1" },
+      undo: { kind: "archive_saved_item" as const, savedItemId: "saved-1" },
+    };
+    const change = vi.fn().mockRejectedValue(new Error("change failed"));
+    const undo = vi.fn().mockResolvedValue({ ok: true });
+    render(
+      <AppShell
+        captureHandlers={{ change, submit: vi.fn().mockResolvedValue({ confirmation }), undo }}
+        mobileHome
+        ownerUserId="owner-1"
+      >
+        <p>Desktop dashboard</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "What should Tendnote keep?" }),
+      "Original note",
+    );
+    await user.click(screen.getByRole("button", { name: "Save capture" }));
+    await user.click(await screen.findByRole("button", { name: "Change" }));
+    await user.click(screen.getByRole("button", { name: "Save change" }));
+    expect(await screen.findByRole("heading", { name: "Change wasn't saved" })).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("button", { name: "Try change again" })).toBeNull();
+    expect(undo).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(undo).toHaveBeenCalledTimes(1);
   });
 });

@@ -87,7 +87,8 @@ export type SourceRecordCaptureStore = {
     unresolvedMention: CreateUnresolvedMentionInput,
   ) => Promise<UnresolvedPersonMention>;
   createAuditLogEntry: (
-    auditLogEntry: Omit<SourceRecordAuditLogEntry, "id" | "createdAt">,
+    auditLogEntry: Omit<SourceRecordAuditLogEntry, "id" | "createdAt"> &
+      Partial<Pick<SourceRecordAuditLogEntry, "id">>,
   ) => Promise<SourceRecordAuditLogEntry>;
 };
 

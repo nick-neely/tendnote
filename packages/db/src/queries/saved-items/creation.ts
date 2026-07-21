@@ -75,6 +75,7 @@ export async function createGroundedSavedItem(
   const sourceRecordId = await resolveSource(store, input, visibility);
   const item = await store.createSavedItem(
     createSavedItemSchema.parse({
+      id: input.id,
       ownerUserId: input.ownerUserId,
       kind: input.kind,
       title: input.title,
@@ -89,6 +90,7 @@ export async function createGroundedSavedItem(
   );
   await shareRecord(store, input, visibility, { kind: "saved_item", id: item.id });
   await store.createSavedItemEvent({
+    id: input.createdEventId,
     savedItemId: item.id,
     ownerUserId: item.ownerUserId,
     kind: "created",

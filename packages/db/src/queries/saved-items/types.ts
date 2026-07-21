@@ -79,6 +79,7 @@ export type SavedItemStore = {
     limit?: number;
   }) => Promise<SavedItem[]>;
   createSavedItemEvent: (input: {
+    id?: string;
     savedItemId: string;
     ownerUserId: string;
     kind: SavedItemEventKind;
@@ -111,9 +112,13 @@ export type SavedItemLifecycleStore = SavedItemStore &
     | "createHouseholdRecordShare"
     | "listHouseholdRecordShares"
     | "deleteHouseholdRecordShares"
-  >;
+  > & {
+    createSourceRecordAuditLogEntry: SourceRecordCaptureStore["createAuditLogEntry"];
+  };
 
 export type CreateSavedItemInput = {
+  id?: string;
+  createdEventId?: string;
   ownerUserId: string;
   kind: SavedItem["kind"];
   title: string;
