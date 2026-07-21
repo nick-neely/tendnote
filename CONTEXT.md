@@ -21,7 +21,7 @@ The minimized source record text Tendnote keeps for retrieval, grounding, and re
 _Avoid_: Raw dump, full transcript
 
 **Pending Source Record**:
-A source record captured before Tendnote has resolved the person or decided whether the record should be retained. Pending source records can appear in review, but should not feed normal profiles, briefs, or drafts until resolved.
+A source record captured before Tendnote has resolved its person, destination, or another consequential field needed for the intended outcome. Pending source records can appear in review, but should not feed normal profiles, briefs, or drafts until resolved.
 _Avoid_: Orphan memory, unresolved fact
 
 **Personless Source Record**:
@@ -52,6 +52,10 @@ _Avoid_: Semantic search, recommendation, generated summary
 Finding stored relationship context by meaning or theme when the user does not know the exact words, such as gift ideas, career updates, or stressful life events. Semantic retrieval can surface grounded context, but it is not the same as proactive relationship agenda ranking.
 _Avoid_: Exact recall, recommendation engine, daily brief
 
+**Global Recall**:
+An owner-scoped federated read capability shared by Eve and structured search that returns typed, permission-filtered Exact and Related results across supported Tendnote domains with canonical record references, grounding, and deep links. Global recall finds existing visible records; it does not create importance, expose raw evidence as its own result family, or turn generated prose into retrieval truth.
+_Avoid_: Chat history search, recommendation feed, generated answer store, universal database search
+
 **Relationship Agenda**:
 A read-only, cross-person view of existing upcoming or review-worthy relationship context for a time window. A relationship agenda can help Eve answer broad questions, but it is not a suggestion generator, follow-up creator, or persisted brief.
 _Avoid_: Generated task list, background scanner, daily brief
@@ -59,6 +63,26 @@ _Avoid_: Generated task list, background scanner, daily brief
 **Follow-Up**:
 A user-visible reminder to reconnect with a person for a specific reason at a specific time or cadence.
 _Avoid_: Task, deal, lead activity
+
+**Reminder Schedule**:
+The single owner-chosen alert moment for one eligible record occurrence, expressed as an exact local time or one lead time relative to the record's due or bring-back time. It controls ambient delivery without changing when the backing record is actually due.
+_Avoid_: Due date, notification preference, alarm sequence
+
+**Reminder Preview**:
+The ambient notification copy for an eligible explicit time-bound record. A reminder preview is generic by default on each device; an explicitly trusted device may show a bounded title and scheduled time only when the record's sensitivity and proactive-visibility policy allow it.
+_Avoid_: Notification body, record summary, lock-screen note
+
+**Reminder Freshness Window**:
+The bounded interval after an intended notification time during which its alert is still useful enough to deliver. Expiry suppresses only the stale alert; it never resolves, defers, or hides the authoritative record.
+_Avoid_: Retry window, reminder expiry, overdue grace period
+
+**Reminder Installation**:
+One owner-scoped browser or installed PWA registration that has explicitly opted into reminder delivery. Each installation is an independent delivery target with its own subscription lifecycle and preview preference; it identifies a browser installation, not inferred physical hardware.
+_Avoid_: Physical device, preferred device, fingerprint
+
+**Reminder Opt-In**:
+The explicit, installation-scoped consent that lets Tendnote alert an owner about notification-eligible records they deliberately created or accepted. Reminder opt-in is offered only after its value is concrete, remains distinct from browser permission, and never activates inferred suggestions or a broader notification-preference system.
+_Avoid_: Notification onboarding, account-wide permission, automatic alerts
 
 **General Action**:
 A non-person action or reminder for the owner's broader Personal OS context, such as replacing a water filter or renewing a subscription. A general action has its own domain model with source grounding, lifecycle state, due dates or cadence, visibility scope, optional person links, and later links to assets; product UI may label one-time general actions as Actions and recurring general actions as Routines.
@@ -69,8 +93,12 @@ A review-gated proposal for a non-person General Action, grounded in a source re
 _Avoid_: Automatic task, inferred todo, suggested follow-up
 
 **Saved Item**:
-An owner- or household-scoped piece of source-grounded context that Eve keeps when a capture has no better supported destination yet, including an open question that does not need its own decision system. A saved item may have an explicit date to bring it back and an active/archive lifecycle, but it is not a task, project, tag, document inbox, or replacement for a person, General Action, or Asset.
+An owner- or household-scoped, source-grounded note, link, or open question that Eve keeps when an explicit capture has no better supported destination. A saved item is private by default, may have a date to bring it back, follows an active/archive lifecycle, and may resolve into linked domain records, but it is not a task, project, tag, document inbox, or replacement for a person, General Action, or Asset.
 _Avoid_: Inbox item, generic record, task, bookmark collection
+
+**Capture Outcome**:
+A domain record or review artifact produced from one explicit typed or dictated capture. One capture may have multiple explicitly requested outcomes, while outcomes inferred beyond the owner's instruction remain review-gated.
+_Avoid_: Parsed intent, agent action, capture result
 
 **Asset**:
 A practical owner- or household-scoped thing Tendnote tracks over time — an appliance, vehicle, subscription, service, property, or kept item — with a fixed kind, visibility scope, active/archive lifecycle, and internal audit trail; Asset Memories, evidence, and links attach to it in later Phase 6 slices. An asset is never a person, project, document library, or generic object.
@@ -93,8 +121,16 @@ The conversational Tendnote interface where the assistant can respond with natur
 _Avoid_: Raw chatbot, task manager
 
 **Agent-Backed Surface**:
-A purpose-built Tendnote interface that uses the same owner-scoped agent capabilities and product functions as Eve while presenting controls and results suited to its task. An agent-backed surface is not a chat skin, a separate autonomous agent, or a place to duplicate product policy in the client.
+A purpose-built Tendnote interface that shares Eve's owner-scoped product functions, grounding, audit, and approval policy while presenting controls and results suited to its task. Deterministic policy owns eligibility and caps; the surface calls product functions directly for structured intent and limits agent reasoning to interpretation, generation, semantic retrieval, or ranking and explanation within a validated candidate set.
 _Avoid_: Chat-only UI, autonomous workflow, client-side agent policy
+
+**Agent Capability**:
+A named, owner-scoped operation with a typed input and output that may use agent reasoning while leaving product policy authoritative; Eve and Agent-Backed Surfaces reach it through thin channel adapters rather than hidden chat turns. Read-only results may remain ephemeral when they carry authoritative record references, source grounding, and trust metadata, but actionable, reviewable, or reloadable output must first become a persisted domain or review artifact.
+_Avoid_: Hidden prompt workflow, UI agent, chat simulation
+
+**Today**:
+The owner's capped cross-domain mobile home shortlist of visible, currently eligible record references. Today may use ephemeral Eve curation inside deterministic policy, but it is not a persisted brief, task backlog, priority queue, or source of truth.
+_Avoid_: Daily Brief, task inbox, backlog, generated priority list
 
 **Daily Brief**:
 A small set of relationship suggestions for today. It should stay capped and useful rather than becoming a task feed.

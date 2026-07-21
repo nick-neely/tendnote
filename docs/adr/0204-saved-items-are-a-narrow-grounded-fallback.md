@@ -1,0 +1,3 @@
+# Saved Items Are a Narrow Grounded Fallback
+
+Phase Seven introduces Saved Items as durable, source-grounded `note`, `link`, or `open_question` records only when an explicit capture has no better supported destination. They are private by default, use a simple active/archive lifecycle with an optional bring-back time, and promote non-destructively into supported domain records while inferred creation or promotion remains review-gated. This accepts one small cross-domain holding model in exchange for not flattening people, actions, assets, projects, documents, or arbitrary captured data into a generic catch-all table.

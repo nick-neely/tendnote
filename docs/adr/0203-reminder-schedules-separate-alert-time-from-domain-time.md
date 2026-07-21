@@ -1,0 +1,3 @@
+# Reminder Schedules Separate Alert Time From Domain Time
+
+Phase Seven gives each eligible record occurrence at most one owner-chosen Reminder Schedule, separate from the record's due or bring-back time. A visible 9:00 AM local default keeps date-only capture fast, while one exact or relative lead time supports alerts before an event without making the backing record appear due early; Routine rules materialize per occurrence, shared visibility never enrolls another owner, and lifecycle changes invalidate pending intents. This adds a small cross-domain scheduling concept in exchange for truthful domain dates, useful lead-time alerts, and a firm refusal of multiple alarms or a notification-preference matrix.

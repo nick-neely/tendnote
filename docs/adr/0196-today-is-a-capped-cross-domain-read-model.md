@@ -1,0 +1,3 @@
+# Today Is a Capped Cross-Domain Read Model
+
+Phase Seven Today is a dynamic read model over authoritative records, not a persisted task list or generated priority order. Deterministic owner-scoped policy decides eligibility, exclusions, time-bound overflow, caps, and available actions; Eve may only rank optional eligible candidates and explain their factual reasons, with stable deterministic fallback. Today shows at most five references, normally three, and records explicit Today-only suppression separately from the underlying records so curation never invents priority or effort or silently changes domain state.

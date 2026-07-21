@@ -1,0 +1,3 @@
+# Reminder Delivery Fans Out Per Installation
+
+Phase Seven sends each reminder occurrence independently to every currently opted-in browser or installed PWA registration rather than choosing a preferred physical device. Each owner-scoped Reminder Installation has its own subscription lifecycle, preview preference, idempotent occurrence intent, retries, revocation, and coarse delivery audit; failures and terminal endpoints remain isolated to that installation, while provider acceptance never implies display. This accepts that one owner may see the same reminder on multiple explicitly enabled installations in exchange for predictable opt-in semantics, no fingerprinting or brittle preferred-device routing, and no single-device failure that silently loses the alert.
