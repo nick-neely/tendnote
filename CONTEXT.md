@@ -68,6 +68,10 @@ _Avoid_: Task, deal, lead activity
 The ambient notification copy for an eligible explicit time-bound record. A reminder preview is generic by default on each device; an explicitly trusted device may show a bounded title and scheduled time only when the record's sensitivity and proactive-visibility policy allow it.
 _Avoid_: Notification body, record summary, lock-screen note
 
+**Reminder Freshness Window**:
+The bounded interval after an intended notification time during which its alert is still useful enough to deliver. Expiry suppresses only the stale alert; it never resolves, defers, or hides the authoritative record.
+_Avoid_: Retry window, reminder expiry, overdue grace period
+
 **General Action**:
 A non-person action or reminder for the owner's broader Personal OS context, such as replacing a water filter or renewing a subscription. A general action has its own domain model with source grounding, lifecycle state, due dates or cadence, visibility scope, optional person links, and later links to assets; product UI may label one-time general actions as Actions and recurring general actions as Routines.
 _Avoid_: Follow-up, task, project, todo
