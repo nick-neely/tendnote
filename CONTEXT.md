@@ -64,6 +64,10 @@ _Avoid_: Generated task list, background scanner, daily brief
 A user-visible reminder to reconnect with a person for a specific reason at a specific time or cadence.
 _Avoid_: Task, deal, lead activity
 
+**Reminder Schedule**:
+The single owner-chosen alert moment for one eligible record occurrence, expressed as an exact local time or one lead time relative to the record's due or bring-back time. It controls ambient delivery without changing when the backing record is actually due.
+_Avoid_: Due date, notification preference, alarm sequence
+
 **Reminder Preview**:
 The ambient notification copy for an eligible explicit time-bound record. A reminder preview is generic by default on each device; an explicitly trusted device may show a bounded title and scheduled time only when the record's sensitivity and proactive-visibility policy allow it.
 _Avoid_: Notification body, record summary, lock-screen note
