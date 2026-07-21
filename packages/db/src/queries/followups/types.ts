@@ -100,11 +100,15 @@ export type InMemoryFollowupLifecycleStore = InMemorySourceRecordStore &
   HouseholdStore;
 
 export type CreateActiveFollowupInput = {
+  /** Optional stable id for idempotent cross-domain Capture. */
+  id?: string;
   ownerUserId: string;
   personId: string;
   reason: string;
   dueAt: Date;
   cadence?: string | null;
+  /** Optional owner-visible source grounding, required by source-first Capture. */
+  sourceRecordId?: string | null;
   householdId?: string | null;
   scope?: "private" | "shared" | "household";
   selectedUserIds?: string[];

@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { captureExplicitSavedItem, changeExplicitSavedItemCapture, undoExplicitSavedItemCapture } =
+const { captureExplicitOutcome, changeExplicitCaptureOutcome, undoExplicitCaptureOutcome } =
   vi.hoisted(() => ({
-    captureExplicitSavedItem: vi.fn(),
-    changeExplicitSavedItemCapture: vi.fn(),
-    undoExplicitSavedItemCapture: vi.fn(),
+    captureExplicitOutcome: vi.fn(),
+    changeExplicitCaptureOutcome: vi.fn(),
+    undoExplicitCaptureOutcome: vi.fn(),
   }));
 
 vi.mock("@tendnote/db/queries/conversational-capture", () => ({
-  captureExplicitSavedItem,
-  changeExplicitSavedItemCapture,
-  undoExplicitSavedItemCapture,
+  captureExplicitOutcome,
+  changeExplicitCaptureOutcome,
+  undoExplicitCaptureOutcome,
 }));
 
 const { default: tool } = await import("../agent/tools/capture_saved_item");
@@ -23,7 +23,7 @@ beforeEach(() => vi.clearAllMocks());
 
 describe("capture_saved_item", () => {
   it("routes explicit Eve saves through the shared owner-scoped operation", async () => {
-    captureExplicitSavedItem.mockResolvedValue({
+    captureExplicitOutcome.mockResolvedValue({
       savedItem: {
         id: "saved-1",
         kind: "note",
@@ -48,7 +48,7 @@ describe("capture_saved_item", () => {
       ctx,
     );
 
-    expect(captureExplicitSavedItem).toHaveBeenCalledWith({
+    expect(captureExplicitOutcome).toHaveBeenCalledWith({
       authority: "explicit",
       interactionId: "eve-turn-1",
       inputMode: "dictated",
@@ -56,30 +56,67 @@ describe("capture_saved_item", () => {
       ownerUserId: "owner-1",
       surface: "eve",
     });
-    expect(result.confirmation.interpreted.visibility).toBe("Only me");
+    expect(result.confirmation?.destination).toBe("Saved Items");
+  });
+
+  it("returns the one source-first clarification and reuses the operation to complete it", async () => {
+    captureExplicitOutcome.mockResolvedValue({
+      clarification: {
+        field: "timing",
+        question: "When should I remind you to replace the filter?",
+        sourceRecordId: "source-1",
+      },
+    });
+
+    const result = await tool.execute(
+      {
+        clarificationAnswer: "tomorrow",
+        interactionId: "eve-turn-clarify",
+        inputMode: "typed",
+        originalText: "Remind me to replace the filter sometime",
+      },
+      ctx,
+    );
+
+    expect(result.clarification?.sourceRecordId).toBe("source-1");
+    expect(captureExplicitOutcome).toHaveBeenCalledWith({
+      authority: "explicit",
+      clarificationAnswer: "tomorrow",
+      interactionId: "eve-turn-clarify",
+      inputMode: "typed",
+      originalText: "Remind me to replace the filter sometime",
+      ownerUserId: "owner-1",
+      surface: "eve",
+    });
   });
 
   it("keeps Eve Change and Undo on the same owner-scoped product boundary", async () => {
-    changeExplicitSavedItemCapture.mockResolvedValue({
+    changeExplicitCaptureOutcome.mockResolvedValue({
       id: SAVED_ITEM_ID,
       sourceRecordId: "source-1",
     });
-    undoExplicitSavedItemCapture.mockResolvedValue({ id: SAVED_ITEM_ID, status: "archived" });
+    undoExplicitCaptureOutcome.mockResolvedValue({ id: SAVED_ITEM_ID, status: "archived" });
 
     await changeTool.execute(
-      { originalText: "Corrected filter note", savedItemId: SAVED_ITEM_ID },
+      {
+        originalText: "Corrected filter note",
+        target: { kind: "edit_saved_item", savedItemId: SAVED_ITEM_ID },
+      },
       ctx,
     );
-    await undoTool.execute({ savedItemId: SAVED_ITEM_ID }, ctx);
+    await undoTool.execute(
+      { target: { kind: "archive_saved_item", savedItemId: SAVED_ITEM_ID } },
+      ctx,
+    );
 
-    expect(changeExplicitSavedItemCapture).toHaveBeenCalledWith({
+    expect(changeExplicitCaptureOutcome).toHaveBeenCalledWith({
       actorUserId: "owner-1",
       originalText: "Corrected filter note",
-      savedItemId: SAVED_ITEM_ID,
+      target: { kind: "edit_saved_item", savedItemId: SAVED_ITEM_ID },
     });
-    expect(undoExplicitSavedItemCapture).toHaveBeenCalledWith({
+    expect(undoExplicitCaptureOutcome).toHaveBeenCalledWith({
       actorUserId: "owner-1",
-      savedItemId: SAVED_ITEM_ID,
+      target: { kind: "archive_saved_item", savedItemId: SAVED_ITEM_ID },
     });
   });
 });

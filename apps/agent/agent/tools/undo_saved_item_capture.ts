@@ -1,26 +1,29 @@
-import { undoExplicitSavedItemCapture } from "@tendnote/db/queries/conversational-capture";
+import { undoExplicitCaptureOutcome } from "@tendnote/db/queries/conversational-capture";
+import { conversationalCaptureUndoTargetSchema } from "@tendnote/domain/conversational-capture";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
 
 export default defineTool({
   description:
-    "Safely Undo a just-completed capture_saved_item operation when the user explicitly asks to undo it. Archives the Saved Item while preserving source evidence.",
+    "Safely Undo a just-completed capture_saved_item operation when the user explicitly asks. Archives its real destination record while preserving source evidence. Use the exact undoTarget returned by Capture.",
   inputSchema: z.object({
-    savedItemId: z.uuid().describe("The Saved Item id returned by capture_saved_item."),
+    target: conversationalCaptureUndoTargetSchema.describe(
+      "The exact undoTarget returned by capture_saved_item.",
+    ),
   }),
   async execute(input, ctx) {
     const actorUserId = resolveOwnerUserId(ctx);
-    const savedItem = await undoExplicitSavedItemCapture({ actorUserId, ...input });
-    return { savedItemId: savedItem.id, status: savedItem.status, undone: true };
+    await undoExplicitCaptureOutcome({ actorUserId, ...input });
+    return { target: input.target, undone: true };
   },
   toModelOutput(output) {
     return {
       type: "json" as const,
       value: {
-        savedItemId: output.savedItemId,
+        target: output.target,
         undone: true,
-        guidance: "Confirm briefly that the Saved Item was archived.",
+        guidance: "Confirm briefly that the captured destination record was archived.",
       },
     };
   },

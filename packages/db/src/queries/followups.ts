@@ -36,6 +36,10 @@ export async function editFollowup(input: EditFollowupInput) {
   return defaultFollowupLifecycle.editFollowup(input);
 }
 
+export async function getFollowup(input: FollowupActionInput) {
+  return defaultFollowupLifecycle.getFollowup(input);
+}
+
 export async function completeFollowup(input: FollowupActionInput) {
   return defaultFollowupLifecycle.completeFollowup(input);
 }

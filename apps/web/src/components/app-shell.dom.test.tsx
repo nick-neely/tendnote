@@ -3,9 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, userEvent, waitFor } from "@/test/dom";
 
 vi.mock("@/app/actions/conversational-capture", () => ({
-  captureExplicitSavedItemAction: vi.fn(),
-  changeExplicitSavedItemCaptureAction: vi.fn(),
-  undoExplicitSavedItemCaptureAction: vi.fn(),
+  addCapturePersonAction: vi.fn(),
+  captureExplicitOutcomeAction: vi.fn(),
+  changeExplicitCaptureOutcomeAction: vi.fn(),
+  undoExplicitCaptureOutcomeAction: vi.fn(),
 }));
 
 import { AppShell } from "./app-shell";
@@ -161,6 +162,236 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(screen.queryByText("Unsaved draft restored on this device.")).toBeNull();
   });
 
+  it("continues one source-first clarification with the same interaction and original wording", async () => {
+    const user = userEvent.setup();
+    const submit = vi
+      .fn()
+      .mockResolvedValueOnce({
+        clarification: {
+          field: "timing" as const,
+          question: "When should I remind you to replace the filter?",
+          sourceRecordId: "source-1",
+        },
+      })
+      .mockResolvedValueOnce({
+        confirmation: {
+          destination: "Actions" as const,
+          groundedBySourceRecordId: "source-1",
+          interpreted: {
+            title: "Replace the filter",
+            dueAt: "2026-07-22T14:00:00.000Z",
+            cadence: null,
+            scope: "Only me" as const,
+          },
+          change: { kind: "edit_general_action" as const, generalActionId: "action-1" },
+          undo: { kind: "archive_general_action" as const, generalActionId: "action-1" },
+        },
+      });
+    render(
+      <AppShell
+        captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }}
+        mobileHome
+        ownerUserId="owner-1"
+      >
+        <p>Desktop dashboard</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "What should Tendnote keep?" }),
+      "Remind me to replace the filter sometime",
+    );
+    await user.click(screen.getByRole("button", { name: "Save capture" }));
+    expect(
+      await screen.findByRole("textbox", {
+        name: "When should I remind you to replace the filter?",
+      }),
+    ).toBeDefined();
+    expect(screen.getByText("Original capture retained as source evidence")).toBeDefined();
+    await user.type(
+      screen.getByRole("textbox", { name: "When should I remind you to replace the filter?" }),
+      "tomorrow",
+    );
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(await screen.findByRole("heading", { name: "Capture saved" })).toBeDefined();
+    expect(screen.getAllByText("Actions")).toHaveLength(2);
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(submit.mock.calls[1]?.[0]).toMatchObject({
+      clarificationAnswer: "tomorrow",
+      interactionId: submit.mock.calls[0]?.[0].interactionId,
+      originalText: "Remind me to replace the filter sometime",
+    });
+  });
+
+  it("offers Add and Link actions for an unknown Follow-Up person", async () => {
+    const user = userEvent.setup();
+    const clarification = {
+      field: "person" as const,
+      question: "Who did you mean by Maya?",
+      sourceRecordId: "source-1",
+      actions: [
+        { kind: "add_person" as const, label: "Add Maya", displayName: "Maya" },
+        { kind: "link_person" as const, label: "Link someone else" as const },
+      ],
+    };
+    const confirmation = {
+      destination: "Follow-Ups" as const,
+      groundedBySourceRecordId: "source-1",
+      interpreted: { person: "Maya", dueAt: "2026-07-21T14:00:00.000Z", scope: "Only me" as const },
+      change: { kind: "edit_followup" as const, followupId: "followup-1" },
+      undo: { kind: "archive_followup" as const, followupId: "followup-1" },
+    };
+    const addPerson = vi.fn().mockResolvedValue({ displayName: "Maya" });
+    const submit = vi
+      .fn()
+      .mockResolvedValueOnce({ clarification })
+      .mockResolvedValueOnce({ confirmation });
+    render(
+      <AppShell
+        captureHandlers={{
+          addPerson,
+          change: vi.fn(),
+          submit,
+          undo: vi.fn(),
+        }}
+        mobileHome
+        ownerUserId="owner-1"
+      >
+        <p>Desktop dashboard</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "What should Tendnote keep?" }),
+      "Remind me to follow up with Maya tomorrow",
+    );
+    await user.click(screen.getByRole("button", { name: "Save capture" }));
+    expect(await screen.findByRole("button", { name: "Link someone else" })).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Add Maya" }));
+
+    expect(addPerson).toHaveBeenCalledWith({ displayName: "Maya" });
+    expect(submit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        clarificationAnswer: "Maya",
+        originalText: "Remind me to follow up with Maya tomorrow",
+      }),
+    );
+    expect(await screen.findByText("Follow-Up with Maya")).toBeDefined();
+  });
+
+  it("replaces confirmation controls when Change reroutes to a new destination", async () => {
+    const user = userEvent.setup();
+    const savedConfirmation = {
+      destination: "Saved Items" as const,
+      groundedBySourceRecordId: "source-1",
+      interpreted: { kind: "Note" as const, visibility: "Only me" as const },
+      change: { kind: "edit_saved_item" as const, savedItemId: "saved-1" },
+      undo: { kind: "archive_saved_item" as const, savedItemId: "saved-1" },
+    };
+    const actionConfirmation = {
+      destination: "Actions" as const,
+      groundedBySourceRecordId: "source-1",
+      interpreted: {
+        title: "Replace the filter",
+        dueAt: null,
+        cadence: null,
+        scope: "Only me" as const,
+      },
+      change: { kind: "edit_general_action" as const, generalActionId: "action-1" },
+      undo: { kind: "archive_general_action" as const, generalActionId: "action-1" },
+    };
+    const change = vi.fn().mockResolvedValue({ confirmation: actionConfirmation });
+    const undo = vi.fn().mockResolvedValue({ ok: true });
+    render(
+      <AppShell
+        captureHandlers={{
+          change,
+          submit: vi.fn().mockResolvedValue({ confirmation: savedConfirmation }),
+          undo,
+        }}
+        mobileHome
+        ownerUserId="owner-1"
+      >
+        <p>Desktop dashboard</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "What should Tendnote keep?" }),
+      "The filter needs replacing",
+    );
+    await user.click(screen.getByRole("button", { name: "Save capture" }));
+    await user.click(await screen.findByRole("button", { name: "Change" }));
+    const correction = screen.getByRole("textbox", { name: "Change saved wording" });
+    await user.clear(correction);
+    await user.type(correction, "I need to replace the filter");
+    await user.click(screen.getByRole("button", { name: "Save change" }));
+
+    await waitFor(() => expect(screen.getAllByText("Actions")).toHaveLength(2));
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(undo).toHaveBeenCalledWith({
+      target: { kind: "archive_general_action", generalActionId: "action-1" },
+    });
+  });
+
+  it("shows and completes a focused clarification returned by Change", async () => {
+    const user = userEvent.setup();
+    const confirmation = {
+      destination: "Saved Items" as const,
+      groundedBySourceRecordId: "source-1",
+      interpreted: { kind: "Note" as const, visibility: "Only me" as const },
+      change: { kind: "edit_saved_item" as const, savedItemId: "saved-1" },
+      undo: { kind: "archive_saved_item" as const, savedItemId: "saved-1" },
+    };
+    const change = vi
+      .fn()
+      .mockResolvedValueOnce({
+        clarification: {
+          field: "timing" as const,
+          question: "When should I remind you to replace the filter?",
+          sourceRecordId: "source-1",
+        },
+      })
+      .mockResolvedValueOnce({ confirmation });
+    render(
+      <AppShell
+        captureHandlers={{
+          change,
+          submit: vi.fn().mockResolvedValue({ confirmation }),
+          undo: vi.fn().mockResolvedValue({ ok: true }),
+        }}
+        mobileHome
+        ownerUserId="owner-1"
+      >
+        <p>Desktop dashboard</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    await user.type(screen.getByRole("textbox", { name: "What should Tendnote keep?" }), "Note");
+    await user.click(screen.getByRole("button", { name: "Save capture" }));
+    await user.click(await screen.findByRole("button", { name: "Change" }));
+    const correction = screen.getByRole("textbox", { name: "Change saved wording" });
+    await user.clear(correction);
+    await user.type(correction, "Remind me to replace the filter sometime");
+    await user.click(screen.getByRole("button", { name: "Save change" }));
+
+    const answer = await screen.findByRole("textbox", {
+      name: "When should I remind you to replace the filter?",
+    });
+    await user.type(answer, "tomorrow");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(change).toHaveBeenLastCalledWith({
+      clarificationAnswer: "tomorrow",
+      target: confirmation.change,
+      originalText: "Remind me to replace the filter sometime",
+    });
+  });
+
   it("keeps one interaction id across a failed retry and shows grounded Change and Undo controls", async () => {
     const user = userEvent.setup();
     const confirmation = {
@@ -206,13 +437,15 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await user.click(screen.getByRole("button", { name: "Save change" }));
     await waitFor(() =>
       expect(change).toHaveBeenCalledWith({
-        savedItemId: "saved-1",
+        target: { kind: "edit_saved_item", savedItemId: "saved-1" },
         originalText: "Where should I buy this filter?",
       }),
     );
     await user.click(screen.getByRole("button", { name: "Undo" }));
     expect(await screen.findByRole("heading", { name: "Capture undone" })).toBeDefined();
-    expect(undo).toHaveBeenCalledWith({ savedItemId: "saved-1" });
+    expect(undo).toHaveBeenCalledWith({
+      target: { kind: "archive_saved_item", savedItemId: "saved-1" },
+    });
   });
 
   it("adds a live dictated transcript without retaining audio provenance", async () => {

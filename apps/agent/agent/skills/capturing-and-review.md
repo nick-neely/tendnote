@@ -32,11 +32,21 @@ This is distinct from memories: profile fields are structured attributes of the 
 through `update_person`; "Mara is vegetarian" or "Sam is job hunting" is a memory
 (`capture_memory`) and a passing observation is a source record (`capture_source_record`).
 
-A direct request to save a general note, link, or open question that is not about a
-person uses `capture_saved_item`. Ordinary questions remain conversation-only and must
-not call a capture tool.
-If the user immediately corrects or undoes that general capture, use
-`change_saved_item_capture` or `undo_saved_item_capture` with the persisted Saved Item id.
+A direct Capture request uses `capture_saved_item`, which is the shared global Capture
+operation despite its legacy tool name. It deterministically routes a general note,
+link, or open question to Saved Items; explicit personal work to an Action or Routine;
+and an explicit person-scoped reminder with concrete timing to a Follow-Up. Ordinary
+questions remain conversation-only and must not call a capture tool. Inferred work uses
+the existing suggestion/review tools and must never borrow authority from another
+explicit outcome.
+
+If Capture returns one clarification, ask exactly that question, then call the same
+tool with the same `interactionId` and `originalText` plus `clarificationAnswer`; the
+original source evidence is already saved. Never resolve an ambiguous person or vague
+timing yourself. If the user immediately corrects or undoes the completed capture, use
+`change_saved_item_capture` or `undo_saved_item_capture` with the exact `changeTarget`
+or `undoTarget` returned by Capture. Those tools operate on the real destination
+lifecycle and preserve the source evidence.
 Pass a birthday as YYYY-MM-DD when the year is known, or --MM-DD for month/day-only
 birthday data. Do not invent a fake year. Resolve relative phrasing against today's
 date. Pass `null` to clear a clearable field.

@@ -102,7 +102,10 @@ export type SavedItemStore = {
 };
 
 export type SavedItemLifecycleStore = SavedItemStore &
-  Pick<SourceRecordCaptureStore, "createSourceRecord" | "getSourceRecord"> &
+  Pick<
+    SourceRecordCaptureStore,
+    "createSourceRecord" | "getSourceRecord" | "updateSourceRecordStatus"
+  > &
   Pick<
     HouseholdStore,
     | "getHouseholdWorkspace"

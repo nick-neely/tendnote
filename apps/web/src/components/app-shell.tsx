@@ -4,9 +4,10 @@ import { MessageSquareTextIcon } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
 import {
-  captureExplicitSavedItemAction,
-  changeExplicitSavedItemCaptureAction,
-  undoExplicitSavedItemCaptureAction,
+  addCapturePersonAction,
+  captureExplicitOutcomeAction,
+  changeExplicitCaptureOutcomeAction,
+  undoExplicitCaptureOutcomeAction,
 } from "@/app/actions/conversational-capture";
 import { appDestinations } from "@/components/app-destinations";
 import { MobileFailureState } from "@/components/mobile-failure-state";
@@ -17,9 +18,10 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
 const defaultCaptureHandlers: CaptureHandlers = {
-  change: changeExplicitSavedItemCaptureAction,
-  submit: captureExplicitSavedItemAction,
-  undo: undoExplicitSavedItemCaptureAction,
+  addPerson: addCapturePersonAction,
+  change: changeExplicitCaptureOutcomeAction,
+  submit: captureExplicitOutcomeAction,
+  undo: undoExplicitCaptureOutcomeAction,
 };
 
 export function AppShell({

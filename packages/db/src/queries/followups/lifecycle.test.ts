@@ -45,6 +45,28 @@ async function setup() {
 }
 
 describe("create active follow-up", () => {
+  it("accepts a stable id and owner-visible source grounding for Capture retries", async () => {
+    const { store, lifecycle, person } = await setup();
+    const source = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Remind me to follow up with Mark tomorrow",
+      scope: "private",
+    });
+    const id = "8e09c006-3d32-57fa-a725-af25534ba92f";
+
+    const followup = await lifecycle.createFollowup({
+      id,
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Follow up",
+      dueAt: new Date("2026-07-22T14:00:00Z"),
+      sourceRecordId: source.id,
+    });
+
+    expect(followup).toMatchObject({ id, sourceRecordId: source.id });
+  });
+
   it("creates an active open reminder tied to owner, person, reason, and due date with an audit entry", async () => {
     const { lifecycle, person, auditActions } = await setup();
 

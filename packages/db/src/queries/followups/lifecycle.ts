@@ -165,13 +165,26 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
         throw new Error("Person not found.");
       }
 
+      const sourceRecordId = input.sourceRecordId ?? null;
+      if (sourceRecordId) {
+        const source = await store.getSourceRecord({
+          ownerUserId: input.ownerUserId,
+          sourceRecordId,
+        });
+        if (!source) {
+          throw new Error("Source record not found.");
+        }
+      }
+
       const followup = await store.createFollowup({
+        id: input.id,
         ownerUserId: input.ownerUserId,
         personId: input.personId,
         reason: input.reason,
         dueAt,
         status: "open",
         cadence: input.cadence ?? null,
+        sourceRecordId,
         householdId,
         scope,
         createdByUserId: input.ownerUserId,
@@ -191,6 +204,7 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
           personId: followup.personId,
           scope: followup.scope,
           status: followup.status,
+          grounded: sourceRecordId !== null,
         },
       });
 
@@ -220,6 +234,10 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
           }),
         })),
       );
+    },
+
+    async getFollowup(input: FollowupActionInput) {
+      return requireFollowup(input);
     },
 
     /** Edits a follow-up's reason and/or due date in place (no status change). */

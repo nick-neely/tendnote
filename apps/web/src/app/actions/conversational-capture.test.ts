@@ -1,31 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  captureExplicitSavedItem,
-  changeExplicitSavedItemCapture,
+  createPerson,
+  captureExplicitOutcome,
+  changeExplicitCaptureOutcome,
   revalidatePath,
-  undoExplicitSavedItemCapture,
+  searchPeople,
+  undoExplicitCaptureOutcome,
 } = vi.hoisted(() => ({
-  captureExplicitSavedItem: vi.fn(),
-  changeExplicitSavedItemCapture: vi.fn(),
+  createPerson: vi.fn(),
+  captureExplicitOutcome: vi.fn(),
+  changeExplicitCaptureOutcome: vi.fn(),
   revalidatePath: vi.fn(),
-  undoExplicitSavedItemCapture: vi.fn(),
+  searchPeople: vi.fn(),
+  undoExplicitCaptureOutcome: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/conversational-capture", () => ({
-  captureExplicitSavedItem,
-  changeExplicitSavedItemCapture,
-  undoExplicitSavedItemCapture,
+  captureExplicitOutcome,
+  changeExplicitCaptureOutcome,
+  undoExplicitCaptureOutcome,
 }));
+vi.mock("@tendnote/db/queries/people", () => ({ createPerson, searchPeople }));
 vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
 }));
 
 import {
-  captureExplicitSavedItemAction,
-  changeExplicitSavedItemCaptureAction,
-  undoExplicitSavedItemCaptureAction,
+  addCapturePersonAction,
+  captureExplicitOutcomeAction,
+  changeExplicitCaptureOutcomeAction,
+  undoExplicitCaptureOutcomeAction,
 } from "./conversational-capture";
 
 const SAVED_ITEM_ID = "11111111-1111-4111-8111-111111111111";
@@ -39,19 +45,34 @@ const confirmation = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  captureExplicitSavedItem.mockResolvedValue({ confirmation });
-  changeExplicitSavedItemCapture.mockResolvedValue({ id: SAVED_ITEM_ID });
-  undoExplicitSavedItemCapture.mockResolvedValue({ id: SAVED_ITEM_ID, status: "archived" });
+  captureExplicitOutcome.mockResolvedValue({ confirmation });
+  changeExplicitCaptureOutcome.mockResolvedValue({ id: SAVED_ITEM_ID });
+  undoExplicitCaptureOutcome.mockResolvedValue({ id: SAVED_ITEM_ID, status: "archived" });
+  searchPeople.mockResolvedValue([]);
+  createPerson.mockResolvedValue({ id: "person-1", displayName: "Maya" });
 });
 
 describe("conversational Capture web adapters", () => {
+  it("adds an unknown Person through the owner-scoped mutation before clarification continues", async () => {
+    await expect(addCapturePersonAction({ displayName: "Maya" })).resolves.toEqual({
+      displayName: "Maya",
+    });
+    expect(searchPeople).toHaveBeenCalledWith({ ownerUserId: "owner-1", query: "Maya", limit: 10 });
+    expect(createPerson).toHaveBeenCalledWith({
+      ownerUserId: "owner-1",
+      displayName: "Maya",
+      relationshipType: "other",
+      source: "manual",
+    });
+  });
+
   it("derives owner and authority server-side before calling the shared operation", async () => {
-    const result = await captureExplicitSavedItemAction({
+    const result = await captureExplicitOutcomeAction({
       interactionId: "browser-interaction",
       inputMode: "typed",
       originalText: "Keep this note",
     });
-    expect(captureExplicitSavedItem).toHaveBeenCalledWith({
+    expect(captureExplicitOutcome).toHaveBeenCalledWith({
       authority: "explicit",
       interactionId: "browser-interaction",
       inputMode: "typed",
@@ -63,20 +84,51 @@ describe("conversational Capture web adapters", () => {
   });
 
   it("keeps corrections and Undo owner-scoped through Saved Item lifecycle operations", async () => {
-    await changeExplicitSavedItemCaptureAction({
-      savedItemId: SAVED_ITEM_ID,
+    await changeExplicitCaptureOutcomeAction({
+      target: { kind: "edit_saved_item", savedItemId: SAVED_ITEM_ID },
       originalText: "Corrected note",
     });
-    expect(changeExplicitSavedItemCapture).toHaveBeenCalledWith({
+    expect(changeExplicitCaptureOutcome).toHaveBeenCalledWith({
       actorUserId: "owner-1",
-      savedItemId: SAVED_ITEM_ID,
+      target: { kind: "edit_saved_item", savedItemId: SAVED_ITEM_ID },
       originalText: "Corrected note",
     });
 
-    await undoExplicitSavedItemCaptureAction({ savedItemId: SAVED_ITEM_ID });
-    expect(undoExplicitSavedItemCapture).toHaveBeenCalledWith({
-      actorUserId: "owner-1",
-      savedItemId: SAVED_ITEM_ID,
+    await undoExplicitCaptureOutcomeAction({
+      target: { kind: "archive_saved_item", savedItemId: SAVED_ITEM_ID },
     });
+    expect(undoExplicitCaptureOutcome).toHaveBeenCalledWith({
+      actorUserId: "owner-1",
+      target: { kind: "archive_saved_item", savedItemId: SAVED_ITEM_ID },
+    });
+  });
+
+  it("returns a replacement confirmation when Change reroutes the grounded capture", async () => {
+    const actionConfirmation = {
+      destination: "Actions" as const,
+      groundedBySourceRecordId: "source-1",
+      interpreted: {
+        title: "Replace the filter",
+        dueAt: null,
+        cadence: null,
+        scope: "Only me" as const,
+      },
+      change: {
+        kind: "edit_general_action" as const,
+        generalActionId: "22222222-2222-4222-8222-222222222222",
+      },
+      undo: {
+        kind: "archive_general_action" as const,
+        generalActionId: "22222222-2222-4222-8222-222222222222",
+      },
+    };
+    changeExplicitCaptureOutcome.mockResolvedValue({ confirmation: actionConfirmation });
+
+    const result = await changeExplicitCaptureOutcomeAction({
+      target: { kind: "edit_saved_item", savedItemId: SAVED_ITEM_ID },
+      originalText: "I need to replace the filter",
+    });
+
+    expect(result).toEqual({ confirmation: actionConfirmation });
   });
 });

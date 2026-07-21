@@ -56,7 +56,7 @@ export function createInMemoryFollowupStore(): FollowupStore & HouseholdStore {
       const now = new Date();
       const followup: Followup = {
         ...parsed,
-        id: randomUUID(),
+        id: parsed.id ?? randomUUID(),
         createdAt: now,
         updatedAt: now,
       };
