@@ -76,6 +76,10 @@ _Avoid_: Retry window, reminder expiry, overdue grace period
 One owner-scoped browser or installed PWA registration that has explicitly opted into reminder delivery. Each installation is an independent delivery target with its own subscription lifecycle and preview preference; it identifies a browser installation, not inferred physical hardware.
 _Avoid_: Physical device, preferred device, fingerprint
 
+**Reminder Opt-In**:
+The explicit, installation-scoped consent that lets Tendnote alert an owner about notification-eligible records they deliberately created or accepted. Reminder opt-in is offered only after its value is concrete, remains distinct from browser permission, and never activates inferred suggestions or a broader notification-preference system.
+_Avoid_: Notification onboarding, account-wide permission, automatic alerts
+
 **General Action**:
 A non-person action or reminder for the owner's broader Personal OS context, such as replacing a water filter or renewing a subscription. A general action has its own domain model with source grounding, lifecycle state, due dates or cadence, visibility scope, optional person links, and later links to assets; product UI may label one-time general actions as Actions and recurring general actions as Routines.
 _Avoid_: Follow-up, task, project, todo
