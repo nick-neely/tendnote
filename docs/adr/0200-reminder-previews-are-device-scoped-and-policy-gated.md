@@ -1,0 +1,3 @@
+# Reminder Previews Are Device-Scoped And Policy-Gated
+
+Phase Seven reminder notifications use generic ambient copy by default while allowing the owner to enable bounded title-and-time detail explicitly on each authenticated device. That device preference never overrides record sensitivity, proactive-visibility policy, current authorization, or lifecycle checks; notification taps deep-link to the canonical record without mutating it, and sign-out disables the subscription. This preserves useful lock-screen context on trusted devices without treating Web Push or an operating-system notification surface as a trusted Tendnote view.

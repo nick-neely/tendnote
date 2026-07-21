@@ -1398,6 +1398,13 @@ PWA and mobile platform contract:
 - Failure states distinguish no connection, expired authentication, app-server failure, and Eve-only failure and always expose the safe next action. When authoritative app data is reachable but Eve is not, Today uses its deterministic ordering and explanations and direct structured actions remain available where their server policy can execute safely; capture that depends on Eve routing stays visibly unsaved with its draft, retry, and copy controls.
 - A service worker may fetch a new version in the background but does not force-refresh an active session. The app adopts it at the next safe navigation or relaunch; an update that truly needs an immediate reload presents a quiet action and preserves every unfinished draft first. Cache or version incompatibility degrades to a recoverable refresh state rather than a blank or partially interactive shell.
 
+Reminder preview privacy contract:
+
+- Every new device subscription uses a generic Reminder Preview by default. The owner may explicitly enable detailed previews only from an authenticated session on that device; ordinary session authentication plus the direct on-device action is sufficient, and Tendnote does not imply that a web app can enforce an additional native biometric or password gate. Signing out disables the device subscription rather than leaving ambient delivery attached to a former session.
+- A detailed Reminder Preview may show only a concise record title or person-facing reminder label and the scheduled time, such as `Call Mara — 6:00 PM`. It never includes note bodies, source excerpts, attachments, AI explanations, visibility metadata, or other record summary content. Generic copy identifies Tendnote and asks the owner to open the app without exposing the record.
+- The per-device preference grants presentation permission, not broader data authority. Sensitivity and proactive-visibility policy are checked when rendering every notification and force generic copy when detail is not safe. Eligible private and shared records otherwise follow the same rules; visibility alone neither grants detail nor forces generic copy.
+- Tapping a notification opens only the canonical Tendnote record or reminder occurrence and never completes, snoozes, dismisses, or otherwise mutates it. Tendnote revalidates authentication, ownership, visibility, sensitivity, and current lifecycle before rendering, preserves the intended destination through sign-in, and shows a calm non-leaking unavailable or resolved state when the record can no longer be opened. Deep links carry stable identity rather than copied record content or an action-bearing token.
+
 Vertical slice issue seeds:
 
 - Add mobile-first fast capture and confirmation.
