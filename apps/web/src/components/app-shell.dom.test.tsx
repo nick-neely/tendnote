@@ -272,7 +272,10 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(await screen.findByRole("button", { name: "Link someone else" })).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Add Maya" }));
 
-    expect(addPerson).toHaveBeenCalledWith({ displayName: "Maya" });
+    expect(addPerson).toHaveBeenCalledWith({
+      displayName: "Maya",
+      sourceRecordId: "source-1",
+    });
     expect(submit).toHaveBeenLastCalledWith(
       expect.objectContaining({
         clarificationAnswer: "Maya",
@@ -446,6 +449,109 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(undo).toHaveBeenCalledWith({
       target: { kind: "archive_saved_item", savedItemId: "saved-1" },
     });
+  });
+
+  it("shows one compact grouped confirmation and corrects one outcome without replacing its siblings", async () => {
+    const user = userEvent.setup();
+    const grouped = {
+      destination: "Grouped" as const,
+      groundedBySourceRecordId: "source-group",
+      outcomes: [
+        {
+          destination: "People" as const,
+          groundedBySourceRecordId: "source-group",
+          interpreted: { displayName: "Priya", scope: "Only me" as const },
+          change: {
+            kind: "edit_person" as const,
+            personId: "person-priya",
+            sourceRecordId: "source-group",
+          },
+        },
+        {
+          destination: "Memories" as const,
+          groundedBySourceRecordId: "source-group",
+          interpreted: {
+            person: "Priya",
+            authority: "Approved" as const,
+            scope: "Only me" as const,
+          },
+          change: {
+            kind: "edit_memory" as const,
+            memoryId: "memory-priya",
+            sourceRecordId: "source-group",
+          },
+          undo: { kind: "archive_memory" as const, memoryId: "memory-priya" },
+        },
+        {
+          destination: "Review" as const,
+          groundedBySourceRecordId: "source-group",
+          interpreted: {
+            record: "Asset" as const,
+            name: "refrigerator filter",
+            authority: "Needs review" as const,
+            scope: "Only me" as const,
+          },
+          change: {
+            kind: "edit_asset_review" as const,
+            groupId: "review-filter",
+            sourceRecordId: "source-group",
+          },
+          undo: { kind: "dismiss_asset_review" as const, groupId: "review-filter" },
+        },
+      ],
+    };
+    const replacement = {
+      destination: "Actions" as const,
+      groundedBySourceRecordId: "source-group",
+      interpreted: {
+        title: "Buy oat milk",
+        dueAt: null,
+        cadence: null,
+        scope: "Only me" as const,
+      },
+      change: { kind: "edit_general_action" as const, generalActionId: "action-oat" },
+      undo: { kind: "archive_general_action" as const, generalActionId: "action-oat" },
+    };
+    const change = vi.fn().mockResolvedValue({ confirmation: replacement });
+    render(
+      <AppShell
+        captureHandlers={{
+          change,
+          submit: vi.fn().mockResolvedValue({ confirmation: grouped }),
+          undo: vi.fn(),
+        }}
+        mobileHome
+        ownerUserId="owner-1"
+      >
+        <p>Desktop dashboard</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "What should Tendnote keep?" }),
+      "Add Priya; remember that Priya prefers oat milk; track asset refrigerator filter",
+    );
+    await user.click(screen.getByRole("button", { name: "Save capture" }));
+    expect(await screen.findByText("Approved Memory for Priya")).toBeDefined();
+    expect(screen.getByText("refrigerator filter · Needs review")).toBeDefined();
+
+    await user.click(screen.getAllByRole("button", { name: "Change" })[1] as HTMLElement);
+    await user.type(
+      screen.getByRole("textbox", { name: "Change saved wording" }),
+      "I need to buy oat milk",
+    );
+    await user.click(screen.getByRole("button", { name: "Save change" }));
+
+    await waitFor(() =>
+      expect(change).toHaveBeenCalledWith({
+        target: grouped.outcomes[1]?.change,
+        originalText: "I need to buy oat milk",
+      }),
+    );
+    expect(screen.getByText("Priya")).toBeDefined();
+    expect(screen.getByText("Buy oat milk")).toBeDefined();
+    expect(screen.getByText("refrigerator filter · Needs review")).toBeDefined();
   });
 
   it("adds a live dictated transcript without retaining audio provenance", async () => {

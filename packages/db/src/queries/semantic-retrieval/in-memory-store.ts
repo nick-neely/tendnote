@@ -97,6 +97,7 @@ export function createInMemoryEmbeddingStore(
       return sourceRecord ? base.listSourceRecordPeople(input) : [];
     },
     async listUnresolvedMentions(input) {
+      if (!input.ownerUserId) return base.listUnresolvedMentions(input);
       const sourceRecord = await base.getSourceRecord({
         ownerUserId: input.ownerUserId,
         sourceRecordId: input.sourceRecordId,

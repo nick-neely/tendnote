@@ -93,6 +93,7 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
       return rows.map((row) => row.source_record_people);
     },
     async listUnresolvedMentions(input) {
+      if (!input.ownerUserId) return base.listUnresolvedMentions(input);
       const rows = await getDb()
         .select()
         .from(unresolvedPersonMentions)

@@ -4,11 +4,13 @@ import type {
   ConversationalCaptureChangeTarget,
   ConversationalCaptureClarification,
   ConversationalCaptureConfirmation,
+  ConversationalCaptureOutcomeConfirmation,
   ConversationalCaptureUndoTarget,
 } from "@tendnote/domain/conversational-capture";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { MobileFailureState } from "@/components/mobile-failure-state";
 import { Button } from "@/components/ui/button";
+import { captureOutcomePresentation } from "@/lib/capture-outcome-presentation";
 import { useLocalComposerDraft } from "@/lib/local-composer-draft";
 
 export type CaptureSubmitInput = {
@@ -23,7 +25,11 @@ export type CaptureSubmitResult =
   | { clarification: ConversationalCaptureClarification };
 
 export type CaptureHandlers = {
-  addPerson?: (input: { displayName: string }) => Promise<{ displayName: string }>;
+  addPerson?: (input: {
+    displayName: string;
+    sourceRecordId: string;
+    unresolvedMentionId?: string;
+  }) => Promise<{ displayName: string }>;
   change: (input: {
     clarificationAnswer?: string;
     target: ConversationalCaptureChangeTarget;
@@ -44,6 +50,7 @@ type CaptureFlowProps = {
 };
 
 type CaptureState = {
+  activeOutcomeIndex: number;
   clarification: ConversationalCaptureClarification | null;
   clarificationAnswer: string;
   clarificationTarget: ConversationalCaptureChangeTarget | null;
@@ -57,6 +64,7 @@ type CaptureState = {
   originalText: string;
   pending: boolean;
   undone: boolean;
+  undoneOutcomeIndexes: number[];
 };
 
 type SpeechRecognitionEventLike = {
@@ -84,12 +92,40 @@ function speechRecognitionConstructor(): SpeechRecognitionConstructor | undefine
   return browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
 }
 
+function captureOutcomeAt(
+  confirmation: ConversationalCaptureConfirmation | null,
+  index: number,
+): ConversationalCaptureOutcomeConfirmation | null {
+  if (!confirmation) return null;
+  return confirmation.destination === "Grouped"
+    ? (confirmation.outcomes[index] ?? null)
+    : confirmation;
+}
+
+function replaceGroupedOutcome(
+  current: ConversationalCaptureConfirmation | null,
+  index: number,
+  replacement?: ConversationalCaptureConfirmation,
+): ConversationalCaptureConfirmation | null {
+  if (!replacement) return current;
+  if (current?.destination !== "Grouped" || replacement.destination === "Grouped") {
+    return replacement;
+  }
+  return {
+    ...current,
+    outcomes: current.outcomes.map((outcome, outcomeIndex) =>
+      outcomeIndex === index ? replacement : outcome,
+    ),
+  };
+}
+
 function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowProps) {
   const draft = useLocalComposerDraft(ownerUserId, "capture");
   const interactionId = useRef(globalThis.crypto.randomUUID());
   const clarificationInputRef = useRef<HTMLInputElement>(null);
   const recognition = useRef<SpeechRecognitionLike | null>(null);
   const [state, setState] = useState<CaptureState>({
+    activeOutcomeIndex: 0,
     clarification: null,
     clarificationAnswer: "",
     clarificationTarget: null,
@@ -103,6 +139,7 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
     originalText: "",
     pending: false,
     undone: false,
+    undoneOutcomeIndexes: [],
   });
   const update = (patch: Partial<CaptureState>) =>
     setState((current) => ({ ...current, ...patch }));
@@ -123,6 +160,7 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
   function applySubmitResult(result: CaptureSubmitResult, originalText: string) {
     if ("clarification" in result) {
       update({
+        activeOutcomeIndex: 0,
         clarification: result.clarification,
         clarificationAnswer: "",
         clarificationTarget: null,
@@ -131,6 +169,7 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
       });
     } else {
       update({
+        activeOutcomeIndex: 0,
         clarification: null,
         clarificationTarget: null,
         confirmation: result.confirmation,
@@ -153,10 +192,15 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
         originalText,
       });
     } else {
+      const nextConfirmation = replaceGroupedOutcome(
+        state.confirmation,
+        state.activeOutcomeIndex,
+        result.confirmation,
+      );
       update({
         clarification: null,
         clarificationTarget: null,
-        confirmation: result.confirmation ?? state.confirmation,
+        confirmation: nextConfirmation,
         editing: false,
       });
     }
@@ -194,8 +238,10 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
     const clarificationAnswer = state.clarificationTarget
       ? state.clarificationAnswer.trim()
       : undefined;
+    const selectedOutcome = captureOutcomeAt(state.confirmation, state.activeOutcomeIndex);
     if (
       !state.confirmation ||
+      !selectedOutcome ||
       !handlers?.change ||
       !originalText ||
       (state.clarificationTarget && !clarificationAnswer) ||
@@ -206,14 +252,10 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
     try {
       const result = await handlers.change({
         ...(clarificationAnswer ? { clarificationAnswer } : {}),
-        target: state.clarificationTarget ?? state.confirmation.change,
+        target: state.clarificationTarget ?? selectedOutcome.change,
         originalText,
       });
-      applyChangeResult(
-        result,
-        originalText,
-        state.clarificationTarget ?? state.confirmation.change,
-      );
+      applyChangeResult(result, originalText, state.clarificationTarget ?? selectedOutcome.change);
     } catch {
       update({ failure: "change" });
     } finally {
@@ -221,13 +263,17 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
     }
   }
 
-  async function addPersonAndContinue(displayName: string) {
+  async function addPersonAndContinue(displayName: string, unresolvedMentionId?: string) {
     if (!handlers?.addPerson || state.pending || !state.clarification) return;
     const originalText = state.originalText;
     const target = state.clarificationTarget;
     update({ failure: null, pending: true });
     try {
-      const person = await handlers.addPerson({ displayName });
+      const person = await handlers.addPerson({
+        displayName,
+        sourceRecordId: state.clarification.sourceRecordId,
+        ...(unresolvedMentionId ? { unresolvedMentionId } : {}),
+      });
       if (target && state.confirmation) {
         const result = await handlers.change({
           clarificationAnswer: person.displayName,
@@ -252,12 +298,23 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
     }
   }
 
-  async function undo() {
-    if (!state.confirmation || !handlers?.undo || state.pending) return;
+  async function undo(outcomeIndex = state.activeOutcomeIndex) {
+    const selectedOutcome = captureOutcomeAt(state.confirmation, outcomeIndex);
+    if (
+      !state.confirmation ||
+      !selectedOutcome ||
+      !("undo" in selectedOutcome) ||
+      !handlers?.undo ||
+      state.pending
+    )
+      return;
     update({ failure: null, pending: true });
     try {
-      await handlers.undo({ target: state.confirmation.undo });
-      update({ undone: true });
+      await handlers.undo({ target: selectedOutcome.undo });
+      update({
+        undone: state.confirmation.destination === "Grouped" ? state.undone : true,
+        undoneOutcomeIndexes: [...new Set([...state.undoneOutcomeIndexes, outcomeIndex])],
+      });
     } catch {
       update({ failure: "undo" });
     } finally {
@@ -308,6 +365,7 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
     interactionId.current = globalThis.crypto.randomUUID();
     draft.clear();
     update({
+      activeOutcomeIndex: 0,
       dictating: false,
       dictationMessage: null,
       failure: null,
@@ -316,6 +374,8 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
       clarificationAnswer: "",
       clarificationTarget: null,
       originalText: "",
+      undone: false,
+      undoneOutcomeIndexes: [],
     });
   }
 
@@ -391,41 +451,41 @@ function CaptureConfirmationDetails({
 }: {
   confirmation: ConversationalCaptureConfirmation;
 }) {
-  const isSavedItem = confirmation.destination === "Saved Items";
-  const isAction =
-    confirmation.destination === "Actions" || confirmation.destination === "Routines";
-  const savedAs = isSavedItem
-    ? confirmation.interpreted.kind
-    : confirmation.destination === "Follow-Ups"
-      ? `Follow-Up with ${confirmation.interpreted.person}`
-      : confirmation.interpreted.title;
-  const visibleTo = isSavedItem
-    ? confirmation.interpreted.visibility
-    : confirmation.interpreted.scope;
-  const dueAt = isSavedItem ? null : confirmation.interpreted.dueAt;
-  const cadence = isAction ? confirmation.interpreted.cadence : null;
+  const outcomes = confirmation.destination === "Grouped" ? confirmation.outcomes : [confirmation];
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 rounded-xl border bg-panel p-4 text-sm">
+    <div className="divide-y rounded-xl border bg-panel">
+      {outcomes.map((outcome) => (
+        <CaptureOutcomeDetails key={captureOutcomePresentation(outcome).key} outcome={outcome} />
+      ))}
+      <p className="p-4 text-muted-foreground text-sm">
+        Original capture retained as source evidence
+      </p>
+    </div>
+  );
+}
+
+function CaptureOutcomeDetails({ outcome }: { outcome: ConversationalCaptureOutcomeConfirmation }) {
+  const presentation = captureOutcomePresentation(outcome);
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 p-4 text-sm">
       <dt className="text-muted-foreground">Destination</dt>
-      <dd>{confirmation.destination}</dd>
+      <dd>{outcome.destination}</dd>
       <dt className="text-muted-foreground">Saved as</dt>
-      <dd>{savedAs}</dd>
+      <dd>{presentation.description}</dd>
       <dt className="text-muted-foreground">Visible to</dt>
-      <dd>{visibleTo}</dd>
-      {dueAt ? (
+      <dd>{presentation.visibility}</dd>
+      {presentation.dueAt ? (
         <>
           <dt className="text-muted-foreground">Due</dt>
-          <dd>{new Date(dueAt).toLocaleString()}</dd>
+          <dd>{new Date(presentation.dueAt).toLocaleString()}</dd>
         </>
       ) : null}
-      {cadence ? (
+      {presentation.cadence ? (
         <>
           <dt className="text-muted-foreground">Cadence</dt>
-          <dd>{cadence}</dd>
+          <dd>{presentation.cadence}</dd>
         </>
       ) : null}
-      <dt className="text-muted-foreground">Grounding</dt>
-      <dd>Original capture retained as source evidence</dd>
     </dl>
   );
 }
@@ -438,27 +498,46 @@ function CaptureConfirmationControls({
   handlers: CaptureFlowProps["handlers"];
 }) {
   const { state, undo, update } = controller;
+  const confirmation = state.confirmation;
+  if (!confirmation) return null;
+  const outcomes = confirmation.destination === "Grouped" ? confirmation.outcomes : [confirmation];
   return (
     <>
       {state.failure === "undo" ? <MobileFailureState kind="capture_undo" onRetry={undo} /> : null}
-      <div className="flex gap-2">
-        <Button
-          disabled={!handlers?.change || state.pending}
-          onClick={() => update({ editing: true, failure: null })}
-          type="button"
-          variant="outline"
-        >
-          Change
-        </Button>
-        <Button
-          disabled={!handlers?.undo || state.pending}
-          onClick={undo}
-          type="button"
-          variant="ghost"
-        >
-          Undo
-        </Button>
-      </div>
+      {outcomes.map((outcome, index) => (
+        <div className="flex items-center gap-2" key={captureOutcomePresentation(outcome).key}>
+          {outcomes.length > 1 ? (
+            <span className="mr-auto text-muted-foreground text-sm">{outcome.destination}</span>
+          ) : null}
+          <Button
+            disabled={!handlers?.change || state.pending}
+            onClick={() =>
+              update({
+                activeOutcomeIndex: index,
+                editText: outcomes.length > 1 ? "" : state.editText,
+                editing: true,
+                failure: null,
+              })
+            }
+            type="button"
+            variant="outline"
+          >
+            Change
+          </Button>
+          {"undo" in outcome ? (
+            <Button
+              disabled={
+                !handlers?.undo || state.pending || state.undoneOutcomeIndexes.includes(index)
+              }
+              onClick={() => void undo(index)}
+              type="button"
+              variant="ghost"
+            >
+              {state.undoneOutcomeIndexes.includes(index) ? "Undone" : "Undo"}
+            </Button>
+          ) : null}
+        </div>
+      ))}
     </>
   );
 }
@@ -527,7 +606,7 @@ function CaptureClarification({
               <Button
                 disabled={!canAddPerson || state.pending}
                 key={action.kind}
-                onClick={() => addPersonAndContinue(action.displayName)}
+                onClick={() => addPersonAndContinue(action.displayName, action.unresolvedMentionId)}
                 type="button"
                 variant="outline"
               >

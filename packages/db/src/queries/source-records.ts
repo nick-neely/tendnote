@@ -66,6 +66,49 @@ export async function createAndLinkPersonToSourceRecord(input: {
   return defaultSourceRecordResolution.createAndLinkPersonToSourceRecord(input);
 }
 
+export async function resolveOrCreateAndLinkPersonToSourceRecord(input: {
+  ownerUserId: string;
+  sourceRecordId: string;
+  displayName: string;
+  role?: SourceRecordPersonRole;
+  unresolvedMentionId?: string;
+}) {
+  const candidates = await defaultSourceRecordResolution.findPersonResolutionCandidates({
+    ownerUserId: input.ownerUserId,
+    mentionText: input.displayName,
+    limit: 10,
+  });
+  const normalized = input.displayName.trim().toLocaleLowerCase();
+  const exact = candidates.filter(
+    (person) => person.displayName.trim().toLocaleLowerCase() === normalized,
+  );
+  if (exact.length > 1) {
+    throw new Error("More than one Person has that name. Link one instead.");
+  }
+  const person = exact[0];
+  if (person) {
+    return {
+      ...(await defaultSourceRecordResolution.linkSourceRecordToExistingPerson({
+        ...input,
+        personId: person.id,
+      })),
+      created: false as const,
+    };
+  }
+  return {
+    ...(await defaultSourceRecordResolution.createAndLinkPersonToSourceRecord(input)),
+    created: true as const,
+  };
+}
+
+export async function unlinkSourceRecordFromPerson(input: {
+  ownerUserId: string;
+  sourceRecordId: string;
+  personId: string;
+}) {
+  return defaultSourceRecordResolution.unlinkSourceRecordFromPerson(input);
+}
+
 export async function ignoreUnresolvedMention(input: {
   ownerUserId: string;
   sourceRecordId: string;

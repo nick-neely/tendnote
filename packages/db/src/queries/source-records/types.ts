@@ -49,6 +49,7 @@ export type SourceRecordReviewResult = {
   sourceRecord: SourceRecord;
   component: SourceRecordReviewComponent;
   linkedPeople?: Pick<Person, "id" | "displayName">[];
+  unresolvedMentions?: UnresolvedPersonMention[];
 };
 
 export type SourceRecordAuditLogEntry = {
@@ -86,6 +87,10 @@ export type SourceRecordCaptureStore = {
   createUnresolvedMention: (
     unresolvedMention: CreateUnresolvedMentionInput,
   ) => Promise<UnresolvedPersonMention>;
+  listUnresolvedMentions: (input: {
+    sourceRecordId: string;
+    ownerUserId?: string;
+  }) => Promise<UnresolvedPersonMention[]>;
   createAuditLogEntry: (
     auditLogEntry: Omit<SourceRecordAuditLogEntry, "id" | "createdAt"> &
       Partial<Pick<SourceRecordAuditLogEntry, "id">>,
@@ -105,6 +110,7 @@ export type SourceRecordResolutionStore = SourceRecordCaptureStore & {
     personId: string;
     role: SourceRecordPersonRole;
   }) => Promise<SourceRecordPerson>;
+  unlinkSourceRecordPerson: (input: { sourceRecordId: string; personId: string }) => Promise<void>;
   listSourceRecordsForPersonContext: (input: {
     ownerUserId: string;
     personId: string;
@@ -129,7 +135,6 @@ export type SourceRecordEmbeddingScheduler = (input: {
 export type InMemorySourceRecordStore = SourceRecordResolutionStore & {
   getSourceRecordById: (sourceRecordId: string) => Promise<SourceRecord | null>;
   listPeople: (input: { ownerUserId: string }) => Promise<Person[]>;
-  listUnresolvedMentions: (input: { sourceRecordId: string }) => Promise<UnresolvedPersonMention[]>;
   listSourceRecordPeople: (input: { sourceRecordId: string }) => Promise<SourceRecordPerson[]>;
   listAuditLogEntries: (input: { ownerUserId: string }) => Promise<SourceRecordAuditLogEntry[]>;
 };

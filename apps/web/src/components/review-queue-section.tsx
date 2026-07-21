@@ -2,6 +2,7 @@
 
 import { CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
+import { addCapturePersonAction } from "@/app/actions/conversational-capture";
 import {
   dismissSuggestedMemoryAction,
   saveSuggestedMemoryAction,
@@ -10,6 +11,7 @@ import { AssetReviewGroupCard } from "@/components/asset-review-group-card";
 import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general-action-review";
 import { Button } from "@/components/ui/button";
 import type { ReviewQueueIdentity, ReviewQueueItem } from "@/lib/review-queue";
+import type { SourceRecordReviewView } from "@/lib/source-record-review-view";
 import type { SuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 import { useResolvingAction } from "@/lib/use-resolving-action";
 
@@ -66,12 +68,73 @@ function ReviewQueueCard({
     );
   }
 
+  if (item.family === "source-record") {
+    return (
+      <SourceRecordQueueCard
+        onResolve={() => onResolve({ family: item.family, id: item.id })}
+        review={item.review}
+      />
+    );
+  }
+
   return (
     <AssetReviewGroupCard
       onResolve={() => onResolve({ family: item.family, id: item.id })}
       onUpdate={(review) => onUpdate({ ...item, review })}
       review={item.review}
     />
+  );
+}
+
+function SourceRecordQueueCard({
+  review,
+  onResolve,
+}: {
+  review: SourceRecordReviewView;
+  onResolve: () => void;
+}) {
+  const mention = review.unresolvedMentions[0];
+  const { leaving, error, pending, run } = useResolvingAction(onResolve);
+  if (!mention) return null;
+  return (
+    <article
+      className="flex flex-col gap-2.5 rounded-xl border bg-surface px-4 py-3 transition-opacity data-[leaving=true]:opacity-0"
+      data-leaving={leaving}
+      data-source-record-id={review.sourceRecord.id}
+    >
+      <div>
+        <p className="text-sm font-medium">Who is {mention.mentionText}?</p>
+        <p className="mt-1 line-clamp-2 text-muted-foreground text-sm">
+          {review.sourceRecord.content}
+        </p>
+      </div>
+      <div className="flex items-center justify-end gap-1.5">
+        <Button asChild size="sm" variant="ghost">
+          <Link href={`/people?linkSourceRecord=${review.sourceRecord.id}`}>Link someone else</Link>
+        </Button>
+        <Button
+          disabled={pending}
+          onClick={() =>
+            run(() =>
+              addCapturePersonAction({
+                displayName: mention.mentionText,
+                sourceRecordId: review.sourceRecord.id,
+                unresolvedMentionId: mention.id,
+              }),
+            )
+          }
+          size="sm"
+          type="button"
+        >
+          Add {mention.mentionText}
+        </Button>
+      </div>
+      {error ? (
+        <p className="text-destructive text-sm" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </article>
   );
 }
 

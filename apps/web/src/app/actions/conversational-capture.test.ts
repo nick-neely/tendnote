@@ -1,18 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  createPerson,
+  resolveOrCreateAndLinkPersonToSourceRecord,
   captureExplicitOutcome,
   changeExplicitCaptureOutcome,
   revalidatePath,
-  searchPeople,
   undoExplicitCaptureOutcome,
 } = vi.hoisted(() => ({
-  createPerson: vi.fn(),
+  resolveOrCreateAndLinkPersonToSourceRecord: vi.fn(),
   captureExplicitOutcome: vi.fn(),
   changeExplicitCaptureOutcome: vi.fn(),
   revalidatePath: vi.fn(),
-  searchPeople: vi.fn(),
   undoExplicitCaptureOutcome: vi.fn(),
 }));
 
@@ -21,7 +19,9 @@ vi.mock("@tendnote/db/queries/conversational-capture", () => ({
   changeExplicitCaptureOutcome,
   undoExplicitCaptureOutcome,
 }));
-vi.mock("@tendnote/db/queries/people", () => ({ createPerson, searchPeople }));
+vi.mock("@tendnote/db/queries/source-records", () => ({
+  resolveOrCreateAndLinkPersonToSourceRecord,
+}));
 vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
@@ -48,21 +48,24 @@ beforeEach(() => {
   captureExplicitOutcome.mockResolvedValue({ confirmation });
   changeExplicitCaptureOutcome.mockResolvedValue({ id: SAVED_ITEM_ID });
   undoExplicitCaptureOutcome.mockResolvedValue({ id: SAVED_ITEM_ID, status: "archived" });
-  searchPeople.mockResolvedValue([]);
-  createPerson.mockResolvedValue({ id: "person-1", displayName: "Maya" });
+  resolveOrCreateAndLinkPersonToSourceRecord.mockResolvedValue({
+    person: { id: "person-1", displayName: "Maya" },
+    created: true,
+  });
 });
 
 describe("conversational Capture web adapters", () => {
   it("adds an unknown Person through the owner-scoped mutation before clarification continues", async () => {
-    await expect(addCapturePersonAction({ displayName: "Maya" })).resolves.toEqual({
+    await expect(
+      addCapturePersonAction({ displayName: "Maya", sourceRecordId: "source-1" }),
+    ).resolves.toEqual({
       displayName: "Maya",
     });
-    expect(searchPeople).toHaveBeenCalledWith({ ownerUserId: "owner-1", query: "Maya", limit: 10 });
-    expect(createPerson).toHaveBeenCalledWith({
+    expect(resolveOrCreateAndLinkPersonToSourceRecord).toHaveBeenCalledWith({
       ownerUserId: "owner-1",
+      sourceRecordId: "source-1",
       displayName: "Maya",
-      relationshipType: "other",
-      source: "manual",
+      role: "primary",
     });
   });
 

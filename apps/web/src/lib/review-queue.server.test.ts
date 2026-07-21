@@ -4,9 +4,11 @@ const mocks = vi.hoisted(() => ({
   listMemories: vi.fn(),
   listActions: vi.fn(),
   listAssets: vi.fn(),
+  listSources: vi.fn(),
   memoryView: vi.fn((result) => ({ memory: { id: result.memory.id } })),
   actionView: vi.fn((result) => ({ action: { id: result.action.id } })),
   assetView: vi.fn((result) => ({ groupId: result.group.id })),
+  sourceView: vi.fn((result) => ({ sourceRecord: { id: result.sourceRecord.id } })),
 }));
 
 vi.mock("@tendnote/db/queries/memories", () => ({
@@ -16,6 +18,9 @@ vi.mock("@tendnote/db/queries/general-actions", () => ({
   listSuggestedGeneralActionReviews: mocks.listActions,
 }));
 vi.mock("@tendnote/db/queries/assets", () => ({ listAssetReviewGroups: mocks.listAssets }));
+vi.mock("@tendnote/db/queries/source-records", () => ({
+  listSourceRecordReviews: mocks.listSources,
+}));
 vi.mock("@/lib/suggested-memory-review-view", () => ({
   toSuggestedMemoryReviewView: mocks.memoryView,
 }));
@@ -25,6 +30,9 @@ vi.mock("@/lib/suggested-general-action-review-view", () => ({
 vi.mock("@/lib/asset-review-origin", () => ({
   toAssetReviewGroupViewWithOrigin: mocks.assetView,
 }));
+vi.mock("@/lib/source-record-review-view", () => ({
+  toSourceRecordReviewView: mocks.sourceView,
+}));
 
 import { loadOwnerReviewQueue } from "./review-queue.server";
 
@@ -33,6 +41,7 @@ beforeEach(() => {
   mocks.listMemories.mockResolvedValue([]);
   mocks.listActions.mockResolvedValue([]);
   mocks.listAssets.mockResolvedValue([]);
+  mocks.listSources.mockResolvedValue([]);
 });
 
 describe("owner Review Queue adapter", () => {
@@ -46,16 +55,24 @@ describe("owner Review Queue adapter", () => {
     mocks.listAssets.mockResolvedValue([
       { group: { id: "group-1", createdAt: new Date("2026-07-15T12:00:00Z") } },
     ]);
+    mocks.listSources.mockResolvedValue([
+      {
+        sourceRecord: { id: "source-1" },
+        unresolvedMentions: [{ id: "mention-1", mentionText: "Maya" }],
+      },
+    ]);
 
     const queue = await loadOwnerReviewQueue("owner-1");
 
     expect(mocks.listMemories).toHaveBeenCalledWith({ ownerUserId: "owner-1", limit: 6 });
     expect(mocks.listActions).toHaveBeenCalledWith({ ownerUserId: "owner-1", limit: 6 });
     expect(mocks.listAssets).toHaveBeenCalledWith({ ownerUserId: "owner-1", limit: 6 });
+    expect(mocks.listSources).toHaveBeenCalledWith({ ownerUserId: "owner-1", limit: 6 });
     expect(queue.items.map(({ family, id }) => `${family}:${id}`)).toEqual([
       "suggested-memory:memory-1",
       "suggested-general-action:action-1",
       "asset-review-group:group-1",
+      "source-record:source-1",
     ]);
   });
 

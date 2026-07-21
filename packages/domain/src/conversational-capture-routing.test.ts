@@ -4,6 +4,84 @@ import { routeExplicitConversationalCapture } from "./conversational-capture";
 describe("explicit conversational Capture routing", () => {
   const now = new Date("2026-07-21T04:30:00.000Z");
 
+  it("routes explicit Person, Memory, and Asset-review requests without promoting inferred facts", () => {
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "Add Priya",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({ destination: "person", displayName: "Priya" });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "Remember that Priya prefers oat milk",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "memory",
+      content: "Priya prefers oat milk",
+      personQuery: "Priya",
+    });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "Track asset refrigerator water filter: model EDR4RXD1",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "asset_review",
+      assetKind: "item",
+      assetName: "refrigerator water filter",
+      fact: "model EDR4RXD1",
+    });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "Priya prefers oat milk",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({ destination: "saved_item" });
+  });
+
+  it("groups only independently explicit clauses and leaves implicit fan-out as one fallback", () => {
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText:
+          "Add Priya; and also remember that Priya prefers oat milk; and also track asset refrigerator water filter: model EDR4RXD1",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "group",
+      outcomes: [
+        { destination: "person", displayName: "Priya" },
+        {
+          destination: "memory",
+          content: "Priya prefers oat milk",
+          personQuery: "Priya",
+        },
+        {
+          destination: "asset_review",
+          assetKind: "item",
+          assetName: "refrigerator water filter",
+          fact: "model EDR4RXD1",
+        },
+      ],
+    });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "Remember that Priya prefers oat milk; maybe add a reminder too",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({ destination: "saved_item" });
+  });
+
   it("keeps one-time work unscheduled when no reminder timing was requested", () => {
     expect(
       routeExplicitConversationalCapture({

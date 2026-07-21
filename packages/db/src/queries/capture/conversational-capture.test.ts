@@ -346,10 +346,21 @@ describe("conversational Capture", () => {
     expect(result.clarification).toMatchObject({
       field: "person",
       actions: [
-        { kind: "add_person", label: "Add Maya", displayName: "Maya" },
+        {
+          kind: "add_person",
+          label: "Add Maya",
+          displayName: "Maya",
+          unresolvedMentionId: expect.any(String),
+        },
         { kind: "link_person", label: "Link someone else" },
       ],
     });
+    expect(result.sourceRecord.status).toBe("pending_resolution");
+    await expect(
+      store.listUnresolvedMentions({ sourceRecordId: result.sourceRecord.id }),
+    ).resolves.toMatchObject([
+      { mentionText: "Maya", status: "unresolved", candidatePersonIds: [] },
+    ]);
   });
 
   it("uses real destination lifecycle operations for Change and retry-safe Undo", async () => {
@@ -486,18 +497,27 @@ describe("conversational Capture", () => {
       surface: "global_capture",
     });
     if (!original.confirmation) throw new Error("Expected a Saved Item confirmation.");
+    if (original.confirmation.destination === "Grouped") {
+      throw new Error("Expected one Saved Item confirmation.");
+    }
     const firstAction = await capture.changeOutcome({
       actorUserId: "owner-1",
       target: original.confirmation.change,
       originalText: "I need to replace the filter",
     });
     if (!("confirmation" in firstAction)) throw new Error("Expected an Action confirmation.");
+    if (firstAction.confirmation.destination === "Grouped") {
+      throw new Error("Expected one Action confirmation.");
+    }
     const followup = await capture.changeOutcome({
       actorUserId: "owner-1",
       target: firstAction.confirmation.change,
       originalText: "Remind me to follow up with Maya tomorrow",
     });
     if (!("confirmation" in followup)) throw new Error("Expected a Follow-Up confirmation.");
+    if (followup.confirmation.destination === "Grouped") {
+      throw new Error("Expected one Follow-Up confirmation.");
+    }
     const secondAction = await capture.changeOutcome({
       actorUserId: "owner-1",
       target: followup.confirmation.change,

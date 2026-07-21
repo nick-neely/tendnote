@@ -1,6 +1,7 @@
 import { listAssetReviewGroups } from "@tendnote/db/queries/assets";
 import { listSuggestedGeneralActionReviews } from "@tendnote/db/queries/general-actions";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
+import { listSourceRecordReviews } from "@tendnote/db/queries/source-records";
 import { toAssetReviewGroupViewWithOrigin } from "@/lib/asset-review-origin";
 import {
   loadReviewQueue,
@@ -8,6 +9,7 @@ import {
   type ReviewQueueDependencies,
   type ReviewQueueItem,
 } from "@/lib/review-queue";
+import { toSourceRecordReviewView } from "@/lib/source-record-review-view";
 import { toSuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 import { toSuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 
@@ -43,6 +45,18 @@ const dependencies: ReviewQueueDependencies = {
         }),
       ),
     );
+  },
+  async loadSourceRecords({ ownerUserId, limit }) {
+    const reviews = await listSourceRecordReviews({ ownerUserId, limit });
+    return reviews
+      .filter((review) => (review.unresolvedMentions?.length ?? 0) > 0)
+      .map(
+        (review): ReviewQueueItem => ({
+          family: "source-record",
+          id: review.sourceRecord.id,
+          review: toSourceRecordReviewView(review),
+        }),
+      );
   },
 };
 

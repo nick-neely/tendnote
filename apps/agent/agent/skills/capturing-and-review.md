@@ -2,14 +2,34 @@
 description: Use when the user logs a note, says remember/save/note/keep track of something, adds a person, edits a person's profile details (name, birthday, relationship, closeness), or wants to see, approve, or dismiss suggested memories ("what do I have to review?", "anything to review for Mara?"). For a fact about a thing the user owns (an appliance, vehicle, subscription, service, or household item), the capture path is different — see the recall skill's asset section.
 ---
 
+# Global Capture takes precedence
+
+When the user explicitly says **"Use Capture"** or **"capture this"**, call
+`capture_saved_item` **exactly once** with their meaningful original wording. A user turn
+with **two or more supported explicit clauses is also automatically Global Capture, even
+when the user does not say the word Capture**. Do not fan the request out across older
+destination-specific tools. Inside a Global Capture request:
+
+- add/create-person wording goes to `capture_saved_item`, not `create_person`;
+- explicit remember/save wording goes to `capture_saved_item`, not `capture_memory`;
+- a new Asset or Asset fact goes to `capture_saved_item`, without first calling
+  `search_assets` or `propose_asset_memories`; and
+- multiple explicit clauses stay together in that one call so they share one source and
+  one grouped confirmation.
+
+The destination-specific workflows below apply only when the user is **not** invoking
+Global Capture. Ordinary questions remain conversation-only. Inferred outcomes remain
+review-gated and never borrow authority from an explicit clause.
+
 # Adding people
 
 Before linking any context to a person, use `search_people` to find existing matches.
 How you proceed depends on what you find and what the user intends:
 
-- **Explicit add-person intent** ("add Mara", "create a person for my coworker Sam",
-  "I met Priya, add her") → use `create_person`. This is the **only way a new person
-  is created**, and it requires a clear instruction to add or create someone.
+- **Explicit add-person intent outside Global Capture** ("add Mara", "create a person
+  for my coworker Sam", "I met Priya, add her") → use `create_person`. It requires a
+  clear instruction to add or create someone. Inside Global Capture, use
+  `capture_saved_item` instead.
 - **One confident match** → reuse that person; do not create a duplicate.
 - **Multiple matches (same or similar name)** → ask the user which person they mean.
   Never guess. `search_people` returning **more than one candidate** means you must
@@ -35,10 +55,10 @@ through `update_person`; "Mara is vegetarian" or "Sam is job hunting" is a memor
 A direct Capture request uses `capture_saved_item`, which is the shared global Capture
 operation despite its legacy tool name. It deterministically routes a general note,
 link, or open question to Saved Items; explicit personal work to an Action or Routine;
-and an explicit person-scoped reminder with concrete timing to a Follow-Up. Ordinary
-questions remain conversation-only and must not call a capture tool. Inferred work uses
-the existing suggestion/review tools and must never borrow authority from another
-explicit outcome.
+an explicit person-scoped reminder with concrete timing to a Follow-Up; and supported
+People, Memory, and Asset Review outcomes. Ordinary questions remain conversation-only
+and must not call a capture tool. Inferred work uses the existing suggestion/review
+tools and must never borrow authority from another explicit outcome.
 
 If Capture returns one clarification, ask exactly that question, then call the same
 tool with the same `interactionId` and `originalText` plus `clarificationAnswer`; the
@@ -59,20 +79,22 @@ Choose the right action for what the user is doing:
   `capture_source_record`. This logs context, not a confirmed fact. Pass `personId`
   only when the person is unambiguous; if identity is unclear, ask the user to
   disambiguate rather than guessing or inventing a person.
-- **Explicit memory** ("Remember/save/note/keep track of …") → resolve the person,
-  then `capture_memory`. This creates a durable approved fact with a source record for
-  provenance. Include source, confidence, sensitivity, and timestamp.
+- **Explicit memory outside Global Capture** ("Remember/save/note/keep track of …") →
+  resolve the person, then `capture_memory`. This creates a durable approved fact with
+  a source record for provenance. Include source, confidence, sensitivity, and
+  timestamp. Inside Global Capture, use `capture_saved_item` instead.
 - **Never invent a durable fact.** When you are unsure, capture a source record or
   ask, instead of stating something as confirmed.
 
 **A fact about a thing is not a note about a person.** "The filter in my kitchen fridge
 is EDR1RXD1", "the dishwasher warranty ends in March", "the car is due for an oil change
 every 6 months" are **Asset** facts: they do not go to `capture_source_record` or
-`capture_memory`, which are for people. Use `search_assets` to find the thing, then
-`propose_asset_memories` — the fact becomes a **review card**, never a save. Say it is
-waiting for review; never say you saved, logged, or recorded it. Even an explicit
-"remember that the filter is EDR1RXD1" is proposed, not saved: there is no tool that
-writes an asset fact directly. The recall skill has the full workflow.
+`capture_memory`, which are for people. Outside Global Capture, use `search_assets` to
+find the thing, then `propose_asset_memories` — the fact becomes a **review card**, never
+a save. Inside Global Capture, call `capture_saved_item` directly; it creates the same
+review-gated outcome and does not approve the fact. Say it is waiting for review; never
+say you saved, logged, or recorded the Asset fact. The recall skill has the full legacy
+workflow.
 
 When you log a casual note, the background extractor mines it into **suggested
 memories** the user reviews later. The user can also approve a logged note inline the

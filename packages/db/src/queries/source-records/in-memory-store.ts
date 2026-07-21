@@ -175,6 +175,9 @@ export function createInMemorySourceRecordStore(): InMemorySourceRecordStore {
 
       return link;
     },
+    async unlinkSourceRecordPerson(input) {
+      sourceRecordPeople.delete(`${input.sourceRecordId}:${input.personId}`);
+    },
     async resolveUnresolvedMention(input) {
       const unresolvedMention = unresolvedMentions.get(input.unresolvedMentionId);
 

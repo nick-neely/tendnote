@@ -22,7 +22,7 @@ const inputSchema = z.object({
 
 export default defineTool({
   description:
-    "Save an explicit memory for a person when the user says remember, save, note, or keep track of something. Creates a durable approved memory backed by a source record. Resolve the person first.",
+    "Save an explicit memory for a person when the user says remember, save, note, or keep track of something outside Global Capture. Do not use this for 'Use Capture', 'capture this', or a turn with another supported explicit clause even if the word Capture is absent; capture_saved_item owns that path. Otherwise this creates a durable approved memory backed by a source record. Resolve the person first.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);

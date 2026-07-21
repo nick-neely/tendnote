@@ -5,7 +5,7 @@ import {
   changeExplicitCaptureOutcome,
   undoExplicitCaptureOutcome,
 } from "@tendnote/db/queries/conversational-capture";
-import { createPerson, searchPeople } from "@tendnote/db/queries/people";
+import { resolveOrCreateAndLinkPersonToSourceRecord } from "@tendnote/db/queries/source-records";
 import {
   conversationalCaptureChangeTargetSchema,
   conversationalCaptureClarificationSchema,
@@ -34,24 +34,30 @@ const changeSchema = z
     originalText: z.string().trim().min(1).max(20_000),
   })
   .strict();
-const addPersonSchema = z.object({ displayName: z.string().trim().min(1).max(120) }).strict();
+const addPersonSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(120),
+    sourceRecordId: z.string().min(1),
+    unresolvedMentionId: z.string().min(1).optional(),
+  })
+  .strict();
+
+function revalidateCapturePaths() {
+  for (const path of ["/saved-items", "/actions", "/people", "/assets", "/review", "/today"]) {
+    revalidatePath(path);
+  }
+}
 
 export async function addCapturePersonAction(input: z.input<typeof addPersonSchema>) {
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const { displayName } = addPersonSchema.parse(input);
-  const matches = await searchPeople({ ownerUserId, query: displayName, limit: 10 });
-  const exact = matches.filter(
-    (person) => person.displayName.trim().toLocaleLowerCase() === displayName.toLocaleLowerCase(),
-  );
-  if (exact.length > 1) throw new Error("More than one Person has that name. Link one instead.");
-  const person =
-    exact[0] ??
-    (await createPerson({
-      ownerUserId,
-      displayName,
-      relationshipType: "other",
-      source: "manual",
-    }));
+  const { displayName, sourceRecordId, unresolvedMentionId } = addPersonSchema.parse(input);
+  const { person } = await resolveOrCreateAndLinkPersonToSourceRecord({
+    ownerUserId,
+    sourceRecordId,
+    displayName,
+    role: "primary",
+    ...(unresolvedMentionId ? { unresolvedMentionId } : {}),
+  });
   revalidatePath("/people");
   return { displayName: person.displayName };
 }
@@ -68,9 +74,7 @@ export async function captureExplicitOutcomeAction(input: z.input<typeof submitS
   if (result.clarification) {
     return { clarification: conversationalCaptureClarificationSchema.parse(result.clarification) };
   }
-  revalidatePath("/saved-items");
-  revalidatePath("/actions");
-  revalidatePath("/today");
+  revalidateCapturePaths();
   return { confirmation: conversationalCaptureConfirmationSchema.parse(result.confirmation) };
 }
 
@@ -83,9 +87,7 @@ export async function changeExplicitCaptureOutcomeAction(input: z.input<typeof c
     target: parsed.target,
     originalText: parsed.originalText,
   });
-  revalidatePath("/saved-items");
-  revalidatePath("/actions");
-  revalidatePath("/today");
+  revalidateCapturePaths();
   if (result && typeof result === "object" && "clarification" in result && result.clarification) {
     return {
       clarification: conversationalCaptureClarificationSchema.parse(result.clarification),
@@ -101,8 +103,6 @@ export async function undoExplicitCaptureOutcomeAction(input: z.input<typeof und
   const actorUserId = await requireAdmittedOwnerForAction();
   const parsed = undoSchema.parse(input);
   await undoExplicitCaptureOutcome({ actorUserId, target: parsed.target });
-  revalidatePath("/saved-items");
-  revalidatePath("/actions");
-  revalidatePath("/today");
+  revalidateCapturePaths();
   return { ok: true as const };
 }

@@ -104,7 +104,11 @@ export type SavedItemStore = {
 export type SavedItemLifecycleStore = SavedItemStore &
   Pick<
     SourceRecordCaptureStore,
-    "createSourceRecord" | "getSourceRecord" | "updateSourceRecordStatus"
+    | "createSourceRecord"
+    | "getSourceRecord"
+    | "updateSourceRecordStatus"
+    | "createUnresolvedMention"
+    | "listUnresolvedMentions"
   > &
   Pick<
     HouseholdStore,

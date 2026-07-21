@@ -21,6 +21,9 @@ vi.mock("@/app/actions/memory-review", () => ({
   dismissSuggestedMemoryAction: vi.fn(),
   saveSuggestedMemoryAction: vi.fn(),
 }));
+vi.mock("@/app/actions/conversational-capture", () => ({
+  addCapturePersonAction: vi.fn(),
+}));
 vi.mock("@/components/dashboard-brief-section", () => ({ DashboardBriefSection: () => null }));
 vi.mock("@/components/dashboard-calendar-suggestions-section", () => ({
   DashboardCalendarSuggestionsSection: () => null,

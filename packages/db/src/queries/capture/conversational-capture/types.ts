@@ -1,10 +1,14 @@
 import type {
+  AssetKind,
+  AssetStatus,
   ConversationalCaptureClarification,
   ConversationalCaptureConfirmation,
   ConversationalCaptureRequest,
   FollowupStatus,
   GeneralActionRecurrence,
   GeneralActionStatus,
+  MemoryStatus,
+  PrivacyScope,
   SourceRecord,
 } from "@tendnote/domain";
 import type { SavedItemWithContext } from "../../saved-items/types";
@@ -18,6 +22,10 @@ export type ConversationalCaptureResult = {
   savedItem?: SavedItemWithContext;
   generalAction?: CaptureGeneralAction;
   followup?: CaptureFollowup;
+  person?: CapturePerson;
+  memory?: CaptureMemory;
+  assetReview?: CaptureAssetReview;
+  outcomes?: CaptureOutcomeResult[];
 };
 
 export type CaptureGeneralAction = {
@@ -35,8 +43,142 @@ export type CaptureFollowup = {
 };
 
 export type ResolvedCapturePerson = { id: string; displayName: string };
+export type CapturePerson = ResolvedCapturePerson;
+export type CaptureMemory = {
+  id: string;
+  status: MemoryStatus;
+  content?: string;
+  personId?: string;
+  sourceRecordId?: string | null;
+};
+export type CaptureAssetReview = {
+  asset: { id: string; name: string; status: AssetStatus };
+  group: { id: string; sourceRecordId?: string | null };
+  component?: {
+    type: "asset_review_group";
+    groupId: string;
+    assetId: string;
+    sourceRecordId: string | null;
+  };
+  duplicateCandidates?: Array<{ id: string; name: string }>;
+  evidence?: Array<{ id: string; sourceRecordId?: string | null; reviewGroupId?: string | null }>;
+};
+type CaptureOutcomeBase = {
+  id: string;
+  confirmation: Exclude<ConversationalCaptureConfirmation, { destination: "Grouped" }>;
+};
+export type CaptureOutcomeResult =
+  | (CaptureOutcomeBase & { kind: "saved_item"; savedItem: SavedItemWithContext })
+  | (CaptureOutcomeBase & { kind: "general_action"; generalAction: CaptureGeneralAction })
+  | (CaptureOutcomeBase & { kind: "followup"; followup: CaptureFollowup })
+  | (CaptureOutcomeBase & { kind: "person"; person: CapturePerson })
+  | (CaptureOutcomeBase & { kind: "memory"; memory: CaptureMemory })
+  | (CaptureOutcomeBase & {
+      kind: "asset_review";
+      assetReview: CaptureAssetReview;
+      evidence?: CaptureAssetReview["evidence"];
+    });
+
+export type CaptureVisibility = {
+  scope: PrivacyScope;
+  householdId: string | null;
+  selectedUserIds: string[];
+  label: string;
+  captureText: string;
+};
 
 export type ConversationalCaptureDeps = {
+  resolveOrCreateAndLinkPerson?: (input: {
+    ownerUserId: string;
+    sourceRecordId: string;
+    displayName: string;
+    role: "primary";
+    unresolvedMentionId?: string;
+  }) => Promise<{ person: CapturePerson; created: boolean }>;
+  linkSourceRecordToPerson?: (input: {
+    ownerUserId: string;
+    sourceRecordId: string;
+    personId: string;
+    role: "primary";
+    unresolvedMentionId?: string;
+  }) => Promise<{ person: CapturePerson }>;
+  createApprovedMemory?: (input: {
+    ownerUserId: string;
+    personId: string;
+    content: string;
+    sourceRecordId: string;
+    scope: PrivacyScope;
+    householdId: string | null;
+    selectedUserIds: string[];
+  }) => Promise<CaptureMemory>;
+  createSuggestedMemory?: (input: {
+    ownerUserId: string;
+    personId: string;
+    content: string;
+    sourceRecordId: string;
+  }) => Promise<CaptureMemory>;
+  suggestAsset?: (input: {
+    ownerUserId: string;
+    name: string;
+    kind: AssetKind;
+    scope: PrivacyScope;
+    householdId?: string | null;
+    selectedUserIds?: string[];
+    sourceRecordId: string;
+    directlyRequested: boolean;
+    memories: Array<{ label: string; notes: string }>;
+    source: "assistant";
+  }) => Promise<CaptureAssetReview>;
+  addAssetEvidence?: (input: {
+    ownerUserId: string;
+    reviewGroupId: string;
+    kind: "link" | "note";
+    label: string;
+    url?: string;
+    capturedText?: string;
+    scope: PrivacyScope;
+    householdId?: string | null;
+    selectedUserIds?: string[];
+    sourceRecordId: string;
+    source: "assistant";
+  }) => Promise<{ id: string; sourceRecordId?: string | null; reviewGroupId?: string | null }>;
+  getPerson?: (input: { ownerUserId: string; personId: string }) => Promise<CapturePerson | null>;
+  updatePerson?: (input: {
+    ownerUserId: string;
+    personId: string;
+    displayName: string;
+  }) => Promise<CapturePerson | null>;
+  deleteCapturedPerson?: (input: {
+    ownerUserId: string;
+    personId: string;
+    sourceRecordId: string;
+  }) => Promise<CapturePerson | null>;
+  unlinkCapturedPerson?: (input: {
+    ownerUserId: string;
+    personId: string;
+    sourceRecordId: string;
+  }) => Promise<CapturePerson | null>;
+  assertCapturedPersonRemovable?: (input: {
+    ownerUserId: string;
+    personId: string;
+    sourceRecordId: string;
+  }) => Promise<void>;
+  getMemory?: (input: { ownerUserId: string; memoryId: string }) => Promise<CaptureMemory | null>;
+  archiveMemory?: (input: { ownerUserId: string; memoryId: string }) => Promise<CaptureMemory>;
+  getAssetReview?: (input: {
+    actorUserId: string;
+    groupId: string;
+  }) => Promise<CaptureAssetReview | null>;
+  findAssetReviewBySource?: (input: {
+    ownerUserId: string;
+    sourceRecordId: string;
+    assetName: string;
+  }) => Promise<CaptureAssetReview | null>;
+  dismissAssetReview?: (input: {
+    actorUserId: string;
+    groupId: string;
+    source: "assistant";
+  }) => Promise<CaptureAssetReview>;
   createGeneralAction?: (input: {
     id: string;
     ownerUserId: string;
@@ -44,7 +186,9 @@ export type ConversationalCaptureDeps = {
     dueAt: Date | null;
     recurrence: GeneralActionRecurrence | null;
     sourceRecordId: string;
-    scope: "private";
+    scope: PrivacyScope;
+    householdId?: string | null;
+    selectedUserIds?: string[];
   }) => Promise<CaptureGeneralAction>;
   getGeneralAction?: (input: {
     ownerUserId: string;
@@ -70,7 +214,9 @@ export type ConversationalCaptureDeps = {
     reason: string;
     dueAt: Date;
     sourceRecordId: string;
-    scope: "private";
+    scope: PrivacyScope;
+    householdId?: string | null;
+    selectedUserIds?: string[];
   }) => Promise<CaptureFollowup>;
   getFollowup?: (input: {
     ownerUserId: string;
@@ -92,4 +238,9 @@ export type ConversationalCaptureDeps = {
   }) => Promise<ResolvedCapturePerson[]>;
   now?: () => Date;
   ownerTimeZone?: (ownerUserId: string) => string | Promise<string>;
+  resolveVisibility?: (input: {
+    ownerUserId: string;
+    originalText: string;
+    contextVisibility?: ConversationalCaptureInput["contextVisibility"];
+  }) => Promise<CaptureVisibility>;
 };

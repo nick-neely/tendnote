@@ -157,10 +157,11 @@ export type SuggestAssetInput = {
   ownerUserId: string;
   name: string;
   kind: Asset["kind"];
-  // Visibility the proposal argues for (private or household; a selected-shared
-  // audience is chosen at acceptance, mirroring Suggested General Actions).
-  scope?: Exclude<PrivacyScope, "shared">;
+  // Visibility the proposal argues for. Suggested rows remain owner-only until
+  // acceptance; selected shares become effective only when that same row is promoted.
+  scope?: PrivacyScope;
   householdId?: string | null;
+  selectedUserIds?: string[];
   // Grounding is mandatory: a suggestion must come from somewhere (ADR 0151).
   sourceRecordId: string;
   // Restricted source records don't feed proactive suggestions unless the user

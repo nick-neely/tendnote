@@ -43,6 +43,7 @@ describe("source record capture", () => {
     expect(review).toEqual({
       component: result.component,
       sourceRecord: result.sourceRecord,
+      unresolvedMentions: [],
     });
   });
 

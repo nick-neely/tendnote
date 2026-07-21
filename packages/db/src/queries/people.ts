@@ -2,6 +2,7 @@ import { createDrizzlePeopleStore } from "./people/drizzle-store";
 import { createPeopleQueries } from "./people/queries";
 import type {
   CreatePersonMutationInput,
+  DeleteCaptureOnlyPersonInput,
   DeletePersonMutationInput,
   GetPersonInput,
   GetPersonProfileInput,
@@ -26,6 +27,14 @@ export async function updatePerson(input: UpdatePersonMutationInput) {
 
 export async function deletePerson(input: DeletePersonMutationInput) {
   return defaultPeopleQueries.deletePerson(input);
+}
+
+export async function assertCaptureOnlyPersonRemovable(input: DeleteCaptureOnlyPersonInput) {
+  return defaultPeopleQueries.assertCaptureOnlyPersonRemovable(input);
+}
+
+export async function deleteCaptureOnlyPerson(input: DeleteCaptureOnlyPersonInput) {
+  return defaultPeopleQueries.deleteCaptureOnlyPerson(input);
 }
 
 export async function searchPeople(input: SearchPeopleQueryInput) {

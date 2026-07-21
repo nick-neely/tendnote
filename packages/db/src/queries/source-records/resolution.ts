@@ -154,6 +154,26 @@ export function createSourceRecordResolution(
         link,
       };
     },
+    async unlinkSourceRecordFromPerson(input: {
+      ownerUserId: string;
+      sourceRecordId: string;
+      personId: string;
+    }) {
+      const [sourceRecord, person] = await Promise.all([
+        store.getSourceRecord(input),
+        store.getPerson(input),
+      ]);
+      if (!sourceRecord || !person) throw new Error("Captured Person link not found.");
+      await store.unlinkSourceRecordPerson(input);
+      await store.createAuditLogEntry({
+        ownerUserId: input.ownerUserId,
+        action: "source_record.unlink_person",
+        entityType: "source_record",
+        entityId: input.sourceRecordId,
+        metadataJson: { personId: input.personId },
+      });
+      return { sourceRecord, person };
+    },
     async ignoreUnresolvedMention(input: {
       ownerUserId: string;
       sourceRecordId: string;

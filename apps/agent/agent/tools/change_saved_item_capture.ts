@@ -50,13 +50,15 @@ export default defineTool({
         },
       };
     }
+    const confirmation = output.confirmation;
+    const outcome = confirmation?.destination === "Grouped" ? undefined : confirmation;
     return {
       type: "json" as const,
       value: {
         changed: true,
-        confirmation: output.confirmation,
-        target: output.confirmation?.change ?? output.target,
-        undoTarget: output.confirmation?.undo,
+        confirmation,
+        target: outcome?.change ?? output.target,
+        ...(outcome && "undo" in outcome ? { undoTarget: outcome.undo } : {}),
         guidance:
           "Confirm the corrected destination briefly. Use any returned replacement Change and Undo targets; do not repeat the full saved text.",
       },

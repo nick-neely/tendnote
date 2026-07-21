@@ -32,22 +32,23 @@ function kindLabel(kind: SavedItemKind) {
   return kind === "link" ? ("Link" as const) : ("Note" as const);
 }
 
+type CaptureRecordKind =
+  | "source"
+  | "source_audit"
+  | `${"saved_item" | "saved_item_event" | "general_action" | "followup"}${"" | `:${number}`}`;
+
 export function stableCaptureUuid(
   input: ConversationalCaptureInput,
-  recordKind:
-    | "source"
-    | "source_audit"
-    | "saved_item"
-    | "saved_item_event"
-    | "general_action"
-    | "followup",
+  recordKind: CaptureRecordKind,
 ) {
   return stableUuid(`capture:${recordKind}:${input.ownerUserId}:${input.interactionId}`);
 }
 
 export function captureInputHash(input: ConversationalCaptureInput, originalText: string) {
   return createHash("sha256")
-    .update(`${input.surface}\0${input.inputMode}\0${originalText}`)
+    .update(
+      `${input.surface}\0${input.inputMode}\0${originalText}\0${JSON.stringify(input.contextVisibility ?? null)}\0${JSON.stringify(input.inferredSuggestions ?? [])}`,
+    )
     .digest("hex");
 }
 
@@ -95,8 +96,8 @@ export async function resolveCompletedCaptureRoute(input: {
     ...policyContext,
   });
   return input.clarificationAnswer &&
-    initialRoute.destination === "followup" &&
-    resolvedRoute.destination === "followup"
+    (initialRoute.destination === "followup" || initialRoute.destination === "memory") &&
+    (resolvedRoute.destination === "followup" || resolvedRoute.destination === "memory")
     ? { ...resolvedRoute, personQuery: input.clarificationAnswer }
     : resolvedRoute;
 }
@@ -135,6 +136,7 @@ export async function resolveExactCapturePerson(input: {
   );
   return {
     person: exactPeople.length === 1 ? (exactPeople[0] ?? null) : null,
+    candidatePersonIds: people.map((person) => person.id),
     question:
       exactPeople.length > 1
         ? `Which ${input.personQuery} did you mean?`
@@ -159,24 +161,32 @@ export function routeDestinationLabel(route: ConversationalCaptureRoute) {
   if (route.destination === "action") {
     return route.recurrence ? ("Routines" as const) : ("Actions" as const);
   }
+  if (route.destination === "person") return "People" as const;
+  if (route.destination === "memory") return "Memories" as const;
+  if (route.destination === "asset_review") return "Review" as const;
+  if (route.destination === "group") return "Grouped" as const;
   return null;
 }
 
 export function changeTargetKey(target: ConversationalCaptureChangeTarget) {
   if (target.kind === "edit_saved_item") return `${target.kind}:${target.savedItemId}`;
   if (target.kind === "edit_general_action") return `${target.kind}:${target.generalActionId}`;
-  return `${target.kind}:${target.followupId}`;
+  if (target.kind === "edit_followup") return `${target.kind}:${target.followupId}`;
+  if (target.kind === "edit_person") return `${target.kind}:${target.personId}`;
+  if (target.kind === "edit_memory") return `${target.kind}:${target.memoryId}`;
+  return `${target.kind}:${target.groupId}`;
 }
 
 export function savedItemConfirmation(input: {
   sourceRecordId: string;
   savedItemId: string;
   kind: SavedItemKind;
+  visibilityLabel?: string;
 }): ConversationalCaptureConfirmation {
   return {
     destination: "Saved Items",
     groundedBySourceRecordId: input.sourceRecordId,
-    interpreted: { kind: kindLabel(input.kind), visibility: "Only me" },
+    interpreted: { kind: kindLabel(input.kind), visibility: input.visibilityLabel ?? "Only me" },
     change: { kind: "edit_saved_item", savedItemId: input.savedItemId },
     undo: { kind: "archive_saved_item", savedItemId: input.savedItemId },
   };
@@ -186,6 +196,7 @@ export function actionConfirmation(input: {
   sourceRecordId: string;
   generalActionId: string;
   route: Extract<ConversationalCaptureRoute, { destination: "action" }>;
+  visibilityLabel?: string;
 }): ConversationalCaptureConfirmation {
   const { route } = input;
   return {
@@ -197,7 +208,7 @@ export function actionConfirmation(input: {
       cadence: route.recurrence
         ? `Every ${route.recurrence.interval} ${route.recurrence.unit}${route.recurrence.interval === 1 ? "" : "s"}`
         : null,
-      scope: "Only me",
+      scope: input.visibilityLabel ?? "Only me",
     },
     change: { kind: "edit_general_action", generalActionId: input.generalActionId },
     undo: { kind: "archive_general_action", generalActionId: input.generalActionId },
@@ -209,6 +220,7 @@ export function followupConfirmation(input: {
   followupId: string;
   person: ResolvedCapturePerson;
   route: Extract<ConversationalCaptureRoute, { destination: "followup" }>;
+  visibilityLabel?: string;
 }): ConversationalCaptureConfirmation {
   return {
     destination: "Follow-Ups",
@@ -216,7 +228,7 @@ export function followupConfirmation(input: {
     interpreted: {
       person: input.person.displayName,
       dueAt: input.route.dueAt.toISOString(),
-      scope: "Only me",
+      scope: input.visibilityLabel ?? "Only me",
     },
     change: { kind: "edit_followup", followupId: input.followupId },
     undo: { kind: "archive_followup", followupId: input.followupId },
