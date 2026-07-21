@@ -7,7 +7,7 @@
     "dev": "turbo run dev --filter=@tendnote/web",
     "dev:web": "pnpm --filter @tendnote/web dev",
     "dev:agent": "pnpm --filter @tendnote/agent dev",
-    "build": "turbo build",
+    "build": "turbo run build --filter=@tendnote/web --only",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "fallow": "fallow audit",
