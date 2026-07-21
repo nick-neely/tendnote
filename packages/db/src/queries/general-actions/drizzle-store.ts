@@ -94,16 +94,33 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
       const sharedWithUserIds = [...new Set(input.sharedWithUserIds)];
 
       return getDb().transaction(async (tx) => {
-        const action = await persistAction();
+        const { action, created } = await persistAction();
+        if (!created) return generalActionSchema.parse(action);
         await persistPeople(action.id);
         await persistShares(action);
         await persistInitialEvent(action.id);
         return generalActionSchema.parse(action);
 
         async function persistAction() {
-          const [action] = await tx.insert(generalActions).values(actionValues).returning();
-          if (!action) throw new Error("Failed to create action.");
-          return action;
+          const [action] = await tx
+            .insert(generalActions)
+            .values(actionValues)
+            .onConflictDoNothing({ target: generalActions.id })
+            .returning();
+          if (action) return { action, created: true };
+          if (!actionValues.id) throw new Error("Failed to create action.");
+          const [existing] = await tx
+            .select()
+            .from(generalActions)
+            .where(
+              and(
+                eq(generalActions.id, actionValues.id),
+                eq(generalActions.ownerUserId, actionValues.ownerUserId),
+              ),
+            )
+            .limit(1);
+          if (!existing) throw new Error("Failed to create action.");
+          return { action: existing, created: false };
         }
 
         async function persistPeople(generalActionId: string) {

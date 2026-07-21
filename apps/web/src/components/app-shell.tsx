@@ -1,4 +1,5 @@
 import {
+  BookmarkIcon,
   BookUserIcon,
   BoxIcon,
   CircleDotIcon,
@@ -30,6 +31,11 @@ const navItems = [
     href: "/assets",
     label: "Assets",
     icon: BoxIcon,
+  },
+  {
+    href: "/saved-items",
+    label: "Saved Items",
+    icon: BookmarkIcon,
   },
   {
     href: "/account",
@@ -71,7 +77,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Separator />
       <nav
         aria-label="Mobile primary"
-        className="fixed bottom-0 z-20 grid w-full grid-cols-5 border-t bg-background/98 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="fixed bottom-0 z-20 grid w-full grid-cols-6 border-t bg-background/98 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
         {navItems.map((item) => {
           const Icon = item.icon;

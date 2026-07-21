@@ -7,6 +7,7 @@ import {
   decideAssetEmbedding,
   decideAssetMemoryEmbedding,
   decideGeneralActionEmbedding,
+  decideSavedItemEmbedding,
   decideSourceRecordEmbedding,
   type GeneralAction,
   type Memory,
@@ -14,7 +15,9 @@ import {
   projectAssetEmbeddedText,
   projectAssetMemoryEmbeddedText,
   projectGeneralActionEmbeddedText,
+  projectSavedItemEmbeddedText,
   projectSourceRecordEmbeddedText,
+  type SavedItem,
   type SemanticRecordKind,
   type SemanticTrustLevel,
   type SourceRecord,
@@ -167,6 +170,7 @@ export async function skipJob(
     sourceGeneralAction?: GeneralAction | null;
     sourceAsset?: Asset | null;
     sourceAssetMemory?: AssetMemory | null;
+    sourceSavedItem?: SavedItem | null;
   } = {},
 ): Promise<ProcessEmbeddingJobResult> {
   const updated = await ctx.store.updateEmbeddingJob({
@@ -196,6 +200,7 @@ export async function skipJob(
     sourceGeneralAction: sources.sourceGeneralAction ?? null,
     sourceAsset: sources.sourceAsset ?? null,
     sourceAssetMemory: sources.sourceAssetMemory ?? null,
+    sourceSavedItem: sources.sourceSavedItem ?? null,
     reason,
   };
 }
@@ -341,6 +346,35 @@ export async function processGeneralAction(
   });
 
   return { embedding, sourceGeneralAction: action };
+}
+
+/** Embeds Saved Item content; archive inclusion remains an explicit read policy. */
+export async function processSavedItem(
+  ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
+): Promise<EmbeddingProduced | { skipReason: string; sourceSavedItem: SavedItem | null }> {
+  const item = await ctx.store.getSavedItemForEmbedding({
+    ownerUserId: job.ownerUserId,
+    savedItemId: job.recordId,
+  });
+  if (!item) {
+    return { skipReason: "saved_item_not_found", sourceSavedItem: null };
+  }
+  const decision = decideSavedItemEmbedding(item);
+  if (decision.action === "skip") {
+    return { skipReason: decision.reason, sourceSavedItem: item };
+  }
+  const embedding = await reuseOrEmbed(ctx, {
+    ownerUserId: item.ownerUserId,
+    recordKind: "saved_item",
+    recordId: item.id,
+    embeddedText: projectSavedItemEmbeddedText(item),
+    personId: null,
+    trustLevel: "saved_context",
+    sensitivity: "normal",
+    sourceUpdatedAt: item.updatedAt,
+  });
+  return { embedding, sourceSavedItem: item };
 }
 
 /**

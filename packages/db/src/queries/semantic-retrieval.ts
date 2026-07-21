@@ -13,6 +13,7 @@ import type {
   EmbeddingConfig,
   EnqueueEmbeddingJobInput,
   ProcessEmbeddingJobInput,
+  SearchSavedItemsSemanticRequest,
   SearchSemanticContextRequest,
 } from "./semantic-retrieval/types";
 
@@ -75,15 +76,14 @@ const defaultSemanticRetrieval = createSemanticRetrievalQueries(
   defaultEmbeddingConfig,
 );
 
-export function createSemanticEmbeddingProcessor(input?: {
+export function createSemanticEmbeddingProcessor({
+  adapter = createDefaultSemanticEmbeddingAdapter(),
+  config = createDefaultSemanticEmbeddingConfig(),
+}: {
   adapter?: EmbeddingAdapter;
   config?: EmbeddingConfig;
-}) {
-  return createEmbeddingProcessor(
-    createDrizzleEmbeddingStore(),
-    input?.adapter ?? createDefaultSemanticEmbeddingAdapter(),
-    input?.config ?? createDefaultSemanticEmbeddingConfig(),
-  );
+} = {}) {
+  return createEmbeddingProcessor(createDrizzleEmbeddingStore(), adapter, config);
 }
 
 export async function enqueueSemanticEmbeddingJob(input: EnqueueEmbeddingJobInput) {
@@ -114,4 +114,8 @@ export async function getSemanticEmbeddingJob(jobId: string) {
 
 export async function searchSemanticContext(input: SearchSemanticContextRequest) {
   return defaultSemanticRetrieval.searchSemanticContext(input);
+}
+
+export async function searchSavedItemsSemantic(input: SearchSavedItemsSemanticRequest) {
+  return defaultSemanticRetrieval.searchSavedItemsSemantic(input);
 }

@@ -143,11 +143,12 @@ export const generalActionSchema = z.object({
   updatedAt: z.date(),
 });
 
-export const createGeneralActionSchema = generalActionSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const createGeneralActionSchema = generalActionSchema
+  .omit({
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({ id: z.uuid().optional() });
 
 export type GeneralAction = z.infer<typeof generalActionSchema>;
 export type GeneralActionStatus = z.infer<typeof generalActionStatusSchema>;
@@ -266,12 +267,9 @@ export function canRetrieveGeneralAction(input: {
   scopeVisible: boolean;
   includeReviewGated: boolean;
 }): boolean {
-  const durableVisible = isRetrievableGeneralActionStatus(input.status) && input.scopeVisible;
-  const suggestedForOwner =
-    input.includeReviewGated &&
-    input.status === "suggested" &&
-    input.ownerUserId === input.callerUserId;
-  return durableVisible || suggestedForOwner;
+  if (isRetrievableGeneralActionStatus(input.status)) return input.scopeVisible;
+  if (input.status !== "suggested") return false;
+  return input.includeReviewGated && input.ownerUserId === input.callerUserId;
 }
 
 /**

@@ -12,6 +12,7 @@ import {
 import { JOB_CREATE_OMIT, jobQueueMechanicsShape } from "./job-queue";
 import type { memoryStatusSchema } from "./memories";
 import { sensitivitySchema, type sourceSchema, visibilityChoiceSchema } from "./privacy";
+import type { SavedItem } from "./saved-items";
 import type { sourceRecordRetentionPolicySchema, sourceRecordStatusSchema } from "./source-records";
 
 // General Actions join memories and source records as a semantic record kind: they are
@@ -26,6 +27,7 @@ export const semanticRecordKindSchema = z.enum([
   "general_action",
   "asset",
   "asset_memory",
+  "saved_item",
 ]);
 
 /**
@@ -51,6 +53,7 @@ export const semanticTrustLevelSchema = z.enum([
   "action_item",
   "asset_anchor",
   "asset_fact",
+  "saved_context",
 ]);
 
 /**
@@ -77,6 +80,22 @@ export const searchSemanticContextSchema = z.object({
   // suggested proposal is never scope-visible to a household member regardless of this
   // flag — review-gated rows are owner-only until accepted (ADRs 0151–0153, AC3).
   includeReviewGated: z.boolean().default(false),
+});
+
+export const searchSavedItemsSemanticSchema = z.object({
+  query: z.string().trim().min(1).max(400),
+  includeArchived: z.boolean().default(false),
+  limit: z.number().int().min(1).max(20).default(8),
+  minimumSimilarity: z.number().min(0).max(1).default(0),
+});
+
+export const savedItemSemanticResultSchema = z.object({
+  savedItemId: z.string(),
+  title: z.string(),
+  snippet: z.string(),
+  similarity: z.number(),
+  status: z.enum(["active", "archived"]),
+  scope: z.enum(["private", "shared", "household"]),
 });
 
 export const embeddingJobStatusSchema = z.enum([
@@ -158,6 +177,9 @@ export type RelationshipContextEmbedding = z.infer<typeof relationshipContextEmb
 export type SearchSemanticContextInput = z.input<typeof searchSemanticContextSchema>;
 export type ParsedSearchSemanticContextInput = z.output<typeof searchSemanticContextSchema>;
 export type SemanticRetrievalResult = z.infer<typeof semanticRetrievalResultSchema>;
+export type SearchSavedItemsSemanticInput = z.input<typeof searchSavedItemsSemanticSchema>;
+export type ParsedSearchSavedItemsSemanticInput = z.output<typeof searchSavedItemsSemanticSchema>;
+export type SavedItemSemanticResult = z.infer<typeof savedItemSemanticResultSchema>;
 export type CreateRelationshipContextEmbeddingInput = z.infer<
   typeof createRelationshipContextEmbeddingSchema
 >;
@@ -234,6 +256,30 @@ export type AssetMemoryEmbeddingSource = Pick<
   AssetMemory,
   "id" | "ownerUserId" | "assetId" | "status" | "label" | "value" | "notes" | "updatedAt"
 >;
+
+export type SavedItemEmbeddingSource = Pick<
+  SavedItem,
+  "id" | "ownerUserId" | "kind" | "title" | "content" | "url" | "status" | "updatedAt"
+>;
+
+/** Saved Items stay embedded across active/archive; caller policy decides archive visibility. */
+export function decideSavedItemEmbedding(
+  item: Pick<SavedItemEmbeddingSource, "title" | "content" | "url">,
+): EmbeddingDecision {
+  return projectSavedItemEmbeddedText(item).length > 0
+    ? { action: "embed" }
+    : { action: "skip", reason: "empty_embedded_text" };
+}
+
+/** Canonical semantic text for a Saved Item, excluding immutable raw Source Record text. */
+export function projectSavedItemEmbeddedText(
+  item: Pick<SavedItemEmbeddingSource, "title" | "content" | "url">,
+): string {
+  return [item.title.trim(), item.content?.trim(), item.url?.trim()]
+    .filter((value): value is string => Boolean(value))
+    .join("\n")
+    .replace(/[ \t]+/g, " ");
+}
 
 /**
  * An Asset is embedded while it is durable — active or archived. Archived things stay

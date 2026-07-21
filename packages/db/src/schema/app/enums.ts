@@ -59,6 +59,7 @@ export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "source_record",
   "followup",
   "general_action",
+  "saved_item",
   // Phase 6 Asset Memory: Assets ride the same share rails as other scoped records (#197).
   "asset",
   // Asset Memories are independently scoped child records under an Asset (#198).
@@ -244,6 +245,23 @@ export const generalActionEventKind = pgEnum("general_action_event_kind", [
   "ignored",
 ]);
 
+export const savedItemKind = pgEnum("saved_item_kind", ["note", "link", "open_question"]);
+
+export const savedItemStatus = pgEnum("saved_item_status", ["active", "archived"]);
+
+export const savedItemEventKind = pgEnum("saved_item_event_kind", [
+  "created",
+  "edited",
+  "archived",
+  "reopened",
+  "resolved",
+  "promoted",
+  "visibility_changed",
+  "mutation_rejected",
+]);
+
+export const savedItemDestinationKind = pgEnum("saved_item_destination_kind", ["general_action"]);
+
 export const extractionJobStatus = pgEnum("extraction_job_status", [
   "pending",
   "running",
@@ -262,6 +280,7 @@ export const semanticRecordKind = pgEnum("semantic_record_kind", [
   // retrieved through the typed Asset Search contract, not relationship retrieval (#204).
   "asset",
   "asset_memory",
+  "saved_item",
 ]);
 
 export const semanticTrustLevel = pgEnum("semantic_trust_level", [
@@ -273,6 +292,7 @@ export const semanticTrustLevel = pgEnum("semantic_trust_level", [
   // fact about that thing. Distinct registers so retrieval never mislabels either (#204).
   "asset_anchor",
   "asset_fact",
+  "saved_context",
 ]);
 
 export const embeddingJobStatus = pgEnum("embedding_job_status", [

@@ -27,6 +27,7 @@ export * from "./app/memories";
 export * from "./app/people";
 export * from "./app/provider-connections";
 export * from "./app/relations";
+export * from "./app/saved-items";
 export * from "./app/scheduled-workflow-deliveries";
 export * from "./app/semantic-retrieval";
 export * from "./app/source-records";
