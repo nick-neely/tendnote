@@ -1327,9 +1327,11 @@ Deliverables:
 
 - Mobile-first capture surface and PWA-oriented access
 - Fast capture confirmation and routing
+- Saved Items as the narrow source-grounded fallback for notes, links, and open questions without a better supported destination
 - Today dashboard across relationship context, reminders/actions, Calendar context, and review items
 - Slipping/resurfacing rules for stale context, overdue actions, unresolved decisions, and saved items worth revisiting
 - Global search and grounded Eve chat across supported domains
+- Explicit owner-chosen reminder alerts through opted-in browser and PWA installations
 
 Agent-backed surface contract:
 
@@ -1340,6 +1342,17 @@ Agent-backed surface contract:
 - Read-only search, ranking, and explanation results may remain ephemeral when they include typed authoritative-record references, source grounding, and trust metadata. Any output that is actionable, reviewable, reloadable, or expected to survive refresh must first be persisted as the appropriate domain or review artifact, and controls must reload that authoritative record before acting.
 - A clear, bounded purpose-built control is explicit user intent and does not need conversational reconfirmation. Shared mutations still enforce ownership, freshness, validation, audit, and approval policy, while consequential external actions retain their dedicated preview and confirmation gates.
 - Capability fallbacks are defined at the server boundary rather than improvised by clients: Today may use deterministic ordering, search may identify an exact or structured fallback, generation-only behavior reports unavailable, and mutations whose arguments depended on failed reasoning fail closed. Minimized operational traces cover capability identity/version, authenticated owner, timing, outcome, and failures under bounded retention; durable product audit remains required for mutations and persisted generated artifacts retain their source references and generation provenance.
+
+Saved Item lifecycle and trust contract:
+
+- A Saved Item is the first-class fallback only for an explicit note, link, or open question that has no better supported destination. The fixed starting kinds are `note`, `link`, and `open_question`; Phase Seven does not turn Saved Items into generic attachments, a document inbox, a tag system, or a catch-all record model.
+- Explicit capture intent may create a Saved Item directly. A Saved Item inferred from existing context remains review-gated. The editable Saved Item is a durable product record linked to the immutable Source Record that preserves the owner's minimized original wording; editing the item never rewrites its evidence.
+- A Saved Item is `active` or `archived`. It may carry one optional `bringBackAt`, but it has no completion, priority, recurrence, or deferred status. Resolving an open question archives it with a resolution reason and optional links to the records that hold the outcome.
+- Saved Items are private by default. Eve may create selected-member or household visibility only when the owner explicitly names that audience, and confirmation states the chosen scope; content, links, and plural wording never imply sharing.
+- An active dated Saved Item becomes eligible when its bring-back time arrives. An undated active item may become only a low-weight Today candidate after deterministic age and cooldown gates, subject to the Today cap and a factual explanation. Retrieval relevance alone never authorizes resurfacing or mutation.
+- Active Saved Items participate in exact recall, semantic retrieval, structured search, and grounded Eve answers after deterministic scope filtering. Archived items require an explicit archived-record request. Raw Source Records remain evidence rather than an independent result family.
+- Explicit promotion creates the supported destination record, links it to the Saved Item and shared evidence, and archives the item as resolved. Inferred promotion remains review-gated, retries are idempotent, and a correction preserves the original evidence rather than silently replacing it.
+- Archive is the normal removal path. Deleting captured source is a separate privacy or correction action that removes uniquely owned evidence and derived retrieval material; shared evidence requires an impact disclosure. Internal audit records lifecycle and mutation attempts without adding a user-facing history feed.
 
 Conversational capture and routing contract:
 
@@ -1443,13 +1456,36 @@ Reminder delivery across installations:
 - The owner may disable reminders from the installation itself or revoke a labeled installation remotely from an authenticated settings view; signing out disables the current installation. Revocation immediately suppresses its pending attempts and excludes it from future occurrences. Re-enabling requires a fresh explicit opt-in on that installation, and any late notification deep link still passes current authentication, ownership, visibility, sensitivity, and lifecycle checks.
 - Audit one coarse delivery trail per occurrence-installation target: intended time, installation identity, attempt timestamps and count, and outcomes such as accepted, transient failure, terminal endpoint, suppressed stale, or suppressed revoked. Do not retain rendered Reminder Preview text, encryption keys, full endpoints, or any claim that the device displayed the notification.
 
-Vertical slice issue seeds:
+Implementation handoff boundaries:
 
-- Add mobile-first fast capture and confirmation.
-- Add AI-assisted routing from capture into reviewable outcomes.
-- Add Today dashboard with a capped, explainable cross-domain shortlist.
-- Add slipping/resurfacing read model.
-- Extend search and Eve chat across supported domains with typed result contracts.
+These are dependency boundaries for the separate implementation-ticket pass, not build tickets created by this specification map. That pass should preserve complete meaningful delivery slices rather than split schema, adapters, policy, product behavior, and verification into unrelated ticket chains.
+
+1. Establish the Phase Seven domain and persistence foundation: Saved Items and promotion links, Today-only feedback, Reminder Schedules, Reminder Installations, occurrence-installation intents, minimized audit, and the owner-scoped query and mutation seams that make later surfaces safe.
+2. Establish shared typed product functions and Agent Capabilities for capture routing, Today candidates and curation, and Global Recall. Deterministic policy, authoritative record reloads, grounding, approval gates, capability fallbacks, and thin Eve/web adapters ship together with their tests.
+3. Replace the current phone shell with the iOS-reference, online-required PWA foundation: installability, `Today / Search / Capture / Review / Menu`, focused full-screen flows, safe areas, software-keyboard behavior, one visibly unsaved local draft per composer, honest failure states, and safe update adoption. Preserve supported mobile-browser access and do not gate core use on installation.
+4. Deliver explicit Capture end to end across supported destinations, including save-first Pending Source Records, consequential clarification, grouped outcomes, Saved Item fallback, correction and safe undo, person resolution, source grounding, and existing review-gated Asset behavior.
+5. Deliver Global Recall end to end across the typed result families, including exact and semantic candidate paths, permission-first merging, stable ranking and diversity, canonical deep links, grounded Eve answers, restricted-record handling, and the mobile Search overlay.
+6. Deliver Today end to end over authoritative cross-domain candidates, including deterministic eligibility and mandatory overflow, bounded Eve ranking and explanation, stable refresh behavior, the three-to-five-item Personal Ledger UI, domain actions, and Today-only `Later` and `Not today` feedback.
+7. Deliver explicit reminder push only after the PWA, scheduling, lifecycle, and authoritative Today foundations exist: earned installation-scoped opt-in, privacy-gated previews, per-installation fan-out, freshness suppression, revocation, best-effort delivery, and Today recovery.
+8. Close Phase Seven with the cross-domain proof journey and the full acceptance/eval matrix below, including supported-device and accessibility evidence. No slice is complete if it bypasses owner scope, source grounding, review gates, or deterministic fallback in order to demonstrate its UI.
+
+Proof scenario:
+
+- Extend the refrigerator-water-filter storyline from Phases Five and Six. From the iOS-reference mobile experience, the owner explicitly captures that the kitchen refrigerator needs a replacement filter next month, asks for an alert one week before, and saves an open question about where to buy it. One grounded capture produces only the explicitly requested outcomes: an Asset-linked General Action with one visible Reminder Schedule and a private Saved Item with `bringBackAt`; a newly inferred filter fact or evidence still enters the existing Asset review path.
+- The first eligible record is saved before Tendnote calmly offers installation-scoped Reminder Opt-In. Generic preview remains the default. When the relevant day arrives, Today shows a factual, capped cross-domain shortlist containing the due or resurfaced records without inventing priority; `Later` and `Not today` affect only Today. A stale or failed push never mutates the records, and authoritative state remains recoverable in Today.
+- The owner can ask Eve or Search, "What filter does the fridge need, and what am I doing about it?" Global Recall returns permission-filtered Asset Memory, General Action, and Saved Item results with Exact before Related, canonical references, grounding, and deep links. Eve cites only those records and states what remains unresolved. Correction, archive or promotion, sign-out, revoked installation, offline capture failure, and an Eve-only failure all preserve the contracts above.
+- This is the primary implementation proof because it crosses Capture, review, Assets, Actions, Saved Items, Today, Reminder delivery, Search, and Eve without inventing a new domain. People, Follow-Ups, Calendar, mixed visibility, and restricted records remain mandatory matrix fixtures rather than being forced unnaturally into the demonstration story.
+
+Acceptance and eval matrix:
+
+| Evidence layer | Required release evidence |
+|---|---|
+| Deterministic policy and integration tests | Prove owner and visibility scope, lifecycle and sensitivity gates, explicit-versus-inferred routing authority, source linkage, idempotent correction/promotion, Today eligibility/caps/feedback, exact-before-related retrieval, Reminder Schedule invalidation, per-installation fan-out, freshness suppression, revocation, audit minimization, and non-leaking inaccessible records. These tests are the security and mutation boundary; model evals cannot substitute for them. |
+| Eve evals | Exercise explicit and ambiguous capture, multi-outcome restraint, Saved Item fallback, person ambiguity, Today ranking only inside validated candidates, factual `why today` explanations, grounded cross-domain answers and citations, restricted-record restraint, weak-recall limitations, and refusal to create inferred writes or alerts. Fast deterministic evals gate normal CI; judge-backed quality and model comparisons remain explicit and credential-gated. |
+| Browser and accessibility tests | Cover the complete phone flows for Today, Search, Capture, Review, active Eve, settings, reminder opt-in, correction, failure recovery, and canonical return navigation. Verify 44-by-44 CSS-pixel targets, safe areas and keyboard viewport, focus order/restoration, screen-reader announcements, full keyboard operation, 200% text without horizontal page scrolling, contrast, state not conveyed by color alone, and reduced motion. |
+| Manual supported-device checks | On current supported iOS Safari plus installed Home Screen PWA and at least one supported Android browser/PWA, verify installation guidance, permission timing, generic and detailed preview policy, deep links through authentication, multi-installation fan-out, disable/re-enable and remote revocation, endpoint rotation or terminal failure, stale suppression, local-draft restoration/expiry/clearing, safe application updates, and honest unsupported-browser behavior. Record provider acceptance only as acceptance, never proof of display. |
+
+The separate implementation-ticket pass is ready to begin only when every contract above maps to a handoff boundary and at least one verification layer, the proof journey can be implemented without inventing product policy, and all remaining work is execution rather than an unresolved Phase Seven decision.
 
 #### Phase 8: Rich Household and Multi-Domain Collaboration
 
