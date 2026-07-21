@@ -23,8 +23,10 @@ const DASHBOARD_FOLLOWUP_LIMIT = 5;
 export const dynamic = "force-dynamic";
 
 export default async function Home({ searchParams }: { searchParams?: Promise<{ tab?: string }> }) {
-  const ownerUserId = await requireAdmittedOwner();
   const requestedTab = (await searchParams)?.tab;
+  const ownerUserId = await requireAdmittedOwner({
+    returnTo: requestedTab === "review" ? "/?tab=review" : "/",
+  });
   const [
     people,
     reviewQueue,
@@ -47,7 +49,12 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const birthdays = getUpcomingBirthdays(people);
 
   return (
-    <AppShell>
+    <AppShell
+      mobileEve={<AssistantPanel nudges={calendarNudges} ownerUserId={ownerUserId} />}
+      mobileHome={requestedTab !== "review"}
+      mobileReview={requestedTab === "review"}
+      ownerUserId={ownerUserId}
+    >
       {/* On desktop the dashboard fills the viewport and does not scroll itself
           (100dvh − 3.5rem header − 4rem main padding); the chat and the rail each
           scroll inside their own column instead of growing the page. */}
@@ -63,7 +70,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             rail widens a touch from lg→xl so its tabs and cards keep room. */}
         <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="order-1 h-[70dvh] lg:h-full lg:min-h-0">
-            <AssistantPanel nudges={calendarNudges} />
+            <AssistantPanel nudges={calendarNudges} ownerUserId={ownerUserId} />
           </div>
           {/* The rail manages its own scroll inside the active tab panel (the tab
               bar stays pinned), so the column itself is only height-bounded. */}

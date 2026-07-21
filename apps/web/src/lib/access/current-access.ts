@@ -3,6 +3,7 @@ import "server-only";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAuth } from "@/lib/auth/server";
+import { signInPathFor } from "../auth/return-to";
 import {
   type AccessState,
   decideAccessRoute,
@@ -17,6 +18,7 @@ import { privateBetaAccess } from "./private-beta-flag";
  * Auth session. Returns identity-only state for pending users so callers can
  * render the limited pending area without touching relationship data.
  */
+// fallow-ignore-next-line complexity -- Session failure handling intentionally differs between production and local development.
 export async function getCurrentAccess(): Promise<AccessState> {
   let session: Awaited<ReturnType<ReturnType<typeof getAuth>["api"]["getSession"]>> | null = null;
 
@@ -49,14 +51,14 @@ function currentLocalFallbackOwnerUserId(): string | undefined {
  * redirects pending users to the limited pending area and unauthenticated hosted
  * users to sign-in. This is the single owner-resolution path for app pages.
  */
-export async function requireAdmittedOwner(): Promise<string> {
+export async function requireAdmittedOwner(input: { returnTo?: string } = {}): Promise<string> {
   const state = await getCurrentAccess();
   const route = decideAccessRoute(state, {
     localFallbackOwnerUserId: currentLocalFallbackOwnerUserId(),
   });
 
   if (route.type === "redirect") {
-    redirect(route.to);
+    redirect(route.to === "/sign-in" ? signInPathFor(input.returnTo) : route.to);
   }
 
   return route.ownerUserId;

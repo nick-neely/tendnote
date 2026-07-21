@@ -1,6 +1,7 @@
 import { TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
+import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { getOwnerContactImportPreview } from "@/lib/integrations/contact-import-preview-data";
 import { ContactImportReview } from "./contact-import-review";
 import { RefreshPreviewButton } from "./refresh-preview-button";
@@ -8,10 +9,11 @@ import { RefreshPreviewButton } from "./refresh-preview-button";
 export const dynamic = "force-dynamic";
 
 export default async function ContactsImportPage() {
+  const ownerUserId = await requireAdmittedOwner({ returnTo: "/account/contacts/import" });
   const preview = await getOwnerContactImportPreview();
 
   return (
-    <AppShell>
+    <AppShell ownerUserId={ownerUserId}>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
         <header className="flex flex-col gap-2">
           <Link

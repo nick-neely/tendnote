@@ -58,9 +58,9 @@ describe("AccountPage access gating", () => {
   });
 
   it("reads connection state only after an admitted view resolves", async () => {
-    getCurrentAccess.mockResolvedValue({ state: "admitted" });
+    getCurrentAccess.mockResolvedValue({ state: "admitted", user: { id: "owner-1" } });
     resolveAccountView.mockReturnValue({
-      type: "account",
+      type: "render",
       name: "Nick",
       email: "nick@example.com",
       sourceLabel: "Initial owner",

@@ -6,11 +6,11 @@ import { requireAdmittedOwner } from "@/lib/access/current-access";
 export const dynamic = "force-dynamic";
 
 export default async function PeoplePage() {
-  const ownerUserId = await requireAdmittedOwner();
+  const ownerUserId = await requireAdmittedOwner({ returnTo: "/people" });
   const people = await searchPeople({ ownerUserId, limit: 50 });
 
   return (
-    <AppShell>
+    <AppShell ownerUserId={ownerUserId}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         <header className="flex flex-col gap-1">
           <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">

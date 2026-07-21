@@ -26,7 +26,7 @@ const RESOLVED_LIMIT = 20;
 export const dynamic = "force-dynamic";
 
 export default async function ActionsPage() {
-  const ownerUserId = await requireAdmittedOwner();
+  const ownerUserId = await requireAdmittedOwner({ returnTo: "/actions" });
   const now = new Date();
 
   // Seed the owner's default Areas the first time they open Actions (idempotent),
@@ -67,7 +67,7 @@ export default async function ActionsPage() {
     });
 
   return (
-    <AppShell>
+    <AppShell ownerUserId={ownerUserId}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         <header className="flex flex-col gap-1">
           <div className="flex items-baseline justify-between gap-4">

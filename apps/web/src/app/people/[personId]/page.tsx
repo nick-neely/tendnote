@@ -34,6 +34,7 @@ import { RelationshipSnapshotCard } from "@/components/relationship-snapshot-car
 import { SuggestedFollowupReviewSection } from "@/components/suggested-followup-review";
 import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { appReturnTo } from "@/lib/auth/return-to";
 import { shortName } from "@/lib/dashboard-brief";
 import { type DraftView, toDraftView } from "@/lib/draft-view";
 import { toDateInputValue, toFollowupView } from "@/lib/followup-view";
@@ -193,13 +194,18 @@ async function loadProfileContext(
   return fallbackContext(profile);
 }
 
+// fallow-ignore-next-line complexity -- The server page composes the complete owner-scoped profile read model.
 export default async function PersonDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ personId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { personId } = await params;
-  const ownerUserId = await requireAdmittedOwner();
+  const [{ personId }, query] = await Promise.all([params, searchParams]);
+  const ownerUserId = await requireAdmittedOwner({
+    returnTo: appReturnTo(`/people/${encodeURIComponent(personId)}`, query),
+  });
   const [profile, suggestedReviews, suggestedFollowupReviews, drafts, shareableMembers] =
     await Promise.all([
       getPersonProfile({ ownerUserId, personId }),
@@ -245,7 +251,7 @@ export default async function PersonDetailPage({
   const initialTab: PersonTab = snapshot ? "snapshot" : "memory";
 
   return (
-    <AppShell>
+    <AppShell ownerUserId={ownerUserId}>
       <PersonDetailTabs
         aside={
           <>

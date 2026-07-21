@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { signOut } from "@/lib/auth/client";
+import { clearAllLocalComposerDrafts } from "@/lib/local-composer-draft";
 
 export function SignOutButton({ className }: { className?: string }) {
   const router = useRouter();
@@ -20,6 +21,11 @@ export function SignOutButton({ className }: { className?: string }) {
 
     try {
       await signOut();
+      try {
+        clearAllLocalComposerDrafts(window.localStorage);
+      } catch {
+        // Successful sign-out must still navigate when device storage is blocked.
+      }
       router.push("/sign-in");
       router.refresh();
     } catch {

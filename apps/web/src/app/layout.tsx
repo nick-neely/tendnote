@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,6 +17,24 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Tendnote",
   description: "A private relationship memory and follow-up assistant.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Tendnote",
+  },
+  icons: {
+    apple: [{ url: "/icons/tendnote-192.png", sizes: "192x192", type: "image/png" }],
+  },
+  manifest: "/manifest.webmanifest",
+};
+
+export const viewport: Viewport = {
+  colorScheme: "light dark",
+  themeColor: [
+    { color: "#ffffff", media: "(prefers-color-scheme: light)" },
+    { color: "#171a18", media: "(prefers-color-scheme: dark)" },
+  ],
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

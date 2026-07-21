@@ -15,9 +15,11 @@ import {
   PromptInputBody,
   PromptInputFooter,
   type PromptInputMessage,
+  PromptInputProvider,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  usePromptInputController,
 } from "@/components/ai-elements/prompt-input";
 import { AssistantCaptureMenu } from "@/components/assistant-capture-menu";
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
@@ -32,6 +34,11 @@ import {
   messageText,
   messageToolViews,
 } from "@/lib/eve/message-views";
+import {
+  consumeLocalEveDraftSubmission,
+  loadLocalComposerDraft,
+  saveLocalComposerDraft,
+} from "@/lib/local-composer-draft";
 import { cn } from "@/lib/utils";
 
 export type AssistantPersonContext = {
@@ -50,9 +57,11 @@ function clientContextFor(context?: AssistantPersonContext) {
 
 export function AssistantPanel({
   context,
+  ownerUserId,
   nudges = [],
 }: {
   context?: AssistantPersonContext;
+  ownerUserId: string;
   /** Calendar-derived prompt nudges; clicking one sends its text to Eve (#114). */
   nudges?: PromptNudge[];
 }) {
@@ -75,12 +84,7 @@ export function AssistantPanel({
       return;
     }
 
-    try {
-      await agent.send({ message: text, clientContext: clientContextFor(context) });
-    } catch {
-      // Failures also surface through `agent.status === "error"` / `agent.error`,
-      // which the error row below renders; nothing else to do here.
-    }
+    await agent.send({ message: text, clientContext: clientContextFor(context) });
   }
 
   // A prompt nudge starts a conversational turn by sending its text to Eve — it
@@ -135,7 +139,12 @@ export function AssistantPanel({
         </div>
       ) : null}
 
-      <AssistantComposer context={context} onSubmit={handleSubmit} status={agent.status} />
+      <AssistantComposer
+        context={context}
+        onSubmit={handleSubmit}
+        ownerUserId={ownerUserId}
+        status={agent.status}
+      />
     </section>
   );
 }
@@ -297,7 +306,8 @@ function TurnStatus({ status }: { status: AgentStatus }) {
         className="text-[length:var(--text-small)] text-destructive leading-[var(--text-small-line)]"
         role="alert"
       >
-        I couldn't reach the assistant. Check the local services and try again.
+        Eve is unavailable. Your records are still available, and your question remains unsaved. Try
+        Eve again from the composer.
       </p>
     );
   }
@@ -307,22 +317,48 @@ function TurnStatus({ status }: { status: AgentStatus }) {
 
 function AssistantComposer({
   context,
+  ownerUserId,
   status,
   onSubmit,
 }: {
   context?: AssistantPersonContext;
+  ownerUserId: string;
   status: AgentStatus;
-  onSubmit: (message: PromptInputMessage) => void;
+  onSubmit: (message: PromptInputMessage) => Promise<void>;
 }) {
   // A plus-menu pick opens the Asset Evidence capture panel above the composer
   // (#201). Evidence routes through the shared capture server actions — never
   // into the Eve turn — so chat gets no attachment model of its own. The menu
   // stays disabled while a capture is open so a second pick can't discard a
   // half-filled form.
+  return (
+    <PromptInputProvider key={ownerUserId}>
+      <AssistantComposerForm
+        context={context}
+        onSubmit={onSubmit}
+        ownerUserId={ownerUserId}
+        status={status}
+      />
+    </PromptInputProvider>
+  );
+}
+
+function AssistantComposerForm({
+  context,
+  ownerUserId,
+  status,
+  onSubmit,
+}: {
+  context?: AssistantPersonContext;
+  ownerUserId: string;
+  status: AgentStatus;
+  onSubmit: (message: PromptInputMessage) => Promise<void>;
+}) {
   const [captureFile, setCaptureFile] = useState<File | null>(null);
 
   return (
     <div className="border-t p-3 sm:p-4">
+      <EveDraftPersistence onSubmit={onSubmit} ownerUserId={ownerUserId} status={status} />
       {captureFile ? (
         <div className="pb-3">
           <AssistantEvidenceCapture file={captureFile} onClose={() => setCaptureFile(null)} />
@@ -348,6 +384,83 @@ function AssistantComposer({
           <PromptInputSubmit status={status} />
         </PromptInputFooter>
       </PromptInput>
+    </div>
+  );
+}
+
+function EveDraftPersistence({
+  onSubmit,
+  ownerUserId,
+  status,
+}: {
+  onSubmit: (message: PromptInputMessage) => Promise<void>;
+  ownerUserId: string;
+  status: AgentStatus;
+}) {
+  const controller = usePromptInputController();
+  const [hydratedOwner, setHydratedOwner] = useState<string | null>(null);
+  const [pendingSubmission, setPendingSubmission] = useState<string | null>(null);
+  const [restored, setRestored] = useState(false);
+  const autoSubmitting = useRef(false);
+  const loadedOwner = useRef<string | null>(null);
+
+  // fallow-ignore-next-line complexity -- Owner hydration atomically loads, consumes the one-shot handoff, and always closes the hydration gate.
+  useEffect(() => {
+    if (loadedOwner.current === ownerUserId) return;
+    loadedOwner.current = ownerUserId;
+    try {
+      const draft = loadLocalComposerDraft(window.localStorage, ownerUserId, "eve");
+      const submissionRequested = consumeLocalEveDraftSubmission(window.localStorage, ownerUserId);
+      if (draft.restored && !controller.textInput.value) {
+        controller.textInput.setInput(draft.value);
+        setRestored(true);
+        if (submissionRequested) {
+          setPendingSubmission(draft.value);
+        }
+      }
+    } finally {
+      setHydratedOwner(ownerUserId);
+    }
+  }, [controller.textInput, ownerUserId]);
+
+  useEffect(() => {
+    if (!pendingSubmission || status !== "ready" || autoSubmitting.current) return;
+    autoSubmitting.current = true;
+    void onSubmit({ files: [], text: pendingSubmission })
+      .then(() => controller.textInput.clear())
+      .finally(() => {
+        setPendingSubmission(null);
+        autoSubmitting.current = false;
+      });
+  }, [controller.textInput, onSubmit, pendingSubmission, status]);
+
+  useEffect(() => {
+    if (hydratedOwner !== ownerUserId) return;
+    try {
+      saveLocalComposerDraft(window.localStorage, ownerUserId, "eve", controller.textInput.value);
+    } catch {
+      // A blocked local store never changes Eve's network-required behavior.
+    }
+    if (!controller.textInput.value) setRestored(false);
+  }, [controller.textInput.value, hydratedOwner, ownerUserId]);
+
+  if (!controller.textInput.value) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
+      {restored ? (
+        <p className="text-muted-foreground text-xs" role="status">
+          Unsaved Eve draft restored on this device.
+        </p>
+      ) : (
+        <span />
+      )}
+      <button
+        className="min-h-11 text-muted-foreground text-xs underline-offset-4 hover:underline"
+        onClick={controller.textInput.clear}
+        type="button"
+      >
+        Discard Eve draft
+      </button>
     </div>
   );
 }

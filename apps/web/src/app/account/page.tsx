@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { localFallbackOwnerUserId } from "@/lib/access/access-state";
 import { resolveAccountView } from "@/lib/access/account-summary";
 import { getCurrentAccess } from "@/lib/access/current-access";
+import { signInPathFor } from "@/lib/auth/return-to";
 import {
   discordEnvFromProcess,
   googleEnvFromProcess,
@@ -22,17 +23,17 @@ export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
   const access = await getCurrentAccess();
-  const view = resolveAccountView(
-    access,
-    localFallbackOwnerUserId({
-      nodeEnv: process.env.NODE_ENV,
-      devOwnerUserId: process.env.TENDNOTE_DEV_OWNER_USER_ID,
-    }),
-  );
+  const fallbackOwnerUserId = localFallbackOwnerUserId({
+    nodeEnv: process.env.NODE_ENV,
+    devOwnerUserId: process.env.TENDNOTE_DEV_OWNER_USER_ID,
+  });
+  const view = resolveAccountView(access, fallbackOwnerUserId);
 
   if (view.type === "redirect") {
-    redirect(view.to);
+    redirect(view.to === "/sign-in" ? signInPathFor("/account") : view.to);
   }
+  const ownerUserId = access.state === "admitted" ? access.user.id : fallbackOwnerUserId;
+  if (!ownerUserId) redirect(signInPathFor("/account"));
   const usingLocalFallback = access.state === "unauthenticated";
 
   // Admitted-only: getOwnerProviderConnections resolves the admitted owner before
@@ -52,7 +53,7 @@ export default async function AccountPage() {
   const initial = view.name.trim().charAt(0).toUpperCase() || "?";
 
   return (
-    <AppShell>
+    <AppShell ownerUserId={ownerUserId}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
         <header className="flex flex-col gap-1">
           <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">

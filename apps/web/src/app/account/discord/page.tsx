@@ -7,6 +7,7 @@ import {
 } from "@/components/account/discord-delivery-settings";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
+import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { discordEnvFromProcess, isDiscordConfigured } from "@/lib/auth/social";
 import type { DiscordInstallRejectReason } from "@/lib/integrations/discord-install";
 import { getOwnerDiscordInstalls } from "@/lib/integrations/discord-install-server";
@@ -42,6 +43,7 @@ export default async function DiscordDeliveryPage({
   searchParams: Promise<{ installed?: string; error?: string }>;
 }) {
   const { installed, error } = await searchParams;
+  const ownerUserId = await requireAdmittedOwner({ returnTo: "/account/discord" });
 
   // Inert when Discord OAuth credentials are not configured server-side — there is
   // nothing to install or configure, so send the owner back to Account.
@@ -52,7 +54,7 @@ export default async function DiscordDeliveryPage({
   const { discordUserId, installs } = await getOwnerDiscordInstalls();
 
   return (
-    <AppShell>
+    <AppShell ownerUserId={ownerUserId}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
         <header className="flex flex-col gap-2">
           <Link
