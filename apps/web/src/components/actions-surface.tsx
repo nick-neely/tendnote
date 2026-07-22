@@ -21,7 +21,6 @@ import {
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionView } from "@/lib/general-action-view";
 import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
-import { useDeepLinkHighlight } from "@/lib/use-deep-link-highlight";
 import { useServerSyncedList } from "@/lib/use-server-synced-list";
 import { cn } from "@/lib/utils";
 
@@ -103,9 +102,6 @@ export function ActionsSurface({
   const [suggestedList, setSuggestedList] = useServerSyncedList(suggested, reviewActionId);
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
   const [managerOpen, setManagerOpen] = useState(false);
-  // Land an Action Today deep link (`/actions#action-<id>`) on its exact row.
-  useDeepLinkHighlight();
-
   const activeAreas = useMemo(() => areaList.filter((area) => !area.archived), [areaList]);
   const archivedAreas = useMemo(() => areaList.filter((area) => area.archived), [areaList]);
   const areaNameById = useMemo(

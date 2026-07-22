@@ -1,15 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { redirect, getCurrentAccess, resolveAccountView, getOwnerProviderConnections } = vi.hoisted(
-  () => ({
-    redirect: vi.fn((to: string) => {
-      throw new Error(`REDIRECT:${to}`);
-    }),
-    getCurrentAccess: vi.fn(),
-    resolveAccountView: vi.fn(),
-    getOwnerProviderConnections: vi.fn(),
+const {
+  redirect,
+  getCurrentAccess,
+  resolveAccountView,
+  getOwnerProviderConnections,
+  getOwnerCalendarPreview,
+} = vi.hoisted(() => ({
+  redirect: vi.fn((to: string) => {
+    throw new Error(`REDIRECT:${to}`);
   }),
-);
+  getCurrentAccess: vi.fn(),
+  resolveAccountView: vi.fn(),
+  getOwnerProviderConnections: vi.fn(),
+  getOwnerCalendarPreview: vi.fn().mockResolvedValue({ state: "hidden" }),
+}));
 
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@/lib/access/current-access", () => ({ getCurrentAccess }));
@@ -20,7 +25,7 @@ vi.mock("@/lib/integrations/provider-connection-view", () => ({
   buildProviderConnectionView: () => [],
 }));
 vi.mock("@/lib/integrations/calendar-preview-data", () => ({
-  getOwnerCalendarPreview: vi.fn().mockResolvedValue({ state: "hidden" }),
+  getOwnerCalendarPreview,
 }));
 // Presentational shells are exercised by their own tests; stub them here.
 vi.mock("@/components/account/calendar-preview-section", () => ({
@@ -43,6 +48,7 @@ beforeEach(() => {
   getCurrentAccess.mockReset();
   resolveAccountView.mockReset();
   getOwnerProviderConnections.mockReset();
+  getOwnerCalendarPreview.mockReset().mockResolvedValue({ state: "hidden" });
   redirect.mockClear();
 });
 
@@ -71,5 +77,32 @@ describe("AccountPage access gating", () => {
 
     expect(getOwnerProviderConnections).toHaveBeenCalledTimes(1);
     expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("passes a canonical Calendar result target into the bounded preview read", async () => {
+    getCurrentAccess.mockResolvedValue({ state: "admitted", user: { id: "owner-1" } });
+    resolveAccountView.mockReturnValue({
+      type: "render",
+      name: "Nick",
+      email: "nick@example.com",
+      sourceLabel: "Initial owner",
+    });
+    getOwnerProviderConnections.mockResolvedValue([]);
+
+    await AccountPage({
+      searchParams: Promise.resolve({
+        calendarId: "primary",
+        calendarEvent: "event-filter",
+        calendarStart: "2026-07-23T15:00:00.000Z",
+        calendarQuery: "Filter installation meeting",
+      }),
+    });
+
+    expect(getOwnerCalendarPreview).toHaveBeenCalledWith({
+      calendarId: "primary",
+      providerEventId: "event-filter",
+      start: new Date("2026-07-23T15:00:00.000Z"),
+      query: "Filter installation meeting",
+    });
   });
 });

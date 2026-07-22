@@ -358,7 +358,9 @@ export function createInMemoryEmbeddingStore(
     action: GeneralAction,
     input: SemanticSearchInput,
   ): boolean {
-    if (decideGeneralActionEmbedding(action).action === "skip") return false;
+    if (!input.includeArchived && decideGeneralActionEmbedding(action).action === "skip") {
+      return false;
+    }
     if (projectGeneralActionEmbeddedText(action) !== embedding.embeddedText) return false;
     return canRetrieveGeneralAction({
       status: action.status,
@@ -366,6 +368,7 @@ export function createInMemoryEmbeddingStore(
       callerUserId: input.ownerUserId,
       scopeVisible: canViewerSeeRecord(input.ownerUserId, action, "general_action"),
       includeReviewGated: Boolean(input.includeReviewGated),
+      includeArchived: input.includeArchived,
     });
   }
 

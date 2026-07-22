@@ -392,7 +392,11 @@ function SavedItemRow({
   }
 
   return (
-    <article className="flex flex-col gap-3 px-4 py-3.5">
+    <article
+      className="scroll-mt-20 flex flex-col gap-3 px-4 py-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      id={`saved-item-${item.id}`}
+      tabIndex={-1}
+    >
       <SavedItemSummary item={item} />
       <SavedItemOutcomes item={item} />
       <SourceGroundingDetails item={item} onDelete={onDelete} />

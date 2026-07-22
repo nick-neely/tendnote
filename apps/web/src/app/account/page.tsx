@@ -15,13 +15,19 @@ import {
   isDiscordConfigured,
   isGoogleConfigured,
 } from "@/lib/auth/social";
+import { parseCalendarPreviewTarget } from "@/lib/integrations/calendar-preview";
 import { getOwnerCalendarPreview } from "@/lib/integrations/calendar-preview-data";
 import { buildProviderConnectionView } from "@/lib/integrations/provider-connection-view";
 import { getOwnerProviderConnections } from "@/lib/integrations/provider-connections";
 
 export const dynamic = "force-dynamic";
 
-export default async function AccountPage() {
+export default async function AccountPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+} = {}) {
+  const calendarTarget = parseCalendarPreviewTarget((await searchParams) ?? {});
   const access = await getCurrentAccess();
   const fallbackOwnerUserId = localFallbackOwnerUserId({
     nodeEnv: process.env.NODE_ENV,
@@ -48,7 +54,7 @@ export default async function AccountPage() {
   // configured server-side; otherwise the affordance stays inert.
   const discordConfigured = isDiscordConfigured(discordEnvFromProcess());
   // Read-only bounded preview of the connected calendar; hidden when not connected.
-  const calendarPreview = await getOwnerCalendarPreview();
+  const calendarPreview = await getOwnerCalendarPreview(calendarTarget);
 
   const initial = view.name.trim().charAt(0).toUpperCase() || "?";
 

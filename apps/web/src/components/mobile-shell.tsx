@@ -10,12 +10,13 @@ import {
   SearchIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   CaptureFlow,
   type CaptureHandlers,
   EveFlow,
   type FocusedFlow,
+  type GlobalRecallHandler,
   MenuFlow,
   SearchFlow,
 } from "@/components/mobile-focused-flows";
@@ -30,6 +31,7 @@ export function MobileShell({
   mobileHome,
   mobileReview,
   ownerUserId,
+  searchHandler,
 }: {
   captureHandlers?: CaptureHandlers;
   children: ReactNode;
@@ -37,11 +39,25 @@ export function MobileShell({
   mobileHome: boolean;
   mobileReview: boolean;
   ownerUserId: string;
+  searchHandler: GlobalRecallHandler;
 }) {
   const [flow, setFlow] = useState<FocusedFlow | null>(null);
   const [eveDraftRevision, setEveDraftRevision] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const invokingControl = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const state = window.history.state as Record<string, unknown> | null;
+    if (
+      state?.tendnoteGlobalRecallOwner !== ownerUserId ||
+      state.tendnoteGlobalRecallReturnUrl !== window.location.href
+    ) {
+      return;
+    }
+    const { tendnoteGlobalRecallOwner: _, tendnoteGlobalRecallReturnUrl: __, ...rest } = state;
+    window.history.replaceState(rest, "", window.location.href);
+    setFlow("search");
+  }, [ownerUserId]);
 
   function openFlow(next: FocusedFlow, trigger: HTMLElement) {
     invokingControl.current = trigger;
@@ -53,6 +69,10 @@ export function MobileShell({
     if (flow === "eve") setEveDraftRevision((revision) => revision + 1);
     setFlow(null);
     requestAnimationFrame(() => trigger?.focus());
+  }
+
+  function closeFlowForNavigation() {
+    setFlow(null);
   }
 
   return (
@@ -79,7 +99,14 @@ export function MobileShell({
         onOpen={openFlow}
       />
       {flow === "search" ? (
-        <SearchFlow onClose={closeFlow} query={searchQuery} setQuery={setSearchQuery} />
+        <SearchFlow
+          onClose={closeFlow}
+          onNavigate={closeFlowForNavigation}
+          ownerUserId={ownerUserId}
+          query={searchQuery}
+          search={searchHandler}
+          setQuery={setSearchQuery}
+        />
       ) : null}
       {flow === "capture" ? (
         <CaptureFlow handlers={captureHandlers} onClose={closeFlow} ownerUserId={ownerUserId} />

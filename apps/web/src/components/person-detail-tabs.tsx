@@ -20,6 +20,21 @@ const HASH_TO_TAB: Record<string, PersonTab> = {
   "message-drafts": "drafts",
 };
 
+function tabForPersonHash(id: string): PersonTab | undefined {
+  if (id.startsWith("followup-")) return "followups";
+  if (id.startsWith("memory-")) return "memory";
+  return HASH_TO_TAB[id];
+}
+
+function scrollToPersonHashTarget(id: string) {
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  window.setTimeout(() => {
+    document
+      .getElementById(id)
+      ?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  }, 60);
+}
+
 /**
  * Client tab shell for the person detail page. The page (a server component) does
  * the data work and renders each panel; this shell owns the active tab, the
@@ -65,7 +80,7 @@ export function PersonDetailTabs({
   useEffect(() => {
     function syncFromHash() {
       const id = window.location.hash.slice(1);
-      const tab = HASH_TO_TAB[id];
+      const tab = tabForPersonHash(id);
 
       if (!tab || (tab === "snapshot" && !hasSnapshot)) {
         return;
@@ -73,14 +88,8 @@ export function PersonDetailTabs({
 
       setActive(tab);
 
-      // Wait for the panel to mount, then bring the linked record under the
-      // sticky header. Honor reduced-motion: jump instead of animating.
-      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      window.setTimeout(() => {
-        document
-          .getElementById(id)
-          ?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-      }, 60);
+      // Wait for the panel to mount, then bring the linked record under the sticky header.
+      scrollToPersonHashTarget(id);
     }
 
     syncFromHash();

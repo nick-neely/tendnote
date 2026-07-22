@@ -239,6 +239,12 @@ export const RETRIEVABLE_GENERAL_ACTION_STATUSES: ReadonlySet<GeneralActionStatu
   "paused",
 ]);
 
+export const HISTORICAL_GENERAL_ACTION_STATUSES: ReadonlySet<GeneralActionStatus> = new Set([
+  "completed",
+  "dismissed",
+  "archived",
+]);
+
 export function isRetrievableGeneralActionStatus(status: GeneralActionStatus): boolean {
   return RETRIEVABLE_GENERAL_ACTION_STATUSES.has(status);
 }
@@ -266,8 +272,12 @@ export function canRetrieveGeneralAction(input: {
   callerUserId: string;
   scopeVisible: boolean;
   includeReviewGated: boolean;
+  includeArchived?: boolean;
 }): boolean {
   if (isRetrievableGeneralActionStatus(input.status)) return input.scopeVisible;
+  if (input.includeArchived && HISTORICAL_GENERAL_ACTION_STATUSES.has(input.status)) {
+    return input.scopeVisible;
+  }
   if (input.status !== "suggested") return false;
   return input.includeReviewGated && input.ownerUserId === input.callerUserId;
 }

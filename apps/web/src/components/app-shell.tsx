@@ -9,13 +9,15 @@ import {
   changeExplicitCaptureOutcomeAction,
   undoExplicitCaptureOutcomeAction,
 } from "@/app/actions/conversational-capture";
+import { globalRecallAction } from "@/app/actions/global-recall";
 import { appDestinations } from "@/components/app-destinations";
 import { MobileFailureState } from "@/components/mobile-failure-state";
-import type { CaptureHandlers } from "@/components/mobile-focused-flows";
+import type { CaptureHandlers, GlobalRecallHandler } from "@/components/mobile-focused-flows";
 import { MobileShell } from "@/components/mobile-shell";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useDeepLinkHighlight } from "@/lib/use-deep-link-highlight";
 
 const defaultCaptureHandlers: CaptureHandlers = {
   addPerson: addCapturePersonAction,
@@ -31,6 +33,7 @@ export function AppShell({
   mobileHome = false,
   mobileReview = false,
   ownerUserId,
+  searchHandler = globalRecallAction,
 }: {
   captureHandlers?: CaptureHandlers;
   children: ReactNode;
@@ -38,8 +41,10 @@ export function AppShell({
   mobileHome?: boolean;
   mobileReview?: boolean;
   ownerUserId: string;
+  searchHandler?: GlobalRecallHandler;
 }) {
   const online = useOnlineState();
+  useDeepLinkHighlight();
 
   return (
     <div className="min-h-dvh overflow-x-clip bg-background text-foreground">
@@ -80,6 +85,7 @@ export function AppShell({
         mobileHome={mobileHome}
         mobileReview={mobileReview}
         ownerUserId={ownerUserId}
+        searchHandler={searchHandler}
       >
         {children}
       </MobileShell>

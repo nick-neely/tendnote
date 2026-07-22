@@ -21,6 +21,12 @@ type ListActiveFollowupsInput = {
   limit?: number;
 };
 
+type SearchFollowupsInput = {
+  ownerUserId: string;
+  includeArchived?: boolean;
+  limit?: number;
+};
+
 /**
  * Shared owner-scoped follow-up lifecycle (PRD #42, ADR-0007). This is the single
  * source of truth for creating and transitioning follow-ups: web routes/actions
@@ -227,6 +233,23 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
 
       return Promise.all(
         active.map(async (followup) => ({
+          followup,
+          person: await store.getPerson({
+            ownerUserId: followup.ownerUserId,
+            personId: followup.personId,
+          }),
+        })),
+      );
+    },
+
+    async searchFollowups(input: SearchFollowupsInput): Promise<ActiveFollowupSummary[]> {
+      const visible = await store.listVisibleFollowups({
+        callerUserId: input.ownerUserId,
+        includeArchived: input.includeArchived ?? false,
+        limit: input.limit,
+      });
+      return Promise.all(
+        visible.map(async (followup) => ({
           followup,
           person: await store.getPerson({
             ownerUserId: followup.ownerUserId,

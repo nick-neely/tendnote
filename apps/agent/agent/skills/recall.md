@@ -6,6 +6,12 @@ description: Use when the user wants to find, recall, or look up a person, note,
 
 Pick the narrowest tool for what the user is asking.
 
+- Use `search_global_recall` first for cross-domain questions, broad searches, or
+  when the likely record family is unclear. It returns the same typed Exact then
+  Related results as Search across People, Follow-Ups, Actions, Assets, Saved Items,
+  and available Calendar context. Cite its canonical records, preserve its trust
+  language, and state any limitations. Source Records and Asset Evidence are
+  grounding only, never independent answers.
 - Use `search_people` for identity lookup and disambiguation before linking new
   context.
 - For named-person questions like "what do I know about Alex's job search?" or

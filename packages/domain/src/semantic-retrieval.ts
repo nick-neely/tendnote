@@ -75,6 +75,7 @@ export const searchSemanticContextSchema = z.object({
   limit: z.number().int().min(1).max(20).default(8),
   minimumSimilarity: z.number().min(0).max(1).default(0),
   directlyRequested: z.boolean().default(false),
+  includeArchived: z.boolean().default(false),
   // Owner-only review context: when true, the caller's own `suggested` General Actions
   // may participate in retrieval so a review surface can find grounded proposals. A
   // suggested proposal is never scope-visible to a household member regardless of this

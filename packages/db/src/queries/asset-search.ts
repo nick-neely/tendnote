@@ -26,3 +26,8 @@ const defaultAssetSearch = createAssetSearch(
 export async function searchAssets(input: SearchAssetsRequest) {
   return defaultAssetSearch.searchAssets(input);
 }
+
+/** Global Recall needs to distinguish an empty semantic tier from a failed one. */
+export async function searchAssetsWithStatus(input: SearchAssetsRequest) {
+  return defaultAssetSearch.searchAssetsWithStatus(input);
+}

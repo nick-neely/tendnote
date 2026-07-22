@@ -58,12 +58,13 @@ describe("PersonFollowups", () => {
     const html = render({ active: [view()] });
 
     expect(html).toContain("Check in about the move.");
+    expect(html).toContain('id="followup-11111111-1111-1111-1111-111111111111"');
     expect(html).toContain("Only me");
     expect(html).toContain("Complete");
     expect(html).toContain("More actions");
     expect(html).toContain("New follow-up");
-    // Raw record ids are never shown to the user.
-    expect(html).not.toContain("11111111-1111-1111-1111-111111111111");
+    // The id may be an invisible deep-link target, but is never rendered as text.
+    expect(html).not.toContain(">11111111-1111-1111-1111-111111111111<");
   });
 
   it("shows an empty state naming the person when there are no active follow-ups", () => {

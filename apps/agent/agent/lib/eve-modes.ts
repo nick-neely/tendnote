@@ -50,6 +50,7 @@ export type EveToolName =
   | "get_person_context"
   | "search_relationship_context"
   | "search_semantic_context"
+  | "search_global_recall"
   | "get_relationship_agenda"
   | "list_due_followups"
   | "list_calendar_events"
@@ -104,6 +105,7 @@ const modeDefinitions = {
       "get_person_context",
       "search_relationship_context",
       "search_semantic_context",
+      "search_global_recall",
       "list_due_followups",
       "propose_followup",
       "create_message_draft",
@@ -141,6 +143,7 @@ const modeDefinitions = {
       "get_person_context",
       "search_relationship_context",
       "search_semantic_context",
+      "search_global_recall",
       "create_message_draft",
     ],
     skills: ["drafting", "birthday-messages", "relationship-repair"],

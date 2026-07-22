@@ -8,6 +8,14 @@ vi.mock("@/app/actions/conversational-capture", () => ({
   changeExplicitCaptureOutcomeAction: vi.fn(),
   undoExplicitCaptureOutcomeAction: vi.fn(),
 }));
+vi.mock("@/app/actions/global-recall", () => ({
+  globalRecallAction: vi.fn().mockResolvedValue({
+    query: "",
+    results: [],
+    limitations: [],
+    hasMore: false,
+  }),
+}));
 
 import { AppShell } from "./app-shell";
 
@@ -72,6 +80,182 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(screen.getByDisplayValue("still here")).toBeDefined();
     await user.click(searchButton);
     expect(screen.getByDisplayValue("air filter")).toBeDefined();
+  });
+
+  it("renders typed Exact and Related Global Recall results with filters and honest limitations", async () => {
+    const user = userEvent.setup();
+    const searchHandler = vi.fn().mockResolvedValue({
+      query: "fridge filter",
+      results: [
+        {
+          family: "asset_memory",
+          canonical: { kind: "asset_memory", id: "memory-1" },
+          label: "Filter size",
+          supportingText: "RPWFE",
+          lifecycle: "active",
+          match: { kind: "exact", reason: "Matched an exact Asset value", excerpt: "RPWFE" },
+          trust: "asset_fact",
+          sensitivity: "normal",
+          visibility: { choice: "only_me", label: "Only me" },
+          grounding: [{ kind: "asset_memory", id: "memory-1" }],
+          href: "/assets/asset-1#asset-memory-memory-1",
+          parent: { kind: "asset", id: "asset-1" },
+          details: {
+            assetId: "asset-1",
+            assetName: "Fridge",
+            assetKind: "appliance",
+            value: { type: "text", text: "RPWFE" },
+          },
+        },
+        {
+          family: "saved_item",
+          canonical: { kind: "saved_item", id: "saved-1" },
+          label: "Filter notes",
+          supportingText: "Replacement notes",
+          lifecycle: "active",
+          match: { kind: "related", reason: "Related by meaning", excerpt: "replacement" },
+          trust: "saved_context",
+          sensitivity: "normal",
+          visibility: { choice: "only_me", label: "Only me" },
+          grounding: [{ kind: "saved_item", id: "saved-1" }],
+          href: "/saved-items#saved-item-saved-1",
+          parent: null,
+          details: { kind: "note" },
+        },
+      ],
+      limitations: [{ source: "calendar", message: "Calendar results are unavailable." }],
+      hasMore: false,
+    });
+    render(
+      <AppShell mobileHome ownerUserId="owner-search" searchHandler={searchHandler}>
+        <p>Today</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.type(screen.getByRole("textbox", { name: "Search Tendnote" }), "fridge filter");
+    await waitFor(() => expect(searchHandler).toHaveBeenCalled());
+
+    expect(screen.getByRole("region", { name: "Exact matches" })).toBeDefined();
+    expect(screen.getByRole("region", { name: "Related matches" })).toBeDefined();
+    expect(screen.getByText("Calendar results are unavailable.")).toBeDefined();
+    await user.click(screen.getAllByRole("button", { name: "Why this result?" })[0] as HTMLElement);
+    expect(screen.getByText(/Matched an exact Asset value/)).toBeDefined();
+
+    await user.selectOptions(screen.getByLabelText("Result family"), "assets");
+    await waitFor(() =>
+      expect(searchHandler).toHaveBeenLastCalledWith(expect.objectContaining({ family: "assets" })),
+    );
+  });
+
+  it("reopens Search on browser return and restores the focused result", async () => {
+    const storageKey = "tendnote:global-recall:owner-return";
+    sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        query: "filter note",
+        family: "saved_items",
+        matchKind: "exact",
+        includeArchived: true,
+        includeRestricted: false,
+        expanded: ["saved_item:saved-return"],
+        focusedKey: "saved_item:saved-return",
+        restoreFocus: true,
+        scrollTop: 24,
+      }),
+    );
+    window.history.replaceState(
+      {
+        tendnoteGlobalRecallOwner: "owner-return",
+        tendnoteGlobalRecallReturnUrl: window.location.href,
+      },
+      "",
+      window.location.href,
+    );
+    const searchHandler = vi.fn().mockResolvedValue({
+      query: "filter note",
+      results: [
+        {
+          family: "saved_item",
+          canonical: { kind: "saved_item", id: "saved-return" },
+          label: "Filter note",
+          supportingText: "Replacement details",
+          lifecycle: "active",
+          match: { kind: "exact", reason: "Matched wording", excerpt: "filter" },
+          trust: "saved_context",
+          sensitivity: "normal",
+          visibility: { choice: "only_me", label: "Only me" },
+          grounding: [{ kind: "saved_item", id: "saved-return" }],
+          href: "/saved-items#saved-item-saved-return",
+          parent: null,
+          details: { kind: "note" },
+        },
+      ],
+      limitations: [],
+      hasMore: false,
+    });
+
+    render(
+      <AppShell mobileHome ownerUserId="owner-return" searchHandler={searchHandler}>
+        <p>Today</p>
+      </AppShell>,
+    );
+
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Search" })).toBeDefined());
+    await waitFor(() => expect(searchHandler).toHaveBeenCalled());
+    const resultLink = await screen.findByRole("link", { name: /Filter note/ });
+    await waitFor(() => expect(document.activeElement).toBe(resultLink));
+    expect((screen.getByLabelText("Result family") as HTMLSelectElement).value).toBe("saved_items");
+    expect(screen.getByText(/Matched wording: filter/)).toBeDefined();
+
+    sessionStorage.removeItem(storageKey);
+    window.history.replaceState({}, "", window.location.href);
+  });
+
+  it("closes Search and reveals a canonical result on same-route hash navigation", async () => {
+    window.history.replaceState({}, "", "/saved-items");
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    const user = userEvent.setup();
+    const searchHandler = vi.fn().mockResolvedValue({
+      query: "filter note",
+      results: [
+        {
+          family: "saved_item",
+          canonical: { kind: "saved_item", id: "saved-same-route" },
+          label: "Same-route filter note",
+          supportingText: "Replacement details",
+          lifecycle: "active",
+          match: { kind: "exact", reason: "Matched wording", excerpt: "filter" },
+          trust: "saved_context",
+          sensitivity: "normal",
+          visibility: { choice: "only_me", label: "Only me" },
+          grounding: [{ kind: "saved_item", id: "saved-same-route" }],
+          href: "/saved-items#saved-item-saved-same-route",
+          parent: null,
+          details: { kind: "note" },
+        },
+      ],
+      limitations: [],
+      hasMore: false,
+    });
+
+    render(
+      <AppShell ownerUserId="owner-same-route" searchHandler={searchHandler}>
+        <article id="saved-item-saved-same-route" tabIndex={-1}>
+          Canonical saved target
+        </article>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.type(screen.getByRole("textbox", { name: "Search Tendnote" }), "filter note");
+    const resultLink = await screen.findByRole("link", { name: /Same-route filter note/ });
+    await user.click(resultLink);
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Search" })).toBeNull());
+    await waitFor(() => expect(document.activeElement?.id).toBe("saved-item-saved-same-route"));
+    sessionStorage.removeItem("tendnote:global-recall:owner-same-route");
+    window.history.replaceState({}, "", "/");
   });
 
   it("renders the selected shaded Today band and a reserved flat Personal Ledger region", () => {

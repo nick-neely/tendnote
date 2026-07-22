@@ -245,7 +245,11 @@ function ArchivedNote({ view }: { view: AssetView }) {
 function AssetMemoryRow({ memory }: { memory: AssetMemory }) {
   const valueLabel = formatAssetMemoryValue(memory.value);
   return (
-    <div className="flex flex-col gap-0.5 px-4 py-3">
+    <div
+      className="scroll-mt-20 flex flex-col gap-0.5 px-4 py-3 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      id={`asset-memory-${memory.id}`}
+      tabIndex={-1}
+    >
       <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
         {memory.label}
       </span>

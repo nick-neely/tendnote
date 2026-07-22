@@ -5,6 +5,7 @@ import {
   CALENDAR_PREVIEW_MAX_EVENTS,
   cachedAgoLabel,
   formatEventWhen,
+  parseCalendarPreviewTarget,
   previewAttendeeSummary,
 } from "./calendar-preview";
 
@@ -118,8 +119,26 @@ describe("buildCalendarPreviewView", () => {
     expect(view.state).toBe("events");
     if (view.state !== "events") return;
     expect(view.events.length).toBe(CALENDAR_PREVIEW_MAX_EVENTS);
-    expect(view.events[0]).toMatchObject({ title: "Coffee with Maya", whenLabel: "Tue 3:30 PM" });
+    expect(view.events[0]).toMatchObject({
+      id: "primary:e0",
+      title: "Coffee with Maya",
+      whenLabel: "Tue 3:30 PM",
+    });
     expect(view.stale).toBe(false);
+  });
+
+  it("promotes a specifically requested event into the bounded preview", () => {
+    const events = Array.from({ length: 6 }, (_, i) => summary({ providerEventId: `e${i}` }));
+    const view = buildCalendarPreviewView({
+      connected: true,
+      result: result({ events }),
+      now: NOW,
+      targetEventId: "primary:e5",
+    });
+
+    expect(view.state).toBe("events");
+    if (view.state !== "events") return;
+    expect(view.events[0]?.id).toBe("primary:e5");
   });
 
   it("can be empty and stale at once (cached, fresh-enough, but no events)", () => {
@@ -152,5 +171,24 @@ describe("buildCalendarPreviewView", () => {
     if (view.state !== "events") return;
     expect(view.stale).toBe(true);
     expect(view.cachedLabel).toBe("2h ago");
+  });
+});
+
+describe("parseCalendarPreviewTarget", () => {
+  it("accepts one bounded canonical event target and rejects incomplete input", () => {
+    expect(
+      parseCalendarPreviewTarget({
+        calendarId: "primary",
+        calendarEvent: "event-1",
+        calendarStart: "2026-07-23T15:00:00.000Z",
+        calendarQuery: "Filter meeting",
+      }),
+    ).toEqual({
+      calendarId: "primary",
+      providerEventId: "event-1",
+      start: new Date("2026-07-23T15:00:00.000Z"),
+      query: "Filter meeting",
+    });
+    expect(parseCalendarPreviewTarget({ calendarId: "primary" })).toBeNull();
   });
 });

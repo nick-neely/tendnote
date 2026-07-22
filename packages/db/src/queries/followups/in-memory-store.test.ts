@@ -40,4 +40,22 @@ describe("in-memory follow-up store", () => {
       await store.listFollowupsForPerson({ ownerUserId: OWNER, personId: "other-person" }),
     ).toEqual([]);
   });
+
+  it("keeps archived visible follow-ups behind an explicit history request", async () => {
+    const store = createInMemoryFollowupStore();
+    const open = await store.createFollowup(followupInput());
+    const archived = await store.createFollowup(
+      followupInput({ reason: "Old reminder", status: "archived" }),
+    );
+    await store.createFollowup(
+      followupInput({ ownerUserId: "intruder", reason: "Hidden", status: "archived" }),
+    );
+
+    await expect(
+      store.listVisibleFollowups({ callerUserId: OWNER, includeArchived: false }),
+    ).resolves.toEqual([open]);
+    await expect(
+      store.listVisibleFollowups({ callerUserId: OWNER, includeArchived: true }),
+    ).resolves.toEqual([open, archived]);
+  });
 });

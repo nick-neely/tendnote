@@ -518,7 +518,13 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
                   tableAlias: "ga",
                   recordKind: "general_action",
                 })}
-                and ga.status in ('open', 'deferred', 'paused')
+                and (
+                  ga.status in ('open', 'deferred', 'paused')
+                  or (
+                    ${input.includeArchived}::boolean
+                    and ga.status in ('completed', 'dismissed', 'archived')
+                  )
+                )
               )
               or (
                 ${input.includeReviewGated}::boolean

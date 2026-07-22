@@ -32,7 +32,13 @@ describe("search_semantic_context tool", () => {
     ]);
 
     const result = await tool.execute(
-      { query: "gift ideas", limit: 5, minimumSimilarity: 0, directlyRequested: false },
+      {
+        query: "gift ideas",
+        limit: 5,
+        minimumSimilarity: 0,
+        directlyRequested: false,
+        includeArchived: false,
+      },
       ctx,
     );
 
@@ -42,6 +48,7 @@ describe("search_semantic_context tool", () => {
       limit: 5,
       minimumSimilarity: 0,
       directlyRequested: false,
+      includeArchived: false,
       // Review context is pinned off by the tool, never model-forwarded.
       includeReviewGated: false,
     });
@@ -85,6 +92,7 @@ describe("search_semantic_context tool", () => {
         limit: 5,
         minimumSimilarity: 0,
         directlyRequested: false,
+        includeArchived: false,
       },
       ctx,
     );
@@ -119,6 +127,7 @@ describe("search_semantic_context tool", () => {
         limit: 8,
         minimumSimilarity: 0.2,
         directlyRequested: true,
+        includeArchived: false,
       },
       ctx,
     );
@@ -130,6 +139,7 @@ describe("search_semantic_context tool", () => {
       limit: 8,
       minimumSimilarity: 0.2,
       directlyRequested: true,
+      includeArchived: false,
       includeReviewGated: false,
     });
   });
@@ -190,6 +200,7 @@ describe("search_semantic_context tool", () => {
         limit: 5,
         minimumSimilarity: 0,
         directlyRequested: false,
+        includeArchived: false,
       },
       ctx,
     );

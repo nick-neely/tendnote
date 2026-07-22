@@ -70,7 +70,8 @@ describe("SavedItemsSurface", () => {
         visibilityChoice: "only_me",
       }),
     );
-    expect(await screen.findByText("Filter measurements")).toBeDefined();
+    const title = await screen.findByText("Filter measurements");
+    expect(title.closest("article")?.id).toBe("saved-item-saved-1");
   });
 
   it("shows grounding and linked outcomes, and resolves an open question with a reason", async () => {

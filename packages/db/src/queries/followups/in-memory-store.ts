@@ -139,6 +139,20 @@ export function createInMemoryFollowupStore(): FollowupStore & HouseholdStore {
       active.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
       return input.limit === undefined ? active : active.slice(0, input.limit);
     },
+    async listVisibleFollowups(input) {
+      const visible = [];
+      for (const followup of followups.values()) {
+        if (
+          (isActiveFollowupStatus(followup.status) ||
+            (input.includeArchived && followup.status === "archived")) &&
+          (await canCallerView({ callerUserId: input.callerUserId, followup }))
+        ) {
+          visible.push(followup);
+        }
+      }
+      visible.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
+      return input.limit === undefined ? visible : visible.slice(0, input.limit);
+    },
     async listSuggestedFollowupsForOwner(input) {
       const suggested = [...followups.values()]
         .filter(

@@ -69,6 +69,14 @@ export async function listActiveFollowups(input: {
   return defaultFollowupLifecycle.listActiveFollowups(input);
 }
 
+export async function searchFollowups(input: {
+  ownerUserId: string;
+  includeArchived?: boolean;
+  limit?: number;
+}) {
+  return defaultFollowupLifecycle.searchFollowups(input);
+}
+
 export async function suggestFollowup(input: SuggestFollowupInput) {
   return defaultSuggestedFollowupReview.suggestFollowup(input);
 }

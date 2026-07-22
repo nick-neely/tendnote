@@ -179,8 +179,10 @@ export function ActiveFollowupRow({
 
   return (
     <article
-      className="flex flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
+      className="scroll-mt-40 flex flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
       data-leaving={leaving}
+      id={`followup-${followup.id}`}
+      tabIndex={-1}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="grid gap-1">
