@@ -35,6 +35,18 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { AppShell } from "./app-shell";
 
+/**
+ * Saves the open capture, reopens it via Change, and hands back the emptied
+ * correction textarea, which is where every correction assertion starts.
+ */
+async function reopenCaptureForCorrection(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Save capture" }));
+  await user.click(await screen.findByRole("button", { name: "Change" }));
+  const correction = screen.getByRole("textbox", { name: "Rewrite what Tendnote saved" });
+  await user.clear(correction);
+  return correction;
+}
+
 describe("AppShell Phase Seven mobile navigation", () => {
   it("uses exactly the five selected phone destinations and keeps domain links in Menu", async () => {
     const user = userEvent.setup();
@@ -587,10 +599,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
       screen.getByRole("textbox", { name: "What should Tendnote keep?" }),
       "The filter needs replacing",
     );
-    await user.click(screen.getByRole("button", { name: "Save capture" }));
-    await user.click(await screen.findByRole("button", { name: "Change" }));
-    const correction = screen.getByRole("textbox", { name: "Rewrite what Tendnote saved" });
-    await user.clear(correction);
+    const correction = await reopenCaptureForCorrection(user);
     await user.type(correction, "I need to replace the filter");
     await user.click(screen.getByRole("button", { name: "Save change" }));
 
@@ -636,10 +645,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
     await user.click(screen.getByRole("button", { name: "Capture" }));
     await user.type(screen.getByRole("textbox", { name: "What should Tendnote keep?" }), "Note");
-    await user.click(screen.getByRole("button", { name: "Save capture" }));
-    await user.click(await screen.findByRole("button", { name: "Change" }));
-    const correction = screen.getByRole("textbox", { name: "Rewrite what Tendnote saved" });
-    await user.clear(correction);
+    const correction = await reopenCaptureForCorrection(user);
     await user.type(correction, "Remind me to replace the filter sometime");
     await user.click(screen.getByRole("button", { name: "Save change" }));
 

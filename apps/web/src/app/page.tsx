@@ -12,6 +12,7 @@ import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
 import { toCalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
+import { suggestComposerPerson } from "@/lib/composer-suggestion";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
 import { toDashboardFollowupView } from "@/lib/followup-view";
 import { getOwnerCalendarPromptNudges } from "@/lib/integrations/calendar-prompt-nudges";
@@ -52,13 +53,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     getHomeToday(ownerUserId, todayContext),
   ]);
   const birthdays = getUpcomingBirthdays(people);
-  // The composer placeholder names someone the owner actually keeps: whoever the
-  // soonest active reminder is about, else the first person in the directory. A
-  // brand-new notebook has neither, so the composer falls back to a name-free prompt.
-  const composerSuggestPersonName =
-    dashboardFollowups.find((followup) => followup.personName)?.personName ??
-    people[0]?.displayName ??
-    null;
+  const composerSuggestPersonName = suggestComposerPerson(dashboardFollowups, people);
 
   return (
     <AppShell

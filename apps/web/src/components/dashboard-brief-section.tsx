@@ -129,6 +129,29 @@ export function DashboardBriefSection({
   );
 }
 
+/**
+ * Accessible names for a row's actions. A brief item is usually about a person,
+ * but not always, so each label has a person-free form rather than falling back
+ * to a pronoun that would read as "Snooze brief item for this".
+ */
+function briefItemActionLabels(person: string | null) {
+  if (!person) {
+    return {
+      snooze: "Snooze this brief item",
+      dismiss: "Dismiss this brief item",
+      draft: "Draft a message",
+      accept: "Accept this suggested follow-up",
+    };
+  }
+
+  return {
+    snooze: `Snooze brief item for ${person}`,
+    dismiss: `Dismiss brief item for ${person}`,
+    draft: `Draft a message for ${person}`,
+    accept: `Accept suggested follow-up for ${person}`,
+  };
+}
+
 function BriefItemRow({
   item,
   onResolve,
@@ -140,13 +163,7 @@ function BriefItemRow({
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const person = item.personName;
-  const snoozeLabel = person ? `Snooze brief item for ${person}` : "Snooze this brief item";
-  const dismissLabel = person ? `Dismiss brief item for ${person}` : "Dismiss this brief item";
-  const draftLabel = person ? `Draft a message for ${person}` : "Draft a message";
-  const acceptLabel = person
-    ? `Accept suggested follow-up for ${person}`
-    : "Accept this suggested follow-up";
+  const labels = briefItemActionLabels(item.personName);
 
   function run(action: () => Promise<unknown>) {
     setError(null);
@@ -199,7 +216,7 @@ function BriefItemRow({
         )}
         <div className="flex items-center gap-1.5">
           <Button
-            aria-label={snoozeLabel}
+            aria-label={labels.snooze}
             disabled={pending}
             onClick={() => run(() => snoozeBriefItemAction({ briefItemId: item.id }))}
             size="sm"
@@ -210,7 +227,7 @@ function BriefItemRow({
             Later
           </Button>
           <Button
-            aria-label={dismissLabel}
+            aria-label={labels.dismiss}
             disabled={pending}
             onClick={() => run(() => dismissBriefItemAction({ briefItemId: item.id }))}
             size="sm"
@@ -222,7 +239,7 @@ function BriefItemRow({
           </Button>
           {item.personId ? (
             <Button
-              aria-label={draftLabel}
+              aria-label={labels.draft}
               disabled={draftPending}
               onClick={() =>
                 createDraft({
@@ -240,7 +257,7 @@ function BriefItemRow({
           ) : null}
           {item.isSuggestedFollowup ? (
             <Button
-              aria-label={acceptLabel}
+              aria-label={labels.accept}
               disabled={pending}
               onClick={() => run(() => acceptBriefFollowupAction({ briefItemId: item.id }))}
               size="sm"
