@@ -605,6 +605,7 @@ export const generalActionEventKindSchema = z.enum([
   "created",
   "edited",
   "completed",
+  "skipped",
   "reopened",
   "deferred",
   "dismissed",

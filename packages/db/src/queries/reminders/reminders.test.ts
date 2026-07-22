@@ -1,11 +1,407 @@
+import { reminderRecordKindSchema } from "@tendnote/domain/reminders";
 import { describe, expect, it, vi } from "vitest";
+import { createInMemoryGeneralActionLifecycleStore } from "../general-actions/in-memory-store";
+import { createGeneralActionLifecycle } from "../general-actions/lifecycle";
 import { createInMemoryReminderStore } from "./in-memory-store";
 import { createReminderService } from "./service";
 
 const OWNER = "owner-1";
 const ACTION = "11111111-1111-1111-1111-111111111111";
+const FOLLOW_UP = "22222222-2222-2222-2222-222222222222";
+const ROUTINE = "33333333-3333-3333-3333-333333333333";
+const SAVED_ITEM = "44444444-4444-4444-4444-444444444444";
 
 describe("Reminder product function", () => {
+  it("schedules one explicit alert for an owner's open Follow-Up", async () => {
+    const store = createInMemoryReminderStore();
+    const service = createReminderService({
+      store,
+      loadReminderRecord: vi.fn(async () => ({
+        id: FOLLOW_UP,
+        kind: "follow_up" as const,
+        ownerUserId: OWNER,
+        title: "Check in with Morgan",
+        status: "open",
+        occursAt: new Date("2026-08-14T00:00:00.000Z"),
+        timeSemantics: "date_only" as const,
+        recurrence: null,
+        sensitivity: "normal" as const,
+        scope: "private" as const,
+        deepLink: `/people/person-1#followup-${FOLLOW_UP}`,
+      })),
+    });
+
+    const result = await service.saveReminder({
+      ownerUserId: OWNER,
+      recordKind: "follow_up",
+      recordId: FOLLOW_UP,
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      schedule: { kind: "exact", localTime: "09:00" },
+      now: new Date("2026-07-21T15:00:00.000Z"),
+    });
+
+    expect(result.schedule).toMatchObject({
+      ownerUserId: OWNER,
+      recordKind: "follow_up",
+      recordId: FOLLOW_UP,
+      intendedAt: new Date("2026-08-14T14:00:00.000Z"),
+    });
+    expect(result.occurrenceIntent).toMatchObject({
+      occurrenceKey: `follow_up:${FOLLOW_UP}:2026-08-14`,
+      status: "pending_installation",
+    });
+    await expect(
+      store.listSchedules({ ownerUserId: OWNER, recordKind: "follow_up", recordId: FOLLOW_UP }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("keeps one relative Routine rule and materializes one replacement intent per occurrence", async () => {
+    const store = createInMemoryReminderStore();
+    let occursAt = new Date("2026-08-14T00:00:00.000Z");
+    const service = createReminderService({
+      store,
+      loadReminderRecord: vi.fn(async () => ({
+        id: ROUTINE,
+        kind: "routine" as const,
+        ownerUserId: OWNER,
+        title: "Replace the refrigerator water filter",
+        status: "open",
+        occursAt,
+        timeSemantics: "date_only" as const,
+        recurrence: { interval: 6, unit: "month" },
+        sensitivity: "normal" as const,
+        scope: "private" as const,
+        deepLink: `/actions#action-${ROUTINE}`,
+      })),
+    });
+    await service.saveReminder({
+      ownerUserId: OWNER,
+      recordKind: "routine",
+      recordId: ROUTINE,
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      schedule: { kind: "relative", leadMinutes: 1_440 },
+      now: new Date("2026-07-21T15:00:00.000Z"),
+    });
+
+    occursAt = new Date("2027-02-14T00:00:00.000Z");
+    const replacement = await service.reconcileReminderRecord({
+      ownerUserId: OWNER,
+      recordKind: "routine",
+      recordId: ROUTINE,
+      now: new Date("2026-08-14T16:00:00.000Z"),
+    });
+
+    expect(replacement?.schedule).toMatchObject({
+      kind: "relative",
+      leadMinutes: 1_440,
+      occurrenceKey: `routine:${ROUTINE}:2027-02-14`,
+    });
+    await expect(
+      store.listOccurrenceIntents({ ownerUserId: OWNER, recordKind: "routine", recordId: ROUTINE }),
+    ).resolves.toEqual([
+      expect.objectContaining({ status: "superseded" }),
+      expect.objectContaining({
+        occurrenceKey: `routine:${ROUTINE}:2027-02-14`,
+        status: "pending_installation",
+      }),
+    ]);
+  });
+
+  it("supersedes the skipped Routine occurrence and materializes only its next occurrence", async () => {
+    const routineId = "33333333-3333-4333-8333-333333333333";
+    const actionLifecycle = createGeneralActionLifecycle(
+      createInMemoryGeneralActionLifecycleStore(),
+    );
+    const routine = await actionLifecycle.createGeneralAction({
+      id: routineId,
+      ownerUserId: OWNER,
+      title: "Water the plants",
+      dueAt: new Date("2026-08-14T00:00:00.000Z"),
+      recurrence: { interval: 1, unit: "week" },
+    });
+    const store = createInMemoryReminderStore();
+    const service = createReminderService({
+      store,
+      async loadReminderRecord() {
+        const current = await actionLifecycle.getGeneralAction({
+          actorUserId: OWNER,
+          generalActionId: routine.id,
+        });
+        return {
+          id: current.id,
+          kind: "routine" as const,
+          ownerUserId: current.ownerUserId,
+          title: current.title,
+          status: current.status,
+          occursAt: current.dueAt,
+          timeSemantics: "date_only" as const,
+          recurrence: current.recurrence,
+          sensitivity: "normal" as const,
+          scope: current.scope,
+          deepLink: `/actions#action-${current.id}`,
+        };
+      },
+    });
+    await service.saveReminder({
+      ownerUserId: OWNER,
+      recordKind: "routine",
+      recordId: routineId,
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      schedule: { kind: "relative", leadMinutes: 0 },
+      now: new Date("2026-07-21T15:00:00.000Z"),
+    });
+
+    await actionLifecycle.skipGeneralActionOccurrence({
+      actorUserId: OWNER,
+      generalActionId: routineId,
+    });
+    await service.reconcileReminderRecord({
+      ownerUserId: OWNER,
+      recordKind: "routine",
+      recordId: routineId,
+      now: new Date("2026-07-21T15:01:00.000Z"),
+    });
+
+    const intents = await store.listOccurrenceIntents({
+      ownerUserId: OWNER,
+      recordKind: "routine",
+      recordId: routineId,
+    });
+    expect(intents).toHaveLength(2);
+    expect(intents[0]?.status).toBe("superseded");
+    expect(intents[1]).toMatchObject({ status: "pending_installation" });
+    expect(intents[1]?.occurrenceKey).not.toBe(intents[0]?.occurrenceKey);
+  });
+
+  it("invalidates and regenerates a pending intent when its captured timezone changes", async () => {
+    const store = createInMemoryReminderStore();
+    const service = createReminderService({
+      store,
+      loadReminderRecord: vi.fn(async () => ({
+        id: FOLLOW_UP,
+        kind: "follow_up" as const,
+        ownerUserId: OWNER,
+        title: "Check in after the clocks change",
+        status: "open",
+        occursAt: new Date("2026-11-02T00:00:00.000Z"),
+        timeSemantics: "date_only" as const,
+        recurrence: null,
+        sensitivity: "normal" as const,
+        scope: "private" as const,
+        deepLink: `/people/person-1#followup-${FOLLOW_UP}`,
+      })),
+    });
+    const first = await service.saveReminder({
+      ownerUserId: OWNER,
+      recordKind: "follow_up",
+      recordId: FOLLOW_UP,
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      schedule: { kind: "exact", localTime: "09:00" },
+      now: new Date("2026-07-21T15:00:00.000Z"),
+    });
+
+    const replacement = await service.reconcileReminderRecord({
+      ownerUserId: OWNER,
+      recordKind: "follow_up",
+      recordId: FOLLOW_UP,
+      timeZone: "America/Denver",
+      now: new Date("2026-07-21T16:00:00.000Z"),
+    });
+
+    expect(replacement?.schedule).toMatchObject({
+      id: first.schedule.id,
+      timeZone: "America/Denver",
+      intendedAt: new Date("2026-11-02T16:00:00.000Z"),
+    });
+    expect(replacement?.occurrenceIntent?.id).not.toBe(first.occurrenceIntent?.id);
+  });
+
+  it("replaces a Saved Item intent when bring-back changes and suppresses it on archive", async () => {
+    const store = createInMemoryReminderStore();
+    let status = "active";
+    let occursAt: Date | null = new Date("2026-08-14T00:00:00.000Z");
+    const service = createReminderService({
+      store,
+      loadReminderRecord: vi.fn(async () => ({
+        id: SAVED_ITEM,
+        kind: "saved_item" as const,
+        ownerUserId: OWNER,
+        title: "Filter model number",
+        status,
+        occursAt,
+        timeSemantics: "instant" as const,
+        recurrence: null,
+        sensitivity: "normal" as const,
+        scope: "private" as const,
+        deepLink: `/saved-items#saved-item-${SAVED_ITEM}`,
+      })),
+    });
+    const first = await service.saveReminder({
+      ownerUserId: OWNER,
+      recordKind: "saved_item",
+      recordId: SAVED_ITEM,
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      schedule: { kind: "exact", localTime: "09:00" },
+      now: new Date("2026-07-21T15:00:00.000Z"),
+    });
+
+    occursAt = new Date("2026-08-21T00:00:00.000Z");
+    const replacement = await service.reconcileReminderRecord({
+      ownerUserId: OWNER,
+      recordKind: "saved_item",
+      recordId: SAVED_ITEM,
+      now: new Date("2026-07-22T15:00:00.000Z"),
+    });
+    status = "archived";
+    const archived = await service.reconcileReminderRecord({
+      ownerUserId: OWNER,
+      recordKind: "saved_item",
+      recordId: SAVED_ITEM,
+      now: new Date("2026-07-23T15:00:00.000Z"),
+    });
+
+    expect(replacement?.occurrenceIntent?.id).not.toBe(first.occurrenceIntent?.id);
+    expect(replacement?.occurrenceIntent?.occurrenceKey).toBe(
+      `saved_item:${SAVED_ITEM}:2026-08-21T00:00:00.000Z`,
+    );
+    expect(archived).toBeNull();
+    await expect(
+      store.listActiveOccurrenceIntentsForOwner({ ownerUserId: OWNER }),
+    ).resolves.toEqual([]);
+  });
+
+  it("preserves a Saved Item's bring-back instant for relative lead times", async () => {
+    const store = createInMemoryReminderStore();
+    const occursAt = new Date("2026-08-14T21:00:00.000Z");
+    const service = createReminderService({
+      store,
+      loadReminderRecord: vi.fn(async () => ({
+        id: SAVED_ITEM,
+        kind: "saved_item" as const,
+        ownerUserId: OWNER,
+        title: "Order the replacement filter",
+        status: "active",
+        occursAt,
+        timeSemantics: "instant" as const,
+        recurrence: null,
+        sensitivity: "normal" as const,
+        scope: "private" as const,
+        deepLink: `/saved-items#saved-item-${SAVED_ITEM}`,
+      })),
+    });
+
+    const result = await service.saveReminder({
+      ownerUserId: OWNER,
+      recordKind: "saved_item",
+      recordId: SAVED_ITEM,
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      schedule: { kind: "relative", leadMinutes: 60 },
+      now: new Date("2026-07-21T15:00:00.000Z"),
+    });
+
+    expect(result.schedule.intendedAt).toEqual(new Date("2026-08-14T20:00:00.000Z"));
+    expect(result.schedule.occurrenceKey).toBe(
+      `saved_item:${SAVED_ITEM}:${occursAt.toISOString()}`,
+    );
+  });
+
+  it("rejects exact Routine alarms and collaborator enrollment", async () => {
+    const store = createInMemoryReminderStore();
+    const service = createReminderService({
+      store,
+      loadReminderRecord: vi.fn(async () => ({
+        id: ROUTINE,
+        kind: "routine" as const,
+        ownerUserId: OWNER,
+        title: "Replace the refrigerator water filter",
+        status: "open",
+        occursAt: new Date("2026-08-14T00:00:00.000Z"),
+        timeSemantics: "date_only" as const,
+        recurrence: { interval: 6, unit: "month" },
+        sensitivity: "normal" as const,
+        scope: "household" as const,
+        deepLink: `/actions#action-${ROUTINE}`,
+      })),
+    });
+    const base = {
+      recordKind: "routine" as const,
+      recordId: ROUTINE,
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      now: new Date("2026-07-21T15:00:00.000Z"),
+    };
+
+    await expect(
+      service.saveReminder({
+        ...base,
+        ownerUserId: OWNER,
+        schedule: { kind: "exact", localTime: "09:00" },
+      }),
+    ).rejects.toThrow("must be relative");
+    await expect(
+      service.saveReminder({
+        ...base,
+        ownerUserId: "collaborator-1",
+        schedule: { kind: "relative", leadMinutes: 1_440 },
+      }),
+    ).rejects.toThrow("owner's eligible explicit time-bound record");
+  });
+
+  it("keeps inferred, lifecycle-ineligible, ambient, and Today-only families silent", async () => {
+    const store = createInMemoryReminderStore();
+    const record = {
+      id: ACTION,
+      kind: "general_action" as const,
+      ownerUserId: OWNER,
+      title: "Replace the filter",
+      status: "suggested",
+      occursAt: new Date("2026-08-14T00:00:00.000Z") as Date | null,
+      timeSemantics: "date_only" as const,
+      recurrence: null as unknown | null,
+      sensitivity: "normal" as const,
+      scope: "private" as const,
+      deepLink: `/actions#action-${ACTION}`,
+    };
+    const service = createReminderService({
+      store,
+      loadReminderRecord: vi.fn(async () => record),
+    });
+    const save = () =>
+      service.saveReminder({
+        ownerUserId: OWNER,
+        recordKind: record.kind,
+        recordId: ACTION,
+        clientInstallationId: "browser-installation-1",
+        timeZone: "America/Chicago",
+        schedule: { kind: "exact", localTime: "09:00" },
+        now: new Date("2026-07-21T15:00:00.000Z"),
+      });
+
+    for (const status of ["suggested", "deferred", "completed", "archived"]) {
+      record.status = status;
+      await expect(save()).rejects.toThrow("eligible explicit time-bound record");
+    }
+    record.status = "open";
+    record.occursAt = null;
+    await expect(save()).rejects.toThrow("eligible explicit time-bound record");
+
+    for (const ambientKind of [
+      "birthday",
+      "calendar_event",
+      "review_item",
+      "today_candidate",
+      "suggestion",
+    ]) {
+      expect(reminderRecordKindSchema.safeParse(ambientKind).success).toBe(false);
+    }
+  });
+
   it("saves one visible 9:00 AM schedule for a dated Action before offering installation opt-in", async () => {
     const store = createInMemoryReminderStore();
     const service = createReminderService({
@@ -51,7 +447,7 @@ describe("Reminder product function", () => {
       clientInstallationId: "browser-installation-1",
     });
     await expect(
-      store.listSchedules({ ownerUserId: OWNER, generalActionId: ACTION }),
+      store.listSchedules({ ownerUserId: OWNER, recordKind: "general_action", recordId: ACTION }),
     ).resolves.toHaveLength(1);
   });
 
@@ -136,7 +532,11 @@ describe("Reminder product function", () => {
     });
     expect(retry.occurrenceIntent?.id).toBe(replacement.occurrenceIntent?.id);
     await expect(
-      store.listOccurrenceIntents({ ownerUserId: OWNER, generalActionId: ACTION }),
+      store.listOccurrenceIntents({
+        ownerUserId: OWNER,
+        recordKind: "general_action",
+        recordId: ACTION,
+      }),
     ).resolves.toEqual([
       expect.objectContaining({ id: first.occurrenceIntent?.id, status: "superseded" }),
       expect.objectContaining({
@@ -363,7 +763,11 @@ describe("Reminder product function", () => {
         title: "Tendnote reminder",
         body: "Open Tendnote to see what needs your attention.",
         tag: `reminder-${jobId}`,
-        data: { url: `/actions#action-${ACTION}`, generalActionId: ACTION },
+        data: {
+          url: `/actions#action-${ACTION}`,
+          recordKind: "general_action",
+          recordId: ACTION,
+        },
       },
       ttlSeconds: 3_595,
     });

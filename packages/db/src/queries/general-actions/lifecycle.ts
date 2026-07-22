@@ -165,6 +165,40 @@ export function createGeneralActionLifecycle(
     return hydrate(updated);
   }
 
+  async function advanceRoutineOccurrence(
+    input: GeneralActionActionInput,
+    kind: "completed" | "skipped",
+    preloaded?: GeneralAction,
+  ) {
+    const current = preloaded ?? (await requireAction(input));
+    if (!current.recurrence) {
+      throw new GeneralActionValidationError("Only a Routine occurrence can be skipped.");
+    }
+    resolveGeneralActionTransition(current.status, "complete");
+    const advancedAt = new Date();
+    const nextDueAt = nextRoutineDueAt(current.recurrence, advancedAt);
+    const updated = await store.updateGeneralAction({
+      ownerUserId: current.ownerUserId,
+      generalActionId: current.id,
+      patch: {
+        status: "open",
+        dueAt: nextDueAt,
+        deferUntil: null,
+        completedAt: null,
+        lastActorUserId: input.actorUserId,
+      },
+    });
+    await recordEvent(updated, kind, input.actorUserId, {
+      previousStatus: current.status,
+      status: updated.status,
+      rolledForward: true,
+      occurrenceAdvancedAt: advancedAt.toISOString(),
+      previousDueAt: current.dueAt ? current.dueAt.toISOString() : null,
+      nextDueAt: nextDueAt.toISOString(),
+    });
+    return hydrate(updated);
+  }
+
   return {
     /**
      * Creates a one-time Action as `open`, with creator and actor provenance and a
@@ -388,31 +422,11 @@ export function createGeneralActionLifecycle(
         );
       }
 
-      // Routine: validate the occurrence is completable from its current state
-      // (open/deferred, never paused/terminal), then roll forward instead of retiring.
-      resolveGeneralActionTransition(current.status, "complete");
-      const completedAt = new Date();
-      const nextDueAt = nextRoutineDueAt(current.recurrence, completedAt);
-      const updated = await store.updateGeneralAction({
-        ownerUserId: current.ownerUserId,
-        generalActionId: current.id,
-        patch: {
-          status: "open",
-          dueAt: nextDueAt,
-          deferUntil: null,
-          completedAt: null,
-          lastActorUserId: input.actorUserId,
-        },
-      });
-      await recordEvent(updated, "completed", input.actorUserId, {
-        previousStatus: current.status,
-        status: updated.status,
-        rolledForward: true,
-        occurrenceCompletedAt: completedAt.toISOString(),
-        previousDueAt: current.dueAt ? current.dueAt.toISOString() : null,
-        nextDueAt: nextDueAt.toISOString(),
-      });
-      return hydrate(updated);
+      return advanceRoutineOccurrence(input, "completed", current);
+    },
+
+    skipGeneralActionOccurrence(input: GeneralActionActionInput) {
+      return advanceRoutineOccurrence(input, "skipped");
     },
 
     dismissGeneralAction(input: GeneralActionActionInput) {

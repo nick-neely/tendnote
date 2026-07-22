@@ -1,25 +1,54 @@
 import { zonedWallTimeToUtc } from "@tendnote/domain/brief-schedules";
 import {
+  type ReminderRecordKind,
   reminderPushSubscriptionSchema,
   reminderScheduleChoiceSchema,
 } from "@tendnote/domain/reminders";
 import { createReminderDispatcher } from "./dispatch";
-import type { ReminderGeneralAction, ReminderStore } from "./types";
+import { isEligibleReminderRecord, reminderOccurrenceKey } from "./policy";
+import type { ReminderGeneralAction, ReminderRecord, ReminderStore } from "./types";
 
 const HOUR_MS = 60 * 60 * 1_000;
 
 export function createReminderService(input: {
   store: ReminderStore;
-  loadGeneralAction: (input: {
+  loadGeneralAction?: (input: {
     ownerUserId: string;
     generalActionId: string;
   }) => Promise<ReminderGeneralAction | null>;
+  loadReminderRecord?: (input: {
+    ownerUserId: string;
+    recordKind: ReminderRecordKind;
+    recordId: string;
+  }) => Promise<ReminderRecord | null>;
   scheduleDelivery?: (input: {
     ownerUserId: string;
     jobId: string;
     nextAttemptAt: Date;
   }) => Promise<void>;
 }) {
+  async function loadRecord(values: {
+    ownerUserId: string;
+    recordKind: ReminderRecordKind;
+    recordId: string;
+  }): Promise<ReminderRecord | null> {
+    if (input.loadReminderRecord) return input.loadReminderRecord(values);
+    if (values.recordKind !== "general_action" || !input.loadGeneralAction) return null;
+    const action = await input.loadGeneralAction({
+      ownerUserId: values.ownerUserId,
+      generalActionId: values.recordId,
+    });
+    return action
+      ? {
+          ...action,
+          kind: "general_action",
+          occursAt: action.dueAt,
+          timeSemantics: "date_only",
+          deepLink: `/actions#action-${action.id}`,
+        }
+      : null;
+  }
+
   async function createInstallationJobs(values: {
     ownerUserId: string;
     occurrenceIntent: Awaited<ReturnType<ReminderStore["upsertOccurrenceIntent"]>>;
@@ -59,17 +88,216 @@ export function createReminderService(input: {
     return deliveryJobs;
   }
 
+  async function saveReminder(values: {
+    ownerUserId: string;
+    recordKind: ReminderRecordKind;
+    recordId: string;
+    clientInstallationId: string;
+    timeZone: string;
+    schedule: { kind: "exact"; localTime: string } | { kind: "relative"; leadMinutes: number };
+    now: Date;
+  }) {
+    const record = await loadRecord(values);
+    if (
+      !isEligibleReminderRecord(record) ||
+      record.id !== values.recordId ||
+      record.kind !== values.recordKind ||
+      record.ownerUserId !== values.ownerUserId
+    ) {
+      throw new Error("Only an owner's eligible explicit time-bound record can have a reminder.");
+    }
+    const choice = reminderScheduleChoiceSchema.parse(values.schedule);
+    if (record.kind === "routine" && choice.kind !== "relative") {
+      throw new Error("A Routine Reminder Schedule must be relative to each occurrence.");
+    }
+    const occurrenceDate = record.occursAt.toISOString().slice(0, 10);
+    const occurrenceKey = reminderOccurrenceKey(record);
+    const intendedAt = resolveIntendedAt({
+      occursAt: record.occursAt,
+      timeSemantics: record.timeSemantics,
+      occurrenceDate,
+      timeZone: values.timeZone,
+      choice,
+    });
+    const schedule = await input.store.upsertSchedule({
+      ownerUserId: values.ownerUserId,
+      recordKind: record.kind,
+      recordId: record.id,
+      choice,
+      timeZone: values.timeZone,
+      occurrenceKey,
+      intendedAt,
+      now: values.now,
+    });
+    const occurrenceIntent =
+      intendedAt.getTime() > values.now.getTime()
+        ? await input.store.upsertOccurrenceIntent({
+            ownerUserId: values.ownerUserId,
+            recordKind: record.kind,
+            recordId: record.id,
+            scheduleId: schedule.id,
+            occurrenceKey,
+            intendedAt,
+            freshUntil: new Date(intendedAt.getTime() + HOUR_MS),
+            status: "pending_installation",
+            now: values.now,
+          })
+        : null;
+    if (!occurrenceIntent) {
+      await input.store.supersedeOccurrenceIntents({
+        ownerUserId: values.ownerUserId,
+        recordKind: record.kind,
+        recordId: record.id,
+        now: values.now,
+      });
+    } else {
+      await createInstallationJobs({
+        ownerUserId: values.ownerUserId,
+        occurrenceIntent,
+        installations: await input.store.listEnabledInstallationsForOwner({
+          ownerUserId: values.ownerUserId,
+        }),
+        now: values.now,
+      });
+    }
+    const currentOptIn = await input.store.getOptInState(values);
+    const shouldOffer =
+      Boolean(occurrenceIntent) && (!currentOptIn || currentOptIn.state === "offered");
+    const optIn = {
+      state: shouldOffer ? ("offer" as const) : ("none" as const),
+      clientInstallationId: values.clientInstallationId,
+    };
+    if (!currentOptIn && occurrenceIntent) {
+      await input.store.saveOptInState({
+        ownerUserId: values.ownerUserId,
+        clientInstallationId: values.clientInstallationId,
+        state: "offered",
+        offeredAt: values.now,
+        inviteAfter: null,
+        updatedAt: values.now,
+      });
+    }
+    const dueTime = resolveIntendedAt({
+      occursAt: record.occursAt,
+      timeSemantics: record.timeSemantics,
+      occurrenceDate,
+      timeZone: values.timeZone,
+      choice: { kind: "relative", leadMinutes: 0 },
+    });
+    const nextValidChoice =
+      occurrenceIntent || dueTime.getTime() <= values.now.getTime()
+        ? null
+        : {
+            kind: "relative" as const,
+            leadMinutes: 0,
+            intendedAt: dueTime,
+            label: "At 9:00 AM on the due date",
+          };
+    return { schedule, occurrenceIntent, optIn, nextValidChoice };
+  }
+
+  const dispatcher = createReminderDispatcher({
+    store: input.store,
+    loadReminderRecord: loadRecord,
+    scheduleDelivery: input.scheduleDelivery,
+  });
+
   return {
-    async clearGeneralActionReminder(values: {
+    async clearReminder(values: {
       ownerUserId: string;
-      generalActionId: string;
+      recordKind: ReminderRecordKind;
+      recordId: string;
       now: Date;
     }) {
       await input.store.deleteSchedule(values);
       return { cleared: true as const };
     },
 
-    async saveGeneralActionReminder(values: {
+    async clearGeneralActionReminder(values: {
+      ownerUserId: string;
+      generalActionId: string;
+      now: Date;
+    }) {
+      await input.store.deleteSchedule({
+        ownerUserId: values.ownerUserId,
+        recordKind: "general_action",
+        recordId: values.generalActionId,
+        now: values.now,
+      });
+      return { cleared: true as const };
+    },
+
+    saveReminder,
+
+    async reconcileReminderRecord(values: {
+      ownerUserId: string;
+      recordKind: ReminderRecordKind;
+      recordId: string;
+      timeZone?: string;
+      now: Date;
+    }) {
+      const [currentSchedule] = await input.store.listSchedules(values);
+      if (!currentSchedule) return null;
+      const record = await loadRecord(values);
+      if (
+        !isEligibleReminderRecord(record) ||
+        record.id !== values.recordId ||
+        record.kind !== values.recordKind ||
+        record.ownerUserId !== values.ownerUserId
+      ) {
+        await input.store.supersedeOccurrenceIntents(values);
+        return null;
+      }
+      const choice =
+        currentSchedule.kind === "exact"
+          ? { kind: "exact" as const, localTime: currentSchedule.localTime ?? "09:00" }
+          : { kind: "relative" as const, leadMinutes: currentSchedule.leadMinutes ?? 0 };
+      const occurrenceDate = record.occursAt.toISOString().slice(0, 10);
+      const occurrenceKey = reminderOccurrenceKey(record);
+      const intendedAt = resolveIntendedAt({
+        occursAt: record.occursAt,
+        timeSemantics: record.timeSemantics,
+        occurrenceDate,
+        timeZone: values.timeZone ?? currentSchedule.timeZone,
+        choice,
+      });
+      const schedule = await input.store.upsertSchedule({
+        ownerUserId: values.ownerUserId,
+        recordKind: record.kind,
+        recordId: record.id,
+        choice,
+        timeZone: values.timeZone ?? currentSchedule.timeZone,
+        occurrenceKey,
+        intendedAt,
+        now: values.now,
+      });
+      if (intendedAt.getTime() <= values.now.getTime()) {
+        await input.store.supersedeOccurrenceIntents(values);
+        return { schedule, occurrenceIntent: null };
+      }
+      const occurrenceIntent = await input.store.upsertOccurrenceIntent({
+        ownerUserId: values.ownerUserId,
+        recordKind: record.kind,
+        recordId: record.id,
+        scheduleId: schedule.id,
+        occurrenceKey,
+        intendedAt,
+        freshUntil: new Date(intendedAt.getTime() + HOUR_MS),
+        status: "pending_installation",
+        now: values.now,
+      });
+      await createInstallationJobs({
+        ownerUserId: values.ownerUserId,
+        occurrenceIntent,
+        installations: await input.store.listEnabledInstallationsForOwner({
+          ownerUserId: values.ownerUserId,
+        }),
+        now: values.now,
+      });
+      return { schedule, occurrenceIntent };
+    },
+
+    saveGeneralActionReminder(values: {
       ownerUserId: string;
       generalActionId: string;
       clientInstallationId: string;
@@ -77,94 +305,11 @@ export function createReminderService(input: {
       schedule: { kind: "exact"; localTime: string } | { kind: "relative"; leadMinutes: number };
       now: Date;
     }) {
-      const action = await input.loadGeneralAction(values);
-      if (
-        !action ||
-        action.ownerUserId !== values.ownerUserId ||
-        action.status !== "open" ||
-        !action.dueAt ||
-        action.recurrence !== null
-      ) {
-        throw new Error("Only an owner's open dated one-time Action can have a reminder.");
-      }
-      const choice = reminderScheduleChoiceSchema.parse(values.schedule);
-      const occurrenceDate = action.dueAt.toISOString().slice(0, 10);
-      const occurrenceKey = `general_action:${action.id}:${occurrenceDate}`;
-      const intendedAt = resolveIntendedAt({
-        occurrenceDate,
-        timeZone: values.timeZone,
-        choice,
+      return saveReminder({
+        ...values,
+        recordKind: "general_action",
+        recordId: values.generalActionId,
       });
-      const schedule = await input.store.upsertSchedule({
-        ownerUserId: values.ownerUserId,
-        generalActionId: action.id,
-        choice,
-        timeZone: values.timeZone,
-        occurrenceKey,
-        intendedAt,
-        now: values.now,
-      });
-      const occurrenceIntent =
-        intendedAt.getTime() > values.now.getTime()
-          ? await input.store.upsertOccurrenceIntent({
-              ownerUserId: values.ownerUserId,
-              generalActionId: action.id,
-              scheduleId: schedule.id,
-              occurrenceKey,
-              intendedAt,
-              freshUntil: new Date(intendedAt.getTime() + HOUR_MS),
-              status: "pending_installation",
-              now: values.now,
-            })
-          : null;
-      if (!occurrenceIntent) {
-        await input.store.supersedeOccurrenceIntents({
-          ownerUserId: values.ownerUserId,
-          generalActionId: action.id,
-          now: values.now,
-        });
-      } else {
-        await createInstallationJobs({
-          ownerUserId: values.ownerUserId,
-          occurrenceIntent,
-          installations: await input.store.listEnabledInstallationsForOwner({
-            ownerUserId: values.ownerUserId,
-          }),
-          now: values.now,
-        });
-      }
-      const currentOptIn = await input.store.getOptInState(values);
-      const shouldOffer =
-        Boolean(occurrenceIntent) && (!currentOptIn || currentOptIn.state === "offered");
-      const optIn = {
-        state: shouldOffer ? ("offer" as const) : ("none" as const),
-        clientInstallationId: values.clientInstallationId,
-      };
-      if (!currentOptIn && occurrenceIntent) {
-        await input.store.saveOptInState({
-          ownerUserId: values.ownerUserId,
-          clientInstallationId: values.clientInstallationId,
-          state: "offered",
-          offeredAt: values.now,
-          inviteAfter: null,
-          updatedAt: values.now,
-        });
-      }
-      const dueTime = resolveIntendedAt({
-        occurrenceDate,
-        timeZone: values.timeZone,
-        choice: { kind: "relative", leadMinutes: 0 },
-      });
-      const nextValidChoice =
-        occurrenceIntent || dueTime.getTime() <= values.now.getTime()
-          ? null
-          : {
-              kind: "relative" as const,
-              leadMinutes: 0,
-              intendedAt: dueTime,
-              label: "At 9:00 AM on the due date",
-            };
-      return { schedule, occurrenceIntent, optIn, nextValidChoice };
     },
 
     async registerReminderInstallation(values: {
@@ -239,15 +384,20 @@ export function createReminderService(input: {
         updatedAt: values.now,
       });
     },
-    dispatchReminder: createReminderDispatcher(input),
+    dispatchReminder: dispatcher,
   };
 }
 
 function resolveIntendedAt(input: {
+  occursAt: Date;
+  timeSemantics: ReminderRecord["timeSemantics"];
   occurrenceDate: string;
   timeZone: string;
   choice: { kind: "exact"; localTime: string } | { kind: "relative"; leadMinutes: number };
 }): Date {
+  if (input.timeSemantics === "instant" && input.choice.kind === "relative") {
+    return new Date(input.occursAt.getTime() - input.choice.leadMinutes * 60_000);
+  }
   const [year, month, day] = input.occurrenceDate.split("-").map(Number) as [
     number,
     number,

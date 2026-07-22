@@ -1,17 +1,20 @@
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
+import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { listSavedItems } from "@tendnote/db/queries/saved-items";
 import { AppShell } from "@/components/app-shell";
 import { SavedItemsSurface } from "@/components/saved-items-surface";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 import { toSavedItemView } from "@/lib/saved-item-view";
 
 export const dynamic = "force-dynamic";
 
 export default async function SavedItemsPage() {
   const ownerUserId = await requireAdmittedOwner({ returnTo: "/saved-items" });
-  const [items, shareableMembers] = await Promise.all([
+  const [items, shareableMembers, reminderSchedules] = await Promise.all([
     listSavedItems({ callerUserId: ownerUserId, includeArchived: true }),
     listShareableHouseholdMembersForUser({ userId: ownerUserId }),
+    listReminderSchedulesForOwner({ ownerUserId }),
   ]);
 
   return (
@@ -28,7 +31,17 @@ export default async function SavedItemsPage() {
         </header>
 
         <SavedItemsSurface
-          items={items.map((item) => toSavedItemView(item))}
+          items={items.map((item) => {
+            const schedule = reminderSchedules.find(
+              (candidate) =>
+                candidate.recordKind === "saved_item" && candidate.recordId === item.id,
+            );
+            return toSavedItemView(
+              item,
+              new Date(),
+              schedule ? toReminderScheduleView(schedule, "instant") : null,
+            );
+          })}
           shareableMembers={shareableMembers.map((member) => ({
             userId: member.userId,
             name: member.name,

@@ -6,7 +6,11 @@ vi.mock("@/app/actions/conversational-capture", () => ({
   addCapturePersonAction: vi.fn(),
   captureExplicitOutcomeAction: vi.fn(),
   changeExplicitCaptureOutcomeAction: vi.fn(),
+  changeExplicitCaptureReminderAction: vi.fn(),
   undoExplicitCaptureOutcomeAction: vi.fn(),
+}));
+vi.mock("@/app/actions/reminders", () => ({
+  reconcileReminderTimeZoneAction: vi.fn().mockResolvedValue({ reconciled: 0 }),
 }));
 vi.mock("@/app/actions/global-recall", () => ({
   globalRecallAction: vi.fn().mockResolvedValue({
@@ -356,6 +360,63 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await user.click(screen.getByRole("button", { name: "Back to Today" }));
     await user.click(screen.getByRole("button", { name: "Capture" }));
     expect(screen.queryByText("Unsaved draft restored on this device.")).toBeNull();
+  });
+
+  it("changes a confirmed Capture reminder schedule without rewriting the saved wording", async () => {
+    const user = userEvent.setup();
+    const changeReminder = vi.fn().mockResolvedValue({
+      reminderSchedule: "Reminder one day before at 9:00 AM · America/Chicago",
+    });
+    const confirmation = {
+      destination: "Actions" as const,
+      groundedBySourceRecordId: "source-1",
+      interpreted: {
+        title: "Replace the filter",
+        dueAt: "2026-08-14T14:00:00.000Z",
+        cadence: null,
+        scope: "Only me",
+        reminderSchedule: "Reminder at 09:00 · America/Chicago",
+      },
+      change: { kind: "edit_general_action" as const, generalActionId: "action-1" },
+      undo: { kind: "archive_general_action" as const, generalActionId: "action-1" },
+    };
+    render(
+      <AppShell
+        captureHandlers={{
+          change: vi.fn(),
+          changeReminder,
+          submit: vi.fn().mockResolvedValue({ confirmation }),
+          undo: vi.fn(),
+        }}
+        mobileHome
+        ownerUserId="owner-1"
+      >
+        <p>Desktop dashboard</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "What should Tendnote keep?" }),
+      "Remind me to replace the filter",
+    );
+    await user.click(screen.getByRole("button", { name: "Save capture" }));
+    await user.click(await screen.findByRole("button", { name: "Change reminder schedule" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Reminder alert time" }),
+      "relative:1440",
+    );
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+
+    await waitFor(() =>
+      expect(changeReminder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: confirmation.change,
+          schedule: { kind: "relative", leadMinutes: 1_440 },
+        }),
+      ),
+    );
+    expect(screen.getByText("Reminder one day before at 9:00 AM · America/Chicago")).toBeDefined();
   });
 
   it("continues one source-first clarification with the same interaction and original wording", async () => {

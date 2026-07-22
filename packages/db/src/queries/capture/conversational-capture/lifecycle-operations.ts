@@ -107,13 +107,19 @@ export function createCaptureOutcomeLifecycleOperations(
           if (!current) throw new Error("That Saved Item is no longer available.");
           return hydrateSavedItem(store, current);
         }
-        return savedItemLifecycle.archiveSavedItem({ actorUserId, savedItemId });
+        return (deps.archiveSavedItem ?? savedItemLifecycle.archiveSavedItem)({
+          actorUserId,
+          savedItemId,
+        });
       },
       async undo(actorUserId, savedItemId) {
         const current = await store.getSavedItem({ ownerUserId: actorUserId, savedItemId });
         if (!current) throw new Error("That Saved Item is no longer available.");
         if (current.status === "archived") return hydrateSavedItem(store, current);
-        return savedItemLifecycle.archiveSavedItem({ actorUserId, savedItemId });
+        return (deps.archiveSavedItem ?? savedItemLifecycle.archiveSavedItem)({
+          actorUserId,
+          savedItemId,
+        });
       },
     },
     general_action: {

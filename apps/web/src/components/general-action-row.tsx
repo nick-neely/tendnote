@@ -13,6 +13,7 @@ import {
   MoreHorizontalIcon,
   PauseIcon,
   PencilIcon,
+  SkipForwardIcon,
   UsersIcon,
   XIcon,
 } from "lucide-react";
@@ -26,11 +27,9 @@ import {
   pauseGeneralActionAction,
   setGeneralActionPeopleAction,
   setGeneralActionVisibilityAction,
+  skipGeneralActionOccurrenceAction,
 } from "@/app/actions/general-actions";
-import {
-  clearGeneralActionReminderAction,
-  saveGeneralActionReminderAction,
-} from "@/app/actions/reminders";
+import { clearReminderAction, saveReminderAction } from "@/app/actions/reminders";
 import { AreaSelect } from "@/components/general-action-area-select";
 import {
   ActionAssetHintsField,
@@ -292,10 +291,11 @@ function ActionEditForm({
               personIds,
             });
           }
-          if (reminderEnabled && dueDate && !recurrence) {
+          if (reminderEnabled && dueDate) {
             const clientInstallationId = getReminderInstallationId(window.localStorage);
-            const scheduleResult = await saveGeneralActionReminderAction({
-              generalActionId: action.id,
+            const scheduleResult = await saveReminderAction({
+              recordKind: recurrence ? "routine" : "general_action",
+              recordId: action.id,
               clientInstallationId,
               timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
               schedule: reminderChoice,
@@ -319,7 +319,10 @@ function ActionEditForm({
               },
             };
           } else if (action.reminderSchedule) {
-            await clearGeneralActionReminderAction({ generalActionId: action.id });
+            await clearReminderAction({
+              recordKind: action.recurrence ? "routine" : "general_action",
+              recordId: action.id,
+            });
             const view = result?.ok ? result.view : action;
             result = { ok: true, view: { ...view, reminderSchedule: null } };
           }
@@ -349,13 +352,22 @@ function ActionEditForm({
           value={dueDate}
         />
       </div>
-      <RecurrenceField onChange={setRecurrence} value={recurrence} />
-      {dueDate && !recurrence ? (
+      <RecurrenceField
+        onChange={(value) => {
+          setRecurrence(value);
+          if (value && reminderChoice.kind === "exact") {
+            setReminderChoice({ kind: "relative", leadMinutes: 0 });
+          }
+        }}
+        value={recurrence}
+      />
+      {dueDate ? (
         <GeneralActionReminderField
           choice={reminderChoice}
           enabled={reminderEnabled}
           onChoiceChange={setReminderChoice}
           onEnabledChange={setReminderEnabled}
+          relativeOnly={Boolean(recurrence)}
         />
       ) : null}
       {editAreas.length ? (
@@ -532,6 +544,7 @@ function ActionOverflowMenu({
   busyKey,
   onSetAside,
   onPause,
+  onSkip,
   onEdit,
   onShare,
   onHistory,
@@ -544,6 +557,7 @@ function ActionOverflowMenu({
   busyKey: string | null;
   onSetAside: () => void;
   onPause: () => void;
+  onSkip: () => void;
   onEdit: () => void;
   onShare: () => void;
   onHistory: () => void;
@@ -578,10 +592,16 @@ function ActionOverflowMenu({
         {/* Pausing suspends a Routine's recurrence until resumed — a one-time
             Action has nothing to pause, so this only shows for Routines (ADR 0148). */}
         {action.isRoutine ? (
-          <DropdownMenuItem className={mobileItemClassName} onSelect={onPause}>
-            <PauseIcon />
-            Pause routine
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuItem className={mobileItemClassName} onSelect={onSkip}>
+              <SkipForwardIcon />
+              Skip this occurrence
+            </DropdownMenuItem>
+            <DropdownMenuItem className={mobileItemClassName} onSelect={onPause}>
+              <PauseIcon />
+              Pause routine
+            </DropdownMenuItem>
+          </>
         ) : null}
         {/* Content, people, and visibility belong to the owner; a viewing member
             can still act on the Action above, but not re-author it (ADR 0153). */}
@@ -693,13 +713,15 @@ export function ActionRow({
 
   // Completing a Routine occurrence isn't terminal: it rolls forward and stays on the
   // list, so update in place (with a self-clearing confirmation) rather than animating out.
-  function completeRoutineInPlace() {
+  function advanceRoutineInPlace(kind: "complete" | "skip") {
     setError(null);
     setNotice(null);
-    setBusyKey("complete");
+    setBusyKey(kind);
     startTransition(async () => {
       try {
-        const result = await completeGeneralActionAction({ generalActionId: action.id });
+        const result = await (kind === "complete"
+          ? completeGeneralActionAction({ generalActionId: action.id })
+          : skipGeneralActionOccurrenceAction({ generalActionId: action.id }));
         if (!result.ok) {
           setError(result.error);
           setBusyKey(null);
@@ -708,7 +730,9 @@ export function ActionRow({
         onUpdate(result.view);
         setBusyKey(null);
         if (result.view.dueAtISO) {
-          setNotice(`Done — next ${shortDay(result.view.dueAtISO)}`);
+          setNotice(
+            `${kind === "complete" ? "Done" : "Skipped"} — next ${shortDay(result.view.dueAtISO)}`,
+          );
           window.setTimeout(() => setNotice(null), 5000);
         }
       } catch {
@@ -808,7 +832,7 @@ export function ActionRow({
           disabled={pending}
           onClick={() => {
             if (action.isRoutine) {
-              completeRoutineInPlace();
+              advanceRoutineInPlace("complete");
             } else {
               leaveThen("complete", () =>
                 completeGeneralActionAction({ generalActionId: action.id }),
@@ -839,6 +863,7 @@ export function ActionRow({
           onPause={() =>
             leaveThen("pause", () => pauseGeneralActionAction({ generalActionId: action.id }))
           }
+          onSkip={() => advanceRoutineInPlace("skip")}
           onSetAside={() => {
             setError(null);
             setMode("defer");

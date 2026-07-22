@@ -1,0 +1,1 @@
+ALTER TYPE "public"."general_action_event_kind" ADD VALUE 'skipped' BEFORE 'reopened';

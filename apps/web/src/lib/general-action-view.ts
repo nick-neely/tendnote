@@ -273,6 +273,7 @@ const EVENT_LABELS: Record<GeneralActionEventKind, string> = {
   created: "Created",
   edited: "Edited",
   completed: "Completed",
+  skipped: "Skipped",
   reopened: "Reopened",
   deferred: "Set aside",
   dismissed: "Dismissed",

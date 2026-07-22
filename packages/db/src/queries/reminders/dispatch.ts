@@ -4,7 +4,8 @@ import type {
   ReminderOptInState,
   ReminderSchedule,
 } from "@tendnote/domain/reminders";
-import type { ReminderGeneralAction, ReminderStore } from "./types";
+import { isEligibleReminderRecord, reminderOccurrenceKey } from "./policy";
+import type { ReminderRecord, ReminderStore } from "./types";
 
 export type ReminderPushSender = (input: {
   subscription: {
@@ -16,17 +17,18 @@ export type ReminderPushSender = (input: {
     title: string;
     body: string;
     tag: string;
-    data: { url: string; generalActionId: string };
+    data: { url: string; recordKind: ReminderDeliveryJob["recordKind"]; recordId: string };
   };
   ttlSeconds: number;
 }) => Promise<{ status: "accepted"; providerId?: string | null } | { status: "terminal" }>;
 
 type ReminderDispatcherDependencies = {
   store: ReminderStore;
-  loadGeneralAction: (input: {
+  loadReminderRecord: (input: {
     ownerUserId: string;
-    generalActionId: string;
-  }) => Promise<ReminderGeneralAction | null>;
+    recordKind: ReminderDeliveryJob["recordKind"];
+    recordId: string;
+  }) => Promise<ReminderRecord | null>;
   scheduleDelivery?: (input: {
     ownerUserId: string;
     jobId: string;
@@ -37,7 +39,7 @@ type ReminderDispatcherDependencies = {
 type DispatchValues = { jobId: string; now: Date; sender: ReminderPushSender };
 
 type DispatchContext = {
-  action: ReminderGeneralAction | null;
+  record: ReminderRecord | null;
   schedule: ReminderSchedule | null;
   installation: ReminderInstallation | null;
   optIn: ReminderOptInState | null;
@@ -47,10 +49,11 @@ async function loadDispatchContext(
   input: ReminderDispatcherDependencies,
   claimed: ReminderDeliveryJob,
 ): Promise<DispatchContext> {
-  const [action, schedule, installation] = await Promise.all([
-    input.loadGeneralAction({
+  const [record, schedule, installation] = await Promise.all([
+    input.loadReminderRecord({
       ownerUserId: claimed.ownerUserId,
-      generalActionId: claimed.generalActionId,
+      recordKind: claimed.recordKind,
+      recordId: claimed.recordId,
     }),
     input.store.getSchedule({
       ownerUserId: claimed.ownerUserId,
@@ -67,7 +70,7 @@ async function loadDispatchContext(
         clientInstallationId: installation.clientInstallationId,
       })
     : null;
-  return { action, schedule, installation, optIn };
+  return { record, schedule, installation, optIn };
 }
 
 function suppressionReason(
@@ -79,15 +82,15 @@ function suppressionReason(
   if (context.installation?.status !== "enabled" || context.optIn?.state !== "registered") {
     return "suppressed_revoked";
   }
-  const currentOccurrenceKey = context.action?.dueAt
-    ? `general_action:${context.action.id}:${context.action.dueAt.toISOString().slice(0, 10)}`
+  const currentOccurrenceKey = isEligibleReminderRecord(context.record)
+    ? reminderOccurrenceKey(context.record)
     : null;
   if (
-    !context.action ||
-    context.action.ownerUserId !== claimed.ownerUserId ||
-    context.action.status !== "open" ||
-    context.action.recurrence !== null ||
-    context.action.sensitivity === "restricted" ||
+    !context.record ||
+    context.record.ownerUserId !== claimed.ownerUserId ||
+    context.record.kind !== claimed.recordKind ||
+    context.record.id !== claimed.recordId ||
+    !isEligibleReminderRecord(context.record) ||
     currentOccurrenceKey !== claimed.occurrenceKey ||
     !context.schedule ||
     context.schedule.occurrenceKey !== claimed.occurrenceKey ||
@@ -214,7 +217,9 @@ export function createReminderDispatcher(input: ReminderDispatcherDependencies) 
     if (suppression) {
       return suppressDelivery(input.store, claimed, values.now, suppression);
     }
-    if (!context.installation) throw new Error("Reminder installation missing after policy check.");
+    if (!context.record || !context.installation) {
+      throw new Error("Reminder record or installation missing after policy check.");
+    }
 
     let result: Awaited<ReturnType<ReminderPushSender>>;
     try {
@@ -229,8 +234,9 @@ export function createReminderDispatcher(input: ReminderDispatcherDependencies) 
           body: "Open Tendnote to see what needs your attention.",
           tag: `reminder-${claimed.id}`,
           data: {
-            url: `/actions#action-${claimed.generalActionId}`,
-            generalActionId: claimed.generalActionId,
+            url: context.record.deepLink,
+            recordKind: claimed.recordKind,
+            recordId: claimed.recordId,
           },
         },
         ttlSeconds: Math.max(

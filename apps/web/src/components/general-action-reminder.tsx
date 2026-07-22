@@ -18,14 +18,47 @@ import {
 
 export type GeneralActionReminderChoice = ReminderScheduleChoice;
 
+function ReminderAlertOptions({
+  instantRelative,
+  relativeOnly,
+}: {
+  instantRelative: boolean;
+  relativeOnly: boolean;
+}) {
+  const occurrenceLabel = instantRelative
+    ? "At the bring-back time"
+    : "On the occurrence day at 9:00 AM";
+  const dayLabel = instantRelative
+    ? "One day before at the same time"
+    : "One day before at 9:00 AM";
+  const weekLabel = instantRelative
+    ? "One week before at the same time"
+    : "One week before at 9:00 AM";
+  return (
+    <>
+      {relativeOnly ? null : <option value="exact:09:00">At 9:00 AM on the due date</option>}
+      <option value="relative:0">{occurrenceLabel}</option>
+      {instantRelative ? (
+        <option value="relative:60">One hour before the bring-back time</option>
+      ) : null}
+      <option value="relative:1440">{dayLabel}</option>
+      <option value="relative:10080">{weekLabel}</option>
+    </>
+  );
+}
+
 export function GeneralActionReminderField({
   enabled,
   choice,
+  relativeOnly = false,
+  instantRelative = false,
   onEnabledChange,
   onChoiceChange,
 }: {
   enabled: boolean;
   choice: GeneralActionReminderChoice;
+  relativeOnly?: boolean;
+  instantRelative?: boolean;
   onEnabledChange: (enabled: boolean) => void;
   onChoiceChange: (choice: GeneralActionReminderChoice) => void;
 }) {
@@ -37,7 +70,13 @@ export function GeneralActionReminderField({
         <Checkbox
           aria-label="Remind me"
           checked={enabled}
-          onCheckedChange={(value) => onEnabledChange(value === true)}
+          onCheckedChange={(value) => {
+            const nextEnabled = value === true;
+            if (nextEnabled && relativeOnly && choice.kind === "exact") {
+              onChoiceChange({ kind: "relative", leadMinutes: 0 });
+            }
+            onEnabledChange(nextEnabled);
+          }}
         />
         <BellIcon className="size-3.5 text-muted-foreground" />
         Remind me
@@ -58,11 +97,12 @@ export function GeneralActionReminderField({
             }}
             value={value}
           >
-            <option value="exact:09:00">At 9:00 AM on the due date</option>
-            <option value="relative:1440">One day before at 9:00 AM</option>
-            <option value="relative:10080">One week before at 9:00 AM</option>
+            <ReminderAlertOptions instantRelative={instantRelative} relativeOnly={relativeOnly} />
           </select>
-          <span>One alert. Changing the due date or this time replaces it.</span>
+          <span>
+            One alert. Changing the {instantRelative ? "bring-back time" : "due date"} or this
+            schedule replaces it.
+          </span>
         </label>
       ) : null}
     </div>

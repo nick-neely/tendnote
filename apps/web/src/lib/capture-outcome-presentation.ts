@@ -6,6 +6,7 @@ export function captureOutcomePresentation(outcome: ConversationalCaptureOutcome
   visibility: string;
   dueAt: string | null;
   cadence: string | null;
+  reminderSchedule: string | null;
 } {
   switch (outcome.destination) {
     case "Saved Items":
@@ -15,6 +16,7 @@ export function captureOutcomePresentation(outcome: ConversationalCaptureOutcome
         visibility: outcome.interpreted.visibility,
         dueAt: null,
         cadence: null,
+        reminderSchedule: outcome.interpreted.reminderSchedule ?? null,
       };
     case "Actions":
     case "Routines":
@@ -24,6 +26,7 @@ export function captureOutcomePresentation(outcome: ConversationalCaptureOutcome
         visibility: outcome.interpreted.scope,
         dueAt: outcome.interpreted.dueAt,
         cadence: outcome.interpreted.cadence,
+        reminderSchedule: outcome.interpreted.reminderSchedule ?? null,
       };
     case "Follow-Ups":
       return {
@@ -32,6 +35,7 @@ export function captureOutcomePresentation(outcome: ConversationalCaptureOutcome
         visibility: outcome.interpreted.scope,
         dueAt: outcome.interpreted.dueAt,
         cadence: null,
+        reminderSchedule: outcome.interpreted.reminderSchedule ?? null,
       };
     case "People":
       return {
@@ -40,6 +44,7 @@ export function captureOutcomePresentation(outcome: ConversationalCaptureOutcome
         visibility: outcome.interpreted.scope,
         dueAt: null,
         cadence: null,
+        reminderSchedule: null,
       };
     case "Memories":
       return {
@@ -48,6 +53,7 @@ export function captureOutcomePresentation(outcome: ConversationalCaptureOutcome
         visibility: outcome.interpreted.scope,
         dueAt: null,
         cadence: null,
+        reminderSchedule: null,
       };
     case "Review": {
       const key =
@@ -60,6 +66,7 @@ export function captureOutcomePresentation(outcome: ConversationalCaptureOutcome
         visibility: outcome.interpreted.scope,
         dueAt: null,
         cadence: null,
+        reminderSchedule: null,
       };
     }
   }

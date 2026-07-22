@@ -233,6 +233,7 @@ export const generalActionEventKind = pgEnum("general_action_event_kind", [
   "created",
   "edited",
   "completed",
+  "skipped",
   "reopened",
   "deferred",
   "dismissed",
@@ -318,6 +319,12 @@ export const backgroundJobDeliveryStatus = pgEnum("background_job_delivery_statu
 ]);
 
 export const reminderScheduleKind = pgEnum("reminder_schedule_kind", ["exact", "relative"]);
+export const reminderRecordKind = pgEnum("reminder_record_kind", [
+  "general_action",
+  "follow_up",
+  "routine",
+  "saved_item",
+]);
 export const reminderOccurrenceStatus = pgEnum("reminder_occurrence_status", [
   "pending_installation",
   "pending",

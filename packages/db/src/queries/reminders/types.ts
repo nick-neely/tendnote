@@ -3,6 +3,7 @@ import type {
   ReminderInstallation,
   ReminderOccurrenceIntent,
   ReminderOptInState,
+  ReminderRecordKind,
   ReminderSchedule,
   ReminderScheduleChoice,
 } from "@tendnote/domain/reminders";
@@ -21,52 +22,52 @@ export type ReminderAuditEntry = {
   createdAt: Date;
 };
 
+export type ReminderRecordRef = {
+  ownerUserId: string;
+  recordKind: ReminderRecordKind;
+  recordId: string;
+};
+
 export type ReminderStore = {
-  upsertSchedule: (input: {
-    ownerUserId: string;
-    generalActionId: string;
-    choice: ReminderScheduleChoice;
-    timeZone: string;
-    occurrenceKey: string;
-    intendedAt: Date;
-    now: Date;
-  }) => Promise<ReminderSchedule>;
-  listSchedules: (input: {
-    ownerUserId: string;
-    generalActionId: string;
-  }) => Promise<ReminderSchedule[]>;
+  upsertSchedule: (
+    input: ReminderRecordRef & {
+      choice: ReminderScheduleChoice;
+      timeZone: string;
+      occurrenceKey: string;
+      intendedAt: Date;
+      now: Date;
+    },
+  ) => Promise<ReminderSchedule>;
+  listSchedules: (input: ReminderRecordRef) => Promise<ReminderSchedule[]>;
   listSchedulesForOwner: (input: { ownerUserId: string }) => Promise<ReminderSchedule[]>;
   getSchedule: (input: {
     ownerUserId: string;
     scheduleId: string;
   }) => Promise<ReminderSchedule | null>;
-  deleteSchedule: (input: {
-    ownerUserId: string;
-    generalActionId: string;
-    now: Date;
-  }) => Promise<void>;
-  upsertOccurrenceIntent: (input: {
-    ownerUserId: string;
-    generalActionId: string;
-    scheduleId: string;
-    occurrenceKey: string;
-    intendedAt: Date;
-    freshUntil: Date;
-    status: ReminderOccurrenceIntent["status"];
-    now: Date;
-  }) => Promise<ReminderOccurrenceIntent>;
-  listOccurrenceIntents: (input: {
-    ownerUserId: string;
-    generalActionId: string;
-  }) => Promise<ReminderOccurrenceIntent[]>;
+  deleteSchedule: (
+    input: ReminderRecordRef & {
+      now: Date;
+    },
+  ) => Promise<void>;
+  upsertOccurrenceIntent: (
+    input: ReminderRecordRef & {
+      scheduleId: string;
+      occurrenceKey: string;
+      intendedAt: Date;
+      freshUntil: Date;
+      status: ReminderOccurrenceIntent["status"];
+      now: Date;
+    },
+  ) => Promise<ReminderOccurrenceIntent>;
+  listOccurrenceIntents: (input: ReminderRecordRef) => Promise<ReminderOccurrenceIntent[]>;
   listActiveOccurrenceIntentsForOwner: (input: {
     ownerUserId: string;
   }) => Promise<ReminderOccurrenceIntent[]>;
-  supersedeOccurrenceIntents: (input: {
-    ownerUserId: string;
-    generalActionId: string;
-    now: Date;
-  }) => Promise<void>;
+  supersedeOccurrenceIntents: (
+    input: ReminderRecordRef & {
+      now: Date;
+    },
+  ) => Promise<void>;
   getOptInState: (input: {
     ownerUserId: string;
     clientInstallationId: string;
@@ -117,13 +118,23 @@ export type ReminderStore = {
   listAuditEntries: (input: { ownerUserId: string }) => Promise<ReminderAuditEntry[]>;
 };
 
-export type ReminderGeneralAction = {
+export type ReminderRecord = {
   id: string;
+  kind: ReminderRecordKind;
   ownerUserId: string;
   title: string;
   status: string;
-  dueAt: Date | null;
+  occursAt: Date | null;
+  timeSemantics: "date_only" | "instant";
   recurrence: unknown | null;
   sensitivity: "normal" | "sensitive" | "restricted";
   scope: "private" | "shared" | "household";
+  deepLink: string;
+};
+
+export type ReminderGeneralAction = Omit<
+  ReminderRecord,
+  "kind" | "occursAt" | "deepLink" | "timeSemantics"
+> & {
+  dueAt: Date | null;
 };

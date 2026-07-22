@@ -207,6 +207,15 @@ export type ConversationalCaptureDeps = {
     actorUserId: string;
     generalActionId: string;
   }) => Promise<CaptureGeneralAction>;
+  editSavedItem?: (input: {
+    actorUserId: string;
+    savedItemId: string;
+    edit: { title: string; content?: string | null; url?: string | null };
+  }) => Promise<SavedItemWithContext>;
+  archiveSavedItem?: (input: {
+    actorUserId: string;
+    savedItemId: string;
+  }) => Promise<SavedItemWithContext>;
   createFollowup?: (input: {
     id: string;
     ownerUserId: string;

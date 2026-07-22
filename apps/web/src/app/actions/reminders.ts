@@ -1,47 +1,75 @@
 "use server";
 
 import {
-  clearGeneralActionReminder,
+  clearReminder,
+  listReminderSchedulesForOwner,
+  reconcileReminderRecord,
   registerReminderInstallation,
-  saveGeneralActionReminder,
+  saveReminder,
   setReminderOptInDecision,
 } from "@tendnote/db/queries/reminders";
 import {
   reminderPushSubscriptionSchema,
+  reminderRecordKindSchema,
   reminderScheduleChoiceSchema,
 } from "@tendnote/domain/reminders";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 
 const installationSchema = z.string().trim().min(12).max(200);
+const recordReferenceSchema = z.object({
+  recordKind: reminderRecordKindSchema,
+  recordId: z.uuid(),
+});
 
-export async function clearGeneralActionReminderAction(input: { generalActionId: string }) {
+export async function clearReminderAction(input: {
+  recordKind: z.infer<typeof reminderRecordKindSchema>;
+  recordId: string;
+}) {
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = z.object({ generalActionId: z.uuid() }).parse(input);
-  await clearGeneralActionReminder({ ownerUserId, ...parsed, now: new Date() });
+  const parsed = recordReferenceSchema.parse(input);
+  await clearReminder({ ownerUserId, ...parsed, now: new Date() });
   return { ok: true as const };
 }
 
-export async function saveGeneralActionReminderAction(input: {
-  generalActionId: string;
+export async function saveReminderAction(input: {
+  recordKind: z.infer<typeof reminderRecordKindSchema>;
+  recordId: string;
   clientInstallationId: string;
   timeZone: string;
   schedule: { kind: "exact"; localTime: string } | { kind: "relative"; leadMinutes: number };
 }) {
   const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = z
-    .object({
-      generalActionId: z.uuid(),
+  const parsed = recordReferenceSchema
+    .extend({
       clientInstallationId: installationSchema,
       timeZone: z.string().trim().min(1).max(100),
       schedule: reminderScheduleChoiceSchema,
     })
     .parse(input);
-  const result = await saveGeneralActionReminder({
-    ownerUserId,
-    ...parsed,
-    now: new Date(),
-  });
+  const result = await saveReminder({ ownerUserId, ...parsed, now: new Date() });
+  return reminderScheduleResult(result);
+}
+
+export async function reconcileReminderTimeZoneAction(input: { timeZone: string }) {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const { timeZone } = z.object({ timeZone: z.string().trim().min(1).max(100) }).parse(input);
+  const schedules = await listReminderSchedulesForOwner({ ownerUserId });
+  await Promise.all(
+    schedules.map((schedule) =>
+      reconcileReminderRecord({
+        ownerUserId,
+        recordKind: schedule.recordKind,
+        recordId: schedule.recordId,
+        timeZone,
+        now: new Date(),
+      }),
+    ),
+  );
+  return { reconciled: schedules.length };
+}
+
+function reminderScheduleResult(result: Awaited<ReturnType<typeof saveReminder>>) {
   return {
     optIn: result.optIn,
     nextValidChoice: result.nextValidChoice,

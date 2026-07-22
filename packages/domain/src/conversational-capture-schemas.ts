@@ -123,6 +123,7 @@ export const conversationalSavedItemCaptureConfirmationSchema = z
     interpreted: z.object({
       kind: z.enum(["Note", "Link", "Open question"]),
       visibility: z.string().min(1),
+      reminderSchedule: z.string().min(1).nullable().optional(),
     }),
     change: z.object({
       kind: z.literal("edit_saved_item"),
@@ -144,6 +145,7 @@ export const conversationalActionCaptureConfirmationSchema = z
       dueAt: z.iso.datetime().nullable(),
       cadence: z.string().nullable(),
       scope: z.string().min(1),
+      reminderSchedule: z.string().min(1).nullable().optional(),
     }),
     change: z.object({
       kind: z.literal("edit_general_action"),
@@ -164,6 +166,7 @@ export const conversationalFollowupCaptureConfirmationSchema = z
       person: z.string().min(1),
       dueAt: z.iso.datetime(),
       scope: z.string().min(1),
+      reminderSchedule: z.string().min(1).nullable().optional(),
     }),
     change: z.object({
       kind: z.literal("edit_followup"),

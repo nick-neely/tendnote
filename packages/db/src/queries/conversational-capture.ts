@@ -32,6 +32,7 @@ import {
   searchPeople,
   updatePerson,
 } from "./people";
+import { archiveSavedItem, editSavedItem } from "./saved-items";
 import { createDrizzleSavedItemLifecycleStore } from "./saved-items/drizzle-store";
 import {
   linkSourceRecordToExistingPerson,
@@ -74,6 +75,8 @@ const defaultConversationalCapture = createConversationalCapture(
     editFollowup,
     archiveGeneralAction,
     archiveFollowup,
+    archiveSavedItem,
+    editSavedItem,
     getGeneralAction: ({ ownerUserId, generalActionId }) =>
       getGeneralAction({ actorUserId: ownerUserId, generalActionId }).catch(() => null),
     getFollowup: ({ ownerUserId, followupId }) =>

@@ -17,6 +17,7 @@ import {
   reminderOccurrenceStatus,
   reminderOptInStatus,
   reminderPreviewMode,
+  reminderRecordKind,
   reminderScheduleKind,
 } from "./enums";
 import { generalActions } from "./general-actions";
@@ -28,9 +29,11 @@ export const reminderSchedules = pgTable(
     ownerUserId: text("owner_user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    generalActionId: uuid("general_action_id")
-      .notNull()
-      .references(() => generalActions.id, { onDelete: "cascade" }),
+    recordKind: reminderRecordKind("record_kind").notNull().default("general_action"),
+    recordId: uuid("record_id").notNull(),
+    generalActionId: uuid("general_action_id").references(() => generalActions.id, {
+      onDelete: "cascade",
+    }),
     kind: reminderScheduleKind("kind").notNull(),
     localTime: text("local_time"),
     leadMinutes: integer("lead_minutes"),
@@ -40,7 +43,11 @@ export const reminderSchedules = pgTable(
     ...timestamps,
   },
   (table) => [
-    uniqueIndex("reminder_schedules_owner_action_idx").on(table.ownerUserId, table.generalActionId),
+    uniqueIndex("reminder_schedules_owner_record_idx").on(
+      table.ownerUserId,
+      table.recordKind,
+      table.recordId,
+    ),
     index("reminder_schedules_owner_intended_idx").on(table.ownerUserId, table.intendedAt),
   ],
 );
@@ -52,9 +59,11 @@ export const reminderOccurrenceIntents = pgTable(
     ownerUserId: text("owner_user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    generalActionId: uuid("general_action_id")
-      .notNull()
-      .references(() => generalActions.id, { onDelete: "cascade" }),
+    recordKind: reminderRecordKind("record_kind").notNull().default("general_action"),
+    recordId: uuid("record_id").notNull(),
+    generalActionId: uuid("general_action_id").references(() => generalActions.id, {
+      onDelete: "cascade",
+    }),
     scheduleId: uuid("schedule_id")
       .notNull()
       .references(() => reminderSchedules.id, { onDelete: "cascade" }),
@@ -127,9 +136,11 @@ export const reminderDeliveryJobs = pgTable(
     ownerUserId: text("owner_user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    generalActionId: uuid("general_action_id")
-      .notNull()
-      .references(() => generalActions.id, { onDelete: "cascade" }),
+    recordKind: reminderRecordKind("record_kind").notNull().default("general_action"),
+    recordId: uuid("record_id").notNull(),
+    generalActionId: uuid("general_action_id").references(() => generalActions.id, {
+      onDelete: "cascade",
+    }),
     scheduleId: uuid("schedule_id")
       .notNull()
       .references(() => reminderSchedules.id, { onDelete: "cascade" }),

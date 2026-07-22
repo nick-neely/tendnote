@@ -14,6 +14,13 @@ vi.mock("@/app/actions/followups", () => ({
   snoozeFollowupAction: vi.fn(),
 }));
 
+vi.mock("@/app/actions/reminders", () => ({
+  clearReminderAction: vi.fn(),
+  registerReminderInstallationAction: vi.fn(),
+  saveReminderAction: vi.fn(),
+  setReminderOptInDecisionAction: vi.fn(),
+}));
+
 vi.mock("@/components/use-create-draft", () => ({
   useCreateDraft: () => ({ create: () => {}, pending: false, error: null }),
 }));

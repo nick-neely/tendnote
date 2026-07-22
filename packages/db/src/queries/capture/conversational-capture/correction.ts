@@ -75,7 +75,7 @@ export function createCorrectionOperations(
         throw new SavedItemValidationError("A link capture must remain a valid URL.");
       }
     }
-    return lifecycle.editSavedItem({
+    return (deps.editSavedItem ?? lifecycle.editSavedItem)({
       actorUserId: parsed.actorUserId,
       savedItemId: parsed.savedItemId,
       edit: {

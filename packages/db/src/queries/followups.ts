@@ -1,3 +1,8 @@
+import {
+  birthdayAnnualFollowupCadence,
+  nextBirthdayFollowupDueAt,
+  type ReminderScheduleChoice,
+} from "@tendnote/domain";
 import { createDrizzleFollowupLifecycleStore } from "./followups/drizzle-store";
 import { createFollowupLifecycle } from "./followups/lifecycle";
 import { createSuggestedFollowupReview } from "./followups/review";
@@ -11,6 +16,8 @@ import type {
   SnoozeFollowupInput,
   SuggestFollowupInput,
 } from "./followups/types";
+import { getPerson } from "./people";
+import { reconcileReminderRecord, saveReminder } from "./reminders";
 
 export {
   createDrizzleFollowupLifecycleStore,
@@ -28,12 +35,23 @@ const defaultFollowupStore = createDrizzleFollowupLifecycleStore();
 const defaultFollowupLifecycle = createFollowupLifecycle(defaultFollowupStore);
 const defaultSuggestedFollowupReview = createSuggestedFollowupReview(defaultFollowupStore);
 
+async function reconcileFollowupReminder(followup: { id: string; ownerUserId: string }) {
+  await reconcileReminderRecord({
+    ownerUserId: followup.ownerUserId,
+    recordKind: "follow_up",
+    recordId: followup.id,
+    now: new Date(),
+  });
+}
+
 export async function createFollowup(input: CreateActiveFollowupInput) {
   return defaultFollowupLifecycle.createFollowup(input);
 }
 
 export async function editFollowup(input: EditFollowupInput) {
-  return defaultFollowupLifecycle.editFollowup(input);
+  const followup = await defaultFollowupLifecycle.editFollowup(input);
+  await reconcileFollowupReminder(followup);
+  return followup;
 }
 
 export async function getFollowup(input: FollowupActionInput) {
@@ -41,23 +59,33 @@ export async function getFollowup(input: FollowupActionInput) {
 }
 
 export async function completeFollowup(input: FollowupActionInput) {
-  return defaultFollowupLifecycle.completeFollowup(input);
+  const followup = await defaultFollowupLifecycle.completeFollowup(input);
+  await reconcileFollowupReminder(followup);
+  return followup;
 }
 
 export async function dismissFollowup(input: FollowupActionInput) {
-  return defaultFollowupLifecycle.dismissFollowup(input);
+  const followup = await defaultFollowupLifecycle.dismissFollowup(input);
+  await reconcileFollowupReminder(followup);
+  return followup;
 }
 
 export async function snoozeFollowup(input: SnoozeFollowupInput) {
-  return defaultFollowupLifecycle.snoozeFollowup(input);
+  const followup = await defaultFollowupLifecycle.snoozeFollowup(input);
+  await reconcileFollowupReminder(followup);
+  return followup;
 }
 
 export async function reopenFollowup(input: FollowupActionInput) {
-  return defaultFollowupLifecycle.reopenFollowup(input);
+  const followup = await defaultFollowupLifecycle.reopenFollowup(input);
+  await reconcileFollowupReminder(followup);
+  return followup;
 }
 
 export async function archiveFollowup(input: FollowupActionInput) {
-  return defaultFollowupLifecycle.archiveFollowup(input);
+  const followup = await defaultFollowupLifecycle.archiveFollowup(input);
+  await reconcileFollowupReminder(followup);
+  return followup;
 }
 
 export async function listActiveFollowups(input: {
@@ -75,6 +103,53 @@ export async function searchFollowups(input: {
   limit?: number;
 }) {
   return defaultFollowupLifecycle.searchFollowups(input);
+}
+
+export async function createBirthdayFollowupReminder(input: {
+  ownerUserId: string;
+  personId: string;
+  clientInstallationId: string;
+  timeZone: string;
+  schedule: Extract<ReminderScheduleChoice, { kind: "relative" }>;
+  now: Date;
+}) {
+  const person = await getPerson({ ownerUserId: input.ownerUserId, personId: input.personId });
+  if (!person?.birthday) throw new Error("Save a Birthday before creating its Follow-Up.");
+  const dueAt = nextBirthdayFollowupDueAt({
+    birthday: person.birthday,
+    now: input.now,
+    timeZone: input.timeZone,
+  });
+  const reason = `Celebrate ${person.displayName}'s birthday`;
+  const existing = (
+    await listActiveFollowups({
+      ownerUserId: input.ownerUserId,
+      personId: person.id,
+    })
+  ).find(
+    ({ followup }) =>
+      followup.cadence === birthdayAnnualFollowupCadence && followup.reason === reason,
+  )?.followup;
+  const followup =
+    existing ??
+    (await createFollowup({
+      ownerUserId: input.ownerUserId,
+      personId: person.id,
+      reason,
+      dueAt,
+      cadence: birthdayAnnualFollowupCadence,
+      scope: "private",
+    }));
+  const reminder = await saveReminder({
+    ownerUserId: input.ownerUserId,
+    recordKind: "follow_up",
+    recordId: followup.id,
+    clientInstallationId: input.clientInstallationId,
+    timeZone: input.timeZone,
+    schedule: input.schedule,
+    now: input.now,
+  });
+  return { followup, reminder };
 }
 
 export async function suggestFollowup(input: SuggestFollowupInput) {

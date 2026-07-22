@@ -1,6 +1,7 @@
 import {
   assertConcreteDueAt,
   assertFollowupEditable,
+  birthdayAnnualFollowupCadence,
   type FollowupLifecycleAction,
   followupEditSchema,
   resolveFollowupTransition,
@@ -34,9 +35,9 @@ type SearchFollowupsInput = {
  * scoping, required concrete due dates, validated status transitions, and audit
  * logging — never fork between surfaces.
  *
- * `cadence` is inert metadata in Phase 1E: completing, snoozing, or editing a
- * follow-up never generates a next instance, so a reminder can never surprise the
- * user (ADR-0042).
+ * Ordinary `cadence` remains inert metadata. The one exception is the explicit
+ * Birthday Follow-Up marker: completing that owner-created annual occurrence
+ * advances the same record to its next year so no hidden sibling is generated.
  */
 export function createFollowupLifecycle(store: FollowupLifecycleStore) {
   /** Loads an owner-scoped follow-up or throws so callers cannot touch another owner's. */
@@ -306,8 +307,32 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
       return updated;
     },
 
-    completeFollowup(input: FollowupActionInput) {
-      return transition(input, "complete");
+    async completeFollowup(input: FollowupActionInput) {
+      const followup = await requireFollowup(input);
+      resolveFollowupTransition(followup.status, "complete");
+      if (followup.cadence !== birthdayAnnualFollowupCadence) {
+        return transition(input, "complete");
+      }
+      const dueAt = nextAnnualDueAt(followup.dueAt, new Date());
+      const updated = await store.updateFollowup({
+        ownerUserId: followup.ownerUserId,
+        followupId: followup.id,
+        patch: { status: "open", dueAt, lastActorUserId: input.actorUserId },
+      });
+      await store.createAuditLogEntry({
+        ownerUserId: followup.ownerUserId,
+        action: "followup.complete",
+        entityType: "followup",
+        entityId: updated.id,
+        metadataJson: {
+          actorUserId: input.actorUserId,
+          personId: updated.personId,
+          previousStatus: followup.status,
+          status: updated.status,
+          annualOccurrenceAdvanced: true,
+        },
+      });
+      return updated;
     },
 
     dismissFollowup(input: FollowupActionInput) {
@@ -350,4 +375,12 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
       return updated;
     },
   };
+}
+
+function nextAnnualDueAt(dueAt: Date, now: Date): Date {
+  const next = new Date(dueAt);
+  do {
+    next.setUTCFullYear(next.getUTCFullYear() + 1);
+  } while (next.getTime() <= now.getTime());
+  return next;
 }

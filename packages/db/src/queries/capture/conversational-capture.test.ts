@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createInMemorySavedItemLifecycleStore } from "../saved-items";
+import { createInMemorySavedItemLifecycleStore, createSavedItemLifecycle } from "../saved-items";
 import { createConversationalCapture } from "./conversational-capture";
 
 type CaptureResult = Awaited<ReturnType<ReturnType<typeof createConversationalCapture>["capture"]>>;
@@ -933,7 +933,10 @@ describe("conversational Capture", () => {
 
   it("corrects and safely undoes the Saved Item without rewriting source evidence", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const capture = createConversationalCapture(store);
+    const lifecycle = createSavedItemLifecycle(store);
+    const editSavedItem = vi.fn(lifecycle.editSavedItem);
+    const archiveSavedItem = vi.fn(lifecycle.archiveSavedItem);
+    const capture = createConversationalCapture(store, { archiveSavedItem, editSavedItem });
     const created = await capture.capture({
       authority: "explicit",
       interactionId: "correction-turn",
@@ -949,6 +952,7 @@ describe("conversational Capture", () => {
       originalText: "Corrected wording",
     });
     expect(changed).toMatchObject({ content: "Corrected wording", title: "Corrected wording" });
+    expect(editSavedItem).toHaveBeenCalledOnce();
     expect(
       await store.getSourceRecord({
         ownerUserId: "owner-1",
@@ -956,16 +960,17 @@ describe("conversational Capture", () => {
       }),
     ).toMatchObject({ content: "Original wording" });
 
-    const undone = await capture.undo({
+    const undone = await capture.undoOutcome({
       actorUserId: "owner-1",
-      savedItemId: savedItemFrom(created).id,
+      target: { kind: "archive_saved_item", savedItemId: savedItemFrom(created).id },
     });
-    expect(undone.status).toBe("archived");
-    const retriedUndo = await capture.undo({
+    expect(undone).toMatchObject({ status: "archived" });
+    expect(archiveSavedItem).toHaveBeenCalledOnce();
+    const retriedUndo = await capture.undoOutcome({
       actorUserId: "owner-1",
-      savedItemId: savedItemFrom(created).id,
+      target: { kind: "archive_saved_item", savedItemId: savedItemFrom(created).id },
     });
-    expect(retriedUndo.status).toBe("archived");
+    expect(retriedUndo).toMatchObject({ status: "archived" });
     expect(
       (
         await store.listSavedItemEvents({

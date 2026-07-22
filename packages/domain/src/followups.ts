@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { privacyScopeSchema } from "./privacy";
 
+export const birthdayAnnualFollowupCadence = "birthday_yearly" as const;
+
 export const followupStatusSchema = z.enum([
   "suggested",
   "open",

@@ -6,6 +6,10 @@ import type {
   ReminderOptInState,
   ReminderSchedule,
 } from "@tendnote/domain/reminders";
+import {
+  reminderDeliveryJobPersistenceValues,
+  reminderSchedulePersistenceValues,
+} from "./persistence-values";
 import type { ReminderStore } from "./types";
 
 export function createInMemoryReminderStore(): ReminderStore {
@@ -15,30 +19,24 @@ export function createInMemoryReminderStore(): ReminderStore {
   const installations = new Map<string, ReminderInstallation>();
   const deliveryJobs = new Map<string, ReminderDeliveryJob>();
   const auditEntries: Awaited<ReturnType<ReminderStore["appendAuditEntry"]>>[] = [];
-  const scheduleKey = (ownerUserId: string, actionId: string) => `${ownerUserId}:${actionId}`;
+  const scheduleKey = (ownerUserId: string, recordKind: string, recordId: string) =>
+    `${ownerUserId}:${recordKind}:${recordId}`;
 
   return {
     async upsertSchedule(input) {
-      const key = scheduleKey(input.ownerUserId, input.generalActionId);
+      const key = scheduleKey(input.ownerUserId, input.recordKind, input.recordId);
       const current = schedules.get(key);
       const schedule: ReminderSchedule = {
         id: current?.id ?? randomUUID(),
-        ownerUserId: input.ownerUserId,
-        generalActionId: input.generalActionId,
-        kind: input.choice.kind,
-        localTime: input.choice.kind === "exact" ? input.choice.localTime : null,
-        leadMinutes: input.choice.kind === "relative" ? input.choice.leadMinutes : null,
-        timeZone: input.timeZone,
-        occurrenceKey: input.occurrenceKey,
-        intendedAt: input.intendedAt,
-        createdAt: current?.createdAt ?? input.now,
-        updatedAt: input.now,
+        ...reminderSchedulePersistenceValues(input, current?.createdAt ?? input.now),
       };
       schedules.set(key, schedule);
       return schedule;
     },
     async listSchedules(input) {
-      const schedule = schedules.get(scheduleKey(input.ownerUserId, input.generalActionId));
+      const schedule = schedules.get(
+        scheduleKey(input.ownerUserId, input.recordKind, input.recordId),
+      );
       return schedule ? [schedule] : [];
     },
     async listSchedulesForOwner(input) {
@@ -55,8 +53,8 @@ export function createInMemoryReminderStore(): ReminderStore {
       );
     },
     async deleteSchedule(input) {
-      schedules.delete(scheduleKey(input.ownerUserId, input.generalActionId));
-      const key = scheduleKey(input.ownerUserId, input.generalActionId);
+      schedules.delete(scheduleKey(input.ownerUserId, input.recordKind, input.recordId));
+      const key = scheduleKey(input.ownerUserId, input.recordKind, input.recordId);
       intents.set(
         key,
         (intents.get(key) ?? []).map((intent) => ({
@@ -67,7 +65,7 @@ export function createInMemoryReminderStore(): ReminderStore {
       );
     },
     async upsertOccurrenceIntent(input) {
-      const key = scheduleKey(input.ownerUserId, input.generalActionId);
+      const key = scheduleKey(input.ownerUserId, input.recordKind, input.recordId);
       const history = intents.get(key) ?? [];
       const current = history.find((intent) => intent.status !== "superseded");
       if (
@@ -87,7 +85,11 @@ export function createInMemoryReminderStore(): ReminderStore {
       const intent: ReminderOccurrenceIntent = {
         id: randomUUID(),
         ownerUserId: input.ownerUserId,
-        generalActionId: input.generalActionId,
+        recordKind: input.recordKind,
+        recordId: input.recordId,
+        generalActionId: ["general_action", "routine"].includes(input.recordKind)
+          ? input.recordId
+          : null,
         scheduleId: input.scheduleId,
         occurrenceKey: input.occurrenceKey,
         intendedAt: input.intendedAt,
@@ -100,7 +102,9 @@ export function createInMemoryReminderStore(): ReminderStore {
       return intent;
     },
     async listOccurrenceIntents(input) {
-      return [...(intents.get(scheduleKey(input.ownerUserId, input.generalActionId)) ?? [])];
+      return [
+        ...(intents.get(scheduleKey(input.ownerUserId, input.recordKind, input.recordId)) ?? []),
+      ];
     },
     async listActiveOccurrenceIntentsForOwner(input) {
       return [...intents.values()]
@@ -110,7 +114,7 @@ export function createInMemoryReminderStore(): ReminderStore {
         );
     },
     async supersedeOccurrenceIntents(input) {
-      const key = scheduleKey(input.ownerUserId, input.generalActionId);
+      const key = scheduleKey(input.ownerUserId, input.recordKind, input.recordId);
       intents.set(
         key,
         (intents.get(key) ?? []).map((intent) =>
@@ -202,22 +206,7 @@ export function createInMemoryReminderStore(): ReminderStore {
       }
       const job: ReminderDeliveryJob = {
         id: randomUUID(),
-        ownerUserId: input.ownerUserId,
-        generalActionId: input.occurrenceIntent.generalActionId,
-        scheduleId: input.occurrenceIntent.scheduleId,
-        occurrenceIntentId: input.occurrenceIntent.id,
-        installationId: input.installationId,
-        occurrenceKey: input.occurrenceIntent.occurrenceKey,
-        intendedAt: input.occurrenceIntent.intendedAt,
-        freshUntil: input.occurrenceIntent.freshUntil,
-        status: "pending",
-        outcome: null,
-        attempts: 0,
-        nextAttemptAt: input.occurrenceIntent.intendedAt,
-        lastErrorCode: null,
-        acceptedAt: null,
-        createdAt: input.now,
-        updatedAt: input.now,
+        ...reminderDeliveryJobPersistenceValues(input),
       };
       deliveryJobs.set(key, job);
       return { job, created: true, changed: true };

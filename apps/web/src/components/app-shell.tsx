@@ -8,6 +8,7 @@ import {
   addCapturePersonAction,
   captureExplicitOutcomeAction,
   changeExplicitCaptureOutcomeAction,
+  changeExplicitCaptureReminderAction,
   undoExplicitCaptureOutcomeAction,
 } from "@/app/actions/conversational-capture";
 import { globalRecallAction } from "@/app/actions/global-recall";
@@ -21,6 +22,7 @@ import { MobileFailureState } from "@/components/mobile-failure-state";
 import type { CaptureHandlers, GlobalRecallHandler } from "@/components/mobile-focused-flows";
 import { MobileShell } from "@/components/mobile-shell";
 import { PwaRegistration } from "@/components/pwa-registration";
+import { ReminderTimeZoneReconciler } from "@/components/reminder-time-zone-reconciler";
 import type { TodayShortlistHandlers } from "@/components/today-shortlist";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -29,6 +31,7 @@ import { useDeepLinkHighlight } from "@/lib/use-deep-link-highlight";
 const defaultCaptureHandlers: CaptureHandlers = {
   addPerson: addCapturePersonAction,
   change: changeExplicitCaptureOutcomeAction,
+  changeReminder: changeExplicitCaptureReminderAction,
   submit: captureExplicitOutcomeAction,
   undo: undoExplicitCaptureOutcomeAction,
 };
@@ -78,6 +81,7 @@ export function AppShell({
   return (
     <div className="min-h-dvh overflow-x-clip bg-background text-foreground">
       <PwaRegistration />
+      <ReminderTimeZoneReconciler />
       <header className="sticky top-0 z-10 hidden border-b bg-background/95 backdrop-blur lg:block">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link className="flex items-center gap-2 font-semibold tracking-normal" href="/">

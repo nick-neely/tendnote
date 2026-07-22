@@ -8,6 +8,10 @@ import {
   reminderOptInStates,
   reminderSchedules,
 } from "../../schema";
+import {
+  reminderDeliveryJobPersistenceValues,
+  reminderSchedulePersistenceValues,
+} from "./persistence-values";
 import type { ReminderAuditEntry, ReminderStore } from "./types";
 
 export function createDrizzleReminderStore(): ReminderStore {
@@ -15,20 +19,13 @@ export function createDrizzleReminderStore(): ReminderStore {
     async upsertSchedule(input) {
       const [row] = await getDb()
         .insert(reminderSchedules)
-        .values({
-          ownerUserId: input.ownerUserId,
-          generalActionId: input.generalActionId,
-          kind: input.choice.kind,
-          localTime: input.choice.kind === "exact" ? input.choice.localTime : null,
-          leadMinutes: input.choice.kind === "relative" ? input.choice.leadMinutes : null,
-          timeZone: input.timeZone,
-          occurrenceKey: input.occurrenceKey,
-          intendedAt: input.intendedAt,
-          createdAt: input.now,
-          updatedAt: input.now,
-        })
+        .values(reminderSchedulePersistenceValues(input, input.now))
         .onConflictDoUpdate({
-          target: [reminderSchedules.ownerUserId, reminderSchedules.generalActionId],
+          target: [
+            reminderSchedules.ownerUserId,
+            reminderSchedules.recordKind,
+            reminderSchedules.recordId,
+          ],
           set: {
             kind: input.choice.kind,
             localTime: input.choice.kind === "exact" ? input.choice.localTime : null,
@@ -50,7 +47,8 @@ export function createDrizzleReminderStore(): ReminderStore {
         .where(
           and(
             eq(reminderSchedules.ownerUserId, input.ownerUserId),
-            eq(reminderSchedules.generalActionId, input.generalActionId),
+            eq(reminderSchedules.recordKind, input.recordKind),
+            eq(reminderSchedules.recordId, input.recordId),
           ),
         );
     },
@@ -80,7 +78,8 @@ export function createDrizzleReminderStore(): ReminderStore {
         .where(
           and(
             eq(reminderSchedules.ownerUserId, input.ownerUserId),
-            eq(reminderSchedules.generalActionId, input.generalActionId),
+            eq(reminderSchedules.recordKind, input.recordKind),
+            eq(reminderSchedules.recordId, input.recordId),
           ),
         );
     },
@@ -92,7 +91,8 @@ export function createDrizzleReminderStore(): ReminderStore {
           .where(
             and(
               eq(reminderOccurrenceIntents.ownerUserId, input.ownerUserId),
-              eq(reminderOccurrenceIntents.generalActionId, input.generalActionId),
+              eq(reminderOccurrenceIntents.recordKind, input.recordKind),
+              eq(reminderOccurrenceIntents.recordId, input.recordId),
               ne(reminderOccurrenceIntents.status, "superseded"),
             ),
           )
@@ -120,7 +120,11 @@ export function createDrizzleReminderStore(): ReminderStore {
         }
         const values = {
           ownerUserId: input.ownerUserId,
-          generalActionId: input.generalActionId,
+          recordKind: input.recordKind,
+          recordId: input.recordId,
+          generalActionId: ["general_action", "routine"].includes(input.recordKind)
+            ? input.recordId
+            : null,
           scheduleId: input.scheduleId,
           occurrenceKey: input.occurrenceKey,
           intendedAt: input.intendedAt,
@@ -157,7 +161,8 @@ export function createDrizzleReminderStore(): ReminderStore {
         .where(
           and(
             eq(reminderOccurrenceIntents.ownerUserId, input.ownerUserId),
-            eq(reminderOccurrenceIntents.generalActionId, input.generalActionId),
+            eq(reminderOccurrenceIntents.recordKind, input.recordKind),
+            eq(reminderOccurrenceIntents.recordId, input.recordId),
           ),
         )
         .orderBy(asc(reminderOccurrenceIntents.createdAt));
@@ -180,7 +185,8 @@ export function createDrizzleReminderStore(): ReminderStore {
         .where(
           and(
             eq(reminderOccurrenceIntents.ownerUserId, input.ownerUserId),
-            eq(reminderOccurrenceIntents.generalActionId, input.generalActionId),
+            eq(reminderOccurrenceIntents.recordKind, input.recordKind),
+            eq(reminderOccurrenceIntents.recordId, input.recordId),
             ne(reminderOccurrenceIntents.status, "superseded"),
           ),
         );
@@ -318,24 +324,7 @@ export function createDrizzleReminderStore(): ReminderStore {
       }
       const [job] = await getDb()
         .insert(reminderDeliveryJobs)
-        .values({
-          ownerUserId: input.ownerUserId,
-          generalActionId: input.occurrenceIntent.generalActionId,
-          scheduleId: input.occurrenceIntent.scheduleId,
-          occurrenceIntentId: input.occurrenceIntent.id,
-          installationId: input.installationId,
-          occurrenceKey: input.occurrenceIntent.occurrenceKey,
-          intendedAt: input.occurrenceIntent.intendedAt,
-          freshUntil: input.occurrenceIntent.freshUntil,
-          status: "pending",
-          outcome: null,
-          attempts: 0,
-          nextAttemptAt: input.occurrenceIntent.intendedAt,
-          lastErrorCode: null,
-          acceptedAt: null,
-          createdAt: input.now,
-          updatedAt: input.now,
-        })
+        .values(reminderDeliveryJobPersistenceValues(input))
         .returning();
       if (!job) throw new Error("Failed to create Reminder delivery job.");
       return { job, created: true, changed: true };

@@ -144,6 +144,20 @@ describe("create active follow-up", () => {
     await lifecycle.completeFollowup({ actorUserId: OWNER, followupId: followup.id });
     await expect(countForPerson()).resolves.toBe(1);
   });
+
+  it("advances an explicit annual Birthday Follow-Up on completion", async () => {
+    const { lifecycle, seedOpen, countForPerson } = await setup();
+    const followup = await seedOpen({
+      cadence: "birthday_yearly",
+      dueAt: new Date("2026-08-14T14:00:00Z"),
+    });
+
+    const next = await lifecycle.completeFollowup({ actorUserId: OWNER, followupId: followup.id });
+
+    expect(next.status).toBe("open");
+    expect(next.dueAt).toEqual(new Date("2027-08-14T14:00:00Z"));
+    await expect(countForPerson()).resolves.toBe(1);
+  });
 });
 
 describe("lifecycle transitions", () => {

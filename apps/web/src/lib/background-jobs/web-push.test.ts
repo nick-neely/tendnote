@@ -21,7 +21,7 @@ describe("Web Push adapter", () => {
         title: "Tendnote reminder",
         body: "Open Tendnote to see what needs your attention.",
         tag: "reminder-1",
-        data: { url: "/actions#action-1", generalActionId: "action-1" },
+        data: { url: "/actions#action-1", recordKind: "general_action", recordId: "action-1" },
       },
       ttlSeconds: 3_600,
     });
@@ -53,7 +53,7 @@ describe("Web Push adapter", () => {
           title: "Tendnote reminder",
           body: "Open Tendnote to see what needs your attention.",
           tag: "reminder-1",
-          data: { url: "/actions#action-1", generalActionId: "action-1" },
+          data: { url: "/actions#action-1", recordKind: "general_action", recordId: "action-1" },
         },
         ttlSeconds: 60,
       }),

@@ -2,6 +2,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, userEvent, waitFor } from "@/test/dom";
 
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
+
 const createSavedItemAction = vi.fn();
 const archiveSavedItemAction = vi.fn();
 const reopenSavedItemAction = vi.fn();
@@ -10,6 +19,7 @@ const promoteSavedItemToGeneralActionAction = vi.fn();
 const editSavedItemAction = vi.fn();
 const getSavedItemSourceDeletionImpactAction = vi.fn();
 const deleteUniqueSavedItemSourceAction = vi.fn();
+const saveReminderAction = vi.fn();
 
 vi.mock("@/app/actions/saved-items", () => ({
   createSavedItemAction: (...args: unknown[]) => createSavedItemAction(...args),
@@ -23,6 +33,13 @@ vi.mock("@/app/actions/saved-items", () => ({
     getSavedItemSourceDeletionImpactAction(...args),
   deleteUniqueSavedItemSourceAction: (...args: unknown[]) =>
     deleteUniqueSavedItemSourceAction(...args),
+}));
+
+vi.mock("@/app/actions/reminders", () => ({
+  clearReminderAction: vi.fn(),
+  registerReminderInstallationAction: vi.fn(),
+  saveReminderAction: (...args: unknown[]) => saveReminderAction(...args),
+  setReminderOptInDecisionAction: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -72,6 +89,35 @@ describe("SavedItemsSurface", () => {
     );
     const title = await screen.findByText("Filter measurements");
     expect(title.closest("article")?.id).toBe("saved-item-saved-1");
+  });
+
+  it("does not confirm a Saved Item reminder whose selected alert time has passed", async () => {
+    const user = userEvent.setup();
+    const created = fixture({ bringBackAt: "2026-07-21T16:00:00.000Z" });
+    createSavedItemAction.mockResolvedValue({ ok: true, view: created });
+    saveReminderAction.mockResolvedValue({
+      optIn: { state: "none", clientInstallationId: "browser-installation-1" },
+      nextValidChoice: {
+        label: "At the bring-back time",
+        choice: { kind: "relative", leadMinutes: 0 },
+      },
+      schedule: {
+        kind: "relative",
+        localTime: null,
+        leadMinutes: 1_440,
+        timeZone: "America/Chicago",
+        intendedAtISO: "2026-07-20T16:00:00.000Z",
+      },
+    });
+    render(<SavedItemsSurface items={[]} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Title" }), "Filter measurements");
+    await user.type(screen.getByLabelText("Bring back"), "2026-07-21T16:00");
+    await user.click(screen.getByRole("checkbox", { name: "Remind me" }));
+    await user.click(screen.getByRole("button", { name: "Save item" }));
+
+    expect(await screen.findByText(/alert time has passed/i)).toBeDefined();
+    expect(screen.queryByText(/Reminder at|Reminder one|Reminder at the/i)).toBeNull();
   });
 
   it("shows grounding and linked outcomes, and resolves an open question with a reason", async () => {

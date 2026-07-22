@@ -1,4 +1,5 @@
 import { createGeneralAction } from "./general-actions";
+import { reconcileReminderRecord } from "./reminders";
 import { createDrizzleSavedItemLifecycleStore } from "./saved-items/drizzle-store";
 import { createSavedItemLifecycle } from "./saved-items/lifecycle";
 import type { CreateSavedItemInput, EditSavedItemInput } from "./saved-items/types";
@@ -23,6 +24,15 @@ const defaultSavedItemLifecycle = createSavedItemLifecycle(createDrizzleSavedIte
   createGeneralAction: (input) => createGeneralAction(input),
 });
 
+async function reconcileSavedItemReminder(item: { id: string; ownerUserId: string }) {
+  await reconcileReminderRecord({
+    ownerUserId: item.ownerUserId,
+    recordKind: "saved_item",
+    recordId: item.id,
+    now: new Date(),
+  });
+}
+
 export function createSavedItem(input: CreateSavedItemInput) {
   return defaultSavedItemLifecycle.createSavedItem(input);
 }
@@ -39,24 +49,32 @@ export function listSavedItems(input: {
   return defaultSavedItemLifecycle.listSavedItems(input);
 }
 
-export function editSavedItem(input: EditSavedItemInput) {
-  return defaultSavedItemLifecycle.editSavedItem(input);
+export async function editSavedItem(input: EditSavedItemInput) {
+  const item = await defaultSavedItemLifecycle.editSavedItem(input);
+  await reconcileSavedItemReminder(item);
+  return item;
 }
 
-export function archiveSavedItem(input: { actorUserId: string; savedItemId: string }) {
-  return defaultSavedItemLifecycle.archiveSavedItem(input);
+export async function archiveSavedItem(input: { actorUserId: string; savedItemId: string }) {
+  const item = await defaultSavedItemLifecycle.archiveSavedItem(input);
+  await reconcileSavedItemReminder(item);
+  return item;
 }
 
-export function reopenSavedItem(input: { actorUserId: string; savedItemId: string }) {
-  return defaultSavedItemLifecycle.reopenSavedItem(input);
+export async function reopenSavedItem(input: { actorUserId: string; savedItemId: string }) {
+  const item = await defaultSavedItemLifecycle.reopenSavedItem(input);
+  await reconcileSavedItemReminder(item);
+  return item;
 }
 
-export function resolveSavedItem(input: {
+export async function resolveSavedItem(input: {
   actorUserId: string;
   savedItemId: string;
   reason: string;
 }) {
-  return defaultSavedItemLifecycle.resolveSavedItem(input);
+  const item = await defaultSavedItemLifecycle.resolveSavedItem(input);
+  await reconcileSavedItemReminder(item);
+  return item;
 }
 
 export function searchSavedItems(input: {

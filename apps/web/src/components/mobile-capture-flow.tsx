@@ -8,16 +8,21 @@ import type {
   ConversationalCaptureUndoTarget,
 } from "@tendnote/domain/conversational-capture";
 import { type RefObject, useEffect, useRef, useState } from "react";
+import { CaptureReminderScheduleChange } from "@/components/capture-reminder-schedule-change";
+import type { GeneralActionReminderChoice } from "@/components/general-action-reminder";
 import { MobileFailureState } from "@/components/mobile-failure-state";
 import { Button } from "@/components/ui/button";
 import { captureOutcomePresentation } from "@/lib/capture-outcome-presentation";
 import { useLocalComposerDraft } from "@/lib/local-composer-draft";
+import { getReminderInstallationId } from "@/lib/reminder-registration";
 
 export type CaptureSubmitInput = {
   clarificationAnswer?: string;
   interactionId: string;
   inputMode: "typed" | "dictated";
   originalText: string;
+  clientInstallationId?: string;
+  timeZone?: string;
 };
 
 export type CaptureSubmitResult =
@@ -39,6 +44,12 @@ export type CaptureHandlers = {
     confirmation?: ConversationalCaptureConfirmation;
     ok?: true;
   }>;
+  changeReminder?: (input: {
+    target: ConversationalCaptureChangeTarget;
+    clientInstallationId: string;
+    timeZone: string;
+    schedule: GeneralActionReminderChoice;
+  }) => Promise<{ reminderSchedule: string }>;
   submit: (input: CaptureSubmitInput) => Promise<CaptureSubmitResult>;
   undo: (input: { target: ConversationalCaptureUndoTarget }) => Promise<unknown>;
 };
@@ -223,6 +234,8 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
         interactionId: interactionId.current,
         inputMode: state.inputMode,
         originalText,
+        clientInstallationId: getReminderInstallationId(window.localStorage),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       applySubmitResult(result, originalText);
       draft.clear();
@@ -486,6 +499,12 @@ function CaptureOutcomeDetails({ outcome }: { outcome: ConversationalCaptureOutc
           <dd>{presentation.cadence}</dd>
         </>
       ) : null}
+      {presentation.reminderSchedule ? (
+        <>
+          <dt className="text-muted-foreground">Reminder schedule</dt>
+          <dd>{presentation.reminderSchedule}</dd>
+        </>
+      ) : null}
     </dl>
   );
 }
@@ -505,36 +524,47 @@ function CaptureConfirmationControls({
     <>
       {state.failure === "undo" ? <MobileFailureState kind="capture_undo" onRetry={undo} /> : null}
       {outcomes.map((outcome, index) => (
-        <div className="flex items-center gap-2" key={captureOutcomePresentation(outcome).key}>
-          {outcomes.length > 1 ? (
-            <span className="mr-auto text-muted-foreground text-sm">{outcome.destination}</span>
-          ) : null}
-          <Button
-            disabled={!handlers?.change || state.pending}
-            onClick={() =>
-              update({
-                activeOutcomeIndex: index,
-                editText: outcomes.length > 1 ? "" : state.editText,
-                editing: true,
-                failure: null,
-              })
-            }
-            type="button"
-            variant="outline"
-          >
-            Change
-          </Button>
-          {"undo" in outcome ? (
+        <div className="flex flex-col gap-2" key={captureOutcomePresentation(outcome).key}>
+          <div className="flex items-center gap-2">
+            {outcomes.length > 1 ? (
+              <span className="mr-auto text-muted-foreground text-sm">{outcome.destination}</span>
+            ) : null}
             <Button
-              disabled={
-                !handlers?.undo || state.pending || state.undoneOutcomeIndexes.includes(index)
+              disabled={!handlers?.change || state.pending}
+              onClick={() =>
+                update({
+                  activeOutcomeIndex: index,
+                  editText: outcomes.length > 1 ? "" : state.editText,
+                  editing: true,
+                  failure: null,
+                })
               }
-              onClick={() => void undo(index)}
               type="button"
-              variant="ghost"
+              variant="outline"
             >
-              {state.undoneOutcomeIndexes.includes(index) ? "Undone" : "Undo"}
+              Change
             </Button>
+            {"undo" in outcome ? (
+              <Button
+                disabled={
+                  !handlers?.undo || state.pending || state.undoneOutcomeIndexes.includes(index)
+                }
+                onClick={() => void undo(index)}
+                type="button"
+                variant="ghost"
+              >
+                {state.undoneOutcomeIndexes.includes(index) ? "Undone" : "Undo"}
+              </Button>
+            ) : null}
+          </div>
+          {captureOutcomePresentation(outcome).reminderSchedule ? (
+            <CaptureReminderScheduleChange
+              changeReminder={handlers?.changeReminder}
+              confirmation={confirmation}
+              index={index}
+              onConfirmationChange={(next) => controller.update({ confirmation: next })}
+              outcome={outcome}
+            />
           ) : null}
         </div>
       ))}

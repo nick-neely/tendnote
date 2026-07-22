@@ -1,6 +1,7 @@
 import type { SavedItemWithContext } from "@tendnote/db/queries/saved-items";
 import type { PrivacyScope, SavedItemKind } from "@tendnote/domain";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
+import type { ReminderScheduleView } from "@/lib/reminder-schedule-view";
 
 export type SavedItemView = {
   id: string;
@@ -17,6 +18,7 @@ export type SavedItemView = {
   visibilityLabel: string;
   sourceRecordId: string;
   resolutionReason: string | null;
+  reminderSchedule?: ReminderScheduleView | null;
   outcomes: Array<{
     destinationKind: "general_action";
     destinationRecordId: string;
@@ -30,7 +32,11 @@ const KIND_LABELS: Record<SavedItemKind, string> = {
   open_question: "Open question",
 };
 
-export function toSavedItemView(item: SavedItemWithContext, now = new Date()): SavedItemView {
+export function toSavedItemView(
+  item: SavedItemWithContext,
+  now = new Date(),
+  reminderSchedule: ReminderScheduleView | null = null,
+): SavedItemView {
   return {
     id: item.id,
     kind: item.kind,
@@ -55,6 +61,7 @@ export function toSavedItemView(item: SavedItemWithContext, now = new Date()): S
         : (item.householdName ?? visibilityLabelForScope(item.scope)),
     sourceRecordId: item.sourceRecordId,
     resolutionReason: item.resolutionReason,
+    reminderSchedule,
     outcomes: item.outcomes.map((outcome) => ({
       destinationKind: outcome.destinationKind,
       destinationRecordId: outcome.destinationRecordId,

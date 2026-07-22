@@ -5,7 +5,7 @@ import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { createGeneralActionAction } from "@/app/actions/general-actions";
-import { saveGeneralActionReminderAction } from "@/app/actions/reminders";
+import { saveReminderAction } from "@/app/actions/reminders";
 import { AreaSelect } from "@/components/general-action-area-select";
 import {
   ActionAssetHintsField,
@@ -116,6 +116,7 @@ export function CreateActionForm({
   const [pastLeadRecovery, setPastLeadRecovery] = useState<{
     actionId: string;
     clientInstallationId: string;
+    recordKind: "general_action" | "routine";
     label: string;
   } | null>(null);
   const [recoveryPending, setRecoveryPending] = useState(false);
@@ -168,14 +169,18 @@ export function CreateActionForm({
     });
     submit(
       () => createGeneralActionAction(payload),
+      // One post-create transaction coordinates optional Reminder recovery and opt-in without
+      // moving product policy out of the shared server operations; focused DOM tests cover it.
+      // fallow-ignore-next-line complexity
       async (view) => {
         onCreate(view);
         let reminderError: string | null = null;
-        if (reminderEnabled && dueDate && !recurrence) {
+        if (reminderEnabled && dueDate) {
           try {
             const clientInstallationId = getReminderInstallationId(window.localStorage);
-            const result = await saveGeneralActionReminderAction({
-              generalActionId: view.id,
+            const result = await saveReminderAction({
+              recordKind: recurrence ? "routine" : "general_action",
+              recordId: view.id,
               clientInstallationId,
               timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
               schedule: reminderChoice,
@@ -184,6 +189,7 @@ export function CreateActionForm({
               setPastLeadRecovery({
                 actionId: view.id,
                 clientInstallationId,
+                recordKind: recurrence ? "routine" : "general_action",
                 label: result.nextValidChoice.label,
               });
             } else {
@@ -262,7 +268,12 @@ export function CreateActionForm({
               onLinksChange={setLinks}
               onNotesChange={setNotes}
               onPersonIdsChange={setPersonIds}
-              onRecurrenceChange={setRecurrence}
+              onRecurrenceChange={(value) => {
+                setRecurrence(value);
+                if (value && reminderChoice.kind === "exact") {
+                  setReminderChoice({ kind: "relative", leadMinutes: 0 });
+                }
+              }}
               onReminderChoiceChange={setReminderChoice}
               onReminderEnabledChange={setReminderEnabled}
               onSelectedUserIdsChange={setSelectedUserIds}
@@ -299,8 +310,9 @@ export function CreateActionForm({
             onClick={async () => {
               setRecoveryPending(true);
               try {
-                const result = await saveGeneralActionReminderAction({
-                  generalActionId: pastLeadRecovery.actionId,
+                const result = await saveReminderAction({
+                  recordKind: pastLeadRecovery.recordKind,
+                  recordId: pastLeadRecovery.actionId,
                   clientInstallationId: pastLeadRecovery.clientInstallationId,
                   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                   schedule: { kind: "relative", leadMinutes: 0 },
@@ -407,12 +419,13 @@ function CreateActionDetails({
           />
         </div>
         <RecurrenceField onChange={onRecurrenceChange} value={recurrence} />
-        {dueDate && !recurrence ? (
+        {dueDate ? (
           <GeneralActionReminderField
             choice={reminderChoice}
             enabled={reminderEnabled}
             onChoiceChange={onReminderChoiceChange}
             onEnabledChange={onReminderEnabledChange}
+            relativeOnly={Boolean(recurrence)}
           />
         ) : null}
         <div className="flex flex-col gap-1.5">

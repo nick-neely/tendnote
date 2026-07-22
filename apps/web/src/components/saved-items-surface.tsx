@@ -4,6 +4,7 @@ import type { SavedItemKind } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import {
   ArchiveIcon,
+  BellIcon,
   BookmarkIcon,
   CircleHelpIcon,
   LinkIcon,
@@ -16,12 +17,15 @@ import {
   archiveSavedItemAction,
   createSavedItemAction,
   deleteUniqueSavedItemSourceAction,
-  editSavedItemAction,
   getSavedItemSourceDeletionImpactAction,
   promoteSavedItemToGeneralActionAction,
   reopenSavedItemAction,
   resolveSavedItemAction,
 } from "@/app/actions/saved-items";
+import {
+  GeneralActionReminderField,
+  ReminderOptInInvitation,
+} from "@/components/general-action-reminder";
 import { ActionScopeChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
@@ -29,11 +33,13 @@ import {
   type ShareableActionMember,
 } from "@/components/general-action-visibility-field";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { SavedItemEditForm } from "@/components/saved-item-edit-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { SavedItemView } from "@/lib/saved-item-view";
 import { useMutationSubmit } from "@/lib/use-mutation-submit";
+import { useReminderSchedule } from "@/lib/use-reminder-schedule";
 
 const KIND_OPTIONS: Array<{ value: SavedItemKind; label: string }> = [
   { value: "note", label: "Note" },
@@ -115,6 +121,15 @@ function CreateSavedItemForm({
   shareableMembers: ShareableActionMember[];
 }) {
   const [draft, setDraft] = useState(EMPTY_SAVED_ITEM_DRAFT);
+  const {
+    choice: reminderChoice,
+    enabled: reminderEnabled,
+    reset: resetReminder,
+    save: saveSchedule,
+    setChoice: setReminderChoice,
+    setEnabled: setReminderEnabled,
+  } = useReminderSchedule();
+  const [optInInstallationId, setOptInInstallationId] = useState<string | null>(null);
   const { error, setError, pending, submit } = useMutationSubmit(GENERIC_ERROR);
   const { kind, title, content, url, bringBackAt, showSharing, visibilityChoice, selectedUserIds } =
     draft;
@@ -123,6 +138,7 @@ function CreateSavedItemForm({
 
   function reset() {
     setDraft(EMPTY_SAVED_ITEM_DRAFT);
+    resetReminder();
     setError(null);
   }
 
@@ -141,50 +157,86 @@ function CreateSavedItemForm({
   };
 
   return (
-    <form
-      className="flex flex-col gap-3 rounded-xl border bg-surface px-4 py-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!title.trim() || selectedMembersRequired) return;
-        submit(
-          () => createSavedItemAction(compactCreateInput(actionInput)),
-          (item) => {
-            onCreate(item);
-            reset();
-          },
-        );
-      }}
-    >
-      <CreateSavedItemFields
-        content={content}
-        kind={kind}
-        onContentChange={(value) => updateDraft({ content: value })}
-        onKindChange={(value) => {
-          updateDraft({ kind: value, ...(value === "link" ? {} : { url: "" }) });
+    <div className="flex flex-col gap-2.5">
+      <form
+        className="flex flex-col gap-3 rounded-xl border bg-surface px-4 py-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!title.trim() || selectedMembersRequired) return;
+          submit(
+            () => createSavedItemAction(compactCreateInput(actionInput)),
+            async (item) => {
+              let view = item;
+              if (reminderEnabled && bringBackAt) {
+                const reminder = await saveSchedule("saved_item", item.id, "instant");
+                if (reminder.nextValidChoice) {
+                  onCreate(item);
+                  reset();
+                  setError(
+                    `The Saved Item was saved, but that alert time has passed. Choose ${reminder.nextValidChoice.label} when you edit its Reminder schedule.`,
+                  );
+                  return;
+                }
+                view = {
+                  ...item,
+                  reminderSchedule: reminder.scheduleView,
+                };
+                if (reminder.optIn.state === "offer") {
+                  setOptInInstallationId(reminder.clientInstallationId);
+                }
+              }
+              onCreate(view);
+              reset();
+            },
+          );
         }}
-        onTitleChange={(value) => updateDraft({ title: value })}
-        onUrlChange={(value) => updateDraft({ url: value })}
-        title={title}
-        url={url}
-      />
-      <CreateSavedItemFooter
-        bringBackAt={bringBackAt}
-        disabled={pending || !title.trim() || selectedMembersRequired}
-        onBringBackAtChange={(value) => updateDraft({ bringBackAt: value })}
-        pending={pending}
-      />
-      <CreateSavedItemSharing
-        members={shareableMembers}
-        onChoiceChange={(value) => updateDraft({ visibilityChoice: value })}
-        onSelectedChange={(value) => updateDraft({ selectedUserIds: value })}
-        onToggle={() => updateDraft({ showSharing: !showSharing })}
-        selectedUserIds={selectedUserIds}
-        show={showSharing}
-        value={visibilityChoice}
-      />
+      >
+        <CreateSavedItemFields
+          content={content}
+          kind={kind}
+          onContentChange={(value) => updateDraft({ content: value })}
+          onKindChange={(value) => {
+            updateDraft({ kind: value, ...(value === "link" ? {} : { url: "" }) });
+          }}
+          onTitleChange={(value) => updateDraft({ title: value })}
+          onUrlChange={(value) => updateDraft({ url: value })}
+          title={title}
+          url={url}
+        />
+        <CreateSavedItemFooter
+          bringBackAt={bringBackAt}
+          disabled={pending || !title.trim() || selectedMembersRequired}
+          onBringBackAtChange={(value) => updateDraft({ bringBackAt: value })}
+          pending={pending}
+        />
+        {bringBackAt ? (
+          <GeneralActionReminderField
+            choice={reminderChoice}
+            enabled={reminderEnabled}
+            instantRelative
+            onChoiceChange={setReminderChoice}
+            onEnabledChange={setReminderEnabled}
+          />
+        ) : null}
+        <CreateSavedItemSharing
+          members={shareableMembers}
+          onChoiceChange={(value) => updateDraft({ visibilityChoice: value })}
+          onSelectedChange={(value) => updateDraft({ selectedUserIds: value })}
+          onToggle={() => updateDraft({ showSharing: !showSharing })}
+          selectedUserIds={selectedUserIds}
+          show={showSharing}
+          value={visibilityChoice}
+        />
 
-      {error ? <ErrorText message={error} /> : null}
-    </form>
+        {error ? <ErrorText message={error} /> : null}
+      </form>
+      {optInInstallationId ? (
+        <ReminderOptInInvitation
+          clientInstallationId={optInInstallationId}
+          onDismiss={() => setOptInInstallationId(null)}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -456,6 +508,12 @@ function SavedItemSummary({ item }: { item: SavedItemView }) {
         ) : null}
         <div className="mt-1 flex flex-wrap gap-x-2 text-[length:var(--text-caption)] text-muted-foreground">
           {item.bringBackLabel ? <span>{item.bringBackLabel}</span> : null}
+          {item.reminderSchedule ? (
+            <span className="inline-flex items-center gap-1">
+              <BellIcon className="size-3" />
+              {item.reminderSchedule.label}
+            </span>
+          ) : null}
           {item.resolutionReason ? <span>Resolved · {item.resolutionReason}</span> : null}
         </div>
       </div>
@@ -593,61 +651,6 @@ function SourceDeletionControls({
       </Button>
       {error ? <ErrorText message={error} /> : null}
     </div>
-  );
-}
-
-function SavedItemEditForm({
-  item,
-  onCancel,
-  onSave,
-  pending,
-}: {
-  item: SavedItemView;
-  onCancel: () => void;
-  onSave: (run: () => ReturnType<typeof editSavedItemAction>) => void;
-  pending: boolean;
-}) {
-  const [title, setTitle] = useState(item.title);
-  const [content, setContent] = useState(item.content ?? "");
-  const [url, setUrl] = useState(item.url ?? "");
-  return (
-    <form
-      className="ml-7 flex flex-col gap-2 border-t pt-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSave(() =>
-          editSavedItemAction({
-            savedItemId: item.id,
-            title: title.trim(),
-            content: content.trim() || null,
-            ...(item.kind === "link" ? { url: url.trim() || null } : {}),
-          }),
-        );
-      }}
-    >
-      <Input
-        aria-label="Edit title"
-        onChange={(event) => setTitle(event.target.value)}
-        value={title}
-      />
-      {item.kind === "link" ? (
-        <Input aria-label="Edit URL" onChange={(event) => setUrl(event.target.value)} value={url} />
-      ) : null}
-      <Textarea
-        aria-label="Edit details"
-        onChange={(event) => setContent(event.target.value)}
-        rows={2}
-        value={content}
-      />
-      <div className="flex gap-2">
-        <Button disabled={pending || !title.trim()} size="sm" type="submit">
-          {pending ? "Saving…" : "Save changes"}
-        </Button>
-        <Button onClick={onCancel} size="sm" type="button" variant="ghost">
-          Cancel
-        </Button>
-      </div>
-    </form>
   );
 }
 

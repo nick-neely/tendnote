@@ -19,6 +19,7 @@ import {
   resumeGeneralAction,
   setGeneralActionPeople,
   setGeneralActionVisibility,
+  skipGeneralActionOccurrence,
 } from "@tendnote/db/queries/general-actions";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
@@ -287,6 +288,12 @@ export async function completeGeneralActionAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
   return transitionAction(input.generalActionId, completeGeneralAction);
+}
+
+export async function skipGeneralActionOccurrenceAction(input: {
+  generalActionId: string;
+}): Promise<GeneralActionMutationResult> {
+  return transitionAction(input.generalActionId, skipGeneralActionOccurrence);
 }
 
 export async function dismissGeneralActionAction(input: {
