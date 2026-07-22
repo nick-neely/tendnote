@@ -80,6 +80,11 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
       };
     },
 
+    /** Return only durable admitted principals for owner-scoped background work. */
+    async listAdmittedOwnerUserIds(): Promise<string[]> {
+      return (await store.listByStatus("granted")).map((profile) => profile.userId);
+    },
+
     /**
      * Durably grant access to a user, recording where the grant came from. Used by
      * the bootstrap path, manual grants, and (later) beta-flag rollout. Upserts so

@@ -1,15 +1,17 @@
 # @tendnote/web
 
-Next.js App Router workspace for Tendnote: the dashboard, people, actions, and assets surfaces, Better Auth with a private-beta gate, the same-origin Eve chat mount, integration settings, and the background-job queue consumers.
+Next.js App Router workspace for Tendnote: the mobile-first Today, Capture, Search, people, actions, Saved Items, and assets surfaces; the installable PWA and reminder settings; Better Auth with a private-beta gate; the same-origin Eve chat mount; integrations; and background-job queue consumers.
 
 ## Routes
 
 | Path | Purpose |
 | --- | --- |
-| `/` | Dashboard — assistant panel beside a tabbed rail (review queue, briefs, follow-ups, people) |
+| `/` | Today — a bounded cross-record shortlist, review work, compact Eve composer, and primary mobile navigation |
 | `/people`, `/people/[personId]` | People list and person profile |
-| `/actions`, `/actions/today` | General Actions, Routines, and Areas; the focused Today view |
+| `/actions`, `/actions/today` | General Actions, Routines, Areas, and the focused action-only view |
+| `/saved-items` | Notes, links, and open questions with lifecycle, bring-back, source, and promotion controls |
 | `/assets`, `/assets/[assetId]` | Assets list and Asset profile (memories, evidence, links, actions) |
+| `/reminders/open` | Authenticated notification deep-link resolver; re-authorizes the record without mutating it |
 | `/account` | Identity, access status, and provider connections |
 | `/account/contacts/import` | Google Contacts import preview and confirmation |
 | `/account/discord` | Discord install status and per-workflow delivery targets |
@@ -18,7 +20,7 @@ Next.js App Router workspace for Tendnote: the dashboard, people, actions, and a
 ### API routes
 
 - `api/auth/[...all]` — Better Auth handler.
-- `api/queue/extraction`, `api/queue/embedding` — Vercel Queue consumers.
+- `api/queue/extraction`, `api/queue/embedding`, `api/queue/reminder` — Vercel Queue consumers.
 - `api/cron/background-jobs` — recovery cron for stalled deliveries.
 - `api/integrations/discord/install` and `install/callback` — bot-install OAuth with a session-bound signed `state` and a double-submit CSRF nonce.
 - `api/asset-evidence/[evidenceId]/file` — gated evidence byte serving; re-checks scope per request and returns 404 on every denial.
@@ -27,15 +29,21 @@ Next.js App Router workspace for Tendnote: the dashboard, people, actions, and a
 
 ## Layout
 
-- `src/app/actions/*.ts` — owner-scoped server actions (memories, source records, logged notes, follow-ups, suggested follow-ups, briefs, drafts, general actions and areas, suggested general actions, assets, asset review/evidence/links/action-proposals, contact import, Gmail drafts, integrations). Note that `src/app/actions/` is both the server-action directory and the `/actions` route.
-- `src/components` — dashboard rail and review queue, person detail, action and asset surfaces, chat review cards, draft surfaces, account provider-connection and Discord delivery sections, auth forms.
+- `src/app/actions/*.ts` — thin server adapters over owner-scoped product functions (conversational Capture, Today, Global Recall, memories, source records, follow-ups, Saved Items, Reminder Schedules and installations, briefs, drafts, general actions and areas, assets, review/evidence/links/action proposals, contact import, Gmail drafts, integrations). Note that `src/app/actions/` is both the server-action directory and the `/actions` route.
+- `src/components` — Today, mobile shell and Capture, Search, review queue, person detail, action/Saved Item/asset surfaces, reminder opt-in and installation settings, chat result cards, drafts, account integrations, and auth forms.
 - `src/components/ui` — shadcn/ui components. `src/components/ai-elements` — AI Elements chat primitives.
 - `src/lib/auth` — Better Auth web setup over the shared `@tendnote/auth` baseline.
 - `src/lib/access` — Private Beta Access resolution.
 - `src/lib/integrations` — provider connections, Google Calendar connect/preview/disconnect, Gmail draft externalization, Contacts import preview, and the Discord connection/install/disconnect modules.
 - `src/lib/rate-limit` — the Redis-backed store and guards over `@tendnote/rate-limit`.
-- `src/lib/background-jobs` — queue runtime and recovery. `src/lib/cache` — request-scoped caching.
+- `src/lib/background-jobs` — queue runtime, reminder Web Push delivery, and recovery. `src/lib/cache` — request-scoped caching.
 - `src/lib/eve` — persisted Eve tool-result rendering and hosted-boundary policy coverage.
+
+## PWA and reminders
+
+Production registers `/sw.js` and serves a standalone web app manifest with iOS and maskable icons. The installed shell caches only versioned static assets and an honest offline page; Today, Eve, authentication, and every durable read or write still require a connection.
+
+Installing the PWA does not require environment variables. Web Push does: configure one stable VAPID keypair through `NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY` and `WEB_PUSH_VAPID_PRIVATE_KEY`, plus a `WEB_PUSH_VAPID_SUBJECT` contact URI. See [`.env.example`](.env.example). On iPhone and iPad, add Tendnote to the Home Screen first, launch it there, then use the explicit **Enable reminders** action; a browser tab never requests notification permission on render.
 
 ## Eve chat
 

@@ -6,7 +6,7 @@ Tendnote is a lean pnpm/Turborepo workspace. Two apps sit on top of five shared 
 
 | Workspace | Responsibility |
 | --- | --- |
-| `apps/web` | Next.js App Router UI, Better Auth routes and auth pages, the private-beta access gate, the dashboard/people/actions/assets surfaces, integration settings, background-job queue consumers, and the recovery cron |
+| `apps/web` | Next.js App Router UI, Better Auth routes and auth pages, the private-beta access gate, Today/Capture/Search and record surfaces, the PWA shell and reminder settings, integrations, background-job queue consumers, and the recovery cron |
 | `apps/agent` | Eve — instructions, tools, subagents, skills, the `eve` and `discord` channels, and the scheduled-workflow dispatcher. See [`apps/agent/README.md`](../apps/agent/README.md) |
 | `packages/db` | Drizzle schema and migrations, Postgres/Neon clients, owner-scoped queries, background-job stores, and seed data |
 | `packages/domain` | Shared Zod schemas and TypeScript domain types |
@@ -34,22 +34,34 @@ apps/agent ─┘
 
 ## Data model at a glance
 
-Tendnote stores three kinds of subject — **people**, **assets**, and **general actions** — plus the context attached to them.
+Tendnote stores three rich subject families — **people**, **assets**, and **general actions** — plus Saved Items and the context attached to those records.
 
 - **Source records** are logged raw context. **Memories** are approved durable facts. Extraction turns the former into suggestions for the latter.
 - **Follow-ups** are reminders to reconnect with a *person*. **General Actions** are durable to-dos for the *owner*; a Routine is a General Action with a simple cadence, and Areas group them.
+- **Saved Items** are the explicit fallback for notes, links, and open questions that do not belong in a richer supported family. They can carry a bring-back date or be promoted to a General Action without losing provenance.
 - **Assets** carry typed asset memories, evidence files, links to people and actions, and rebuildable snapshots (ADR 0180, 0181).
+- **Reminder Schedules** describe one owner-chosen alert rule or instant for an eligible record. **Reminder Installations** hold one authenticated browser/PWA subscription and its device-scoped preview choice; neither is the source record itself.
 - **Context snapshots** are rebuildable caches, never truth.
 
 Every record carries an owner and a visibility scope. An asset's scope is a ceiling for its child records (ADR 0179), and assets may link people without owning them (ADR 0178).
+
+## Capture, Today, and Global Recall
+
+Phase Seven's web and Eve surfaces are thin adapters over the same owner-scoped product functions in `@tendnote/db`:
+
+- **Global Capture** classifies an explicit request into a supported destination — memory, Follow-Up, General Action, Routine, or Saved Item — and records outcome references for targeted correction and undo. Inferred facts or actions remain suggestions for review.
+- **Today** loads bounded candidates across relationships, Actions, Routines, Saved Items, review work, and fresh Calendar context. Deterministic eligibility, exclusions, caps, and fallback ranking remain authoritative; optional model ranking may reorder only the eligible set.
+- **Global Recall** composes exact and semantic relationship context, Actions, Saved Items, Assets, and bounded Calendar results into one discriminated result union. Exact results precede Related results, and every item carries grounding plus a canonical deep link.
+
+These functions apply owner, visibility, sensitivity, lifecycle, and authorization filters before ranking. The mobile UI and Eve therefore cannot widen one another's access or invent a write outside the shared contract.
 
 ## Retrieval and background jobs
 
 Tendnote retrieves context in layers, all behind owner-scoped query helpers:
 
 1. **Snapshot-backed context** — precomputed person and asset context.
-2. **Exact Recall** — Postgres full-text search over canonical records.
-3. **Semantic retrieval** — pgvector over approved memories, eligible logged source records, and General Actions.
+2. **Global/Exact Recall** — Postgres full-text search and family-specific exact retrieval over canonical records.
+3. **Semantic retrieval** — pgvector over approved memories, eligible logged source records, General Actions, and eligible Saved Items.
 4. **Asset search** — unified exact-text, exact-structured-value, and fuzzy matching (ADR 0187).
 
 Hard filters — owner, scope, sensitivity, memory status — are applied **before** any ranking, not after.
@@ -60,9 +72,17 @@ Suggested-memory extraction, action extraction, and semantic embeddings run as P
 
 Both apps publish outbox deliveries through one shared owner-scoped `publishBackgroundJobDelivery` in `packages/db` (ADR 0194). The queue transport is injected, so the data layer stays provider-agnostic and never imports the queue provider; the rate-limit-aware consumers live in `apps/web`. See [`background-job-delivery.md`](background-job-delivery.md) for the production foundation, recovery path, and optional live smoke test.
 
+## PWA and reminder delivery
+
+The web app serves a standalone manifest and registers a production service worker. The PWA is deliberately online-required: it caches versioned shell assets and a truthful offline fallback, while Today, Eve, authentication, and every durable read or write remain network-authoritative. Unsynced composer drafts are short-lived local recovery state, not an offline mutation queue.
+
+For an eligible Follow-Up, one-time General Action, Routine occurrence, or Saved Item bring-back, the product materializes at most one delivery intent from its Reminder Schedule. The durable job and outbox row are committed before publication to the `tendnote-reminder-push-v1` Vercel Queue topic. The web-owned consumer reloads the record, installation, scope, lifecycle, and preview policy before sending through the injected Web Push adapter; stale or ineligible work terminates without a notification.
+
+One owner may opt in multiple Reminder Installations. Delivery fans out independently to each active subscription, with isolated retries and revocation. The VAPID public key is a build-time browser value; the matching private key and subject stay server-side. The recovery cron republishes due outbox work, while notification clicks return through an authenticated same-origin resolver and never mutate the target record.
+
 ## Scheduled workflows
 
-A single static Eve dispatcher schedule (`agent/schedules/brief-dispatcher.ts`) claims due Tendnote-owned schedule rows and calls shared owner-scoped generators directly, rather than starting a chat session per workflow (ADR 0066). It dispatches:
+A single static Eve dispatcher schedule (`agent/schedules/brief-dispatcher.ts`) resolves hosted owners from durable granted Private Beta Access profiles, claims due Tendnote-owned schedule rows, and calls shared owner-scoped generators directly rather than starting a chat session per workflow (ADR 0066). The local `demo-user` fallback is never eligible in hosted environments. It dispatches:
 
 | Workflow | What it produces |
 | --- | --- |
@@ -83,7 +103,7 @@ Eve is a filesystem agent mounted into the web app, not a separate product surfa
 
 **Cleanup Preview** is a sandbox: it parses messy pasted text, CSV, or vCard input into review-only candidates and writes nothing.
 
-Eve sessions provide short-term multi-turn continuity; durable product state stays in source records, memories, actions, and assets (ADR 0029, 0030).
+Eve sessions provide short-term multi-turn continuity; durable product state stays in source records, memories, actions, Saved Items, and assets (ADR 0029, 0030).
 
 ## Web chat to Eve
 
@@ -137,4 +157,4 @@ Household *management* is not yet a product surface — there is no route or ser
 
 ## Rate limiting
 
-`@tendnote/rate-limit` defines cost categories rather than per-route limits: `eve-ingress` (30/60s), `server-action` (60/60s), `llm-extraction` (20/60s), `embedding` (60/60s), and `provider-call` (60/60s). The store is pluggable — Redis in the web app, a fake in tests — so limits are testable without infrastructure.
+`@tendnote/rate-limit` defines cost categories rather than per-route limits: `eve-ingress` (30/60s), `server-action` (60/60s), `llm-extraction` (20/60s), `embedding` (60/60s), `provider-call` (60/60s), and `push-delivery` (120/60s). The store is pluggable — Redis in the web app, a fake in tests — so limits are testable without infrastructure.

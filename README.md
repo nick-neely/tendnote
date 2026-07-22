@@ -6,6 +6,14 @@ It is not a sales CRM. There are no pipelines, no lead scores, and no autonomous
 
 ## What it does
 
+### Capture, Today, and recall
+
+- **Capture from anywhere** with one mobile-first composer. Explicit notes, links, open questions, Actions, Routines, Follow-Ups, and memories go to their supported record family; inferred facts remain suggestions for review.
+- **Start with Today**, a calm, bounded shortlist across relationships, Actions, Routines, Saved Items, review work, and fresh Calendar context. Deterministic policy remains authoritative if Eve is unavailable.
+- **Search everything you can access** through one grounded result contract. Exact matches come before related matches, and every result links back to its canonical record and evidence.
+- **Keep the leftovers intentionally** as Saved Items: notes, links, and open questions that do not belong in a richer record family yet. Promote them to Actions when they become actionable.
+- **Install Tendnote as a PWA** for a standalone mobile shell. On an opted-in installation, explicit Reminder Schedules can deliver one privacy-gated alert for eligible records.
+
 ### People
 
 - **Capture** people, notes, and memories through the web app or by talking to Eve, the built-in assistant.
@@ -18,7 +26,7 @@ It is not a sales CRM. There are no pipelines, no lead scores, and no autonomous
 
 ### Actions and routines
 
-Durable to-dos for *yourself*, separate from person follow-ups. Create one-off Actions ("renew the passport"), Routines on a simple cadence ("replace the water filter every 6 months"), or unscheduled "someday" items. Group them into Areas, work them from a focused Today view, and let Eve propose grounded suggestions you review before anything becomes active.
+Durable to-dos for *yourself*, separate from person follow-ups. Create one-off Actions ("renew the passport"), Routines on a simple cadence ("replace the water filter every 6 months"), or unscheduled "someday" items. Group them into Areas, work them from Today, add one explicit alert when timing matters, and let Eve propose grounded suggestions you review before anything becomes active.
 
 ### Assets
 
@@ -61,7 +69,7 @@ A lean Turborepo with pnpm workspaces:
 
 | Workspace | What's in it |
 | --- | --- |
-| [`apps/web`](apps/web/README.md) | Next.js App Router UI — dashboard, people, actions, assets, account and integration settings, Better Auth, the private-beta gate, and the background-job queue consumers |
+| [`apps/web`](apps/web/README.md) | Next.js App Router UI — Today, Capture, Search, people, actions, Saved Items, assets, PWA and reminder settings, Better Auth, the private-beta gate, and background-job queue consumers |
 | [`apps/agent`](apps/agent/README.md) | Eve — tools, skills, subagents, the Discord channel, and the scheduled-workflow dispatcher. Mounted same-origin into the web app via `withEve()`, so the browser streams chat with no separate agent URL |
 | `packages/db` | Drizzle schema, migrations, and owner-scoped queries over Postgres with pgvector, plus the background-job stores |
 | `packages/domain` | Shared Zod schemas and domain types |

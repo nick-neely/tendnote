@@ -21,6 +21,7 @@ export type AccessProfilePatch = Partial<Pick<AccessProfile, "status" | "source"
  */
 export type AccessProfileStore = {
   getByUserId: (userId: string) => Promise<AccessProfile | null>;
+  listByStatus: (status: AccessProfile["status"]) => Promise<AccessProfile[]>;
   /** Unconditional insert; used to create an explicitly-granted profile. */
   create: (input: PersistAccessProfileInput) => Promise<AccessProfile>;
   /**
