@@ -19,7 +19,7 @@ const SOURCE_GROUNDING: Record<string, string> = {
   seed: "Sample context",
 };
 
-export function LedgerSection({
+function LedgerSection({
   title,
   description,
   id,

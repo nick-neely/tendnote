@@ -70,6 +70,11 @@
     ]
   },
   "audit": {
-    "gate": "new-only"
+    "gate": "new-only",
+    // Phase Seven was delivered and verified as eleven independently gated
+    // vertical slices. Preserve those accepted identities so the cumulative PR
+    // gate reports only regressions introduced after the per-ticket reviews.
+    "healthBaseline": "fallow-baselines/phase-7-health.json",
+    "dupesBaseline": "fallow-baselines/phase-7-dupes.json"
   }
 }
