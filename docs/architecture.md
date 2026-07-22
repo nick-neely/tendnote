@@ -74,11 +74,9 @@ Both apps publish outbox deliveries through one shared owner-scoped `publishBack
 
 ## PWA and reminder delivery
 
-The web app serves a standalone manifest and registers a production service worker. The PWA is deliberately online-required: it caches versioned shell assets and a truthful offline fallback, while Today, Eve, authentication, and every durable read or write remain network-authoritative. Unsynced composer drafts are short-lived local recovery state, not an offline mutation queue.
+The web app is an installable, online-required PWA. Its service worker caches versioned shell assets and an offline fallback; authenticated data and durable writes remain network-authoritative.
 
-For an eligible Follow-Up, one-time General Action, Routine occurrence, or Saved Item bring-back, the product materializes at most one delivery intent from its Reminder Schedule. The durable job and outbox row are committed before publication to the `tendnote-reminder-push-v1` Vercel Queue topic. The web-owned consumer reloads the record, installation, scope, lifecycle, and preview policy before sending through the injected Web Push adapter; stale or ineligible work terminates without a notification.
-
-One owner may opt in multiple Reminder Installations. Delivery fans out independently to each active subscription, with isolated retries and revocation. The VAPID public key is a build-time browser value; the matching private key and subject stay server-side. The recovery cron republishes due outbox work, while notification clicks return through an authenticated same-origin resolver and never mutate the target record.
+Eligible records create durable reminder jobs that publish through Vercel Queue. Before sending Web Push, the consumer rechecks the record, schedule, installation, and authorization; stale work is suppressed. Each opted-in installation receives an independent delivery. The VAPID private key stays server-side, and notification links re-authorize without mutating the record.
 
 ## Scheduled workflows
 

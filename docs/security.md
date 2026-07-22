@@ -81,13 +81,9 @@ Gmail draft creation is an *externalization* of an approved Tendnote draft, not 
 
 ## Reminder delivery and Web Push
 
-Reminder delivery is opt-in twice: the owner deliberately creates or accepts an eligible record with one Reminder Schedule, then enables notifications on a specific authenticated browser or installed PWA. Permission is requested only from the direct **Enable reminders** action. On iOS and iPadOS, a normal browser tab offers Home Screen installation guidance instead of requesting notification permission.
+Reminder delivery requires an explicit Reminder Schedule and opt-in on each authenticated browser or installed PWA. Permission is requested only from **Enable reminders**; on iOS and iPadOS, Tendnote first directs the owner to install it on the Home Screen.
 
-A Reminder Installation is an owner-scoped server record for one Push subscription, not a physical-device fingerprint. Push endpoints and subscription keys are treated as secrets. The VAPID private key stays server-only; only `NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY` is exposed to the browser. Sign-out and explicit disablement deactivate that installation, and one installation's failure or revocation never changes another.
-
-Before every send, the dispatcher reloads current owner scope, visibility, lifecycle, Reminder Schedule, installation consent, and preview policy. Completed, dismissed, archived, paused, deferred, rescheduled, revoked, or otherwise stale work is suppressed before the Web Push provider is called. One eligible occurrence fans out only to installations that opted in; record visibility alone never enrolls another person or device.
-
-Notifications use generic lock-screen copy by default. Detailed previews require an explicit installation-level choice and remain bounded by record sensitivity and proactive-visibility policy. A tap follows a same-origin canonical link and re-authorizes the record without mutating it. Provider acceptance is delivery telemetry, never proof that an operating system displayed the alert.
+Push subscriptions and keys are treated as secrets, and the VAPID private key stays server-only. Every send rechecks ownership, visibility, lifecycle, schedule, consent, and preview policy; stale work is suppressed. Notifications use generic copy unless that installation enables details. Sign-out or disablement deactivates the installation, and notification links re-authorize without mutating the record.
 
 ## Connected services
 
