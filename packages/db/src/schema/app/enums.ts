@@ -59,6 +59,7 @@ export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "source_record",
   "followup",
   "general_action",
+  "saved_item",
   // Phase 6 Asset Memory: Assets ride the same share rails as other scoped records (#197).
   "asset",
   // Asset Memories are independently scoped child records under an Asset (#198).
@@ -232,6 +233,7 @@ export const generalActionEventKind = pgEnum("general_action_event_kind", [
   "created",
   "edited",
   "completed",
+  "skipped",
   "reopened",
   "deferred",
   "dismissed",
@@ -243,6 +245,23 @@ export const generalActionEventKind = pgEnum("general_action_event_kind", [
   "promoted",
   "ignored",
 ]);
+
+export const savedItemKind = pgEnum("saved_item_kind", ["note", "link", "open_question"]);
+
+export const savedItemStatus = pgEnum("saved_item_status", ["active", "archived"]);
+
+export const savedItemEventKind = pgEnum("saved_item_event_kind", [
+  "created",
+  "edited",
+  "archived",
+  "reopened",
+  "resolved",
+  "promoted",
+  "visibility_changed",
+  "mutation_rejected",
+]);
+
+export const savedItemDestinationKind = pgEnum("saved_item_destination_kind", ["general_action"]);
 
 export const extractionJobStatus = pgEnum("extraction_job_status", [
   "pending",
@@ -262,6 +281,7 @@ export const semanticRecordKind = pgEnum("semantic_record_kind", [
   // retrieved through the typed Asset Search contract, not relationship retrieval (#204).
   "asset",
   "asset_memory",
+  "saved_item",
 ]);
 
 export const semanticTrustLevel = pgEnum("semantic_trust_level", [
@@ -273,6 +293,7 @@ export const semanticTrustLevel = pgEnum("semantic_trust_level", [
   // fact about that thing. Distinct registers so retrieval never mislabels either (#204).
   "asset_anchor",
   "asset_fact",
+  "saved_context",
 ]);
 
 export const embeddingJobStatus = pgEnum("embedding_job_status", [
@@ -287,6 +308,7 @@ export const backgroundJobKind = pgEnum("background_job_kind", [
   "extraction",
   "embedding",
   "action_extraction",
+  "reminder_push",
 ]);
 
 export const backgroundJobDeliveryStatus = pgEnum("background_job_delivery_status", [
@@ -294,6 +316,47 @@ export const backgroundJobDeliveryStatus = pgEnum("background_job_delivery_statu
   "published",
   "publish_failed",
   "abandoned",
+]);
+
+export const reminderScheduleKind = pgEnum("reminder_schedule_kind", ["exact", "relative"]);
+export const reminderRecordKind = pgEnum("reminder_record_kind", [
+  "general_action",
+  "follow_up",
+  "routine",
+  "saved_item",
+]);
+export const reminderOccurrenceStatus = pgEnum("reminder_occurrence_status", [
+  "pending_installation",
+  "pending",
+  "superseded",
+]);
+export const reminderOptInStatus = pgEnum("reminder_opt_in_status", [
+  "offered",
+  "postponed",
+  "denied",
+  "registered",
+  "disabled",
+]);
+export const reminderInstallationStatus = pgEnum("reminder_installation_status", [
+  "enabled",
+  "disabled",
+  "revoked",
+]);
+export const reminderPreviewMode = pgEnum("reminder_preview_mode", ["generic", "detailed"]);
+export const reminderDeliveryJobStatus = pgEnum("reminder_delivery_job_status", [
+  "pending",
+  "running",
+  "completed",
+  "skipped",
+  "failed",
+]);
+export const reminderDeliveryOutcome = pgEnum("reminder_delivery_outcome", [
+  "accepted",
+  "transient_failure",
+  "terminal_endpoint",
+  "suppressed_stale",
+  "suppressed_revoked",
+  "suppressed_ineligible",
 ]);
 
 export const providerConnectionStatus = pgEnum("provider_connection_status", [
@@ -402,3 +465,5 @@ export const scheduledArtifactKind = pgEnum("scheduled_artifact_kind", [
   "brief",
   "action_summary",
 ]);
+
+export const todayFeedbackKind = pgEnum("today_feedback_kind", ["later", "not_today"]);

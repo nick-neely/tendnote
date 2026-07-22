@@ -4,7 +4,10 @@
 
 - Tendnote is not a sales CRM. Avoid pipeline, deal, lead-scoring, or autonomous outreach framing.
 - External sends and external draft creation require explicit approval.
-- Do not add Gmail, Calendar, Contacts, or shared household behavior before the relevant phase has code-level privacy and approval boundaries.
+
+## Learned Workspace Preferences
+
+- Run builds and build-bearing scripts such as `pnpm verify` with elevated permissions; sandboxed runs can hang or time out instead of reporting the real result.
 
 ## Agent skills
 

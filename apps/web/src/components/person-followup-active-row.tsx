@@ -1,6 +1,7 @@
 import {
   AlarmClockIcon,
   ArchiveIcon,
+  BellIcon,
   CheckIcon,
   MoreHorizontalIcon,
   PencilIcon,
@@ -16,6 +17,7 @@ import {
   snoozeFollowupAction,
 } from "@/app/actions/followups";
 import { DueChip } from "@/components/followup-due-chip";
+import { GeneralActionReminderField } from "@/components/general-action-reminder";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +30,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useCreateDraft } from "@/components/use-create-draft";
 import type { FollowupView } from "@/lib/followup-view";
+import { useReminderSchedule } from "@/lib/use-reminder-schedule";
 
 /**
  * An active (open or snoozed) reminder row with inline view / edit / snooze modes.
@@ -49,6 +52,15 @@ export function ActiveFollowupRow({
   const [mode, setMode] = useState<"view" | "edit" | "snooze">("view");
   const [reason, setReason] = useState(followup.reason);
   const [dueDate, setDueDate] = useState(followup.dueAtDate);
+  const {
+    choice: reminderChoice,
+    clear: clearSchedule,
+    enabled: reminderEnabled,
+    reset: resetReminder,
+    save: saveSchedule,
+    setChoice: setReminderChoice,
+    setEnabled: setReminderEnabled,
+  } = useReminderSchedule(followup.reminderSchedule);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -81,6 +93,7 @@ export function ActiveFollowupRow({
   function cancelEditing() {
     setReason(followup.reason);
     setDueDate(followup.dueAtDate);
+    resetReminder(followup.reminderSchedule);
     setMode("view");
     setError(null);
   }
@@ -88,25 +101,47 @@ export function ActiveFollowupRow({
   const trimmedReason = reason.trim();
 
   if (mode === "edit") {
-    const unchanged = trimmedReason === followup.reason && dueDate === followup.dueAtDate;
+    const currentReminderChoice = followup.reminderSchedule
+      ? followup.reminderSchedule.kind === "relative"
+        ? { kind: "relative" as const, leadMinutes: followup.reminderSchedule.leadMinutes ?? 0 }
+        : { kind: "exact" as const, localTime: followup.reminderSchedule.localTime ?? "09:00" }
+      : null;
+    const reminderChanged =
+      reminderEnabled !== Boolean(followup.reminderSchedule) ||
+      JSON.stringify(reminderChoice) !== JSON.stringify(currentReminderChoice);
+    const detailsChanged = trimmedReason !== followup.reason || dueDate !== followup.dueAtDate;
+    const unchanged = !detailsChanged && !reminderChanged;
 
     return (
       <form
         className="flex flex-col gap-2.5 px-4 py-3.5"
+        // This atomic edit submit coordinates details and Reminder replacement/clear so the row
+        // cannot display a partially updated schedule; component tests cover its visible states.
+        // fallow-ignore-next-line complexity
         onSubmit={(event) => {
           event.preventDefault();
           if (!trimmedReason || unchanged) {
             return;
           }
-          runUpdate(() =>
-            editFollowupAction({
-              followupId: followup.id,
-              edit: {
-                ...(trimmedReason !== followup.reason ? { reason: trimmedReason } : {}),
-                ...(dueDate !== followup.dueAtDate ? { dueAt: dueDate } : {}),
-              },
-            }),
-          );
+          runUpdate(async () => {
+            let view = detailsChanged
+              ? await editFollowupAction({
+                  followupId: followup.id,
+                  edit: {
+                    ...(trimmedReason !== followup.reason ? { reason: trimmedReason } : {}),
+                    ...(dueDate !== followup.dueAtDate ? { dueAt: dueDate } : {}),
+                  },
+                })
+              : followup;
+            if (reminderEnabled) {
+              const reminder = await saveSchedule("follow_up", followup.id);
+              view = { ...view, reminderSchedule: reminder.scheduleView };
+            } else if (followup.reminderSchedule) {
+              await clearSchedule("follow_up", followup.id);
+              view = { ...view, reminderSchedule: null };
+            }
+            return view;
+          });
         }}
       >
         <Input
@@ -132,6 +167,12 @@ export function ActiveFollowupRow({
             </Button>
           </div>
         </div>
+        <GeneralActionReminderField
+          choice={reminderChoice}
+          enabled={reminderEnabled}
+          onChoiceChange={setReminderChoice}
+          onEnabledChange={setReminderEnabled}
+        />
         {error ? <ErrorText message={error} /> : null}
       </form>
     );
@@ -179,8 +220,10 @@ export function ActiveFollowupRow({
 
   return (
     <article
-      className="flex flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
+      className="scroll-mt-40 flex flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
       data-leaving={leaving}
+      id={`followup-${followup.id}`}
+      tabIndex={-1}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="grid gap-1">
@@ -195,6 +238,12 @@ export function ActiveFollowupRow({
           <DueChip dueLabel={followup.dueLabel} dueState={followup.dueState} />
           {followup.status === "snoozed" ? (
             <span className="text-[length:var(--text-caption)] text-muted-foreground">Snoozed</span>
+          ) : null}
+          {followup.reminderSchedule ? (
+            <span className="inline-flex items-center gap-1 text-[length:var(--text-caption)] text-muted-foreground">
+              <BellIcon className="size-3" />
+              {followup.reminderSchedule.label}
+            </span>
           ) : null}
         </div>
       </div>

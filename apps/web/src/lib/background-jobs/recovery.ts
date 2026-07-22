@@ -50,6 +50,10 @@ function jobValidity(job: { status: string } | null): JobValidity {
 }
 
 async function inspectDeliveryProcessorJob(delivery: BackgroundJobDelivery): Promise<JobValidity> {
+  // Reminder delivery has its own authoritative policy processor. It is intentionally
+  // allowed through this generic outbox recovery seam; that processor suppresses stale,
+  // revoked, completed, or otherwise ineligible work before contacting Web Push.
+  if (delivery.jobKind === "reminder_push") return "active";
   // Registry-driven: each family reports its own job state through the same seam, so
   // recovery no longer re-lists the per-family `getJob` functions by hand.
   return jobValidity(await BACKGROUND_JOB_FAMILIES[delivery.jobKind].getJob(delivery.jobId));

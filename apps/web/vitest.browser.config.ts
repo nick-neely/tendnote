@@ -27,8 +27,22 @@ export default defineConfig({
         replacement: fileURLToPath(new URL("./src/test/browser-actions.ts", import.meta.url)),
       },
       {
+        find: /^@\/app\/actions\/(conversational-capture|global-recall|reminders|today)$/,
+        replacement: fileURLToPath(new URL("./src/test/browser-actions.ts", import.meta.url)),
+      },
+      {
+        find: /^@\/app\/actions\/(asset-evidence|asset-review|memory-review)$/,
+        replacement: fileURLToPath(new URL("./src/test/browser-actions.ts", import.meta.url)),
+      },
+      {
         find: /^next\/link$/,
         replacement: fileURLToPath(new URL("./src/test/next-link-mock.tsx", import.meta.url)),
+      },
+      {
+        find: /^@\/components\/(asset-review-group-card|suggested-general-action-review)$/,
+        replacement: fileURLToPath(
+          new URL("./src/test/browser-review-components.tsx", import.meta.url),
+        ),
       },
       {
         find: /^next\/navigation$/,

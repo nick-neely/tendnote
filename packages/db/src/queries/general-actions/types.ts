@@ -183,6 +183,8 @@ export type GeneralActionActionInput = {
 };
 
 export type CreateActiveGeneralActionInput = {
+  /** Optional stable id for an idempotent cross-domain promotion. */
+  id?: string;
   ownerUserId: string;
   title: string;
   notes?: string | null;

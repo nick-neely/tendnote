@@ -21,6 +21,7 @@ import {
   type Memory,
   projectApprovedMemoryEmbeddedText,
   projectGeneralActionEmbeddedText,
+  projectSavedItemEmbeddedText,
   projectSourceRecordEmbeddedText,
   type RelationshipContextEmbedding,
   type SourceRecord,
@@ -31,6 +32,7 @@ import { applyJobUpdateFields } from "../extraction-job-queue/in-memory-queue";
 import type { HouseholdRecordShare } from "../households/types";
 import { canViewerSeeSeededHouseholdRecord } from "../households/visibility-memory";
 import { createInMemoryMemoryStore } from "../memories/in-memory-store";
+import { createInMemorySavedItemRecordStore } from "../saved-items/in-memory-store";
 import type { InMemoryEmbeddingStore } from "./types";
 
 const CLAIMABLE_STATUSES = new Set<EmbeddingJob["status"]>(claimableEmbeddingJobStatuses);
@@ -50,6 +52,8 @@ export function createInMemoryEmbeddingStore(
   const generalActionRecords = new Map<string, GeneralAction>();
   const assetRecords = new Map<string, Asset>();
   const assetMemoryRecords = new Map<string, AssetMemory>();
+  const savedItemStore = createInMemorySavedItemRecordStore();
+  const savedItemRecords = savedItemStore.records;
   const householdMemberships = seed.householdMemberships ?? [];
   const householdRecordShares = seed.householdRecordShares ?? [];
 
@@ -93,6 +97,7 @@ export function createInMemoryEmbeddingStore(
       return sourceRecord ? base.listSourceRecordPeople(input) : [];
     },
     async listUnresolvedMentions(input) {
+      if (!input.ownerUserId) return base.listUnresolvedMentions(input);
       const sourceRecord = await base.getSourceRecord({
         ownerUserId: input.ownerUserId,
         sourceRecordId: input.sourceRecordId,
@@ -211,6 +216,11 @@ export function createInMemoryEmbeddingStore(
 
       return asset ? { memory, asset } : null;
     },
+    createSavedItem: savedItemStore.createSavedItem,
+    async getSavedItemForEmbedding(input) {
+      const item = savedItemRecords.get(input.savedItemId);
+      return item?.ownerUserId === input.ownerUserId ? item : null;
+    },
     async upsertRelationshipContextEmbedding(values) {
       const parsed = createRelationshipContextEmbeddingSchema.parse(values);
       const existing = embeddings.get(embeddingKey(parsed));
@@ -240,6 +250,46 @@ export function createInMemoryEmbeddingStore(
         .sort(compareSemanticResults)
         .slice(0, input.limit)
         .map(({ tieBreakers: _tieBreakers, ...result }) => result);
+    },
+    async searchSavedItemsSemantic(input) {
+      return [...embeddings.values()]
+        .filter((embedding) => {
+          if (embedding.recordKind !== "saved_item") return false;
+          if (embedding.embeddingModel !== input.embeddingModel) return false;
+          if (embedding.embeddingVersion !== input.embeddingVersion) return false;
+          if (embedding.embeddingDimensions !== input.queryEmbedding.length) return false;
+          const item = savedItemRecords.get(embedding.recordId);
+          if (!item || item.ownerUserId !== embedding.ownerUserId) return false;
+          if (!input.includeArchived && item.status !== "active") return false;
+          if (!canViewerSeeRecord(input.ownerUserId, item, "saved_item")) return false;
+          if (embedding.trustLevel !== "saved_context") return false;
+          return projectSavedItemEmbeddedText(item) === embedding.embeddedText;
+        })
+        .flatMap((embedding) => {
+          const item = savedItemRecords.get(embedding.recordId);
+          return item
+            ? [
+                {
+                  savedItemId: item.id,
+                  title: item.title,
+                  snippet: embedding.embeddedText,
+                  similarity: cosineSimilarity(input.queryEmbedding, embedding.embedding),
+                  status: item.status,
+                  scope: item.scope,
+                  updatedAt: item.updatedAt,
+                },
+              ]
+            : [];
+        })
+        .filter((result) => result.similarity >= input.minimumSimilarity)
+        .sort(
+          (left, right) =>
+            right.similarity - left.similarity ||
+            right.updatedAt.getTime() - left.updatedAt.getTime() ||
+            left.savedItemId.localeCompare(right.savedItemId),
+        )
+        .slice(0, input.limit)
+        .map(({ updatedAt: _updatedAt, ...result }) => result);
     },
     async listEmbeddingJobs() {
       return [...jobs.values()];
@@ -308,7 +358,9 @@ export function createInMemoryEmbeddingStore(
     action: GeneralAction,
     input: SemanticSearchInput,
   ): boolean {
-    if (decideGeneralActionEmbedding(action).action === "skip") return false;
+    if (!input.includeArchived && decideGeneralActionEmbedding(action).action === "skip") {
+      return false;
+    }
     if (projectGeneralActionEmbeddedText(action) !== embedding.embeddedText) return false;
     return canRetrieveGeneralAction({
       status: action.status,
@@ -316,6 +368,7 @@ export function createInMemoryEmbeddingStore(
       callerUserId: input.ownerUserId,
       scopeVisible: canViewerSeeRecord(input.ownerUserId, action, "general_action"),
       includeReviewGated: Boolean(input.includeReviewGated),
+      includeArchived: input.includeArchived,
     });
   }
 
@@ -510,7 +563,7 @@ export function createInMemoryEmbeddingStore(
       householdId?: string | null;
       scope: "private" | "shared" | "household";
     },
-    recordKind: "memory" | "source_record" | "general_action",
+    recordKind: "memory" | "source_record" | "general_action" | "saved_item",
   ) {
     return canViewerSeeSeededHouseholdRecord({
       callerUserId,

@@ -23,6 +23,14 @@
           "topic": "tendnote-embedding-v1"
         }
       ]
+    },
+    "src/app/api/queue/reminder/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "tendnote-reminder-push-v1"
+        }
+      ]
     }
   }
 }

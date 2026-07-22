@@ -68,6 +68,16 @@ export const BACKGROUND_JOB_QUEUE_CONFIG = {
     rateLimitKey: "background-job:action-extraction",
     costCategory: "llm-extraction",
   },
+  reminder_push: {
+    topic: BACKGROUND_JOB_TOPICS.reminder_push,
+    consumerGroup: "tendnote-reminder-push-processor",
+    maxConcurrency: 4,
+    maxMessagesPerSecond: 4,
+    visibilityTimeoutSeconds: 60,
+    retryAfterSeconds: 60,
+    rateLimitKey: "background-job:reminder-push",
+    costCategory: "push-delivery",
+  },
 } satisfies Record<
   BackgroundJobKind,
   {
@@ -331,7 +341,8 @@ function parseBackgroundJobQueuePayload(payload: unknown): BackgroundJobQueuePay
     typeof candidate.jobId !== "string" ||
     (candidate.jobKind !== "extraction" &&
       candidate.jobKind !== "embedding" &&
-      candidate.jobKind !== "action_extraction")
+      candidate.jobKind !== "action_extraction" &&
+      candidate.jobKind !== "reminder_push")
   ) {
     return null;
   }

@@ -13,6 +13,7 @@ import { assetLabelForKind } from "@tendnote/domain/assets";
 import { describeRecurrence, startOfLocalDay } from "@tendnote/domain/general-actions";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { toDateInputValue } from "@/lib/followup-view";
+import { type ReminderScheduleView, toReminderScheduleView } from "@/lib/reminder-schedule-view";
 
 /** A linked person named for a calm chip — id + display name, nothing more (ADR 0155). */
 export type GeneralActionPersonView = { id: string; displayName: string };
@@ -90,6 +91,8 @@ export type GeneralActionView = {
   isRoutine: boolean;
   /** A calm cadence label ("Every 6 months"), or null for a one-time Action. */
   recurrenceLabel: string | null;
+  /** The one explicit alert schedule for this dated Action, separate from its due date. */
+  reminderSchedule?: ReminderScheduleView | null;
   /** Visibility scope (ADR 0153). Drives the calm scope indicator; private stays bare. */
   scope: PrivacyScope;
   /**
@@ -222,7 +225,17 @@ export function toGeneralActionView(
     deferUntil: Date | null;
     areaId: string | null;
   },
-  options: { now?: Date; callerUserId: string; linkedAssets?: GeneralActionLinkedAssetView[] },
+  options: {
+    now?: Date;
+    callerUserId: string;
+    linkedAssets?: GeneralActionLinkedAssetView[];
+    reminderSchedule?: {
+      kind: "exact" | "relative";
+      localTime: string | null;
+      leadMinutes: number | null;
+      timeZone: string;
+    } | null;
+  },
 ): GeneralActionView {
   const now = options.now ?? new Date();
   const { surfaceState, surfaceLabel } = resolveSurfacing(action, now);
@@ -239,6 +252,9 @@ export function toGeneralActionView(
     recurrence: action.recurrence,
     isRoutine: action.recurrence !== null,
     recurrenceLabel: action.recurrence ? describeRecurrence(action.recurrence) : null,
+    reminderSchedule: options.reminderSchedule
+      ? toReminderScheduleView(options.reminderSchedule)
+      : null,
     scope: action.scope,
     visibilityLabel: scopeAudienceLabel(action),
     owned: action.ownerUserId === options.callerUserId,
@@ -257,6 +273,7 @@ const EVENT_LABELS: Record<GeneralActionEventKind, string> = {
   created: "Created",
   edited: "Edited",
   completed: "Completed",
+  skipped: "Skipped",
   reopened: "Reopened",
   deferred: "Set aside",
   dismissed: "Dismissed",

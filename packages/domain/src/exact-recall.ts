@@ -26,6 +26,7 @@ export const searchRelationshipContextSchema = z.object({
   recordKinds: z.array(exactRecallRecordKindSchema).min(1).max(4).optional(),
   limit: z.number().int().min(1).max(20).default(8),
   directlyRequested: z.boolean().default(false),
+  includeArchived: z.boolean().default(false),
   // Owner-only review context: when true, the caller's own `suggested` General Actions
   // may be found by exact recall so a review surface can look up grounded proposals. A
   // suggested proposal stays owner-only regardless — never scope-visible to a member

@@ -352,9 +352,12 @@ describe("Asset Search — fuzzy intent", () => {
     );
 
     const results = await seam.searchAssets({ ownerUserId: OWNER, query: "RPWFE" });
+    const outcome = await seam.searchAssetsWithStatus({ ownerUserId: OWNER, query: "RPWFE" });
 
     // Exact and structured recall are the guarantee; the fuzzy tier is an enhancement.
     expect(results[0]?.recordId).toBe("memory-filter");
+    expect(outcome.results[0]?.recordId).toBe("memory-filter");
+    expect(outcome.semanticAvailable).toBe(false);
   });
 });
 

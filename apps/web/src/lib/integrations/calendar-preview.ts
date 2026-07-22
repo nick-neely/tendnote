@@ -26,6 +26,38 @@ export type CalendarPreviewEvent = {
   withWhom: string | null;
 };
 
+export type CalendarPreviewTarget = {
+  calendarId: string;
+  providerEventId: string;
+  start: Date;
+  query: string | null;
+};
+
+export function parseCalendarPreviewTarget(input: {
+  calendarId?: string | string[];
+  calendarEvent?: string | string[];
+  calendarStart?: string | string[];
+  calendarQuery?: string | string[];
+}): CalendarPreviewTarget | null {
+  const calendarId = singleValue(input.calendarId)?.trim();
+  const providerEventId = singleValue(input.calendarEvent)?.trim();
+  const startValue = singleValue(input.calendarStart);
+  const queryValue = singleValue(input.calendarQuery)?.trim() || null;
+  const start = startValue ? new Date(startValue) : null;
+  if (
+    !calendarId ||
+    calendarId.length > 200 ||
+    !providerEventId ||
+    providerEventId.length > 500 ||
+    !start ||
+    Number.isNaN(start.getTime()) ||
+    (queryValue?.length ?? 0) > 200
+  ) {
+    return null;
+  }
+  return { calendarId, providerEventId, start, query: queryValue };
+}
+
 export type CalendarPreviewView =
   | { state: "hidden" }
   | { state: "unavailable" }
@@ -91,7 +123,7 @@ export function cachedAgoLabel(fetchedAt: Date, now: Date): string {
 
 function toPreviewEvent(summary: CalendarEventSummary, timeZone: string): CalendarPreviewEvent {
   return {
-    id: summary.providerEventId,
+    id: `${summary.calendarId}:${summary.providerEventId}`,
     title: summary.title?.trim() ? summary.title : "Untitled event",
     whenLabel: formatEventWhen(summary.start, summary.allDay, timeZone),
     withWhom: previewAttendeeSummary(summary.attendees),
@@ -110,6 +142,7 @@ export function buildCalendarPreviewView(input: {
   result: CalendarReadResult | null;
   now: Date;
   timeZone?: string;
+  targetEventId?: string;
 }): CalendarPreviewView {
   if (!input.connected) {
     return { state: "hidden" };
@@ -121,7 +154,17 @@ export function buildCalendarPreviewView(input: {
   const timeZone = input.timeZone ?? "UTC";
   const stale = input.result.stale;
   const cachedLabel = stale ? cachedAgoLabel(input.result.fetchedAt, input.now) : null;
-  const events = input.result.events
+  const orderedEvents = input.targetEventId
+    ? [
+        ...input.result.events.filter(
+          (event) => `${event.calendarId}:${event.providerEventId}` === input.targetEventId,
+        ),
+        ...input.result.events.filter(
+          (event) => `${event.calendarId}:${event.providerEventId}` !== input.targetEventId,
+        ),
+      ]
+    : input.result.events;
+  const events = orderedEvents
     .slice(0, CALENDAR_PREVIEW_MAX_EVENTS)
     .map((summary) => toPreviewEvent(summary, timeZone));
 
@@ -129,4 +172,8 @@ export function buildCalendarPreviewView(input: {
     return { state: "empty", stale, cachedLabel };
   }
   return { state: "events", events, stale, cachedLabel };
+}
+
+function singleValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }

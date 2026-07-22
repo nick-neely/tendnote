@@ -31,12 +31,15 @@ const COPY = {
   },
 } as const;
 
+// fallow-ignore-next-line complexity -- The established auth form keeps sign-in and sign-up state aligned in one boundary.
 export function CredentialsForm({
   mode,
   githubEnabled = false,
+  returnTo = "/",
 }: {
   mode: Mode;
   githubEnabled?: boolean;
+  returnTo?: string;
 }) {
   const router = useRouter();
   const copy = COPY[mode];
@@ -44,6 +47,7 @@ export function CredentialsForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // fallow-ignore-next-line complexity -- One submit transaction owns validation, auth, error recovery, and navigation.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -74,7 +78,7 @@ export function CredentialsForm({
       // Land on the dashboard; the access gate routes a still-pending signup to
       // the pending area, and refresh re-reads the new session on the server.
       // Keep the button disabled through navigation rather than re-enabling it.
-      router.push("/");
+      router.push(returnTo);
       router.refresh();
     } catch {
       // A thrown request (e.g. network failure) never returns a `requestError`,
@@ -90,6 +94,7 @@ export function CredentialsForm({
         <>
           <GithubSignInButton
             label={mode === "sign-up" ? "Sign up with GitHub" : "Continue with GitHub"}
+            returnTo={returnTo}
           />
           <div className="flex items-center gap-3">
             <span aria-hidden className="h-px flex-1 bg-border" />

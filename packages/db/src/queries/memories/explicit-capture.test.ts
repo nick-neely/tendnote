@@ -20,6 +20,43 @@ async function seedPerson(
 }
 
 describe("explicit memory capture", () => {
+  it("creates one approved Memory against existing Capture evidence and is retry-safe", async () => {
+    const store = createInMemoryMemoryStore();
+    const capture = createMemoryCapture(store);
+    const caleb = await seedPerson(store);
+    const sourceRecord = await store.createSourceRecord({
+      ownerUserId: "user-1",
+      sourceType: "manual",
+      content: "Remember that Caleb prefers texts",
+      scope: "private",
+    });
+
+    const first = await capture.captureExplicitMemoryFromSource({
+      ownerUserId: "user-1",
+      personId: caleb.id,
+      content: "Caleb prefers texts",
+      sourceRecordId: sourceRecord.id,
+    });
+    const retry = await capture.captureExplicitMemoryFromSource({
+      ownerUserId: "user-1",
+      personId: caleb.id,
+      content: "Caleb prefers texts",
+      sourceRecordId: sourceRecord.id,
+    });
+
+    expect(first.memory).toMatchObject({
+      personId: caleb.id,
+      sourceRecordId: sourceRecord.id,
+      content: "Caleb prefers texts",
+      status: "approved",
+      scope: "private",
+    });
+    expect(retry.memory.id).toBe(first.memory.id);
+    await expect(
+      store.listMemoriesForSourceRecord({ sourceRecordId: sourceRecord.id }),
+    ).resolves.toHaveLength(1);
+  });
+
   it("creates a source record and an approved memory that references it", async () => {
     const store = createInMemoryMemoryStore();
     const capture = createMemoryCapture(store);

@@ -1000,6 +1000,34 @@ describe("routines (recurring general actions)", () => {
     expect(events.at(-1)?.detailJson).toMatchObject({ rolledForward: true });
   });
 
+  it("skips one Routine occurrence, records it distinctly, and keeps the Routine active", async () => {
+    const { lifecycle, historyKinds } = await setup();
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Water the plants",
+      dueAt: new Date("2026-01-01T00:00:00Z"),
+      recurrence: { interval: 1, unit: "week" },
+    });
+
+    const skipped = await lifecycle.skipGeneralActionOccurrence({
+      actorUserId: OWNER,
+      generalActionId: routine.id,
+    });
+
+    expect(skipped.status).toBe("open");
+    expect(skipped.dueAt?.getTime()).toBeGreaterThan(Date.now());
+    await expect(historyKinds(routine.id)).resolves.toEqual(["created", "skipped"]);
+  });
+
+  it("rejects skipping a one-time Action", async () => {
+    const { lifecycle, seedOpen } = await setup();
+    const action = await seedOpen();
+
+    await expect(
+      lifecycle.skipGeneralActionOccurrence({ actorUserId: OWNER, generalActionId: action.id }),
+    ).rejects.toThrow(/Only a Routine occurrence/);
+  });
+
   it("lets a household member complete a shared Routine occurrence, rolling it forward under the owner", async () => {
     const base = await setup();
     const household = await seedHouseholdWithMembers(base.store, {

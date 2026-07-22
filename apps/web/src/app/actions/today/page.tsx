@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
  * shared surfacing predicate keeps the two in agreement about what is "on today".
  */
 export default async function ActionTodayPage() {
-  const ownerUserId = await requireAdmittedOwner();
+  const ownerUserId = await requireAdmittedOwner({ returnTo: "/actions/today" });
   const now = new Date();
 
   const active = await listActiveGeneralActions({ ownerUserId });
@@ -40,7 +40,7 @@ export default async function ActionTodayPage() {
   const groups = groupActionTodayItems(items);
 
   return (
-    <AppShell>
+    <AppShell ownerUserId={ownerUserId}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         <header className="flex flex-col gap-1">
           <div className="flex items-baseline justify-between gap-4">

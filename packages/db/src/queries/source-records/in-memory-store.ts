@@ -58,10 +58,13 @@ export function createInMemorySourceRecordStore(): InMemorySourceRecordStore {
 
       const sourceRecord: SourceRecord = {
         ...parsed,
-        id: randomUUID(),
+        id: parsed.id ?? randomUUID(),
         createdAt: now,
         updatedAt: now,
       };
+
+      const existing = sourceRecords.get(sourceRecord.id);
+      if (existing) return existing;
 
       sourceRecords.set(sourceRecord.id, sourceRecord);
 
@@ -172,6 +175,9 @@ export function createInMemorySourceRecordStore(): InMemorySourceRecordStore {
 
       return link;
     },
+    async unlinkSourceRecordPerson(input) {
+      sourceRecordPeople.delete(`${input.sourceRecordId}:${input.personId}`);
+    },
     async resolveUnresolvedMention(input) {
       const unresolvedMention = unresolvedMentions.get(input.unresolvedMentionId);
 
@@ -209,10 +215,12 @@ export function createInMemorySourceRecordStore(): InMemorySourceRecordStore {
     async createAuditLogEntry(values) {
       const auditLogEntry = {
         ...values,
-        id: randomUUID(),
+        id: values.id ?? randomUUID(),
         createdAt: new Date(),
       };
 
+      const existing = auditLogEntries.find((entry) => entry.id === auditLogEntry.id);
+      if (existing) return existing;
       auditLogEntries.push(auditLogEntry);
 
       return auditLogEntry;

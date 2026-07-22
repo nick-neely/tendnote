@@ -11,6 +11,12 @@ function readTool(name: string): string {
   return readFileSync(join(toolsDir, `${name}.ts`), "utf8");
 }
 
+function expectMatches(source: string, patterns: RegExp[]): void {
+  for (const pattern of patterns) {
+    expect(source).toMatch(pattern);
+  }
+}
+
 describe("explicit person creation (issue #22)", () => {
   it("exposes exactly one person-creating tool, and it is create_person", () => {
     const toolFiles = readdirSync(toolsDir).filter((file) => file.endsWith(".ts"));
@@ -38,14 +44,33 @@ describe("explicit person creation (issue #22)", () => {
   });
 
   it("instructs the agent to search first, disambiguate, and never auto-create from a casual mention", () => {
-    expect(instructions).toMatch(/# Adding people/);
-    expect(instructions).toMatch(/search_people/);
-    // Explicit add-person is the only path to a new person.
-    expect(instructions).toMatch(/only way a new person is created/i);
-    // Multiple candidates must be disambiguated, not guessed.
-    expect(instructions).toMatch(/more than one candidate/i);
-    // A casual/ambiguous mention must not grow the people list.
-    expect(instructions).toMatch(/do not create a person/i);
-    expect(instructions).toMatch(/never a reason to grow the people list/i);
+    expectMatches(instructions, [
+      /# Adding people/,
+      /# Global Capture takes precedence/,
+      /call `capture_saved_item` \*\*exactly once\*\*/,
+      /even when the user does not say the word Capture/i,
+      /multiple explicit clauses stay together in that one call/,
+      /do not search or propose\s+separately/i,
+      /search_people/,
+      /explicit add-person intent outside Global Capture/i,
+      /Inside Global Capture, use\s+`capture_saved_item` instead/i,
+      /more than one candidate/i,
+      /do not create a person/i,
+      /never a reason to grow the people list/i,
+    ]);
+  });
+
+  it("keeps destination-specific tools outside Global Capture", () => {
+    for (const toolName of ["create_person", "capture_memory", "propose_asset_memories"]) {
+      const source = readTool(toolName);
+      expectMatches(source, [/outside Global Capture/i, /capture_saved_item.*owns that path/is]);
+    }
+
+    const captureSource = readTool("capture_saved_item");
+    expectMatches(captureSource, [
+      /GLOBAL CAPTURE PRECEDENCE/,
+      /call this tool exactly once/i,
+      /Do not fan that request out to create_person, capture_memory, search_assets, or propose_asset_memories/,
+    ]);
   });
 });

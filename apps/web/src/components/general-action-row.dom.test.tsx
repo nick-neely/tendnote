@@ -4,6 +4,15 @@ import { generalActionViewFixture } from "@/components/general-action-fixtures";
 import type { GeneralActionView } from "@/lib/general-action-view";
 import { render, screen, userEvent, waitFor } from "@/test/dom";
 
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
+
 /**
  * DOM behavior for the action↔asset bridge on an Action row (#199): a bare hint
  * chip carries the owner's quiet "Track" entry point, promoting flips it to an
@@ -22,11 +31,24 @@ vi.mock("@/app/actions/general-actions", () => ({
   promoteAssetHintAction: vi.fn(),
   setGeneralActionPeopleAction: vi.fn(),
   setGeneralActionVisibilityAction: vi.fn(),
+  skipGeneralActionOccurrenceAction: vi.fn(),
+}));
+
+vi.mock("@/app/actions/reminders", () => ({
+  clearReminderAction: vi.fn(),
+  clearGeneralActionReminderAction: vi.fn(),
+  registerReminderInstallationAction: vi.fn(),
+  saveGeneralActionReminderAction: vi.fn(),
+  saveReminderAction: vi.fn(),
+  setReminderOptInDecisionAction: vi.fn(),
 }));
 
 vi.mock("next/link", () => import("@/test/next-link-mock"));
 
-import { promoteAssetHintAction } from "@/app/actions/general-actions";
+import {
+  promoteAssetHintAction,
+  skipGeneralActionOccurrenceAction,
+} from "@/app/actions/general-actions";
 import { ActionRow } from "./general-action-row";
 
 const HINT = "refrigerator water filter";
@@ -141,5 +163,39 @@ describe("asset hints on an Action row (#199)", () => {
     expect(chip.getAttribute("href")).toBe("/assets/22222222-2222-2222-2222-222222222222");
     // The hint's plain read-only chip is replaced by the linked one — no duplicate label.
     expect(screen.queryByRole("button", { name: `Track "${HINT}" as an asset` })).toBeNull();
+  });
+});
+
+describe("Routine occurrence lifecycle", () => {
+  it("skips the current occurrence and updates the row to the next one", async () => {
+    const user = userEvent.setup();
+    const next = actionWithHint({
+      isRoutine: true,
+      recurrence: { interval: 1, unit: "week" },
+      recurrenceLabel: "Every week",
+      dueAtISO: "2026-08-21T00:00:00.000Z",
+      dueAtDate: "2026-08-21",
+    });
+    vi.mocked(skipGeneralActionOccurrenceAction).mockResolvedValue({ ok: true, view: next });
+    const onUpdate = renderRow(
+      actionWithHint({
+        isRoutine: true,
+        recurrence: { interval: 1, unit: "week" },
+        recurrenceLabel: "Every week",
+        dueAtISO: "2026-08-14T00:00:00.000Z",
+        dueAtDate: "2026-08-14",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Skip this occurrence" }));
+
+    await waitFor(() =>
+      expect(skipGeneralActionOccurrenceAction).toHaveBeenCalledWith({
+        generalActionId: "11111111-1111-1111-1111-111111111111",
+      }),
+    );
+    expect(onUpdate).toHaveBeenCalledWith(next);
+    expect(await screen.findByText(/Skipped — next/)).toBeDefined();
   });
 });

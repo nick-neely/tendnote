@@ -7,6 +7,7 @@ import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/house
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { getPersonProfile } from "@tendnote/db/queries/people";
 import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-connections";
+import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import {
   canUseMemoryProactively,
   canUseSourceRecordProactively,
@@ -18,6 +19,7 @@ import {
 } from "@tendnote/domain";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { BirthdayFollowupOffer } from "@/components/birthday-followup-offer";
 import { PersonCapture } from "@/components/person-capture";
 import { PersonDetailTabs, type PersonTab } from "@/components/person-detail-tabs";
 import { type GmailDraftContext, PersonDrafts } from "@/components/person-drafts";
@@ -34,6 +36,7 @@ import { RelationshipSnapshotCard } from "@/components/relationship-snapshot-car
 import { SuggestedFollowupReviewSection } from "@/components/suggested-followup-review";
 import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { appReturnTo } from "@/lib/auth/return-to";
 import { shortName } from "@/lib/dashboard-brief";
 import { type DraftView, toDraftView } from "@/lib/draft-view";
 import { toDateInputValue, toFollowupView } from "@/lib/followup-view";
@@ -42,6 +45,7 @@ import {
   type RelationshipSnapshotView,
   toRelationshipSnapshotView,
 } from "@/lib/relationship-snapshot-view";
+import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 import {
   type SuggestedFollowupReviewView,
   toSuggestedFollowupReviewView,
@@ -193,21 +197,33 @@ async function loadProfileContext(
   return fallbackContext(profile);
 }
 
+// fallow-ignore-next-line complexity -- The server page composes the complete owner-scoped profile read model.
 export default async function PersonDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ personId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { personId } = await params;
-  const ownerUserId = await requireAdmittedOwner();
-  const [profile, suggestedReviews, suggestedFollowupReviews, drafts, shareableMembers] =
-    await Promise.all([
-      getPersonProfile({ ownerUserId, personId }),
-      loadSuggestedReviews(ownerUserId, personId),
-      loadSuggestedFollowupReviews(ownerUserId, personId),
-      loadDrafts(ownerUserId, personId),
-      listShareableHouseholdMembersForUser({ userId: ownerUserId }),
-    ]);
+  const [{ personId }, query] = await Promise.all([params, searchParams]);
+  const ownerUserId = await requireAdmittedOwner({
+    returnTo: appReturnTo(`/people/${encodeURIComponent(personId)}`, query),
+  });
+  const [
+    profile,
+    suggestedReviews,
+    suggestedFollowupReviews,
+    drafts,
+    shareableMembers,
+    reminderSchedules,
+  ] = await Promise.all([
+    getPersonProfile({ ownerUserId, personId }),
+    loadSuggestedReviews(ownerUserId, personId),
+    loadSuggestedFollowupReviews(ownerUserId, personId),
+    loadDrafts(ownerUserId, personId),
+    listShareableHouseholdMembersForUser({ userId: ownerUserId }),
+    listReminderSchedulesForOwner({ ownerUserId }),
+  ]);
 
   if (!profile) {
     notFound();
@@ -229,7 +245,12 @@ export default async function PersonDetailPage({
   const activeFollowups = profile.followups
     .filter((followup) => isActiveFollowupStatus(followup.status))
     .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
-    .map((followup) => toFollowupView(followup, now));
+    .map((followup) => {
+      const schedule = reminderSchedules.find(
+        (candidate) => candidate.recordKind === "follow_up" && candidate.recordId === followup.id,
+      );
+      return toFollowupView(followup, now, schedule ? toReminderScheduleView(schedule) : null);
+    });
   const resolvedFollowups = profile.followups
     .filter((followup) => followup.status === "completed" || followup.status === "dismissed")
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
@@ -245,7 +266,7 @@ export default async function PersonDetailPage({
   const initialTab: PersonTab = snapshot ? "snapshot" : "memory";
 
   return (
-    <AppShell>
+    <AppShell ownerUserId={ownerUserId}>
       <PersonDetailTabs
         aside={
           <>
@@ -287,6 +308,9 @@ export default async function PersonDetailPage({
               Reminders tied to {firstName}. Accept a suggestion to make it active, or add your own.
             </p>
             <SuggestedFollowupReviewSection initialReviews={suggestedFollowupReviews} />
+            {person.birthday ? (
+              <BirthdayFollowupOffer personId={person.id} personName={firstName} />
+            ) : null}
             <PersonFollowups
               active={activeFollowups}
               defaultDueDate={toDateInputValue(now)}

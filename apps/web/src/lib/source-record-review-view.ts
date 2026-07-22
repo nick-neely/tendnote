@@ -11,6 +11,11 @@ export type SourceRecordReviewView = {
     updatedAt: string;
   };
   linkedPeople: { id: string; displayName: string }[];
+  unresolvedMentions: Array<{
+    id: string;
+    mentionText: string;
+    candidatePersonIds: string[];
+  }>;
 };
 
 export function toSourceRecordReviewView(result: SourceRecordReviewResult): SourceRecordReviewView {
@@ -22,5 +27,10 @@ export function toSourceRecordReviewView(result: SourceRecordReviewResult): Sour
       updatedAt: result.sourceRecord.updatedAt.toISOString(),
     },
     linkedPeople: result.linkedPeople ?? [],
+    unresolvedMentions: (result.unresolvedMentions ?? []).map((mention) => ({
+      id: mention.id,
+      mentionText: mention.mentionText,
+      candidatePersonIds: mention.candidatePersonIds,
+    })),
   };
 }

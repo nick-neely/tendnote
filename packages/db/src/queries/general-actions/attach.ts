@@ -234,6 +234,7 @@ export function buildCreateGeneralActionValues(
   const deferUntil = "deferUntil" in input ? (input.deferUntil ?? null) : null;
 
   return {
+    ...("id" in input && input.id ? { id: input.id } : {}),
     ownerUserId: input.ownerUserId,
     title: input.title,
     notes: input.notes ?? null,

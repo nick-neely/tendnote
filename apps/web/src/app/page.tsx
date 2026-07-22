@@ -2,7 +2,8 @@ import { getCurrentBrief } from "@tendnote/db/queries/briefs";
 import { listCalendarSuggestedFollowups } from "@tendnote/db/queries/calendar-followups";
 import { listActiveFollowups, listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
 import { searchPeople } from "@tendnote/db/queries/people";
-import type { BriefCadence } from "@tendnote/domain";
+import { getOwnerTodayContext, getTodayShortlist } from "@tendnote/db/queries/today";
+import type { BriefCadence, TodayShortlistResponse } from "@tendnote/domain";
 import { AppShell } from "@/components/app-shell";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
@@ -23,8 +24,12 @@ const DASHBOARD_FOLLOWUP_LIMIT = 5;
 export const dynamic = "force-dynamic";
 
 export default async function Home({ searchParams }: { searchParams?: Promise<{ tab?: string }> }) {
-  const ownerUserId = await requireAdmittedOwner();
   const requestedTab = (await searchParams)?.tab;
+  const ownerUserId = await requireAdmittedOwner({
+    returnTo: requestedTab === "review" ? "/?tab=review" : "/",
+  });
+  const todayContext = await getOwnerTodayContext({ ownerUserId });
+  const localDate = todayContext.localDate;
   const [
     people,
     reviewQueue,
@@ -34,6 +39,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     dailyBrief,
     weeklyBrief,
     calendarNudges,
+    todayShortlist,
   ] = await Promise.all([
     searchPeople({ ownerUserId, limit: 8 }),
     loadOwnerReviewQueue(ownerUserId),
@@ -43,11 +49,20 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     getDashboardBrief(ownerUserId, "daily"),
     getDashboardBrief(ownerUserId, "weekly"),
     getOwnerCalendarPromptNudges(),
+    getHomeToday(ownerUserId, todayContext),
   ]);
   const birthdays = getUpcomingBirthdays(people);
 
   return (
-    <AppShell>
+    <AppShell
+      mobileEve={<AssistantPanel nudges={calendarNudges} ownerUserId={ownerUserId} />}
+      mobileHome={requestedTab !== "review"}
+      mobileReview={requestedTab === "review"}
+      ownerUserId={ownerUserId}
+      todayInitial={todayShortlist}
+      todayLocalDate={localDate}
+      todayTimeZone={todayContext.timeZone}
+    >
       {/* On desktop the dashboard fills the viewport and does not scroll itself
           (100dvh − 3.5rem header − 4rem main padding); the chat and the rail each
           scroll inside their own column instead of growing the page. */}
@@ -63,7 +78,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             rail widens a touch from lg→xl so its tabs and cards keep room. */}
         <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="order-1 h-[70dvh] lg:h-full lg:min-h-0">
-            <AssistantPanel nudges={calendarNudges} />
+            <AssistantPanel nudges={calendarNudges} ownerUserId={ownerUserId} />
           </div>
           {/* The rail manages its own scroll inside the active tab panel (the tab
               bar stays pinned), so the column itself is only height-bounded. */}
@@ -84,6 +99,24 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       </div>
     </AppShell>
   );
+}
+
+async function getHomeToday(
+  ownerUserId: string,
+  context: { localDate: string; timeZone: string; now: Date },
+): Promise<TodayShortlistResponse> {
+  try {
+    return await getTodayShortlist({ ownerUserId, ...context });
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") console.warn("Unable to load Today.", error);
+    return {
+      items: [],
+      candidateFingerprint: "",
+      curation: "deterministic_fallback",
+      overflow: null,
+      limitations: ["Today is temporarily unavailable. Your records are unchanged."],
+    };
+  }
 }
 
 async function getDashboardBrief(

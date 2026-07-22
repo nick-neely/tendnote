@@ -38,6 +38,7 @@ import { toAssetPersonLinkView, toRelatedAssetLinkView } from "@/lib/asset-link-
 import { formatAssetMemoryValue } from "@/lib/asset-memory-value";
 import { toAssetRelatedActionView } from "@/lib/asset-related-action-view";
 import { type AssetView, toAssetView } from "@/lib/asset-view";
+import { appReturnTo } from "@/lib/auth/return-to";
 
 export const dynamic = "force-dynamic";
 
@@ -137,11 +138,15 @@ async function loadAssetProfile(callerUserId: string, assetId: string) {
  */
 export default async function AssetProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ assetId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { assetId } = await params;
-  const callerUserId = await requireAdmittedOwner();
+  const [{ assetId }, query] = await Promise.all([params, searchParams]);
+  const callerUserId = await requireAdmittedOwner({
+    returnTo: appReturnTo(`/assets/${encodeURIComponent(assetId)}`, query),
+  });
 
   const profile = await loadAssetProfile(callerUserId, assetId);
   if (!profile) {
@@ -151,7 +156,7 @@ export default async function AssetProfilePage({
   const { view, snapshot } = profile;
 
   return (
-    <AppShell>
+    <AppShell ownerUserId={callerUserId}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         <Link
           className="inline-flex w-fit items-center gap-1.5 rounded-sm text-[length:var(--text-small)] text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -240,7 +245,11 @@ function ArchivedNote({ view }: { view: AssetView }) {
 function AssetMemoryRow({ memory }: { memory: AssetMemory }) {
   const valueLabel = formatAssetMemoryValue(memory.value);
   return (
-    <div className="flex flex-col gap-0.5 px-4 py-3">
+    <div
+      className="scroll-mt-20 flex flex-col gap-0.5 px-4 py-3 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      id={`asset-memory-${memory.id}`}
+      tabIndex={-1}
+    >
       <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
         {memory.label}
       </span>

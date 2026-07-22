@@ -1,4 +1,5 @@
 import type { AssetReviewGroupView } from "@/lib/asset-review-view";
+import type { SourceRecordReviewView } from "@/lib/source-record-review-view";
 import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 import type { SuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 
@@ -7,7 +8,8 @@ const REVIEW_QUEUE_LIMIT = 6;
 export type ReviewQueueFamily =
   | "suggested-memory"
   | "suggested-general-action"
-  | "asset-review-group";
+  | "asset-review-group"
+  | "source-record";
 
 export type ReviewQueueIdentity = { family: ReviewQueueFamily; id: string };
 
@@ -26,6 +28,11 @@ export type ReviewQueueItem =
       family: "asset-review-group";
       id: string;
       review: AssetReviewGroupView;
+    }
+  | {
+      family: "source-record";
+      id: string;
+      review: SourceRecordReviewView;
     };
 
 export type ReviewQueue = {
@@ -42,6 +49,7 @@ export type ReviewQueueDependencies = {
   loadMemories: (input: LoadFamilyInput) => Promise<ReviewQueueItem[]>;
   loadGeneralActions: (input: LoadFamilyInput) => Promise<ReviewQueueItem[]>;
   loadAssetGroups: (input: LoadFamilyInput) => Promise<ReviewQueueItem[]>;
+  loadSourceRecords: (input: LoadFamilyInput) => Promise<ReviewQueueItem[]>;
 };
 
 function interleaveFamilies(
@@ -93,11 +101,13 @@ export async function loadReviewQueue(
     dependencies.loadMemories(familyInput),
     dependencies.loadGeneralActions(familyInput),
     dependencies.loadAssetGroups(familyInput),
+    dependencies.loadSourceRecords(familyInput),
   ]);
   const names: ReviewQueueFamily[] = [
     "suggested-memory",
     "suggested-general-action",
     "asset-review-group",
+    "source-record",
   ];
   // Stable round-robin keeps each loader's trust-aware ordering while ensuring a
   // saturated family cannot consume the calm global bound by itself.

@@ -15,7 +15,12 @@ export function CalendarPreviewSection({ view }: { view: CalendarPreviewView }) 
   }
 
   return (
-    <section aria-label="Calendar preview" className="flex flex-col gap-3">
+    <section
+      aria-label="Calendar preview"
+      className="scroll-mt-20 flex flex-col gap-3 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      id="calendar-preview"
+      tabIndex={-1}
+    >
       <div className="flex flex-col gap-1">
         <h3 className="flex items-center gap-2 text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground">
           <CalendarRangeIcon aria-hidden className="size-4 shrink-0" />
@@ -53,7 +58,12 @@ export function CalendarPreviewSection({ view }: { view: CalendarPreviewView }) 
           ) : (
             <ul className="flex flex-col divide-y rounded-lg border bg-surface">
               {view.events.map((event) => (
-                <li className="flex items-baseline gap-3 px-3.5 py-2.5" key={event.id}>
+                <li
+                  className="scroll-mt-20 flex items-baseline gap-3 px-3.5 py-2.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  id={`calendar-event-${encodeURIComponent(event.id)}`}
+                  key={event.id}
+                  tabIndex={-1}
+                >
                   <span className="w-24 shrink-0 truncate font-mono text-[length:var(--text-caption)] leading-[var(--text-body-line)] text-muted-foreground">
                     {event.whenLabel}
                   </span>

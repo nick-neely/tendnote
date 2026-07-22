@@ -3,6 +3,7 @@
 import {
   archiveFollowup,
   completeFollowup,
+  createBirthdayFollowupReminder,
   createFollowup,
   dismissFollowup,
   editFollowup,
@@ -12,10 +13,12 @@ import {
 import { listActiveHouseholdMembershipsForUser } from "@tendnote/db/queries/households";
 import type { Followup } from "@tendnote/domain";
 import { scopeForVisibilityChoice, visibilityChoiceSchema } from "@tendnote/domain/privacy";
+import { reminderScheduleChoiceSchema } from "@tendnote/domain/reminders";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { type FollowupView, parseDateInputValue, toFollowupView } from "@/lib/followup-view";
+import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 
 const followupActionSchema = z.object({ followupId: z.uuid() });
 
@@ -41,6 +44,15 @@ const editFollowupActionSchema = z.object({
 const snoozeFollowupActionSchema = z.object({
   followupId: z.uuid(),
   dueAt: dueDateInputSchema,
+});
+
+const birthdayFollowupSchema = z.object({
+  personId: z.uuid(),
+  clientInstallationId: z.string().trim().min(12).max(200),
+  timeZone: z.string().trim().min(1).max(100),
+  schedule: reminderScheduleChoiceSchema.refine((choice) => choice.kind === "relative", {
+    message: "A Birthday Follow-Up schedule must be relative to the birthday.",
+  }),
 });
 
 /**
@@ -78,6 +90,32 @@ export async function createFollowupAction(input: {
 
   revalidatePerson(followup.personId);
   return toFollowupView(followup);
+}
+
+export async function createBirthdayFollowupAction(input: {
+  personId: string;
+  clientInstallationId: string;
+  timeZone: string;
+  schedule: { kind: "relative"; leadMinutes: number };
+}): Promise<{
+  view: FollowupView;
+  optIn: { state: "offer" | "none"; clientInstallationId: string };
+}> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const parsed = birthdayFollowupSchema.parse(input);
+  const { followup, reminder } = await createBirthdayFollowupReminder({
+    ownerUserId,
+    personId: parsed.personId,
+    clientInstallationId: parsed.clientInstallationId,
+    timeZone: parsed.timeZone,
+    schedule: parsed.schedule,
+    now: new Date(),
+  });
+  revalidatePerson(followup.personId);
+  return {
+    view: toFollowupView(followup, new Date(), toReminderScheduleView(reminder.schedule)),
+    optIn: reminder.optIn,
+  };
 }
 
 export async function editFollowupAction(input: {

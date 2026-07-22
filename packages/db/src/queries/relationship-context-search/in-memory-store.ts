@@ -201,13 +201,16 @@ export function createInMemoryRelationshipContextSearchStore(
     input: RelationshipContextSearchInput,
   ): boolean {
     if (input.personId) return false;
-    if (decideGeneralActionEmbedding(action).action === "skip") return false;
+    if (!input.includeArchived && decideGeneralActionEmbedding(action).action === "skip") {
+      return false;
+    }
     return canRetrieveGeneralAction({
       status: action.status,
       ownerUserId: action.ownerUserId,
       callerUserId: input.ownerUserId,
       scopeVisible: canViewerSeeRecord(input.ownerUserId, action, "general_action"),
       includeReviewGated: Boolean(input.includeReviewGated),
+      includeArchived: input.includeArchived,
     });
   }
 

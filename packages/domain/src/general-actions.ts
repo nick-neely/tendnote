@@ -143,11 +143,12 @@ export const generalActionSchema = z.object({
   updatedAt: z.date(),
 });
 
-export const createGeneralActionSchema = generalActionSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const createGeneralActionSchema = generalActionSchema
+  .omit({
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({ id: z.uuid().optional() });
 
 export type GeneralAction = z.infer<typeof generalActionSchema>;
 export type GeneralActionStatus = z.infer<typeof generalActionStatusSchema>;
@@ -238,6 +239,12 @@ export const RETRIEVABLE_GENERAL_ACTION_STATUSES: ReadonlySet<GeneralActionStatu
   "paused",
 ]);
 
+export const HISTORICAL_GENERAL_ACTION_STATUSES: ReadonlySet<GeneralActionStatus> = new Set([
+  "completed",
+  "dismissed",
+  "archived",
+]);
+
 export function isRetrievableGeneralActionStatus(status: GeneralActionStatus): boolean {
   return RETRIEVABLE_GENERAL_ACTION_STATUSES.has(status);
 }
@@ -265,13 +272,14 @@ export function canRetrieveGeneralAction(input: {
   callerUserId: string;
   scopeVisible: boolean;
   includeReviewGated: boolean;
+  includeArchived?: boolean;
 }): boolean {
-  const durableVisible = isRetrievableGeneralActionStatus(input.status) && input.scopeVisible;
-  const suggestedForOwner =
-    input.includeReviewGated &&
-    input.status === "suggested" &&
-    input.ownerUserId === input.callerUserId;
-  return durableVisible || suggestedForOwner;
+  if (isRetrievableGeneralActionStatus(input.status)) return input.scopeVisible;
+  if (input.includeArchived && HISTORICAL_GENERAL_ACTION_STATUSES.has(input.status)) {
+    return input.scopeVisible;
+  }
+  if (input.status !== "suggested") return false;
+  return input.includeReviewGated && input.ownerUserId === input.callerUserId;
 }
 
 /**
@@ -597,6 +605,7 @@ export const generalActionEventKindSchema = z.enum([
   "created",
   "edited",
   "completed",
+  "skipped",
   "reopened",
   "deferred",
   "dismissed",

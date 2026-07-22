@@ -9,7 +9,7 @@ import { toAssetBrowseView } from "@/lib/asset-view";
 export const dynamic = "force-dynamic";
 
 export default async function AssetsPage() {
-  const ownerUserId = await requireAdmittedOwner();
+  const ownerUserId = await requireAdmittedOwner({ returnTo: "/assets" });
   const now = new Date();
 
   // All lifecycle states load together: the surface defaults to Active and keeps
@@ -22,7 +22,7 @@ export default async function AssetsPage() {
   ]);
 
   return (
-    <AppShell>
+    <AppShell ownerUserId={ownerUserId}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         <header className="flex flex-col gap-1">
           <h1 className="text-[length:var(--text-h1)] font-semibold leading-[var(--text-h1-line)] tracking-normal">

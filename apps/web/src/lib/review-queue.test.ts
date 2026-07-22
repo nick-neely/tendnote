@@ -13,6 +13,9 @@ function item(family: ReviewQueueItem["family"], id: string): ReviewQueueItem {
   if (family === "suggested-general-action") {
     return { family, id, review: { action: { id } } } as ReviewQueueItem;
   }
+  if (family === "source-record") {
+    return { family, id, review: { sourceRecord: { id } } } as ReviewQueueItem;
+  }
   return { family, id, review: { groupId: id } } as ReviewQueueItem;
 }
 
@@ -31,10 +34,11 @@ describe("Review Queue", () => {
         item("suggested-general-action", "action-second"),
       ]);
     const loadAssetGroups = vi.fn().mockResolvedValue([item("asset-review-group", "asset-first")]);
+    const loadSourceRecords = vi.fn().mockResolvedValue([]);
 
     const queue = await loadReviewQueue(
       { ownerUserId: "owner-1", limit: 4 },
-      { loadMemories, loadGeneralActions, loadAssetGroups },
+      { loadMemories, loadGeneralActions, loadAssetGroups, loadSourceRecords },
     );
 
     expect(loadMemories).toHaveBeenCalledWith({ ownerUserId: "owner-1", limit: 4 });
@@ -65,6 +69,7 @@ describe("Review Queue", () => {
           .fn()
           .mockResolvedValue([item("suggested-general-action", "action-1")]),
         loadAssetGroups: vi.fn().mockResolvedValue([item("asset-review-group", "asset-1")]),
+        loadSourceRecords: vi.fn().mockResolvedValue([]),
       },
     );
 
@@ -88,6 +93,7 @@ describe("Review Queue", () => {
           .fn()
           .mockResolvedValue([item("suggested-general-action", "action-1")]),
         loadAssetGroups: vi.fn().mockResolvedValue([item("asset-review-group", "group-1")]),
+        loadSourceRecords: vi.fn().mockResolvedValue([]),
       },
     );
 
@@ -101,6 +107,7 @@ describe("Review Queue", () => {
       loadMemories: vi.fn().mockResolvedValue([]),
       loadGeneralActions: vi.fn().mockResolvedValue([]),
       loadAssetGroups: vi.fn().mockResolvedValue([]),
+      loadSourceRecords: vi.fn().mockResolvedValue([]),
     };
     const empty = await loadReviewQueue({ ownerUserId: "owner-1", limit: 6 }, dependencies);
     expect(empty).toEqual({ items: [], count: 0, failures: [] });

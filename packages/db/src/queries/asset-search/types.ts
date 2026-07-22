@@ -1,9 +1,15 @@
 import type {
   AssetSearchCandidate,
   AssetSearchQueryPlan,
+  AssetSearchResult,
   ParsedSearchAssetsInput,
   SearchAssetsInput,
 } from "@tendnote/domain";
+
+export type AssetSearchOutcome = {
+  results: AssetSearchResult[];
+  semanticAvailable: boolean;
+};
 
 export type AssetSearchQueryInput = ParsedSearchAssetsInput & {
   ownerUserId: string;

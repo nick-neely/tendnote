@@ -6,12 +6,17 @@ import type {
   CreateEmbeddingJobInput,
   CreateGeneralActionInput,
   CreateRelationshipContextEmbeddingInput,
+  CreateSavedItemInput,
   EmbeddingJob,
   EmbeddingJobStatus,
   GeneralAction,
   Memory,
+  ParsedSearchSavedItemsSemanticInput,
   ParsedSearchSemanticContextInput,
   RelationshipContextEmbedding,
+  SavedItem,
+  SavedItemSemanticResult,
+  SearchSavedItemsSemanticInput,
   SearchSemanticContextInput,
   SemanticRecordKind,
   SemanticRetrievalResult,
@@ -56,6 +61,17 @@ export type SearchSemanticContextQueryInput = ParsedSearchSemanticContextInput &
  */
 export type SearchSemanticContextRequest = SearchSemanticContextInput & {
   ownerUserId: string;
+};
+
+export type SearchSavedItemsSemanticRequest = SearchSavedItemsSemanticInput & {
+  ownerUserId: string;
+};
+
+export type SearchSavedItemsSemanticQueryInput = ParsedSearchSavedItemsSemanticInput & {
+  ownerUserId: string;
+  queryEmbedding: number[];
+  embeddingModel: string;
+  embeddingVersion: string;
 };
 
 export type UpdateEmbeddingJobInput = {
@@ -104,6 +120,10 @@ export type EmbeddingStore = MemoryReviewStore &
       ownerUserId: string;
       assetMemoryId: string;
     }) => Promise<{ memory: AssetMemory; asset: Asset } | null>;
+    getSavedItemForEmbedding: (input: {
+      ownerUserId: string;
+      savedItemId: string;
+    }) => Promise<SavedItem | null>;
     upsertRelationshipContextEmbedding: (
       embedding: CreateRelationshipContextEmbeddingInput,
     ) => Promise<RelationshipContextEmbedding>;
@@ -121,6 +141,9 @@ export type EmbeddingStore = MemoryReviewStore &
         embeddingVersion: string;
       },
     ) => Promise<SemanticRetrievalResult[]>;
+    searchSavedItemsSemantic: (
+      input: SearchSavedItemsSemanticQueryInput,
+    ) => Promise<SavedItemSemanticResult[]>;
   };
 
 export type InMemoryEmbeddingStore = Omit<
@@ -131,6 +154,7 @@ export type InMemoryEmbeddingStore = Omit<
     createGeneralAction: (input: CreateGeneralActionInput) => Promise<GeneralAction>;
     createAsset: (input: CreateAssetInput) => Promise<Asset>;
     createAssetMemory: (input: CreateAssetMemoryInput) => Promise<AssetMemory>;
+    createSavedItem: (input: CreateSavedItemInput) => Promise<SavedItem>;
     listEmbeddingJobs: () => Promise<EmbeddingJob[]>;
     listRelationshipContextEmbeddings: () => Promise<RelationshipContextEmbedding[]>;
   };
@@ -172,4 +196,5 @@ export type ProcessEmbeddingJobResult = {
   sourceGeneralAction?: GeneralAction | null;
   sourceAsset?: Asset | null;
   sourceAssetMemory?: AssetMemory | null;
+  sourceSavedItem?: SavedItem | null;
 };

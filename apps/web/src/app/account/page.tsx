@@ -1,38 +1,47 @@
+import { listReminderInstallations } from "@tendnote/db/queries/reminders";
 import { CheckIcon } from "lucide-react";
 import { redirect } from "next/navigation";
 import { CalendarPreviewSection } from "@/components/account/calendar-preview-section";
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
+import { ReminderSettings } from "@/components/account/reminder-settings";
 import { AppShell } from "@/components/app-shell";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Badge } from "@/components/ui/badge";
 import { localFallbackOwnerUserId } from "@/lib/access/access-state";
 import { resolveAccountView } from "@/lib/access/account-summary";
 import { getCurrentAccess } from "@/lib/access/current-access";
+import { signInPathFor } from "@/lib/auth/return-to";
 import {
   discordEnvFromProcess,
   googleEnvFromProcess,
   isDiscordConfigured,
   isGoogleConfigured,
 } from "@/lib/auth/social";
+import { parseCalendarPreviewTarget } from "@/lib/integrations/calendar-preview";
 import { getOwnerCalendarPreview } from "@/lib/integrations/calendar-preview-data";
 import { buildProviderConnectionView } from "@/lib/integrations/provider-connection-view";
 import { getOwnerProviderConnections } from "@/lib/integrations/provider-connections";
 
 export const dynamic = "force-dynamic";
 
-export default async function AccountPage() {
+export default async function AccountPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+} = {}) {
+  const calendarTarget = parseCalendarPreviewTarget((await searchParams) ?? {});
   const access = await getCurrentAccess();
-  const view = resolveAccountView(
-    access,
-    localFallbackOwnerUserId({
-      nodeEnv: process.env.NODE_ENV,
-      devOwnerUserId: process.env.TENDNOTE_DEV_OWNER_USER_ID,
-    }),
-  );
+  const fallbackOwnerUserId = localFallbackOwnerUserId({
+    nodeEnv: process.env.NODE_ENV,
+    devOwnerUserId: process.env.TENDNOTE_DEV_OWNER_USER_ID,
+  });
+  const view = resolveAccountView(access, fallbackOwnerUserId);
 
   if (view.type === "redirect") {
-    redirect(view.to);
+    redirect(view.to === "/sign-in" ? signInPathFor("/account") : view.to);
   }
+  const ownerUserId = access.state === "admitted" ? access.user.id : fallbackOwnerUserId;
+  if (!ownerUserId) redirect(signInPathFor("/account"));
   const usingLocalFallback = access.state === "unauthenticated";
 
   // Admitted-only: getOwnerProviderConnections resolves the admitted owner before
@@ -47,12 +56,13 @@ export default async function AccountPage() {
   // configured server-side; otherwise the affordance stays inert.
   const discordConfigured = isDiscordConfigured(discordEnvFromProcess());
   // Read-only bounded preview of the connected calendar; hidden when not connected.
-  const calendarPreview = await getOwnerCalendarPreview();
+  const calendarPreview = await getOwnerCalendarPreview(calendarTarget);
+  const reminderInstallations = await listReminderInstallations({ ownerUserId });
 
   const initial = view.name.trim().charAt(0).toUpperCase() || "?";
 
   return (
-    <AppShell>
+    <AppShell ownerUserId={ownerUserId}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
         <header className="flex flex-col gap-1">
           <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
@@ -119,6 +129,8 @@ export default async function AccountPage() {
         {/* Read-only Google Calendar preview — provider-derived context, not memory
             or follow-ups; renders only when Calendar is connected (#110). */}
         <CalendarPreviewSection view={calendarPreview} />
+
+        <ReminderSettings installations={reminderInstallations} />
 
         {/* Sign out */}
         <section className="flex flex-col gap-3 border-t pt-6">

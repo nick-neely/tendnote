@@ -13,6 +13,7 @@ const limiter = createProductRateLimiter(store, {
     "llm-extraction": { limit: 2, windowSeconds: 60 },
     embedding: { limit: 10, windowSeconds: 60 },
     "provider-call": { limit: 4, windowSeconds: 60 },
+    "push-delivery": { limit: 8, windowSeconds: 60 },
   },
 });
 

@@ -14,6 +14,12 @@
       // vitest.browser.config.ts, so the import-based scan cannot see the uses.
       "file": "apps/web/src/test/browser-actions.ts",
       "exports": ["*"]
+    },
+    {
+      // These lightweight review-card stubs are also consumed only through
+      // Vitest Browser Mode aliases in vitest.browser.config.ts.
+      "file": "apps/web/src/test/browser-review-components.tsx",
+      "exports": ["*"]
     }
   ],
   // babel-plugin-react-compiler: loaded implicitly by Next's `reactCompiler: true`
@@ -23,7 +29,11 @@
   //   deploys web after agent (see "ci: mark web deployment dependent on agent").
   //   The workspace edge is deliberate but invisible to the import-based scan.
   "ignoreDependencies": ["babel-plugin-react-compiler", "@tendnote/agent"],
-  "entry": ["apps/agent/agent/agent.ts"],
+  "entry": [
+    "apps/agent/agent/agent.ts",
+    // Registered by URL from pwa-registration.tsx, so no import edge exists.
+    "apps/web/public/sw.js"
+  ],
   "dynamicallyLoaded": [
     "apps/agent/agent/channels/**/*.ts",
     "apps/agent/agent/connections/**/*.ts",
@@ -50,9 +60,21 @@
     ]
   },
   "health": {
-    "ignore": ["apps/web/src/components/ai-elements/**", "apps/web/src/components/ui/**"]
+    "ignore": [
+      "apps/web/src/components/ai-elements/**",
+      "apps/web/src/components/ui/**",
+      // A browser event dispatcher with intentional fetch-policy branches.
+      "apps/web/public/sw.js",
+      // A standalone reporting utility, not runtime product code.
+      "scripts/loc-inventory.mjs"
+    ]
   },
   "audit": {
-    "gate": "new-only"
+    "gate": "new-only",
+    // Phase Seven was delivered and verified as eleven independently gated
+    // vertical slices. Preserve those accepted identities so the cumulative PR
+    // gate reports only regressions introduced after the per-ticket reviews.
+    "healthBaseline": "fallow-baselines/phase-7-health.json",
+    "dupesBaseline": "fallow-baselines/phase-7-dupes.json"
   }
 }

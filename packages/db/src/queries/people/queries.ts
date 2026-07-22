@@ -1,6 +1,7 @@
 import { createPersonSchema, searchPeopleSchema, updatePersonSchema } from "@tendnote/domain";
 import type {
   CreatePersonMutationInput,
+  DeleteCaptureOnlyPersonInput,
   DeletePersonMutationInput,
   GetPersonInput,
   GetPersonProfileInput,
@@ -15,7 +16,20 @@ import type {
  * this module owns product defaults, validation, and audit semantics.
  */
 export function createPeopleQueries(store: PeopleStore) {
+  async function assertCaptureOnlyPersonRemovable(input: DeleteCaptureOnlyPersonInput) {
+    const profile = await store.getPersonProfile(input);
+    if (!profile) throw new Error("That Person is no longer available.");
+    const hasOtherContext =
+      profile.memories.length > 0 ||
+      profile.followups.length > 0 ||
+      profile.sourceRecords.some((source) => source.id !== input.sourceRecordId);
+    if (hasOtherContext) {
+      throw new Error("This Person now has related context and cannot be removed by correction.");
+    }
+  }
+
   return {
+    assertCaptureOnlyPersonRemovable,
     async createPerson(input: CreatePersonMutationInput) {
       const parsed = createPersonSchema.parse(input);
       const person = await store.createPerson({
@@ -104,6 +118,11 @@ export function createPeopleQueries(store: PeopleStore) {
       }
 
       return person;
+    },
+
+    async deleteCaptureOnlyPerson(input: DeleteCaptureOnlyPersonInput) {
+      await assertCaptureOnlyPersonRemovable(input);
+      return store.deletePerson(input);
     },
 
     async searchPeople(input: SearchPeopleQueryInput) {

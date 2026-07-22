@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { privacyScopeSchema } from "./privacy";
 
+export const birthdayAnnualFollowupCadence = "birthday_yearly" as const;
+
 export const followupStatusSchema = z.enum([
   "suggested",
   "open",
@@ -18,10 +20,8 @@ export const followupSchema = z.object({
   dueAt: z.date(),
   status: followupStatusSchema.default("open"),
   cadence: z.string().nullable().optional(),
-  // Grounding for a suggested follow-up: the source record (logged context,
-  // captured conversation, or a record standing in for an approved memory or
-  // retrieval result) the suggestion was proposed from. Null for user-created
-  // active reminders, which need no grounding (PRD #42, ADR-0006).
+  // Grounding for a suggested follow-up or an explicit source-first Capture.
+  // Ordinary manually-created active reminders may remain ungrounded.
   sourceRecordId: z.string().nullable().optional(),
   lastPromptedAt: z.date().nullable().optional(),
   householdId: z.string().nullable().default(null),
@@ -32,11 +32,12 @@ export const followupSchema = z.object({
   updatedAt: z.date(),
 });
 
-export const createFollowupSchema = followupSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const createFollowupSchema = followupSchema
+  .omit({
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({ id: z.uuid().optional() });
 
 export type Followup = z.infer<typeof followupSchema>;
 export type FollowupStatus = z.infer<typeof followupStatusSchema>;

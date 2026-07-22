@@ -26,6 +26,8 @@ describe("CalendarPreviewSection", () => {
     expect(html).toContain("never saves these as memory or follow-ups");
     expect(html).toContain("Coffee with Maya");
     expect(html).toContain("Tue 3:30 PM");
+    expect(html).toContain('id="calendar-event-e1"');
+    expect(html).toContain('tabindex="-1"');
     // Read-only: no review-style actions.
     expect(html).not.toContain("Accept");
     expect(html).not.toContain("Dismiss");

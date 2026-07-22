@@ -54,7 +54,7 @@ export const followups = pgTable(
     dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
     status: followupStatus("status").notNull().default("open"),
     cadence: text("cadence"),
-    // Source grounding for suggested follow-ups; null for user-created reminders.
+    // Source grounding for suggestions and explicit source-first Capture.
     sourceRecordId: uuid("source_record_id").references(() => sourceRecords.id, {
       onDelete: "set null",
     }),

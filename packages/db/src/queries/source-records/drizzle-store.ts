@@ -46,13 +46,23 @@ export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
         .limit(input.limit ?? 10);
     },
     async createSourceRecord(values) {
-      const [sourceRecord] = await getDb().insert(sourceRecords).values(values).returning();
+      const [sourceRecord] = await getDb()
+        .insert(sourceRecords)
+        .values(values)
+        .onConflictDoNothing({ target: sourceRecords.id })
+        .returning();
+      if (sourceRecord) return sourceRecord;
+      if (!values.id) throw new Error("Failed to capture source record.");
 
-      if (!sourceRecord) {
-        throw new Error("Failed to capture source record.");
-      }
-
-      return sourceRecord;
+      const [existing] = await getDb()
+        .select()
+        .from(sourceRecords)
+        .where(
+          and(eq(sourceRecords.id, values.id), eq(sourceRecords.ownerUserId, values.ownerUserId)),
+        )
+        .limit(1);
+      if (!existing) throw new Error("Failed to capture source record.");
+      return existing;
     },
     async updateSourceRecordStatus(input) {
       const [sourceRecord] = await getDb()
@@ -108,6 +118,13 @@ export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
 
       return unresolvedMention;
     },
+    async listUnresolvedMentions(input) {
+      return getDb()
+        .select()
+        .from(unresolvedPersonMentions)
+        .where(eq(unresolvedPersonMentions.sourceRecordId, input.sourceRecordId))
+        .orderBy(unresolvedPersonMentions.createdAt);
+    },
     async linkSourceRecordPerson(values) {
       const [link] = await getDb()
         .insert(sourceRecordPeople)
@@ -125,6 +142,16 @@ export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
       }
 
       return link;
+    },
+    async unlinkSourceRecordPerson(input) {
+      await getDb()
+        .delete(sourceRecordPeople)
+        .where(
+          and(
+            eq(sourceRecordPeople.sourceRecordId, input.sourceRecordId),
+            eq(sourceRecordPeople.personId, input.personId),
+          ),
+        );
     },
     async resolveUnresolvedMention(input) {
       const [unresolvedMention] = await getDb()
@@ -185,7 +212,19 @@ export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
       return rows.map((row) => row.sourceRecord);
     },
     async createAuditLogEntry(values) {
-      const [auditLogEntry] = await getDb().insert(auditLog).values(values).returning();
+      const [created] = await getDb()
+        .insert(auditLog)
+        .values(values)
+        .onConflictDoNothing({ target: auditLog.id })
+        .returning();
+      let auditLogEntry = created;
+      if (!auditLogEntry && values.id) {
+        [auditLogEntry] = await getDb()
+          .select()
+          .from(auditLog)
+          .where(and(eq(auditLog.id, values.id), eq(auditLog.ownerUserId, values.ownerUserId)))
+          .limit(1);
+      }
 
       if (!auditLogEntry) {
         throw new Error("Failed to write source record audit log.");
@@ -217,22 +256,40 @@ export async function listSourceRecordReviews(input: ListSourceRecordReviewsInpu
   const rows = await getDb()
     .select()
     .from(sourceRecords)
-    .where(eq(sourceRecords.ownerUserId, input.ownerUserId))
+    .where(
+      and(
+        eq(sourceRecords.ownerUserId, input.ownerUserId),
+        eq(sourceRecords.status, "pending_resolution"),
+      ),
+    )
     .orderBy(desc(sourceRecords.createdAt))
     .limit(input.limit ?? 5);
 
   return Promise.all(
     rows.map(async (sourceRecord) => {
-      const linkedPeople = await getDb()
-        .select({ id: people.id, displayName: people.displayName })
-        .from(sourceRecordPeople)
-        .innerJoin(people, eq(sourceRecordPeople.personId, people.id))
-        .where(eq(sourceRecordPeople.sourceRecordId, sourceRecord.id))
-        .orderBy(people.displayName);
+      const [linkedPeople, unresolvedMentions] = await Promise.all([
+        getDb()
+          .select({ id: people.id, displayName: people.displayName })
+          .from(sourceRecordPeople)
+          .innerJoin(people, eq(sourceRecordPeople.personId, people.id))
+          .where(eq(sourceRecordPeople.sourceRecordId, sourceRecord.id))
+          .orderBy(people.displayName),
+        getDb()
+          .select()
+          .from(unresolvedPersonMentions)
+          .where(
+            and(
+              eq(unresolvedPersonMentions.sourceRecordId, sourceRecord.id),
+              eq(unresolvedPersonMentions.status, "unresolved"),
+            ),
+          )
+          .orderBy(unresolvedPersonMentions.createdAt),
+      ]);
 
       return {
         sourceRecord,
         linkedPeople,
+        unresolvedMentions,
         component: {
           type: "source_record_review",
           sourceRecordId: sourceRecord.id,

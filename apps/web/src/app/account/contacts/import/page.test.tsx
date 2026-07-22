@@ -8,6 +8,9 @@ const { getOwnerContactImportPreview } = vi.hoisted(() => ({
 vi.mock("@/components/app-shell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => children,
 }));
+vi.mock("@/lib/access/current-access", () => ({
+  requireAdmittedOwner: vi.fn().mockResolvedValue("owner-1"),
+}));
 vi.mock("@/lib/integrations/contact-import-preview-data", () => ({
   getOwnerContactImportPreview,
 }));

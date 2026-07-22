@@ -341,6 +341,7 @@ describe("background job queue runtime", () => {
         "llm-extraction": { limit: 0, windowSeconds: 60 },
         embedding: { limit: 0, windowSeconds: 60 },
         "provider-call": { limit: 0, windowSeconds: 60 },
+        "push-delivery": { limit: 0, windowSeconds: 60 },
       },
     });
 

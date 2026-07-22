@@ -1,0 +1,23 @@
+{
+  "clone_groups": [
+    "apps/web/src/components/app-shell.dom.test.tsx:585-591|apps/web/src/components/app-shell.dom.test.tsx:635-640",
+    "apps/web/src/components/person-followup-active-row.tsx:68-91|apps/web/src/components/suggested-followup-review.tsx:112-132",
+    "apps/web/src/components/person-followups.test.tsx:21-36|apps/web/src/components/suggested-followup-review.test.tsx:8-21",
+    "apps/web/src/lib/integrations/calendar-preview.ts:77-90|packages/db/src/queries/briefs/calendar-context.ts:44-57",
+    "packages/db/src/queries/assets/review.ts:115-136|packages/db/src/queries/assets/review.ts:165-185",
+    "packages/db/src/queries/capture/conversational-capture.test.ts:150-169|packages/db/src/queries/capture/conversational-capture.test.ts:186-211|packages/db/src/queries/capture/conversational-capture.test.ts:56-76",
+    "packages/db/src/queries/capture/conversational-capture.test.ts:235-246|packages/db/src/queries/capture/conversational-capture.test.ts:277-288",
+    "packages/db/src/queries/capture/conversational-capture.test.ts:745-752|packages/db/src/queries/capture/conversational-capture.test.ts:768-775",
+    "packages/db/src/queries/reminders/drizzle-store.test.ts:149-156|packages/db/src/queries/reminders/drizzle-store.test.ts:175-182",
+    "packages/db/src/queries/reminders/drizzle-store.ts:471-478|packages/db/src/queries/reminders/in-memory-store.ts:321-328",
+    "packages/db/src/queries/reminders/installation-privacy.test.ts:10-43|packages/db/src/queries/reminders/installation-privacy.test.ts:58-91",
+    "packages/db/src/queries/reminders/installation-privacy.test.ts:149-174|packages/db/src/queries/reminders/reminders.test.ts:553-576",
+    "packages/db/src/queries/reminders/installation-privacy.test.ts:216-237|packages/db/src/queries/reminders/reminders.test.ts:872-893",
+    "packages/db/src/queries/reminders/installation-privacy.test.ts:309-334|packages/db/src/queries/reminders/reminders.test.ts:860-885|packages/db/src/queries/reminders/reminders.test.ts:911-936|packages/db/src/queries/reminders/reminders.test.ts:981-1006",
+    "packages/db/src/queries/reminders/installation-privacy.test.ts:309-342|packages/db/src/queries/reminders/reminders.test.ts:646-679|packages/db/src/queries/reminders/reminders.test.ts:860-892|packages/db/src/queries/reminders/reminders.test.ts:911-943|packages/db/src/queries/reminders/reminders.test.ts:981-1013",
+    "packages/db/src/queries/reminders/reminders.test.ts:745-765|packages/db/src/queries/reminders/reminders.test.ts:913-946",
+    "packages/db/src/queries/reminders/reminders.test.ts:823-846|packages/db/src/queries/reminders/reminders.test.ts:869-892",
+    "packages/db/src/queries/reminders/reminders.test.ts:860-887|packages/db/src/queries/reminders/reminders.test.ts:911-938|packages/db/src/queries/reminders/reminders.test.ts:981-1008",
+    "packages/db/src/queries/source-records/resolution.ts:109-140|packages/db/src/queries/source-records/resolution.ts:38-69"
+  ]
+}

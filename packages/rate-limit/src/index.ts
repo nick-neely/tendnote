@@ -6,6 +6,7 @@ export const RATE_LIMIT_COST_CATEGORIES = {
   "llm-extraction": { limit: 20, windowSeconds: 60 },
   embedding: { limit: 60, windowSeconds: 60 },
   "provider-call": { limit: 60, windowSeconds: 60 },
+  "push-delivery": { limit: 120, windowSeconds: 60 },
 } as const satisfies Record<string, CostCategoryBudget>;
 
 export type CostCategory = keyof typeof RATE_LIMIT_COST_CATEGORIES;

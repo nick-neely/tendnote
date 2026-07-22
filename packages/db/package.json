@@ -24,6 +24,7 @@
     "./queries/contact-methods": "./src/queries/contact-methods.ts",
     "./queries/cleanup-preview": "./src/queries/cleanup-preview.ts",
     "./queries/context-snapshots": "./src/queries/context-snapshots.ts",
+    "./queries/conversational-capture": "./src/queries/conversational-capture.ts",
     "./queries/discord-identities": "./src/queries/discord-identities.ts",
     "./queries/discord-installs": "./src/queries/discord-installs.ts",
     "./queries/draft-proposals": "./src/queries/draft-proposals.ts",
@@ -32,6 +33,7 @@
     "./queries/followups": "./src/queries/followups.ts",
     "./queries/general-action-areas": "./src/queries/general-action-areas.ts",
     "./queries/general-actions": "./src/queries/general-actions.ts",
+    "./queries/global-recall": "./src/queries/global-recall.ts",
     "./queries/gmail-drafts": "./src/queries/gmail-drafts.ts",
     "./queries/households": "./src/queries/households.ts",
     "./queries/memory-curator": "./src/queries/memory-curator.ts",
@@ -40,12 +42,15 @@
     "./queries/people": "./src/queries/people.ts",
     "./queries/post-meeting-aftercare": "./src/queries/post-meeting-aftercare.ts",
     "./queries/provider-connections": "./src/queries/provider-connections.ts",
+    "./queries/reminders": "./src/queries/reminders.ts",
     "./queries/scheduled-workflow-deliveries": "./src/queries/scheduled-workflow-deliveries.ts",
+    "./queries/saved-items": "./src/queries/saved-items.ts",
     "./queries/relationship-agenda": "./src/queries/relationship-agenda.ts",
     "./queries/relationship-context-search": "./src/queries/relationship-context-search.ts",
     "./queries/semantic-retrieval": "./src/queries/semantic-retrieval.ts",
     "./queries/weekly-relationship-review": "./src/queries/weekly-relationship-review.ts",
-    "./queries/source-records": "./src/queries/source-records.ts"
+    "./queries/source-records": "./src/queries/source-records.ts",
+    "./queries/today": "./src/queries/today.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

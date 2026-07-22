@@ -7,7 +7,12 @@ import {
 } from "@tendnote/domain";
 import { DEFAULT_EMBEDDING_CONFIG } from "../semantic-retrieval/processor";
 import type { EmbeddingAdapter, EmbeddingConfig } from "../semantic-retrieval/types";
-import type { AssetSearchQueryInput, AssetSearchStore, SearchAssetsRequest } from "./types";
+import type {
+  AssetSearchOutcome,
+  AssetSearchQueryInput,
+  AssetSearchStore,
+  SearchAssetsRequest,
+} from "./types";
 
 /**
  * Unified Asset Search (#204): one entry point, three signals underneath.
@@ -29,24 +34,30 @@ export function createAssetSearch(
   adapter: EmbeddingAdapter,
   config: EmbeddingConfig = DEFAULT_EMBEDDING_CONFIG,
 ) {
+  async function searchAssetsWithStatus(input: SearchAssetsRequest): Promise<AssetSearchOutcome> {
+    const parsed = searchAssetsSchema.parse(input);
+    const query: AssetSearchQueryInput = { ...parsed, ownerUserId: input.ownerUserId };
+    const plan = parseAssetSearchQuery(parsed.query);
+
+    const [records, semantic] = await Promise.all([
+      store.searchAssetRecords({ ...query, plan }),
+      searchSemanticTier(store, adapter, config, query),
+    ]);
+
+    return {
+      results: mergeAssetSearchResults({
+        candidates: [...records, ...semantic.candidates],
+        limit: parsed.limit,
+      }),
+      semanticAvailable: semantic.available,
+    };
+  }
+
   return {
     async searchAssets(input: SearchAssetsRequest): Promise<AssetSearchResult[]> {
-      const parsed = searchAssetsSchema.parse(input);
-      const query: AssetSearchQueryInput = { ...parsed, ownerUserId: input.ownerUserId };
-      const plan = parseAssetSearchQuery(parsed.query);
-
-      const [records, semantic] = await Promise.all([
-        store.searchAssetRecords({ ...query, plan }),
-        searchSemanticTier(store, adapter, config, query),
-      ]);
-
-      // Fusion, ranking, and the limit all live in the pure domain merge — so the
-      // ranking a user sees is explainable and testable without a database.
-      return mergeAssetSearchResults({
-        candidates: [...records, ...semantic],
-        limit: parsed.limit,
-      });
+      return (await searchAssetsWithStatus(input)).results;
     },
+    searchAssetsWithStatus,
   };
 }
 
@@ -62,7 +73,7 @@ async function searchSemanticTier(
   adapter: EmbeddingAdapter,
   config: EmbeddingConfig,
   query: AssetSearchQueryInput,
-): Promise<AssetSearchCandidate[]> {
+): Promise<{ candidates: AssetSearchCandidate[]; available: boolean }> {
   try {
     const embedded = await adapter.embedText({
       text: query.query,
@@ -70,13 +81,16 @@ async function searchSemanticTier(
       version: config.version,
     });
 
-    return await store.searchAssetEmbeddings({
-      ...query,
-      queryEmbedding: embedded.vector,
-      embeddingModel: embedded.model,
-      embeddingVersion: embedded.version,
-    });
+    return {
+      candidates: await store.searchAssetEmbeddings({
+        ...query,
+        queryEmbedding: embedded.vector,
+        embeddingModel: embedded.model,
+        embeddingVersion: embedded.version,
+      }),
+      available: true,
+    };
   } catch {
-    return [];
+    return { candidates: [], available: false };
   }
 }

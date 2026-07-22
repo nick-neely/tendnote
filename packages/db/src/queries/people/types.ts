@@ -21,6 +21,10 @@ export type DeletePersonMutationInput = {
   personId: string;
 };
 
+export type DeleteCaptureOnlyPersonInput = DeletePersonMutationInput & {
+  sourceRecordId: string;
+};
+
 /** Defined-only editable fields handed to the store (undefined keys are dropped). */
 export type UpdatePersonPatch = Partial<
   Pick<

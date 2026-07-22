@@ -20,7 +20,7 @@ Eve, the Tendnote assistant — a filesystem agent mounted into the web app same
 | Group | Tools |
 | --- | --- |
 | People | `search_people`, `create_person`, `update_person`, `get_person_context` |
-| Capture | `capture_memory`, `capture_source_record` |
+| Global Capture | `capture_saved_item` (routes Saved Item, Action, Routine, or Follow-Up), `change_saved_item_capture`, `undo_saved_item_capture`, `capture_memory`, `capture_source_record` |
 | Memory review | `list_suggested_memory_reviews`, `get_suggested_memory_review`, `approve_suggested_memory`, `dismiss_suggested_memory` |
 | Follow-ups | `create_followup`, `propose_followup`, `update_followup_status`, `list_due_followups`, `list_suggested_followup_reviews`, `get_suggested_followup_review`, `accept_suggested_followup`, `dismiss_suggested_followup` |
 | Retrieval | `search_relationship_context` (Exact Recall), `search_semantic_context`, `get_relationship_agenda` |

@@ -7,7 +7,11 @@ import {
 } from "@tendnote/db/queries/calendar";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
-import { buildCalendarPreviewView, type CalendarPreviewView } from "./calendar-preview";
+import {
+  buildCalendarPreviewView,
+  type CalendarPreviewTarget,
+  type CalendarPreviewView,
+} from "./calendar-preview";
 
 // A glance-sized bounded window: recent (to catch an in-progress meeting) through
 // the next week, a handful of events.
@@ -23,7 +27,9 @@ const PREVIEW_MAX_RESULTS = 6;
  * The connection's read-gate (`isProviderCapabilityConnected`) means a disconnected
  * owner never reaches a live read.
  */
-export async function getOwnerCalendarPreview(): Promise<CalendarPreviewView> {
+export async function getOwnerCalendarPreview(
+  target: CalendarPreviewTarget | null = null,
+): Promise<CalendarPreviewView> {
   const ownerUserId = await requireAdmittedOwner();
   const now = new Date();
 
@@ -32,6 +38,7 @@ export async function getOwnerCalendarPreview(): Promise<CalendarPreviewView> {
   }
 
   const ref = { ownerUserId, providerKey: "google", capabilityKey: "calendar" };
+  const targetEventId = target ? `${target.calendarId}:${target.providerEventId}` : undefined;
 
   const [{ getAuth }, { headers }] = await Promise.all([
     import("@/lib/auth/server"),
@@ -58,12 +65,18 @@ export async function getOwnerCalendarPreview(): Promise<CalendarPreviewView> {
   const { connected, result } = await readConnectedOwnerCalendar(
     {
       ...ref,
-      timeMin: new Date(now.getTime() - PREVIEW_LOOKBACK_MS),
-      timeMax: new Date(now.getTime() + PREVIEW_LOOKAHEAD_MS),
-      maxResults: PREVIEW_MAX_RESULTS,
+      calendarId: target?.calendarId,
+      timeMin: target
+        ? new Date(target.start.getTime() - PREVIEW_LOOKBACK_MS)
+        : new Date(now.getTime() - PREVIEW_LOOKBACK_MS),
+      timeMax: target
+        ? new Date(target.start.getTime() + PREVIEW_LOOKAHEAD_MS)
+        : new Date(now.getTime() + PREVIEW_LOOKAHEAD_MS),
+      maxResults: target ? 50 : PREVIEW_MAX_RESULTS,
+      query: target?.query,
     },
     { reader: createDefaultCalendarReader(adapter) },
   );
 
-  return buildCalendarPreviewView({ connected, result, now });
+  return buildCalendarPreviewView({ connected, result, now, targetEventId });
 }

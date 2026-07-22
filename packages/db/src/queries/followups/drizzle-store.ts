@@ -130,6 +130,27 @@ export function createDrizzleFollowupStore(): FollowupStore {
 
       return input.limit === undefined ? query : query.limit(input.limit);
     },
+    async listVisibleFollowups(input) {
+      const statuses = input.includeArchived
+        ? ([...ACTIVE_STATUSES, "archived"] as [FollowupStatus, ...FollowupStatus[]])
+        : ACTIVE_STATUSES;
+      const query = getDb()
+        .select()
+        .from(visibleFollowups)
+        .where(
+          and(
+            visibleHouseholdRecordSql({
+              callerUserId: input.callerUserId,
+              tableAlias: "f",
+              recordKind: "followup",
+            }),
+            inArray(visibleFollowups.status, statuses),
+          ),
+        )
+        .orderBy(asc(visibleFollowups.dueAt));
+
+      return input.limit === undefined ? query : query.limit(input.limit);
+    },
     async listSuggestedFollowupsForOwner(input) {
       const query = getDb()
         .select()

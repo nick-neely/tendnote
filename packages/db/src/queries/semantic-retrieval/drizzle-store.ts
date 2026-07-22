@@ -6,6 +6,7 @@ import {
   createRelationshipContextEmbeddingSchema,
   type GeneralActionStatus,
   type SemanticRetrievalResult,
+  savedItemSchema,
   visibilityChoiceForScope,
   visibilityLabelForScope,
 } from "@tendnote/domain";
@@ -16,6 +17,7 @@ import {
   assets,
   relationshipContextEmbeddingJobs,
   relationshipContextEmbeddings,
+  savedItems,
   sourceRecordPeople,
   sourceRecords,
   unresolvedPersonMentions,
@@ -47,6 +49,15 @@ type SemanticMemorySearchRow = {
   general_action_status: GeneralActionStatus | null;
   general_action_is_routine: boolean | null;
   general_action_area_id: string | null;
+};
+
+type SavedItemSemanticSearchRow = {
+  saved_item_id: string;
+  title: string;
+  snippet: string;
+  similarity: number | string;
+  status: "active" | "archived";
+  scope: "private" | "shared" | "household";
 };
 
 function buildJobUpdate(input: UpdateEmbeddingJobInput) {
@@ -82,6 +93,7 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
       return rows.map((row) => row.source_record_people);
     },
     async listUnresolvedMentions(input) {
+      if (!input.ownerUserId) return base.listUnresolvedMentions(input);
       const rows = await getDb()
         .select()
         .from(unresolvedPersonMentions)
@@ -218,6 +230,16 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
         asset: assetSchema.parse(row.asset),
       };
     },
+    async getSavedItemForEmbedding(input) {
+      const [item] = await getDb()
+        .select()
+        .from(savedItems)
+        .where(
+          and(eq(savedItems.id, input.savedItemId), eq(savedItems.ownerUserId, input.ownerUserId)),
+        )
+        .limit(1);
+      return item ? savedItemSchema.parse(item) : null;
+    },
     async upsertRelationshipContextEmbedding(values) {
       const parsed = createRelationshipContextEmbeddingSchema.parse(values);
       const [embedding] = await getDb()
@@ -267,6 +289,49 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
         .limit(1);
 
       return embedding ?? null;
+    },
+    async searchSavedItemsSemantic(input) {
+      const queryVector = `[${input.queryEmbedding.join(",")}]`;
+      const rows = await getDb().execute(sql<SavedItemSemanticSearchRow>`
+        select
+          si.id::text as saved_item_id,
+          si.title,
+          e.embedded_text as snippet,
+          (1 - (e.embedding <=> ${queryVector}::vector))::float8 as similarity,
+          si.status::text as status,
+          si.scope::text as scope
+        from relationship_context_embeddings e
+        inner join saved_items si
+          on si.id = e.record_id
+          and e.record_kind = 'saved_item'
+        where
+          e.owner_user_id = si.owner_user_id
+          and ${visibleHouseholdRecordSql({
+            callerUserId: input.ownerUserId,
+            tableAlias: "si",
+            recordKind: "saved_item",
+          })}
+          and (${input.includeArchived}::boolean or si.status = 'active')
+          and e.embedding_model = ${input.embeddingModel}
+          and e.embedding_version = ${input.embeddingVersion}
+          and e.embedding_dimensions = ${input.queryEmbedding.length}
+          and e.trust_level = 'saved_context'
+          and e.embedded_text = regexp_replace(
+            concat_ws(E'\n', btrim(si.title), nullif(btrim(si.content), ''), nullif(btrim(si.url), '')),
+            '[ \t]+', ' ', 'g'
+          )
+          and (1 - (e.embedding <=> ${queryVector}::vector)) >= ${input.minimumSimilarity}
+        order by similarity desc, si.updated_at desc, si.id asc
+        limit ${input.limit}
+      `);
+      return (rows as unknown as SavedItemSemanticSearchRow[]).map((row) => ({
+        savedItemId: row.saved_item_id,
+        title: row.title,
+        snippet: row.snippet,
+        similarity: Number(row.similarity),
+        status: row.status,
+        scope: row.scope,
+      }));
     },
     async searchSemanticContext(input) {
       const queryVector = `[${input.queryEmbedding.join(",")}]`;
@@ -453,7 +518,13 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
                   tableAlias: "ga",
                   recordKind: "general_action",
                 })}
-                and ga.status in ('open', 'deferred', 'paused')
+                and (
+                  ga.status in ('open', 'deferred', 'paused')
+                  or (
+                    ${input.includeArchived}::boolean
+                    and ga.status in ('completed', 'dismissed', 'archived')
+                  )
+                )
               )
               or (
                 ${input.includeReviewGated}::boolean

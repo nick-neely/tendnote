@@ -2,6 +2,7 @@ import type { Followup, FollowupStatus } from "@tendnote/domain";
 import { startOfLocalDay } from "@tendnote/domain/general-actions";
 import { parseLocalCalendarDate } from "@tendnote/domain/local-calendar-dates";
 import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain/privacy";
+import type { ReminderScheduleView } from "@/lib/reminder-schedule-view";
 
 /**
  * Where a follow-up sits relative to now, so the profile and dashboard can make
@@ -22,6 +23,7 @@ export type FollowupView = {
   dueState: FollowupDueState;
   visibilityChoice: ReturnType<typeof visibilityChoiceForScope>;
   visibilityLabel: string;
+  reminderSchedule?: ReminderScheduleView | null;
 };
 
 const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -71,7 +73,11 @@ export function followupDueState(dueAt: Date, now: Date = new Date()): FollowupD
  * are pre-resolved (label + date-input value) so the client never re-derives
  * timezones, and `dueState` is computed once server-side (PRD #42).
  */
-export function toFollowupView(followup: Followup, now: Date = new Date()): FollowupView {
+export function toFollowupView(
+  followup: Followup,
+  now: Date = new Date(),
+  reminderSchedule: ReminderScheduleView | null = null,
+): FollowupView {
   const dueState = followupDueState(followup.dueAt, now);
   const dueLabel = followup.dueAt.toLocaleDateString("en-US", {
     month: "short",
@@ -89,6 +95,7 @@ export function toFollowupView(followup: Followup, now: Date = new Date()): Foll
     dueState,
     visibilityChoice: visibilityChoiceForScope(followup.scope),
     visibilityLabel: visibilityLabelForScope(followup.scope),
+    reminderSchedule,
   };
 }
 

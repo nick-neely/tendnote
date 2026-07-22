@@ -32,7 +32,7 @@ describe("search_relationship_context tool", () => {
     ]);
 
     const result = await tool.execute(
-      { query: "backend", limit: 5, directlyRequested: false },
+      { query: "backend", limit: 5, directlyRequested: false, includeArchived: false },
       ctx,
     );
 
@@ -41,6 +41,7 @@ describe("search_relationship_context tool", () => {
       query: "backend",
       limit: 5,
       directlyRequested: false,
+      includeArchived: false,
       // Review context is pinned off by the tool, never model-forwarded.
       includeReviewGated: false,
     });
@@ -92,7 +93,12 @@ describe("search_relationship_context tool", () => {
     ]);
 
     const result = await tool.execute(
-      { query: "backend architecture", limit: 5, directlyRequested: false },
+      {
+        query: "backend architecture",
+        limit: 5,
+        directlyRequested: false,
+        includeArchived: false,
+      },
       ctx,
     );
 
@@ -141,6 +147,7 @@ describe("search_relationship_context tool", () => {
         recordKinds: ["person", "memory", "source_record"],
         limit: 8,
         directlyRequested: false,
+        includeArchived: false,
       },
       ctx,
     );
@@ -151,6 +158,7 @@ describe("search_relationship_context tool", () => {
       recordKinds: ["person", "memory", "source_record"],
       limit: 8,
       directlyRequested: false,
+      includeArchived: false,
       includeReviewGated: false,
     });
   });
@@ -196,6 +204,7 @@ describe("search_relationship_context tool", () => {
         recordKinds: ["person"],
         limit: 3,
         directlyRequested: true,
+        includeArchived: false,
       },
       ctx,
     );
@@ -206,6 +215,7 @@ describe("search_relationship_context tool", () => {
       recordKinds: ["person"],
       limit: 3,
       directlyRequested: true,
+      includeArchived: false,
       includeReviewGated: false,
     });
   });

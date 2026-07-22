@@ -33,6 +33,15 @@ vi.mock("@/app/actions/general-actions", () => ({
   resumeGeneralActionAction: vi.fn(),
 }));
 
+vi.mock("@/app/actions/reminders", () => ({
+  clearReminderAction: vi.fn(),
+  clearGeneralActionReminderAction: vi.fn(),
+  registerReminderInstallationAction: vi.fn(),
+  saveGeneralActionReminderAction: vi.fn(),
+  saveReminderAction: vi.fn(),
+  setReminderOptInDecisionAction: vi.fn(),
+}));
+
 vi.mock("@/app/actions/general-action-areas", () => ({
   archiveGeneralActionAreaAction: vi.fn(),
   createGeneralActionAreaAction: vi.fn(),

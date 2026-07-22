@@ -23,7 +23,8 @@ describe("semantic retrieval product-route boundaries", () => {
 
     // The relationship-data product routes are the dashboard and people pages
     // plus the Phase 5 private Actions surface (#178), its narrow Action Today
-    // glance (#186), and the Phase 6 Assets surface and Asset Profile (#197);
+    // glance (#186), the Phase 6 Assets surface and Asset Profile (#197), and
+    // Phase 7's source-grounded Saved Items surface (#265);
     // account/auth surfaces, Phase 2E's explicit Contacts import preview entry,
     // and the owner-scoped Discord delivery settings (#173) are allowed alongside
     // them but carry no semantic-search route.
@@ -40,7 +41,9 @@ describe("semantic retrieval product-route boundaries", () => {
       "pending",
       "people",
       "people/[personId]",
+      "reminders/open",
       "reset-password",
+      "saved-items",
       "sign-in",
       "sign-up",
     ]);

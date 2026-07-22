@@ -1,0 +1,174 @@
+{
+  "finding_counts": {
+    "apps/agent/agent/tools/change_saved_item_capture.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/app/actions/followups.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/app/actions/general-actions.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/app/actions/saved-items.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/account/use-reminder-installation-settings.ts": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/actions-surface.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/general-action-create-form.tsx": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/general-action-row.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/person-followup-active-row.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/saved-item-edit-form.tsx": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/web/src/lib/integrations/calendar-preview-data.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/db/src/queries/capture/conversational-capture/correction.ts": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "packages/db/src/queries/capture/conversational-capture/lifecycle-operations.ts": {
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "packages/db/src/queries/followups.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/db/src/queries/memories/capture.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/db/src/queries/people/queries.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/db/src/queries/relationship-context-search/drizzle-store.ts": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "packages/db/src/queries/reminders/drizzle-store.ts": {
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "packages/db/src/queries/saved-items/drizzle-store.ts": {
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "packages/db/src/queries/semantic-retrieval/drizzle-store.ts": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "packages/db/src/queries/source-records/drizzle-store.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/db/src/queries/today.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/db/src/queries/today/ranker.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/domain/src/general-actions.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/domain/src/reminders.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/domain/src/semantic-retrieval.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/domain/src/today.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/rate-limit/src/index.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": [
+    "packages/db/src/queries/followups/in-memory-store.ts:high impact",
+    "packages/db/src/queries/relationship-context-search/in-memory-store.ts:high impact",
+    "apps/web/src/components/actions-surface.tsx:complexity",
+    "packages/db/src/queries/reminders/in-memory-store.ts:high impact",
+    "packages/db/src/queries/capture/conversational-capture/lifecycle-operations.ts:untested risk",
+    "apps/web/src/components/general-action-create-form.tsx:complexity",
+    "packages/db/src/queries/saved-items/in-memory-store.ts:high impact",
+    "apps/web/src/components/general-action-row.tsx:complexity",
+    "apps/web/src/components/person-followup-active-row.tsx:complexity"
+  ]
+}

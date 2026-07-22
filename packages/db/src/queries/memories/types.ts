@@ -5,6 +5,7 @@ import type {
   MemoryReviewEdit,
   MemoryType,
   Person,
+  PrivacyScope,
   Sensitivity,
   Source,
   SourceRecord,
@@ -25,6 +26,25 @@ export type CaptureExplicitMemoryInput = {
   sourceType?: Source;
   metadataJson?: Record<string, unknown>;
 };
+
+export type CaptureExplicitMemoryFromSourceInput = {
+  ownerUserId: string;
+  personId: string;
+  sourceRecordId: string;
+  content: string;
+  memoryType?: MemoryType;
+  sensitivity?: Sensitivity;
+  confidence?: Confidence;
+  importance?: number;
+  scope?: PrivacyScope;
+  householdId?: string | null;
+  selectedUserIds?: string[];
+};
+
+export type CaptureSuggestedMemoryFromSourceInput = Omit<
+  CaptureExplicitMemoryFromSourceInput,
+  "memoryType" | "sensitivity" | "confidence" | "importance"
+>;
 
 export type CaptureExplicitMemoryResult = {
   memory: Memory;

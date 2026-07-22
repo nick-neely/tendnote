@@ -19,7 +19,7 @@ const SOURCE_GROUNDING: Record<string, string> = {
   seed: "Sample context",
 };
 
-export function LedgerSection({
+function LedgerSection({
   title,
   description,
   id,
@@ -67,7 +67,12 @@ export function MemoriesSection({ memories }: { memories: Memory[] }) {
       {memories.length ? (
         <LedgerList>
           {memories.map((memory) => (
-            <article className="flex flex-col gap-1.5 px-4 py-3.5" key={memory.id}>
+            <article
+              className="scroll-mt-36 flex flex-col gap-1.5 px-4 py-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              id={`memory-${encodeURIComponent(memory.id)}`}
+              key={memory.id}
+              tabIndex={-1}
+            >
               <p className="max-w-[68ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
                 {memory.content}
               </p>

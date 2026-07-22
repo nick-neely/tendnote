@@ -63,6 +63,10 @@ export function createSourceRecordCapture(store: SourceRecordCaptureStore) {
 
       return {
         sourceRecord,
+        unresolvedMentions: await store.listUnresolvedMentions({
+          sourceRecordId: sourceRecord.id,
+          ownerUserId: input.ownerUserId,
+        }),
         component: {
           type: "source_record_review",
           sourceRecordId: sourceRecord.id,

@@ -140,6 +140,15 @@ describe("exact recall - general action results", () => {
     expect(withReview.map((result) => result.recordId)).toEqual([
       "33333333-3333-4333-8333-333333333333",
     ]);
+
+    const withHistory = await queries.searchRelationshipContext({
+      ownerUserId: OWNER,
+      query: "filter",
+      includeArchived: true,
+    });
+    expect(withHistory.map((result) => result.recordId)).toEqual([
+      "11111111-1111-4111-8111-111111111111",
+    ]);
   });
 
   it("applies household scope, and keeps suggested proposals owner-only", async () => {

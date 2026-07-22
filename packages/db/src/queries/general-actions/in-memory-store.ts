@@ -40,7 +40,7 @@ export function createInMemoryGeneralActionStore(
     const now = new Date();
     const action: GeneralAction = {
       ...parsed,
-      id: randomUUID(),
+      id: parsed.id ?? randomUUID(),
       createdAt: now,
       updatedAt: now,
     };
@@ -105,6 +105,8 @@ export function createInMemoryGeneralActionStore(
       return persistAction(values);
     },
     async createGeneralActionBundle(input) {
+      const existing = input.action.id ? actions.get(input.action.id) : null;
+      if (existing) return existing;
       const action = persistAction(input.action);
       const eventCount = events.length;
       try {

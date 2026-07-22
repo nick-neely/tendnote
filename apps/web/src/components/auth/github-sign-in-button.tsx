@@ -11,7 +11,13 @@ import { signIn } from "@/lib/auth/client";
  * decides). GitHub users land in the same Private Beta Access gate as
  * email/password users, since the user-create hook gives every signup a profile.
  */
-export function GithubSignInButton({ label }: { label: string }) {
+export function GithubSignInButton({
+  label,
+  returnTo = "/",
+}: {
+  label: string;
+  returnTo?: string;
+}) {
   const [pending, setPending] = useState(false);
 
   async function handleSignIn() {
@@ -22,7 +28,7 @@ export function GithubSignInButton({ label }: { label: string }) {
     setPending(true);
 
     try {
-      await signIn.social({ provider: "github", callbackURL: "/" });
+      await signIn.social({ provider: "github", callbackURL: returnTo });
     } catch {
       // signIn.social redirects on success; only a failure to start returns here.
       setPending(false);

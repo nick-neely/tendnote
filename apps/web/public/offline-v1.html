@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#315f3a" />
+    <title>Tendnote needs a connection</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { margin: 0; background: Canvas; color: CanvasText; }
+      main { box-sizing: border-box; display: grid; min-height: 100dvh; place-content: center; gap: 1rem; max-width: 32rem; margin: auto; padding: calc(2rem + env(safe-area-inset-top)) 1.25rem calc(2rem + env(safe-area-inset-bottom)); }
+      .brand { font-weight: 700; color: #315f3a; }
+      h1 { margin: 0; font-size: 1.5rem; }
+      p { margin: 0; line-height: 1.5; color: GrayText; }
+      a { display: inline-flex; min-height: 44px; width: fit-content; align-items: center; border: 1px solid GrayText; border-radius: .75rem; padding: 0 1rem; color: CanvasText; font-weight: 600; text-decoration: none; }
+      a:focus-visible { outline: 3px solid #315f3a; outline-offset: 3px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">Tendnote</div>
+      <h1>You're offline</h1>
+      <p>Tendnote needs a connection for current records and every save. Unsaved text stays on this device.</p>
+      <a href="/">Try again</a>
+    </main>
+  </body>
+</html>

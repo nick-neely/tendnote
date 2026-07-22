@@ -110,6 +110,9 @@ describe("semantic record kinds", () => {
     // are retrieved through the typed Asset Search contract, not relationship retrieval.
     "asset",
     "asset_memory",
+    // Phase 7 #265: Saved Items are indexed as owner-scoped saved context. They enter
+    // Global Recall through its typed federation, not relationship retrieval.
+    "saved_item",
   ];
   const EXPECTED_TRUST_LEVELS = [
     "confirmed_fact",
@@ -117,6 +120,7 @@ describe("semantic record kinds", () => {
     "action_item",
     "asset_anchor",
     "asset_fact",
+    "saved_context",
   ];
 
   it("embeds exactly these record kinds — adding one is a deliberate edit here", () => {
@@ -150,5 +154,6 @@ describe("semantic record kinds", () => {
   it("keeps Assets out of relationship retrieval", () => {
     expect(relationshipSemanticRecordKindSchema.options).not.toContain("asset");
     expect(relationshipSemanticRecordKindSchema.options).not.toContain("asset_memory");
+    expect(relationshipSemanticRecordKindSchema.options).not.toContain("saved_item");
   });
 });

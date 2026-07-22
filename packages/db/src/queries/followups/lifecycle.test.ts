@@ -45,6 +45,28 @@ async function setup() {
 }
 
 describe("create active follow-up", () => {
+  it("accepts a stable id and owner-visible source grounding for Capture retries", async () => {
+    const { store, lifecycle, person } = await setup();
+    const source = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Remind me to follow up with Mark tomorrow",
+      scope: "private",
+    });
+    const id = "8e09c006-3d32-57fa-a725-af25534ba92f";
+
+    const followup = await lifecycle.createFollowup({
+      id,
+      ownerUserId: OWNER,
+      personId: person.id,
+      reason: "Follow up",
+      dueAt: new Date("2026-07-22T14:00:00Z"),
+      sourceRecordId: source.id,
+    });
+
+    expect(followup).toMatchObject({ id, sourceRecordId: source.id });
+  });
+
   it("creates an active open reminder tied to owner, person, reason, and due date with an audit entry", async () => {
     const { lifecycle, person, auditActions } = await setup();
 
@@ -120,6 +142,20 @@ describe("create active follow-up", () => {
     expect(followup.cadence).toBe("weekly");
     // ...completing it does not spawn a next instance.
     await lifecycle.completeFollowup({ actorUserId: OWNER, followupId: followup.id });
+    await expect(countForPerson()).resolves.toBe(1);
+  });
+
+  it("advances an explicit annual Birthday Follow-Up on completion", async () => {
+    const { lifecycle, seedOpen, countForPerson } = await setup();
+    const followup = await seedOpen({
+      cadence: "birthday_yearly",
+      dueAt: new Date("2026-08-14T14:00:00Z"),
+    });
+
+    const next = await lifecycle.completeFollowup({ actorUserId: OWNER, followupId: followup.id });
+
+    expect(next.status).toBe("open");
+    expect(next.dueAt).toEqual(new Date("2027-08-14T14:00:00Z"));
     await expect(countForPerson()).resolves.toBe(1);
   });
 });

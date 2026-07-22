@@ -122,6 +122,37 @@ describe("suggest an asset with memories", () => {
     ).resolves.toBeNull();
   });
 
+  it("retains a selected-member audience while the proposal remains owner-only", async () => {
+    const { lifecycle, review, seedHousehold, seedSource, store } = setup();
+    const household = await seedHousehold();
+    const source = await seedSource({ scope: "shared", householdId: household.id });
+    const result = await review.suggestAsset({
+      ownerUserId: OWNER,
+      name: "Fridge filter",
+      kind: "appliance",
+      sourceRecordId: source.id,
+      scope: "shared",
+      householdId: household.id,
+      selectedUserIds: [MEMBER],
+    });
+
+    await expect(
+      lifecycle.getAsset({ callerUserId: MEMBER, assetId: result.asset.id }),
+    ).resolves.toBeNull();
+    await expect(
+      store.listHouseholdRecordShares({
+        householdId: household.id,
+        recordKind: "asset",
+        recordId: result.asset.id,
+      }),
+    ).resolves.toMatchObject([{ sharedWithUserId: MEMBER }]);
+
+    await review.acceptAssetReviewGroup({ actorUserId: OWNER, groupId: result.group.id });
+    await expect(
+      lifecycle.getAsset({ callerUserId: MEMBER, assetId: result.asset.id }),
+    ).resolves.toMatchObject({ id: result.asset.id, scope: "shared" });
+  });
+
   it("requires source grounding", async () => {
     const { review } = setup();
     await expect(
@@ -252,6 +283,26 @@ describe("suggest memories for an existing asset", () => {
 });
 
 describe("the review queue", () => {
+  it("finds an exact open review by owner, source, and normalized Asset name", async () => {
+    const { review, seedSuggestedAsset } = setup();
+    const result = await seedSuggestedAsset({ name: "Fridge Filter" });
+
+    await expect(
+      review.findAssetReviewGroupBySource({
+        ownerUserId: OWNER,
+        sourceRecordId: result.group.sourceRecordId ?? "",
+        assetName: " fridge filter ",
+      }),
+    ).resolves.toMatchObject({ group: { id: result.group.id } });
+    await expect(
+      review.findAssetReviewGroupBySource({
+        ownerUserId: OUTSIDER,
+        sourceRecordId: result.group.sourceRecordId ?? "",
+        assetName: "Fridge Filter",
+      }),
+    ).resolves.toBeNull();
+  });
+
   it("lists only the owner's still-pending groups, newest first", async () => {
     const { review, seedSuggestedAsset } = setup();
     const first = await seedSuggestedAsset({ name: "Fridge filter" });

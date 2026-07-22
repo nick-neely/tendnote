@@ -202,6 +202,14 @@ export async function getAssetReviewGroup(input: { actorUserId: string; groupId:
   return defaultAssetReview.getAssetReviewGroup(input);
 }
 
+export async function findAssetReviewGroupBySource(input: {
+  ownerUserId: string;
+  sourceRecordId: string;
+  assetName: string;
+}) {
+  return defaultAssetReview.findAssetReviewGroupBySource(input);
+}
+
 export async function listAssetMemories(input: { callerUserId: string; assetId: string }) {
   return defaultAssetReview.listAssetMemories(input);
 }

@@ -73,6 +73,27 @@ async function getAssetReviewGroup(
 }
 
 /**
+ * Finds the still-open review created from one Capture source. The lookup stays
+ * owner-scoped and unbounded inside the shared Asset review seam so callers do
+ * not approximate identity by loading an arbitrary queue page.
+ */
+async function findAssetReviewGroupBySource(
+  store: AssetReviewLifecycleStore,
+  input: { ownerUserId: string; sourceRecordId: string; assetName: string },
+): Promise<AssetReviewGroupResult | null> {
+  const groups = await store.listPendingAssetReviewGroupsForOwner({
+    ownerUserId: input.ownerUserId,
+  });
+  const normalizedName = input.assetName.trim().toLocaleLowerCase();
+  for (const group of groups) {
+    if (group.sourceRecordId !== input.sourceRecordId) continue;
+    const result = await buildGroupResult(store, group);
+    if (result.asset.name.trim().toLocaleLowerCase() === normalizedName) return result;
+  }
+  return null;
+}
+
+/**
  * Batch-accepts a whole low-risk group: the pending anchor first (details need
  * a durable asset), then every pending memory. Member-level idempotency makes
  * the batch idempotent too — re-running it changes nothing.
@@ -226,6 +247,11 @@ export function createAssetReview(store: AssetReviewLifecycleStore, deps: AssetE
       listAssetReviewGroups(store, input),
     getAssetReviewGroup: (input: { actorUserId: string; groupId: string }) =>
       getAssetReviewGroup(store, input),
+    findAssetReviewGroupBySource: (input: {
+      ownerUserId: string;
+      sourceRecordId: string;
+      assetName: string;
+    }) => findAssetReviewGroupBySource(store, input),
     /**
      * The active Asset Memories on one asset the caller may see — per-record
      * scope filtering, applied pre-surface, so a household Asset can carry a

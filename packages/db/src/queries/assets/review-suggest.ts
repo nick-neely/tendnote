@@ -1,5 +1,5 @@
 import { type AssetMemory, AssetValidationError } from "@tendnote/domain";
-import { recordAudit, resolveAssetVisibility } from "./lifecycle";
+import { recordAudit, resolveAssetVisibility, writeAssetShares } from "./lifecycle";
 import {
   buildGroupResult,
   openSuggestedAssetProposal,
@@ -40,6 +40,7 @@ export async function suggestAsset(
     ownerUserId: input.ownerUserId,
     scope: input.scope,
     householdId: input.householdId,
+    selectedUserIds: input.selectedUserIds,
   });
 
   // Inferred proposals default to `system` provenance; Eve passes `assistant`.
@@ -55,6 +56,14 @@ export async function suggestAsset(
     auditSource,
     auditDetail: { memoriesSuggested: input.memories?.length ?? 0 },
   });
+  if (scope === "shared" && householdId) {
+    await writeAssetShares(store, {
+      householdId,
+      assetId: asset.id,
+      ownerUserId: input.ownerUserId,
+      selectedUserIds: input.selectedUserIds ?? [],
+    });
+  }
 
   for (const content of input.memories ?? []) {
     await writeSuggestedMemory(store, {
