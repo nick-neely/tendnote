@@ -35,7 +35,7 @@ describe("ChatGeneralActionReviewCard (interactive in-chat review)", () => {
     const html = renderToStaticMarkup(<ChatGeneralActionReviewCard item={item()} />);
 
     expect(html).toContain("Ready to review");
-    expect(html).toContain("Tentative — not on your list until you accept it");
+    expect(html).toContain("Tentative. Not on your list until you accept.");
     // People are context links, never the subject — the lead is not "for someone".
     expect(html).toContain("Suggested action:");
     expect(html).not.toContain("Suggested action for");

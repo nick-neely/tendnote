@@ -251,7 +251,7 @@ describe("Reminder installation privacy and delivery", () => {
     expect(sender).toHaveBeenCalledWith(
       expect.objectContaining({
         payload: {
-          title: "Replace the refrigerator water filter — 9:00 AM",
+          title: "Replace the refrigerator water filter · 9:00 AM",
           body: "Open Tendnote to view this reminder.",
           tag: expect.any(String),
           data: {

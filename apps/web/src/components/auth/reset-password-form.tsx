@@ -33,7 +33,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       if (requestError) {
         setError(
           requestError.message ??
-            "We couldn't reset your password. The link may have expired — request a new one.",
+            "We couldn't reset your password. The link may have expired. Request a new one.",
         );
         setPending(false);
         return;
@@ -42,7 +42,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       router.push("/sign-in");
       router.refresh();
     } catch {
-      setError("We couldn't reset your password. The link may have expired — request a new one.");
+      setError("We couldn't reset your password. The link may have expired. Request a new one.");
       setPending(false);
     }
   }

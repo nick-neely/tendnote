@@ -36,7 +36,7 @@ export function RelationshipSnapshotCard({
       <CardContent className="flex flex-col gap-4">
         {view.fallback || view.summary === null ? (
           <p className="text-[length:var(--text-body)] text-muted-foreground leading-[var(--text-body-line)]">
-            Your relationship snapshot is being refreshed. Your saved context is just below.
+            This snapshot is being refreshed. Your saved context is under Memory.
           </p>
         ) : (
           <>
@@ -59,11 +59,11 @@ export function RelationshipSnapshotCard({
                       </a>
                     </Fragment>
                   ))}
-                  . To change anything here, edit those records below.
+                  . To change anything here, edit those records.
                 </p>
               ) : (
                 <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-                  Edit the records below to shape what appears here.
+                  Edit your saved memories and notes to change what appears here.
                 </p>
               )}
 
@@ -74,15 +74,15 @@ export function RelationshipSnapshotCard({
                     href="#needs-review"
                   >
                     {view.suggestedMemoryCount}{" "}
-                    {view.suggestedMemoryCount === 1 ? "observation" : "observations"} under review
-                  </a>{" "}
-                  — kept separate until you confirm.
+                    {view.suggestedMemoryCount === 1 ? "suggestion" : "suggestions"} under review
+                  </a>
+                  , kept separate until you confirm.
                 </p>
               ) : null}
 
               {view.generatedAtLabel ? (
                 <p className="text-[length:var(--text-caption)] text-muted-foreground leading-[var(--text-caption-line)]">
-                  Generated from your records · {view.generatedAtLabel}
+                  Updated {view.generatedAtLabel}
                 </p>
               ) : null}
             </div>

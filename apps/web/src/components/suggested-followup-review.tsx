@@ -59,8 +59,7 @@ export function SuggestedFollowupReviewSection({
   return (
     <div className="flex flex-col gap-2.5">
       <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-        Proposed from your notes. Accept to turn one into a reminder, edit the timing first, or
-        dismiss it — nothing becomes a reminder until you accept.
+        Proposed from your notes. Nothing becomes a reminder until you accept it.
       </p>
       {reviews.map((review) => (
         <SuggestedFollowupReviewCard

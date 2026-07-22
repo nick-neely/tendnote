@@ -17,11 +17,11 @@ import type { BriefItemView, BriefView } from "@/lib/brief-view";
 const CADENCE_COPY = {
   daily: {
     heading: "Today's brief",
-    empty: "No brief yet. Generate a few people who deserve a thought today.",
+    empty: "No brief yet. It gathers the people worth a thought today.",
   },
   weekly: {
     heading: "This week",
-    empty: "No weekly review yet. Pull together stale contacts and lower-priority context.",
+    empty: "No weekly review yet. It gathers the people you haven't been in touch with lately.",
   },
 } as const;
 
@@ -81,7 +81,7 @@ export function DashboardBriefSection({
         </h2>
         {brief ? (
           <Button
-            aria-label={`Regenerate ${copy.heading}`}
+            aria-label={`Refresh ${copy.heading}`}
             className="text-muted-foreground"
             disabled={pending}
             onClick={regenerate}
@@ -140,7 +140,13 @@ function BriefItemRow({
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const label = item.personName ?? "this";
+  const person = item.personName;
+  const snoozeLabel = person ? `Snooze brief item for ${person}` : "Snooze this brief item";
+  const dismissLabel = person ? `Dismiss brief item for ${person}` : "Dismiss this brief item";
+  const draftLabel = person ? `Draft a message for ${person}` : "Draft a message";
+  const acceptLabel = person
+    ? `Accept suggested follow-up for ${person}`
+    : "Accept this suggested follow-up";
 
   function run(action: () => Promise<unknown>) {
     setError(null);
@@ -193,7 +199,7 @@ function BriefItemRow({
         )}
         <div className="flex items-center gap-1.5">
           <Button
-            aria-label={`Snooze brief item for ${label}`}
+            aria-label={snoozeLabel}
             disabled={pending}
             onClick={() => run(() => snoozeBriefItemAction({ briefItemId: item.id }))}
             size="sm"
@@ -204,7 +210,7 @@ function BriefItemRow({
             Later
           </Button>
           <Button
-            aria-label={`Dismiss brief item for ${label}`}
+            aria-label={dismissLabel}
             disabled={pending}
             onClick={() => run(() => dismissBriefItemAction({ briefItemId: item.id }))}
             size="sm"
@@ -216,7 +222,7 @@ function BriefItemRow({
           </Button>
           {item.personId ? (
             <Button
-              aria-label={`Draft a message for ${label}`}
+              aria-label={draftLabel}
               disabled={draftPending}
               onClick={() =>
                 createDraft({
@@ -234,7 +240,7 @@ function BriefItemRow({
           ) : null}
           {item.isSuggestedFollowup ? (
             <Button
-              aria-label={`Accept suggested follow-up for ${label}`}
+              aria-label={acceptLabel}
               disabled={pending}
               onClick={() => run(() => acceptBriefFollowupAction({ briefItemId: item.id }))}
               size="sm"

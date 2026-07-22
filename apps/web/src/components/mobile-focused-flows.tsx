@@ -56,7 +56,7 @@ function FullScreenFlow({
         </DialogHeader>
         <header className="flex min-h-14 items-center gap-2 border-b px-3 pt-[env(safe-area-inset-top)]">
           <Button
-            aria-label="Back to Today"
+            aria-label="Close"
             className="size-11"
             onClick={onClose}
             size="icon-lg"
@@ -196,7 +196,6 @@ export function SearchFlow({
           onRetry={() => setQuery(`${query} `)}
           onScroll={() => rememberState()}
           onToggle={toggleExplanation}
-          query={query}
           related={related}
           response={response}
           resultsRef={resultsRef}
@@ -405,7 +404,7 @@ function RecallSearchControls({
       </div>
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
         <label className="sr-only" htmlFor="global-recall-family">
-          Result family
+          Record type
         </label>
         <select
           className="min-h-11 rounded-lg border bg-background px-3 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -454,8 +453,8 @@ function RecallSearchControls({
             type="checkbox"
           />
           {family === "all"
-            ? "Choose a family to reveal restricted matches"
-            : "Reveal targeted restricted matches"}
+            ? "Pick a record type to reveal restricted matches"
+            : "Reveal restricted matches"}
         </label>
       </div>
     </>
@@ -471,7 +470,6 @@ function RecallSearchResults({
   onRetry,
   onScroll,
   onToggle,
-  query,
   related,
   response,
   resultsRef,
@@ -484,16 +482,12 @@ function RecallSearchResults({
   onRetry: () => void;
   onScroll: () => void;
   onToggle: (key: string) => void;
-  query: string;
   related: GlobalRecallResponse["results"];
   response: GlobalRecallResponse | null;
   resultsRef: RefObject<HTMLDivElement | null>;
 }) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" onScroll={onScroll} ref={resultsRef}>
-      {!query.trim() ? (
-        <p className="py-4 text-muted-foreground text-sm">Search records visible to you.</p>
-      ) : null}
       {loading ? <SearchResultSkeleton /> : null}
       {failed ? <MobileFailureState kind="app_server" onRetry={onRetry} /> : null}
       {response?.limitations.map((limitation) => (
@@ -502,7 +496,7 @@ function RecallSearchResults({
         </p>
       ))}
       {!loading && response && response.results.length === 0 ? (
-        <p className="py-4 text-muted-foreground text-sm">No confirmed matches.</p>
+        <p className="py-4 text-muted-foreground text-sm">No matches.</p>
       ) : null}
       <RecallResultSection
         expanded={expanded}
@@ -520,7 +514,7 @@ function RecallSearchResults({
       />
       {response?.hasMore ? (
         <p className="py-4 text-muted-foreground text-sm">
-          More matches are available. Narrow the query or filters.
+          More matches than fit here. Narrow your search to see them.
         </p>
       ) : null}
     </div>
@@ -618,7 +612,7 @@ export function CaptureFlow({
 
   return (
     <FullScreenFlow
-      description="Explicit save capture."
+      description="Save a note, reminder, link, or open question."
       initialFocusRef={inputRef}
       onClose={onClose}
       title="Capture"
@@ -640,7 +634,7 @@ export function EveFlow({ children, onClose }: { children?: ReactNode; onClose: 
 
 export function MenuFlow({ onClose }: { onClose: () => void }) {
   return (
-    <FullScreenFlow description="Tendnote destinations." onClose={onClose} title="Menu">
+    <FullScreenFlow description="Go to another part of Tendnote." onClose={onClose} title="Menu">
       <nav aria-label="Menu destinations" className="flex flex-col divide-y px-5 py-4">
         {appDestinations.slice(1).map((item) => {
           const Icon = item.icon;

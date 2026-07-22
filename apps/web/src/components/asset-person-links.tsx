@@ -65,9 +65,7 @@ export function AssetPersonLinks({
           ))}
         </LedgerList>
       ) : (
-        <LedgerEmpty>
-          No people linked yet. Remember who recommended this, borrowed it, or services it.
-        </LedgerEmpty>
+        <LedgerEmpty>No people linked yet.</LedgerEmpty>
       )}
       {canLink && people.length > 0 ? (
         <AddAssetPersonLinkForm assetId={assetId} people={people} />

@@ -53,8 +53,7 @@ export function DraftGroundingPopover({ grounding }: { grounding: DraftGrounding
             </div>
           ) : null}
           <p className="border-t pt-2.5 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-            Private Tendnote draft. Nothing is sent or created outside Tendnote — copy it to send
-            yourself.
+            Private Tendnote draft. Nothing is sent anywhere until you send it yourself.
           </p>
         </div>
       </PopoverContent>

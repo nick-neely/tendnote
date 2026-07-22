@@ -46,7 +46,7 @@ export function PersonCapture({
         router.refresh();
         window.setTimeout(() => setSaved(false), 4000);
       } catch {
-        setError("That didn't save. Check the local services and try again.");
+        setError("That didn't save. Try again.");
       }
     });
   }
@@ -69,7 +69,7 @@ export function PersonCapture({
       </div>
 
       <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-        Jot something about {firstName}. Saved privately and reviewed before it becomes memory.
+        Jot something about {firstName}. Saved privately, and reviewed before it becomes a memory.
       </p>
 
       <Textarea

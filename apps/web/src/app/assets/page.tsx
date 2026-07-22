@@ -29,8 +29,8 @@ export default async function AssetsPage() {
             Assets
           </h1>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            The practical things you keep track of — appliances, vehicles, subscriptions — private
-            by default, or shared with your household.
+            The practical things you keep track of: appliances, vehicles, subscriptions. Private by
+            default, or shared with your household.
           </p>
         </header>
 

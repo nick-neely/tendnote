@@ -229,7 +229,7 @@ describe("AssistantEvidenceCapture", () => {
     await user.type(nameInput, "Dishwasher");
     await user.click(cont);
 
-    expect(screen.getByText(/new: dishwasher — for review/i)).toBeTruthy();
+    expect(screen.getByText(/new: dishwasher \(for review\)/i)).toBeTruthy();
     const formData = await attachThroughDetailsForm(user, addAssetEvidenceToNewAssetAction);
     expect(formData.get("assetName")).toBe("Dishwasher");
     expect(formData.get("assetKind")).toBe("item");

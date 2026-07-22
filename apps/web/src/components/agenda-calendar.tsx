@@ -161,7 +161,7 @@ export function AgendaCalendar({
             aria-hidden
             className="h-2.5 w-5 shrink-0 rounded-full bg-primary/15 ring-1 ring-primary/25 ring-inset"
           />
-          The window you asked about · {rangeLabel}
+          The dates you asked about · {rangeLabel}
         </p>
       ) : null}
       <AgendaLegend candidates={candidates} />

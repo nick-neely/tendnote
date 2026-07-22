@@ -133,7 +133,7 @@ export function DashboardRail({
       <TabsContent className={PANEL} forceMount value="followups">
         {followupCount === 0 ? (
           <RailEmpty>
-            No follow-ups right now. Reminders you set, and any Eve suggests, will gather here.
+            No follow-ups right now. Reminders you set, and ones Eve suggests, show up here.
           </RailEmpty>
         ) : (
           <>
@@ -160,8 +160,8 @@ export function DashboardRail({
       <TabsContent className={PANEL} forceMount value="review">
         {reviewQueue.count === 0 ? (
           <RailEmpty>
-            Nothing waiting to review. When Eve suggests something to remember, an action to take,
-            or a thing to track, it'll show up here for a quick yes or no.
+            Nothing waiting to review. Eve's suggestions land here first: things to remember,
+            actions to take, and assets to track.
           </RailEmpty>
         ) : (
           <ReviewQueueSection

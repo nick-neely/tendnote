@@ -31,9 +31,9 @@ export function ChatLoggedNoteCard({
     resolvedChip: "Approved",
     primaryAction: "Approve",
     noun: "logged note",
-    pendingFooter: "Logged context — approve to keep the memories from it",
-    resolvedFooter: "Approved — its memories are saved to your notebook",
-    dismissedFooter: "Dismissed — not kept.",
+    pendingFooter: "Logged context. Approve to keep the memories from it.",
+    resolvedFooter: "Approved. Its memories are saved to your notebook.",
+    dismissedFooter: "Dismissed. Not kept.",
     errorRecovery: "You can review it on the person's page.",
   };
 

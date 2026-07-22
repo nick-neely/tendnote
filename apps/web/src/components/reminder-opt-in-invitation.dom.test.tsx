@@ -107,7 +107,7 @@ it("keeps unsupported browsers on Today without exposing a permission action", a
     <ReminderOptInInvitation clientInstallationId="browser-installation-1" onDismiss={vi.fn()} />,
   );
 
-  expect(await screen.findByText(/Today remains the reliable place to check/)).toBeTruthy();
+  expect(await screen.findByText(/Check Today instead/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Enable reminders" })).toBeNull();
 });
 
@@ -180,6 +180,6 @@ it("offers Try again when permission succeeds but registration fails", async () 
 
   await user.click(await screen.findByRole("button", { name: "Enable reminders" }));
 
-  expect(await screen.findByText(/could not register this installation/)).toBeTruthy();
+  expect(await screen.findByText(/couldn't finish setting them up/)).toBeTruthy();
   expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
 });

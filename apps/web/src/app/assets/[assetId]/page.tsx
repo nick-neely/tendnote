@@ -232,8 +232,8 @@ function ArchivedNote({ view }: { view: AssetView }) {
   }
   return (
     <p className="max-w-[68ch] rounded-xl border border-dashed px-4 py-3 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-      {view.archivedLabel ?? "This asset is archived"} — it keeps its history and stays out of
-      active views until you restore it.
+      {view.archivedLabel ?? "This asset is archived"}. It keeps its history and stays out of active
+      views until you restore it.
     </p>
   );
 }
@@ -323,7 +323,7 @@ function countSnapshotCitations(references: AssetSnapshotSupportingReferences | 
 function AssetMemoriesSection({ memories }: { memories: AssetMemory[] }) {
   return (
     <ProfileSection
-      description="Confirmed details worth keeping — model numbers, sizes, warranty dates."
+      description="Confirmed details worth keeping: model numbers, sizes, warranty dates."
       title="Memories"
     >
       {memories.length > 0 ? (
@@ -333,9 +333,7 @@ function AssetMemoriesSection({ memories }: { memories: AssetMemory[] }) {
           ))}
         </LedgerList>
       ) : (
-        <LedgerEmpty>
-          Nothing remembered about this yet. The details you confirm will live here.
-        </LedgerEmpty>
+        <LedgerEmpty>Nothing remembered about this yet.</LedgerEmpty>
       )}
     </ProfileSection>
   );
@@ -381,7 +379,7 @@ function AssetProfileSections({ assetId, profile }: { assetId: string; profile: 
       </ProfileSection>
 
       <ProfileSection
-        description="Reminders connected to this asset — replacements, renewals, maintenance."
+        description="Reminders connected to this asset: replacements, renewals, maintenance."
         title="Related actions"
       >
         {/* Proposals first, above the ledger of real ones: they are the only thing here
@@ -391,7 +389,7 @@ function AssetProfileSections({ assetId, profile }: { assetId: string; profile: 
       </ProfileSection>
 
       <ProfileSection
-        description="What this fits, uses, replaces, covers, or is stored with — context, not a hierarchy."
+        description="What this fits, uses, replaces, covers, or is stored with."
         title="Related assets"
       >
         <AssetRelatedLinks
@@ -403,7 +401,7 @@ function AssetProfileSections({ assetId, profile }: { assetId: string; profile: 
       </ProfileSection>
 
       <ProfileSection
-        description="Who recommended it, borrowed it, or services it — context that never changes who can see this."
+        description="Who recommended it, borrowed it, or services it. Linking a person never changes who can see this."
         title="People"
       >
         <AssetPersonLinks
@@ -414,10 +412,7 @@ function AssetProfileSections({ assetId, profile }: { assetId: string; profile: 
         />
       </ProfileSection>
 
-      <ProfileSection
-        description="What happened over time — drawn from this asset's own story, its confirmed details, its evidence and links, and its related actions."
-        title="History"
-      >
+      <ProfileSection description="What happened to this asset over time." title="History">
         <AssetHistory entries={historyViews} />
       </ProfileSection>
     </>

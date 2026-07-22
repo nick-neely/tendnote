@@ -182,7 +182,7 @@ function MatchCell({ candidate }: { candidate: Candidate }) {
       </span>
     );
   }
-  return <span className="text-muted-foreground">—</span>;
+  return <span className="text-muted-foreground">No match</span>;
 }
 
 function SortHeader({ column, label }: { column: Column<Candidate, unknown>; label: string }) {

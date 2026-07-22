@@ -59,9 +59,9 @@ export function ChatReviewCard({
     resolvedChip: "Saved to memory",
     primaryAction: "Approve",
     noun: "suggestion",
-    pendingFooter: "Tentative — not saved until you approve it",
-    resolvedFooter: `Confirmed fact${personName ? ` · ${personName}` : ""} — kept in your notebook`,
-    dismissedFooter: "Dismissed — not kept. Nothing was saved.",
+    pendingFooter: "Tentative. Not saved until you approve.",
+    resolvedFooter: `Confirmed fact${personName ? ` · ${personName}` : ""}, kept in your notebook`,
+    dismissedFooter: "Dismissed. Nothing was saved.",
     errorRecovery: "You can review it on the person's page.",
   };
 

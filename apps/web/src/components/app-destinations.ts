@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 
 export const appDestinations = [
-  { href: "/", label: "Dashboard", icon: HomeIcon },
+  { href: "/", label: "Today", icon: HomeIcon },
   { href: "/people", label: "People", icon: BookUserIcon },
   { href: "/actions", label: "Actions", icon: CircleDotIcon },
   { href: "/assets", label: "Assets", icon: BoxIcon },

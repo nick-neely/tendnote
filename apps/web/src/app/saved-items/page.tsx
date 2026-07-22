@@ -25,8 +25,7 @@ export default async function SavedItemsPage() {
             Saved Items
           </h1>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            Notes, links, and open questions that do not have a better home yet. Private by default,
-            grounded in what you originally captured.
+            Notes, links, and open questions that don't have a better home yet. Private by default.
           </p>
         </header>
 

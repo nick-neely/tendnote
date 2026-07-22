@@ -173,12 +173,7 @@ function AssetSearchResults({
   }
 
   if (results.length === 0) {
-    return (
-      <LedgerEmpty>
-        Nothing matches "{query}". Try a serial or model number, an exact price or date, or describe
-        the thing in your own words.
-      </LedgerEmpty>
-    );
+    return <LedgerEmpty>Nothing matches "{query}".</LedgerEmpty>;
   }
 
   const exact = results.filter(isExactAssetSearchResult);
@@ -219,7 +214,7 @@ function SearchFailed({ isPending, onRetry }: { isPending: boolean; onRetry: () 
         className="max-w-[52ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
         role="alert"
       >
-        That search didn't run. Nothing is wrong with your things — try again.
+        That search didn't run. Nothing is wrong with your things.
       </p>
       <Button disabled={isPending} onClick={onRetry} size="sm" type="button" variant="outline">
         Try again

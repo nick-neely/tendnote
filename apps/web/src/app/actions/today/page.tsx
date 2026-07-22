@@ -55,8 +55,8 @@ export default async function ActionTodayPage() {
             </Link>
           </div>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            The actions and routines on your plate right now — due, overdue, or set aside and back
-            around. Everything else stays quietly on Actions.
+            The actions and routines that are due, overdue, or set aside and back around. Everything
+            else waits on Actions.
           </p>
         </header>
 

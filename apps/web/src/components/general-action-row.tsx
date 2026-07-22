@@ -304,7 +304,7 @@ function ActionEditForm({
               setReminderChoice({ kind: "relative", leadMinutes: 0 });
               return {
                 ok: false,
-                error: `That lead time has passed. The next available choice is ${scheduleResult.nextValidChoice.label}; review and save again.`,
+                error: `That lead time has passed. Save again to use ${scheduleResult.nextValidChoice.label}.`,
               };
             }
             if (scheduleResult.optIn.state === "offer") {
@@ -450,7 +450,7 @@ function ActionShareForm({
       />
       {visibilityChoice === "selected_members" ? (
         <p className="text-[length:var(--text-caption)] text-muted-foreground">
-          Choose who can see this again — anyone shared with before is cleared.
+          Anyone you shared this with before is cleared.
         </p>
       ) : null}
       {/* A moment-of-commit preview whenever this differs from the current scope, so
@@ -731,7 +731,7 @@ export function ActionRow({
         setBusyKey(null);
         if (result.view.dueAtISO) {
           setNotice(
-            `${kind === "complete" ? "Done" : "Skipped"} — next ${shortDay(result.view.dueAtISO)}`,
+            `${kind === "complete" ? "Done" : "Skipped"} · next ${shortDay(result.view.dueAtISO)}`,
           );
           window.setTimeout(() => setNotice(null), 5000);
         }

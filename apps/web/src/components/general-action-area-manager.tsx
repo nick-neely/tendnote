@@ -147,8 +147,8 @@ export function AreaManagerDialog({
         <DialogHeader>
           <DialogTitle>Areas</DialogTitle>
           <DialogDescription>
-            Broad categories for your actions — like Home or Finance. Rename or archive any, or add
-            your own.
+            Broad categories for your actions, like Home or Finance. Archiving an area keeps the
+            actions filed under it.
           </DialogDescription>
         </DialogHeader>
 
@@ -200,7 +200,7 @@ export function AreaManagerDialog({
           </ul>
         ) : (
           <p className="rounded-xl border border-dashed px-4 py-5 text-[length:var(--text-small)] text-muted-foreground">
-            No areas yet. Add one above to start grouping your actions.
+            No areas yet.
           </p>
         )}
 

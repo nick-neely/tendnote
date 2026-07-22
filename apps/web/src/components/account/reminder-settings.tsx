@@ -37,8 +37,7 @@ export function ReminderSettings({ installations }: { installations: SafeInstall
           Reminders
         </h2>
         <p className="max-w-[65ch] text-[length:var(--text-small)] text-muted-foreground">
-          Each browser or installed app opts in separately. Generic lock-screen copy is the default,
-          and Tendnote never claims an alert was displayed.
+          Each browser or installed app opts in separately. Lock-screen alerts stay generic.
         </p>
       </div>
 
@@ -81,13 +80,12 @@ export function ReminderSettings({ installations }: { installations: SafeInstall
       ) : null}
       {registrationOutcome?.status === "unsupported" ? (
         <p className="text-[length:var(--text-small)] text-muted-foreground" role="status">
-          Reminders are unavailable in this browser. Today remains the reliable place to check.
+          Reminders don&rsquo;t work in this browser. Check Today instead.
         </p>
       ) : null}
       {registrationOutcome?.status === "registration_failed" ? (
         <p className="text-[length:var(--text-small)] text-muted-foreground" role="status">
-          Permission is allowed, but this installation is not registered. Choose Enable again to
-          retry.
+          Permission is allowed, but this installation isn&rsquo;t registered yet.
         </p>
       ) : null}
       {message ? (

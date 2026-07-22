@@ -39,7 +39,7 @@ export function AudiencePreview({
         ? `Visible to you and the ${selectedCount} ${
             selectedCount === 1 ? "person" : "people"
           } you chose.`
-        : "Choose who can see this.";
+        : "Pick at least one person.";
   }
 
   if (!message) {

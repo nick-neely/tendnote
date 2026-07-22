@@ -32,7 +32,7 @@ async function requireLinkTarget(
     throw new Error("Asset not found.");
   }
   if (target.status !== "active") {
-    throw new AssetValidationError("Link to an active asset — restore it first.");
+    throw new AssetValidationError("Link to an active asset. Restore it first.");
   }
   return target;
 }

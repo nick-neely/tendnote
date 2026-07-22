@@ -28,7 +28,7 @@ describe("ChatFollowupReviewCard (interactive in-chat review)", () => {
     const html = renderToStaticMarkup(<ChatFollowupReviewCard item={item()} />);
 
     expect(html).toContain("Ready to review");
-    expect(html).toContain("Tentative — no reminder until you accept it");
+    expect(html).toContain("Tentative. No reminder until you accept.");
     expect(html).toContain("Suggested follow-up for Mark:");
     expect(html).toContain("Check in about the new job.");
     expect(html).toContain("Proposed for Jul 15, 2026");

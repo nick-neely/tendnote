@@ -234,7 +234,7 @@ export function ActionsSurface({
           </div>
         ) : (
           <span className="text-[length:var(--text-small)] text-muted-foreground sm:flex-1">
-            No areas yet — add one to group your actions.
+            No areas yet. Areas group related actions.
           </span>
         )}
         <Button
@@ -266,7 +266,7 @@ export function ActionsSurface({
         </LedgerList>
       ) : effectiveAreaId ? (
         <LedgerEmpty>
-          Nothing in {selectedAreaName} right now. Add an action above, or choose{" "}
+          Nothing in {selectedAreaName} right now. Choose{" "}
           <button
             className="rounded-sm font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             onClick={() => setSelectedAreaId(null)}
@@ -278,8 +278,8 @@ export function ActionsSurface({
         </LedgerEmpty>
       ) : (
         <LedgerEmpty>
-          Nothing on your plate. Add an action above — something to do that isn't tied to a person,
-          like replacing a filter or renewing a subscription.
+          Nothing on your plate. Actions are things like replacing a filter or renewing a
+          subscription.
         </LedgerEmpty>
       )}
 
@@ -293,8 +293,7 @@ export function ActionsSurface({
               Suggested
             </h2>
             <p className="max-w-[68ch] px-1 text-[length:var(--text-caption)] text-muted-foreground leading-[var(--text-small-line)]">
-              Proposed from your notes. Accept to add one to your actions, edit it first, or set it
-              aside — nothing is added until you accept.
+              Proposed from your notes. Nothing is added until you accept.
             </p>
           </div>
           <div className="flex flex-col gap-2.5">

@@ -71,9 +71,7 @@ export function SuggestedMemoryReviewSection({
   }
 
   if (reviews.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">All caught up — nothing waiting for review.</p>
-    );
+    return <p className="text-sm text-muted-foreground">Nothing waiting to review.</p>;
   }
 
   return (
@@ -314,7 +312,7 @@ function SuggestedMemoryReviewCard({
 
       {sensitivity === "restricted" ? (
         <p className="text-[length:var(--text-caption)] text-muted-foreground">
-          Restricted memories stay out of proactive surfaces unless you ask for them.
+          Restricted memories stay out of suggestions and reminders unless you ask for them.
         </p>
       ) : null}
 

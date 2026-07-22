@@ -59,11 +59,18 @@ export function AssistantPanel({
   context,
   ownerUserId,
   nudges = [],
+  suggestPersonName = null,
 }: {
   context?: AssistantPersonContext;
   ownerUserId: string;
   /** Calendar-derived prompt nudges; clicking one sends its text to Eve (#114). */
   nudges?: PromptNudge[];
+  /**
+   * A real person from the owner's notebook, used only to make the unscoped
+   * composer placeholder concrete. Never a fixture name — when absent the
+   * placeholder stays generic rather than naming someone who doesn't exist.
+   */
+  suggestPersonName?: string | null;
 }) {
   // Stream turns directly from the same-origin Eve mount (withEve). The hook owns
   // the durable Eve session, so follow-up turns continue the same conversation
@@ -144,6 +151,7 @@ export function AssistantPanel({
         onSubmit={handleSubmit}
         ownerUserId={ownerUserId}
         status={agent.status}
+        suggestPersonName={suggestPersonName}
       />
     </section>
   );
@@ -306,8 +314,8 @@ function TurnStatus({ status }: { status: AgentStatus }) {
         className="text-[length:var(--text-small)] text-destructive leading-[var(--text-small-line)]"
         role="alert"
       >
-        Eve is unavailable. Your records are still available, and your question remains unsaved. Try
-        Eve again from the composer.
+        Eve is unavailable. Your records are safe, and your question wasn't saved. Try again in a
+        moment.
       </p>
     );
   }
@@ -320,11 +328,13 @@ function AssistantComposer({
   ownerUserId,
   status,
   onSubmit,
+  suggestPersonName = null,
 }: {
   context?: AssistantPersonContext;
   ownerUserId: string;
   status: AgentStatus;
   onSubmit: (message: PromptInputMessage) => Promise<void>;
+  suggestPersonName?: string | null;
 }) {
   // A plus-menu pick opens the Asset Evidence capture panel above the composer
   // (#201). Evidence routes through the shared capture server actions — never
@@ -338,9 +348,29 @@ function AssistantComposer({
         onSubmit={onSubmit}
         ownerUserId={ownerUserId}
         status={status}
+        suggestPersonName={suggestPersonName}
       />
     </PromptInputProvider>
   );
+}
+
+/**
+ * Composer placeholder, most specific first: the person this panel is scoped to,
+ * then a real name suggested by the caller, then a generic prompt. It never
+ * invents a name, so an empty notebook is never told about someone it has no
+ * record of.
+ */
+function composerPlaceholder(
+  context: AssistantPersonContext | undefined,
+  suggestPersonName: string | null,
+) {
+  if (context) {
+    return `Note something about ${context.personName}…`;
+  }
+
+  return suggestPersonName
+    ? `Remember something about ${suggestPersonName}…`
+    : "Remember something from a conversation today…";
 }
 
 function AssistantComposerForm({
@@ -348,11 +378,13 @@ function AssistantComposerForm({
   ownerUserId,
   status,
   onSubmit,
+  suggestPersonName = null,
 }: {
   context?: AssistantPersonContext;
   ownerUserId: string;
   status: AgentStatus;
   onSubmit: (message: PromptInputMessage) => Promise<void>;
+  suggestPersonName?: string | null;
 }) {
   const [captureFile, setCaptureFile] = useState<File | null>(null);
 
@@ -366,13 +398,7 @@ function AssistantComposerForm({
       ) : null}
       <PromptInput onSubmit={onSubmit}>
         <PromptInputBody>
-          <PromptInputTextarea
-            placeholder={
-              context
-                ? `Note something about ${context.personName}…`
-                : "Remember that Alex is job hunting and prefers backend work…"
-            }
-          />
+          <PromptInputTextarea placeholder={composerPlaceholder(context, suggestPersonName)} />
         </PromptInputBody>
         <PromptInputFooter>
           <PromptInputTools>
@@ -477,8 +503,7 @@ function EmptyCapture() {
       <div className="flex max-w-xs flex-col gap-1.5">
         <p className="text-sm font-medium">Start your notebook</p>
         <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-          Jot down who you talked to, what's going on with them, or a follow-up to remember. Nothing
-          is sent — it's saved for you to review.
+          Who you talked to, what's going on with them, or something to follow up on.
         </p>
       </div>
     </div>

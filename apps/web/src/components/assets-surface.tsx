@@ -161,8 +161,7 @@ function AssetsEmpty({ filtered, onClear }: { filtered: boolean; onClear: () => 
   if (!filtered) {
     return (
       <LedgerEmpty>
-        Nothing tracked yet. Add the first thing you want Tendnote to remember — the fridge, the
-        car, a subscription that renews.
+        Nothing tracked yet. Start with the fridge, the car, or a subscription that renews.
       </LedgerEmpty>
     );
   }

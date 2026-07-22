@@ -194,13 +194,13 @@ function BirthdayChooser({
       </legend>
       <RadioOption
         checked={selected === "existing"}
-        label="Keep Tendnote birthday"
+        label="Keep the Tendnote birthday"
         name={name}
         onSelect={() => onChange("existing")}
       />
       <RadioOption
         checked={selected === "provider"}
-        label="Use provider birthday"
+        label="Use the Google birthday"
         name={name}
         onSelect={() => onChange("provider")}
       />

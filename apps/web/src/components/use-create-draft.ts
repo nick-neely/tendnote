@@ -27,7 +27,7 @@ export function useCreateDraft() {
           router.push(`/people/${result.personId}#message-drafts`);
           router.refresh();
         } else {
-          setError("There isn't enough grounded context to draft a message yet.");
+          setError("There isn't enough saved context about this person to draft a message yet.");
         }
       } catch {
         setError("Couldn't start a draft. Try again.");

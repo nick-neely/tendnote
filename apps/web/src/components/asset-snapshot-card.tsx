@@ -41,7 +41,7 @@ export function AssetSnapshotCard({ status, summary, citationCount }: AssetSnaps
     >
       <p className="flex items-center gap-1.5 text-muted-foreground text-xs">
         <NotebookPenIcon aria-hidden className="size-3 shrink-0" />
-        Generated summary — the records below are the source of truth
+        Generated summary. The records below are the source of truth
       </p>
 
       <p className="mt-1.5 whitespace-pre-line text-sm">{summary}</p>

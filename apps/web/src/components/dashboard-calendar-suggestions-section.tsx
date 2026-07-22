@@ -91,11 +91,11 @@ function CalendarSuggestionRow({
         {suggestion.reason}
       </p>
       <p className="text-[length:var(--text-caption)] text-muted-foreground">
-        Proposed for {suggestion.dueLabel}. Provider-derived context, not saved memory.
+        Proposed for {suggestion.dueLabel}. From your calendar, not saved memory.
       </p>
       {!canAccept ? (
         <p className="text-[length:var(--text-caption)] text-muted-foreground">
-          Link this attendee to a person before accepting it as a reminder.
+          Link this attendee to a person before you can accept it.
         </p>
       ) : null}
 

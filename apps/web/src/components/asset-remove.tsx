@@ -102,7 +102,7 @@ export function AssetRemove({
               <li>{countLabel(summary.memories, "memory", "memories")}</li>
               <li>{countLabel(summary.evidence, "evidence item")}</li>
               <li>{countLabel(summary.reviewItems, "review item")}</li>
-              <li>its snapshot and internal history</li>
+              <li>its generated summary and history</li>
             </ul>
             {summary.linkedRecords > 0 ? (
               <p className="mt-3 text-muted-foreground">
@@ -129,7 +129,6 @@ export function AssetRemove({
                 onChange={(event) => setTyped(event.target.value)}
                 onDrop={(event) => event.preventDefault()}
                 onPaste={(event) => event.preventDefault()}
-                placeholder="Enter the phrase exactly"
                 spellCheck={false}
                 value={typed}
               />

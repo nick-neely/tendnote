@@ -135,12 +135,12 @@ export function describeAssetMemoryValue(value: AssetMemoryValue | null): string
   }
 }
 
-/** A memory rendered as one line: "Filter size: RPWFE — replace every 6 months". */
+/** A memory rendered as one line: "Filter size: RPWFE (replace every 6 months)". */
 function describeMemory(memory: Pick<AssetMemory, "label" | "value" | "notes">): string {
   const value = describeAssetMemoryValue(memory.value);
   const head = value ? `${memory.label}: ${value}` : memory.label;
 
-  return memory.notes ? `${head} — ${memory.notes}` : head;
+  return memory.notes ? `${head} (${memory.notes})` : head;
 }
 
 /** Only reviewed memories are facts. A suggested proposal never reaches the prose. */

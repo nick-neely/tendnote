@@ -17,9 +17,11 @@ export default async function PeoplePage() {
             People
           </h1>
           <p className="text-sm text-muted-foreground">
-            {people.length === 1
-              ? "1 person you're keeping in mind."
-              : `${people.length} people you're keeping in mind.`}
+            {people.length === 0
+              ? "No one saved yet."
+              : people.length === 1
+                ? "1 person you're keeping in mind."
+                : `${people.length} people you're keeping in mind.`}
           </p>
         </header>
 

@@ -295,8 +295,7 @@ export default async function PersonDetailPage({
         draftsPanel={
           <div className="flex flex-col gap-3">
             <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-              Tendnote-only message drafts for {firstName}. Review, edit, copy, or mark them sent —
-              nothing leaves Tendnote.
+              Drafts for {firstName}. Nothing is sent until you send it yourself.
             </p>
             <PersonDrafts gmail={gmail} initialDrafts={drafts} personId={person.id} />
           </div>
@@ -305,7 +304,7 @@ export default async function PersonDetailPage({
         followupsPanel={
           <div className="flex flex-col gap-3">
             <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-              Reminders tied to {firstName}. Accept a suggestion to make it active, or add your own.
+              Reminders tied to {firstName}.
             </p>
             <SuggestedFollowupReviewSection initialReviews={suggestedFollowupReviews} />
             {person.birthday ? (
@@ -334,15 +333,12 @@ export default async function PersonDetailPage({
         reviewPanel={
           <div className="flex flex-col gap-3">
             <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-              Suggestions drawn from your notes. Save what's right, edit the wording, or dismiss the
-              rest — nothing becomes a memory until you say so.
+              Suggestions drawn from your notes. Nothing becomes a memory until you save it.
             </p>
             {suggestedReviews.length ? (
               <SuggestedMemoryReviewSection initialReviews={suggestedReviews} />
             ) : (
-              <LedgerEmpty>
-                Nothing waiting to review. New suggestions drawn from your notes will show up here.
-              </LedgerEmpty>
+              <LedgerEmpty>Nothing waiting to review.</LedgerEmpty>
             )}
           </div>
         }

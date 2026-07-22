@@ -23,7 +23,7 @@ const TRUST_LABEL: Record<AssetSearchResultView["trustLevel"], string> = {
   asset_fact: "Confirmed fact",
   asset_anchor: "Asset",
   asset_evidence: "Evidence on file",
-  suggested_asset_fact: "Suggested — needs review",
+  suggested_asset_fact: "Suggested, needs review",
 };
 
 /**

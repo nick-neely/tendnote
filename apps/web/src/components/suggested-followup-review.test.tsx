@@ -62,7 +62,7 @@ describe("SuggestedFollowupReviewSection (person ledger)", () => {
     // review point never accepts the suggestion or creates follow-up state (#79).
     expect(html).toContain("Draft");
     // Tentative until accepted.
-    expect(html).toContain("nothing becomes a reminder until you accept");
+    expect(html).toContain("Nothing becomes a reminder until you accept");
     // Raw ids are never shown to the user.
     expect(html).not.toContain("11111111-1111-1111-1111-111111111111");
     expect(html).not.toContain("22222222-2222-2222-2222-222222222222");

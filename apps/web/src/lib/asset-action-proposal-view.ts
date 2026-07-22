@@ -66,9 +66,9 @@ export function describeProposalOutcome(summary: AssetActionProposalSummary): st
     return null;
   }
   if (summary.alreadySpokenFor > 0) {
-    return "Nothing new to suggest — every dated detail here has already been through review.";
+    return "Nothing new to suggest. Every dated detail here has already been through review.";
   }
-  return "Nothing to suggest yet — reminders come from details with a date or a cadence, like a warranty expiry or a filter interval.";
+  return "Nothing to suggest yet. Reminders come from details with a date or a cadence, like a warranty expiry or a filter interval.";
 }
 
 /** The proposal pass's result union, matching the shared surface-mutation contract. */

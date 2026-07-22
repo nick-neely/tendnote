@@ -47,7 +47,7 @@ async function requirePromotableAction(
   // assets only once the action is real (mirrors the durable-anchor rule).
   if (isReviewGeneralActionStatus(action.status)) {
     throw new AssetValidationError(
-      "Accept the suggested action first — then its hints can become assets.",
+      "Accept the suggested action first. Then its hints can become assets.",
     );
   }
   return action;

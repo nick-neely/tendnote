@@ -22,13 +22,14 @@ const INSTALL_START_PATH = "/api/integrations/discord/install";
  * outcome), so adding a new reason is a compile error until copy exists for it.
  */
 const CALLBACK_ERRORS: Record<DiscordInstallRejectReason | "missing_identity", string> = {
-  discord_error: "Discord didn't complete the install. Nothing changed — you can try again.",
+  discord_error: "Discord didn't complete the install. Nothing changed, so you can try again.",
   unauthenticated: "Your session expired before the install finished. Sign in and try again.",
   invalid_state: "That install link expired or didn't match. Start the install again.",
   owner_mismatch:
     "That install was started from a different account. Start it again while signed in here.",
   missing_guild: "Discord didn't return a server. Pick a server when authorizing, then try again.",
-  missing_identity: "Connect your Discord identity on Account first, then install the bot.",
+  missing_identity:
+    "Connect your Discord identity on Account first, then add Tendnote to a server.",
 };
 
 function callbackErrorMessage(error: string): string {
@@ -68,8 +69,7 @@ export default async function DiscordDeliveryPage({
               Discord delivery
             </h1>
             <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
-              Add Tendnote to a Discord server and choose where proactive nudges can land. Delivery
-              stays private to you, and Tendnote never sends without your approval.
+              Delivery stays private to you, and Tendnote never sends without your approval.
             </p>
           </div>
         </header>
@@ -135,8 +135,7 @@ function InstalledBanner() {
     >
       <CheckIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty">
-        Tendnote is installed on this server. Set a delivery channel below to start receiving nudges
-        there.
+        Tendnote is installed on this server. Set a delivery channel to start receiving nudges.
       </p>
     </section>
   );
@@ -166,8 +165,7 @@ function IdentityRequiredNotice() {
         <Link className="underline underline-offset-2" href="/account">
           Account
         </Link>{" "}
-        first. That link is how an install is attributed to you — until it&rsquo;s in place,
-        Tendnote won&rsquo;t record a server against your account.
+        first. Until then, Tendnote can&rsquo;t attribute an install to your account.
       </p>
     </div>
   );

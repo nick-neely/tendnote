@@ -154,7 +154,8 @@ describe("ProviderConnectionsSection", () => {
       <ProviderConnectionsSection connections={READY_VIEW} contactsConnectable />,
     );
     expect(readyHtml).toContain("Connect Google Contacts");
-    expect(readyHtml).toContain("Preview latest contacts before saving anything");
+    // Not connected yet, so the row offers no preview entry point to promise against.
+    expect(readyHtml).not.toContain("Preview latest contacts");
 
     const connectedHtml = renderToStaticMarkup(
       <ProviderConnectionsSection

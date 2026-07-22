@@ -133,7 +133,7 @@ export function DismissGroupButton({
         variant="destructive"
       >
         <XIcon />
-        {`${label} — deletes ${evidenceAtRisk} ${evidenceAtRisk === 1 ? "attachment" : "attachments"}?`}
+        {`${label} and delete ${evidenceAtRisk} ${evidenceAtRisk === 1 ? "attachment" : "attachments"}?`}
       </Button>
     );
   }

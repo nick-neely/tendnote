@@ -198,9 +198,9 @@ describe("SavedItemsSurface", () => {
 
     await user.click(screen.getByText("Source grounding"));
     await user.click(screen.getByRole("button", { name: "Check deletion impact" }));
-    await user.click(await screen.findByRole("button", { name: "Delete unique source evidence" }));
+    await user.click(await screen.findByRole("button", { name: "Delete this source permanently" }));
     expect(deleteUniqueSavedItemSourceAction).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Confirm privacy deletion" }));
+    await user.click(screen.getByRole("button", { name: "Delete permanently" }));
 
     await waitFor(() =>
       expect(deleteUniqueSavedItemSourceAction).toHaveBeenCalledWith({ savedItemId: "saved-1" }),

@@ -13,11 +13,7 @@ import type { AssetRelatedActionView } from "@/lib/asset-related-action-view";
  */
 export function AssetRelatedActions({ actions }: { actions: AssetRelatedActionView[] }) {
   if (actions.length === 0) {
-    return (
-      <LedgerEmpty>
-        No related actions yet. Actions whose hints become this asset will show up here.
-      </LedgerEmpty>
-    );
+    return <LedgerEmpty>No related actions yet.</LedgerEmpty>;
   }
 
   return (

@@ -104,9 +104,7 @@ export function SavedItemsSurface({
         </LedgerList>
       ) : (
         <LedgerEmpty>
-          {state === "active"
-            ? "Nothing saved here yet. Keep a note, link, or open question that has no better home."
-            : "No archived Saved Items. Archive is the normal way to put one away without losing its grounding."}
+          {state === "active" ? "Nothing saved here yet." : "No archived Saved Items."}
         </LedgerEmpty>
       )}
     </div>
@@ -173,7 +171,7 @@ function CreateSavedItemForm({
                   onCreate(item);
                   reset();
                   setError(
-                    `The Saved Item was saved, but that alert time has passed. Choose ${reminder.nextValidChoice.label} when you edit its Reminder schedule.`,
+                    `The Saved Item was saved, but that alert time has passed. Choose ${reminder.nextValidChoice.label} when you edit its reminder.`,
                   );
                   return;
                 }
@@ -328,9 +326,7 @@ function CreateSavedItemFields({
         <Textarea
           id={contentId}
           onChange={(event) => onContentChange(event.target.value)}
-          placeholder={
-            isQuestion ? "Optional context to keep with the question" : "Optional detail"
-          }
+          placeholder="Optional"
           rows={2}
           value={content}
         />
@@ -560,7 +556,7 @@ function SourceGroundingDetails({
         <code className="font-mono text-[length:var(--text-caption)]">{item.sourceRecordId}</code>
         <p>
           {item.outcomes.length
-            ? "Deleting this source would affect the linked outcome. Review the impact before a separate privacy deletion."
+            ? "Deleting this source would affect the linked outcome. Check the impact first."
             : "Archive keeps this evidence. Source deletion is a separate privacy action."}
         </p>
         <Button
@@ -592,8 +588,7 @@ function SourceGroundingDetails({
             {impact.linkedSavedItemIds.length === 1 ? "" : "s"} and {impact.linkedOutcomes.length}{" "}
             linked outcome{impact.linkedOutcomes.length === 1 ? "" : "s"}, plus{" "}
             {impact.linkedRecords.length} other grounded record
-            {impact.linkedRecords.length === 1 ? "" : "s"}. Review this impact before any privacy
-            deletion.
+            {impact.linkedRecords.length === 1 ? "" : "s"}.
           </p>
         ) : null}
         <SourceDeletionControls impact={impact} itemId={item.id} onDelete={onDelete} />
@@ -619,13 +614,13 @@ function SourceDeletionControls({
   if (!armed) {
     return (
       <Button onClick={() => setArmed(true)} size="sm" type="button" variant="ghost">
-        Delete unique source evidence
+        Delete this source permanently
       </Button>
     );
   }
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span>This permanently removes the uniquely owned source and Saved Item.</span>
+      <span>This permanently deletes the source and this Saved Item.</span>
       <Button
         aria-busy={deleting}
         disabled={deleting}
@@ -644,7 +639,7 @@ function SourceDeletionControls({
         type="button"
         variant="destructive"
       >
-        {deleting ? "Deleting…" : "Confirm privacy deletion"}
+        {deleting ? "Deleting…" : "Delete permanently"}
       </Button>
       <Button onClick={() => setArmed(false)} size="sm" type="button" variant="ghost">
         Cancel

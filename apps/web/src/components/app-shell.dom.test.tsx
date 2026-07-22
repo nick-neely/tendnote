@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, userEvent, waitFor } from "@/test/dom";
+import { render, screen, userEvent, waitFor, within } from "@/test/dom";
 
 vi.mock("@/app/actions/conversational-capture", () => ({
   addCapturePersonAction: vi.fn(),
@@ -67,8 +67,11 @@ describe("AppShell Phase Seven mobile navigation", () => {
       </AppShell>,
     );
 
-    expect(screen.getByRole("link", { name: "Review" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("link", { name: "Today" }).getAttribute("aria-current")).toBeNull();
+    const mobileNav = within(screen.getByRole("navigation", { name: "Mobile primary" }));
+    expect(mobileNav.getByRole("link", { name: "Review" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(mobileNav.getByRole("link", { name: "Today" }).getAttribute("aria-current")).toBeNull();
   });
 
   it("opens focused flows without the bottom bar and restores invoking focus and surface state", async () => {
@@ -86,12 +89,12 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(screen.getByRole("dialog", { name: "Search" })).toBeDefined();
     expect(screen.queryByRole("navigation", { name: "Mobile primary" })).toBeNull();
     expect(screen.getByRole("textbox", { name: "Search Tendnote" })).toBe(document.activeElement);
-    expect(screen.getByRole("button", { name: "Back to Today" }).className).toContain("size-11");
+    expect(screen.getByRole("button", { name: "Close" }).className).toContain("size-11");
     expect(screen.getByRole("dialog", { name: "Search" }).className).toContain("h-dvh");
 
     await user.type(screen.getByRole("textbox", { name: "Search Tendnote" }), "air filter");
 
-    await user.click(screen.getByRole("button", { name: "Back to Today" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(searchButton).toBe(document.activeElement));
     expect(screen.getByDisplayValue("still here")).toBeDefined();
     await user.click(searchButton);
@@ -158,7 +161,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await user.click(screen.getAllByRole("button", { name: "Why this result?" })[0] as HTMLElement);
     expect(screen.getByText(/Matched an exact Asset value/)).toBeDefined();
 
-    await user.selectOptions(screen.getByLabelText("Result family"), "assets");
+    await user.selectOptions(screen.getByLabelText("Record type"), "assets");
     await waitFor(() =>
       expect(searchHandler).toHaveBeenLastCalledWith(expect.objectContaining({ family: "assets" })),
     );
@@ -221,7 +224,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await waitFor(() => expect(searchHandler).toHaveBeenCalled());
     const resultLink = await screen.findByRole("link", { name: /Filter note/ });
     await waitFor(() => expect(document.activeElement).toBe(resultLink));
-    expect((screen.getByLabelText("Result family") as HTMLSelectElement).value).toBe("saved_items");
+    expect((screen.getByLabelText("Record type") as HTMLSelectElement).value).toBe("saved_items");
     expect(screen.getByText(/Matched wording: filter/)).toBeDefined();
 
     sessionStorage.removeItem(storageKey);
@@ -286,7 +289,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(screen.getByRole("textbox", { name: "Ask Eve anything" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Open Eve" })).toBeDefined();
     expect(screen.getByRole("region", { name: "Today shortlist" })).toBeDefined();
-    expect(screen.getByText("Nothing needs the shortlist right now.")).toBeDefined();
+    expect(screen.getByText("Nothing needs your attention today.")).toBeDefined();
   });
 
   it("keeps the compact Today Eve composer usable before opening the focused flow", async () => {
@@ -300,7 +303,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await user.type(screen.getByRole("textbox", { name: "Ask Eve anything" }), "What is due?");
     await user.click(screen.getByRole("button", { name: "Send to Eve" }));
     expect(screen.getByRole("dialog", { name: "Eve" })).toBeDefined();
-    await user.click(screen.getByRole("button", { name: "Back to Today" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getByDisplayValue("What is due?")).toBeDefined();
   });
 
@@ -315,7 +318,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await user.click(screen.getByRole("button", { name: "Capture" }));
     const input = screen.getByRole("textbox", { name: "What should Tendnote keep?" });
     await user.type(input, "Remember the air filter size");
-    await user.click(screen.getByRole("button", { name: "Back to Today" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
     await user.click(screen.getByRole("button", { name: "Capture" }));
 
     expect(screen.getByText("Unsaved draft restored on this device.")).toBeDefined();
@@ -357,7 +360,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     );
     await user.click(screen.getByRole("button", { name: "Save capture" }));
     expect(await screen.findByRole("heading", { name: "Capture saved" })).toBeDefined();
-    await user.click(screen.getByRole("button", { name: "Back to Today" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
     await user.click(screen.getByRole("button", { name: "Capture" }));
     expect(screen.queryByText("Unsaved draft restored on this device.")).toBeNull();
   });
@@ -465,7 +468,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
         name: "When should I remind you to replace the filter?",
       }),
     ).toBeDefined();
-    expect(screen.getByText("Original capture retained as source evidence")).toBeDefined();
+    expect(screen.getByText("Tendnote kept your original capture.")).toBeDefined();
     await user.type(
       screen.getByRole("textbox", { name: "When should I remind you to replace the filter?" }),
       "tomorrow",
@@ -586,7 +589,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     );
     await user.click(screen.getByRole("button", { name: "Save capture" }));
     await user.click(await screen.findByRole("button", { name: "Change" }));
-    const correction = screen.getByRole("textbox", { name: "Change saved wording" });
+    const correction = screen.getByRole("textbox", { name: "Rewrite what Tendnote saved" });
     await user.clear(correction);
     await user.type(correction, "I need to replace the filter");
     await user.click(screen.getByRole("button", { name: "Save change" }));
@@ -635,7 +638,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await user.type(screen.getByRole("textbox", { name: "What should Tendnote keep?" }), "Note");
     await user.click(screen.getByRole("button", { name: "Save capture" }));
     await user.click(await screen.findByRole("button", { name: "Change" }));
-    const correction = screen.getByRole("textbox", { name: "Change saved wording" });
+    const correction = screen.getByRole("textbox", { name: "Rewrite what Tendnote saved" });
     await user.clear(correction);
     await user.type(correction, "Remind me to replace the filter sometime");
     await user.click(screen.getByRole("button", { name: "Save change" }));
@@ -683,7 +686,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(await screen.findByDisplayValue("Where can I buy this filter?")).toBeDefined();
     expect(screen.getByRole("heading", { name: "Capture wasn't saved" })).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Try saving again" }));
-    expect(await screen.findByText("Original capture retained as source evidence")).toBeDefined();
+    expect(await screen.findByText("Tendnote kept your original capture.")).toBeDefined();
     expect(screen.getByText("Open question")).toBeDefined();
     expect(screen.getByText("Only me")).toBeDefined();
     expect(submit).toHaveBeenCalledTimes(2);
@@ -691,7 +694,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(submit.mock.calls[1]?.[0].inputMode).toBe("dictated");
 
     await user.click(screen.getByRole("button", { name: "Change" }));
-    const changeInput = screen.getByRole("textbox", { name: "Change saved wording" });
+    const changeInput = screen.getByRole("textbox", { name: "Rewrite what Tendnote saved" });
     await user.clear(changeInput);
     await user.type(changeInput, "Where should I buy this filter?");
     await user.click(screen.getByRole("button", { name: "Save change" }));
@@ -795,7 +798,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
     await user.click(screen.getAllByRole("button", { name: "Change" })[1] as HTMLElement);
     await user.type(
-      screen.getByRole("textbox", { name: "Change saved wording" }),
+      screen.getByRole("textbox", { name: "Rewrite what Tendnote saved" }),
       "I need to buy oat milk",
     );
     await user.click(screen.getByRole("button", { name: "Save change" }));
@@ -872,7 +875,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
         originalText: "Remember filter model 9000",
       }),
     );
-    await user.click(screen.getByRole("button", { name: "Back to Today" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
     expect(stopRecognition).toHaveBeenCalledTimes(1);
     Reflect.deleteProperty(globalThis, "webkitSpeechRecognition");
   });

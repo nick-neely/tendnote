@@ -58,7 +58,9 @@ export function PwaRegistration() {
         className="fixed inset-x-4 top-[calc(1rem+env(safe-area-inset-top))] z-50 mx-auto flex max-w-md items-center justify-between gap-3 rounded-xl border bg-background p-3 shadow-sm md:top-4"
         role="status"
       >
-        <p className="text-sm">Install support is unavailable. Tendnote still works online here.</p>
+        <p className="text-sm">
+          Tendnote can't install on this device. It still works in the browser.
+        </p>
         <Button
           className="min-h-11"
           onClick={() => setRegistrationFailed(false)}
@@ -77,7 +79,7 @@ export function PwaRegistration() {
       className="fixed inset-x-4 top-[calc(1rem+env(safe-area-inset-top))] z-50 mx-auto flex max-w-md items-center justify-between gap-3 rounded-xl border bg-background p-3 shadow-sm md:top-4"
       role="status"
     >
-      <p className="text-sm">An update is ready. Finish what you're typing, then update.</p>
+      <p className="text-sm">An update is ready. Finish what you're typing first.</p>
       <Button className="min-h-11" onClick={applyUpdate} size="sm" type="button" variant="outline">
         Update
       </Button>

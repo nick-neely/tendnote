@@ -158,7 +158,7 @@ describe("TodayShortlist", () => {
     await user.click(screen.getByRole("menuitem", { name: "Later" }));
 
     expect(screen.getByLabelText("Show again")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Set Later" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Set" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "People" }).getAttribute("href")).toBe("/people");
     expect(screen.getByRole("link", { name: "Actions" }).getAttribute("href")).toBe("/actions");
   });

@@ -344,7 +344,7 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
     if (!Recognition) {
       update({
         dictationMessage:
-          "Live dictation is not supported in this browser. You can paste or use keyboard dictation.",
+          "This browser doesn't support live dictation. Paste text or use your keyboard's dictation instead.",
       });
       return;
     }
@@ -427,7 +427,7 @@ function CaptureCorrection({
   return (
     <>
       <label className="font-medium text-sm" htmlFor="mobile-capture-change">
-        Change saved wording
+        Rewrite what Tendnote saved
       </label>
       <textarea
         className="min-h-40 w-full resize-none rounded-xl border bg-background p-4 text-base leading-6 outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
@@ -470,9 +470,7 @@ function CaptureConfirmationDetails({
       {outcomes.map((outcome) => (
         <CaptureOutcomeDetails key={captureOutcomePresentation(outcome).key} outcome={outcome} />
       ))}
-      <p className="p-4 text-muted-foreground text-sm">
-        Original capture retained as source evidence
-      </p>
+      <p className="p-4 text-muted-foreground text-sm">Tendnote kept your original capture.</p>
     </div>
   );
 }
@@ -587,8 +585,8 @@ function CaptureConfirmation({
       <h3 className="font-semibold text-xl">{state.undone ? "Capture undone" : "Capture saved"}</h3>
       {state.undone ? (
         <p className="text-muted-foreground text-sm">
-          The captured {confirmation.destination} record was archived. Its source evidence remains
-          available for audit.
+          Tendnote archived the {confirmation.destination} record. Your original capture is still
+          saved.
         </p>
       ) : state.editing ? (
         <CaptureCorrection controller={controller} />
@@ -618,7 +616,7 @@ function CaptureClarification({
   if (!state.clarification) return null;
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <p className="text-muted-foreground text-xs">Original capture retained as source evidence</p>
+      <p className="text-muted-foreground text-xs">Tendnote kept your original capture.</p>
       <label className="font-medium text-sm" htmlFor="mobile-capture-clarification">
         {state.clarification.question}
       </label>
@@ -732,7 +730,7 @@ function CaptureComposer({
       ) : null}
       {!handlers?.submit ? (
         <p className="text-muted-foreground text-xs" role="status">
-          Capture routing is temporarily unavailable. Your draft remains safe to copy or discard.
+          Saving is temporarily unavailable. Your draft stays on this device so you can copy it.
         </p>
       ) : null}
       <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-4">

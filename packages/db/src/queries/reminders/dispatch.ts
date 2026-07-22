@@ -57,7 +57,7 @@ function formatDetailedPreview(input: {
   }).format(input.intendedAt);
   const title = input.record.title.trim().slice(0, 80);
   return {
-    title: `${title} — ${time}`,
+    title: `${title} · ${time}`,
     body: "Open Tendnote to view this reminder.",
   };
 }

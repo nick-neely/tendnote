@@ -97,8 +97,9 @@ describe("AssistantToolGroup (collapsed group of same-kind durable records)", ()
 
     expect(html).toContain("Logged 2 notes");
     expect(html).toContain("You noted");
-    expect(html).toContain("not confirmed facts");
-    expect(html).not.toContain("Confirmed facts");
+    expect(html).toContain("Not confirmed facts");
+    // Never the saved-memory footer, which is the one place "Confirmed facts" is claimed.
+    expect(html).not.toContain(">Confirmed facts");
     expect(html).toContain('data-tool-view="saved_source_record_group"');
   });
 });

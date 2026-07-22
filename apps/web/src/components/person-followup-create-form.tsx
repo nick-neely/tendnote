@@ -116,7 +116,7 @@ export function CreateFollowupForm({
                   onCreate(created);
                   reset();
                   setError(
-                    `The Follow-Up was saved, but that alert time has passed. Choose ${reminder.nextValidChoice.label} when you edit its Reminder schedule.`,
+                    `The follow-up was saved, but that alert time has passed. Choose ${reminder.nextValidChoice.label} when you edit its reminder.`,
                   );
                   return;
                 }

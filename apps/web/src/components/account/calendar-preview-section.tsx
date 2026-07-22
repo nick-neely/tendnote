@@ -30,14 +30,14 @@ export function CalendarPreviewSection({ view }: { view: CalendarPreviewView }) 
           </span>
         </h3>
         <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
-          Read-only context from your calendar — Tendnote never saves these as memory or follow-ups.
+          Read-only context from your calendar. Tendnote never saves these as memory or follow-ups.
         </p>
       </div>
 
       {view.state === "unavailable" ? (
         <p className="rounded-lg border border-dashed bg-surface px-3.5 py-3 text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-          Couldn&rsquo;t reach Google Calendar just now. Eve and your briefs still work — this will
-          refresh on its own.
+          Couldn&rsquo;t reach Google Calendar just now. Eve and your briefs still work, and this
+          will refresh on its own.
         </p>
       ) : (
         <div className="flex flex-col gap-2">
@@ -45,8 +45,8 @@ export function CalendarPreviewSection({ view }: { view: CalendarPreviewView }) 
             <p className="flex items-center gap-1.5 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
               <HistoryIcon aria-hidden className="size-3.5 shrink-0" />
               <span>
-                Showing cached events from <span className="font-mono">{view.cachedLabel}</span> —
-                may be out of date.
+                Showing cached events from <span className="font-mono">{view.cachedLabel}</span>.
+                These may be out of date.
               </span>
             </p>
           ) : null}

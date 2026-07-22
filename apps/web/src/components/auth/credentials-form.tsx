@@ -115,7 +115,7 @@ export function CredentialsForm({
               disabled={pending}
               id={`${formId}-name`}
               name="name"
-              placeholder="Ada Lovelace"
+              placeholder="Your name"
               type="text"
             />
           </div>

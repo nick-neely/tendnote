@@ -20,7 +20,7 @@ export default async function SignUpPage() {
   return (
     <AuthScaffold
       title="Create your account"
-      subtitle="Tendnote is in private beta. Create your account now — you'll come straight in once access is granted, no second signup."
+      subtitle="Tendnote is in private beta. Create your account now, and you'll come straight in once access is granted. No second signup."
     >
       <CredentialsForm githubEnabled={isGithubConfigured(githubEnvFromProcess())} mode="sign-up" />
     </AuthScaffold>

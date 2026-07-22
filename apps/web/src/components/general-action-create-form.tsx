@@ -201,7 +201,7 @@ export function CreateActionForm({
             }
           } catch {
             reminderError =
-              "The action was saved, but its reminder could not be scheduled. Try editing it again.";
+              "The action was saved, but its reminder wasn't. Edit the action to set it again.";
           }
         }
         reset();
@@ -433,7 +433,7 @@ function CreateActionDetails({
           <Textarea
             aria-label="Notes"
             onChange={(event) => onNotesChange(event.target.value)}
-            placeholder="Anything worth remembering — a model number, a phone number, what's left to do."
+            placeholder="Anything worth remembering: a model number, a phone number, what's left to do."
             rows={2}
             value={notes}
           />

@@ -30,7 +30,7 @@ describe("ChatLoggedNoteCard (interactive in-chat logged note)", () => {
     expect(html).toContain("Had lunch with Mark, he might be switching jobs.");
     expect(html).toContain("Approve");
     expect(html).toContain("Dismiss");
-    expect(html).toContain("approve to keep the memories from it");
+    expect(html).toContain("Approve to keep the memories from it");
     expect(html).toContain('href="/people/person-1"');
     // The raw record id is never shown as content.
     expect(html).not.toContain("source-1>");

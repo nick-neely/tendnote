@@ -32,7 +32,7 @@ import { resolveAssetChildVisibility, writeAssetChildShares } from "./review-vis
 export const SET_ASIDE = "This suggestion was set aside; propose it again to act on it.";
 export const ACCEPT_ANCHOR_FIRST =
   "Accept the suggested asset first, or link it to an existing one.";
-const ARCHIVED_ANCHOR = "This asset is archived — restore it before adding details.";
+const ARCHIVED_ANCHOR = "This asset is archived. Restore it before adding details.";
 
 /** Loads the mandatory grounding source and applies the restricted-context gate. */
 export async function requireGrounding(
