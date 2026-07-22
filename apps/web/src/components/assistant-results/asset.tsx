@@ -95,7 +95,7 @@ function AssetContextCard({
 
         {view.summary ? (
           <div className="border-border/70 border-t pt-2.5">
-            <Caption>Summary — generated from the facts above, not a source of truth</Caption>
+            <Caption>Summary: generated from the facts above, not a source of truth</Caption>
             <p className="mt-1 whitespace-pre-line text-muted-foreground text-sm">{view.summary}</p>
           </div>
         ) : null}

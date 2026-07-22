@@ -42,7 +42,7 @@ async function requireCaptureAnchor(
   input: AddAssetEvidenceInput,
 ): Promise<{ anchor: Asset; reviewGroupId: string | null }> {
   if ((input.assetId === undefined) === (input.reviewGroupId === undefined)) {
-    throw new AssetValidationError("Attach evidence to an asset or a review item — exactly one.");
+    throw new AssetValidationError("Attach evidence to exactly one asset or review item.");
   }
 
   if (input.assetId !== undefined) {
@@ -64,7 +64,7 @@ async function requireCaptureAnchor(
     throw new AssetValidationError(SET_ASIDE);
   }
   if (anchor.status === "archived") {
-    throw new AssetValidationError("This asset is archived — restore it before adding evidence.");
+    throw new AssetValidationError("This asset is archived. Restore it before adding evidence.");
   }
   return { anchor, reviewGroupId: group.id };
 }

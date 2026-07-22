@@ -52,8 +52,8 @@ export default async function ReminderOpenPage({
           Reminder unavailable
         </h1>
         <p className="max-w-[65ch] text-muted-foreground">
-          This reminder may have been completed, removed, or become unavailable to this account.
-          Tendnote has not changed the underlying record.
+          This reminder may have been completed, removed, or is no longer available to this account.
+          Nothing was changed.
         </p>
       </main>
     </AppShell>

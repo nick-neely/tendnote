@@ -64,7 +64,7 @@ async function requireProposalAnchor(
   }
   if (asset.status !== "active") {
     throw new AssetValidationError(
-      "This asset is archived — restore it before proposing reminders.",
+      "This asset is archived. Restore it before proposing reminders.",
     );
   }
   return asset;

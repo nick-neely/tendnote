@@ -30,9 +30,9 @@ export function BirthdayFollowupOffer({
       <div className="flex items-start gap-2.5">
         <CakeIcon className="mt-0.5 size-4 text-primary" />
         <div>
-          <p className="text-sm font-medium">Create an annual Birthday Follow-Up?</p>
+          <p className="text-sm font-medium">Create an annual birthday follow-up?</p>
           <p className="text-[length:var(--text-small)] text-muted-foreground">
-            The Birthday stays a fact. Only this explicit Follow-Up can alert you.
+            Saving a birthday doesn't remind you. This follow-up does.
           </p>
         </div>
       </div>
@@ -46,14 +46,14 @@ export function BirthdayFollowupOffer({
           >
             <option value="day_of">Day of at 9:00 AM</option>
             <option value="week_before">One week before</option>
-            <option value="custom">Custom lead</option>
+            <option value="custom">Custom</option>
           </select>
         </label>
         {choice === "custom" ? (
           <div className="flex flex-col gap-1 text-sm">
             <span>Days before</span>
             <Input
-              aria-label="Custom days before Birthday"
+              aria-label="Custom days before birthday"
               className="w-28"
               max={30}
               min={0}

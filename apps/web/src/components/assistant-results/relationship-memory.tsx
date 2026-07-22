@@ -278,7 +278,7 @@ export const savedSourceRecordModule = defineModule<"saved_source_record">({
   interactive: true,
   render: (view, isNew) => (
     <ResultCard
-      footer={<Caption>Logged context — saved for review, not a confirmed fact</Caption>}
+      footer={<Caption>Logged context, saved for review. Not a confirmed fact.</Caption>}
       icon={<NotebookPenIcon className="size-3" />}
       isNew={isNew}
       kind={view.kind}
@@ -506,7 +506,7 @@ export const relationshipContextSearchModule = defineModule<"relationship_contex
       renderSearchDisclosure(view, isNew)
     ) : (
       <ToolActivityLine icon={<SearchIcon aria-hidden className="size-3.5" />} isNew={isNew}>
-        No matching relationship context found
+        Nothing matching in your notebook
       </ToolActivityLine>
     ),
 });

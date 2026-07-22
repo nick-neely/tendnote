@@ -95,7 +95,7 @@ export function MemoriesSection({ memories }: { memories: Memory[] }) {
 export function LoggedContextSection({ sourceRecords }: { sourceRecords: SourceRecord[] }) {
   return (
     <LedgerSection
-      description="Notes and mentions, kept for grounding — not confirmed facts."
+      description="Notes and mentions, kept for grounding. Not confirmed facts."
       id="logged-context"
       title="Logged context"
     >
@@ -117,7 +117,7 @@ export function LoggedContextSection({ sourceRecords }: { sourceRecords: SourceR
           ))}
         </LedgerList>
       ) : (
-        <LedgerEmpty>Nothing logged yet. Add a note to start grounding this profile.</LedgerEmpty>
+        <LedgerEmpty>Nothing logged yet.</LedgerEmpty>
       )}
     </LedgerSection>
   );

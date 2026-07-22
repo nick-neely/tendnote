@@ -235,8 +235,8 @@ function ProposeControl({
     // screen-reader user that anything happened at all.
     onOutcome(
       summary.proposed === 1
-        ? "1 reminder suggested — review it below."
-        : `${summary.proposed} reminders suggested — review them below.`,
+        ? "1 reminder suggested. Review it below."
+        : `${summary.proposed} reminders suggested. Review them below.`,
     );
     router.refresh();
   }

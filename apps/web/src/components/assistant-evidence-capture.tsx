@@ -355,7 +355,7 @@ function ChosenDestinationLine({
 }) {
   const label =
     choice.kind === "new"
-      ? `New: ${choice.assetName} — for review`
+      ? `New: ${choice.assetName} (for review)`
       : choice.destination.targetKind === "asset"
         ? `Attach to ${choice.destination.name}`
         : `Attach to the review item for ${choice.destination.assetName}`;

@@ -164,7 +164,7 @@ export function resolveAssetMemoryContentPatch(
     notes: parsed.notes !== undefined ? parsed.notes : current.notes,
   };
   if (!hasMemoryContent(next)) {
-    throw new AssetValidationError("A memory needs a value or notes — clear one, not both.");
+    throw new AssetValidationError("A memory needs a value or notes. Clear one, not both.");
   }
 
   return {

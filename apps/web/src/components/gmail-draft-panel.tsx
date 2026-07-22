@@ -89,7 +89,12 @@ export function GmailDraftPanel({
     }
     setView(result.view);
     setError(
-      result.status === "failed" ? (result.view.error ?? "Gmail draft write failed.") : null,
+      result.status === "failed"
+        ? (result.view.error ??
+            (result.view.kind === "update"
+              ? "Couldn't update the Gmail draft."
+              : "Couldn't save this draft to Gmail."))
+        : null,
     );
     if (result.status === "succeeded") {
       setOpen(false);
@@ -188,8 +193,8 @@ export function GmailDraftPanel({
         >
           <TriangleAlertIcon aria-hidden className="size-4 shrink-0" />
           {view.kind === "update"
-            ? "Couldn’t update the Gmail draft."
-            : "Couldn’t save this draft to Gmail."}
+            ? "Couldn't update the Gmail draft."
+            : "Couldn't save this draft to Gmail."}
         </p>
         <div className="flex justify-end">
           <Button
@@ -278,7 +283,7 @@ export function GmailDraftPanel({
               value={manualEmail}
             />
             <p className="text-[length:var(--text-caption)] text-muted-foreground">
-              This address is used for this draft only — it isn&rsquo;t saved to their profile.
+              Used for this draft only. It isn't saved to their profile.
             </p>
           </>
         ) : null}
@@ -302,7 +307,7 @@ export function GmailDraftPanel({
           value={body}
         />
         <p className="text-[length:var(--text-caption)] text-muted-foreground">
-          Edits here save back to the Tendnote draft before the Gmail draft is written.
+          Edits here also update the Tendnote draft.
         </p>
       </div>
 

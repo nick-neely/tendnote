@@ -22,7 +22,7 @@ export function ActionTodaySurface({ groups }: { groups: ActionTodayGroup[] }) {
     return (
       <div className="rounded-lg border border-border border-dashed px-4 py-8 text-center">
         <p className="text-[length:var(--text-small)] text-muted-foreground">
-          Nothing on today. Your due, overdue, and resurfaced actions will show up here.
+          Nothing on today. Actions show up here when they're due or come back around.
         </p>
         <Link
           className="mt-2 inline-block rounded-sm font-medium text-[length:var(--text-small)] text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"

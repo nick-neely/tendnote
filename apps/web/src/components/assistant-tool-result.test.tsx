@@ -19,7 +19,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("Logged");
     expect(html).toContain("You noted");
     expect(html).toContain("Had lunch with Mark.");
-    expect(html).toContain("not a confirmed fact");
+    expect(html).toContain("Not a confirmed fact");
     expect(html).toContain('data-tool-view="saved_source_record"');
   });
 
@@ -134,7 +134,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
   it("renders empty exact recall results as a quiet line, not an expandable card", () => {
     const html = render({ kind: "relationship_context_search", results: [] });
 
-    expect(html).toContain("No matching relationship context found");
+    expect(html).toContain("Nothing matching in your notebook");
     // An empty result set recedes to a line; no disclosure summary or card chrome.
     expect(html).not.toContain("Found 0 exact matches");
     expect(html).not.toContain('data-tool-view="relationship_context_search"');
@@ -505,7 +505,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
       skippedReason: "insufficient_context",
     });
 
-    expect(html).toContain("No draft options: not enough grounded context");
+    expect(html).toContain("No draft options: not enough saved context yet");
     expect(html).not.toContain('data-tool-view="draft_proposal"');
   });
 

@@ -89,8 +89,8 @@ export default async function ActionsPage() {
             </Link>
           </div>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            One-time things to get done that aren't tied to a person — private by default, or shared
-            with your household.
+            Things to get done that aren't tied to a person. Private by default, or shared with your
+            household.
           </p>
         </header>
 

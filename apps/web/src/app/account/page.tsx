@@ -68,9 +68,6 @@ export default async function AccountPage({
           <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
             Account
           </h1>
-          <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-            Your identity and access. Tendnote keeps this deliberately small.
-          </p>
         </header>
 
         {/* Identity */}

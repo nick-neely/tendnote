@@ -79,7 +79,7 @@ describe("ChatGeneralActionReviewCard interaction", () => {
     await waitFor(() =>
       expect(dismiss).toHaveBeenCalledWith({ generalActionId: GENERAL_ACTION_ID }),
     );
-    expect(await screen.findByText("Dismissed — not kept. No action was added.")).toBeTruthy();
+    expect(await screen.findByText("Dismissed. No action was added.")).toBeTruthy();
     expect(accept).not.toHaveBeenCalled();
   });
 

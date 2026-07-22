@@ -24,7 +24,7 @@ export default async function PendingPage() {
   return (
     <AuthScaffold
       title="You're on the list"
-      subtitle="Your account is set up and waiting for Private Beta Access. We'll let you in as soon as it's granted — no need to sign up again."
+      subtitle="Your account is set up and waiting for Private Beta Access. We'll let you in as soon as it's granted. No need to sign up again."
     >
       <div className="flex flex-col gap-5">
         {/* Identity, so the visitor can confirm which account is signed in. */}

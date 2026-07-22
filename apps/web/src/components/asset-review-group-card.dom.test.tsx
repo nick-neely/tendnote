@@ -384,7 +384,7 @@ describe("AssetReviewGroupCard", () => {
     expect(dismissAssetReviewGroupAction).not.toHaveBeenCalled();
 
     const confirmButton = screen.getByRole("button", {
-      name: /Dismiss all — deletes 1 attachment\?/,
+      name: /Dismiss all and delete 1 attachment\?/,
     });
     // Disarmed for a beat, so a double-click can't land the second step.
     await user.click(confirmButton);

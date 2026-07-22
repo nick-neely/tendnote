@@ -39,7 +39,7 @@ describe("DashboardCalendarSuggestionsSection", () => {
     expect(html).toContain("From calendar");
     expect(html).toContain("Maya Chen");
     expect(html).toContain("Follow up after Coffee with Maya");
-    expect(html).toContain("Provider-derived context, not saved memory");
+    expect(html).toContain("From your calendar, not saved memory");
     expect(html).toContain("Accept");
     expect(html).toContain("Dismiss");
     expect(html).toContain('href="/people/person-1#follow-ups"');
@@ -62,7 +62,7 @@ describe("DashboardCalendarSuggestionsSection", () => {
     );
 
     expect(html).toContain("maya@example.com");
-    expect(html).toContain("Link this attendee to a person before accepting");
+    expect(html).toContain("Link this attendee to a person before you can accept it");
     expect(html).toContain("disabled");
   });
 

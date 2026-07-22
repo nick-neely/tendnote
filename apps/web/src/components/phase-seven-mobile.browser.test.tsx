@@ -130,7 +130,7 @@ describe("Phase Seven phone browser proof", () => {
     );
     const closeFocusedFlow = () =>
       act(async () => {
-        await userEvent.click(page.getByRole("button", { name: "Back to Today" }));
+        await userEvent.click(page.getByRole("button", { name: "Close" }));
         await new Promise((resolve) => window.setTimeout(resolve, 150));
       });
 

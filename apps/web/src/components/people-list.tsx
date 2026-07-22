@@ -55,7 +55,7 @@ export function PeopleList({ people }: { people: Person[] }) {
       ) : (
         <div className="rounded-xl border border-dashed px-4 py-10 text-center">
           <p className="text-[length:var(--text-small)] text-muted-foreground">
-            No one matches “{query.trim()}”.
+            {query.trim() ? <>No one matches “{query.trim()}”.</> : "No one saved yet."}
           </p>
         </div>
       )}

@@ -29,7 +29,7 @@ describe("ChatReviewCard (interactive in-chat review)", () => {
     const html = render("Mara");
 
     expect(html).toContain("Ready to review");
-    expect(html).toContain("Tentative — not saved until you approve it");
+    expect(html).toContain("Tentative. Not saved until you approve.");
     expect(html).toContain("Suggested for Mara:");
     expect(html).toContain("Might have a girls night next week.");
     // The actions are present in the initial (pending) render.

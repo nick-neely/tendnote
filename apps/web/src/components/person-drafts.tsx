@@ -68,9 +68,7 @@ export function PersonDrafts({
         <DraftMessageButton personId={personId} purpose="check_in" />
       </div>
       {drafts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No message drafts yet. Start one to draft from this person's relationship context.
-        </p>
+        <p className="text-sm text-muted-foreground">No message drafts yet.</p>
       ) : (
         drafts.map((draft) => (
           <DraftReviewCard
@@ -169,7 +167,7 @@ function DraftReviewCard({
       if (result.draft) {
         onAdd(result.draft);
       } else {
-        setError("Not enough grounded context to regenerate right now.");
+        setError("Not enough saved context about this person to regenerate.");
       }
     }, "Couldn't regenerate this draft.");
   }

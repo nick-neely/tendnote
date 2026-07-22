@@ -173,16 +173,16 @@ export function ProviderConnectionsSection({
       <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
         {anyConnectable ? (
           <>
-            Each connects behind its own narrow consent — none implies another. Calendar reads
+            Each connects behind its own narrow consent. None implies another. Calendar reads
             upcoming and recent events (read-only). Gmail saves drafts you approve (never sending).
             Contacts previews personal contacts before anything&rsquo;s saved. Discord links your
             identity so captures reach Tendnote (no messages read).
           </>
         ) : (
           <>
-            These aren&rsquo;t connected yet. Add the matching provider credentials to connect
-            Calendar, Gmail, Contacts, and Discord, each behind its own narrow permission and your
-            explicit approval. Tendnote isn&rsquo;t reading any of this data.
+            These aren&rsquo;t available yet. When they are, Calendar, Gmail, Contacts, and Discord
+            each connect behind their own narrow permission and your approval. Tendnote isn&rsquo;t
+            reading any of this data.
           </>
         )}
       </p>
@@ -404,11 +404,6 @@ function ProviderRowEntryPoints({
 
   return (
     <>
-      {isContacts && connection.status === "ready" ? (
-        <p className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-muted-foreground">
-          Preview latest contacts before saving anything to Tendnote.
-        </p>
-      ) : null}
       {isContacts && connection.status === "connected" ? (
         <a
           className="self-start text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-primary underline underline-offset-2"

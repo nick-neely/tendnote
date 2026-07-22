@@ -51,7 +51,7 @@ function parseOptionalDate(value: string | null | undefined): Date | null | unde
 }
 
 function originalText(input: z.infer<typeof createSchema>): string {
-  if (input.kind === "link") return [input.title, input.url].filter(Boolean).join(" — ");
+  if (input.kind === "link") return [input.title, input.url].filter(Boolean).join(" · ");
   return input.content || input.title;
 }
 

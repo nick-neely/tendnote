@@ -46,7 +46,7 @@ async function requirePromotableAnchor(
   }
   if (anchor.status !== "active") {
     throw new AssetValidationError(
-      "This detail's asset isn't active — restore or re-propose it first.",
+      "This detail's asset isn't active. Restore or re-propose it first.",
     );
   }
   return anchor;

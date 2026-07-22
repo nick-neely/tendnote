@@ -63,7 +63,7 @@ export function DestinationChooser({
             <DestinationList destinations={destinations} onChoose={onChoose} />
           ) : (
             <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-              Tendnote isn't tracking anything yet — name what this belongs to.
+              Tendnote isn't tracking anything yet. Name what this belongs to.
             </p>
           )}
 
@@ -195,7 +195,7 @@ function NewAssetForm({
         </Button>
       </div>
       <p className="text-[length:var(--text-caption)] text-muted-foreground">
-        New things start as suggestions — you'll confirm this in Review before it becomes an asset.
+        New things start as suggestions. You'll confirm this in Review before it becomes an asset.
       </p>
     </div>
   );

@@ -29,7 +29,7 @@ export function ContactImportReview({
       <EmptyState>
         {fetchedCount === 0
           ? "No contacts were fetched from Google."
-          : "Every fetched contact has been handled for this session."}
+          : "You've handled every contact in this preview."}
       </EmptyState>
     );
   }

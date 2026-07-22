@@ -162,7 +162,7 @@ function groupFooter(kind: GroupableToolKind, views: readonly GroupableToolView[
       return `Confirmed facts${grounded ? " · grounded in source records" : ""}`;
     }
     case "saved_source_record":
-      return "Logged context — saved for review, not confirmed facts";
+      return "Logged context, saved for review. Not confirmed facts.";
     case "added_person":
       return "Added to your notebook";
     case "updated_person":

@@ -147,7 +147,7 @@ export function PersonRemove({
           <AlertDialogDescription>
             {hasHistory
               ? `Deleting ${personName} permanently removes everything saved about them. This can't be undone.`
-              : `${personName} has nothing saved yet — this just removes their profile. It can't be undone.`}
+              : `${personName} has nothing saved yet, so this only removes their profile. It can't be undone.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
 

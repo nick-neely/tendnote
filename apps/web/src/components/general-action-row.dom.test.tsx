@@ -196,6 +196,6 @@ describe("Routine occurrence lifecycle", () => {
       }),
     );
     expect(onUpdate).toHaveBeenCalledWith(next);
-    expect(await screen.findByText(/Skipped — next/)).toBeDefined();
+    expect(await screen.findByText(/Skipped · next/)).toBeDefined();
   });
 });

@@ -88,11 +88,11 @@ function labelDraftProposalSkip(
 ): string {
   switch (reason) {
     case "person_not_found":
-      return "No draft options: person could not be resolved";
+      return "No draft options: Tendnote couldn't find that person";
     case "generation_failed":
       return "No draft options: drafting is temporarily unavailable";
     default:
-      return "No draft options: not enough grounded context";
+      return "No draft options: not enough saved context yet";
   }
 }
 

@@ -42,7 +42,7 @@ export function ChatAssetReviewCard({
         <span aria-hidden className="flex size-3.5 shrink-0 items-center justify-center">
           <CheckIcon className="size-3.5" />
         </span>
-        Reviewed — nothing left pending on {review.asset.name}.
+        Reviewed. Nothing left pending on {review.asset.name}.
       </p>
     );
   }

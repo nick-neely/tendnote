@@ -106,7 +106,7 @@ function composeTitle(
       return `Service ${asset.name}`;
     case "dated_reminder":
       // Nothing was inferred, so the memory's own words carry the proposal.
-      return `${memory.label} — ${asset.name}`;
+      return `${memory.label}: ${asset.name}`;
   }
 }
 

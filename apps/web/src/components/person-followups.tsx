@@ -89,9 +89,7 @@ export function PersonFollowups({
           ))}
         </LedgerList>
       ) : (
-        <LedgerEmpty>
-          No active follow-ups. Set a reminder to reconnect with {firstName}.
-        </LedgerEmpty>
+        <LedgerEmpty>No active follow-ups for {firstName}.</LedgerEmpty>
       )}
 
       <CreateFollowupForm

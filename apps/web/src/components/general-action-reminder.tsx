@@ -115,13 +115,13 @@ function outcomeMessage(outcome: ReminderRegistrationOutcome | null) {
   if (outcome?.status === "enabled") return "Reminders are enabled on this installation.";
   if (outcome?.status === "denied")
     return "Notifications are blocked. You can allow them later in browser settings.";
-  if (outcome?.status === "postponed") return "No problem. Tendnote will wait before asking again.";
+  if (outcome?.status === "postponed") return "Tendnote will wait before asking again.";
   if (outcome?.status === "install_required")
     return "Add Tendnote to your Home Screen before enabling reminders on iPhone or iPad.";
   if (outcome?.status === "unsupported")
-    return "This browser cannot register for reminders. On iPhone, install Tendnote to the Home Screen first.";
+    return "This browser can't deliver reminders. On iPhone, add Tendnote to your Home Screen first.";
   if (outcome?.status === "registration_failed")
-    return "Permission was allowed, but Tendnote could not register this installation. Try again.";
+    return "You allowed notifications, but Tendnote couldn't finish setting them up. Try again.";
   return null;
 }
 
@@ -192,14 +192,14 @@ function ReminderCapabilityGuidance({ capability }: { capability: ReminderCapabi
     return (
       <p className="text-[length:var(--text-small)] text-muted-foreground">
         In Safari, tap Share, choose Add to Home Screen, then open Tendnote there to enable
-        reminders. Today remains available in this browser.
+        reminders. Today still works in this browser.
       </p>
     );
   }
   if (capability === "unsupported") {
     return (
       <p className="text-[length:var(--text-small)] text-muted-foreground">
-        Reminders are unavailable in this browser. Today remains the reliable place to check.
+        Reminders don't work in this browser. Check Today instead.
       </p>
     );
   }
@@ -267,8 +267,9 @@ export function ReminderOptInInvitation({
           <div>
             <p className="text-sm font-medium">Get this reminder on this installation?</p>
             <p className="text-[length:var(--text-small)] text-muted-foreground">
-              Alerts use generic lock-screen copy. Tendnote will ask your browser only after you
-              choose Enable. Delivery is best effort, and you can turn reminders off anytime.
+              Alerts show generic text on your lock screen, and your browser won't ask for
+              permission until you choose Enable. Delivery isn't guaranteed, and you can turn
+              reminders off anytime.
             </p>
           </div>
           {message ? (

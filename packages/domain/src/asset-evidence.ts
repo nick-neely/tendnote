@@ -102,7 +102,7 @@ export function assertAssetEvidenceFileAccepted(file: {
     throw new AssetValidationError(`Use a ${ASSET_EVIDENCE_FILE_TYPES_LABEL} file.`);
   }
   if (file.sizeBytes <= 0) {
-    throw new AssetValidationError("That file looks empty — try capturing it again.");
+    throw new AssetValidationError("That file looks empty. Try capturing it again.");
   }
   if (file.sizeBytes > ASSET_EVIDENCE_MAX_FILE_BYTES) {
     throw new AssetValidationError(
@@ -158,7 +158,7 @@ export function assertAssetEvidenceFileSignature(file: {
   // No signature for the type (unknown mime) denies just like a mismatch.
   if (!FILE_SIGNATURES[file.mimeType]?.(file.bytes)) {
     throw new AssetValidationError(
-      `That file doesn't look like a ${ASSET_EVIDENCE_FILE_TYPES_LABEL} file — try re-exporting it.`,
+      `That file doesn't look like a ${ASSET_EVIDENCE_FILE_TYPES_LABEL} file. Try re-exporting it.`,
     );
   }
 }
@@ -228,7 +228,7 @@ const assetEvidenceBaseSchema = z.object({
 const EVIDENCE_INVARIANTS = [
   {
     check: hasEvidenceSubstance,
-    message: "Evidence needs substance — a file, a link, or text.",
+    message: "Evidence needs substance: a file, a link, or text.",
   },
   {
     check: (record: { kind: AssetEvidenceKind; url: string | null }) =>
@@ -243,7 +243,7 @@ const EVIDENCE_INVARIANTS = [
     }) =>
       (record.fileName === null) === (record.mimeType === null) &&
       (record.fileName === null) === (record.sizeBytes === null),
-    message: "File metadata travels together — name, type, and size.",
+    message: "File metadata travels together: name, type, and size.",
   },
 ] as const;
 

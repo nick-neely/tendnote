@@ -37,8 +37,7 @@ export function DiscordDeliverySettings({ installs }: { installs: DiscordInstall
     return (
       <div className="rounded-lg border border-dashed bg-surface px-3.5 py-3">
         <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty text-muted-foreground">
-          You haven&rsquo;t added Tendnote to a Discord server yet. Install it into a server to
-          choose where proactive nudges can land.
+          You haven&rsquo;t added Tendnote to a Discord server yet.
         </p>
       </div>
     );
@@ -222,9 +221,9 @@ function ChannelIdForm({
         className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-pretty text-muted-foreground"
         id={helpId}
       >
-        Nudges only ever go to the channel you set here, and only for workflows you&rsquo;ve
-        configured. In Discord, enable Developer Mode (Settings &rarr; Advanced), then right-click
-        the channel and choose <span className="whitespace-nowrap">Copy Channel ID</span>.
+        Nudges only go to the channel you set here. To find a channel ID in Discord, enable
+        Developer Mode (Settings &rarr; Advanced), then right-click the channel and choose{" "}
+        <span className="whitespace-nowrap">Copy Channel ID</span>.
       </p>
     </>
   );

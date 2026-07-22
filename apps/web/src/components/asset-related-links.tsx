@@ -72,10 +72,7 @@ export function AssetRelatedLinks({
           ))}
         </LedgerList>
       ) : suggested.length === 0 ? (
-        <LedgerEmpty>
-          No related assets yet. Link the filter that fits this, the part it uses, or the thing it's
-          stored with.
-        </LedgerEmpty>
+        <LedgerEmpty>No related assets yet.</LedgerEmpty>
       ) : null}
 
       {suggested.length > 0 ? <SuggestedLinks links={suggested} onResolved={restoreFocus} /> : null}

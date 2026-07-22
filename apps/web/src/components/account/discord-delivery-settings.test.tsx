@@ -20,7 +20,7 @@ describe("DiscordDeliverySettings", () => {
     const html = renderToStaticMarkup(<DiscordDeliverySettings installs={[]} />);
 
     expect(html).toContain("haven");
-    expect(html).toContain("Install it into a server");
+    expect(html).toContain("added Tendnote to a Discord server yet");
   });
 
   it("renders a delivery-on row with a pause control and the channel field for an active install", () => {

@@ -25,13 +25,13 @@ type Candidate = ContactImportPreviewCandidate;
  * The one canonical phrase for provider drift (fingerprint mismatch). Reused by the
  * toast and the persistent row marker so the concept reads identically.
  */
-export const STALE_NOTE = "Changed in Google Contacts since you previewed — refresh to retry.";
+export const STALE_NOTE = "Changed in Google Contacts since you previewed. Refresh to retry.";
 
 /** Copy shown when the workflow accepted the request but imported nothing. */
 export const NOTHING_IMPORTED_NOTE = "No contacts were imported.";
 
 /** Copy shown when the apply call itself failed. */
-export const APPLY_FAILED_NOTE = "Something went wrong applying that import. Please try again.";
+export const APPLY_FAILED_NOTE = "Couldn't apply that import. Try again.";
 
 /**
  * A toast the review surface should show, described rather than shown. Keeping the

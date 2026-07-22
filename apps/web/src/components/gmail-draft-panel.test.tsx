@@ -84,4 +84,15 @@ describe("GmailDraftPanel", () => {
     expect(html).toContain("Couldn");
     expect(html).toContain("Retry");
   });
+
+  it("names the failed operation as an update when the linked draft was being revised", () => {
+    const html = render({
+      initialView: { ...succeeded, status: "failed", kind: "update", error: "gmail 503" },
+    });
+    expect(html).toContain("update the Gmail draft.");
+    expect(html).not.toContain("save this draft to Gmail");
+    // The raw provider error never reaches the card (ADR-0096).
+    expect(html).not.toContain("gmail 503");
+    expect(html).toContain("Retry");
+  });
 });

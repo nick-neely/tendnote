@@ -12,6 +12,7 @@ import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
 import { toCalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
+import { suggestComposerPerson } from "@/lib/composer-suggestion";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
 import { toDashboardFollowupView } from "@/lib/followup-view";
 import { getOwnerCalendarPromptNudges } from "@/lib/integrations/calendar-prompt-nudges";
@@ -52,10 +53,17 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     getHomeToday(ownerUserId, todayContext),
   ]);
   const birthdays = getUpcomingBirthdays(people);
+  const composerSuggestPersonName = suggestComposerPerson(dashboardFollowups, people);
 
   return (
     <AppShell
-      mobileEve={<AssistantPanel nudges={calendarNudges} ownerUserId={ownerUserId} />}
+      mobileEve={
+        <AssistantPanel
+          nudges={calendarNudges}
+          ownerUserId={ownerUserId}
+          suggestPersonName={composerSuggestPersonName}
+        />
+      }
       mobileHome={requestedTab !== "review"}
       mobileReview={requestedTab === "review"}
       ownerUserId={ownerUserId}
@@ -78,7 +86,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             rail widens a touch from lg→xl so its tabs and cards keep room. */}
         <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="order-1 h-[70dvh] lg:h-full lg:min-h-0">
-            <AssistantPanel nudges={calendarNudges} ownerUserId={ownerUserId} />
+            <AssistantPanel
+              nudges={calendarNudges}
+              ownerUserId={ownerUserId}
+              suggestPersonName={composerSuggestPersonName}
+            />
           </div>
           {/* The rail manages its own scroll inside the active tab panel (the tab
               bar stays pinned), so the column itself is only height-bounded. */}

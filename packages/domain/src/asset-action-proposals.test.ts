@@ -166,7 +166,7 @@ describe("planAssetMemoryActionProposal", () => {
     });
 
     expect(proposal?.reason).toBe("dated_reminder");
-    expect(proposal?.title).toBe("Registration due — Refrigerator water filter");
+    expect(proposal?.title).toBe("Registration due: Refrigerator water filter");
     // No invented lead: an unclassified date means exactly the day it states.
     expect(dueDay(proposal)).toBe("2026-11-04");
   });

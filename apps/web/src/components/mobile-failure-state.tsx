@@ -15,42 +15,44 @@ export type MobileFailureKind =
 const FAILURE_COPY: Record<MobileFailureKind, { action: string; body: string; heading: string }> = {
   offline: {
     action: "Try again",
-    body: "Tendnote needs a connection for current records and every save. Unsaved text stays on this device.",
+    body: "Tendnote needs a connection to load records and save changes. Unsaved text stays on this device.",
     heading: "You're offline",
   },
   authentication: {
     action: "Sign in",
-    body: "Sign in again to return to the destination you were opening. Nothing was submitted while signed out.",
+    body: "Sign in again to pick up where you left off. Nothing was saved while you were signed out.",
     heading: "Your session expired",
   },
   app_server: {
     action: "Try again",
-    body: "Your records could not be loaded. Unsaved text is still available while you retry.",
+    body: "Tendnote couldn't load your records. Unsaved text stays on this device while you retry.",
     heading: "Tendnote couldn't load",
   },
   capture_change: {
     action: "Try change again",
-    body: "The change was not saved. The original Saved Item and its source evidence are unchanged.",
+    body: "Tendnote didn't save the change. Your original Saved Item and capture are unchanged.",
     heading: "Change wasn't saved",
   },
   capture_save: {
     action: "Try saving again",
-    body: "No Saved Item was confirmed. Your text remains on this device so you can retry or copy it.",
+    body: "Nothing was saved. Your text stays on this device so you can retry or copy it.",
     heading: "Capture wasn't saved",
   },
   capture_undo: {
     action: "Try Undo again",
-    body: "Tendnote could not confirm whether Undo completed. Retry safely to reconcile the Saved Item's state.",
+    body: "Tendnote couldn't confirm the undo. Trying again is safe.",
     heading: "Undo wasn't confirmed",
   },
   eve: {
     action: "Try Eve again",
-    body: "Your Tendnote records are still available. This question remains unsaved so you can retry or copy it.",
+    body: "Your records are safe. Your question is unsaved, so you can retry or copy it.",
     heading: "Eve is unavailable",
   },
   cache_mismatch: {
-    action: "Refresh safely",
-    body: "The app shell and this page are out of sync. Unfinished drafts are preserved before refreshing.",
+    action: "Refresh",
+    // Reached both when a stale page asks for a shell asset a newer build replaced
+    // and when that fetch simply fails offline, so the copy must not diagnose either.
+    body: "Tendnote couldn't load part of this page. Your drafts are kept when it refreshes.",
     heading: "Tendnote needs a refresh",
   },
 };

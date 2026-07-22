@@ -92,7 +92,7 @@ export function TodayShortlist({
         setLaterItem(null);
       } catch {
         if (requestRollover()) return;
-        setError("Today could not update. Your underlying record was not changed.");
+        setError("Today couldn't update. Your records are unchanged.");
       }
     });
   }
@@ -100,10 +100,7 @@ export function TodayShortlist({
   return (
     <section aria-label="Today shortlist" className="px-5 pt-6">
       <div className="mb-2 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="font-semibold text-sm">Worth your attention</h2>
-          <p className="text-muted-foreground text-xs">A short list, grounded in your records.</p>
-        </div>
+        <h2 className="font-semibold text-sm">Worth your attention</h2>
         {showRefresh ? (
           <Button
             aria-label="Refresh Today shortlist"
@@ -236,7 +233,7 @@ export function TodayShortlist({
                       />
                     </label>
                     <Button className="min-h-11" disabled={pending} size="sm" type="submit">
-                      Set Later
+                      Set
                     </Button>
                     <Button
                       className="min-h-11"
@@ -255,15 +252,14 @@ export function TodayShortlist({
         </div>
       ) : (
         <div className="py-10 text-center">
-          <p className="font-medium text-sm">Nothing needs the shortlist right now.</p>
-          <p className="mt-1 text-muted-foreground text-xs">Your records stay available in Menu.</p>
+          <p className="font-medium text-sm">Nothing needs your attention today.</p>
         </div>
       )}
 
       {response.overflow ? (
         <div className="mt-2 text-muted-foreground text-xs">
           <span>
-            {response.overflow.omittedCount} more time-bound{" "}
+            {response.overflow.omittedCount} more dated{" "}
             {response.overflow.omittedCount === 1 ? "item is" : "items are"} waiting in
           </span>{" "}
           {response.overflow.destinations.map((destination, index) => (

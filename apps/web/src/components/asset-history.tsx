@@ -14,12 +14,7 @@ import type { AssetHistoryEntryView } from "@/lib/asset-history-view";
  */
 export function AssetHistory({ entries }: { entries: AssetHistoryEntryView[] }) {
   if (entries.length === 0) {
-    return (
-      <LedgerEmpty>
-        Nothing has happened here yet. Details you confirm, evidence you attach, links you make, and
-        archive moments will be written here.
-      </LedgerEmpty>
-    );
+    return <LedgerEmpty>Nothing has happened here yet.</LedgerEmpty>;
   }
 
   return (

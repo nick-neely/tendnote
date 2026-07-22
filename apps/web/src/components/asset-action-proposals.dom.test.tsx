@@ -180,14 +180,14 @@ describe("AssetActionProposals (#203)", () => {
     const user = userEvent.setup();
     proposeAssetMemoryActionsAction.mockResolvedValue({
       ok: false,
-      error: "This asset is archived — restore it before proposing reminders.",
+      error: "This asset is archived. Restore it before proposing reminders.",
     });
     render(<AssetActionProposals assetId={ASSET_ID} canPropose proposals={[]} />);
 
     await user.click(screen.getByRole("button", { name: /Suggest reminders/ }));
 
     await waitFor(() => {
-      expect(screen.getByText(/restore it before proposing reminders/)).toBeTruthy();
+      expect(screen.getByText(/restore it before proposing reminders/i)).toBeTruthy();
     });
   });
 

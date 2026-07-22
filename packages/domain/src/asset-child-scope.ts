@@ -28,7 +28,7 @@ export function requireChildScopeWithinAsset(input: {
 }): void {
   if (SCOPE_REACH[input.childScope] > SCOPE_REACH[input.assetScope]) {
     throw new AssetValidationError(
-      "A detail can't be more visible than its asset — narrow it or widen the asset first.",
+      "A detail can't be more visible than its asset. Narrow it, or widen the asset first.",
     );
   }
 }

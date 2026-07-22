@@ -89,9 +89,9 @@ export function ChatGeneralActionReviewCard({
     resolvedChip: "Added to your list",
     primaryAction: "Accept",
     noun: item.isRoutine ? "suggested routine" : "suggested action",
-    pendingFooter: "Tentative — not on your list until you accept it",
+    pendingFooter: "Tentative. Not on your list until you accept.",
     resolvedFooter: `On your active list${people ? ` · ${people}` : ""}`,
-    dismissedFooter: "Dismissed — not kept. No action was added.",
+    dismissedFooter: "Dismissed. No action was added.",
     errorRecovery: "You can review it on the Actions page.",
     openLabel: "Open in Actions",
   };

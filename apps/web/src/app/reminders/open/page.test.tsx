@@ -65,7 +65,7 @@ describe("Reminder deep-link recovery", () => {
     const markup = renderToStaticMarkup(await ReminderOpenPage({ searchParams: params }));
 
     expect(markup).toContain("Reminder unavailable");
-    expect(markup).toContain("completed, removed, or become unavailable");
+    expect(markup).toContain("completed, removed, or is no longer available");
     expect(markup).not.toContain(ACTION_ID);
   });
 });

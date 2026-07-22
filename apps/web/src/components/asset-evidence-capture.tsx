@@ -234,7 +234,7 @@ function EvidenceDropZone({
               {/* No drop on a phone — the whole zone is the tap target there. */}
               <span className="sm:hidden">Choose a receipt, photo, or PDF</span>
               <span className="hidden sm:inline">
-                Drop a receipt, photo, or PDF — or{" "}
+                Drop a receipt, photo, or PDF, or{" "}
                 <span className="font-medium text-primary underline underline-offset-2">
                   browse
                 </span>
@@ -569,7 +569,7 @@ function EvidenceSubstanceField({
         aria-label="Note text"
         name="capturedText"
         onChange={(event) => onChange(event.target.value)}
-        placeholder="The text worth keeping, exactly as captured."
+        placeholder="The text worth keeping"
         rows={3}
         value={value}
       />
@@ -595,7 +595,7 @@ function EvidenceMetadataDisclosure() {
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
-        {open ? "Hide amount & dates" : "Add amount or dates"}
+        {open ? "Hide amount and dates" : "Add amount or dates"}
       </button>
       {open ? (
         <div className="flex flex-col gap-2 sm:flex-row" id={detailsId}>

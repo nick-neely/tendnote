@@ -356,7 +356,7 @@ describe("propose_asset_actions tool", () => {
     // The rule is not "swallow errors" — it is "only a sentence the domain wrote for a
     // person may reach the model". An archived asset must still say why it refused.
     proposeAssetMemoryActions.mockRejectedValue(
-      new AssetValidationError("This asset is archived — restore it before proposing reminders."),
+      new AssetValidationError("This asset is archived. Restore it before proposing reminders."),
     );
 
     await expect(proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx)).rejects.toThrow(
@@ -571,7 +571,7 @@ describe("propose_asset_memories tool", () => {
 
   it("still passes a curated domain refusal through to the model", async () => {
     suggestAssetMemories.mockRejectedValue(
-      new AssetValidationError("This asset is archived — restore it before adding details."),
+      new AssetValidationError("This asset is archived. Restore it before adding details."),
     );
 
     await expect(

@@ -78,7 +78,7 @@ describe("PersonFollowups", () => {
     const html = render({ active: [], firstName: "Mark" });
 
     expect(html).toContain("No active follow-ups");
-    expect(html).toContain("reconnect with Mark");
+    expect(html).toContain("follow-ups for Mark");
   });
 
   it("marks past-due follow-ups with calm words, not guilt copy or color alone", () => {
