@@ -40,16 +40,21 @@ Physical operating-system display cannot be inferred from Chromium emulation or 
 acceptance. Before a production release, record the deployed build, device/browser versions,
 tester, date, and pass/fail notes for each row below.
 
-- [ ] Current supported iOS Safari: sign-in; Today; Search; Capture; Review; Eve; offline failure;
-      24-hour draft lifecycle; update prompt; installation guidance; unsupported push context.
-- [ ] Current supported iOS Home Screen PWA: earned opt-in; permission timing; generic and detailed
+- Candidate: `d44abc4`, Vercel preview deployment `dpl_HPRTstVhvEA2td8ryQKenPXAzqkn`.
+- Tester/date: Nick Neely, 2026-07-22. The tester confirmed the current supported device/browser
+  matrix passed; exact OS and browser build identifiers were not supplied in the acceptance note.
+
+- [x] Current supported iOS Safari: sign-in; Today; Search; Capture; Review; Eve; offline failure;
+      24-hour draft lifecycle; update prompt; installation guidance; unsupported push context. Pass.
+- [x] Current supported iOS Home Screen PWA: earned opt-in; permission timing; generic and detailed
       previews; authenticated deep link; disable/re-enable; revocation; stale suppression; safe
-      update with an active draft.
-- [ ] Current supported Android browser and installed PWA: core flows without mandatory install;
+      update with an active draft. Pass.
+- [x] Current supported Android browser and installed PWA: core flows without mandatory install;
       earned opt-in; permission timing; generic and detailed previews; multi-installation fan-out;
-      endpoint replacement or terminal failure; revocation; stale suppression.
-- [ ] Cross-device observation: one installation's retry or revocation does not affect another,
+      endpoint replacement or terminal failure; revocation; stale suppression. Pass.
+- [x] Cross-device observation: one installation's retry or revocation does not affect another,
       and no provider-accepted request is recorded as proof that the operating system displayed it.
+      Pass.
 
 An unchecked row is an explicit release gate, not a claimed pass and not evidence that repository
 behavior was skipped.
