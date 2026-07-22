@@ -23,14 +23,14 @@ Eve, the Tendnote assistant — a filesystem agent mounted into the web app same
 | Global Capture | `capture_saved_item` (routes Saved Item, Action, Routine, or Follow-Up), `change_saved_item_capture`, `undo_saved_item_capture`, `capture_memory`, `capture_source_record` |
 | Memory review | `list_suggested_memory_reviews`, `get_suggested_memory_review`, `approve_suggested_memory`, `dismiss_suggested_memory` |
 | Follow-ups | `create_followup`, `propose_followup`, `update_followup_status`, `list_due_followups`, `list_suggested_followup_reviews`, `get_suggested_followup_review`, `accept_suggested_followup`, `dismiss_suggested_followup` |
-| Retrieval | `search_relationship_context` (Exact Recall), `search_semantic_context`, `get_relationship_agenda` |
+| Retrieval | `search_global_recall` (grounded cross-record Exact/Related results), `search_relationship_context` (relationship Exact Recall), `search_semantic_context`, `get_relationship_agenda` |
 | General Actions | `create_general_action`, `edit_general_action`, `update_general_action_status`, `list_general_actions`, `suggest_general_action`, `plan_suggested_general_actions`, `list_suggested_general_action_reviews`, `get_suggested_general_action_review`, `accept_suggested_general_action`, `dismiss_suggested_general_action` |
 | Assets | `search_assets`, `get_asset_context`, `propose_asset_memories`, `propose_asset_actions` |
 | Drafting | `create_message_draft` (Tendnote-only), `save_draft_to_gmail` (externalize an approved draft; never sends) |
 | Calendar | `list_calendar_events` (read-only, bounded) |
 | Cleanup | `cleanup_preview` (parses messy input into review-only candidates; writes nothing) |
 
-Every mutation that creates durable state requires explicit user intent. Anything Eve originates lands as a *suggestion* for review.
+Every mutation that creates durable state requires explicit user intent. Anything Eve originates lands as a *suggestion* for review. Global Capture routes explicit requests through the same owner-scoped product functions as the web app, and correction or undo targets the recorded outcome rather than asking the model to reconstruct what changed.
 
 ## Subagents
 
@@ -51,7 +51,7 @@ The `discord.ts` channel verifies Ed25519 interaction signatures against `DISCOR
 
 ## Scheduled workflows
 
-`brief-dispatcher.ts` runs on one static schedule and dispatches four workflows, each with optional Discord delivery: due briefs (morning agenda and weekly relationship review), post-meeting aftercare, birthday and gift planning, and the scoped action summary. It calls shared owner-scoped generators directly rather than starting a chat session per workflow (ADR 0066). `TENDNOTE_BRIEF_TIMEZONE` (default `UTC`) sets the local-date boundary.
+`brief-dispatcher.ts` runs on one static schedule and dispatches four workflows, each with optional Discord delivery: due briefs (morning agenda and weekly relationship review), post-meeting aftercare, birthday and gift planning, and the scoped action summary. It calls shared owner-scoped generators directly rather than starting a chat session per workflow (ADR 0066). Hosted dispatch discovers durable granted owners from Private Beta Access profiles; `demo-user` remains local-only. `TENDNOTE_BRIEF_TIMEZONE` (default `UTC`) sets the local-date boundary.
 
 ## Run
 

@@ -99,6 +99,15 @@ describe("access profile queries", () => {
     expect(decision.status).toBe("pending");
   });
 
+  it("lists only granted principals for owner-scoped background work", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+
+    await queries.ensureAccessProfile({ userId: FIRST_USER });
+    await queries.ensureAccessProfile({ userId: SECOND_USER });
+
+    await expect(queries.listAdmittedOwnerUserIds()).resolves.toEqual([FIRST_USER]);
+  });
+
   it("treats an unknown user as pending and not admitted", async () => {
     const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
 

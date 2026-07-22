@@ -21,6 +21,10 @@ export async function checkAccess(input: { userId: string }) {
   return defaultAccessProfileQueries.checkAccess(input);
 }
 
+export async function listAdmittedOwnerUserIds() {
+  return defaultAccessProfileQueries.listAdmittedOwnerUserIds();
+}
+
 export async function grantAccess(input: { userId: string; source: AccessSource }) {
   return defaultAccessProfileQueries.grantAccess(input);
 }

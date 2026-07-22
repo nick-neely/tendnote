@@ -1,4 +1,7 @@
-import { ensureDefaultBriefSchedules } from "./brief-schedules/defaults";
+import {
+  type EnsureDefaultBriefSchedulesInput,
+  ensureDefaultBriefSchedules,
+} from "./brief-schedules/defaults";
 import type { RunDueBriefSchedulesInput } from "./brief-schedules/dispatcher";
 import { createBriefScheduleDispatcher } from "./brief-schedules/dispatcher";
 import { createDrizzleBriefScheduleStore } from "./brief-schedules/drizzle-store";
@@ -20,6 +23,11 @@ export { createInMemoryBriefScheduleStore } from "./brief-schedules/in-memory-st
 export type * from "./brief-schedules/types";
 
 const defaultBriefScheduleStore = createDrizzleBriefScheduleStore();
+
+/** Bootstrap the default brief rows for one already-authorized owner. */
+export function ensureDefaultBriefSchedulesForOwner(input: EnsureDefaultBriefSchedulesInput) {
+  return ensureDefaultBriefSchedules(defaultBriefScheduleStore, input);
+}
 
 // The dispatcher generates by calling the shared brief generator directly — the
 // same default the manual web action uses — and never starts an Eve chat session

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { getDb } from "../../client";
 import { accessProfiles } from "../../schema";
 import type { AccessProfileStore } from "./types";
@@ -13,6 +13,14 @@ export function createDrizzleAccessProfileStore(): AccessProfileStore {
         .limit(1);
 
       return profile ?? null;
+    },
+
+    async listByStatus(status) {
+      return getDb()
+        .select()
+        .from(accessProfiles)
+        .where(eq(accessProfiles.status, status))
+        .orderBy(asc(accessProfiles.createdAt), asc(accessProfiles.userId));
     },
 
     async create(input) {

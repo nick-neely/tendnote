@@ -9,7 +9,7 @@ This document describes the boundaries the code actually enforces. Where a bound
 | Principle | What it means in code |
 | --- | --- |
 | **Consent-first** | Every external connection is opt-in, separately consented, and narrowly scoped |
-| **Nothing leaves without approval** | No send path exists. External writes are limited to drafts, behind explicit approval |
+| **Nothing leaves without approval** | External drafts require explicit approval; ambient reminder delivery requires an explicit record schedule and per-installation opt-in |
 | **Suggestions are not facts** | Anything a model originates lands as a review item, never as durable state |
 | **Filter before rank** | Owner, scope, sensitivity, and status filters apply in the query, before any ranking |
 | **Fail closed** | Missing auth, unavailable flag providers, and denied access all deny rather than degrade open |
@@ -56,8 +56,10 @@ Household management has no product surface yet, so shared workspaces exist only
 ## Data capture and retrieval
 
 - **People are created only on explicit user intent** — never inferred from ambiguous casual mentions.
-- Context retrieval — snapshot loading, Exact Recall, semantic search, and asset search — applies owner, scope, sensitivity, and memory-status filters **in the query layer before ranking**. Restricted content is excluded unless directly requested.
-- Semantic embeddings cover only approved memories, minimized retained source-record text, and General Actions — never raw provider dumps. Embedding jobs run through the same owner-scoped lifecycle as other background work.
+- Global Capture writes an explicitly requested supported record directly, but inferred facts and actions remain review-gated. Its correction and undo operations use persisted outcome references, not model recollection.
+- Context retrieval — snapshot loading, Global Recall, Exact Recall, semantic search, Saved Item search, and asset search — applies owner, scope, sensitivity, lifecycle, and memory-status filters **in the query layer before ranking**. Restricted content is excluded unless directly requested.
+- Semantic embeddings cover only approved memories, minimized retained source-record text, General Actions, and eligible Saved Items — never raw provider dumps. Embedding jobs run through the same owner-scoped lifecycle as other background work.
+- Hosted scheduled workflows enumerate only durable granted Private Beta Access profiles. The local `demo-user` principal is never used as a production background-job owner.
 - Sensitive memories are excluded from briefs unless directly requested and authorized.
 - Mutating data tools write audit log entries.
 - Discord capture writes a **source record for review**, never a memory directly.
@@ -71,11 +73,17 @@ Bytes are served only through `GET /api/asset-evidence/[evidenceId]/file`, which
 
 ## Message drafting and external actions
 
-External sends and external draft creation require explicit approval. **No send path exists anywhere in the product.**
+External message sends and external draft creation require explicit approval. **No email, chat-message, or social-post send path exists anywhere in the product.** Opted-in reminder notifications and configured scheduled-workflow delivery are separate, bounded ambient-delivery capabilities.
 
 Message drafting is Tendnote-internal: drafts are reviewed, edited, copied, or marked sent manually, and they persist the source references — approved memories, source records, follow-ups, brief items — that grounded them, rather than relying on prompt-only context.
 
 Gmail draft creation is an *externalization* of an approved Tendnote draft, not a parallel drafting source of truth.
+
+## Reminder delivery and Web Push
+
+Reminder delivery requires an explicit Reminder Schedule and opt-in on each authenticated browser or installed PWA. Permission is requested only from **Enable reminders**; on iOS and iPadOS, Tendnote first directs the owner to install it on the Home Screen.
+
+Push subscriptions and keys are treated as secrets, and the VAPID private key stays server-only. Every send rechecks ownership, visibility, lifecycle, schedule, consent, and preview policy; stale work is suppressed. Notifications use generic copy unless that installation enables details. Sign-out or disablement deactivates the installation, and notification links re-authorize without mutating the record.
 
 ## Connected services
 
@@ -120,9 +128,10 @@ Proactive delivery is strictly opt-in: the sender returns `null` when unconfigur
 | `llm-extraction` | 20 / 60s | Extraction model spend |
 | `embedding` | 60 / 60s | Embedding model spend |
 | `provider-call` | 60 / 60s | Outbound Google and Discord calls |
+| `push-delivery` | 120 / 60s | Per-installation Web Push attempts |
 
 The store is pluggable — Redis in the web app, a fake in tests — so limits are exercised in tests without infrastructure.
 
 ## Adding new capability
 
-Do not ship Calendar, Gmail, Contacts, Discord, or shared-household behavior beyond what is described here until the new surface has **code-level** privacy and approval boundaries — enforced in queries and covered by boundary tests, not described in a prompt. See the `phase-*-boundaries.test.ts` suites in `apps/agent/tests/` and `packages/db/src/queries/` for the existing pattern.
+Do not extend connected services, ambient delivery, or shared-household behavior beyond what is described here until the new surface has **code-level** privacy and approval boundaries — enforced in queries and covered by boundary tests, not described in a prompt. See the `phase-*-boundaries.test.ts` suites in `apps/agent/tests/` and `packages/db/src/queries/` for the existing pattern.

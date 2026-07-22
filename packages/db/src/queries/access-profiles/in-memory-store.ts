@@ -37,6 +37,16 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       return profiles.get(userId) ?? null;
     },
 
+    async listByStatus(status) {
+      return [...profiles.values()]
+        .filter((profile) => profile.status === status)
+        .sort(
+          (left, right) =>
+            left.createdAt.getTime() - right.createdAt.getTime() ||
+            left.userId.localeCompare(right.userId),
+        );
+    },
+
     async create(input) {
       return insert(input);
     },
