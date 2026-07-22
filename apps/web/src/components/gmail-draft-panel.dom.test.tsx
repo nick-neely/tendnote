@@ -234,6 +234,22 @@ describe("GmailDraftPanel write gate", () => {
     expect(onWrite).not.toHaveBeenCalled();
   });
 
+  it("names the update operation when a failed update carries no provider error", async () => {
+    const user = userEvent.setup();
+    updateGmailDraftAction.mockResolvedValue({
+      status: "failed",
+      view: { ...failed, kind: "update", error: null },
+    });
+    renderPanel({ initialView: succeeded });
+
+    await user.click(screen.getByRole("button", { name: "Update in Gmail" }));
+    await user.click(screen.getByRole("button", { name: "Update Gmail draft" }));
+
+    // Without a provider message the fallback has to describe the operation that
+    // actually ran, rather than telling the owner a create failed.
+    expect((await screen.findByRole("alert")).textContent).toBe("Couldn't update the Gmail draft.");
+  });
+
   it("abandons the write and drops the error when the owner cancels", async () => {
     const user = userEvent.setup();
     renderPanel({ personEmails: [] });

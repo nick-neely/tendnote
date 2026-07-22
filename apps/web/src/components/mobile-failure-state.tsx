@@ -50,7 +50,9 @@ const FAILURE_COPY: Record<MobileFailureKind, { action: string; body: string; he
   },
   cache_mismatch: {
     action: "Refresh",
-    body: "This page is running an older version of Tendnote. Your drafts are kept when it refreshes.",
+    // Reached both when a stale page asks for a shell asset a newer build replaced
+    // and when that fetch simply fails offline, so the copy must not diagnose either.
+    body: "Tendnote couldn't load part of this page. Your drafts are kept when it refreshes.",
     heading: "Tendnote needs a refresh",
   },
 };

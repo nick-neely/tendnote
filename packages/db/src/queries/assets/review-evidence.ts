@@ -42,7 +42,7 @@ async function requireCaptureAnchor(
   input: AddAssetEvidenceInput,
 ): Promise<{ anchor: Asset; reviewGroupId: string | null }> {
   if ((input.assetId === undefined) === (input.reviewGroupId === undefined)) {
-    throw new AssetValidationError("Attach evidence to an asset or a review item, not both.");
+    throw new AssetValidationError("Attach evidence to exactly one asset or review item.");
   }
 
   if (input.assetId !== undefined) {

@@ -90,7 +90,10 @@ export function GmailDraftPanel({
     setView(result.view);
     setError(
       result.status === "failed"
-        ? (result.view.error ?? "Couldn't save this draft to Gmail.")
+        ? (result.view.error ??
+            (result.view.kind === "update"
+              ? "Couldn't update the Gmail draft."
+              : "Couldn't save this draft to Gmail."))
         : null,
     );
     if (result.status === "succeeded") {
