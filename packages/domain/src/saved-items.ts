@@ -3,6 +3,7 @@ import { privacyScopeSchema } from "./privacy";
 
 export const savedItemKindSchema = z.enum(["note", "link", "open_question"]);
 export const savedItemStatusSchema = z.enum(["active", "archived"]);
+export const savedItemTimeSemanticsSchema = z.enum(["date_only", "instant"]);
 export const savedItemEventKindSchema = z.enum([
   "created",
   "edited",
@@ -50,6 +51,7 @@ export const savedItemSchema = savedItemContentFields
     ownerUserId: z.string().min(1),
     status: savedItemStatusSchema.default("active"),
     bringBackAt: z.date().nullable().default(null),
+    bringBackTimeSemantics: savedItemTimeSemanticsSchema.default("date_only"),
     sourceRecordId: z.string().min(1),
     scope: privacyScopeSchema.default("private"),
     householdId: z.string().nullable().default(null),
@@ -68,6 +70,7 @@ export const createSavedItemSchema = savedItemContentFields
     ownerUserId: z.string().min(1),
     status: savedItemStatusSchema.default("active"),
     bringBackAt: z.date().nullable().default(null),
+    bringBackTimeSemantics: savedItemTimeSemanticsSchema.default("date_only"),
     sourceRecordId: z.string().min(1),
     scope: privacyScopeSchema.default("private"),
     householdId: z.string().nullable().default(null),
@@ -85,6 +88,7 @@ export const savedItemUpdateSchema = z
     url: z.url().max(2_000).nullable().optional(),
     status: savedItemStatusSchema.optional(),
     bringBackAt: z.date().nullable().optional(),
+    bringBackTimeSemantics: savedItemTimeSemanticsSchema.optional(),
     scope: privacyScopeSchema.optional(),
     householdId: z.string().nullable().optional(),
     resolvedAt: z.date().nullable().optional(),
@@ -99,6 +103,7 @@ export const savedItemEditSchema = z
     content: z.string().trim().min(1).max(20_000).nullable().optional(),
     url: z.url().max(2_000).nullable().optional(),
     bringBackAt: z.date().nullable().optional(),
+    bringBackTimeSemantics: savedItemTimeSemanticsSchema.optional(),
   })
   .strict();
 

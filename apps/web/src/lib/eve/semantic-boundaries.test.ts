@@ -41,6 +41,7 @@ describe("semantic retrieval product-route boundaries", () => {
       "pending",
       "people",
       "people/[personId]",
+      "reminders/open",
       "reset-password",
       "saved-items",
       "sign-in",

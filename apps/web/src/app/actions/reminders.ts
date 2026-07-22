@@ -1,11 +1,18 @@
 "use server";
 
 import {
+  beginReminderInstallationOptIn,
+  claimReminderStandaloneContinuation,
   clearReminder,
+  disableCurrentReminderInstallation,
+  disableReminderInstallation,
+  getReminderInstallationState,
   listReminderSchedulesForOwner,
+  markReminderStandaloneContinuation,
   reconcileReminderRecord,
   registerReminderInstallation,
   saveReminder,
+  setReminderInstallationPreviewMode,
   setReminderOptInDecision,
 } from "@tendnote/db/queries/reminders";
 import {
@@ -85,6 +92,7 @@ function reminderScheduleResult(result: Awaited<ReturnType<typeof saveReminder>>
 
 export async function registerReminderInstallationAction(input: {
   clientInstallationId: string;
+  label?: string;
   subscription: {
     endpoint: string;
     expirationTime: number | null;
@@ -95,6 +103,7 @@ export async function registerReminderInstallationAction(input: {
   const parsed = z
     .object({
       clientInstallationId: installationSchema,
+      label: z.string().trim().min(1).max(80).optional(),
       subscription: reminderPushSubscriptionSchema,
     })
     .parse(input);
@@ -111,5 +120,88 @@ export async function setReminderOptInDecisionAction(input: {
     .object({ clientInstallationId: installationSchema, decision: z.enum(["postponed", "denied"]) })
     .parse(input);
   await setReminderOptInDecision({ ownerUserId, ...parsed, now: new Date() });
+  return { ok: true as const };
+}
+
+export async function getReminderInstallationStateAction(input: { clientInstallationId: string }) {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const parsed = z.object({ clientInstallationId: installationSchema }).parse(input);
+  return getReminderInstallationState({ ownerUserId, ...parsed });
+}
+
+export async function beginReminderInstallationOptInAction(input: {
+  clientInstallationId: string;
+}) {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const parsed = z.object({ clientInstallationId: installationSchema }).parse(input);
+  await beginReminderInstallationOptIn({ ownerUserId, ...parsed, now: new Date() });
+  return { ok: true as const };
+}
+
+export async function markReminderStandaloneContinuationAction(input: {
+  clientInstallationId: string;
+}) {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const parsed = z.object({ clientInstallationId: installationSchema }).parse(input);
+  await markReminderStandaloneContinuation({ ownerUserId, ...parsed, now: new Date() });
+  return { ok: true as const };
+}
+
+export async function claimReminderStandaloneContinuationAction(input: {
+  clientInstallationId: string;
+}) {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const parsed = z.object({ clientInstallationId: installationSchema }).parse(input);
+  const claimed = await claimReminderStandaloneContinuation({
+    ownerUserId,
+    ...parsed,
+    now: new Date(),
+  });
+  return { claimed: claimed !== null };
+}
+
+export async function setReminderInstallationPreviewModeAction(input: {
+  clientInstallationId: string;
+  previewMode: "generic" | "detailed";
+}) {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const parsed = z
+    .object({
+      clientInstallationId: installationSchema,
+      previewMode: z.enum(["generic", "detailed"]),
+    })
+    .parse(input);
+  const installation = await setReminderInstallationPreviewMode({
+    ownerUserId,
+    ...parsed,
+    now: new Date(),
+  });
+  return { previewMode: installation.previewMode };
+}
+
+export async function disableCurrentReminderInstallationAction(input: {
+  clientInstallationId: string;
+  reason: "current_installation" | "sign_out";
+}) {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const parsed = z
+    .object({
+      clientInstallationId: installationSchema,
+      reason: z.enum(["current_installation", "sign_out"]),
+    })
+    .parse(input);
+  await disableCurrentReminderInstallation({ ownerUserId, ...parsed, now: new Date() });
+  return { ok: true as const };
+}
+
+export async function revokeReminderInstallationAction(input: { installationId: string }) {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const { installationId } = z.object({ installationId: z.uuid() }).parse(input);
+  await disableReminderInstallation({
+    ownerUserId,
+    installationId,
+    reason: "remote_revocation",
+    now: new Date(),
+  });
   return { ok: true as const };
 }

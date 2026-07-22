@@ -335,6 +335,7 @@ export const reminderOptInStatus = pgEnum("reminder_opt_in_status", [
   "postponed",
   "denied",
   "registered",
+  "disabled",
 ]);
 export const reminderInstallationStatus = pgEnum("reminder_installation_status", [
   "enabled",

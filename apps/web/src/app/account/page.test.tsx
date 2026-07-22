@@ -6,6 +6,7 @@ const {
   resolveAccountView,
   getOwnerProviderConnections,
   getOwnerCalendarPreview,
+  listReminderInstallations,
 } = vi.hoisted(() => ({
   redirect: vi.fn((to: string) => {
     throw new Error(`REDIRECT:${to}`);
@@ -14,10 +15,12 @@ const {
   resolveAccountView: vi.fn(),
   getOwnerProviderConnections: vi.fn(),
   getOwnerCalendarPreview: vi.fn().mockResolvedValue({ state: "hidden" }),
+  listReminderInstallations: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@/lib/access/current-access", () => ({ getCurrentAccess }));
+vi.mock("@tendnote/db/queries/reminders", () => ({ listReminderInstallations }));
 vi.mock("@/lib/access/account-summary", () => ({ resolveAccountView }));
 vi.mock("@/lib/access/access-state", () => ({ localFallbackOwnerUserId: () => undefined }));
 vi.mock("@/lib/integrations/provider-connections", () => ({ getOwnerProviderConnections }));
@@ -38,6 +41,7 @@ vi.mock("@/components/auth/sign-out-button", () => ({ SignOutButton: () => null 
 vi.mock("@/components/account/provider-connections-section", () => ({
   ProviderConnectionsSection: () => null,
 }));
+vi.mock("@/components/account/reminder-settings", () => ({ ReminderSettings: () => null }));
 vi.mock("@/components/ui/badge", () => ({
   Badge: ({ children }: { children: unknown }) => children,
 }));
@@ -49,6 +53,7 @@ beforeEach(() => {
   resolveAccountView.mockReset();
   getOwnerProviderConnections.mockReset();
   getOwnerCalendarPreview.mockReset().mockResolvedValue({ state: "hidden" });
+  listReminderInstallations.mockReset().mockResolvedValue([]);
   redirect.mockClear();
 });
 

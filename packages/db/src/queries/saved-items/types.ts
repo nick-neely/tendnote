@@ -18,6 +18,7 @@ export type SavedItemPatch = Partial<
     | "url"
     | "status"
     | "bringBackAt"
+    | "bringBackTimeSemantics"
     | "scope"
     | "householdId"
     | "resolvedAt"
@@ -132,6 +133,7 @@ export type CreateSavedItemInput = {
   content?: string | null;
   url?: string | null;
   bringBackAt?: Date | null;
+  bringBackTimeSemantics?: SavedItem["bringBackTimeSemantics"];
   originalText?: string;
   sourceRecordId?: string;
   scope?: PrivacyScope;

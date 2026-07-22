@@ -45,6 +45,27 @@ type DispatchContext = {
   optIn: ReminderOptInState | null;
 };
 
+function formatDetailedPreview(input: {
+  record: ReminderRecord;
+  schedule: ReminderSchedule;
+  intendedAt: Date;
+}) {
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: input.schedule.timeZone,
+  }).format(input.intendedAt);
+  const title = input.record.title.trim().slice(0, 80);
+  return {
+    title: `${title} — ${time}`,
+    body: "Open Tendnote to view this reminder.",
+  };
+}
+
+function reminderOpenPath(recordKind: ReminderDeliveryJob["recordKind"], recordId: string) {
+  return `/reminders/open?kind=${encodeURIComponent(recordKind)}&id=${encodeURIComponent(recordId)}`;
+}
+
 async function loadDispatchContext(
   input: ReminderDispatcherDependencies,
   claimed: ReminderDeliveryJob,
@@ -129,7 +150,12 @@ async function scheduleRetry(
   claimed: ReminderDeliveryJob,
   now: Date,
 ) {
-  const retryAt = new Date(Math.min(now.getTime() + 5 * 60_000, claimed.freshUntil.getTime()));
+  const latestRetryAt = claimed.freshUntil.getTime() - 1_000;
+  const retryAt = new Date(
+    latestRetryAt > now.getTime()
+      ? Math.min(now.getTime() + 5 * 60_000, latestRetryAt)
+      : claimed.freshUntil.getTime(),
+  );
   await input.store.updateDeliveryJob({
     jobId: claimed.id,
     now,
@@ -161,6 +187,7 @@ async function scheduleRetry(
 async function revokeTerminalInstallation(
   store: ReminderStore,
   claimed: ReminderDeliveryJob,
+  installation: ReminderInstallation,
   now: Date,
 ) {
   await store.setInstallationStatus({
@@ -169,12 +196,54 @@ async function revokeTerminalInstallation(
     status: "revoked",
     now,
   });
+  const optIn = await store.getOptInState({
+    ownerUserId: claimed.ownerUserId,
+    clientInstallationId: installation.clientInstallationId,
+  });
+  if (optIn) {
+    await store.saveOptInState({
+      ...optIn,
+      state: "disabled",
+      inviteAfter: null,
+      standaloneContinuationExpiresAt: null,
+      updatedAt: now,
+    });
+  }
+  const suppressedJobs = await store.suppressInstallationDeliveryJobs({
+    ownerUserId: claimed.ownerUserId,
+    installationId: claimed.installationId,
+    now,
+  });
+  await Promise.all(
+    suppressedJobs
+      .filter((job) => job.id !== claimed.id)
+      .map((job) =>
+        store.appendAuditEntry({
+          ownerUserId: claimed.ownerUserId,
+          action: "reminder.delivery_suppressed",
+          entityId: job.id,
+          metadata: { outcome: "suppressed_revoked", installationId: claimed.installationId },
+          createdAt: now,
+        }),
+      ),
+  );
   await store.updateDeliveryJob({
     jobId: claimed.id,
     now,
     status: "skipped",
     outcome: "terminal_endpoint",
     attempts: claimed.attempts + 1,
+  });
+  await store.appendAuditEntry({
+    ownerUserId: claimed.ownerUserId,
+    action: "reminder.delivery_failed",
+    entityId: claimed.id,
+    metadata: {
+      installationId: claimed.installationId,
+      attempts: claimed.attempts + 1,
+      outcome: "terminal_endpoint",
+    },
+    createdAt: now,
   });
   return { status: "terminal" as const };
 }
@@ -217,12 +286,30 @@ export function createReminderDispatcher(input: ReminderDispatcherDependencies) 
     if (suppression) {
       return suppressDelivery(input.store, claimed, values.now, suppression);
     }
-    if (!context.record || !context.installation) {
-      throw new Error("Reminder record or installation missing after policy check.");
+    if (
+      !context.record ||
+      !context.installation ||
+      !context.schedule ||
+      !context.installation.endpoint ||
+      !context.installation.p256dh ||
+      !context.installation.auth
+    ) {
+      throw new Error("Reminder record, schedule, or installation missing after policy check.");
     }
 
     let result: Awaited<ReturnType<ReminderPushSender>>;
     try {
+      const preview =
+        context.installation.previewMode === "detailed" && context.record.sensitivity === "normal"
+          ? formatDetailedPreview({
+              record: context.record,
+              schedule: context.schedule,
+              intendedAt: claimed.intendedAt,
+            })
+          : {
+              title: "Tendnote reminder",
+              body: "Open Tendnote to see what needs your attention.",
+            };
       result = await values.sender({
         subscription: {
           endpoint: context.installation.endpoint,
@@ -230,11 +317,10 @@ export function createReminderDispatcher(input: ReminderDispatcherDependencies) 
           keys: { p256dh: context.installation.p256dh, auth: context.installation.auth },
         },
         payload: {
-          title: "Tendnote reminder",
-          body: "Open Tendnote to see what needs your attention.",
+          ...preview,
           tag: `reminder-${claimed.id}`,
           data: {
-            url: context.record.deepLink,
+            url: reminderOpenPath(claimed.recordKind, claimed.recordId),
             recordKind: claimed.recordKind,
             recordId: claimed.recordId,
           },
@@ -248,7 +334,7 @@ export function createReminderDispatcher(input: ReminderDispatcherDependencies) 
       return scheduleRetry(input, claimed, values.now);
     }
     if (result.status === "terminal") {
-      return revokeTerminalInstallation(input.store, claimed, values.now);
+      return revokeTerminalInstallation(input.store, claimed, context.installation, values.now);
     }
     return acceptDelivery(input.store, claimed, values.now);
   };

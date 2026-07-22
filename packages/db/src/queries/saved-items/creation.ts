@@ -82,6 +82,7 @@ export async function createGroundedSavedItem(
       content: input.content ?? null,
       url: input.url ?? null,
       bringBackAt: input.bringBackAt ?? null,
+      bringBackTimeSemantics: input.bringBackTimeSemantics ?? "date_only",
       sourceRecordId,
       ...visibility,
       createdByUserId: input.ownerUserId,

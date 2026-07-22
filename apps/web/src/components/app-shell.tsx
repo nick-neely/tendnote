@@ -23,6 +23,7 @@ import type { CaptureHandlers, GlobalRecallHandler } from "@/components/mobile-f
 import { MobileShell } from "@/components/mobile-shell";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ReminderTimeZoneReconciler } from "@/components/reminder-time-zone-reconciler";
+import { StandaloneReminderContinuation } from "@/components/standalone-reminder-continuation";
 import type { TodayShortlistHandlers } from "@/components/today-shortlist";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -105,6 +106,8 @@ export function AppShell({
           </nav>
         </div>
       </header>
+
+      <StandaloneReminderContinuation />
 
       {!online ? (
         <div className="px-4 pt-[calc(1rem+env(safe-area-inset-top))] lg:pt-4">

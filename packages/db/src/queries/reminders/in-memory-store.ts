@@ -131,6 +131,36 @@ export function createInMemoryReminderStore(): ReminderStore {
       optIns.set(`${input.ownerUserId}:${input.clientInstallationId}`, input);
       return input;
     },
+    async claimStandaloneContinuation(input) {
+      const targetKey = `${input.ownerUserId}:${input.clientInstallationId}`;
+      const target = optIns.get(targetKey);
+      if (target && target.state !== "offered") return null;
+      const sourceEntry = [...optIns.entries()].find(
+        ([, state]) =>
+          state.ownerUserId === input.ownerUserId &&
+          state.state === "offered" &&
+          state.standaloneContinuationExpiresAt !== null &&
+          state.standaloneContinuationExpiresAt.getTime() > input.now.getTime(),
+      );
+      if (!sourceEntry) return null;
+      const [sourceKey, source] = sourceEntry;
+      optIns.set(sourceKey, {
+        ...source,
+        standaloneContinuationExpiresAt: null,
+        updatedAt: input.now,
+      });
+      const claimed: ReminderOptInState = {
+        ownerUserId: input.ownerUserId,
+        clientInstallationId: input.clientInstallationId,
+        state: "offered",
+        offeredAt: source.offeredAt,
+        inviteAfter: null,
+        standaloneContinuationExpiresAt: null,
+        updatedAt: input.now,
+      };
+      optIns.set(targetKey, claimed);
+      return claimed;
+    },
     async upsertInstallation(input) {
       const key = `${input.ownerUserId}:${input.clientInstallationId}`;
       const current = installations.get(key);
@@ -138,6 +168,7 @@ export function createInMemoryReminderStore(): ReminderStore {
         id: current?.id ?? randomUUID(),
         ownerUserId: input.ownerUserId,
         clientInstallationId: input.clientInstallationId,
+        label: input.label,
         endpoint: input.endpoint,
         p256dh: input.p256dh,
         auth: input.auth,
@@ -165,6 +196,11 @@ export function createInMemoryReminderStore(): ReminderStore {
           installation.ownerUserId === input.ownerUserId && installation.status === "enabled",
       );
     },
+    async listInstallationsForOwner(input) {
+      return [...installations.values()]
+        .filter((installation) => installation.ownerUserId === input.ownerUserId)
+        .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
+    },
     async setInstallationStatus(input) {
       const entry = [...installations.entries()].find(
         ([, installation]) =>
@@ -172,19 +208,64 @@ export function createInMemoryReminderStore(): ReminderStore {
           installation.id === input.installationId,
       );
       if (!entry) throw new Error("Reminder installation not found.");
-      const updated = { ...entry[1], status: input.status, updatedAt: input.now };
+      const updated = {
+        ...entry[1],
+        status: input.status,
+        ...(input.status === "enabled"
+          ? {}
+          : { endpoint: null, p256dh: null, auth: null, expirationTime: null }),
+        updatedAt: input.now,
+      };
       installations.set(entry[0], updated);
       return updated;
+    },
+    async setInstallationPreviewMode(input) {
+      const entry = [...installations.entries()].find(
+        ([, installation]) =>
+          installation.ownerUserId === input.ownerUserId &&
+          installation.clientInstallationId === input.clientInstallationId,
+      );
+      if (!entry) throw new Error("Reminder installation not found.");
+      const updated = { ...entry[1], previewMode: input.previewMode, updatedAt: input.now };
+      installations.set(entry[0], updated);
+      return updated;
+    },
+    async suppressInstallationDeliveryJobs(input) {
+      const suppressed = [];
+      for (const [key, job] of deliveryJobs) {
+        if (
+          job.ownerUserId !== input.ownerUserId ||
+          job.installationId !== input.installationId ||
+          !["pending", "failed", "running"].includes(job.status)
+        ) {
+          continue;
+        }
+        const updated: ReminderDeliveryJob = {
+          ...job,
+          status: "skipped",
+          outcome: "suppressed_revoked",
+          updatedAt: input.now,
+        };
+        deliveryJobs.set(key, updated);
+        suppressed.push(updated);
+      }
+      return suppressed;
     },
     async upsertDeliveryJob(input) {
       const key = `${input.ownerUserId}:${input.occurrenceIntent.occurrenceKey}:${input.installationId}`;
       const current = deliveryJobs.get(key);
       if (current) {
+        const rearmAfterDisable =
+          ((current.status === "skipped" && current.outcome === "suppressed_revoked") ||
+            (["skipped", "failed"].includes(current.status) &&
+              current.outcome === "terminal_endpoint")) &&
+          input.occurrenceIntent.freshUntil.getTime() > input.now.getTime();
         if (
-          ["pending", "failed"].includes(current.status) &&
-          (current.occurrenceIntentId !== input.occurrenceIntent.id ||
-            current.intendedAt.getTime() !== input.occurrenceIntent.intendedAt.getTime() ||
-            current.freshUntil.getTime() !== input.occurrenceIntent.freshUntil.getTime())
+          rearmAfterDisable ||
+          (["pending", "failed"].includes(current.status) &&
+            (current.occurrenceIntentId !== input.occurrenceIntent.id ||
+              current.intendedAt.getTime() !== input.occurrenceIntent.intendedAt.getTime() ||
+              current.freshUntil.getTime() !== input.occurrenceIntent.freshUntil.getTime()))
         ) {
           const replacement = {
             ...current,

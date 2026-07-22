@@ -18,6 +18,21 @@ describe("Reminder Drizzle store contract", () => {
       join(import.meta.dirname, "../../../migrations/0048_cross_domain_reminders.sql"),
       "utf8",
     );
+    const privacyMigration = readFileSync(
+      join(import.meta.dirname, "../../../migrations/0050_harden_reminder_installations.sql"),
+      "utf8",
+    );
+    const savedItemTimeMigration = readFileSync(
+      join(import.meta.dirname, "../../../migrations/0051_saved_item_reminder_time_semantics.sql"),
+      "utf8",
+    );
+    const standaloneContinuationMigration = readFileSync(
+      join(
+        import.meta.dirname,
+        "../../../migrations/0052_bound_standalone_reminder_continuation.sql",
+      ),
+      "utf8",
+    );
 
     expect(source).toContain("eq(reminderSchedules.ownerUserId, input.ownerUserId)");
     expect(source).toContain("eq(reminderInstallations.ownerUserId, input.ownerUserId)");
@@ -39,6 +54,20 @@ describe("Reminder Drizzle store contract", () => {
       'UPDATE "reminder_schedules" SET "record_id" = "general_action_id"',
     );
     expect(crossDomainMigration).toContain("reminder_schedules_owner_record_idx");
+    expect(privacyMigration).toContain("ADD VALUE 'disabled'");
+    expect(privacyMigration).toContain('ALTER COLUMN "endpoint" DROP NOT NULL');
+    expect(privacyMigration).toContain('ALTER COLUMN "p256dh" DROP NOT NULL');
+    expect(privacyMigration).toContain('ALTER COLUMN "auth" DROP NOT NULL');
+    expect(privacyMigration).toContain(
+      "ADD COLUMN \"label\" text DEFAULT 'Browser installation' NOT NULL",
+    );
+    expect(savedItemTimeMigration).toContain('ADD COLUMN "bring_back_time_semantics"');
+    expect(savedItemTimeMigration).toContain(
+      `SET "bring_back_time_semantics" = 'instant' WHERE "bring_back_at" IS NOT NULL`,
+    );
+    expect(standaloneContinuationMigration).toContain(
+      'ADD COLUMN "standalone_continuation_expires_at"',
+    );
   });
 });
 
@@ -104,6 +133,63 @@ describe("Reminder Drizzle executable parity", () => {
     });
 
     expect(set).toHaveBeenCalledWith({ status: "superseded", updatedAt: now });
+    expect(where).toHaveBeenCalledOnce();
+  });
+
+  it("prunes push secrets when disabling an installation", async () => {
+    const row = {
+      id: "installation-1",
+      ownerUserId: "owner-1",
+      status: "disabled" as const,
+      endpoint: null,
+      p256dh: null,
+      auth: null,
+      expirationTime: null,
+    };
+    const returning = vi.fn().mockResolvedValue([row]);
+    const where = vi.fn(() => ({ returning }));
+    const set = vi.fn(() => ({ where }));
+    getDb.mockReturnValue({ update: vi.fn(() => ({ set })) });
+    const now = new Date("2026-07-21T15:00:00.000Z");
+
+    await expect(
+      createDrizzleReminderStore().setInstallationStatus({
+        ownerUserId: row.ownerUserId,
+        installationId: row.id,
+        status: "disabled",
+        now,
+      }),
+    ).resolves.toEqual(row);
+    expect(set).toHaveBeenCalledWith({
+      status: "disabled",
+      endpoint: null,
+      p256dh: null,
+      auth: null,
+      expirationTime: null,
+      updatedAt: now,
+    });
+    expect(where).toHaveBeenCalledOnce();
+  });
+
+  it("suppresses every pending delivery job for a disabled installation", async () => {
+    const returning = vi.fn().mockResolvedValue([{ id: "job-1", status: "skipped" }]);
+    const where = vi.fn(() => ({ returning }));
+    const set = vi.fn(() => ({ where }));
+    getDb.mockReturnValue({ update: vi.fn(() => ({ set })) });
+    const now = new Date("2026-07-21T15:00:00.000Z");
+
+    await expect(
+      createDrizzleReminderStore().suppressInstallationDeliveryJobs({
+        ownerUserId: "owner-1",
+        installationId: "installation-1",
+        now,
+      }),
+    ).resolves.toEqual([{ id: "job-1", status: "skipped" }]);
+    expect(set).toHaveBeenCalledWith({
+      status: "skipped",
+      outcome: "suppressed_revoked",
+      updatedAt: now,
+    });
     expect(where).toHaveBeenCalledOnce();
   });
 });

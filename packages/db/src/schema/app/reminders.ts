@@ -94,6 +94,9 @@ export const reminderOptInStates = pgTable(
     state: reminderOptInStatus("state").notNull(),
     offeredAt: timestamp("offered_at", { withTimezone: true }).notNull(),
     inviteAfter: timestamp("invite_after", { withTimezone: true }),
+    standaloneContinuationExpiresAt: timestamp("standalone_continuation_expires_at", {
+      withTimezone: true,
+    }),
     ...timestamps,
   },
   (table) => [
@@ -112,9 +115,10 @@ export const reminderInstallations = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     clientInstallationId: text("client_installation_id").notNull(),
-    endpoint: text("endpoint").notNull(),
-    p256dh: text("p256dh").notNull(),
-    auth: text("auth").notNull(),
+    label: text("label").notNull().default("Browser installation"),
+    endpoint: text("endpoint"),
+    p256dh: text("p256dh"),
+    auth: text("auth"),
     expirationTime: bigint("expiration_time", { mode: "number" }),
     status: reminderInstallationStatus("status").notNull().default("enabled"),
     previewMode: reminderPreviewMode("preview_mode").notNull().default("generic"),

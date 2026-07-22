@@ -16,7 +16,8 @@ export type ReminderAuditEntry = {
     | "reminder.delivery_intent_created"
     | "reminder.delivery_accepted"
     | "reminder.delivery_suppressed"
-    | "reminder.delivery_failed";
+    | "reminder.delivery_failed"
+    | "reminder.installation_disabled";
   entityId: string;
   metadata: Record<string, string | number | null>;
   createdAt: Date;
@@ -73,9 +74,15 @@ export type ReminderStore = {
     clientInstallationId: string;
   }) => Promise<ReminderOptInState | null>;
   saveOptInState: (input: ReminderOptInState) => Promise<ReminderOptInState>;
+  claimStandaloneContinuation: (input: {
+    ownerUserId: string;
+    clientInstallationId: string;
+    now: Date;
+  }) => Promise<ReminderOptInState | null>;
   upsertInstallation: (input: {
     ownerUserId: string;
     clientInstallationId: string;
+    label: string;
     endpoint: string;
     p256dh: string;
     auth: string;
@@ -89,12 +96,24 @@ export type ReminderStore = {
   listEnabledInstallationsForOwner: (input: {
     ownerUserId: string;
   }) => Promise<ReminderInstallation[]>;
+  listInstallationsForOwner: (input: { ownerUserId: string }) => Promise<ReminderInstallation[]>;
   setInstallationStatus: (input: {
     ownerUserId: string;
     installationId: string;
     status: ReminderInstallation["status"];
     now: Date;
   }) => Promise<ReminderInstallation>;
+  setInstallationPreviewMode: (input: {
+    ownerUserId: string;
+    clientInstallationId: string;
+    previewMode: ReminderInstallation["previewMode"];
+    now: Date;
+  }) => Promise<ReminderInstallation>;
+  suppressInstallationDeliveryJobs: (input: {
+    ownerUserId: string;
+    installationId: string;
+    now: Date;
+  }) => Promise<ReminderDeliveryJob[]>;
   upsertDeliveryJob: (input: {
     ownerUserId: string;
     occurrenceIntent: ReminderOccurrenceIntent;

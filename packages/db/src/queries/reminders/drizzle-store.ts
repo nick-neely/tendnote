@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lte, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lte, ne } from "drizzle-orm";
 import { getDb } from "../../client";
 import {
   auditLog,
@@ -214,12 +214,70 @@ export function createDrizzleReminderStore(): ReminderStore {
             state: input.state,
             offeredAt: input.offeredAt,
             inviteAfter: input.inviteAfter,
+            standaloneContinuationExpiresAt: input.standaloneContinuationExpiresAt,
             updatedAt: input.updatedAt,
           },
         })
         .returning();
       if (!row) throw new Error("Failed to save Reminder Opt-In state.");
       return row;
+    },
+    async claimStandaloneContinuation(input) {
+      return getDb().transaction(async (tx) => {
+        const [target] = await tx
+          .select()
+          .from(reminderOptInStates)
+          .where(
+            and(
+              eq(reminderOptInStates.ownerUserId, input.ownerUserId),
+              eq(reminderOptInStates.clientInstallationId, input.clientInstallationId),
+            ),
+          )
+          .limit(1)
+          .for("update");
+        if (target && target.state !== "offered") return null;
+        const [source] = await tx
+          .select()
+          .from(reminderOptInStates)
+          .where(
+            and(
+              eq(reminderOptInStates.ownerUserId, input.ownerUserId),
+              eq(reminderOptInStates.state, "offered"),
+              gt(reminderOptInStates.standaloneContinuationExpiresAt, input.now),
+            ),
+          )
+          .orderBy(desc(reminderOptInStates.standaloneContinuationExpiresAt))
+          .limit(1)
+          .for("update", { skipLocked: true });
+        if (!source) return null;
+        await tx
+          .update(reminderOptInStates)
+          .set({ standaloneContinuationExpiresAt: null, updatedAt: input.now })
+          .where(eq(reminderOptInStates.id, source.id));
+        const [claimed] = await tx
+          .insert(reminderOptInStates)
+          .values({
+            ownerUserId: input.ownerUserId,
+            clientInstallationId: input.clientInstallationId,
+            state: "offered",
+            offeredAt: source.offeredAt,
+            inviteAfter: null,
+            standaloneContinuationExpiresAt: null,
+            updatedAt: input.now,
+          })
+          .onConflictDoUpdate({
+            target: [reminderOptInStates.ownerUserId, reminderOptInStates.clientInstallationId],
+            set: {
+              state: "offered",
+              offeredAt: source.offeredAt,
+              inviteAfter: null,
+              standaloneContinuationExpiresAt: null,
+              updatedAt: input.now,
+            },
+          })
+          .returning();
+        return claimed ?? null;
+      });
     },
     async upsertInstallation(input) {
       const [row] = await getDb()
@@ -234,6 +292,7 @@ export function createDrizzleReminderStore(): ReminderStore {
         .onConflictDoUpdate({
           target: [reminderInstallations.ownerUserId, reminderInstallations.clientInstallationId],
           set: {
+            label: input.label,
             endpoint: input.endpoint,
             p256dh: input.p256dh,
             auth: input.auth,
@@ -270,10 +329,23 @@ export function createDrizzleReminderStore(): ReminderStore {
           ),
         );
     },
+    async listInstallationsForOwner(input) {
+      return getDb()
+        .select()
+        .from(reminderInstallations)
+        .where(eq(reminderInstallations.ownerUserId, input.ownerUserId))
+        .orderBy(desc(reminderInstallations.updatedAt));
+    },
     async setInstallationStatus(input) {
       const [row] = await getDb()
         .update(reminderInstallations)
-        .set({ status: input.status, updatedAt: input.now })
+        .set({
+          status: input.status,
+          ...(input.status === "enabled"
+            ? {}
+            : { endpoint: null, p256dh: null, auth: null, expirationTime: null }),
+          updatedAt: input.now,
+        })
         .where(
           and(
             eq(reminderInstallations.ownerUserId, input.ownerUserId),
@@ -283,6 +355,33 @@ export function createDrizzleReminderStore(): ReminderStore {
         .returning();
       if (!row) throw new Error("Reminder Installation not found.");
       return row;
+    },
+    async setInstallationPreviewMode(input) {
+      const [row] = await getDb()
+        .update(reminderInstallations)
+        .set({ previewMode: input.previewMode, updatedAt: input.now })
+        .where(
+          and(
+            eq(reminderInstallations.ownerUserId, input.ownerUserId),
+            eq(reminderInstallations.clientInstallationId, input.clientInstallationId),
+          ),
+        )
+        .returning();
+      if (!row) throw new Error("Reminder Installation not found.");
+      return row;
+    },
+    async suppressInstallationDeliveryJobs(input) {
+      return getDb()
+        .update(reminderDeliveryJobs)
+        .set({ status: "skipped", outcome: "suppressed_revoked", updatedAt: input.now })
+        .where(
+          and(
+            eq(reminderDeliveryJobs.ownerUserId, input.ownerUserId),
+            eq(reminderDeliveryJobs.installationId, input.installationId),
+            inArray(reminderDeliveryJobs.status, ["pending", "failed", "running"]),
+          ),
+        )
+        .returning();
     },
     async upsertDeliveryJob(input) {
       const [existing] = await getDb()
@@ -297,11 +396,17 @@ export function createDrizzleReminderStore(): ReminderStore {
         )
         .limit(1);
       if (existing) {
+        const rearmAfterDisable =
+          ((existing.status === "skipped" && existing.outcome === "suppressed_revoked") ||
+            (["skipped", "failed"].includes(existing.status) &&
+              existing.outcome === "terminal_endpoint")) &&
+          input.occurrenceIntent.freshUntil.getTime() > input.now.getTime();
         const changed =
-          ["pending", "failed"].includes(existing.status) &&
-          (existing.occurrenceIntentId !== input.occurrenceIntent.id ||
-            existing.intendedAt.getTime() !== input.occurrenceIntent.intendedAt.getTime() ||
-            existing.freshUntil.getTime() !== input.occurrenceIntent.freshUntil.getTime());
+          rearmAfterDisable ||
+          (["pending", "failed"].includes(existing.status) &&
+            (existing.occurrenceIntentId !== input.occurrenceIntent.id ||
+              existing.intendedAt.getTime() !== input.occurrenceIntent.intendedAt.getTime() ||
+              existing.freshUntil.getTime() !== input.occurrenceIntent.freshUntil.getTime()));
         if (!changed) return { job: existing, created: false, changed: false };
         const [replacement] = await getDb()
           .update(reminderDeliveryJobs)

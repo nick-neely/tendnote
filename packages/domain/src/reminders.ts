@@ -74,9 +74,10 @@ export type ReminderOccurrenceIntent = {
 export type ReminderOptInState = {
   ownerUserId: string;
   clientInstallationId: string;
-  state: "offered" | "postponed" | "denied" | "registered";
+  state: "offered" | "postponed" | "denied" | "registered" | "disabled";
   offeredAt: Date;
   inviteAfter: Date | null;
+  standaloneContinuationExpiresAt: Date | null;
   updatedAt: Date;
 };
 
@@ -91,15 +92,21 @@ export type ReminderInstallation = {
   id: string;
   ownerUserId: string;
   clientInstallationId: string;
-  endpoint: string;
-  p256dh: string;
-  auth: string;
+  label: string;
+  endpoint: string | null;
+  p256dh: string | null;
+  auth: string | null;
   expirationTime: number | null;
   status: "enabled" | "disabled" | "revoked";
   previewMode: "generic" | "detailed";
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type ReminderInstallationSummary = Pick<
+  ReminderInstallation,
+  "id" | "clientInstallationId" | "label" | "status" | "previewMode" | "updatedAt"
+>;
 
 export type ReminderDeliveryJob = {
   id: string;

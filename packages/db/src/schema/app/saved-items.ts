@@ -40,6 +40,10 @@ export const savedItems = pgTable(
     url: text("url"),
     status: savedItemStatus("status").notNull().default("active"),
     bringBackAt: timestamp("bring_back_at", { withTimezone: true }),
+    bringBackTimeSemantics: text("bring_back_time_semantics")
+      .$type<"date_only" | "instant">()
+      .notNull()
+      .default("date_only"),
     sourceRecordId: uuid("source_record_id")
       .notNull()
       .references(() => sourceRecords.id, { onDelete: "restrict" }),

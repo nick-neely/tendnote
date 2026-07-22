@@ -351,6 +351,27 @@
       "when": 1784692670337,
       "tag": "0049_add_skipped_routine_occurrence",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1784694253294,
+      "tag": "0050_harden_reminder_installations",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1784695986886,
+      "tag": "0051_saved_item_reminder_time_semantics",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1784697615784,
+      "tag": "0052_bound_standalone_reminder_continuation",
+      "breakpoints": true
     }
   ]
 }

@@ -1,10 +1,8 @@
 import { zonedWallTimeToUtc } from "@tendnote/domain/brief-schedules";
-import {
-  type ReminderRecordKind,
-  reminderPushSubscriptionSchema,
-  reminderScheduleChoiceSchema,
-} from "@tendnote/domain/reminders";
+import { type ReminderRecordKind, reminderScheduleChoiceSchema } from "@tendnote/domain/reminders";
+import { createReminderDeliveryPlanner } from "./delivery-planning";
 import { createReminderDispatcher } from "./dispatch";
+import { createReminderInstallationService } from "./installation-service";
 import { isEligibleReminderRecord, reminderOccurrenceKey } from "./policy";
 import type { ReminderGeneralAction, ReminderRecord, ReminderStore } from "./types";
 
@@ -49,43 +47,40 @@ export function createReminderService(input: {
       : null;
   }
 
-  async function createInstallationJobs(values: {
+  const { createInstallationJobs, persistOccurrenceAndJobs } = createReminderDeliveryPlanner({
+    store: input.store,
+    scheduleDelivery: input.scheduleDelivery,
+  });
+
+  async function resolveOptInInvitation(values: {
     ownerUserId: string;
-    occurrenceIntent: Awaited<ReturnType<ReminderStore["upsertOccurrenceIntent"]>>;
-    installations: Awaited<ReturnType<ReminderStore["listEnabledInstallationsForOwner"]>>;
+    clientInstallationId: string;
+    hasOccurrenceIntent: boolean;
     now: Date;
   }) {
-    const deliveryJobs = [];
-    for (const installation of values.installations) {
-      const result = await input.store.upsertDeliveryJob({
+    const currentOptIn = await input.store.getOptInState(values);
+    const postponedInvitationReady =
+      currentOptIn?.state === "postponed" &&
+      currentOptIn.inviteAfter !== null &&
+      currentOptIn.inviteAfter.getTime() <= values.now.getTime();
+    const shouldOffer =
+      values.hasOccurrenceIntent &&
+      (!currentOptIn || currentOptIn.state === "offered" || postponedInvitationReady);
+    if (values.hasOccurrenceIntent && (!currentOptIn || postponedInvitationReady)) {
+      await input.store.saveOptInState({
         ownerUserId: values.ownerUserId,
-        occurrenceIntent: values.occurrenceIntent,
-        installationId: installation.id,
-        now: values.now,
+        clientInstallationId: values.clientInstallationId,
+        state: "offered",
+        offeredAt: values.now,
+        inviteAfter: null,
+        standaloneContinuationExpiresAt: null,
+        updatedAt: values.now,
       });
-      deliveryJobs.push(result.job);
-      if (result.changed) {
-        await input.scheduleDelivery?.({
-          ownerUserId: values.ownerUserId,
-          jobId: result.job.id,
-          nextAttemptAt: result.job.nextAttemptAt,
-        });
-      }
-      if (result.created) {
-        await input.store.appendAuditEntry({
-          ownerUserId: values.ownerUserId,
-          action: "reminder.delivery_intent_created",
-          entityId: result.job.id,
-          metadata: {
-            installationId: installation.id,
-            occurrenceKey: result.job.occurrenceKey,
-            intendedAt: result.job.intendedAt.toISOString(),
-          },
-          createdAt: values.now,
-        });
-      }
     }
-    return deliveryJobs;
+    return {
+      state: shouldOffer ? ("offer" as const) : ("none" as const),
+      clientInstallationId: values.clientInstallationId,
+    };
   }
 
   async function saveReminder(values: {
@@ -119,6 +114,12 @@ export function createReminderService(input: {
       timeZone: values.timeZone,
       choice,
     });
+    const freshUntil = resolveFreshUntil({
+      intendedAt,
+      occurrenceDate,
+      timeSemantics: record.timeSemantics,
+      timeZone: values.timeZone,
+    });
     const schedule = await input.store.upsertSchedule({
       ownerUserId: values.ownerUserId,
       recordKind: record.kind,
@@ -129,54 +130,21 @@ export function createReminderService(input: {
       intendedAt,
       now: values.now,
     });
-    const occurrenceIntent =
-      intendedAt.getTime() > values.now.getTime()
-        ? await input.store.upsertOccurrenceIntent({
-            ownerUserId: values.ownerUserId,
-            recordKind: record.kind,
-            recordId: record.id,
-            scheduleId: schedule.id,
-            occurrenceKey,
-            intendedAt,
-            freshUntil: new Date(intendedAt.getTime() + HOUR_MS),
-            status: "pending_installation",
-            now: values.now,
-          })
-        : null;
-    if (!occurrenceIntent) {
-      await input.store.supersedeOccurrenceIntents({
-        ownerUserId: values.ownerUserId,
-        recordKind: record.kind,
-        recordId: record.id,
-        now: values.now,
-      });
-    } else {
-      await createInstallationJobs({
-        ownerUserId: values.ownerUserId,
-        occurrenceIntent,
-        installations: await input.store.listEnabledInstallationsForOwner({
-          ownerUserId: values.ownerUserId,
-        }),
-        now: values.now,
-      });
-    }
-    const currentOptIn = await input.store.getOptInState(values);
-    const shouldOffer =
-      Boolean(occurrenceIntent) && (!currentOptIn || currentOptIn.state === "offered");
-    const optIn = {
-      state: shouldOffer ? ("offer" as const) : ("none" as const),
+    const occurrenceIntent = await persistOccurrenceAndJobs({
+      ownerUserId: values.ownerUserId,
+      record,
+      schedule,
+      occurrenceKey,
+      intendedAt,
+      freshUntil,
+      now: values.now,
+    });
+    const optIn = await resolveOptInInvitation({
+      ownerUserId: values.ownerUserId,
       clientInstallationId: values.clientInstallationId,
-    };
-    if (!currentOptIn && occurrenceIntent) {
-      await input.store.saveOptInState({
-        ownerUserId: values.ownerUserId,
-        clientInstallationId: values.clientInstallationId,
-        state: "offered",
-        offeredAt: values.now,
-        inviteAfter: null,
-        updatedAt: values.now,
-      });
-    }
+      hasOccurrenceIntent: Boolean(occurrenceIntent),
+      now: values.now,
+    });
     const dueTime = resolveIntendedAt({
       occursAt: record.occursAt,
       timeSemantics: record.timeSemantics,
@@ -201,8 +169,26 @@ export function createReminderService(input: {
     loadReminderRecord: loadRecord,
     scheduleDelivery: input.scheduleDelivery,
   });
+  const installationService = createReminderInstallationService({
+    store: input.store,
+    createInstallationJobs,
+  });
 
   return {
+    async resolveReminderDeepLink(values: {
+      ownerUserId: string;
+      recordKind: ReminderRecordKind;
+      recordId: string;
+    }) {
+      const record = await loadRecord(values);
+      return isEligibleReminderRecord(record) &&
+        record.ownerUserId === values.ownerUserId &&
+        record.kind === values.recordKind &&
+        record.id === values.recordId
+        ? record.deepLink
+        : null;
+    },
+    ...installationService,
     async clearReminder(values: {
       ownerUserId: string;
       recordKind: ReminderRecordKind;
@@ -261,6 +247,12 @@ export function createReminderService(input: {
         timeZone: values.timeZone ?? currentSchedule.timeZone,
         choice,
       });
+      const freshUntil = resolveFreshUntil({
+        intendedAt,
+        occurrenceDate,
+        timeSemantics: record.timeSemantics,
+        timeZone: values.timeZone ?? currentSchedule.timeZone,
+      });
       const schedule = await input.store.upsertSchedule({
         ownerUserId: values.ownerUserId,
         recordKind: record.kind,
@@ -282,7 +274,7 @@ export function createReminderService(input: {
         scheduleId: schedule.id,
         occurrenceKey,
         intendedAt,
-        freshUntil: new Date(intendedAt.getTime() + HOUR_MS),
+        freshUntil,
         status: "pending_installation",
         now: values.now,
       });
@@ -312,78 +304,6 @@ export function createReminderService(input: {
       });
     },
 
-    async registerReminderInstallation(values: {
-      ownerUserId: string;
-      clientInstallationId: string;
-      subscription: {
-        endpoint: string;
-        expirationTime: number | null;
-        keys: { p256dh: string; auth: string };
-      };
-      now: Date;
-    }) {
-      const optIn = await input.store.getOptInState(values);
-      if (!optIn || optIn.state === "denied") {
-        throw new Error("Reminder registration requires a direct opt-in invitation.");
-      }
-      const subscription = reminderPushSubscriptionSchema.parse(values.subscription);
-      const installation = await input.store.upsertInstallation({
-        ownerUserId: values.ownerUserId,
-        clientInstallationId: values.clientInstallationId,
-        endpoint: subscription.endpoint,
-        p256dh: subscription.keys.p256dh,
-        auth: subscription.keys.auth,
-        expirationTime: subscription.expirationTime,
-        now: values.now,
-      });
-      await input.store.saveOptInState({
-        ...optIn,
-        state: "registered",
-        inviteAfter: null,
-        updatedAt: values.now,
-      });
-      await input.store.appendAuditEntry({
-        ownerUserId: values.ownerUserId,
-        action: "reminder.installation_registered",
-        entityId: installation.id,
-        metadata: { previewMode: installation.previewMode },
-        createdAt: values.now,
-      });
-      const intents = await input.store.listActiveOccurrenceIntentsForOwner({
-        ownerUserId: values.ownerUserId,
-      });
-      const deliveryJobs = [];
-      for (const occurrenceIntent of intents) {
-        if (occurrenceIntent.freshUntil.getTime() <= values.now.getTime()) continue;
-        const jobs = await createInstallationJobs({
-          ownerUserId: values.ownerUserId,
-          occurrenceIntent,
-          installations: [installation],
-          now: values.now,
-        });
-        deliveryJobs.push(...jobs);
-      }
-      return { installation, deliveryJobs };
-    },
-
-    async setReminderOptInDecision(values: {
-      ownerUserId: string;
-      clientInstallationId: string;
-      decision: "postponed" | "denied";
-      now: Date;
-    }) {
-      const current = await input.store.getOptInState(values);
-      if (!current) throw new Error("Reminder opt-in has not been offered on this installation.");
-      return input.store.saveOptInState({
-        ...current,
-        state: values.decision,
-        inviteAfter:
-          values.decision === "postponed"
-            ? new Date(values.now.getTime() + 30 * 24 * 60 * 60_000)
-            : null,
-        updatedAt: values.now,
-      });
-    },
     dispatchReminder: dispatcher,
   };
 }
@@ -411,4 +331,28 @@ function resolveIntendedAt(input: {
   return input.choice.kind === "relative"
     ? new Date(base.getTime() - input.choice.leadMinutes * 60_000)
     : base;
+}
+
+function resolveFreshUntil(input: {
+  intendedAt: Date;
+  occurrenceDate: string;
+  timeSemantics: ReminderRecord["timeSemantics"];
+  timeZone: string;
+}): Date {
+  if (input.timeSemantics === "instant") {
+    return new Date(input.intendedAt.getTime() + HOUR_MS);
+  }
+  const [year, month, day] = input.occurrenceDate.split("-").map(Number) as [
+    number,
+    number,
+    number,
+  ];
+  const nextDay = new Date(Date.UTC(year, month - 1, day + 1));
+  return zonedWallTimeToUtc({
+    timeZone: input.timeZone,
+    year: nextDay.getUTCFullYear(),
+    month: nextDay.getUTCMonth() + 1,
+    day: nextDay.getUTCDate(),
+    minute: 0,
+  });
 }

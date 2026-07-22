@@ -49,6 +49,7 @@ describe("Reminder product function", () => {
     });
     expect(result.occurrenceIntent).toMatchObject({
       occurrenceKey: `follow_up:${FOLLOW_UP}:2026-08-14`,
+      freshUntil: new Date("2026-08-15T05:00:00.000Z"),
       status: "pending_installation",
     });
     await expect(
@@ -233,7 +234,7 @@ describe("Reminder product function", () => {
         title: "Filter model number",
         status,
         occursAt,
-        timeSemantics: "instant" as const,
+        timeSemantics: "date_only" as const,
         recurrence: null,
         sensitivity: "normal" as const,
         scope: "private" as const,
@@ -267,8 +268,10 @@ describe("Reminder product function", () => {
 
     expect(replacement?.occurrenceIntent?.id).not.toBe(first.occurrenceIntent?.id);
     expect(replacement?.occurrenceIntent?.occurrenceKey).toBe(
-      `saved_item:${SAVED_ITEM}:2026-08-21T00:00:00.000Z`,
+      `saved_item:${SAVED_ITEM}:2026-08-21`,
     );
+    expect(first.occurrenceIntent?.freshUntil).toEqual(new Date("2026-08-15T05:00:00.000Z"));
+    expect(replacement?.occurrenceIntent?.freshUntil).toEqual(new Date("2026-08-22T05:00:00.000Z"));
     expect(archived).toBeNull();
     await expect(
       store.listActiveOccurrenceIntentsForOwner({ ownerUserId: OWNER }),
@@ -309,6 +312,7 @@ describe("Reminder product function", () => {
     expect(result.schedule.occurrenceKey).toBe(
       `saved_item:${SAVED_ITEM}:${occursAt.toISOString()}`,
     );
+    expect(result.occurrenceIntent?.freshUntil).toEqual(new Date("2026-08-14T21:00:00.000Z"));
   });
 
   it("rejects exact Routine alarms and collaborator enrollment", async () => {
@@ -665,6 +669,7 @@ describe("Reminder product function", () => {
     const registration = {
       ownerUserId: OWNER,
       clientInstallationId: "browser-installation-1",
+      label: "Windows browser",
       subscription: {
         endpoint: "https://push.example.test/secret-endpoint",
         expirationTime: null,
@@ -674,15 +679,25 @@ describe("Reminder product function", () => {
     };
 
     const first = await service.registerReminderInstallation(registration);
-    const retry = await service.registerReminderInstallation(registration);
+    const retry = await service.registerReminderInstallation({
+      ...registration,
+      subscription: {
+        ...registration.subscription,
+        endpoint: "https://push.example.test/rotated-secret-endpoint",
+        keys: { p256dh: "rotated-secret-p256dh", auth: "rotated-secret-auth" },
+      },
+      now: new Date("2026-07-21T15:02:00.000Z"),
+    });
 
     expect(first.installation).toMatchObject({
       ownerUserId: OWNER,
       clientInstallationId: "browser-installation-1",
+      label: "Windows browser",
       status: "enabled",
       previewMode: "generic",
     });
     expect(retry.installation.id).toBe(first.installation.id);
+    expect(retry.installation.endpoint).toBe("https://push.example.test/rotated-secret-endpoint");
     expect(retry.deliveryJobs[0]?.id).toBe(first.deliveryJobs[0]?.id);
     await expect(store.listDeliveryJobs({ ownerUserId: OWNER })).resolves.toEqual([
       expect.objectContaining({
@@ -701,6 +716,18 @@ describe("Reminder product function", () => {
     expect(JSON.stringify(audit)).not.toMatch(
       /secret-endpoint|secret-p256dh|secret-auth|refrigerator water filter/i,
     );
+    const settings = await service.listReminderInstallations({ ownerUserId: OWNER });
+    expect(settings).toEqual([
+      {
+        id: first.installation.id,
+        clientInstallationId: "browser-installation-1",
+        label: "Windows browser",
+        status: "enabled",
+        previewMode: "generic",
+        updatedAt: new Date("2026-07-21T15:02:00.000Z"),
+      },
+    ]);
+    expect(JSON.stringify(settings)).not.toMatch(/endpoint|p256dh|secret-auth/i);
   });
 
   it("reloads authoritative state and records provider acceptance once with a generic deep link", async () => {
@@ -764,12 +791,12 @@ describe("Reminder product function", () => {
         body: "Open Tendnote to see what needs your attention.",
         tag: `reminder-${jobId}`,
         data: {
-          url: `/actions#action-${ACTION}`,
+          url: `/reminders/open?kind=general_action&id=${ACTION}`,
           recordKind: "general_action",
           recordId: ACTION,
         },
       },
-      ttlSeconds: 3_595,
+      ttlSeconds: 53_995,
     });
     expect(accepted).toMatchObject({ status: "accepted", displayed: false });
     expect(duplicate).toEqual({ status: "already_processed" });
@@ -1003,7 +1030,13 @@ describe("Reminder product function", () => {
     expect(duplicate).toEqual({ status: "already_processed" });
     await expect(
       store.getInstallation({ ownerUserId: OWNER, installationId: installation.id }),
-    ).resolves.toMatchObject({ status: "revoked" });
+    ).resolves.toMatchObject({ status: "revoked", endpoint: null, p256dh: null, auth: null });
+    await expect(
+      store.getOptInState({
+        ownerUserId: OWNER,
+        clientInstallationId: "browser-installation-1",
+      }),
+    ).resolves.toMatchObject({ state: "disabled" });
     await expect(store.listDeliveryJobs({ ownerUserId: OWNER })).resolves.toEqual([
       expect.objectContaining({
         id: jobId,
@@ -1012,5 +1045,15 @@ describe("Reminder product function", () => {
         attempts: 1,
       }),
     ]);
+    await expect(store.listAuditEntries({ ownerUserId: OWNER })).resolves.toContainEqual(
+      expect.objectContaining({
+        action: "reminder.delivery_failed",
+        entityId: jobId,
+        metadata: expect.objectContaining({
+          installationId: installation.id,
+          outcome: "terminal_endpoint",
+        }),
+      }),
+    );
   });
 });

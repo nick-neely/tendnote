@@ -12,6 +12,7 @@ import { createDrizzleReminderStore } from "./reminders/drizzle-store";
 import { scheduleReminderDeliveryOutbox } from "./reminders/outbox";
 import { createReminderService } from "./reminders/service";
 import { createDrizzleSavedItemStore } from "./saved-items/drizzle-store";
+import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 
 export * from "./reminders/index";
 
@@ -20,6 +21,26 @@ const followupStore = createDrizzleFollowupStore();
 const outboxStore = createDrizzleBackgroundJobDeliveryStore();
 const reminderStore = createDrizzleReminderStore();
 const savedItemStore = createDrizzleSavedItemStore();
+const sourceRecordStore = createDrizzleSourceRecordStore();
+
+async function reminderSourceSensitivity(input: {
+  ownerUserId: string;
+  sourceRecordId: string | null;
+  getSourceRecord: (input: {
+    ownerUserId: string;
+    sourceRecordId: string;
+  }) => Promise<{ sensitivity: "normal" | "sensitive" | "restricted" } | null>;
+}) {
+  if (!input.sourceRecordId) return "normal" as const;
+  return (
+    (
+      await input.getSourceRecord({
+        ownerUserId: input.ownerUserId,
+        sourceRecordId: input.sourceRecordId,
+      })
+    )?.sensitivity ?? "restricted"
+  );
+}
 
 export const reminderService = createReminderService({
   store: reminderStore,
@@ -29,6 +50,13 @@ export const reminderService = createReminderService({
         ownerUserId: input.ownerUserId,
         followupId: input.recordId,
       });
+      const sensitivity = followup
+        ? await reminderSourceSensitivity({
+            ownerUserId: input.ownerUserId,
+            sourceRecordId: followup.sourceRecordId ?? null,
+            getSourceRecord: sourceRecordStore.getSourceRecord,
+          })
+        : "restricted";
       return followup
         ? {
             id: followup.id,
@@ -39,7 +67,7 @@ export const reminderService = createReminderService({
             occursAt: followup.dueAt,
             timeSemantics: "date_only" as const,
             recurrence: null,
-            sensitivity: "normal" as const,
+            sensitivity,
             scope: followup.scope,
             deepLink: `/people/${followup.personId}#followup-${followup.id}`,
           }
@@ -50,6 +78,13 @@ export const reminderService = createReminderService({
         ownerUserId: input.ownerUserId,
         savedItemId: input.recordId,
       });
+      const sensitivity = item
+        ? await reminderSourceSensitivity({
+            ownerUserId: input.ownerUserId,
+            sourceRecordId: item.sourceRecordId,
+            getSourceRecord: sourceRecordStore.getSourceRecord,
+          })
+        : "restricted";
       return item
         ? {
             id: item.id,
@@ -58,9 +93,9 @@ export const reminderService = createReminderService({
             title: item.title,
             status: item.status,
             occursAt: item.bringBackAt,
-            timeSemantics: "instant" as const,
+            timeSemantics: item.bringBackTimeSemantics,
             recurrence: null,
-            sensitivity: "normal" as const,
+            sensitivity,
             scope: item.scope,
             deepLink: `/saved-items#saved-item-${item.id}`,
           }
@@ -71,6 +106,11 @@ export const reminderService = createReminderService({
       generalActionId: input.recordId,
     });
     if (!action) return null;
+    const sensitivity = await reminderSourceSensitivity({
+      ownerUserId: input.ownerUserId,
+      sourceRecordId: action.sourceRecordId,
+      getSourceRecord: sourceRecordStore.getSourceRecord,
+    });
     const kind = action.recurrence ? ("routine" as const) : ("general_action" as const);
     return kind === input.recordKind
       ? {
@@ -82,7 +122,7 @@ export const reminderService = createReminderService({
           occursAt: action.dueAt,
           timeSemantics: "date_only" as const,
           recurrence: action.recurrence,
-          sensitivity: "normal" as const,
+          sensitivity,
           scope: action.scope,
           deepLink: `/actions#action-${action.id}`,
         }
@@ -98,6 +138,19 @@ export const clearReminder = reminderService.clearReminder;
 export const reconcileReminderRecord = reminderService.reconcileReminderRecord;
 export const registerReminderInstallation = reminderService.registerReminderInstallation;
 export const setReminderOptInDecision = reminderService.setReminderOptInDecision;
+export const beginReminderInstallationOptIn = reminderService.beginReminderInstallationOptIn;
+export const markReminderStandaloneContinuation =
+  reminderService.markReminderStandaloneContinuation;
+export const claimReminderStandaloneContinuation =
+  reminderService.claimReminderStandaloneContinuation;
+export const setReminderInstallationPreviewMode =
+  reminderService.setReminderInstallationPreviewMode;
+export const disableReminderInstallation = reminderService.disableReminderInstallation;
+export const disableCurrentReminderInstallation =
+  reminderService.disableCurrentReminderInstallation;
+export const listReminderInstallations = reminderService.listReminderInstallations;
+export const getReminderInstallationState = reminderService.getReminderInstallationState;
+export const resolveReminderDeepLink = reminderService.resolveReminderDeepLink;
 export const dispatchReminder = reminderService.dispatchReminder;
 export const listReminderSchedulesForOwner = reminderStore.listSchedulesForOwner;
 
@@ -153,7 +206,7 @@ export function createExplicitCaptureReminderScheduler(saveReminderImpl: typeof 
                   recordKind: "saved_item" as const,
                   recordId: outcome.savedItem.id,
                   schedule: { kind: "relative" as const, leadMinutes: 0 } as const,
-                  timeSemantics: "instant" as const,
+                  timeSemantics: outcome.savedItem.bringBackTimeSemantics,
                 }
               : null;
       if (!target) return outcome.confirmation;

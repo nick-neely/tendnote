@@ -41,6 +41,7 @@ const ITEM = {
   url: null,
   status: "active" as const,
   bringBackAt: null,
+  bringBackTimeSemantics: "date_only" as const,
   sourceRecordId: "22222222-2222-4222-8222-222222222222",
   scope: "private" as const,
   householdId: null,
@@ -75,10 +76,24 @@ describe("Saved Item server adapters", () => {
         ownerUserId: "owner-1",
         scope: "private",
         originalText: "Eight inches",
+        bringBackTimeSemantics: "date_only",
       }),
     );
     expect(result).toMatchObject({ ok: true, view: { title: "Filter measurements" } });
     expect(revalidatePath).toHaveBeenCalledWith("/saved-items");
+  });
+
+  it("marks a datetime-local bring-back as an explicit instant", async () => {
+    await createSavedItemAction({
+      kind: "note",
+      title: "Filter measurements",
+      content: "Eight inches",
+      bringBackAt: "2026-08-14T16:00",
+    });
+
+    expect(createSavedItem).toHaveBeenCalledWith(
+      expect.objectContaining({ bringBackTimeSemantics: "instant" }),
+    );
   });
 
   it("supplies explicit authority and a stable retry key for promotion", async () => {

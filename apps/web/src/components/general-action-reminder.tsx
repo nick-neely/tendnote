@@ -4,6 +4,7 @@ import type { ReminderScheduleChoice } from "@tendnote/domain/reminders";
 import { BellIcon, BellRingIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
+  markReminderStandaloneContinuationAction,
   registerReminderInstallationAction,
   setReminderOptInDecisionAction,
 } from "@/app/actions/reminders";
@@ -11,8 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
 import {
+  attemptReminderRegistration,
   detectReminderCapability,
-  enableReminderRegistration,
+  isStandaloneReminderContext,
   type ReminderRegistrationOutcome,
 } from "@/lib/reminder-registration";
 
@@ -132,44 +134,39 @@ function useReminderOptIn(clientInstallationId: string, onDismiss: () => void) {
   const [capability, setCapability] = useState<ReminderCapability>(null);
 
   useEffect(() => {
-    setCapability(
-      detectReminderCapability({
-        userAgent: navigator.userAgent,
-        standalone:
-          window.matchMedia("(display-mode: standalone)").matches ||
-          Boolean((navigator as Navigator & { standalone?: boolean }).standalone),
-        notificationSupported: "Notification" in window,
-        serviceWorkerSupported: "serviceWorker" in navigator,
-        pushSupported: "PushManager" in window,
-      }),
-    );
-  }, []);
+    const standalone = isStandaloneReminderContext();
+    const detected = detectReminderCapability({
+      userAgent: navigator.userAgent,
+      standalone,
+      notificationSupported: "Notification" in window,
+      serviceWorkerSupported: "serviceWorker" in navigator,
+      pushSupported: "PushManager" in window,
+    });
+    setCapability(detected);
+    if (detected === "install_required") {
+      void markReminderStandaloneContinuationAction({ clientInstallationId }).catch(
+        () => undefined,
+      );
+    }
+  }, [clientInstallationId]);
 
   async function enable() {
     setPendingAction("enable");
-    if (
-      !("Notification" in window) ||
-      !("serviceWorker" in navigator) ||
-      !("PushManager" in window)
-    ) {
-      setOutcome({ status: "unsupported" });
-      setPendingAction(null);
-      return;
-    }
-    const result = await enableReminderRegistration({
+    const standalone = isStandaloneReminderContext();
+    const result = await attemptReminderRegistration({
+      clientInstallationId,
       publicKey: process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY ?? "",
-      notification: Notification,
-      serviceWorker: navigator.serviceWorker,
-      pushSupported: true,
-      register: (subscription) =>
-        registerReminderInstallationAction({ clientInstallationId, subscription }),
+      userAgent: navigator.userAgent,
+      standalone,
+      notification: "Notification" in window ? Notification : null,
+      serviceWorker: "serviceWorker" in navigator ? navigator.serviceWorker : null,
+      pushSupported: "PushManager" in window,
+      register: registerReminderInstallationAction,
+      decide: (decision) => setReminderOptInDecisionAction({ clientInstallationId, decision }),
     });
     setOutcome(result);
     try {
-      if (result.status === "denied") {
-        await setReminderOptInDecisionAction({ clientInstallationId, decision: "denied" });
-      } else if (result.status === "postponed") {
-        await setReminderOptInDecisionAction({ clientInstallationId, decision: "postponed" });
+      if (result.status === "postponed") {
         onDismiss();
       }
     } finally {
@@ -194,14 +191,15 @@ function ReminderCapabilityGuidance({ capability }: { capability: ReminderCapabi
   if (capability === "install_required") {
     return (
       <p className="text-[length:var(--text-small)] text-muted-foreground">
-        Add Tendnote to your Home Screen, then open the installed app to enable reminders.
+        In Safari, tap Share, choose Add to Home Screen, then open Tendnote there to enable
+        reminders. Today remains available in this browser.
       </p>
     );
   }
   if (capability === "unsupported") {
     return (
       <p className="text-[length:var(--text-small)] text-muted-foreground">
-        Reminders are unavailable in this browser.
+        Reminders are unavailable in this browser. Today remains the reliable place to check.
       </p>
     );
   }
@@ -228,7 +226,11 @@ function ReminderInvitationActions({
     <div className="flex flex-wrap gap-2">
       <Button disabled={pendingAction !== null} onClick={onEnable} size="sm" type="button">
         {pendingAction === "enable" ? <Spinner /> : null}
-        {pendingAction === "enable" ? "Enabling…" : "Enable reminders"}
+        {pendingAction === "enable"
+          ? "Enabling…"
+          : outcome?.status === "registration_failed"
+            ? "Try again"
+            : "Enable reminders"}
       </Button>
       <Button
         disabled={pendingAction !== null}
@@ -266,7 +268,7 @@ export function ReminderOptInInvitation({
             <p className="text-sm font-medium">Get this reminder on this installation?</p>
             <p className="text-[length:var(--text-small)] text-muted-foreground">
               Alerts use generic lock-screen copy. Tendnote will ask your browser only after you
-              choose Enable.
+              choose Enable. Delivery is best effort, and you can turn reminders off anytime.
             </p>
           </div>
           {message ? (

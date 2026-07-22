@@ -1,7 +1,9 @@
+import { listReminderInstallations } from "@tendnote/db/queries/reminders";
 import { CheckIcon } from "lucide-react";
 import { redirect } from "next/navigation";
 import { CalendarPreviewSection } from "@/components/account/calendar-preview-section";
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
+import { ReminderSettings } from "@/components/account/reminder-settings";
 import { AppShell } from "@/components/app-shell";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +57,7 @@ export default async function AccountPage({
   const discordConfigured = isDiscordConfigured(discordEnvFromProcess());
   // Read-only bounded preview of the connected calendar; hidden when not connected.
   const calendarPreview = await getOwnerCalendarPreview(calendarTarget);
+  const reminderInstallations = await listReminderInstallations({ ownerUserId });
 
   const initial = view.name.trim().charAt(0).toUpperCase() || "?";
 
@@ -126,6 +129,8 @@ export default async function AccountPage({
         {/* Read-only Google Calendar preview — provider-derived context, not memory
             or follow-ups; renders only when Calendar is connected (#110). */}
         <CalendarPreviewSection view={calendarPreview} />
+
+        <ReminderSettings installations={reminderInstallations} />
 
         {/* Sign out */}
         <section className="flex flex-col gap-3 border-t pt-6">

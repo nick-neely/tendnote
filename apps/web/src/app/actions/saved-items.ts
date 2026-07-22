@@ -99,6 +99,7 @@ export async function createSavedItemAction(input: {
       content: parsed.content || null,
       url: parsed.url || null,
       bringBackAt: parseOptionalDate(parsed.bringBackAt) ?? null,
+      bringBackTimeSemantics: parsed.bringBackAt ? "instant" : "date_only",
       originalText: originalText(parsed),
       scope,
       householdId,
@@ -125,7 +126,12 @@ export async function editSavedItemAction(input: {
         ...(parsed.content !== undefined ? { content: parsed.content || null } : {}),
         ...(parsed.url !== undefined ? { url: parsed.url || null } : {}),
         ...(parsed.bringBackAt !== undefined
-          ? { bringBackAt: parseOptionalDate(parsed.bringBackAt) ?? null }
+          ? {
+              bringBackAt: parseOptionalDate(parsed.bringBackAt) ?? null,
+              bringBackTimeSemantics: parsed.bringBackAt
+                ? ("instant" as const)
+                : ("date_only" as const),
+            }
           : {}),
       },
     });
