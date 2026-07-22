@@ -124,6 +124,102 @@ describe("explicit Capture Reminder product policy", () => {
     expect(result?.destination).toBe("Grouped");
   });
 
+  it("applies an explicitly scoped lead only to the outcome that requested an alert", async () => {
+    const { save, schedule } = setup();
+    const action = actionConfirmation();
+    const question = {
+      destination: "Saved Items" as const,
+      groundedBySourceRecordId: "source-1",
+      interpreted: { kind: "Open question" as const, visibility: "Only me" },
+      change: { kind: "edit_saved_item" as const, savedItemId: "saved-item-1" },
+      undo: { kind: "archive_saved_item" as const, savedItemId: "saved-item-1" },
+    };
+
+    const result = await schedule({
+      ownerUserId: OWNER,
+      originalText:
+        "Remind me to replace the filter on August 21 with an alert one week before; and also save an open question: Where should I buy it? Bring it back on August 14",
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      now: new Date("2026-07-21T15:00:00.000Z"),
+      result: {
+        sourceRecord: {} as never,
+        confirmation: {
+          destination: "Grouped",
+          groundedBySourceRecordId: "source-1",
+          outcomes: [action, question],
+        },
+        outcomes: [
+          {
+            kind: "general_action",
+            id: ACTION,
+            generalAction: { id: ACTION, status: "open", recurrence: null },
+            confirmation: action,
+            reminderSchedule: { kind: "relative", leadMinutes: 10_080 },
+          },
+          {
+            kind: "saved_item",
+            id: "saved-item-1",
+            savedItem: {
+              id: "saved-item-1",
+              kind: "open_question",
+              bringBackAt: new Date("2026-08-14T14:00:00.000Z"),
+              bringBackTimeSemantics: "date_only",
+            } as never,
+            confirmation: question,
+          },
+        ],
+      },
+    });
+
+    expect(save).toHaveBeenCalledOnce();
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recordKind: "general_action",
+        recordId: ACTION,
+        schedule: { kind: "relative", leadMinutes: 10_080 },
+      }),
+    );
+    expect(result).toMatchObject({
+      destination: "Grouped",
+      outcomes: [
+        { interpreted: { reminderSchedule: expect.stringMatching(/one week before/) } },
+        { destination: "Saved Items" },
+      ],
+    });
+  });
+
+  it("preserves an explicitly scoped lead on a single Action Capture", async () => {
+    const { save, schedule } = setup();
+    const confirmation = actionConfirmation();
+
+    const result = await schedule({
+      ownerUserId: OWNER,
+      originalText: "Remind me to replace the filter on August 21 with an alert one week before",
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      now: new Date("2026-07-21T15:00:00.000Z"),
+      result: {
+        sourceRecord: {} as never,
+        confirmation,
+        generalAction: { id: ACTION, status: "open", recurrence: null },
+        reminderSchedule: { kind: "relative", leadMinutes: 10_080 },
+      },
+    });
+
+    expect(save).toHaveBeenCalledOnce();
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recordKind: "general_action",
+        recordId: ACTION,
+        schedule: { kind: "relative", leadMinutes: 10_080 },
+      }),
+    );
+    expect(result).toMatchObject({
+      interpreted: { reminderSchedule: expect.stringMatching(/one week before/) },
+    });
+  });
+
   it("does not enroll non-reminder Capture wording", async () => {
     const { save, schedule } = setup();
     const confirmation = actionConfirmation();

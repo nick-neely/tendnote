@@ -134,7 +134,13 @@ async function createActionDestination(
       visibilityLabel: input.visibility.label,
     }),
   );
-  return { kind: "general_action" as const, generalAction, confirmation, id: generalAction.id };
+  return {
+    kind: "general_action" as const,
+    generalAction,
+    confirmation,
+    id: generalAction.id,
+    ...(input.route.reminderSchedule ? { reminderSchedule: input.route.reminderSchedule } : {}),
+  };
 }
 
 async function createFollowupDestination(
@@ -194,16 +200,19 @@ async function createSavedItemDestination(
     throw new Error("This capture interaction is linked to different source evidence.");
   }
   const kind = fallbackKind(input.originalText);
+  const itemKind = input.route.kind ?? kind;
+  const itemText = input.route.text ?? input.originalText;
   const savedItem = existing
     ? await hydrateSavedItem(input.store, existing)
     : await createGroundedSavedItem(input.store, {
         id: input.ids.savedItemId,
         createdEventId: input.ids.savedItemEventId,
         ownerUserId: input.ownerUserId,
-        kind,
-        title: input.originalText.slice(0, 240),
-        content: kind === "link" ? null : input.originalText,
-        url: kind === "link" ? input.originalText : null,
+        kind: itemKind,
+        title: itemText.slice(0, 240),
+        content: itemKind === "link" ? null : itemText,
+        url: itemKind === "link" ? itemText : null,
+        bringBackAt: input.route.bringBackAt ?? null,
         originalText: input.originalText,
         sourceRecordId: input.sourceRecordId,
         scope: input.visibility.scope,
@@ -216,7 +225,7 @@ async function createSavedItemDestination(
     savedItemConfirmation({
       sourceRecordId: input.sourceRecordId,
       savedItemId: savedItem.id,
-      kind,
+      kind: itemKind,
       visibilityLabel: input.visibility.label,
     }),
   );

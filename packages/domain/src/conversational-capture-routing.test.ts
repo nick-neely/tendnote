@@ -82,6 +82,71 @@ describe("explicit conversational Capture routing", () => {
     ).toEqual({ destination: "saved_item" });
   });
 
+  it("groups an explicitly requested Action and open question without turning fallback text into fan-out", () => {
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText:
+          "Remind me to replace the kitchen refrigerator filter on August 21 with an alert one week before; and also save an open question: Where should I buy the replacement filter? Bring it back on August 14",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "group",
+      outcomes: [
+        {
+          destination: "action",
+          dueAt: new Date("2026-08-21T14:00:00.000Z"),
+          recurrence: null,
+          reminderSchedule: { kind: "relative", leadMinutes: 10_080 },
+          title: "Replace the kitchen refrigerator filter",
+        },
+        {
+          destination: "saved_item",
+          explicit: true,
+          kind: "open_question",
+          text: "Where should I buy the replacement filter?",
+          bringBackAt: new Date("2026-08-14T14:00:00.000Z"),
+        },
+      ],
+    });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "I need to replace the filter; maybe remember where to buy it",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({ destination: "saved_item" });
+  });
+
+  it("treats a Saved Item date as bring-back timing only when the owner says to bring it back", () => {
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "Save a note: August 14 is the refrigerator warranty date",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "saved_item",
+      explicit: true,
+      kind: "note",
+      text: "August 14 is the refrigerator warranty date",
+      bringBackAt: null,
+    });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "Save an open question: Where should I buy it? Bring it back soon",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "clarification",
+      field: "timing",
+      question: "When should I bring this Saved Item back?",
+    });
+  });
+
   it("keeps one-time work unscheduled when no reminder timing was requested", () => {
     expect(
       routeExplicitConversationalCapture({

@@ -17,6 +17,7 @@ export const reopenGeneralActionAction = unusedAction;
 export const resumeGeneralActionAction = unusedAction;
 export const setGeneralActionPeopleAction = unusedAction;
 export const setGeneralActionVisibilityAction = unusedAction;
+export const skipGeneralActionOccurrenceAction = unusedAction;
 
 export const archiveGeneralActionAreaAction = unusedAction;
 export const createGeneralActionAreaAction = unusedAction;
@@ -27,6 +28,51 @@ export const acceptSuggestedGeneralActionAction = unusedAction;
 export const dismissSuggestedGeneralActionAction = unusedAction;
 export const editSuggestedGeneralActionAction = unusedAction;
 export const ignoreSuggestedGeneralActionAction = unusedAction;
+
+export const acceptAssetReviewGroupAction = unusedAction;
+export const acceptSuggestedAssetAction = unusedAction;
+export const acceptSuggestedAssetMemoryAction = unusedAction;
+export const dismissAssetReviewGroupAction = unusedAction;
+export const dismissSuggestedAssetMemoryAction = unusedAction;
+export const editSuggestedAssetAction = unusedAction;
+export const editSuggestedAssetMemoryAction = unusedAction;
+export const linkAssetReviewGroupAction = unusedAction;
+export const addAssetEvidenceAction = unusedAction;
+export const addAssetEvidenceToNewAssetAction = unusedAction;
+export const listAssetEvidenceDestinationsAction = async () => [];
+export const removeAssetEvidenceAction = unusedAction;
+
+export const archiveSuggestedMemoryAction = unusedAction;
+export const dismissSuggestedMemoryAction = unusedAction;
+export const editSuggestedMemoryAction = unusedAction;
+export const saveSuggestedMemoryAction = unusedAction;
+
+export const addCapturePersonAction = unusedAction;
+export const captureExplicitOutcomeAction = unusedAction;
+export const changeExplicitCaptureOutcomeAction = unusedAction;
+export const changeExplicitCaptureReminderAction = unusedAction;
+export const undoExplicitCaptureOutcomeAction = unusedAction;
+export const globalRecallAction = unusedAction;
+
+export const actOnTodayItemAction = unusedAction;
+export const refreshTodayAction = unusedAction;
+export const suppressTodayItemAction = unusedAction;
+
+export const beginReminderInstallationOptInAction = unusedAction;
+export const claimReminderStandaloneContinuationAction = async () => ({ claimed: false });
+export const clearReminderAction = unusedAction;
+export const disableCurrentReminderInstallationAction = unusedAction;
+export const getReminderInstallationStateAction = async () => ({
+  optInState: null,
+  installation: null,
+});
+export const markReminderStandaloneContinuationAction = unusedAction;
+export const reconcileReminderTimeZoneAction = async () => ({ reconciled: 0 });
+export const registerReminderInstallationAction = async () => ({ enabled: true });
+export const revokeReminderInstallationAction = unusedAction;
+export const saveReminderAction = unusedAction;
+export const setReminderInstallationPreviewModeAction = unusedAction;
+export const setReminderOptInDecisionAction = unusedAction;
 
 export function useRouter() {
   return { refresh: () => {}, push: () => {} };

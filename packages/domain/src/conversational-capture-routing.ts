@@ -1,9 +1,21 @@
 import type { AssetKind } from "./assets";
 import { formatLocalDate, zonedWallTimeToUtc } from "./brief-schedules";
 import { type GeneralActionRecurrence, MAX_RECURRENCE_INTERVAL } from "./general-actions";
+import type { ReminderScheduleChoice } from "./reminders";
+import type { SavedItemKind } from "./saved-items";
+
+type SavedItemCaptureRoute =
+  | { destination: "saved_item"; explicit?: never; kind?: never; text?: never; bringBackAt?: never }
+  | {
+      destination: "saved_item";
+      explicit: true;
+      kind: SavedItemKind;
+      text: string;
+      bringBackAt: Date | null;
+    };
 
 export type ConversationalCaptureSingleRoute =
-  | { destination: "saved_item" }
+  | SavedItemCaptureRoute
   | { destination: "person"; displayName: string }
   | {
       destination: "memory";
@@ -21,6 +33,7 @@ export type ConversationalCaptureSingleRoute =
       title: string;
       dueAt: Date | null;
       recurrence: GeneralActionRecurrence | null;
+      reminderSchedule?: ReminderScheduleChoice;
     }
   | {
       destination: "followup";
@@ -38,10 +51,7 @@ export type ConversationalCaptureRoute =
   | ConversationalCaptureSingleRoute
   | {
       destination: "group";
-      outcomes: Exclude<
-        ConversationalCaptureSingleRoute,
-        { destination: "saved_item" | "clarification" }
-      >[];
+      outcomes: Exclude<ConversationalCaptureSingleRoute, { destination: "clarification" }>[];
     };
 
 const WEEKDAYS = [
@@ -185,11 +195,47 @@ function routeSingleExplicitCapture(input: {
 }): ConversationalCaptureSingleRoute {
   const person = routeExplicitPerson(input.originalText);
   if (person) return person;
+  const savedItem = routeExplicitSavedItem(input);
+  if (savedItem) return savedItem;
   const memory = routeExplicitMemory(input.originalText);
   if (memory) return memory;
   const asset = routeExplicitAsset(input.originalText);
   if (asset) return asset;
   return routeExplicitAction(input);
+}
+
+function routeExplicitSavedItem(input: {
+  originalText: string;
+  timeZone: string;
+  now: Date;
+}): ConversationalCaptureSingleRoute | null {
+  const match = input.originalText.match(
+    /^\s*save\s+(?:an?\s+)?(open\s+question|note|link)\s*(?::|about)?\s*(.+?)\s*$/i,
+  );
+  if (!match?.[1] || !match[2]) return null;
+  const bringBackClause =
+    match[2].match(/\s*[.]?\s*(?:and\s+)?bring\s+(?:it|this)\s+back\b.*$/i)?.[0] ?? null;
+  const timing = bringBackClause
+    ? resolveTiming(bringBackClause, input.timeZone, input.now)
+    : { dueAt: null, matched: null };
+  if (bringBackClause && !timing.dueAt) {
+    return {
+      destination: "clarification",
+      field: "timing",
+      question: "When should I bring this Saved Item back?",
+    };
+  }
+  const text = bringBackClause
+    ? match[2].slice(0, -bringBackClause.length).trim()
+    : match[2].trim();
+  const kind = match[1].toLowerCase().replaceAll(" ", "_") as SavedItemKind;
+  return {
+    destination: "saved_item",
+    explicit: true,
+    kind,
+    text,
+    bringBackAt: timing.dueAt,
+  };
 }
 
 function routeExplicitPerson(originalText: string): ConversationalCaptureSingleRoute | null {
@@ -232,8 +278,14 @@ function routeExplicitAction(input: {
 
   const timing = resolveTiming(originalText, timeZone, now);
   const recurrence = resolveRecurrence(originalText);
+  const reminder = resolveExplicitReminderSchedule(originalText);
   const vagueTiming = originalText.match(/\b(?:sometime|soon|later|eventually)\b/i)?.[0] ?? null;
-  const title = cleanActionTitle(originalText, [timing.matched, recurrence.matched, vagueTiming]);
+  const title = cleanActionTitle(originalText, [
+    timing.matched,
+    recurrence.matched,
+    vagueTiming,
+    reminder.matched,
+  ]);
   const clarification = actionClarification({
     originalText,
     title,
@@ -252,6 +304,27 @@ function routeExplicitAction(input: {
     dueAt: timing.dueAt,
     recurrence: recurrence.recurrence,
     title,
+    ...(reminder.schedule ? { reminderSchedule: reminder.schedule } : {}),
+  };
+}
+
+function resolveExplicitReminderSchedule(originalText: string): {
+  matched: string | null;
+  schedule: ReminderScheduleChoice | null;
+} {
+  const lead = originalText.match(
+    /\b(?:with\s+)?(?:an?\s+)?alert(?:\s+me)?\s+(one\s+week|one\s+day|one\s+hour)\s+before\b/i,
+  );
+  if (!lead?.[0] || !lead[1]) return { matched: null, schedule: null };
+  const leadMinutes =
+    lead[1].toLowerCase() === "one week"
+      ? 10_080
+      : lead[1].toLowerCase() === "one day"
+        ? 1_440
+        : 60;
+  return {
+    matched: lead[0],
+    schedule: { kind: "relative", leadMinutes },
   };
 }
 
@@ -333,14 +406,15 @@ export function routeExplicitConversationalCapture(input: {
     if (
       outcomes.every(
         (outcome) =>
-          outcome.destination !== "saved_item" && outcome.destination !== "clarification",
+          outcome.destination !== "clarification" &&
+          (outcome.destination !== "saved_item" || outcome.explicit === true),
       )
     ) {
       return {
         destination: "group",
         outcomes: outcomes as Exclude<
           ConversationalCaptureSingleRoute,
-          { destination: "saved_item" | "clarification" }
+          { destination: "clarification" }
         >[],
       };
     }

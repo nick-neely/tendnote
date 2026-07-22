@@ -19,6 +19,55 @@ async function capturedAssetReview(input: { name: string; sourceRecordId: string
 }
 
 describe("cross-domain conversational Capture", () => {
+  it("persists an explicitly grouped Action and open question against one source", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
+      ...input,
+      status: "open",
+    }));
+    const capture = createConversationalCapture(store, {
+      createGeneralAction,
+      ownerTimeZone: async () => "America/Chicago",
+    });
+
+    const result = await capture.capture({
+      authority: "explicit",
+      interactionId: "phase-seven-filter-journey",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText:
+        "Remind me to replace the kitchen refrigerator filter on August 21 with an alert one week before; and also save an open question: Where should I buy the replacement filter? Bring it back on August 14",
+      surface: "global_capture",
+    });
+
+    expect(result.confirmation).toMatchObject({
+      destination: "Grouped",
+      groundedBySourceRecordId: result.sourceRecord.id,
+      outcomes: [
+        { destination: "Actions", groundedBySourceRecordId: result.sourceRecord.id },
+        { destination: "Saved Items", groundedBySourceRecordId: result.sourceRecord.id },
+      ],
+    });
+    expect(result.outcomes).toEqual([
+      expect.objectContaining({
+        kind: "general_action",
+        reminderSchedule: { kind: "relative", leadMinutes: 10_080 },
+      }),
+      expect.objectContaining({
+        kind: "saved_item",
+        savedItem: expect.objectContaining({
+          kind: "open_question",
+          title: "Where should I buy the replacement filter?",
+          bringBackAt: new Date("2026-08-14T14:00:00.000Z"),
+          sourceRecordId: result.sourceRecord.id,
+        }),
+      }),
+    ]);
+    expect(createGeneralAction).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceRecordId: result.sourceRecord.id }),
+    );
+  });
+
   it("creates a minimal Person only for explicit add intent and attaches the shared evidence", async () => {
     const store = createInMemorySavedItemLifecycleStore();
     const resolveOrCreateAndLinkPerson = vi.fn().mockImplementation(async (input) => ({

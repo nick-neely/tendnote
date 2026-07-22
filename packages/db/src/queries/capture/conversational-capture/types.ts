@@ -9,6 +9,7 @@ import type {
   GeneralActionStatus,
   MemoryStatus,
   PrivacyScope,
+  ReminderScheduleChoice,
   SourceRecord,
 } from "@tendnote/domain";
 import type { SavedItemWithContext } from "../../saved-items/types";
@@ -26,6 +27,7 @@ export type ConversationalCaptureResult = {
   memory?: CaptureMemory;
   assetReview?: CaptureAssetReview;
   outcomes?: CaptureOutcomeResult[];
+  reminderSchedule?: ReminderScheduleChoice;
 };
 
 export type CaptureGeneralAction = {
@@ -66,6 +68,7 @@ export type CaptureAssetReview = {
 type CaptureOutcomeBase = {
   id: string;
   confirmation: Exclude<ConversationalCaptureConfirmation, { destination: "Grouped" }>;
+  reminderSchedule?: ReminderScheduleChoice;
 };
 export type CaptureOutcomeResult =
   | (CaptureOutcomeBase & { kind: "saved_item"; savedItem: SavedItemWithContext })

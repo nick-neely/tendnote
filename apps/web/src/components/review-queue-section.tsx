@@ -109,10 +109,11 @@ function SourceRecordQueueCard({
         </p>
       </div>
       <div className="flex items-center justify-end gap-1.5">
-        <Button asChild size="sm" variant="ghost">
+        <Button asChild className="min-h-11" size="sm" variant="ghost">
           <Link href={`/people?linkSourceRecord=${review.sourceRecord.id}`}>Link someone else</Link>
         </Button>
         <Button
+          className="min-h-11"
           disabled={pending}
           onClick={() =>
             run(() =>

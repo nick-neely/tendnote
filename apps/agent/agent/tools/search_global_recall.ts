@@ -37,6 +37,7 @@ export default defineTool({
           sensitivity: result.sensitivity,
           visibility: result.visibility?.label ?? null,
           canonical: result.canonical,
+          href: result.href,
           citations: result.grounding,
           details: result.details,
         })),

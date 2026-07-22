@@ -57,7 +57,16 @@ describe("search_global_recall", () => {
     const model = tool.toModelOutput?.(output) as { value: Record<string, unknown> };
     expect(model.value).toMatchObject({
       limitations: [{ source: "calendar" }],
-      results: [{ canonical: { kind: "asset_memory", id: "memory-1" } }],
+      results: [
+        {
+          canonical: { kind: "asset_memory", id: "memory-1" },
+          href: "/assets/asset-1?focus=memory-1",
+          citations: [
+            { kind: "asset_memory", id: "memory-1" },
+            { kind: "asset_evidence", id: "evidence-1" },
+          ],
+        },
+      ],
     });
   });
 });

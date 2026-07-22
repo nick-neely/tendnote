@@ -1,0 +1,37 @@
+import { defineEval } from "eve/evals";
+import { includes } from "eve/evals/expect";
+import { NO_RAW_IDS, toolOutputs, without } from "../expectations";
+
+export default defineEval({
+  description:
+    "Global Recall cites the reviewed filter fact while naming the unresolved purchase-location limitation.",
+  tags: ["deterministic", "behavior", "global-recall", "limitations", "phase-seven"],
+  async test(t) {
+    await t.send(
+      "Use Global Recall across all my Tendnote records for the kitchen refrigerator filter, not the Asset-only search. Tell me the exact filter model, and if the records do not confirm where to buy it, say that limitation explicitly instead of recommending a store.",
+    );
+
+    t.succeeded();
+    t.calledTool("search_global_recall", {
+      input: { includeRestricted: false },
+    });
+    t.eventsSatisfy("recall returns canonical links and grounding citations", (events) =>
+      toolOutputs(events, "search_global_recall").some((output) => {
+        const results = (output as { results?: Array<{ grounding?: unknown[]; href?: string }> })
+          .results;
+        return (
+          results?.some(
+            (result) => result.href?.startsWith("/") && (result.grounding?.length ?? 0) > 0,
+          ) ?? false
+        );
+      }),
+    );
+    t.check(t.reply, includes(/EDR1RXD1/));
+    t.check(t.reply, includes(/where to buy|buying|purchase|retailer|seller|store/i));
+    t.check(t.reply, includes(NO_RAW_IDS));
+    t.check(t.reply, includes(without("Amazon|Home Depot|Lowe.?s|Walmart")));
+    t.check(t.reply, includes(without("buy it (at|from)|available at|sold by|order it from")));
+    t.notCalledTool("capture_saved_item");
+    t.notCalledTool("create_general_action");
+  },
+});

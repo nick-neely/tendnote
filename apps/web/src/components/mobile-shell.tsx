@@ -74,9 +74,15 @@ export function MobileShell({
 
   function closeFlow() {
     const trigger = invokingControl.current;
+    const triggerKey = trigger?.dataset.mobileFlowTrigger;
     if (flow === "eve") setEveDraftRevision((revision) => revision + 1);
     setFlow(null);
-    requestAnimationFrame(() => trigger?.focus());
+    requestAnimationFrame(() => {
+      const replacement = triggerKey
+        ? document.querySelector<HTMLElement>(`[data-mobile-flow-trigger="${triggerKey}"]`)
+        : null;
+      (trigger?.isConnected ? trigger : replacement)?.focus();
+    });
   }
 
   function closeFlowForNavigation() {
@@ -259,6 +265,7 @@ function TodayEveComposer({
           <button
             aria-label={draft.value.trim() ? "Send to Eve" : "Open Eve"}
             className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            data-mobile-flow-trigger="eve"
             ref={submitButton}
             type="submit"
           >
@@ -351,6 +358,7 @@ function MobileNavButton({
         "text-muted-foreground",
         emphasized && "font-medium text-foreground",
       )}
+      data-mobile-flow-trigger={flow}
       onClick={(event) => onClick(flow, event.currentTarget)}
       type="button"
     >
