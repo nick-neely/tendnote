@@ -4,6 +4,7 @@ import type { GeneralActionLink, GeneralActionRecurrence } from "@tendnote/domai
 import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
 import {
   ArchiveIcon,
+  BellIcon,
   CheckIcon,
   ClockIcon,
   ExternalLinkIcon,
@@ -26,6 +27,10 @@ import {
   setGeneralActionPeopleAction,
   setGeneralActionVisibilityAction,
 } from "@/app/actions/general-actions";
+import {
+  clearGeneralActionReminderAction,
+  saveGeneralActionReminderAction,
+} from "@/app/actions/reminders";
 import { AreaSelect } from "@/components/general-action-area-select";
 import {
   ActionAssetHintsField,
@@ -45,6 +50,11 @@ import {
   type ActionPersonOption,
 } from "@/components/general-action-people-field";
 import { RecurrenceField } from "@/components/general-action-recurrence-field";
+import {
+  type GeneralActionReminderChoice,
+  GeneralActionReminderField,
+  ReminderOptInInvitation,
+} from "@/components/general-action-reminder";
 import { ActionDueChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
@@ -64,6 +74,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionMutationResult, GeneralActionView } from "@/lib/general-action-view";
+import { getReminderInstallationId } from "@/lib/reminder-registration";
+import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 
 function linkLabel(link: GeneralActionLink): string {
   if (link.label) {
@@ -174,6 +186,7 @@ function ActionEditForm({
   people,
   onUpdate,
   onCancel,
+  onReminderOptIn,
 }: {
   action: GeneralActionView;
   areas: GeneralActionAreaView[];
@@ -181,11 +194,18 @@ function ActionEditForm({
   people: ActionPersonOption[];
   onUpdate: (view: GeneralActionView) => void;
   onCancel: () => void;
+  onReminderOptIn: (clientInstallationId: string) => void;
 }) {
   const [title, setTitle] = useState(action.title);
   const [notes, setNotes] = useState(action.notes ?? "");
   const [dueDate, setDueDate] = useState(action.dueAtDate);
   const [recurrence, setRecurrence] = useState<GeneralActionRecurrence | null>(action.recurrence);
+  const [reminderEnabled, setReminderEnabled] = useState(Boolean(action.reminderSchedule));
+  const [reminderChoice, setReminderChoice] = useState<GeneralActionReminderChoice>(() =>
+    action.reminderSchedule?.kind === "relative"
+      ? { kind: "relative", leadMinutes: action.reminderSchedule.leadMinutes ?? 0 }
+      : { kind: "exact", localTime: action.reminderSchedule?.localTime ?? "09:00" },
+  );
   const [links, setLinks] = useState<LinkDraft[]>(toLinkDrafts(action.links));
   const [hintLabels, setHintLabels] = useState<string[]>(toHintLabels(action.assetHints));
   const [personIds, setPersonIds] = useState<string[]>(action.linkedPeople.map((p) => p.id));
@@ -230,7 +250,15 @@ function ActionEditForm({
     personIds,
     action.linkedPeople.map((p) => p.id),
   );
-  const hasChange = Object.keys(edit).length > 0 || peopleChanged;
+  const currentReminderChoice = action.reminderSchedule
+    ? action.reminderSchedule.kind === "relative"
+      ? { kind: "relative" as const, leadMinutes: action.reminderSchedule.leadMinutes ?? 0 }
+      : { kind: "exact" as const, localTime: action.reminderSchedule.localTime ?? "09:00" }
+    : null;
+  const reminderChanged =
+    reminderEnabled !== Boolean(action.reminderSchedule) ||
+    JSON.stringify(reminderChoice) !== JSON.stringify(currentReminderChoice);
+  const hasChange = Object.keys(edit).length > 0 || peopleChanged || reminderChanged;
   // Show the Action's current Area even if it was archived after filing, so the
   // picker displays its label without offering it as a new assignment.
   const editAreas =
@@ -264,6 +292,37 @@ function ActionEditForm({
               personIds,
             });
           }
+          if (reminderEnabled && dueDate && !recurrence) {
+            const clientInstallationId = getReminderInstallationId(window.localStorage);
+            const scheduleResult = await saveGeneralActionReminderAction({
+              generalActionId: action.id,
+              clientInstallationId,
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              schedule: reminderChoice,
+            });
+            if (scheduleResult.nextValidChoice) {
+              setReminderChoice({ kind: "relative", leadMinutes: 0 });
+              return {
+                ok: false,
+                error: `That lead time has passed. The next available choice is ${scheduleResult.nextValidChoice.label}; review and save again.`,
+              };
+            }
+            if (scheduleResult.optIn.state === "offer") {
+              onReminderOptIn(clientInstallationId);
+            }
+            const view = result?.ok ? result.view : action;
+            result = {
+              ok: true,
+              view: {
+                ...view,
+                reminderSchedule: toReminderScheduleView(scheduleResult.schedule),
+              },
+            };
+          } else if (action.reminderSchedule) {
+            await clearGeneralActionReminderAction({ generalActionId: action.id });
+            const view = result?.ok ? result.view : action;
+            result = { ok: true, view: { ...view, reminderSchedule: null } };
+          }
           return result ?? { ok: true, view: action };
         });
       }}
@@ -291,6 +350,14 @@ function ActionEditForm({
         />
       </div>
       <RecurrenceField onChange={setRecurrence} value={recurrence} />
+      {dueDate && !recurrence ? (
+        <GeneralActionReminderField
+          choice={reminderChoice}
+          enabled={reminderEnabled}
+          onChoiceChange={setReminderChoice}
+          onEnabledChange={setReminderEnabled}
+        />
+      ) : null}
       {editAreas.length ? (
         <div className="flex flex-col gap-1.5">
           <span className="text-[length:var(--text-small)] text-muted-foreground">Area</span>
@@ -596,6 +663,7 @@ export function ActionRow({
   // Which control initiated the in-flight mutation, so the spinner lands on the
   // button the user pressed rather than the whole row.
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [optInInstallationId, setOptInInstallationId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const returnToView = () => setMode("view");
@@ -657,6 +725,7 @@ export function ActionRow({
         areaName={areaName}
         areas={areas}
         onCancel={returnToView}
+        onReminderOptIn={setOptInInstallationId}
         onUpdate={onUpdate}
         people={people}
       />
@@ -722,6 +791,12 @@ export function ActionRow({
               {areaName}
             </span>
           ) : null}
+          {action.reminderSchedule ? (
+            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-[length:var(--text-caption)] text-primary">
+              <BellIcon className="size-3" />
+              {action.reminderSchedule.label}
+            </span>
+          ) : null}
         </div>
         <div className="shrink-0 pt-0.5">
           <ActionDueChip surfaceLabel={action.surfaceLabel} surfaceState={action.surfaceState} />
@@ -785,6 +860,12 @@ export function ActionRow({
           <CheckIcon aria-hidden className="size-3 text-primary" />
           {notice}
         </p>
+      ) : null}
+      {optInInstallationId ? (
+        <ReminderOptInInvitation
+          clientInstallationId={optInInstallationId}
+          onDismiss={() => setOptInInstallationId(null)}
+        />
       ) : null}
       <ActionHistoryDialog
         generalActionId={action.id}

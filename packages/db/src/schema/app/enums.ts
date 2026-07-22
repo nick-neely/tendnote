@@ -307,6 +307,7 @@ export const backgroundJobKind = pgEnum("background_job_kind", [
   "extraction",
   "embedding",
   "action_extraction",
+  "reminder_push",
 ]);
 
 export const backgroundJobDeliveryStatus = pgEnum("background_job_delivery_status", [
@@ -314,6 +315,40 @@ export const backgroundJobDeliveryStatus = pgEnum("background_job_delivery_statu
   "published",
   "publish_failed",
   "abandoned",
+]);
+
+export const reminderScheduleKind = pgEnum("reminder_schedule_kind", ["exact", "relative"]);
+export const reminderOccurrenceStatus = pgEnum("reminder_occurrence_status", [
+  "pending_installation",
+  "pending",
+  "superseded",
+]);
+export const reminderOptInStatus = pgEnum("reminder_opt_in_status", [
+  "offered",
+  "postponed",
+  "denied",
+  "registered",
+]);
+export const reminderInstallationStatus = pgEnum("reminder_installation_status", [
+  "enabled",
+  "disabled",
+  "revoked",
+]);
+export const reminderPreviewMode = pgEnum("reminder_preview_mode", ["generic", "detailed"]);
+export const reminderDeliveryJobStatus = pgEnum("reminder_delivery_job_status", [
+  "pending",
+  "running",
+  "completed",
+  "skipped",
+  "failed",
+]);
+export const reminderDeliveryOutcome = pgEnum("reminder_delivery_outcome", [
+  "accepted",
+  "transient_failure",
+  "terminal_endpoint",
+  "suppressed_stale",
+  "suppressed_revoked",
+  "suppressed_ineligible",
 ]);
 
 export const providerConnectionStatus = pgEnum("provider_connection_status", [

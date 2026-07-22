@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agents.local/visual-verification.schema.json",
+  "protectedRoutes": ["/", "/actions", "/actions/**"],
+  "devServer": {
+    "startCommand": "pnpm dev:web"
+  },
+  "auth": {
+    "mode": "storage-state",
+    "storageState": ".auth/agent-admin-storage-state.json",
+    "refreshCommand": null,
+    "adapter": "local-demo-session",
+    "needsAdapterScript": false
+  }
+}

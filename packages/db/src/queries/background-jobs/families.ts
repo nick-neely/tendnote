@@ -9,6 +9,9 @@ import {
   processActionExtractionJob,
 } from "../action-extraction-jobs";
 import type { BackgroundJobKind } from "../background-job-deliveries/topics";
+
+export type BackgroundProcessorJobKind = Exclude<BackgroundJobKind, "reminder_push">;
+
 import {
   claimExtractionJob,
   claimNextExtractionJob,
@@ -62,7 +65,7 @@ export type BackgroundJobProcessOutcome =
  * enqueue-side binding on top.
  */
 export type BackgroundJobFamilyMechanics = {
-  jobKind: BackgroundJobKind;
+  jobKind: BackgroundProcessorJobKind;
   /** Human-readable noun for claim/anomaly messages, e.g. "Extraction job". */
   noun: string;
   /** Idempotently claim the owner-scoped job for one delivered message. */
@@ -89,7 +92,8 @@ export type BackgroundJobFamilyMechanics = {
  *
  * This registry is a *closed* enumeration of known families, not a generic event bus:
  * {@link BACKGROUND_JOB_FAMILIES} is exhaustively checked against
- * {@link BackgroundJobKind}, so adding another job family is an explicit, type-enforced
+ * {@link BackgroundProcessorJobKind}, so adding another processor family is an explicit,
+ * type-enforced
  * registration rather than a dynamic subscription.
  */
 export type BackgroundJobFamily<
@@ -171,7 +175,7 @@ export const embeddingJobFamily: BackgroundJobFamily<
 
 /**
  * The closed registry of Postgres-owned job families, keyed by job kind. Every
- * {@link BackgroundJobKind} must appear here — the `_exhaustive` guard below fails to
+ * {@link BackgroundProcessorJobKind} must appear here — the `_exhaustive` guard below fails to
  * compile if a new topic is added without a matching family, so registering a new job
  * family stays explicit (deletion/completeness test in `families.test.ts`).
  */
@@ -184,8 +188,8 @@ export const BACKGROUND_JOB_FAMILIES = {
 // Compile-time completeness: every job kind is registered. Adding a BackgroundJobKind
 // without a family here turns this into a type error rather than a silent runtime gap.
 type RegisteredJobKind = keyof typeof BACKGROUND_JOB_FAMILIES;
-const _exhaustive: RegisteredJobKind extends BackgroundJobKind
-  ? BackgroundJobKind extends RegisteredJobKind
+const _exhaustive: RegisteredJobKind extends BackgroundProcessorJobKind
+  ? BackgroundProcessorJobKind extends RegisteredJobKind
     ? true
     : never
   : never = true;

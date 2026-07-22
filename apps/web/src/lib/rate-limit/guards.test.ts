@@ -16,6 +16,7 @@ function limiterWithLimit(limit: number) {
       "llm-extraction": { limit, windowSeconds: 60 },
       embedding: { limit, windowSeconds: 60 },
       "provider-call": { limit, windowSeconds: 60 },
+      "push-delivery": { limit, windowSeconds: 60 },
     },
   });
 }

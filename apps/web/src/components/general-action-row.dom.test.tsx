@@ -24,6 +24,13 @@ vi.mock("@/app/actions/general-actions", () => ({
   setGeneralActionVisibilityAction: vi.fn(),
 }));
 
+vi.mock("@/app/actions/reminders", () => ({
+  clearGeneralActionReminderAction: vi.fn(),
+  registerReminderInstallationAction: vi.fn(),
+  saveGeneralActionReminderAction: vi.fn(),
+  setReminderOptInDecisionAction: vi.fn(),
+}));
+
 vi.mock("next/link", () => import("@/test/next-link-mock"));
 
 import { promoteAssetHintAction } from "@/app/actions/general-actions";

@@ -21,7 +21,7 @@ export function useMutationSubmit(genericError: string) {
 
   function submit<TView>(
     run: () => Promise<MutationSubmitResult<TView>>,
-    onSuccess: (view: TView) => void,
+    onSuccess: (view: TView) => void | Promise<void>,
   ): void {
     setError(null);
     startTransition(async () => {
@@ -31,7 +31,7 @@ export function useMutationSubmit(genericError: string) {
           setError(result.error);
           return;
         }
-        onSuccess(result.view);
+        await onSuccess(result.view);
       } catch {
         setError(genericError);
       }

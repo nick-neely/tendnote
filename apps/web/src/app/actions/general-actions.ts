@@ -20,6 +20,7 @@ import {
   setGeneralActionPeople,
   setGeneralActionVisibility,
 } from "@tendnote/db/queries/general-actions";
+import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
 import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { revalidatePath } from "next/cache";
@@ -113,14 +114,23 @@ function runMutation(
   return runActionsMutation(
     async () => {
       const action = await run();
-      const linkedByAction = await listLinkedAssetsForGeneralActions({
-        callerUserId,
-        generalActionIds: [action.id],
-      });
+      const [linkedByAction, reminderSchedules] = await Promise.all([
+        listLinkedAssetsForGeneralActions({
+          callerUserId,
+          generalActionIds: [action.id],
+        }),
+        listReminderSchedulesForOwner({ ownerUserId: callerUserId }),
+      ]);
       const linkedAssets = (linkedByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView);
-      return { action, linkedAssets };
+      return {
+        action,
+        linkedAssets,
+        reminderSchedule:
+          reminderSchedules.find((schedule) => schedule.generalActionId === action.id) ?? null,
+      };
     },
-    ({ action, linkedAssets }) => toGeneralActionView(action, { callerUserId, linkedAssets }),
+    ({ action, linkedAssets, reminderSchedule }) =>
+      toGeneralActionView(action, { callerUserId, linkedAssets, reminderSchedule }),
   );
 }
 

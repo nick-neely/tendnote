@@ -42,4 +42,14 @@ describe("Phase Seven installable online-required PWA", () => {
     expect(offlineShell).toContain("Tendnote needs a connection");
     expect(offlineShell).not.toMatch(/<(script|link)\b/i);
   });
+
+  it("shows only generic reminder copy and opens its canonical record without mutation", () => {
+    expect(serviceWorker).toContain('addEventListener("push"');
+    expect(serviceWorker).toContain('showNotification("Tendnote reminder"');
+    expect(serviceWorker).toContain("Open Tendnote to see what needs your attention.");
+    expect(serviceWorker).toContain('addEventListener("notificationclick"');
+    expect(serviceWorker).toContain("event.notification.close()");
+    expect(serviceWorker).toContain("existing.navigate(target.href)");
+    expect(serviceWorker).toContain("self.clients.openWindow(target.href)");
+  });
 });

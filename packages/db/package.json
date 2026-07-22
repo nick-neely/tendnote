@@ -42,6 +42,7 @@
     "./queries/people": "./src/queries/people.ts",
     "./queries/post-meeting-aftercare": "./src/queries/post-meeting-aftercare.ts",
     "./queries/provider-connections": "./src/queries/provider-connections.ts",
+    "./queries/reminders": "./src/queries/reminders.ts",
     "./queries/scheduled-workflow-deliveries": "./src/queries/scheduled-workflow-deliveries.ts",
     "./queries/saved-items": "./src/queries/saved-items.ts",
     "./queries/relationship-agenda": "./src/queries/relationship-agenda.ts",

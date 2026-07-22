@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BACKGROUND_JOB_TOPICS } from "../background-job-deliveries/topics";
-import { BACKGROUND_JOB_FAMILIES } from "./families";
+import { BACKGROUND_JOB_FAMILIES, type BackgroundProcessorJobKind } from "./families";
 
 describe("background job family registry", () => {
   it("registers exactly one family per Postgres-owned job kind (completeness)", () => {
@@ -8,7 +8,9 @@ describe("background job family registry", () => {
     // time via the `_exhaustive` guard in families.ts). This keeps the registry an
     // explicit, closed enumeration rather than a generic event bus.
     expect(Object.keys(BACKGROUND_JOB_FAMILIES).sort()).toEqual(
-      Object.keys(BACKGROUND_JOB_TOPICS).sort(),
+      (Object.keys(BACKGROUND_JOB_TOPICS) as (keyof typeof BACKGROUND_JOB_TOPICS)[])
+        .filter((kind): kind is BackgroundProcessorJobKind => kind !== "reminder_push")
+        .sort(),
     );
   });
 

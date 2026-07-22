@@ -5,6 +5,7 @@ import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { createGeneralActionAction } from "@/app/actions/general-actions";
+import { saveGeneralActionReminderAction } from "@/app/actions/reminders";
 import { AreaSelect } from "@/components/general-action-area-select";
 import {
   ActionAssetHintsField,
@@ -20,6 +21,11 @@ import {
   type ActionPersonOption,
 } from "@/components/general-action-people-field";
 import { RecurrenceField } from "@/components/general-action-recurrence-field";
+import {
+  type GeneralActionReminderChoice,
+  GeneralActionReminderField,
+  ReminderOptInInvitation,
+} from "@/components/general-action-reminder";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
@@ -32,6 +38,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionView } from "@/lib/general-action-view";
+import { getReminderInstallationId } from "@/lib/reminder-registration";
+import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 import { useMutationSubmit } from "@/lib/use-mutation-submit";
 
 /**
@@ -99,6 +107,18 @@ export function CreateActionForm({
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [recurrence, setRecurrence] = useState<GeneralActionRecurrence | null>(null);
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderChoice, setReminderChoice] = useState<GeneralActionReminderChoice>({
+    kind: "exact",
+    localTime: "09:00",
+  });
+  const [optInInstallationId, setOptInInstallationId] = useState<string | null>(null);
+  const [pastLeadRecovery, setPastLeadRecovery] = useState<{
+    actionId: string;
+    clientInstallationId: string;
+    label: string;
+  } | null>(null);
+  const [recoveryPending, setRecoveryPending] = useState(false);
   const [notes, setNotes] = useState("");
   const [links, setLinks] = useState<LinkDraft[]>([]);
   const [hintLabels, setHintLabels] = useState<string[]>([]);
@@ -117,6 +137,8 @@ export function CreateActionForm({
     setTitle("");
     setDueDate("");
     setRecurrence(null);
+    setReminderEnabled(false);
+    setReminderChoice({ kind: "exact", localTime: "09:00" });
     setNotes("");
     setLinks([]);
     setHintLabels([]);
@@ -146,85 +168,161 @@ export function CreateActionForm({
     });
     submit(
       () => createGeneralActionAction(payload),
-      (view) => {
+      async (view) => {
         onCreate(view);
+        let reminderError: string | null = null;
+        if (reminderEnabled && dueDate && !recurrence) {
+          try {
+            const clientInstallationId = getReminderInstallationId(window.localStorage);
+            const result = await saveGeneralActionReminderAction({
+              generalActionId: view.id,
+              clientInstallationId,
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              schedule: reminderChoice,
+            });
+            if (result.nextValidChoice) {
+              setPastLeadRecovery({
+                actionId: view.id,
+                clientInstallationId,
+                label: result.nextValidChoice.label,
+              });
+            } else {
+              onCreate({
+                ...view,
+                reminderSchedule: toReminderScheduleView(result.schedule),
+              });
+              if (result.optIn.state === "offer") setOptInInstallationId(clientInstallationId);
+            }
+          } catch {
+            reminderError =
+              "The action was saved, but its reminder could not be scheduled. Try editing it again.";
+          }
+        }
         reset();
+        if (reminderError) setError(reminderError);
       },
     );
   }
 
   return (
-    <form
-      className="flex flex-col gap-3 rounded-xl border bg-surface px-4 py-3.5"
-      onSubmit={(event) => {
-        event.preventDefault();
-        submitAction();
-      }}
-    >
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Input
-          aria-label="What do you want to get done?"
-          className="sm:flex-1"
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="What do you want to get done?"
-          value={title}
+    <div className="flex flex-col gap-3">
+      <form
+        className="flex flex-col gap-3 rounded-xl border bg-surface px-4 py-3.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submitAction();
+        }}
+      >
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Input
+            aria-label="What do you want to get done?"
+            className="sm:flex-1"
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="What do you want to get done?"
+            value={title}
+          />
+          <Button
+            className="sm:self-auto"
+            disabled={pending || !trimmedTitle || selectedMembersRequired}
+            type="submit"
+          >
+            {pending ? <Spinner /> : <PlusIcon />}
+            Add action
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <button
+            aria-controls={detailsId}
+            aria-expanded={showDetails}
+            className="inline-flex items-center gap-1 self-start rounded-md text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            onClick={() => setShowDetails((open) => !open)}
+            type="button"
+          >
+            <ChevronDownIcon
+              aria-hidden
+              className="size-3.5 transition-transform data-[open=true]:rotate-180 motion-reduce:transition-none"
+              data-open={showDetails}
+            />
+            Add date, details, or sharing
+          </button>
+
+          {showDetails ? (
+            <CreateActionDetails
+              areaId={areaId}
+              areas={areas}
+              detailsId={detailsId}
+              dueDate={dueDate}
+              hintLabels={hintLabels}
+              links={links}
+              notes={notes}
+              onAreaChange={setAreaId}
+              onDueDateChange={setDueDate}
+              onHintLabelsChange={setHintLabels}
+              onLinksChange={setLinks}
+              onNotesChange={setNotes}
+              onPersonIdsChange={setPersonIds}
+              onRecurrenceChange={setRecurrence}
+              onReminderChoiceChange={setReminderChoice}
+              onReminderEnabledChange={setReminderEnabled}
+              onSelectedUserIdsChange={setSelectedUserIds}
+              onVisibilityChange={setVisibilityChoice}
+              people={people}
+              personIds={personIds}
+              recurrence={recurrence}
+              reminderChoice={reminderChoice}
+              reminderEnabled={reminderEnabled}
+              selectedUserIds={selectedUserIds}
+              shareableMembers={shareableMembers}
+              visibilityChoice={visibilityChoice}
+            />
+          ) : null}
+        </div>
+
+        {error ? <ErrorText message={error} /> : null}
+      </form>
+      {optInInstallationId ? (
+        <ReminderOptInInvitation
+          clientInstallationId={optInInstallationId}
+          onDismiss={() => setOptInInstallationId(null)}
         />
-        <Button
-          className="sm:self-auto"
-          disabled={pending || !trimmedTitle || selectedMembersRequired}
-          type="submit"
-        >
-          {pending ? <Spinner /> : <PlusIcon />}
-          Add action
-        </Button>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <button
-          aria-controls={detailsId}
-          aria-expanded={showDetails}
-          className="inline-flex items-center gap-1 self-start rounded-md text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          onClick={() => setShowDetails((open) => !open)}
-          type="button"
-        >
-          <ChevronDownIcon
-            aria-hidden
-            className="size-3.5 transition-transform data-[open=true]:rotate-180 motion-reduce:transition-none"
-            data-open={showDetails}
-          />
-          Add date, details, or sharing
-        </button>
-
-        {showDetails ? (
-          <CreateActionDetails
-            areaId={areaId}
-            areas={areas}
-            detailsId={detailsId}
-            dueDate={dueDate}
-            hintLabels={hintLabels}
-            links={links}
-            notes={notes}
-            onAreaChange={setAreaId}
-            onDueDateChange={setDueDate}
-            onHintLabelsChange={setHintLabels}
-            onLinksChange={setLinks}
-            onNotesChange={setNotes}
-            onPersonIdsChange={setPersonIds}
-            onRecurrenceChange={setRecurrence}
-            onSelectedUserIdsChange={setSelectedUserIds}
-            onVisibilityChange={setVisibilityChoice}
-            people={people}
-            personIds={personIds}
-            recurrence={recurrence}
-            selectedUserIds={selectedUserIds}
-            shareableMembers={shareableMembers}
-            visibilityChoice={visibilityChoice}
-          />
-        ) : null}
-      </div>
-
-      {error ? <ErrorText message={error} /> : null}
-    </form>
+      ) : null}
+      {pastLeadRecovery ? (
+        <aside className="rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3.5">
+          <p className="text-sm font-medium">That reminder time has already passed.</p>
+          <p className="text-[length:var(--text-small)] text-muted-foreground">
+            No catch-up alert was sent. The next available choice is {pastLeadRecovery.label}.
+          </p>
+          <Button
+            className="mt-2"
+            disabled={recoveryPending}
+            onClick={async () => {
+              setRecoveryPending(true);
+              try {
+                const result = await saveGeneralActionReminderAction({
+                  generalActionId: pastLeadRecovery.actionId,
+                  clientInstallationId: pastLeadRecovery.clientInstallationId,
+                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                  schedule: { kind: "relative", leadMinutes: 0 },
+                });
+                setPastLeadRecovery(null);
+                if (result.optIn.state === "offer") {
+                  setOptInInstallationId(result.optIn.clientInstallationId);
+                }
+              } finally {
+                setRecoveryPending(false);
+              }
+            }}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {recoveryPending ? <Spinner /> : null}
+            {recoveryPending ? "Saving…" : `Use ${pastLeadRecovery.label}`}
+          </Button>
+        </aside>
+      ) : null}
+    </div>
   );
 }
 
@@ -241,6 +339,8 @@ function CreateActionDetails({
   detailsId,
   dueDate,
   recurrence,
+  reminderEnabled,
+  reminderChoice,
   notes,
   areas,
   areaId,
@@ -253,6 +353,8 @@ function CreateActionDetails({
   selectedUserIds,
   onDueDateChange,
   onRecurrenceChange,
+  onReminderEnabledChange,
+  onReminderChoiceChange,
   onNotesChange,
   onAreaChange,
   onLinksChange,
@@ -264,6 +366,8 @@ function CreateActionDetails({
   detailsId: string;
   dueDate: string;
   recurrence: GeneralActionRecurrence | null;
+  reminderEnabled: boolean;
+  reminderChoice: GeneralActionReminderChoice;
   notes: string;
   areas: GeneralActionAreaView[];
   areaId: string | null;
@@ -276,6 +380,8 @@ function CreateActionDetails({
   selectedUserIds: string[];
   onDueDateChange: (value: string) => void;
   onRecurrenceChange: (value: GeneralActionRecurrence | null) => void;
+  onReminderEnabledChange: (value: boolean) => void;
+  onReminderChoiceChange: (value: GeneralActionReminderChoice) => void;
   onNotesChange: (value: string) => void;
   onAreaChange: (value: string | null) => void;
   onLinksChange: (value: LinkDraft[]) => void;
@@ -301,6 +407,14 @@ function CreateActionDetails({
           />
         </div>
         <RecurrenceField onChange={onRecurrenceChange} value={recurrence} />
+        {dueDate && !recurrence ? (
+          <GeneralActionReminderField
+            choice={reminderChoice}
+            enabled={reminderEnabled}
+            onChoiceChange={onReminderChoiceChange}
+            onEnabledChange={onReminderEnabledChange}
+          />
+        ) : null}
         <div className="flex flex-col gap-1.5">
           <span className="text-[length:var(--text-small)] text-muted-foreground">Notes</span>
           <Textarea
