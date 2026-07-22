@@ -1,12 +1,12 @@
 "use client";
 
+import type { TodayShortlistResponse } from "@tendnote/domain/today";
 import {
   CornerDownLeftIcon,
   HomeIcon,
   ListChecksIcon,
   MenuIcon,
   PlusIcon,
-  RotateCwIcon,
   SearchIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -20,7 +20,7 @@ import {
   MenuFlow,
   SearchFlow,
 } from "@/components/mobile-focused-flows";
-import { Button } from "@/components/ui/button";
+import { TodayShortlist, type TodayShortlistHandlers } from "@/components/today-shortlist";
 import { requestLocalEveDraftSubmission, useLocalComposerDraft } from "@/lib/local-composer-draft";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +32,10 @@ export function MobileShell({
   mobileReview,
   ownerUserId,
   searchHandler,
+  todayHandlers,
+  todayInitial,
+  todayLocalDate,
+  todayTimeZone,
 }: {
   captureHandlers?: CaptureHandlers;
   children: ReactNode;
@@ -40,6 +44,10 @@ export function MobileShell({
   mobileReview: boolean;
   ownerUserId: string;
   searchHandler: GlobalRecallHandler;
+  todayHandlers: TodayShortlistHandlers;
+  todayInitial: TodayShortlistResponse;
+  todayLocalDate: string;
+  todayTimeZone: string;
 }) {
   const [flow, setFlow] = useState<FocusedFlow | null>(null);
   const [eveDraftRevision, setEveDraftRevision] = useState(0);
@@ -79,9 +87,13 @@ export function MobileShell({
     <>
       {mobileHome ? (
         <MobileTodayHome
-          key={eveDraftRevision}
+          eveDraftRevision={eveDraftRevision}
           onOpenEve={(trigger) => openFlow("eve", trigger)}
           ownerUserId={ownerUserId}
+          todayHandlers={todayHandlers}
+          todayInitial={todayInitial}
+          todayLocalDate={todayLocalDate}
+          todayTimeZone={todayTimeZone}
         />
       ) : null}
       <main
@@ -98,26 +110,96 @@ export function MobileShell({
         mobileReview={mobileReview}
         onOpen={openFlow}
       />
-      {flow === "search" ? (
-        <SearchFlow
-          onClose={closeFlow}
-          onNavigate={closeFlowForNavigation}
-          ownerUserId={ownerUserId}
-          query={searchQuery}
-          search={searchHandler}
-          setQuery={setSearchQuery}
-        />
-      ) : null}
-      {flow === "capture" ? (
-        <CaptureFlow handlers={captureHandlers} onClose={closeFlow} ownerUserId={ownerUserId} />
-      ) : null}
-      {flow === "eve" ? <EveFlow onClose={closeFlow}>{mobileEve}</EveFlow> : null}
-      {flow === "menu" ? <MenuFlow onClose={closeFlow} /> : null}
+      <MobileFocusedFlow
+        captureHandlers={captureHandlers}
+        flow={flow}
+        mobileEve={mobileEve}
+        onClose={closeFlow}
+        onNavigate={closeFlowForNavigation}
+        ownerUserId={ownerUserId}
+        query={searchQuery}
+        search={searchHandler}
+        setQuery={setSearchQuery}
+      />
     </>
   );
 }
 
+function MobileFocusedFlow({
+  captureHandlers,
+  flow,
+  mobileEve,
+  onClose,
+  onNavigate,
+  ownerUserId,
+  query,
+  search,
+  setQuery,
+}: {
+  captureHandlers?: CaptureHandlers;
+  flow: FocusedFlow | null;
+  mobileEve?: ReactNode;
+  onClose: () => void;
+  onNavigate: () => void;
+  ownerUserId: string;
+  query: string;
+  search: GlobalRecallHandler;
+  setQuery: (query: string) => void;
+}) {
+  switch (flow) {
+    case "search":
+      return (
+        <SearchFlow
+          onClose={onClose}
+          onNavigate={onNavigate}
+          ownerUserId={ownerUserId}
+          query={query}
+          search={search}
+          setQuery={setQuery}
+        />
+      );
+    case "capture":
+      return <CaptureFlow handlers={captureHandlers} onClose={onClose} ownerUserId={ownerUserId} />;
+    case "eve":
+      return <EveFlow onClose={onClose}>{mobileEve}</EveFlow>;
+    case "menu":
+      return <MenuFlow onClose={onClose} />;
+    default:
+      return null;
+  }
+}
+
 function MobileTodayHome({
+  eveDraftRevision,
+  onOpenEve,
+  ownerUserId,
+  todayHandlers,
+  todayInitial,
+  todayLocalDate,
+  todayTimeZone,
+}: {
+  eveDraftRevision: number;
+  onOpenEve: (trigger: HTMLElement) => void;
+  ownerUserId: string;
+  todayHandlers: TodayShortlistHandlers;
+  todayInitial: TodayShortlistResponse;
+  todayLocalDate: string;
+  todayTimeZone: string;
+}) {
+  return (
+    <div className="min-h-dvh pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:hidden">
+      <TodayEveComposer key={eveDraftRevision} onOpenEve={onOpenEve} ownerUserId={ownerUserId} />
+      <TodayShortlist
+        handlers={todayHandlers}
+        initial={todayInitial}
+        localDate={todayLocalDate}
+        timeZone={todayTimeZone}
+      />
+    </div>
+  );
+}
+
+function TodayEveComposer({
   onOpenEve,
   ownerUserId,
 }: {
@@ -132,87 +214,58 @@ function MobileTodayHome({
     weekday: "long",
   }).format(new Date());
   return (
-    <div className="min-h-dvh pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:hidden">
-      <div
-        className="bg-panel px-5 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-6"
-        data-testid="today-orientation-band"
-      >
-        <header className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="font-semibold text-[length:var(--text-h1)] leading-[var(--text-h1-line)]">
-              Today
-            </h1>
-            <p className="mt-0.5 text-muted-foreground text-sm" suppressHydrationWarning>
-              {date}
-            </p>
-          </div>
-          <Button
-            aria-label="Refresh Today"
-            className="size-11"
-            disabled
-            size="icon-lg"
-            variant="ghost"
-          >
-            <RotateCwIcon aria-hidden />
-          </Button>
-        </header>
-        <form
-          className="mt-6 flex min-h-28 w-full flex-col justify-between gap-3 rounded-xl border bg-background p-4 focus-within:ring-3 focus-within:ring-ring/40"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (draft.value.trim()) {
-              try {
-                requestLocalEveDraftSubmission(window.localStorage, ownerUserId, draft.value);
-              } catch {
-                // Storage is best effort; the focused Eve surface still opens.
-              }
+    <div
+      className="bg-panel px-5 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-6"
+      data-testid="today-orientation-band"
+    >
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-semibold text-[length:var(--text-h1)] leading-[var(--text-h1-line)]">
+            Today
+          </h1>
+          <p className="mt-0.5 text-muted-foreground text-sm" suppressHydrationWarning>
+            {date}
+          </p>
+        </div>
+      </header>
+      <form
+        className="mt-6 flex min-h-28 w-full flex-col justify-between gap-3 rounded-xl border bg-background p-4 focus-within:ring-3 focus-within:ring-ring/40"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (draft.value.trim()) {
+            try {
+              requestLocalEveDraftSubmission(window.localStorage, ownerUserId, draft.value);
+            } catch {
+              // Storage is best effort; the focused Eve surface still opens.
             }
-            onOpenEve(submitButton.current ?? event.currentTarget);
-          }}
-        >
-          <label className="sr-only" htmlFor="today-eve-composer">
-            Ask Eve anything
-          </label>
-          <textarea
-            className="min-h-12 w-full resize-none bg-transparent text-base outline-none placeholder:text-muted-foreground"
-            id="today-eve-composer"
-            onChange={(event) => draft.setValue(event.target.value)}
-            placeholder="Ask Eve anything…"
-            value={draft.value}
-          />
-          <span className="flex items-center justify-between gap-4">
-            <span className="text-muted-foreground text-xs">
-              Questions stay conversational unless you ask to save.
-            </span>
-            <button
-              aria-label={draft.value.trim() ? "Send to Eve" : "Open Eve"}
-              className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              ref={submitButton}
-              type="submit"
-            >
-              <CornerDownLeftIcon aria-hidden className="size-4" />
-            </button>
+          }
+          onOpenEve(submitButton.current ?? event.currentTarget);
+        }}
+      >
+        <label className="sr-only" htmlFor="today-eve-composer">
+          Ask Eve anything
+        </label>
+        <textarea
+          className="min-h-12 w-full resize-none bg-transparent text-base outline-none placeholder:text-muted-foreground"
+          id="today-eve-composer"
+          onChange={(event) => draft.setValue(event.target.value)}
+          placeholder="Ask Eve anything…"
+          value={draft.value}
+        />
+        <span className="flex items-center justify-between gap-4">
+          <span className="text-muted-foreground text-xs">
+            Questions stay conversational unless you ask to save.
           </span>
-        </form>
-      </div>
-      <section aria-label="Today shortlist" className="px-5 pt-6">
-        <div className="mb-2">
-          <h2 className="font-semibold text-sm">Worth your attention</h2>
-          <p className="text-muted-foreground text-xs">Grounded reasons for today appear here.</p>
-        </div>
-        <div aria-label="Loading today's grounded items" className="divide-y" role="status">
-          {[0, 1, 2].map((row) => (
-            <div className="flex min-h-24 items-center gap-3 py-4" data-today-ledger-row key={row}>
-              <span aria-hidden className="size-9 shrink-0 rounded-lg bg-secondary" />
-              <span className="flex flex-1 flex-col gap-2">
-                <span aria-hidden className="h-3 w-20 rounded bg-secondary" />
-                <span aria-hidden className="h-4 w-4/5 rounded bg-secondary" />
-                <span aria-hidden className="h-3 w-2/3 rounded bg-secondary" />
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
+          <button
+            aria-label={draft.value.trim() ? "Send to Eve" : "Open Eve"}
+            className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            ref={submitButton}
+            type="submit"
+          >
+            <CornerDownLeftIcon aria-hidden className="size-4" />
+          </button>
+        </span>
+      </form>
     </div>
   );
 }

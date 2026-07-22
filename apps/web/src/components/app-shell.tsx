@@ -1,5 +1,6 @@
 "use client";
 
+import type { TodayShortlistResponse } from "@tendnote/domain/today";
 import { MessageSquareTextIcon } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
@@ -10,11 +11,17 @@ import {
   undoExplicitCaptureOutcomeAction,
 } from "@/app/actions/conversational-capture";
 import { globalRecallAction } from "@/app/actions/global-recall";
+import {
+  actOnTodayItemAction,
+  refreshTodayAction,
+  suppressTodayItemAction,
+} from "@/app/actions/today";
 import { appDestinations } from "@/components/app-destinations";
 import { MobileFailureState } from "@/components/mobile-failure-state";
 import type { CaptureHandlers, GlobalRecallHandler } from "@/components/mobile-focused-flows";
 import { MobileShell } from "@/components/mobile-shell";
 import { PwaRegistration } from "@/components/pwa-registration";
+import type { TodayShortlistHandlers } from "@/components/today-shortlist";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useDeepLinkHighlight } from "@/lib/use-deep-link-highlight";
@@ -26,6 +33,20 @@ const defaultCaptureHandlers: CaptureHandlers = {
   undo: undoExplicitCaptureOutcomeAction,
 };
 
+const defaultTodayHandlers: TodayShortlistHandlers = {
+  act: actOnTodayItemAction,
+  refresh: refreshTodayAction,
+  suppress: suppressTodayItemAction,
+};
+
+const emptyToday: TodayShortlistResponse = {
+  items: [],
+  candidateFingerprint: "",
+  curation: "deterministic",
+  overflow: null,
+  limitations: [],
+};
+
 export function AppShell({
   captureHandlers = defaultCaptureHandlers,
   children,
@@ -34,6 +55,10 @@ export function AppShell({
   mobileReview = false,
   ownerUserId,
   searchHandler = globalRecallAction,
+  todayHandlers = defaultTodayHandlers,
+  todayInitial = emptyToday,
+  todayLocalDate = new Date().toISOString().slice(0, 10),
+  todayTimeZone = "UTC",
 }: {
   captureHandlers?: CaptureHandlers;
   children: ReactNode;
@@ -42,6 +67,10 @@ export function AppShell({
   mobileReview?: boolean;
   ownerUserId: string;
   searchHandler?: GlobalRecallHandler;
+  todayHandlers?: TodayShortlistHandlers;
+  todayInitial?: TodayShortlistResponse;
+  todayLocalDate?: string;
+  todayTimeZone?: string;
 }) {
   const online = useOnlineState();
   useDeepLinkHighlight();
@@ -86,6 +115,10 @@ export function AppShell({
         mobileReview={mobileReview}
         ownerUserId={ownerUserId}
         searchHandler={searchHandler}
+        todayHandlers={todayHandlers}
+        todayInitial={todayInitial}
+        todayLocalDate={todayLocalDate}
+        todayTimeZone={todayTimeZone}
       >
         {children}
       </MobileShell>

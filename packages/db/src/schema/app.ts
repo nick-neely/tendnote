@@ -31,3 +31,4 @@ export * from "./app/saved-items";
 export * from "./app/scheduled-workflow-deliveries";
 export * from "./app/semantic-retrieval";
 export * from "./app/source-records";
+export * from "./app/today-feedback";

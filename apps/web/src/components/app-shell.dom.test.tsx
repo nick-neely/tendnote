@@ -16,6 +16,18 @@ vi.mock("@/app/actions/global-recall", () => ({
     hasMore: false,
   }),
 }));
+vi.mock("@/app/actions/today", () => ({
+  actOnTodayItemAction: vi.fn(),
+  refreshTodayAction: vi.fn().mockResolvedValue({
+    items: [],
+    candidateFingerprint: "",
+    curation: "deterministic",
+    overflow: null,
+    limitations: [],
+  }),
+  suppressTodayItemAction: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { AppShell } from "./app-shell";
 
@@ -258,8 +270,8 @@ describe("AppShell Phase Seven mobile navigation", () => {
     window.history.replaceState({}, "", "/");
   });
 
-  it("renders the selected shaded Today band and a reserved flat Personal Ledger region", () => {
-    const { container } = render(
+  it("renders the selected shaded Today band and the authoritative shortlist empty state", () => {
+    render(
       <AppShell mobileHome ownerUserId="owner-1">
         <p>Desktop dashboard</p>
       </AppShell>,
@@ -270,7 +282,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(screen.getByRole("textbox", { name: "Ask Eve anything" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Open Eve" })).toBeDefined();
     expect(screen.getByRole("region", { name: "Today shortlist" })).toBeDefined();
-    expect(container.querySelectorAll("[data-today-ledger-row]")).toHaveLength(3);
+    expect(screen.getByText("Nothing needs the shortlist right now.")).toBeDefined();
   });
 
   it("keeps the compact Today Eve composer usable before opening the focused flow", async () => {

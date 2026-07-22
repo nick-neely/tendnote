@@ -24,6 +24,7 @@
     "./privacy": "./src/privacy.ts",
     "./saved-items": "./src/saved-items.ts",
     "./semantic-retrieval": "./src/semantic-retrieval.ts",
+    "./today": "./src/today.ts",
     "./source-records": "./src/source-records.ts",
     "./suggested-memory-extraction": "./src/suggested-memory-extraction.ts"
   },

@@ -422,3 +422,5 @@ export const scheduledArtifactKind = pgEnum("scheduled_artifact_kind", [
   "brief",
   "action_summary",
 ]);
+
+export const todayFeedbackKind = pgEnum("today_feedback_kind", ["later", "not_today"]);
