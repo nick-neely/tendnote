@@ -17,6 +17,7 @@ import {
   githubSocialProvider,
   googleEnvFromProcess,
   googleSocialProvider,
+  socialAccountLinking,
 } from "./social";
 
 /**
@@ -114,12 +115,9 @@ function createAuth() {
       // Encrypt OAuth access/refresh tokens at rest (keyed off BETTER_AUTH_SECRET)
       // so Calendar token custody never lands in the DB in plaintext (ADR-0071).
       encryptOAuthTokens: true,
-      accountLinking: {
-        // linkSocial connects Google Calendar / Discord to the already signed-in
-        // Tendnote user rather than creating a parallel account.
-        enabled: true,
-        trustedProviders: ["github", "google", "discord"],
-      },
+      // linkSocial connects Google Calendar / Discord to the already signed-in
+      // Tendnote user rather than creating a parallel account.
+      accountLinking: socialAccountLinking(),
     },
     databaseHooks: createDatabaseHooks(),
     secondaryStorage: redisStorage({
