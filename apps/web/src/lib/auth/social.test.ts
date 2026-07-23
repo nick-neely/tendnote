@@ -7,6 +7,7 @@ import {
   isDiscordConfigured,
   isGithubConfigured,
   isGoogleConfigured,
+  socialAccountLinking,
 } from "./social";
 
 describe("GitHub social configuration", () => {
@@ -57,6 +58,14 @@ describe("Google social configuration", () => {
 });
 
 describe("Discord social configuration", () => {
+  it("allows explicit linking when Discord returns no email address", () => {
+    expect(socialAccountLinking()).toEqual({
+      enabled: true,
+      trustedProviders: ["github", "google", "discord"],
+      allowDifferentEmails: true,
+    });
+  });
+
   it("is configured only when both client id and secret are present", () => {
     expect(isDiscordConfigured({ clientId: "id", clientSecret: "secret" })).toBe(true);
     expect(isDiscordConfigured({ clientId: "id" })).toBe(false);

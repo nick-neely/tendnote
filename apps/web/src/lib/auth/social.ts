@@ -106,6 +106,21 @@ export function discordSocialProvider(env: DiscordEnv): DiscordSocialProvider | 
     : undefined;
 }
 
+/**
+ * Better Auth account-linking policy for feature-specific provider connections.
+ * Discord deliberately returns no email because Tendnote requests `identify`
+ * only, so an explicit, signed-in `linkSocial` flow must permit a missing or
+ * different provider email. Better Auth still enforces provider-account
+ * uniqueness and refuses identities already linked to another Tendnote user.
+ */
+export function socialAccountLinking() {
+  return {
+    enabled: true,
+    trustedProviders: ["github", "google", "discord"],
+    allowDifferentEmails: true,
+  };
+}
+
 /** Read Discord OAuth credentials from the server environment. */
 export function discordEnvFromProcess(): DiscordEnv {
   return {
