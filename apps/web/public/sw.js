@@ -1,4 +1,4 @@
-const SHELL_VERSION = "v1";
+const SHELL_VERSION = "v2";
 const SHELL_CACHE_PREFIX = "tendnote-shell-";
 const SHELL_CACHE = `${SHELL_CACHE_PREFIX}${SHELL_VERSION}`;
 const OFFLINE_URL = `/offline-${SHELL_VERSION}.html`;
@@ -6,6 +6,10 @@ const SHELL_ASSETS = [
   OFFLINE_URL,
   `/icons/tendnote-192.png?asset=${SHELL_VERSION}`,
   `/icons/tendnote-512.png?asset=${SHELL_VERSION}`,
+  `/icons/tendnote-maskable-512.png?asset=${SHELL_VERSION}`,
+  `/icons/tendnote-mark-light.png?asset=${SHELL_VERSION}`,
+  `/icons/tendnote-mark-dark.png?asset=${SHELL_VERSION}`,
+  `/icons/tendnote-badge-96.png?asset=${SHELL_VERSION}`,
 ];
 
 self.addEventListener("install", (event) => {
@@ -42,6 +46,8 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification("Tendnote reminder", {
       body: "Open Tendnote to see what needs your attention.",
+      icon: `/icons/tendnote-192.png?asset=${SHELL_VERSION}`,
+      badge: `/icons/tendnote-badge-96.png?asset=${SHELL_VERSION}`,
       tag: typeof payload.tag === "string" ? payload.tag : "tendnote-reminder",
       data: { url },
     }),

@@ -23,7 +23,28 @@ export const metadata: Metadata = {
     title: "Tendnote",
   },
   icons: {
-    apple: [{ url: "/icons/tendnote-192.png", sizes: "192x192", type: "image/png" }],
+    icon: [
+      {
+        url: "/icons/tendnote-favicon-light.png?asset=v2",
+        sizes: "64x64",
+        type: "image/png",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url: "/icons/tendnote-favicon-dark.png?asset=v2",
+        sizes: "64x64",
+        type: "image/png",
+        media: "(prefers-color-scheme: dark)",
+      },
+    ],
+    shortcut: [{ url: "/favicon.ico?asset=v2", type: "image/x-icon" }],
+    apple: [
+      {
+        url: "/icons/tendnote-192.png?asset=v2",
+        sizes: "192x192",
+        type: "image/png",
+      },
+    ],
   },
   manifest: "/manifest.webmanifest",
 };
