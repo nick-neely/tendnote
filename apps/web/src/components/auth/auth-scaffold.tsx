@@ -1,6 +1,6 @@
-import { MessageSquareTextIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { TendnoteLogo } from "@/components/tendnote-logo";
 
 /**
  * The calm, centered shell for the signed-out and pending surfaces. It never
@@ -26,10 +26,7 @@ export function AuthScaffold({
             href="/"
             className="flex items-center gap-2 font-semibold tracking-normal rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <MessageSquareTextIcon aria-hidden className="size-4" />
-            </span>
-            Tendnote
+            <TendnoteLogo />
           </Link>
           <div className="flex flex-col gap-1.5">
             <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal text-balance">

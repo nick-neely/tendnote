@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <title>Tendnote</title>
-  <rect width="512" height="512" rx="112" fill="#315f3a"/>
-  <path d="M143 146c0-19 15-34 34-34h158c19 0 34 15 34 34v151c0 19-15 34-34 34H230l-67 63v-63c-12-5-20-17-20-31V146Z" fill="#fff"/>
-  <path d="M206 196h100M206 246h100" stroke="#315f3a" stroke-linecap="round" stroke-width="28"/>
-</svg>

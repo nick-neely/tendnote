@@ -9,7 +9,8 @@
       :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
       body { margin: 0; background: Canvas; color: CanvasText; }
       main { box-sizing: border-box; display: grid; min-height: 100dvh; place-content: center; gap: 1rem; max-width: 32rem; margin: auto; padding: calc(2rem + env(safe-area-inset-top)) 1.25rem calc(2rem + env(safe-area-inset-bottom)); }
-      .brand { font-weight: 700; color: #315f3a; }
+      .brand { display: inline-flex; align-items: center; gap: .625rem; width: fit-content; font-weight: 700; }
+      .brand picture, .brand img { display: block; width: 2rem; height: 2rem; }
       h1 { margin: 0; font-size: 1.5rem; }
       p { margin: 0; line-height: 1.5; color: GrayText; }
       a { display: inline-flex; min-height: 44px; width: fit-content; align-items: center; border: 1px solid GrayText; border-radius: .75rem; padding: 0 1rem; color: CanvasText; font-weight: 600; text-decoration: none; }
@@ -18,7 +19,13 @@
   </head>
   <body>
     <main>
-      <div class="brand">Tendnote</div>
+      <div class="brand">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="/icons/tendnote-mark-dark.png?asset=v2" />
+          <img alt="" height="32" src="/icons/tendnote-mark-light.png?asset=v2" width="32" />
+        </picture>
+        <span>Tendnote</span>
+      </div>
       <h1>You're offline</h1>
       <p>Tendnote needs a connection to load records and save changes. Unsaved text stays on this device.</p>
       <a href="/">Try again</a>

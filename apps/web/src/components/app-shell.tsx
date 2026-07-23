@@ -1,7 +1,6 @@
 "use client";
 
 import type { TodayShortlistResponse } from "@tendnote/domain/today";
-import { MessageSquareTextIcon } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
 import {
@@ -24,6 +23,7 @@ import { MobileShell } from "@/components/mobile-shell";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ReminderTimeZoneReconciler } from "@/components/reminder-time-zone-reconciler";
 import { StandaloneReminderContinuation } from "@/components/standalone-reminder-continuation";
+import { TendnoteLogo } from "@/components/tendnote-logo";
 import type { TodayShortlistHandlers } from "@/components/today-shortlist";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -86,10 +86,7 @@ export function AppShell({
       <header className="sticky top-0 z-10 hidden border-b bg-background/95 backdrop-blur lg:block">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link className="flex items-center gap-2 font-semibold tracking-normal" href="/">
-            <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <MessageSquareTextIcon aria-hidden className="size-4" />
-            </span>
-            Tendnote
+            <TendnoteLogo markClassName="size-7" />
           </Link>
           <nav aria-label="Primary" className="flex items-center gap-1">
             {appDestinations.map((item) => {
