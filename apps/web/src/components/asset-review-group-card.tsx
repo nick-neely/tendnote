@@ -2,7 +2,6 @@
 
 import type { AssetKind } from "@tendnote/domain";
 import { ASSET_KIND_OPTIONS } from "@tendnote/domain";
-import { CheckIcon, Link2Icon, PencilIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -19,6 +18,7 @@ import { MemoryEditForm } from "@/components/asset-memory-edit-form";
 import { AssetReviewEvidenceBlock, DismissGroupButton } from "@/components/asset-review-evidence";
 import { AssetKindBadge } from "@/components/asset-shared";
 import { ActionScopeChip, GENERIC_ERROR } from "@/components/general-action-shared";
+import { CheckIcon, Link2Icon, PencilIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {

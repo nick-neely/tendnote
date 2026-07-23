@@ -1,7 +1,6 @@
 "use client";
 
 import { type MessageDraftPurpose, suggestGmailSubject } from "@tendnote/domain";
-import { CheckIcon, MailCheckIcon, MailIcon, RefreshCwIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { useId, useState, useTransition } from "react";
 import {
@@ -10,6 +9,13 @@ import {
   retryGmailDraftAction,
   updateGmailDraftAction,
 } from "@/app/actions/gmail-drafts";
+import {
+  CheckIcon,
+  CircleCheckIcon,
+  MailIcon,
+  RefreshCwIcon,
+  TriangleAlertIcon,
+} from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -164,7 +170,7 @@ export function GmailDraftPanel({
     return (
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3">
         <span className="flex items-center gap-2 text-[length:var(--text-small)] text-muted-foreground">
-          <MailCheckIcon aria-hidden className="size-4 shrink-0 text-primary" />
+          <CircleCheckIcon aria-hidden className="size-4 shrink-0 text-primary" />
           <span>
             Saved as a Gmail draft to{" "}
             <span className="font-medium text-foreground">{view.recipientEmail}</span>. Send it

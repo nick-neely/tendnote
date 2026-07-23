@@ -30,7 +30,7 @@ export function DashboardGreeting({ now = new Date() }: { now?: Date }) {
 
   return (
     <header className="flex flex-col gap-1">
-      <h1 className="text-[length:var(--text-display)] leading-[var(--text-display-line)] font-semibold tracking-normal">
+      <h1 className="font-display text-[length:var(--text-display)] leading-[var(--text-display-line)] font-semibold tracking-normal">
         {greeting}.
       </h1>
       <p className="text-sm text-muted-foreground">{dateLabel}</p>

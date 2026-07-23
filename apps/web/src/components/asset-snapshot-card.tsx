@@ -1,4 +1,4 @@
-import { NotebookPenIcon } from "lucide-react";
+import { NotebookPenIcon } from "@/components/icons";
 
 export type AssetSnapshotCardProps = {
   /** How the snapshot was produced. `fallback` means missing or stale. */

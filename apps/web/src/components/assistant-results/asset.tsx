@@ -1,7 +1,7 @@
 import { type AssetMemoryProposalToolResult, assistantToolResultSchemas } from "@tendnote/domain";
-import { PackageIcon } from "lucide-react";
 import { Body, Caption, ResultCard } from "@/components/assistant-result-card";
 import { AssetFactRow, AssetSearchResultRow } from "@/components/eve-asset-cards";
+import { PackageIcon } from "@/components/icons";
 import { formatAssetMemoryValue } from "@/lib/asset-memory-value";
 import type { AssetReviewGroupView } from "@/lib/asset-review-view";
 import type { AssistantToolView } from "@/lib/eve/tool-result-view";

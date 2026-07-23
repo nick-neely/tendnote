@@ -2,12 +2,12 @@
 
 import type { AssetPersonRelation } from "@tendnote/domain";
 import { ASSET_PERSON_RELATION_OPTIONS } from "@tendnote/domain";
-import { XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { addAssetPersonLinkAction, removeAssetPersonLinkAction } from "@/app/actions/asset-links";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { XIcon } from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { Button } from "@/components/ui/button";
 import {

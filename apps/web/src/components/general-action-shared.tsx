@@ -1,4 +1,6 @@
 import type { PrivacyScope } from "@tendnote/domain";
+import Link from "next/link";
+import { ASSET_KIND_ICONS } from "@/components/asset-shared";
 import {
   HomeIcon,
   MoonIcon,
@@ -7,9 +9,7 @@ import {
   TagIcon,
   UserIcon,
   UsersIcon,
-} from "lucide-react";
-import Link from "next/link";
-import { ASSET_KIND_ICONS } from "@/components/asset-shared";
+} from "@/components/icons";
 import type { ActionSurfaceState, GeneralActionLinkedAssetView } from "@/lib/general-action-view";
 
 /** Fallback message when an Action mutation fails for an unknown reason. */

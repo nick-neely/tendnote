@@ -1,0 +1,127 @@
+/**
+ * Central icon module for the Tendnote web app.
+ *
+ * Every icon in the product is re-exported from here, mapped to the names the
+ * codebase already uses (`CheckIcon`, `XIcon`, ...). Call sites import from
+ * `@/components/icons`, never from an icon vendor directly, so a future icon
+ * swap is a single-file change.
+ *
+ * Icons come from Phosphor's SSR entry (`@phosphor-icons/react/dist/ssr`). The
+ * SSR components take `weight`/`size` as plain props (no React context), so they
+ * render in Server Components and Client Components alike.
+ *
+ * Default weight: **regular**. Phosphor `regular` is a ~1.5px-equivalent stroke
+ * (calmer than lucide's 2px) that still stays crisp at the product's dominant
+ * `size-3` (12px) and `size-4` (16px) icons — where `light` starts to thin out.
+ * `regular` is also Phosphor's own default, so these plain re-exports inherit it
+ * without a wrapper, which keeps the module fully tree-shakeable (a file that
+ * imports one icon bundles only that icon). Sizing stays on the Tailwind
+ * `className` at call sites, exactly as before.
+ */
+
+export type { Icon } from "@phosphor-icons/react";
+
+export {
+  AddressBookIcon as BookUserIcon,
+  AlarmIcon as AlarmClockIcon,
+  ArchiveIcon,
+  ArrowClockwiseIcon as RotateCwIcon,
+  ArrowCounterClockwiseIcon as RotateCcwIcon,
+  ArrowDownIcon,
+  ArrowElbowDownLeftIcon as CornerDownLeftIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ArrowSquareOutIcon as ExternalLinkIcon,
+  ArrowsClockwiseIcon as RefreshCwIcon,
+  ArrowUpRightIcon,
+  BellIcon,
+  BellRingingIcon as BellRingIcon,
+  BellSlashIcon as BellOffIcon,
+  BookmarkIcon,
+  BookOpenIcon,
+  BugIcon,
+  CakeIcon,
+  CalendarBlankIcon as CalendarIcon,
+  CalendarDotsIcon,
+  CameraIcon,
+  CaretDownIcon as ChevronDownIcon,
+  CaretLeftIcon as ChevronLeftIcon,
+  CaretRightIcon as ChevronRightIcon,
+  CaretUpDownIcon as ChevronsUpDownIcon,
+  CaretUpIcon as ChevronUpIcon,
+  CarIcon,
+  ChatCircleIcon as MessageCircleIcon,
+  ChatTextIcon as MessageSquareTextIcon,
+  CheckCircleIcon as CircleCheckIcon,
+  CheckIcon,
+  CircleNotchIcon as Loader2Icon,
+  ClipboardTextIcon,
+  ClockCounterClockwiseIcon as HistoryIcon,
+  ClockIcon,
+  CopyIcon,
+  CubeIcon as BoxIcon,
+  DevicesIcon as MonitorSmartphoneIcon,
+  DotsThreeIcon as MoreHorizontalIcon,
+  DownloadSimpleIcon as DownloadIcon,
+  EnvelopeSimpleIcon as MailIcon,
+  EyeIcon,
+  FileTextIcon,
+  FolderIcon,
+  GithubLogoIcon as GithubIcon,
+  HouseIcon as HomeIcon,
+  ImageIcon,
+  InfoIcon,
+  LinkIcon,
+  LinkSimpleIcon as Link2Icon,
+  ListBulletsIcon as ListIcon,
+  ListChecksIcon,
+  ListChecksIcon as ListTodoIcon,
+  ListIcon as MenuIcon,
+  ListNumbersIcon as ListOrderedIcon,
+  ListPlusIcon,
+  LockIcon,
+  MagnifyingGlassIcon as SearchIcon,
+  MonitorIcon,
+  MoonIcon,
+  NoteIcon as StickyNoteIcon,
+  NotePencilIcon as NotebookPenIcon,
+  PackageIcon,
+  PaperclipIcon,
+  PaperPlaneTiltIcon as SendIcon,
+  PauseIcon,
+  PencilLineIcon,
+  PencilSimpleIcon as PencilIcon,
+  PencilSimpleLineIcon as PenLineIcon,
+  PlayIcon,
+  PlugIcon,
+  PlusIcon,
+  ProhibitIcon as CircleSlashIcon,
+  QuestionIcon as CircleHelpIcon,
+  RadioButtonIcon as CircleDotIcon,
+  ReceiptIcon as ReceiptTextIcon,
+  RepeatIcon,
+  ShieldCheckIcon,
+  SignOutIcon as LogOutIcon,
+  SkipForwardIcon,
+  SlidersHorizontalIcon,
+  SquareIcon,
+  SunIcon,
+  TagIcon,
+  TerminalIcon,
+  TextBIcon as BoldIcon,
+  TextItalicIcon as ItalicIcon,
+  TrashIcon as Trash2Icon,
+  TrayArrowUpIcon as ArchiveRestoreIcon,
+  UploadSimpleIcon as UploadIcon,
+  UserCircleIcon as CircleUserRoundIcon,
+  UserIcon,
+  UserIcon as UserRoundIcon,
+  UserListIcon as UserPenIcon,
+  UserPlusIcon,
+  UsersIcon,
+  UsersThreeIcon as UsersRoundIcon,
+  WarningIcon as TriangleAlertIcon,
+  WarningOctagonIcon as OctagonXIcon,
+  WrenchIcon,
+  XIcon,
+} from "@phosphor-icons/react/dist/ssr";

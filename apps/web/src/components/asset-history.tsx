@@ -1,5 +1,5 @@
-import { ArrowUpRightIcon } from "lucide-react";
 import Link from "next/link";
+import { ArrowUpRightIcon } from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import type { AssetHistoryEntryView } from "@/lib/asset-history-view";
 

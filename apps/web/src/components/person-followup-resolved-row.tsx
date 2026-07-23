@@ -1,6 +1,6 @@
-import { ArchiveIcon, RotateCcwIcon } from "lucide-react";
 import { useState, useTransition } from "react";
 import { archiveFollowupAction, reopenFollowupAction } from "@/app/actions/followups";
+import { ArchiveIcon, RotateCcwIcon } from "@/components/icons";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
 import { Button } from "@/components/ui/button";
 import type { FollowupView } from "@/lib/followup-view";

@@ -2,15 +2,6 @@
 
 import type { SavedItemKind } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
-import {
-  ArchiveIcon,
-  BellIcon,
-  BookmarkIcon,
-  CircleHelpIcon,
-  LinkIcon,
-  ListPlusIcon,
-  RotateCcwIcon,
-} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 import {
@@ -32,6 +23,15 @@ import {
   AudiencePreview,
   type ShareableActionMember,
 } from "@/components/general-action-visibility-field";
+import {
+  ArchiveIcon,
+  BellIcon,
+  BookmarkIcon,
+  CircleHelpIcon,
+  LinkIcon,
+  ListPlusIcon,
+  RotateCcwIcon,
+} from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { SavedItemEditForm } from "@/components/saved-item-edit-form";
 import { Button } from "@/components/ui/button";

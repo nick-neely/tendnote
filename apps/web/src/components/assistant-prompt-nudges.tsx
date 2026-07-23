@@ -1,8 +1,8 @@
 "use client";
 
 import type { PromptNudge } from "@tendnote/domain";
-import { CalendarRangeIcon } from "lucide-react";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
+import { CalendarDotsIcon } from "@/components/icons";
 
 /**
  * Calendar-derived prompt nudges above the assistant composer (Phase 2C, #114).
@@ -29,7 +29,7 @@ export function AssistantPromptNudges({
   return (
     <div className="flex flex-col gap-1.5">
       <span className="flex items-center gap-1.5 text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
-        <CalendarRangeIcon aria-hidden className="size-3 shrink-0" />
+        <CalendarDotsIcon aria-hidden className="size-3 shrink-0" />
         From your calendar
       </span>
       <Suggestions>

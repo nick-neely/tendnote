@@ -5,7 +5,7 @@ import {
   CircleDotIcon,
   CircleUserRoundIcon,
   HomeIcon,
-} from "lucide-react";
+} from "@/components/icons";
 
 export const appDestinations = [
   { href: "/", label: "Today", icon: HomeIcon },

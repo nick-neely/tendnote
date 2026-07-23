@@ -1,7 +1,6 @@
 "use client";
 
 import { ASSET_EVIDENCE_ALLOWED_MIME_TYPES } from "@tendnote/domain";
-import { CameraIcon, ImageIcon, PaperclipIcon, PlusIcon } from "lucide-react";
 import { useRef } from "react";
 import {
   PromptInputActionMenu,
@@ -9,6 +8,7 @@ import {
   PromptInputActionMenuItem,
   PromptInputActionMenuTrigger,
 } from "@/components/ai-elements/prompt-input";
+import { CameraIcon, ImageIcon, PaperclipIcon, PlusIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 /**

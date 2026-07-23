@@ -1,17 +1,17 @@
 import type { ProviderConnectionStatus } from "@tendnote/domain";
+import type { ComponentType } from "react";
 import {
   CalendarIcon,
   CheckIcon,
   CircleSlashIcon,
   ClockIcon,
-  type LucideIcon,
+  type Icon,
   MailIcon,
   MessageCircleIcon,
   PlugIcon,
   TriangleAlertIcon,
   UsersRoundIcon,
-} from "lucide-react";
-import type { ComponentType } from "react";
+} from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { capabilityDisconnectKind } from "@/lib/integrations/capability-lifecycle";
@@ -31,7 +31,7 @@ type BadgeVariant = "default" | "outline";
 
 const STATUS_META: Record<
   ProviderConnectionStatus,
-  { label: string; variant: BadgeVariant; Icon?: LucideIcon; className?: string }
+  { label: string; variant: BadgeVariant; Icon?: Icon; className?: string }
 > = {
   ready: { label: "Not connected", variant: "outline" },
   pending: { label: "Pending", variant: "outline", Icon: ClockIcon },
@@ -48,7 +48,7 @@ const STATUS_META: Record<
   unavailable: { label: "Unavailable", variant: "outline" },
 };
 
-const CAPABILITY_ICONS: Record<string, LucideIcon> = {
+const CAPABILITY_ICONS: Record<string, Icon> = {
   calendar: CalendarIcon,
   gmail: MailIcon,
   contacts: UsersRoundIcon,

@@ -1,6 +1,5 @@
 "use client";
 
-import { CalendarRangeIcon, CheckIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { proposeAssetMemoryActionsAction } from "@/app/actions/asset-action-proposals";
@@ -9,6 +8,7 @@ import {
   ignoreSuggestedGeneralActionAction,
 } from "@/app/actions/suggested-general-actions";
 import { ActionRoutineChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { CalendarDotsIcon, CheckIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -268,7 +268,7 @@ function ProposeControl({
         type="button"
         variant="outline"
       >
-        {pending ? <Spinner /> : <CalendarRangeIcon aria-hidden className="size-4" />}
+        {pending ? <Spinner /> : <CalendarDotsIcon aria-hidden className="size-4" />}
         Suggest reminders from details
       </Button>
       {outcome ? (

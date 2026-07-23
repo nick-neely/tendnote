@@ -1,23 +1,23 @@
 "use client";
 
 import type { TodayCandidate, TodayShortlistResponse } from "@tendnote/domain/today";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import {
   BookmarkIcon,
   CakeIcon,
-  CalendarDaysIcon,
+  CalendarDotsIcon,
   CheckIcon,
-  ClipboardCheckIcon,
+  ClipboardTextIcon,
+  type Icon,
   ListTodoIcon,
-  type LucideIcon,
   MessageCircleIcon,
   MoreHorizontalIcon,
   RepeatIcon,
   RotateCwIcon,
   UserRoundIcon,
-} from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+} from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -44,13 +44,13 @@ export type TodayShortlistHandlers = {
   act: (input: CandidateRef) => Promise<TodayShortlistResponse>;
 };
 
-const familyPresentation: Record<TodayCandidate["family"], { label: string; icon: LucideIcon }> = {
+const familyPresentation: Record<TodayCandidate["family"], { label: string; icon: Icon }> = {
   follow_up: { label: "Follow-Up", icon: UserRoundIcon },
   birthday: { label: "Birthday", icon: CakeIcon },
   action: { label: "Action", icon: ListTodoIcon },
   routine: { label: "Routine", icon: RepeatIcon },
-  calendar: { label: "Calendar", icon: CalendarDaysIcon },
-  review: { label: "Review", icon: ClipboardCheckIcon },
+  calendar: { label: "Calendar", icon: CalendarDotsIcon },
+  review: { label: "Review", icon: ClipboardTextIcon },
   saved_item: { label: "Saved Item", icon: BookmarkIcon },
   relationship_context: { label: "Relationship", icon: MessageCircleIcon },
 };

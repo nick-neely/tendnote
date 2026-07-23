@@ -1,9 +1,9 @@
 "use client";
 
-import { Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { deletePersonAction } from "@/app/actions/people";
+import { Trash2Icon } from "@/components/icons";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
 import {
   Accordion,

@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckIcon, FolderIcon, MoonIcon, PencilIcon, XIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
@@ -16,6 +15,7 @@ import {
   ActionScopeChip,
   GENERIC_ERROR,
 } from "@/components/general-action-shared";
+import { CheckIcon, FolderIcon, MoonIcon, PencilIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";

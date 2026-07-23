@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReminderInstallationSummary } from "@tendnote/domain/reminders";
-import { MonitorSmartphoneIcon } from "lucide-react";
+import { MonitorSmartphoneIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";

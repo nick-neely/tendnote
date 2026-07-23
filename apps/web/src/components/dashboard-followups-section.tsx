@@ -1,9 +1,9 @@
 "use client";
 
-import { CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { completeFollowupAction, dismissFollowupAction } from "@/app/actions/followups";
 import { DueChip } from "@/components/followup-due-chip";
+import { CheckIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import type { DashboardFollowupView } from "@/lib/followup-view";
 import { useResolvingAction } from "@/lib/use-resolving-action";

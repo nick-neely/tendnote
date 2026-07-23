@@ -2,7 +2,7 @@
 
 import type { Table as TableInstance } from "@tanstack/react-table";
 import type { ContactImportPreviewCandidate } from "@tendnote/db/queries/contacts-import-preview";
-import { ChevronLeftIcon, ChevronRightIcon, SearchIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, SearchIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {

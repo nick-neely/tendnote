@@ -694,7 +694,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
       summary: "A kitchen fridge; the filter is EDR1RXD1.",
       facts: [
         {
-          memoryId: "m1",
+          memoryId: "mem-raw-id-1",
           label: "Filter model",
           value: "EDR1RXD1",
           notes: null,
@@ -713,7 +713,9 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("not a source of truth");
     expect(html).toContain("A kitchen fridge; the filter is EDR1RXD1.");
     expect(html).toContain('data-tool-view="asset_context"');
-    expect(html).not.toContain("m1");
+    // The raw record id must never surface in the rendered card (a distinctive
+    // sentinel avoids colliding with incidental substrings in icon SVG paths).
+    expect(html).not.toContain("mem-raw-id-1");
   });
 
   it("never renders a stale (nulled) asset-context summary, and flags it unavailable", () => {

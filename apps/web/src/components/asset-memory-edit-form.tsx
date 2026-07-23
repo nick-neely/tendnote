@@ -1,12 +1,12 @@
 "use client";
 
 import type { AssetMemoryValue } from "@tendnote/domain";
-import { CheckIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import {
   acceptSuggestedAssetMemoryAction,
   editSuggestedAssetMemoryAction,
 } from "@/app/actions/asset-review";
+import { CheckIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";

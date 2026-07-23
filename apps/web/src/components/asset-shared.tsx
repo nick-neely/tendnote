@@ -3,11 +3,11 @@ import {
   BoxIcon,
   CarIcon,
   HomeIcon,
-  type LucideIcon,
+  type Icon,
   PlugIcon,
-  RefreshCcwIcon,
+  RefreshCwIcon,
   WrenchIcon,
-} from "lucide-react";
+} from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 
 /**
@@ -16,11 +16,11 @@ import { Badge } from "@/components/ui/badge";
  * kind is metadata, not state (DESIGN.md §6: badges carry state or metadata,
  * never decoration).
  */
-export const ASSET_KIND_ICONS: Record<AssetKind, LucideIcon> = {
+export const ASSET_KIND_ICONS: Record<AssetKind, Icon> = {
   item: BoxIcon,
   appliance: PlugIcon,
   vehicle: CarIcon,
-  subscription: RefreshCcwIcon,
+  subscription: RefreshCwIcon,
   service: WrenchIcon,
   property: HomeIcon,
 };

@@ -10,7 +10,7 @@ export default defineConfig({
       "@testing-library/dom",
       "class-variance-authority",
       "clsx",
-      "lucide-react",
+      "@phosphor-icons/react/dist/ssr",
       "next/navigation",
       "radix-ui",
       "react",

@@ -1,4 +1,3 @@
-import { CheckIcon, NotebookPenIcon, UserPenIcon, UserPlusIcon } from "lucide-react";
 import { Body, CARD_TONE, Caption, type CardTone } from "@/components/assistant-result-card";
 import {
   assistantToolViewKey,
@@ -6,6 +5,7 @@ import {
   type GroupableToolView,
 } from "@/components/assistant-results/registry";
 import { DisclosureShell } from "@/components/assistant-results/shells";
+import { CheckIcon, NotebookPenIcon, UserPenIcon, UserPlusIcon } from "@/components/icons";
 import { formatFieldList, PERSON_FIELD_LABEL } from "@/lib/eve/person-fields";
 import { cn } from "@/lib/utils";
 

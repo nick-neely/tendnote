@@ -1,7 +1,7 @@
-import { ClockIcon } from "lucide-react";
 import { redirect } from "next/navigation";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { ClockIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentAccess } from "@/lib/access/current-access";
 

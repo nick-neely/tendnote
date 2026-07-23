@@ -2,7 +2,6 @@
 
 import type { PromptNudge } from "@tendnote/domain";
 import { type EveMessage, useEveAgent } from "eve/react";
-import { BugIcon, LockIcon, NotebookPenIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   Conversation,
@@ -27,6 +26,7 @@ import { AssistantEvidenceCapture } from "@/components/assistant-evidence-captur
 import { sendNudgeToAgent } from "@/components/assistant-nudge";
 import { AssistantPromptNudges } from "@/components/assistant-prompt-nudges";
 import { AssistantTurnUnitView, turnUnitKey } from "@/components/assistant-turn-unit";
+import { BugIcon, LockIcon, NotebookPenIcon } from "@/components/icons";
 import { Shimmer } from "@/components/ui/shimmer";
 import {
   groupTurnToolEntries,

@@ -1,10 +1,10 @@
 "use client";
 
-import { Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { hardDeleteAssetAction } from "@/app/actions/assets";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { Trash2Icon } from "@/components/icons";
 import {
   AlertDialog,
   AlertDialogAction,

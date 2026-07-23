@@ -1,5 +1,5 @@
 import type { RenderedToolName } from "@tendnote/domain";
-import { TriangleAlertIcon } from "lucide-react";
+import { TriangleAlertIcon } from "@/components/icons";
 import { humanizeToolName } from "@/lib/eve/tool-name";
 import type { AssistantToolView, ToolViewTier } from "@/lib/eve/tool-result-view";
 import { assetContextModule, assetReviewGroupModule, assetSearchModule } from "./asset";

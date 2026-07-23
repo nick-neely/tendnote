@@ -1,6 +1,6 @@
-import { TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
+import { TriangleAlertIcon } from "@/components/icons";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { getOwnerContactImportPreview } from "@/lib/integrations/contact-import-preview-data";
 import { ContactImportReview } from "./contact-import-review";

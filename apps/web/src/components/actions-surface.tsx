@@ -1,6 +1,5 @@
 "use client";
 
-import { SlidersHorizontalIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AreaManagerDialog } from "@/components/general-action-area-manager";
@@ -10,6 +9,7 @@ import type { ActionPersonOption } from "@/components/general-action-people-fiel
 import { ResolvedActionRow } from "@/components/general-action-resolved-row";
 import { ActionRow } from "@/components/general-action-row";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
+import { SlidersHorizontalIcon } from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general-action-review";
 import { Button } from "@/components/ui/button";

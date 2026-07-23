@@ -4,20 +4,20 @@ import {
   type RelationshipAgendaToolResult,
   type SuggestedMemoryReviewItemOutput,
 } from "@tendnote/domain";
+import Link from "next/link";
+import { AgendaCalendar } from "@/components/agenda-calendar";
+import { Body, Caption, ResultCard } from "@/components/assistant-result-card";
 import {
   BookOpenIcon,
-  CalendarClockIcon,
+  CalendarDotsIcon,
   CheckIcon,
-  ClipboardListIcon,
+  ClipboardTextIcon,
   NotebookPenIcon,
   SearchIcon,
   UserIcon,
   UserPenIcon,
   UserPlusIcon,
-} from "lucide-react";
-import Link from "next/link";
-import { AgendaCalendar } from "@/components/agenda-calendar";
-import { Body, Caption, ResultCard } from "@/components/assistant-result-card";
+} from "@/components/icons";
 import { labelSensitivity } from "@/lib/eve/agenda-format";
 import { formatFieldList, PERSON_FIELD_LABEL } from "@/lib/eve/person-fields";
 import type {
@@ -562,7 +562,7 @@ export const relationshipAgendaModule = defineModule<"relationship_agenda">({
     if (view.candidates.length === 0) {
       return (
         <ToolActivityLine
-          icon={<CalendarClockIcon aria-hidden className="size-3.5" />}
+          icon={<CalendarDotsIcon aria-hidden className="size-3.5" />}
           isNew={isNew}
         >
           Nothing on the relationship agenda for that window
@@ -572,7 +572,7 @@ export const relationshipAgendaModule = defineModule<"relationship_agenda">({
     const count = view.candidates.length;
     return (
       <DisclosureShell
-        icon={<CalendarClockIcon aria-hidden className="size-3.5 shrink-0" />}
+        icon={<CalendarDotsIcon aria-hidden className="size-3.5 shrink-0" />}
         isNew={isNew}
         summary={count === 1 ? "Found 1 agenda item" : `Found ${count} agenda items`}
         toolView={view.kind}
@@ -607,7 +607,7 @@ export const memoryCuratorProposalsModule = defineModule<"memory_curator_proposa
     if (view.proposals.length === 0) {
       return (
         <ToolActivityLine
-          icon={<ClipboardListIcon aria-hidden className="size-3.5" />}
+          icon={<ClipboardTextIcon aria-hidden className="size-3.5" />}
           isNew={isNew}
         >
           No memory cleanup proposals found
@@ -618,7 +618,7 @@ export const memoryCuratorProposalsModule = defineModule<"memory_curator_proposa
     return (
       <ResultCard
         footer={<Caption>Review-only cleanup proposals · no memories changed</Caption>}
-        icon={<ClipboardListIcon className="size-3" />}
+        icon={<ClipboardTextIcon className="size-3" />}
         isNew={isNew}
         kind={view.kind}
         label={count === 1 ? "Memory cleanup proposal" : "Memory cleanup proposals"}

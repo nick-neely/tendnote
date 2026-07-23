@@ -1,6 +1,5 @@
 "use client";
 
-import { ArrowUpRightIcon, CheckIcon, CopyIcon, PenLineIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { editDraftBodyAction, getDraftViewAction } from "@/app/actions/drafts";
@@ -8,6 +7,7 @@ import { ResultCard } from "@/components/assistant-result-card";
 import { DraftBody } from "@/components/draft-body";
 import { DraftEditor } from "@/components/draft-editor";
 import { DraftGroundingPopover } from "@/components/draft-grounding-popover";
+import { ArrowUpRightIcon, CheckIcon, CopyIcon, PenLineIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { copyDraftToClipboard } from "@/lib/draft-markdown";
 import type { AssistantToolView } from "@/lib/eve/tool-result-view";

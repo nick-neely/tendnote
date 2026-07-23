@@ -1,11 +1,11 @@
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
-import { PlusIcon } from "lucide-react";
 import { useState, useTransition } from "react";
 import { createFollowupAction } from "@/app/actions/followups";
 import {
   GeneralActionReminderField,
   ReminderOptInInvitation,
 } from "@/components/general-action-reminder";
+import { PlusIcon } from "@/components/icons";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

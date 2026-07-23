@@ -1,12 +1,12 @@
 "use client";
 
 import type { ReminderInstallationSummary } from "@tendnote/domain/reminders";
-import { BellOffIcon } from "lucide-react";
 import {
   ReminderBlockedInstallation,
   ReminderInstallationRow,
 } from "@/components/account/reminder-installation-row";
 import { useReminderInstallationSettings } from "@/components/account/use-reminder-installation-settings";
+import { BellOffIcon } from "@/components/icons";
 
 type SafeInstallation = ReminderInstallationSummary;
 

@@ -3,7 +3,6 @@
 import type { AssetKind } from "@tendnote/domain";
 import { ASSET_KIND_OPTIONS } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
-import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { createAssetAction } from "@/app/actions/assets";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
@@ -12,6 +11,7 @@ import {
   AudiencePreview,
   type ShareableActionMember,
 } from "@/components/general-action-visibility-field";
+import { ChevronDownIcon, PlusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {

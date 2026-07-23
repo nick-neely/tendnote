@@ -1,6 +1,6 @@
 import type { Person } from "@tendnote/domain";
-import { ArrowRightIcon } from "lucide-react";
 import Link from "next/link";
+import { ArrowRightIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 

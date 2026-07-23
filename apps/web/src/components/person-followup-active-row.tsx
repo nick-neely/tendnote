@@ -1,13 +1,3 @@
-import {
-  AlarmClockIcon,
-  ArchiveIcon,
-  BellIcon,
-  CheckIcon,
-  MoreHorizontalIcon,
-  PencilIcon,
-  PenLineIcon,
-  XIcon,
-} from "lucide-react";
 import { useState, useTransition } from "react";
 import {
   archiveFollowupAction,
@@ -18,6 +8,16 @@ import {
 } from "@/app/actions/followups";
 import { DueChip } from "@/components/followup-due-chip";
 import { GeneralActionReminderField } from "@/components/general-action-reminder";
+import {
+  AlarmClockIcon,
+  ArchiveIcon,
+  BellIcon,
+  CheckIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PenLineIcon,
+  XIcon,
+} from "@/components/icons";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
 import { Button } from "@/components/ui/button";
 import {

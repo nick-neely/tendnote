@@ -1,4 +1,4 @@
-import { CalendarRangeIcon, HistoryIcon, UsersRoundIcon } from "lucide-react";
+import { CalendarDotsIcon, HistoryIcon, UsersRoundIcon } from "@/components/icons";
 import type { CalendarPreviewView } from "@/lib/integrations/calendar-preview";
 
 /**
@@ -23,7 +23,7 @@ export function CalendarPreviewSection({ view }: { view: CalendarPreviewView }) 
     >
       <div className="flex flex-col gap-1">
         <h3 className="flex items-center gap-2 text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground">
-          <CalendarRangeIcon aria-hidden className="size-4 shrink-0" />
+          <CalendarDotsIcon aria-hidden className="size-4 shrink-0" />
           On your calendar
           <span className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] font-normal">
             <span className="font-mono">Google&nbsp;Calendar</span> · read-only

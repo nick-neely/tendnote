@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowUpRightIcon, CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Body, Caption, type CardTone, ResultCard } from "@/components/assistant-result-card";
+import { ArrowUpRightIcon, CheckIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import type { AssistantToolView } from "@/lib/eve/tool-result-view";
 

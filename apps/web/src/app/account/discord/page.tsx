@@ -1,4 +1,3 @@
-import { CheckIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -6,6 +5,7 @@ import {
   type DiscordInstallView,
 } from "@/components/account/discord-delivery-settings";
 import { AppShell } from "@/components/app-shell";
+import { CheckIcon, TriangleAlertIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { discordEnvFromProcess, isDiscordConfigured } from "@/lib/auth/social";

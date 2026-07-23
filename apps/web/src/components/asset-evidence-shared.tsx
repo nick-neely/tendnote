@@ -5,14 +5,14 @@ import {
   BookOpenIcon,
   ExternalLinkIcon,
   FileTextIcon,
+  type Icon,
   ImageIcon,
   Link2Icon,
-  type LucideIcon,
   ReceiptTextIcon,
   ShieldCheckIcon,
   StickyNoteIcon,
   Trash2Icon,
-} from "lucide-react";
+} from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -24,7 +24,7 @@ import { useArmedConfirm } from "@/lib/use-armed-confirm";
  * the capture form's kind picker, and the review card's evidence strip so a kind
  * reads the same everywhere. Neutral ink — kind is metadata, not state.
  */
-export const ASSET_EVIDENCE_KIND_ICONS: Record<AssetEvidenceKind, LucideIcon> = {
+export const ASSET_EVIDENCE_KIND_ICONS: Record<AssetEvidenceKind, Icon> = {
   receipt: ReceiptTextIcon,
   photo: ImageIcon,
   manual: BookOpenIcon,

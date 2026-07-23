@@ -2,11 +2,11 @@
 
 import type { AssetKind } from "@tendnote/domain";
 import { ASSET_KIND_OPTIONS } from "@tendnote/domain";
-import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { type Draft, PickedFileStrip } from "@/components/asset-evidence-capture";
 import { ASSET_KIND_ICONS } from "@/components/asset-shared";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { PlusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {

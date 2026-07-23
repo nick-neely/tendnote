@@ -1,11 +1,11 @@
 "use client";
 
-import { CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import {
   acceptSuggestedFollowupAction,
   dismissSuggestedFollowupAction,
 } from "@/app/actions/suggested-followups";
+import { CheckIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 import { useResolvingAction } from "@/lib/use-resolving-action";

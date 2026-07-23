@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckIcon, ClockIcon, LockIcon, PenLineIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import {
@@ -10,6 +9,14 @@ import {
   snoozeBriefItemAction,
 } from "@/app/actions/briefs";
 import { DueChip } from "@/components/followup-due-chip";
+import {
+  CheckIcon,
+  ClockIcon,
+  LockIcon,
+  PenLineIcon,
+  RefreshCwIcon,
+  XIcon,
+} from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { useCreateDraft } from "@/components/use-create-draft";
 import type { BriefItemView, BriefView } from "@/lib/brief-view";

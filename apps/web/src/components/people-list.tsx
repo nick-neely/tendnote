@@ -1,9 +1,9 @@
 "use client";
 
 import type { Person } from "@tendnote/domain";
-import { ArrowRightIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { ArrowRightIcon, SearchIcon } from "@/components/icons";
 import { Input } from "@/components/ui/input";
 import { initials } from "@/lib/dashboard-brief";
 import { formatBirthday, titleCase } from "@/lib/person-format";

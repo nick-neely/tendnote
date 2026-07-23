@@ -1,9 +1,9 @@
 "use client";
 
-import { ArchiveIcon, HistoryIcon } from "lucide-react";
 import { useState, useTransition } from "react";
 import { ActionHistoryDialog } from "@/components/general-action-history-dialog";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { ArchiveIcon, HistoryIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { GeneralActionMutationResult, GeneralActionView } from "@/lib/general-action-view";

@@ -1,7 +1,6 @@
 "use client";
 
 import { AssetValidationError, assertAssetEvidenceFileAccepted } from "@tendnote/domain";
-import { CheckIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +12,7 @@ import {
 import { type Draft, EvidenceDetailsForm } from "@/components/asset-evidence-capture";
 import { DestinationChooser } from "@/components/assistant-evidence-destination-step";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { CheckIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   type EvidenceCaptureChoice,

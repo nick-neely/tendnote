@@ -1,13 +1,13 @@
 "use client";
 
 import type { ReminderScheduleChoice } from "@tendnote/domain/reminders";
-import { BellIcon, BellRingIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   markReminderStandaloneContinuationAction,
   registerReminderInstallationAction,
   setReminderOptInDecisionAction,
 } from "@/app/actions/reminders";
+import { BellIcon, BellRingIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";

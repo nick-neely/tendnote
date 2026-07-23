@@ -2,7 +2,7 @@
 
 import type { Column, ColumnDef } from "@tanstack/react-table";
 import type { ContactImportPreviewCandidate } from "@tendnote/db/queries/contacts-import-preview";
-import type { LucideIcon } from "lucide-react";
+import type { Icon } from "@/components/icons";
 import {
   ChevronDownIcon,
   ChevronsUpDownIcon,
@@ -10,7 +10,7 @@ import {
   PlusIcon,
   TriangleAlertIcon,
   UsersRoundIcon,
-} from "lucide-react";
+} from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -208,7 +208,7 @@ function SortHeader({ column, label }: { column: Column<Candidate, unknown>; lab
 // badge, icon + text so the state never rests on color alone.
 const REVIEW_STATE_META: Record<
   string,
-  { label: string; tone: "neutral" | "review"; Icon?: LucideIcon }
+  { label: string; tone: "neutral" | "review"; Icon?: Icon }
 > = {
   safe_recommendation: { label: "Safe", tone: "neutral" },
   conflict: { label: "Conflict", tone: "review", Icon: TriangleAlertIcon },
