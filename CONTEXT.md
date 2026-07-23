@@ -168,6 +168,10 @@ _Avoid_: Version number, etag, content hash of the raw provider record
 The account-level gate that decides whether a signed-up user may enter Tendnote during the early hosted product phase. It controls product access only; it is not the same as relationship data ownership, integration authorization, or payment status.
 _Avoid_: Public signup, environment allowlist, owner scope
 
+**Authenticated App Shell**:
+The recognizable Tendnote navigation and layout frame available only after Better Auth and Private Beta Access admit an owner. It contains no relationship records, Today or Eve content, or other owner-specific data.
+_Avoid_: Public app shell, dashboard data, owner cache
+
 **Provider Connection**:
 A user-scoped integration authorization record for an external provider or provider capability, such as Google Calendar, Gmail, Google Contacts, or a future non-Google service. A provider connection tracks connection status and consent boundaries; it is not the same as Better Auth sign-in or product access.
 _Avoid_: Login method, private beta access, provider dump
