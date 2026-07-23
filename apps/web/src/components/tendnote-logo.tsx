@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 /**
@@ -8,24 +7,24 @@ import { cn } from "@/lib/utils";
 export function TendnoteMark({ className, label }: { className?: string; label?: string }) {
   const images = (
     <>
-      <Image
+      {/* biome-ignore lint/performance/noImgElement: this exact static brand raster must work outside Next.js runtimes */}
+      <img
         alt=""
         aria-hidden
         className="size-full object-contain dark:hidden"
         height={256}
         loading="eager"
         src="/icons/tendnote-mark-light.png"
-        unoptimized
         width={256}
       />
-      <Image
+      {/* biome-ignore lint/performance/noImgElement: this exact static brand raster must work outside Next.js runtimes */}
+      <img
         alt=""
         aria-hidden
         className="hidden size-full object-contain dark:block"
         height={256}
         loading="eager"
         src="/icons/tendnote-mark-dark.png"
-        unoptimized
         width={256}
       />
     </>
