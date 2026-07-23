@@ -1,7 +1,7 @@
 import { generateKeyPairSync, sign } from "node:crypto";
 import type { SourceRecord } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
-import {
+import discordChannel, {
   createDiscordRequestOwnerResolver,
   discordApiPayloadToCaptureInteraction,
   getParkedDiscordHitlSession,
@@ -96,6 +96,13 @@ async function postSignedInteraction(body: string) {
 }
 
 describe("Discord interaction channel", () => {
+  it("registers the public Discord interactions endpoint", () => {
+    expect(discordChannel.routes.map(({ method, path }) => ({ method, path }))).toContainEqual({
+      method: "POST",
+      path: "/eve/v1/discord",
+    });
+  });
+
   it("verifies Discord Ed25519 request signatures", () => {
     const body = JSON.stringify({ type: 1 });
     const signed = signDiscordBody(body);

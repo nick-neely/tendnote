@@ -8,6 +8,7 @@
 ## Learned Workspace Preferences
 
 - Run builds and build-bearing scripts such as `pnpm verify` with elevated permissions; sandboxed runs can hang or time out instead of reporting the real result.
+- Eve authored channel route paths are absolute; channel filenames do not mount or prefix routes.
 
 ## Agent skills
 

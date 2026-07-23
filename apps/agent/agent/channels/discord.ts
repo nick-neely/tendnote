@@ -155,7 +155,7 @@ export async function handleDiscordRequest(
 }
 
 export default defineChannel({
-  routes: [POST("/", (request) => handleDiscordRequest(request))],
+  routes: [POST("/eve/v1/discord", (request) => handleDiscordRequest(request))],
 });
 
 export function renderDiscordHitlPrompt(input: {
