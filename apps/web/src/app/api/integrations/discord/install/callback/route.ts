@@ -6,6 +6,7 @@ import { discordEnvFromProcess } from "@/lib/auth/social";
 import { syncDiscordGuildCommands } from "@/lib/integrations/discord-commands";
 import {
   DISCORD_INSTALL_STATE_COOKIE,
+  type DiscordInstallCallbackResult,
   evaluateDiscordInstallCallback,
 } from "@/lib/integrations/discord-install";
 import { recordOwnerDiscordInstall } from "@/lib/integrations/discord-install-server";
@@ -41,16 +42,8 @@ export async function GET(request: Request): Promise<Response> {
     now: Date.now(),
   });
 
-  const outcome: DiscordInstallCallbackOutcome =
-    result.status === "ok" ? await recordInstall(result) : { error: result.reason };
-
-  const redirectUrl = new URL("/account/discord", request.url);
-  for (const [key, value] of Object.entries(outcome)) {
-    if (value) {
-      redirectUrl.searchParams.set(key, value);
-    }
-  }
-  const response = NextResponse.redirect(redirectUrl);
+  const outcome = await resolveInstallOutcome(result);
+  const response = NextResponse.redirect(buildInstallRedirectUrl(request.url, outcome));
   // The state is single-use: clear the nonce cookie regardless of outcome.
   response.cookies.delete({
     name: DISCORD_INSTALL_STATE_COOKIE,
@@ -59,12 +52,15 @@ export async function GET(request: Request): Promise<Response> {
   return response;
 }
 
-async function recordInstall(result: {
-  ownerUserId: string;
-  guildId: string;
-  permissions: string | null;
-  scopes: string[];
-}): Promise<DiscordInstallCallbackOutcome> {
+async function resolveInstallOutcome(
+  result: DiscordInstallCallbackResult,
+): Promise<DiscordInstallCallbackOutcome> {
+  return result.status === "ok" ? recordInstall(result) : { error: result.reason };
+}
+
+async function recordInstall(
+  result: Extract<DiscordInstallCallbackResult, { status: "ok" }>,
+): Promise<DiscordInstallCallbackOutcome> {
   const recorded = await recordOwnerDiscordInstall({
     ownerUserId: result.ownerUserId,
     guildId: result.guildId,
@@ -74,25 +70,42 @@ async function recordInstall(result: {
   if (recorded.status !== "recorded") {
     return { error: "missing_identity" };
   }
+  return registerCommandsForInstall(result.guildId);
+}
 
+async function registerCommandsForInstall(guildId: string): Promise<DiscordInstallCallbackOutcome> {
   const discord = discordEnvFromProcess();
   if (!discord.clientId || !discord.clientSecret) {
-    return { installed: result.guildId, warning: "command_registration_failed" };
+    return commandRegistrationWarning(guildId);
   }
 
   const commandSync = await syncDiscordGuildCommands({
     clientId: discord.clientId,
     clientSecret: discord.clientSecret,
-    guildId: result.guildId,
+    guildId,
   });
   if (commandSync.status === "failed") {
     console.error("[tendnote] Discord command registration failed", {
-      guildId: result.guildId,
+      guildId,
       stage: commandSync.stage,
       httpStatus: commandSync.httpStatus,
     });
-    return { installed: result.guildId, warning: "command_registration_failed" };
+    return commandRegistrationWarning(guildId);
   }
 
-  return { installed: result.guildId };
+  return { installed: guildId };
+}
+
+function commandRegistrationWarning(guildId: string): DiscordInstallCallbackOutcome {
+  return { installed: guildId, warning: "command_registration_failed" };
+}
+
+function buildInstallRedirectUrl(requestUrl: string, outcome: DiscordInstallCallbackOutcome): URL {
+  const redirectUrl = new URL("/account/discord", requestUrl);
+  for (const [key, value] of Object.entries(outcome)) {
+    if (value) {
+      redirectUrl.searchParams.set(key, value);
+    }
+  }
+  return redirectUrl;
 }

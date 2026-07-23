@@ -56,13 +56,7 @@ export default async function DiscordDeliveryPage({
 }) {
   const { installed, error, warning } = await searchParams;
   const ownerUserId = await requireAdmittedOwner({ returnTo: "/account/discord" });
-
-  // Inert when Discord OAuth credentials are not configured server-side — there is
-  // nothing to install or configure, so send the owner back to Account.
-  if (!isDiscordConfigured(discordEnvFromProcess())) {
-    redirect("/account");
-  }
-
+  requireDiscordConfiguration();
   const { discordUserId, installs } = await getOwnerDiscordInstalls();
 
   return (
@@ -85,13 +79,36 @@ export default async function DiscordDeliveryPage({
           </div>
         </header>
 
-        {installed ? <InstalledBanner /> : null}
-        {warning ? <CallbackWarningBanner warning={warning} /> : null}
-        {error ? <CallbackErrorBanner error={error} /> : null}
+        <CallbackOutcomeBanners error={error} installed={installed} warning={warning} />
 
         <ServersSection discordUserId={discordUserId} installs={installs} />
       </div>
     </AppShell>
+  );
+}
+
+/** Keep the page inert when there is no server-side Discord OAuth configuration. */
+function requireDiscordConfiguration() {
+  if (!isDiscordConfigured(discordEnvFromProcess())) {
+    redirect("/account");
+  }
+}
+
+function CallbackOutcomeBanners({
+  installed,
+  warning,
+  error,
+}: {
+  installed?: string;
+  warning?: string;
+  error?: string;
+}) {
+  return (
+    <>
+      {installed ? <InstalledBanner /> : null}
+      {warning ? <CallbackWarningBanner warning={warning} /> : null}
+      {error ? <CallbackErrorBanner error={error} /> : null}
+    </>
   );
 }
 

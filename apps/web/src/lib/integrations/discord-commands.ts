@@ -2,6 +2,7 @@ import "server-only";
 
 const DISCORD_API_BASE_URL = "https://discord.com/api/v10";
 const DISCORD_COMMAND_UPDATE_SCOPE = "applications.commands.update";
+const DISCORD_REQUEST_TIMEOUT_MS = 5_000;
 
 /** Authoritative guild-command manifest synchronized after a Tendnote bot install. */
 export const DISCORD_GUILD_COMMANDS = [
@@ -28,6 +29,18 @@ export type DiscordCommandSyncResult =
       httpStatus?: number;
     };
 
+type DiscordCommandSyncInput = {
+  clientId: string;
+  clientSecret: string;
+  guildId: string;
+  fetchImpl: typeof fetch;
+  timeoutMs: number;
+};
+
+type DiscordTokenResult =
+  | { status: "received"; accessToken: string }
+  | Extract<DiscordCommandSyncResult, { status: "failed" }>;
+
 /**
  * Synchronize Tendnote's complete command manifest into one installed guild.
  *
@@ -41,8 +54,22 @@ export async function syncDiscordGuildCommands(input: {
   clientSecret: string;
   guildId: string;
   fetchImpl?: typeof fetch;
+  timeoutMs?: number;
 }): Promise<DiscordCommandSyncResult> {
-  const fetchImpl = input.fetchImpl ?? fetch;
+  const request = {
+    ...input,
+    fetchImpl: input.fetchImpl ?? fetch,
+    timeoutMs: input.timeoutMs ?? DISCORD_REQUEST_TIMEOUT_MS,
+  };
+  const token = await requestDiscordAccessToken(request);
+  return token.status === "received"
+    ? registerDiscordGuildCommands(request, token.accessToken)
+    : token;
+}
+
+async function requestDiscordAccessToken(
+  input: DiscordCommandSyncInput,
+): Promise<DiscordTokenResult> {
   const tokenBody = new URLSearchParams({
     grant_type: "client_credentials",
     scope: DISCORD_COMMAND_UPDATE_SCOPE,
@@ -50,7 +77,7 @@ export async function syncDiscordGuildCommands(input: {
 
   let tokenResponse: Response;
   try {
-    tokenResponse = await fetchImpl(`${DISCORD_API_BASE_URL}/oauth2/token`, {
+    tokenResponse = await input.fetchImpl(`${DISCORD_API_BASE_URL}/oauth2/token`, {
       method: "POST",
       headers: {
         Authorization: `Basic ${Buffer.from(`${input.clientId}:${input.clientSecret}`).toString(
@@ -60,6 +87,7 @@ export async function syncDiscordGuildCommands(input: {
       },
       body: tokenBody,
       cache: "no-store",
+      signal: AbortSignal.timeout(input.timeoutMs),
     });
   } catch {
     return { status: "failed", stage: "token_request" };
@@ -83,10 +111,16 @@ export async function syncDiscordGuildCommands(input: {
   if (!accessToken) {
     return { status: "failed", stage: "token_response" };
   }
+  return { status: "received", accessToken };
+}
 
+async function registerDiscordGuildCommands(
+  input: DiscordCommandSyncInput,
+  accessToken: string,
+): Promise<DiscordCommandSyncResult> {
   let commandResponse: Response;
   try {
-    commandResponse = await fetchImpl(
+    commandResponse = await input.fetchImpl(
       `${DISCORD_API_BASE_URL}/applications/${encodeURIComponent(
         input.clientId,
       )}/guilds/${encodeURIComponent(input.guildId)}/commands`,
@@ -98,6 +132,7 @@ export async function syncDiscordGuildCommands(input: {
         },
         body: JSON.stringify(DISCORD_GUILD_COMMANDS),
         cache: "no-store",
+        signal: AbortSignal.timeout(input.timeoutMs),
       },
     );
   } catch {
