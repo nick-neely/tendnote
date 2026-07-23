@@ -2,11 +2,19 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { admittedOwnerOrNull } from "@/lib/access/current-access";
 import { getBetterAuthSecret } from "@/lib/auth/server";
+import { discordEnvFromProcess } from "@/lib/auth/social";
+import { syncDiscordGuildCommands } from "@/lib/integrations/discord-commands";
 import {
   DISCORD_INSTALL_STATE_COOKIE,
   evaluateDiscordInstallCallback,
 } from "@/lib/integrations/discord-install";
 import { recordOwnerDiscordInstall } from "@/lib/integrations/discord-install-server";
+
+type DiscordInstallCallbackOutcome = {
+  installed?: string;
+  error?: string;
+  warning?: string;
+};
 
 /**
  * Discord bot-install callback (issue #173). Fail-closed: it records a
@@ -33,11 +41,15 @@ export async function GET(request: Request): Promise<Response> {
     now: Date.now(),
   });
 
-  const outcome =
-    result.status === "ok" ? await recordInstall(result) : { param: "error", value: result.reason };
+  const outcome: DiscordInstallCallbackOutcome =
+    result.status === "ok" ? await recordInstall(result) : { error: result.reason };
 
   const redirectUrl = new URL("/account/discord", request.url);
-  redirectUrl.searchParams.set(outcome.param, outcome.value);
+  for (const [key, value] of Object.entries(outcome)) {
+    if (value) {
+      redirectUrl.searchParams.set(key, value);
+    }
+  }
   const response = NextResponse.redirect(redirectUrl);
   // The state is single-use: clear the nonce cookie regardless of outcome.
   response.cookies.delete({
@@ -52,14 +64,35 @@ async function recordInstall(result: {
   guildId: string;
   permissions: string | null;
   scopes: string[];
-}): Promise<{ param: string; value: string }> {
+}): Promise<DiscordInstallCallbackOutcome> {
   const recorded = await recordOwnerDiscordInstall({
     ownerUserId: result.ownerUserId,
     guildId: result.guildId,
     permissions: result.permissions,
     scopes: result.scopes,
   });
-  return recorded.status === "recorded"
-    ? { param: "installed", value: result.guildId }
-    : { param: "error", value: "missing_identity" };
+  if (recorded.status !== "recorded") {
+    return { error: "missing_identity" };
+  }
+
+  const discord = discordEnvFromProcess();
+  if (!discord.clientId || !discord.clientSecret) {
+    return { installed: result.guildId, warning: "command_registration_failed" };
+  }
+
+  const commandSync = await syncDiscordGuildCommands({
+    clientId: discord.clientId,
+    clientSecret: discord.clientSecret,
+    guildId: result.guildId,
+  });
+  if (commandSync.status === "failed") {
+    console.error("[tendnote] Discord command registration failed", {
+      guildId: result.guildId,
+      stage: commandSync.stage,
+      httpStatus: commandSync.httpStatus,
+    });
+    return { installed: result.guildId, warning: "command_registration_failed" };
+  }
+
+  return { installed: result.guildId };
 }
