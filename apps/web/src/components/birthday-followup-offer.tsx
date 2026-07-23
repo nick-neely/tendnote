@@ -1,10 +1,10 @@
 "use client";
 
-import { CakeIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createBirthdayFollowupAction } from "@/app/actions/followups";
 import { ReminderOptInInvitation } from "@/components/general-action-reminder";
+import { CakeIcon } from "@/components/icons";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

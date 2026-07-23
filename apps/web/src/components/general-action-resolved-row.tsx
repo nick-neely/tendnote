@@ -1,6 +1,5 @@
 "use client";
 
-import { RotateCcwIcon } from "lucide-react";
 import {
   archiveGeneralActionAction,
   reopenGeneralActionAction,
@@ -9,6 +8,7 @@ import {
   ActionRowControls,
   useActionRowTransition,
 } from "@/components/general-action-row-controls";
+import { RotateCcwIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { GeneralActionView } from "@/lib/general-action-view";

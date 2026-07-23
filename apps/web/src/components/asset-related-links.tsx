@@ -2,7 +2,6 @@
 
 import type { AssetLinkRelation } from "@tendnote/domain";
 import { ASSET_LINK_RELATION_OPTIONS } from "@tendnote/domain";
-import { CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -13,6 +12,7 @@ import {
   removeAssetLinkAction,
 } from "@/app/actions/asset-links";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { CheckIcon, XIcon } from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { Button } from "@/components/ui/button";
 import {

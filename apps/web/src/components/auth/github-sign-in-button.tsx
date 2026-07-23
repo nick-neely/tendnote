@@ -1,7 +1,7 @@
 "use client";
 
-import { GithubIcon } from "lucide-react";
 import { useState } from "react";
+import { GithubIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { signIn } from "@/lib/auth/client";

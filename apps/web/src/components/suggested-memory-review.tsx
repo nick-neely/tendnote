@@ -1,7 +1,6 @@
 "use client";
 
 import type { Sensitivity } from "@tendnote/domain";
-import { ArchiveIcon, CheckIcon, PencilIcon, XIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
@@ -10,6 +9,7 @@ import {
   editSuggestedMemoryAction,
   saveSuggestedMemoryAction,
 } from "@/app/actions/memory-review";
+import { ArchiveIcon, CheckIcon, PencilIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   Select,

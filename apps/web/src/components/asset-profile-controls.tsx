@@ -2,11 +2,11 @@
 
 import type { AssetKind } from "@tendnote/domain";
 import { ASSET_KIND_OPTIONS } from "@tendnote/domain";
-import { ArchiveIcon, ArchiveRestoreIcon, PencilLineIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { archiveAssetAction, editAssetAction, restoreAssetAction } from "@/app/actions/assets";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { ArchiveIcon, ArchiveRestoreIcon, PencilLineIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {

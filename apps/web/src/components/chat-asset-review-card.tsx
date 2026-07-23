@@ -1,8 +1,8 @@
 "use client";
 
-import { CheckIcon } from "lucide-react";
 import { useState } from "react";
 import { AssetReviewGroupCard } from "@/components/asset-review-group-card";
+import { CheckIcon } from "@/components/icons";
 import type { AssetReviewGroupView } from "@/lib/asset-review-view";
 import { cn } from "@/lib/utils";
 

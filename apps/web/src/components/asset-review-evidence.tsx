@@ -1,11 +1,11 @@
 "use client";
 
-import { PaperclipIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { removeAssetEvidenceAction } from "@/app/actions/asset-evidence";
 import { AssetEvidenceCapture } from "@/components/asset-evidence-capture";
 import { AssetEvidenceRow } from "@/components/asset-evidence-shared";
 import { GENERIC_ERROR } from "@/components/general-action-shared";
+import { PaperclipIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import type { AssetEvidenceView } from "@/lib/asset-evidence-view";
 import type { AssetReviewGroupView } from "@/lib/asset-review-view";

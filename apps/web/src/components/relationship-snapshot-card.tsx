@@ -1,5 +1,5 @@
-import { LockIcon } from "lucide-react";
 import { Fragment } from "react";
+import { LockIcon } from "@/components/icons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { RelationshipSnapshotView } from "@/lib/relationship-snapshot-view";
 

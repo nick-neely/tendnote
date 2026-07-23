@@ -106,10 +106,37 @@ These are the current working tokens in `src/app/globals.css`.
 
 ## 4. Typography
 
-Tendnote uses one human-facing sans family. Geist is acceptable for now because it
-is restrained and precise; revisit only if it starts feeling too generic after
-real Phase 1A screens exist. Geist Mono is reserved for machine facts only:
-timestamps, source labels, IDs, confidence, and diagnostic metadata.
+Tendnote is set in the **IBM Plex** superfamily — one voice in three registers,
+wired through `next/font` and the `--font-sans` / `--font-mono` / `--font-display`
+tokens in `globals.css` (never literal family names, which do not match
+`next/font`'s hashed `@font-face` families).
+
+- **IBM Plex Sans** — the human-facing UI type. It carries everything: body,
+  labels, buttons, list rows, and all headings (including dialog, card, and
+  alert-dialog titles via `--font-heading`, which stays `= --font-sans`). Weights
+  400 / 500 / 600.
+- **IBM Plex Serif** — the display serif, and **only** a display serif. It is
+  reserved for true display moments and warms them without turning literary. It
+  appears on exactly four surfaces: the dashboard greeting, the person name at
+  display size, the asset-profile headline, and the auth title — all via the
+  `font-display` utility (`--font-display`), at weight 600, normal tracking. It is
+  **banned** from dense UI: never in buttons, labels, list rows, metadata, or any
+  13px / 11px text. If a surface is not one of those four display headlines, it is
+  sans. Weights 500 / 600 only (serif never renders at body weight).
+- **IBM Plex Mono** — machine facts only: timestamps, source labels, IDs,
+  confidence, and diagnostic metadata. Weights 400 / 500.
+
+### Wordmark lockup
+
+The "Tendnote" wordmark (`components/tendnote-logo.tsx`) is live text, not a
+raster — it sits beside the raster Tended Memory mark. It is set in **IBM Plex
+Sans** (the humanist sans pairs with the heavy rounded mark — **not** the serif),
+weight **600**, tracking **-0.01em**, line-height **1**, in a single ink color
+(`text-foreground`, **not** sage — one branded color per lockup, and the mark
+already carries it). The wordmark is sized so its cap-height reads at roughly
+**55–62%** of the visible mark: **~17px** beside the 28px header mark, **~19px**
+beside the 32px auth mark. These pairings are baked into the component's `size`
+variant (`header` / `auth`); call sites pass a size, not per-instance font styling.
 
 Fixed product scale:
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckIcon, PencilIcon, PenLineIcon, XIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
@@ -8,6 +7,7 @@ import {
   dismissSuggestedFollowupAction,
   editSuggestedFollowupAction,
 } from "@/app/actions/suggested-followups";
+import { CheckIcon, PencilIcon, PenLineIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCreateDraft } from "@/components/use-create-draft";

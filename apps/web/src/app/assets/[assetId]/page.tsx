@@ -14,7 +14,6 @@ import {
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
 import { searchPeople } from "@tendnote/db/queries/people";
 import type { AssetMemory, AssetSnapshotSupportingReferences } from "@tendnote/domain";
-import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
@@ -29,6 +28,7 @@ import { AssetRemove } from "@/components/asset-remove";
 import { ASSET_KIND_ICONS, AssetArchivedBadge } from "@/components/asset-shared";
 import { AssetSnapshotCard, type AssetSnapshotCardProps } from "@/components/asset-snapshot-card";
 import { ActionScopeChip } from "@/components/general-action-shared";
+import { ArrowLeftIcon } from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { toPendingAssetActionProposalView } from "@/lib/asset-action-proposal-view";
@@ -208,7 +208,7 @@ function AssetProfileHeader({ view }: { view: AssetView }) {
         <KindIcon className="size-6" />
       </span>
       <div className="flex min-w-0 flex-col gap-1.5 pt-0.5">
-        <h1 className="text-[length:var(--text-display)] font-semibold leading-[var(--text-display-line)] tracking-normal text-balance">
+        <h1 className="font-display text-[length:var(--text-display)] font-semibold leading-[var(--text-display-line)] tracking-normal text-balance">
           {view.name}
         </h1>
         <p className="text-sm text-muted-foreground">

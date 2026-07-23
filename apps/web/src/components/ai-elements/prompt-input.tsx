@@ -1,7 +1,6 @@
 "use client";
 
 import type { ChatStatus, FileUIPart, SourceDocumentUIPart } from "ai";
-import { CornerDownLeftIcon, ImageIcon, Monitor, PlusIcon, SquareIcon, XIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import type {
   ChangeEvent,
@@ -26,6 +25,14 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  CornerDownLeftIcon,
+  ImageIcon,
+  MonitorIcon,
+  PlusIcon,
+  SquareIcon,
+  XIcon,
+} from "@/components/icons";
 import {
   Command,
   CommandEmpty,
@@ -430,7 +437,7 @@ export const PromptInputActionAddScreenshot = ({
 
   return (
     <DropdownMenuItem {...props} onSelect={handleSelect}>
-      <Monitor className="mr-2 size-4" />
+      <MonitorIcon className="mr-2 size-4" />
       {label}
     </DropdownMenuItem>
   );

@@ -1,8 +1,8 @@
 "use client";
 
 import type { GeneralActionAssetHint } from "@tendnote/domain";
-import { PlusIcon, TagIcon, XIcon } from "lucide-react";
 import { useState } from "react";
+import { PlusIcon, TagIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 

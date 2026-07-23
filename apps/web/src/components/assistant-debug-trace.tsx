@@ -7,8 +7,8 @@
 // developer "Quiet Workbench" surface: mono throughout, on-system status colors.
 
 import type { EveDynamicToolPart, EveMessage } from "eve/react";
-import { CheckIcon, ChevronRightIcon, CopyIcon, TerminalIcon } from "lucide-react";
 import { useState } from "react";
+import { CheckIcon, ChevronRightIcon, CopyIcon, TerminalIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 

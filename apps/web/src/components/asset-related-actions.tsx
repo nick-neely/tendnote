@@ -1,6 +1,6 @@
-import { ArrowUpRightIcon } from "lucide-react";
 import Link from "next/link";
 import { ActionRoutineChip } from "@/components/general-action-shared";
+import { ArrowUpRightIcon } from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import type { AssetRelatedActionView } from "@/lib/asset-related-action-view";
 

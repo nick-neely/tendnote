@@ -1,7 +1,7 @@
 "use client";
 
 import type { MessageDraftPurpose } from "@tendnote/domain";
-import { PenLineIcon } from "lucide-react";
+import { PenLineIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { useCreateDraft } from "@/components/use-create-draft";
 

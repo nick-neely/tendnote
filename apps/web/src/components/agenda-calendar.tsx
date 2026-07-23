@@ -1,15 +1,15 @@
 "use client";
 
-import {
-  ArrowUpRightIcon,
-  CakeIcon,
-  CalendarClockIcon,
-  LockIcon,
-  NotebookPenIcon,
-} from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 import type { DayButton } from "react-day-picker";
+import {
+  ArrowUpRightIcon,
+  CakeIcon,
+  CalendarDotsIcon,
+  LockIcon,
+  NotebookPenIcon,
+} from "@/components/icons";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -37,8 +37,8 @@ type AgendaWindow = { start: string; end: string };
 
 const KIND_ICON = {
   birthday: CakeIcon,
-  due_followup: CalendarClockIcon,
-  suggested_followup: CalendarClockIcon,
+  due_followup: CalendarDotsIcon,
+  suggested_followup: CalendarDotsIcon,
   review_item: NotebookPenIcon,
   recent_context: NotebookPenIcon,
   semantic_context: NotebookPenIcon,

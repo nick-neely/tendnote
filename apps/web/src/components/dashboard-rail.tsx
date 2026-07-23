@@ -1,13 +1,13 @@
 "use client";
 
 import type { Person } from "@tendnote/domain";
-import { ArrowRightIcon, CakeIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { DashboardBriefSection } from "@/components/dashboard-brief-section";
 import { DashboardCalendarSuggestionsSection } from "@/components/dashboard-calendar-suggestions-section";
 import { DashboardFollowupsSection } from "@/components/dashboard-followups-section";
 import { DashboardSuggestedFollowupsSection } from "@/components/dashboard-suggested-followups-section";
+import { ArrowRightIcon, CakeIcon } from "@/components/icons";
 import { ReviewQueueSection } from "@/components/review-queue-section";
 import { TabCount } from "@/components/tab-count";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";

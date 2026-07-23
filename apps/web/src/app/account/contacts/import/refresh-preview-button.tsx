@@ -1,8 +1,8 @@
 "use client";
 
-import { RefreshCwIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { RefreshCwIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 
 /**

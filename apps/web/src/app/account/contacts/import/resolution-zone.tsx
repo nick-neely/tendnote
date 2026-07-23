@@ -4,8 +4,8 @@ import type {
   ContactImportCandidateTarget,
   ContactImportPreviewCandidate,
 } from "@tendnote/db/queries/contacts-import-preview";
-import { TriangleAlertIcon, UsersRoundIcon } from "lucide-react";
 import { useState } from "react";
+import { TriangleAlertIcon, UsersRoundIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 
 type Candidate = ContactImportPreviewCandidate;

@@ -1,6 +1,5 @@
 "use client";
 
-import { PlayIcon } from "lucide-react";
 import {
   archiveGeneralActionAction,
   resumeGeneralActionAction,
@@ -10,6 +9,7 @@ import {
   useActionRowTransition,
 } from "@/components/general-action-row-controls";
 import { ActionRoutineChip } from "@/components/general-action-shared";
+import { PlayIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { GeneralActionView } from "@/lib/general-action-view";

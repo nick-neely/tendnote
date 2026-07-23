@@ -23,7 +23,7 @@ export function PersonHeader({ person }: { person: Person }) {
         {initials(person.displayName)}
       </span>
       <div className="flex min-w-0 flex-col gap-1.5 pt-0.5">
-        <h1 className="text-[length:var(--text-display)] leading-[var(--text-display-line)] font-semibold tracking-normal">
+        <h1 className="font-display text-[length:var(--text-display)] leading-[var(--text-display-line)] font-semibold tracking-normal">
           {person.displayName}
         </h1>
         <p className="text-sm text-muted-foreground">{meta.join(" · ")}</p>

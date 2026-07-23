@@ -5,9 +5,9 @@ import {
   isReviewGeneralActionStatus,
   type SuggestedGeneralActionReviewItemOutput,
 } from "@tendnote/domain";
-import { ArrowUpRightIcon, ListTodoIcon, RepeatIcon } from "lucide-react";
 import Link from "next/link";
 import { Body, Caption, ResultCard } from "@/components/assistant-result-card";
+import { ArrowUpRightIcon, ListTodoIcon, RepeatIcon } from "@/components/icons";
 import { formatLinkedPeople, joinGeneralActionMeta } from "@/lib/eve/general-action-meta";
 import type {
   GeneralActionListItemView,

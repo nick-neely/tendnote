@@ -1,9 +1,9 @@
 "use client";
 
-import { LogOutIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { disableCurrentReminderInstallationAction } from "@/app/actions/reminders";
+import { LogOutIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { signOut } from "@/lib/auth/client";

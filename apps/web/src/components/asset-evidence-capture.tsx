@@ -10,7 +10,6 @@ import {
   assertAssetEvidenceFileAccepted,
 } from "@tendnote/domain";
 import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
-import { CameraIcon, Link2Icon, StickyNoteIcon, UploadIcon, XIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { addAssetEvidenceAction } from "@/app/actions/asset-evidence";
 import { ASSET_EVIDENCE_KIND_ICONS } from "@/components/asset-evidence-shared";
@@ -20,6 +19,7 @@ import {
   AudiencePreview,
   type ShareableActionMember,
 } from "@/components/general-action-visibility-field";
+import { CameraIcon, Link2Icon, StickyNoteIcon, UploadIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {

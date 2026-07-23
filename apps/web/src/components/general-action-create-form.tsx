@@ -2,7 +2,6 @@
 
 import type { GeneralActionRecurrence } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
-import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { createGeneralActionAction } from "@/app/actions/general-actions";
 import { saveReminderAction } from "@/app/actions/reminders";
@@ -32,6 +31,7 @@ import {
   AudiencePreview,
   type ShareableActionMember,
 } from "@/components/general-action-visibility-field";
+import { ChevronDownIcon, PlusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";

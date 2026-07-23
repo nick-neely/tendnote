@@ -1,7 +1,7 @@
 "use client";
 
-import { InfoIcon } from "lucide-react";
 import { Caption } from "@/components/assistant-result-card";
+import { InfoIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 

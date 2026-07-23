@@ -2,7 +2,7 @@
 
 import type { Editor } from "@tiptap/react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { BoldIcon, CheckIcon, ItalicIcon, ListIcon, ListOrderedIcon } from "lucide-react";
+import { BoldIcon, CheckIcon, ItalicIcon, ListIcon, ListOrderedIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { draftEditorExtensions, getEditorMarkdown } from "@/lib/draft-markdown";

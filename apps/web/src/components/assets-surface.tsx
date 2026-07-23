@@ -1,6 +1,5 @@
 "use client";
 
-import { ChevronRightIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -15,6 +14,7 @@ import { AssetSearchPanel, type AssetSearchRunner } from "@/components/asset-sea
 import { AssetArchivedBadge, AssetKindBadge } from "@/components/asset-shared";
 import { ActionScopeChip } from "@/components/general-action-shared";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
+import { ChevronRightIcon } from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

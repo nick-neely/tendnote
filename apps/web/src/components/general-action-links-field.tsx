@@ -1,7 +1,7 @@
 "use client";
 
 import type { GeneralActionLink } from "@tendnote/domain";
-import { LinkIcon, XIcon } from "lucide-react";
+import { LinkIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckIcon, CopyIcon, PencilIcon, RefreshCwIcon, SendIcon, XIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
@@ -15,6 +14,14 @@ import { DraftEditor } from "@/components/draft-editor";
 import { DraftGroundingPopover } from "@/components/draft-grounding-popover";
 import { DraftMessageButton } from "@/components/draft-message-button";
 import { GmailDraftPanel, type PersonEmailOption } from "@/components/gmail-draft-panel";
+import {
+  CheckIcon,
+  CopyIcon,
+  PencilIcon,
+  RefreshCwIcon,
+  SendIcon,
+  XIcon,
+} from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { copyDraftToClipboard } from "@/lib/draft-markdown";
 import type { DraftView } from "@/lib/draft-view";

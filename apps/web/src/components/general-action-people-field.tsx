@@ -1,6 +1,6 @@
 "use client";
 
-import { UserIcon } from "lucide-react";
+import { UserIcon } from "@/components/icons";
 
 /** A person the owner can link to an Action as context. */
 export type ActionPersonOption = { id: string; displayName: string };

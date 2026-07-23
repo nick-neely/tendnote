@@ -24,6 +24,7 @@ import { PwaRegistration } from "@/components/pwa-registration";
 import { ReminderTimeZoneReconciler } from "@/components/reminder-time-zone-reconciler";
 import { StandaloneReminderContinuation } from "@/components/standalone-reminder-continuation";
 import { TendnoteLogo } from "@/components/tendnote-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import type { TodayShortlistHandlers } from "@/components/today-shortlist";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -85,22 +86,29 @@ export function AppShell({
       <ReminderTimeZoneReconciler />
       <header className="sticky top-0 z-10 hidden border-b bg-background/95 backdrop-blur lg:block">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-          <Link className="flex items-center gap-2 font-semibold tracking-normal" href="/">
-            <TendnoteLogo markClassName="size-7" />
+          <Link
+            className="flex w-fit items-center rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            href="/"
+          >
+            <TendnoteLogo size="header" />
           </Link>
-          <nav aria-label="Primary" className="flex items-center gap-1">
-            {appDestinations.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Button asChild key={item.href} variant="ghost">
-                  <Link href={item.href}>
-                    <Icon aria-hidden data-icon="inline-start" />
-                    {item.label}
-                  </Link>
-                </Button>
-              );
-            })}
-          </nav>
+          <div className="flex items-center gap-1">
+            <nav aria-label="Primary" className="flex items-center gap-1">
+              {appDestinations.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Button asChild key={item.href} variant="ghost">
+                    <Link href={item.href}>
+                      <Icon aria-hidden data-icon="inline-start" />
+                      {item.label}
+                    </Link>
+                  </Button>
+                );
+              })}
+            </nav>
+            <Separator className="mx-1 h-5" orientation="vertical" />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 

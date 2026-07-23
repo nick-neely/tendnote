@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { addCapturePersonAction } from "@/app/actions/conversational-capture";
 import {
@@ -8,6 +7,7 @@ import {
   saveSuggestedMemoryAction,
 } from "@/app/actions/memory-review";
 import { AssetReviewGroupCard } from "@/components/asset-review-group-card";
+import { CheckIcon, XIcon } from "@/components/icons";
 import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general-action-review";
 import { Button } from "@/components/ui/button";
 import type { ReviewQueueIdentity, ReviewQueueItem } from "@/lib/review-queue";

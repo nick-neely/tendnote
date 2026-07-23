@@ -1,6 +1,6 @@
-import { ChevronDownIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { CARD_TONE, type CardTone } from "@/components/assistant-result-card";
+import { ChevronDownIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 /**

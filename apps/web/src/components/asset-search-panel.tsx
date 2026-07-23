@@ -1,10 +1,10 @@
 "use client";
 
 import { assetLabelForKind } from "@tendnote/domain";
-import { SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { AssetKindBadge } from "@/components/asset-shared";
+import { SearchIcon } from "@/components/icons";
 import { LedgerEmpty } from "@/components/person-ledger";
 import { Button } from "@/components/ui/button";
 import {

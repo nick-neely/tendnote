@@ -1,6 +1,5 @@
 "use client";
 
-import { ArchiveIcon, CheckIcon, PencilIcon, PlusIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { useState, useTransition } from "react";
 import {
   archiveGeneralActionAreaAction,
@@ -9,6 +8,14 @@ import {
   unarchiveGeneralActionAreaAction,
 } from "@/app/actions/general-action-areas";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import {
+  ArchiveIcon,
+  CheckIcon,
+  PencilIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  XIcon,
+} from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

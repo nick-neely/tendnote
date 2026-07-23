@@ -1,7 +1,6 @@
 "use client";
 
 import { assetHintLabelsMatch } from "@tendnote/domain/general-action-asset-links";
-import { PlusIcon } from "lucide-react";
 import { useState, useTransition } from "react";
 import { promoteAssetHintAction } from "@/app/actions/general-actions";
 import {
@@ -13,6 +12,7 @@ import {
   ErrorText,
   GENERIC_ERROR,
 } from "@/components/general-action-shared";
+import { PlusIcon } from "@/components/icons";
 import { Spinner } from "@/components/ui/spinner";
 import type { GeneralActionView } from "@/lib/general-action-view";
 

@@ -1,6 +1,8 @@
 "use client";
 
 import type { TodayShortlistResponse } from "@tendnote/domain/today";
+import Link from "next/link";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   CornerDownLeftIcon,
   HomeIcon,
@@ -8,9 +10,7 @@ import {
   MenuIcon,
   PlusIcon,
   SearchIcon,
-} from "lucide-react";
-import Link from "next/link";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+} from "@/components/icons";
 import {
   CaptureFlow,
   type CaptureHandlers,

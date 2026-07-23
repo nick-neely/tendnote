@@ -1,17 +1,17 @@
 "use client";
 
+import { useState, useTransition } from "react";
+import {
+  configureDiscordTargetAction,
+  setDiscordDeliveryEnabledAction,
+} from "@/app/actions/integrations";
 import {
   CheckIcon,
   CircleSlashIcon,
   MessageCircleIcon,
   PlugIcon,
   TriangleAlertIcon,
-} from "lucide-react";
-import { useState, useTransition } from "react";
-import {
-  configureDiscordTargetAction,
-  setDiscordDeliveryEnabledAction,
-} from "@/app/actions/integrations";
+} from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

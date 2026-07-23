@@ -1,11 +1,11 @@
 import { listReminderInstallations } from "@tendnote/db/queries/reminders";
-import { CheckIcon } from "lucide-react";
 import { redirect } from "next/navigation";
 import { CalendarPreviewSection } from "@/components/account/calendar-preview-section";
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
 import { ReminderSettings } from "@/components/account/reminder-settings";
 import { AppShell } from "@/components/app-shell";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { CheckIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { localFallbackOwnerUserId } from "@/lib/access/access-state";
 import { resolveAccountView } from "@/lib/access/account-summary";

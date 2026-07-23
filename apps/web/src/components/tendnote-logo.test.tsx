@@ -21,4 +21,24 @@ describe("TendnoteLogo", () => {
     expect(standalone).toContain('aria-label="Tendnote"');
     expect(standalone).toContain('role="img"');
   });
+
+  it("typesets the wordmark in the humanist sans, not the display serif", () => {
+    const html = renderToStaticMarkup(<TendnoteLogo />);
+
+    // The wordmark pairs with the heavy rounded mark: sans, single ink, semibold.
+    expect(html).toContain("font-sans");
+    expect(html).toContain("font-semibold");
+    expect(html).not.toContain("font-display");
+  });
+
+  it("sizes the mark per surface variant", () => {
+    const header = renderToStaticMarkup(<TendnoteLogo size="header" />);
+    const auth = renderToStaticMarkup(<TendnoteLogo size="auth" />);
+
+    // Header pairs a 28px mark with a ~17px wordmark; auth a 32px mark with ~19px.
+    expect(header).toContain("size-7");
+    expect(header).toContain("text-[17px]");
+    expect(auth).toContain("size-8");
+    expect(auth).toContain("text-[19px]");
+  });
 });

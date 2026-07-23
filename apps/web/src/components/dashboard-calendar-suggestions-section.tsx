@@ -1,12 +1,12 @@
 "use client";
 
-import { CalendarRangeIcon, CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   acceptCalendarSuggestedFollowupAction,
   dismissCalendarSuggestedFollowupAction,
 } from "@/app/actions/suggested-followups";
+import { CalendarDotsIcon, CheckIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import type { CalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
 import { useResolvingAction } from "@/lib/use-resolving-action";
@@ -82,7 +82,7 @@ function CalendarSuggestionRow({
           <span className="min-w-0 truncate text-sm font-medium">{displayName}</span>
         )}
         <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-secondary px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-muted-foreground">
-          <CalendarRangeIcon aria-hidden className="size-3" />
+          <CalendarDotsIcon aria-hidden className="size-3" />
           Calendar
         </span>
       </div>

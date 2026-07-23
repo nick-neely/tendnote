@@ -2,21 +2,6 @@
 
 import type { GeneralActionLink, GeneralActionRecurrence } from "@tendnote/domain";
 import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
-import {
-  ArchiveIcon,
-  BellIcon,
-  CheckIcon,
-  ClockIcon,
-  ExternalLinkIcon,
-  HistoryIcon,
-  MoonIcon,
-  MoreHorizontalIcon,
-  PauseIcon,
-  PencilIcon,
-  SkipForwardIcon,
-  UsersIcon,
-  XIcon,
-} from "lucide-react";
 import { useState, useTransition } from "react";
 import {
   archiveGeneralActionAction,
@@ -60,6 +45,21 @@ import {
   AudiencePreview,
   type ShareableActionMember,
 } from "@/components/general-action-visibility-field";
+import {
+  ArchiveIcon,
+  BellIcon,
+  CheckIcon,
+  ClockIcon,
+  ExternalLinkIcon,
+  HistoryIcon,
+  MoonIcon,
+  MoreHorizontalIcon,
+  PauseIcon,
+  PencilIcon,
+  SkipForwardIcon,
+  UsersIcon,
+  XIcon,
+} from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,

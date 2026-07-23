@@ -1,7 +1,7 @@
 "use client";
 
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
-import { EyeIcon } from "lucide-react";
+import { EyeIcon } from "@/components/icons";
 import { VisibilityChoiceControl } from "@/components/visibility-choice-control";
 
 /** A household member an Action can be shared with. */

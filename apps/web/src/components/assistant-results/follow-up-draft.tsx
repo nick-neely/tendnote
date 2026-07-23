@@ -3,8 +3,8 @@ import {
   type DraftProposalToolResult,
   type SuggestedFollowupReviewItemOutput,
 } from "@tendnote/domain";
-import { MessageSquareTextIcon } from "lucide-react";
 import { Body, Caption, ResultCard } from "@/components/assistant-result-card";
+import { MessageSquareTextIcon } from "@/components/icons";
 import type {
   AssistantToolView,
   DraftProposalView,

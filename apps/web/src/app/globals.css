@@ -2,7 +2,10 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* Class-based dark variant (next-themes attribute="class" toggles `.dark` on
+   <html>). `.dark, .dark *` so `dark:` utilities apply to the `.dark` element
+   itself as well as its descendants — matching the shadcn Next.js recipe. */
+@custom-variant dark (&:is(.dark, .dark *));
 
 @theme inline {
   --color-background: var(--background);
@@ -17,8 +20,16 @@
   --color-success-foreground: var(--success-foreground);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
-  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  /* IBM Plex superfamily, wired to the next/font CSS variables set on <html> in
+     layout.tsx. These MUST reference the hashed --font-plex-* vars, not literal
+     family names — a literal "IBM Plex Sans" would not match next/font's hashed
+     @font-face family and would silently fall through to system sans. */
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  /* Display serif — reserved for true display moments only (greeting, person
+     name at display size, auth title). Never dense UI, buttons, or small text. */
+  --font-display: var(--font-plex-serif), Georgia, serif;
+  /* Dialog/card/alert-dialog titles stay SANS, not serif. */
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -59,6 +70,10 @@
 }
 
 :root {
+  /* No-JS / pre-hydration fallback. next-themes (enableColorScheme, default on)
+     also writes `color-scheme` inline on <html> at runtime; these keep native
+     scrollbars and form controls correct even before/without that script. */
+  color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.18 0.018 145);
   --surface: oklch(0.975 0 0);
@@ -132,6 +147,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.09 0 0);
   --foreground: oklch(0.96 0 0);
   --surface: oklch(0.13 0.004 145);
@@ -190,10 +206,6 @@
     @apply bg-background text-foreground;
     font-size: var(--text-body);
     line-height: var(--text-body-line);
-    color-scheme: light;
-  }
-  .dark body {
-    color-scheme: dark;
   }
   html {
     @apply font-sans;

@@ -6,12 +6,13 @@ import type {
   GlobalRecallMatchKind,
   GlobalRecallResponse,
 } from "@tendnote/domain/global-recall";
-import { ArrowLeftIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { appDestinations } from "@/components/app-destinations";
+import { ArrowLeftIcon, SearchIcon } from "@/components/icons";
 import { type CaptureHandlers, MobileCaptureFlow } from "@/components/mobile-capture-flow";
 import { MobileFailureState } from "@/components/mobile-failure-state";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -650,6 +651,10 @@ export function MenuFlow({ onClose }: { onClose: () => void }) {
           );
         })}
       </nav>
+      <div className="mt-2 flex min-h-14 items-center justify-between gap-3 border-t px-5 py-3">
+        <span className="text-base">Appearance</span>
+        <ThemeToggle className="size-9" />
+      </div>
     </FullScreenFlow>
   );
 }
