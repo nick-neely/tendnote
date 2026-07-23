@@ -2,11 +2,20 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { admittedOwnerOrNull } from "@/lib/access/current-access";
 import { getBetterAuthSecret } from "@/lib/auth/server";
+import { discordEnvFromProcess } from "@/lib/auth/social";
+import { syncDiscordGuildCommands } from "@/lib/integrations/discord-commands";
 import {
   DISCORD_INSTALL_STATE_COOKIE,
+  type DiscordInstallCallbackResult,
   evaluateDiscordInstallCallback,
 } from "@/lib/integrations/discord-install";
 import { recordOwnerDiscordInstall } from "@/lib/integrations/discord-install-server";
+
+type DiscordInstallCallbackOutcome = {
+  installed?: string;
+  error?: string;
+  warning?: string;
+};
 
 /**
  * Discord bot-install callback (issue #173). Fail-closed: it records a
@@ -33,12 +42,8 @@ export async function GET(request: Request): Promise<Response> {
     now: Date.now(),
   });
 
-  const outcome =
-    result.status === "ok" ? await recordInstall(result) : { param: "error", value: result.reason };
-
-  const redirectUrl = new URL("/account/discord", request.url);
-  redirectUrl.searchParams.set(outcome.param, outcome.value);
-  const response = NextResponse.redirect(redirectUrl);
+  const outcome = await resolveInstallOutcome(result);
+  const response = NextResponse.redirect(buildInstallRedirectUrl(request.url, outcome));
   // The state is single-use: clear the nonce cookie regardless of outcome.
   response.cookies.delete({
     name: DISCORD_INSTALL_STATE_COOKIE,
@@ -47,19 +52,60 @@ export async function GET(request: Request): Promise<Response> {
   return response;
 }
 
-async function recordInstall(result: {
-  ownerUserId: string;
-  guildId: string;
-  permissions: string | null;
-  scopes: string[];
-}): Promise<{ param: string; value: string }> {
+async function resolveInstallOutcome(
+  result: DiscordInstallCallbackResult,
+): Promise<DiscordInstallCallbackOutcome> {
+  return result.status === "ok" ? recordInstall(result) : { error: result.reason };
+}
+
+async function recordInstall(
+  result: Extract<DiscordInstallCallbackResult, { status: "ok" }>,
+): Promise<DiscordInstallCallbackOutcome> {
   const recorded = await recordOwnerDiscordInstall({
     ownerUserId: result.ownerUserId,
     guildId: result.guildId,
     permissions: result.permissions,
     scopes: result.scopes,
   });
-  return recorded.status === "recorded"
-    ? { param: "installed", value: result.guildId }
-    : { param: "error", value: "missing_identity" };
+  if (recorded.status !== "recorded") {
+    return { error: "missing_identity" };
+  }
+  return registerCommandsForInstall(result.guildId);
+}
+
+async function registerCommandsForInstall(guildId: string): Promise<DiscordInstallCallbackOutcome> {
+  const discord = discordEnvFromProcess();
+  if (!discord.clientId || !discord.clientSecret) {
+    return commandRegistrationWarning(guildId);
+  }
+
+  const commandSync = await syncDiscordGuildCommands({
+    clientId: discord.clientId,
+    clientSecret: discord.clientSecret,
+    guildId,
+  });
+  if (commandSync.status === "failed") {
+    console.error("[tendnote] Discord command registration failed", {
+      guildId,
+      stage: commandSync.stage,
+      httpStatus: commandSync.httpStatus,
+    });
+    return commandRegistrationWarning(guildId);
+  }
+
+  return { installed: guildId };
+}
+
+function commandRegistrationWarning(guildId: string): DiscordInstallCallbackOutcome {
+  return { installed: guildId, warning: "command_registration_failed" };
+}
+
+function buildInstallRedirectUrl(requestUrl: string, outcome: DiscordInstallCallbackOutcome): URL {
+  const redirectUrl = new URL("/account/discord", requestUrl);
+  for (const [key, value] of Object.entries(outcome)) {
+    if (value) {
+      redirectUrl.searchParams.set(key, value);
+    }
+  }
+  return redirectUrl;
 }

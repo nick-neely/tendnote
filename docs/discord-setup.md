@@ -333,8 +333,15 @@ the app.
 
 ## 8. Register slash commands
 
-Register development commands as guild commands first because Discord propagates
-guild commands faster than global commands.
+The hosted install callback automatically synchronizes Tendnote's guild commands
+after recording a successful server install. It uses a short-lived Discord
+client-credentials token with `applications.commands.update`; the bot token stays
+isolated in the agent app. Reinstalling the server is an idempotent retry if Discord
+temporarily rejects command registration.
+
+For local development or operator recovery, register the command manually. Guild
+commands update immediately, which makes them preferable while the shape is still
+changing.
 
 The first Private Capture command aligns with Eve's default Discord prompt
 extraction: a string option named `message`.
@@ -360,8 +367,9 @@ credentials.
 
 - [ ] **Endpoint verification:** Discord accepts the configured
       `/eve/v1/discord` interactions endpoint.
-- [ ] **Command registration:** The `/capture message:<text>` command appears in
-      the test guild.
+- [ ] **Command registration:** After the install callback returns without a
+      command-registration warning, `/capture message:<text>` appears in the test
+      guild. Use the manual §8 command only for local development or recovery.
 
 ### Identity and capture
 
@@ -451,8 +459,8 @@ in Tendnote — Discord is only a nudge.
 - [ ] The production OAuth redirect `<BETTER_AUTH_URL>/api/auth/callback/discord`
       is registered, and connecting Discord from /account persists an identity +
       Connected Provider Connection.
-- [ ] Slash commands are registered for the intended guild or globally after the
-      command shape is stable.
+- [ ] The install callback automatically registers `/capture` in the intended
+      guild; no raw Discord API command is required during normal hosted setup.
 - [ ] Owner resolution rejects unmapped Discord users, and disconnect fails the
       channel closed.
 - [ ] Connected-user capture, HITL clarification, and proactive delivery (with

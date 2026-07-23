@@ -32,26 +32,31 @@ const CALLBACK_ERRORS: Record<DiscordInstallRejectReason | "missing_identity", s
     "Connect your Discord identity on Account first, then add Tendnote to a server.",
 };
 
+const CALLBACK_WARNINGS = {
+  command_registration_failed:
+    "Tendnote is installed, but /capture couldn't be set up just now. Reinstall this server to retry.",
+} as const;
+
 function callbackErrorMessage(error: string): string {
   return Object.hasOwn(CALLBACK_ERRORS, error)
     ? CALLBACK_ERRORS[error as DiscordInstallRejectReason | "missing_identity"]
     : "That install didn't complete. Nothing changed.";
 }
 
+function callbackWarningMessage(warning: string): string {
+  return Object.hasOwn(CALLBACK_WARNINGS, warning)
+    ? CALLBACK_WARNINGS[warning as keyof typeof CALLBACK_WARNINGS]
+    : "Tendnote is installed, but part of its Discord setup needs another try.";
+}
+
 export default async function DiscordDeliveryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ installed?: string; error?: string }>;
+  searchParams: Promise<{ installed?: string; error?: string; warning?: string }>;
 }) {
-  const { installed, error } = await searchParams;
+  const { installed, error, warning } = await searchParams;
   const ownerUserId = await requireAdmittedOwner({ returnTo: "/account/discord" });
-
-  // Inert when Discord OAuth credentials are not configured server-side — there is
-  // nothing to install or configure, so send the owner back to Account.
-  if (!isDiscordConfigured(discordEnvFromProcess())) {
-    redirect("/account");
-  }
-
+  requireDiscordConfiguration();
   const { discordUserId, installs } = await getOwnerDiscordInstalls();
 
   return (
@@ -74,12 +79,36 @@ export default async function DiscordDeliveryPage({
           </div>
         </header>
 
-        {installed ? <InstalledBanner /> : null}
-        {error ? <CallbackErrorBanner error={error} /> : null}
+        <CallbackOutcomeBanners error={error} installed={installed} warning={warning} />
 
         <ServersSection discordUserId={discordUserId} installs={installs} />
       </div>
     </AppShell>
+  );
+}
+
+/** Keep the page inert when there is no server-side Discord OAuth configuration. */
+function requireDiscordConfiguration() {
+  if (!isDiscordConfigured(discordEnvFromProcess())) {
+    redirect("/account");
+  }
+}
+
+function CallbackOutcomeBanners({
+  installed,
+  warning,
+  error,
+}: {
+  installed?: string;
+  warning?: string;
+  error?: string;
+}) {
+  return (
+    <>
+      {installed ? <InstalledBanner /> : null}
+      {warning ? <CallbackWarningBanner warning={warning} /> : null}
+      {error ? <CallbackErrorBanner error={error} /> : null}
+    </>
   );
 }
 
@@ -136,6 +165,21 @@ function InstalledBanner() {
       <CheckIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty">
         Tendnote is installed on this server. Set a delivery channel to start receiving nudges.
+      </p>
+    </section>
+  );
+}
+
+/** Non-fatal warning: the install persisted, but automatic command setup needs a retry. */
+function CallbackWarningBanner({ warning }: { warning: string }) {
+  return (
+    <section
+      className="flex items-start gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3.5 py-3"
+      role="alert"
+    >
+      <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-accent" />
+      <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty text-accent">
+        {callbackWarningMessage(warning)}
       </p>
     </section>
   );
