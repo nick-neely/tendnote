@@ -1,12 +1,9 @@
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
-import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
-import { listSavedItems } from "@tendnote/db/queries/saved-items";
 import { connection } from "next/server";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { SavedItemsSurface } from "@/components/saved-items-surface";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
-import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
-import { toSavedItemView } from "@/lib/saved-item-view";
+import { getCachedActiveSavedItemViews } from "@/lib/cache/asset-views";
 
 export default function SavedItemsPage() {
   return (
@@ -19,10 +16,10 @@ export default function SavedItemsPage() {
 async function SavedItemsContent() {
   if (process.env.NODE_ENV !== "test") await connection();
   const ownerUserId = await requireAdmittedOwner({ returnTo: "/saved-items" });
-  const [items, shareableMembers, reminderSchedules] = await Promise.all([
-    listSavedItems({ callerUserId: ownerUserId, includeArchived: true }),
+  const now = new Date();
+  const [items, shareableMembers] = await Promise.all([
+    getCachedActiveSavedItemViews({ callerUserId: ownerUserId, now }),
     listShareableHouseholdMembersForUser({ userId: ownerUserId }),
-    listReminderSchedulesForOwner({ ownerUserId }),
   ]);
 
   return (
@@ -37,16 +34,7 @@ async function SavedItemsContent() {
       </header>
 
       <SavedItemsSurface
-        items={items.map((item) => {
-          const schedule = reminderSchedules.find(
-            (candidate) => candidate.recordKind === "saved_item" && candidate.recordId === item.id,
-          );
-          return toSavedItemView(
-            item,
-            new Date(),
-            schedule ? toReminderScheduleView(schedule, "instant") : null,
-          );
-        })}
+        items={items}
         shareableMembers={shareableMembers.map((member) => ({
           userId: member.userId,
           name: member.name,

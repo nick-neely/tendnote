@@ -22,6 +22,9 @@ export const actionCacheContract = {
   entity(ownerUserId: string, actionId: string) {
     return `action:owner:${ownerUserId}:action:${actionId}`;
   },
+  linkedAsset(assetId: string) {
+    return `action:linked-asset:${assetId}`;
+  },
 };
 
 /** A bounded active projection plus its linked Asset labels for Action Today. */
@@ -68,6 +71,9 @@ async function cachedActionTodayViews(ownerUserId: string, refreshedAt: number) 
   const now = new Date(refreshedAt);
   return active.map((action) => {
     cacheTag(actionCacheContract.entity(ownerUserId, action.id));
+    for (const linkedAsset of linkedAssetsByAction[action.id] ?? []) {
+      cacheTag(actionCacheContract.linkedAsset(linkedAsset.asset.id));
+    }
     return {
       action: { status: action.status, dueAt: action.dueAt, deferUntil: action.deferUntil },
       view: toGeneralActionView(action, {
@@ -91,6 +97,9 @@ async function cachedActionActiveViews(ownerUserId: string, refreshedAt: number)
   const now = new Date(refreshedAt);
   return active.map((action) => {
     cacheTag(actionCacheContract.entity(ownerUserId, action.id));
+    for (const linkedAsset of linkedAssetsByAction[action.id] ?? []) {
+      cacheTag(actionCacheContract.linkedAsset(linkedAsset.asset.id));
+    }
     return toGeneralActionView(action, {
       now,
       callerUserId: ownerUserId,
@@ -133,6 +142,9 @@ async function cachedActionLedgerViews(
   );
   const toView = (action: (typeof all)[number]) => {
     cacheTag(actionCacheContract.entity(ownerUserId, action.id));
+    for (const linkedAsset of linkedAssetsByAction[action.id] ?? []) {
+      cacheTag(actionCacheContract.linkedAsset(linkedAsset.asset.id));
+    }
     return toGeneralActionView(action, {
       now,
       callerUserId: ownerUserId,

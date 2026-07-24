@@ -3,17 +3,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   createSavedItem,
   deleteUniqueSavedItemSource,
+  getSavedItem,
   promoteSavedItemToGeneralAction,
   invalidateActionMutation,
   revalidatePath,
   resolveScopeForCaller,
+  updateTag,
 } = vi.hoisted(() => ({
   createSavedItem: vi.fn(),
   deleteUniqueSavedItemSource: vi.fn(),
+  getSavedItem: vi.fn(),
   promoteSavedItemToGeneralAction: vi.fn(),
   invalidateActionMutation: vi.fn(),
   revalidatePath: vi.fn(),
   resolveScopeForCaller: vi.fn(),
+  updateTag: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/saved-items", () => ({
@@ -23,10 +27,13 @@ vi.mock("@tendnote/db/queries/saved-items", () => ({
   archiveSavedItem: vi.fn(),
   editSavedItem: vi.fn(),
   getSavedItemSourceDeletionImpact: vi.fn(),
+  getSavedItem,
   reopenSavedItem: vi.fn(),
   resolveSavedItem: vi.fn(),
+  listSavedItems: vi.fn(),
 }));
-vi.mock("next/cache", () => ({ revalidatePath }));
+vi.mock("@tendnote/db/queries/reminders", () => ({ listReminderSchedulesForOwner: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
 }));
@@ -63,6 +70,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resolveScopeForCaller.mockResolvedValue({ scope: "private", householdId: null });
   createSavedItem.mockResolvedValue(ITEM);
+  getSavedItem.mockResolvedValue(ITEM);
   promoteSavedItemToGeneralAction.mockResolvedValue(ITEM);
 });
 

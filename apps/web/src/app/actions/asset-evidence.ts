@@ -18,7 +18,6 @@ import {
   visibilityChoiceSchema,
   visibilityLabelForScope,
 } from "@tendnote/domain/privacy";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import type { EvidenceDestination } from "@/lib/asset-evidence-destination";
@@ -28,6 +27,7 @@ import {
   toAssetEvidenceView,
 } from "@/lib/asset-evidence-view";
 import { runAssetsMutation } from "@/lib/asset-mutation";
+import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
 
 /**
  * The shared Asset Evidence Capture server actions (#200): one thin layer over
@@ -160,7 +160,15 @@ export async function addAssetEvidenceAction(
       const file = await readUploadedFile(formData);
       return addAssetEvidence(toCaptureInput(ownerUserId, target, fields, file));
     },
-    (evidence) => toAssetEvidenceView(evidence, { callerUserId: ownerUserId }),
+    (evidence) => {
+      updateAssetMutationScopes(
+        assetMutationScopes.forAssetIds({
+          callerUserId: ownerUserId,
+          assetIds: [evidence.assetId],
+        }),
+      );
+      return toAssetEvidenceView(evidence, { callerUserId: ownerUserId });
+    },
   );
 }
 
@@ -207,14 +215,20 @@ export async function addAssetEvidenceToNewAssetAction(
         asset: { name: asset.assetName, kind: asset.assetKind },
         ...evidenceFields,
       });
-      // A new proposal lands in the Review Queue on the dashboard rail too.
-      revalidatePath("/");
       return result;
     },
-    ({ evidence, group }) => ({
-      evidence: toAssetEvidenceView(evidence, { callerUserId: ownerUserId }),
-      assetName: group.asset.name,
-    }),
+    ({ evidence, group }) => {
+      updateAssetMutationScopes(
+        assetMutationScopes.forAssetIds({
+          callerUserId: ownerUserId,
+          assetIds: [evidence.assetId, group.asset.id],
+        }),
+      );
+      return {
+        evidence: toAssetEvidenceView(evidence, { callerUserId: ownerUserId }),
+        assetName: group.asset.name,
+      };
+    },
   );
 }
 
@@ -258,9 +272,17 @@ export async function removeAssetEvidenceAction(input: {
   return runAssetsMutation(
     async () => {
       const parsed = z.object({ evidenceId: z.uuid() }).parse(input);
-      await removeAssetEvidence({ actorUserId: ownerUserId, evidenceId: parsed.evidenceId });
-      return parsed;
+      const evidence = await removeAssetEvidence({
+        actorUserId: ownerUserId,
+        evidenceId: parsed.evidenceId,
+      });
+      return { evidenceId: parsed.evidenceId, assetId: evidence.assetId };
     },
-    (parsed) => ({ evidenceId: parsed.evidenceId }),
+    (parsed) => {
+      updateAssetMutationScopes(
+        assetMutationScopes.forAssetIds({ callerUserId: ownerUserId, assetIds: [parsed.assetId] }),
+      );
+      return { evidenceId: parsed.evidenceId };
+    },
   );
 }

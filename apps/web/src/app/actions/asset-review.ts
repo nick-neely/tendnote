@@ -13,11 +13,11 @@ import {
 } from "@tendnote/db/queries/assets";
 import type { AssetEdit, AssetMemoryEdit } from "@tendnote/domain";
 import { assetEditSchema, assetMemoryEditSchema } from "@tendnote/domain";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { toAssetReviewGroupViewWithOrigin } from "@/lib/asset-review-origin";
 import type { AssetReviewGroupView } from "@/lib/asset-review-view";
+import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
 import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
 
 const groupIdSchema = z.object({ groupId: z.uuid() });
@@ -38,7 +38,13 @@ function revalidateAndView(
   result: AssetReviewGroupResult,
 ): Promise<AssetReviewGroupView> {
   invalidateReviewOwner(ownerUserId);
-  revalidatePath("/assets");
+  updateAssetMutationScopes(
+    assetMutationScopes.forAsset({
+      callerUserId: ownerUserId,
+      assetId: result.asset.id,
+      householdId: result.asset.householdId,
+    }),
+  );
   return toAssetReviewGroupViewWithOrigin(result);
 }
 

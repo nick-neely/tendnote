@@ -212,7 +212,7 @@ async function acceptSuggestedAssetLink(
 async function dismissSuggestedAssetLink(
   store: AssetContextLinkStore,
   input: AssetLinkActionInput,
-): Promise<void> {
+): Promise<AssetLink> {
   const link = await requireSuggestedLink(store, input);
   await store.updateAssetLink({
     ownerUserId: link.ownerUserId,
@@ -228,6 +228,7 @@ async function dismissSuggestedAssetLink(
       detail: { linkId: link.id, toAssetId: link.toAssetId, relation: link.relation },
     });
   }
+  return link;
 }
 
 /**
@@ -325,7 +326,7 @@ async function requireOwnedLink(
 async function removeAssetLink(
   store: AssetContextLinkStore,
   input: AssetLinkActionInput,
-): Promise<void> {
+): Promise<AssetLink> {
   const link = await requireOwnedLink(store, input);
   await store.deleteAssetLink({ ownerUserId: link.ownerUserId, linkId: link.id });
   const fromAsset = await loadAnchor(store, input.actorUserId, link.fromAssetId);
@@ -337,6 +338,7 @@ async function removeAssetLink(
       detail: { linkId: link.id, toAssetId: link.toAssetId, relation: link.relation },
     });
   }
+  return link;
 }
 
 /**
@@ -421,7 +423,7 @@ export async function listAssetPersonLinks(
 async function removeAssetPersonLink(
   store: AssetContextLinkStore,
   input: AssetLinkActionInput,
-): Promise<void> {
+): Promise<AssetPersonLink> {
   const link = await store.getAssetPersonLink({
     ownerUserId: input.actorUserId,
     linkId: input.linkId,
@@ -439,6 +441,7 @@ async function removeAssetPersonLink(
       detail: { linkId: link.id, personId: link.personId, relation: link.relation },
     });
   }
+  return link;
 }
 
 /**

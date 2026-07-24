@@ -1,11 +1,14 @@
 "use server";
 
+import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import {
   archiveSavedItem,
   createSavedItem,
   deleteUniqueSavedItemSource,
   editSavedItem,
+  getSavedItem,
   getSavedItemSourceDeletionImpact,
+  listSavedItems,
   promoteSavedItemToGeneralAction,
   reopenSavedItem,
   resolveSavedItem,
@@ -16,10 +19,11 @@ import {
   savedItemResolutionReasonSchema,
 } from "@tendnote/domain";
 import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
+import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
+import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
 import { type SavedItemMutationResult, toSavedItemView } from "@/lib/saved-item-view";
 
@@ -64,11 +68,19 @@ function userSafeError(error: unknown): string | null {
 }
 
 async function runMutation(
+  callerUserId: string,
   run: () => Promise<Parameters<typeof toSavedItemView>[0]>,
 ): Promise<SavedItemMutationResult> {
   try {
     const item = await run();
-    revalidatePath("/saved-items");
+    updateAssetMutationScopes(
+      assetMutationScopes.forSavedItem({
+        callerUserId,
+        savedItemId: item.id,
+        householdId: item.householdId,
+        sharedWithUserIds: item.sharedWithUserIds,
+      }),
+    );
     return { ok: true, view: toSavedItemView(item) };
   } catch (error) {
     const message = userSafeError(error);
@@ -87,7 +99,7 @@ export async function createSavedItemAction(input: {
   selectedUserIds?: string[];
 }): Promise<SavedItemMutationResult> {
   const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(async () => {
+  return runMutation(ownerUserId, async () => {
     const parsed = createSchema.parse(input);
     const { scope, householdId } = await resolveScopeForCaller(
       ownerUserId,
@@ -117,7 +129,7 @@ export async function editSavedItemAction(input: {
   bringBackAt?: string | null;
 }): Promise<SavedItemMutationResult> {
   const actorUserId = await requireAdmittedOwnerForAction();
-  return runMutation(async () => {
+  return runMutation(actorUserId, async () => {
     const parsed = editSchema.parse(input);
     return editSavedItem({
       actorUserId,
@@ -141,21 +153,21 @@ export async function editSavedItemAction(input: {
 
 export async function archiveSavedItemAction(input: { savedItemId: string }) {
   const actorUserId = await requireAdmittedOwnerForAction();
-  return runMutation(() =>
+  return runMutation(actorUserId, () =>
     archiveSavedItem({ actorUserId, savedItemId: savedItemIdSchema.parse(input).savedItemId }),
   );
 }
 
 export async function reopenSavedItemAction(input: { savedItemId: string }) {
   const actorUserId = await requireAdmittedOwnerForAction();
-  return runMutation(() =>
+  return runMutation(actorUserId, () =>
     reopenSavedItem({ actorUserId, savedItemId: savedItemIdSchema.parse(input).savedItemId }),
   );
 }
 
 export async function resolveSavedItemAction(input: { savedItemId: string; reason: string }) {
   const actorUserId = await requireAdmittedOwnerForAction();
-  return runMutation(() =>
+  return runMutation(actorUserId, () =>
     resolveSavedItem({
       actorUserId,
       savedItemId: savedItemIdSchema.parse(input).savedItemId,
@@ -169,7 +181,7 @@ export async function promoteSavedItemToGeneralActionAction(input: {
   title?: string;
 }) {
   const actorUserId = await requireAdmittedOwnerForAction();
-  const result = await runMutation(() => {
+  const result = await runMutation(actorUserId, () => {
     const { savedItemId } = savedItemIdSchema.parse(input);
     return promoteSavedItemToGeneralAction({
       actorUserId,
@@ -203,7 +215,40 @@ export async function getSavedItemSourceDeletionImpactAction(input: { sourceReco
 export async function deleteUniqueSavedItemSourceAction(input: { savedItemId: string }) {
   const actorUserId = await requireAdmittedOwnerForAction();
   const { savedItemId } = savedItemIdSchema.parse(input);
+  const item = await getSavedItem({ callerUserId: actorUserId, savedItemId });
   const deleted = await deleteUniqueSavedItemSource({ actorUserId, savedItemId });
-  revalidatePath("/saved-items");
+  updateAssetMutationScopes(
+    assetMutationScopes.forSavedItem({
+      callerUserId: actorUserId,
+      savedItemId,
+      householdId: item?.householdId,
+      sharedWithUserIds: item?.sharedWithUserIds,
+    }),
+  );
   return deleted;
+}
+
+/** Archived Saved Items are quiet secondary history, read only when the owner opens it. */
+export async function getArchivedSavedItemViewsAction() {
+  const callerUserId = await requireAdmittedOwnerForAction();
+  const [items, schedules] = await Promise.all([
+    listSavedItems({ callerUserId, includeArchived: true }),
+    listReminderSchedulesForOwner({ ownerUserId: callerUserId }),
+  ]);
+  const scheduleByItemId = new Map(
+    schedules
+      .filter((schedule) => schedule.recordKind === "saved_item")
+      .map((schedule) => [schedule.recordId, schedule]),
+  );
+  const now = new Date();
+  return items
+    .filter((item) => item.status === "archived")
+    .map((item) => {
+      const schedule = scheduleByItemId.get(item.id);
+      return toSavedItemView(
+        item,
+        now,
+        schedule ? toReminderScheduleView(schedule, "instant") : null,
+      );
+    });
 }

@@ -1,11 +1,10 @@
-import { browseAssets } from "@tendnote/db/queries/assets";
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
 import { connection } from "next/server";
 import { browseAssetsAction, searchAssetsAction } from "@/app/actions/assets";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { AssetsSurface } from "@/components/assets-surface";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
-import { toAssetBrowseView } from "@/lib/asset-view";
+import { getCachedDefaultAssetViews } from "@/lib/cache/asset-views";
 
 export default function AssetsPage() {
   return (
@@ -20,10 +19,10 @@ async function AssetsContent() {
   const ownerUserId = await requireAdmittedOwner({ returnTo: "/assets" });
   const now = new Date();
 
-  // All lifecycle states load together: the surface defaults to Active and keeps
-  // archived assets one calm filter chip away rather than a separate fetch.
+  // The default Active ledger is cached; archival, filtering, and pagination stay
+  // server-backed after explicit interaction so this common path remains bounded.
   const [page, shareableMembers] = await Promise.all([
-    browseAssets({ callerUserId: ownerUserId, statuses: ["active"] }),
+    getCachedDefaultAssetViews({ callerUserId: ownerUserId, now }),
     // Members the owner can share an Asset with — drives the visibility control.
     // Empty (no household) keeps the surface single-user and private-only.
     listShareableHouseholdMembersForUser({ userId: ownerUserId }),
@@ -44,9 +43,7 @@ async function AssetsContent() {
       <AssetsSurface
         browse={browseAssetsAction}
         search={searchAssetsAction}
-        assets={page.items.map((item) =>
-          toAssetBrowseView(item, { callerUserId: ownerUserId, now }),
-        )}
+        assets={page.assets}
         nextOffset={page.nextOffset}
         reviewCount={page.reviewCount}
         shareableMembers={shareableMembers.map((member) => ({
