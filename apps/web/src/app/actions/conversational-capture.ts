@@ -19,6 +19,7 @@ import { reminderScheduleChoiceSchema } from "@tendnote/domain/reminders";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 
 const submitSchema = z
@@ -118,8 +119,13 @@ export async function addCapturePersonAction(input: z.input<typeof addPersonSche
     role: "primary",
     ...(unresolvedMentionId ? { unresolvedMentionId } : {}),
   });
-  revalidatePath("/people");
-  return { displayName: person.displayName };
+  const affectedScopes = invalidatePersonMutation({ ownerUserId, personId: person.id });
+  return {
+    displayName: person.displayName,
+    personId: person.id,
+    affectedScopes,
+    revision: person.updatedAt?.toISOString?.() ?? `created:${person.id}`,
+  };
 }
 
 export async function captureExplicitOutcomeAction(input: z.input<typeof submitSchema>) {

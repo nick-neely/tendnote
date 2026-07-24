@@ -1,4 +1,4 @@
-import type { Person } from "@tendnote/domain";
+import type { PersonDetailCoreView } from "@tendnote/db/queries/people";
 import { initials } from "@/lib/dashboard-brief";
 import { formatBirthday, titleCase } from "@/lib/person-format";
 
@@ -7,7 +7,7 @@ import { formatBirthday, titleCase } from "@/lib/person-format";
  * actually recall about them — not a stack of badges. Relationship and birthday
  * travel as quiet metadata, never as controls.
  */
-export function PersonHeader({ person }: { person: Person }) {
+export function PersonHeader({ person }: { person: PersonDetailCoreView["person"] }) {
   const meta = [titleCase(person.relationshipType)];
 
   if (person.birthday) {

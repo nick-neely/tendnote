@@ -9,9 +9,9 @@ import {
   markDraftSentManually,
   regenerateDraft,
 } from "@tendnote/db/queries/drafts";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
 import { type DraftView, toDraftView } from "@/lib/draft-view";
 
 const draftActionSchema = z.object({ draftId: z.uuid() });
@@ -28,7 +28,7 @@ export async function approveDraftAction(input: { draftId: string }): Promise<Dr
   const ownerUserId = await requireAdmittedOwnerForAction();
   const draft = await approveDraft({ ownerUserId, draftId });
 
-  revalidatePath(`/people/${draft.personId}`);
+  invalidatePersonMutation({ ownerUserId, personId: draft.personId });
   return toDraftView(draft);
 }
 
@@ -37,7 +37,7 @@ export async function dismissDraftAction(input: { draftId: string }): Promise<Dr
   const ownerUserId = await requireAdmittedOwnerForAction();
   const draft = await dismissDraft({ ownerUserId, draftId });
 
-  revalidatePath(`/people/${draft.personId}`);
+  invalidatePersonMutation({ ownerUserId, personId: draft.personId });
   return toDraftView(draft);
 }
 
@@ -51,7 +51,7 @@ export async function markDraftSentManuallyAction(input: { draftId: string }): P
   const ownerUserId = await requireAdmittedOwnerForAction();
   const draft = await markDraftSentManually({ ownerUserId, draftId });
 
-  revalidatePath(`/people/${draft.personId}`);
+  invalidatePersonMutation({ ownerUserId, personId: draft.personId });
   return toDraftView(draft);
 }
 
@@ -64,7 +64,7 @@ export async function editDraftBodyAction(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const draft = await editDraftBody({ ownerUserId, draftId, body });
 
-  revalidatePath(`/people/${draft.personId}`);
+  invalidatePersonMutation({ ownerUserId, personId: draft.personId });
   return toDraftView(draft);
 }
 
@@ -101,7 +101,7 @@ export async function regenerateDraftAction(input: {
   const outcome = await regenerateDraft({ ownerUserId, draftId });
 
   if (outcome.status === "created") {
-    revalidatePath(`/people/${outcome.draft.personId}`);
+    invalidatePersonMutation({ ownerUserId, personId: outcome.draft.personId });
     return { outcome: outcome.status, draft: toDraftView(outcome.draft) };
   }
 

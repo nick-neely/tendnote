@@ -1,8 +1,9 @@
 "use server";
 
 import type { GmailDraftActionOutcome } from "@tendnote/db/queries/gmail-drafts";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
 import { type GmailDraftView, toGmailDraftView } from "@/lib/gmail-draft-view";
 import {
   createOwnerGmailDraft,
@@ -48,15 +49,16 @@ export type GmailDraftActionResult =
   | { status: "succeeded" | "failed"; view: GmailDraftView }
   | { status: "blocked"; reason: string };
 
-function toResult(
+async function toResult(
   outcome: GmailDraftActionOutcome,
   personId: string | null,
-): GmailDraftActionResult {
+): Promise<GmailDraftActionResult> {
   if (outcome.status === "blocked") {
     return { status: "blocked", reason: outcome.reason };
   }
   if (personId) {
-    revalidatePath(`/people/${personId}`);
+    const ownerUserId = await requireAdmittedOwnerForAction();
+    invalidatePersonMutation({ ownerUserId, personId });
   }
   return { status: outcome.status, view: toGmailDraftView(outcome.action) };
 }

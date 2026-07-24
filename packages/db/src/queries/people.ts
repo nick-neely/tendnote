@@ -1,4 +1,5 @@
 import { createDrizzlePeopleStore } from "./people/drizzle-store";
+import { createPeopleProductQueries } from "./people/product-views";
 import { createPeopleQueries } from "./people/queries";
 import type {
   CreatePersonMutationInput,
@@ -12,10 +13,16 @@ import type {
 
 export { createDrizzlePeopleStore } from "./people/drizzle-store";
 export { createInMemoryPeopleStore } from "./people/in-memory-store";
+export type {
+  PeopleListItemView,
+  PersonDetailCoreView,
+} from "./people/product-views";
+export { createPeopleProductQueries } from "./people/product-views";
 export { createPeopleQueries } from "./people/queries";
 export type * from "./people/types";
 
 const defaultPeopleQueries = createPeopleQueries(createDrizzlePeopleStore());
+const defaultPeopleProductQueries = createPeopleProductQueries(createDrizzlePeopleStore());
 
 export async function createPerson(input: CreatePersonMutationInput) {
   return defaultPeopleQueries.createPerson(input);
@@ -47,4 +54,12 @@ export async function getPerson(input: GetPersonInput) {
 
 export async function getPersonProfile(input: GetPersonProfileInput) {
   return defaultPeopleQueries.getPersonProfile(input);
+}
+
+export async function listPeopleProductView(input: { ownerUserId: string; limit: number }) {
+  return defaultPeopleProductQueries.list(input);
+}
+
+export async function getPersonDetailCoreView(input: GetPersonProfileInput) {
+  return defaultPeopleProductQueries.detail(input);
 }

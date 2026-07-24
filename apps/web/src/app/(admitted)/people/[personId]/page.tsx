@@ -1,24 +1,27 @@
 import { listPersonEmailContactMethods } from "@tendnote/db/queries/contact-methods";
 import { getPersonContextSnapshot } from "@tendnote/db/queries/context-snapshots";
 import { listDraftsForPerson } from "@tendnote/db/queries/drafts";
-import { listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
+import {
+  listFollowupsForPerson,
+  listSuggestedFollowupReviews,
+} from "@tendnote/db/queries/followups";
 import { listGmailDraftActionsForDraft } from "@tendnote/db/queries/gmail-drafts";
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
-import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
-import { getPersonProfile } from "@tendnote/db/queries/people";
+import { listPersonMemoryContext, listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
+import { getPerson, getPersonProfile } from "@tendnote/db/queries/people";
 import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-connections";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
+import { listSourceRecordsForPersonContext } from "@tendnote/db/queries/source-records";
 import {
   canUseMemoryProactively,
   canUseSourceRecordProactively,
   GMAIL_CAPABILITY_KEY,
   GMAIL_PROVIDER_KEY,
   isActiveFollowupStatus,
-  type Memory,
-  type SourceRecord,
 } from "@tendnote/domain";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
+import { Suspense } from "react";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { BirthdayFollowupOffer } from "@/components/birthday-followup-offer";
 import { PersonCapture } from "@/components/person-capture";
@@ -38,6 +41,7 @@ import { SuggestedFollowupReviewSection } from "@/components/suggested-followup-
 import { SuggestedMemoryReviewSection } from "@/components/suggested-memory-review";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { appReturnTo } from "@/lib/auth/return-to";
+import { getCachedPersonDetailCore } from "@/lib/cache/people-views";
 import { shortName } from "@/lib/dashboard-brief";
 import { type DraftView, toDraftView } from "@/lib/draft-view";
 import { toDateInputValue, toFollowupView } from "@/lib/followup-view";
@@ -55,13 +59,6 @@ import {
   type SuggestedMemoryReviewView,
   toSuggestedMemoryReviewView,
 } from "@/lib/suggested-memory-review-view";
-
-type PersonProfile = NonNullable<Awaited<ReturnType<typeof getPersonProfile>>>;
-
-type TrustAwareContext = {
-  approvedMemories: Memory[];
-  sourceRecords: SourceRecord[];
-};
 
 async function loadSuggestedReviews(
   ownerUserId: string,
@@ -153,47 +150,26 @@ async function loadGmailDraftContext(
   }
 }
 
-type ProfileContext = TrustAwareContext & {
-  snapshot: RelationshipSnapshotView | null;
-};
-
-function fallbackContext(profile: PersonProfile): ProfileContext {
-  return {
-    snapshot: null,
-    approvedMemories: profile.memories.filter((memory) => canUseMemoryProactively(memory)),
-    sourceRecords: profile.sourceRecords.filter((sourceRecord) =>
-      canUseSourceRecordProactively(sourceRecord),
-    ),
-  };
-}
-
 /**
  * Loads the profile's relationship snapshot and trust-aware context through the
- * single shared snapshot-backed read path (PRD #11), so the card and the
- * Memories/Logged-context sections agree and apply the same trust rules. If the
- * store is unavailable, it falls back to the profile data filtered
- * through the same domain policy helpers, and the card steps aside (ADR 0009).
+ * single shared snapshot-backed read path (PRD #11). If the optional store is
+ * unavailable, the card steps aside without delaying the selected pane.
  */
 async function loadProfileContext(
   ownerUserId: string,
   personId: string,
-  profile: PersonProfile,
-): Promise<ProfileContext> {
+): Promise<RelationshipSnapshotView | null> {
   try {
     const result = await getPersonContextSnapshot({ ownerUserId, personId });
 
     if (result.context.person) {
-      return {
-        snapshot: toRelationshipSnapshotView(result),
-        approvedMemories: result.context.approvedMemories,
-        sourceRecords: result.context.sourceRecords,
-      };
+      return toRelationshipSnapshotView(result);
     }
   } catch {
     // Fall through to the policy-filtered profile data below.
   }
 
-  return fallbackContext(profile);
+  return null;
 }
 
 // fallow-ignore-next-line complexity -- The server page composes the complete owner-scoped profile read model.
@@ -201,6 +177,19 @@ type PersonDetailPageProps = {
   params: Promise<{ personId: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type AdmittedPersonRequest = {
+  ownerUserId: string;
+  personId: string;
+};
+
+function selectedPersonTab(query: Record<string, string | string[] | undefined>): PersonTab {
+  const tab = query.tab;
+  return typeof tab === "string" &&
+    ["snapshot", "review", "memory", "followups", "drafts"].includes(tab)
+    ? (tab as PersonTab)
+    : "memory";
+}
 
 export default function PersonDetailPage(props: PersonDetailPageProps) {
   return (
@@ -221,40 +210,91 @@ async function PersonDetailContent({ params, searchParams }: PersonDetailPagePro
   const ownerUserId = await requireAdmittedOwner({
     returnTo: appReturnTo(`/people/${encodeURIComponent(personId)}`, query),
   });
+  const selectedTab = selectedPersonTab(query ?? {});
+  const core = await getCachedPersonDetailCore({ ownerUserId, personId });
+  if (!core) notFound();
+
+  return (
+    <>
+      <div className="flex flex-col gap-4">
+        <PersonHeader person={core.person} />
+        <dl className="grid grid-cols-3 gap-3 rounded-xl border bg-surface p-4 text-center text-sm">
+          <div>
+            <dt className="text-muted-foreground">Memories</dt>
+            <dd className="mt-1 font-medium">{core.counts.memories}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Follow-ups</dt>
+            <dd className="mt-1 font-medium">{core.counts.followups}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Context</dt>
+            <dd className="mt-1 font-medium">{core.counts.sourceRecords}</dd>
+          </div>
+        </dl>
+      </div>
+      <Suspense fallback={<div className="h-72 animate-pulse rounded-xl border bg-muted/40" />}>
+        <PersonDetailEnrichment request={{ ownerUserId, personId }} selectedTab={selectedTab} />
+      </Suspense>
+    </>
+  );
+}
+
+async function PersonDetailEnrichment({
+  request,
+  selectedTab,
+}: {
+  request: AdmittedPersonRequest;
+  selectedTab: PersonTab;
+}) {
+  const { ownerUserId, personId } = request;
+  let person = await getPerson({ ownerUserId, personId });
+  // Shared follow-ups can reveal the minimal person detail to a household
+  // viewer. That exceptional visibility branch stays request-bound; owner
+  // pages use the focused pane reads below.
+  if (!person) {
+    person = (await getPersonProfile({ ownerUserId, personId }))?.person ?? null;
+  }
+  if (!person) {
+    notFound();
+  }
+
   const [
-    profile,
+    memoryContext,
+    sourceRecords,
+    snapshot,
     suggestedReviews,
     suggestedFollowupReviews,
     drafts,
     shareableMembers,
     reminderSchedules,
+    followups,
   ] = await Promise.all([
-    getPersonProfile({ ownerUserId, personId }),
-    loadSuggestedReviews(ownerUserId, personId),
-    loadSuggestedFollowupReviews(ownerUserId, personId),
-    loadDrafts(ownerUserId, personId),
-    listShareableHouseholdMembersForUser({ userId: ownerUserId }),
-    listReminderSchedulesForOwner({ ownerUserId }),
+    selectedTab === "memory" ? listPersonMemoryContext({ ownerUserId, personId }) : null,
+    selectedTab === "memory" ? listSourceRecordsForPersonContext({ ownerUserId, personId }) : [],
+    selectedTab === "snapshot" ? loadProfileContext(ownerUserId, personId) : null,
+    selectedTab === "review" ? loadSuggestedReviews(ownerUserId, personId) : [],
+    selectedTab === "followups" ? loadSuggestedFollowupReviews(ownerUserId, personId) : [],
+    selectedTab === "drafts" ? loadDrafts(ownerUserId, personId) : [],
+    selectedTab === "followups"
+      ? listShareableHouseholdMembersForUser({ userId: ownerUserId })
+      : [],
+    selectedTab === "followups" ? listReminderSchedulesForOwner({ ownerUserId }) : [],
+    selectedTab === "followups" ? listFollowupsForPerson({ ownerUserId, personId }) : [],
   ]);
 
-  if (!profile) {
-    notFound();
-  }
-
-  const { snapshot, approvedMemories, sourceRecords } = await loadProfileContext(
-    ownerUserId,
-    personId,
-    profile,
+  const approvedMemories = (memoryContext?.memories ?? []).filter((memory) =>
+    canUseMemoryProactively(memory),
   );
-  const { person } = profile;
+  const trustedSourceRecords = sourceRecords.filter((sourceRecord) =>
+    canUseSourceRecordProactively(sourceRecord),
+  );
   const firstName = shortName(person);
-  const gmail = await loadGmailDraftContext(ownerUserId, personId, person.displayName, drafts);
-
   // Active reminders (open/snoozed) lead the section; recently resolved ones stay
   // reachable for reopen. Suggested follow-ups are never shown as active here —
   // they live in review surfaces until accepted (#47/#48).
   const now = new Date();
-  const activeFollowups = profile.followups
+  const activeFollowups = followups
     .filter((followup) => isActiveFollowupStatus(followup.status))
     .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
     .map((followup) => {
@@ -263,7 +303,7 @@ async function PersonDetailContent({ params, searchParams }: PersonDetailPagePro
       );
       return toFollowupView(followup, now, schedule ? toReminderScheduleView(schedule) : null);
     });
-  const resolvedFollowups = profile.followups
+  const resolvedFollowups = followups
     .filter((followup) => followup.status === "completed" || followup.status === "dismissed")
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
     .map((followup) => toFollowupView(followup, now));
@@ -275,8 +315,6 @@ async function PersonDetailContent({ params, searchParams }: PersonDetailPagePro
   const reviewCount = suggestedReviews.length;
   const followupCount = activeFollowups.length + suggestedFollowupReviews.length;
   const draftsCount = drafts.filter((draft) => draft.status !== "sent_manually").length;
-  const initialTab: PersonTab = snapshot ? "snapshot" : "memory";
-
   return (
     <PersonDetailTabs
       aside={
@@ -287,77 +325,99 @@ async function PersonDetailContent({ params, searchParams }: PersonDetailPagePro
             personName={person.displayName}
           />
           <PersonDetailsCard person={person} />
-          <PersonRemove
-            drafts={drafts.map((draft) => ({ id: draft.id, text: draft.body }))}
-            followups={profile.followups.map((followup) => ({
-              id: followup.id,
-              text: followup.reason,
-            }))}
-            memories={profile.memories.map((memory) => ({
-              id: memory.id,
-              text: memory.content,
-            }))}
-            personId={person.id}
-            personName={person.displayName}
-          />
+          <PersonRemove personId={person.id} personName={person.displayName} />
         </>
       }
-      draftsCount={draftsCount}
+      draftsCount={selectedTab === "drafts" ? draftsCount : 0}
       draftsPanel={
-        <div className="flex flex-col gap-3">
-          <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-            Drafts for {firstName}. Nothing is sent until you send it yourself.
-          </p>
-          <PersonDrafts gmail={gmail} initialDrafts={drafts} personId={person.id} />
-        </div>
+        selectedTab === "drafts" ? (
+          <div className="flex flex-col gap-3">
+            <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+              Drafts for {firstName}. Nothing is sent until you send it yourself.
+            </p>
+            <Suspense
+              fallback={<div className="h-28 animate-pulse rounded-xl border bg-muted/40" />}
+            >
+              <PersonDraftsPanel
+                drafts={drafts}
+                ownerUserId={ownerUserId}
+                personId={person.id}
+                personName={person.displayName}
+              />
+            </Suspense>
+          </div>
+        ) : null
       }
-      followupCount={followupCount}
+      followupCount={selectedTab === "followups" ? followupCount : 0}
       followupsPanel={
-        <div className="flex flex-col gap-3">
-          <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-            Reminders tied to {firstName}.
-          </p>
-          <SuggestedFollowupReviewSection initialReviews={suggestedFollowupReviews} />
-          {person.birthday ? (
-            <BirthdayFollowupOffer personId={person.id} personName={firstName} />
-          ) : null}
-          <PersonFollowups
-            active={activeFollowups}
-            defaultDueDate={toDateInputValue(now)}
-            firstName={firstName}
-            personId={person.id}
-            resolved={resolvedFollowups}
-            shareableMembers={shareableMembers}
-          />
-        </div>
+        selectedTab === "followups" ? (
+          <div className="flex flex-col gap-3">
+            <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+              Reminders tied to {firstName}.
+            </p>
+            <SuggestedFollowupReviewSection initialReviews={suggestedFollowupReviews} />
+            {person.birthday ? (
+              <BirthdayFollowupOffer personId={person.id} personName={firstName} />
+            ) : null}
+            <PersonFollowups
+              active={activeFollowups}
+              defaultDueDate={toDateInputValue(now)}
+              firstName={firstName}
+              personId={person.id}
+              resolved={resolvedFollowups}
+              shareableMembers={shareableMembers}
+            />
+          </div>
+        ) : null
       }
-      hasSnapshot={Boolean(snapshot)}
-      header={<PersonHeader person={person} />}
-      initialTab={initialTab}
+      hasSnapshot
+      header={null}
+      initialTab={selectedTab}
       memoryPanel={
-        <div className="flex flex-col gap-8">
-          <MemoriesSection memories={approvedMemories} />
-          <LoggedContextSection sourceRecords={sourceRecords} />
-        </div>
+        selectedTab === "memory" ? (
+          <div className="flex flex-col gap-8">
+            <MemoriesSection memories={approvedMemories} />
+            <LoggedContextSection sourceRecords={trustedSourceRecords} />
+          </div>
+        ) : null
       }
-      reviewCount={reviewCount}
+      reviewCount={selectedTab === "review" ? reviewCount : 0}
       reviewPanel={
-        <div className="flex flex-col gap-3">
-          <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-            Suggestions drawn from your notes. Nothing becomes a memory until you save it.
-          </p>
-          {suggestedReviews.length ? (
-            <SuggestedMemoryReviewSection initialReviews={suggestedReviews} />
-          ) : (
-            <LedgerEmpty>Nothing waiting to review.</LedgerEmpty>
-          )}
-        </div>
+        selectedTab === "review" ? (
+          <div className="flex flex-col gap-3">
+            <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+              Suggestions drawn from your notes. Nothing becomes a memory until you save it.
+            </p>
+            {suggestedReviews.length ? (
+              <SuggestedMemoryReviewSection initialReviews={suggestedReviews} />
+            ) : (
+              <LedgerEmpty>Nothing waiting to review.</LedgerEmpty>
+            )}
+          </div>
+        ) : null
       }
       snapshotPanel={
-        snapshot ? (
+        selectedTab === "snapshot" && snapshot ? (
           <RelationshipSnapshotCard personName={person.displayName} view={snapshot} />
+        ) : selectedTab === "snapshot" ? (
+          <LedgerEmpty>No relationship snapshot yet.</LedgerEmpty>
         ) : null
       }
     />
   );
+}
+
+async function PersonDraftsPanel({
+  drafts,
+  ownerUserId,
+  personId,
+  personName,
+}: {
+  drafts: DraftView[];
+  ownerUserId: string;
+  personId: string;
+  personName: string;
+}) {
+  const gmail = await loadGmailDraftContext(ownerUserId, personId, personName, drafts);
+  return <PersonDrafts gmail={gmail} initialDrafts={drafts} personId={personId} />;
 }

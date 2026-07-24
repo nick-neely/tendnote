@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { TabCount } from "@/components/tab-count";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -75,7 +76,13 @@ export function PersonDetailTabs({
   draftsPanel: React.ReactNode;
   aside: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
   const [active, setActive] = useState<PersonTab>(initialTab);
+
+  useEffect(() => {
+    setActive(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     function syncFromHash() {
@@ -101,7 +108,13 @@ export function PersonDetailTabs({
   return (
     <Tabs
       className="flex flex-col gap-6"
-      onValueChange={(value) => setActive(value as PersonTab)}
+      onValueChange={(value) => {
+        const tab = value as PersonTab;
+        setActive(tab);
+        const params = new URLSearchParams(window.location.search);
+        params.set("tab", tab);
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      }}
       value={active}
     >
       {/* Sticky identity + tab nav: who you're looking at and where to go stay

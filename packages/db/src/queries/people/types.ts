@@ -58,6 +58,19 @@ export type PersonProfile = {
   sourceRecords: SourceRecord[];
 };
 
+/**
+ * The small, visible detail projection that can safely sit behind a route
+ * cache. Unlike `PersonProfile`, it never materializes a person's ledgers.
+ */
+export type PersonDetailCore = {
+  person: Person;
+  counts: {
+    memories: number;
+    followups: number;
+    sourceRecords: number;
+  };
+};
+
 export type PersistPersonInput = Omit<Person, "id" | "createdAt" | "updatedAt">;
 
 export type SearchPeopleStoreInput = {
@@ -86,5 +99,6 @@ export type PeopleStore = {
   createAuditLogEntry: (auditLogEntry: PersonAuditLogEntry) => Promise<void>;
   searchPeople: (input: SearchPeopleStoreInput) => Promise<Person[]>;
   getPerson: (input: GetPersonInput) => Promise<Person | null>;
+  getPersonDetailCore: (input: GetPersonProfileInput) => Promise<PersonDetailCore | null>;
   getPersonProfile: (input: GetPersonProfileInput) => Promise<PersonProfile | null>;
 };

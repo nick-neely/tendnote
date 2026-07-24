@@ -1,4 +1,4 @@
-import { and, eq, ilike, or, type SQL } from "drizzle-orm";
+import { and, count, eq, ilike, or, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import {
@@ -99,6 +99,81 @@ export function createDrizzlePeopleStore(): PeopleStore {
         .limit(1);
 
       return person ?? null;
+    },
+
+    async getPersonDetailCore(input) {
+      let [person] = await getDb()
+        .select()
+        .from(people)
+        .where(and(eq(people.id, input.personId), eq(people.ownerUserId, input.ownerUserId)))
+        .limit(1);
+
+      if (!person) {
+        const [visibleCounts] = await getDb()
+          .select({ followups: count() })
+          .from(visibleProfileFollowups)
+          .where(
+            and(
+              eq(visibleProfileFollowups.personId, input.personId),
+              visibleHouseholdRecordSql({
+                callerUserId: input.ownerUserId,
+                tableAlias: "f",
+                recordKind: "followup",
+              }),
+            ),
+          );
+
+        if (!visibleCounts?.followups) return null;
+
+        [person] = await getDb()
+          .select()
+          .from(people)
+          .where(eq(people.id, input.personId))
+          .limit(1);
+        if (!person) return null;
+
+        return {
+          person,
+          counts: { memories: 0, followups: visibleCounts.followups, sourceRecords: 0 },
+        };
+      }
+
+      const [[memoryCount], [followupCount], [sourceRecordCount]] = await Promise.all([
+        getDb()
+          .select({ count: count() })
+          .from(memories)
+          .where(
+            and(eq(memories.personId, input.personId), eq(memories.ownerUserId, input.ownerUserId)),
+          ),
+        getDb()
+          .select({ count: count() })
+          .from(followups)
+          .where(
+            and(
+              eq(followups.personId, input.personId),
+              eq(followups.ownerUserId, input.ownerUserId),
+            ),
+          ),
+        getDb()
+          .select({ count: count() })
+          .from(sourceRecordPeople)
+          .innerJoin(sourceRecords, eq(sourceRecordPeople.sourceRecordId, sourceRecords.id))
+          .where(
+            and(
+              eq(sourceRecordPeople.personId, input.personId),
+              eq(sourceRecords.ownerUserId, input.ownerUserId),
+            ),
+          ),
+      ]);
+
+      return {
+        person,
+        counts: {
+          memories: memoryCount?.count ?? 0,
+          followups: followupCount?.count ?? 0,
+          sourceRecords: sourceRecordCount?.count ?? 0,
+        },
+      };
     },
 
     async getPersonProfile(input) {

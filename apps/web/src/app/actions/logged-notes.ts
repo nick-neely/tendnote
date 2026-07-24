@@ -1,10 +1,10 @@
 "use server";
 
 import { dismissExtractedMemoriesForSourceRecord } from "@tendnote/db/queries/memories";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { approveExtractedMemoriesForSourceRecordWithEmbeddingDelivery } from "@/lib/background-jobs/embedding-schedulers";
+import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
 
 // personId is the note's already-resolved person, used only to re-render their
 // profile after the action so the new memories show on their ledger.
@@ -30,7 +30,7 @@ export async function approveLoggedNoteAction(input: {
   });
 
   if (parsed.personId) {
-    revalidatePath(`/people/${parsed.personId}`);
+    invalidatePersonMutation({ ownerUserId, personId: parsed.personId });
   }
   return {
     sourceRecordId: result.sourceRecordId,
@@ -51,7 +51,7 @@ export async function dismissLoggedNoteAction(input: {
   });
 
   if (parsed.personId) {
-    revalidatePath(`/people/${parsed.personId}`);
+    invalidatePersonMutation({ ownerUserId, personId: parsed.personId });
   }
   return { sourceRecordId: result.sourceRecordId, status: result.status };
 }

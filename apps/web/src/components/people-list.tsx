@@ -1,6 +1,6 @@
 "use client";
 
-import type { Person } from "@tendnote/domain";
+import type { PeopleListItemView } from "@tendnote/db/queries/people";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ArrowRightIcon, SearchIcon } from "@/components/icons";
@@ -13,7 +13,7 @@ import { formatBirthday, titleCase } from "@/lib/person-format";
  * closeness scores or CRM tiles. Filtering is client-side over the already-loaded
  * set so recall stays instant, in keeping with "fast to capture, fast to recall."
  */
-export function PeopleList({ people }: { people: Person[] }) {
+export function PeopleList({ people }: { people: PeopleListItemView[] }) {
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -63,7 +63,7 @@ export function PeopleList({ people }: { people: Person[] }) {
   );
 }
 
-function PersonListRow({ person }: { person: Person }) {
+function PersonListRow({ person }: { person: PeopleListItemView }) {
   const meta = [titleCase(person.relationshipType)];
 
   if (person.birthday) {

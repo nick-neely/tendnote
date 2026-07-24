@@ -1,8 +1,10 @@
 import { withEve } from "eve/next";
 import type { NextConfig } from "next";
+import { cacheProfiles } from "./src/lib/cache/cache-profiles";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  cacheLife: cacheProfiles,
   partialPrefetching: true,
   reactCompiler: true,
   transpilePackages: ["@tendnote/db", "@tendnote/domain"],

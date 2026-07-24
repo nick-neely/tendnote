@@ -1,8 +1,8 @@
-import { searchPeople } from "@tendnote/db/queries/people";
 import { connection } from "next/server";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { PeopleList } from "@/components/people-list";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { getCachedPeopleList } from "@/lib/cache/people-views";
 
 export default function PeoplePage() {
   return (
@@ -15,7 +15,7 @@ export default function PeoplePage() {
 async function PeopleContent() {
   if (process.env.NODE_ENV !== "test") await connection();
   const ownerUserId = await requireAdmittedOwner({ returnTo: "/people" });
-  const people = await searchPeople({ ownerUserId, limit: 50 });
+  const people = await getCachedPeopleList({ ownerUserId, limit: 50 });
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">

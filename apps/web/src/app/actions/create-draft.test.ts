@@ -1,14 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { generateDraft, revalidatePath, enforceProductBudget } = vi.hoisted(() => ({
+const { generateDraft, revalidatePath, updateTag, enforceProductBudget } = vi.hoisted(() => ({
   generateDraft: vi.fn(),
   revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
   enforceProductBudget: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/drafts", () => ({ generateDraft }));
-vi.mock("next/cache", () => ({ revalidatePath }));
+vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("user-1"),
 }));
@@ -24,6 +25,7 @@ const DRAFT_ID = randomUUID();
 beforeEach(() => {
   generateDraft.mockReset();
   revalidatePath.mockReset();
+  updateTag.mockReset();
   enforceProductBudget.mockReset();
 });
 
@@ -48,6 +50,7 @@ describe("createDraftAction", () => {
     );
     expect(result).toEqual({ outcome: "created", personId: PERSON_ID, draftId: DRAFT_ID });
     expect(revalidatePath).toHaveBeenCalledWith(`/people/${PERSON_ID}`);
+    expect(updateTag).toHaveBeenCalledWith(`people:owner:user-1:person:${PERSON_ID}`);
   });
 
   it("passes explicit brief-item context", async () => {

@@ -13,6 +13,7 @@ import type { FollowupEdit } from "@tendnote/domain";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
 import { parseDateInputValue } from "@/lib/followup-view";
 import {
   type SuggestedFollowupReviewView,
@@ -43,8 +44,8 @@ export type SuggestedFollowupResolution = {
 };
 
 /** Re-render the person's profile after a review action so the surfaces agree. */
-function revalidatePerson(personId: string) {
-  revalidatePath(`/people/${personId}`);
+function revalidatePerson(ownerUserId: string, personId: string) {
+  invalidatePersonMutation({ ownerUserId, personId });
 }
 
 export async function acceptSuggestedFollowupAction(input: {
@@ -56,7 +57,7 @@ export async function acceptSuggestedFollowupAction(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await acceptSuggestedFollowup({ actorUserId: ownerUserId, followupId, edit });
 
-  revalidatePerson(result.followup.personId);
+  revalidatePerson(ownerUserId, result.followup.personId);
   return toSuggestedFollowupReviewView(result);
 }
 
@@ -69,7 +70,7 @@ export async function editSuggestedFollowupAction(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await editSuggestedFollowup({ actorUserId: ownerUserId, followupId, edit });
 
-  revalidatePerson(result.followup.personId);
+  revalidatePerson(ownerUserId, result.followup.personId);
   return toSuggestedFollowupReviewView(result);
 }
 
@@ -80,7 +81,7 @@ export async function dismissSuggestedFollowupAction(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const followup = await dismissSuggestedFollowup({ actorUserId: ownerUserId, followupId });
 
-  revalidatePerson(followup.personId);
+  revalidatePerson(ownerUserId, followup.personId);
   return { followupId: followup.id, status: followup.status };
 }
 
@@ -100,7 +101,7 @@ export async function acceptCalendarSuggestedFollowupAction(input: {
   const suggestion = await acceptCalendarSuggestedFollowup({ ownerUserId, id: suggestionId });
 
   if (suggestion.personId) {
-    revalidatePerson(suggestion.personId);
+    revalidatePerson(ownerUserId, suggestion.personId);
   }
   revalidatePath("/");
   return {
