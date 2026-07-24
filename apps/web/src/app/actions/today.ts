@@ -9,9 +9,9 @@ import {
   suppressTodayCandidate,
 } from "@tendnote/db/queries/today";
 import { type TodayShortlistResponse, todayShortlistResponseSchema } from "@tendnote/domain/today";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidateTodayOwner } from "@/lib/cache/today-review-mutation-scopes";
 
 const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const candidateRefSchema = z.object({
@@ -49,7 +49,7 @@ export async function suppressTodayItemAction(input: {
   if (parsed.localDate !== context.localDate)
     throw new Error("Today has rolled to a new local day.");
   await suppressTodayCandidate({ ownerUserId, ...parsed, ...context });
-  revalidatePath("/");
+  invalidateTodayOwner(ownerUserId);
   return todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context }));
 }
 
@@ -77,6 +77,6 @@ export async function actOnTodayItemAction(input: {
     throw new Error("Open this Today item to use its domain action.");
   }
 
-  revalidatePath("/");
+  invalidateTodayOwner(ownerUserId);
   return todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context }));
 }

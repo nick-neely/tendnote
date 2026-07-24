@@ -27,6 +27,7 @@ import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
 import { parseDateInputValue } from "@/lib/followup-view";
 import { runActionsMutation } from "@/lib/general-action-mutation";
 import {
@@ -223,7 +224,7 @@ export async function promoteAssetHintAction(input: {
     await promoteGeneralActionAssetHint({ actorUserId: ownerUserId, ...parsed });
     // The proposal lands in the shared Review Queue and (once accepted) on the
     // Assets surface — re-render both alongside the Actions page.
-    revalidatePath("/");
+    invalidateReviewOwner(ownerUserId);
     revalidatePath("/assets");
     return getGeneralAction({ actorUserId: ownerUserId, generalActionId: parsed.generalActionId });
   });

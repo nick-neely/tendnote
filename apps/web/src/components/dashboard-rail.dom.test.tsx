@@ -2,8 +2,15 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReviewQueue, ReviewQueueItem } from "@/lib/review-queue";
-import { fireEvent, render, screen, waitFor, within } from "@/test/dom";
+import { fireEvent, render, screen, userEvent, waitFor, within } from "@/test/dom";
 import { DashboardRail } from "./dashboard-rail";
+
+const replace = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({ replace }),
+}));
 
 type MockActionReview = { action: { id: string; title: string } };
 type MockActionCardProps = {
@@ -113,6 +120,17 @@ afterEach(() => {
 });
 
 describe("DashboardRail Review Queue", () => {
+  it("shows a truthful Today reserve until the matching route payload arrives", async () => {
+    const user = userEvent.setup();
+    replace.mockReset();
+    renderRail({ count: 0, failures: [], items: [] });
+
+    await user.click(screen.getByRole("tab", { name: "Today" }));
+    expect(replace).toHaveBeenCalledWith("/", { scroll: false });
+    expect(screen.getByRole("region", { name: "Loading Today" })).toBeDefined();
+    expect(screen.queryByText(/Nothing waiting to review/)).toBeNull();
+  });
+
   it("renders one mixed queue in collection order and counts Asset groups once", () => {
     renderRail({
       items: [

@@ -17,6 +17,7 @@ const {
   ignoreSuggestedGeneralAction,
   listGeneralActionAreas,
   revalidatePath,
+  updateTag,
   toSuggestedGeneralActionReviewView,
 } = vi.hoisted(() => ({
   acceptSuggestedGeneralAction: vi.fn(),
@@ -25,6 +26,7 @@ const {
   ignoreSuggestedGeneralAction: vi.fn(),
   listGeneralActionAreas: vi.fn(),
   revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
   toSuggestedGeneralActionReviewView: vi.fn(),
 }));
 
@@ -35,7 +37,7 @@ vi.mock("@tendnote/db/queries/general-actions", () => ({
   ignoreSuggestedGeneralAction,
 }));
 vi.mock("@tendnote/db/queries/general-action-areas", () => ({ listGeneralActionAreas }));
-vi.mock("next/cache", () => ({ revalidatePath }));
+vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
 }));
@@ -76,6 +78,7 @@ describe("acceptSuggestedGeneralActionAction (card Accept path)", () => {
     // Both review surfaces re-render so chat and /actions agree.
     expect(revalidatePath).toHaveBeenCalledWith("/actions");
     expect(revalidatePath).toHaveBeenCalledWith("/");
+    expect(updateTag).toHaveBeenCalledWith("review:owner:owner-1");
   });
 
   it("a stale card / double click does not double-promote — the second accept is a no-op", async () => {

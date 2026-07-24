@@ -2,7 +2,7 @@ import { getCurrentBrief } from "@tendnote/db/queries/briefs";
 import { listCalendarSuggestedFollowups } from "@tendnote/db/queries/calendar-followups";
 import { listActiveFollowups, listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
 import { searchPeople } from "@tendnote/db/queries/people";
-import { getOwnerTodayContext, getTodayShortlist } from "@tendnote/db/queries/today";
+import { getOwnerTodayContext } from "@tendnote/db/queries/today";
 import type { BriefCadence, TodayShortlistResponse } from "@tendnote/domain";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -17,15 +17,20 @@ import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { DashboardRail } from "@/components/dashboard-rail";
 import { MobileTodayDestination } from "@/components/mobile-today-destination";
+import { ReviewQueueFamilySection } from "@/components/review-queue-section";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
+import {
+  getCachedReviewQueueFamily,
+  getCachedTodayShortlist,
+} from "@/lib/cache/today-review-views";
 import { toCalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
 import { suggestComposerPerson } from "@/lib/composer-suggestion";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
 import { toDashboardFollowupView } from "@/lib/followup-view";
 import { getOwnerCalendarPromptNudges } from "@/lib/integrations/calendar-prompt-nudges";
-import { loadOwnerReviewQueue } from "@/lib/review-queue.server";
+import type { ReviewQueueFamily } from "@/lib/review-queue";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 
 // A handful of the soonest active reminders — a calm prompt, not a task feed (#45).
@@ -50,7 +55,7 @@ async function HomeRoute({ searchParams }: HomeProps) {
       mobileHome={!isReview}
       mobileReview={isReview}
       returnTo={isReview ? "/?tab=review" : "/"}
-      title="Today"
+      title={isReview ? "Review" : "Today"}
     >
       <HomeContent requestedTab={requestedTab} />
     </AdmittedRoute>
@@ -62,27 +67,7 @@ async function HomeContent({ requestedTab }: { requestedTab?: string }) {
   const ownerUserId = await requireAdmittedOwner({
     returnTo: requestedTab === "review" ? "/?tab=review" : "/",
   });
-  const [
-    people,
-    reviewQueue,
-    dashboardFollowups,
-    dashboardFollowupReviews,
-    dashboardCalendarSuggestions,
-    dailyBrief,
-    weeklyBrief,
-    calendarNudges,
-  ] = await Promise.all([
-    searchPeople({ ownerUserId, limit: 8 }),
-    loadOwnerReviewQueue(ownerUserId),
-    getDashboardFollowups(ownerUserId),
-    getDashboardFollowupReviews(ownerUserId),
-    getDashboardCalendarSuggestions(ownerUserId),
-    getDashboardBrief(ownerUserId, "daily"),
-    getDashboardBrief(ownerUserId, "weekly"),
-    getOwnerCalendarPromptNudges(),
-  ]);
-  const birthdays = getUpcomingBirthdays(people);
-  const composerSuggestPersonName = suggestComposerPerson(dashboardFollowups, people);
+  const selectedTab = requestedTab === "review" ? "review" : "today";
 
   return (
     <>
@@ -100,27 +85,25 @@ async function HomeContent({ requestedTab }: { requestedTab?: string }) {
             stays the left content column with the tabbed rail on the right. The
             rail widens a touch from lg→xl so its tabs and cards keep room. */}
         <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="order-1 h-[70dvh] lg:h-full lg:min-h-0">
-            <AssistantPanel
-              nudges={calendarNudges}
-              ownerUserId={ownerUserId}
-              suggestPersonName={composerSuggestPersonName}
-            />
-          </div>
+          {selectedTab === "today" ? (
+            <div className="order-1 h-[70dvh] lg:h-full lg:min-h-0">
+              <Suspense
+                fallback={<div className="h-full animate-pulse rounded-xl border bg-muted/40" />}
+              >
+                <HomeAssistant ownerUserId={ownerUserId} />
+              </Suspense>
+            </div>
+          ) : (
+            <div className="order-1 hidden lg:block" aria-hidden />
+          )}
           {/* The rail manages its own scroll inside the active tab panel (the tab
               bar stays pinned), so the column itself is only height-bounded. */}
           <div className="order-2 lg:h-full lg:min-h-0">
-            <DashboardRail
-              birthdays={birthdays}
-              dailyBrief={dailyBrief}
-              followupReviews={dashboardFollowupReviews}
-              followups={dashboardFollowups}
-              calendarSuggestions={dashboardCalendarSuggestions}
-              people={people}
-              reviewQueue={reviewQueue}
-              weeklyBrief={weeklyBrief}
-              initialTab={requestedTab === "review" ? "review" : "today"}
-            />
+            <Suspense
+              fallback={<div className="h-full animate-pulse rounded-xl border bg-muted/40" />}
+            >
+              <HomeRail ownerUserId={ownerUserId} selectedTab={selectedTab} />
+            </Suspense>
           </div>
         </div>
       </div>
@@ -128,25 +111,142 @@ async function HomeContent({ requestedTab }: { requestedTab?: string }) {
   );
 }
 
-async function HomeMobileContent() {
-  if (process.env.NODE_ENV !== "test") await connection();
-  const ownerUserId = await requireAdmittedOwner({ returnTo: "/" });
-  const todayContext = await getOwnerTodayContext({ ownerUserId });
-  const [todayShortlist, people, dashboardFollowups, calendarNudges] = await Promise.all([
-    getHomeToday(ownerUserId, todayContext),
+async function HomeAssistant({ ownerUserId }: { ownerUserId: string }) {
+  const [people, followups, nudges] = await Promise.all([
     searchPeople({ ownerUserId, limit: 8 }),
     getDashboardFollowups(ownerUserId),
     getOwnerCalendarPromptNudges(),
   ]);
 
   return (
+    <AssistantPanel
+      nudges={nudges}
+      ownerUserId={ownerUserId}
+      suggestPersonName={suggestComposerPerson(followups, people)}
+    />
+  );
+}
+
+async function HomeRail({
+  ownerUserId,
+  selectedTab,
+}: {
+  ownerUserId: string;
+  selectedTab: "today" | "review";
+}) {
+  if (selectedTab === "review") {
+    return (
+      <DashboardRail
+        birthdays={[]}
+        calendarSuggestions={[]}
+        dailyBrief={null}
+        followupReviews={[]}
+        followups={[]}
+        initialTab="review"
+        people={[]}
+        reviewContent={<ReviewQueueStreams ownerUserId={ownerUserId} />}
+        reviewQueue={{ count: 0, failures: [], items: [] }}
+        weeklyBrief={null}
+      />
+    );
+  }
+
+  const [people, followups, followupReviews, calendarSuggestions, dailyBrief, weeklyBrief] =
+    await Promise.all([
+      searchPeople({ ownerUserId, limit: 8 }),
+      getDashboardFollowups(ownerUserId),
+      getDashboardFollowupReviews(ownerUserId),
+      getDashboardCalendarSuggestions(ownerUserId),
+      getDashboardBrief(ownerUserId, "daily"),
+      getDashboardBrief(ownerUserId, "weekly"),
+    ]);
+
+  return (
+    <DashboardRail
+      birthdays={getUpcomingBirthdays(people)}
+      calendarSuggestions={calendarSuggestions}
+      dailyBrief={dailyBrief}
+      followupReviews={followupReviews}
+      followups={followups}
+      initialTab="today"
+      people={people}
+      reviewQueue={{ count: 0, failures: [], items: [] }}
+      weeklyBrief={weeklyBrief}
+    />
+  );
+}
+
+const REVIEW_FAMILIES: { family: ReviewQueueFamily; heading: string }[] = [
+  { family: "suggested-memory", heading: "Memories" },
+  { family: "suggested-general-action", heading: "Actions" },
+  { family: "asset-review-group", heading: "Assets" },
+  { family: "source-record", heading: "Source details" },
+];
+
+function ReviewQueueStreams({ ownerUserId }: { ownerUserId: string }) {
+  return (
+    <div className="flex flex-col gap-6">
+      <p className="text-pretty px-1 text-[length:var(--text-small)] text-muted-foreground">
+        Suggestions appear here as they are ready.
+      </p>
+      {REVIEW_FAMILIES.map(({ family, heading }) => (
+        <Suspense fallback={<ReviewFamilyReserve heading={heading} />} key={family}>
+          <ReviewQueueFamilyStream family={family} heading={heading} ownerUserId={ownerUserId} />
+        </Suspense>
+      ))}
+    </div>
+  );
+}
+
+async function ReviewQueueFamilyStream({
+  family,
+  heading,
+  ownerUserId,
+}: {
+  family: ReviewQueueFamily;
+  heading: string;
+  ownerUserId: string;
+}) {
+  const result = await getCachedReviewQueueFamily(ownerUserId, family);
+  if (result.unavailable) {
+    return (
+      <section className="rounded-xl border bg-muted/40 px-4 py-4">
+        <h2 className="font-medium text-[length:var(--text-small)] text-muted-foreground">
+          {heading}
+        </h2>
+        <p className="mt-1 text-[length:var(--text-small)] text-muted-foreground">
+          This review group is temporarily unavailable. Your records are unchanged.
+        </p>
+      </section>
+    );
+  }
+  if (result.items.length === 0) return null;
+  return <ReviewQueueFamilySection heading={heading} initialItems={result.items} />;
+}
+
+function ReviewFamilyReserve({ heading }: { heading: string }) {
+  return (
+    <section aria-busy="true" aria-label={`Loading ${heading}`} className="flex flex-col gap-2">
+      <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
+        {heading}
+      </h2>
+      <div className="h-20 animate-pulse rounded-xl border bg-muted/40" />
+    </section>
+  );
+}
+
+async function HomeMobileContent() {
+  if (process.env.NODE_ENV !== "test") await connection();
+  const ownerUserId = await requireAdmittedOwner({ returnTo: "/" });
+  const todayContext = await getOwnerTodayContext({ ownerUserId });
+  const todayShortlist = await getHomeToday(ownerUserId, todayContext);
+
+  return (
     <MobileTodayDestination
       mobileEve={
-        <AssistantPanel
-          nudges={calendarNudges}
-          ownerUserId={ownerUserId}
-          suggestPersonName={suggestComposerPerson(dashboardFollowups, people)}
-        />
+        <Suspense fallback={<div className="h-full animate-pulse rounded-xl border bg-muted/40" />}>
+          <HomeAssistant ownerUserId={ownerUserId} />
+        </Suspense>
       }
       ownerUserId={ownerUserId}
       todayHandlers={{
@@ -166,7 +266,7 @@ async function getHomeToday(
   context: { localDate: string; timeZone: string; now: Date },
 ): Promise<TodayShortlistResponse> {
   try {
-    return await getTodayShortlist({ ownerUserId, ...context });
+    return await getCachedTodayShortlist({ ownerUserId, ...context });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") console.warn("Unable to load Today.", error);
     return {

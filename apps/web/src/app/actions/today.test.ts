@@ -8,6 +8,7 @@ const {
   requireAdmittedOwnerForAction,
   revalidatePath,
   suppressTodayCandidate,
+  updateTag,
 } = vi.hoisted(() => ({
   completeFollowup: vi.fn(),
   getOwnerTodayContext: vi.fn(),
@@ -16,6 +17,7 @@ const {
   requireAdmittedOwnerForAction: vi.fn(),
   revalidatePath: vi.fn(),
   suppressTodayCandidate: vi.fn(),
+  updateTag: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/followups", () => ({ completeFollowup }));
@@ -27,7 +29,7 @@ vi.mock("@tendnote/db/queries/today", () => ({
   suppressTodayCandidate,
 }));
 vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwnerForAction }));
-vi.mock("next/cache", () => ({ revalidatePath }));
+vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
 
 import { actOnTodayItemAction, suppressTodayItemAction } from "./today";
 
@@ -93,6 +95,8 @@ describe("Today web actions", () => {
       kind: "not_today",
       suppressUntil: null,
     });
+    expect(updateTag).toHaveBeenCalledWith("today:owner:owner-1");
+    expect(updateTag).toHaveBeenCalledWith("review:owner:owner-1");
   });
 
   it("reloads the authoritative candidate before using its real domain action", async () => {
@@ -114,5 +118,6 @@ describe("Today web actions", () => {
       actorUserId: "owner-1",
       followupId: FOLLOWUP_ID,
     });
+    expect(updateTag).toHaveBeenCalledWith("today:owner:owner-1");
   });
 });

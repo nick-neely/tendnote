@@ -2,7 +2,8 @@
 
 import type { Person } from "@tendnote/domain";
 import Link from "next/link";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { type ReactNode, useEffect, useState } from "react";
 import { DashboardBriefSection } from "@/components/dashboard-brief-section";
 import { DashboardCalendarSuggestionsSection } from "@/components/dashboard-calendar-suggestions-section";
 import { DashboardFollowupsSection } from "@/components/dashboard-followups-section";
@@ -64,6 +65,7 @@ export function DashboardRail({
   reviewQueue: initialReviewQueue,
   dailyBrief,
   weeklyBrief,
+  reviewContent,
   initialTab = "today",
 }: {
   people: Person[];
@@ -74,12 +76,17 @@ export function DashboardRail({
   reviewQueue: ReviewQueue;
   dailyBrief: BriefView | null;
   weeklyBrief: BriefView | null;
+  reviewContent?: ReactNode;
   initialTab?: "today" | "followups" | "review" | "people";
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [followups, setFollowups] = useState(initialFollowups);
   const [suggestedFollowups, setSuggestedFollowups] = useState(initialFollowupReviews);
   const [calendarSuggestions, setCalendarSuggestions] = useState(initialCalendarSuggestions);
   const [reviewQueue, setReviewQueue] = useState(initialReviewQueue);
+  const [pendingRouteTab, setPendingRouteTab] = useState<"today" | "review" | null>(null);
 
   const resolveFollowup = (id: string) =>
     setFollowups((current) => current.filter((followup) => followup.id !== id));
@@ -94,8 +101,46 @@ export function DashboardRail({
 
   const followupCount = followups.length + suggestedFollowups.length + calendarSuggestions.length;
 
+  useEffect(() => {
+    setActiveTab(initialTab);
+    setFollowups(initialFollowups);
+    setSuggestedFollowups(initialFollowupReviews);
+    setCalendarSuggestions(initialCalendarSuggestions);
+    setReviewQueue(initialReviewQueue);
+    setPendingRouteTab((pending) => (pending === initialTab ? null : pending));
+  }, [
+    initialCalendarSuggestions,
+    initialFollowupReviews,
+    initialFollowups,
+    initialReviewQueue,
+    initialTab,
+  ]);
+
+  const displayedTab = pendingRouteTab ?? activeTab;
+
   return (
-    <Tabs className="flex min-h-0 flex-col gap-3 lg:h-full" defaultValue={initialTab}>
+    <Tabs
+      className="flex min-h-0 flex-col gap-3 lg:h-full"
+      onValueChange={(value) => {
+        const tab = value as "today" | "followups" | "review" | "people";
+        if (tab === "today" || tab === "review") {
+          // These tabs own independently streamed server data. Keep their
+          // destination-shaped reserve visible until the matching RSC payload
+          // arrives, rather than rendering the previous tab's empty props.
+          setPendingRouteTab(tab);
+        } else {
+          setActiveTab(tab);
+          setPendingRouteTab(null);
+          return;
+        }
+        const params = new URLSearchParams(window.location.search);
+        if (tab === "review") params.set("tab", "review");
+        else params.delete("tab");
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      }}
+      value={displayedTab}
+    >
       <TabsList className="w-full shrink-0">
         <TabsTrigger className="group/tab" value="today">
           Today
@@ -115,22 +160,32 @@ export function DashboardRail({
 
       {/* Today — the morning glance: today's signals, then the briefs. The
           briefs live only here; they have no tab of their own. */}
-      <TabsContent className={PANEL} forceMount value="today">
-        {birthdays.length > 0 ? <BirthdaysSection birthdays={birthdays} /> : null}
+      <TabsContent className={PANEL} value="today">
+        {pendingRouteTab === "today" ? (
+          <RailLoadingReserve tab="today" />
+        ) : (
+          <>
+            {birthdays.length > 0 ? <BirthdaysSection birthdays={birthdays} /> : null}
 
-        {/* Persisted briefs: the current daily brief, then the weekly review (PRD
-            #65). Keying on the brief id remounts on (re)generation so new items
-            appear, while dismiss/snooze keep their optimistic state. */}
-        <DashboardBriefSection brief={dailyBrief} cadence="daily" key={dailyBrief?.id ?? "daily"} />
-        <DashboardBriefSection
-          brief={weeklyBrief}
-          cadence="weekly"
-          key={weeklyBrief?.id ?? "weekly"}
-        />
+            {/* Persisted briefs: the current daily brief, then the weekly review (PRD
+                #65). Keying on the brief id remounts on (re)generation so new items
+                appear, while dismiss/snooze keep their optimistic state. */}
+            <DashboardBriefSection
+              brief={dailyBrief}
+              cadence="daily"
+              key={dailyBrief?.id ?? "daily"}
+            />
+            <DashboardBriefSection
+              brief={weeklyBrief}
+              cadence="weekly"
+              key={weeklyBrief?.id ?? "weekly"}
+            />
+          </>
+        )}
       </TabsContent>
 
       {/* Follow-ups — active reminders, then suggestions awaiting a yes/no. */}
-      <TabsContent className={PANEL} forceMount value="followups">
+      <TabsContent className={PANEL} value="followups">
         {followupCount === 0 ? (
           <RailEmpty>
             No follow-ups right now. Reminders you set, and ones Eve suggests, show up here.
@@ -157,8 +212,12 @@ export function DashboardRail({
 
       {/* Review — the shared Review Queue: suggested memories and Suggested actions,
           each accepted or set aside in place (ADR 0152). */}
-      <TabsContent className={PANEL} forceMount value="review">
-        {reviewQueue.count === 0 ? (
+      <TabsContent className={PANEL} value="review">
+        {pendingRouteTab === "review" ? (
+          <RailLoadingReserve tab="review" />
+        ) : reviewContent ? (
+          reviewContent
+        ) : reviewQueue.count === 0 ? (
           <RailEmpty>
             Nothing waiting to review. Eve's suggestions land here first: things to remember,
             actions to take, and assets to track.
@@ -173,10 +232,22 @@ export function DashboardRail({
       </TabsContent>
 
       {/* People — fast recall, full to the person pages. */}
-      <TabsContent className={PANEL} forceMount value="people">
+      <TabsContent className={PANEL} value="people">
         <PeopleSection people={people} />
       </TabsContent>
     </Tabs>
+  );
+}
+
+function RailLoadingReserve({ tab }: { tab: "today" | "review" }) {
+  const label = tab === "review" ? "Review" : "Today";
+  return (
+    <section aria-busy="true" aria-label={`Loading ${label}`} className="flex flex-col gap-3">
+      <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
+        {label}
+      </h2>
+      <div className="h-24 animate-pulse rounded-xl border bg-muted/40" />
+    </section>
   );
 }
 

@@ -18,6 +18,7 @@ import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { toAssetReviewGroupViewWithOrigin } from "@/lib/asset-review-origin";
 import type { AssetReviewGroupView } from "@/lib/asset-review-view";
+import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
 
 const groupIdSchema = z.object({ groupId: z.uuid() });
 const assetIdSchema = z.object({ assetId: z.uuid() });
@@ -32,8 +33,11 @@ const memoryIdSchema = z.object({ memoryId: z.uuid() });
  * promoted-from action origin, #199). Named for both effects — this is
  * deliberately not a pure mapper.
  */
-function revalidateAndView(result: AssetReviewGroupResult): Promise<AssetReviewGroupView> {
-  revalidatePath("/");
+function revalidateAndView(
+  ownerUserId: string,
+  result: AssetReviewGroupResult,
+): Promise<AssetReviewGroupView> {
+  invalidateReviewOwner(ownerUserId);
   revalidatePath("/assets");
   return toAssetReviewGroupViewWithOrigin(result);
 }
@@ -45,7 +49,10 @@ export async function acceptSuggestedAssetAction(input: {
   const { assetId } = assetIdSchema.parse({ assetId: input.assetId });
   const edit = assetEditSchema.parse(input.edit ?? {});
   const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(await acceptSuggestedAsset({ actorUserId: ownerUserId, assetId, edit }));
+  return revalidateAndView(
+    ownerUserId,
+    await acceptSuggestedAsset({ actorUserId: ownerUserId, assetId, edit }),
+  );
 }
 
 export async function editSuggestedAssetAction(input: {
@@ -55,7 +62,10 @@ export async function editSuggestedAssetAction(input: {
   const { assetId } = assetIdSchema.parse({ assetId: input.assetId });
   const edit = assetEditSchema.parse(input.edit);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(await editSuggestedAsset({ actorUserId: ownerUserId, assetId, edit }));
+  return revalidateAndView(
+    ownerUserId,
+    await editSuggestedAsset({ actorUserId: ownerUserId, assetId, edit }),
+  );
 }
 
 export async function acceptSuggestedAssetMemoryAction(input: {
@@ -66,6 +76,7 @@ export async function acceptSuggestedAssetMemoryAction(input: {
   const edit = assetMemoryEditSchema.parse(input.edit ?? {});
   const ownerUserId = await requireAdmittedOwnerForAction();
   return revalidateAndView(
+    ownerUserId,
     await acceptSuggestedAssetMemory({ actorUserId: ownerUserId, memoryId, edit }),
   );
 }
@@ -78,6 +89,7 @@ export async function editSuggestedAssetMemoryAction(input: {
   const edit = assetMemoryEditSchema.parse(input.edit);
   const ownerUserId = await requireAdmittedOwnerForAction();
   return revalidateAndView(
+    ownerUserId,
     await editSuggestedAssetMemory({ actorUserId: ownerUserId, memoryId, edit }),
   );
 }
@@ -88,6 +100,7 @@ export async function dismissSuggestedAssetMemoryAction(input: {
   const { memoryId } = memoryIdSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
   return revalidateAndView(
+    ownerUserId,
     await dismissSuggestedAssetMemory({ actorUserId: ownerUserId, memoryId }),
   );
 }
@@ -97,7 +110,10 @@ export async function acceptAssetReviewGroupAction(input: {
 }): Promise<AssetReviewGroupView> {
   const { groupId } = groupIdSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(await acceptAssetReviewGroup({ actorUserId: ownerUserId, groupId }));
+  return revalidateAndView(
+    ownerUserId,
+    await acceptAssetReviewGroup({ actorUserId: ownerUserId, groupId }),
+  );
 }
 
 export async function dismissAssetReviewGroupAction(input: {
@@ -105,7 +121,10 @@ export async function dismissAssetReviewGroupAction(input: {
 }): Promise<AssetReviewGroupView> {
   const { groupId } = groupIdSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(await dismissAssetReviewGroup({ actorUserId: ownerUserId, groupId }));
+  return revalidateAndView(
+    ownerUserId,
+    await dismissAssetReviewGroup({ actorUserId: ownerUserId, groupId }),
+  );
 }
 
 export async function linkAssetReviewGroupAction(input: {
@@ -115,6 +134,7 @@ export async function linkAssetReviewGroupAction(input: {
   const parsed = z.object({ groupId: z.uuid(), targetAssetId: z.uuid() }).parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
   return revalidateAndView(
+    ownerUserId,
     await linkAssetReviewGroup({
       actorUserId: ownerUserId,
       groupId: parsed.groupId,

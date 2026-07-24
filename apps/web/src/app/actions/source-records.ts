@@ -12,6 +12,7 @@ import {
   enqueueAndPublishActionExtractionJob,
   enqueueAndPublishExtractionJob,
 } from "@/lib/background-jobs/extraction-queue";
+import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
 import {
   type SourceRecordReviewView,
   toSourceRecordReviewView,
@@ -58,6 +59,8 @@ export async function captureGlobalAssistantSourceRecord(input: {
   if (!review) {
     throw new Error("Captured source record could not be reloaded.");
   }
+
+  invalidateReviewOwner(ownerUserId);
 
   return toSourceRecordReviewView(review);
 }
