@@ -172,6 +172,10 @@ _Avoid_: Public signup, environment allowlist, owner scope
 The recognizable Tendnote navigation and layout frame available only after Better Auth and Private Beta Access admit an owner. It contains no relationship records, Today or Eve content, or other owner-specific data.
 _Avoid_: Public app shell, dashboard data, owner cache
 
+**Instant Interaction**:
+An admitted primary navigation that acknowledges input immediately and presents cached content or a truthful, layout-stable destination shell within 100 milliseconds, without showing a blank, frozen, or misleading page. Critical semantic, layout-stability, streamed-completion, reconciliation, privacy, and cache-isolation checks are hard CI gates; environment-sensitive completion time, payload, query, and mutation measurements remain diagnostic until a repeatable post-upgrade baseline makes them reliable regression gates.
+_Avoid_: Fully loaded page, zero-latency navigation, unmeasured speed claim
+
 **Optimistic Mutation**:
 A deterministic, reversible owner action whose exact next view and authoritative inverse are known, allowing Tendnote to project the change before the server confirms it. The server remains authoritative, and failure restores the prior view rather than leaving the projection as truth.
 _Avoid_: Instant mutation, assumed success, client-authoritative write
