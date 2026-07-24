@@ -22,7 +22,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
-import ContactsImportPage from "./page";
+import { ContactsImportContent } from "./page";
 
 beforeEach(() => {
   getOwnerContactImportPreview.mockReset();
@@ -131,7 +131,7 @@ describe("ContactsImportPage", () => {
       ],
     });
 
-    const html = renderToStaticMarkup(await ContactsImportPage());
+    const html = renderToStaticMarkup(await ContactsImportContent());
 
     // Unified table + toolbar rather than the old split sections + banner.
     expect(html).toContain("Confirm safe recommendations");
@@ -164,7 +164,7 @@ describe("ContactsImportPage", () => {
       candidates: [],
     });
 
-    const html = renderToStaticMarkup(await ContactsImportPage());
+    const html = renderToStaticMarkup(await ContactsImportContent());
 
     expect(html).toContain("No contacts were fetched from Google.");
   });
@@ -220,7 +220,7 @@ describe("ContactsImportPage", () => {
       ],
     });
 
-    const html = renderToStaticMarkup(await ContactsImportPage());
+    const html = renderToStaticMarkup(await ContactsImportContent());
 
     expect(html).toContain("Advisory");
     expect(html).toContain("Choose target person");
@@ -273,7 +273,7 @@ describe("ContactsImportPage", () => {
       ],
     });
 
-    const html = renderToStaticMarkup(await ContactsImportPage());
+    const html = renderToStaticMarkup(await ContactsImportContent());
 
     // Skip-only: no create, no apply, no target chooser — just guidance + Skip.
     expect(html).toContain("This contact matches more than one person");

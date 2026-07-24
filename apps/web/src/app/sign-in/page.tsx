@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { CredentialsForm } from "@/components/auth/credentials-form";
 import { getCurrentAccess } from "@/lib/access/current-access";
 import { safeReturnTo } from "@/lib/auth/return-to";
 import { githubEnvFromProcess, isGithubConfigured } from "@/lib/auth/social";
-
-export const dynamic = "force-dynamic";
 
 function signInCopy(returningToApp: boolean) {
   if (returningToApp) {
@@ -23,6 +22,7 @@ export default async function SignInPage({
 }: {
   searchParams?: Promise<{ returnTo?: string }>;
 }) {
+  if (process.env.NODE_ENV !== "test") await connection();
   const access = await getCurrentAccess();
   const requestedReturnTo = (await searchParams)?.returnTo;
   const returnTo = safeReturnTo(requestedReturnTo);

@@ -4,10 +4,19 @@ import { listActiveFollowups, listSuggestedFollowupReviews } from "@tendnote/db/
 import { searchPeople } from "@tendnote/db/queries/people";
 import { getOwnerTodayContext, getTodayShortlist } from "@tendnote/db/queries/today";
 import type { BriefCadence, TodayShortlistResponse } from "@tendnote/domain";
-import { AppShell } from "@/components/app-shell";
+import { connection } from "next/server";
+import { Suspense } from "react";
+import {
+  actOnTodayItemAction,
+  refreshTodayAction,
+  suppressTodayItemAction,
+} from "@/app/actions/today";
+import { AccessCheckFallback } from "@/components/access-check-fallback";
+import { AdmittedRoute } from "@/components/admitted-route";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { DashboardRail } from "@/components/dashboard-rail";
+import { MobileTodayDestination } from "@/components/mobile-today-destination";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
@@ -22,15 +31,37 @@ import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-v
 // A handful of the soonest active reminders — a calm prompt, not a task feed (#45).
 const DASHBOARD_FOLLOWUP_LIMIT = 5;
 
-export const dynamic = "force-dynamic";
+type HomeProps = { searchParams?: Promise<{ tab?: string }> };
 
-export default async function Home({ searchParams }: { searchParams?: Promise<{ tab?: string }> }) {
+export default function Home(props: HomeProps) {
+  return (
+    <Suspense fallback={<AccessCheckFallback />}>
+      <HomeRoute {...props} />
+    </Suspense>
+  );
+}
+
+async function HomeRoute({ searchParams }: HomeProps) {
   const requestedTab = (await searchParams)?.tab;
+  const isReview = requestedTab === "review";
+  return (
+    <AdmittedRoute
+      mobileDestination={isReview ? undefined : <HomeMobileContent />}
+      mobileHome={!isReview}
+      mobileReview={isReview}
+      returnTo={isReview ? "/?tab=review" : "/"}
+      title="Today"
+    >
+      <HomeContent requestedTab={requestedTab} />
+    </AdmittedRoute>
+  );
+}
+
+async function HomeContent({ requestedTab }: { requestedTab?: string }) {
+  if (process.env.NODE_ENV !== "test") await connection();
   const ownerUserId = await requireAdmittedOwner({
     returnTo: requestedTab === "review" ? "/?tab=review" : "/",
   });
-  const todayContext = await getOwnerTodayContext({ ownerUserId });
-  const localDate = todayContext.localDate;
   const [
     people,
     reviewQueue,
@@ -40,7 +71,6 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     dailyBrief,
     weeklyBrief,
     calendarNudges,
-    todayShortlist,
   ] = await Promise.all([
     searchPeople({ ownerUserId, limit: 8 }),
     loadOwnerReviewQueue(ownerUserId),
@@ -50,27 +80,12 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     getDashboardBrief(ownerUserId, "daily"),
     getDashboardBrief(ownerUserId, "weekly"),
     getOwnerCalendarPromptNudges(),
-    getHomeToday(ownerUserId, todayContext),
   ]);
   const birthdays = getUpcomingBirthdays(people);
   const composerSuggestPersonName = suggestComposerPerson(dashboardFollowups, people);
 
   return (
-    <AppShell
-      mobileEve={
-        <AssistantPanel
-          nudges={calendarNudges}
-          ownerUserId={ownerUserId}
-          suggestPersonName={composerSuggestPersonName}
-        />
-      }
-      mobileHome={requestedTab !== "review"}
-      mobileReview={requestedTab === "review"}
-      ownerUserId={ownerUserId}
-      todayInitial={todayShortlist}
-      todayLocalDate={localDate}
-      todayTimeZone={todayContext.timeZone}
-    >
+    <>
       {/* On desktop the dashboard fills the viewport and does not scroll itself
           (100dvh − 3.5rem header − 4rem main padding); the chat and the rail each
           scroll inside their own column instead of growing the page. */}
@@ -109,7 +124,40 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           </div>
         </div>
       </div>
-    </AppShell>
+    </>
+  );
+}
+
+async function HomeMobileContent() {
+  if (process.env.NODE_ENV !== "test") await connection();
+  const ownerUserId = await requireAdmittedOwner({ returnTo: "/" });
+  const todayContext = await getOwnerTodayContext({ ownerUserId });
+  const [todayShortlist, people, dashboardFollowups, calendarNudges] = await Promise.all([
+    getHomeToday(ownerUserId, todayContext),
+    searchPeople({ ownerUserId, limit: 8 }),
+    getDashboardFollowups(ownerUserId),
+    getOwnerCalendarPromptNudges(),
+  ]);
+
+  return (
+    <MobileTodayDestination
+      mobileEve={
+        <AssistantPanel
+          nudges={calendarNudges}
+          ownerUserId={ownerUserId}
+          suggestPersonName={suggestComposerPerson(dashboardFollowups, people)}
+        />
+      }
+      ownerUserId={ownerUserId}
+      todayHandlers={{
+        act: actOnTodayItemAction,
+        refresh: refreshTodayAction,
+        suppress: suppressTodayItemAction,
+      }}
+      todayInitial={todayShortlist}
+      todayLocalDate={todayContext.localDate}
+      todayTimeZone={todayContext.timeZone}
+    />
   );
 }
 

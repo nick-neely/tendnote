@@ -18,7 +18,8 @@ import {
   type SourceRecord,
 } from "@tendnote/domain";
 import { notFound } from "next/navigation";
-import { AppShell } from "@/components/app-shell";
+import { connection } from "next/server";
+import { AdmittedRoute } from "@/components/admitted-route";
 import { BirthdayFollowupOffer } from "@/components/birthday-followup-offer";
 import { PersonCapture } from "@/components/person-capture";
 import { PersonDetailTabs, type PersonTab } from "@/components/person-detail-tabs";
@@ -54,8 +55,6 @@ import {
   type SuggestedMemoryReviewView,
   toSuggestedMemoryReviewView,
 } from "@/lib/suggested-memory-review-view";
-
-export const dynamic = "force-dynamic";
 
 type PersonProfile = NonNullable<Awaited<ReturnType<typeof getPersonProfile>>>;
 
@@ -198,13 +197,26 @@ async function loadProfileContext(
 }
 
 // fallow-ignore-next-line complexity -- The server page composes the complete owner-scoped profile read model.
-export default async function PersonDetailPage({
-  params,
-  searchParams,
-}: {
+type PersonDetailPageProps = {
   params: Promise<{ personId: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
+};
+
+export default function PersonDetailPage(props: PersonDetailPageProps) {
+  return (
+    <AdmittedRoute returnTo={personReturnTo(props)} title="Person">
+      <PersonDetailContent {...props} />
+    </AdmittedRoute>
+  );
+}
+
+async function personReturnTo({ params, searchParams }: PersonDetailPageProps) {
+  const [{ personId }, query] = await Promise.all([params, searchParams]);
+  return appReturnTo(`/people/${encodeURIComponent(personId)}`, query);
+}
+
+async function PersonDetailContent({ params, searchParams }: PersonDetailPageProps) {
+  if (process.env.NODE_ENV !== "test") await connection();
   const [{ personId }, query] = await Promise.all([params, searchParams]);
   const ownerUserId = await requireAdmittedOwner({
     returnTo: appReturnTo(`/people/${encodeURIComponent(personId)}`, query),
@@ -266,88 +278,86 @@ export default async function PersonDetailPage({
   const initialTab: PersonTab = snapshot ? "snapshot" : "memory";
 
   return (
-    <AppShell ownerUserId={ownerUserId}>
-      <PersonDetailTabs
-        aside={
-          <>
-            <PersonCapture
-              firstName={firstName}
-              personId={person.id}
-              personName={person.displayName}
-            />
-            <PersonDetailsCard person={person} />
-            <PersonRemove
-              drafts={drafts.map((draft) => ({ id: draft.id, text: draft.body }))}
-              followups={profile.followups.map((followup) => ({
-                id: followup.id,
-                text: followup.reason,
-              }))}
-              memories={profile.memories.map((memory) => ({
-                id: memory.id,
-                text: memory.content,
-              }))}
-              personId={person.id}
-              personName={person.displayName}
-            />
-          </>
-        }
-        draftsCount={draftsCount}
-        draftsPanel={
-          <div className="flex flex-col gap-3">
-            <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-              Drafts for {firstName}. Nothing is sent until you send it yourself.
-            </p>
-            <PersonDrafts gmail={gmail} initialDrafts={drafts} personId={person.id} />
-          </div>
-        }
-        followupCount={followupCount}
-        followupsPanel={
-          <div className="flex flex-col gap-3">
-            <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-              Reminders tied to {firstName}.
-            </p>
-            <SuggestedFollowupReviewSection initialReviews={suggestedFollowupReviews} />
-            {person.birthday ? (
-              <BirthdayFollowupOffer personId={person.id} personName={firstName} />
-            ) : null}
-            <PersonFollowups
-              active={activeFollowups}
-              defaultDueDate={toDateInputValue(now)}
-              firstName={firstName}
-              personId={person.id}
-              resolved={resolvedFollowups}
-              shareableMembers={shareableMembers}
-            />
-          </div>
-        }
-        hasSnapshot={Boolean(snapshot)}
-        header={<PersonHeader person={person} />}
-        initialTab={initialTab}
-        memoryPanel={
-          <div className="flex flex-col gap-8">
-            <MemoriesSection memories={approvedMemories} />
-            <LoggedContextSection sourceRecords={sourceRecords} />
-          </div>
-        }
-        reviewCount={reviewCount}
-        reviewPanel={
-          <div className="flex flex-col gap-3">
-            <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-              Suggestions drawn from your notes. Nothing becomes a memory until you save it.
-            </p>
-            {suggestedReviews.length ? (
-              <SuggestedMemoryReviewSection initialReviews={suggestedReviews} />
-            ) : (
-              <LedgerEmpty>Nothing waiting to review.</LedgerEmpty>
-            )}
-          </div>
-        }
-        snapshotPanel={
-          snapshot ? (
-            <RelationshipSnapshotCard personName={person.displayName} view={snapshot} />
-          ) : null
-        }
-      />
-    </AppShell>
+    <PersonDetailTabs
+      aside={
+        <>
+          <PersonCapture
+            firstName={firstName}
+            personId={person.id}
+            personName={person.displayName}
+          />
+          <PersonDetailsCard person={person} />
+          <PersonRemove
+            drafts={drafts.map((draft) => ({ id: draft.id, text: draft.body }))}
+            followups={profile.followups.map((followup) => ({
+              id: followup.id,
+              text: followup.reason,
+            }))}
+            memories={profile.memories.map((memory) => ({
+              id: memory.id,
+              text: memory.content,
+            }))}
+            personId={person.id}
+            personName={person.displayName}
+          />
+        </>
+      }
+      draftsCount={draftsCount}
+      draftsPanel={
+        <div className="flex flex-col gap-3">
+          <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+            Drafts for {firstName}. Nothing is sent until you send it yourself.
+          </p>
+          <PersonDrafts gmail={gmail} initialDrafts={drafts} personId={person.id} />
+        </div>
+      }
+      followupCount={followupCount}
+      followupsPanel={
+        <div className="flex flex-col gap-3">
+          <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+            Reminders tied to {firstName}.
+          </p>
+          <SuggestedFollowupReviewSection initialReviews={suggestedFollowupReviews} />
+          {person.birthday ? (
+            <BirthdayFollowupOffer personId={person.id} personName={firstName} />
+          ) : null}
+          <PersonFollowups
+            active={activeFollowups}
+            defaultDueDate={toDateInputValue(now)}
+            firstName={firstName}
+            personId={person.id}
+            resolved={resolvedFollowups}
+            shareableMembers={shareableMembers}
+          />
+        </div>
+      }
+      hasSnapshot={Boolean(snapshot)}
+      header={<PersonHeader person={person} />}
+      initialTab={initialTab}
+      memoryPanel={
+        <div className="flex flex-col gap-8">
+          <MemoriesSection memories={approvedMemories} />
+          <LoggedContextSection sourceRecords={sourceRecords} />
+        </div>
+      }
+      reviewCount={reviewCount}
+      reviewPanel={
+        <div className="flex flex-col gap-3">
+          <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+            Suggestions drawn from your notes. Nothing becomes a memory until you save it.
+          </p>
+          {suggestedReviews.length ? (
+            <SuggestedMemoryReviewSection initialReviews={suggestedReviews} />
+          ) : (
+            <LedgerEmpty>Nothing waiting to review.</LedgerEmpty>
+          )}
+        </div>
+      }
+      snapshotPanel={
+        snapshot ? (
+          <RelationshipSnapshotCard personName={person.displayName} view={snapshot} />
+        ) : null
+      }
+    />
   );
 }

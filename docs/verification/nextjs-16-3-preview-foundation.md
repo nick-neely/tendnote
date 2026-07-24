@@ -45,3 +45,31 @@ in specification [#300](https://github.com/nick-neely/tendnote/issues/300).
 - `pnpm test:browser`: passed (2 files and 7 real-browser tests).
 - `pnpm why next --recursive`: one resolved version,
   `16.3.0-preview.9`.
+
+## Direct Cache Components baseline (#302)
+
+- `cacheComponents: true` and `partialPrefetching: true` are enabled directly
+  in the web config. Every legacy `dynamic = "force-dynamic"` page export and
+  redundant explicit Node runtime export is removed.
+- `AdmittedRoute` resolves request-bound access inside that owner-neutral
+  access-check fallback. After admission it renders the shared server shell,
+  then streams the destination through a truthful title-and-geometry reserve;
+  the root loading boundary itself contains no product navigation, destination
+  name, or owner data.
+- The shared application frame is server-rendered; PWA registration, reminder
+  timezone reconciliation, connectivity feedback, and deep-link highlighting
+  are isolated in `AppShellEffects`, a narrow client island. Route-owned data
+  and focused mobile flows remain below their existing admission gates.
+- Protected routes explicitly enter `connection()` within their Suspense-wrapped
+  request boundary before resolving admission (the call is skipped only in
+  direct Vitest page-function tests, which have no Next request store). The
+  sign-in, sign-up, password-recovery, and pending-access screens are permitted
+  access blocks, so they intentionally resolve their own request state before
+  rendering. This fixes the pinned Preview's live `new Date()` blocking-route
+  diagnostics without an app-wide `instant = false` opt-out.
+- Development verification: authenticated Today, People, Actions, Assets,
+  Saved Items, and Action Today navigated successfully; the browser reported
+  no runtime errors and `/_next/mcp` returned `{"issues":[]}`.
+- Verification: web typecheck passed; the web suite passed with 142 files,
+  882 tests, and two existing skipped tests; production debug prerender built
+  all 29 app routes as static, dynamic, or partial-prerendered as appropriate.

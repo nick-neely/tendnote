@@ -4,8 +4,6 @@ import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 import { Button } from "@/components/ui/button";
 import { resolveResetToken } from "@/lib/auth/reset-token";
 
-export const dynamic = "force-dynamic";
-
 export default async function ResetPasswordPage({
   searchParams,
 }: {

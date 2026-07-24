@@ -16,7 +16,8 @@ import { searchPeople } from "@tendnote/db/queries/people";
 import type { AssetMemory, AssetSnapshotSupportingReferences } from "@tendnote/domain";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AppShell } from "@/components/app-shell";
+import { connection } from "next/server";
+import { AdmittedRoute } from "@/components/admitted-route";
 import { AssetActionProposals } from "@/components/asset-action-proposals";
 import { AssetEvidenceSection } from "@/components/asset-evidence-section";
 import { AssetHistory } from "@/components/asset-history";
@@ -39,8 +40,6 @@ import { formatAssetMemoryValue } from "@/lib/asset-memory-value";
 import { toAssetRelatedActionView } from "@/lib/asset-related-action-view";
 import { type AssetView, toAssetView } from "@/lib/asset-view";
 import { appReturnTo } from "@/lib/auth/return-to";
-
-export const dynamic = "force-dynamic";
 
 type AssetProfile = NonNullable<Awaited<ReturnType<typeof loadAssetProfile>>>;
 
@@ -136,13 +135,26 @@ async function loadAssetProfile(callerUserId: string, assetId: string) {
  * everything the caller may know about it. The page itself stays a shell: header,
  * snapshot, sections.
  */
-export default async function AssetProfilePage({
-  params,
-  searchParams,
-}: {
+type AssetProfilePageProps = {
   params: Promise<{ assetId: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
+};
+
+export default function AssetProfilePage(props: AssetProfilePageProps) {
+  return (
+    <AdmittedRoute returnTo={assetReturnTo(props)} title="Asset">
+      <AssetProfileContent {...props} />
+    </AdmittedRoute>
+  );
+}
+
+async function assetReturnTo({ params, searchParams }: AssetProfilePageProps) {
+  const [{ assetId }, query] = await Promise.all([params, searchParams]);
+  return appReturnTo(`/assets/${encodeURIComponent(assetId)}`, query);
+}
+
+async function AssetProfileContent({ params, searchParams }: AssetProfilePageProps) {
+  if (process.env.NODE_ENV !== "test") await connection();
   const [{ assetId }, query] = await Promise.all([params, searchParams]);
   const callerUserId = await requireAdmittedOwner({
     returnTo: appReturnTo(`/assets/${encodeURIComponent(assetId)}`, query),
@@ -156,43 +168,41 @@ export default async function AssetProfilePage({
   const { view, snapshot } = profile;
 
   return (
-    <AppShell ownerUserId={callerUserId}>
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-        <Link
-          className="inline-flex w-fit items-center gap-1.5 rounded-sm text-[length:var(--text-small)] text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          href="/assets"
-        >
-          <ArrowLeftIcon aria-hidden className="size-3.5" />
-          Assets
-        </Link>
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+      <Link
+        className="inline-flex w-fit items-center gap-1.5 rounded-sm text-[length:var(--text-small)] text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        href="/assets"
+      >
+        <ArrowLeftIcon aria-hidden className="size-3.5" />
+        Assets
+      </Link>
 
-        <AssetProfileHeader view={view} />
+      <AssetProfileHeader view={view} />
 
-        <ArchivedNote view={view} />
+      <ArchivedNote view={view} />
 
-        <AssetProfileControls asset={view} />
+      <AssetProfileControls asset={view} />
 
-        <AssetSnapshotCard {...toSnapshotCardProps(snapshot)} />
+      <AssetSnapshotCard {...toSnapshotCardProps(snapshot)} />
 
-        <AssetProfileSections assetId={assetId} profile={profile} />
+      <AssetProfileSections assetId={assetId} profile={profile} />
 
-        {view.owned ? (
-          <AssetRemove
-            assetId={assetId}
-            assetName={view.name}
-            summary={{
-              memories: profile.memories.length,
-              evidence: profile.evidenceViews.length,
-              reviewItems: profile.reviewItemCount,
-              linkedRecords:
-                profile.relatedActionViews.length +
-                profile.relatedLinkViews.length +
-                profile.personLinkViews.length,
-            }}
-          />
-        ) : null}
-      </div>
-    </AppShell>
+      {view.owned ? (
+        <AssetRemove
+          assetId={assetId}
+          assetName={view.name}
+          summary={{
+            memories: profile.memories.length,
+            evidence: profile.evidenceViews.length,
+            reviewItems: profile.reviewItemCount,
+            linkedRecords:
+              profile.relatedActionViews.length +
+              profile.relatedLinkViews.length +
+              profile.personLinkViews.length,
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
 

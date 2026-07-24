@@ -46,7 +46,7 @@ vi.mock("@/components/ui/badge", () => ({
   Badge: ({ children }: { children: unknown }) => children,
 }));
 
-import AccountPage from "./page";
+import { AccountContent } from "./page";
 
 beforeEach(() => {
   getCurrentAccess.mockReset();
@@ -62,7 +62,7 @@ describe("AccountPage access gating", () => {
     getCurrentAccess.mockResolvedValue({ state: "pending" });
     resolveAccountView.mockReturnValue({ type: "redirect", to: "/pending" });
 
-    await expect(AccountPage()).rejects.toThrow("REDIRECT:/pending");
+    await expect(AccountContent()).rejects.toThrow("REDIRECT:/pending");
     expect(redirect).toHaveBeenCalledWith("/pending");
     // The connections read never runs for a non-admitted caller.
     expect(getOwnerProviderConnections).not.toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe("AccountPage access gating", () => {
     });
     getOwnerProviderConnections.mockResolvedValue([]);
 
-    await AccountPage();
+    await AccountContent();
 
     expect(getOwnerProviderConnections).toHaveBeenCalledTimes(1);
     expect(redirect).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe("AccountPage access gating", () => {
     });
     getOwnerProviderConnections.mockResolvedValue([]);
 
-    await AccountPage({
+    await AccountContent({
       searchParams: Promise.resolve({
         calendarId: "primary",
         calendarEvent: "event-filter",

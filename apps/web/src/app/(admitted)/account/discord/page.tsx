@@ -1,18 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import {
   DiscordDeliverySettings,
   type DiscordInstallView,
 } from "@/components/account/discord-delivery-settings";
-import { AppShell } from "@/components/app-shell";
+import { AdmittedRoute } from "@/components/admitted-route";
 import { CheckIcon, TriangleAlertIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { discordEnvFromProcess, isDiscordConfigured } from "@/lib/auth/social";
 import type { DiscordInstallRejectReason } from "@/lib/integrations/discord-install";
 import { getOwnerDiscordInstalls } from "@/lib/integrations/discord-install-server";
-
-export const dynamic = "force-dynamic";
 
 const INSTALL_START_PATH = "/api/integrations/discord/install";
 
@@ -49,41 +47,47 @@ function callbackWarningMessage(warning: string): string {
     : "Tendnote is installed, but part of its Discord setup needs another try.";
 }
 
-export default async function DiscordDeliveryPage({
-  searchParams,
-}: {
+type DiscordDeliveryPageProps = {
   searchParams: Promise<{ installed?: string; error?: string; warning?: string }>;
-}) {
+};
+
+export default function DiscordDeliveryPage(props: DiscordDeliveryPageProps) {
+  return (
+    <AdmittedRoute returnTo="/account/discord" title="Discord delivery">
+      <DiscordDeliveryContent {...props} />
+    </AdmittedRoute>
+  );
+}
+
+async function DiscordDeliveryContent({ searchParams }: DiscordDeliveryPageProps) {
+  if (process.env.NODE_ENV !== "test") await connection();
   const { installed, error, warning } = await searchParams;
-  const ownerUserId = await requireAdmittedOwner({ returnTo: "/account/discord" });
   requireDiscordConfiguration();
   const { discordUserId, installs } = await getOwnerDiscordInstalls();
 
   return (
-    <AppShell ownerUserId={ownerUserId}>
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
-        <header className="flex flex-col gap-2">
-          <Link
-            className="self-start text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground underline underline-offset-2"
-            href="/account"
-          >
-            Back to account
-          </Link>
-          <div className="flex flex-col gap-1">
-            <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
-              Discord delivery
-            </h1>
-            <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
-              Delivery stays private to you, and Tendnote never sends without your approval.
-            </p>
-          </div>
-        </header>
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
+      <header className="flex flex-col gap-2">
+        <Link
+          className="self-start text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground underline underline-offset-2"
+          href="/account"
+        >
+          Back to account
+        </Link>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
+            Discord delivery
+          </h1>
+          <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
+            Delivery stays private to you, and Tendnote never sends without your approval.
+          </p>
+        </div>
+      </header>
 
-        <CallbackOutcomeBanners error={error} installed={installed} warning={warning} />
+      <CallbackOutcomeBanners error={error} installed={installed} warning={warning} />
 
-        <ServersSection discordUserId={discordUserId} installs={installs} />
-      </div>
-    </AppShell>
+      <ServersSection discordUserId={discordUserId} installs={installs} />
+    </div>
   );
 }
 

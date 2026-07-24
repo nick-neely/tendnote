@@ -28,6 +28,7 @@ export function MobileShell({
   children,
   captureHandlers,
   mobileEve,
+  mobileDestination,
   mobileHome,
   mobileReview,
   ownerUserId,
@@ -40,6 +41,7 @@ export function MobileShell({
   captureHandlers?: CaptureHandlers;
   children: ReactNode;
   mobileEve?: ReactNode;
+  mobileDestination?: ReactNode;
   mobileHome: boolean;
   mobileReview: boolean;
   ownerUserId: string;
@@ -91,17 +93,18 @@ export function MobileShell({
 
   return (
     <>
-      {mobileHome ? (
-        <MobileTodayHome
-          eveDraftRevision={eveDraftRevision}
-          onOpenEve={(trigger) => openFlow("eve", trigger)}
-          ownerUserId={ownerUserId}
-          todayHandlers={todayHandlers}
-          todayInitial={todayInitial}
-          todayLocalDate={todayLocalDate}
-          todayTimeZone={todayTimeZone}
-        />
-      ) : null}
+      {mobileDestination ??
+        (mobileHome ? (
+          <MobileTodayHome
+            eveDraftRevision={eveDraftRevision}
+            onOpenEve={(trigger) => openFlow("eve", trigger)}
+            ownerUserId={ownerUserId}
+            todayHandlers={todayHandlers}
+            todayInitial={todayInitial}
+            todayLocalDate={todayLocalDate}
+            todayTimeZone={todayTimeZone}
+          />
+        ) : null)}
       <main
         className={cn(
           "mx-auto w-full max-w-7xl flex-col gap-6 px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:flex lg:pb-6 lg:py-8",
@@ -175,7 +178,7 @@ function MobileFocusedFlow({
   }
 }
 
-function MobileTodayHome({
+export function MobileTodayHome({
   eveDraftRevision,
   onOpenEve,
   ownerUserId,

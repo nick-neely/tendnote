@@ -13,8 +13,9 @@ import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/house
 import { searchPeople } from "@tendnote/db/queries/people";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import Link from "next/link";
+import { connection } from "next/server";
 import { ActionsSurface } from "@/components/actions-surface";
-import { AppShell } from "@/components/app-shell";
+import { AdmittedRoute } from "@/components/admitted-route";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { toGeneralActionAreaView } from "@/lib/general-action-area-view";
 import { toGeneralActionLinkedAssetView, toGeneralActionView } from "@/lib/general-action-view";
@@ -24,9 +25,16 @@ import { toSuggestedGeneralActionReviewView } from "@/lib/suggested-general-acti
 // backlog to clear (DESIGN.md calm-by-default).
 const RESOLVED_LIMIT = 20;
 
-export const dynamic = "force-dynamic";
+export default function ActionsPage() {
+  return (
+    <AdmittedRoute returnTo="/actions" title="Actions">
+      <ActionsContent />
+    </AdmittedRoute>
+  );
+}
 
-export default async function ActionsPage() {
+async function ActionsContent() {
+  if (process.env.NODE_ENV !== "test") await connection();
   const ownerUserId = await requireAdmittedOwner({ returnTo: "/actions" });
   const now = new Date();
 
@@ -74,47 +82,45 @@ export default async function ActionsPage() {
     });
 
   return (
-    <AppShell ownerUserId={ownerUserId}>
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-        <header className="flex flex-col gap-1">
-          <div className="flex items-baseline justify-between gap-4">
-            <h1 className="text-[length:var(--text-h1)] font-semibold leading-[var(--text-h1-line)] tracking-normal">
-              Actions
-            </h1>
-            <Link
-              className="rounded-sm text-[length:var(--text-small)] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              href="/actions/today"
-            >
-              Today
-            </Link>
-          </div>
-          <p className="max-w-[68ch] text-sm text-muted-foreground">
-            Things to get done that aren't tied to a person. Private by default, or shared with your
-            household.
-          </p>
-        </header>
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+      <header className="flex flex-col gap-1">
+        <div className="flex items-baseline justify-between gap-4">
+          <h1 className="text-[length:var(--text-h1)] font-semibold leading-[var(--text-h1-line)] tracking-normal">
+            Actions
+          </h1>
+          <Link
+            className="rounded-sm text-[length:var(--text-small)] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            href="/actions/today"
+          >
+            Today
+          </Link>
+        </div>
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          Things to get done that aren't tied to a person. Private by default, or shared with your
+          household.
+        </p>
+      </header>
 
-        <ActionsSurface
-          active={active.map(toView)}
-          areas={areas.map((area) => toGeneralActionAreaView(area))}
-          paused={paused.map(toView)}
-          people={people.map((person) => ({ id: person.id, displayName: person.displayName }))}
-          resolved={resolved.map(toView)}
-          resolvedTruncated={resolved.length >= RESOLVED_LIMIT}
-          shareableMembers={shareableMembers.map((member) => ({
-            userId: member.userId,
-            name: member.name,
-            email: member.email,
-          }))}
-          suggested={suggested.map((review) =>
-            toSuggestedGeneralActionReviewView(review, {
-              now,
-              callerUserId: ownerUserId,
-              areaNameById,
-            }),
-          )}
-        />
-      </div>
-    </AppShell>
+      <ActionsSurface
+        active={active.map(toView)}
+        areas={areas.map((area) => toGeneralActionAreaView(area))}
+        paused={paused.map(toView)}
+        people={people.map((person) => ({ id: person.id, displayName: person.displayName }))}
+        resolved={resolved.map(toView)}
+        resolvedTruncated={resolved.length >= RESOLVED_LIMIT}
+        shareableMembers={shareableMembers.map((member) => ({
+          userId: member.userId,
+          name: member.name,
+          email: member.email,
+        }))}
+        suggested={suggested.map((review) =>
+          toSuggestedGeneralActionReviewView(review, {
+            now,
+            callerUserId: ownerUserId,
+            areaNameById,
+          }),
+        )}
+      />
+    </div>
   );
 }

@@ -2,6 +2,8 @@ import { withEve } from "eve/next";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  cacheComponents: true,
+  partialPrefetching: true,
   reactCompiler: true,
   transpilePackages: ["@tendnote/db", "@tendnote/domain"],
   experimental: {

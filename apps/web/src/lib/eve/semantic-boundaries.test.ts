@@ -18,6 +18,7 @@ describe("semantic retrieval product-route boundaries", () => {
     const files = listAppFiles(appRoot);
     const pageRoutes = files
       .filter((file) => file.endsWith("page.tsx"))
+      .map((file) => file.replace(/(^|\/)\([^/]+\)\//g, "$1"))
       .map((file) => (file === "page.tsx" ? "/" : file.replace(/\/page\.tsx$/, "")))
       .sort();
 

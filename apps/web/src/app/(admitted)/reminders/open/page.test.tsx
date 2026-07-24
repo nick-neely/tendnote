@@ -22,7 +22,7 @@ vi.mock("@/components/app-shell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-import ReminderOpenPage from "./page";
+import { ReminderOpenContent } from "./page";
 
 const ACTION_ID = "22222222-2222-4222-8222-222222222222";
 const params = Promise.resolve({ kind: "general_action", id: ACTION_ID });
@@ -36,7 +36,7 @@ beforeEach(() => {
 
 describe("Reminder deep-link recovery", () => {
   it("opens an eligible destination for the authenticated owner", async () => {
-    await expect(ReminderOpenPage({ searchParams: params })).rejects.toThrow(
+    await expect(ReminderOpenContent({ searchParams: params })).rejects.toThrow(
       `REDIRECT:/actions#action-${ACTION_ID}`,
     );
     expect(resolveReminderDeepLink).toHaveBeenCalledWith({
@@ -50,7 +50,9 @@ describe("Reminder deep-link recovery", () => {
     getCurrentAccess.mockResolvedValue({ state: "unauthenticated" });
     resolveAccountView.mockReturnValue({ type: "redirect", to: "/sign-in" });
 
-    await expect(ReminderOpenPage({ searchParams: params })).rejects.toThrow("REDIRECT:/sign-in");
+    await expect(ReminderOpenContent({ searchParams: params })).rejects.toThrow(
+      "REDIRECT:/sign-in",
+    );
     expect(signInPathFor).toHaveBeenCalledWith(
       `/reminders/open?kind=general_action&id=${ACTION_ID}`,
     );
@@ -62,7 +64,7 @@ describe("Reminder deep-link recovery", () => {
     "already completed or resolved",
   ])("shows the same non-leaking state when the target is %s", async () => {
     resolveReminderDeepLink.mockResolvedValue(null);
-    const markup = renderToStaticMarkup(await ReminderOpenPage({ searchParams: params }));
+    const markup = renderToStaticMarkup(await ReminderOpenContent({ searchParams: params }));
 
     expect(markup).toContain("Reminder unavailable");
     expect(markup).toContain("completed, removed, or is no longer available");

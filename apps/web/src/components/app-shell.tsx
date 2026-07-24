@@ -1,8 +1,6 @@
-"use client";
-
 import type { TodayShortlistResponse } from "@tendnote/domain/today";
 import Link from "next/link";
-import { type ReactNode, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import {
   addCapturePersonAction,
   captureExplicitOutcomeAction,
@@ -17,18 +15,14 @@ import {
   suppressTodayItemAction,
 } from "@/app/actions/today";
 import { appDestinations } from "@/components/app-destinations";
-import { MobileFailureState } from "@/components/mobile-failure-state";
+import { AppShellEffects } from "@/components/app-shell-effects";
 import type { CaptureHandlers, GlobalRecallHandler } from "@/components/mobile-focused-flows";
 import { MobileShell } from "@/components/mobile-shell";
-import { PwaRegistration } from "@/components/pwa-registration";
-import { ReminderTimeZoneReconciler } from "@/components/reminder-time-zone-reconciler";
-import { StandaloneReminderContinuation } from "@/components/standalone-reminder-continuation";
 import { TendnoteLogo } from "@/components/tendnote-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { TodayShortlistHandlers } from "@/components/today-shortlist";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { useDeepLinkHighlight } from "@/lib/use-deep-link-highlight";
 
 const defaultCaptureHandlers: CaptureHandlers = {
   addPerson: addCapturePersonAction,
@@ -56,18 +50,20 @@ export function AppShell({
   captureHandlers = defaultCaptureHandlers,
   children,
   mobileEve,
+  mobileDestination,
   mobileHome = false,
   mobileReview = false,
   ownerUserId,
   searchHandler = globalRecallAction,
   todayHandlers = defaultTodayHandlers,
   todayInitial = emptyToday,
-  todayLocalDate = new Date().toISOString().slice(0, 10),
+  todayLocalDate = "1970-01-01",
   todayTimeZone = "UTC",
 }: {
   captureHandlers?: CaptureHandlers;
   children: ReactNode;
   mobileEve?: ReactNode;
+  mobileDestination?: ReactNode;
   mobileHome?: boolean;
   mobileReview?: boolean;
   ownerUserId: string;
@@ -77,13 +73,9 @@ export function AppShell({
   todayLocalDate?: string;
   todayTimeZone?: string;
 }) {
-  const online = useOnlineState();
-  useDeepLinkHighlight();
-
   return (
     <div className="min-h-dvh overflow-x-clip bg-background text-foreground">
-      <PwaRegistration />
-      <ReminderTimeZoneReconciler />
+      <AppShellEffects />
       <header className="sticky top-0 z-10 hidden border-b bg-background/95 backdrop-blur lg:block">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link
@@ -112,17 +104,10 @@ export function AppShell({
         </div>
       </header>
 
-      <StandaloneReminderContinuation />
-
-      {!online ? (
-        <div className="px-4 pt-[calc(1rem+env(safe-area-inset-top))] lg:pt-4">
-          <MobileFailureState kind="offline" onRetry={() => window.location.reload()} />
-        </div>
-      ) : null}
-
       <MobileShell
         captureHandlers={captureHandlers}
         mobileEve={mobileEve}
+        mobileDestination={mobileDestination}
         mobileHome={mobileHome}
         mobileReview={mobileReview}
         ownerUserId={ownerUserId}
@@ -137,19 +122,4 @@ export function AppShell({
       <Separator className="hidden lg:block" />
     </div>
   );
-}
-
-function useOnlineState() {
-  const [online, setOnline] = useState(true);
-  useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
-    update();
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-    };
-  }, []);
-  return online;
 }
