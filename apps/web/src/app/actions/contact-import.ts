@@ -11,7 +11,10 @@ import {
   peopleMutationScopes,
   updatePeopleMutationScopes,
 } from "@/lib/cache/people-mutation-scopes";
-import { createOwnerContactImportAdapter } from "@/lib/integrations/contact-import-preview-data";
+import {
+  createOwnerContactImportAdapter,
+  getOwnerContactImportPreview,
+} from "@/lib/integrations/contact-import-preview-data";
 
 export type ConfirmSafeContactImportInput = {
   candidates: Array<{ candidateId: string; fingerprint: string }>;
@@ -63,11 +66,6 @@ function authoritativeImportResult(
   };
 }
 
-/**
- * Confirm safe-recommendation candidates in bulk. Returns the apply result to
- * the client, which fires a sonner toast and optimistically removes the rows.
- * The people list is revalidated so it reflects new/updated people.
- */
 export async function confirmSafeContactImportCandidatesAction(
   input: ConfirmSafeContactImportInput,
 ): Promise<ContactImportMutationResult> {
@@ -81,14 +79,9 @@ export async function confirmSafeContactImportCandidatesAction(
     })),
     adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
   });
-
   return authoritativeImportResult(ownerUserId, result);
 }
 
-/**
- * Confirm a single review candidate with an explicit resolution (target person,
- * create-new, or birthday choice). Returns the apply result to the client.
- */
 export async function confirmContactImportCandidateAction(
   input: ConfirmContactImportCandidateInput,
 ): Promise<ContactImportMutationResult> {
@@ -99,7 +92,6 @@ export async function confirmContactImportCandidateAction(
     confirmations: [toConfirmation(input)],
     adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
   });
-
   return authoritativeImportResult(ownerUserId, result);
 }
 
@@ -107,7 +99,6 @@ function toConfirmation(
   input: ConfirmContactImportCandidateInput,
 ): ContactImportCandidateConfirmation {
   const targetPersonId = input.targetPersonId?.trim() ?? "";
-
   return {
     candidateId: input.candidateId,
     expectedFingerprint: input.fingerprint,
@@ -116,4 +107,9 @@ function toConfirmation(
     createPerson: input.createPerson ?? false,
     birthdayChoice: input.birthdayChoice,
   };
+}
+
+/** Provider data stays interaction-started; this action is never route-prefetched or cached. */
+export async function loadContactImportPreviewAction() {
+  return getOwnerContactImportPreview();
 }

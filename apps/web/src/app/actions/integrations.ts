@@ -1,6 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import {
+  accountMutationScopes,
+  updateAccountMutationScopes,
+} from "@/lib/cache/account-mutation-scopes";
 import type { DisconnectDiscordResult } from "@/lib/integrations/discord-disconnect";
 import {
   configureOwnerDiscordTarget,
@@ -21,20 +25,23 @@ import {
  * account page so connection health reflects the change.
  */
 export async function disconnectGoogleCalendarAction(): Promise<DisconnectGoogleCalendarResult> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await disconnectOwnerGoogleCalendar();
-  revalidatePath("/account");
+  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
   return result;
 }
 
 export async function disconnectGoogleContactsAction() {
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await disconnectOwnerGoogleContacts();
-  revalidatePath("/account");
+  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
   return result;
 }
 
 export async function prepareGoogleContactsConnectAction() {
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await prepareOwnerGoogleContactsConnect();
-  revalidatePath("/account");
+  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
   return result;
 }
 
@@ -45,8 +52,9 @@ export async function prepareGoogleContactsConnectAction() {
  * connection revoked) and revalidates the account page so the row reflects the change.
  */
 export async function disconnectDiscordAction(): Promise<DisconnectDiscordResult> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await disconnectOwnerDiscord();
-  revalidatePath("/account");
+  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
   return result;
 }
 
@@ -60,11 +68,12 @@ export async function configureDiscordTargetAction(input: {
   guildId: string;
   targetChannelId: string;
 }): Promise<void> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
   await configureOwnerDiscordTarget({
     guildId: input.guildId,
     targetChannelId: input.targetChannelId.trim(),
   });
-  revalidatePath("/account/discord");
+  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
 }
 
 /**
@@ -75,6 +84,7 @@ export async function setDiscordDeliveryEnabledAction(input: {
   guildId: string;
   enabled: boolean;
 }): Promise<void> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
   await setOwnerDiscordDeliveryEnabled({ guildId: input.guildId, enabled: input.enabled });
-  revalidatePath("/account/discord");
+  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
 }

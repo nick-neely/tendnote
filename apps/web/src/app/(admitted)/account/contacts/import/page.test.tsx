@@ -14,6 +14,7 @@ vi.mock("@/lib/access/current-access", () => ({
 vi.mock("@/lib/integrations/contact-import-preview-data", () => ({
   getOwnerContactImportPreview,
 }));
+vi.mock("./contact-import-preview-client", () => ({ ContactImportPreviewClient: () => null }));
 vi.mock("@/app/actions/contact-import", () => ({
   confirmContactImportCandidateAction: vi.fn(),
   confirmSafeContactImportCandidatesAction: vi.fn(),
@@ -22,7 +23,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
-import { ContactsImportContent } from "./page";
+import { ContactImportPreviewFixture } from "./contact-import-preview-fixture";
 
 beforeEach(() => {
   getOwnerContactImportPreview.mockReset();
@@ -131,7 +132,7 @@ describe("ContactsImportPage", () => {
       ],
     });
 
-    const html = renderToStaticMarkup(await ContactsImportContent());
+    const html = renderToStaticMarkup(await ContactImportPreviewFixture());
 
     // Unified table + toolbar rather than the old split sections + banner.
     expect(html).toContain("Confirm safe recommendations");
@@ -164,7 +165,7 @@ describe("ContactsImportPage", () => {
       candidates: [],
     });
 
-    const html = renderToStaticMarkup(await ContactsImportContent());
+    const html = renderToStaticMarkup(await ContactImportPreviewFixture());
 
     expect(html).toContain("No contacts were fetched from Google.");
   });
@@ -220,7 +221,7 @@ describe("ContactsImportPage", () => {
       ],
     });
 
-    const html = renderToStaticMarkup(await ContactsImportContent());
+    const html = renderToStaticMarkup(await ContactImportPreviewFixture());
 
     expect(html).toContain("Advisory");
     expect(html).toContain("Choose target person");
@@ -273,7 +274,7 @@ describe("ContactsImportPage", () => {
       ],
     });
 
-    const html = renderToStaticMarkup(await ContactsImportContent());
+    const html = renderToStaticMarkup(await ContactImportPreviewFixture());
 
     // Skip-only: no create, no apply, no target chooser — just guidance + Skip.
     expect(html).toContain("This contact matches more than one person");

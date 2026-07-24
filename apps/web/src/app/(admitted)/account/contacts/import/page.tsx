@@ -1,10 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { AdmittedRoute } from "@/components/admitted-route";
-import { TriangleAlertIcon } from "@/components/icons";
-import { getOwnerContactImportPreview } from "@/lib/integrations/contact-import-preview-data";
-import { ContactImportReview } from "./contact-import-review";
-import { RefreshPreviewButton } from "./refresh-preview-button";
+import { ContactImportPreviewClient } from "./contact-import-preview-client";
 
 export default function ContactsImportPage() {
   return (
@@ -16,8 +13,6 @@ export default function ContactsImportPage() {
 
 export async function ContactsImportContent() {
   if (process.env.NODE_ENV !== "test") await connection();
-  const preview = await getOwnerContactImportPreview();
-
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
       <header className="flex flex-col gap-2">
@@ -36,39 +31,10 @@ export async function ContactsImportContent() {
               Review contacts from Google before anything is saved to Tendnote.
             </p>
           </div>
-          {preview.connected && !preview.errorMessage ? <RefreshPreviewButton /> : null}
         </div>
       </header>
 
-      {!preview.connected ? (
-        <section className="rounded-lg border border-dashed bg-surface px-3.5 py-3">
-          <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty text-muted-foreground">
-            Connect Google Contacts from Account before starting an import preview.
-          </p>
-        </section>
-      ) : preview.errorMessage ? (
-        <ImportErrorBanner message={preview.errorMessage} />
-      ) : (
-        <ContactImportReview
-          candidates={preview.candidates}
-          fetchedCount={preview.fetchedCount}
-          key={preview.id}
-        />
-      )}
+      <ContactImportPreviewClient />
     </div>
-  );
-}
-
-function ImportErrorBanner({ message }: { message: string }) {
-  return (
-    <section
-      className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-3"
-      role="alert"
-    >
-      <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
-      <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty text-destructive">
-        {message}
-      </p>
-    </section>
   );
 }

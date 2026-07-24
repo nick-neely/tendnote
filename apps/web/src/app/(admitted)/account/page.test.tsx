@@ -7,6 +7,7 @@ const {
   getOwnerProviderConnections,
   getOwnerCalendarPreview,
   listReminderInstallations,
+  unstable_rethrow,
 } = vi.hoisted(() => ({
   redirect: vi.fn((to: string) => {
     throw new Error(`REDIRECT:${to}`);
@@ -16,9 +17,10 @@ const {
   getOwnerProviderConnections: vi.fn(),
   getOwnerCalendarPreview: vi.fn().mockResolvedValue({ state: "hidden" }),
   listReminderInstallations: vi.fn().mockResolvedValue([]),
+  unstable_rethrow: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({ redirect }));
+vi.mock("next/navigation", () => ({ redirect, unstable_rethrow }));
 vi.mock("@/lib/access/current-access", () => ({ getCurrentAccess }));
 vi.mock("@tendnote/db/queries/reminders", () => ({ listReminderInstallations }));
 vi.mock("@/lib/access/account-summary", () => ({ resolveAccountView }));
@@ -46,7 +48,7 @@ vi.mock("@/components/ui/badge", () => ({
   Badge: ({ children }: { children: unknown }) => children,
 }));
 
-import { AccountContent } from "./page";
+import { AccountContent, CalendarPreviewStream, ProviderConnectionsStream } from "./page";
 
 beforeEach(() => {
   getCurrentAccess.mockReset();
@@ -55,6 +57,7 @@ beforeEach(() => {
   getOwnerCalendarPreview.mockReset().mockResolvedValue({ state: "hidden" });
   listReminderInstallations.mockReset().mockResolvedValue([]);
   redirect.mockClear();
+  unstable_rethrow.mockReset();
 });
 
 describe("AccountPage access gating", () => {
@@ -78,7 +81,13 @@ describe("AccountPage access gating", () => {
     });
     getOwnerProviderConnections.mockResolvedValue([]);
 
-    await AccountContent();
+    await ProviderConnectionsStream({
+      calendarConnectable: true,
+      contactsConnectable: true,
+      discordConnectable: false,
+      ensureLocalDemoAuthSession: false,
+      gmailConnectable: true,
+    });
 
     expect(getOwnerProviderConnections).toHaveBeenCalledTimes(1);
     expect(redirect).not.toHaveBeenCalled();
@@ -94,13 +103,13 @@ describe("AccountPage access gating", () => {
     });
     getOwnerProviderConnections.mockResolvedValue([]);
 
-    await AccountContent({
-      searchParams: Promise.resolve({
+    await CalendarPreviewStream({
+      target: {
         calendarId: "primary",
-        calendarEvent: "event-filter",
-        calendarStart: "2026-07-23T15:00:00.000Z",
-        calendarQuery: "Filter installation meeting",
-      }),
+        providerEventId: "event-filter",
+        start: new Date("2026-07-23T15:00:00.000Z"),
+        query: "Filter installation meeting",
+      },
     });
 
     expect(getOwnerCalendarPreview).toHaveBeenCalledWith({
@@ -109,5 +118,20 @@ describe("AccountPage access gating", () => {
       start: new Date("2026-07-23T15:00:00.000Z"),
       query: "Filter installation meeting",
     });
+  });
+
+  it("preserves Next control-flow exceptions from deferred provider reads", async () => {
+    const controlFlow = new Error("NEXT_REDIRECT");
+    getOwnerProviderConnections.mockRejectedValue(controlFlow);
+
+    await ProviderConnectionsStream({
+      calendarConnectable: true,
+      contactsConnectable: true,
+      discordConnectable: false,
+      ensureLocalDemoAuthSession: false,
+      gmailConnectable: true,
+    });
+
+    expect(unstable_rethrow).toHaveBeenCalledWith(controlFlow);
   });
 });

@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import { admittedOwnerOrNull } from "@/lib/access/current-access";
 import { getBetterAuthSecret } from "@/lib/auth/server";
 import { discordEnvFromProcess } from "@/lib/auth/social";
+import {
+  accountMutationScopes,
+  updateAccountMutationScopes,
+} from "@/lib/cache/account-mutation-scopes";
 import { syncDiscordGuildCommands } from "@/lib/integrations/discord-commands";
 import {
   DISCORD_INSTALL_STATE_COOKIE,
@@ -70,6 +74,10 @@ async function recordInstall(
   if (recorded.status !== "recorded") {
     return { error: "missing_identity" };
   }
+  // This callback owns a persisted install write, outside a Server Action. Make
+  // the next Account request observe it through the same typed owner scope as
+  // direct settings writes.
+  updateAccountMutationScopes(accountMutationScopes.forOwner(result.ownerUserId));
   return registerCommandsForInstall(result.guildId);
 }
 

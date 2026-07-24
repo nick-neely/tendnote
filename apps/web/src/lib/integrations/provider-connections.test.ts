@@ -9,6 +9,7 @@ const {
   recordProviderConnectionError,
   requireAdmittedOwner,
   requireAdmittedOwnerForAction,
+  updateAccountMutationScopes,
 } = vi.hoisted(() => ({
   listProviderConnections: vi.fn(),
   setProviderConnectionStatus: vi.fn(),
@@ -18,6 +19,7 @@ const {
   recordProviderConnectionError: vi.fn(),
   requireAdmittedOwner: vi.fn(),
   requireAdmittedOwnerForAction: vi.fn(),
+  updateAccountMutationScopes: vi.fn(),
 }));
 
 // `server-only` throws outside an RSC bundle; stub it so the module loads in tests.
@@ -33,6 +35,12 @@ vi.mock("@tendnote/db/queries/provider-connections", () => ({
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwner,
   requireAdmittedOwnerForAction,
+}));
+vi.mock("@/lib/cache/account-mutation-scopes", () => ({
+  accountMutationScopes: {
+    forOwner: (ownerUserId: string) => [{ kind: "account-owner", ownerUserId }],
+  },
+  updateAccountMutationScopes,
 }));
 
 import {

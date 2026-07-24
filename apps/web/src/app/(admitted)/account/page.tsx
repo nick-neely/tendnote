@@ -1,6 +1,7 @@
 import { listReminderInstallations } from "@tendnote/db/queries/reminders";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
+import { Suspense } from "react";
 import { CalendarPreviewSection } from "@/components/account/calendar-preview-section";
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
 import { ReminderSettings } from "@/components/account/reminder-settings";
@@ -52,9 +53,6 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
   if (!ownerUserId) redirect(signInPathFor("/account"));
   const usingLocalFallback = access.state === "unauthenticated";
 
-  // Admitted-only: getOwnerProviderConnections resolves the admitted owner before
-  // reading, so pending/unauthenticated users never reach connection state.
-  const connections = buildProviderConnectionView(await getOwnerProviderConnections());
   // Google Calendar (Phase 2C, ADR-0071) and Gmail (Phase 2D, ADR-0090) can each be
   // connected only when the server has Google credentials configured; otherwise the
   // affordances stay inert. Both read the same gate — the capabilities differ by the
@@ -63,10 +61,6 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
   // Discord (identity linking) is connectable only when Discord credentials are
   // configured server-side; otherwise the affordance stays inert.
   const discordConfigured = isDiscordConfigured(discordEnvFromProcess());
-  // Read-only bounded preview of the connected calendar; hidden when not connected.
-  const calendarPreview = await getOwnerCalendarPreview(calendarTarget);
-  const reminderInstallations = await listReminderInstallations({ ownerUserId });
-
   const initial = view.name.trim().charAt(0).toUpperCase() || "?";
 
   return (
@@ -121,20 +115,25 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
       {/* Integrations — real Provider Connection rows. Calendar (Phase 2C, ADR-0071)
             and Gmail (Phase 2D, ADR-0090) are each connectable when Google credentials
             are configured, behind their own narrow scope. */}
-      <ProviderConnectionsSection
-        calendarConnectable={googleConfigured}
-        contactsConnectable={googleConfigured}
-        connections={connections}
-        discordConnectable={discordConfigured}
-        ensureLocalDemoAuthSession={usingLocalFallback}
-        gmailConnectable={googleConfigured}
-      />
+      <Suspense fallback={<AccountRegionReserve label="Provider connections" />}>
+        <ProviderConnectionsStream
+          calendarConnectable={googleConfigured}
+          contactsConnectable={googleConfigured}
+          discordConnectable={discordConfigured}
+          ensureLocalDemoAuthSession={usingLocalFallback}
+          gmailConnectable={googleConfigured}
+        />
+      </Suspense>
 
       {/* Read-only Google Calendar preview — provider-derived context, not memory
             or follow-ups; renders only when Calendar is connected (#110). */}
-      <CalendarPreviewSection view={calendarPreview} />
+      <Suspense fallback={<AccountRegionReserve label="Calendar preview" />}>
+        <CalendarPreviewStream target={calendarTarget} />
+      </Suspense>
 
-      <ReminderSettings installations={reminderInstallations} />
+      <Suspense fallback={<AccountRegionReserve label="Reminder settings" />}>
+        <ReminderSettingsStream ownerUserId={ownerUserId} />
+      </Suspense>
 
       {/* Sign out */}
       <section className="flex flex-col gap-3 border-t pt-6">
@@ -142,4 +141,77 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
       </section>
     </div>
   );
+}
+
+function AccountRegionReserve({ label }: { label: string }) {
+  return (
+    <section
+      aria-busy="true"
+      aria-label={label}
+      className="h-24 animate-pulse rounded-lg border bg-muted/40"
+    />
+  );
+}
+
+function AccountRegionUnavailable({ label }: { label: string }) {
+  return (
+    <section
+      aria-label={label}
+      className="rounded-lg border border-dashed px-3.5 py-3 text-sm text-muted-foreground"
+    >
+      {label} are unavailable right now. Try again shortly.
+    </section>
+  );
+}
+
+export async function ProviderConnectionsStream({
+  calendarConnectable,
+  contactsConnectable,
+  discordConnectable,
+  ensureLocalDemoAuthSession,
+  gmailConnectable,
+}: {
+  calendarConnectable: boolean;
+  contactsConnectable: boolean;
+  discordConnectable: boolean;
+  ensureLocalDemoAuthSession: boolean;
+  gmailConnectable: boolean;
+}) {
+  try {
+    const connections = buildProviderConnectionView(await getOwnerProviderConnections());
+    return (
+      <ProviderConnectionsSection
+        calendarConnectable={calendarConnectable}
+        contactsConnectable={contactsConnectable}
+        connections={connections}
+        discordConnectable={discordConnectable}
+        ensureLocalDemoAuthSession={ensureLocalDemoAuthSession}
+        gmailConnectable={gmailConnectable}
+      />
+    );
+  } catch (error) {
+    unstable_rethrow(error);
+    return <AccountRegionUnavailable label="Provider connections" />;
+  }
+}
+
+export async function CalendarPreviewStream({
+  target,
+}: {
+  target: ReturnType<typeof parseCalendarPreviewTarget>;
+}) {
+  try {
+    return <CalendarPreviewSection view={await getOwnerCalendarPreview(target)} />;
+  } catch (error) {
+    unstable_rethrow(error);
+    return <AccountRegionUnavailable label="Calendar preview" />;
+  }
+}
+
+async function ReminderSettingsStream({ ownerUserId }: { ownerUserId: string }) {
+  try {
+    return <ReminderSettings installations={await listReminderInstallations({ ownerUserId })} />;
+  } catch {
+    return <AccountRegionUnavailable label="Reminder settings" />;
+  }
 }

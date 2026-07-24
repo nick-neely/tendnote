@@ -13,6 +13,7 @@ const {
   recordProviderConnectionError,
   getAccessToken,
   admittedOwnerOrNull,
+  updateAccountMutationScopes,
 } = vi.hoisted(() => ({
   getDiscordIdentity: vi.fn(),
   linkDiscordIdentity: vi.fn(),
@@ -22,6 +23,7 @@ const {
   recordProviderConnectionError: vi.fn(),
   getAccessToken: vi.fn(),
   admittedOwnerOrNull: vi.fn(),
+  updateAccountMutationScopes: vi.fn(),
 }));
 
 // `server-only` throws outside an RSC bundle; stub it so the module loads in tests.
@@ -44,6 +46,12 @@ vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwner: vi.fn(),
   requireAdmittedOwnerForAction: vi.fn(),
   admittedOwnerOrNull,
+}));
+vi.mock("@/lib/cache/account-mutation-scopes", () => ({
+  accountMutationScopes: {
+    forOwner: (ownerUserId: string) => [{ kind: "account-owner", ownerUserId }],
+  },
+  updateAccountMutationScopes,
 }));
 // `fetchDiscordUsername` resolves the username via Better Auth's access token; the
 // account row the hook receives only carries an encrypted token, so the reconcile
@@ -119,6 +127,9 @@ describe("reconcileDiscordAfterLink", () => {
       authorizedScopes: ["identify"],
     });
     expect(recordProviderConnectionError).not.toHaveBeenCalled();
+    expect(updateAccountMutationScopes).toHaveBeenCalledWith([
+      { kind: "account-owner", ownerUserId: OWNER },
+    ]);
   });
 
   it("is a no-op re-mirror when the identity is already current — no re-link, no username fetch", async () => {
