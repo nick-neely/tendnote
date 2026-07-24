@@ -168,6 +168,30 @@ _Avoid_: Version number, etag, content hash of the raw provider record
 The account-level gate that decides whether a signed-up user may enter Tendnote during the early hosted product phase. It controls product access only; it is not the same as relationship data ownership, integration authorization, or payment status.
 _Avoid_: Public signup, environment allowlist, owner scope
 
+**Authenticated App Shell**:
+The recognizable Tendnote navigation and layout frame available only after Better Auth and Private Beta Access admit an owner. It contains no relationship records, Today or Eve content, or other owner-specific data.
+_Avoid_: Public app shell, dashboard data, owner cache
+
+**Instant Interaction**:
+An admitted primary navigation that acknowledges input immediately and presents cached content or a truthful, layout-stable destination shell within 100 milliseconds, without showing a blank, frozen, or misleading page. Critical semantic, layout-stability, streamed-completion, reconciliation, privacy, and cache-isolation checks are hard CI gates; environment-sensitive completion time, payload, query, and mutation measurements remain diagnostic until a repeatable post-upgrade baseline makes them reliable regression gates.
+_Avoid_: Fully loaded page, zero-latency navigation, unmeasured speed claim
+
+**Optimistic Mutation**:
+A deterministic, reversible owner action whose exact next view and authoritative inverse are known, allowing Tendnote to project the change before the server confirms it. The server remains authoritative, and failure restores the prior view rather than leaving the projection as truth.
+_Avoid_: Instant mutation, assumed success, client-authoritative write
+
+**Pending Mutation**:
+An acknowledged owner action whose submitted value remains visibly in progress until the server returns an authoritative result. Pending mutations preserve the owner's input but do not present unconfirmed creates, edits, links, review outcomes, imports, uploads, or external effects as settled domain truth.
+_Avoid_: Optimistic mutation, completed write, background job
+
+**Locally Blocking Mutation**:
+An irreversible or authority-changing owner action that keeps its affected dialog or region unavailable until the authoritative operation succeeds or fails, while unrelated truthful regions remain usable. Identity changes may block the whole active flow.
+_Avoid_: Page freeze, optimistic deletion, global loading state
+
+**Authoritative Undo**:
+The server-enforced inverse of a completed or pending Optimistic Mutation. Undo expresses the owner's desired final domain state and is serialized after any in-flight original command; it is never only a client-side cancellation.
+_Avoid_: Visual rollback, request cancellation, cosmetic undo
+
 **Provider Connection**:
 A user-scoped integration authorization record for an external provider or provider capability, such as Google Calendar, Gmail, Google Contacts, or a future non-Google service. A provider connection tracks connection status and consent boundaries; it is not the same as Better Auth sign-in or product access.
 _Avoid_: Login method, private beta access, provider dump

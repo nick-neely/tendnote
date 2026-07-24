@@ -1,0 +1,5 @@
+# Partial Prefetching Is Density And Evidence Gated
+
+Tendnote will use Partial Prefetching's reusable shell-only behavior by default, including persistent navigation, dense result lists, mobile Review, and the default pane of tabbed destinations; Search, Capture, Eve, Menu, inactive panes, provider-backed regions, and other interaction-started work do not preload route data. Sparse high-confidence calls to action may use `prefetch={true}`, while person and Asset details are the first candidates for `prefetch = "allow-runtime"` only after production-like measurements prove a meaningful completion-time improvement without harmful fan-out or server load.
+
+Private owner data is not by itself a reason to disable safe read-only shell prefetching: existing internal `prefetch={false}` overrides should be removed unless a concrete correctness, side-effect, or resource hazard remains. The implementation must demonstrate speed gains and may deepen prefetching when evidence supports it, rather than treating the default as a permanent ceiling.

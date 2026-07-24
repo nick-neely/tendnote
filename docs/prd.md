@@ -1487,6 +1487,203 @@ Acceptance and eval matrix:
 
 The separate implementation-ticket pass is ready to begin only when every contract above maps to a handoff boundary and at least one verification layer, the proof journey can be implemented without inventing product policy, and all remaining work is execution rather than an unresolved Phase Seven decision.
 
+#### Cross-Cutting Upgrade: Next.js 16.3 Instant Tendnote Experience
+
+Goal: Move Tendnote from Next.js 16.2.11 to one exactly pinned Next.js
+16.3 Preview candidate and make every admitted product surface satisfy the
+Instant Interaction contract without weakening owner isolation, truthful
+loading, mutation authority, or the current Field Notebook and Personal Ledger
+visual language.
+
+This is one coordinated upgrade, not a permanent compatibility layer. The
+implementation resolves `next@preview` once, commits the exact
+`16.3.0-preview.9` version and matching `@next/playwright` package, keeps React
+and React DOM exactly aligned, and never leaves a floating Preview range in the
+repository. Any later Preview or stable version is a new candidate that repeats
+the full qualification.
+
+Upgrade and agent-tooling contract:
+
+- Implement on one long-running upgrade branch. Run the Next.js upgrade tool,
+  review every change, remove legacy route segment configuration that conflicts
+  with Cache Components, and enable `cacheComponents: true` and
+  `partialPrefetching: true` directly. Do not use the incremental
+  `instant = false` codemod or treat blocking as an app-wide migration escape
+  hatch.
+- Use the first-party `next-dev-loop`, `next-cache-components-adoption`,
+  `next-cache-components-optimizer`, and
+  `next-partial-prefetching-adoption` workflow skills. The installed Next.js
+  package's bundled documentation and managed app-scoped `AGENTS.md` block are
+  authoritative for the pinned version.
+- Remove superseded global Next.js knowledge skills. Keep global workflow
+  skills and Agent Browser installation reproducible through the focused agent
+  guide; do not add default Next.js MCP configuration. Runtime MCP use remains
+  an explicit Turbopack compilation or runtime-diagnostics choice.
+- Keep stable Turbopack, React Compiler, serialization diagnostics, and route
+  type generation enabled. Measure persistent build caching, the experimental
+  Rust compiler, bundle shape, and focus handling before adopting further
+  changes. Do not add unsupported 16.2 stepping-stone flags beside the chosen
+  16.3 contract.
+
+Admission and shell contract:
+
+- Better Auth and Private Beta Access remain request-bound and fail closed.
+  Before admission, show only a neutral branded access-check fallback.
+  Unauthenticated callers go to sign-in, pending callers go to the pending
+  surface, and no private-product chrome or owner data appears early.
+- After admission, prerender or prefetch an owner-neutral Authenticated App
+  Shell. The shell contains navigation and layout only. Today, Eve, relationship
+  records, counts, and other owner-specific data stream through narrow
+  owner-scoped regions.
+- Split the current client-heavy shared shell into a server-rendered frame plus
+  narrow client islands for mobile focused flows, Search, Capture, connectivity,
+  PWA and reminder effects. Serialized identity is presentation context rather
+  than authority; every product query, cache wrapper, and mutation receives or
+  re-resolves a verified owner.
+- A primary admitted navigation acknowledges input immediately and shows cached
+  content or a truthful destination-shaped reserve within 100 milliseconds.
+  The reserve preserves final geometry, names only meaningful independent
+  regions, and never fabricates private data. Previous-route content is not
+  retained beneath a different destination.
+
+Route Stream, Cache, and Block contract:
+
+| Surface | Instant-capable first render | Deferred or interaction-started work |
+|---|---|---|
+| Today and Review | Stream the selected composition inside the admitted frame with a truthful shaped reserve. | Briefs, Calendar nudges, Eve, and independent Review families resolve separately; Today and Review never preload each other's full composition. |
+| People | Cache the bounded default owner-visible list. | Optional metadata streams only if introduced. |
+| Person detail | Cache the visible core profile and lightweight pane counts, loading the default pane first. | Snapshots, Gmail capability, proposals, drafts, reminders, and inactive panes load independently or on first activation. |
+| Action Today and Actions | Cache the bounded active projection, linked Asset labels, and active Areas. | Paused, resolved, suggested-review, reminder, and linking regions load when relevant. |
+| Assets and Asset detail | Cache the bounded default list and visible core Asset with lightweight section counts. | Search, filters, pagination, inactive panes, memories, evidence, Actions, links, history, review state, and snapshots remain independently owner-gated. |
+| Saved Items | Cache active items first. | Archived items and reminder management load when opened. |
+| Account and Contact Import | Stream capability, provider, installation, and preview regions independently. | Provider-backed work stays fail-soft and does not erase successful account content. |
+| Search, Capture, and Eve | Keep query, draft, capture, and conversation state out of shared route caches. | Owner-gated reads and mutations begin only after explicit interaction. |
+| Reminder open and access boundaries | Block only while authoritative visibility, authentication, recovery, or pending-access resolution must choose a safe destination. | Every block has a documented reason and a tested waiting state. |
+
+Stable owner- or viewer-scoped view models may use `"use cache"` only behind
+small framework-neutral product queries. Next.js wrappers centralize cache
+profiles, keys, tags, and invalidation. Cache identity includes every visibility
+dimension used by the query: verified owner or caller identity, domain, entity,
+filters, and pagination. Sessions, admission decisions, provider credentials,
+raw request values, database rows, and client-supplied identity never enter a
+shared cache.
+
+Use the `interactive` profile (30 seconds stale, 30 seconds revalidate, five
+minutes expire) for frequently changed People, Actions, Assets, Saved Items,
+detail projections, and counts. Use the `reference` profile (five minutes
+stale, 15 minutes revalidate, 24 hours expire) for Areas, household-member
+choices, and similarly low-churn reference projections. Time bounds are
+recovery limits; exact invalidation is the primary consistency mechanism.
+
+User-originated mutations return typed affected owner, entity, and collection
+scopes. After the durable write commits, Server Actions translate those scopes
+to synchronous `updateTag` calls before returning the authoritative view and a
+revision or mutation marker. Background jobs, webhooks, imports, Eve work, and
+provider callbacks translate the same scopes to `revalidateTag(tag, "max")`.
+Existing path invalidation remains only as a migration safety net until
+tag-coverage tests prove it redundant.
+
+Partial Prefetching contract:
+
+- Use reusable shell-only Partial Prefetching by default for persistent
+  navigation, dense result lists, mobile Review, and the default pane of a
+  tabbed destination. Safe owner-scoped reads are not disabled merely because
+  they are private.
+- Search, Capture, Eve, Menu, inactive panes, provider-backed regions, and other
+  interaction-started work do not preload route data.
+- Sparse, high-confidence calls to action may use full prefetch. Person and
+  Asset details are the first runtime-prefetch candidates, but only after
+  production-like evidence shows meaningful completion-time improvement
+  without harmful request fan-out, freshness cost, or server load.
+- Remove current `prefetch={false}` overrides unless a concrete correctness,
+  side-effect, or resource hazard remains. Do not enable request-time prefetch
+  globally.
+
+Mutation feedback and reconciliation:
+
+- Reversible lifecycle actions and Today-only suppression may project
+  optimistically when their exact next view and authoritative inverse are
+  known. Suggestion dismissal is the only review exception and offers
+  Authoritative Undo.
+- Creates, edits, links, visibility changes, reminder schedules, review
+  acceptance or editing, imports, uploads, and external/provider effects are
+  Pending Mutations. They acknowledge and preserve input immediately but do not
+  present an unconfirmed domain record or external effect as complete.
+- Permanent deletion, unique-source deletion, provider revocation, and identity
+  or authority transitions are Locally Blocking Mutations. Only the affected
+  flow blocks unless identity itself is changing.
+- One intent per record may be in flight. Creates, imports, external effects,
+  and destructive commands use server-enforced idempotency keys. Lifecycle
+  commands are state-aware; incompatible stale intent fails visibly and
+  reconciles to the latest authoritative view.
+- Authoritative Undo is an inverse server command serialized after any in-flight
+  original command. Failures restore the exact prior projection or preserve the
+  editable draft, restore logical focus, announce the outcome accessibly, and
+  never queue silent offline replay.
+
+Performance and verification contract:
+
+- The primary behavioral seam is the shared owner-scoped product query and
+  command contract. Tests assert externally visible returned views, affected
+  scopes, owner and visibility isolation, cache invalidation, revision ordering,
+  idempotency, and rollback rather than framework-wrapper or component
+  internals.
+- A production-build Chromium matrix proves desktop Today to People, People to
+  person detail, and person detail to Today; mobile Today to Review, Menu to
+  Actions, and People to person detail; and seeded Action complete-and-reopen on
+  desktop and mobile. Each navigation uses Next.js `instant()` and continues
+  through streamed authoritative completion.
+- Every critical shell is truthful within 100 milliseconds with cumulative
+  layout shift no greater than `0.01`. Optimistic Action acknowledgement is at
+  most 100 milliseconds, and authoritative seeded reconciliation is at most
+  500 milliseconds.
+- Against the recorded 16.2 baseline, Today and person-detail median completion
+  time improve by at least 20 percent, no other measured critical transition
+  regresses by more than 10 percent, and cold JavaScript for Today, Review, and
+  person detail does not grow.
+- Query latency, RSC and client payload size, request fan-out, and server work
+  remain recorded diagnostics until the pinned implementation establishes
+  repeatable distributions. Cold and warm paths are measured separately.
+- Routine application pull requests run Chromium. The full matrix and reduced
+  Firefox and WebKit Today, person-detail, and Action-reconciliation smoke are
+  mandatory for the framework upgrade and production promotion. The parallel
+  browser job must keep aggregate `Verify` below nine minutes across three
+  cache-warm runs; a clean run reaching ten minutes fails the rollout
+  criterion.
+- Fixtures use one bounded synthetic primary owner plus a second synthetic owner
+  whose records must never appear. Time, identifiers, and counts are stable.
+  No production data, provider credentials, Eve model calls, or external
+  network dependency participates.
+
+Promotion and rollback contract:
+
+- The upgrade pull request is the human go/no-go. Its exact candidate must pass
+  repository verification, a production build, full navigation and browser
+  qualification, two-owner cache and privacy checks, mutation reconciliation,
+  and authenticated Better Auth and Eve smoke testing against the Vercel
+  Preview.
+- Record the last known-good Next.js 16.2.11 commit and Vercel deployment before
+  merge. Reuse the existing staged private-beta release path and automatic
+  promotion rather than creating a second canary, shadow traffic, or
+  upgrade-specific release system.
+- After promotion, perform a non-destructive smoke of sign-in, Today, People,
+  person detail, Actions, Review, and Eve. Watch existing deployment and
+  function error, rate, and latency signals actively for one hour and with
+  heightened attention through 24 hours.
+- Roll back immediately for credible owner-data leakage, admission or
+  authorization bypass, destructive corruption, or cross-owner cache
+  contamination. Also roll back for reproducible sign-in loops, blank or frozen
+  primary navigation, unusable streamed content, hydration or module failure,
+  mutation reconciliation failure, or Eve routing failure. Isolated transient
+  infrastructure errors are investigated unless they repeat.
+
+The delivery-ticket pass may begin when each admitted surface has a named
+Stream, Cache, or Block outcome; every cached view has explicit identity,
+lifetime, tag, and invalidation ownership; every mutation family has one
+feedback and reconciliation contract; the browser matrix covers the shared
+behavioral seam; the agent-tool migration is reproducible; and rollout and
+rollback evidence can be collected without inventing new product policy.
+
 #### Phase 8: Rich Household and Multi-Domain Collaboration
 
 Goal: Build the richer household product workflows on top of the Phase 4 scope foundation and the first Personal OS vertical.
