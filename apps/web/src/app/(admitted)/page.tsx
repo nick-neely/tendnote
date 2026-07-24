@@ -13,9 +13,9 @@ import {
 } from "@/app/actions/today";
 import { AccessCheckFallback } from "@/components/access-check-fallback";
 import { AdmittedRoute } from "@/components/admitted-route";
-import { AssistantPanel } from "@/components/assistant-panel";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { DashboardRail } from "@/components/dashboard-rail";
+import { EveLauncher } from "@/components/eve-launcher";
 import { MobileTodayDestination } from "@/components/mobile-today-destination";
 import { ReviewQueueFamilySection } from "@/components/review-queue-section";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
@@ -26,10 +26,8 @@ import {
   getCachedTodayShortlist,
 } from "@/lib/cache/today-review-views";
 import { toCalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
-import { suggestComposerPerson } from "@/lib/composer-suggestion";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
 import { toDashboardFollowupView } from "@/lib/followup-view";
-import { getOwnerCalendarPromptNudges } from "@/lib/integrations/calendar-prompt-nudges";
 import type { ReviewQueueFamily } from "@/lib/review-queue";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 
@@ -90,7 +88,7 @@ async function HomeContent({ requestedTab }: { requestedTab?: string }) {
               <Suspense
                 fallback={<div className="h-full animate-pulse rounded-xl border bg-muted/40" />}
               >
-                <HomeAssistant ownerUserId={ownerUserId} />
+                <EveLauncher ownerUserId={ownerUserId} />
               </Suspense>
             </div>
           ) : (
@@ -108,22 +106,6 @@ async function HomeContent({ requestedTab }: { requestedTab?: string }) {
         </div>
       </div>
     </>
-  );
-}
-
-async function HomeAssistant({ ownerUserId }: { ownerUserId: string }) {
-  const [people, followups, nudges] = await Promise.all([
-    searchPeople({ ownerUserId, limit: 8 }),
-    getDashboardFollowups(ownerUserId),
-    getOwnerCalendarPromptNudges(),
-  ]);
-
-  return (
-    <AssistantPanel
-      nudges={nudges}
-      ownerUserId={ownerUserId}
-      suggestPersonName={suggestComposerPerson(followups, people)}
-    />
   );
 }
 
@@ -243,11 +225,6 @@ async function HomeMobileContent() {
 
   return (
     <MobileTodayDestination
-      mobileEve={
-        <Suspense fallback={<div className="h-full animate-pulse rounded-xl border bg-muted/40" />}>
-          <HomeAssistant ownerUserId={ownerUserId} />
-        </Suspense>
-      }
       ownerUserId={ownerUserId}
       todayHandlers={{
         act: actOnTodayItemAction,

@@ -1,21 +1,30 @@
 "use client";
 
 import type { TodayShortlistResponse } from "@tendnote/domain/today";
-import { type ReactNode, useRef, useState } from "react";
-import { EveFlow } from "@/components/mobile-focused-flows";
+import dynamic from "next/dynamic";
+import { useRef, useState } from "react";
 import { MobileTodayHome } from "@/components/mobile-shell";
 import type { TodayShortlistHandlers } from "@/components/today-shortlist";
 
+const EveFlow = dynamic(
+  () => import("@/components/mobile-focused-flows").then((mod) => mod.EveFlow),
+  {
+    ssr: false,
+  },
+);
+const EveSurface = dynamic(
+  () => import("@/components/mobile-eve-surface").then((mod) => mod.EveSurface),
+  { ssr: false },
+);
+
 /** Route-owned mobile Today surface, rendered inside the admitted application shell. */
 export function MobileTodayDestination({
-  mobileEve,
   ownerUserId,
   todayHandlers,
   todayInitial,
   todayLocalDate,
   todayTimeZone,
 }: {
-  mobileEve: ReactNode;
   ownerUserId: string;
   todayHandlers: TodayShortlistHandlers;
   todayInitial: TodayShortlistResponse;
@@ -54,7 +63,7 @@ export function MobileTodayDestination({
             });
           }}
         >
-          {mobileEve}
+          <EveSurface ownerUserId={ownerUserId} />
         </EveFlow>
       ) : null}
     </>

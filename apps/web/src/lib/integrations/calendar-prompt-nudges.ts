@@ -16,6 +16,11 @@ import { requireAdmittedOwner } from "@/lib/access/current-access";
  */
 export async function getOwnerCalendarPromptNudges(): Promise<PromptNudge[]> {
   const ownerUserId = await requireAdmittedOwner();
+  return getCalendarPromptNudgesForOwner(ownerUserId);
+}
+
+/** Shared owner-scoped view seam for a route or explicit interaction action. */
+export async function getCalendarPromptNudgesForOwner(ownerUserId: string): Promise<PromptNudge[]> {
   try {
     const suggestions = await listCalendarSuggestedFollowups(ownerUserId);
     return suggestions.slice(0, PROMPT_NUDGE_DISPLAY_CAP).map(calendarSuggestionToPromptNudge);

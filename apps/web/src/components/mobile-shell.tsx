@@ -1,6 +1,7 @@
 "use client";
 
 import type { TodayShortlistResponse } from "@tendnote/domain/today";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
@@ -11,18 +12,35 @@ import {
   PlusIcon,
   SearchIcon,
 } from "@/components/icons";
-import {
-  CaptureFlow,
-  type CaptureHandlers,
-  EveFlow,
-  type FocusedFlow,
-  type GlobalRecallHandler,
-  MenuFlow,
-  SearchFlow,
+import type {
+  CaptureHandlers,
+  FocusedFlow,
+  GlobalRecallHandler,
 } from "@/components/mobile-focused-flows";
 import { TodayShortlist, type TodayShortlistHandlers } from "@/components/today-shortlist";
 import { requestLocalEveDraftSubmission, useLocalComposerDraft } from "@/lib/local-composer-draft";
 import { cn } from "@/lib/utils";
+
+const SearchFlow = dynamic(
+  () => import("@/components/mobile-focused-flows").then((mod) => mod.SearchFlow),
+  { ssr: false },
+);
+const CaptureFlow = dynamic(
+  () => import("@/components/mobile-focused-flows").then((mod) => mod.CaptureFlow),
+  { ssr: false },
+);
+const EveFlow = dynamic(
+  () => import("@/components/mobile-focused-flows").then((mod) => mod.EveFlow),
+  {
+    ssr: false,
+  },
+);
+const MenuFlow = dynamic(
+  () => import("@/components/mobile-focused-flows").then((mod) => mod.MenuFlow),
+  {
+    ssr: false,
+  },
+);
 
 export function MobileShell({
   children,

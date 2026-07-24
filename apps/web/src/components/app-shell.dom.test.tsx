@@ -98,7 +98,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     searchButton.focus();
     await user.click(searchButton);
 
-    expect(screen.getByRole("dialog", { name: "Search" })).toBeDefined();
+    expect(await screen.findByRole("dialog", { name: "Search" })).toBeDefined();
     expect(screen.queryByRole("navigation", { name: "Mobile primary" })).toBeNull();
     expect(screen.getByRole("textbox", { name: "Search Tendnote" })).toBe(document.activeElement);
     expect(screen.getByRole("button", { name: "Close" }).className).toContain("size-11");
@@ -314,7 +314,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
     await user.type(screen.getByRole("textbox", { name: "Ask Eve anything" }), "What is due?");
     await user.click(screen.getByRole("button", { name: "Send to Eve" }));
-    expect(screen.getByRole("dialog", { name: "Eve" })).toBeDefined();
+    expect(await screen.findByRole("dialog", { name: "Eve" })).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getByDisplayValue("What is due?")).toBeDefined();
   });
