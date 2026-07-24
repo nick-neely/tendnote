@@ -1,7 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import {
+  archiveGeneralActionAction,
+  completeGeneralActionAction,
+  getActionComposerOptionsAction,
+  getActionSecondaryLedgerViewsAction,
+  getSuggestedActionViewsAction,
+  pauseGeneralActionAction,
+  reopenGeneralActionAction,
+  restoreGeneralActionAction,
+  resumeGeneralActionAction,
+} from "@/app/actions/general-actions";
 import { AreaManagerDialog } from "@/components/general-action-area-manager";
 import { CreateActionForm } from "@/components/general-action-create-form";
 import { PausedRoutineRow } from "@/components/general-action-paused-row";
@@ -19,14 +30,24 @@ import {
   resolveActiveAreaId,
 } from "@/lib/general-action-area-filter";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
-import type { GeneralActionView } from "@/lib/general-action-view";
+import type { GeneralActionMutationResult, GeneralActionView } from "@/lib/general-action-view";
 import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 import { useServerSyncedList } from "@/lib/use-server-synced-list";
 import { cn } from "@/lib/utils";
 
 const actionId = (action: GeneralActionView) => action.id;
+const actionRevision = (action: GeneralActionView) => action.revision;
 const areaId = (area: GeneralActionAreaView) => area.id;
 const reviewActionId = (review: SuggestedGeneralActionReviewView) => review.action.id;
+
+type SecondaryUndo = {
+  error?: string;
+  label: string;
+  originalPending: boolean;
+  requested: boolean;
+  inverse: () => Promise<GeneralActionMutationResult>;
+  applyInverse: (view: GeneralActionView) => void;
+};
 
 /** The moment an active action next wants attention; unscheduled sorts last. */
 function surfacingKey(action: GeneralActionView): string | null {
@@ -53,6 +74,16 @@ function sortActive(actions: GeneralActionView[]): GeneralActionView[] {
   });
 }
 
+function mergeByRevision(current: GeneralActionView[], incoming: GeneralActionView[]) {
+  const currentById = new Map(current.map((action) => [action.id, action]));
+  for (const action of incoming) {
+    const existing = currentById.get(action.id);
+    if (!existing || (action.revision ?? "") > (existing.revision ?? ""))
+      currentById.set(action.id, action);
+  }
+  return [...currentById.values()];
+}
+
 /**
  * The private Actions surface: a capture-first create form leading the owner's
  * active one-time Actions, with a quiet "Resolved" list keeping completed and
@@ -74,8 +105,9 @@ export function ActionsSurface({
   areas,
   paused = [],
   people = [],
-  resolved,
+  resolved = [],
   resolvedTruncated = false,
+  resolvedLimit = 20,
   shareableMembers = [],
   suggested = [],
 }: {
@@ -86,20 +118,57 @@ export function ActionsSurface({
   paused?: GeneralActionView[];
   /** The owner's people, for linking an Action to a person as context (ADR 0155). */
   people?: ActionPersonOption[];
-  resolved: GeneralActionView[];
+  resolved?: GeneralActionView[];
   /** The initial resolved load hit the server cap, so older ones aren't shown. */
   resolvedTruncated?: boolean;
+  /** Bound passed to the deferred resolved-pane read. */
+  resolvedLimit?: number;
   /** Household members an Action can be shared with; empty keeps the surface private-only. */
   shareableMembers?: ShareableActionMember[];
   /** Review-gated Suggested actions awaiting a yes/no, shown above the active list (ADR 0152). */
   suggested?: SuggestedGeneralActionReviewView[];
 }) {
   const router = useRouter();
-  const [activeList, setActiveList] = useServerSyncedList(active, actionId, sortActive);
-  const [pausedList, setPausedList] = useServerSyncedList(paused, actionId);
-  const [resolvedList, setResolvedList] = useServerSyncedList(resolved, actionId);
+  const [activeList, setActiveList] = useServerSyncedList(
+    active,
+    actionId,
+    sortActive,
+    actionRevision,
+  );
+  const [pausedList, setPausedList] = useServerSyncedList(
+    paused,
+    actionId,
+    undefined,
+    actionRevision,
+  );
+  const [resolvedList, setResolvedList] = useServerSyncedList(
+    resolved,
+    actionId,
+    undefined,
+    actionRevision,
+  );
   const [areaList, setAreaList] = useServerSyncedList(areas, areaId);
   const [suggestedList, setSuggestedList] = useServerSyncedList(suggested, reviewActionId);
+  const [secondaryPeople, setSecondaryPeople] = useState<ActionPersonOption[]>(people);
+  const [secondaryMembers, setSecondaryMembers] =
+    useState<ShareableActionMember[]>(shareableMembers);
+  const [ledgerLoaded, setLedgerLoaded] = useState(false);
+  const [suggestedLoaded, setSuggestedLoaded] = useState(false);
+  const [composerLoaded, setComposerLoaded] = useState(false);
+  const [ledgerLoading, startLedgerTransition] = useTransition();
+  const [suggestedLoading, startSuggestedTransition] = useTransition();
+  const [composerLoading, startComposerTransition] = useTransition();
+  const [secondaryLoadErrors, setSecondaryLoadErrors] = useState<{
+    composer: string | null;
+    ledger: string | null;
+    suggested: string | null;
+  }>({ composer: null, ledger: null, suggested: null });
+  const [, startLifecycleTransition] = useTransition();
+  const [secondaryUndo, setSecondaryUndo] = useState<Record<string, SecondaryUndo>>({});
+  const secondaryUndoRef = useRef(new Map<string, SecondaryUndo>());
+  const [offLedgerUndoId, setOffLedgerUndoId] = useState<string | null>(null);
+  const [secondaryLifecycleError, setSecondaryLifecycleError] = useState<string | null>(null);
+  const [secondaryLifecycleNotice, setSecondaryLifecycleNotice] = useState<string | null>(null);
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
   const [managerOpen, setManagerOpen] = useState(false);
   const activeAreas = useMemo(() => areaList.filter((area) => !area.archived), [areaList]);
@@ -126,9 +195,232 @@ export function ActionsSurface({
     effectiveAreaId,
   );
 
-  function removeActive(id: string) {
-    setActiveList((current) => current.filter((action) => action.id !== id));
+  function loadSecondaryLedger() {
+    if (ledgerLoaded || ledgerLoading) return;
+    setSecondaryLoadErrors((current) => ({ ...current, ledger: null }));
+    startLedgerTransition(async () => {
+      try {
+        const result = await getActionSecondaryLedgerViewsAction({ resolvedLimit });
+        setPausedList((current) => mergeByRevision(current, result.paused));
+        setResolvedList((current) => mergeByRevision(current, result.resolved));
+        setLedgerLoaded(true);
+      } catch {
+        setSecondaryLoadErrors((current) => ({
+          ...current,
+          ledger: "Unable to load more actions. Try again.",
+        }));
+      }
+    });
+  }
+
+  function loadComposerOptions() {
+    if (composerLoaded || composerLoading) return;
+    setSecondaryLoadErrors((current) => ({ ...current, composer: null }));
+    startComposerTransition(async () => {
+      try {
+        const result = await getActionComposerOptionsAction();
+        setSecondaryPeople(result.people);
+        setSecondaryMembers(result.shareableMembers);
+        setComposerLoaded(true);
+      } catch {
+        setSecondaryLoadErrors((current) => ({
+          ...current,
+          composer: "Unable to load action details. Try again.",
+        }));
+      }
+    });
+  }
+
+  function loadSuggested() {
+    if (suggestedLoaded || suggestedLoading) return;
+    setSecondaryLoadErrors((current) => ({ ...current, suggested: null }));
+    startSuggestedTransition(async () => {
+      try {
+        const result = await getSuggestedActionViewsAction();
+        setSuggestedList(result.suggested);
+        setSuggestedLoaded(true);
+      } catch {
+        setSecondaryLoadErrors((current) => ({
+          ...current,
+          suggested: "Unable to load suggested actions. Try again.",
+        }));
+      }
+    });
+  }
+
+  function reconcileResolvedActive(view: GeneralActionView) {
+    setActiveList((current) => current.filter((action) => action.id !== view.id));
+    if (view.status === "paused") {
+      setPausedList((current) => [...current.filter((action) => action.id !== view.id), view]);
+    } else if (view.status === "completed" || view.status === "dismissed") {
+      setResolvedList((current) => [...current.filter((action) => action.id !== view.id), view]);
+    }
     router.refresh();
+  }
+
+  function clearSecondaryUndo(actionId: string) {
+    secondaryUndoRef.current.delete(actionId);
+    setOffLedgerUndoId((current) => (current === actionId ? null : current));
+    setSecondaryUndo((current) => {
+      const { [actionId]: _removed, ...rest } = current;
+      return rest;
+    });
+  }
+
+  function focusSecondaryControl(actionId: string, control: "archive" | "reopen" | "resume") {
+    document
+      .querySelector<HTMLButtonElement>(`#action-${actionId} [data-action-control=${control}]`)
+      ?.focus();
+  }
+
+  function runSecondaryUndo(actionId: string) {
+    const entry = secondaryUndoRef.current.get(actionId);
+    if (!entry) return;
+    entry.requested = true;
+    setSecondaryUndo((current) => ({ ...current, [actionId]: { ...entry } }));
+    if (entry.originalPending) return;
+    startLifecycleTransition(async () => {
+      try {
+        const result = await entry.inverse();
+        if (!result.ok) {
+          entry.requested = false;
+          entry.error = result.error;
+          setSecondaryUndo((current) => ({ ...current, [actionId]: { ...entry } }));
+          return;
+        }
+        entry.applyInverse(result.view);
+        clearSecondaryUndo(actionId);
+      } catch {
+        entry.requested = false;
+        entry.error = "Unable to undo the change. Try again.";
+        setSecondaryUndo((current) => ({ ...current, [actionId]: { ...entry } }));
+      }
+    });
+  }
+
+  function beginSecondaryLifecycle(input: {
+    action: GeneralActionView;
+    optimistic: GeneralActionView;
+    label: string;
+    original: () => Promise<GeneralActionMutationResult>;
+    inverse: () => Promise<GeneralActionMutationResult>;
+    applyOptimistic: () => void;
+    restore: () => void;
+    applyOriginal: (view: GeneralActionView) => void;
+    applyInverse: (view: GeneralActionView) => void;
+    restoreFocus?: () => void;
+  }) {
+    setSecondaryLifecycleError(null);
+    setSecondaryLifecycleNotice(`${input.label}ing action…`);
+    const entry: SecondaryUndo = {
+      label: input.label,
+      originalPending: true,
+      requested: false,
+      inverse: input.inverse,
+      applyInverse: input.applyInverse,
+    };
+    secondaryUndoRef.current.set(input.action.id, entry);
+    setSecondaryUndo((current) => ({ ...current, [input.action.id]: entry }));
+    input.applyOptimistic();
+    startLifecycleTransition(async () => {
+      try {
+        const result = await input.original();
+        if (!result.ok) {
+          input.restore();
+          clearSecondaryUndo(input.action.id);
+          setSecondaryLifecycleError(result.error);
+          setSecondaryLifecycleNotice(null);
+          if (input.restoreFocus) requestAnimationFrame(input.restoreFocus);
+          return;
+        }
+        input.applyOriginal(result.view);
+        entry.originalPending = false;
+        setSecondaryUndo((current) => ({ ...current, [input.action.id]: { ...entry } }));
+        setSecondaryLifecycleNotice(`${input.label}ed action.`);
+        if (entry.requested) runSecondaryUndo(input.action.id);
+      } catch {
+        input.restore();
+        clearSecondaryUndo(input.action.id);
+        setSecondaryLifecycleError("Unable to update this action. Try again.");
+        setSecondaryLifecycleNotice(null);
+        if (input.restoreFocus) requestAnimationFrame(input.restoreFocus);
+      }
+    });
+  }
+
+  function reopenResolved(action: GeneralActionView) {
+    const optimistic = { ...action, status: "open" as const, surfaceLabel: "Reopening…" };
+    beginSecondaryLifecycle({
+      action,
+      optimistic,
+      label: "Reopen",
+      original: () => reopenGeneralActionAction({ generalActionId: action.id }),
+      inverse: () => completeGeneralActionAction({ generalActionId: action.id }),
+      applyOptimistic: () => {
+        setResolvedList((current) => current.filter((item) => item.id !== action.id));
+        addActive(optimistic);
+      },
+      restore: () => {
+        setActiveList((current) => current.filter((item) => item.id !== action.id));
+        setResolvedList((current) => [...current.filter((item) => item.id !== action.id), action]);
+      },
+      applyOriginal: updateActive,
+      applyInverse: reconcileResolvedActive,
+      restoreFocus: () => focusSecondaryControl(action.id, "reopen"),
+    });
+  }
+
+  function resumePausedOptimistically(action: GeneralActionView) {
+    const optimistic = { ...action, status: "open" as const, surfaceLabel: "Resuming…" };
+    beginSecondaryLifecycle({
+      action,
+      optimistic,
+      label: "Resume",
+      original: () => resumeGeneralActionAction({ generalActionId: action.id }),
+      inverse: () => pauseGeneralActionAction({ generalActionId: action.id }),
+      applyOptimistic: () => {
+        setPausedList((current) => current.filter((item) => item.id !== action.id));
+        addActive(optimistic);
+      },
+      restore: () => {
+        setActiveList((current) => current.filter((item) => item.id !== action.id));
+        setPausedList((current) => [...current.filter((item) => item.id !== action.id), action]);
+      },
+      applyOriginal: updateActive,
+      applyInverse: reconcileResolvedActive,
+      restoreFocus: () => focusSecondaryControl(action.id, "resume"),
+    });
+  }
+
+  function archiveSecondary(action: GeneralActionView, source: "paused" | "resolved") {
+    setOffLedgerUndoId(action.id);
+    beginSecondaryLifecycle({
+      action,
+      optimistic: action,
+      label: "Archive",
+      original: () => archiveGeneralActionAction({ generalActionId: action.id }),
+      inverse: () => restoreGeneralActionAction({ generalActionId: action.id }),
+      applyOptimistic: () => {
+        if (source === "paused") {
+          setPausedList((current) => current.filter((item) => item.id !== action.id));
+        } else {
+          setResolvedList((current) => current.filter((item) => item.id !== action.id));
+        }
+      },
+      restore: () => {
+        if (source === "paused") {
+          setPausedList((current) => [...current.filter((item) => item.id !== action.id), action]);
+        } else {
+          setResolvedList((current) => [
+            ...current.filter((item) => item.id !== action.id),
+            action,
+          ]);
+        }
+      },
+      applyOriginal: () => undefined,
+      applyInverse: addActive,
+      restoreFocus: () => focusSecondaryControl(action.id, "archive"),
+    });
   }
 
   function updateActive(view: GeneralActionView) {
@@ -143,11 +435,6 @@ export function ActionsSurface({
     router.refresh();
   }
 
-  function removeResolved(id: string) {
-    setResolvedList((current) => current.filter((action) => action.id !== id));
-    router.refresh();
-  }
-
   // A reviewed proposal leaves the Suggested list; an accepted one re-enters as an
   // active Action on the next server sync (the card triggers router.refresh).
   function removeSuggested(id: string) {
@@ -158,17 +445,6 @@ export function ActionsSurface({
     setSuggestedList((current) =>
       current.map((review) => (review.action.id === view.action.id ? view : review)),
     );
-  }
-
-  function removePaused(id: string) {
-    setPausedList((current) => current.filter((action) => action.id !== id));
-    router.refresh();
-  }
-
-  // Resuming a paused Routine returns it to the active list under its cadence.
-  function resumePaused(view: GeneralActionView) {
-    setPausedList((current) => current.filter((action) => action.id !== view.id));
-    addActive(view);
   }
 
   function addArea(view: GeneralActionAreaView) {
@@ -196,11 +472,40 @@ export function ActionsSurface({
       <CreateActionForm
         areas={activeAreas}
         defaultAreaId={effectiveAreaId}
+        detailsLoadError={secondaryLoadErrors.composer}
         key={effectiveAreaId ?? "all"}
         onCreate={addActive}
-        people={people}
-        shareableMembers={shareableMembers}
+        onDetailsRequested={loadComposerOptions}
+        people={secondaryPeople}
+        shareableMembers={secondaryMembers}
       />
+      {secondaryLifecycleError ? (
+        <p className="text-[length:var(--text-caption)] text-destructive" role="alert">
+          {secondaryLifecycleError}
+        </p>
+      ) : null}
+      {secondaryLifecycleNotice ? <p role="status">{secondaryLifecycleNotice}</p> : null}
+      {offLedgerUndoId && secondaryUndo[offLedgerUndoId] ? (
+        <div className="flex items-center gap-2" role="status">
+          <span className="text-[length:var(--text-caption)] text-muted-foreground">
+            Action archived.
+          </span>
+          <Button
+            disabled={secondaryUndo[offLedgerUndoId].requested}
+            onClick={() => runSecondaryUndo(offLedgerUndoId)}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {secondaryUndo[offLedgerUndoId].requested ? "Undoing…" : "Undo archive"}
+          </Button>
+          {secondaryUndo[offLedgerUndoId].error ? (
+            <span className="text-[length:var(--text-caption)] text-destructive" role="alert">
+              {secondaryUndo[offLedgerUndoId].error}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         {activeAreas.length ? (
@@ -225,7 +530,9 @@ export function ActionsSurface({
             {chipOverflow > 0 ? (
               <button
                 className="rounded-full border border-dashed border-border px-3 py-1 text-[length:var(--text-small)] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                onClick={() => setManagerOpen(true)}
+                onClick={() => {
+                  setManagerOpen(true);
+                }}
                 type="button"
               >
                 +{chipOverflow} more
@@ -239,7 +546,9 @@ export function ActionsSurface({
         )}
         <Button
           className="self-start text-muted-foreground sm:shrink-0 sm:self-auto"
-          onClick={() => setManagerOpen(true)}
+          onClick={() => {
+            setManagerOpen(true);
+          }}
           size="sm"
           type="button"
           variant="ghost"
@@ -251,18 +560,24 @@ export function ActionsSurface({
 
       {visibleActive.length ? (
         <LedgerList>
-          {visibleActive.map((action) => (
-            <ActionRow
-              action={action}
-              areaName={effectiveAreaId ? null : (areaNameById.get(action.areaId ?? "") ?? null)}
-              areas={activeAreas}
-              key={action.id}
-              onResolve={removeActive}
-              onUpdate={updateActive}
-              people={people}
-              shareableMembers={shareableMembers}
-            />
-          ))}
+          {visibleActive.map((action) => {
+            const undo = secondaryUndo[action.id];
+            return (
+              <ActionRow
+                action={action}
+                areaName={effectiveAreaId ? null : (areaNameById.get(action.areaId ?? "") ?? null)}
+                areas={activeAreas}
+                key={action.id}
+                onResolve={reconcileResolvedActive}
+                onUpdate={updateActive}
+                secondaryUndo={
+                  undo ? { ...undo, onUndo: () => runSecondaryUndo(action.id) } : undefined
+                }
+                people={secondaryPeople}
+                shareableMembers={secondaryMembers}
+              />
+            );
+          })}
         </LedgerList>
       ) : effectiveAreaId ? (
         <LedgerEmpty>
@@ -282,6 +597,69 @@ export function ActionsSurface({
           subscription.
         </LedgerEmpty>
       )}
+
+      {!ledgerLoaded ? (
+        <details
+          className="group"
+          onToggle={(event) => {
+            if (event.currentTarget.open) loadSecondaryLedger();
+          }}
+        >
+          <summary className="cursor-pointer list-none text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground">
+            More action views
+          </summary>
+          <p
+            aria-live="polite"
+            className="mt-2 text-[length:var(--text-small)] text-muted-foreground"
+          >
+            {ledgerLoading
+              ? "Loading paused, resolved, and suggested actions…"
+              : (secondaryLoadErrors.ledger ?? "Open to load more.")}
+          </p>
+          {secondaryLoadErrors.ledger ? (
+            <Button
+              className="mt-2"
+              onClick={loadSecondaryLedger}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Retry
+            </Button>
+          ) : null}
+        </details>
+      ) : null}
+
+      {!suggestedLoaded ? (
+        <details
+          className="group"
+          onToggle={(event) => {
+            if (event.currentTarget.open) loadSuggested();
+          }}
+        >
+          <summary className="cursor-pointer list-none text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground">
+            Suggested actions
+          </summary>
+          {suggestedLoading || secondaryLoadErrors.suggested ? (
+            <div className="mt-2 text-[length:var(--text-small)] text-muted-foreground">
+              <p aria-live="polite">
+                {suggestedLoading ? "Loading suggested actions…" : secondaryLoadErrors.suggested}
+              </p>
+              {secondaryLoadErrors.suggested ? (
+                <Button
+                  className="mt-2"
+                  onClick={loadSuggested}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Retry
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </details>
+      ) : null}
 
       {/* Suggested proposals sit below the active ledger — the same after-active order the
           Follow-ups tab uses for its suggestions, so your own actions lead and proposals
@@ -323,8 +701,8 @@ export function ActionsSurface({
                 <PausedRoutineRow
                   action={action}
                   key={action.id}
-                  onResolve={removePaused}
-                  onResume={resumePaused}
+                  onArchive={(item) => archiveSecondary(item, "paused")}
+                  onResume={resumePausedOptimistically}
                 />
               ))}
             </LedgerList>
@@ -348,8 +726,8 @@ export function ActionsSurface({
                 <ResolvedActionRow
                   action={action}
                   key={action.id}
-                  onReopen={addActive}
-                  onResolve={removeResolved}
+                  onReopen={reopenResolved}
+                  onArchive={(item) => archiveSecondary(item, "resolved")}
                 />
               ))}
             </LedgerList>

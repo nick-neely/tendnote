@@ -92,6 +92,8 @@ export function CreateActionForm({
   defaultAreaId = null,
   shareableMembers = [],
   people = [],
+  onDetailsRequested,
+  detailsLoadError = null,
 }: {
   onCreate: (view: GeneralActionView) => void;
   /** Active Areas the new Action can be filed under. */
@@ -102,6 +104,10 @@ export function CreateActionForm({
   shareableMembers?: ShareableActionMember[];
   /** The owner's people, so an Action can link one as context (ADR 0155). */
   people?: ActionPersonOption[];
+  /** Loads optional people/sharing/reminder choices only when details open. */
+  onDetailsRequested?: () => void;
+  /** A soft failure while loading optional detail choices; capture stays usable. */
+  detailsLoadError?: string | null;
 }) {
   const detailsId = useId();
   const [title, setTitle] = useState("");
@@ -242,7 +248,10 @@ export function CreateActionForm({
             aria-controls={detailsId}
             aria-expanded={showDetails}
             className="inline-flex items-center gap-1 self-start rounded-md text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            onClick={() => setShowDetails((open) => !open)}
+            onClick={() => {
+              if (!showDetails) onDetailsRequested?.();
+              setShowDetails((open) => !open);
+            }}
             type="button"
           >
             <ChevronDownIcon
@@ -252,6 +261,15 @@ export function CreateActionForm({
             />
             Add date, details, or sharing
           </button>
+
+          {detailsLoadError ? (
+            <div className="flex items-center gap-2">
+              <ErrorText message={detailsLoadError} />
+              <Button onClick={onDetailsRequested} size="sm" type="button" variant="outline">
+                Retry
+              </Button>
+            </div>
+          ) : null}
 
           {showDetails ? (
             <CreateActionDetails

@@ -18,6 +18,7 @@ const {
   listGeneralActionAreas,
   revalidatePath,
   updateTag,
+  invalidateActionMutation,
   toSuggestedGeneralActionReviewView,
 } = vi.hoisted(() => ({
   acceptSuggestedGeneralAction: vi.fn(),
@@ -27,6 +28,7 @@ const {
   listGeneralActionAreas: vi.fn(),
   revalidatePath: vi.fn(),
   updateTag: vi.fn(),
+  invalidateActionMutation: vi.fn(),
   toSuggestedGeneralActionReviewView: vi.fn(),
 }));
 
@@ -41,6 +43,7 @@ vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
 }));
+vi.mock("@/lib/cache/action-mutation-scopes", () => ({ invalidateActionMutation }));
 vi.mock("@/lib/suggested-general-action-review-view", () => ({
   toSuggestedGeneralActionReviewView,
 }));

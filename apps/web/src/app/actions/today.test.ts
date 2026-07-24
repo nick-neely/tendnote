@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   completeFollowup,
+  completeGeneralAction,
   getOwnerTodayContext,
   getTodayCandidate,
   getTodayShortlist,
@@ -11,6 +12,7 @@ const {
   updateTag,
 } = vi.hoisted(() => ({
   completeFollowup: vi.fn(),
+  completeGeneralAction: vi.fn(),
   getOwnerTodayContext: vi.fn(),
   getTodayCandidate: vi.fn(),
   getTodayShortlist: vi.fn(),
@@ -21,7 +23,7 @@ const {
 }));
 
 vi.mock("@tendnote/db/queries/followups", () => ({ completeFollowup }));
-vi.mock("@tendnote/db/queries/general-actions", () => ({ completeGeneralAction: vi.fn() }));
+vi.mock("@tendnote/db/queries/general-actions", () => ({ completeGeneralAction }));
 vi.mock("@tendnote/db/queries/today", () => ({
   getOwnerTodayContext,
   getTodayCandidate,
@@ -119,5 +121,29 @@ describe("Today web actions", () => {
       followupId: FOLLOWUP_ID,
     });
     expect(updateTag).toHaveBeenCalledWith("today:owner:owner-1");
+  });
+
+  it("expires the Action projections when Today completes an Action", async () => {
+    const actionId = "22222222-2222-2222-2222-222222222222";
+    getTodayCandidate.mockResolvedValue({
+      ...shortlist().items[0],
+      identity: `general_action:${actionId}`,
+      record: { kind: "general_action", id: actionId, href: "/actions" },
+      action: { kind: "complete_action", label: "Complete" },
+    });
+
+    await actOnTodayItemAction({
+      localDate: "2026-07-21",
+      candidateIdentity: `general_action:${actionId}`,
+      reasonKey: "due:today",
+    });
+
+    expect(completeGeneralAction).toHaveBeenCalledWith({
+      actorUserId: "owner-1",
+      generalActionId: actionId,
+    });
+    expect(updateTag).toHaveBeenCalledWith("action:owner:owner-1");
+    expect(updateTag).toHaveBeenCalledWith(`action:owner:owner-1:action:${actionId}`);
+    expect(revalidatePath).toHaveBeenCalledWith("/actions");
   });
 });

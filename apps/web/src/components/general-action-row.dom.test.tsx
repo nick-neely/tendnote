@@ -29,9 +29,13 @@ vi.mock("@/app/actions/general-actions", () => ({
   listGeneralActionHistoryAction: vi.fn(),
   pauseGeneralActionAction: vi.fn(),
   promoteAssetHintAction: vi.fn(),
+  reopenGeneralActionAction: vi.fn(),
+  resumeGeneralActionAction: vi.fn(),
   setGeneralActionPeopleAction: vi.fn(),
   setGeneralActionVisibilityAction: vi.fn(),
   skipGeneralActionOccurrenceAction: vi.fn(),
+  undeferGeneralActionAction: vi.fn(),
+  undoRoutineOccurrenceAction: vi.fn(),
 }));
 
 vi.mock("@/app/actions/reminders", () => ({
@@ -46,8 +50,13 @@ vi.mock("@/app/actions/reminders", () => ({
 vi.mock("next/link", () => import("@/test/next-link-mock"));
 
 import {
+  completeGeneralActionAction,
+  deferGeneralActionAction,
   promoteAssetHintAction,
+  reopenGeneralActionAction,
   skipGeneralActionOccurrenceAction,
+  undeferGeneralActionAction,
+  undoRoutineOccurrenceAction,
 } from "@/app/actions/general-actions";
 import { ActionRow } from "./general-action-row";
 
@@ -197,5 +206,113 @@ describe("Routine occurrence lifecycle", () => {
     );
     expect(onUpdate).toHaveBeenCalledWith(next);
     expect(await screen.findByText(/Skipped · next/)).toBeDefined();
+  });
+
+  it("serializes an authoritative Undo for a skipped occurrence", async () => {
+    const user = userEvent.setup();
+    const action = actionWithHint({
+      isRoutine: true,
+      recurrence: { interval: 1, unit: "week" },
+      recurrenceLabel: "Every week",
+      dueAtISO: "2026-08-14T00:00:00.000Z",
+      dueAtDate: "2026-08-14",
+    });
+    const next = { ...action, dueAtISO: "2026-08-21T00:00:00.000Z", dueAtDate: "2026-08-21" };
+    vi.mocked(skipGeneralActionOccurrenceAction).mockResolvedValue({ ok: true, view: next });
+    vi.mocked(undoRoutineOccurrenceAction).mockResolvedValue({ ok: true, view: action });
+    renderRow(action);
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Skip this occurrence" }));
+    await user.click(screen.getByRole("button", { name: "Undo Skip" }));
+
+    await waitFor(() =>
+      expect(undoRoutineOccurrenceAction).toHaveBeenCalledWith({
+        expectedDueAt: "2026-08-21T00:00:00.000Z",
+        generalActionId: action.id,
+        restoreDueAt: "2026-08-14T00:00:00.000Z",
+      }),
+    );
+  });
+});
+
+describe("reversible Action lifecycle acknowledgement", () => {
+  it("keeps deferred Action Undo visible while the original command is in flight", async () => {
+    const user = userEvent.setup();
+    const action = actionWithHint({
+      dueAtDate: "2026-08-14",
+      dueAtISO: "2026-08-14T00:00:00.000Z",
+    });
+    let settle: ((value: { ok: true; view: GeneralActionView }) => void) | undefined;
+    vi.mocked(deferGeneralActionAction).mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    vi.mocked(undeferGeneralActionAction).mockResolvedValue({ ok: true, view: action });
+    renderRow(action);
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Set aside" }));
+    const date = screen.getByLabelText("Set aside until");
+    await user.clear(date);
+    await user.type(date, "2026-08-21");
+    await user.click(screen.getByRole("button", { name: "Set aside" }));
+    await user.click(screen.getByRole("button", { name: "Undo set aside" }));
+
+    settle?.({
+      ok: true,
+      view: { ...action, status: "deferred", deferUntilDate: "2026-08-21" },
+    });
+
+    await waitFor(() =>
+      expect(undeferGeneralActionAction).toHaveBeenCalledWith({ generalActionId: action.id }),
+    );
+  });
+
+  it("projects a one-time completion before the authoritative response and keeps it busy", async () => {
+    const user = userEvent.setup();
+    let settle: ((value: { ok: true; view: GeneralActionView }) => void) | undefined;
+    vi.mocked(completeGeneralActionAction).mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    const action = actionWithHint({ isRoutine: false, recurrence: null });
+    renderRow(action);
+
+    await user.click(screen.getByRole("button", { name: "Complete" }));
+
+    const row = document.getElementById(`action-${action.id}`);
+    expect(row?.dataset.leaving).toBe("true");
+    expect(row?.getAttribute("aria-busy")).toBe("true");
+    expect(row?.className).not.toContain("opacity-0");
+    expect(screen.getByText("Updating action…")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Undo Complete" }));
+    expect(screen.getByRole("button", { name: "Undoing…" })).toBeDefined();
+
+    vi.mocked(reopenGeneralActionAction).mockResolvedValue({ ok: true, view: action });
+    settle?.({ ok: true, view: action });
+
+    await waitFor(() =>
+      expect(reopenGeneralActionAction).toHaveBeenCalledWith({ generalActionId: action.id }),
+    );
+  });
+
+  it("clears the optimistic Undo and restores focus when the original command fails", async () => {
+    const user = userEvent.setup();
+    const action = actionWithHint({ isRoutine: false, recurrence: null });
+    vi.mocked(completeGeneralActionAction).mockResolvedValue({
+      ok: false,
+      error: "That action is already complete.",
+    });
+    renderRow(action);
+
+    const complete = screen.getByRole("button", { name: "Complete" });
+    await user.click(complete);
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Undo Complete" })).toBeNull());
+    expect(document.activeElement).toBe(complete);
+    expect(screen.getByText("That action is already complete.")).toBeDefined();
   });
 });

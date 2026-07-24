@@ -340,8 +340,10 @@ export const EDITABLE_GENERAL_ACTION_STATUSES: ReadonlySet<GeneralActionStatus> 
 export type GeneralActionLifecycleAction =
   | "complete"
   | "defer"
+  | "undefer"
   | "dismiss"
   | "reopen"
+  | "restore"
   | "archive"
   | "pause"
   | "resume";
@@ -352,8 +354,14 @@ const GENERAL_ACTION_TRANSITIONS: Record<
 > = {
   complete: { from: new Set(["open", "deferred"]), to: "completed" },
   defer: { from: new Set(["open", "deferred"]), to: "deferred" },
+  // Undoing a set-aside is a distinct valid inverse: it clears the resurface date
+  // and returns the Action to open without pretending it was terminal/reopened.
+  undefer: { from: new Set(["deferred"]), to: "open" },
   dismiss: { from: new Set(["open", "deferred"]), to: "dismissed" },
   reopen: { from: new Set(["completed", "dismissed"]), to: "open" },
+  // Archive is a reversible lifecycle move. Restore deliberately returns to the
+  // calm active state; the archive history row preserves the provenance.
+  restore: { from: new Set(["archived"]), to: "open" },
   // Pausing sets a Routine aside without retiring it; resuming brings it back to
   // open. Only Routines pause (guarded at the lifecycle seam), so these never apply
   // to a one-time Action (ADR 0148).

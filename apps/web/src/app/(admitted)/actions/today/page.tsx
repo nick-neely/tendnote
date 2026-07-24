@@ -1,12 +1,10 @@
-import { listLinkedAssetsForGeneralActions } from "@tendnote/db/queries/assets";
-import { listActiveGeneralActions } from "@tendnote/db/queries/general-actions";
 import Link from "next/link";
 import { connection } from "next/server";
 import { ActionTodaySurface } from "@/components/action-today-surface";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { groupActionTodayItems, selectActionTodayItems } from "@/lib/action-today";
-import { toGeneralActionLinkedAssetView, toGeneralActionView } from "@/lib/general-action-view";
+import { getCachedActionTodayViews } from "@/lib/cache/action-views";
 
 /**
  * The narrow Action Today surface (ADR 0157): a calm daily glance at the Actions and
@@ -28,23 +26,8 @@ async function ActionTodayContent() {
   const ownerUserId = await requireAdmittedOwner({ returnTo: "/actions/today" });
   const now = new Date();
 
-  const active = await listActiveGeneralActions({ ownerUserId });
-  // The Assets these actions' hints became (#199), scope-filtered per caller.
-  const linkedAssetsByAction = await listLinkedAssetsForGeneralActions({
-    callerUserId: ownerUserId,
-    generalActionIds: active.map((action) => action.id),
-  });
-  const items = selectActionTodayItems(
-    active.map((action) => ({
-      action,
-      view: toGeneralActionView(action, {
-        now,
-        callerUserId: ownerUserId,
-        linkedAssets: (linkedAssetsByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView),
-      }),
-    })),
-    now,
-  );
+  const active = await getCachedActionTodayViews({ ownerUserId, now });
+  const items = selectActionTodayItems(active, now);
   const groups = groupActionTodayItems(items);
 
   return (

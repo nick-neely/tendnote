@@ -1,16 +1,11 @@
 "use client";
 
 import {
-  archiveGeneralActionAction,
-  reopenGeneralActionAction,
-} from "@/app/actions/general-actions";
-import {
   ActionRowControls,
   useActionRowTransition,
 } from "@/components/general-action-row-controls";
 import { RotateCcwIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import type { GeneralActionView } from "@/lib/general-action-view";
 
 const RESOLVED_LABEL: Record<string, string> = {
@@ -26,13 +21,13 @@ const RESOLVED_LABEL: Record<string, string> = {
 export function ResolvedActionRow({
   action,
   onReopen,
-  onResolve,
+  onArchive,
 }: {
   action: GeneralActionView;
-  onReopen: (view: GeneralActionView) => void;
-  onResolve: (id: string) => void;
+  onReopen: (action: GeneralActionView) => void;
+  onArchive: (action: GeneralActionView) => void;
 }) {
-  const { historyOpen, setHistoryOpen, error, busyKey, pending, run } = useActionRowTransition();
+  const { historyOpen, setHistoryOpen } = useActionRowTransition();
 
   return (
     // Deep-link target (`/actions#action-<id>`), like the active rows: an asset
@@ -53,33 +48,22 @@ export function ResolvedActionRow({
       </div>
       <ActionRowControls
         action={action}
-        archiveBusy={busyKey === "archive"}
-        error={error}
+        archiveBusy={false}
+        error={null}
         historyOpen={historyOpen}
-        onArchive={() =>
-          run(
-            "archive",
-            () => archiveGeneralActionAction({ generalActionId: action.id }),
-            () => onResolve(action.id),
-          )
-        }
+        onArchive={() => onArchive(action)}
         onHistoryOpenChange={setHistoryOpen}
-        pending={pending}
+        pending={false}
       >
         <Button
-          disabled={pending}
-          onClick={() =>
-            run(
-              "reopen",
-              () => reopenGeneralActionAction({ generalActionId: action.id }),
-              (view) => onReopen(view),
-            )
-          }
+          disabled={false}
+          data-action-control="reopen"
+          onClick={() => onReopen(action)}
           size="sm"
           type="button"
           variant="ghost"
         >
-          {busyKey === "reopen" ? <Spinner /> : <RotateCcwIcon />}
+          <RotateCcwIcon />
           Reopen
         </Button>
       </ActionRowControls>

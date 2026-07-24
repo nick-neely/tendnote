@@ -5,6 +5,9 @@ import { loadOwnerReviewQueue, loadOwnerReviewQueueFamily } from "@/lib/review-q
 import { cacheProfiles } from "./cache-profiles";
 
 export const todayReviewCacheContract = {
+  todayOwnerTags(ownerUserId: string) {
+    return [`today:owner:${ownerUserId}`, `today:owner:${ownerUserId}:shortlist`] as const;
+  },
   today(input: { ownerUserId: string; localDate: string; timeZone: string; refreshedAt: number }) {
     return {
       // Today is a live, time-sensitive shortlist. Its bounded 30-second refresh
@@ -17,10 +20,7 @@ export const todayReviewCacheContract = {
         input.timeZone,
         input.refreshedAt,
       ] as const,
-      tags: [
-        `today:owner:${input.ownerUserId}`,
-        `today:owner:${input.ownerUserId}:shortlist`,
-      ] as const,
+      tags: todayReviewCacheContract.todayOwnerTags(input.ownerUserId),
     };
   },
   review(input: { ownerUserId: string }) {

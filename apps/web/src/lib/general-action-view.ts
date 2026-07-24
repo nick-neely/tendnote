@@ -75,6 +75,8 @@ export type GeneralActionMutationResult =
 
 export type GeneralActionView = {
   id: string;
+  /** Durable server revision used to reject older Action projections after a write. */
+  revision?: string;
   title: string;
   notes: string | null;
   links: GeneralActionLink[];
@@ -208,6 +210,7 @@ export function resolveSurfacing(
 export function toGeneralActionView(
   action: {
     id: string;
+    updatedAt?: Date;
     title: string;
     notes: string | null;
     links: GeneralActionLink[];
@@ -242,6 +245,7 @@ export function toGeneralActionView(
 
   return {
     id: action.id,
+    revision: action.updatedAt?.toISOString(),
     title: action.title,
     notes: action.notes,
     links: action.links,

@@ -22,6 +22,7 @@ import {
 } from "@tendnote/domain/reminders";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
 
 const installationSchema = z.string().trim().min(12).max(200);
 const recordReferenceSchema = z.object({
@@ -36,6 +37,9 @@ export async function clearReminderAction(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const parsed = recordReferenceSchema.parse(input);
   await clearReminder({ ownerUserId, ...parsed, now: new Date() });
+  if (parsed.recordKind === "general_action" || parsed.recordKind === "routine") {
+    invalidateActionMutation({ ownerUserId, actionId: parsed.recordId });
+  }
   return { ok: true as const };
 }
 
@@ -55,6 +59,9 @@ export async function saveReminderAction(input: {
     })
     .parse(input);
   const result = await saveReminder({ ownerUserId, ...parsed, now: new Date() });
+  if (parsed.recordKind === "general_action" || parsed.recordKind === "routine") {
+    invalidateActionMutation({ ownerUserId, actionId: parsed.recordId });
+  }
   return reminderScheduleResult(result);
 }
 

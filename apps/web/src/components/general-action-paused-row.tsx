@@ -1,17 +1,12 @@
 "use client";
 
 import {
-  archiveGeneralActionAction,
-  resumeGeneralActionAction,
-} from "@/app/actions/general-actions";
-import {
   ActionRowControls,
   useActionRowTransition,
 } from "@/components/general-action-row-controls";
 import { ActionRoutineChip } from "@/components/general-action-shared";
 import { PlayIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import type { GeneralActionView } from "@/lib/general-action-view";
 
 /**
@@ -23,13 +18,13 @@ import type { GeneralActionView } from "@/lib/general-action-view";
 export function PausedRoutineRow({
   action,
   onResume,
-  onResolve,
+  onArchive,
 }: {
   action: GeneralActionView;
-  onResume: (view: GeneralActionView) => void;
-  onResolve: (id: string) => void;
+  onResume: (action: GeneralActionView) => void;
+  onArchive: (action: GeneralActionView) => void;
 }) {
-  const { historyOpen, setHistoryOpen, error, busyKey, pending, run } = useActionRowTransition();
+  const { historyOpen, setHistoryOpen } = useActionRowTransition();
 
   return (
     // Deep-link target (`/actions#action-<id>`): a paused Routine can be linked
@@ -59,33 +54,22 @@ export function PausedRoutineRow({
       </div>
       <ActionRowControls
         action={action}
-        archiveBusy={busyKey === "archive"}
-        error={error}
+        archiveBusy={false}
+        error={null}
         historyOpen={historyOpen}
-        onArchive={() =>
-          run(
-            "archive",
-            () => archiveGeneralActionAction({ generalActionId: action.id }),
-            () => onResolve(action.id),
-          )
-        }
+        onArchive={() => onArchive(action)}
         onHistoryOpenChange={setHistoryOpen}
-        pending={pending}
+        pending={false}
       >
         <Button
-          disabled={pending}
-          onClick={() =>
-            run(
-              "resume",
-              () => resumeGeneralActionAction({ generalActionId: action.id }),
-              (view) => onResume(view),
-            )
-          }
+          disabled={false}
+          data-action-control="resume"
+          onClick={() => onResume(action)}
           size="sm"
           type="button"
           variant="ghost"
         >
-          {busyKey === "resume" ? <Spinner /> : <PlayIcon />}
+          <PlayIcon />
           Resume
         </Button>
       </ActionRowControls>

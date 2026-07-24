@@ -216,6 +216,12 @@ export type DeferGeneralActionInput = GeneralActionActionInput & {
   deferUntil: Date;
 };
 
+/** State-aware inverse for a completed or skipped Routine occurrence. */
+export type UndoRoutineOccurrenceInput = GeneralActionActionInput & {
+  expectedDueAt: Date;
+  restoreDueAt: Date;
+};
+
 /**
  * Re-scopes an Action in place. Only the owner may change visibility — a viewing
  * member can act on an action but never widen or narrow who else can see it. Widening

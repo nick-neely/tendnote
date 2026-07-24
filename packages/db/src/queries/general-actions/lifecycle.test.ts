@@ -240,6 +240,25 @@ describe("lifecycle transitions", () => {
     ).rejects.toThrow(/concrete resurface date/);
   });
 
+  it("clears a deferred Action through its explicit authoritative inverse", async () => {
+    const { lifecycle, seedOpen, historyKinds } = await setup();
+    const action = await seedOpen();
+    await lifecycle.deferGeneralAction({
+      actorUserId: OWNER,
+      generalActionId: action.id,
+      deferUntil: new Date("2026-10-01T00:00:00Z"),
+    });
+
+    const restored = await lifecycle.undeferGeneralAction({
+      actorUserId: OWNER,
+      generalActionId: action.id,
+    });
+
+    expect(restored.status).toBe("open");
+    expect(restored.deferUntil).toBeNull();
+    await expect(historyKinds(action.id)).resolves.toEqual(["created", "deferred", "reopened"]);
+  });
+
   it("dismisses an action", async () => {
     const { lifecycle, seedOpen, historyKinds } = await setup();
     const action = await seedOpen();
@@ -303,6 +322,20 @@ describe("lifecycle transitions", () => {
     // ...but it is no longer active.
     await expect(lifecycle.listActiveGeneralActions({ ownerUserId: OWNER })).resolves.toEqual([]);
     await expect(historyKinds(action.id)).resolves.toEqual(["created", "archived"]);
+  });
+
+  it("restores an archived action through the lifecycle seam", async () => {
+    const { lifecycle, seedOpen, historyKinds } = await setup();
+    const action = await seedOpen();
+    await lifecycle.archiveGeneralAction({ actorUserId: OWNER, generalActionId: action.id });
+
+    const restored = await lifecycle.restoreGeneralAction({
+      actorUserId: OWNER,
+      generalActionId: action.id,
+    });
+
+    expect(restored.status).toBe("open");
+    await expect(historyKinds(action.id)).resolves.toEqual(["created", "archived", "reopened"]);
   });
 
   it("rejects invalid transitions", async () => {
@@ -1017,6 +1050,31 @@ describe("routines (recurring general actions)", () => {
     expect(skipped.status).toBe("open");
     expect(skipped.dueAt?.getTime()).toBeGreaterThan(Date.now());
     await expect(historyKinds(routine.id)).resolves.toEqual(["created", "skipped"]);
+  });
+
+  it("restores a just-skipped Routine occurrence through a state-aware lifecycle inverse", async () => {
+    const { lifecycle, historyKinds } = await setup();
+    const priorDueAt = new Date("2026-01-01T00:00:00Z");
+    const routine = await lifecycle.createGeneralAction({
+      ownerUserId: OWNER,
+      title: "Water the plants",
+      dueAt: priorDueAt,
+      recurrence: { interval: 1, unit: "week" },
+    });
+    const skipped = await lifecycle.skipGeneralActionOccurrence({
+      actorUserId: OWNER,
+      generalActionId: routine.id,
+    });
+
+    const restored = await lifecycle.undoRoutineOccurrence({
+      actorUserId: OWNER,
+      expectedDueAt: skipped.dueAt as Date,
+      generalActionId: routine.id,
+      restoreDueAt: priorDueAt,
+    });
+
+    expect(restored.dueAt?.toISOString()).toBe(priorDueAt.toISOString());
+    await expect(historyKinds(routine.id)).resolves.toEqual(["created", "skipped", "reopened"]);
   });
 
   it("rejects skipping a one-time Action", async () => {

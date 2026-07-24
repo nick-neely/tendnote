@@ -13,6 +13,7 @@ import type {
   SetGeneralActionPeopleInput,
   SetGeneralActionVisibilityInput,
   SuggestGeneralActionInput,
+  UndoRoutineOccurrenceInput,
 } from "./general-actions/types";
 import { reconcileReminderRecord } from "./reminders";
 import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
@@ -103,6 +104,12 @@ export async function reopenGeneralAction(input: GeneralActionActionInput) {
   return action;
 }
 
+export async function restoreGeneralAction(input: GeneralActionActionInput) {
+  const action = await defaultGeneralActionLifecycle.restoreGeneralAction(input);
+  await reconcileGeneralActionReminder(action);
+  return action;
+}
+
 export async function archiveGeneralAction(input: GeneralActionActionInput) {
   const action = await defaultGeneralActionLifecycle.archiveGeneralAction(input);
   await reconcileGeneralActionReminder(action);
@@ -123,6 +130,18 @@ export async function resumeGeneralAction(input: GeneralActionActionInput) {
 
 export async function deferGeneralAction(input: DeferGeneralActionInput) {
   const action = await defaultGeneralActionLifecycle.deferGeneralAction(input);
+  await reconcileGeneralActionReminder(action);
+  return action;
+}
+
+export async function undoRoutineOccurrence(input: UndoRoutineOccurrenceInput) {
+  const action = await defaultGeneralActionLifecycle.undoRoutineOccurrence(input);
+  await reconcileGeneralActionReminder(action);
+  return action;
+}
+
+export async function undeferGeneralAction(input: GeneralActionActionInput) {
+  const action = await defaultGeneralActionLifecycle.undeferGeneralAction(input);
   await reconcileGeneralActionReminder(action);
   return action;
 }

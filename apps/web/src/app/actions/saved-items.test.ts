@@ -4,12 +4,14 @@ const {
   createSavedItem,
   deleteUniqueSavedItemSource,
   promoteSavedItemToGeneralAction,
+  invalidateActionMutation,
   revalidatePath,
   resolveScopeForCaller,
 } = vi.hoisted(() => ({
   createSavedItem: vi.fn(),
   deleteUniqueSavedItemSource: vi.fn(),
   promoteSavedItemToGeneralAction: vi.fn(),
+  invalidateActionMutation: vi.fn(),
   revalidatePath: vi.fn(),
   resolveScopeForCaller: vi.fn(),
 }));
@@ -28,6 +30,7 @@ vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
 }));
+vi.mock("@/lib/cache/action-mutation-scopes", () => ({ invalidateActionMutation }));
 vi.mock("@/lib/resolve-scope-for-caller", () => ({ resolveScopeForCaller }));
 
 import { createSavedItemAction, promoteSavedItemToGeneralActionAction } from "./saved-items";
@@ -97,6 +100,15 @@ describe("Saved Item server adapters", () => {
   });
 
   it("supplies explicit authority and a stable retry key for promotion", async () => {
+    promoteSavedItemToGeneralAction.mockResolvedValue({
+      ...ITEM,
+      outcomes: [
+        {
+          destinationKind: "general_action",
+          destinationRecordId: "33333333-3333-4333-8333-333333333333",
+        },
+      ],
+    });
     await promoteSavedItemToGeneralActionAction({ savedItemId: ITEM.id });
     await promoteSavedItemToGeneralActionAction({ savedItemId: ITEM.id });
 
@@ -105,6 +117,10 @@ describe("Saved Item server adapters", () => {
       savedItemId: ITEM.id,
       authority: "explicit",
       idempotencyKey: `saved-item:${ITEM.id}:general-action`,
+    });
+    expect(invalidateActionMutation).toHaveBeenCalledWith({
+      ownerUserId: "owner-1",
+      actionId: "33333333-3333-4333-8333-333333333333",
     });
   });
 });

@@ -68,7 +68,7 @@ export function ActionRowControls({
   error: string | null;
   historyOpen: boolean;
   onHistoryOpenChange: (open: boolean) => void;
-  onArchive: () => void;
+  onArchive: (initiatingControl: HTMLElement) => void;
   archiveBusy: boolean;
   children: React.ReactNode;
 }) {
@@ -76,6 +76,7 @@ export function ActionRowControls({
     <>
       <div className="flex items-center justify-end gap-1.5">
         <Button
+          data-action-control="archive"
           disabled={pending}
           onClick={() => onHistoryOpenChange(true)}
           size="sm"
@@ -86,7 +87,13 @@ export function ActionRowControls({
           History
         </Button>
         {children}
-        <Button disabled={pending} onClick={onArchive} size="sm" type="button" variant="ghost">
+        <Button
+          disabled={pending}
+          onClick={(event) => onArchive(event.currentTarget)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
           {archiveBusy ? <Spinner /> : <ArchiveIcon />}
           Archive
         </Button>

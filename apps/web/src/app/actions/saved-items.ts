@@ -19,6 +19,7 @@ import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
 import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
 import { type SavedItemMutationResult, toSavedItemView } from "@/lib/saved-item-view";
 
@@ -168,7 +169,7 @@ export async function promoteSavedItemToGeneralActionAction(input: {
   title?: string;
 }) {
   const actorUserId = await requireAdmittedOwnerForAction();
-  return runMutation(() => {
+  const result = await runMutation(() => {
     const { savedItemId } = savedItemIdSchema.parse(input);
     return promoteSavedItemToGeneralAction({
       actorUserId,
@@ -178,6 +179,17 @@ export async function promoteSavedItemToGeneralActionAction(input: {
       title: input.title,
     });
   });
+  if (result.ok) {
+    for (const outcome of result.view.outcomes) {
+      if (outcome.destinationKind === "general_action") {
+        invalidateActionMutation({
+          ownerUserId: actorUserId,
+          actionId: outcome.destinationRecordId,
+        });
+      }
+    }
+  }
+  return result;
 }
 
 export async function getSavedItemSourceDeletionImpactAction(input: { sourceRecordId: string }) {
