@@ -1,8 +1,12 @@
 "use client";
 
-import type { GeneralActionLink, GeneralActionRecurrence } from "@tendnote/domain";
+import {
+  type GeneralActionLink,
+  type GeneralActionRecurrence,
+  nextRoutineDueAt,
+} from "@tendnote/domain/general-actions";
 import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   archiveGeneralActionAction,
   completeGeneralActionAction,
@@ -10,9 +14,14 @@ import {
   dismissGeneralActionAction,
   editGeneralActionAction,
   pauseGeneralActionAction,
+  reopenGeneralActionAction,
+  restoreGeneralActionAction,
+  resumeGeneralActionAction,
   setGeneralActionPeopleAction,
   setGeneralActionVisibilityAction,
   skipGeneralActionOccurrenceAction,
+  undeferGeneralActionAction,
+  undoRoutineOccurrenceAction,
 } from "@/app/actions/general-actions";
 import { clearReminderAction, saveReminderAction } from "@/app/actions/reminders";
 import { AreaSelect } from "@/components/general-action-area-select";
@@ -149,15 +158,21 @@ function useInPlaceActionUpdate(onUpdate: (view: GeneralActionView) => void, onD
   const [saving, setSaving] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  function submit(run: () => Promise<GeneralActionMutationResult>) {
+  function submit(
+    run: () => Promise<GeneralActionMutationResult>,
+    optimistic?: GeneralActionView,
+    rollback?: GeneralActionView,
+  ) {
     setError(null);
     setSaving(true);
+    if (optimistic) onUpdate(optimistic);
     startTransition(async () => {
       try {
         const result = await run();
         if (!result.ok) {
           setError(result.error);
           setSaving(false);
+          if (rollback) onUpdate(rollback);
           return;
         }
         onUpdate(result.view);
@@ -165,6 +180,7 @@ function useInPlaceActionUpdate(onUpdate: (view: GeneralActionView) => void, onD
       } catch {
         setError(GENERIC_ERROR);
         setSaving(false);
+        if (rollback) onUpdate(rollback);
       }
     });
   }
@@ -488,21 +504,98 @@ function ActionDeferForm({
   onCancel: () => void;
 }) {
   const [deferDate, setDeferDate] = useState(action.deferUntilDate);
-  const { error, saving, pending, submit } = useInPlaceActionUpdate(onUpdate, onCancel);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [undoRequested, setUndoRequested] = useState(false);
+  const [undoAvailable, setUndoAvailable] = useState(false);
+  const undoTimer = useRef<number | null>(null);
+  const undoRequestedRef = useRef(false);
+  const [pending, startTransition] = useTransition();
 
   const unchanged = deferDate === action.deferUntilDate && action.status === "deferred";
+
+  useEffect(
+    () => () => {
+      if (undoTimer.current !== null) window.clearTimeout(undoTimer.current);
+    },
+    [],
+  );
+
+  function requestUndo() {
+    if (saving) {
+      undoRequestedRef.current = true;
+      setUndoRequested(true);
+      return;
+    }
+    if (undoTimer.current !== null) window.clearTimeout(undoTimer.current);
+    startTransition(async () => {
+      setError(null);
+      try {
+        const result = await undeferGeneralActionAction({ generalActionId: action.id });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        onUpdate(result.view);
+        onCancel();
+      } catch {
+        setError(GENERIC_ERROR);
+      }
+    });
+  }
+
+  function submitDefer() {
+    if (!deferDate || unchanged) return;
+    const deferUntilISO = `${deferDate}T00:00:00.000Z`;
+    const optimistic = {
+      ...action,
+      status: "deferred" as const,
+      deferUntilDate: deferDate,
+      deferUntilISO,
+      surfaceState: "deferred" as const,
+      surfaceLabel: `Set aside until ${shortDay(deferUntilISO)}`,
+    };
+    setError(null);
+    setSaving(true);
+    setUndoAvailable(true);
+    undoRequestedRef.current = false;
+    setUndoRequested(false);
+    onUpdate(optimistic);
+    startTransition(async () => {
+      try {
+        const result = await deferGeneralActionAction({
+          generalActionId: action.id,
+          deferUntil: deferDate,
+        });
+        if (!result.ok) {
+          setError(result.error);
+          setSaving(false);
+          setUndoAvailable(false);
+          onUpdate(action);
+          return;
+        }
+        onUpdate(result.view);
+        setSaving(false);
+        if (undoRequestedRef.current) {
+          requestUndo();
+          return;
+        }
+        undoTimer.current = window.setTimeout(onCancel, 5000);
+      } catch {
+        setError(GENERIC_ERROR);
+        setSaving(false);
+        setUndoAvailable(false);
+        onUpdate(action);
+      }
+    });
+  }
 
   return (
     <form
       className="flex flex-wrap items-end justify-between gap-2 px-4 py-3.5"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!deferDate || unchanged) {
-          return;
-        }
-        submit(() =>
-          deferGeneralActionAction({ generalActionId: action.id, deferUntil: deferDate }),
-        );
+        submitDefer();
       }}
     >
       <div className="flex flex-col gap-1.5">
@@ -530,6 +623,18 @@ function ActionDeferForm({
           {saving ? <Spinner /> : <MoonIcon />}
           Set aside
         </Button>
+        {undoAvailable ? (
+          <Button
+            disabled={pending && !saving}
+            onClick={requestUndo}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {pending && !saving ? <Spinner /> : null}
+            {undoRequested ? "Undoing…" : "Undo set aside"}
+          </Button>
+        ) : null}
       </div>
       {error ? <ErrorText message={error} /> : null}
     </form>
@@ -660,6 +765,7 @@ export function ActionRow({
   shareableMembers = [],
   onResolve,
   onUpdate,
+  secondaryUndo,
 }: {
   action: GeneralActionView;
   /** Active Areas the Action can be re-filed under. */
@@ -670,8 +776,15 @@ export function ActionRow({
   people?: ActionPersonOption[];
   /** Household members the Action can be shared with; empty hides the share control. */
   shareableMembers?: ShareableActionMember[];
-  onResolve: (id: string) => void;
+  onResolve: (view: GeneralActionView) => void;
   onUpdate: (view: GeneralActionView) => void;
+  secondaryUndo?: {
+    error?: string;
+    label: string;
+    requested: boolean;
+    originalPending: boolean;
+    onUndo?: () => void;
+  };
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "defer" | "share">("view");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -684,26 +797,133 @@ export function ActionRow({
   // button the user pressed rather than the whole row.
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [optInInstallationId, setOptInInstallationId] = useState<string | null>(null);
+  const [undo, setUndo] = useState<null | {
+    label: string;
+    run: () => Promise<GeneralActionMutationResult>;
+    requested: boolean;
+  }>(null);
+  const resolveTimer = useRef<number | null>(null);
+  const undoRequestedRef = useRef(false);
+  const initiatingControlRef = useRef<HTMLElement | null>(null);
   const [pending, startTransition] = useTransition();
+
+  useEffect(
+    () => () => {
+      if (resolveTimer.current !== null) window.clearTimeout(resolveTimer.current);
+    },
+    [],
+  );
 
   const returnToView = () => setMode("view");
 
+  function restoreInitiatingFocus() {
+    requestAnimationFrame(() => initiatingControlRef.current?.focus());
+  }
+
+  function reconcileResolvedView(view: GeneralActionView) {
+    const row = document.getElementById(`action-${action.id}`);
+    const fallback = row?.nextElementSibling ?? row?.previousElementSibling;
+    onResolve(view);
+    requestAnimationFrame(() => {
+      const focusTarget = fallback?.querySelector<HTMLElement>("button, [tabindex]");
+      if (focusTarget) {
+        focusTarget.focus();
+        return;
+      }
+      const heading = row?.closest("main")?.querySelector<HTMLElement>("h1");
+      if (heading) {
+        heading.tabIndex = -1;
+        heading.focus();
+      }
+    });
+  }
+
   // Resolving mutations (complete/dismiss/archive) animate the row out on success;
   // a validation failure surfaces the message and leaves the row in place.
-  function leaveThen(key: string, run: () => Promise<GeneralActionMutationResult>) {
+  function leaveThen(
+    key: string,
+    run: () => Promise<GeneralActionMutationResult>,
+    inverse?: { label: string; run: () => Promise<GeneralActionMutationResult> },
+  ) {
     setError(null);
     setNotice(null);
     setBusyKey(key);
+    initiatingControlRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // These lifecycle changes have a deterministic inverse. Acknowledge the
+    // intent immediately, then restore this exact row if the server rejects it.
+    setLeaving(true);
+    if (inverse) {
+      undoRequestedRef.current = false;
+      setUndo({ ...inverse, requested: false });
+    }
     startTransition(async () => {
       try {
         const result = await run();
         if (!result.ok) {
           setError(result.error);
           setBusyKey(null);
+          setLeaving(false);
+          setUndo(null);
+          undoRequestedRef.current = false;
+          restoreInitiatingFocus();
           return;
         }
-        setLeaving(true);
-        window.setTimeout(() => onResolve(action.id), 200);
+        if (inverse) {
+          setLeaving(false);
+          setBusyKey(null);
+          if (undoRequestedRef.current) {
+            runUndo(inverse);
+            return;
+          }
+          setNotice(
+            `${
+              key === "complete"
+                ? "Completed"
+                : key === "pause"
+                  ? "Paused"
+                  : key === "dismiss"
+                    ? "Dismissed"
+                    : "Archived"
+            }. Undo available.`,
+          );
+          resolveTimer.current = window.setTimeout(() => reconcileResolvedView(result.view), 5000);
+          return;
+        }
+        window.setTimeout(() => reconcileResolvedView(result.view), 200);
+      } catch {
+        setError(GENERIC_ERROR);
+        setBusyKey(null);
+        setLeaving(false);
+        setUndo(null);
+        undoRequestedRef.current = false;
+        restoreInitiatingFocus();
+      }
+    });
+  }
+
+  function runUndo(override?: { label: string; run: () => Promise<GeneralActionMutationResult> }) {
+    const inverse = override ?? undo;
+    if (!inverse) return;
+    if (busyKey && busyKey !== "undo") {
+      undoRequestedRef.current = true;
+      setUndo({ ...inverse, requested: true });
+      return;
+    }
+    if (resolveTimer.current !== null) window.clearTimeout(resolveTimer.current);
+    setUndo(null);
+    setBusyKey("undo");
+    startTransition(async () => {
+      try {
+        const result = await inverse.run();
+        if (!result.ok) {
+          setError(result.error);
+          setBusyKey(null);
+          return;
+        }
+        onUpdate(result.view);
+        setNotice("Action restored");
+        setBusyKey(null);
       } catch {
         setError(GENERIC_ERROR);
         setBusyKey(null);
@@ -717,6 +937,38 @@ export function ActionRow({
     setError(null);
     setNotice(null);
     setBusyKey(kind);
+    const prior = action;
+    const priorDueAtISO = prior.dueAtISO;
+    let expectedDueAtISO: string | null = null;
+    const inverse = priorDueAtISO
+      ? {
+          label: kind === "complete" ? "Complete" : "Skip",
+          run: () =>
+            expectedDueAtISO
+              ? undoRoutineOccurrenceAction({
+                  expectedDueAt: expectedDueAtISO,
+                  generalActionId: prior.id,
+                  restoreDueAt: priorDueAtISO,
+                })
+              : Promise.resolve({ ok: false as const, error: "The Routine is still updating." }),
+        }
+      : undefined;
+    if (inverse) {
+      undoRequestedRef.current = false;
+      setUndo({ ...inverse, requested: false });
+    }
+    const nextDueAt = action.recurrence
+      ? nextRoutineDueAt(action.recurrence, new Date(action.dueAtISO ?? Date.now()))
+      : null;
+    if (nextDueAt) {
+      const nextISO = nextDueAt.toISOString();
+      onUpdate({
+        ...action,
+        dueAtISO: nextISO,
+        dueAtDate: nextISO.slice(0, 10),
+        surfaceLabel: `Due ${shortDay(nextISO)}`,
+      });
+    }
     startTransition(async () => {
       try {
         const result = await (kind === "complete"
@@ -725,19 +977,33 @@ export function ActionRow({
         if (!result.ok) {
           setError(result.error);
           setBusyKey(null);
+          onUpdate(prior);
+          setUndo(null);
+          undoRequestedRef.current = false;
           return;
         }
+        expectedDueAtISO = result.view.dueAtISO;
         onUpdate(result.view);
         setBusyKey(null);
+        if (inverse && undoRequestedRef.current) {
+          runUndo(inverse);
+          return;
+        }
         if (result.view.dueAtISO) {
           setNotice(
             `${kind === "complete" ? "Done" : "Skipped"} · next ${shortDay(result.view.dueAtISO)}`,
           );
-          window.setTimeout(() => setNotice(null), 5000);
+          resolveTimer.current = window.setTimeout(() => {
+            setNotice(null);
+            setUndo(null);
+          }, 5000);
         }
       } catch {
         setError(GENERIC_ERROR);
         setBusyKey(null);
+        onUpdate(prior);
+        setUndo(null);
+        undoRequestedRef.current = false;
       }
     });
   }
@@ -785,7 +1051,8 @@ export function ActionRow({
 
   return (
     <article
-      className="flex scroll-mt-24 flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
+      aria-busy={pending || secondaryUndo?.originalPending}
+      className={`flex scroll-mt-24 flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) motion-reduce:transition-none ${leaving && !undo ? "translate-y-0.5 opacity-0" : ""}`}
       data-leaving={leaving}
       // Deep-link target for the Action Today surface: `/actions#action-<id>` scrolls
       // to and briefly highlights this row (see useDeepLinkHighlight). tabIndex lets the
@@ -827,15 +1094,44 @@ export function ActionRow({
         </div>
       </div>
       <div className="flex items-center justify-end gap-1.5">
+        {undo ? (
+          <Button
+            disabled={busyKey === "undo"}
+            onClick={() => runUndo()}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {busyKey === "undo" ? <Spinner /> : null}
+            {undo.requested ? "Undoing…" : `Undo ${undo.label}`}
+          </Button>
+        ) : null}
+        {!undo && secondaryUndo ? (
+          <Button
+            disabled={secondaryUndo.requested}
+            onClick={secondaryUndo.onUndo}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {secondaryUndo.requested ? <Spinner /> : null}
+            {secondaryUndo.requested ? "Undoing…" : `Undo ${secondaryUndo.label}`}
+          </Button>
+        ) : null}
         <Button
           className="max-sm:min-h-11"
-          disabled={pending}
+          disabled={pending || undo !== null || secondaryUndo !== undefined}
           onClick={() => {
             if (action.isRoutine) {
               advanceRoutineInPlace("complete");
             } else {
-              leaveThen("complete", () =>
-                completeGeneralActionAction({ generalActionId: action.id }),
+              leaveThen(
+                "complete",
+                () => completeGeneralActionAction({ generalActionId: action.id }),
+                {
+                  label: "Complete",
+                  run: () => reopenGeneralActionAction({ generalActionId: action.id }),
+                },
               );
             }
           }}
@@ -850,10 +1146,16 @@ export function ActionRow({
           action={action}
           busyKey={busyKey}
           onArchive={() =>
-            leaveThen("archive", () => archiveGeneralActionAction({ generalActionId: action.id }))
+            leaveThen("archive", () => archiveGeneralActionAction({ generalActionId: action.id }), {
+              label: "Archive",
+              run: () => restoreGeneralActionAction({ generalActionId: action.id }),
+            })
           }
           onDismiss={() =>
-            leaveThen("dismiss", () => dismissGeneralActionAction({ generalActionId: action.id }))
+            leaveThen("dismiss", () => dismissGeneralActionAction({ generalActionId: action.id }), {
+              label: "Dismiss",
+              run: () => reopenGeneralActionAction({ generalActionId: action.id }),
+            })
           }
           onEdit={() => {
             setError(null);
@@ -861,7 +1163,10 @@ export function ActionRow({
           }}
           onHistory={() => setHistoryOpen(true)}
           onPause={() =>
-            leaveThen("pause", () => pauseGeneralActionAction({ generalActionId: action.id }))
+            leaveThen("pause", () => pauseGeneralActionAction({ generalActionId: action.id }), {
+              label: "Pause",
+              run: () => resumeGeneralActionAction({ generalActionId: action.id }),
+            })
           }
           onSkip={() => advanceRoutineInPlace("skip")}
           onSetAside={() => {
@@ -876,7 +1181,13 @@ export function ActionRow({
           shareableMembers={shareableMembers}
         />
       </div>
+      {pending ? (
+        <p aria-live="polite" className="text-[length:var(--text-caption)] text-muted-foreground">
+          Updating action…
+        </p>
+      ) : null}
       {error ? <ErrorText message={error} /> : null}
+      {secondaryUndo?.error ? <ErrorText message={secondaryUndo.error} /> : null}
       {notice ? (
         <p
           className="inline-flex items-center gap-1.5 self-end text-[length:var(--text-caption)] text-muted-foreground"

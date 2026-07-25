@@ -6,6 +6,7 @@
   "exports": {
     "./client": "./src/client.ts",
     "./schema": "./src/schema/index.ts",
+    "./instant/fixture-data": "./src/instant/fixture-data.ts",
     "./queries/access-profiles": "./src/queries/access-profiles.ts",
     "./queries/action-extraction-jobs": "./src/queries/action-extraction-jobs.ts",
     "./queries/action-summary": "./src/queries/action-summary.ts",
@@ -62,7 +63,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "TMPDIR=/tmp tsx src/seed.ts",
-    "db:eval:reset": "TMPDIR=/tmp tsx src/eval/reset.ts"
+    "db:eval:reset": "TMPDIR=/tmp tsx src/eval/reset.ts",
+    "db:instant:seed": "TMPDIR=/tmp tsx src/instant/seed.ts"
   },
   "dependencies": {
     "@tendnote/domain": "workspace:*",

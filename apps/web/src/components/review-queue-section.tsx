@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { addCapturePersonAction } from "@/app/actions/conversational-capture";
 import {
   dismissSuggestedMemoryAction,
@@ -10,16 +11,23 @@ import { AssetReviewGroupCard } from "@/components/asset-review-group-card";
 import { CheckIcon, XIcon } from "@/components/icons";
 import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general-action-review";
 import { Button } from "@/components/ui/button";
-import type { ReviewQueueIdentity, ReviewQueueItem } from "@/lib/review-queue";
+import {
+  type ReviewQueueIdentity,
+  type ReviewQueueItem,
+  resolveReviewQueueItem,
+  updateReviewQueueItem,
+} from "@/lib/review-queue";
 import type { SourceRecordReviewView } from "@/lib/source-record-review-view";
 import type { SuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 import { useResolvingAction } from "@/lib/use-resolving-action";
 
 export function ReviewQueueSection({
+  heading = "Needs review",
   items,
   onResolve,
   onUpdate,
 }: {
+  heading?: string;
   items: ReviewQueueItem[];
   onResolve: (identity: ReviewQueueIdentity) => void;
   onUpdate: (item: ReviewQueueItem) => void;
@@ -27,7 +35,7 @@ export function ReviewQueueSection({
   return (
     <section className="flex flex-col gap-2.5">
       <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
-        Needs review
+        {heading}
       </h2>
       <ul aria-label="Review queue" className="flex flex-col gap-2.5">
         {items.map((item) => (
@@ -37,6 +45,40 @@ export function ReviewQueueSection({
         ))}
       </ul>
     </section>
+  );
+}
+
+/** A streamed review family owns its small optimistic collection locally. */
+export function ReviewQueueFamilySection({
+  heading,
+  initialItems,
+}: {
+  heading: string;
+  initialItems: ReviewQueueItem[];
+}) {
+  const [items, setItems] = useState(initialItems);
+  useEffect(() => setItems(initialItems), [initialItems]);
+  return (
+    <ReviewQueueSection
+      heading={heading}
+      items={items}
+      onResolve={(identity) =>
+        setItems(
+          (current) =>
+            resolveReviewQueueItem(
+              { count: current.length, failures: [], items: current },
+              identity,
+            ).items,
+        )
+      }
+      onUpdate={(item) =>
+        setItems(
+          (current) =>
+            updateReviewQueueItem({ count: current.length, failures: [], items: current }, item)
+              .items,
+        )
+      }
+    />
   );
 }
 

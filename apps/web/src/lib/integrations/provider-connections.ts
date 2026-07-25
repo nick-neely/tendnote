@@ -27,6 +27,10 @@ import {
   isGoogleConfigured,
 } from "@/lib/auth/social";
 import {
+  accountMutationScopes,
+  updateAccountMutationScopes,
+} from "@/lib/cache/account-mutation-scopes";
+import {
   type CapabilityReconcileContext,
   type LinkedProviderAccount,
   reconcileOwnerCapabilities,
@@ -269,6 +273,9 @@ export async function reconcileDiscordAfterLink(
           console.error("[tendnote] Discord after-link reconcile failed", error),
       },
     );
+    // The Better Auth hook runs outside a Server Action. Its owner-scoped
+    // connection/identity writes must make the next Account request fresh.
+    updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
   } catch (error) {
     // Guards the pre-reconcile admission check (`admittedOwnerOrNull`); reconcile errors
     // are handled by `onError` above, so this is a distinct failure surface.

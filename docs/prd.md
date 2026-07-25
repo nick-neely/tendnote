@@ -1662,8 +1662,13 @@ Promotion and rollback contract:
   qualification, two-owner cache and privacy checks, mutation reconciliation,
   and authenticated Better Auth and Eve smoke testing against the Vercel
   Preview.
-- Record the last known-good Next.js 16.2.11 commit and Vercel deployment before
-  merge. Reuse the existing staged private-beta release path and automatic
+- Record the last known-good Next.js **16.2.9** commit and Vercel deployment
+  before merge. (Correction of fact, #311: `16.2.11` was the `next@latest` npm
+  tag when this was written, not Tendnote's pin — the repository ran `16.2.9`
+  until the Preview candidate replaced it. The recorded commit and deployment are
+  in
+  [the Preview qualification record](./verification/nextjs-16-3-preview-qualification.md).)
+  Reuse the existing staged private-beta release path and automatic
   promotion rather than creating a second canary, shadow traffic, or
   upgrade-specific release system.
 - After promotion, perform a non-destructive smoke of sign-in, Today, People,

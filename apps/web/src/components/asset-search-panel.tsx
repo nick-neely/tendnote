@@ -264,7 +264,6 @@ function AssetSearchRow({ result }: { result: AssetSearchResultView }) {
     <Link
       className="flex flex-col gap-1.5 py-3 transition-colors hover:bg-muted/40"
       href={`/assets/${result.assetId}`}
-      prefetch={false}
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="font-medium text-sm">{result.assetName}</span>

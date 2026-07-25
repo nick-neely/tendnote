@@ -12,6 +12,8 @@ import type { GeneralActionEdit } from "@tendnote/domain";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
+import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
 import { parseDateInputValue } from "@/lib/followup-view";
 import {
   type SuggestedGeneralActionReviewView,
@@ -46,9 +48,9 @@ export type SuggestedGeneralActionResolution = {
 };
 
 /** Re-render the Actions surface and the dashboard rail so both review surfaces agree. */
-function revalidateReviewSurfaces() {
+function revalidateReviewSurfaces(ownerUserId: string) {
+  invalidateReviewOwner(ownerUserId);
   revalidatePath("/actions");
-  revalidatePath("/");
 }
 
 /**
@@ -77,7 +79,8 @@ export async function acceptSuggestedGeneralActionAction(input: {
     edit,
   });
 
-  revalidateReviewSurfaces();
+  invalidateActionMutation({ ownerUserId, actionId: result.action.id });
+  revalidateReviewSurfaces(ownerUserId);
   return toView(ownerUserId, result);
 }
 
@@ -94,7 +97,8 @@ export async function editSuggestedGeneralActionAction(input: {
     edit,
   });
 
-  revalidateReviewSurfaces();
+  invalidateActionMutation({ ownerUserId, actionId: result.action.id });
+  revalidateReviewSurfaces(ownerUserId);
   return toView(ownerUserId, result);
 }
 
@@ -105,7 +109,8 @@ export async function dismissSuggestedGeneralActionAction(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const action = await dismissSuggestedGeneralAction({ actorUserId: ownerUserId, generalActionId });
 
-  revalidateReviewSurfaces();
+  invalidateActionMutation({ ownerUserId, actionId: action.id });
+  revalidateReviewSurfaces(ownerUserId);
   return { generalActionId: action.id, status: action.status };
 }
 
@@ -116,6 +121,7 @@ export async function ignoreSuggestedGeneralActionAction(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const action = await ignoreSuggestedGeneralAction({ actorUserId: ownerUserId, generalActionId });
 
-  revalidateReviewSurfaces();
+  invalidateActionMutation({ ownerUserId, actionId: action.id });
+  revalidateReviewSurfaces(ownerUserId);
   return { generalActionId: action.id, status: action.status };
 }

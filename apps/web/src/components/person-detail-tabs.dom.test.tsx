@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@/test/dom";
+import { render, screen, userEvent, waitFor } from "@/test/dom";
+
+const replace = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/people/person-1",
+  useRouter: () => ({ replace }),
+}));
+
 import { PersonDetailTabs } from "./person-detail-tabs";
 
 describe("PersonDetailTabs deep links", () => {
@@ -31,5 +39,32 @@ describe("PersonDetailTabs deep links", () => {
     );
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
     window.history.replaceState({}, "", "/");
+  });
+
+  it("requests an inactive pane only after the owner activates its tab", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, "", "/people/person-1");
+    replace.mockReset();
+
+    render(
+      <PersonDetailTabs
+        aside={null}
+        draftsCount={0}
+        draftsPanel={null}
+        followupCount={0}
+        followupsPanel={null}
+        hasSnapshot
+        header={null}
+        initialTab="memory"
+        memoryPanel={<p>Memory</p>}
+        reviewCount={0}
+        reviewPanel={null}
+        snapshotPanel={null}
+      />,
+    );
+
+    expect(replace).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("tab", { name: "Drafts" }));
+    expect(replace).toHaveBeenCalledWith("/people/person-1?tab=drafts", { scroll: false });
   });
 });

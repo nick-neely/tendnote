@@ -13,6 +13,7 @@ import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import type { AssetLinkMutationResult } from "@/lib/asset-link-view";
 import { runAssetsMutation } from "@/lib/asset-mutation";
+import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
 
 /**
  * Server actions for the Asset Profile's lightweight links (#202): Related
@@ -36,8 +37,17 @@ const addAssetPersonLinkSchema = z.object({
 });
 
 /** Runs a link mutation; success carries no view — the profile re-renders. */
-function runLinkMutation(run: () => Promise<unknown>): Promise<AssetLinkMutationResult> {
-  return runAssetsMutation(run, () => null);
+function runLinkMutation<T extends { fromAssetId?: string; toAssetId?: string; assetId?: string }>(
+  callerUserId: string,
+  run: () => Promise<T>,
+): Promise<AssetLinkMutationResult> {
+  return runAssetsMutation(run, (result) => {
+    const assetIds = [result.fromAssetId, result.toAssetId, result.assetId].filter(
+      (assetId): assetId is string => Boolean(assetId),
+    );
+    updateAssetMutationScopes(assetMutationScopes.forAssetIds({ callerUserId, assetIds }));
+    return null;
+  });
 }
 
 /** Links two assets from explicit intent — active immediately, no review gate. */
@@ -47,7 +57,7 @@ export async function addAssetLinkAction(input: {
   relation: string;
 }): Promise<AssetLinkMutationResult> {
   const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(() => {
+  return runLinkMutation(actorUserId, () => {
     const parsed = addAssetLinkSchema.parse(input);
     return addAssetLink({ actorUserId, ...parsed });
   });
@@ -58,7 +68,7 @@ export async function acceptSuggestedAssetLinkAction(input: {
   linkId: string;
 }): Promise<AssetLinkMutationResult> {
   const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(() => {
+  return runLinkMutation(actorUserId, () => {
     const parsed = linkIdSchema.parse(input);
     return acceptSuggestedAssetLink({ actorUserId, linkId: parsed.linkId });
   });
@@ -69,7 +79,7 @@ export async function dismissSuggestedAssetLinkAction(input: {
   linkId: string;
 }): Promise<AssetLinkMutationResult> {
   const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(() => {
+  return runLinkMutation(actorUserId, () => {
     const parsed = linkIdSchema.parse(input);
     return dismissSuggestedAssetLink({ actorUserId, linkId: parsed.linkId });
   });
@@ -80,7 +90,7 @@ export async function removeAssetLinkAction(input: {
   linkId: string;
 }): Promise<AssetLinkMutationResult> {
   const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(() => {
+  return runLinkMutation(actorUserId, () => {
     const parsed = linkIdSchema.parse(input);
     return removeAssetLink({ actorUserId, linkId: parsed.linkId });
   });
@@ -93,7 +103,7 @@ export async function addAssetPersonLinkAction(input: {
   relation: string;
 }): Promise<AssetLinkMutationResult> {
   const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(() => {
+  return runLinkMutation(actorUserId, () => {
     const parsed = addAssetPersonLinkSchema.parse(input);
     return addAssetPersonLink({ actorUserId, ...parsed });
   });
@@ -104,7 +114,7 @@ export async function removeAssetPersonLinkAction(input: {
   linkId: string;
 }): Promise<AssetLinkMutationResult> {
   const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(() => {
+  return runLinkMutation(actorUserId, () => {
     const parsed = linkIdSchema.parse(input);
     return removeAssetPersonLink({ actorUserId, linkId: parsed.linkId });
   });

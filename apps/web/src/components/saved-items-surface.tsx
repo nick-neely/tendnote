@@ -3,11 +3,12 @@
 import type { SavedItemKind } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, useTransition } from "react";
 import {
   archiveSavedItemAction,
   createSavedItemAction,
   deleteUniqueSavedItemSourceAction,
+  getArchivedSavedItemViewsAction,
   getSavedItemSourceDeletionImpactAction,
   promoteSavedItemToGeneralActionAction,
   reopenSavedItemAction,
@@ -67,6 +68,9 @@ export function SavedItemsSurface({
 }) {
   const [list, setList] = useState(items);
   const [state, setState] = useState<"active" | "archived">("active");
+  const [archivedLoaded, setArchivedLoaded] = useState(false);
+  const [archivedError, setArchivedError] = useState<string | null>(null);
+  const [archivedLoading, startArchivedTransition] = useTransition();
   useEffect(() => setList(items), [items]);
 
   const visible = list.filter((item) => item.status === state);
@@ -75,6 +79,24 @@ export function SavedItemsSurface({
   }
   function remove(savedItemId: string) {
     setList((current) => current.filter((entry) => entry.id !== savedItemId));
+  }
+
+  function selectState(nextState: "active" | "archived") {
+    setState(nextState);
+    if (nextState !== "archived" || archivedLoaded || archivedLoading) return;
+    setArchivedError(null);
+    startArchivedTransition(async () => {
+      try {
+        const archived = await getArchivedSavedItemViewsAction();
+        setList((current) => [
+          ...current.filter((item) => item.status !== "archived"),
+          ...archived,
+        ]);
+        setArchivedLoaded(true);
+      } catch {
+        setArchivedError("Archived Saved Items couldn't be loaded. Try again.");
+      }
+    });
   }
 
   return (
@@ -87,7 +109,7 @@ export function SavedItemsSurface({
           <Button
             aria-pressed={state === value}
             key={value}
-            onClick={() => setState(value)}
+            onClick={() => selectState(value)}
             size="sm"
             variant={state === value ? "secondary" : "ghost"}
           >
@@ -96,7 +118,13 @@ export function SavedItemsSurface({
         ))}
       </fieldset>
 
-      {visible.length ? (
+      {state === "archived" && archivedLoading ? (
+        <LedgerEmpty>
+          <span aria-busy="true" role="status">
+            Loading archived Saved Items…
+          </span>
+        </LedgerEmpty>
+      ) : visible.length ? (
         <LedgerList>
           {visible.map((item) => (
             <SavedItemRow item={item} key={item.id} onDelete={remove} onUpdate={upsert} />
@@ -107,6 +135,14 @@ export function SavedItemsSurface({
           {state === "active" ? "Nothing saved here yet." : "No archived Saved Items."}
         </LedgerEmpty>
       )}
+      {state === "archived" && archivedError ? (
+        <div className="flex items-center gap-2" role="status">
+          <ErrorText message={archivedError} />
+          <Button onClick={() => selectState("archived")} size="sm" type="button" variant="outline">
+            Retry
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

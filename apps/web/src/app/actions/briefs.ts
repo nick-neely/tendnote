@@ -12,6 +12,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
+import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
 import { enforceProductBudget } from "@/lib/rate-limit/guards";
 
 // Default snooze defers a brief item by a week — long enough to clear it from the
@@ -107,6 +108,9 @@ export async function acceptBriefFollowupAction(input: {
   revalidatePath("/");
   // Acceptance promotes a real reminder on the person's ledger, so re-render their
   // profile too — unlike dismiss/snooze, which never touch underlying records.
-  revalidatePath(`/people/${result.followup.followup.personId}`);
+  invalidatePersonMutation({
+    ownerUserId,
+    personId: result.followup.followup.personId,
+  });
   return { briefItemId: result.briefItem.id, status: result.briefItem.status };
 }

@@ -2,7 +2,8 @@
 
 import type { Person } from "@tendnote/domain";
 import Link from "next/link";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { DashboardBriefSection } from "@/components/dashboard-brief-section";
 import { DashboardCalendarSuggestionsSection } from "@/components/dashboard-calendar-suggestions-section";
 import { DashboardFollowupsSection } from "@/components/dashboard-followups-section";
@@ -30,6 +31,10 @@ import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-revie
 // is height-bounded) and flows normally on mobile.
 const PANEL =
   "data-[state=inactive]:hidden data-[state=active]:flex flex-col gap-6 min-h-0 pb-1 lg:overflow-y-auto lg:pr-2";
+
+/** The two panels a Home URL can name, and the full set the rail offers. */
+type UrlTab = "today" | "review";
+type RailTab = UrlTab | "followups" | "people";
 
 /**
  * The dashboard's right-hand context panel: a tabbed gutter beside the assistant
@@ -64,6 +69,7 @@ export function DashboardRail({
   reviewQueue: initialReviewQueue,
   dailyBrief,
   weeklyBrief,
+  reviewContent,
   initialTab = "today",
 }: {
   people: Person[];
@@ -74,8 +80,16 @@ export function DashboardRail({
   reviewQueue: ReviewQueue;
   dailyBrief: BriefView | null;
   weeklyBrief: BriefView | null;
-  initialTab?: "today" | "followups" | "review" | "people";
+  reviewContent?: ReactNode;
+  initialTab?: RailTab;
 }) {
+  // `?tab=` names the two panels a URL can express, and it stays authoritative:
+  // arriving from anywhere — a nav link, the narrow-viewport Review destination, a
+  // shared link — selects the panel that URL names. Follow-ups and People have no
+  // URL of their own, so picking one is purely local and leaves the URL alone.
+  const urlTab = useSearchParams().get("tab") === "review" ? "review" : "today";
+  const [activeTab, setActiveTab] = useState<RailTab>(initialTab);
+  const lastUrlTab = useRef<UrlTab>(urlTab);
   const [followups, setFollowups] = useState(initialFollowups);
   const [suggestedFollowups, setSuggestedFollowups] = useState(initialFollowupReviews);
   const [calendarSuggestions, setCalendarSuggestions] = useState(initialCalendarSuggestions);
@@ -94,8 +108,46 @@ export function DashboardRail({
 
   const followupCount = followups.length + suggestedFollowups.length + calendarSuggestions.length;
 
+  // Fresh server data replaces the optimistic collections, but it must not move
+  // the owner: a background refresh after a mutation would otherwise snap them
+  // back to whichever tab the URL named.
+  useEffect(() => {
+    setFollowups(initialFollowups);
+    setSuggestedFollowups(initialFollowupReviews);
+    setCalendarSuggestions(initialCalendarSuggestions);
+    setReviewQueue(initialReviewQueue);
+  }, [initialCalendarSuggestions, initialFollowupReviews, initialFollowups, initialReviewQueue]);
+
+  // A URL the owner did not just ask for — a nav link back to Home, a Review deep
+  // link, Back — takes the rail with it. Our own writes bump the ref first so they
+  // never bounce back through here and undo a local pick.
+  useEffect(() => {
+    if (lastUrlTab.current === urlTab) return;
+    lastUrlTab.current = urlTab;
+    setActiveTab(urlTab);
+  }, [urlTab]);
+
+  function selectTab(tab: RailTab) {
+    setActiveTab(tab);
+    // Every panel is served on every Home URL, so a tab is a view the owner
+    // already holds — switching one is local state, never a navigation. Today and
+    // Review still write the URL through the History API so a refresh or a shared
+    // link lands on the same panel, without re-rendering the route to say so.
+    if (tab !== "today" && tab !== "review") return;
+    const params = new URLSearchParams(window.location.search);
+    if (tab === "review") params.set("tab", "review");
+    else params.delete("tab");
+    const query = params.toString();
+    lastUrlTab.current = tab;
+    window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
+  }
+
   return (
-    <Tabs className="flex min-h-0 flex-col gap-3 lg:h-full" defaultValue={initialTab}>
+    <Tabs
+      className="flex min-h-0 flex-col gap-3 lg:h-full"
+      onValueChange={(value) => selectTab(value as RailTab)}
+      value={activeTab}
+    >
       <TabsList className="w-full shrink-0">
         <TabsTrigger className="group/tab" value="today">
           Today
@@ -115,7 +167,7 @@ export function DashboardRail({
 
       {/* Today — the morning glance: today's signals, then the briefs. The
           briefs live only here; they have no tab of their own. */}
-      <TabsContent className={PANEL} forceMount value="today">
+      <TabsContent className={PANEL} value="today">
         {birthdays.length > 0 ? <BirthdaysSection birthdays={birthdays} /> : null}
 
         {/* Persisted briefs: the current daily brief, then the weekly review (PRD
@@ -130,7 +182,7 @@ export function DashboardRail({
       </TabsContent>
 
       {/* Follow-ups — active reminders, then suggestions awaiting a yes/no. */}
-      <TabsContent className={PANEL} forceMount value="followups">
+      <TabsContent className={PANEL} value="followups">
         {followupCount === 0 ? (
           <RailEmpty>
             No follow-ups right now. Reminders you set, and ones Eve suggests, show up here.
@@ -157,8 +209,10 @@ export function DashboardRail({
 
       {/* Review — the shared Review Queue: suggested memories and Suggested actions,
           each accepted or set aside in place (ADR 0152). */}
-      <TabsContent className={PANEL} forceMount value="review">
-        {reviewQueue.count === 0 ? (
+      <TabsContent className={PANEL} value="review">
+        {reviewContent ? (
+          reviewContent
+        ) : reviewQueue.count === 0 ? (
           <RailEmpty>
             Nothing waiting to review. Eve's suggestions land here first: things to remember,
             actions to take, and assets to track.
@@ -173,7 +227,7 @@ export function DashboardRail({
       </TabsContent>
 
       {/* People — fast recall, full to the person pages. */}
-      <TabsContent className={PANEL} forceMount value="people">
+      <TabsContent className={PANEL} value="people">
         <PeopleSection people={people} />
       </TabsContent>
     </Tabs>

@@ -37,6 +37,7 @@ import type {
   ListGeneralActionsInput,
   SetGeneralActionPeopleInput,
   SetGeneralActionVisibilityInput,
+  UndoRoutineOccurrenceInput,
 } from "./types";
 
 const ACTIVE_STATUSES = [...ACTIVE_GENERAL_ACTION_STATUSES] as GeneralActionStatus[];
@@ -45,8 +46,10 @@ const ACTIVE_STATUSES = [...ACTIVE_GENERAL_ACTION_STATUSES] as GeneralActionStat
 const EVENT_KIND_FOR_ACTION: Record<GeneralActionLifecycleAction, GeneralActionEventKind> = {
   complete: "completed",
   defer: "deferred",
+  undefer: "reopened",
   dismiss: "dismissed",
   reopen: "reopened",
+  restore: "reopened",
   archive: "archived",
   pause: "paused",
   resume: "resumed",
@@ -429,6 +432,34 @@ export function createGeneralActionLifecycle(
       return advanceRoutineOccurrence(input, "skipped");
     },
 
+    /**
+     * Reverses one just-advanced Routine occurrence for any actor who could perform
+     * it. The expected next due date makes a stale Undo fail visibly rather than
+     * rewinding a later occurrence.
+     */
+    async undoRoutineOccurrence(input: UndoRoutineOccurrenceInput) {
+      const current = await requireAction(input);
+      if (!current.recurrence) {
+        throw new GeneralActionValidationError("Only a Routine occurrence can be restored.");
+      }
+      if (current.dueAt?.getTime() !== input.expectedDueAt.getTime()) {
+        throw new GeneralActionValidationError(
+          "This Routine changed before Undo could be applied.",
+        );
+      }
+      const updated = await store.updateGeneralAction({
+        ownerUserId: current.ownerUserId,
+        generalActionId: current.id,
+        patch: { dueAt: input.restoreDueAt, lastActorUserId: input.actorUserId },
+      });
+      await recordEvent(updated, "reopened", input.actorUserId, {
+        previousDueAt: current.dueAt.toISOString(),
+        restoredDueAt: input.restoreDueAt.toISOString(),
+        rolledBack: true,
+      });
+      return hydrate(updated);
+    },
+
     dismissGeneralAction(input: GeneralActionActionInput) {
       return transition(input, "dismiss", { deferUntil: null });
     },
@@ -474,6 +505,10 @@ export function createGeneralActionLifecycle(
       return transition(input, "reopen", { completedAt: null, deferUntil: null });
     },
 
+    restoreGeneralAction(input: GeneralActionActionInput) {
+      return transition(input, "restore", { completedAt: null, deferUntil: null });
+    },
+
     archiveGeneralAction(input: GeneralActionActionInput) {
       // Clear the resurface date on the way out, like the other terminal
       // transitions — an archived action never resurfaces.
@@ -489,6 +524,11 @@ export function createGeneralActionLifecycle(
         { deferUntil },
         { deferUntil: deferUntil.toISOString() },
       );
+    },
+
+    /** Clears a deliberate set-aside as the authoritative inverse of deferral. */
+    undeferGeneralAction(input: GeneralActionActionInput) {
+      return transition(input, "undefer", { deferUntil: null });
     },
 
     /**

@@ -2,12 +2,15 @@ import { randomUUID } from "node:crypto";
 import {
   comparePeopleForSearch,
   type Followup,
+  type HouseholdMembership,
   type Memory,
   type Person,
   personMatchesPeopleSearch,
   type SourceRecord,
   type SourceRecordPerson,
 } from "@tendnote/domain";
+import type { HouseholdRecordShare } from "../households/types";
+import { canViewerSeeSeededHouseholdRecord } from "../households/visibility-memory";
 import type { PeopleStore, PersonAuditLogEntry } from "./types";
 
 export type InMemoryPeopleStoreSeed = {
@@ -16,6 +19,8 @@ export type InMemoryPeopleStoreSeed = {
   followups?: Followup[];
   sourceRecords?: SourceRecord[];
   sourceRecordPeople?: SourceRecordPerson[];
+  householdMemberships?: HouseholdMembership[];
+  householdRecordShares?: HouseholdRecordShare[];
 };
 
 export type InMemoryPeopleStore = PeopleStore & {
@@ -36,6 +41,22 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
     ]),
   );
   const auditLogEntries: PersonAuditLogEntry[] = [];
+  const householdMemberships = seed.householdMemberships ?? [];
+  const householdRecordShares = seed.householdRecordShares ?? [];
+
+  function visibleFollowupsFor(input: { callerUserId: string; personId: string }) {
+    return [...followups.values()].filter(
+      (followup) =>
+        followup.personId === input.personId &&
+        canViewerSeeSeededHouseholdRecord({
+          callerUserId: input.callerUserId,
+          record: followup,
+          recordKind: "followup",
+          householdMemberships,
+          householdRecordShares,
+        }),
+    );
+  }
 
   return {
     async createPerson(values) {
@@ -118,11 +139,59 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
       return person?.ownerUserId === input.ownerUserId ? person : null;
     },
 
+    async getPersonDetailCore(input) {
+      const person = people.get(input.personId);
+
+      if (!person) return null;
+
+      if (person.ownerUserId !== input.ownerUserId) {
+        const visibleFollowups = visibleFollowupsFor({
+          callerUserId: input.ownerUserId,
+          personId: input.personId,
+        });
+        if (!visibleFollowups.length) return null;
+
+        return {
+          person,
+          counts: { memories: 0, followups: visibleFollowups.length, sourceRecords: 0 },
+        };
+      }
+
+      return {
+        person,
+        counts: {
+          memories: [...memories.values()].filter(
+            (memory) =>
+              memory.personId === input.personId && memory.ownerUserId === input.ownerUserId,
+          ).length,
+          followups: [...followups.values()].filter(
+            (followup) =>
+              followup.personId === input.personId && followup.ownerUserId === input.ownerUserId,
+          ).length,
+          sourceRecords: [...sourceRecords.values()].filter(
+            (sourceRecord) =>
+              sourceRecord.ownerUserId === input.ownerUserId &&
+              [...sourceRecordPeople.values()].some(
+                (link) =>
+                  link.personId === input.personId && link.sourceRecordId === sourceRecord.id,
+              ),
+          ).length,
+        },
+      };
+    },
+
     async getPersonProfile(input) {
       const person = people.get(input.personId);
 
-      if (!person || person.ownerUserId !== input.ownerUserId) {
-        return null;
+      if (!person) return null;
+
+      if (person.ownerUserId !== input.ownerUserId) {
+        const visibleFollowups = visibleFollowupsFor({
+          callerUserId: input.ownerUserId,
+          personId: input.personId,
+        });
+        if (!visibleFollowups.length) return null;
+        return { person, memories: [], followups: visibleFollowups, sourceRecords: [] };
       }
 
       return {

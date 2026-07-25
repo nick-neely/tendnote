@@ -1,13 +1,13 @@
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ClockIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentAccess } from "@/lib/access/current-access";
 
-export const dynamic = "force-dynamic";
-
 export default async function PendingPage() {
+  if (process.env.NODE_ENV !== "test") await connection();
   const access = await getCurrentAccess();
 
   if (access.state === "unauthenticated") {

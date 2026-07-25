@@ -9,6 +9,7 @@ import { memoryReviewEditSchema } from "@tendnote/domain";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { saveSuggestedMemoryWithEmbeddingDelivery } from "@/lib/background-jobs/embedding-schedulers";
+import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
 import {
   type SuggestedMemoryReviewView,
   toSuggestedMemoryReviewView,
@@ -32,7 +33,7 @@ export async function saveSuggestedMemoryAction(input: {
   const parsed = memoryEditActionSchema.parse({ memoryId: input.memoryId, edit: input.edit ?? {} });
   const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await saveSuggestedMemoryWithEmbeddingDelivery({ ownerUserId, ...parsed });
-
+  invalidateReviewOwner(ownerUserId);
   return toSuggestedMemoryReviewView(result);
 }
 
@@ -43,7 +44,7 @@ export async function editSuggestedMemoryAction(input: {
   const parsed = memoryEditActionSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
   const result = await editSuggestedMemory({ ownerUserId, ...parsed });
-
+  invalidateReviewOwner(ownerUserId);
   return toSuggestedMemoryReviewView(result);
 }
 
@@ -53,7 +54,7 @@ export async function dismissSuggestedMemoryAction(input: {
   const parsed = memoryActionSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
   const memory = await dismissSuggestedMemory({ ownerUserId, memoryId: parsed.memoryId });
-
+  invalidateReviewOwner(ownerUserId);
   return { memoryId: memory.id, status: memory.status };
 }
 
@@ -63,6 +64,6 @@ export async function archiveSuggestedMemoryAction(input: {
   const parsed = memoryActionSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
   const memory = await archiveMemory({ ownerUserId, memoryId: parsed.memoryId });
-
+  invalidateReviewOwner(ownerUserId);
   return { memoryId: memory.id, status: memory.status };
 }

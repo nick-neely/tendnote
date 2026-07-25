@@ -22,6 +22,15 @@ import {
 } from "@tendnote/domain/reminders";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import {
+  accountMutationScopes,
+  updateAccountMutationScopes,
+} from "@/lib/cache/account-mutation-scopes";
+import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
+
+function invalidateAccount(ownerUserId: string) {
+  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
+}
 
 const installationSchema = z.string().trim().min(12).max(200);
 const recordReferenceSchema = z.object({
@@ -36,6 +45,10 @@ export async function clearReminderAction(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const parsed = recordReferenceSchema.parse(input);
   await clearReminder({ ownerUserId, ...parsed, now: new Date() });
+  invalidateAccount(ownerUserId);
+  if (parsed.recordKind === "general_action" || parsed.recordKind === "routine") {
+    invalidateActionMutation({ ownerUserId, actionId: parsed.recordId });
+  }
   return { ok: true as const };
 }
 
@@ -55,6 +68,10 @@ export async function saveReminderAction(input: {
     })
     .parse(input);
   const result = await saveReminder({ ownerUserId, ...parsed, now: new Date() });
+  invalidateAccount(ownerUserId);
+  if (parsed.recordKind === "general_action" || parsed.recordKind === "routine") {
+    invalidateActionMutation({ ownerUserId, actionId: parsed.recordId });
+  }
   return reminderScheduleResult(result);
 }
 
@@ -73,6 +90,7 @@ export async function reconcileReminderTimeZoneAction(input: { timeZone: string 
       }),
     ),
   );
+  invalidateAccount(ownerUserId);
   return { reconciled: schedules.length };
 }
 
@@ -108,6 +126,7 @@ export async function registerReminderInstallationAction(input: {
     })
     .parse(input);
   const result = await registerReminderInstallation({ ownerUserId, ...parsed, now: new Date() });
+  invalidateAccount(ownerUserId);
   return { enabled: result.installation.status === "enabled" };
 }
 
@@ -120,6 +139,7 @@ export async function setReminderOptInDecisionAction(input: {
     .object({ clientInstallationId: installationSchema, decision: z.enum(["postponed", "denied"]) })
     .parse(input);
   await setReminderOptInDecision({ ownerUserId, ...parsed, now: new Date() });
+  invalidateAccount(ownerUserId);
   return { ok: true as const };
 }
 
@@ -135,6 +155,7 @@ export async function beginReminderInstallationOptInAction(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const parsed = z.object({ clientInstallationId: installationSchema }).parse(input);
   await beginReminderInstallationOptIn({ ownerUserId, ...parsed, now: new Date() });
+  invalidateAccount(ownerUserId);
   return { ok: true as const };
 }
 
@@ -144,6 +165,7 @@ export async function markReminderStandaloneContinuationAction(input: {
   const ownerUserId = await requireAdmittedOwnerForAction();
   const parsed = z.object({ clientInstallationId: installationSchema }).parse(input);
   await markReminderStandaloneContinuation({ ownerUserId, ...parsed, now: new Date() });
+  invalidateAccount(ownerUserId);
   return { ok: true as const };
 }
 
@@ -157,6 +179,7 @@ export async function claimReminderStandaloneContinuationAction(input: {
     ...parsed,
     now: new Date(),
   });
+  invalidateAccount(ownerUserId);
   return { claimed: claimed !== null };
 }
 
@@ -176,6 +199,7 @@ export async function setReminderInstallationPreviewModeAction(input: {
     ...parsed,
     now: new Date(),
   });
+  invalidateAccount(ownerUserId);
   return { previewMode: installation.previewMode };
 }
 
@@ -191,6 +215,7 @@ export async function disableCurrentReminderInstallationAction(input: {
     })
     .parse(input);
   await disableCurrentReminderInstallation({ ownerUserId, ...parsed, now: new Date() });
+  invalidateAccount(ownerUserId);
   return { ok: true as const };
 }
 
@@ -203,5 +228,6 @@ export async function revokeReminderInstallationAction(input: { installationId: 
     reason: "remote_revocation",
     now: new Date(),
   });
+  invalidateAccount(ownerUserId);
   return { ok: true as const };
 }

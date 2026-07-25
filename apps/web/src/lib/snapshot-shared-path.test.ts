@@ -8,7 +8,10 @@ import { describe, expect, it } from "vitest";
  * freshness, policy filtering, or persistence in the app layer (PRD #11).
  */
 const SRC = join(process.cwd(), "src");
-const pageSource = readFileSync(join(SRC, "app", "people", "[personId]", "page.tsx"), "utf8");
+const pageSource = readFileSync(
+  join(SRC, "app", "(admitted)", "people", "[personId]", "page.tsx"),
+  "utf8",
+);
 const viewSource = readFileSync(join(SRC, "lib", "relationship-snapshot-view.ts"), "utf8");
 const cardSource = readFileSync(join(SRC, "components", "relationship-snapshot-card.tsx"), "utf8");
 

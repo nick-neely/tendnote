@@ -3,8 +3,6 @@ import { consumeEmbeddingQueueMessage } from "@/lib/background-jobs/embedding-qu
 import { BACKGROUND_JOB_QUEUE_CONFIG } from "@/lib/background-jobs/queue-runtime";
 import { getProductRateLimiter } from "@/lib/rate-limit";
 
-export const runtime = "nodejs";
-
 const handleEmbeddingQueueCallback = handleCallback(
   async (message, metadata) => {
     const result = await consumeEmbeddingQueueMessage({

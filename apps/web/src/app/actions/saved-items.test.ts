@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { invalidateActionMutationSpy, revalidatePathSpy } from "@/test/action-adapter-mocks";
 
 const {
   createSavedItem,
   deleteUniqueSavedItemSource,
+  getSavedItem,
   promoteSavedItemToGeneralAction,
-  revalidatePath,
   resolveScopeForCaller,
 } = vi.hoisted(() => ({
   createSavedItem: vi.fn(),
   deleteUniqueSavedItemSource: vi.fn(),
+  getSavedItem: vi.fn(),
   promoteSavedItemToGeneralAction: vi.fn(),
-  revalidatePath: vi.fn(),
   resolveScopeForCaller: vi.fn(),
 }));
 
@@ -21,13 +22,12 @@ vi.mock("@tendnote/db/queries/saved-items", () => ({
   archiveSavedItem: vi.fn(),
   editSavedItem: vi.fn(),
   getSavedItemSourceDeletionImpact: vi.fn(),
+  getSavedItem,
   reopenSavedItem: vi.fn(),
   resolveSavedItem: vi.fn(),
+  listSavedItems: vi.fn(),
 }));
-vi.mock("next/cache", () => ({ revalidatePath }));
-vi.mock("@/lib/access/current-access", () => ({
-  requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
-}));
+vi.mock("@tendnote/db/queries/reminders", () => ({ listReminderSchedulesForOwner: vi.fn() }));
 vi.mock("@/lib/resolve-scope-for-caller", () => ({ resolveScopeForCaller }));
 
 import { createSavedItemAction, promoteSavedItemToGeneralActionAction } from "./saved-items";
@@ -60,6 +60,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resolveScopeForCaller.mockResolvedValue({ scope: "private", householdId: null });
   createSavedItem.mockResolvedValue(ITEM);
+  getSavedItem.mockResolvedValue(ITEM);
   promoteSavedItemToGeneralAction.mockResolvedValue(ITEM);
 });
 
@@ -80,7 +81,7 @@ describe("Saved Item server adapters", () => {
       }),
     );
     expect(result).toMatchObject({ ok: true, view: { title: "Filter measurements" } });
-    expect(revalidatePath).toHaveBeenCalledWith("/saved-items");
+    expect(revalidatePathSpy).toHaveBeenCalledWith("/saved-items");
   });
 
   it("marks a datetime-local bring-back as an explicit instant", async () => {
@@ -97,6 +98,15 @@ describe("Saved Item server adapters", () => {
   });
 
   it("supplies explicit authority and a stable retry key for promotion", async () => {
+    promoteSavedItemToGeneralAction.mockResolvedValue({
+      ...ITEM,
+      outcomes: [
+        {
+          destinationKind: "general_action",
+          destinationRecordId: "33333333-3333-4333-8333-333333333333",
+        },
+      ],
+    });
     await promoteSavedItemToGeneralActionAction({ savedItemId: ITEM.id });
     await promoteSavedItemToGeneralActionAction({ savedItemId: ITEM.id });
 
@@ -105,6 +115,10 @@ describe("Saved Item server adapters", () => {
       savedItemId: ITEM.id,
       authority: "explicit",
       idempotencyKey: `saved-item:${ITEM.id}:general-action`,
+    });
+    expect(invalidateActionMutationSpy).toHaveBeenCalledWith({
+      ownerUserId: "owner-1",
+      actionId: "33333333-3333-4333-8333-333333333333",
     });
   });
 });

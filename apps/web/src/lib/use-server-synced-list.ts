@@ -23,6 +23,7 @@ export function useServerSyncedList<T>(
   serverItems: T[],
   getId: (item: T) => string,
   sort?: (items: T[]) => T[],
+  getRevision?: (item: T) => string | undefined,
 ): [T[], React.Dispatch<React.SetStateAction<T[]>>] {
   const [items, setItems] = useState(serverItems);
 
@@ -33,6 +34,8 @@ export function useServerSyncedList<T>(
   getIdRef.current = getId;
   const sortRef = useRef(sort);
   sortRef.current = sort;
+  const getRevisionRef = useRef(getRevision);
+  getRevisionRef.current = getRevision;
 
   useEffect(() => {
     const id = getIdRef.current;
@@ -42,19 +45,29 @@ export function useServerSyncedList<T>(
       seenIds.current.add(id(item));
     }
 
-    if (additions.length === 0) {
-      return;
-    }
-
     setItems((current) => {
       const currentIds = new Set(current.map(id));
       const fresh = additions.filter((item) => !currentIds.has(id(item)));
+      const revision = getRevisionRef.current;
+      const replacements = revision
+        ? serverItems.filter((item) => {
+            const existing = current.find((candidate) => id(candidate) === id(item));
+            const currentRevision = existing ? revision(existing) : undefined;
+            const incomingRevision = revision(item);
+            return Boolean(
+              existing &&
+                incomingRevision &&
+                (!currentRevision || incomingRevision > currentRevision),
+            );
+          })
+        : [];
 
-      if (fresh.length === 0) {
+      if (fresh.length === 0 && replacements.length === 0) {
         return current;
       }
 
-      const next = [...current, ...fresh];
+      const replacementById = new Map(replacements.map((item) => [id(item), item]));
+      const next = [...current.map((item) => replacementById.get(id(item)) ?? item), ...fresh];
 
       return sortRef.current ? sortRef.current(next) : next;
     });

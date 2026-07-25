@@ -3,8 +3,6 @@ import { BACKGROUND_JOB_QUEUE_CONFIG } from "@/lib/background-jobs/queue-runtime
 import { consumeReminderQueueMessage } from "@/lib/background-jobs/reminder-queue";
 import { getProductRateLimiter } from "@/lib/rate-limit";
 
-export const runtime = "nodejs";
-
 const config = BACKGROUND_JOB_QUEUE_CONFIG.reminder_push;
 const handleReminderQueueCallback = handleCallback(
   async (message, metadata) => {

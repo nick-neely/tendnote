@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { deletePersonAction } from "@/app/actions/people";
+import { deletePersonAction, getPersonRemovalPreviewAction } from "@/app/actions/people";
 import { Trash2Icon } from "@/components/icons";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
 import {
@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { confirmPhraseMatches, generateConfirmPhrase } from "@/lib/confirm-phrase";
 
 /** A single thing attached to the person, previewed so the user sees what they'd lose. */
-export type RemovalItem = { id: string; text: string };
+type RemovalItem = { id: string; text: string };
 
 type RundownGroup = {
   key: string;
@@ -64,27 +64,20 @@ function buildRundown(groups: {
  *
  * On success we navigate back to People, since the profile no longer exists.
  */
-export function PersonRemove({
-  personId,
-  personName,
-  memories,
-  followups,
-  drafts,
-}: {
-  personId: string;
-  personName: string;
-  memories: RemovalItem[];
-  followups: RemovalItem[];
-  drafts: RemovalItem[];
-}) {
+export function PersonRemove({ personId, personName }: { personId: string; personName: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [phrase, setPhrase] = useState("");
   const [typed, setTyped] = useState("");
+  const [preview, setPreview] = useState<{
+    memories: RemovalItem[];
+    followups: RemovalItem[];
+    drafts: RemovalItem[];
+  } | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const rundown = buildRundown({ memories, followups, drafts });
+  const rundown = buildRundown(preview ?? { memories: [], followups: [], drafts: [] });
   const hasHistory = rundown.length > 0;
   const phraseConfirmed = confirmPhraseMatches(typed, phrase);
   const canRemove = !pending && (!hasHistory || phraseConfirmed);
@@ -96,7 +89,19 @@ export function PersonRemove({
       return;
     }
 
-    setOpen(next);
+    if (!next) {
+      setOpen(false);
+      return;
+    }
+
+    setOpen(true);
+    startTransition(async () => {
+      try {
+        setPreview(await getPersonRemovalPreviewAction({ personId }));
+      } catch {
+        setError(GENERIC_ERROR);
+      }
+    });
 
     if (next) {
       // A fresh phrase each open; the point is a deliberate read-and-type, so it must

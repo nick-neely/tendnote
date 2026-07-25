@@ -34,7 +34,7 @@ vi.mock("@/lib/source-record-review-view", () => ({
   toSourceRecordReviewView: mocks.sourceView,
 }));
 
-import { loadOwnerReviewQueue } from "./review-queue.server";
+import { loadOwnerReviewQueue, loadOwnerReviewQueueFamily } from "./review-queue.server";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -87,5 +87,25 @@ describe("owner Review Queue adapter", () => {
 
     expect(queue.items.map(({ id }) => id)).toEqual(["group-1"]);
     expect(queue.failures).toEqual(["suggested-memory"]);
+  });
+
+  it("streams a family without waiting for an unavailable sibling", async () => {
+    mocks.listMemories.mockResolvedValue([
+      { memory: { id: "memory-1", createdAt: new Date("2026-07-14T12:00:00Z") } },
+    ]);
+    mocks.listActions.mockRejectedValue(new Error("unavailable"));
+
+    await expect(loadOwnerReviewQueueFamily("owner-1", "suggested-memory")).resolves.toMatchObject({
+      family: "suggested-memory",
+      items: [{ family: "suggested-memory", id: "memory-1" }],
+      unavailable: false,
+    });
+    await expect(
+      loadOwnerReviewQueueFamily("owner-1", "suggested-general-action"),
+    ).resolves.toEqual({
+      family: "suggested-general-action",
+      items: [],
+      unavailable: true,
+    });
   });
 });

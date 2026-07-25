@@ -23,6 +23,7 @@ import {
   toAssetBrowseView,
   toAssetView,
 } from "@/lib/asset-view";
+import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
 import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
 
 const assetIdSchema = z.object({ assetId: z.uuid() });
@@ -53,7 +54,17 @@ function runMutation(
   callerUserId: string,
   run: () => Promise<AssetWithContext>,
 ): Promise<AssetMutationResult> {
-  return runAssetsMutation(run, (asset) => toAssetView(asset, { callerUserId }));
+  return runAssetsMutation(run, (asset) => {
+    updateAssetMutationScopes(
+      assetMutationScopes.forAsset({
+        callerUserId,
+        assetId: asset.id,
+        householdId: asset.householdId,
+        sharedWithUserIds: asset.sharedWithUserIds,
+      }),
+    );
+    return toAssetView(asset, { callerUserId });
+  });
 }
 
 export async function createAssetAction(input: {
@@ -123,6 +134,9 @@ export async function hardDeleteAssetAction(input: { assetId: string }): Promise
   const ownerUserId = await requireAdmittedOwnerForAction();
   const parsed = assetIdSchema.parse(input);
   await hardDeleteAsset({ actorUserId: ownerUserId, assetId: parsed.assetId });
+  updateAssetMutationScopes(
+    assetMutationScopes.forAsset({ callerUserId: ownerUserId, assetId: parsed.assetId }),
+  );
 }
 
 const searchAssetsActionSchema = z.object({

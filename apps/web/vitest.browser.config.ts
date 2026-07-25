@@ -11,6 +11,7 @@ export default defineConfig({
       "class-variance-authority",
       "clsx",
       "@phosphor-icons/react/dist/ssr",
+      "next/dynamic",
       "next/navigation",
       "radix-ui",
       "react",

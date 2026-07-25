@@ -97,6 +97,10 @@ export async function listActiveFollowups(input: {
   return defaultFollowupLifecycle.listActiveFollowups(input);
 }
 
+export async function listFollowupsForPerson(input: { ownerUserId: string; personId: string }) {
+  return defaultFollowupStore.listFollowupsForPerson(input);
+}
+
 export async function searchFollowups(input: {
   ownerUserId: string;
   includeArchived?: boolean;

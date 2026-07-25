@@ -1,8 +1,10 @@
 "use client";
 
 import type { TodayShortlistResponse } from "@tendnote/domain/today";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import {
   CornerDownLeftIcon,
   HomeIcon,
@@ -11,47 +13,154 @@ import {
   PlusIcon,
   SearchIcon,
 } from "@/components/icons";
-import {
-  CaptureFlow,
-  type CaptureHandlers,
-  EveFlow,
-  type FocusedFlow,
-  type GlobalRecallHandler,
-  MenuFlow,
-  SearchFlow,
+import type {
+  CaptureHandlers,
+  FocusedFlow,
+  GlobalRecallHandler,
 } from "@/components/mobile-focused-flows";
 import { TodayShortlist, type TodayShortlistHandlers } from "@/components/today-shortlist";
+import { useSession } from "@/lib/auth/client";
 import { requestLocalEveDraftSubmission, useLocalComposerDraft } from "@/lib/local-composer-draft";
 import { cn } from "@/lib/utils";
 
-export function MobileShell({
-  children,
-  captureHandlers,
-  mobileEve,
-  mobileHome,
-  mobileReview,
-  ownerUserId,
-  searchHandler,
-  todayHandlers,
-  todayInitial,
-  todayLocalDate,
-  todayTimeZone,
-}: {
-  captureHandlers?: CaptureHandlers;
+const SearchFlow = dynamic(
+  () => import("@/components/mobile-focused-flows").then((mod) => mod.SearchFlow),
+  { ssr: false },
+);
+const CaptureFlow = dynamic(
+  () => import("@/components/mobile-focused-flows").then((mod) => mod.CaptureFlow),
+  { ssr: false },
+);
+const EveFlow = dynamic(
+  () => import("@/components/mobile-focused-flows").then((mod) => mod.EveFlow),
+  {
+    ssr: false,
+  },
+);
+const MenuFlow = dynamic(
+  () => import("@/components/mobile-focused-flows").then((mod) => mod.MenuFlow),
+  {
+    ssr: false,
+  },
+);
+
+type MobileShellProps = {
   children: ReactNode;
+  captureHandlers?: CaptureHandlers;
   mobileEve?: ReactNode;
+  mobileDestination?: ReactNode;
   mobileHome: boolean;
   mobileReview: boolean;
-  ownerUserId: string;
+  ownerUserId?: string;
+  routeAwareMobileNavigation?: boolean;
   searchHandler: GlobalRecallHandler;
   todayHandlers: TodayShortlistHandlers;
   todayInitial: TodayShortlistResponse;
   todayLocalDate: string;
   todayTimeZone: string;
-}) {
+};
+
+export function MobileShell(props: MobileShellProps) {
+  if (!props.ownerUserId) return <SessionOwnedMobileShell {...props} />;
+  return <MobileShellContent {...props} />;
+}
+
+function SessionOwnedMobileShell(props: MobileShellProps) {
+  const session = useSession();
+  const ownerUserId =
+    session.data?.user.id ?? (process.env.NODE_ENV === "development" ? "demo-user" : undefined);
+  return (
+    <MobileShellContent {...props} key={ownerUserId ?? "unresolved"} ownerUserId={ownerUserId} />
+  );
+}
+
+function MobileShellContent({
+  children,
+  captureHandlers,
+  mobileEve,
+  mobileDestination,
+  mobileHome,
+  mobileReview,
+  ownerUserId = "",
+  routeAwareMobileNavigation = false,
+  searchHandler,
+  todayHandlers,
+  todayInitial,
+  todayLocalDate,
+  todayTimeZone,
+}: MobileShellProps) {
+  const focused = useFocusedFlow(ownerUserId);
+  const [searchQuery, setSearchQuery] = useState("");
+  const { flow, open: openFlow } = focused;
+
+  return (
+    <>
+      {mobileDestination ??
+        (mobileHome && !routeAwareMobileNavigation ? (
+          <MobileTodayHome
+            eveDraftRevision={focused.eveDraftRevision}
+            onOpenEve={(trigger) => openFlow("eve", trigger)}
+            ownerUserId={ownerUserId}
+            todayHandlers={todayHandlers}
+            todayInitial={todayInitial}
+            todayLocalDate={todayLocalDate}
+            todayTimeZone={todayTimeZone}
+          />
+        ) : null)}
+      {/* One `<main>`, always. A destination that wants the full-bleed narrow
+          canvas marks its own subtree with `data-mobile-bleed` (see globals.css)
+          instead of the shell resolving the destination from the URL. */}
+      <MobileRouteMain mobileHome={mobileHome}>{children}</MobileRouteMain>
+      {routeAwareMobileNavigation ? (
+        <Suspense
+          fallback={
+            <MobileBottomBar
+              hidden={flow !== null}
+              mobileHome={false}
+              mobileReview={false}
+              onOpen={openFlow}
+            />
+          }
+        >
+          <RouteAwareMobileBottomBar hidden={flow !== null} onOpen={openFlow} />
+        </Suspense>
+      ) : (
+        <MobileBottomBar
+          hidden={flow !== null}
+          mobileHome={mobileHome}
+          mobileReview={mobileReview}
+          onOpen={openFlow}
+        />
+      )}
+      <MobileFocusedFlow
+        captureHandlers={captureHandlers}
+        flow={flow}
+        mobileEve={mobileEve}
+        onClose={focused.close}
+        onNavigate={focused.closeForNavigation}
+        ownerUserId={ownerUserId}
+        query={searchQuery}
+        search={searchHandler}
+        setQuery={setSearchQuery}
+      />
+    </>
+  );
+}
+
+/**
+ * The phone shell's one focused flow — Search, Capture, Eve, or Menu — and the
+ * focus restoration that makes closing one feel like coming back rather than
+ * landing somewhere new: focus returns to the control that opened it, or to that
+ * control's replacement when the surface behind it re-rendered in the meantime.
+ *
+ * It also reopens Search on a browser return. Global Recall stashes the owner and
+ * the return URL in history state before navigating to a result, so coming back
+ * lands in the search the owner left instead of a blank shell; the marker is
+ * consumed on arrival so a later visit to the same URL does not reopen it.
+ */
+function useFocusedFlow(ownerUserId: string) {
   const [flow, setFlow] = useState<FocusedFlow | null>(null);
   const [eveDraftRevision, setEveDraftRevision] = useState(0);
-  const [searchQuery, setSearchQuery] = useState("");
   const invokingControl = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -67,67 +176,74 @@ export function MobileShell({
     setFlow("search");
   }, [ownerUserId]);
 
-  function openFlow(next: FocusedFlow, trigger: HTMLElement) {
-    invokingControl.current = trigger;
-    setFlow(next);
-  }
+  return {
+    flow,
+    /** Bumped when Eve closes, so the compact Today composer remounts on its draft. */
+    eveDraftRevision,
+    open(next: FocusedFlow, trigger: HTMLElement) {
+      // Menu is the only flow that works unauthenticated; the rest are owner work.
+      if (next !== "menu" && !ownerUserId) return;
+      invokingControl.current = trigger;
+      setFlow(next);
+    },
+    close() {
+      const trigger = invokingControl.current;
+      const triggerKey = trigger?.dataset.mobileFlowTrigger;
+      if (flow === "eve") setEveDraftRevision((revision) => revision + 1);
+      setFlow(null);
+      requestAnimationFrame(() => {
+        const replacement = triggerKey
+          ? document.querySelector<HTMLElement>(`[data-mobile-flow-trigger="${triggerKey}"]`)
+          : null;
+        (trigger?.isConnected ? trigger : replacement)?.focus();
+      });
+    },
+    /** Closing because the owner is leaving: the destination owns focus, not us. */
+    closeForNavigation() {
+      setFlow(null);
+    },
+  };
+}
 
-  function closeFlow() {
-    const trigger = invokingControl.current;
-    const triggerKey = trigger?.dataset.mobileFlowTrigger;
-    if (flow === "eve") setEveDraftRevision((revision) => revision + 1);
-    setFlow(null);
-    requestAnimationFrame(() => {
-      const replacement = triggerKey
-        ? document.querySelector<HTMLElement>(`[data-mobile-flow-trigger="${triggerKey}"]`)
-        : null;
-      (trigger?.isConnected ? trigger : replacement)?.focus();
-    });
-  }
-
-  function closeFlowForNavigation() {
-    setFlow(null);
-  }
-
+function MobileRouteMain({
+  children,
+  mobileHome = false,
+}: {
+  children: ReactNode;
+  mobileHome?: boolean;
+}) {
   return (
-    <>
-      {mobileHome ? (
-        <MobileTodayHome
-          eveDraftRevision={eveDraftRevision}
-          onOpenEve={(trigger) => openFlow("eve", trigger)}
-          ownerUserId={ownerUserId}
-          todayHandlers={todayHandlers}
-          todayInitial={todayInitial}
-          todayLocalDate={todayLocalDate}
-          todayTimeZone={todayTimeZone}
-        />
-      ) : null}
-      <main
-        className={cn(
-          "mx-auto w-full max-w-7xl flex-col gap-6 px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:flex lg:pb-6 lg:py-8",
-          mobileHome ? "hidden" : "flex",
-        )}
-      >
-        {children}
-      </main>
-      <MobileBottomBar
-        hidden={flow !== null}
-        mobileHome={mobileHome}
-        mobileReview={mobileReview}
-        onOpen={openFlow}
-      />
-      <MobileFocusedFlow
-        captureHandlers={captureHandlers}
-        flow={flow}
-        mobileEve={mobileEve}
-        onClose={closeFlow}
-        onNavigate={closeFlowForNavigation}
-        ownerUserId={ownerUserId}
-        query={searchQuery}
-        search={searchHandler}
-        setQuery={setSearchQuery}
-      />
-    </>
+    <main
+      className={cn(
+        "w-full lg:mx-auto lg:flex lg:max-w-7xl lg:flex-col lg:gap-6 lg:px-6 lg:py-8",
+        mobileHome
+          ? "block"
+          : "mx-auto flex max-w-7xl flex-col gap-6 px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6",
+      )}
+    >
+      {children}
+    </main>
+  );
+}
+
+function RouteAwareMobileBottomBar({
+  hidden,
+  onOpen,
+}: {
+  hidden: boolean;
+  onOpen: (flow: FocusedFlow, trigger: HTMLElement) => void;
+}) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const mobileHome = pathname === "/" && searchParams.get("tab") !== "review";
+  const mobileReview = pathname === "/" && searchParams.get("tab") === "review";
+  return (
+    <MobileBottomBar
+      hidden={hidden}
+      mobileHome={mobileHome}
+      mobileReview={mobileReview}
+      onOpen={onOpen}
+    />
   );
 }
 
@@ -175,7 +291,7 @@ function MobileFocusedFlow({
   }
 }
 
-function MobileTodayHome({
+export function MobileTodayHome({
   eveDraftRevision,
   onOpenEve,
   ownerUserId,

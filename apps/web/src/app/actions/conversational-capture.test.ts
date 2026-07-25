@@ -6,6 +6,7 @@ const {
   changeExplicitCaptureOutcome,
   getGeneralAction,
   revalidatePath,
+  updateTag,
   saveReminder,
   scheduleExplicitCaptureReminders,
   undoExplicitCaptureOutcome,
@@ -15,6 +16,7 @@ const {
   changeExplicitCaptureOutcome: vi.fn(),
   getGeneralAction: vi.fn(),
   revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
   saveReminder: vi.fn(),
   scheduleExplicitCaptureReminders: vi.fn(),
   undoExplicitCaptureOutcome: vi.fn(),
@@ -33,7 +35,7 @@ vi.mock("@tendnote/db/queries/reminders", () => ({
   saveReminder,
   scheduleExplicitCaptureReminders,
 }));
-vi.mock("next/cache", () => ({ revalidatePath }));
+vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
 }));
@@ -80,9 +82,14 @@ describe("conversational Capture web adapters", () => {
   it("adds an unknown Person through the owner-scoped mutation before clarification continues", async () => {
     await expect(
       addCapturePersonAction({ displayName: "Maya", sourceRecordId: "source-1" }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       displayName: "Maya",
+      personId: "person-1",
+      revision: "created:person-1",
     });
+    expect(updateTag).toHaveBeenCalledWith("people:owner:owner-1");
+    expect(updateTag).toHaveBeenCalledWith("people:owner:owner-1:list");
+    expect(updateTag).toHaveBeenCalledWith("people:owner:owner-1:person:person-1");
     expect(resolveOrCreateAndLinkPersonToSourceRecord).toHaveBeenCalledWith({
       ownerUserId: "owner-1",
       sourceRecordId: "source-1",

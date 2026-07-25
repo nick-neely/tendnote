@@ -2,9 +2,9 @@
 
 import { generateDraft } from "@tendnote/db/queries/drafts";
 import { messageDraftPurposeSchema } from "@tendnote/domain";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
 import { enforceProductBudget } from "@/lib/rate-limit/guards";
 
 /**
@@ -54,7 +54,7 @@ export async function createDraftAction(
   });
 
   if (outcome.status === "created") {
-    revalidatePath(`/people/${parsed.personId}`);
+    invalidatePersonMutation({ ownerUserId, personId: parsed.personId });
     return { outcome: "created", personId: parsed.personId, draftId: outcome.draft.id };
   }
 

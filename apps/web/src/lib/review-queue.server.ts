@@ -7,6 +7,7 @@ import {
   loadReviewQueue,
   type ReviewQueue,
   type ReviewQueueDependencies,
+  type ReviewQueueFamily,
   type ReviewQueueItem,
 } from "@/lib/review-queue";
 import { toSourceRecordReviewView } from "@/lib/source-record-review-view";
@@ -59,6 +60,33 @@ const dependencies: ReviewQueueDependencies = {
       );
   },
 };
+
+/**
+ * Loads one review family without allowing a slow or unavailable sibling to
+ * delay it. The aggregate queue remains available to legacy callers; the
+ * dashboard uses this seam to stream each family independently.
+ */
+export async function loadOwnerReviewQueueFamily(
+  ownerUserId: string,
+  family: ReviewQueueFamily,
+): Promise<{ family: ReviewQueueFamily; items: ReviewQueueItem[]; unavailable: boolean }> {
+  const loader =
+    family === "suggested-memory"
+      ? dependencies.loadMemories
+      : family === "suggested-general-action"
+        ? dependencies.loadGeneralActions
+        : family === "asset-review-group"
+          ? dependencies.loadAssetGroups
+          : dependencies.loadSourceRecords;
+  try {
+    return { family, items: await loader({ ownerUserId, limit: 6 }), unavailable: false };
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`Unable to load Review Queue family ${family}.`, error);
+    }
+    return { family, items: [], unavailable: true };
+  }
+}
 
 /** Loads the complete bounded Review Queue for one admitted owner. */
 export async function loadOwnerReviewQueue(ownerUserId: string): Promise<ReviewQueue> {

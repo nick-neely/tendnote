@@ -11,6 +11,8 @@ const {
   requireAdmittedOwnerForAction,
   saveReminder,
   setReminderInstallationPreviewMode,
+  invalidateActionMutation,
+  updateAccountMutationScopes,
 } = vi.hoisted(() => ({
   beginReminderInstallationOptIn: vi.fn(),
   claimReminderStandaloneContinuation: vi.fn(),
@@ -22,6 +24,8 @@ const {
   requireAdmittedOwnerForAction: vi.fn(),
   saveReminder: vi.fn(),
   setReminderInstallationPreviewMode: vi.fn(),
+  invalidateActionMutation: vi.fn(),
+  updateAccountMutationScopes: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/reminders", () => ({
@@ -40,6 +44,13 @@ vi.mock("@tendnote/db/queries/reminders", () => ({
   setReminderOptInDecision: vi.fn(),
 }));
 vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwnerForAction }));
+vi.mock("@/lib/cache/action-mutation-scopes", () => ({ invalidateActionMutation }));
+vi.mock("@/lib/cache/account-mutation-scopes", () => ({
+  accountMutationScopes: {
+    forOwner: (ownerUserId: string) => [{ kind: "account-owner", ownerUserId }],
+  },
+  updateAccountMutationScopes,
+}));
 
 import {
   beginReminderInstallationOptInAction,
@@ -95,6 +106,15 @@ describe("generic Reminder server adapters", () => {
     expect(saveReminder).toHaveBeenCalledWith(
       expect.objectContaining({ ownerUserId: "owner-1", recordKind, recordId: RECORD_ID }),
     );
+    if (recordKind === "general_action" || recordKind === "routine") {
+      expect(invalidateActionMutation).toHaveBeenCalledWith({
+        ownerUserId: "owner-1",
+        actionId: RECORD_ID,
+      });
+    }
+    expect(updateAccountMutationScopes).toHaveBeenCalledWith([
+      { kind: "account-owner", ownerUserId: "owner-1" },
+    ]);
   });
 
   it.each([

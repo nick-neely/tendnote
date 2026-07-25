@@ -5,6 +5,8 @@ import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import type { AssetActionProposalMutationResult } from "@/lib/asset-action-proposal-view";
 import { runAssetsMutation } from "@/lib/asset-mutation";
+import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
+import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
 
 /**
  * Server action for the Asset Profile's reminder proposals (#203): the owner asks their
@@ -28,11 +30,22 @@ export async function proposeAssetMemoryActionsAction(input: {
 
   return runAssetsMutation(
     () => proposeAssetMemoryActions({ actorUserId, assetId, source: "user" }),
-    (outcome) => ({
-      proposed: outcome.proposed.length,
-      // Carried through so an empty pass can say which kind of empty it was — see
-      // `describeProposalOutcome`.
-      alreadySpokenFor: outcome.alreadySpokenFor,
-    }),
+    (outcome) => {
+      updateAssetMutationScopes(
+        assetMutationScopes.forAssetIds({
+          callerUserId: actorUserId,
+          assetIds: [outcome.asset.id],
+        }),
+      );
+      for (const proposal of outcome.proposed) {
+        invalidateActionMutation({ ownerUserId: actorUserId, actionId: proposal.action.id });
+      }
+      return {
+        proposed: outcome.proposed.length,
+        // Carried through so an empty pass can say which kind of empty it was — see
+        // `describeProposalOutcome`.
+        alreadySpokenFor: outcome.alreadySpokenFor,
+      };
+    },
   );
 }

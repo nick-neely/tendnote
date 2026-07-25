@@ -234,7 +234,7 @@ export async function listAssetEvidenceCaptureTargets(
 export async function removeAssetEvidence(
   store: AssetReviewLifecycleStore,
   input: RemoveAssetEvidenceInput,
-): Promise<void> {
+): Promise<AssetEvidence> {
   const evidence = await store.getAssetEvidence({
     ownerUserId: input.actorUserId,
     evidenceId: input.evidenceId,
@@ -257,6 +257,7 @@ export async function removeAssetEvidence(
       detail: { evidenceId: evidence.id, kind: evidence.kind, label: evidence.label },
     });
   }
+  return evidence;
 }
 
 /**

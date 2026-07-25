@@ -14,9 +14,12 @@ import { listActiveHouseholdMembershipsForUser } from "@tendnote/db/queries/hous
 import type { Followup } from "@tendnote/domain";
 import { scopeForVisibilityChoice, visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { reminderScheduleChoiceSchema } from "@tendnote/domain/reminders";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import {
+  peopleMutationScopes,
+  updatePeopleMutationScopes,
+} from "@/lib/cache/people-mutation-scopes";
 import { type FollowupView, parseDateInputValue, toFollowupView } from "@/lib/followup-view";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 
@@ -55,14 +58,35 @@ const birthdayFollowupSchema = z.object({
   }),
 });
 
+export type FollowupMutationResult = FollowupView & {
+  affectedScopes: ReturnType<typeof peopleMutationScopes.forPerson>;
+  revision: string;
+};
+
 /**
  * Re-render the person's profile after a lifecycle change so the snapshot card and
  * any server-rendered context reflect it. The interactive list manages its own
  * optimistic state, so this is scoped to the one affected page rather than purging
  * the whole app cache (mirrors the calm, narrow revalidation the siblings favor).
  */
-function revalidatePerson(personId: string) {
-  revalidatePath(`/people/${personId}`);
+function revalidatePerson(ownerUserId: string, personId: string) {
+  const affectedScopes = peopleMutationScopes.forPerson({ ownerUserId, personId });
+  updatePeopleMutationScopes(affectedScopes);
+  return affectedScopes;
+}
+
+function authoritativeFollowupResult(
+  _actorUserId: string,
+  followup: Followup,
+): FollowupMutationResult {
+  return {
+    ...toFollowupView(followup),
+    // A household viewer may act on a shared follow-up. Its owner-scoped
+    // projection belongs to the persisted record owner, while the shared
+    // entity scope also expires every viewer's detail projection.
+    affectedScopes: revalidatePerson(followup.ownerUserId, followup.personId),
+    revision: followup.updatedAt.toISOString(),
+  };
 }
 
 export async function createFollowupAction(input: {
@@ -71,7 +95,7 @@ export async function createFollowupAction(input: {
   dueAt: string;
   visibilityChoice?: z.infer<typeof visibilityChoiceSchema>;
   selectedUserIds?: string[];
-}): Promise<FollowupView> {
+}): Promise<FollowupMutationResult> {
   const parsed = createFollowupActionSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
   const scope = scopeForVisibilityChoice(parsed.visibilityChoice);
@@ -88,8 +112,7 @@ export async function createFollowupAction(input: {
     selectedUserIds: parsed.selectedUserIds,
   });
 
-  revalidatePerson(followup.personId);
-  return toFollowupView(followup);
+  return authoritativeFollowupResult(ownerUserId, followup);
 }
 
 export async function createBirthdayFollowupAction(input: {
@@ -98,7 +121,7 @@ export async function createBirthdayFollowupAction(input: {
   timeZone: string;
   schedule: { kind: "relative"; leadMinutes: number };
 }): Promise<{
-  view: FollowupView;
+  view: FollowupMutationResult;
   optIn: { state: "offer" | "none"; clientInstallationId: string };
 }> {
   const ownerUserId = await requireAdmittedOwnerForAction();
@@ -111,9 +134,13 @@ export async function createBirthdayFollowupAction(input: {
     schedule: parsed.schedule,
     now: new Date(),
   });
-  revalidatePerson(followup.personId);
+  const affectedScopes = revalidatePerson(followup.ownerUserId, followup.personId);
   return {
-    view: toFollowupView(followup, new Date(), toReminderScheduleView(reminder.schedule)),
+    view: {
+      ...toFollowupView(followup, new Date(), toReminderScheduleView(reminder.schedule)),
+      affectedScopes,
+      revision: followup.updatedAt.toISOString(),
+    },
     optIn: reminder.optIn,
   };
 }
@@ -121,7 +148,7 @@ export async function createBirthdayFollowupAction(input: {
 export async function editFollowupAction(input: {
   followupId: string;
   edit: { reason?: string; dueAt?: string };
-}): Promise<FollowupView> {
+}): Promise<FollowupMutationResult> {
   const parsed = editFollowupActionSchema.parse({
     followupId: input.followupId,
     ...input.edit,
@@ -136,46 +163,51 @@ export async function editFollowupAction(input: {
     },
   });
 
-  revalidatePerson(followup.personId);
-  return toFollowupView(followup);
+  return authoritativeFollowupResult(ownerUserId, followup);
 }
 
 async function transitionAction(
   followupId: string,
   run: (input: { actorUserId: string; followupId: string }) => Promise<Followup>,
-): Promise<FollowupView> {
+): Promise<FollowupMutationResult> {
   const parsed = followupActionSchema.parse({ followupId });
   const ownerUserId = await requireAdmittedOwnerForAction();
   const followup = await run({ actorUserId: ownerUserId, followupId: parsed.followupId });
 
-  revalidatePerson(followup.personId);
-  return toFollowupView(followup);
+  return authoritativeFollowupResult(ownerUserId, followup);
 }
 
-export async function completeFollowupAction(input: { followupId: string }): Promise<FollowupView> {
+export async function completeFollowupAction(input: {
+  followupId: string;
+}): Promise<FollowupMutationResult> {
   return transitionAction(input.followupId, completeFollowup);
 }
 
-export async function dismissFollowupAction(input: { followupId: string }): Promise<FollowupView> {
+export async function dismissFollowupAction(input: {
+  followupId: string;
+}): Promise<FollowupMutationResult> {
   return transitionAction(input.followupId, dismissFollowup);
 }
 
-export async function reopenFollowupAction(input: { followupId: string }): Promise<FollowupView> {
+export async function reopenFollowupAction(input: {
+  followupId: string;
+}): Promise<FollowupMutationResult> {
   return transitionAction(input.followupId, reopenFollowup);
 }
 
-export async function archiveFollowupAction(input: { followupId: string }): Promise<FollowupView> {
+export async function archiveFollowupAction(input: {
+  followupId: string;
+}): Promise<FollowupMutationResult> {
   return transitionAction(input.followupId, archiveFollowup);
 }
 
 export async function snoozeFollowupAction(input: {
   followupId: string;
   dueAt: string;
-}): Promise<FollowupView> {
+}): Promise<FollowupMutationResult> {
   const parsed = snoozeFollowupActionSchema.parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
   const followup = await snoozeFollowup({ actorUserId: ownerUserId, ...parsed });
 
-  revalidatePerson(followup.personId);
-  return toFollowupView(followup);
+  return authoritativeFollowupResult(ownerUserId, followup);
 }

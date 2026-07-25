@@ -9,9 +9,10 @@ import {
   suppressTodayCandidate,
 } from "@tendnote/db/queries/today";
 import { type TodayShortlistResponse, todayShortlistResponseSchema } from "@tendnote/domain/today";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
+import { invalidateTodayOwner } from "@/lib/cache/today-review-mutation-scopes";
 
 const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const candidateRefSchema = z.object({
@@ -49,7 +50,7 @@ export async function suppressTodayItemAction(input: {
   if (parsed.localDate !== context.localDate)
     throw new Error("Today has rolled to a new local day.");
   await suppressTodayCandidate({ ownerUserId, ...parsed, ...context });
-  revalidatePath("/");
+  invalidateTodayOwner(ownerUserId);
   return todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context }));
 }
 
@@ -73,10 +74,15 @@ export async function actOnTodayItemAction(input: {
     candidate.record.kind === "general_action"
   ) {
     await completeGeneralAction({ actorUserId: ownerUserId, generalActionId: candidate.record.id });
+    // Today owns only its shortlist, but this durable Action write also changes the
+    // cached Action ledger, linked details, and the owner dashboard. Expire those
+    // scopes before returning the rebuilt shortlist so a navigation cannot revive
+    // the completed row from an older cached RSC response.
+    invalidateActionMutation({ ownerUserId, actionId: candidate.record.id });
   } else {
     throw new Error("Open this Today item to use its domain action.");
   }
 
-  revalidatePath("/");
+  invalidateTodayOwner(ownerUserId);
   return todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context }));
 }

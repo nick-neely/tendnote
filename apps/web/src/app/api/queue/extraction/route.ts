@@ -3,8 +3,6 @@ import { consumeExtractionQueueMessage } from "@/lib/background-jobs/extraction-
 import { BACKGROUND_JOB_QUEUE_CONFIG } from "@/lib/background-jobs/queue-runtime";
 import { getProductRateLimiter } from "@/lib/rate-limit";
 
-export const runtime = "nodejs";
-
 const handleExtractionQueueCallback = handleCallback(
   async (message, metadata) => {
     const result = await consumeExtractionQueueMessage({

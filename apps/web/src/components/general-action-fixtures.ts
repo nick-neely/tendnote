@@ -10,6 +10,7 @@ export function generalActionViewFixture(
 ): GeneralActionView {
   return {
     id: "11111111-1111-1111-1111-111111111111",
+    revision: "2026-07-24T00:00:00.000Z",
     title: "Replace the water filter",
     notes: null,
     links: [],

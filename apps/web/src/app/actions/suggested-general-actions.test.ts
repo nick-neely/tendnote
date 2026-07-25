@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { revalidatePathSpy, updateTagSpy } from "@/test/action-adapter-mocks";
 
 /**
  * The chat review card's Accept/Dismiss buttons call these server actions directly
@@ -16,7 +17,6 @@ const {
   editSuggestedGeneralAction,
   ignoreSuggestedGeneralAction,
   listGeneralActionAreas,
-  revalidatePath,
   toSuggestedGeneralActionReviewView,
 } = vi.hoisted(() => ({
   acceptSuggestedGeneralAction: vi.fn(),
@@ -24,7 +24,6 @@ const {
   editSuggestedGeneralAction: vi.fn(),
   ignoreSuggestedGeneralAction: vi.fn(),
   listGeneralActionAreas: vi.fn(),
-  revalidatePath: vi.fn(),
   toSuggestedGeneralActionReviewView: vi.fn(),
 }));
 
@@ -35,10 +34,6 @@ vi.mock("@tendnote/db/queries/general-actions", () => ({
   ignoreSuggestedGeneralAction,
 }));
 vi.mock("@tendnote/db/queries/general-action-areas", () => ({ listGeneralActionAreas }));
-vi.mock("next/cache", () => ({ revalidatePath }));
-vi.mock("@/lib/access/current-access", () => ({
-  requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
-}));
 vi.mock("@/lib/suggested-general-action-review-view", () => ({
   toSuggestedGeneralActionReviewView,
 }));
@@ -74,8 +69,9 @@ describe("acceptSuggestedGeneralActionAction (card Accept path)", () => {
       expect.objectContaining({ actorUserId: "owner-1", generalActionId: GENERAL_ACTION_ID }),
     );
     // Both review surfaces re-render so chat and /actions agree.
-    expect(revalidatePath).toHaveBeenCalledWith("/actions");
-    expect(revalidatePath).toHaveBeenCalledWith("/");
+    expect(revalidatePathSpy).toHaveBeenCalledWith("/actions");
+    expect(revalidatePathSpy).toHaveBeenCalledWith("/");
+    expect(updateTagSpy).toHaveBeenCalledWith("review:owner:owner-1");
   });
 
   it("a stale card / double click does not double-promote — the second accept is a no-op", async () => {

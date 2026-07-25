@@ -4,6 +4,7 @@ import {
   listLinkedAssetsForGeneralActions,
   promoteGeneralActionAssetHint,
 } from "@tendnote/db/queries/assets";
+import { listGeneralActionAreas } from "@tendnote/db/queries/general-action-areas";
 import type { GeneralActionWithContext } from "@tendnote/db/queries/general-actions";
 import {
   archiveGeneralAction,
@@ -14,19 +15,28 @@ import {
   editGeneralAction,
   getGeneralAction,
   listGeneralActionHistory,
+  listSuggestedGeneralActionReviews,
   pauseGeneralAction,
   reopenGeneralAction,
+  restoreGeneralAction,
   resumeGeneralAction,
   setGeneralActionPeople,
   setGeneralActionVisibility,
   skipGeneralActionOccurrence,
+  undeferGeneralAction,
+  undoRoutineOccurrence,
 } from "@tendnote/db/queries/general-actions";
+import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
+import { searchPeople } from "@tendnote/db/queries/people";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
 import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
+import { getCachedActionLedgerViews } from "@/lib/cache/action-views";
+import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
 import { parseDateInputValue } from "@/lib/followup-view";
 import { runActionsMutation } from "@/lib/general-action-mutation";
 import {
@@ -37,12 +47,14 @@ import {
   toGeneralActionView,
 } from "@/lib/general-action-view";
 import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
+import { toSuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 
 const actionIdSchema = z.object({ generalActionId: z.uuid() });
 
 // Due dates arrive from a date input as `YYYY-MM-DD`; resolve them to local
 // midnight so the chosen day stays stable, mirroring the Follow-Up create path.
 const dateInputSchema = z.string().transform(parseDateInputValue);
+const dateTimeInputSchema = z.iso.datetime().transform((value) => new Date(value));
 
 const linksSchema = z.array(generalActionLinkSchema).max(10);
 // Asset hints arrive as plain subject labels from the client and become structured
@@ -90,6 +102,12 @@ const deferActionSchema = z.object({
   deferUntil: dateInputSchema,
 });
 
+const undoRoutineOccurrenceSchema = z.object({
+  expectedDueAt: dateTimeInputSchema,
+  generalActionId: z.uuid(),
+  restoreDueAt: dateTimeInputSchema,
+});
+
 const visibilityActionSchema = z.object({
   generalActionId: z.uuid(),
   visibilityChoice: visibilityChoiceSchema,
@@ -115,6 +133,11 @@ function runMutation(
   return runActionsMutation(
     async () => {
       const action = await run();
+      // A direct Action write must synchronously expire every owner-scoped
+      // projection before its authoritative view crosses back to the client.
+      // This prevents a cached Today/linked-Asset/RSC response from reviving an
+      // older lifecycle state after the local reconciliation has acknowledged it.
+      invalidateActionMutation({ ownerUserId: callerUserId, actionId: action.id });
       const [linkedByAction, reminderSchedules] = await Promise.all([
         listLinkedAssetsForGeneralActions({
           callerUserId,
@@ -223,7 +246,7 @@ export async function promoteAssetHintAction(input: {
     await promoteGeneralActionAssetHint({ actorUserId: ownerUserId, ...parsed });
     // The proposal lands in the shared Review Queue and (once accepted) on the
     // Assets surface — re-render both alongside the Actions page.
-    revalidatePath("/");
+    invalidateReviewOwner(ownerUserId);
     revalidatePath("/assets");
     return getGeneralAction({ actorUserId: ownerUserId, generalActionId: parsed.generalActionId });
   });
@@ -308,6 +331,12 @@ export async function reopenGeneralActionAction(input: {
   return transitionAction(input.generalActionId, reopenGeneralAction);
 }
 
+export async function restoreGeneralActionAction(input: {
+  generalActionId: string;
+}): Promise<GeneralActionMutationResult> {
+  return transitionAction(input.generalActionId, restoreGeneralAction);
+}
+
 export async function archiveGeneralActionAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
@@ -339,6 +368,30 @@ export async function deferGeneralActionAction(input: {
   });
 }
 
+/** Clears a set-aside date as the authoritative inverse of deferral. */
+export async function undeferGeneralActionAction(input: {
+  generalActionId: string;
+}): Promise<GeneralActionMutationResult> {
+  return transitionAction(input.generalActionId, undeferGeneralAction);
+}
+
+export async function undoRoutineOccurrenceAction(input: {
+  expectedDueAt: string;
+  generalActionId: string;
+  restoreDueAt: string;
+}): Promise<GeneralActionMutationResult> {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  return runMutation(ownerUserId, () => {
+    const parsed = undoRoutineOccurrenceSchema.parse(input);
+    return undoRoutineOccurrence({
+      actorUserId: ownerUserId,
+      expectedDueAt: parsed.expectedDueAt,
+      generalActionId: parsed.generalActionId,
+      restoreDueAt: parsed.restoreDueAt,
+    });
+  });
+}
+
 export async function listGeneralActionHistoryAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionEventView[]> {
@@ -350,4 +403,48 @@ export async function listGeneralActionHistoryAction(input: {
   });
 
   return events.map((event) => toGeneralActionEventView(event));
+}
+
+const secondaryLedgerInputSchema = z.object({ resolvedLimit: z.number().int().min(1).max(50) });
+
+/** Paused and resolved panes load only when their shared disclosure opens. */
+export async function getActionSecondaryLedgerViewsAction(input: { resolvedLimit: number }) {
+  const { resolvedLimit } = secondaryLedgerInputSchema.parse(input);
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const now = new Date();
+  const ledger = await getCachedActionLedgerViews({ ownerUserId, now, resolvedLimit });
+  return { paused: ledger.paused, resolved: ledger.resolved };
+}
+
+/** People and household choices load only when creating or editing rich Action details. */
+export async function getActionComposerOptionsAction() {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const [shareableMembers, people] = await Promise.all([
+    listShareableHouseholdMembersForUser({ userId: ownerUserId }),
+    searchPeople({ ownerUserId, limit: 100 }),
+  ]);
+  return {
+    people: people.map((person) => ({ id: person.id, displayName: person.displayName })),
+    shareableMembers: shareableMembers.map((member) => ({
+      userId: member.userId,
+      name: member.name,
+      email: member.email,
+    })),
+  };
+}
+
+/** Suggested Actions are a separate review pane and fail independently of the ledger. */
+export async function getSuggestedActionViewsAction() {
+  const ownerUserId = await requireAdmittedOwnerForAction();
+  const now = new Date();
+  const [suggested, areas] = await Promise.all([
+    listSuggestedGeneralActionReviews({ ownerUserId }),
+    listGeneralActionAreas({ ownerUserId, includeArchived: true }),
+  ]);
+  const areaNameById = new Map(areas.map((area) => [area.id, area.name]));
+  return {
+    suggested: suggested.map((review) =>
+      toSuggestedGeneralActionReviewView(review, { now, callerUserId: ownerUserId, areaNameById }),
+    ),
+  };
 }
