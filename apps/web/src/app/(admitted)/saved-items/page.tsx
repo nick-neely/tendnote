@@ -7,7 +7,7 @@ import { getCachedActiveSavedItemViews } from "@/lib/cache/asset-views";
 
 export default function SavedItemsPage() {
   return (
-    <AdmittedRoute returnTo="/saved-items" title="Saved Items">
+    <AdmittedRoute title="Saved Items">
       <SavedItemsContent />
     </AdmittedRoute>
   );

@@ -193,15 +193,10 @@ function selectedPersonTab(query: Record<string, string | string[] | undefined>)
 
 export default function PersonDetailPage(props: PersonDetailPageProps) {
   return (
-    <AdmittedRoute returnTo={personReturnTo(props)} title="Person">
+    <AdmittedRoute title="Person">
       <PersonDetailContent {...props} />
     </AdmittedRoute>
   );
-}
-
-async function personReturnTo({ params, searchParams }: PersonDetailPageProps) {
-  const [{ personId }, query] = await Promise.all([params, searchParams]);
-  return appReturnTo(`/people/${encodeURIComponent(personId)}`, query);
 }
 
 async function PersonDetailContent({ params, searchParams }: PersonDetailPageProps) {

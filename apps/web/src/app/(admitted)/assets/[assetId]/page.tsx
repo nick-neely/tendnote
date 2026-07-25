@@ -56,15 +56,10 @@ type AssetProfilePageProps = {
 
 export default function AssetProfilePage(props: AssetProfilePageProps) {
   return (
-    <AdmittedRoute returnTo={assetReturnTo(props)} title="Asset">
+    <AdmittedRoute title="Asset">
       <AssetProfileContent {...props} />
     </AdmittedRoute>
   );
-}
-
-async function assetReturnTo({ params, searchParams }: AssetProfilePageProps) {
-  const [{ assetId }, query] = await Promise.all([params, searchParams]);
-  return appReturnTo(`/assets/${encodeURIComponent(assetId)}`, query);
 }
 
 async function AssetProfileContent({ params, searchParams }: AssetProfilePageProps) {

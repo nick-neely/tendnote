@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, userEvent, waitFor, within } from "@/test/dom";
+
+const navigationState = vi.hoisted(() => ({
+  pathname: "/",
+  searchParams: new URLSearchParams(),
+  sessionOwnerUserId: "owner-1",
+}));
 
 vi.mock("@/app/actions/conversational-capture", () => ({
   addCapturePersonAction: vi.fn(),
@@ -31,9 +37,29 @@ vi.mock("@/app/actions/today", () => ({
   }),
   suppressTodayItemAction: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => navigationState.pathname,
+  useRouter: () => ({ refresh: vi.fn() }),
+  useSearchParams: () => navigationState.searchParams,
+}));
+vi.mock("@/lib/auth/client", () => ({
+  useSession: () => ({
+    data: navigationState.sessionOwnerUserId
+      ? { user: { id: navigationState.sessionOwnerUserId } }
+      : null,
+  }),
+}));
 
 import { AppShell } from "./app-shell";
+import { AppShellEffects } from "./app-shell-effects";
+import { RouteAwareHomeReserve } from "./route-aware-home-reserve";
+
+beforeEach(() => {
+  navigationState.pathname = "/";
+  navigationState.searchParams = new URLSearchParams();
+  navigationState.sessionOwnerUserId = "owner-1";
+  sessionStorage.clear();
+});
 
 /**
  * Saves the open capture, reopens it via Change, and hands back the emptied
@@ -48,6 +74,77 @@ async function reopenCaptureForCorrection(user: ReturnType<typeof userEvent.setu
 }
 
 describe("AppShell Phase Seven mobile navigation", () => {
+  it("names the exact Today or Review destination in the route-aware reserve", () => {
+    const view = render(<RouteAwareHomeReserve />);
+    expect(screen.getByRole("heading", { name: "Today" })).toBeDefined();
+
+    navigationState.searchParams = new URLSearchParams("tab=review");
+    view.rerender(<RouteAwareHomeReserve />);
+    expect(screen.getByRole("heading", { name: "Review" })).toBeDefined();
+  });
+
+  it("updates route-aware Today and Review state without remounting the frame", () => {
+    const view = render(
+      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+        <p>Destination</p>
+      </AppShell>,
+    );
+
+    let mobileNav = within(screen.getByRole("navigation", { name: "Mobile primary" }));
+    expect(mobileNav.getByRole("link", { name: "Today" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    navigationState.searchParams = new URLSearchParams("tab=review");
+    view.rerender(
+      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+        <p>Destination</p>
+      </AppShell>,
+    );
+    mobileNav = within(screen.getByRole("navigation", { name: "Mobile primary" }));
+    expect(mobileNav.getByRole("link", { name: "Review" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+
+    navigationState.pathname = "/people";
+    navigationState.searchParams = new URLSearchParams();
+    view.rerender(
+      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+        <p>Destination</p>
+      </AppShell>,
+    );
+    mobileNav = within(screen.getByRole("navigation", { name: "Mobile primary" }));
+    expect(mobileNav.getByRole("link", { name: "Today" }).getAttribute("aria-current")).toBeNull();
+    expect(mobileNav.getByRole("link", { name: "Review" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getAllByRole("navigation", { name: "Mobile primary" })).toHaveLength(1);
+  });
+
+  it("remounts owner-keyed mobile flow state when the admitted session rotates", async () => {
+    const user = userEvent.setup();
+    const view = render(
+      <AppShell routeAwareMobileNavigation>
+        <p>Destination</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.type(
+      await screen.findByRole("textbox", { name: "Search Tendnote" }),
+      "Owner A private query",
+    );
+    await user.click(screen.getByRole("button", { name: "Close" }));
+
+    navigationState.sessionOwnerUserId = "owner-2";
+    view.rerender(
+      <AppShell routeAwareMobileNavigation>
+        <p>Destination</p>
+      </AppShell>,
+    );
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    expect(
+      (await screen.findByRole("textbox", { name: "Search Tendnote" })) as HTMLInputElement,
+    ).toHaveProperty("value", "");
+  });
+
   it("uses exactly the five selected phone destinations and keeps domain links in Menu", async () => {
     const user = userEvent.setup();
     render(
@@ -271,15 +368,18 @@ describe("AppShell Phase Seven mobile navigation", () => {
     });
 
     render(
-      <AppShell ownerUserId="owner-same-route" searchHandler={searchHandler}>
-        <article id="saved-item-saved-same-route" tabIndex={-1}>
-          Canonical saved target
-        </article>
-      </AppShell>,
+      <>
+        <AppShell ownerUserId="owner-same-route" searchHandler={searchHandler}>
+          <article id="saved-item-saved-same-route" tabIndex={-1}>
+            Canonical saved target
+          </article>
+        </AppShell>
+        <AppShellEffects />
+      </>,
     );
 
     await user.click(screen.getByRole("button", { name: "Search" }));
-    await user.type(screen.getByRole("textbox", { name: "Search Tendnote" }), "filter note");
+    await user.type(await screen.findByRole("textbox", { name: "Search Tendnote" }), "filter note");
     const resultLink = await screen.findByRole("link", { name: /Same-route filter note/ });
     await user.click(resultLink);
 

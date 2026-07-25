@@ -30,7 +30,7 @@ type AccountPageProps = {
 
 export default function AccountPage(props: AccountPageProps = {}) {
   return (
-    <AdmittedRoute returnTo="/account" title="Account">
+    <AdmittedRoute title="Account">
       <AccountContent {...props} />
     </AdmittedRoute>
   );

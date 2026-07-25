@@ -12,7 +12,7 @@ const RESOLVED_LIMIT = 20;
 
 export default function ActionsPage() {
   return (
-    <AdmittedRoute returnTo="/actions" title="Actions">
+    <AdmittedRoute title="Actions">
       <ActionsContent />
     </AdmittedRoute>
   );

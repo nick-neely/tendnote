@@ -2,6 +2,19 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/*
+ * The admitted frame is present in the static partial-prefetch shell, but it
+ * stays outside the visual and accessibility trees until the fresh admission
+ * marker streams for the current request.
+ */
+.admitted-layout-content {
+  display: none;
+}
+
+.admitted-layout:has(> [data-admitted]) > .admitted-layout-content {
+  display: block;
+}
+
 /* Class-based dark variant (next-themes attribute="class" toggles `.dark` on
    <html>). `.dark, .dark *` so `dark:` utilities apply to the `.dark` element
    itself as well as its descendants — matching the shadcn Next.js recipe. */

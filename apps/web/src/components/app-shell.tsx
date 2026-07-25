@@ -15,7 +15,6 @@ import {
   suppressTodayItemAction,
 } from "@/app/actions/today";
 import { appDestinations } from "@/components/app-destinations";
-import { AppShellEffects } from "@/components/app-shell-effects";
 import type { CaptureHandlers, GlobalRecallHandler } from "@/components/mobile-focused-flows";
 import { MobileShell } from "@/components/mobile-shell";
 import { TendnoteLogo } from "@/components/tendnote-logo";
@@ -54,6 +53,7 @@ export function AppShell({
   mobileHome = false,
   mobileReview = false,
   ownerUserId,
+  routeAwareMobileNavigation = false,
   searchHandler = globalRecallAction,
   todayHandlers = defaultTodayHandlers,
   todayInitial = emptyToday,
@@ -66,7 +66,8 @@ export function AppShell({
   mobileDestination?: ReactNode;
   mobileHome?: boolean;
   mobileReview?: boolean;
-  ownerUserId: string;
+  ownerUserId?: string;
+  routeAwareMobileNavigation?: boolean;
   searchHandler?: GlobalRecallHandler;
   todayHandlers?: TodayShortlistHandlers;
   todayInitial?: TodayShortlistResponse;
@@ -75,7 +76,6 @@ export function AppShell({
 }) {
   return (
     <div className="min-h-dvh overflow-x-clip bg-background text-foreground">
-      <AppShellEffects />
       <header className="sticky top-0 z-10 hidden border-b bg-background/95 backdrop-blur lg:block">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link
@@ -111,6 +111,7 @@ export function AppShell({
         mobileHome={mobileHome}
         mobileReview={mobileReview}
         ownerUserId={ownerUserId}
+        routeAwareMobileNavigation={routeAwareMobileNavigation}
         searchHandler={searchHandler}
         todayHandlers={todayHandlers}
         todayInitial={todayInitial}

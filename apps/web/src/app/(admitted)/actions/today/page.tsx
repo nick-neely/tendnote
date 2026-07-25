@@ -15,7 +15,7 @@ import { getCachedActionTodayViews } from "@/lib/cache/action-views";
  */
 export default function ActionTodayPage() {
   return (
-    <AdmittedRoute returnTo="/actions/today" title="Today">
+    <AdmittedRoute title="Today">
       <ActionTodayContent />
     </AdmittedRoute>
   );

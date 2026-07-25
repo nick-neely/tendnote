@@ -20,7 +20,7 @@ type ReminderOpenPageProps = {
 
 export default function ReminderOpenPage(props: ReminderOpenPageProps = {}) {
   return (
-    <AdmittedRoute returnTo={reminderReturnTo(props.searchParams)} title="Reminder">
+    <AdmittedRoute title="Reminder">
       <ReminderOpenContent {...props} />
     </AdmittedRoute>
   );

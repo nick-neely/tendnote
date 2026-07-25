@@ -3,7 +3,8 @@
 import type { TodayShortlistResponse } from "@tendnote/domain/today";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import {
   CornerDownLeftIcon,
   HomeIcon,
@@ -18,6 +19,7 @@ import type {
   GlobalRecallHandler,
 } from "@/components/mobile-focused-flows";
 import { TodayShortlist, type TodayShortlistHandlers } from "@/components/today-shortlist";
+import { useSession } from "@/lib/auth/client";
 import { requestLocalEveDraftSubmission, useLocalComposerDraft } from "@/lib/local-composer-draft";
 import { cn } from "@/lib/utils";
 
@@ -42,33 +44,51 @@ const MenuFlow = dynamic(
   },
 );
 
-export function MobileShell({
+type MobileShellProps = {
+  children: ReactNode;
+  captureHandlers?: CaptureHandlers;
+  mobileEve?: ReactNode;
+  mobileDestination?: ReactNode;
+  mobileHome: boolean;
+  mobileReview: boolean;
+  ownerUserId?: string;
+  routeAwareMobileNavigation?: boolean;
+  searchHandler: GlobalRecallHandler;
+  todayHandlers: TodayShortlistHandlers;
+  todayInitial: TodayShortlistResponse;
+  todayLocalDate: string;
+  todayTimeZone: string;
+};
+
+export function MobileShell(props: MobileShellProps) {
+  if (!props.ownerUserId) return <SessionOwnedMobileShell {...props} />;
+  return <MobileShellContent {...props} />;
+}
+
+function SessionOwnedMobileShell(props: MobileShellProps) {
+  const session = useSession();
+  const ownerUserId =
+    session.data?.user.id ?? (process.env.NODE_ENV === "development" ? "demo-user" : undefined);
+  return (
+    <MobileShellContent {...props} key={ownerUserId ?? "unresolved"} ownerUserId={ownerUserId} />
+  );
+}
+
+function MobileShellContent({
   children,
   captureHandlers,
   mobileEve,
   mobileDestination,
   mobileHome,
   mobileReview,
-  ownerUserId,
+  ownerUserId = "",
+  routeAwareMobileNavigation = false,
   searchHandler,
   todayHandlers,
   todayInitial,
   todayLocalDate,
   todayTimeZone,
-}: {
-  captureHandlers?: CaptureHandlers;
-  children: ReactNode;
-  mobileEve?: ReactNode;
-  mobileDestination?: ReactNode;
-  mobileHome: boolean;
-  mobileReview: boolean;
-  ownerUserId: string;
-  searchHandler: GlobalRecallHandler;
-  todayHandlers: TodayShortlistHandlers;
-  todayInitial: TodayShortlistResponse;
-  todayLocalDate: string;
-  todayTimeZone: string;
-}) {
+}: MobileShellProps) {
   const [flow, setFlow] = useState<FocusedFlow | null>(null);
   const [eveDraftRevision, setEveDraftRevision] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
@@ -88,6 +108,7 @@ export function MobileShell({
   }, [ownerUserId]);
 
   function openFlow(next: FocusedFlow, trigger: HTMLElement) {
+    if (next !== "menu" && !ownerUserId) return;
     invokingControl.current = trigger;
     setFlow(next);
   }
@@ -112,7 +133,7 @@ export function MobileShell({
   return (
     <>
       {mobileDestination ??
-        (mobileHome ? (
+        (mobileHome && !routeAwareMobileNavigation ? (
           <MobileTodayHome
             eveDraftRevision={eveDraftRevision}
             onOpenEve={(trigger) => openFlow("eve", trigger)}
@@ -123,20 +144,34 @@ export function MobileShell({
             todayTimeZone={todayTimeZone}
           />
         ) : null)}
-      <main
-        className={cn(
-          "mx-auto w-full max-w-7xl flex-col gap-6 px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:flex lg:pb-6 lg:py-8",
-          mobileHome ? "hidden" : "flex",
-        )}
-      >
-        {children}
-      </main>
-      <MobileBottomBar
-        hidden={flow !== null}
-        mobileHome={mobileHome}
-        mobileReview={mobileReview}
-        onOpen={openFlow}
-      />
+      {routeAwareMobileNavigation ? (
+        <Suspense fallback={<MobileRouteMain>{children}</MobileRouteMain>}>
+          <RouteAwareMobileMain>{children}</RouteAwareMobileMain>
+        </Suspense>
+      ) : (
+        <MobileRouteMain mobileHome={mobileHome}>{children}</MobileRouteMain>
+      )}
+      {routeAwareMobileNavigation ? (
+        <Suspense
+          fallback={
+            <MobileBottomBar
+              hidden={flow !== null}
+              mobileHome={false}
+              mobileReview={false}
+              onOpen={openFlow}
+            />
+          }
+        >
+          <RouteAwareMobileBottomBar hidden={flow !== null} onOpen={openFlow} />
+        </Suspense>
+      ) : (
+        <MobileBottomBar
+          hidden={flow !== null}
+          mobileHome={mobileHome}
+          mobileReview={mobileReview}
+          onOpen={openFlow}
+        />
+      )}
       <MobileFocusedFlow
         captureHandlers={captureHandlers}
         flow={flow}
@@ -149,6 +184,55 @@ export function MobileShell({
         setQuery={setSearchQuery}
       />
     </>
+  );
+}
+
+function MobileRouteMain({
+  children,
+  mobileHome = false,
+}: {
+  children: ReactNode;
+  mobileHome?: boolean;
+}) {
+  return (
+    <main
+      className={cn(
+        "w-full lg:mx-auto lg:flex lg:max-w-7xl lg:flex-col lg:gap-6 lg:px-6 lg:py-8",
+        mobileHome
+          ? "block"
+          : "mx-auto flex max-w-7xl flex-col gap-6 px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6",
+      )}
+    >
+      {children}
+    </main>
+  );
+}
+
+function RouteAwareMobileMain({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const mobileHome = pathname === "/" && searchParams.get("tab") !== "review";
+  return <MobileRouteMain mobileHome={mobileHome}>{children}</MobileRouteMain>;
+}
+
+function RouteAwareMobileBottomBar({
+  hidden,
+  onOpen,
+}: {
+  hidden: boolean;
+  onOpen: (flow: FocusedFlow, trigger: HTMLElement) => void;
+}) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const mobileHome = pathname === "/" && searchParams.get("tab") !== "review";
+  const mobileReview = pathname === "/" && searchParams.get("tab") === "review";
+  return (
+    <MobileBottomBar
+      hidden={hidden}
+      mobileHome={mobileHome}
+      mobileReview={mobileReview}
+      onOpen={onOpen}
+    />
   );
 }
 

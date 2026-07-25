@@ -11,13 +11,13 @@ import {
   refreshTodayAction,
   suppressTodayItemAction,
 } from "@/app/actions/today";
-import { AccessCheckFallback } from "@/components/access-check-fallback";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { DashboardRail } from "@/components/dashboard-rail";
 import { EveLauncher } from "@/components/eve-launcher";
 import { MobileTodayDestination } from "@/components/mobile-today-destination";
 import { ReviewQueueFamilySection } from "@/components/review-queue-section";
+import { RouteAwareHomeReserve } from "@/components/route-aware-home-reserve";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
@@ -38,7 +38,7 @@ type HomeProps = { searchParams?: Promise<{ tab?: string }> };
 
 export default function Home(props: HomeProps) {
   return (
-    <Suspense fallback={<AccessCheckFallback />}>
+    <Suspense fallback={<RouteAwareHomeReserve />}>
       <HomeRoute {...props} />
     </Suspense>
   );
@@ -50,9 +50,6 @@ async function HomeRoute({ searchParams }: HomeProps) {
   return (
     <AdmittedRoute
       mobileDestination={isReview ? undefined : <HomeMobileContent />}
-      mobileHome={!isReview}
-      mobileReview={isReview}
-      returnTo={isReview ? "/?tab=review" : "/"}
       title={isReview ? "Review" : "Today"}
     >
       <HomeContent requestedTab={requestedTab} />

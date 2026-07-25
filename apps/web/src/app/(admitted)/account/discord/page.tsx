@@ -8,6 +8,7 @@ import {
 import { AdmittedRoute } from "@/components/admitted-route";
 import { CheckIcon, TriangleAlertIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { discordEnvFromProcess, isDiscordConfigured } from "@/lib/auth/social";
 import type { DiscordInstallRejectReason } from "@/lib/integrations/discord-install";
 import { getOwnerDiscordInstalls } from "@/lib/integrations/discord-install-server";
@@ -53,7 +54,7 @@ type DiscordDeliveryPageProps = {
 
 export default function DiscordDeliveryPage(props: DiscordDeliveryPageProps) {
   return (
-    <AdmittedRoute returnTo="/account/discord" title="Discord delivery">
+    <AdmittedRoute title="Discord delivery">
       <DiscordDeliveryContent {...props} />
     </AdmittedRoute>
   );
@@ -61,6 +62,7 @@ export default function DiscordDeliveryPage(props: DiscordDeliveryPageProps) {
 
 async function DiscordDeliveryContent({ searchParams }: DiscordDeliveryPageProps) {
   if (process.env.NODE_ENV !== "test") await connection();
+  await requireAdmittedOwner({ returnTo: "/account/discord" });
   const { installed, error, warning } = await searchParams;
   requireDiscordConfiguration();
   const { discordUserId, installs } = await getOwnerDiscordInstalls();

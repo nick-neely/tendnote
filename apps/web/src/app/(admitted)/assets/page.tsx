@@ -8,7 +8,7 @@ import { getCachedDefaultAssetViews } from "@/lib/cache/asset-views";
 
 export default function AssetsPage() {
   return (
-    <AdmittedRoute returnTo="/assets" title="Assets">
+    <AdmittedRoute title="Assets">
       <AssetsContent />
     </AdmittedRoute>
   );

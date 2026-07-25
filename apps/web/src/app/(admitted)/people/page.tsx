@@ -6,7 +6,7 @@ import { getCachedPeopleList } from "@/lib/cache/people-views";
 
 export default function PeoplePage() {
   return (
-    <AdmittedRoute returnTo="/people" title="People">
+    <AdmittedRoute title="People">
       <PeopleContent />
     </AdmittedRoute>
   );

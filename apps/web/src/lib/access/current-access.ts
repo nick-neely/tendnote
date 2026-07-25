@@ -66,6 +66,20 @@ export async function requireAdmittedOwner(input: { returnTo?: string } = {}): P
 }
 
 /**
+ * Whether the owner-neutral app frame may be revealed for this request. This
+ * follows the same local-only fallback rule as page admission without
+ * serializing an owner into the persistent layout or choosing a redirect path.
+ */
+export async function hasAdmittedShellAccess(): Promise<boolean> {
+  const state = await getCurrentAccess();
+  return (
+    decideAccessRoute(state, {
+      localFallbackOwnerUserId: currentLocalFallbackOwnerUserId(),
+    }).type === "admitted"
+  );
+}
+
+/**
  * Server-action access gate and owner resolver. Like {@link requireAdmittedOwner}
  * but throws instead of redirecting, so a mutation triggered by an unauthenticated
  * or pending caller (e.g. a stale client) fails closed rather than silently
