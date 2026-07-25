@@ -308,6 +308,48 @@ drift:
 The browser job (`instant_matrix`) runs in parallel with `Quality` and
 `Test and Fallow` rather than extending either, and `Verify` fails when it fails.
 
+### One Playwright worker on CI
+
+The first CI executions of both tiers were red, and neither failure was a
+regression in the application.
+
+**WebKit never launched.** `--disable-dev-shm-usage` was set on the shared `use`
+block, and Playwright forwards `launchOptions.args` verbatim to whichever engine
+a project selects. WebKit rejects an entire command line it cannot parse
+(`Cannot parse arguments: Unknown option --disable-dev-shm-usage`), so all five
+promotion-WebKit tests failed in 6–8 ms with `browserType.launch: Target page,
+context or browser has been closed`. Firefox tolerates the flag, which is why
+only the tier that runs WebKit ever saw it. The flag now belongs to the two
+Chromium projects.
+
+**The timing rows were measuring the runner.** A GitHub-hosted runner is a
+two-vCPU machine, and the job hosts the measured `next start` on it too. At two
+workers that is two headless browsers plus a server on two cores, and the
+acknowledgements degrade accordingly — `mobile Today to Review` at 127 ms and
+`desktop person detail to Today` at 621 ms, with different rows breaching on each
+run, which is the signature of contention rather than of a route. Reproduced on a
+workstation by pinning the whole suite to one core: at two workers `Today to
+Review` fails at 114 ms with the same shape as CI (`stable 64 ms` against CI's
+`60 ms`); at one worker the same row records 35–57 ms and the whole matrix passes
+19/19 with a worst acknowledgement of 45 ms and a worst reconciliation of 190 ms.
+No budget moved. `workers` is 1 under `CI`; the parallelism ADR 0210 asks for is
+between verification jobs, which is unchanged.
+
+Two harness details came out of the same traces:
+
+- `settleSourceSurface` waited on Playwright's `networkidle`, which is **latched**
+  — it fires once per document and every later call returns immediately. The CI
+  trace says so in as many words ("not waiting, `networkidle` event already
+  fired") while six dynamic RSC prefetches were still in flight, so the guard
+  that is supposed to precede every measured pass was doing nothing after the
+  first. It now waits on the fixture's own request counter, which can be asked
+  again.
+- `mobile Today to Review` is the row that fails first under load, exactly as the
+  Review finding below predicts: its acknowledgement is a server round trip
+  (93 ms in the reproduction, issued at the click with no prefetch header)
+  because there is no reusable shell to commit from. It is the row to watch if CI
+  hardware ever gets slower.
+
 ## Finding: Review has no reusable shell to commit from
 
 Mobile Today → Review meets every measured budget (26 / 25 ms shell, CLS 0), but

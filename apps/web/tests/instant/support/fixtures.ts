@@ -115,9 +115,49 @@ export function watchRuntimeErrors(context: BrowserContext): string[] {
   return errors;
 }
 
+/**
+ * Per-page request activity, so quiescence can be waited on more than once.
+ *
+ * Playwright's own `networkidle` load state is *latched*: it fires once per
+ * document and every later `waitForLoadState("networkidle")` returns
+ * immediately — the CI trace records it in as many words ("not waiting,
+ * 'networkidle' event already fired") while six dynamic RSC prefetches were
+ * still in flight. A suite that measures the first frame after a click cannot
+ * use a one-shot signal to decide the page is quiet, so the fixture keeps its
+ * own counter and {@link settleSourceSurface} waits on that instead.
+ */
+type PageActivity = { inflight: number; lastEventAt: number };
+
+const pageActivity = new WeakMap<Page, PageActivity>();
+
+function trackPageActivity(page: Page): PageActivity {
+  const existing = pageActivity.get(page);
+  if (existing) return existing;
+
+  const state: PageActivity = { inflight: 0, lastEventAt: Date.now() };
+  page.on("request", () => {
+    state.inflight += 1;
+    state.lastEventAt = Date.now();
+  });
+  const complete = () => {
+    // Clamped, because a page can be tracked from partway through its first
+    // load — the fixture attaches at creation, but a spec's second page reaches
+    // here through `settleSourceSurface` — and a response whose request was
+    // never counted must not drive the counter negative and read as quiet.
+    state.inflight = Math.max(0, state.inflight - 1);
+    state.lastEventAt = Date.now();
+  };
+  page.on("requestfinished", complete);
+  page.on("requestfailed", complete);
+  pageActivity.set(page, state);
+
+  return state;
+}
+
 export const test = base.extend<InstantFixtures>({
   context: async ({ context }, use) => {
     await context.addInitScript(instrumentationScript(INSTRUMENTATION_KEY));
+    context.on("page", trackPageActivity);
     const errors = watchRuntimeErrors(context);
 
     await use(context);
@@ -148,6 +188,15 @@ export async function arriveAdmitted(page: Page, path: string) {
 }
 
 /**
+ * How long the page has to stay off the network before it counts as settled.
+ *
+ * Matches Playwright's own `networkidle` definition so the reading stays
+ * comparable to the recorded 16.2 baseline; what changes is only that this one
+ * can be asked again before every measured pass.
+ */
+const QUIET_WINDOW_MS = 500;
+
+/**
  * Let the source surface finish hydrating and prefetching before it is measured
  * from.
  *
@@ -157,12 +206,21 @@ export async function arriveAdmitted(page: Page, path: string) {
  * also what makes the reading comparable to the recorded 16.2 baseline, whose
  * source shells had likewise completed their prefetches before the click, and
  * what `instant()` itself assumes ("all prefetches have completed").
+ *
+ * Waits on {@link PageActivity} rather than Playwright's `networkidle`, which
+ * only ever fires once per document and so silently stops guarding anything
+ * after the first pass. Bounded and fail-open, as before.
  */
-export async function settleSourceSurface(page: Page) {
-  await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {
-    // A surface that never goes idle is a finding for the diagnostics, not a
-    // reason to abandon the measurement.
-  });
+export async function settleSourceSurface(page: Page, timeoutMs = 5_000) {
+  const activity = trackPageActivity(page);
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (activity.inflight === 0 && Date.now() - activity.lastEventAt >= QUIET_WINDOW_MS) return;
+    await page.waitForTimeout(25);
+  }
+  // A surface that never goes quiet is a finding for the diagnostics, not a
+  // reason to abandon the measurement.
 }
 
 /**

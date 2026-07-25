@@ -31,6 +31,19 @@ const primaryStorageState = storageStatePath(PRIMARY_OWNER.userId);
  */
 const PROMOTION_SMOKE = /@promotion-smoke/;
 
+/**
+ * Chromium-only launch flags.
+ *
+ * Scoped to the Chromium projects rather than set on the shared `use` block:
+ * Playwright forwards `launchOptions.args` verbatim to whichever engine a
+ * project selects, and WebKit rejects the whole command line on an argument it
+ * does not know ("Cannot parse arguments: Unknown option
+ * --disable-dev-shm-usage"), so every WebKit test fails at launch before it has
+ * a page. Firefox tolerates it, which is why only the promotion tier — the tier
+ * that runs WebKit — ever saw this.
+ */
+const CHROMIUM_LAUNCH = { args: ["--disable-dev-shm-usage"] };
+
 const chromiumProjects = [
   {
     name: "desktop-chromium",
@@ -38,6 +51,7 @@ const chromiumProjects = [
       ...devices["Desktop Chrome"],
       viewport: { width: 1440, height: 900 },
       storageState: primaryStorageState,
+      launchOptions: CHROMIUM_LAUNCH,
     },
     testIgnore: /mobile-.*\.spec\.ts$/,
   },
@@ -52,6 +66,7 @@ const chromiumProjects = [
       browserName: "chromium" as const,
       defaultBrowserType: "chromium" as const,
       storageState: primaryStorageState,
+      launchOptions: CHROMIUM_LAUNCH,
     },
     testIgnore: /desktop-.*\.spec\.ts$/,
   },
@@ -80,7 +95,16 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
-  workers: process.env.CI ? 2 : undefined,
+  // One worker on CI, deliberately. A GitHub-hosted runner is a two-vCPU
+  // machine that is already hosting the measured `next start` alongside the
+  // browser, so a second worker means two headless Chromiums and a server
+  // contending for two cores — and every number this suite records is then a
+  // reading of the runner rather than of the application. Measured: the same
+  // rows that failed CI at two workers (`Today to Review` at 127 ms, `person
+  // detail to Today` at 621 ms) come back at 35–57 ms on one core with one
+  // worker. The tier still runs alongside the other verification jobs, which is
+  // where ADR 0210's parallelism requirement actually lives.
+  workers: process.env.CI ? 1 : undefined,
   reporter: [["list"], ["json", { outputFile: "./.instant/results.json" }]],
   globalSetup: "./tests/instant/support/global-setup.ts",
   timeout: 60_000,
@@ -88,9 +112,6 @@ export default defineConfig({
   use: {
     baseURL,
     trace: "retain-on-failure",
-    // Timing budgets are the point of this suite; a throttled or contended
-    // browser would measure the runner, not the application.
-    launchOptions: { args: ["--disable-dev-shm-usage"] },
   },
   projects: scope === "full" ? [...chromiumProjects, ...promotionProjects] : chromiumProjects,
   webServer: {
