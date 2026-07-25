@@ -231,12 +231,45 @@ export async function assertDestinationAccessibility(page: Page, scenario: strin
     const navs = Array.from(document.querySelectorAll("nav")).filter(visible);
     const active = document.activeElement;
 
+    // What Playwright's own actionability check tests, asserted as a contract
+    // rather than discovered as a 60-second click timeout: the topmost element
+    // at a navigation link's own centre must be that link. A `fixed` overlay
+    // that lands on the primary navigation makes the destination unreachable
+    // while looking perfectly rendered, which is how the PWA update notice sat
+    // on the desktop header until Firefox failed on it.
+    const describeObstruction = (element: Element) => {
+      const classes = String(element.getAttribute("class") ?? "")
+        .split(" ")
+        .filter(Boolean);
+      return `<${element.tagName.toLowerCase()} class="${classes.slice(0, 4).join(" ")}">`;
+    };
+
+    let navigationObstructedBy: string | null = null;
+    for (const nav of navs) {
+      const link = Array.from(nav.querySelectorAll("a")).filter(visible)[0];
+      if (!link) continue;
+
+      const box = link.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      // A link scrolled out of the viewport has no meaningful hit test, and
+      // asserting one would fail on geometry rather than on obstruction.
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+
+      const topmost = document.elementFromPoint(x, y);
+      if (topmost && topmost !== link && !link.contains(topmost)) {
+        navigationObstructedBy = `${nav.getAttribute("aria-label") ?? "nav"} — ${describeObstruction(topmost)}`;
+        break;
+      }
+    }
+
     return {
       mains: mains.length,
       headings: headings.length,
       unannouncedBusyRegions: busy.filter((region) => !announced(region)).length,
       unnamedNavs: navs.filter(unnamed).length,
       focusDetached: active !== null && !active.isConnected,
+      navigationObstructedBy,
     };
   });
 
@@ -247,4 +280,8 @@ export async function assertDestinationAccessibility(page: Page, scenario: strin
   expect(report.unannouncedBusyRegions, `${scenario}: every pending region is announced`).toBe(0);
   expect(report.unnamedNavs, `${scenario}: every navigation landmark is named`).toBe(0);
   expect(report.focusDetached, `${scenario}: focus survived the transition`).toBe(false);
+  expect(
+    report.navigationObstructedBy,
+    `${scenario}: nothing is covering the owner's navigation`,
+  ).toBeNull();
 }

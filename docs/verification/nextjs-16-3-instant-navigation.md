@@ -395,6 +395,56 @@ fails and the decision gets re-read rather than drifting. It is the one row in t
 matrix whose 100 ms shell depends on the server rather than the cache, and it
 deserves a decision before the Preview promotion.
 
+## Finding: the update notice covered the desktop primary navigation
+
+Firefox's first CI execution of the promotion tier failed `person detail → Today`
+with a 60-second `locator.click` timeout — not a budget breach. The call log
+names the culprit outright:
+
+```
+2 × waiting for element to be visible, enabled and stable
+  - element is visible, enabled and stable
+  - <div role="status" class="fixed inset-x-4 top-[…] z-50 mx-auto flex max-w-md …">
+    intercepts pointer events
+- retrying click action
+```
+
+The page snapshot has the text: *"An update is ready. Finish what you're typing
+first."* — `PwaRegistration`'s service-worker notice. It is `fixed`, top-centred,
+`z-50`; `app-shell.tsx`'s desktop header is `sticky top-0 z-10 h-14` and its
+right-hand group *is* the primary navigation. Measured against the built
+stylesheet at 1440 × 900: the notice occupied `[496, 16 → 944, 66]` and the Today
+link `[698, 12 → 780, 44]`. It covered the navigation completely, and this notice
+has no dismiss — so an owner who ever sees it cannot reach Today, People, or
+Actions until they press Update.
+
+That is a product defect, not a rig artifact. The rig only made it visible:
+Playwright's Firefox keeps service-worker registrations across browser contexts,
+so the third Firefox spec in a run registers against a worker a previous context
+already activated, gets a `waiting` worker, and shows the notice. Chromium
+partitions the registration and never saw it. Under `next start` the script never
+changes, so nothing was actually updating — but a real deployment updates
+`sw.js`, and then every desktop owner meets this.
+
+Two changes, neither of them to a budget:
+
+- The notice moves to the bottom from `lg` up (`lg:top-auto lg:bottom-4`), which
+  is where a persistent notice belongs on a layout with a top navigation bar.
+  Placing it *below* the header was measured first and rejected: at
+  `lg:top-[4.5rem]` it still covered each surface's `h1`, because desktop content
+  starts immediately under the 3.5rem header. Small screens keep the top
+  placement — their navigation is the bottom bar. The three notice states now
+  share one position constant so they cannot drift apart.
+- `assertDestinationAccessibility` gained the assertion that would have caught it
+  as a failure rather than as a timeout: for every visible navigation landmark,
+  `document.elementFromPoint` at the first link's own centre must be that link.
+  It is Playwright's own actionability check, written down as a contract — a
+  destination that renders perfectly and cannot be clicked is not an instant
+  navigation. Verified not to false-positive: 19/19 routine and 5/5 Firefox with
+  it in place, and a probe against the built stylesheet confirms every element
+  the matrix clicks on `/`, `/people`, and `/actions` is clear of the relocated
+  notice on both viewports.
+
 ## Latent bug fixed on the way
 
 **The Vercel-only segment-prefetch rewrite was applied on every runtime, which
