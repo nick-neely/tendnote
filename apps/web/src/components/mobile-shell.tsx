@@ -89,53 +89,16 @@ function MobileShellContent({
   todayLocalDate,
   todayTimeZone,
 }: MobileShellProps) {
-  const [flow, setFlow] = useState<FocusedFlow | null>(null);
-  const [eveDraftRevision, setEveDraftRevision] = useState(0);
+  const focused = useFocusedFlow(ownerUserId);
   const [searchQuery, setSearchQuery] = useState("");
-  const invokingControl = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    const state = window.history.state as Record<string, unknown> | null;
-    if (
-      state?.tendnoteGlobalRecallOwner !== ownerUserId ||
-      state.tendnoteGlobalRecallReturnUrl !== window.location.href
-    ) {
-      return;
-    }
-    const { tendnoteGlobalRecallOwner: _, tendnoteGlobalRecallReturnUrl: __, ...rest } = state;
-    window.history.replaceState(rest, "", window.location.href);
-    setFlow("search");
-  }, [ownerUserId]);
-
-  function openFlow(next: FocusedFlow, trigger: HTMLElement) {
-    if (next !== "menu" && !ownerUserId) return;
-    invokingControl.current = trigger;
-    setFlow(next);
-  }
-
-  function closeFlow() {
-    const trigger = invokingControl.current;
-    const triggerKey = trigger?.dataset.mobileFlowTrigger;
-    if (flow === "eve") setEveDraftRevision((revision) => revision + 1);
-    setFlow(null);
-    requestAnimationFrame(() => {
-      const replacement = triggerKey
-        ? document.querySelector<HTMLElement>(`[data-mobile-flow-trigger="${triggerKey}"]`)
-        : null;
-      (trigger?.isConnected ? trigger : replacement)?.focus();
-    });
-  }
-
-  function closeFlowForNavigation() {
-    setFlow(null);
-  }
+  const { flow, open: openFlow } = focused;
 
   return (
     <>
       {mobileDestination ??
         (mobileHome && !routeAwareMobileNavigation ? (
           <MobileTodayHome
-            eveDraftRevision={eveDraftRevision}
+            eveDraftRevision={focused.eveDraftRevision}
             onOpenEve={(trigger) => openFlow("eve", trigger)}
             ownerUserId={ownerUserId}
             todayHandlers={todayHandlers}
@@ -173,8 +136,8 @@ function MobileShellContent({
         captureHandlers={captureHandlers}
         flow={flow}
         mobileEve={mobileEve}
-        onClose={closeFlow}
-        onNavigate={closeFlowForNavigation}
+        onClose={focused.close}
+        onNavigate={focused.closeForNavigation}
         ownerUserId={ownerUserId}
         query={searchQuery}
         search={searchHandler}
@@ -182,6 +145,64 @@ function MobileShellContent({
       />
     </>
   );
+}
+
+/**
+ * The phone shell's one focused flow — Search, Capture, Eve, or Menu — and the
+ * focus restoration that makes closing one feel like coming back rather than
+ * landing somewhere new: focus returns to the control that opened it, or to that
+ * control's replacement when the surface behind it re-rendered in the meantime.
+ *
+ * It also reopens Search on a browser return. Global Recall stashes the owner and
+ * the return URL in history state before navigating to a result, so coming back
+ * lands in the search the owner left instead of a blank shell; the marker is
+ * consumed on arrival so a later visit to the same URL does not reopen it.
+ */
+function useFocusedFlow(ownerUserId: string) {
+  const [flow, setFlow] = useState<FocusedFlow | null>(null);
+  const [eveDraftRevision, setEveDraftRevision] = useState(0);
+  const invokingControl = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const state = window.history.state as Record<string, unknown> | null;
+    if (
+      state?.tendnoteGlobalRecallOwner !== ownerUserId ||
+      state.tendnoteGlobalRecallReturnUrl !== window.location.href
+    ) {
+      return;
+    }
+    const { tendnoteGlobalRecallOwner: _, tendnoteGlobalRecallReturnUrl: __, ...rest } = state;
+    window.history.replaceState(rest, "", window.location.href);
+    setFlow("search");
+  }, [ownerUserId]);
+
+  return {
+    flow,
+    /** Bumped when Eve closes, so the compact Today composer remounts on its draft. */
+    eveDraftRevision,
+    open(next: FocusedFlow, trigger: HTMLElement) {
+      // Menu is the only flow that works unauthenticated; the rest are owner work.
+      if (next !== "menu" && !ownerUserId) return;
+      invokingControl.current = trigger;
+      setFlow(next);
+    },
+    close() {
+      const trigger = invokingControl.current;
+      const triggerKey = trigger?.dataset.mobileFlowTrigger;
+      if (flow === "eve") setEveDraftRevision((revision) => revision + 1);
+      setFlow(null);
+      requestAnimationFrame(() => {
+        const replacement = triggerKey
+          ? document.querySelector<HTMLElement>(`[data-mobile-flow-trigger="${triggerKey}"]`)
+          : null;
+        (trigger?.isConnected ? trigger : replacement)?.focus();
+      });
+    },
+    /** Closing because the owner is leaving: the destination owns focus, not us. */
+    closeForNavigation() {
+      setFlow(null);
+    },
+  };
 }
 
 function MobileRouteMain({

@@ -58,54 +58,75 @@ export async function getCachedActionLedgerViews(input: {
   return cachedActionLedgerViews(input.ownerUserId, refreshedAt, input.resolvedLimit);
 }
 
-async function cachedActionTodayViews(ownerUserId: string, refreshedAt: number) {
-  "use cache";
-  cacheLife(cacheProfiles.interactive);
-  cacheTag(...actionCacheContract.owner(ownerUserId).tags);
+type LinkedAssetsByAction = Awaited<ReturnType<typeof listLinkedAssetsForGeneralActions>>;
+type ActionViewOptions = Parameters<typeof toGeneralActionView>[1];
 
+/**
+ * Maps one Action to its view and emits that Action's invalidation tags on the way.
+ *
+ * This must only be called from inside a `"use cache"` body: `cacheTag` registers
+ * against the cache entry currently being produced, so the entity tag and the tag of
+ * every Asset the Action links only attach when the walk happens there. It stays a
+ * plain helper for exactly that reason — the tags follow the caller's scope.
+ */
+function toTaggedActionView(
+  action: Parameters<typeof toGeneralActionView>[0],
+  context: {
+    ownerUserId: string;
+    now: Date;
+    linkedAssetsByAction: LinkedAssetsByAction;
+    reminderSchedule?: ActionViewOptions["reminderSchedule"];
+  },
+) {
+  cacheTag(actionCacheContract.entity(context.ownerUserId, action.id));
+  const linkedAssets = context.linkedAssetsByAction[action.id] ?? [];
+  for (const linkedAsset of linkedAssets) {
+    cacheTag(actionCacheContract.linkedAsset(linkedAsset.asset.id));
+  }
+  return toGeneralActionView(action, {
+    now: context.now,
+    callerUserId: context.ownerUserId,
+    linkedAssets: linkedAssets.map(toGeneralActionLinkedAssetView),
+    reminderSchedule: context.reminderSchedule,
+  });
+}
+
+/**
+ * The active-Action projection Action Today and the default `/actions` render share:
+ * the bounded active list, its linked-Asset labels, and each Action's tagged view.
+ * The two callers differ only in the shape they hand back, so the reads, the refresh
+ * bucket and the tag walk live here once. Called from within each caller's own
+ * `"use cache"` body so its tags land on that caller's entry.
+ */
+async function taggedActiveActionViews(ownerUserId: string, refreshedAt: number) {
   const active = await listActiveGeneralActions({ ownerUserId });
   const linkedAssetsByAction = await listLinkedAssetsForGeneralActions({
     callerUserId: ownerUserId,
     generalActionIds: active.map((action) => action.id),
   });
   const now = new Date(refreshedAt);
-  return active.map((action) => {
-    cacheTag(actionCacheContract.entity(ownerUserId, action.id));
-    for (const linkedAsset of linkedAssetsByAction[action.id] ?? []) {
-      cacheTag(actionCacheContract.linkedAsset(linkedAsset.asset.id));
-    }
-    return {
-      action: { status: action.status, dueAt: action.dueAt, deferUntil: action.deferUntil },
-      view: toGeneralActionView(action, {
-        now,
-        callerUserId: ownerUserId,
-        linkedAssets: (linkedAssetsByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView),
-      }),
-    };
-  });
+  return active.map((action) => ({
+    action,
+    view: toTaggedActionView(action, { ownerUserId, now, linkedAssetsByAction }),
+  }));
+}
+
+async function cachedActionTodayViews(ownerUserId: string, refreshedAt: number) {
+  "use cache";
+  cacheLife(cacheProfiles.interactive);
+  cacheTag(...actionCacheContract.owner(ownerUserId).tags);
+  const tagged = await taggedActiveActionViews(ownerUserId, refreshedAt);
+  return tagged.map(({ action, view }) => ({
+    action: { status: action.status, dueAt: action.dueAt, deferUntil: action.deferUntil },
+    view,
+  }));
 }
 
 async function cachedActionActiveViews(ownerUserId: string, refreshedAt: number) {
   "use cache";
   cacheLife(cacheProfiles.interactive);
   cacheTag(...actionCacheContract.owner(ownerUserId).tags);
-  const active = await listActiveGeneralActions({ ownerUserId });
-  const linkedAssetsByAction = await listLinkedAssetsForGeneralActions({
-    callerUserId: ownerUserId,
-    generalActionIds: active.map((action) => action.id),
-  });
-  const now = new Date(refreshedAt);
-  return active.map((action) => {
-    cacheTag(actionCacheContract.entity(ownerUserId, action.id));
-    for (const linkedAsset of linkedAssetsByAction[action.id] ?? []) {
-      cacheTag(actionCacheContract.linkedAsset(linkedAsset.asset.id));
-    }
-    return toGeneralActionView(action, {
-      now,
-      callerUserId: ownerUserId,
-      linkedAssets: (linkedAssetsByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView),
-    });
-  });
+  return (await taggedActiveActionViews(ownerUserId, refreshedAt)).map(({ view }) => view);
 }
 
 async function cachedActionAreas(ownerUserId: string) {
@@ -140,17 +161,12 @@ async function cachedActionLedgerViews(
   const reminderScheduleByActionId = new Map(
     reminderSchedules.map((schedule) => [schedule.generalActionId, schedule]),
   );
-  const toView = (action: (typeof all)[number]) => {
-    cacheTag(actionCacheContract.entity(ownerUserId, action.id));
-    for (const linkedAsset of linkedAssetsByAction[action.id] ?? []) {
-      cacheTag(actionCacheContract.linkedAsset(linkedAsset.asset.id));
-    }
-    return toGeneralActionView(action, {
+  const toView = (action: (typeof all)[number]) =>
+    toTaggedActionView(action, {
+      ownerUserId,
       now,
-      callerUserId: ownerUserId,
-      linkedAssets: (linkedAssetsByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView),
+      linkedAssetsByAction,
       reminderSchedule: reminderScheduleByActionId.get(action.id) ?? null,
     });
-  };
   return { active: active.map(toView), paused: paused.map(toView), resolved: resolved.map(toView) };
 }

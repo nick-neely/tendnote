@@ -46,6 +46,8 @@ const contactImportSources = CONTACT_IMPORT_SURFACES.map(read).join("\n").toLowe
 describe("Phase 2E Contacts import boundary - no external write or inference side effects", () => {
   it("scans every current Contacts import source surface", () => {
     expect(CONTACT_IMPORT_SURFACES).toEqual([
+      "apps/web/src/app/(admitted)/account/contacts/import/contact-import-preview-client.tsx",
+      "apps/web/src/app/(admitted)/account/contacts/import/contact-import-preview-fixture.tsx",
       "apps/web/src/app/(admitted)/account/contacts/import/contact-import-review.tsx",
       "apps/web/src/app/(admitted)/account/contacts/import/page.tsx",
       "apps/web/src/app/(admitted)/account/contacts/import/refresh-preview-button.tsx",

@@ -22,13 +22,21 @@
       "exports": ["*"]
     }
   ],
+  // @next/playwright: not yet imported. It is exact-pinned to Next's Preview
+  //   version as a deliberate foundation decision (#301, see
+  //   docs/verification/nextjs-16-3-preview-foundation.md) because it supplies
+  //   `instant()` to the browser matrix in "Enforce and optimize the Instant
+  //   Interaction contract" (#310), which is still blocked by #309. Removing the
+  //   dependency to satisfy this scan would drop the version lock to `next` and
+  //   leave #310 re-deriving it. DELETE THIS ENTRY when #310 lands the harness —
+  //   after that the import edge is real and the suppression would hide drift.
   // babel-plugin-react-compiler: loaded implicitly by Next's `reactCompiler: true`
   //   (apps/web/next.config.ts), not via a direct import.
   // @tendnote/agent: the web app mounts Eve same-origin via `withEve(..., { eveRoot:
   //   "../agent" })` in next.config.ts (a filesystem path, not an import), and CI
   //   deploys web after agent (see "ci: mark web deployment dependent on agent").
   //   The workspace edge is deliberate but invisible to the import-based scan.
-  "ignoreDependencies": ["babel-plugin-react-compiler", "@tendnote/agent"],
+  "ignoreDependencies": ["@next/playwright", "babel-plugin-react-compiler", "@tendnote/agent"],
   "entry": [
     "apps/agent/agent/agent.ts",
     // Registered by URL from pwa-registration.tsx, so no import edge exists.
@@ -71,10 +79,20 @@
   },
   "audit": {
     "gate": "new-only",
-    // Phase Seven was delivered and verified as eleven independently gated
-    // vertical slices. Preserve those accepted identities so the cumulative PR
-    // gate reports only regressions introduced after the per-ticket reviews.
-    "healthBaseline": "fallow-baselines/phase-7-health.json",
-    "dupesBaseline": "fallow-baselines/phase-7-dupes.json"
+    // A baseline records the state accepted at the end of a delivered epic, so the
+    // cumulative PR gate reports regressions introduced *after* the per-ticket
+    // reviews rather than the whole standing backlog. Phase Seven set the first
+    // pair (#276, eleven independently gated slices); these supersede them at the
+    // end of the Next.js 16.3 instant-navigation epic (#301-#309, all reviewed and
+    // closed), whose 183-file changeset the Phase Seven pair no longer matched —
+    // the duplication baseline matched 0 of its 19 entries, so the gate had
+    // degenerated into reporting the entire backlog.
+    //
+    // What this pair accepts, and what it does NOT, is written down in
+    // docs/verification/nextjs-16-3-fallow-baseline.md. Read that before adding to
+    // it: a baseline is for findings a review consciously accepted, never a way to
+    // land a new one.
+    "healthBaseline": "fallow-baselines/nextjs-16-3-health.json",
+    "dupesBaseline": "fallow-baselines/nextjs-16-3-dupes.json"
   }
 }

@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { confirmPhraseMatches, generateConfirmPhrase } from "@/lib/confirm-phrase";
 
 /** A single thing attached to the person, previewed so the user sees what they'd lose. */
-export type RemovalItem = { id: string; text: string };
+type RemovalItem = { id: string; text: string };
 
 type RundownGroup = {
   key: string;

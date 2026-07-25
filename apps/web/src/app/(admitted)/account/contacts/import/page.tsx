@@ -12,7 +12,7 @@ export default function ContactsImportPage() {
   );
 }
 
-export async function ContactsImportContent() {
+async function ContactsImportContent() {
   if (process.env.NODE_ENV !== "test") await connection();
   await requireAdmittedOwner({ returnTo: "/account/contacts/import" });
   return (

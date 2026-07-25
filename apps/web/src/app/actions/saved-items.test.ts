@@ -1,23 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { invalidateActionMutationSpy, revalidatePathSpy } from "@/test/action-adapter-mocks";
 
 const {
   createSavedItem,
   deleteUniqueSavedItemSource,
   getSavedItem,
   promoteSavedItemToGeneralAction,
-  invalidateActionMutation,
-  revalidatePath,
   resolveScopeForCaller,
-  updateTag,
 } = vi.hoisted(() => ({
   createSavedItem: vi.fn(),
   deleteUniqueSavedItemSource: vi.fn(),
   getSavedItem: vi.fn(),
   promoteSavedItemToGeneralAction: vi.fn(),
-  invalidateActionMutation: vi.fn(),
-  revalidatePath: vi.fn(),
   resolveScopeForCaller: vi.fn(),
-  updateTag: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/saved-items", () => ({
@@ -33,11 +28,6 @@ vi.mock("@tendnote/db/queries/saved-items", () => ({
   listSavedItems: vi.fn(),
 }));
 vi.mock("@tendnote/db/queries/reminders", () => ({ listReminderSchedulesForOwner: vi.fn() }));
-vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
-vi.mock("@/lib/access/current-access", () => ({
-  requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
-}));
-vi.mock("@/lib/cache/action-mutation-scopes", () => ({ invalidateActionMutation }));
 vi.mock("@/lib/resolve-scope-for-caller", () => ({ resolveScopeForCaller }));
 
 import { createSavedItemAction, promoteSavedItemToGeneralActionAction } from "./saved-items";
@@ -91,7 +81,7 @@ describe("Saved Item server adapters", () => {
       }),
     );
     expect(result).toMatchObject({ ok: true, view: { title: "Filter measurements" } });
-    expect(revalidatePath).toHaveBeenCalledWith("/saved-items");
+    expect(revalidatePathSpy).toHaveBeenCalledWith("/saved-items");
   });
 
   it("marks a datetime-local bring-back as an explicit instant", async () => {
@@ -126,7 +116,7 @@ describe("Saved Item server adapters", () => {
       authority: "explicit",
       idempotencyKey: `saved-item:${ITEM.id}:general-action`,
     });
-    expect(invalidateActionMutation).toHaveBeenCalledWith({
+    expect(invalidateActionMutationSpy).toHaveBeenCalledWith({
       ownerUserId: "owner-1",
       actionId: "33333333-3333-4333-8333-333333333333",
     });

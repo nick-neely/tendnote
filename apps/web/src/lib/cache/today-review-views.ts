@@ -1,7 +1,7 @@
 import { getTodayShortlist } from "@tendnote/db/queries/today";
 import { cacheLife, cacheTag } from "next/cache";
 import type { ReviewQueueFamily } from "@/lib/review-queue";
-import { loadOwnerReviewQueue, loadOwnerReviewQueueFamily } from "@/lib/review-queue.server";
+import { loadOwnerReviewQueueFamily } from "@/lib/review-queue.server";
 import { cacheProfiles } from "./cache-profiles";
 
 export const todayReviewCacheContract = {
@@ -72,10 +72,6 @@ async function cachedTodayShortlist(
   return getTodayShortlist({ ownerUserId, localDate, timeZone, now: new Date(refreshedAt) });
 }
 
-export async function getCachedReviewQueue(ownerUserId: string) {
-  return cachedReviewQueue(ownerUserId);
-}
-
 export async function getCachedReviewQueueFamily(ownerUserId: string, family: ReviewQueueFamily) {
   return cachedReviewQueueFamily(ownerUserId, family);
 }
@@ -85,11 +81,4 @@ async function cachedReviewQueueFamily(ownerUserId: string, family: ReviewQueueF
   cacheLife(cacheProfiles.interactive);
   cacheTag(...todayReviewCacheContract.review({ ownerUserId }).tags);
   return loadOwnerReviewQueueFamily(ownerUserId, family);
-}
-
-async function cachedReviewQueue(ownerUserId: string) {
-  "use cache";
-  cacheLife(cacheProfiles.interactive);
-  cacheTag(...todayReviewCacheContract.review({ ownerUserId }).tags);
-  return loadOwnerReviewQueue(ownerUserId);
 }

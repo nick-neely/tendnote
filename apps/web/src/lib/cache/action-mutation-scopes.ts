@@ -8,7 +8,7 @@ export type ActionMutationScope =
   | { kind: "today-owner"; ownerUserId: string }
   | { kind: "review-owner"; ownerUserId: string };
 
-export const actionMutationScopes = {
+const actionMutationScopes = {
   forAction(input: { ownerUserId: string; actionId: string }): ActionMutationScope[] {
     return [
       { kind: "action-owner", ownerUserId: input.ownerUserId },
