@@ -14,6 +14,11 @@ import { openPeople, peopleToPersonDetailRow, personLinkName } from "./support/r
  * and no request, so there is nothing for `instant()` to assert. On mobile the
  * bottom bar's Review entry is a real `<Link>` to a genuinely different
  * composition, which is the transition this row is about.
+ *
+ * Nothing here carries `@promotion-smoke`. ADR 0210's reduced Firefox and WebKit
+ * tier is a desktop one — both promotion projects use desktop device profiles
+ * and `testIgnore` this file — so a tag here would select nothing and read as
+ * cross-engine mobile coverage that does not exist.
  */
 
 function bottomBar(page: Page) {
@@ -41,7 +46,7 @@ test.describe("mobile critical navigation", () => {
     });
   });
 
-  test("@promotion-smoke Menu to Actions", async ({ page, network }, testInfo) => {
+  test("Menu to Actions", async ({ page, network }, testInfo) => {
     await arriveAdmitted(page, "/");
     await openMenu(page);
 
@@ -71,7 +76,7 @@ test.describe("mobile critical navigation", () => {
     });
   });
 
-  test("@promotion-smoke People to person detail", async ({ page, network }, testInfo) => {
+  test("People to person detail", async ({ page, network }, testInfo) => {
     await openPeople(page);
 
     await peopleToPersonDetailRow({

@@ -77,8 +77,13 @@
     // pair (#276, eleven independently gated slices); these supersede them at the
     // end of the Next.js 16.3 instant-navigation epic (#301-#309, all reviewed and
     // closed), whose 183-file changeset the Phase Seven pair no longer matched —
-    // the duplication baseline matched 0 of its 19 entries, so the gate had
+    // its recorded clones had been rewritten out of existence, so the gate had
     // degenerated into reporting the entire backlog.
+    //
+    // A "matched 0 current clone groups" warning is not by itself that verdict: a
+    // scoped audit matches nothing when the changeset touches no duplicated file.
+    // Tell the two apart with a repo-wide `fallow dupes` run — the baseline note
+    // records how, and that this pair matched 64 of 68 when last checked.
     //
     // What this pair accepts, and what it does NOT, is written down in
     // docs/verification/nextjs-16-3-fallow-baseline.md. Read that before adding to

@@ -374,9 +374,13 @@ branches. The previous `segment-prefetch-routing.test.ts`, which grepped
 - **Firefox and WebKit promotion smoke has not been executed.** Only Chromium
   browsers are installed on this workstation. The projects, grep, and CI
   installation step are in place; the first `full` run belongs to #311.
+  *Settled in #311 for Firefox (5/5 locally); WebKit needs system libraries this
+  workstation cannot install and runs on CI. See
+  [the Preview qualification record](./nextjs-16-3-preview-qualification.md).*
 - **Real-origin qualification.** As above: the local rig serves HTTP on loopback
   with an HTTPS canonical URL. #311 runs the same specs against the Vercel
-  Preview, where the origin genuinely is HTTPS.
+  Preview, where the origin genuinely is HTTPS. *#311 records the Preview runbook
+  and go/no-go checklist; executing it needs the open pull request's Preview.*
 - **Two of ADR 0210's recorded diagnostics are not recorded: query latency and
   server work.** RSC and client payloads, request fan-out, and mutation latency
   are all captured per run; per-query time and per-route server work are not,
@@ -392,7 +396,13 @@ branches. The previous `segment-prefetch-routing.test.ts`, which grepped
   detection and concurrency key, both of which are keyed on a pull-request
   number, for a run that belongs to the promotion flow. Dispatch wiring is
   therefore #311's, alongside the Preview qualification it exists to serve; today
-  the full tier runs locally with `pnpm test:instant:full`.
+  the full tier runs locally with `pnpm test:instant:full`. *Wired in #311:
+  `.github/workflows/promotion-verify.yml` calls the same reusable verification
+  with `full_browser_matrix: true`, triggered either by the `full-browser-matrix`
+  label on a pull request or by `workflow_dispatch`. The label is the only one
+  usable before the file reaches `main`, because GitHub offers a dispatch only
+  for workflows already on the default branch. The wiring is settled; the
+  workflow has never executed, and its first run is part of #311's gate.*
 - **The local rig measures a routing config production never runs.**
   `segmentPrefetchRewrites()` returns `[]` off Vercel, which is what makes shell
   prefetching work under `next start` — but it also means the deployed

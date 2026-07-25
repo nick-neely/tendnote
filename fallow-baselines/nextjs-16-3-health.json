@@ -84,6 +84,24 @@
         "count": 1
       }
     },
+    "apps/web/src/app/actions/followups.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/app/actions/general-actions.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/app/actions/saved-items.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "apps/web/src/app/pending/page.tsx": {
       "crap_high": {
         "count": 1
@@ -97,6 +115,11 @@
     "apps/web/src/components/account/use-reminder-installation-settings.ts": {
       "crap_critical": {
         "count": 1
+      }
+    },
+    "apps/web/src/components/actions-surface.tsx": {
+      "crap_moderate": {
+        "count": 3
       }
     },
     "apps/web/src/components/agenda-calendar.tsx": {
@@ -125,6 +148,11 @@
     "apps/web/src/components/general-action-create-form.tsx": {
       "crap_high": {
         "count": 1
+      }
+    },
+    "apps/web/src/components/general-action-row.tsx": {
+      "crap_moderate": {
+        "count": 2
       }
     },
     "apps/web/src/components/gmail-draft-panel.tsx": {
@@ -160,11 +188,6 @@
     },
     "apps/web/src/components/saved-item-edit-form.tsx": {
       "crap_critical": {
-        "count": 1
-      }
-    },
-    "apps/web/src/components/saved-items-surface.tsx": {
-      "crap_moderate": {
         "count": 1
       }
     },
@@ -206,11 +229,6 @@
     "apps/web/src/lib/suggested-followup-review-view.ts": {
       "crap_moderate": {
         "count": 1
-      }
-    },
-    "apps/web/src/lib/use-server-synced-list.ts": {
-      "crap_moderate": {
-        "count": 2
       }
     },
     "packages/db/src/queries/asset-search/drizzle-store.ts": {
@@ -291,6 +309,11 @@
         "count": 1
       }
     },
+    "packages/db/src/queries/followups.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "packages/db/src/queries/gmail-drafts.ts": {
       "crap_moderate": {
         "count": 1
@@ -303,11 +326,6 @@
     },
     "packages/db/src/queries/people/drizzle-store.ts": {
       "crap_critical": {
-        "count": 1
-      }
-    },
-    "packages/db/src/queries/people/in-memory-store.ts": {
-      "crap_high": {
         "count": 1
       }
     },

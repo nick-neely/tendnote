@@ -101,6 +101,22 @@ The floor observed on July 23, 2026 was `>=0.31.1`; a newer installed skill
 may require more. Use `agent-browser install --with-deps` only when dependency
 probing shows that Linux system libraries are missing.
 
+## Version changes are new candidates
+
+Next.js and `@next/playwright` are pinned to one exact version and never float.
+Changing that pin is not a dependency refresh — it is a framework upgrade, and
+it repeats the whole qualification on its own pull request:
+
+- pin both packages to the same exact version and commit the exact lockfile
+  (never `preview`, `canary`, a caret, or an automatic update range);
+- record a fresh known-good commit and Vercel deployment to reverse to;
+- run `pnpm verify` and the **Promotion verify** workflow, which is the full
+  three-engine browser matrix rather than the routine Chromium tier; and
+- work through the Preview runbook and go/no-go checklist in
+  [the Preview qualification record](../verification/nextjs-16-3-preview-qualification.md).
+
+That record is the procedure; ADR 0211 is the decision behind it.
+
 ## Bundled docs and managed rules
 
 After the repository is pinned to Next.js 16.3, run the normal Turbopack

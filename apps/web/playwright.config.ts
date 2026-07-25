@@ -21,7 +21,14 @@ const scope = instantScope();
 const baseURL = instantBaseUrl();
 const primaryStorageState = storageStatePath(PRIMARY_OWNER.userId);
 
-/** The reduced cross-engine smoke: Today, person detail, Action reconciliation. */
+/**
+ * The reduced cross-engine smoke: Today, person detail, Action reconciliation.
+ *
+ * Desktop only. Both promotion projects use desktop device profiles, so the
+ * mobile specs are ignored below and deliberately carry no `@promotion-smoke`
+ * tag — a tag they could never select would read as coverage that does not
+ * exist.
+ */
 const PROMOTION_SMOKE = /@promotion-smoke/;
 
 const chromiumProjects = [

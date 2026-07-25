@@ -42,8 +42,18 @@ describe("Fallow CI coverage contract (#193)", () => {
     expect(rootPackage.scripts["fallow:coverage:check"]).toBe(
       "node scripts/assert-fallow-coverage.mjs",
     );
+    // The invariant is the order — coverage, then the CRAP-scoring proof, then
+    // the audit that consumes both. Comment lines may sit between the steps;
+    // another step may not.
+    const commentsOrBlanks = String.raw`(?:\s*#[^\n]*)*\s*`;
     expect(workflow).toMatch(
-      /- name: Run tests with coverage\s+run: pnpm coverage:ci\s+\n?\s*- name: Confirm exact CRAP scoring\s+run: pnpm fallow:coverage:check\s+\n?\s*- name: Run Fallow audit/,
+      new RegExp(
+        [
+          String.raw`- name: Run tests with coverage\s+run: pnpm coverage:ci`,
+          String.raw`- name: Confirm exact CRAP scoring\s+run: pnpm fallow:coverage:check`,
+          String.raw`- name: Run Fallow audit`,
+        ].join(commentsOrBlanks),
+      ),
     );
     expect(workflow).not.toMatch(/\n {2}test:\n/);
     expect(workflow).not.toMatch(/\n {2}build:\n/);

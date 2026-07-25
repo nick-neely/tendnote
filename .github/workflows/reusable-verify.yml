@@ -153,7 +153,13 @@ jobs:
       - name: Confirm exact CRAP scoring
         run: pnpm fallow:coverage:check
 
+      # Without an explicit base Fallow resolves one from the branch's own
+      # upstream, which on a pushed branch is the branch itself — the audit then
+      # reports almost nothing and the gate passes while blind. `fetch-depth: 0`
+      # above is what makes `origin/main` resolvable here.
       - name: Run Fallow audit
+        env:
+          FALLOW_AUDIT_BASE: origin/main
         run: pnpm fallow:ci
 
       # A four-contract Chromium suite closes the layout-engine gap that jsdom cannot:
@@ -170,7 +176,12 @@ jobs:
     runs-on: ubuntu-latest
     # The rollout criterion is a wall-time one. Without this a hung `next start`
     # would sit on GitHub's six-hour default instead of failing the gate.
-    timeout-minutes: 15
+    #
+    # The full tier gets longer because its first run is a guaranteed cache miss
+    # (its Playwright cache key is `all`, not `chromium`) that installs three
+    # engines with system dependencies before it builds — and that first run is
+    # the mandatory WebKit evidence, so it must not be the run that times out.
+    timeout-minutes: ${{ inputs.full_browser_matrix && 30 || 15 }}
     services:
       postgres:
         image: pgvector/pgvector:pg17
