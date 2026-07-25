@@ -104,7 +104,7 @@ build and sign-in still works, and record the time and trigger below.
 | Mutation reconciliation (optimistic ack, authoritative settle) | `action-reconciliation.spec.ts` | same |
 | Request-bound admission | `admitted-route.contract.test.ts`, `src/lib/access/*.test.ts` | unit suite |
 | Reduced Firefox qualification | `--project=promotion-firefox` — 5/5, 2026-07-25 | below |
-| Reduced WebKit qualification | not runnable locally; owed by the first `Promotion verify` run | below |
+| Reduced WebKit qualification | **blocked on a decision** — executed in CI twice, and the loopback rig cannot admit an owner on WebKit at all | below |
 
 ### Reduced Firefox and WebKit qualification
 
@@ -144,18 +144,81 @@ Chromium. The run records no payload figures: `payload-diagnostics.spec.ts` is
 not tagged `@promotion-smoke`, because cold JavaScript weight is a property of
 the build rather than of the engine and is already measured on Chromium.
 
-**WebKit: not executed.** The browser downloads (`webkit-2311`) but will not
-launch on this workstation — Playwright's Linux host check reports ~14 missing
-system libraries (`libgstvideo`, `libavif`, `libwoff2dec`, `libenchant`,
+**WebKit: not executed on this workstation.** The browser downloads
+(`webkit-2311`) but will not launch — Playwright's Linux host check reports ~14
+missing system libraries (`libgstvideo`, `libavif`, `libwoff2dec`, `libenchant`,
 `libhyphen`, `libsecret`, …). Installing them needs `playwright install-deps`,
 which needs `sudo`, and this environment has no passwordless `sudo`. It was not
 attempted interactively.
 
-WebKit is therefore CI's, not a workstation's. `Promotion verify` (below)
-installs all three engines with `--with-deps` on the runner and runs
-`pnpm test:instant:full`; that run is the WebKit evidence, and it must be green
-before merge. Locally, `pnpm test:instant:full` on a host that *can* run WebKit
-does the same thing.
+WebKit is therefore CI's, not a workstation's, and `Promotion verify` has now run
+it twice. See the finding below: **the loopback rig cannot admit an owner on
+WebKit at all**, so WebKit's engine evidence is not obtainable from this rig and
+belongs to the deployed Preview.
+
+#### Finding: WebKit cannot hold the rig's session cookie (open decision)
+
+`Promotion verify` run 30170042186 was WebKit's first execution anywhere. It
+failed at launch, not on behaviour: `--disable-dev-shm-usage` sat on Playwright's
+shared `use` block, which forwards `launchOptions.args` verbatim to whichever
+engine a project selects, and WebKit rejects a command line it cannot parse
+(`Cannot parse arguments: Unknown option --disable-dev-shm-usage`). All five
+tests died in 6–8 ms. The flag now belongs to the two Chromium projects.
+
+Run 30171146025 is the real result. WebKit launches, and all five specs time out
+after 30 s waiting for `[data-admitted]`, having navigated to `/sign-in`. The
+traces say why in one line — **every WebKit request carries no `Cookie` header at
+all**, where the Chromium trace for the same spec carries
+`__Secure-better-auth.session_token=…`:
+
+```
+webkit    200 /                     | cookie: NONE
+webkit    200 /api/auth/get-session | cookie: NONE
+webkit    200 /sign-in              | cookie: NONE
+chromium  200 /people/<id>          | cookie: __Secure-better-auth.session_token=F7xtGxyY…
+```
+
+Three deliberate decisions collide, and no two of them can be kept together on
+WebKit:
+
+1. **The shared auth baseline mints `__Secure-` cookies under production.**
+   `packages/auth/src/server.ts` sets `useSecureCookies: production` and refuses
+   a non-HTTPS `BETTER_AUTH_URL` in production. Both are the security baseline,
+   not rig configuration.
+2. **The rig serves plain HTTP on loopback.** `rig.ts` records why: terminating
+   TLS locally puts a proxy hop inside the streaming path this suite exists to
+   measure.
+3. **WebKit will not put a `Secure` cookie on a plain-HTTP socket**, and unlike
+   Chromium and Firefox it does not exempt `localhost`. (Playwright also drops
+   `domain: "localhost"` cookies on WebKit restore independently of this;
+   microsoft/playwright#39380, #35712.)
+
+The obvious escape — inject the same cookie without the `Secure` attribute — was
+tried and does not exist. Chromium enforces the `__Secure-` name prefix on
+injection too: the storage state is refused with `Storage.setCookies: Invalid
+cookie fields` and all 19 routine tests fail before their first navigation.
+Renaming the cookie would mean the rig no longer presents the production session
+token, which is the property that makes the matrix worth anything.
+
+**Recommendation.** Do not weaken the auth baseline and do not put a TLS proxy in
+the measured path for this. WebKit's qualification is a real-origin question, and
+ADR 0211 already puts real-origin qualification on the deployed Preview, where
+the scheme genuinely is HTTPS and all three constraints hold at once. The
+concrete choice, which needs a human decision because it changes what the
+promotion tier covers:
+
+- **Recommended** — gate `promotion-webkit` on the rig serving HTTPS, so it is
+  skipped on the loopback rig and runs by itself against the Preview, and move
+  the WebKit go/no-go line below to Q1/Q2 of the Preview runbook. Firefox
+  continues to cover "not-Chromium" on the rig every promotion run.
+- Alternative — keep the project as-is and accept that `Promotion verify` is red
+  on five WebKit tests until the Preview qualification supersedes it.
+- Rejected — serve the rig over TLS (proxy hop in the measured streaming path,
+  plus per-request crypto on a two-vCPU runner, both inside the timing budgets),
+  or drop `useSecureCookies` for the rig (a change to the shared security
+  baseline for a test).
+
+Nothing has been changed in the tier pending that decision.
 
 ### The two diagnostics the browser cannot record
 
@@ -389,7 +452,7 @@ executed at all.
 
 | # | Trigger | Class | Proof | Verdict |
 | --- | --- | --- | --- | --- |
-| 0 | *(precondition)* `Promotion verify` green — the only WebKit evidence that exists | gate | Record the run URL and the head and base SHAs it covered. It cannot be a required status check (label-only trigger; see above), so the recorded artifact **is** the enforcement. | ☐ |
+| 0 | *(precondition)* `Promotion verify` green — the only WebKit evidence that exists | gate | Record the run URL and the head and base SHAs it covered. It cannot be a required status check (label-only trigger; see above), so the recorded artifact **is** the enforcement. **Blocked:** run 30171146025 (head `f7fbcac`) is green on Chromium and Firefox and red on all five WebKit specs, which cannot be admitted on the loopback rig at all — see [the finding](#finding-webkit-cannot-hold-the-rigs-session-cookie-open-decision). This row cannot be ticked until that decision is made; if WebKit moves to the Preview, so does this row. | ☐ |
 | 1 | Credible owner-data leakage | immediate | **L** `owner-isolation.spec.ts` (warm cache across owners; unauthorized ≡ missing) · **P** Q3 · **O** | ☐ |
 | 2 | Admission or authorization bypass | immediate | **L** `admitted-route.contract.test.ts`, `src/lib/access/*.test.ts`; matrix arrives only through `[data-admitted]` · **P** Q1.1, Q1.4, Q1.5, Q3.3 · **O** | ☐ |
 | 3 | Destructive write corruption | immediate | **P** Q4 (non-destructive writes only — permanent deletion and revocation are deliberately *not* exercised against a shared environment) · **O** | ☐ |

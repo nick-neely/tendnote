@@ -56,10 +56,14 @@ export default async function globalSetup() {
               path: "/",
               expires: Math.floor(Date.now() / 1000) + 60 * 60,
               httpOnly: true,
-              // The rig serves plain HTTP on loopback while Better Auth is told
-              // its canonical origin is HTTPS, so the cookie is genuinely the
-              // production `__Secure-` cookie. Chromium accepts it because
-              // `localhost` is a trustworthy origin. See `rig.ts`.
+              // Not negotiable, and tried: the cookie Better Auth mints in
+              // production is `__Secure-`prefixed, and Chromium enforces that
+              // prefix on injection too — a storage state carrying the same
+              // cookie with `secure: false` is refused outright with
+              // `Storage.setCookies: Invalid cookie fields`, and all 19 routine
+              // tests fail before their first navigation. So the rig cannot
+              // sidestep WebKit's refusal to put a `Secure` cookie on a
+              // plain-HTTP socket by dropping the attribute; see `rig.ts`.
               secure: true,
               sameSite: "Lax" as const,
             },

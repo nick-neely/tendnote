@@ -322,6 +322,12 @@ context or browser has been closed`. Firefox tolerates the flag, which is why
 only the tier that runs WebKit ever saw it. The flag now belongs to the two
 Chromium projects.
 
+WebKit launches after that fix and then fails for a second, structural reason:
+it will not put the production `__Secure-` session cookie on the rig's
+plain-HTTP loopback socket, so every WebKit request arrives with no `Cookie`
+header and every spec lands on `/sign-in`. That one is not fixable inside the
+rig — see [the finding and the open decision](./nextjs-16-3-preview-qualification.md#finding-webkit-cannot-hold-the-rigs-session-cookie-open-decision).
+
 **The timing rows were measuring the runner.** A GitHub-hosted runner is a
 two-vCPU machine, and the job hosts the measured `next start` on it too. At two
 workers that is two headless browsers plus a server on two cores, and the
@@ -419,6 +425,11 @@ branches. The previous `segment-prefetch-routing.test.ts`, which grepped
   *Settled in #311 for Firefox (5/5 locally); WebKit needs system libraries this
   workstation cannot install and runs on CI. See
   [the Preview qualification record](./nextjs-16-3-preview-qualification.md).*
+  *WebKit has now run on CI twice and cannot be admitted on the loopback rig at
+  all: it refuses to send a `Secure` cookie over plain HTTP and the rig cannot
+  drop the attribute, because Chromium enforces the `__Secure-` prefix on
+  injection. Open decision, recorded with the evidence in
+  [the qualification finding](./nextjs-16-3-preview-qualification.md#finding-webkit-cannot-hold-the-rigs-session-cookie-open-decision).*
 - **Real-origin qualification.** As above: the local rig serves HTTP on loopback
   with an HTTPS canonical URL. #311 runs the same specs against the Vercel
   Preview, where the origin genuinely is HTTPS. *#311 records the Preview runbook

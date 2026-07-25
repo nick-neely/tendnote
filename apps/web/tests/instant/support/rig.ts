@@ -16,8 +16,18 @@
  * production behaviour and neither is weakened here: the rig supplies an HTTPS
  * canonical URL and serves plain HTTP on loopback, exactly as the recorded 16.2
  * baseline did (`docs/research/nextjs-16-current-navigation-baseline.md`,
- * "Runtime"). Chromium treats `http://localhost` as a trustworthy origin, so the
- * `__Secure-`prefixed session cookie is accepted and returned.
+ * "Runtime"). The session cookie is therefore the production `__Secure-`prefixed
+ * one, minted and signed by Better Auth itself.
+ *
+ * Whether a browser will *send* that cookie over a plain-HTTP loopback socket is
+ * not universal, though, and the promotion tier proved it: Chromium and Firefox
+ * treat `http://localhost` as a trustworthy origin and send it, WebKit does not.
+ * On WebKit every request arrived with no `Cookie` header at all and all five
+ * promotion specs landed on `/sign-in`. The rig cannot work around it, and the
+ * three constraints that collide are each deliberate — see
+ * `docs/verification/nextjs-16-3-preview-qualification.md` for the evidence and
+ * the open decision. WebKit's engine evidence belongs to an origin that really
+ * is HTTPS, which is the Preview qualification of ADR 0211.
  *
  * The one thing this shape does not exercise is a browser-issued Better Auth API
  * call, whose `Origin` would be `http://localhost:PORT` against a trusted origin
