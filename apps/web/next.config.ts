@@ -7,6 +7,37 @@ const nextConfig: NextConfig = {
   cacheLife: cacheProfiles,
   partialPrefetching: true,
   reactCompiler: true,
+  async rewrites() {
+    const segmentPrefetch = {
+      type: "header" as const,
+      key: "next-router-segment-prefetch",
+      // Next sends a leading slash followed by the generated segment key.
+      // Capture only the key so it can be appended to the artifact directory.
+      value: "/(?<segmentPath>[A-Za-z0-9_!$~/-]+)",
+    };
+
+    return {
+      beforeFiles: [
+        // The root route's generated artifact directory is named `index.segments`.
+        {
+          source: "/",
+          has: [segmentPrefetch],
+          destination: "/index.segments/:segmentPath.segment.rsc",
+        },
+        // Vercel's static router does not currently apply Next's segment-prefetch
+        // suffix metadata, so map the header-form request to the emitted artifact
+        // before filesystem routing. Ordinary documents and RSC requests do not
+        // carry this header and therefore never match.
+        {
+          source: "/:path+",
+          has: [segmentPrefetch],
+          destination: "/:path+.segments/:segmentPath.segment.rsc",
+        },
+      ],
+      afterFiles: [],
+      fallback: [],
+    };
+  },
   transpilePackages: ["@tendnote/db", "@tendnote/domain"],
   experimental: {
     serverActions: {
