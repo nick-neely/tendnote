@@ -52,7 +52,7 @@ vi.mock("@/lib/auth/client", () => ({
 
 import { AppShell } from "./app-shell";
 import { AppShellEffects } from "./app-shell-effects";
-import { RouteAwareHomeReserve } from "./route-aware-home-reserve";
+import { MobileHomeReserve } from "./mobile-home-reserve";
 
 beforeEach(() => {
   navigationState.pathname = "/";
@@ -75,12 +75,36 @@ async function reopenCaptureForCorrection(user: ReturnType<typeof userEvent.setu
 
 describe("AppShell Phase Seven mobile navigation", () => {
   it("names the exact Today or Review destination in the route-aware reserve", () => {
-    const view = render(<RouteAwareHomeReserve />);
+    const view = render(<MobileHomeReserve />);
     expect(screen.getByRole("heading", { name: "Today" })).toBeDefined();
 
     navigationState.searchParams = new URLSearchParams("tab=review");
-    view.rerender(<RouteAwareHomeReserve />);
+    view.rerender(<MobileHomeReserve />);
     expect(screen.getByRole("heading", { name: "Review" })).toBeDefined();
+  });
+
+  /**
+   * The shell used to resolve the destination from the URL to decide whether the
+   * page canvas was padded, which meant suspending `<main>` on `useSearchParams`
+   * and rendering `children` in both the fallback and the resolved branch. Two
+   * `<main>` elements reached the document, the route painted twice in two
+   * different containers, and the swap between them was the visible first-paint
+   * jump. One `<main>`, and the destination opting in to its own canvas, is the
+   * invariant that keeps it fixed.
+   */
+  it("renders the route into exactly one main, unpadded only when the destination asks", () => {
+    render(
+      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+        <div data-mobile-bleed>
+          <p>Destination</p>
+        </div>
+      </AppShell>,
+    );
+
+    const mains = document.querySelectorAll("main");
+    expect(mains).toHaveLength(1);
+    expect(screen.getAllByText("Destination")).toHaveLength(1);
+    expect(mains[0]?.firstElementChild?.hasAttribute("data-mobile-bleed")).toBe(true);
   });
 
   it("updates route-aware Today and Review state without remounting the frame", () => {

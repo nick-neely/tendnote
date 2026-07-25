@@ -24,9 +24,18 @@ import { AssistantCaptureMenu } from "@/components/assistant-capture-menu";
 import { AssistantDebugTrace } from "@/components/assistant-debug-trace";
 import { AssistantEvidenceCapture } from "@/components/assistant-evidence-capture";
 import { sendNudgeToAgent } from "@/components/assistant-nudge";
+import {
+  AssistantComposerShell,
+  AssistantEmptyCapture,
+  AssistantPanelHeader,
+  AssistantPanelShell,
+  AssistantPrivateChip,
+  assistantChipClass,
+  assistantSubtitleFor,
+} from "@/components/assistant-panel-chrome";
 import { AssistantPromptNudges } from "@/components/assistant-prompt-nudges";
 import { AssistantTurnUnitView, turnUnitKey } from "@/components/assistant-turn-unit";
-import { BugIcon, LockIcon, NotebookPenIcon } from "@/components/icons";
+import { BugIcon } from "@/components/icons";
 import { Shimmer } from "@/components/ui/shimmer";
 import {
   groupTurnToolEntries,
@@ -101,10 +110,7 @@ export function AssistantPanel({
   }
 
   return (
-    <section
-      className="flex h-full min-h-[30rem] flex-col rounded-xl border bg-panel lg:min-h-0"
-      id="assistant"
-    >
+    <AssistantPanelShell id="assistant">
       <AssistantHeader
         context={context}
         onToggleDebug={() => setShowDebug((on) => !on)}
@@ -153,7 +159,7 @@ export function AssistantPanel({
         status={agent.status}
         suggestPersonName={suggestPersonName}
       />
-    </section>
+    </AssistantPanelShell>
   );
 }
 
@@ -166,41 +172,32 @@ function AssistantHeader({
   showDebug: boolean;
   onToggleDebug: () => void;
 }) {
-  const subtitle = context
-    ? `Capturing about ${context.personName}. Saved and linked to them before review.`
-    : "Jot anything you want to remember. Saved privately, reviewed before it becomes memory.";
-
   return (
-    <header className="flex items-start justify-between gap-3 border-b px-4 py-3.5 sm:px-5">
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <h2 className="text-sm font-semibold">Assistant</h2>
-        <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-          {subtitle}
-        </p>
-      </div>
-      <div className="flex shrink-0 items-center gap-1.5">
-        {/* Developer trace toggle for the Eve turn (tool calls + raw stream). */}
-        <button
-          aria-label="Toggle debug trace"
-          aria-pressed={showDebug}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium text-[length:var(--text-caption)] transition-colors",
-            showDebug
-              ? "bg-foreground text-background"
-              : "bg-secondary text-muted-foreground hover:text-foreground",
-          )}
-          onClick={onToggleDebug}
-          type="button"
-        >
-          <BugIcon aria-hidden className="size-3" />
-          Debug
-        </button>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 font-medium text-[length:var(--text-caption)] text-muted-foreground">
-          <LockIcon aria-hidden className="size-3" />
-          Private
-        </span>
-      </div>
-    </header>
+    <AssistantPanelHeader
+      actions={
+        <>
+          {/* Developer trace toggle for the Eve turn (tool calls + raw stream). */}
+          <button
+            aria-label="Toggle debug trace"
+            aria-pressed={showDebug}
+            className={cn(
+              assistantChipClass,
+              "transition-colors",
+              showDebug
+                ? "bg-foreground text-background"
+                : "bg-secondary text-muted-foreground hover:text-foreground",
+            )}
+            onClick={onToggleDebug}
+            type="button"
+          >
+            <BugIcon aria-hidden className="size-3" />
+            Debug
+          </button>
+          <AssistantPrivateChip />
+        </>
+      }
+      subtitle={assistantSubtitleFor(context?.personName)}
+    />
   );
 }
 
@@ -213,7 +210,7 @@ function AssistantConversation({
   status: AgentStatus;
 }) {
   if (messages.length === 0 && status !== "submitted") {
-    return <EmptyCapture />;
+    return <AssistantEmptyCapture />;
   }
 
   return (
@@ -389,7 +386,7 @@ function AssistantComposerForm({
   const [captureFile, setCaptureFile] = useState<File | null>(null);
 
   return (
-    <div className="border-t p-3 sm:p-4">
+    <AssistantComposerShell>
       <EveDraftPersistence onSubmit={onSubmit} ownerUserId={ownerUserId} status={status} />
       {captureFile ? (
         <div className="pb-3">
@@ -410,7 +407,7 @@ function AssistantComposerForm({
           <PromptInputSubmit status={status} />
         </PromptInputFooter>
       </PromptInput>
-    </div>
+    </AssistantComposerShell>
   );
 }
 
@@ -487,25 +484,6 @@ function EveDraftPersistence({
       >
         Discard Eve draft
       </button>
-    </div>
-  );
-}
-
-function EmptyCapture() {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-      <span
-        aria-hidden
-        className="flex size-10 items-center justify-center rounded-full bg-secondary text-muted-foreground"
-      >
-        <NotebookPenIcon className="size-5" />
-      </span>
-      <div className="flex max-w-xs flex-col gap-1.5">
-        <p className="text-sm font-medium">Start your notebook</p>
-        <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-          Who you talked to, what's going on with them, or something to follow up on.
-        </p>
-      </div>
     </div>
   );
 }

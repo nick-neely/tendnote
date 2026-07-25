@@ -2,6 +2,7 @@ import "server-only";
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { getAuth } from "@/lib/auth/server";
 import { signInPathFor } from "../auth/return-to";
 import {
@@ -17,13 +18,24 @@ import { privateBetaAccess } from "./private-beta-flag";
  * Resolve Private Beta Access for the current request from the trusted Better
  * Auth session. Returns identity-only state for pending users so callers can
  * render the limited pending area without touching relationship data.
+ *
+ * Memoised for the request: a destination that streams several independent
+ * regions resolves the owner inside each of them, and every one of those gates
+ * must stay exact rather than being hoisted above the boundaries it protects.
+ * `cache()` keeps that shape honest without re-reading the session per region.
  */
 // fallow-ignore-next-line complexity -- Session failure handling intentionally differs between production and local development.
-export async function getCurrentAccess(): Promise<AccessState> {
+export const getCurrentAccess = cache(async function getCurrentAccess(): Promise<AccessState> {
   let session: Awaited<ReturnType<ReturnType<typeof getAuth>["api"]["getSession"]>> | null = null;
 
+  // The request read stays outside the catch. Under Cache Components an aborted
+  // prerender surfaces as a rejection from `headers()`, and swallowing it outside
+  // production would resolve to an unauthenticated state — baking the access-check
+  // fallback into the shell and running a redirect during prerender. Only the
+  // Better Auth call is allowed to degrade locally.
+  const requestHeaders = await headers();
+
   try {
-    const requestHeaders = await headers();
     session = await getAuth().api.getSession({ headers: requestHeaders });
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
@@ -37,7 +49,7 @@ export async function getCurrentAccess(): Promise<AccessState> {
     : null;
 
   return resolveAccessState(sessionUser, (entity) => privateBetaAccess.resolveAccess(entity));
-}
+});
 
 /** Resolve the local-dev fallback owner from the live environment, if any. */
 function currentLocalFallbackOwnerUserId(): string | undefined {

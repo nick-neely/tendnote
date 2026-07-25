@@ -2,8 +2,8 @@
 
 import type { Person } from "@tendnote/domain";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { DashboardBriefSection } from "@/components/dashboard-brief-section";
 import { DashboardCalendarSuggestionsSection } from "@/components/dashboard-calendar-suggestions-section";
 import { DashboardFollowupsSection } from "@/components/dashboard-followups-section";
@@ -31,6 +31,10 @@ import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-revie
 // is height-bounded) and flows normally on mobile.
 const PANEL =
   "data-[state=inactive]:hidden data-[state=active]:flex flex-col gap-6 min-h-0 pb-1 lg:overflow-y-auto lg:pr-2";
+
+/** The two panels a Home URL can name, and the full set the rail offers. */
+type UrlTab = "today" | "review";
+type RailTab = UrlTab | "followups" | "people";
 
 /**
  * The dashboard's right-hand context panel: a tabbed gutter beside the assistant
@@ -77,16 +81,19 @@ export function DashboardRail({
   dailyBrief: BriefView | null;
   weeklyBrief: BriefView | null;
   reviewContent?: ReactNode;
-  initialTab?: "today" | "followups" | "review" | "people";
+  initialTab?: RailTab;
 }) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState(initialTab);
+  // `?tab=` names the two panels a URL can express, and it stays authoritative:
+  // arriving from anywhere — a nav link, the narrow-viewport Review destination, a
+  // shared link — selects the panel that URL names. Follow-ups and People have no
+  // URL of their own, so picking one is purely local and leaves the URL alone.
+  const urlTab = useSearchParams().get("tab") === "review" ? "review" : "today";
+  const [activeTab, setActiveTab] = useState<RailTab>(initialTab);
+  const lastUrlTab = useRef<UrlTab>(urlTab);
   const [followups, setFollowups] = useState(initialFollowups);
   const [suggestedFollowups, setSuggestedFollowups] = useState(initialFollowupReviews);
   const [calendarSuggestions, setCalendarSuggestions] = useState(initialCalendarSuggestions);
   const [reviewQueue, setReviewQueue] = useState(initialReviewQueue);
-  const [pendingRouteTab, setPendingRouteTab] = useState<"today" | "review" | null>(null);
 
   const resolveFollowup = (id: string) =>
     setFollowups((current) => current.filter((followup) => followup.id !== id));
@@ -101,45 +108,45 @@ export function DashboardRail({
 
   const followupCount = followups.length + suggestedFollowups.length + calendarSuggestions.length;
 
+  // Fresh server data replaces the optimistic collections, but it must not move
+  // the owner: a background refresh after a mutation would otherwise snap them
+  // back to whichever tab the URL named.
   useEffect(() => {
-    setActiveTab(initialTab);
     setFollowups(initialFollowups);
     setSuggestedFollowups(initialFollowupReviews);
     setCalendarSuggestions(initialCalendarSuggestions);
     setReviewQueue(initialReviewQueue);
-    setPendingRouteTab((pending) => (pending === initialTab ? null : pending));
-  }, [
-    initialCalendarSuggestions,
-    initialFollowupReviews,
-    initialFollowups,
-    initialReviewQueue,
-    initialTab,
-  ]);
+  }, [initialCalendarSuggestions, initialFollowupReviews, initialFollowups, initialReviewQueue]);
 
-  const displayedTab = pendingRouteTab ?? activeTab;
+  // A URL the owner did not just ask for — a nav link back to Home, a Review deep
+  // link, Back — takes the rail with it. Our own writes bump the ref first so they
+  // never bounce back through here and undo a local pick.
+  useEffect(() => {
+    if (lastUrlTab.current === urlTab) return;
+    lastUrlTab.current = urlTab;
+    setActiveTab(urlTab);
+  }, [urlTab]);
+
+  function selectTab(tab: RailTab) {
+    setActiveTab(tab);
+    // Every panel is served on every Home URL, so a tab is a view the owner
+    // already holds — switching one is local state, never a navigation. Today and
+    // Review still write the URL through the History API so a refresh or a shared
+    // link lands on the same panel, without re-rendering the route to say so.
+    if (tab !== "today" && tab !== "review") return;
+    const params = new URLSearchParams(window.location.search);
+    if (tab === "review") params.set("tab", "review");
+    else params.delete("tab");
+    const query = params.toString();
+    lastUrlTab.current = tab;
+    window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
+  }
 
   return (
     <Tabs
       className="flex min-h-0 flex-col gap-3 lg:h-full"
-      onValueChange={(value) => {
-        const tab = value as "today" | "followups" | "review" | "people";
-        if (tab === "today" || tab === "review") {
-          // These tabs own independently streamed server data. Keep their
-          // destination-shaped reserve visible until the matching RSC payload
-          // arrives, rather than rendering the previous tab's empty props.
-          setPendingRouteTab(tab);
-        } else {
-          setActiveTab(tab);
-          setPendingRouteTab(null);
-          return;
-        }
-        const params = new URLSearchParams(window.location.search);
-        if (tab === "review") params.set("tab", "review");
-        else params.delete("tab");
-        const query = params.toString();
-        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-      }}
-      value={displayedTab}
+      onValueChange={(value) => selectTab(value as RailTab)}
+      value={activeTab}
     >
       <TabsList className="w-full shrink-0">
         <TabsTrigger className="group/tab" value="today">
@@ -161,27 +168,17 @@ export function DashboardRail({
       {/* Today — the morning glance: today's signals, then the briefs. The
           briefs live only here; they have no tab of their own. */}
       <TabsContent className={PANEL} value="today">
-        {pendingRouteTab === "today" ? (
-          <RailLoadingReserve tab="today" />
-        ) : (
-          <>
-            {birthdays.length > 0 ? <BirthdaysSection birthdays={birthdays} /> : null}
+        {birthdays.length > 0 ? <BirthdaysSection birthdays={birthdays} /> : null}
 
-            {/* Persisted briefs: the current daily brief, then the weekly review (PRD
-                #65). Keying on the brief id remounts on (re)generation so new items
-                appear, while dismiss/snooze keep their optimistic state. */}
-            <DashboardBriefSection
-              brief={dailyBrief}
-              cadence="daily"
-              key={dailyBrief?.id ?? "daily"}
-            />
-            <DashboardBriefSection
-              brief={weeklyBrief}
-              cadence="weekly"
-              key={weeklyBrief?.id ?? "weekly"}
-            />
-          </>
-        )}
+        {/* Persisted briefs: the current daily brief, then the weekly review (PRD
+            #65). Keying on the brief id remounts on (re)generation so new items
+            appear, while dismiss/snooze keep their optimistic state. */}
+        <DashboardBriefSection brief={dailyBrief} cadence="daily" key={dailyBrief?.id ?? "daily"} />
+        <DashboardBriefSection
+          brief={weeklyBrief}
+          cadence="weekly"
+          key={weeklyBrief?.id ?? "weekly"}
+        />
       </TabsContent>
 
       {/* Follow-ups — active reminders, then suggestions awaiting a yes/no. */}
@@ -213,9 +210,7 @@ export function DashboardRail({
       {/* Review — the shared Review Queue: suggested memories and Suggested actions,
           each accepted or set aside in place (ADR 0152). */}
       <TabsContent className={PANEL} value="review">
-        {pendingRouteTab === "review" ? (
-          <RailLoadingReserve tab="review" />
-        ) : reviewContent ? (
+        {reviewContent ? (
           reviewContent
         ) : reviewQueue.count === 0 ? (
           <RailEmpty>
@@ -236,18 +231,6 @@ export function DashboardRail({
         <PeopleSection people={people} />
       </TabsContent>
     </Tabs>
-  );
-}
-
-function RailLoadingReserve({ tab }: { tab: "today" | "review" }) {
-  const label = tab === "review" ? "Review" : "Today";
-  return (
-    <section aria-busy="true" aria-label={`Loading ${label}`} className="flex flex-col gap-3">
-      <h2 className="px-1 font-medium text-[length:var(--text-small)] text-muted-foreground">
-        {label}
-      </h2>
-      <div className="h-24 animate-pulse rounded-xl border bg-muted/40" />
-    </section>
   );
 }
 

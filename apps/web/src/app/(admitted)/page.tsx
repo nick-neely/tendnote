@@ -1,7 +1,4 @@
 import { getCurrentBrief } from "@tendnote/db/queries/briefs";
-import { listCalendarSuggestedFollowups } from "@tendnote/db/queries/calendar-followups";
-import { listActiveFollowups, listSuggestedFollowupReviews } from "@tendnote/db/queries/followups";
-import { searchPeople } from "@tendnote/db/queries/people";
 import { getOwnerTodayContext } from "@tendnote/db/queries/today";
 import type { BriefCadence, TodayShortlistResponse } from "@tendnote/domain";
 import { connection } from "next/server";
@@ -11,13 +8,18 @@ import {
   refreshTodayAction,
   suppressTodayItemAction,
 } from "@/app/actions/today";
-import { AdmittedRoute } from "@/components/admitted-route";
+import { DashboardAssistant } from "@/components/dashboard-assistant";
+import { DashboardFrame } from "@/components/dashboard-frame";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { DashboardRail } from "@/components/dashboard-rail";
-import { EveLauncher } from "@/components/eve-launcher";
+import {
+  DashboardAssistantReserve,
+  DashboardGreetingReserve,
+  DashboardRailReserve,
+} from "@/components/dashboard-reserve";
+import { MobileHomeReserve } from "@/components/mobile-home-reserve";
 import { MobileTodayDestination } from "@/components/mobile-today-destination";
 import { ReviewQueueFamilySection } from "@/components/review-queue-section";
-import { RouteAwareHomeReserve } from "@/components/route-aware-home-reserve";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import { type BriefView, toBriefView } from "@/lib/brief-view";
@@ -27,115 +29,122 @@ import {
 } from "@/lib/cache/today-review-views";
 import { toCalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
 import { getUpcomingBirthdays } from "@/lib/dashboard-brief";
+import {
+  dashboardActiveFollowups,
+  dashboardAssistantHints,
+  dashboardCalendarSuggestions,
+  dashboardPeople,
+  dashboardSuggestedFollowups,
+} from "@/lib/dashboard-context";
 import { toDashboardFollowupView } from "@/lib/followup-view";
 import type { ReviewQueueFamily } from "@/lib/review-queue";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 
-// A handful of the soonest active reminders — a calm prompt, not a task feed (#45).
-const DASHBOARD_FOLLOWUP_LIMIT = 5;
-
+type HomeTab = "today" | "review";
 type HomeProps = { searchParams?: Promise<{ tab?: string }> };
 
+async function homeTab(searchParams: HomeProps["searchParams"]): Promise<HomeTab> {
+  return (await searchParams)?.tab === "review" ? "review" : "today";
+}
+
+/**
+ * Every streamed region keeps its own exact admission gate, so each one has to
+ * name the URL the owner comes back to — including the tab they were on, since
+ * whichever region resolves first is the one that redirects.
+ */
+function admittedHomeOwner(tab: HomeTab): Promise<string> {
+  return requireAdmittedOwner({ returnTo: tab === "review" ? "/?tab=review" : "/" });
+}
+
+/**
+ * Home is one destination with two rail tabs, not two destinations. Nothing in
+ * this component reads the request, so the whole canvas — greeting slot,
+ * assistant column, and rail tab bar — belongs to the static shell and is on
+ * screen before the first owner-scoped read resolves. Each region below streams
+ * independently behind a reserve shaped like itself, and switching Today↔Review
+ * moves nothing: it selects a rail panel that is already there.
+ */
 export default function Home(props: HomeProps) {
   return (
-    <Suspense fallback={<RouteAwareHomeReserve />}>
-      <HomeRoute {...props} />
-    </Suspense>
-  );
-}
-
-async function HomeRoute({ searchParams }: HomeProps) {
-  const requestedTab = (await searchParams)?.tab;
-  const isReview = requestedTab === "review";
-  return (
-    <AdmittedRoute
-      mobileDestination={isReview ? undefined : <HomeMobileContent />}
-      title={isReview ? "Review" : "Today"}
-    >
-      <HomeContent requestedTab={requestedTab} />
-    </AdmittedRoute>
-  );
-}
-
-async function HomeContent({ requestedTab }: { requestedTab?: string }) {
-  if (process.env.NODE_ENV !== "test") await connection();
-  const ownerUserId = await requireAdmittedOwner({
-    returnTo: requestedTab === "review" ? "/?tab=review" : "/",
-  });
-  const selectedTab = requestedTab === "review" ? "review" : "today";
-
-  return (
     <>
-      {/* On desktop the dashboard fills the viewport and does not scroll itself
-          (100dvh − 3.5rem header − 4rem main padding); the chat and the rail each
-          scroll inside their own column instead of growing the page. */}
-      <div className="flex flex-col gap-6 lg:h-[calc(100dvh-7.5rem)] lg:gap-8 lg:overflow-hidden">
-        <DashboardGreeting />
+      {/* Narrow viewports get the focused Today (or Review) destination, which
+          owns its own canvas — `data-mobile-bleed` tells the shell not to pad it. */}
+      <div className="lg:hidden" data-mobile-bleed>
+        <Suspense fallback={<MobileHomeReserve />}>
+          <HomeMobileDestination searchParams={props.searchParams} />
+        </Suspense>
+      </div>
 
-        {/* grid-rows minmax(0,1fr) makes the single row fill the bounded grid
-            height; without it the row is auto-sized to content and the chat
-            column grows past the viewport instead of scrolling inside itself.
-            On mobile the assistant leads (order-1) so the chat sits at the top
-            under the greeting rather than buried beneath the rail; on desktop it
-            stays the left content column with the tabbed rail on the right. The
-            rail widens a touch from lg→xl so its tabs and cards keep room. */}
-        <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
-          {selectedTab === "today" ? (
-            <div className="order-1 h-[70dvh] lg:h-full lg:min-h-0">
-              <Suspense
-                fallback={<div className="h-full animate-pulse rounded-xl border bg-muted/40" />}
-              >
-                <EveLauncher ownerUserId={ownerUserId} />
-              </Suspense>
-            </div>
-          ) : (
-            <div className="order-1 hidden lg:block" aria-hidden />
-          )}
-          {/* The rail manages its own scroll inside the active tab panel (the tab
-              bar stays pinned), so the column itself is only height-bounded. */}
-          <div className="order-2 lg:h-full lg:min-h-0">
-            <Suspense
-              fallback={<div className="h-full animate-pulse rounded-xl border bg-muted/40" />}
-            >
-              <HomeRail ownerUserId={ownerUserId} selectedTab={selectedTab} />
+      <div className="hidden lg:contents">
+        <DashboardFrame
+          assistant={
+            <Suspense fallback={<DashboardAssistantReserve />}>
+              <HomeAssistant searchParams={props.searchParams} />
             </Suspense>
-          </div>
-        </div>
+          }
+          greeting={
+            <Suspense fallback={<DashboardGreetingReserve />}>
+              <HomeGreeting />
+            </Suspense>
+          }
+          rail={
+            <Suspense fallback={<DashboardRailReserve />}>
+              <HomeRail searchParams={props.searchParams} />
+            </Suspense>
+          }
+        />
       </div>
     </>
   );
 }
 
-async function HomeRail({
-  ownerUserId,
-  selectedTab,
-}: {
-  ownerUserId: string;
-  selectedTab: "today" | "review";
-}) {
-  if (selectedTab === "review") {
-    return (
-      <DashboardRail
-        birthdays={[]}
-        calendarSuggestions={[]}
-        dailyBrief={null}
-        followupReviews={[]}
-        followups={[]}
-        initialTab="review"
-        people={[]}
-        reviewContent={<ReviewQueueStreams ownerUserId={ownerUserId} />}
-        reviewQueue={{ count: 0, failures: [], items: [] }}
-        weeklyBrief={null}
-      />
-    );
-  }
+/**
+ * The greeting reads the server clock, so it is request-bound and streams into
+ * the reserve that holds its two lines. It is deliberately its own boundary: a
+ * time-of-day heading must never make the assistant wait.
+ */
+async function HomeGreeting() {
+  if (process.env.NODE_ENV !== "test") await connection();
+  return <DashboardGreeting />;
+}
 
+/**
+ * The assistant needs the owner's id for its on-device draft key, and two purely
+ * cosmetic hints: the Calendar-derived prompt nudges and a real name for the
+ * composer placeholder. Both come from reads this destination already performs
+ * for the rail, memoised per request — so putting the assistant on screen costs
+ * no extra query and starts no conversation.
+ */
+async function HomeAssistant({ searchParams }: HomeProps) {
+  if (process.env.NODE_ENV !== "test") await connection();
+  const ownerUserId = await admittedHomeOwner(await homeTab(searchParams));
+  const hints = await dashboardAssistantHints(ownerUserId);
+
+  return (
+    <DashboardAssistant
+      nudges={hints.nudges}
+      ownerUserId={ownerUserId}
+      suggestPersonName={hints.suggestPersonName}
+    />
+  );
+}
+
+/**
+ * Every rail tab is served on both URLs. The tab is a view over data the owner
+ * already has, so `?tab=review` selects a panel rather than swapping the
+ * composition — which is what kept Follow-ups and People from reading as empty
+ * whenever Review was the entry point.
+ */
+async function HomeRail({ searchParams }: HomeProps) {
+  if (process.env.NODE_ENV !== "test") await connection();
+  const tab = await homeTab(searchParams);
+  const ownerUserId = await admittedHomeOwner(tab);
   const [people, followups, followupReviews, calendarSuggestions, dailyBrief, weeklyBrief] =
     await Promise.all([
-      searchPeople({ ownerUserId, limit: 8 }),
-      getDashboardFollowups(ownerUserId),
-      getDashboardFollowupReviews(ownerUserId),
-      getDashboardCalendarSuggestions(ownerUserId),
+      dashboardPeople(ownerUserId),
+      dashboardActiveFollowups(ownerUserId),
+      dashboardSuggestedFollowups(ownerUserId),
+      dashboardCalendarSuggestions(ownerUserId),
       getDashboardBrief(ownerUserId, "daily"),
       getDashboardBrief(ownerUserId, "weekly"),
     ]);
@@ -143,12 +152,15 @@ async function HomeRail({
   return (
     <DashboardRail
       birthdays={getUpcomingBirthdays(people)}
-      calendarSuggestions={calendarSuggestions}
+      calendarSuggestions={calendarSuggestions.map((suggestion) =>
+        toCalendarSuggestionReviewView(suggestion),
+      )}
       dailyBrief={dailyBrief}
-      followupReviews={followupReviews}
-      followups={followups}
-      initialTab="today"
+      followupReviews={followupReviews.map((review) => toSuggestedFollowupReviewView(review))}
+      followups={followups.map((summary) => toDashboardFollowupView(summary))}
+      initialTab={tab}
       people={people}
+      reviewContent={<ReviewQueueStreams ownerUserId={ownerUserId} />}
       reviewQueue={{ count: 0, failures: [], items: [] }}
       weeklyBrief={weeklyBrief}
     />
@@ -214,11 +226,26 @@ function ReviewFamilyReserve({ heading }: { heading: string }) {
   );
 }
 
-async function HomeMobileContent() {
+/** The narrow-viewport destination: the focused Today surface, or the Review list. */
+async function HomeMobileDestination({ searchParams }: HomeProps) {
   if (process.env.NODE_ENV !== "test") await connection();
-  const ownerUserId = await requireAdmittedOwner({ returnTo: "/" });
+  const tab = await homeTab(searchParams);
+  const ownerUserId = await admittedHomeOwner(tab);
+
+  if (tab === "review") {
+    return (
+      <div className="flex flex-col gap-6 px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6">
+        <header className="flex flex-col gap-1">
+          <h1 className="font-semibold text-[length:var(--text-h1)] leading-[var(--text-h1-line)]">
+            Review
+          </h1>
+        </header>
+        <ReviewQueueStreams ownerUserId={ownerUserId} />
+      </div>
+    );
+  }
+
   const todayContext = await getOwnerTodayContext({ ownerUserId });
-  const todayShortlist = await getHomeToday(ownerUserId, todayContext);
 
   return (
     <MobileTodayDestination
@@ -228,7 +255,7 @@ async function HomeMobileContent() {
         refresh: refreshTodayAction,
         suppress: suppressTodayItemAction,
       }}
-      todayInitial={todayShortlist}
+      todayInitial={await getHomeToday(ownerUserId, todayContext)}
       todayLocalDate={todayContext.localDate}
       todayTimeZone={todayContext.timeZone}
     />
@@ -268,56 +295,5 @@ async function getDashboardBrief(
     }
 
     return null;
-  }
-}
-
-async function getDashboardFollowups(ownerUserId: string) {
-  try {
-    // The soonest active reminders across people, due-first, each named by person.
-    const followups = await listActiveFollowups({
-      ownerUserId,
-      limit: DASHBOARD_FOLLOWUP_LIMIT,
-    });
-
-    return followups.map((summary) => toDashboardFollowupView(summary));
-  } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("Unable to load active follow-ups.", error);
-    }
-
-    return [];
-  }
-}
-
-async function getDashboardFollowupReviews(ownerUserId: string) {
-  try {
-    // A few of the soonest suggested follow-ups across people, for inline review.
-    const reviews = await listSuggestedFollowupReviews({
-      ownerUserId,
-      limit: DASHBOARD_FOLLOWUP_LIMIT,
-    });
-
-    return reviews.map((review) => toSuggestedFollowupReviewView(review));
-  } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("Unable to load suggested follow-ups.", error);
-    }
-
-    return [];
-  }
-}
-
-async function getDashboardCalendarSuggestions(ownerUserId: string) {
-  try {
-    const suggestions = await listCalendarSuggestedFollowups(ownerUserId);
-    return suggestions
-      .slice(0, DASHBOARD_FOLLOWUP_LIMIT)
-      .map((suggestion) => toCalendarSuggestionReviewView(suggestion));
-  } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("Unable to load Calendar suggested follow-ups.", error);
-    }
-
-    return [];
   }
 }

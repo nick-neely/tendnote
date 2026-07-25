@@ -144,13 +144,10 @@ function MobileShellContent({
             todayTimeZone={todayTimeZone}
           />
         ) : null)}
-      {routeAwareMobileNavigation ? (
-        <Suspense fallback={<MobileRouteMain>{children}</MobileRouteMain>}>
-          <RouteAwareMobileMain>{children}</RouteAwareMobileMain>
-        </Suspense>
-      ) : (
-        <MobileRouteMain mobileHome={mobileHome}>{children}</MobileRouteMain>
-      )}
+      {/* One `<main>`, always. A destination that wants the full-bleed narrow
+          canvas marks its own subtree with `data-mobile-bleed` (see globals.css)
+          instead of the shell resolving the destination from the URL. */}
+      <MobileRouteMain mobileHome={mobileHome}>{children}</MobileRouteMain>
       {routeAwareMobileNavigation ? (
         <Suspense
           fallback={
@@ -206,13 +203,6 @@ function MobileRouteMain({
       {children}
     </main>
   );
-}
-
-function RouteAwareMobileMain({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const mobileHome = pathname === "/" && searchParams.get("tab") !== "review";
-  return <MobileRouteMain mobileHome={mobileHome}>{children}</MobileRouteMain>;
 }
 
 function RouteAwareMobileBottomBar({

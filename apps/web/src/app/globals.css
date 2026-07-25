@@ -15,6 +15,22 @@
   display: block;
 }
 
+/*
+ * A destination may paint its own full-bleed narrow canvas (the mobile Today
+ * orientation band). It declares that with `data-mobile-bleed` rather than
+ * having the shell resolve the destination from the URL: reading the URL in the
+ * shell meant suspending `<main>` on `useSearchParams`, which rendered the whole
+ * route twice — once in the fallback and once resolved — and shifted the layout
+ * between the two. Desktop padding is deliberately outside the query.
+ */
+@media (width < 64rem) {
+  main:has(> [data-mobile-bleed]) {
+    max-width: none;
+    padding: 0;
+    gap: 0;
+  }
+}
+
 /* Class-based dark variant (next-themes attribute="class" toggles `.dark` on
    <html>). `.dark, .dark *` so `dark:` utilities apply to the `.dark` element
    itself as well as its descendants — matching the shadcn Next.js recipe. */
