@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { ISOLATION_OWNER, PRIMARY_OWNER } from "@tendnote/db/instant/fixture-data";
+import { UNCOVERED_ENGINES_FILE } from "./diagnostics";
 import { assertInstantLockEngaged } from "./lock-proof";
-import { instantBaseUrl, instantServerEnv, storageStatePath } from "./rig";
+import { instantArtifactDir, instantBaseUrl, instantServerEnv, storageStatePath } from "./rig";
 
 /**
  * Prepares the deterministic fixture once per run: reset and seed both synthetic
@@ -35,6 +36,10 @@ export default async function globalSetup() {
   // (which resolves its folder from `import.meta.url`) out of Playwright's
   // CommonJS transform.
   await seedFixtureDatabase();
+
+  // Per-run state, unlike the accumulating diagnostics: a leftover line would
+  // report an engine as uncovered on a run where it ran.
+  await rm(join(instantArtifactDir(), UNCOVERED_ENGINES_FILE), { force: true });
 
   const { mintOwnerSession } = await import("./session");
   let primaryCookie = "";

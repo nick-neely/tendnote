@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -65,6 +65,43 @@ const rows = [...groups.entries()]
 
 const ms = (value) => (value === null ? "—" : `${Math.round(value)} ms`);
 const kib = (value) => (value === null ? "—" : `${Math.round(value / 1024)} KiB`);
+
+reportUncoveredEngines();
+
+/**
+ * Name every engine that executed no specs, with the reason it did not.
+ *
+ * The diagnostics table below only has rows for engines that *ran*, and an
+ * absent row is indistinguishable from an engine nobody thought to configure.
+ * The case that matters is the opposite one — a green `Promotion verify` must
+ * not be readable as evidence about an engine that never executed a single
+ * spec — so it is stated above the table rather than inferred from a gap in it.
+ * The harness writes the file as it skips; see
+ * `apps/web/tests/instant/support/engine-support.ts`.
+ */
+function reportUncoveredEngines() {
+  const reasons = readUncoveredEngines(join(repoRoot, "apps/web/.instant/uncovered-engines.jsonl"));
+  if (reasons.size === 0) return;
+
+  console.log("### Engines NOT covered by this run\n");
+  for (const [project, reason] of reasons) {
+    console.log(`- **${project}** — no spec executed. ${reason}`);
+  }
+  console.log("");
+}
+
+/** One reason per project, last write winning; the harness appends per skip. */
+function readUncoveredEngines(path) {
+  const reasons = new Map();
+  if (!existsSync(path)) return reasons;
+
+  for (const line of readFileSync(path, "utf8").split("\n").filter(Boolean)) {
+    const record = JSON.parse(line);
+    reasons.set(record.project, record.reason);
+  }
+
+  return reasons;
+}
 
 console.log(
   "| Project | Scenario | Cache | Samples | Ack | Shell | DOM stable | Complete | CLS | RSC | Requests | Script |",

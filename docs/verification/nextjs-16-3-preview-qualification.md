@@ -104,7 +104,7 @@ build and sign-in still works, and record the time and trigger below.
 | Mutation reconciliation (optimistic ack, authoritative settle) | `action-reconciliation.spec.ts` | same |
 | Request-bound admission | `admitted-route.contract.test.ts`, `src/lib/access/*.test.ts` | unit suite |
 | Reduced Firefox qualification | `--project=promotion-firefox` — 5/5, 2026-07-25 | below |
-| Reduced WebKit qualification | **blocked on a decision** — executed in CI twice, and the loopback rig cannot admit an owner on WebKit at all | below |
+| Reduced WebKit qualification | **moved to the Preview** — the loopback rig cannot admit an owner on WebKit at all, so `promotion-webkit` is gated on an HTTPS origin and its evidence is Q1/Q2 | below, and Q1/Q2 |
 
 ### Reduced Firefox and WebKit qualification
 
@@ -154,9 +154,10 @@ attempted interactively.
 WebKit is therefore CI's, not a workstation's, and `Promotion verify` has now run
 it twice. See the finding below: **the loopback rig cannot admit an owner on
 WebKit at all**, so WebKit's engine evidence is not obtainable from this rig and
-belongs to the deployed Preview.
+belongs to the deployed Preview — which is now where it is produced, in
+[Q1](#q1--better-auth-on-a-real-origin) and [Q2](#q2--critical-navigation-on-the-deployed-router).
 
-#### Finding: WebKit cannot hold the rig's session cookie (open decision)
+#### Finding: WebKit cannot hold the rig's session cookie (resolved — evidence moves to the Preview)
 
 `Promotion verify` run 30170042186 was WebKit's first execution anywhere. It
 failed at launch, not on behaviour: `--disable-dev-shm-usage` sat on Playwright's
@@ -200,25 +201,33 @@ cookie fields` and all 19 routine tests fail before their first navigation.
 Renaming the cookie would mean the rig no longer presents the production session
 token, which is the property that makes the matrix worth anything.
 
-**Recommendation.** Do not weaken the auth baseline and do not put a TLS proxy in
-the measured path for this. WebKit's qualification is a real-origin question, and
-ADR 0211 already puts real-origin qualification on the deployed Preview, where
-the scheme genuinely is HTTPS and all three constraints hold at once. The
-concrete choice, which needs a human decision because it changes what the
-promotion tier covers:
+**Resolution.** The auth baseline is not weakened and no TLS proxy goes in the
+measured path. WebKit's qualification is a real-origin question, and ADR 0211
+already puts real-origin qualification on the deployed Preview, where the scheme
+genuinely is HTTPS and all three constraints hold at once. So:
 
-- **Recommended** — gate `promotion-webkit` on the rig serving HTTPS, so it is
-  skipped on the loopback rig and runs by itself against the Preview, and move
-  the WebKit go/no-go line below to Q1/Q2 of the Preview runbook. Firefox
-  continues to cover "not-Chromium" on the rig every promotion run.
-- Alternative — keep the project as-is and accept that `Promotion verify` is red
-  on five WebKit tests until the Preview qualification supersedes it.
-- Rejected — serve the rig over TLS (proxy hop in the measured streaming path,
-  plus per-request crypto on a two-vCPU runner, both inside the timing budgets),
-  or drop `useSecureCookies` for the rig (a change to the shared security
-  baseline for a test).
+- `promotion-webkit` is **gated on the rig serving HTTPS**. On an `http://` base
+  URL every WebKit spec is skipped with a reason; on an `https://` one — the
+  Preview — the project runs unchanged. The rule is
+  `apps/web/tests/instant/support/engine-support.ts`, applied by an auto fixture
+  in `support/fixtures.ts` so no spec can forget it, and pinned by
+  `scripts/instant-matrix-ci.test.ts`, which fails if the gate, the reason
+  string, or the wiring that applies it is removed.
+- The project stays **defined and installed**, rather than dropped from the tier.
+  A project that vanished on HTTP would make a green `Promotion verify` look like
+  three-engine evidence, which is the one thing this must not do.
+- The skip is **loud in three places**: Playwright's reporter prints five
+  `skipped` lines, the skip annotation carries the full reason, and
+  `scripts/summarize-instant-diagnostics.mjs` writes an **"Engines NOT covered by
+  this run"** section above the diagnostics table in the CI step summary.
+- WebKit's go/no-go line **moves to Q1/Q2** of the Preview runbook below, which
+  is where the evidence is now produced.
+- Firefox continues to cover "not Chromium" on the rig on every promotion run.
 
-Nothing has been changed in the tier pending that decision.
+Rejected, and recorded so they are not re-proposed: serving the rig over TLS (a
+proxy hop in the measured streaming path, plus per-request crypto on a two-vCPU
+runner, both inside the timing budgets), and dropping `useSecureCookies` for the
+rig (a change to the shared security baseline for a test).
 
 ### The two diagnostics the browser cannot record
 
@@ -349,6 +358,21 @@ Preview.
    confirm it resolves to sign-in rather than a prefetched product shell.
 5. With a *pending* (not admitted) account, confirm the pending-access
    destination renders and no admitted shell flashes first.
+6. **Repeat 1–4 in Safari** (or any WebKit browser). This is WebKit's admission
+   evidence and it exists nowhere else: the local rig serves plain HTTP, WebKit
+   will not send the production `__Secure-` session cookie over it, and
+   `promotion-webkit` is skipped there for exactly that reason
+   ([the finding](#finding-webkit-cannot-hold-the-rigs-session-cookie-resolved--evidence-moves-to-the-preview)).
+   The Preview is the first origin where WebKit can hold a session at all, so a
+   failure here is an untested-engine finding rather than a regression — record
+   it as such.
+
+Optionally, and better than by hand: point the harness itself at the Preview.
+`TENDNOTE_INSTANT_PORT` and the rig's URL helpers derive from one base, so a run
+against an `https://` origin un-skips `promotion-webkit` automatically. It is not
+a substitute for Q1 — the matrix injects a session and never signs in — and the
+Preview satisfies none of the fixture's determinism preconditions, so treat any
+timings from it as indicative only.
 
 ### Q2 — Critical navigation on the deployed router
 
@@ -370,7 +394,13 @@ Signed in as an admitted owner, on the Preview, with the network panel open:
    `ERR_MODULE_NOT_FOUND`, or chunk-load failure is the hydration/module
    trigger — this is the step that would catch the reported 16.3 Turbopack file
    tracing regression, which no local build can reproduce.
-5. Mobile Today → Review is the known network-bound commit
+5. **Repeat 1, 2, and 4 in Safari.** With Q1.6 this is the whole of WebKit's
+   engine evidence for the candidate — shell before dynamic response, no blank or
+   frozen navigation, no reserve left behind, clean console — and it is the
+   substitute for the `promotion-webkit` project that CI skips. Chromium and
+   Firefox are already covered automatically by `Promotion verify`; WebKit is
+   covered only by this step being done.
+6. Mobile Today → Review is the known network-bound commit
    ([#310's finding](./nextjs-16-3-instant-navigation.md#finding-review-has-no-reusable-shell-to-commit-from)).
    Under real latency it is the row most likely to feel slow. Judge it against
    "blank or frozen", not against 100 ms; record how it feels either way, because
@@ -442,9 +472,10 @@ proved before real traffic. Every one reverses to the same place: promote
 [The reversal target](#the-reversal-target).
 
 Legend — **L** tested locally (automated, on this branch — which means Chromium
-desktop and mobile plus the reduced desktop Firefox tier; **never WebKit**, which
-has only ever run in CI); **P** exercisable against the Preview (the runbook step
-that does it); **O** observe-only (only production traffic can show it).
+desktop and mobile plus the reduced desktop Firefox tier, and **never WebKit**,
+which no rig serving plain HTTP can admit an owner on); **P** exercisable against
+the Preview (the runbook step that does it); **O** observe-only (only production
+traffic can show it).
 
 Row 0 is not one of ADR 0211's triggers. It is the precondition the local column
 depends on, and it leads because it is the only line here that has never been
@@ -452,14 +483,15 @@ executed at all.
 
 | # | Trigger | Class | Proof | Verdict |
 | --- | --- | --- | --- | --- |
-| 0 | *(precondition)* `Promotion verify` green — the only WebKit evidence that exists | gate | Record the run URL and the head and base SHAs it covered. It cannot be a required status check (label-only trigger; see above), so the recorded artifact **is** the enforcement. **Blocked:** run 30171146025 (head `f7fbcac`) is green on Chromium and Firefox and red on all five WebKit specs, which cannot be admitted on the loopback rig at all — see [the finding](#finding-webkit-cannot-hold-the-rigs-session-cookie-open-decision). This row cannot be ticked until that decision is made; if WebKit moves to the Preview, so does this row. | ☐ |
+| 0 | *(precondition)* `Promotion verify` green — Chromium **and Firefox** only | gate | Record the run URL and the head and base SHAs it covered. It cannot be a required status check (label-only trigger; see above), so the recorded artifact **is** the enforcement. **It is not WebKit evidence:** `promotion-webkit` is skipped on the loopback rig and the run's step summary says so under "Engines NOT covered by this run" — see [the finding](#finding-webkit-cannot-hold-the-rigs-session-cookie-resolved--evidence-moves-to-the-preview). | ☐ |
+| 0b | *(precondition)* WebKit exercised on the Preview | gate | **P** Q1.6 and Q2.5, by hand in Safari against the real HTTPS origin. Nothing automated covers this, and no green CI run ever will. | ☐ |
 | 1 | Credible owner-data leakage | immediate | **L** `owner-isolation.spec.ts` (warm cache across owners; unauthorized ≡ missing) · **P** Q3 · **O** | ☐ |
 | 2 | Admission or authorization bypass | immediate | **L** `admitted-route.contract.test.ts`, `src/lib/access/*.test.ts`; matrix arrives only through `[data-admitted]` · **P** Q1.1, Q1.4, Q1.5, Q3.3 · **O** | ☐ |
 | 3 | Destructive write corruption | immediate | **P** Q4 (non-destructive writes only — permanent deletion and revocation are deliberately *not* exercised against a shared environment) · **O** | ☐ |
 | 4 | Cross-owner cache contamination | immediate | **L** `owner-isolation.spec.ts` (B always reads A's warm cache) · **P** Q3.2, Q3.5 · **O** | ☐ |
 | 5 | Reproducible sign-in loop | reversal | **P** Q1.3 — *not* provable locally: the matrix injects a session and never signs in through a browser · **O** | ☐ |
-| 6 | Blank or frozen critical navigation | reversal | **L** Chromium matrix (19 rows) + Firefox smoke (3): shell ≤ 100 ms, CLS ≤ 0.01, no reserve left; WebKit only via row 0 · **P** Q2.1–Q2.2 · **O** | ☐ |
-| 7 | Unusable streamed content | reversal | **L** same rows: each asserts authoritative owner content and that no Shaped Reserve remains; WebKit only via row 0 · **P** Q2.2, Q5.1 · **O** | ☐ |
+| 6 | Blank or frozen critical navigation | reversal | **L** Chromium matrix (19 rows) + Firefox smoke (3): shell ≤ 100 ms, CLS ≤ 0.01, no reserve left; WebKit only via row 0b · **P** Q2.1–Q2.2 · **O** | ☐ |
+| 7 | Unusable streamed content | reversal | **L** same rows: each asserts authoritative owner content and that no Shaped Reserve remains; WebKit only via row 0b · **P** Q2.2, Q5.1 · **O** | ☐ |
 | 8 | Hydration or module failure | reversal | **L** per-context runtime errors asserted empty (Chromium + Firefox) · **P** Q2.4 — Vercel file tracing and chunk loading only exist there · **O** | ☐ |
 | 9 | Mutation reconciliation failure | reversal | **L** `action-reconciliation.spec.ts` (optimistic ack + authoritative settle, both viewports) · **P** Q4 · **O** | ☐ |
 | 10 | Eve routing failure | reversal | **P** Q5 — *not* provable locally: the fixture forbids model calls and external network, and `withEve` only generates routes under `VERCEL` · **O** | ☐ |
@@ -478,9 +510,12 @@ Reading it:
   no local proof of the deployment-specific half. If the Preview steps that
   cover them are skipped, the candidate is being promoted on faith for those
   three.
-- Row **0** is what makes the **L** column mean three engines rather than two.
-  Without it, WebKit is untested everywhere and 6, 7, 8, and 9 are Chromium and
-  Firefox claims wearing a cross-engine label.
+- The **L** column means exactly two engines: Chromium and Firefox. It cannot
+  mean three, because the rig cannot admit an owner on WebKit — row **0** is a
+  two-engine gate and says so. Row **0b** is the only thing that makes 6, 7, 8,
+  and 9 cross-engine claims rather than Chromium-and-Firefox claims wearing a
+  cross-engine label, and it is manual. Skipping it means promoting with WebKit
+  untested everywhere.
 
 ## Promotion
 

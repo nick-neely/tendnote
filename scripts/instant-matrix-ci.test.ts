@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  unsupportedEngineReason,
+  WEBKIT_LOOPBACK_SKIP_REASON,
+} from "../apps/web/tests/instant/support/engine-support";
 
 const repoRoot = join(import.meta.dirname, "..");
 
@@ -124,6 +128,14 @@ describe("Full promotion browser matrix trigger", () => {
     expect(pullRequest).not.toContain("full_browser_matrix");
   });
 
+  it("keeps installing WebKit, which the Preview qualification still needs", () => {
+    const workflow = read(".github/workflows/reusable-verify.yml");
+    // The engine is skipped on the loopback rig, not removed from the tier. A
+    // run pointed at an HTTPS origin executes it, and it cannot if the runner
+    // never downloaded it.
+    expect(workflow).toContain("chromium firefox webkit");
+  });
+
   it("does not share a concurrency group with pull-request verification", () => {
     // pr-verify keys its group on a pull-request number, which a dispatch does
     // not have; sharing the group would let one cancel the other.
@@ -131,5 +143,74 @@ describe("Full promotion browser matrix trigger", () => {
     expect(group).toBeDefined();
     expect(group).not.toContain("pull_request");
     expect(pullRequest).not.toContain(`group: ${group}`);
+  });
+});
+
+/**
+ * WebKit is gated on the rig serving HTTPS, and the gate has to stay loud.
+ *
+ * ADR 0211 puts real-origin qualification on the deployed Preview, and WebKit's
+ * refusal to send a `Secure` cookie over plain HTTP makes it a real-origin
+ * question rather than an engine question — the loopback rig cannot admit an
+ * owner on it at all. So the project stays defined and is skipped with a reason
+ * instead of quietly disappearing, because a project that vanished on HTTP would
+ * let a green `Promotion verify` read as three-engine evidence. These tests fail
+ * if the gate, the reason, or the wiring that applies it is removed.
+ */
+describe("WebKit is gated on a real HTTPS origin", () => {
+  it("runs WebKit only where the rig serves HTTPS", () => {
+    expect(unsupportedEngineReason("webkit", "https://tendnote-preview.vercel.app")).toBeNull();
+    expect(unsupportedEngineReason("webkit", "https://localhost:3110")).toBeNull();
+    expect(unsupportedEngineReason("webkit", "http://localhost:3110")).toBe(
+      WEBKIT_LOOPBACK_SKIP_REASON,
+    );
+    expect(unsupportedEngineReason("webkit", "http://127.0.0.1:3110")).toBe(
+      WEBKIT_LOOPBACK_SKIP_REASON,
+    );
+    // A base URL that cannot be read is not an HTTPS origin. Treating it as one
+    // would turn the guard into the silent pass it exists to prevent.
+    expect(unsupportedEngineReason("webkit", "not a url")).toBe(WEBKIT_LOOPBACK_SKIP_REASON);
+  });
+
+  it("gates nothing else", () => {
+    for (const engine of ["chromium", "firefox"]) {
+      expect(unsupportedEngineReason(engine, "http://localhost:3110")).toBeNull();
+      expect(unsupportedEngineReason(engine, "https://localhost:3110")).toBeNull();
+    }
+  });
+
+  it("says what did not happen and where it happens instead", () => {
+    // The string is the only thing a reader of a green run actually sees, so an
+    // empty or vague reason is the failure mode worth catching.
+    expect(WEBKIT_LOOPBACK_SKIP_REASON).toContain("NOT covered");
+    expect(WEBKIT_LOOPBACK_SKIP_REASON).toContain(
+      "docs/verification/nextjs-16-3-preview-qualification.md",
+    );
+    expect(WEBKIT_LOOPBACK_SKIP_REASON.length).toBeGreaterThan(200);
+  });
+
+  it("is applied automatically by the shared fixture, not per spec", () => {
+    const fixtures = read("apps/web/tests/instant/support/fixtures.ts");
+    // Per-spec opt-in is exactly how an engine ends up half-covered: a spec
+    // added later forgets the guard and reports a 30 s admission timeout as a
+    // product failure.
+    expect(fixtures).toContain("unsupportedEngineReason");
+    expect(fixtures).toContain("{ auto: true }");
+    expect(fixtures).toMatch(/testInfo\.skip\(true, reason\)/);
+  });
+
+  it("keeps the project defined so an HTTPS run can execute it", () => {
+    const config = read("apps/web/playwright.config.ts");
+    expect(config).toContain('name: "promotion-webkit"');
+  });
+
+  it("names uncovered engines in the CI step summary", () => {
+    // The diagnostics table only has rows for engines that ran, and a missing
+    // row is indistinguishable from an engine nobody configured. The skip has to
+    // be recorded where it will be read, not only where Playwright prints it.
+    expect(read("apps/web/tests/instant/support/fixtures.ts")).toContain("recordUncoveredEngine");
+    const summarize = read("scripts/summarize-instant-diagnostics.mjs");
+    expect(summarize).toContain("Engines NOT covered by this run");
+    expect(summarize).toContain("uncovered-engines.jsonl");
   });
 });

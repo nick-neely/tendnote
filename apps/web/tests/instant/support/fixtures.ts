@@ -1,6 +1,9 @@
 import type { BrowserContext, Page, Response } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
+import { recordUncoveredEngine } from "./diagnostics";
+import { unsupportedEngineReason } from "./engine-support";
 import { INSTRUMENTATION_KEY, instrumentationScript } from "./instrumentation";
+import { instantBaseUrl } from "./rig";
 
 /**
  * The shared fixture for every Instant matrix spec.
@@ -41,6 +44,11 @@ export type NetworkWindow = {
 
 type InstantFixtures = {
   network: NetworkWindow;
+  /**
+   * Auto fixture. Refuses to measure an engine this rig cannot admit an owner
+   * on, and says so where a reader will see it.
+   */
+  engineIsMeasurable: undefined;
 };
 
 /** Count requests, RSC payloads, and script bytes for one page. */
@@ -155,6 +163,25 @@ function trackPageActivity(page: Page): PageActivity {
 }
 
 export const test = base.extend<InstantFixtures>({
+  // First, and automatic. A skip is only honest if it happens before the spec
+  // has a chance to fail for the reason the skip is about — a WebKit run against
+  // the loopback rig otherwise spends 30 s per test timing out on
+  // `[data-admitted]`, which reads as a product failure rather than as an
+  // engine the rig cannot carry. See `engine-support.ts`.
+  engineIsMeasurable: [
+    async ({ browserName }, use, testInfo) => {
+      const reason = unsupportedEngineReason(browserName, instantBaseUrl());
+      if (reason !== null) {
+        // Recorded before the skip, because `testInfo.skip` aborts the fixture:
+        // a skip nobody can find in the run's artifacts is the silent pass this
+        // exists to prevent.
+        recordUncoveredEngine(testInfo.project.name, reason);
+        testInfo.skip(true, reason);
+      }
+      await use(undefined);
+    },
+    { auto: true },
+  ],
   context: async ({ context }, use) => {
     await context.addInitScript(instrumentationScript(INSTRUMENTATION_KEY));
     context.on("page", trackPageActivity);

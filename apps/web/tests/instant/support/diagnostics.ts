@@ -41,3 +41,20 @@ export function recordDiagnostic(record: DiagnosticRecord) {
   mkdirSync(dir, { recursive: true });
   appendFileSync(join(dir, FILE), `${JSON.stringify(record)}\n`);
 }
+
+export const UNCOVERED_ENGINES_FILE = "uncovered-engines.jsonl";
+
+/**
+ * Record that a project executed no specs, and why.
+ *
+ * Its own file rather than a `DiagnosticRecord` with null timings: this is not a
+ * measurement, it is the absence of one, and the summariser reads it *before*
+ * the table so a reviewer meets the gap before the numbers. Written per skipped
+ * test and de-duplicated by project on read. `global-setup.ts` truncates it, so
+ * a stale line cannot claim an engine was uncovered on a run where it ran.
+ */
+export function recordUncoveredEngine(project: string, reason: string) {
+  const dir = instantArtifactDir();
+  mkdirSync(dir, { recursive: true });
+  appendFileSync(join(dir, UNCOVERED_ENGINES_FILE), `${JSON.stringify({ project, reason })}\n`);
+}

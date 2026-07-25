@@ -80,6 +80,18 @@ const promotionProjects = [
     testIgnore: /mobile-.*\.spec\.ts$/,
   },
   {
+    // Defined unconditionally, and skipped with a reason when the rig cannot
+    // carry it, rather than dropped from the project list when it cannot.
+    //
+    // WebKit will not send a `Secure` cookie over plain HTTP even to localhost,
+    // so on the loopback rig the production `__Secure-` session cookie never
+    // reaches the server and every spec lands on `/sign-in`; the attribute
+    // cannot be dropped either, because Chromium rejects the `__Secure-` name
+    // without it. A project that simply vanished on HTTP would make a green
+    // `Promotion verify` look like three-engine evidence, which is the one thing
+    // this must not do — so `engine-support.ts` supplies the skip reason, the
+    // shared fixture applies it, and the CI step summary prints it. On an
+    // `https://` base URL — the Preview of ADR 0211 — the project runs.
     name: "promotion-webkit",
     use: { ...devices["Desktop Safari"], storageState: primaryStorageState },
     grep: PROMOTION_SMOKE,
