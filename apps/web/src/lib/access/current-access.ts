@@ -23,7 +23,8 @@ export async function getCurrentAccess(): Promise<AccessState> {
   let session: Awaited<ReturnType<ReturnType<typeof getAuth>["api"]["getSession"]>> | null = null;
 
   try {
-    session = await getAuth().api.getSession({ headers: await headers() });
+    const requestHeaders = await headers();
+    session = await getAuth().api.getSession({ headers: requestHeaders });
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
       throw error;

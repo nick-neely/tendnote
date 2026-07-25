@@ -60,10 +60,12 @@ in specification [#300](https://github.com/nick-neely/tendnote/issues/300).
   timezone reconciliation, connectivity feedback, and deep-link highlighting
   are isolated in `AppShellEffects`, a narrow client island. Route-owned data
   and focused mobile flows remain below their existing admission gates.
-- Protected routes explicitly enter `connection()` within their Suspense-wrapped
-  request boundary before resolving admission (the call is skipped only in
-  direct Vitest page-function tests, which have no Next request store). The
-  sign-in, sign-up, password-recovery, and pending-access screens are permitted
+- Owner-data regions that need a request clock explicitly enter `connection()`
+  inside their destination Suspense boundary (the call is skipped only in
+  direct Vitest page-function tests, which have no Next request store).
+  Admission remains inside the neutral access-check boundary, but the shared
+  admission wrapper does not force the post-admission App Shell to runtime.
+  Sign-in, sign-up, password-recovery, and pending-access screens are permitted
   access blocks, so they intentionally resolve their own request state before
   rendering. This fixes the pinned Preview's live `new Date()` blocking-route
   diagnostics without an app-wide `instant = false` opt-out.

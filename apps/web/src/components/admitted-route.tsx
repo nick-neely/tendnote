@@ -1,4 +1,3 @@
-import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
 import { AccessCheckFallback } from "@/components/access-check-fallback";
 import { AppShell } from "@/components/app-shell";
@@ -54,7 +53,6 @@ async function AdmittedRouteContent({
   returnTo: Promise<string> | string;
   title: string;
 }) {
-  if (process.env.NODE_ENV !== "test") await connection();
   const ownerUserId = await requireAdmittedOwner({ returnTo: await returnTo });
   return (
     <AppShell
