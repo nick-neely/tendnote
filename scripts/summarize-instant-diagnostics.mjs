@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 /**
  * Summarise one Instant matrix run into the table that goes in the verification
@@ -80,7 +80,11 @@ reportUncoveredEngines();
  * `apps/web/tests/instant/support/engine-support.ts`.
  */
 function reportUncoveredEngines() {
-  const reasons = readUncoveredEngines(join(repoRoot, "apps/web/.instant/uncovered-engines.jsonl"));
+  // A *sibling* of the diagnostics file being summarised, not a fixed path.
+  // Both are artifacts of one run, so re-summarising an archived run must read
+  // that run's coverage — anchoring this to the repository would caption an
+  // archived table with whichever engines the *latest* run happened to skip.
+  const reasons = readUncoveredEngines(join(dirname(path), "uncovered-engines.jsonl"));
   if (reasons.size === 0) return;
 
   console.log("### Engines NOT covered by this run\n");

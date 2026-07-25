@@ -23,9 +23,11 @@ export const WEBKIT_LOOPBACK_SKIP_REASON =
   "HTTP even to localhost, so the production `__Secure-` session cookie never " +
   "reaches the server and every spec lands on /sign-in. Dropping the attribute is " +
   "not available either: Chromium rejects the `__Secure-` name without it. WebKit " +
-  "engine evidence is produced against a real HTTPS origin, in Q1 and Q2 of the " +
-  "Preview qualification runbook (docs/verification/nextjs-16-3-preview-qualification.md). " +
-  "Point the rig at an https:// base URL and this project runs.";
+  "engine evidence is produced by hand against a real HTTPS origin, in Q1.6 and Q2.5 of " +
+  "the Preview qualification runbook (docs/verification/nextjs-16-3-preview-qualification.md). " +
+  "No configuration points this matrix at a deployed origin, and none is planned; the gate " +
+  "keys on the base URL's scheme rather than on the engine, so it would stop skipping on " +
+  "its own if the rig were ever served over HTTPS.";
 
 /**
  * The skip reason for this engine on this rig, or `null` when it can run.

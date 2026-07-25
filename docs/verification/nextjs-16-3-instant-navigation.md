@@ -326,9 +326,9 @@ WebKit launches after that fix and then fails for a second, structural reason:
 it will not put the production `__Secure-` session cookie on the rig's
 plain-HTTP loopback socket, so every WebKit request arrives with no `Cookie`
 header and every spec lands on `/sign-in`. That one is not fixable inside the
-rig, so `promotion-webkit` is now gated on the rig serving HTTPS — skipped with
-a reason here, run against the Preview's real origin — and its go/no-go line
-moved with it. See
+rig, so `promotion-webkit` is now gated on the rig serving HTTPS — which means
+skipped, loudly, everywhere the rig runs — and its go/no-go line moved to the
+manual Safari steps of the Preview runbook. See
 [the finding](./nextjs-16-3-preview-qualification.md#finding-webkit-cannot-hold-the-rigs-session-cookie-resolved--evidence-moves-to-the-preview).
 
 **The timing rows were measuring the runner.** A GitHub-hosted runner is a
@@ -481,8 +481,8 @@ branches. The previous `segment-prefetch-routing.test.ts`, which grepped
   *WebKit has now run on CI twice and cannot be admitted on the loopback rig at
   all: it refuses to send a `Secure` cookie over plain HTTP and the rig cannot
   drop the attribute, because Chromium enforces the `__Secure-` prefix on
-  injection. Settled: `promotion-webkit` is gated on an HTTPS base URL, skipped
-  loudly on the rig, and its evidence is Q1.6 and Q2.5 of
+  injection. Settled: `promotion-webkit` is gated on an HTTPS base URL, which
+  the rig never serves, so it is skipped loudly and its evidence is Q1.6 and Q2.5 of
   [the qualification runbook](./nextjs-16-3-preview-qualification.md#finding-webkit-cannot-hold-the-rigs-session-cookie-resolved--evidence-moves-to-the-preview).*
 - **Real-origin qualification.** As above: the local rig serves HTTP on loopback
   with an HTTPS canonical URL. #311 runs the same specs against the Vercel

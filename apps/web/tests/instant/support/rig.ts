@@ -25,9 +25,10 @@
  * On WebKit every request arrived with no `Cookie` header at all and all five
  * promotion specs landed on `/sign-in`. The rig cannot work around it, and the
  * three constraints that collide are each deliberate — see
- * `docs/verification/nextjs-16-3-preview-qualification.md` for the evidence and
- * the open decision. WebKit's engine evidence belongs to an origin that really
- * is HTTPS, which is the Preview qualification of ADR 0211.
+ * `docs/verification/nextjs-16-3-preview-qualification.md` for the evidence.
+ * WebKit's engine evidence belongs to an origin that really is HTTPS, and is
+ * produced by hand in Q1.6 and Q2.5 of the Preview qualification of ADR 0211 —
+ * nothing points this matrix at a deployed origin, and nothing is meant to.
  *
  * The one thing this shape does not exercise is a browser-issued Better Auth API
  * call, whose `Origin` would be `http://localhost:PORT` against a trusted origin

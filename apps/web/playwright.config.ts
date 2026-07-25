@@ -90,8 +90,10 @@ const promotionProjects = [
     // without it. A project that simply vanished on HTTP would make a green
     // `Promotion verify` look like three-engine evidence, which is the one thing
     // this must not do — so `engine-support.ts` supplies the skip reason, the
-    // shared fixture applies it, and the CI step summary prints it. On an
-    // `https://` base URL — the Preview of ADR 0211 — the project runs.
+    // shared fixture applies it, and the CI step summary prints it. The gate
+    // keys on the base URL's scheme rather than on the engine, so it would stop
+    // skipping on its own if the rig were ever served over HTTPS; today nothing
+    // does, and WebKit's evidence is the manual Safari pass of ADR 0211.
     name: "promotion-webkit",
     use: { ...devices["Desktop Safari"], storageState: primaryStorageState },
     grep: PROMOTION_SMOKE,

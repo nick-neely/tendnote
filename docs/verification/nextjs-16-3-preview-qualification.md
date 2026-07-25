@@ -104,7 +104,7 @@ build and sign-in still works, and record the time and trigger below.
 | Mutation reconciliation (optimistic ack, authoritative settle) | `action-reconciliation.spec.ts` | same |
 | Request-bound admission | `admitted-route.contract.test.ts`, `src/lib/access/*.test.ts` | unit suite |
 | Reduced Firefox qualification | `--project=promotion-firefox` — 5/5, 2026-07-25 | below |
-| Reduced WebKit qualification | **moved to the Preview** — the loopback rig cannot admit an owner on WebKit at all, so `promotion-webkit` is gated on an HTTPS origin and its evidence is Q1/Q2 | below, and Q1/Q2 |
+| Reduced WebKit qualification | **moved to the Preview, and manual** — the loopback rig cannot admit an owner on WebKit at all, so `promotion-webkit` is always skipped there and the evidence is a Safari pass by hand | below, and Q1.6 / Q2.5 |
 
 ### Reduced Firefox and WebKit qualification
 
@@ -132,8 +132,16 @@ TENDNOTE_INSTANT_MATRIX=1 TENDNOTE_INSTANT_SCOPE=full \
 | Action complete | 93 ms |
 | Action reopen | 146 ms |
 
-Every row is inside the 100 ms Instant Interaction contract and the `0.01` CLS
-budget, the `instant()` contract pass holds on all three transitions, owner
+Every navigation row is inside the 100 ms Instant Interaction contract and the
+`0.01` CLS budget. The two mutation figures are **not** measured against that
+100 ms: the contract governs acknowledgement and truthful shell, and a mutation's
+optimistic acknowledgement (0 ms for both rows here) is what it binds. The
+93 ms and 146 ms above are *authoritative settlement* — the server's real answer
+landing — which ADR 0209 gives the separate 500 ms reconciliation budget, and
+both are well inside it. Conflating the two is how "instant" becomes "we showed
+something and hoped", so the tables keep them apart.
+
+The `instant()` contract pass holds on all three transitions, owner
 isolation holds against a warm cache, and the per-context runtime-error
 assertion — the hydration/module rollback trigger — is empty. Three things the
 engine could plausibly have broken and did not: the production `__Secure-`
@@ -206,9 +214,10 @@ measured path. WebKit's qualification is a real-origin question, and ADR 0211
 already puts real-origin qualification on the deployed Preview, where the scheme
 genuinely is HTTPS and all three constraints hold at once. So:
 
-- `promotion-webkit` is **gated on the rig serving HTTPS**. On an `http://` base
-  URL every WebKit spec is skipped with a reason; on an `https://` one — the
-  Preview — the project runs unchanged. The rule is
+- `promotion-webkit` is **gated on the rig serving HTTPS**. Every WebKit spec is
+  therefore skipped with a reason, because the rig serves `http://` and nothing
+  configures it otherwise; the gate keys on the scheme rather than on the engine,
+  so it would stop skipping on its own if that ever changed. The rule is
   `apps/web/tests/instant/support/engine-support.ts`, applied by an auto fixture
   in `support/fixtures.ts` so no spec can forget it, and pinned by
   `scripts/instant-matrix-ci.test.ts`, which fails if the gate, the reason
@@ -367,12 +376,15 @@ Preview.
    failure here is an untested-engine finding rather than a regression — record
    it as such.
 
-Optionally, and better than by hand: point the harness itself at the Preview.
-`TENDNOTE_INSTANT_PORT` and the rig's URL helpers derive from one base, so a run
-against an `https://` origin un-skips `promotion-webkit` automatically. It is not
-a substitute for Q1 — the matrix injects a session and never signs in — and the
-Preview satisfies none of the fixture's determinism preconditions, so treat any
-timings from it as indicative only.
+By hand is the only way, and deliberately so. There is no mode that points the
+matrix at a deployed origin: `instantBaseUrl()` is always
+`http://localhost:<port>` and the Playwright config always launches its own
+`next start`. Adding one would not help — the matrix asserts against two
+synthetic owners on a frozen clock in a seeded database, none of which a Preview
+has, and seeding them into a shared Preview database is exactly what Q3 warns
+against. The `promotion-webkit` gate keys on the base URL's *scheme* rather than
+on the engine, so it would stop skipping on its own if the rig were ever served
+over HTTPS; today nothing serves it that way, and Safari-by-hand is the evidence.
 
 ### Q2 — Critical navigation on the deployed router
 
@@ -584,8 +596,10 @@ Concretely, for the next version bump:
 2. Re-record the reversal target — after this promotion the known-good
    deployment is the 16.3 one, not
    `dpl_EPFJFXRhbc7dFxqGXfuhHRCJ7Tnx`.
-3. `pnpm verify`, `Promotion verify` (full three-engine matrix), and the whole
-   Preview runbook again.
+3. `pnpm verify`, `Promotion verify` (Chromium and Firefox — **not** WebKit; see
+   [row 0](#gono-go-rollback-trigger-checklist) and the finding above), the
+   manual Safari steps Q1.6 and Q2.5 that are the only WebKit evidence there is,
+   and the whole Preview runbook again.
 4. A fresh copy of the go/no-go checklist, version-stamped for that candidate.
 
 The same requirement is stated in ADR 0211 and in
