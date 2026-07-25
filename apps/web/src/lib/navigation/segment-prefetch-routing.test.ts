@@ -10,7 +10,13 @@ describe("segment prefetch routing", () => {
 
     expect(nextConfig).toContain('key: "next-router-segment-prefetch"');
     expect(nextConfig).toContain('value: "/(?<segmentPath>[A-Za-z0-9_!$~/-]+)"');
-    expect(nextConfig).toContain('destination: "/index.segments/:segmentPath.segment.rsc"');
-    expect(nextConfig).toContain('destination: "/:path+.segments/:segmentPath.segment.rsc"');
+    expect(nextConfig).toContain('key: "__tendnote_segment_artifact"');
+    expect(nextConfig).toContain("missing: [notSegmentArtifact]");
+    expect(nextConfig).toContain(
+      '"/index.segments/:segmentPath.segment.rsc?__tendnote_segment_artifact=1"',
+    );
+    expect(nextConfig).toContain(
+      '"/:path+.segments/:segmentPath.segment.rsc?__tendnote_segment_artifact=1"',
+    );
   });
 });

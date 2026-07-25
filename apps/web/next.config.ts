@@ -15,6 +15,10 @@ const nextConfig: NextConfig = {
       // Capture only the key so it can be appended to the artifact directory.
       value: "/(?<segmentPath>[A-Za-z0-9_!$~/-]+)",
     };
+    const notSegmentArtifact = {
+      type: "query" as const,
+      key: "__tendnote_segment_artifact",
+    };
 
     return {
       beforeFiles: [
@@ -22,7 +26,8 @@ const nextConfig: NextConfig = {
         {
           source: "/",
           has: [segmentPrefetch],
-          destination: "/index.segments/:segmentPath.segment.rsc",
+          missing: [notSegmentArtifact],
+          destination: "/index.segments/:segmentPath.segment.rsc?__tendnote_segment_artifact=1",
         },
         // Vercel's static router does not currently apply Next's segment-prefetch
         // suffix metadata, so map the header-form request to the emitted artifact
@@ -31,7 +36,8 @@ const nextConfig: NextConfig = {
         {
           source: "/:path+",
           has: [segmentPrefetch],
-          destination: "/:path+.segments/:segmentPath.segment.rsc",
+          missing: [notSegmentArtifact],
+          destination: "/:path+.segments/:segmentPath.segment.rsc?__tendnote_segment_artifact=1",
         },
       ],
       afterFiles: [],
