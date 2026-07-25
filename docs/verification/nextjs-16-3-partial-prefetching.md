@@ -7,15 +7,14 @@ fallback as evidence for a production owner session.
 ## Default shell reuse
 
 `apps/web/next.config.ts` enables `cacheComponents` and
-`partialPrefetching`. Navigation links therefore use Next's default reusable,
-owner-neutral App Shell behavior: persistent desktop navigation, dense result
-lists, mobile Review, and default destination panes do not request a full
-owner response merely because the link enters the viewport.
+`partialPrefetching`. Navigation links use Next's default shell-only
+prefetch contract; that contract must still be proved on the deployed owner
+route before it can be credited as reusable App Shell behavior.
 
 The two former `prefetch={false}` overrides on Asset links were removed:
 
-- Asset Search results now reuse the `/assets/[assetId]` shell.
-- Eve's grounded Asset result links now reuse the same shell.
+- Asset Search results opt into the `/assets/[assetId]` shell-only contract.
+- Eve's grounded Asset result links opt into the same contract.
 
 There are no intentional `prefetch={false}`, `prefetch={true}`,
 `prefetch = "allow-runtime"`, or imperative full-prefetch exceptions in the
@@ -59,9 +58,17 @@ the evidence required by ADR 0208, so it is intentionally deferred.
   from this workstation. The source boundary and focused action tests above
   are local boundary evidence only; they do not substitute for a warm-shell
   cache measurement.
-- A deployment or Preview run with two admitted synthetic owners remains the
-  required final measurement before enabling any deeper runtime prefetch. It
-  must record cold and warm client transitions, RSC initiators and counts,
-  completion timing, and a cross-owner switch. Until that measurement exists,
-  this change keeps the safe shell-only default and enables no request-time
-  prefetch work.
+- Preview deployment `dpl_Ck8imQpQWV9yRgHpu6D5PJbPi1qu` (commit `5f87a9b`)
+  was exercised on July 24 with two separately admitted synthetic owners. The
+  cold `/` document response was PPR (`x-nextjs-prerender: 1`) and the browser
+  issued segment-prefetch requests for the persistent destinations.
+- That trace is a **non-passing result for #309**: the shell-prefetch requests
+  for `/people`, `/actions`, `/assets`, `/saved-items`, and `/account` each
+  returned 404. An actual People click then issued a second RSC request which
+  returned 200, so navigation succeeds only after a failed speculative request
+  and a full retry. This is harmful fan-out, not evidence of reusable-shell
+  completion, and must be fixed before this ticket is closed.
+- No runtime (`allow-runtime`) or imperative full prefetch was enabled while
+  investigating the failure. The owner boundary and focused action tests
+  remain useful local safety evidence, but they do not replace a passing
+  cold/warm, cross-owner Preview measurement.
