@@ -1,6 +1,8 @@
 import { withEve } from "eve/next";
 import type { NextConfig } from "next";
 import { cacheProfiles } from "./src/lib/cache/cache-profiles";
+import { exposesInstantTestingApiFromProcess } from "./src/lib/instant/testing-api";
+import { segmentPrefetchRewrites } from "./src/lib/navigation/segment-prefetch-rewrites";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
@@ -8,44 +10,18 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   reactCompiler: true,
   async rewrites() {
-    const segmentPrefetch = {
-      type: "header" as const,
-      key: "next-router-segment-prefetch",
-      // Next sends a leading slash followed by the generated segment key.
-      // Capture only the key so it can be appended to the artifact directory.
-      value: "/(?<segmentPath>[A-Za-z0-9_!$~/-]+)",
-    };
-    const notSegmentArtifact = {
-      type: "query" as const,
-      key: "__tendnote_segment_artifact",
-    };
-
     return {
-      beforeFiles: [
-        // The root route's generated artifact directory is named `index.segments`.
-        {
-          source: "/",
-          has: [segmentPrefetch],
-          missing: [notSegmentArtifact],
-          destination: "/index.segments/:segmentPath.segment.rsc?__tendnote_segment_artifact=1",
-        },
-        // Vercel's static router does not currently apply Next's segment-prefetch
-        // suffix metadata, so map the header-form request to the emitted artifact
-        // before filesystem routing. Ordinary documents and RSC requests do not
-        // carry this header and therefore never match.
-        {
-          source: "/:path+",
-          has: [segmentPrefetch],
-          missing: [notSegmentArtifact],
-          destination: "/:path+.segments/:segmentPath.segment.rsc?__tendnote_segment_artifact=1",
-        },
-      ],
+      beforeFiles: segmentPrefetchRewrites(),
       afterFiles: [],
       fallback: [],
     };
   },
   transpilePackages: ["@tendnote/db", "@tendnote/domain"],
   experimental: {
+    // Instant Interaction gate (#310, ADR 0210). `instant()` silently no-ops
+    // without this, so a measured build must opt in explicitly; the gate refuses
+    // to turn it on for the real production deployment.
+    exposeTestingApiInProductionBuild: exposesInstantTestingApiFromProcess(),
     serverActions: {
       // Asset Evidence uploads (#200): the domain caps files at 10 MB
       // (ASSET_EVIDENCE_MAX_FILE_BYTES); leave headroom for multipart overhead.

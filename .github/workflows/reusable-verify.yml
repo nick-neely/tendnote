@@ -8,6 +8,15 @@ on:
         required: false
         type: boolean
         default: true
+      full_browser_matrix:
+        description: >-
+          Run the full upgrade-and-promotion browser matrix (adds reduced Firefox
+          and WebKit smoke) instead of the routine Chromium tier. ADR 0210 keeps
+          these tiers separate so an ordinary application pull request does not
+          pay a three-engine tax.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -152,6 +161,96 @@ jobs:
       - name: Run real-browser contracts
         run: pnpm test:browser
 
+  # The Instant Interaction contract (#310, ADR 0210). A separate job rather than
+  # more steps in Test and Fallow: it must run *alongside* the existing critical
+  # path so protecting navigation does not lengthen every pull request, and the
+  # aggregate Verify wall time has to stay under nine minutes.
+  instant_matrix:
+    name: Instant matrix
+    runs-on: ubuntu-latest
+    # The rollout criterion is a wall-time one. Without this a hung `next start`
+    # would sit on GitHub's six-hour default instead of failing the gate.
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: tendnote
+          POSTGRES_USER: tendnote
+          POSTGRES_PASSWORD: tendnote
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tendnote -d tendnote"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    # The measured build exposes Next's instant-navigation testing API, and the
+    # tier selects the browser projects. Both are set by the package scripts
+    # below rather than here, so there is one place to read them from.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ inputs.full_browser_matrix && 'all' || 'chromium' }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter @tendnote/web exec playwright install --with-deps ${{ inputs.full_browser_matrix && 'chromium firefox webkit' || 'chromium' }}
+
+      - name: Install browser system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter @tendnote/web exec playwright install-deps ${{ inputs.full_browser_matrix && 'chromium firefox webkit' || 'chromium' }}
+
+      - name: Run the routine Chromium matrix
+        if: ${{ !inputs.full_browser_matrix }}
+        run: pnpm test:instant
+
+      - name: Run the full upgrade and promotion matrix
+        if: ${{ inputs.full_browser_matrix }}
+        run: pnpm test:instant:full
+
+      - name: Summarise recorded diagnostics
+        if: always()
+        run: node scripts/summarize-instant-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
+        continue-on-error: true
+
+      - name: Upload failure traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instant-matrix-traces
+          path: apps/web/.instant/test-results
+          retention-days: 7
+
   verify:
     name: Verify
     runs-on: ubuntu-latest
@@ -160,11 +259,17 @@ jobs:
       - database
       - quality
       - test_fallow
+      - instant_matrix
     steps:
       - name: Check verification results
         run: |
           if [[ "${{ needs.quality.result }}" != "success" || "${{ needs.test_fallow.result }}" != "success" ]]; then
             echo "Quality or test-and-Fallow verification did not succeed."
+            exit 1
+          fi
+
+          if [[ "${{ needs.instant_matrix.result }}" != "success" ]]; then
+            echo "The Instant Interaction matrix did not succeed. Result: ${{ needs.instant_matrix.result }}"
             exit 1
           fi
 

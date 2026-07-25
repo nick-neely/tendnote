@@ -6,10 +6,13 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "biome check src next.config.ts postcss.config.mjs components.json",
+    "lint": "biome check src tests playwright.config.ts next.config.ts postcss.config.mjs components.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "test:browser": "vitest run --config vitest.browser.config.ts"
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "build:instant": "TENDNOTE_INSTANT_MATRIX=1 next build",
+    "test:instant": "pnpm build:instant && TENDNOTE_INSTANT_MATRIX=1 playwright test",
+    "test:instant:full": "pnpm build:instant && TENDNOTE_INSTANT_MATRIX=1 TENDNOTE_INSTANT_SCOPE=full playwright test"
   },
   "dependencies": {
     "@better-auth/redis-storage": "^1.6.20",
@@ -58,6 +61,7 @@
   },
   "devDependencies": {
     "@next/playwright": "16.3.0-preview.9",
+    "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4",
     "@tendnote/config": "workspace:*",
     "@testing-library/dom": "^10.4.1",

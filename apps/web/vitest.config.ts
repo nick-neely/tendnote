@@ -14,6 +14,9 @@ export default defineConfig({
     ],
   },
   test: {
-    exclude: [...configDefaults.exclude, "**/*.browser.test.{ts,tsx}"],
+    // `tests/instant` is the Playwright matrix (#310): its `*.spec.ts` files
+    // match Vitest's default include but are driven by a real browser against a
+    // production build, not by Vitest.
+    exclude: [...configDefaults.exclude, "**/*.browser.test.{ts,tsx}", "tests/instant/**"],
   },
 });

@@ -22,21 +22,13 @@
       "exports": ["*"]
     }
   ],
-  // @next/playwright: not yet imported. It is exact-pinned to Next's Preview
-  //   version as a deliberate foundation decision (#301, see
-  //   docs/verification/nextjs-16-3-preview-foundation.md) because it supplies
-  //   `instant()` to the browser matrix in "Enforce and optimize the Instant
-  //   Interaction contract" (#310), which is still blocked by #309. Removing the
-  //   dependency to satisfy this scan would drop the version lock to `next` and
-  //   leave #310 re-deriving it. DELETE THIS ENTRY when #310 lands the harness —
-  //   after that the import edge is real and the suppression would hide drift.
   // babel-plugin-react-compiler: loaded implicitly by Next's `reactCompiler: true`
   //   (apps/web/next.config.ts), not via a direct import.
   // @tendnote/agent: the web app mounts Eve same-origin via `withEve(..., { eveRoot:
   //   "../agent" })` in next.config.ts (a filesystem path, not an import), and CI
   //   deploys web after agent (see "ci: mark web deployment dependent on agent").
   //   The workspace edge is deliberate but invisible to the import-based scan.
-  "ignoreDependencies": ["@next/playwright", "babel-plugin-react-compiler", "@tendnote/agent"],
+  "ignoreDependencies": ["babel-plugin-react-compiler", "@tendnote/agent"],
   "entry": [
     "apps/agent/agent/agent.ts",
     // Registered by URL from pwa-registration.tsx, so no import edge exists.
