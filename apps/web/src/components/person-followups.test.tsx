@@ -36,12 +36,16 @@ import { PersonFollowups } from "./person-followups";
 function view(overrides: Partial<FollowupView> = {}): FollowupView {
   return {
     id: "11111111-1111-1111-1111-111111111111",
+    revision: "2026-07-24T00:00:00.000Z",
     reason: "Check in about the move.",
     status: "open",
+    ownerUserId: "owner-1",
+    owned: true,
     dueAtISO: "2026-07-04T00:00:00.000Z",
     dueAtDate: "2026-07-04",
     dueLabel: "Jul 4",
     dueState: "upcoming",
+    surfaceLabel: "Due Jul 4",
     visibilityChoice: "only_me",
     visibilityLabel: "Only me",
     ...overrides,
@@ -83,7 +87,13 @@ describe("PersonFollowups", () => {
 
   it("marks past-due follow-ups with calm words, not guilt copy or color alone", () => {
     const html = render({
-      active: [view({ dueState: "overdue", dueLabel: "Jun 20" })],
+      active: [
+        view({
+          dueState: "overdue",
+          dueLabel: "Jun 20",
+          surfaceLabel: "Was due Jun 20",
+        }),
+      ],
     });
 
     expect(html).toContain("Was due Jun 20");
@@ -93,7 +103,9 @@ describe("PersonFollowups", () => {
   });
 
   it("marks follow-ups due today", () => {
-    const html = render({ active: [view({ dueState: "today" })] });
+    const html = render({
+      active: [view({ dueState: "today", surfaceLabel: "Due today" })],
+    });
 
     expect(html).toContain("Due today");
   });

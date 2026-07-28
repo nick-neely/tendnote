@@ -1,6 +1,7 @@
 import {
   assistantToolResultSchemas,
   type DraftProposalToolResult,
+  resolveRecordTiming,
   type SuggestedFollowupReviewItemOutput,
 } from "@tendnote/domain";
 import { Body, Caption, ResultCard } from "@/components/assistant-result-card";
@@ -11,7 +12,7 @@ import type {
   SuggestedFollowupReviewItemView,
 } from "@/lib/eve/tool-result-view";
 import { defineModule } from "./module";
-import { flagIsFalse, formatDueLabel } from "./shared";
+import { flagIsFalse } from "./shared";
 import { ToolActivityLine } from "./shells";
 
 /**
@@ -32,7 +33,14 @@ function toFollowupReviewItem(
   return {
     followupId: parsed.followup.id,
     reason: parsed.followup.reason,
-    dueLabel: formatDueLabel(parsed.followup.dueAt),
+    timingLabel: resolveRecordTiming(
+      {
+        kind: "followup",
+        status: "suggested",
+        dueAt: new Date(parsed.followup.dueAt),
+      },
+      new Date(),
+    ).timingLabel,
     sourceRecordId: parsed.sourceRecord?.id ?? null,
     personId: parsed.person?.id ?? parsed.followup.personId ?? null,
     personName: parsed.person?.displayName ?? null,

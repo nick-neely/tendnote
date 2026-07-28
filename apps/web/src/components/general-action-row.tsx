@@ -48,7 +48,7 @@ import {
   GeneralActionReminderField,
   ReminderOptInInvitation,
 } from "@/components/general-action-reminder";
-import { ActionDueChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
   AudiencePreview,
@@ -69,6 +69,7 @@ import {
   UsersIcon,
   XIcon,
 } from "@/components/icons";
+import { RecordTimingChip } from "@/components/record-timing-chip";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -1095,7 +1096,7 @@ export function ActionRow({
           ) : null}
         </div>
         <div className="shrink-0 pt-0.5">
-          <ActionDueChip surfaceLabel={action.surfaceLabel} surfaceState={action.surfaceState} />
+          <RecordTimingChip label={action.surfaceLabel} state={action.surfaceState} />
         </div>
       </div>
       <div className="flex items-center justify-end gap-1.5">

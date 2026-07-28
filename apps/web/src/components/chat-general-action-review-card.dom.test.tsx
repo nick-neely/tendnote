@@ -40,7 +40,7 @@ function item(
     generalActionId: GENERAL_ACTION_ID,
     title: "Book the campsite for the trip",
     status: "suggested",
-    dueLabel: "Jul 15, 2026",
+    timingLabel: "Was due Jul 15",
     isRoutine: false,
     recurrenceLabel: null,
     personNames: [],

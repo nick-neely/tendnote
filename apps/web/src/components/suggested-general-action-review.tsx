@@ -10,12 +10,12 @@ import {
 } from "@/app/actions/suggested-general-actions";
 import {
   ActionContextChip,
-  ActionDueChip,
   ActionRoutineChip,
   ActionScopeChip,
   GENERIC_ERROR,
 } from "@/components/general-action-shared";
 import { CheckIcon, FolderIcon, MoonIcon, PencilIcon, XIcon } from "@/components/icons";
+import { RecordTimingChip } from "@/components/record-timing-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -222,7 +222,7 @@ export function SuggestedGeneralActionReviewCard({
             </p>
           ) : null}
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <ActionDueChip surfaceLabel={action.surfaceLabel} surfaceState={action.surfaceState} />
+            <RecordTimingChip label={action.surfaceLabel} state={action.surfaceState} />
             {areaName ? (
               <span className="inline-flex items-center gap-1 font-mono text-[length:var(--text-caption)] text-muted-foreground">
                 <FolderIcon aria-hidden className="size-3" />

@@ -1,5 +1,6 @@
 import type { BriefItemKind, BriefWithItems } from "@tendnote/domain";
-import { type FollowupDueState, followupDueState } from "@/lib/followup-view";
+import { resolveRecordTiming } from "@tendnote/domain/record-surfacing";
+import type { FollowupDueState } from "@/lib/followup-view";
 
 /**
  * Presentation view of one persisted brief item. Built once server-side from the
@@ -15,6 +16,7 @@ export type BriefItemView = {
   personName: string | null;
   dueLabel: string | null;
   dueState: FollowupDueState | null;
+  surfaceLabel: string | null;
   isSensitive: boolean;
   // Suggested follow-ups can be accepted from the brief, promoting the real
   // reminder through the existing review lifecycle (issue #71).
@@ -43,6 +45,9 @@ export function toBriefView(brief: BriefWithItems, now: Date = new Date()): Brie
     .filter((item) => item.status === "active")
     .map((item): BriefItemView => {
       const due = item.dueAt;
+      const timing = due
+        ? resolveRecordTiming({ kind: "followup", status: "open", dueAt: due }, now)
+        : null;
       return {
         id: item.id,
         kind: item.kind,
@@ -51,7 +56,8 @@ export function toBriefView(brief: BriefWithItems, now: Date = new Date()): Brie
         personId: item.personId,
         personName: item.personDisplayName,
         dueLabel: due ? dueLabelFor(due) : null,
-        dueState: due ? followupDueState(due, now) : null,
+        dueState: timing ? (timing.state as FollowupDueState) : null,
+        surfaceLabel: timing?.timingLabel ?? null,
         isSensitive: item.sensitivity === "sensitive",
         // Mirror the acceptance precondition: a suggested follow-up is acceptable
         // only when it carries the follow-up source ref the accept resolves from.

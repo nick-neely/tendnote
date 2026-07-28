@@ -148,6 +148,7 @@ async function HomeRail({ searchParams }: HomeProps) {
       getDashboardBrief(ownerUserId, "daily"),
       getDashboardBrief(ownerUserId, "weekly"),
     ]);
+  const now = new Date();
 
   return (
     <DashboardRail
@@ -157,7 +158,7 @@ async function HomeRail({ searchParams }: HomeProps) {
       )}
       dailyBrief={dailyBrief}
       followupReviews={followupReviews.map((review) => toSuggestedFollowupReviewView(review))}
-      followups={followups.map((summary) => toDashboardFollowupView(summary))}
+      followups={followups.map((summary) => toDashboardFollowupView(summary, now, ownerUserId))}
       initialTab={tab}
       people={people}
       reviewContent={<ReviewQueueStreams ownerUserId={ownerUserId} />}

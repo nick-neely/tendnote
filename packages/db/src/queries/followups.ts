@@ -1,9 +1,12 @@
 import {
   birthdayAnnualFollowupCadence,
+  type Followup,
   nextBirthdayFollowupDueAt,
   type ReminderScheduleChoice,
 } from "@tendnote/domain";
 import { createDrizzleFollowupLifecycleStore } from "./followups/drizzle-store";
+import { finalizeReminderMutation } from "./followups/finalize";
+import { hydrateFollowup, hydrateFollowups } from "./followups/hydrate";
 import {
   createAffectedFollowupLifecycle,
   createAffectedSuggestedFollowupReview,
@@ -16,6 +19,7 @@ import type {
   FollowupActionInput,
   ListSuggestedFollowupReviewsInput,
   SnoozeFollowupInput,
+  SuggestedFollowupReviewResult,
   SuggestFollowupInput,
 } from "./followups/types";
 import { getPerson } from "./people";
@@ -41,6 +45,43 @@ const defaultFollowupStore = createDrizzleFollowupLifecycleStore();
 const defaultFollowupLifecycle = createAffectedFollowupLifecycle(defaultFollowupStore);
 const defaultSuggestedFollowupReview = createAffectedSuggestedFollowupReview(defaultFollowupStore);
 
+async function hydrateLifecycleOutcome<T extends { result: Followup }>(outcome: T) {
+  return {
+    ...outcome,
+    result: await hydrateFollowup(defaultFollowupStore, outcome.result),
+  };
+}
+
+async function hydrateReviewResult<T extends SuggestedFollowupReviewResult>(result: T) {
+  return {
+    ...result,
+    followup: await hydrateFollowup(defaultFollowupStore, result.followup),
+  };
+}
+
+async function hydrateReviewResults<T extends SuggestedFollowupReviewResult[]>(results: T) {
+  const followups = await hydrateFollowups(
+    defaultFollowupStore,
+    results.map((result) => result.followup),
+  );
+  return results.map((result, index) => ({
+    ...result,
+    followup: followups[index] ?? result.followup,
+  }));
+}
+
+async function hydrateReviewOutcome<T extends { result: Followup | SuggestedFollowupReviewResult }>(
+  outcome: T,
+) {
+  return {
+    ...outcome,
+    result:
+      "component" in outcome.result
+        ? await hydrateReviewResult(outcome.result)
+        : await hydrateFollowup(defaultFollowupStore, outcome.result),
+  };
+}
+
 async function reconcileFollowupReminder(followup: { id: string; ownerUserId: string }) {
   await reconcileReminderRecord({
     ownerUserId: followup.ownerUserId,
@@ -51,47 +92,54 @@ async function reconcileFollowupReminder(followup: { id: string; ownerUserId: st
 }
 
 export async function createFollowup(input: CreateActiveFollowupInput) {
-  return defaultFollowupLifecycle.createFollowup(input);
+  return hydrateLifecycleOutcome(await defaultFollowupLifecycle.createFollowup(input));
 }
 
 export async function editFollowup(input: EditFollowupInput) {
-  const outcome = await defaultFollowupLifecycle.editFollowup(input);
-  await reconcileFollowupReminder(outcome.result);
-  return outcome;
+  return finalizeReminderMutation(await defaultFollowupLifecycle.editFollowup(input), {
+    reconcile: reconcileFollowupReminder,
+    hydrate: (followup) => hydrateFollowup(defaultFollowupStore, followup),
+  });
 }
 
 export async function getFollowup(input: FollowupActionInput) {
-  return defaultFollowupLifecycle.getFollowup(input);
+  const followup = await defaultFollowupLifecycle.getFollowup(input);
+  return followup ? hydrateFollowup(defaultFollowupStore, followup) : null;
 }
 
 export async function completeFollowup(input: FollowupActionInput) {
-  const outcome = await defaultFollowupLifecycle.completeFollowup(input);
-  await reconcileFollowupReminder(outcome.result);
-  return outcome;
+  return finalizeReminderMutation(await defaultFollowupLifecycle.completeFollowup(input), {
+    reconcile: reconcileFollowupReminder,
+    hydrate: (followup) => hydrateFollowup(defaultFollowupStore, followup),
+  });
 }
 
 export async function dismissFollowup(input: FollowupActionInput) {
-  const outcome = await defaultFollowupLifecycle.dismissFollowup(input);
-  await reconcileFollowupReminder(outcome.result);
-  return outcome;
+  return finalizeReminderMutation(await defaultFollowupLifecycle.dismissFollowup(input), {
+    reconcile: reconcileFollowupReminder,
+    hydrate: (followup) => hydrateFollowup(defaultFollowupStore, followup),
+  });
 }
 
 export async function snoozeFollowup(input: SnoozeFollowupInput) {
-  const outcome = await defaultFollowupLifecycle.snoozeFollowup(input);
-  await reconcileFollowupReminder(outcome.result);
-  return outcome;
+  return finalizeReminderMutation(await defaultFollowupLifecycle.snoozeFollowup(input), {
+    reconcile: reconcileFollowupReminder,
+    hydrate: (followup) => hydrateFollowup(defaultFollowupStore, followup),
+  });
 }
 
 export async function reopenFollowup(input: FollowupActionInput) {
-  const outcome = await defaultFollowupLifecycle.reopenFollowup(input);
-  await reconcileFollowupReminder(outcome.result);
-  return outcome;
+  return finalizeReminderMutation(await defaultFollowupLifecycle.reopenFollowup(input), {
+    reconcile: reconcileFollowupReminder,
+    hydrate: (followup) => hydrateFollowup(defaultFollowupStore, followup),
+  });
 }
 
 export async function archiveFollowup(input: FollowupActionInput) {
-  const outcome = await defaultFollowupLifecycle.archiveFollowup(input);
-  await reconcileFollowupReminder(outcome.result);
-  return outcome;
+  return finalizeReminderMutation(await defaultFollowupLifecycle.archiveFollowup(input), {
+    reconcile: reconcileFollowupReminder,
+    hydrate: (followup) => hydrateFollowup(defaultFollowupStore, followup),
+  });
 }
 
 export async function listActiveFollowups(input: {
@@ -100,11 +148,20 @@ export async function listActiveFollowups(input: {
   dueBefore?: Date;
   limit?: number;
 }) {
-  return defaultFollowupLifecycle.listActiveFollowups(input);
+  const summaries = await defaultFollowupLifecycle.listActiveFollowups(input);
+  const followups = await hydrateFollowups(
+    defaultFollowupStore,
+    summaries.map((summary) => summary.followup),
+  );
+  return summaries.map((summary, index) => ({
+    ...summary,
+    followup: followups[index] ?? summary.followup,
+  }));
 }
 
 export async function listFollowupsForPerson(input: { ownerUserId: string; personId: string }) {
-  return defaultFollowupStore.listFollowupsForPerson(input);
+  const followups = await defaultFollowupStore.listFollowupsForPerson(input);
+  return hydrateFollowups(defaultFollowupStore, followups);
 }
 
 export async function searchFollowups(input: {
@@ -112,7 +169,15 @@ export async function searchFollowups(input: {
   includeArchived?: boolean;
   limit?: number;
 }) {
-  return defaultFollowupLifecycle.searchFollowups(input);
+  const summaries = await defaultFollowupLifecycle.searchFollowups(input);
+  const followups = await hydrateFollowups(
+    defaultFollowupStore,
+    summaries.map((summary) => summary.followup),
+  );
+  return summaries.map((summary, index) => ({
+    ...summary,
+    followup: followups[index] ?? summary.followup,
+  }));
 }
 
 export async function createBirthdayFollowupReminder(input: {
@@ -161,8 +226,9 @@ export async function createBirthdayFollowupReminder(input: {
     schedule: input.schedule,
     now: input.now,
   });
+  const surfacedFollowup = await hydrateFollowup(defaultFollowupStore, followup);
   return {
-    result: { followup, reminder: reminder.result },
+    result: { followup: surfacedFollowup, reminder: reminder.result },
     affectedScopes: [
       ...reminder.affectedScopes,
       {
@@ -187,25 +253,27 @@ export async function createBirthdayFollowupReminder(input: {
 }
 
 export async function suggestFollowup(input: SuggestFollowupInput) {
-  return defaultSuggestedFollowupReview.suggestFollowup(input);
+  return hydrateReviewOutcome(await defaultSuggestedFollowupReview.suggestFollowup(input));
 }
 
 export async function listSuggestedFollowupReviews(input: ListSuggestedFollowupReviewsInput) {
-  return defaultSuggestedFollowupReview.listSuggestedFollowupReviews(input);
+  const results = await defaultSuggestedFollowupReview.listSuggestedFollowupReviews(input);
+  return hydrateReviewResults(results);
 }
 
 export async function getSuggestedFollowupReview(input: FollowupActionInput) {
-  return defaultSuggestedFollowupReview.getSuggestedFollowupReview(input);
+  const result = await defaultSuggestedFollowupReview.getSuggestedFollowupReview(input);
+  return result ? hydrateReviewResult(result) : null;
 }
 
 export async function acceptSuggestedFollowup(input: AcceptSuggestedFollowupInput) {
-  return defaultSuggestedFollowupReview.acceptSuggestedFollowup(input);
+  return hydrateReviewOutcome(await defaultSuggestedFollowupReview.acceptSuggestedFollowup(input));
 }
 
 export async function editSuggestedFollowup(input: EditSuggestedFollowupInput) {
-  return defaultSuggestedFollowupReview.editSuggestedFollowup(input);
+  return hydrateReviewOutcome(await defaultSuggestedFollowupReview.editSuggestedFollowup(input));
 }
 
 export async function dismissSuggestedFollowup(input: FollowupActionInput) {
-  return defaultSuggestedFollowupReview.dismissSuggestedFollowup(input);
+  return hydrateReviewOutcome(await defaultSuggestedFollowupReview.dismissSuggestedFollowup(input));
 }

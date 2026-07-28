@@ -39,6 +39,10 @@ export function createInMemoryHouseholdStore(): HouseholdStore & {
     async getHouseholdWorkspace(input) {
       return households.get(input.householdId) ?? null;
     },
+    async getHouseholdWorkspaces(input) {
+      const householdIds = new Set(input.householdIds);
+      return [...households.values()].filter((household) => householdIds.has(household.id));
+    },
     async createHouseholdMembership(input) {
       const parsed = createHouseholdMembershipSchema.parse(input);
       const duplicate = [...memberships.values()].find(
@@ -117,6 +121,16 @@ export function createInMemoryHouseholdStore(): HouseholdStore & {
           share.householdId === input.householdId &&
           share.recordKind === input.recordKind &&
           share.recordId === input.recordId,
+      );
+    },
+    async listHouseholdRecordSharesForRecords(input) {
+      const householdIds = new Set(input.householdIds);
+      const recordIds = new Set(input.recordIds);
+      return [...recordShares.values()].filter(
+        (share) =>
+          householdIds.has(share.householdId) &&
+          share.recordKind === input.recordKind &&
+          recordIds.has(share.recordId),
       );
     },
     async deleteHouseholdRecordShares(input) {

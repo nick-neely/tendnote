@@ -73,7 +73,7 @@ export function ChatFollowupReviewCard({
       isNew={isNew}
       kind="suggested_followup_review"
       labels={labels}
-      meta={`Proposed for ${item.dueLabel}`}
+      meta={item.timingLabel}
       onDismiss={async () => {
         const result = await dismissSuggestedFollowupAction({ followupId: item.followupId });
         if (!result.ok) throw new Error(result.error);

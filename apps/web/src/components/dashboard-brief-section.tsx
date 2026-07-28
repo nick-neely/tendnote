@@ -8,7 +8,6 @@ import {
   generateBriefAction,
   snoozeBriefItemAction,
 } from "@/app/actions/briefs";
-import { DueChip } from "@/components/followup-due-chip";
 import {
   CheckIcon,
   ClockIcon,
@@ -17,6 +16,7 @@ import {
   RefreshCwIcon,
   XIcon,
 } from "@/components/icons";
+import { RecordTimingChip } from "@/components/record-timing-chip";
 import { Button } from "@/components/ui/button";
 import { useCreateDraft } from "@/components/use-create-draft";
 import type { BriefItemView, BriefView } from "@/lib/brief-view";
@@ -202,9 +202,9 @@ function BriefItemRow({
         ) : (
           <span className="min-w-0 text-pretty text-sm font-medium">{item.title}</span>
         )}
-        {item.dueLabel && item.dueState ? (
+        {item.surfaceLabel && item.dueState ? (
           <span className="shrink-0">
-            <DueChip dueLabel={item.dueLabel} dueState={item.dueState} />
+            <RecordTimingChip label={item.surfaceLabel} state={item.dueState} />
           </span>
         ) : null}
       </div>

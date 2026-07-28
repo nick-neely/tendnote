@@ -12,12 +12,16 @@ import { DashboardFollowupsSection } from "./dashboard-followups-section";
 function view(overrides: Partial<DashboardFollowupView> = {}): DashboardFollowupView {
   return {
     id: "11111111-1111-1111-1111-111111111111",
+    revision: "2026-07-24T00:00:00.000Z",
     reason: "Check in about the move.",
     status: "open",
+    ownerUserId: "owner-1",
+    owned: true,
     dueAtISO: "2026-07-04T00:00:00.000Z",
     dueAtDate: "2026-07-04",
     dueLabel: "Jul 4",
     dueState: "upcoming",
+    surfaceLabel: "Due Jul 4",
     visibilityChoice: "only_me",
     visibilityLabel: "Only me",
     personId: "person-1",
@@ -70,7 +74,13 @@ describe("DashboardFollowupsSection", () => {
   it("marks past-due reminders with calm words, not guilt copy", () => {
     const html = renderToStaticMarkup(
       <DashboardFollowupsSection
-        followups={[view({ dueState: "overdue", dueLabel: "Jun 20" })]}
+        followups={[
+          view({
+            dueState: "overdue",
+            dueLabel: "Jun 20",
+            surfaceLabel: "Was due Jun 20",
+          }),
+        ]}
         onResolve={() => {}}
       />,
     );

@@ -25,6 +25,7 @@ function itemView(overrides: Partial<BriefItemView> = {}): BriefItemView {
     personName: "Mark",
     dueLabel: "Jun 27",
     dueState: "today",
+    surfaceLabel: "Due today",
     isSensitive: false,
     isSuggestedFollowup: false,
     ...overrides,

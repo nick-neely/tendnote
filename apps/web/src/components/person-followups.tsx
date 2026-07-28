@@ -12,6 +12,7 @@ import type { FollowupView } from "@/lib/followup-view";
 import { useServerSyncedList } from "@/lib/use-server-synced-list";
 
 const followupId = (followup: FollowupView) => followup.id;
+const followupRevision = (followup: FollowupView) => followup.revision;
 
 function sortByDue(followups: FollowupView[]): FollowupView[] {
   return [...followups].sort((a, b) => a.dueAtISO.localeCompare(b.dueAtISO));
@@ -47,8 +48,18 @@ export function PersonFollowups({
   // promotes a suggestion to an active reminder and refreshes) shows up here
   // instantly, and a completed reminder lands in Resolved — without losing the
   // local optimistic edits these handlers make.
-  const [activeList, setActiveList] = useServerSyncedList(active, followupId, sortByDue);
-  const [resolvedList, setResolvedList] = useServerSyncedList(resolved, followupId);
+  const [activeList, setActiveList] = useServerSyncedList(
+    active,
+    followupId,
+    sortByDue,
+    followupRevision,
+  );
+  const [resolvedList, setResolvedList] = useServerSyncedList(
+    resolved,
+    followupId,
+    undefined,
+    followupRevision,
+  );
 
   // Any follow-up mutation re-reads the server so the Follow-ups tab count and
   // the dashboard rail stay in step; client state (the active tab) survives it.

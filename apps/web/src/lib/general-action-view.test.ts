@@ -7,6 +7,7 @@ const MEMBER = "user-2";
 function baseAction(overrides: Partial<Parameters<typeof toGeneralActionView>[0]> = {}) {
   return {
     id: "a1",
+    updatedAt: new Date("2026-07-24T00:00:00.000Z"),
     title: "Replace the water filter",
     notes: null,
     links: [],

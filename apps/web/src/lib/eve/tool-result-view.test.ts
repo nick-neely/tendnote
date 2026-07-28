@@ -1,4 +1,4 @@
-import { RENDERED_TOOL_NAMES } from "@tendnote/domain";
+import { formatSurfacingDay, RENDERED_TOOL_NAMES } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import {
   assistantToolViewKey,
@@ -255,12 +255,8 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
     });
   });
 
-  // Computed with the same formatter so the assertion is timezone-independent.
-  const dueLabel = new Date("2026-07-15T00:00:00.000Z").toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const dueDate = new Date("2026-07-15T00:00:00.000Z");
+  const dueLabel = `Was due ${formatSurfacingDay(dueDate, new Date())}`;
 
   it("renders a get_suggested_followup_review result as a tentative follow-up item", () => {
     const view = toAssistantToolView({
@@ -283,7 +279,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
       kind: "suggested_followup_review",
       followupId: "f1",
       reason: "Check in about the new job.",
-      dueLabel,
+      timingLabel: dueLabel,
       sourceRecordId: "s1",
       personId: "person-1",
       personName: "Mark",
@@ -311,7 +307,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
       kind: "suggested_followup_review",
       followupId: "f9",
       reason: "Ask how the move went.",
-      dueLabel,
+      timingLabel: dueLabel,
       sourceRecordId: "s9",
       personId: "person-1",
       personName: "Mark",
@@ -339,7 +335,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
         {
           followupId: "f1",
           reason: "Reconnect.",
-          dueLabel,
+          timingLabel: dueLabel,
           sourceRecordId: "s1",
           personId: "person-1",
           personName: "Mark",
@@ -763,20 +759,10 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
       toolName: "create_general_action",
       output: { action: gaRef({ dueAt: "2026-07-15T00:00:00.000Z" }) },
     });
-    const dueLabel = new Date("2026-07-15T00:00:00.000Z").toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-    expect(dated).toMatchObject({ timingLabel: `Due ${dueLabel}` });
+    expect(dated).toMatchObject({ timingLabel: dueLabel });
   });
 
   it("renders suggest_general_action and get_suggested_general_action_review as review items", () => {
-    const dueLabel = new Date("2026-07-15T00:00:00.000Z").toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
     const output = {
       found: true,
       component: { type: "suggested_general_action_review", generalActionId: "ga-1" },
@@ -789,7 +775,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
       generalActionId: "ga-1",
       title: "Replace the fridge water filter",
       status: "suggested",
-      dueLabel,
+      timingLabel: dueLabel,
       isRoutine: false,
       recurrenceLabel: null,
       personNames: [],
@@ -875,11 +861,7 @@ describe("toAssistantToolView (Eve tool output → renderable view)", () => {
       },
     });
 
-    const deferLabel = new Date("2026-07-20T00:00:00.000Z").toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    const deferLabel = formatSurfacingDay(new Date("2026-07-20T00:00:00.000Z"), new Date());
     expect(view).toEqual({
       kind: "general_action_list",
       ledger: "active",
@@ -1387,7 +1369,7 @@ describe("toolViewTier (how much weight a result earns)", () => {
       generalActionId: "ga-1",
       title: "Book the campsite",
       status: "suggested",
-      dueLabel: null,
+      timingLabel: null,
       isRoutine: false,
       recurrenceLabel: null,
       personNames: [] as string[],

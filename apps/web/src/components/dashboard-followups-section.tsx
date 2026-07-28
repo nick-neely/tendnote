@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { completeFollowupAction, dismissFollowupAction } from "@/app/actions/followups";
-import { DueChip } from "@/components/followup-due-chip";
 import { CheckIcon, XIcon } from "@/components/icons";
+import { RecordTimingChip } from "@/components/record-timing-chip";
 import { Button } from "@/components/ui/button";
 import type { DashboardFollowupView } from "@/lib/followup-view";
 import { useResolvingAction } from "@/lib/use-resolving-action";
@@ -78,7 +78,7 @@ function FollowupRow({
           {personName}
         </Link>
         <div className="flex shrink-0 flex-col items-end gap-0.5">
-          <DueChip dueLabel={followup.dueLabel} dueState={followup.dueState} />
+          <RecordTimingChip label={followup.surfaceLabel} state={followup.dueState} />
           {followup.status === "snoozed" ? (
             <span className="text-[length:var(--text-caption)] text-muted-foreground">Snoozed</span>
           ) : null}

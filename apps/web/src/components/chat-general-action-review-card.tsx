@@ -49,11 +49,7 @@ export function ChatGeneralActionReviewList({
  * the created-action card and ledger rows (see general-action-meta).
  */
 function reviewMeta(item: SuggestedGeneralActionReviewItemView): string | null {
-  const timing = item.isRoutine
-    ? (item.recurrenceLabel ?? "Routine")
-    : item.dueLabel
-      ? `Proposed for ${item.dueLabel}`
-      : null;
+  const timing = item.isRoutine ? (item.recurrenceLabel ?? "Routine") : item.timingLabel;
   return joinGeneralActionMeta([
     timing,
     formatLinkedPeople(item.personNames),

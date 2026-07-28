@@ -1,5 +1,5 @@
-import type { CalendarSuggestedFollowup } from "@tendnote/domain";
-import { type FollowupDueState, followupDueState, toDateInputValue } from "./followup-view";
+import { type CalendarSuggestedFollowup, resolveRecordTiming } from "@tendnote/domain";
+import { type FollowupDueState, toDateInputValue } from "./followup-view";
 
 export type CalendarSuggestionReviewView = {
   id: string;
@@ -24,6 +24,14 @@ export function toCalendarSuggestionReviewView(
   suggestion: CalendarSuggestedFollowup,
   now: Date = new Date(),
 ): CalendarSuggestionReviewView {
+  const timing = resolveRecordTiming(
+    {
+      kind: "followup",
+      status: "suggested",
+      dueAt: suggestion.dueAt,
+    },
+    now,
+  );
   return {
     id: suggestion.id,
     personId: suggestion.personId,
@@ -39,6 +47,6 @@ export function toCalendarSuggestionReviewView(
       day: "numeric",
       year: suggestion.dueAt.getFullYear() === now.getFullYear() ? undefined : "numeric",
     }),
-    dueState: followupDueState(suggestion.dueAt, now),
+    dueState: timing.state as FollowupDueState,
   };
 }

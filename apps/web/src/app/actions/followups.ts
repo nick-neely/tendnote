@@ -78,7 +78,7 @@ export async function createFollowupAction(input: {
       });
     },
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toFollowupView(outcome.result),
+    result: (outcome, ownerUserId) => toFollowupView(outcome.result, new Date(), null, ownerUserId),
   });
 }
 
@@ -101,11 +101,12 @@ export async function createBirthdayFollowupAction(input: {
         now: new Date(),
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => ({
+    result: (outcome, ownerUserId) => ({
       view: toFollowupView(
         outcome.result.followup,
         new Date(),
         toReminderScheduleView(outcome.result.reminder.schedule),
+        ownerUserId,
       ),
       optIn: outcome.result.reminder.optIn,
     }),
@@ -126,7 +127,7 @@ export async function editFollowupAction(input: {
         edit: parsed.edit,
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toFollowupView(outcome.result),
+    result: (outcome, ownerUserId) => toFollowupView(outcome.result, new Date(), null, ownerUserId),
   });
 }
 
@@ -137,7 +138,7 @@ async function transitionAction(input: { followupId: string }, mutate: typeof co
     body: ({ ownerUserId, input: parsed }) =>
       mutate({ actorUserId: ownerUserId, followupId: parsed.followupId }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toFollowupView(outcome.result),
+    result: (outcome, ownerUserId) => toFollowupView(outcome.result, new Date(), null, ownerUserId),
   });
 }
 
@@ -164,6 +165,6 @@ export async function snoozeFollowupAction(input: { followupId: string; dueAt: s
     body: ({ ownerUserId, input: parsed }) =>
       snoozeFollowup({ actorUserId: ownerUserId, ...parsed }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toFollowupView(outcome.result),
+    result: (outcome, ownerUserId) => toFollowupView(outcome.result, new Date(), null, ownerUserId),
   });
 }

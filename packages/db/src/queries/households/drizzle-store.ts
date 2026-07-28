@@ -3,7 +3,7 @@ import {
   createHouseholdWorkspaceSchema,
   householdMembershipSchema,
 } from "@tendnote/domain";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../client";
 import {
   auditLog,
@@ -32,6 +32,13 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
         .where(eq(householdWorkspaces.id, input.householdId))
         .limit(1);
       return household ?? null;
+    },
+    async getHouseholdWorkspaces(input) {
+      if (input.householdIds.length === 0) return [];
+      return getDb()
+        .select()
+        .from(householdWorkspaces)
+        .where(inArray(householdWorkspaces.id, input.householdIds));
     },
     async createHouseholdMembership(input) {
       const [membership] = await getDb()
@@ -134,6 +141,19 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
             eq(householdRecordShares.householdId, input.householdId),
             eq(householdRecordShares.recordKind, input.recordKind),
             eq(householdRecordShares.recordId, input.recordId),
+          ),
+        );
+    },
+    async listHouseholdRecordSharesForRecords(input) {
+      if (input.householdIds.length === 0 || input.recordIds.length === 0) return [];
+      return getDb()
+        .select()
+        .from(householdRecordShares)
+        .where(
+          and(
+            inArray(householdRecordShares.householdId, input.householdIds),
+            eq(householdRecordShares.recordKind, input.recordKind),
+            inArray(householdRecordShares.recordId, input.recordIds),
           ),
         );
     },

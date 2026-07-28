@@ -6,7 +6,6 @@ import {
   editFollowupAction,
   snoozeFollowupAction,
 } from "@/app/actions/followups";
-import { DueChip } from "@/components/followup-due-chip";
 import { GeneralActionReminderField } from "@/components/general-action-reminder";
 import {
   AlarmClockIcon,
@@ -19,6 +18,7 @@ import {
   XIcon,
 } from "@/components/icons";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
+import { RecordTimingChip } from "@/components/record-timing-chip";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -242,7 +242,7 @@ export function ActiveFollowupRow({
           </span>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-0.5">
-          <DueChip dueLabel={followup.dueLabel} dueState={followup.dueState} />
+          <RecordTimingChip label={followup.surfaceLabel} state={followup.dueState} />
           {followup.status === "snoozed" ? (
             <span className="text-[length:var(--text-caption)] text-muted-foreground">Snoozed</span>
           ) : null}

@@ -296,12 +296,17 @@ async function PersonDetailEnrichment({
       const schedule = reminderSchedules.find(
         (candidate) => candidate.recordKind === "follow_up" && candidate.recordId === followup.id,
       );
-      return toFollowupView(followup, now, schedule ? toReminderScheduleView(schedule) : null);
+      return toFollowupView(
+        followup,
+        now,
+        schedule ? toReminderScheduleView(schedule) : null,
+        ownerUserId,
+      );
     });
   const resolvedFollowups = followups
     .filter((followup) => followup.status === "completed" || followup.status === "dismissed")
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-    .map((followup) => toFollowupView(followup, now));
+    .map((followup) => toFollowupView(followup, now, null, ownerUserId));
 
   // Tab counts are server-derived and stay live because every section calls
   // router.refresh() on mutation: pending suggestions to review, things to act on
