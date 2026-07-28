@@ -77,7 +77,10 @@ export const getReminderInstallationStateAction = async () => ({
   installation: null,
 });
 export const markReminderStandaloneContinuationAction = unusedAction;
-export const reconcileReminderTimeZoneAction = async () => ({ reconciled: 0 });
+export const reconcileReminderTimeZoneAction = async () => ({
+  ok: true as const,
+  view: { reconciled: 0, remaining: 0, nextOffset: 0 },
+});
 export const registerReminderInstallationAction = async () => ({ enabled: true });
 export const revokeReminderInstallationAction = unusedAction;
 export const saveReminderAction = unusedAction;

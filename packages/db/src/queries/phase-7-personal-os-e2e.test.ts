@@ -219,7 +219,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       result: captured,
       now: CAPTURED_AT,
     });
-    expect(confirmed.result).toMatchObject({
+    expect(confirmed.result.confirmation).toMatchObject({
       destination: "Grouped",
       outcomes: [
         { interpreted: { reminderSchedule: expect.stringMatching(/one week before/) } },

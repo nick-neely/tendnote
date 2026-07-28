@@ -3,9 +3,11 @@
 import { useId, useState } from "react";
 import { editSavedItemAction } from "@/app/actions/saved-items";
 import { GeneralActionReminderField } from "@/components/general-action-reminder";
+import { pastReminderLeadTimeMessage } from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { toReminderScheduleChoice } from "@/lib/reminder-schedule-view";
 import type { SavedItemView } from "@/lib/saved-item-view";
 import { useReminderSchedule } from "@/lib/use-reminder-schedule";
 
@@ -53,9 +55,7 @@ export function SavedItemEditForm({
     (item.kind === "link" && (url.trim() || null) !== item.url) ||
     bringBackAt !== toDateTimeLocalValue(item.bringBackAt);
   const currentReminderChoice = item.reminderSchedule
-    ? item.reminderSchedule.kind === "relative"
-      ? { kind: "relative" as const, leadMinutes: item.reminderSchedule.leadMinutes ?? 0 }
-      : { kind: "exact" as const, localTime: item.reminderSchedule.localTime ?? "09:00" }
+    ? toReminderScheduleChoice(item.reminderSchedule)
     : null;
   const reminderChanged =
     reminderEnabled !== Boolean(item.reminderSchedule) ||
@@ -81,10 +81,18 @@ export function SavedItemEditForm({
             if (!result.ok) return result;
             let view = result.view;
             if (reminderEnabled && bringBackAt) {
-              const reminder = await saveSchedule("saved_item", item.id, "instant");
-              if (!reminder.nextValidChoice) {
-                view = { ...view, reminderSchedule: reminder.scheduleView };
+              const reminder = await saveSchedule("saved_item", item.id);
+              if (reminder.nextValidChoice) {
+                setReminderChoice({
+                  kind: "relative",
+                  leadMinutes: reminder.nextValidChoice.leadMinutes,
+                });
+                return {
+                  ok: false as const,
+                  error: pastReminderLeadTimeMessage(reminder.nextValidChoice.label),
+                };
               }
+              view = { ...view, reminderSchedule: reminder.scheduleView };
             } else if (item.reminderSchedule) {
               await clearSchedule("saved_item", item.id);
               view = { ...view, reminderSchedule: null };

@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 import { reconcileReminderTimeZoneAction } from "@/app/actions/reminders";
+import { useReminderInstallation } from "@/components/reminder-installation-context";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
 const REMINDER_TIME_ZONE_KEY = "tendnote.reminder-time-zone";
 
@@ -10,13 +12,26 @@ function currentTimeZoneFingerprint(timeZone: string) {
 }
 
 export function ReminderTimeZoneReconciler() {
+  const installation = useReminderInstallation();
   useEffect(() => {
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timeZone = installation?.timeZone;
     if (!timeZone) return;
-    const fingerprint = currentTimeZoneFingerprint(timeZone);
+    const resolvedTimeZone = timeZone;
+    const fingerprint = currentTimeZoneFingerprint(resolvedTimeZone);
     if (window.localStorage.getItem(REMINDER_TIME_ZONE_KEY) === fingerprint) return;
     let cancelled = false;
-    void reconcileReminderTimeZoneAction({ timeZone })
+    async function reconcileAll(offset = 0): Promise<void> {
+      const result = unwrapOwnerActionResult(
+        await reconcileReminderTimeZoneAction({
+          timeZone: resolvedTimeZone,
+          ...(offset ? { offset } : {}),
+        }),
+      );
+      if (!cancelled && result.remaining > 0) {
+        await reconcileAll(result.nextOffset);
+      }
+    }
+    void reconcileAll()
       .then(() => {
         if (!cancelled) window.localStorage.setItem(REMINDER_TIME_ZONE_KEY, fingerprint);
       })
@@ -26,7 +41,7 @@ export function ReminderTimeZoneReconciler() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [installation?.timeZone]);
 
   return null;
 }

@@ -4,7 +4,6 @@ import type { GeneralActionRecurrence } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import { useId, useState } from "react";
 import { createGeneralActionAction } from "@/app/actions/general-actions";
-import { saveReminderAction } from "@/app/actions/reminders";
 import { AreaSelect } from "@/components/general-action-area-select";
 import {
   ActionAssetHintsField,
@@ -23,7 +22,6 @@ import { RecurrenceField } from "@/components/general-action-recurrence-field";
 import {
   type GeneralActionReminderChoice,
   GeneralActionReminderField,
-  ReminderOptInInvitation,
 } from "@/components/general-action-reminder";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
@@ -32,16 +30,16 @@ import {
   type ShareableActionMember,
 } from "@/components/general-action-visibility-field";
 import { ChevronDownIcon, PlusIcon } from "@/components/icons";
+import { ReminderPastLeadRecovery } from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionView } from "@/lib/general-action-view";
-import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
-import { getReminderInstallationId } from "@/lib/reminder-registration";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
+import { useReminderScheduleWriter } from "@/lib/use-reminder-schedule-writer";
 
 /**
  * Assembles the create-action server-action payload, including only the optional fields the
@@ -110,6 +108,7 @@ export function CreateActionForm({
   /** A soft failure while loading optional detail choices; capture stays usable. */
   detailsLoadError?: string | null;
 }) {
+  const reminderWriter = useReminderScheduleWriter();
   const detailsId = useId();
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -119,10 +118,8 @@ export function CreateActionForm({
     kind: "exact",
     localTime: "09:00",
   });
-  const [optInInstallationId, setOptInInstallationId] = useState<string | null>(null);
   const [pastLeadRecovery, setPastLeadRecovery] = useState<{
     actionId: string;
-    clientInstallationId: string;
     recordKind: "general_action" | "routine";
     label: string;
   } | null>(null);
@@ -184,20 +181,14 @@ export function CreateActionForm({
         let reminderError: string | null = null;
         if (reminderEnabled && dueDate) {
           try {
-            const clientInstallationId = getReminderInstallationId(window.localStorage);
-            const result = unwrapOwnerActionResult(
-              await saveReminderAction({
-                recordKind: recurrence ? "routine" : "general_action",
-                recordId: view.id,
-                clientInstallationId,
-                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                schedule: reminderChoice,
-              }),
+            const result = await reminderWriter.save(
+              recurrence ? "routine" : "general_action",
+              view.id,
+              reminderChoice,
             );
             if (result.nextValidChoice) {
               setPastLeadRecovery({
                 actionId: view.id,
-                clientInstallationId,
                 recordKind: recurrence ? "routine" : "general_action",
                 label: result.nextValidChoice.label,
               });
@@ -206,7 +197,6 @@ export function CreateActionForm({
                 ...view,
                 reminderSchedule: toReminderScheduleView(result.schedule),
               });
-              if (result.optIn.state === "offer") setOptInInstallationId(clientInstallationId);
             }
           } catch {
             reminderError =
@@ -313,49 +303,23 @@ export function CreateActionForm({
 
         {error ? <ErrorText message={error} /> : null}
       </form>
-      {optInInstallationId ? (
-        <ReminderOptInInvitation
-          clientInstallationId={optInInstallationId}
-          onDismiss={() => setOptInInstallationId(null)}
-        />
-      ) : null}
       {pastLeadRecovery ? (
-        <aside className="rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3.5">
-          <p className="text-sm font-medium">That reminder time has already passed.</p>
-          <p className="text-[length:var(--text-small)] text-muted-foreground">
-            No catch-up alert was sent. The next available choice is {pastLeadRecovery.label}.
-          </p>
-          <Button
-            className="mt-2"
-            disabled={recoveryPending}
-            onClick={async () => {
-              setRecoveryPending(true);
-              try {
-                const result = unwrapOwnerActionResult(
-                  await saveReminderAction({
-                    recordKind: pastLeadRecovery.recordKind,
-                    recordId: pastLeadRecovery.actionId,
-                    clientInstallationId: pastLeadRecovery.clientInstallationId,
-                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    schedule: { kind: "relative", leadMinutes: 0 },
-                  }),
-                );
-                setPastLeadRecovery(null);
-                if (result.optIn.state === "offer") {
-                  setOptInInstallationId(result.optIn.clientInstallationId);
-                }
-              } finally {
-                setRecoveryPending(false);
-              }
-            }}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {recoveryPending ? <Spinner /> : null}
-            {recoveryPending ? "Saving…" : `Use ${pastLeadRecovery.label}`}
-          </Button>
-        </aside>
+        <ReminderPastLeadRecovery
+          label={pastLeadRecovery.label}
+          onRecover={async () => {
+            setRecoveryPending(true);
+            try {
+              await reminderWriter.save(pastLeadRecovery.recordKind, pastLeadRecovery.actionId, {
+                kind: "relative",
+                leadMinutes: 0,
+              });
+              setPastLeadRecovery(null);
+            } finally {
+              setRecoveryPending(false);
+            }
+          }}
+          pending={recoveryPending}
+        />
       ) : null}
     </div>
   );

@@ -4,17 +4,16 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { disableCurrentReminderInstallationAction } from "@/app/actions/reminders";
 import { LogOutIcon } from "@/components/icons";
+import { useReminderInstallation } from "@/components/reminder-installation-context";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { signOut } from "@/lib/auth/client";
 import { clearAllLocalComposerDrafts } from "@/lib/local-composer-draft";
-import {
-  getExistingReminderInstallationId,
-  unsubscribeReminderRegistration,
-} from "@/lib/reminder-registration";
+import { unsubscribeReminderRegistration } from "@/lib/reminder-registration";
 
 export function SignOutButton({ className }: { className?: string }) {
   const router = useRouter();
+  const installation = useReminderInstallation();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +25,7 @@ export function SignOutButton({ className }: { className?: string }) {
     setPending(true);
     setError(null);
 
-    const clientInstallationId = getExistingReminderInstallationId(window.localStorage);
+    const clientInstallationId = installation?.clientInstallationId;
     if (clientInstallationId) {
       try {
         await disableCurrentReminderInstallationAction({

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { AccessCheckFallback } from "@/components/access-check-fallback";
 import { AppShell } from "@/components/app-shell";
 import { AppShellEffects } from "@/components/app-shell-effects";
+import { ReminderInstallationProvider } from "@/components/reminder-installation-context";
 import { hasAdmittedShellAccess } from "@/lib/access/current-access";
 
 /**
@@ -12,12 +13,14 @@ import { hasAdmittedShellAccess } from "@/lib/access/current-access";
 export default function AdmittedLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="admitted-layout relative min-h-dvh">
-      <Suspense fallback={<AdmissionFallback />}>
-        <AdmissionMarker />
-      </Suspense>
-      <div className="admitted-layout-content">
-        <AppShell>{children}</AppShell>
-      </div>
+      <ReminderInstallationProvider>
+        <Suspense fallback={<AdmissionFallback />}>
+          <AdmissionMarker />
+        </Suspense>
+        <div className="admitted-layout-content">
+          <AppShell>{children}</AppShell>
+        </div>
+      </ReminderInstallationProvider>
     </div>
   );
 }

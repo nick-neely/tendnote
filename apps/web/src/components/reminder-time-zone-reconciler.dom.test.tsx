@@ -14,7 +14,10 @@ describe("ReminderTimeZoneReconciler", () => {
   beforeEach(() => {
     window.localStorage.clear();
     reconcileReminderTimeZoneAction.mockReset();
-    reconcileReminderTimeZoneAction.mockResolvedValue({ reconciled: 2 });
+    reconcileReminderTimeZoneAction.mockResolvedValue({
+      ok: true,
+      view: { reconciled: 2, remaining: 0, nextOffset: 2 },
+    });
   });
 
   it("regenerates schedules when the browser's current timezone changes", async () => {
@@ -42,5 +45,25 @@ describe("ReminderTimeZoneReconciler", () => {
     render(<ReminderTimeZoneReconciler />);
 
     await waitFor(() => expect(reconcileReminderTimeZoneAction).toHaveBeenCalledWith({ timeZone }));
+  });
+
+  it("continues bounded reconciliation batches until the owner has no schedules remaining", async () => {
+    reconcileReminderTimeZoneAction
+      .mockResolvedValueOnce({
+        ok: true,
+        view: { reconciled: 8, remaining: 2, nextOffset: 8 },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        view: { reconciled: 2, remaining: 0, nextOffset: 10 },
+      });
+
+    render(<ReminderTimeZoneReconciler />);
+
+    await waitFor(() => expect(reconcileReminderTimeZoneAction).toHaveBeenCalledTimes(2));
+    expect(reconcileReminderTimeZoneAction).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ offset: 8 }),
+    );
   });
 });

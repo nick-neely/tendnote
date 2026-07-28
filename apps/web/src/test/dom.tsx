@@ -21,8 +21,14 @@
  * "narrow-viewport" assertion here confirms the mobile-first base layout renders its controls
  * reachable and operable, since jsdom reflects the un-broken (mobile) style layer.
  */
-import { cleanup } from "@testing-library/react";
+import {
+  cleanup,
+  type RenderOptions,
+  render as testingLibraryRender,
+} from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
 import { afterEach } from "vitest";
+import { ReminderInstallationProvider } from "@/components/reminder-installation-context";
 
 let matchMediaMatches = false;
 
@@ -55,6 +61,15 @@ afterEach(() => {
   cleanup();
   matchMediaMatches = false;
 });
+
+export function render(ui: ReactElement, options?: RenderOptions) {
+  return testingLibraryRender(ui, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <ReminderInstallationProvider>{children}</ReminderInstallationProvider>
+    ),
+    ...options,
+  });
+}
 
 export * from "@testing-library/react";
 export { default as userEvent } from "@testing-library/user-event";

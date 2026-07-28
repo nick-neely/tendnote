@@ -16,7 +16,10 @@ import {
   conversationalCaptureInputModeSchema,
   conversationalCaptureUndoTargetSchema,
 } from "@tendnote/domain/conversational-capture";
-import { reminderScheduleChoiceSchema } from "@tendnote/domain/reminders";
+import {
+  reminderScheduleChoiceSchema,
+  reminderTimeSemanticsForRecordKind,
+} from "@tendnote/domain/reminders";
 import { z } from "zod";
 import { runOwnerAction } from "@/lib/owner-action";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
@@ -63,7 +66,7 @@ export async function changeExplicitCaptureReminderAction(
     schema: changeReminderSchema,
     input,
     body: async ({ ownerUserId, input: parsed }) => {
-      const target =
+      const reference =
         parsed.target.kind === "edit_general_action"
           ? {
               recordKind: (
@@ -75,22 +78,23 @@ export async function changeExplicitCaptureReminderAction(
                 ? ("routine" as const)
                 : ("general_action" as const),
               recordId: parsed.target.generalActionId,
-              timeSemantics: "date_only" as const,
             }
           : parsed.target.kind === "edit_followup"
             ? {
                 recordKind: "follow_up" as const,
                 recordId: parsed.target.followupId,
-                timeSemantics: "date_only" as const,
               }
             : parsed.target.kind === "edit_saved_item"
               ? {
                   recordKind: "saved_item" as const,
                   recordId: parsed.target.savedItemId,
-                  timeSemantics: "instant" as const,
                 }
               : null;
-      if (!target) throw new Error("That captured record cannot have a Reminder schedule.");
+      if (!reference) throw new Error("That captured record cannot have a Reminder schedule.");
+      const target = {
+        ...reference,
+        timeSemantics: reminderTimeSemanticsForRecordKind(reference.recordKind),
+      };
       return {
         outcome: await saveReminder({
           ownerUserId,
@@ -106,6 +110,7 @@ export async function changeExplicitCaptureReminderAction(
     affectedScopes: ({ outcome }) => outcome.affectedScopes,
     result: ({ outcome, target }) => ({
       reminderSchedule: toReminderScheduleView(outcome.result.schedule, target.timeSemantics).label,
+      reminderOptInOffered: outcome.result.optIn.state === "offer",
     }),
   });
 }
@@ -173,7 +178,10 @@ export async function captureExplicitOutcomeAction(input: z.input<typeof submitS
             clarification: conversationalCaptureClarificationSchema.parse(capture.clarification),
           }
         : {
-            confirmation: conversationalCaptureConfirmationSchema.parse(reminder?.result),
+            confirmation: conversationalCaptureConfirmationSchema.parse(
+              reminder?.result.confirmation,
+            ),
+            reminderOptInOffered: reminder?.result.reminderOptInOffered ?? false,
           },
   });
 }

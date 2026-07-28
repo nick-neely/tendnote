@@ -5,8 +5,8 @@ import { page, userEvent } from "vitest/browser";
 import type { ReviewQueueItem } from "@/lib/review-queue";
 import { renderInBrowser } from "@/test/browser";
 import { AppShell } from "./app-shell";
-import { ReminderOptInInvitation } from "./general-action-reminder";
 import { MobileTodayDestination } from "./mobile-today-destination";
+import { ReminderOptInInvitation } from "./reminder-opt-in-invitation";
 import { ReviewQueueSection } from "./review-queue-section";
 
 vi.mock("@/components/mobile-eve-surface", () => ({

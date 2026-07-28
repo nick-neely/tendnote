@@ -12,7 +12,7 @@ import {
   setGeneralActionVisibilityAction,
   skipGeneralActionOccurrenceAction,
 } from "@/app/actions/general-actions";
-import { clearReminderAction, saveReminderAction } from "@/app/actions/reminders";
+import { clearReminderAction } from "@/app/actions/reminders";
 import { AreaSelect } from "@/components/general-action-area-select";
 import {
   ActionAssetHintsField,
@@ -35,7 +35,6 @@ import { RecurrenceField } from "@/components/general-action-recurrence-field";
 import {
   type GeneralActionReminderChoice,
   GeneralActionReminderField,
-  ReminderOptInInvitation,
 } from "@/components/general-action-reminder";
 import { ErrorText } from "@/components/general-action-shared";
 import {
@@ -59,6 +58,7 @@ import {
   XIcon,
 } from "@/components/icons";
 import { RecordTimingChip } from "@/components/record-timing-chip";
+import { pastReminderLeadTimeMessage } from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -81,14 +81,14 @@ import {
 } from "@/lib/general-action-reversible-mutation";
 import type { GeneralActionMutationResult, GeneralActionView } from "@/lib/general-action-view";
 import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
-import { getReminderInstallationId } from "@/lib/reminder-registration";
-import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
+import { toReminderScheduleChoice, toReminderScheduleView } from "@/lib/reminder-schedule-view";
 import {
   type ReversibleMutationApplyPhase,
   type ReversibleMutationApplyResult,
   useActiveReversibleMutation,
   useReversibleMutation,
 } from "@/lib/reversible-mutation";
+import { useReminderScheduleWriter } from "@/lib/use-reminder-schedule-writer";
 
 function linkLabel(link: GeneralActionLink): string {
   if (link.label) {
@@ -209,7 +209,6 @@ function ActionEditForm({
   people,
   onUpdate,
   onCancel,
-  onReminderOptIn,
 }: {
   action: GeneralActionView;
   areas: GeneralActionAreaView[];
@@ -217,17 +216,15 @@ function ActionEditForm({
   people: ActionPersonOption[];
   onUpdate: (view: GeneralActionView, phase?: ReversibleMutationApplyPhase) => void;
   onCancel: () => void;
-  onReminderOptIn: (clientInstallationId: string) => void;
 }) {
+  const reminderWriter = useReminderScheduleWriter();
   const [title, setTitle] = useState(action.title);
   const [notes, setNotes] = useState(action.notes ?? "");
   const [dueDate, setDueDate] = useState(action.dueAtDate);
   const [recurrence, setRecurrence] = useState<GeneralActionRecurrence | null>(action.recurrence);
   const [reminderEnabled, setReminderEnabled] = useState(Boolean(action.reminderSchedule));
   const [reminderChoice, setReminderChoice] = useState<GeneralActionReminderChoice>(() =>
-    action.reminderSchedule?.kind === "relative"
-      ? { kind: "relative", leadMinutes: action.reminderSchedule.leadMinutes ?? 0 }
-      : { kind: "exact", localTime: action.reminderSchedule?.localTime ?? "09:00" },
+    toReminderScheduleChoice(action.reminderSchedule),
   );
   const [links, setLinks] = useState<LinkDraft[]>(toLinkDrafts(action.links));
   const [hintLabels, setHintLabels] = useState<string[]>(toHintLabels(action.assetHints));
@@ -279,9 +276,7 @@ function ActionEditForm({
     action.linkedPeople.map((p) => p.id),
   );
   const currentReminderChoice = action.reminderSchedule
-    ? action.reminderSchedule.kind === "relative"
-      ? { kind: "relative" as const, leadMinutes: action.reminderSchedule.leadMinutes ?? 0 }
-      : { kind: "exact" as const, localTime: action.reminderSchedule.localTime ?? "09:00" }
+    ? toReminderScheduleChoice(action.reminderSchedule)
     : null;
   const reminderChanged =
     reminderEnabled !== Boolean(action.reminderSchedule) ||
@@ -322,25 +317,17 @@ function ActionEditForm({
               });
             }
             if (reminderEnabled && dueDate) {
-              const clientInstallationId = getReminderInstallationId(window.localStorage);
-              const scheduleResult = unwrapOwnerActionResult(
-                await saveReminderAction({
-                  recordKind: recurrence ? "routine" : "general_action",
-                  recordId: action.id,
-                  clientInstallationId,
-                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                  schedule: reminderChoice,
-                }),
+              const scheduleResult = await reminderWriter.save(
+                recurrence ? "routine" : "general_action",
+                action.id,
+                reminderChoice,
               );
               if (scheduleResult.nextValidChoice) {
                 setReminderChoice({ kind: "relative", leadMinutes: 0 });
                 return {
                   ok: false,
-                  error: `That lead time has passed. Save again to use ${scheduleResult.nextValidChoice.label}.`,
+                  error: pastReminderLeadTimeMessage(scheduleResult.nextValidChoice.label),
                 };
-              }
-              if (scheduleResult.optIn.state === "offer") {
-                onReminderOptIn(clientInstallationId);
               }
               const view = result?.ok ? result.view : action;
               result = {
@@ -767,7 +754,6 @@ export function ActionRow({
   const [mode, setMode] = useState<"view" | "edit" | "defer" | "share">("view");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [optInInstallationId, setOptInInstallationId] = useState<string | null>(null);
   const completeMutation = useReversibleMutation(action.id, "complete");
   const dismissMutation = useReversibleMutation(action.id, "dismiss");
   const archiveMutation = useReversibleMutation(action.id, "archive");
@@ -870,7 +856,6 @@ export function ActionRow({
         areaName={areaName}
         areas={areas}
         onCancel={returnToView}
-        onReminderOptIn={setOptInInstallationId}
         onUpdate={onUpdate}
         people={people}
       />
@@ -1001,12 +986,6 @@ export function ActionRow({
           <CheckIcon aria-hidden className="size-3 text-primary" />
           {notice}
         </p>
-      ) : null}
-      {optInInstallationId ? (
-        <ReminderOptInInvitation
-          clientInstallationId={optInInstallationId}
-          onDismiss={() => setOptInInstallationId(null)}
-        />
       ) : null}
       <ActionHistoryDialog
         generalActionId={action.id}

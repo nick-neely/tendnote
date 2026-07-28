@@ -1,6 +1,9 @@
 import type { ConversationalCaptureConfirmation } from "@tendnote/domain";
 import { conversationalCaptureOutcomeConfirmationSchema } from "@tendnote/domain/conversational-capture";
-import { formatReminderScheduleLabel } from "@tendnote/domain/reminders";
+import {
+  formatReminderScheduleLabel,
+  reminderTimeSemanticsForRecordKind,
+} from "@tendnote/domain/reminders";
 import {
   affectedScopesForAccount,
   affectedScopesForReminder,
@@ -69,7 +72,7 @@ async function loadFollowupReminderRecord(input: {
     title: followup.reason,
     status: followup.status,
     occursAt: followup.dueAt,
-    timeSemantics: "date_only",
+    timeSemantics: reminderTimeSemanticsForRecordKind("follow_up"),
     recurrence: null,
     sensitivity,
     scope: followup.scope,
@@ -98,7 +101,7 @@ async function loadSavedItemReminderRecord(input: {
     title: item.title,
     status: item.status,
     occursAt: item.bringBackAt,
-    timeSemantics: item.bringBackTimeSemantics,
+    timeSemantics: reminderTimeSemanticsForRecordKind("saved_item"),
     recurrence: null,
     sensitivity,
     scope: item.scope,
@@ -130,7 +133,7 @@ async function loadActionReminderRecord(input: {
     title: action.title,
     status: action.status,
     occursAt: action.dueAt,
-    timeSemantics: "date_only",
+    timeSemantics: reminderTimeSemanticsForRecordKind(kind),
     recurrence: action.recurrence,
     sensitivity,
     scope: action.scope,
@@ -201,6 +204,15 @@ export function reconcileReminderRecord(
   input: Parameters<typeof reminderService.reconcileReminderRecord>[0],
 ) {
   return reminderMutationOutcome(input, reminderService.reconcileReminderRecord(input));
+}
+
+export function reconcileReminderTimeZone(
+  input: Parameters<typeof reminderService.reconcileReminderTimeZone>[0],
+) {
+  return accountMutationOutcome(
+    input.ownerUserId,
+    reminderService.reconcileReminderTimeZone(input),
+  );
 }
 
 export function registerReminderInstallation(
@@ -302,7 +314,7 @@ function captureReminderTarget(outcome: CaptureOutcomeResult): CaptureReminderTa
       schedule:
         outcome.reminderSchedule ??
         (routine ? { kind: "relative", leadMinutes: 0 } : { kind: "exact", localTime: "09:00" }),
-      timeSemantics: "date_only",
+      timeSemantics: reminderTimeSemanticsForRecordKind(routine ? "routine" : "general_action"),
     };
   }
   if (outcome.kind === "followup") {
@@ -310,7 +322,7 @@ function captureReminderTarget(outcome: CaptureOutcomeResult): CaptureReminderTa
       recordKind: "follow_up",
       recordId: outcome.followup.id,
       schedule: { kind: "exact", localTime: "09:00" },
-      timeSemantics: "date_only",
+      timeSemantics: reminderTimeSemanticsForRecordKind("follow_up"),
     };
   }
   if (outcome.kind === "saved_item" && outcome.savedItem.bringBackAt) {
@@ -318,7 +330,7 @@ function captureReminderTarget(outcome: CaptureOutcomeResult): CaptureReminderTa
       recordKind: "saved_item",
       recordId: outcome.savedItem.id,
       schedule: { kind: "relative", leadMinutes: 0 },
-      timeSemantics: outcome.savedItem.bringBackTimeSemantics,
+      timeSemantics: reminderTimeSemanticsForRecordKind("saved_item"),
     };
   }
   return null;
@@ -357,7 +369,12 @@ function singleCaptureOutcome(result: ConversationalCaptureResult): CaptureOutco
 export function createExplicitCaptureReminderScheduler(saveReminderImpl: typeof saveReminder) {
   return async function scheduleExplicitCaptureReminders(
     input: ExplicitCaptureReminderInput,
-  ): Promise<MutationOutcome<ConversationalCaptureConfirmation | undefined>> {
+  ): Promise<
+    MutationOutcome<{
+      confirmation: ConversationalCaptureConfirmation | undefined;
+      reminderOptInOffered: boolean;
+    }>
+  > {
     const { result } = input;
     const hasScopedReminderSchedule =
       result.reminderSchedule !== undefined ||
@@ -371,19 +388,33 @@ export function createExplicitCaptureReminderScheduler(saveReminderImpl: typeof 
       !input.timeZone ||
       !result.confirmation
     ) {
-      return { result: result.confirmation, affectedScopes: [] };
+      return {
+        result: { confirmation: result.confirmation, reminderOptInOffered: false },
+        affectedScopes: [],
+      };
     }
     const clientInstallationId = input.clientInstallationId;
     const timeZone = input.timeZone;
 
-    async function scheduleOutcome(
-      outcome: CaptureOutcomeResult,
-    ): Promise<MutationOutcome<CaptureOutcomeResult["confirmation"]>> {
+    async function scheduleOutcome(outcome: CaptureOutcomeResult): Promise<
+      MutationOutcome<{
+        confirmation: CaptureOutcomeResult["confirmation"];
+        reminderOptInOffered: boolean;
+      }>
+    > {
       if (hasScopedReminderSchedule && !outcome.reminderSchedule) {
-        return { result: outcome.confirmation, affectedScopes: [] };
+        return {
+          result: { confirmation: outcome.confirmation, reminderOptInOffered: false },
+          affectedScopes: [],
+        };
       }
       const target = captureReminderTarget(outcome);
-      if (!target) return { result: outcome.confirmation, affectedScopes: [] };
+      if (!target) {
+        return {
+          result: { confirmation: outcome.confirmation, reminderOptInOffered: false },
+          affectedScopes: [],
+        };
+      }
       const reminder = await saveReminderImpl({
         ownerUserId: input.ownerUserId,
         ...target,
@@ -392,16 +423,19 @@ export function createExplicitCaptureReminderScheduler(saveReminderImpl: typeof 
         now: input.now,
       });
       return {
-        result: conversationalCaptureOutcomeConfirmationSchema.parse({
-          ...outcome.confirmation,
-          interpreted: {
-            ...outcome.confirmation.interpreted,
-            reminderSchedule: formatReminderScheduleLabel(
-              reminder.result.schedule,
-              target.timeSemantics,
-            ),
-          },
-        }),
+        result: {
+          confirmation: conversationalCaptureOutcomeConfirmationSchema.parse({
+            ...outcome.confirmation,
+            interpreted: {
+              ...outcome.confirmation.interpreted,
+              reminderSchedule: formatReminderScheduleLabel(
+                reminder.result.schedule,
+                target.timeSemantics,
+              ),
+            },
+          }),
+          reminderOptInOffered: reminder.result.optIn.state === "offer",
+        },
         affectedScopes: reminder.affectedScopes,
       };
     }
@@ -410,14 +444,22 @@ export function createExplicitCaptureReminderScheduler(saveReminderImpl: typeof 
       const outcomes = await Promise.all((result.outcomes ?? []).map(scheduleOutcome));
       return {
         result: {
-          ...result.confirmation,
-          outcomes: outcomes.map((outcome) => outcome.result),
+          confirmation: {
+            ...result.confirmation,
+            outcomes: outcomes.map((outcome) => outcome.result.confirmation),
+          },
+          reminderOptInOffered: outcomes.some((outcome) => outcome.result.reminderOptInOffered),
         },
         affectedScopes: outcomes.flatMap((outcome) => outcome.affectedScopes),
       };
     }
     const outcome = singleCaptureOutcome(result);
-    return outcome ? scheduleOutcome(outcome) : { result: result.confirmation, affectedScopes: [] };
+    return outcome
+      ? scheduleOutcome(outcome)
+      : {
+          result: { confirmation: result.confirmation, reminderOptInOffered: false },
+          affectedScopes: [],
+        };
   };
 }
 

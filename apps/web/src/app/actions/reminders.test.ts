@@ -9,6 +9,7 @@ const {
   disableReminderInstallation,
   getReminderInstallationState,
   markReminderStandaloneContinuation,
+  reconcileReminderTimeZone,
   saveReminder,
   setReminderInstallationPreviewMode,
 } = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const {
   disableReminderInstallation: vi.fn(),
   getReminderInstallationState: vi.fn(),
   markReminderStandaloneContinuation: vi.fn(),
+  reconcileReminderTimeZone: vi.fn(),
   saveReminder: vi.fn(),
   setReminderInstallationPreviewMode: vi.fn(),
 }));
@@ -31,8 +33,7 @@ vi.mock("@tendnote/db/queries/reminders", () => ({
   disableReminderInstallation,
   getReminderInstallationState,
   markReminderStandaloneContinuation,
-  listReminderSchedulesForOwner: vi.fn(),
-  reconcileReminderRecord: vi.fn(),
+  reconcileReminderTimeZone,
   registerReminderInstallation: vi.fn(),
   saveReminder,
   setReminderInstallationPreviewMode,
@@ -86,6 +87,10 @@ beforeEach(() => {
   beginReminderInstallationOptIn.mockResolvedValue({ result: {}, affectedScopes: accountScopes });
   markReminderStandaloneContinuation.mockResolvedValue({
     result: {},
+    affectedScopes: accountScopes,
+  });
+  reconcileReminderTimeZone.mockResolvedValue({
+    result: { outcomes: [], reconciled: 0, remaining: 0, nextOffset: 0 },
     affectedScopes: accountScopes,
   });
   claimReminderStandaloneContinuation.mockResolvedValue({

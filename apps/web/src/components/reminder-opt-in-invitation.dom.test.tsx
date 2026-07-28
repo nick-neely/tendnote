@@ -18,7 +18,7 @@ vi.mock("@/app/actions/reminders", () => ({
   setReminderOptInDecisionAction,
 }));
 
-import { ReminderOptInInvitation } from "./general-action-reminder";
+import { ReminderOptInInvitation } from "./reminder-opt-in-invitation";
 
 function browserEnvironment(input: {
   permission?: NotificationPermission;

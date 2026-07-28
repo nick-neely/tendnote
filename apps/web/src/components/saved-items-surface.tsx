@@ -14,10 +14,7 @@ import {
   reopenSavedItemAction,
   resolveSavedItemAction,
 } from "@/app/actions/saved-items";
-import {
-  GeneralActionReminderField,
-  ReminderOptInInvitation,
-} from "@/components/general-action-reminder";
+import { GeneralActionReminderField } from "@/components/general-action-reminder";
 import { ActionScopeChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
@@ -35,6 +32,7 @@ import {
 } from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { RecordTimingChip } from "@/components/record-timing-chip";
+import { ReminderPastLeadRecovery } from "@/components/reminder-past-lead-recovery";
 import { SavedItemEditForm } from "@/components/saved-item-edit-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +49,7 @@ import {
 import { savedItemLifecycleAdapter } from "@/lib/saved-item-reversible-mutation";
 import type { SavedItemView } from "@/lib/saved-item-view";
 import { useReminderSchedule } from "@/lib/use-reminder-schedule";
+import { useReminderScheduleWriter } from "@/lib/use-reminder-schedule-writer";
 import { reconcileRevisionedItems, useServerSyncedList } from "@/lib/use-server-synced-list";
 
 const KIND_OPTIONS: Array<{ value: SavedItemKind; label: string }> = [
@@ -200,6 +199,7 @@ function CreateSavedItemForm({
   onCreate: (item: SavedItemView) => void;
   shareableMembers: ShareableActionMember[];
 }) {
+  const reminderWriter = useReminderScheduleWriter();
   const [draft, setDraft] = useState(EMPTY_SAVED_ITEM_DRAFT);
   const {
     choice: reminderChoice,
@@ -209,8 +209,12 @@ function CreateSavedItemForm({
     setChoice: setReminderChoice,
     setEnabled: setReminderEnabled,
   } = useReminderSchedule();
-  const [optInInstallationId, setOptInInstallationId] = useState<string | null>(null);
   const { error, setError, pending, submit } = usePendingMutationSubmit(GENERIC_ERROR);
+  const [pastLeadRecovery, setPastLeadRecovery] = useState<{
+    label: string;
+    recordId: string;
+  } | null>(null);
+  const [recoveryPending, setRecoveryPending] = useState(false);
   const { kind, title, content, url, bringBackAt, showSharing, visibilityChoice, selectedUserIds } =
     draft;
   const selectedMembersRequired =
@@ -248,22 +252,20 @@ function CreateSavedItemForm({
             async (item) => {
               let view = item;
               if (reminderEnabled && bringBackAt) {
-                const reminder = await saveSchedule("saved_item", item.id, "instant");
+                const reminder = await saveSchedule("saved_item", item.id);
                 if (reminder.nextValidChoice) {
                   onCreate(item);
                   reset();
-                  setError(
-                    `The Saved Item was saved, but that alert time has passed. Choose ${reminder.nextValidChoice.label} when you edit its reminder.`,
-                  );
+                  setPastLeadRecovery({
+                    label: reminder.nextValidChoice.label,
+                    recordId: item.id,
+                  });
                   return;
                 }
                 view = {
                   ...item,
                   reminderSchedule: reminder.scheduleView,
                 };
-                if (reminder.optIn.state === "offer") {
-                  setOptInInstallationId(reminder.clientInstallationId);
-                }
               }
               onCreate(view);
               reset();
@@ -310,10 +312,22 @@ function CreateSavedItemForm({
 
         {error ? <ErrorText message={error} /> : null}
       </form>
-      {optInInstallationId ? (
-        <ReminderOptInInvitation
-          clientInstallationId={optInInstallationId}
-          onDismiss={() => setOptInInstallationId(null)}
+      {pastLeadRecovery ? (
+        <ReminderPastLeadRecovery
+          label={pastLeadRecovery.label}
+          onRecover={async () => {
+            setRecoveryPending(true);
+            try {
+              await reminderWriter.save("saved_item", pastLeadRecovery.recordId, {
+                kind: "relative",
+                leadMinutes: 0,
+              });
+              setPastLeadRecovery(null);
+            } finally {
+              setRecoveryPending(false);
+            }
+          }}
+          pending={recoveryPending}
         />
       ) : null}
     </div>

@@ -11,10 +11,10 @@ import {
   setReminderInstallationPreviewModeAction,
   setReminderOptInDecisionAction,
 } from "@/app/actions/reminders";
+import { useReminderInstallation } from "@/components/reminder-installation-context";
 import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import {
   attemptReminderRegistration,
-  getExistingReminderInstallationId,
   isStandaloneReminderContext,
   type ReminderRegistrationOutcome,
   unsubscribeReminderRegistration,
@@ -23,6 +23,7 @@ import {
 type InstallationState = ReminderOptInState["state"] | null;
 
 export function useReminderInstallationSettings(initialItems: ReminderInstallationSummary[]) {
+  const installation = useReminderInstallation();
   const [items, setItems] = useState(initialItems);
   const [currentClientId, setCurrentClientId] = useState<string | null>(null);
   const [currentOptInState, setCurrentOptInState] = useState<InstallationState>(null);
@@ -32,7 +33,7 @@ export function useReminderInstallationSettings(initialItems: ReminderInstallati
     useState<ReminderRegistrationOutcome | null>(null);
 
   useEffect(() => {
-    const clientInstallationId = getExistingReminderInstallationId(window.localStorage);
+    const clientInstallationId = installation?.clientInstallationId ?? null;
     setCurrentClientId(clientInstallationId);
     if (!clientInstallationId) return;
     getReminderInstallationStateAction({ clientInstallationId })
@@ -47,7 +48,7 @@ export function useReminderInstallationSettings(initialItems: ReminderInstallati
         }
       })
       .catch(() => setMessage("Tendnote couldn't refresh reminder settings. Try again."));
-  }, []);
+  }, [installation?.clientInstallationId]);
 
   async function changePreview(installation: ReminderInstallationSummary, detailed: boolean) {
     setPending(`preview:${installation.id}`);

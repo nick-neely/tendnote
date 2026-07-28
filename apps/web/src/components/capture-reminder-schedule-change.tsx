@@ -10,16 +10,19 @@ import {
   type GeneralActionReminderChoice,
   GeneralActionReminderField,
 } from "@/components/general-action-reminder";
+import {
+  reminderInstallationIdentity,
+  useReminderInstallation,
+} from "@/components/reminder-installation-context";
 import { Button } from "@/components/ui/button";
 import { type OwnerActionResult, unwrapOwnerActionResult } from "@/lib/owner-action-result";
-import { getReminderInstallationId } from "@/lib/reminder-registration";
 
 type ChangeReminder = (input: {
   target: ConversationalCaptureChangeTarget;
   clientInstallationId: string;
   timeZone: string;
   schedule: GeneralActionReminderChoice;
-}) => Promise<OwnerActionResult<{ reminderSchedule: string }>>;
+}) => Promise<OwnerActionResult<{ reminderSchedule: string; reminderOptInOffered?: boolean }>>;
 
 function replaceOutcomeReminderSchedule(
   confirmation: ConversationalCaptureConfirmation,
@@ -29,7 +32,7 @@ function replaceOutcomeReminderSchedule(
   const updateOutcome = (
     outcome: ConversationalCaptureOutcomeConfirmation,
   ): ConversationalCaptureOutcomeConfirmation => {
-    if (!["Actions", "Routines", "Follow-Ups", "Saved Items"].includes(outcome.destination)) {
+    if (!outcome.change.kind.startsWith("edit_")) {
       return outcome;
     }
     return {
@@ -60,6 +63,7 @@ export function CaptureReminderScheduleChange({
   onConfirmationChange: (confirmation: ConversationalCaptureConfirmation) => void;
   outcome: ConversationalCaptureOutcomeConfirmation;
 }) {
+  const installation = useReminderInstallation();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,14 +108,15 @@ export function CaptureReminderScheduleChange({
             setPending(true);
             setError(null);
             try {
+              if (!installation) throw new Error("Reminder installation identity is loading.");
               const result = unwrapOwnerActionResult(
                 await changeReminder({
                   target: outcome.change,
-                  clientInstallationId: getReminderInstallationId(window.localStorage),
-                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                  ...reminderInstallationIdentity(installation),
                   schedule: choice,
                 }),
               );
+              if (result.reminderOptInOffered) installation.offerReminderOptIn();
               onConfirmationChange(
                 replaceOutcomeReminderSchedule(confirmation, index, result.reminderSchedule),
               );

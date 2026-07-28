@@ -490,6 +490,72 @@ describe("Reminder product function", () => {
     });
   });
 
+  it("bounds timezone reconciliation fan-out across an owner's schedules", async () => {
+    const store = createInMemoryReminderStore();
+    let activeLoads = 0;
+    let maximumActiveLoads = 0;
+    const service = createReminderService({
+      store,
+      loadReminderRecord: async ({ ownerUserId, recordKind, recordId }) => {
+        activeLoads += 1;
+        maximumActiveLoads = Math.max(maximumActiveLoads, activeLoads);
+        await Promise.resolve();
+        activeLoads -= 1;
+        return {
+          id: recordId,
+          kind: recordKind,
+          ownerUserId,
+          title: "Scheduled record",
+          status: "open",
+          occursAt: new Date("2026-08-14T00:00:00.000Z"),
+          timeSemantics: "date_only",
+          recurrence: null,
+          sensitivity: "normal",
+          scope: "private",
+          personId: null,
+        };
+      },
+    });
+    for (let index = 0; index < 5; index += 1) {
+      await service.saveReminder({
+        ownerUserId: OWNER,
+        recordKind: "general_action",
+        recordId: `00000000-0000-4000-8000-00000000000${index}`,
+        clientInstallationId: "browser-installation-1",
+        timeZone: "America/Chicago",
+        schedule: { kind: "exact", localTime: "09:00" },
+        now: new Date("2026-07-21T15:00:00.000Z"),
+      });
+    }
+    activeLoads = 0;
+    maximumActiveLoads = 0;
+
+    const first = await service.reconcileReminderTimeZone({
+      ownerUserId: OWNER,
+      timeZone: "America/Denver",
+      now: new Date("2026-07-22T15:00:00.000Z"),
+      batchSize: 2,
+    });
+    const second = await service.reconcileReminderTimeZone({
+      ownerUserId: OWNER,
+      timeZone: "America/Denver",
+      now: new Date("2026-07-22T15:00:00.000Z"),
+      batchSize: 2,
+      offset: first.nextOffset,
+    });
+    const third = await service.reconcileReminderTimeZone({
+      ownerUserId: OWNER,
+      timeZone: "America/Denver",
+      now: new Date("2026-07-22T15:00:00.000Z"),
+      batchSize: 2,
+      offset: second.nextOffset,
+    });
+
+    expect([first.reconciled, second.reconciled, third.reconciled]).toEqual([2, 2, 1]);
+    expect(third.remaining).toBe(0);
+    expect(maximumActiveLoads).toBeLessThanOrEqual(2);
+  });
+
   it("replaces an occurrence intent deterministically when the due day or timezone changes", async () => {
     const store = createInMemoryReminderStore();
     let dueAt = new Date("2026-08-14T00:00:00.000Z");

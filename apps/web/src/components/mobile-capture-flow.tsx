@@ -11,6 +11,10 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 import { CaptureReminderScheduleChange } from "@/components/capture-reminder-schedule-change";
 import type { GeneralActionReminderChoice } from "@/components/general-action-reminder";
 import { MobileFailureState } from "@/components/mobile-failure-state";
+import {
+  reminderInstallationIdentity,
+  useReminderInstallation,
+} from "@/components/reminder-installation-context";
 import { Button } from "@/components/ui/button";
 import { captureOutcomePresentation } from "@/lib/capture-outcome-presentation";
 import { useLocalComposerDraft } from "@/lib/local-composer-draft";
@@ -19,7 +23,6 @@ import {
   ownerActionFailureMessage,
   unwrapOwnerActionResult,
 } from "@/lib/owner-action-result";
-import { getReminderInstallationId } from "@/lib/reminder-registration";
 
 export type CaptureSubmitInput = {
   clarificationAnswer?: string;
@@ -31,7 +34,7 @@ export type CaptureSubmitInput = {
 };
 
 export type CaptureSubmitResult =
-  | { confirmation: ConversationalCaptureConfirmation }
+  | { confirmation: ConversationalCaptureConfirmation; reminderOptInOffered?: boolean }
   | { clarification: ConversationalCaptureClarification };
 
 type CaptureChangeResult = {
@@ -56,7 +59,7 @@ export type CaptureHandlers = {
     clientInstallationId: string;
     timeZone: string;
     schedule: GeneralActionReminderChoice;
-  }) => Promise<OwnerActionResult<{ reminderSchedule: string }>>;
+  }) => Promise<OwnerActionResult<{ reminderSchedule: string; reminderOptInOffered?: boolean }>>;
   submit: (input: CaptureSubmitInput) => Promise<OwnerActionResult<CaptureSubmitResult>>;
   undo: (input: { target: ConversationalCaptureUndoTarget }) => Promise<OwnerActionResult<unknown>>;
 };
@@ -139,6 +142,7 @@ function replaceGroupedOutcome(
 }
 
 function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowProps) {
+  const installation = useReminderInstallation();
   const draft = useLocalComposerDraft(ownerUserId, "capture");
   const interactionId = useRef(globalThis.crypto.randomUUID());
   const clarificationInputRef = useRef<HTMLInputElement>(null);
@@ -188,6 +192,7 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
         originalText,
       });
     } else {
+      if (result.reminderOptInOffered) installation?.offerReminderOptIn();
       update({
         activeOutcomeIndex: 0,
         clarification: null,
@@ -244,8 +249,7 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
           interactionId: interactionId.current,
           inputMode: state.inputMode,
           originalText,
-          clientInstallationId: getReminderInstallationId(window.localStorage),
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          ...(installation ? reminderInstallationIdentity(installation) : {}),
         }),
       );
       applySubmitResult(result, originalText);

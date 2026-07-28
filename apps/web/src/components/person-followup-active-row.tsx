@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { useCreateDraft } from "@/components/use-create-draft";
 import { followupLifecycleAdapter } from "@/lib/followup-reversible-mutation";
 import type { FollowupView } from "@/lib/followup-view";
+import { toReminderScheduleChoice } from "@/lib/reminder-schedule-view";
 import {
   type ReversibleMutationApplyPhase,
   type ReversibleMutationApplyResult,
@@ -177,9 +178,7 @@ export function ActiveFollowupRow({
 
   if (mode === "edit") {
     const currentReminderChoice = followup.reminderSchedule
-      ? followup.reminderSchedule.kind === "relative"
-        ? { kind: "relative" as const, leadMinutes: followup.reminderSchedule.leadMinutes ?? 0 }
-        : { kind: "exact" as const, localTime: followup.reminderSchedule.localTime ?? "09:00" }
+      ? toReminderScheduleChoice(followup.reminderSchedule)
       : null;
     const reminderChanged =
       reminderEnabled !== Boolean(followup.reminderSchedule) ||

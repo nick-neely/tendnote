@@ -73,5 +73,6 @@ it("does not confirm a Follow-Up reminder whose selected alert time has passed",
   await user.click(screen.getByRole("button", { name: "Add follow-up" }));
 
   expect(await screen.findByText(/alert time has passed/i)).toBeDefined();
+  expect(screen.getByRole("button", { name: /Use At 9:00 AM on the due date/i })).toBeDefined();
   expect(screen.queryByText(/Reminder at/i)).toBeNull();
 });

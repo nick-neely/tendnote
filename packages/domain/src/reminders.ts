@@ -9,6 +9,30 @@ export const reminderRecordKindSchema = z.enum([
 ]);
 export type ReminderRecordKind = z.infer<typeof reminderRecordKindSchema>;
 
+const REMINDER_RECORD_POLICY = {
+  general_action: { timeSemantics: "date_only" },
+  follow_up: { timeSemantics: "date_only" },
+  routine: { timeSemantics: "date_only" },
+  saved_item: { timeSemantics: "instant" },
+} as const satisfies Record<ReminderRecordKind, { timeSemantics: "date_only" | "instant" }>;
+
+export function reminderTimeSemanticsForRecordKind(recordKind: ReminderRecordKind) {
+  return REMINDER_RECORD_POLICY[recordKind].timeSemantics;
+}
+
+export function isReminderRecordEligible(record: {
+  kind: ReminderRecordKind;
+  status: string;
+  occursAt: Date | null;
+  recurrence: unknown | null;
+  sensitivity: "normal" | "sensitive" | "restricted";
+}) {
+  if (!record.occursAt || record.sensitivity === "restricted") return false;
+  if (record.kind === "saved_item") return record.status === "active";
+  if (record.status !== "open") return false;
+  return record.kind === "routine" ? record.recurrence !== null : record.recurrence === null;
+}
+
 export function nextBirthdayFollowupDueAt(input: {
   birthday: string;
   now: Date;
@@ -149,6 +173,18 @@ const INSTANT_RELATIVE_LABELS: Record<number, string> = {
   0: "at the bring-back time",
 };
 
+export function formatReminderChoiceLabel(
+  choice: ReminderScheduleChoice,
+  timeSemantics: "date_only" | "instant" = "date_only",
+) {
+  if (choice.kind === "exact") return `At ${choice.localTime}`;
+  const label =
+    (timeSemantics === "instant" ? INSTANT_RELATIVE_LABELS : DATE_ONLY_RELATIVE_LABELS)[
+      choice.leadMinutes
+    ] ?? "at the occurrence time";
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 export function formatReminderScheduleLabel(
   schedule: {
     kind: ReminderScheduleChoice["kind"];
@@ -161,8 +197,9 @@ export function formatReminderScheduleLabel(
   const timing =
     schedule.kind === "exact"
       ? `at ${schedule.localTime ?? "09:00"}`
-      : ((timeSemantics === "instant" ? INSTANT_RELATIVE_LABELS : DATE_ONLY_RELATIVE_LABELS)[
-          schedule.leadMinutes ?? 0
-        ] ?? "at the occurrence time");
+      : formatReminderChoiceLabel(
+          { kind: "relative", leadMinutes: schedule.leadMinutes ?? 0 },
+          timeSemantics,
+        ).toLowerCase();
   return `Reminder ${timing} · ${schedule.timeZone}`;
 }

@@ -1,12 +1,10 @@
+import { isReminderRecordEligible } from "@tendnote/domain/reminders";
 import type { ReminderRecord } from "./types";
 
 export function isEligibleReminderRecord(
   record: ReminderRecord | null,
 ): record is ReminderRecord & { occursAt: Date } {
-  if (!record?.occursAt || record.sensitivity === "restricted") return false;
-  if (record.kind === "saved_item") return record.status === "active";
-  if (record.status !== "open") return false;
-  return record.kind === "routine" ? record.recurrence !== null : record.recurrence === null;
+  return Boolean(record && isReminderRecordEligible(record));
 }
 
 export function reminderOccurrenceKey(record: ReminderRecord & { occursAt: Date }): string {

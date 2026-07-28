@@ -7,9 +7,8 @@ import {
   disableCurrentReminderInstallation,
   disableReminderInstallation,
   getReminderInstallationState,
-  listReminderSchedulesForOwner,
   markReminderStandaloneContinuation,
-  reconcileReminderRecord,
+  reconcileReminderTimeZone,
   registerReminderInstallation,
   saveReminder,
   setReminderInstallationPreviewMode,
@@ -64,27 +63,24 @@ export async function saveReminderAction(input: {
   });
 }
 
-export async function reconcileReminderTimeZoneAction(input: { timeZone: string }) {
+export async function reconcileReminderTimeZoneAction(input: {
+  timeZone: string;
+  offset?: number;
+}) {
   return runOwnerAction({
-    schema: z.object({ timeZone: z.string().trim().min(1).max(100) }),
+    schema: z.object({
+      timeZone: z.string().trim().min(1).max(100),
+      offset: z.number().int().min(0).optional(),
+    }),
     input,
-    body: async ({ ownerUserId, input: { timeZone } }) => {
-      const schedules = await listReminderSchedulesForOwner({ ownerUserId });
-      const outcomes = await Promise.all(
-        schedules.map((schedule) =>
-          reconcileReminderRecord({
-            ownerUserId,
-            recordKind: schedule.recordKind,
-            recordId: schedule.recordId,
-            timeZone,
-            now: new Date(),
-          }),
-        ),
-      );
-      return { outcomes, schedules };
-    },
-    affectedScopes: ({ outcomes }) => outcomes.flatMap((outcome) => outcome.affectedScopes),
-    result: ({ schedules }) => ({ reconciled: schedules.length }),
+    body: ({ ownerUserId, input: parsed }) =>
+      reconcileReminderTimeZone({ ownerUserId, ...parsed, now: new Date() }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => ({
+      reconciled: outcome.result.reconciled,
+      remaining: outcome.result.remaining,
+      nextOffset: outcome.result.nextOffset,
+    }),
   });
 }
 

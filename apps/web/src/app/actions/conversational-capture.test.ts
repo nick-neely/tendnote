@@ -62,6 +62,7 @@ beforeEach(() => {
   });
   saveReminder.mockResolvedValue({
     result: {
+      optIn: { state: "none", clientInstallationId: "browser-installation-1" },
       schedule: {
         kind: "exact",
         localTime: "09:00",
@@ -73,7 +74,10 @@ beforeEach(() => {
   });
   getGeneralAction.mockResolvedValue({ recurrence: null });
   scheduleExplicitCaptureReminders.mockImplementation(async ({ result }) => ({
-    result: result.confirmation,
+    result: {
+      confirmation: result.confirmation,
+      reminderOptInOffered: false,
+    },
     affectedScopes: [],
   }));
 });
@@ -260,6 +264,7 @@ describe("conversational Capture web adapters", () => {
     const actionId = "22222222-2222-4222-8222-222222222222";
     saveReminder.mockResolvedValueOnce({
       result: {
+        optIn: { state: "offer", clientInstallationId: "browser-installation-1" },
         schedule: {
           kind: "relative",
           localTime: null,
@@ -288,6 +293,7 @@ describe("conversational Capture web adapters", () => {
       }),
     );
     expect(result.reminderSchedule).toContain("one day before");
+    expect(result.reminderOptInOffered).toBe(true);
   });
 
   it("keeps corrections and Undo owner-scoped through Saved Item lifecycle operations", async () => {

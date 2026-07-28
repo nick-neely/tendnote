@@ -124,6 +124,7 @@ describe("SavedItemsSurface", () => {
     await user.click(screen.getByRole("button", { name: "Save item" }));
 
     expect(await screen.findByText(/alert time has passed/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: /Use At the bring-back time/i })).toBeDefined();
     expect(screen.queryByText(/Reminder at|Reminder one|Reminder at the/i)).toBeNull();
   });
 
