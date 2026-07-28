@@ -121,8 +121,8 @@ Checks that rule out the alternative — that today's measurement is the wrong o
   identical: same `target_keys`, same runtime findings, same counts for every
   other file.
 
-**Newly recorded (now accepted debt).** All ten are CRAP — complexity multiplied
-by untestedness — in #301–#309 code:
+**Originally recorded in #311.** All ten were CRAP — complexity multiplied by
+untestedness — in #301–#309 code:
 
 | Finding | Metrics |
 | --- | --- |
@@ -134,6 +134,18 @@ by untestedness — in #301–#309 code:
 | `app/actions/followups.ts` → `createFollowupAction` | 5 cyclomatic, CRAP 30 |
 | `packages/db/src/queries/followups.ts` → `createBirthdayFollowupReminder` | 5 cyclomatic, CRAP 30 |
 
+**Paid down in #312 (2026-07-27).** Adapter coverage removed four findings:
+`editSavedItemAction` and `userSafeError` in `app/actions/saved-items.ts`, the
+edit callback in `app/actions/general-actions.ts`, and `createFollowupAction` in
+`app/actions/followups.ts`. The tests exercise session-derived owner scope,
+validation failures, explicit-clear versus absent edit fields, and the cache
+invalidation paths that make the returned views authoritative.
+
+**Still accepted after #312.** Six lower-priority findings remain: the three in
+`components/actions-surface.tsx`, the two in
+`components/general-action-row.tsx`, and
+`createBirthdayFollowupReminder` in `packages/db/src/queries/followups.ts`.
+
 **No longer findings, and removed** — four, across three files:
 `components/saved-items-surface.tsx` (arrow at :202),
 `lib/use-server-synced-list.ts` (`replacements` and its arrow, two findings), and
@@ -141,17 +153,13 @@ by untestedness — in #301–#309 code:
 in the accepted-debt table above and no longer score above threshold against
 matched coverage.
 
-**What should be paid down, not carried** — tracked in
+**Server-action adapter debt** — paid in
 [#312](https://github.com/nick-neely/tendnote/issues/312).
-`app/actions/general-actions.ts` and
-`app/actions/followups.ts` have **no test file at all**; `app/actions/saved-items.ts`
-has one covering 7 of its 23 functions. These are server-action adapters — the
-seam #300 calls the highest behavioral one — so their CRAP is high for the reason
-that matters: the branches are not exercised. `action-adapter-mocks.ts` already
-exists for exactly this shape of test (`saved-items.test.ts` and
-`suggested-general-actions.test.ts` use it), so the cost is writing the cases,
-not building a harness. Accepting them here is a scoping decision about a
-framework-promotion ticket, not a judgement that they are fine.
+`app/actions/general-actions.ts` and `app/actions/followups.ts` now have focused
+adapter test files, and `app/actions/saved-items.ts` covers the edit and
+user-safe-error branches that #311 found. The four corresponding baseline
+entries were removed after a fresh coverage-backed measurement; they are no
+longer accepted debt.
 
 Re-saved with:
 

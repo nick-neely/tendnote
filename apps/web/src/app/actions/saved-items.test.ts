@@ -4,12 +4,14 @@ import { invalidateActionMutationSpy, revalidatePathSpy } from "@/test/action-ad
 const {
   createSavedItem,
   deleteUniqueSavedItemSource,
+  editSavedItem,
   getSavedItem,
   promoteSavedItemToGeneralAction,
   resolveScopeForCaller,
 } = vi.hoisted(() => ({
   createSavedItem: vi.fn(),
   deleteUniqueSavedItemSource: vi.fn(),
+  editSavedItem: vi.fn(),
   getSavedItem: vi.fn(),
   promoteSavedItemToGeneralAction: vi.fn(),
   resolveScopeForCaller: vi.fn(),
@@ -20,7 +22,7 @@ vi.mock("@tendnote/db/queries/saved-items", () => ({
   deleteUniqueSavedItemSource,
   promoteSavedItemToGeneralAction,
   archiveSavedItem: vi.fn(),
-  editSavedItem: vi.fn(),
+  editSavedItem,
   getSavedItemSourceDeletionImpact: vi.fn(),
   getSavedItem,
   reopenSavedItem: vi.fn(),
@@ -30,7 +32,11 @@ vi.mock("@tendnote/db/queries/saved-items", () => ({
 vi.mock("@tendnote/db/queries/reminders", () => ({ listReminderSchedulesForOwner: vi.fn() }));
 vi.mock("@/lib/resolve-scope-for-caller", () => ({ resolveScopeForCaller }));
 
-import { createSavedItemAction, promoteSavedItemToGeneralActionAction } from "./saved-items";
+import {
+  createSavedItemAction,
+  editSavedItemAction,
+  promoteSavedItemToGeneralActionAction,
+} from "./saved-items";
 
 const ITEM = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -60,6 +66,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resolveScopeForCaller.mockResolvedValue({ scope: "private", householdId: null });
   createSavedItem.mockResolvedValue(ITEM);
+  editSavedItem.mockResolvedValue(ITEM);
   getSavedItem.mockResolvedValue(ITEM);
   promoteSavedItemToGeneralAction.mockResolvedValue(ITEM);
 });
@@ -120,5 +127,69 @@ describe("Saved Item server adapters", () => {
       ownerUserId: "owner-1",
       actionId: "33333333-3333-4333-8333-333333333333",
     });
+  });
+
+  it("forwards every supplied edit field and preserves explicit clearing values", async () => {
+    await editSavedItemAction({
+      savedItemId: ITEM.id,
+      title: "Updated measurements",
+      content: "",
+      url: null,
+      bringBackAt: null,
+    });
+
+    expect(editSavedItem).toHaveBeenCalledWith({
+      actorUserId: "owner-1",
+      savedItemId: ITEM.id,
+      edit: {
+        title: "Updated measurements",
+        content: null,
+        url: null,
+        bringBackAt: null,
+        bringBackTimeSemantics: "date_only",
+      },
+    });
+  });
+
+  it("does not turn absent edit fields into destructive clears", async () => {
+    await editSavedItemAction({ savedItemId: ITEM.id });
+
+    expect(editSavedItem).toHaveBeenCalledWith({
+      actorUserId: "owner-1",
+      savedItemId: ITEM.id,
+      edit: {},
+    });
+  });
+
+  it("returns a user-safe message for an invalid bring-back time", async () => {
+    const result = await editSavedItemAction({
+      savedItemId: ITEM.id,
+      bringBackAt: "not-a-date",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Choose a valid bring-back time.",
+    });
+    expect(editSavedItem).not.toHaveBeenCalled();
+  });
+
+  it("returns the first field-level validation message", async () => {
+    const result = await editSavedItemAction({
+      savedItemId: "not-a-uuid",
+      title: "",
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.ok ? null : result.error).toMatch(/UUID|characters/);
+    expect(editSavedItem).not.toHaveBeenCalled();
+  });
+
+  it("rethrows unexpected infrastructure failures", async () => {
+    editSavedItem.mockRejectedValueOnce(new Error("database unavailable"));
+
+    await expect(editSavedItemAction({ savedItemId: ITEM.id })).rejects.toThrow(
+      "database unavailable",
+    );
   });
 });
