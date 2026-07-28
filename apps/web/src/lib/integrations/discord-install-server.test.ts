@@ -88,14 +88,22 @@ describe("configureOwnerDiscordTarget", () => {
 
   it("rejects a whitespace-only channel id server-side without persisting", async () => {
     await expect(
-      configureOwnerDiscordTarget({ guildId: "guild-1", targetChannelId: "   " }),
+      configureOwnerDiscordTarget({
+        ownerUserId: "owner-1",
+        guildId: "guild-1",
+        targetChannelId: "   ",
+      }),
     ).rejects.toThrow();
     expect(configureDiscordTarget).not.toHaveBeenCalled();
   });
 
   it("rejects a malformed (non-snowflake) channel id server-side", async () => {
     await expect(
-      configureOwnerDiscordTarget({ guildId: "guild-1", targetChannelId: "not-a-channel" }),
+      configureOwnerDiscordTarget({
+        ownerUserId: "owner-1",
+        guildId: "guild-1",
+        targetChannelId: "not-a-channel",
+      }),
     ).rejects.toThrow();
     expect(configureDiscordTarget).not.toHaveBeenCalled();
   });
@@ -104,6 +112,7 @@ describe("configureOwnerDiscordTarget", () => {
     configureDiscordTarget.mockResolvedValue({ id: "install-1" });
 
     await configureOwnerDiscordTarget({
+      ownerUserId: "owner-1",
       guildId: "guild-1",
       targetChannelId: "  123456789012345678  ",
     });

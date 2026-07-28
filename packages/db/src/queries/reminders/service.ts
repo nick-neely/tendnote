@@ -1,5 +1,10 @@
 import { zonedWallTimeToUtc } from "@tendnote/domain/brief-schedules";
-import { type ReminderRecordKind, reminderScheduleChoiceSchema } from "@tendnote/domain/reminders";
+import {
+  formatReminderChoiceLabel,
+  type ReminderRecordKind,
+  reminderScheduleChoiceSchema,
+  reminderTimeSemanticsForRecordKind,
+} from "@tendnote/domain/reminders";
 import { createReminderDeliveryPlanner } from "./delivery-planning";
 import { createReminderDispatcher } from "./dispatch";
 import { createReminderInstallationService } from "./installation-service";
@@ -41,8 +46,8 @@ export function createReminderService(input: {
           ...action,
           kind: "general_action",
           occursAt: action.dueAt,
-          timeSemantics: "date_only",
-          deepLink: `/actions#action-${action.id}`,
+          timeSemantics: reminderTimeSemanticsForRecordKind("general_action"),
+          personId: null,
         }
       : null;
   }
@@ -159,7 +164,10 @@ export function createReminderService(input: {
             kind: "relative" as const,
             leadMinutes: 0,
             intendedAt: dueTime,
-            label: "At 9:00 AM on the due date",
+            label: formatReminderChoiceLabel(
+              { kind: "relative", leadMinutes: 0 },
+              record.timeSemantics,
+            ),
           };
     return { schedule, occurrenceIntent, optIn, nextValidChoice };
   }
@@ -174,8 +182,83 @@ export function createReminderService(input: {
     createInstallationJobs,
   });
 
+  async function reconcileReminderRecord(values: {
+    ownerUserId: string;
+    recordKind: ReminderRecordKind;
+    recordId: string;
+    timeZone?: string;
+    now: Date;
+  }) {
+    const [currentSchedule] = await input.store.listSchedules(values);
+    if (!currentSchedule) return null;
+    const record = await loadRecord(values);
+    if (
+      !isEligibleReminderRecord(record) ||
+      record.id !== values.recordId ||
+      record.kind !== values.recordKind ||
+      record.ownerUserId !== values.ownerUserId
+    ) {
+      await input.store.supersedeOccurrenceIntents(values);
+      return null;
+    }
+    const choice =
+      currentSchedule.kind === "exact"
+        ? { kind: "exact" as const, localTime: currentSchedule.localTime ?? "09:00" }
+        : { kind: "relative" as const, leadMinutes: currentSchedule.leadMinutes ?? 0 };
+    const occurrenceDate = record.occursAt.toISOString().slice(0, 10);
+    const occurrenceKey = reminderOccurrenceKey(record);
+    const timeZone = values.timeZone ?? currentSchedule.timeZone;
+    const intendedAt = resolveIntendedAt({
+      occursAt: record.occursAt,
+      timeSemantics: record.timeSemantics,
+      occurrenceDate,
+      timeZone,
+      choice,
+    });
+    const freshUntil = resolveFreshUntil({
+      intendedAt,
+      occurrenceDate,
+      timeSemantics: record.timeSemantics,
+      timeZone,
+    });
+    const schedule = await input.store.upsertSchedule({
+      ownerUserId: values.ownerUserId,
+      recordKind: record.kind,
+      recordId: record.id,
+      choice,
+      timeZone,
+      occurrenceKey,
+      intendedAt,
+      now: values.now,
+    });
+    if (intendedAt.getTime() <= values.now.getTime()) {
+      await input.store.supersedeOccurrenceIntents(values);
+      return { schedule, occurrenceIntent: null };
+    }
+    const occurrenceIntent = await input.store.upsertOccurrenceIntent({
+      ownerUserId: values.ownerUserId,
+      recordKind: record.kind,
+      recordId: record.id,
+      scheduleId: schedule.id,
+      occurrenceKey,
+      intendedAt,
+      freshUntil,
+      status: "pending_installation",
+      now: values.now,
+    });
+    await createInstallationJobs({
+      ownerUserId: values.ownerUserId,
+      occurrenceIntent,
+      installations: await input.store.listEnabledInstallationsForOwner({
+        ownerUserId: values.ownerUserId,
+      }),
+      now: values.now,
+    });
+    return { schedule, occurrenceIntent };
+  }
+
   return {
-    async resolveReminderDeepLink(values: {
+    async resolveReminderDeepLinkTarget(values: {
       ownerUserId: string;
       recordKind: ReminderRecordKind;
       recordId: string;
@@ -185,7 +268,11 @@ export function createReminderService(input: {
         record.ownerUserId === values.ownerUserId &&
         record.kind === values.recordKind &&
         record.id === values.recordId
-        ? record.deepLink
+        ? {
+            recordKind: record.kind,
+            recordId: record.id,
+            personId: record.personId,
+          }
         : null;
     },
     ...installationService,
@@ -215,78 +302,41 @@ export function createReminderService(input: {
 
     saveReminder,
 
-    async reconcileReminderRecord(values: {
+    reconcileReminderRecord,
+
+    async reconcileReminderTimeZone(values: {
       ownerUserId: string;
-      recordKind: ReminderRecordKind;
-      recordId: string;
-      timeZone?: string;
+      timeZone: string;
       now: Date;
+      offset?: number;
+      batchSize?: number;
     }) {
-      const [currentSchedule] = await input.store.listSchedules(values);
-      if (!currentSchedule) return null;
-      const record = await loadRecord(values);
-      if (
-        !isEligibleReminderRecord(record) ||
-        record.id !== values.recordId ||
-        record.kind !== values.recordKind ||
-        record.ownerUserId !== values.ownerUserId
-      ) {
-        await input.store.supersedeOccurrenceIntents(values);
-        return null;
-      }
-      const choice =
-        currentSchedule.kind === "exact"
-          ? { kind: "exact" as const, localTime: currentSchedule.localTime ?? "09:00" }
-          : { kind: "relative" as const, leadMinutes: currentSchedule.leadMinutes ?? 0 };
-      const occurrenceDate = record.occursAt.toISOString().slice(0, 10);
-      const occurrenceKey = reminderOccurrenceKey(record);
-      const intendedAt = resolveIntendedAt({
-        occursAt: record.occursAt,
-        timeSemantics: record.timeSemantics,
-        occurrenceDate,
-        timeZone: values.timeZone ?? currentSchedule.timeZone,
-        choice,
-      });
-      const freshUntil = resolveFreshUntil({
-        intendedAt,
-        occurrenceDate,
-        timeSemantics: record.timeSemantics,
-        timeZone: values.timeZone ?? currentSchedule.timeZone,
-      });
-      const schedule = await input.store.upsertSchedule({
-        ownerUserId: values.ownerUserId,
-        recordKind: record.kind,
-        recordId: record.id,
-        choice,
-        timeZone: values.timeZone ?? currentSchedule.timeZone,
-        occurrenceKey,
-        intendedAt,
-        now: values.now,
-      });
-      if (intendedAt.getTime() <= values.now.getTime()) {
-        await input.store.supersedeOccurrenceIntents(values);
-        return { schedule, occurrenceIntent: null };
-      }
-      const occurrenceIntent = await input.store.upsertOccurrenceIntent({
-        ownerUserId: values.ownerUserId,
-        recordKind: record.kind,
-        recordId: record.id,
-        scheduleId: schedule.id,
-        occurrenceKey,
-        intendedAt,
-        freshUntil,
-        status: "pending_installation",
-        now: values.now,
-      });
-      await createInstallationJobs({
-        ownerUserId: values.ownerUserId,
-        occurrenceIntent,
-        installations: await input.store.listEnabledInstallationsForOwner({
-          ownerUserId: values.ownerUserId,
-        }),
-        now: values.now,
-      });
-      return { schedule, occurrenceIntent };
+      const schedules = (await input.store.listSchedulesForOwner(values)).sort((left, right) =>
+        `${left.recordKind}:${left.recordId}`.localeCompare(
+          `${right.recordKind}:${right.recordId}`,
+        ),
+      );
+      const batchSize = values.batchSize ?? 8;
+      const offset = values.offset ?? 0;
+      const batch = schedules.slice(offset, offset + batchSize);
+      const outcomes = await Promise.all(
+        batch.map((schedule) =>
+          reconcileReminderRecord({
+            ownerUserId: values.ownerUserId,
+            recordKind: schedule.recordKind,
+            recordId: schedule.recordId,
+            timeZone: values.timeZone,
+            now: values.now,
+          }),
+        ),
+      );
+      const nextOffset = offset + batch.length;
+      return {
+        outcomes,
+        reconciled: batch.length,
+        remaining: Math.max(0, schedules.length - nextOffset),
+        nextOffset,
+      };
     },
 
     saveGeneralActionReminder(values: {

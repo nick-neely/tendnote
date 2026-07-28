@@ -1,3 +1,4 @@
+import { affectedScopesForPerson } from "../../../people/affected-scopes";
 import type { CaptureDestinationInput, ResolvedCaptureRoute } from "../destinations";
 import { parseOutcomeConfirmation } from "./confirmation";
 
@@ -22,5 +23,14 @@ export async function createPersonDestination(
       createdByCapture: result.created,
     },
   });
-  return { kind: "person" as const, person: result.person, confirmation, id: result.person.id };
+  return {
+    kind: "person" as const,
+    person: result.person,
+    affectedScopes: affectedScopesForPerson({
+      ownerUserId: input.ownerUserId,
+      personId: result.person.id,
+    }),
+    confirmation,
+    id: result.person.id,
+  };
 }

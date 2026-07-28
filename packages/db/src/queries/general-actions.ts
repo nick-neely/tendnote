@@ -1,5 +1,8 @@
 import { createDrizzleGeneralActionLifecycleStore } from "./general-actions/drizzle-store";
-import { createGeneralActionLifecycle } from "./general-actions/lifecycle";
+import {
+  createAffectedGeneralActionLifecycle,
+  suggestedGeneralActionMutationOutcome,
+} from "./general-actions/mutation-lifecycle";
 import { createSuggestedGeneralActionReview } from "./general-actions/review";
 import type {
   AcceptSuggestedGeneralActionInput,
@@ -18,6 +21,7 @@ import type {
 import { reconcileReminderRecord } from "./reminders";
 import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 
+export * from "./affected-scopes";
 export {
   createDrizzleGeneralActionLifecycleStore,
   createDrizzleGeneralActionStore,
@@ -27,6 +31,7 @@ export {
   createInMemoryGeneralActionStore,
 } from "./general-actions/in-memory-store";
 export { createGeneralActionLifecycle } from "./general-actions/lifecycle";
+export { createAffectedGeneralActionLifecycle } from "./general-actions/mutation-lifecycle";
 export { createSuggestedGeneralActionReview } from "./general-actions/review";
 export type * from "./general-actions/types";
 
@@ -35,9 +40,12 @@ const defaultGeneralActionStore = createDrizzleGeneralActionLifecycleStore();
 // production, immediately run) a semantic-embedding job so General Actions participate in
 // semantic retrieval, reusing the shared embedding pipeline (ADR 0150; Phase 5 #184).
 const scheduleGeneralActionEmbedding = enqueueAndTriggerSemanticEmbeddingJob;
-const defaultGeneralActionLifecycle = createGeneralActionLifecycle(defaultGeneralActionStore, {
-  scheduleGeneralActionEmbedding,
-});
+const defaultGeneralActionLifecycle = createAffectedGeneralActionLifecycle(
+  defaultGeneralActionStore,
+  {
+    scheduleGeneralActionEmbedding,
+  },
+);
 const defaultSuggestedGeneralActionReview = createSuggestedGeneralActionReview(
   defaultGeneralActionStore,
   { scheduleGeneralActionEmbedding },
@@ -67,9 +75,9 @@ export async function createGeneralAction(input: CreateActiveGeneralActionInput)
 }
 
 export async function editGeneralAction(input: EditGeneralActionInput) {
-  const action = await defaultGeneralActionLifecycle.editGeneralAction(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.editGeneralAction(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function setGeneralActionVisibility(input: SetGeneralActionVisibilityInput) {
@@ -81,69 +89,69 @@ export async function setGeneralActionPeople(input: SetGeneralActionPeopleInput)
 }
 
 export async function completeGeneralAction(input: GeneralActionActionInput) {
-  const action = await defaultGeneralActionLifecycle.completeGeneralAction(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.completeGeneralAction(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function skipGeneralActionOccurrence(input: GeneralActionActionInput) {
-  const action = await defaultGeneralActionLifecycle.skipGeneralActionOccurrence(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.skipGeneralActionOccurrence(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function dismissGeneralAction(input: GeneralActionActionInput) {
-  const action = await defaultGeneralActionLifecycle.dismissGeneralAction(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.dismissGeneralAction(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function reopenGeneralAction(input: GeneralActionActionInput) {
-  const action = await defaultGeneralActionLifecycle.reopenGeneralAction(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.reopenGeneralAction(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function restoreGeneralAction(input: GeneralActionActionInput) {
-  const action = await defaultGeneralActionLifecycle.restoreGeneralAction(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.restoreGeneralAction(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function archiveGeneralAction(input: GeneralActionActionInput) {
-  const action = await defaultGeneralActionLifecycle.archiveGeneralAction(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.archiveGeneralAction(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function pauseGeneralAction(input: GeneralActionActionInput) {
-  const action = await defaultGeneralActionLifecycle.pauseGeneralAction(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.pauseGeneralAction(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function resumeGeneralAction(input: GeneralActionActionInput) {
-  const action = await defaultGeneralActionLifecycle.resumeGeneralAction(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.resumeGeneralAction(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function deferGeneralAction(input: DeferGeneralActionInput) {
-  const action = await defaultGeneralActionLifecycle.deferGeneralAction(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.deferGeneralAction(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function undoRoutineOccurrence(input: UndoRoutineOccurrenceInput) {
-  const action = await defaultGeneralActionLifecycle.undoRoutineOccurrence(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.undoRoutineOccurrence(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function undeferGeneralAction(input: GeneralActionActionInput) {
-  const action = await defaultGeneralActionLifecycle.undeferGeneralAction(input);
-  await reconcileGeneralActionReminder(action);
-  return action;
+  const outcome = await defaultGeneralActionLifecycle.undeferGeneralAction(input);
+  await reconcileGeneralActionReminder(outcome.result);
+  return outcome;
 }
 
 export async function listActiveGeneralActions(input: ListGeneralActionsInput) {
@@ -167,7 +175,10 @@ export async function listGeneralActionHistory(input: GeneralActionActionInput) 
 }
 
 export async function suggestGeneralAction(input: SuggestGeneralActionInput) {
-  return defaultSuggestedGeneralActionReview.suggestGeneralAction(input);
+  return suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.suggestGeneralAction(input),
+  );
 }
 
 export async function listSuggestedGeneralActionReviews(
@@ -181,17 +192,41 @@ export async function getSuggestedGeneralActionReview(input: GeneralActionAction
 }
 
 export async function acceptSuggestedGeneralAction(input: AcceptSuggestedGeneralActionInput) {
-  return defaultSuggestedGeneralActionReview.acceptSuggestedGeneralAction(input);
+  return suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.acceptSuggestedGeneralAction(input),
+    { includeCurrentAudience: true },
+  );
 }
 
 export async function editSuggestedGeneralAction(input: EditSuggestedGeneralActionInput) {
-  return defaultSuggestedGeneralActionReview.editSuggestedGeneralAction(input);
+  return suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.editSuggestedGeneralAction(input),
+  );
 }
 
 export async function dismissSuggestedGeneralAction(input: GeneralActionActionInput) {
-  return defaultSuggestedGeneralActionReview.dismissSuggestedGeneralAction(input);
+  const outcome = await suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.dismissSuggestedGeneralAction(input),
+  );
+  return {
+    ...outcome,
+    result: await defaultGeneralActionLifecycle.getGeneralAction(input),
+  };
+}
+
+export async function restoreDismissedSuggestedGeneralAction(input: GeneralActionActionInput) {
+  return suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.restoreDismissedSuggestedGeneralAction(input),
+  );
 }
 
 export async function ignoreSuggestedGeneralAction(input: GeneralActionActionInput) {
-  return defaultSuggestedGeneralActionReview.ignoreSuggestedGeneralAction(input);
+  return suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.ignoreSuggestedGeneralAction(input),
+  );
 }

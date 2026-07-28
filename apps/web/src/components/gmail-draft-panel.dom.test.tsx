@@ -17,9 +17,18 @@ const updateGmailDraftAction = vi.fn();
 const retryGmailDraftAction = vi.fn();
 
 vi.mock("@/app/actions/gmail-drafts", () => ({
-  createGmailDraftAction: (...args: unknown[]) => createGmailDraftAction(...args),
-  updateGmailDraftAction: (...args: unknown[]) => updateGmailDraftAction(...args),
-  retryGmailDraftAction: (...args: unknown[]) => retryGmailDraftAction(...args),
+  createGmailDraftAction: async (...args: unknown[]) => ({
+    ok: true,
+    view: await createGmailDraftAction(...args),
+  }),
+  updateGmailDraftAction: async (...args: unknown[]) => ({
+    ok: true,
+    view: await updateGmailDraftAction(...args),
+  }),
+  retryGmailDraftAction: async (...args: unknown[]) => ({
+    ok: true,
+    view: await retryGmailDraftAction(...args),
+  }),
 }));
 
 import { GmailDraftPanel, type PersonEmailOption } from "./gmail-draft-panel";

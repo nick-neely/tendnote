@@ -2,6 +2,7 @@ import { suggestFollowup } from "@tendnote/db/queries/followups";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 
 const inputSchema = z.object({
   personId: z
@@ -47,7 +48,7 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const result = await suggestFollowup({
+    const outcome = await suggestFollowup({
       ownerUserId,
       personId: input.personId,
       reason: input.reason,
@@ -56,6 +57,8 @@ export default defineTool({
       sourceRecordId: input.sourceRecordId,
       directlyRequested: input.directlyRequested,
     });
+    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
+    const result = outcome.result;
 
     return {
       found: true as const,

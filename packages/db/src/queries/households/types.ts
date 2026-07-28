@@ -36,6 +36,7 @@ export type HouseholdRecordShare = {
 export type HouseholdStore = {
   createHouseholdWorkspace: (input: CreateHouseholdWorkspaceInput) => Promise<HouseholdWorkspace>;
   getHouseholdWorkspace: (input: { householdId: string }) => Promise<HouseholdWorkspace | null>;
+  getHouseholdWorkspaces: (input: { householdIds: string[] }) => Promise<HouseholdWorkspace[]>;
   createHouseholdMembership: (
     input: CreateHouseholdMembershipInput,
   ) => Promise<HouseholdMembership>;
@@ -68,6 +69,11 @@ export type HouseholdStore = {
     householdId: string;
     recordKind: VisibilityRecordKind;
     recordId: string;
+  }) => Promise<HouseholdRecordShare[]>;
+  listHouseholdRecordSharesForRecords: (input: {
+    householdIds: string[];
+    recordKind: VisibilityRecordKind;
+    recordIds: string[];
   }) => Promise<HouseholdRecordShare[]>;
   /**
    * Clears every share for one record. Re-scoping a record narrows or re-selects

@@ -135,9 +135,14 @@ export function GmailDraftPanel({
     const submit = isUpdate ? updateGmailDraftAction : createGmailDraftAction;
     startTransition(async () => {
       try {
-        apply(
-          await submit({ draftId: draft.id, subject: subject.trim(), recipient, bodyEdit: body }),
-        );
+        const result = await submit({
+          draftId: draft.id,
+          subject: subject.trim(),
+          recipient,
+          bodyEdit: body,
+        });
+        if (!result.ok) throw new Error(result.error);
+        apply(result.view);
       } catch {
         setError(
           isUpdate
@@ -155,7 +160,12 @@ export function GmailDraftPanel({
     setError(null);
     startTransition(async () => {
       try {
-        apply(await retryGmailDraftAction({ draftId: draft.id, actionId: view.actionId }));
+        const result = await retryGmailDraftAction({
+          draftId: draft.id,
+          actionId: view.actionId,
+        });
+        if (!result.ok) throw new Error(result.error);
+        apply(result.view);
       } catch {
         setError("Couldn't retry the Gmail draft. Try again.");
       }

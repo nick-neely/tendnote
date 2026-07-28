@@ -11,10 +11,18 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 import { CaptureReminderScheduleChange } from "@/components/capture-reminder-schedule-change";
 import type { GeneralActionReminderChoice } from "@/components/general-action-reminder";
 import { MobileFailureState } from "@/components/mobile-failure-state";
+import {
+  reminderInstallationIdentity,
+  useReminderInstallation,
+} from "@/components/reminder-installation-context";
 import { Button } from "@/components/ui/button";
 import { captureOutcomePresentation } from "@/lib/capture-outcome-presentation";
 import { useLocalComposerDraft } from "@/lib/local-composer-draft";
-import { getReminderInstallationId } from "@/lib/reminder-registration";
+import {
+  type OwnerActionResult,
+  ownerActionFailureMessage,
+  unwrapOwnerActionResult,
+} from "@/lib/owner-action-result";
 
 export type CaptureSubmitInput = {
   clarificationAnswer?: string;
@@ -26,32 +34,34 @@ export type CaptureSubmitInput = {
 };
 
 export type CaptureSubmitResult =
-  | { confirmation: ConversationalCaptureConfirmation }
+  | { confirmation: ConversationalCaptureConfirmation; reminderOptInOffered?: boolean }
   | { clarification: ConversationalCaptureClarification };
+
+type CaptureChangeResult = {
+  clarification?: ConversationalCaptureClarification;
+  confirmation?: ConversationalCaptureConfirmation;
+  ok?: true;
+};
 
 export type CaptureHandlers = {
   addPerson?: (input: {
     displayName: string;
     sourceRecordId: string;
     unresolvedMentionId?: string;
-  }) => Promise<{ displayName: string }>;
+  }) => Promise<OwnerActionResult<{ displayName: string }>>;
   change: (input: {
     clarificationAnswer?: string;
     target: ConversationalCaptureChangeTarget;
     originalText: string;
-  }) => Promise<{
-    clarification?: ConversationalCaptureClarification;
-    confirmation?: ConversationalCaptureConfirmation;
-    ok?: true;
-  }>;
+  }) => Promise<OwnerActionResult<CaptureChangeResult>>;
   changeReminder?: (input: {
     target: ConversationalCaptureChangeTarget;
     clientInstallationId: string;
     timeZone: string;
     schedule: GeneralActionReminderChoice;
-  }) => Promise<{ reminderSchedule: string }>;
-  submit: (input: CaptureSubmitInput) => Promise<CaptureSubmitResult>;
-  undo: (input: { target: ConversationalCaptureUndoTarget }) => Promise<unknown>;
+  }) => Promise<OwnerActionResult<{ reminderSchedule: string; reminderOptInOffered?: boolean }>>;
+  submit: (input: CaptureSubmitInput) => Promise<OwnerActionResult<CaptureSubmitResult>>;
+  undo: (input: { target: ConversationalCaptureUndoTarget }) => Promise<OwnerActionResult<unknown>>;
 };
 
 type CaptureFlowProps = {
@@ -71,6 +81,7 @@ type CaptureState = {
   editText: string;
   editing: boolean;
   failure: "change" | "submit" | "undo" | null;
+  failureMessage: string | null;
   inputMode: "typed" | "dictated";
   originalText: string;
   pending: boolean;
@@ -131,6 +142,7 @@ function replaceGroupedOutcome(
 }
 
 function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowProps) {
+  const installation = useReminderInstallation();
   const draft = useLocalComposerDraft(ownerUserId, "capture");
   const interactionId = useRef(globalThis.crypto.randomUUID());
   const clarificationInputRef = useRef<HTMLInputElement>(null);
@@ -146,6 +158,7 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
     editText: "",
     editing: false,
     failure: null,
+    failureMessage: null,
     inputMode: "typed",
     originalText: "",
     pending: false,
@@ -179,6 +192,7 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
         originalText,
       });
     } else {
+      if (result.reminderOptInOffered) installation?.offerReminderOptIn();
       update({
         activeOutcomeIndex: 0,
         clarification: null,
@@ -190,7 +204,7 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
   }
 
   function applyChangeResult(
-    result: Awaited<ReturnType<CaptureHandlers["change"]>>,
+    result: CaptureChangeResult,
     originalText: string,
     target: ConversationalCaptureChangeTarget,
   ) {
@@ -227,20 +241,21 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
       state.pending
     )
       return;
-    update({ failure: null, pending: true });
+    update({ failure: null, failureMessage: null, pending: true });
     try {
-      const result = await handlers.submit({
-        ...(clarificationAnswer ? { clarificationAnswer } : {}),
-        interactionId: interactionId.current,
-        inputMode: state.inputMode,
-        originalText,
-        clientInstallationId: getReminderInstallationId(window.localStorage),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      });
+      const result = unwrapOwnerActionResult(
+        await handlers.submit({
+          ...(clarificationAnswer ? { clarificationAnswer } : {}),
+          interactionId: interactionId.current,
+          inputMode: state.inputMode,
+          originalText,
+          ...(installation ? reminderInstallationIdentity(installation) : {}),
+        }),
+      );
       applySubmitResult(result, originalText);
       draft.clear();
-    } catch {
-      update({ failure: "submit" });
+    } catch (error) {
+      update({ failure: "submit", failureMessage: userSafeActionMessage(error) });
     } finally {
       update({ pending: false });
     }
@@ -261,16 +276,18 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
       state.pending
     )
       return;
-    update({ failure: null, pending: true });
+    update({ failure: null, failureMessage: null, pending: true });
     try {
-      const result = await handlers.change({
-        ...(clarificationAnswer ? { clarificationAnswer } : {}),
-        target: state.clarificationTarget ?? selectedOutcome.change,
-        originalText,
-      });
+      const result = unwrapOwnerActionResult(
+        await handlers.change({
+          ...(clarificationAnswer ? { clarificationAnswer } : {}),
+          target: state.clarificationTarget ?? selectedOutcome.change,
+          originalText,
+        }),
+      );
       applyChangeResult(result, originalText, state.clarificationTarget ?? selectedOutcome.change);
-    } catch {
-      update({ failure: "change" });
+    } catch (error) {
+      update({ failure: "change", failureMessage: userSafeActionMessage(error) });
     } finally {
       update({ pending: false });
     }
@@ -280,32 +297,41 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
     if (!handlers?.addPerson || state.pending || !state.clarification) return;
     const originalText = state.originalText;
     const target = state.clarificationTarget;
-    update({ failure: null, pending: true });
+    update({ failure: null, failureMessage: null, pending: true });
     try {
-      const person = await handlers.addPerson({
-        displayName,
-        sourceRecordId: state.clarification.sourceRecordId,
-        ...(unresolvedMentionId ? { unresolvedMentionId } : {}),
-      });
+      const person = unwrapOwnerActionResult(
+        await handlers.addPerson({
+          displayName,
+          sourceRecordId: state.clarification.sourceRecordId,
+          ...(unresolvedMentionId ? { unresolvedMentionId } : {}),
+        }),
+      );
       if (target && state.confirmation) {
-        const result = await handlers.change({
-          clarificationAnswer: person.displayName,
-          target,
-          originalText,
-        });
+        const result = unwrapOwnerActionResult(
+          await handlers.change({
+            clarificationAnswer: person.displayName,
+            target,
+            originalText,
+          }),
+        );
         applyChangeResult(result, originalText, target);
       } else {
-        const result = await handlers.submit({
-          clarificationAnswer: person.displayName,
-          interactionId: interactionId.current,
-          inputMode: state.inputMode,
-          originalText,
-        });
+        const result = unwrapOwnerActionResult(
+          await handlers.submit({
+            clarificationAnswer: person.displayName,
+            interactionId: interactionId.current,
+            inputMode: state.inputMode,
+            originalText,
+          }),
+        );
         applySubmitResult(result, originalText);
         draft.clear();
       }
-    } catch {
-      update({ failure: target ? "change" : "submit" });
+    } catch (error) {
+      update({
+        failure: target ? "change" : "submit",
+        failureMessage: userSafeActionMessage(error),
+      });
     } finally {
       update({ pending: false });
     }
@@ -321,15 +347,15 @@ function useCaptureController({ handlers, inputRef, ownerUserId }: CaptureFlowPr
       state.pending
     )
       return;
-    update({ failure: null, pending: true });
+    update({ failure: null, failureMessage: null, pending: true });
     try {
-      await handlers.undo({ target: selectedOutcome.undo });
+      unwrapOwnerActionResult(await handlers.undo({ target: selectedOutcome.undo }));
       update({
         undone: state.confirmation.destination === "Grouped" ? state.undone : true,
         undoneOutcomeIndexes: [...new Set([...state.undoneOutcomeIndexes, outcomeIndex])],
       });
-    } catch {
-      update({ failure: "undo" });
+    } catch (error) {
+      update({ failure: "undo", failureMessage: userSafeActionMessage(error) });
     } finally {
       update({ pending: false });
     }
@@ -436,7 +462,7 @@ function CaptureCorrection({
         value={state.editText}
       />
       {state.failure === "change" ? (
-        <MobileFailureState kind="capture_change" onRetry={change} />
+        <MobileFailureState kind="capture_change" message={state.failureMessage} onRetry={change} />
       ) : null}
       <div className="flex gap-2">
         <Button
@@ -520,7 +546,9 @@ function CaptureConfirmationControls({
   const outcomes = confirmation.destination === "Grouped" ? confirmation.outcomes : [confirmation];
   return (
     <>
-      {state.failure === "undo" ? <MobileFailureState kind="capture_undo" onRetry={undo} /> : null}
+      {state.failure === "undo" ? (
+        <MobileFailureState kind="capture_undo" message={state.failureMessage} onRetry={undo} />
+      ) : null}
       {outcomes.map((outcome, index) => (
         <div className="flex flex-col gap-2" key={captureOutcomePresentation(outcome).key}>
           <div className="flex items-center gap-2">
@@ -656,6 +684,7 @@ function CaptureClarification({
       {state.failure === "submit" || state.failure === "change" ? (
         <MobileFailureState
           kind={state.failure === "change" ? "capture_change" : "capture_save"}
+          message={state.failureMessage}
           onRetry={continueClarification}
         />
       ) : null}
@@ -669,6 +698,10 @@ function CaptureClarification({
       </Button>
     </div>
   );
+}
+
+function userSafeActionMessage(error: unknown): string | null {
+  return ownerActionFailureMessage(error);
 }
 
 function CaptureComposer({
@@ -726,7 +759,7 @@ function CaptureComposer({
         transcript, not audio.
       </p>
       {state.failure === "submit" ? (
-        <MobileFailureState kind="capture_save" onRetry={submit} />
+        <MobileFailureState kind="capture_save" message={state.failureMessage} onRetry={submit} />
       ) : null}
       {!handlers?.submit ? (
         <p className="text-muted-foreground text-xs" role="status">

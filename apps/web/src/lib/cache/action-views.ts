@@ -1,5 +1,6 @@
 import { listLinkedAssetsForGeneralActions } from "@tendnote/db/queries/assets";
 import { listGeneralActionAreas } from "@tendnote/db/queries/general-action-areas";
+import type { AffectedScope } from "@tendnote/db/queries/general-actions";
 import {
   listActiveGeneralActions,
   listPausedGeneralActions,
@@ -9,6 +10,11 @@ import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { cacheLife, cacheTag } from "next/cache";
 import { toGeneralActionAreaView } from "@/lib/general-action-area-view";
 import { toGeneralActionLinkedAssetView, toGeneralActionView } from "@/lib/general-action-view";
+import {
+  tagForAffectedScope,
+  tagsForAffectedScope,
+  tagsForAffectedScopes,
+} from "./affected-scope-tags";
 import { cacheProfiles } from "./cache-profiles";
 
 const ACTION_REFRESH_MS = 30_000;
@@ -16,14 +22,27 @@ const ACTION_REFRESH_MS = 30_000;
 export const actionCacheContract = {
   owner(ownerUserId: string) {
     return {
-      tags: [`action:owner:${ownerUserId}`, `action:owner:${ownerUserId}:linked-assets`] as const,
+      tags: tagsForAffectedScope({
+        kind: "viewer-collection",
+        collection: "general-actions",
+        viewerUserId: ownerUserId,
+      }),
     };
   },
   entity(ownerUserId: string, actionId: string) {
-    return `action:owner:${ownerUserId}:action:${actionId}`;
+    return tagForAffectedScope({
+      kind: "viewer-entity",
+      entity: "general-action",
+      entityId: actionId,
+      viewerUserId: ownerUserId,
+    });
   },
   linkedAsset(assetId: string) {
-    return `action:linked-asset:${assetId}`;
+    return tagForAffectedScope({
+      kind: "linked-entity",
+      entity: "asset",
+      entityId: assetId,
+    });
   },
 };
 
@@ -145,7 +164,16 @@ async function cachedActionLedgerViews(
 ) {
   "use cache";
   cacheLife(cacheProfiles.interactive);
-  cacheTag(...actionCacheContract.owner(ownerUserId).tags);
+  cacheTag(
+    ...tagsForAffectedScopes([
+      {
+        kind: "viewer-collection",
+        collection: "general-actions",
+        viewerUserId: ownerUserId,
+      },
+      { kind: "owner-collection", collection: "account", ownerUserId },
+    ] satisfies AffectedScope[]),
+  );
   const [active, paused, resolved, reminderSchedules] = await Promise.all([
     listActiveGeneralActions({ ownerUserId }),
     listPausedGeneralActions({ ownerUserId }),

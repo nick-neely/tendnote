@@ -1,17 +1,16 @@
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import { useState, useTransition } from "react";
 import { createFollowupAction } from "@/app/actions/followups";
-import {
-  GeneralActionReminderField,
-  ReminderOptInInvitation,
-} from "@/components/general-action-reminder";
+import { GeneralActionReminderField } from "@/components/general-action-reminder";
 import { PlusIcon } from "@/components/icons";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
+import { ReminderPastLeadRecovery } from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VisibilityChoiceControl } from "@/components/visibility-choice-control";
 import type { FollowupView } from "@/lib/followup-view";
 import { useReminderSchedule } from "@/lib/use-reminder-schedule";
+import { useReminderScheduleWriter } from "@/lib/use-reminder-schedule-writer";
 
 export type ShareableHouseholdMember = {
   userId: string;
@@ -41,6 +40,7 @@ export function CreateFollowupForm({
   shareableMembers?: ShareableHouseholdMember[];
   onCreate: (view: FollowupView) => void;
 }) {
+  const reminderWriter = useReminderScheduleWriter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [dueDate, setDueDate] = useState(defaultDueDate);
@@ -54,8 +54,12 @@ export function CreateFollowupForm({
     setChoice: setReminderChoice,
     setEnabled: setReminderEnabled,
   } = useReminderSchedule();
-  const [optInInstallationId, setOptInInstallationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pastLeadRecovery, setPastLeadRecovery] = useState<{
+    label: string;
+    recordId: string;
+  } | null>(null);
+  const [recoveryPending, setRecoveryPending] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const trimmedReason = reason.trim();
@@ -86,6 +90,24 @@ export function CreateFollowupForm({
           New follow-up
         </Button>
         {error ? <ErrorText message={error} /> : null}
+        {pastLeadRecovery ? (
+          <ReminderPastLeadRecovery
+            label={pastLeadRecovery.label}
+            onRecover={async () => {
+              setRecoveryPending(true);
+              try {
+                await reminderWriter.save("follow_up", pastLeadRecovery.recordId, {
+                  kind: "relative",
+                  leadMinutes: 0,
+                });
+                setPastLeadRecovery(null);
+              } finally {
+                setRecoveryPending(false);
+              }
+            }}
+            pending={recoveryPending}
+          />
+        ) : null}
       </div>
     );
   }
@@ -109,24 +131,26 @@ export function CreateFollowupForm({
                 visibilityChoice,
                 selectedUserIds,
               });
-              let view = created;
+              if (!created.ok) {
+                setError(created.error);
+                return;
+              }
+              let view = created.view;
               if (reminderEnabled) {
-                const reminder = await saveSchedule("follow_up", created.id);
+                const reminder = await saveSchedule("follow_up", created.view.id);
                 if (reminder.nextValidChoice) {
-                  onCreate(created);
+                  onCreate(created.view);
                   reset();
-                  setError(
-                    `The follow-up was saved, but that alert time has passed. Choose ${reminder.nextValidChoice.label} when you edit its reminder.`,
-                  );
+                  setPastLeadRecovery({
+                    label: reminder.nextValidChoice.label,
+                    recordId: created.view.id,
+                  });
                   return;
                 }
                 view = {
-                  ...created,
+                  ...created.view,
                   reminderSchedule: reminder.scheduleView,
                 };
-                if (reminder.optIn.state === "offer") {
-                  setOptInInstallationId(reminder.clientInstallationId);
-                }
               }
               onCreate(view);
               reset();
@@ -221,12 +245,6 @@ export function CreateFollowupForm({
         ) : null}
         {error ? <ErrorText message={error} /> : null}
       </form>
-      {optInInstallationId ? (
-        <ReminderOptInInvitation
-          clientInstallationId={optInInstallationId}
-          onDismiss={() => setOptInInstallationId(null)}
-        />
-      ) : null}
     </div>
   );
 }

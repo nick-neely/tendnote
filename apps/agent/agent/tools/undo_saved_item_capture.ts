@@ -3,6 +3,7 @@ import { conversationalCaptureUndoTargetSchema } from "@tendnote/domain/conversa
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 
 export default defineTool({
   description:
@@ -14,7 +15,13 @@ export default defineTool({
   }),
   async execute(input, ctx) {
     const actorUserId = resolveOwnerUserId(ctx);
-    await undoExplicitCaptureOutcome({ actorUserId, ...input });
+    const result = await undoExplicitCaptureOutcome({ actorUserId, ...input });
+    if (result && typeof result === "object" && "affectedScopes" in result) {
+      const affectedScopes = result.affectedScopes;
+      if (Array.isArray(affectedScopes)) {
+        await requestBackgroundAffectedScopeReconciliation(affectedScopes);
+      }
+    }
     return { target: input.target, undone: true };
   },
   toModelOutput(output) {

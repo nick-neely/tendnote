@@ -40,7 +40,7 @@ function item(
     generalActionId: GENERAL_ACTION_ID,
     title: "Book the campsite for the trip",
     status: "suggested",
-    dueLabel: "Jul 15, 2026",
+    timingLabel: "Was due Jul 15",
     isRoutine: false,
     recurrenceLabel: null,
     personNames: [],
@@ -51,7 +51,10 @@ function item(
 
 describe("ChatGeneralActionReviewCard interaction", () => {
   it("accepts inline: click calls the accept mutation and settles the card to Accepted", async () => {
-    accept.mockResolvedValue({ generalActionId: GENERAL_ACTION_ID, status: "open" });
+    accept.mockResolvedValue({
+      ok: true,
+      view: { generalActionId: GENERAL_ACTION_ID, status: "open" },
+    });
     const user = userEvent.setup();
     render(<ChatGeneralActionReviewCard item={item()} />);
 
@@ -70,7 +73,10 @@ describe("ChatGeneralActionReviewCard interaction", () => {
   });
 
   it("dismisses inline: click calls the dismiss mutation and settles the card to Dismissed", async () => {
-    dismiss.mockResolvedValue({ generalActionId: GENERAL_ACTION_ID, status: "dismissed" });
+    dismiss.mockResolvedValue({
+      ok: true,
+      view: { generalActionId: GENERAL_ACTION_ID, status: "dismissed" },
+    });
     const user = userEvent.setup();
     render(<ChatGeneralActionReviewCard item={item()} />);
 

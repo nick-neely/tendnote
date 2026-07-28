@@ -5,16 +5,15 @@ import {
   acceptSuggestedGeneralAction,
   dismissSuggestedGeneralAction,
   editSuggestedGeneralAction,
+  getSuggestedGeneralActionReview,
   ignoreSuggestedGeneralAction,
+  restoreDismissedSuggestedGeneralAction,
   type SuggestedGeneralActionReviewResult,
 } from "@tendnote/db/queries/general-actions";
 import type { GeneralActionEdit } from "@tendnote/domain";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
-import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
 import { parseDateInputValue } from "@/lib/followup-view";
+import { runOwnerAction } from "@/lib/owner-action";
 import {
   type SuggestedGeneralActionReviewView,
   toSuggestedGeneralActionReviewView,
@@ -30,28 +29,6 @@ const reviewEditInputSchema = z.object({
   notes: z.string().trim().min(1).max(2000).nullable().optional(),
   dueAt: z.string().transform(parseDateInputValue).nullable().optional(),
 });
-
-function parseReviewEdit(
-  edit: { title?: string; notes?: string | null; dueAt?: string | null } = {},
-): GeneralActionEdit {
-  const parsed = reviewEditInputSchema.parse(edit);
-  return {
-    ...(parsed.title !== undefined ? { title: parsed.title } : {}),
-    ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
-    ...(parsed.dueAt !== undefined ? { dueAt: parsed.dueAt } : {}),
-  };
-}
-
-export type SuggestedGeneralActionResolution = {
-  generalActionId: string;
-  status: string;
-};
-
-/** Re-render the Actions surface and the dashboard rail so both review surfaces agree. */
-function revalidateReviewSurfaces(ownerUserId: string) {
-  invalidateReviewOwner(ownerUserId);
-  revalidatePath("/actions");
-}
 
 /**
  * Builds the returned review view with the owner's Area names resolved, so an accepted
@@ -69,59 +46,90 @@ async function toView(
 export async function acceptSuggestedGeneralActionAction(input: {
   generalActionId: string;
   edit?: { title?: string; notes?: string | null; dueAt?: string | null };
-}): Promise<SuggestedGeneralActionReviewView> {
-  const { generalActionId } = actionSchema.parse({ generalActionId: input.generalActionId });
-  const edit = parseReviewEdit(input.edit);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await acceptSuggestedGeneralAction({
-    actorUserId: ownerUserId,
-    generalActionId,
-    edit,
+}) {
+  return runOwnerAction({
+    schema: actionSchema.extend({ edit: reviewEditInputSchema.optional() }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      acceptSuggestedGeneralAction({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+        edit: (parsed.edit ?? {}) as GeneralActionEdit,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, ownerUserId) => toView(ownerUserId, outcome.result),
   });
-
-  invalidateActionMutation({ ownerUserId, actionId: result.action.id });
-  revalidateReviewSurfaces(ownerUserId);
-  return toView(ownerUserId, result);
 }
 
 export async function editSuggestedGeneralActionAction(input: {
   generalActionId: string;
   edit: { title?: string; notes?: string | null; dueAt?: string | null };
-}): Promise<SuggestedGeneralActionReviewView> {
-  const { generalActionId } = actionSchema.parse({ generalActionId: input.generalActionId });
-  const edit = parseReviewEdit(input.edit);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await editSuggestedGeneralAction({
-    actorUserId: ownerUserId,
-    generalActionId,
-    edit,
+}) {
+  return runOwnerAction({
+    schema: actionSchema.extend({ edit: reviewEditInputSchema }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      editSuggestedGeneralAction({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+        edit: parsed.edit as GeneralActionEdit,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, ownerUserId) => toView(ownerUserId, outcome.result),
   });
-
-  invalidateActionMutation({ ownerUserId, actionId: result.action.id });
-  revalidateReviewSurfaces(ownerUserId);
-  return toView(ownerUserId, result);
 }
 
-export async function dismissSuggestedGeneralActionAction(input: {
-  generalActionId: string;
-}): Promise<SuggestedGeneralActionResolution> {
-  const { generalActionId } = actionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const action = await dismissSuggestedGeneralAction({ actorUserId: ownerUserId, generalActionId });
-
-  invalidateActionMutation({ ownerUserId, actionId: action.id });
-  revalidateReviewSurfaces(ownerUserId);
-  return { generalActionId: action.id, status: action.status };
+export async function dismissSuggestedGeneralActionAction(input: { generalActionId: string }) {
+  return runOwnerAction({
+    schema: actionSchema,
+    input,
+    body: async ({ ownerUserId, input: parsed }) => {
+      const prior = await getSuggestedGeneralActionReview({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+      });
+      if (!prior) throw new Error("Suggested action not found.");
+      const outcome = await dismissSuggestedGeneralAction({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+      });
+      return { outcome, prior };
+    },
+    affectedScopes: ({ outcome }) => outcome.affectedScopes,
+    result: ({ outcome, prior }, ownerUserId) =>
+      toView(ownerUserId, { ...prior, action: outcome.result }),
+  });
 }
 
-export async function ignoreSuggestedGeneralActionAction(input: {
+export async function restoreDismissedSuggestedGeneralActionAction(input: {
   generalActionId: string;
-}): Promise<SuggestedGeneralActionResolution> {
-  const { generalActionId } = actionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const action = await ignoreSuggestedGeneralAction({ actorUserId: ownerUserId, generalActionId });
+}) {
+  return runOwnerAction({
+    schema: actionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      restoreDismissedSuggestedGeneralAction({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, ownerUserId) => toView(ownerUserId, outcome.result),
+  });
+}
 
-  invalidateActionMutation({ ownerUserId, actionId: action.id });
-  revalidateReviewSurfaces(ownerUserId);
-  return { generalActionId: action.id, status: action.status };
+export async function ignoreSuggestedGeneralActionAction(input: { generalActionId: string }) {
+  return runOwnerAction({
+    schema: actionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      ignoreSuggestedGeneralAction({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => ({
+      generalActionId: outcome.result.id,
+      status: outcome.result.status,
+    }),
+  });
 }

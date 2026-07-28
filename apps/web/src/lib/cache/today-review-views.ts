@@ -2,34 +2,29 @@ import { getTodayShortlist } from "@tendnote/db/queries/today";
 import { cacheLife, cacheTag } from "next/cache";
 import type { ReviewQueueFamily } from "@/lib/review-queue";
 import { loadOwnerReviewQueueFamily } from "@/lib/review-queue.server";
+import { tagsForAffectedScope } from "./affected-scope-tags";
 import { cacheProfiles } from "./cache-profiles";
 
 export const todayReviewCacheContract = {
   todayOwnerTags(ownerUserId: string) {
-    return [`today:owner:${ownerUserId}`, `today:owner:${ownerUserId}:shortlist`] as const;
+    return tagsForAffectedScope({
+      kind: "owner-collection",
+      collection: "today",
+      ownerUserId,
+    });
   },
-  today(input: { ownerUserId: string; localDate: string; timeZone: string; refreshedAt: number }) {
+  today(input: { ownerUserId: string }) {
     return {
-      // Today is a live, time-sensitive shortlist. Its bounded 30-second refresh
-      // bucket is deliberately part of the cache identity; a request timestamp is
-      // not, because it would create a cold entry for every render.
-      key: [
-        "today",
-        input.ownerUserId,
-        input.localDate,
-        input.timeZone,
-        input.refreshedAt,
-      ] as const,
       tags: todayReviewCacheContract.todayOwnerTags(input.ownerUserId),
     };
   },
   review(input: { ownerUserId: string }) {
     return {
-      key: ["review", input.ownerUserId] as const,
-      tags: [
-        `review:owner:${input.ownerUserId}`,
-        `review:owner:${input.ownerUserId}:queue`,
-      ] as const,
+      tags: tagsForAffectedScope({
+        kind: "owner-collection",
+        collection: "review",
+        ownerUserId: input.ownerUserId,
+      }),
     };
   },
 };
@@ -61,12 +56,7 @@ async function cachedTodayShortlist(
   refreshedAt: number,
 ) {
   "use cache";
-  const contract = todayReviewCacheContract.today({
-    ownerUserId,
-    localDate,
-    timeZone,
-    refreshedAt,
-  });
+  const contract = todayReviewCacheContract.today({ ownerUserId });
   cacheLife(cacheProfiles.interactive);
   cacheTag(...contract.tags);
   return getTodayShortlist({ ownerUserId, localDate, timeZone, now: new Date(refreshedAt) });

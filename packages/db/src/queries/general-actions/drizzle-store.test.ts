@@ -7,6 +7,10 @@ import { describe, expect, it } from "vitest";
 // the in-memory store cannot exercise for it — the defaults-free update parse and
 // the surfacing-time ordering. A revert of either fails here.
 const source = readFileSync(join(import.meta.dirname, "drizzle-store.ts"), "utf8");
+const publicQuerySource = readFileSync(
+  join(import.meta.dirname, "..", "general-actions.ts"),
+  "utf8",
+);
 
 describe("general actions drizzle store guards", () => {
   it("validates update patches with the defaults-free schema, not a base partial", () => {
@@ -56,5 +60,11 @@ describe("general actions drizzle store guards", () => {
     // store caller can't read or rewrite another owner's links (#180 store hygiene).
     expect(source).toContain(".innerJoin(generalActions");
     expect(source).toContain("eq(generalActions.ownerUserId, input.ownerUserId)");
+  });
+
+  it("routes the production Drizzle lifecycle through the adapter-independent affected-scope seam", () => {
+    expect(publicQuerySource).toContain(
+      "createAffectedGeneralActionLifecycle(\n  defaultGeneralActionStore",
+    );
   });
 });

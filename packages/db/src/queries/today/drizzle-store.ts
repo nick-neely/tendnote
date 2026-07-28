@@ -1,5 +1,5 @@
 import { todayFeedbackSchema } from "@tendnote/domain";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "../../client";
 import { auditLog, todayFeedback } from "../../schema";
 import type { TodayFeedbackRecord, TodayFeedbackStore } from "./types";
@@ -61,6 +61,34 @@ export function createDrizzleTodayFeedbackStore(): TodayFeedbackStore {
           },
         });
         return toRecord(row);
+      });
+    },
+    async deleteFeedback(input) {
+      return getDb().transaction(async (tx) => {
+        const rows = await tx
+          .delete(todayFeedback)
+          .where(
+            and(
+              eq(todayFeedback.ownerUserId, input.ownerUserId),
+              eq(todayFeedback.candidateIdentity, input.candidateIdentity),
+              eq(todayFeedback.reasonKey, input.reasonKey),
+              eq(todayFeedback.kind, input.kind),
+            ),
+          )
+          .returning({ id: todayFeedback.id });
+        if (rows.length === 0) return false;
+        await tx.insert(auditLog).values({
+          ownerUserId: input.ownerUserId,
+          action: "today.feedback_restored",
+          entityType: "today_candidate",
+          entityId: input.candidateIdentity,
+          metadataJson: {
+            kind: input.kind,
+            reasonKey: input.reasonKey,
+            localDate: input.localDate,
+          },
+        });
+        return true;
       });
     },
   };

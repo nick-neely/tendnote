@@ -1,18 +1,20 @@
 "use server";
 
 import { completeFollowup } from "@tendnote/db/queries/followups";
-import { completeGeneralAction } from "@tendnote/db/queries/general-actions";
+import {
+  affectedScopesForOwnerSurfaces,
+  completeGeneralAction,
+} from "@tendnote/db/queries/general-actions";
 import {
   getOwnerTodayContext,
   getTodayCandidate,
   getTodayShortlist,
+  restoreTodayCandidate,
   suppressTodayCandidate,
 } from "@tendnote/db/queries/today";
-import { type TodayShortlistResponse, todayShortlistResponseSchema } from "@tendnote/domain/today";
+import { todayShortlistResponseSchema } from "@tendnote/domain/today";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
-import { invalidateTodayOwner } from "@/lib/cache/today-review-mutation-scopes";
+import { runOwnerAction } from "@/lib/owner-action";
 
 const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const candidateRefSchema = z.object({
@@ -25,16 +27,18 @@ const suppressionSchema = z.discriminatedUnion("kind", [
   candidateRefSchema.extend({ kind: z.literal("later"), suppressUntil: z.coerce.date() }),
 ]);
 
-export async function refreshTodayAction(input: {
-  localDate: string;
-}): Promise<TodayShortlistResponse> {
-  const localDate = localDateSchema.parse(input.localDate);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const context = await getOwnerTodayContext({ ownerUserId });
-  if (localDate !== context.localDate) throw new Error("Today has rolled to a new local day.");
-  return todayShortlistResponseSchema.parse(
-    await getTodayShortlist({ ownerUserId, ...context, forceRefresh: true }),
-  );
+export async function refreshTodayAction(input: { localDate: string }) {
+  return runOwnerAction({
+    schema: z.object({ localDate: localDateSchema }),
+    input,
+    body: async ({ ownerUserId, input: parsed }) => {
+      const context = await getOwnerTodayContext({ ownerUserId });
+      if (parsed.localDate !== context.localDate)
+        throw new Error("Today has rolled to a new local day.");
+      return getTodayShortlist({ ownerUserId, ...context, forceRefresh: true });
+    },
+    result: (shortlist) => todayShortlistResponseSchema.parse(shortlist),
+  });
 }
 
 export async function suppressTodayItemAction(input: {
@@ -43,46 +47,81 @@ export async function suppressTodayItemAction(input: {
   reasonKey: string;
   kind: "later" | "not_today";
   suppressUntil: Date | null;
-}): Promise<TodayShortlistResponse> {
-  const parsed = suppressionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const context = await getOwnerTodayContext({ ownerUserId });
-  if (parsed.localDate !== context.localDate)
-    throw new Error("Today has rolled to a new local day.");
-  await suppressTodayCandidate({ ownerUserId, ...parsed, ...context });
-  invalidateTodayOwner(ownerUserId);
-  return todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context }));
+}) {
+  return runOwnerAction({
+    schema: suppressionSchema,
+    input,
+    body: async ({ ownerUserId, input: parsed }) => {
+      const context = await getOwnerTodayContext({ ownerUserId });
+      if (parsed.localDate !== context.localDate)
+        throw new Error("Today has rolled to a new local day.");
+      const outcome = await suppressTodayCandidate({ ownerUserId, ...parsed, ...context });
+      return { context, outcome };
+    },
+    affectedScopes: ({ outcome }) => outcome.affectedScopes,
+    result: async ({ context }, ownerUserId) =>
+      todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context })),
+  });
+}
+
+export async function restoreTodayItemAction(input: {
+  localDate: string;
+  candidateIdentity: string;
+  reasonKey: string;
+  kind: "later" | "not_today";
+}) {
+  return runOwnerAction({
+    schema: candidateRefSchema.extend({ kind: z.enum(["later", "not_today"]) }),
+    input,
+    body: async ({ ownerUserId, input: parsed }) => {
+      const context = await getOwnerTodayContext({ ownerUserId });
+      if (parsed.localDate !== context.localDate)
+        throw new Error("Today has rolled to a new local day.");
+      const outcome = await restoreTodayCandidate({ ownerUserId, ...parsed });
+      return { context, outcome };
+    },
+    affectedScopes: ({ outcome }) => outcome.affectedScopes,
+    result: async ({ context }, ownerUserId) =>
+      todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context })),
+  });
 }
 
 export async function actOnTodayItemAction(input: {
   localDate: string;
   candidateIdentity: string;
   reasonKey: string;
-}): Promise<TodayShortlistResponse> {
-  const parsed = candidateRefSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const context = await getOwnerTodayContext({ ownerUserId });
-  if (parsed.localDate !== context.localDate)
-    throw new Error("Today has rolled to a new local day.");
-  const candidate = await getTodayCandidate({ ownerUserId, ...context, ...parsed });
-  if (!candidate) throw new Error("Today item is no longer available.");
+}) {
+  return runOwnerAction({
+    schema: candidateRefSchema,
+    input,
+    body: async ({ ownerUserId, input: parsed }) => {
+      const context = await getOwnerTodayContext({ ownerUserId });
+      if (parsed.localDate !== context.localDate)
+        throw new Error("Today has rolled to a new local day.");
+      const candidate = await getTodayCandidate({ ownerUserId, ...context, ...parsed });
+      if (!candidate) throw new Error("Today item is no longer available.");
 
-  if (candidate.action.kind === "complete_follow_up" && candidate.record.kind === "follow_up") {
-    await completeFollowup({ actorUserId: ownerUserId, followupId: candidate.record.id });
-  } else if (
-    candidate.action.kind === "complete_action" &&
-    candidate.record.kind === "general_action"
-  ) {
-    await completeGeneralAction({ actorUserId: ownerUserId, generalActionId: candidate.record.id });
-    // Today owns only its shortlist, but this durable Action write also changes the
-    // cached Action ledger, linked details, and the owner dashboard. Expire those
-    // scopes before returning the rebuilt shortlist so a navigation cannot revive
-    // the completed row from an older cached RSC response.
-    invalidateActionMutation({ ownerUserId, actionId: candidate.record.id });
-  } else {
-    throw new Error("Open this Today item to use its domain action.");
-  }
-
-  invalidateTodayOwner(ownerUserId);
-  return todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context }));
+      const outcome =
+        candidate.action.kind === "complete_follow_up" && candidate.record.kind === "follow_up"
+          ? await completeFollowup({
+              actorUserId: ownerUserId,
+              followupId: candidate.record.id,
+            })
+          : candidate.action.kind === "complete_action" &&
+              candidate.record.kind === "general_action"
+            ? await completeGeneralAction({
+                actorUserId: ownerUserId,
+                generalActionId: candidate.record.id,
+              })
+            : null;
+      if (!outcome) throw new Error("Open this Today item to use its domain action.");
+      return { context, outcome, ownerUserId };
+    },
+    affectedScopes: ({ outcome, ownerUserId }) => [
+      ...outcome.affectedScopes,
+      ...affectedScopesForOwnerSurfaces(ownerUserId),
+    ],
+    result: async ({ context }, ownerUserId) =>
+      todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context })),
+  });
 }

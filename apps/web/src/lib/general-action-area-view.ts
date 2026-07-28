@@ -1,4 +1,5 @@
 import type { GeneralActionArea } from "@tendnote/domain";
+import type { OwnerActionResult } from "@/lib/owner-action";
 
 /**
  * A serializable Area for client components. Archived Areas are kept in the map the
@@ -18,9 +19,7 @@ export type GeneralActionAreaView = {
  * so the manager can show it inline; unexpected/infra failures reject instead, and
  * the client shows a generic fallback. Mirrors `GeneralActionMutationResult`.
  */
-export type GeneralActionAreaMutationResult =
-  | { ok: true; view: GeneralActionAreaView }
-  | { ok: false; error: string };
+export type GeneralActionAreaMutationResult = OwnerActionResult<GeneralActionAreaView>;
 
 export function toGeneralActionAreaView(
   area: Pick<GeneralActionArea, "id" | "name" | "archivedAt">,

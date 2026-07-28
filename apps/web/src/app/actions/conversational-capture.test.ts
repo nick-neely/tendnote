@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
+import { updateTagSpy } from "@/test/action-adapter-mocks";
 
 const {
   resolveOrCreateAndLinkPersonToSourceRecord,
   captureExplicitOutcome,
   changeExplicitCaptureOutcome,
   getGeneralAction,
-  revalidatePath,
-  updateTag,
   saveReminder,
   scheduleExplicitCaptureReminders,
   undoExplicitCaptureOutcome,
@@ -15,8 +15,6 @@ const {
   captureExplicitOutcome: vi.fn(),
   changeExplicitCaptureOutcome: vi.fn(),
   getGeneralAction: vi.fn(),
-  revalidatePath: vi.fn(),
-  updateTag: vi.fn(),
   saveReminder: vi.fn(),
   scheduleExplicitCaptureReminders: vi.fn(),
   undoExplicitCaptureOutcome: vi.fn(),
@@ -34,10 +32,6 @@ vi.mock("@tendnote/db/queries/general-actions", () => ({ getGeneralAction }));
 vi.mock("@tendnote/db/queries/reminders", () => ({
   saveReminder,
   scheduleExplicitCaptureReminders,
-}));
-vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
-vi.mock("@/lib/access/current-access", () => ({
-  requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
 }));
 
 import {
@@ -67,29 +61,40 @@ beforeEach(() => {
     created: true,
   });
   saveReminder.mockResolvedValue({
-    schedule: {
-      kind: "exact",
-      localTime: "09:00",
-      leadMinutes: null,
-      timeZone: "America/Chicago",
+    result: {
+      optIn: { state: "none", clientInstallationId: "browser-installation-1" },
+      schedule: {
+        kind: "exact",
+        localTime: "09:00",
+        leadMinutes: null,
+        timeZone: "America/Chicago",
+      },
     },
+    affectedScopes: [{ kind: "owner-collection", collection: "account", ownerUserId: "owner-1" }],
   });
   getGeneralAction.mockResolvedValue({ recurrence: null });
-  scheduleExplicitCaptureReminders.mockImplementation(async ({ result }) => result.confirmation);
+  scheduleExplicitCaptureReminders.mockImplementation(async ({ result }) => ({
+    result: {
+      confirmation: result.confirmation,
+      reminderOptInOffered: false,
+    },
+    affectedScopes: [],
+  }));
 });
 
 describe("conversational Capture web adapters", () => {
   it("adds an unknown Person through the owner-scoped mutation before clarification continues", async () => {
-    await expect(
-      addCapturePersonAction({ displayName: "Maya", sourceRecordId: "source-1" }),
-    ).resolves.toMatchObject({
+    const result = unwrapOwnerActionResult(
+      await addCapturePersonAction({ displayName: "Maya", sourceRecordId: "source-1" }),
+    );
+    expect(result).toMatchObject({
       displayName: "Maya",
       personId: "person-1",
       revision: "created:person-1",
     });
-    expect(updateTag).toHaveBeenCalledWith("people:owner:owner-1");
-    expect(updateTag).toHaveBeenCalledWith("people:owner:owner-1:list");
-    expect(updateTag).toHaveBeenCalledWith("people:owner:owner-1:person:person-1");
+    expect(updateTagSpy).toHaveBeenCalledWith("people:owner:owner-1");
+    expect(updateTagSpy).toHaveBeenCalledWith("people:owner:owner-1:list");
+    expect(updateTagSpy).toHaveBeenCalledWith("people:owner:owner-1:person:person-1");
     expect(resolveOrCreateAndLinkPersonToSourceRecord).toHaveBeenCalledWith({
       ownerUserId: "owner-1",
       sourceRecordId: "source-1",
@@ -99,11 +104,13 @@ describe("conversational Capture web adapters", () => {
   });
 
   it("derives owner and authority server-side before calling the shared operation", async () => {
-    const result = await captureExplicitOutcomeAction({
-      interactionId: "browser-interaction",
-      inputMode: "typed",
-      originalText: "Keep this note",
-    });
+    const result = unwrapOwnerActionResult(
+      await captureExplicitOutcomeAction({
+        interactionId: "browser-interaction",
+        inputMode: "typed",
+        originalText: "Keep this note",
+      }),
+    );
     expect(captureExplicitOutcome).toHaveBeenCalledWith({
       authority: "explicit",
       interactionId: "browser-interaction",
@@ -134,13 +141,15 @@ describe("conversational Capture web adapters", () => {
       generalAction: { id: actionId, status: "open", recurrence: null },
     });
 
-    const result = await captureExplicitOutcomeAction({
-      interactionId: "reminder-capture",
-      inputMode: "typed",
-      originalText: "Remind me to replace the filter on August 14",
-      clientInstallationId: "browser-installation-1",
-      timeZone: "America/Chicago",
-    });
+    const result = unwrapOwnerActionResult(
+      await captureExplicitOutcomeAction({
+        interactionId: "reminder-capture",
+        inputMode: "typed",
+        originalText: "Remind me to replace the filter on August 14",
+        clientInstallationId: "browser-installation-1",
+        timeZone: "America/Chicago",
+      }),
+    );
 
     expect(scheduleExplicitCaptureReminders).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -231,13 +240,15 @@ describe("conversational Capture web adapters", () => {
       ],
     });
 
-    const result = await captureExplicitOutcomeAction({
-      interactionId: "grouped-reminder-capture",
-      inputMode: "typed",
-      originalText: "Remind me to replace the filter and follow up with Maya",
-      clientInstallationId: "browser-installation-1",
-      timeZone: "America/Chicago",
-    });
+    const result = unwrapOwnerActionResult(
+      await captureExplicitOutcomeAction({
+        interactionId: "grouped-reminder-capture",
+        inputMode: "typed",
+        originalText: "Remind me to replace the filter and follow up with Maya",
+        clientInstallationId: "browser-installation-1",
+        timeZone: "America/Chicago",
+      }),
+    );
 
     expect(scheduleExplicitCaptureReminders).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -252,20 +263,26 @@ describe("conversational Capture web adapters", () => {
   it("changes a captured record's concrete reminder schedule through the owner-scoped adapter", async () => {
     const actionId = "22222222-2222-4222-8222-222222222222";
     saveReminder.mockResolvedValueOnce({
-      schedule: {
-        kind: "relative",
-        localTime: null,
-        leadMinutes: 1_440,
-        timeZone: "America/Chicago",
+      result: {
+        optIn: { state: "offer", clientInstallationId: "browser-installation-1" },
+        schedule: {
+          kind: "relative",
+          localTime: null,
+          leadMinutes: 1_440,
+          timeZone: "America/Chicago",
+        },
       },
+      affectedScopes: [{ kind: "owner-collection", collection: "account", ownerUserId: "owner-1" }],
     });
 
-    const result = await changeExplicitCaptureReminderAction({
-      target: { kind: "edit_general_action", generalActionId: actionId },
-      clientInstallationId: "browser-installation-1",
-      timeZone: "America/Chicago",
-      schedule: { kind: "relative", leadMinutes: 1_440 },
-    });
+    const result = unwrapOwnerActionResult(
+      await changeExplicitCaptureReminderAction({
+        target: { kind: "edit_general_action", generalActionId: actionId },
+        clientInstallationId: "browser-installation-1",
+        timeZone: "America/Chicago",
+        schedule: { kind: "relative", leadMinutes: 1_440 },
+      }),
+    );
 
     expect(saveReminder).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -276,6 +293,7 @@ describe("conversational Capture web adapters", () => {
       }),
     );
     expect(result.reminderSchedule).toContain("one day before");
+    expect(result.reminderOptInOffered).toBe(true);
   });
 
   it("keeps corrections and Undo owner-scoped through Saved Item lifecycle operations", async () => {
@@ -319,10 +337,12 @@ describe("conversational Capture web adapters", () => {
     };
     changeExplicitCaptureOutcome.mockResolvedValue({ confirmation: actionConfirmation });
 
-    const result = await changeExplicitCaptureOutcomeAction({
-      target: { kind: "edit_saved_item", savedItemId: SAVED_ITEM_ID },
-      originalText: "I need to replace the filter",
-    });
+    const result = unwrapOwnerActionResult(
+      await changeExplicitCaptureOutcomeAction({
+        target: { kind: "edit_saved_item", savedItemId: SAVED_ITEM_ID },
+        originalText: "I need to replace the filter",
+      }),
+    );
 
     expect(result).toEqual({ confirmation: actionConfirmation });
   });

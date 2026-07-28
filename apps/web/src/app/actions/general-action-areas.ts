@@ -6,32 +6,36 @@ import {
   renameGeneralActionArea,
   unarchiveGeneralActionArea,
 } from "@tendnote/db/queries/general-action-areas";
-import type { GeneralActionArea } from "@tendnote/domain";
+import type { AffectedScope } from "@tendnote/db/queries/general-actions";
 import { generalActionAreaNameSchema } from "@tendnote/domain";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import {
   type GeneralActionAreaMutationResult,
   toGeneralActionAreaView,
 } from "@/lib/general-action-area-view";
-import { runActionsMutation } from "@/lib/general-action-mutation";
+import { runOwnerAction } from "@/lib/owner-action";
 
 const areaIdSchema = z.object({ areaId: z.uuid() });
-
-/** Runs an Area mutation through the shared runner, mapping the result to a view. */
-function runMutation(
-  run: () => Promise<GeneralActionArea>,
-): Promise<GeneralActionAreaMutationResult> {
-  return runActionsMutation(run, toGeneralActionAreaView);
-}
+const areaNameInputSchema = z.object({ name: generalActionAreaNameSchema });
+const renameAreaInputSchema = areaIdSchema.extend({ name: generalActionAreaNameSchema });
+const affectedActionScopes = (_area: unknown, ownerUserId: string): AffectedScope[] => [
+  {
+    kind: "viewer-collection",
+    collection: "general-actions",
+    viewerUserId: ownerUserId,
+  },
+];
 
 export async function createGeneralActionAreaAction(input: {
   name: string;
 }): Promise<GeneralActionAreaMutationResult> {
-  return runMutation(async () => {
-    const name = generalActionAreaNameSchema.parse(input.name);
-    const ownerUserId = await requireAdmittedOwnerForAction();
-    return createGeneralActionArea({ ownerUserId, name });
+  return runOwnerAction({
+    schema: areaNameInputSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      createGeneralActionArea({ ownerUserId, name: parsed.name }),
+    affectedScopes: affectedActionScopes,
+    result: toGeneralActionAreaView,
   });
 }
 
@@ -39,30 +43,42 @@ export async function renameGeneralActionAreaAction(input: {
   areaId: string;
   name: string;
 }): Promise<GeneralActionAreaMutationResult> {
-  return runMutation(async () => {
-    const { areaId } = areaIdSchema.parse(input);
-    const name = generalActionAreaNameSchema.parse(input.name);
-    const ownerUserId = await requireAdmittedOwnerForAction();
-    return renameGeneralActionArea({ ownerUserId, areaId, name });
+  return runOwnerAction({
+    schema: renameAreaInputSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      renameGeneralActionArea({
+        ownerUserId,
+        areaId: parsed.areaId,
+        name: parsed.name,
+      }),
+    affectedScopes: affectedActionScopes,
+    result: toGeneralActionAreaView,
   });
 }
 
 export async function archiveGeneralActionAreaAction(input: {
   areaId: string;
 }): Promise<GeneralActionAreaMutationResult> {
-  return runMutation(async () => {
-    const { areaId } = areaIdSchema.parse(input);
-    const ownerUserId = await requireAdmittedOwnerForAction();
-    return archiveGeneralActionArea({ ownerUserId, areaId });
+  return runOwnerAction({
+    schema: areaIdSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      archiveGeneralActionArea({ ownerUserId, areaId: parsed.areaId }),
+    affectedScopes: affectedActionScopes,
+    result: toGeneralActionAreaView,
   });
 }
 
 export async function unarchiveGeneralActionAreaAction(input: {
   areaId: string;
 }): Promise<GeneralActionAreaMutationResult> {
-  return runMutation(async () => {
-    const { areaId } = areaIdSchema.parse(input);
-    const ownerUserId = await requireAdmittedOwnerForAction();
-    return unarchiveGeneralActionArea({ ownerUserId, areaId });
+  return runOwnerAction({
+    schema: areaIdSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      unarchiveGeneralActionArea({ ownerUserId, areaId: parsed.areaId }),
+    affectedScopes: affectedActionScopes,
+    result: toGeneralActionAreaView,
   });
 }

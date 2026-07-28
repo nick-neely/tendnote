@@ -3,6 +3,7 @@ import {
   publishBackgroundJobDelivery,
 } from "@tendnote/db/queries/background-job-deliveries";
 import { describe, expect, it, vi } from "vitest";
+import { reminderOpenDeepLink } from "@/components/app-destinations";
 import vercelConfig from "../../../vercel.json";
 import { consumeReminderQueueMessage } from "./reminder-queue";
 
@@ -54,6 +55,7 @@ describe("Reminder queue", () => {
 
     expect(result.status).toBe("processed");
     expect(dispatch).toHaveBeenCalledWith({
+      deepLink: reminderOpenDeepLink,
       jobId: delivery.jobId,
       now: new Date("2026-08-14T14:00:05.000Z"),
       sender,

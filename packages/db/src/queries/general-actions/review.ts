@@ -356,6 +356,49 @@ export function createSuggestedGeneralActionReview(
     },
 
     /**
+     * Reintroduces a dismissed proposal to review. This narrow transition is the
+     * authoritative inverse for the review card's Undo; unlike lifecycle reopen,
+     * it restores the tentative `suggested` state instead of promoting to `open`.
+     */
+    async restoreDismissedSuggestedGeneralAction(
+      input: GeneralActionActionInput,
+    ): Promise<SuggestedGeneralActionReviewResult> {
+      const action = await store.getGeneralAction({
+        ownerUserId: input.actorUserId,
+        generalActionId: input.generalActionId,
+      });
+      if (action?.status !== "dismissed") {
+        throw new Error("Only dismissed suggested actions can be restored to review.");
+      }
+      const history = await store.listGeneralActionEvents({
+        ownerUserId: action.ownerUserId,
+        generalActionId: action.id,
+      });
+      const dismissal = history.at(-1);
+      if (dismissal?.kind !== "dismissed" || dismissal.detailJson.fromSuggestion !== true) {
+        throw new Error("Only dismissed suggested actions can be restored to review.");
+      }
+      const updated = await store.updateGeneralAction({
+        ownerUserId: action.ownerUserId,
+        generalActionId: action.id,
+        patch: { status: "suggested", lastActorUserId: input.actorUserId },
+      });
+      await store.createGeneralActionEvent({
+        generalActionId: updated.id,
+        ownerUserId: updated.ownerUserId,
+        kind: "reopened",
+        actorUserId: input.actorUserId,
+        detailJson: {
+          previousStatus: action.status,
+          status: updated.status,
+          fromSuggestion: true,
+          reviewUndo: true,
+        },
+      });
+      return buildReviewResult(updated);
+    },
+
+    /**
      * Ignores a Suggested General Action — the quiet set-aside for a proposal the user
      * doesn't want to act on now and doesn't want cluttering the resolved trail. It moves
      * to `ignored`, which never surfaces on the active *or* resolved ledger, so the

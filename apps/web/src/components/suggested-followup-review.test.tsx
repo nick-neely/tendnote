@@ -6,6 +6,7 @@ vi.mock("@/app/actions/suggested-followups", () => ({
   acceptSuggestedFollowupAction: vi.fn(),
   dismissSuggestedFollowupAction: vi.fn(),
   editSuggestedFollowupAction: vi.fn(),
+  restoreDismissedSuggestedFollowupAction: vi.fn(),
 }));
 
 vi.mock("@/components/use-create-draft", () => ({

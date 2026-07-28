@@ -6,6 +6,7 @@ import {
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 
 const inputSchema = z.object({
   clarificationAnswer: z
@@ -55,6 +56,7 @@ export default defineTool({
       ownerUserId,
       surface: "eve",
     });
+    await requestBackgroundAffectedScopeReconciliation(result.affectedScopes ?? []);
 
     if (result.clarification) {
       return { clarification: result.clarification };

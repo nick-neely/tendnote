@@ -1,52 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { ActionHistoryDialog } from "@/components/general-action-history-dialog";
-import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { ErrorText } from "@/components/general-action-shared";
 import { ArchiveIcon, HistoryIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import type { GeneralActionMutationResult, GeneralActionView } from "@/lib/general-action-view";
-
-/**
- * The shared lifecycle machinery for the calm "kept reachable" Action rows (paused
- * Routines, resolved Actions): one busy key at a time, an inline error on failure, and a
- * history dialog toggle. On success the caller navigates the row out of its list, so the
- * busy key is deliberately left set (the spinner holds until unmount) — only a failure
- * clears it. Each row supplies its own success handler because the destination differs
- * (resume/reopen return a view; archive resolves by id).
- */
-export function useActionRowTransition() {
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function run(
-    kind: string,
-    mutate: () => Promise<GeneralActionMutationResult>,
-    onSuccess: (view: GeneralActionView) => void,
-  ) {
-    setError(null);
-    setBusyKey(kind);
-    startTransition(async () => {
-      try {
-        const result = await mutate();
-        if (!result.ok) {
-          setError(result.error);
-          setBusyKey(null);
-          return;
-        }
-        onSuccess(result.view);
-      } catch {
-        setError(GENERIC_ERROR);
-        setBusyKey(null);
-      }
-    });
-  }
-
-  return { historyOpen, setHistoryOpen, error, busyKey, pending, run };
-}
+import type { GeneralActionView } from "@/lib/general-action-view";
 
 /**
  * The shared control bar for a kept-reachable Action row: a History button, a row-specific
@@ -76,7 +35,6 @@ export function ActionRowControls({
     <>
       <div className="flex items-center justify-end gap-1.5">
         <Button
-          data-action-control="archive"
           disabled={pending}
           onClick={() => onHistoryOpenChange(true)}
           size="sm"
@@ -88,6 +46,7 @@ export function ActionRowControls({
         </Button>
         {children}
         <Button
+          data-action-control="archive"
           disabled={pending}
           onClick={(event) => onArchive(event.currentTarget)}
           size="sm"

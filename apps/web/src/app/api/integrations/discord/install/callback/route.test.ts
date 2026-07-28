@@ -5,13 +5,13 @@ const {
   cookies,
   evaluateDiscordInstallCallback,
   recordOwnerDiscordInstall,
-  updateAccountMutationScopes,
+  reconcileAffectedScopes,
 } = vi.hoisted(() => ({
   admittedOwnerOrNull: vi.fn(),
   cookies: vi.fn(),
   evaluateDiscordInstallCallback: vi.fn(),
   recordOwnerDiscordInstall: vi.fn(),
-  updateAccountMutationScopes: vi.fn(),
+  reconcileAffectedScopes: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({ cookies }));
@@ -23,12 +23,7 @@ vi.mock("@/lib/integrations/discord-install", () => ({
   evaluateDiscordInstallCallback,
 }));
 vi.mock("@/lib/integrations/discord-install-server", () => ({ recordOwnerDiscordInstall }));
-vi.mock("@/lib/cache/account-mutation-scopes", () => ({
-  accountMutationScopes: {
-    forOwner: (ownerUserId: string) => [{ kind: "account-owner", ownerUserId }],
-  },
-  updateAccountMutationScopes,
-}));
+vi.mock("@/lib/cache/reconcile-affected-scopes", () => ({ reconcileAffectedScopes }));
 
 import { GET } from "./route";
 
@@ -59,8 +54,9 @@ describe("GET /api/integrations/discord/install/callback", () => {
       permissions: "8",
       scopes: ["bot"],
     });
-    expect(updateAccountMutationScopes).toHaveBeenCalledWith([
-      { kind: "account-owner", ownerUserId: "owner-1" },
-    ]);
+    expect(reconcileAffectedScopes).toHaveBeenCalledWith(
+      [{ kind: "owner-collection", collection: "account", ownerUserId: "owner-1" }],
+      { origin: "background" },
+    );
   });
 });

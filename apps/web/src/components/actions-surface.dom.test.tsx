@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { generalActionViewFixture } from "@/components/general-action-fixtures";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionView } from "@/lib/general-action-view";
-import { render, screen, setMatchMedia, userEvent } from "@/test/dom";
+import { act, fireEvent, render, screen, setMatchMedia, userEvent, waitFor } from "@/test/dom";
 
 /**
  * DOM click-through for the Actions surface Area filter (#179), previously proven only at
@@ -63,6 +63,10 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("next/link", () => import("@/test/next-link-mock"));
 
+import {
+  completeGeneralActionAction,
+  reopenGeneralActionAction,
+} from "@/app/actions/general-actions";
 import { ActionsSurface } from "./actions-surface";
 
 function area(id: string, name: string, archived = false): GeneralActionAreaView {
@@ -90,6 +94,197 @@ function renderSurface(active: GeneralActionView[], areas: GeneralActionAreaView
 }
 
 describe("ActionsSurface area filter (click-through)", () => {
+  it("does not resurrect a stale resolved row after a newer reopen acknowledgement", async () => {
+    const user = userEvent.setup();
+    const resolved = generalActionViewFixture({
+      id: "revisioned-action",
+      revision: "1",
+      status: "completed",
+      title: "Renew the registration",
+    });
+    const reopened = { ...resolved, revision: "3", status: "open" as const };
+    vi.mocked(reopenGeneralActionAction).mockResolvedValue({ ok: true, view: reopened });
+    const rendered = render(<ActionsSurface active={[]} areas={[]} resolved={[resolved]} />);
+
+    await user.click(screen.getByRole("button", { name: "Reopen" }));
+    await screen.findByRole("button", { name: "Undo Reopen" });
+
+    rendered.rerender(
+      <ActionsSurface active={[]} areas={[]} resolved={[{ ...resolved, revision: "2" }]} />,
+    );
+
+    expect(screen.getAllByText("Renew the registration")).toHaveLength(1);
+    expect(screen.queryByText("Completed")).toBeNull();
+  });
+
+  it("rejects a stale inverse callback that targets the old destination", async () => {
+    const user = userEvent.setup();
+    const resolved = generalActionViewFixture({
+      id: "late-inverse-action",
+      revision: "1",
+      status: "completed",
+      title: "Renew the registration",
+    });
+    const reopened = { ...resolved, revision: "3", status: "open" as const };
+    vi.mocked(reopenGeneralActionAction).mockResolvedValue({ ok: true, view: reopened });
+    vi.mocked(completeGeneralActionAction).mockResolvedValue({
+      ok: true,
+      view: { ...resolved, revision: "2" },
+    });
+    render(<ActionsSurface active={[]} areas={[]} resolved={[resolved]} />);
+
+    await user.click(screen.getByRole("button", { name: "Reopen" }));
+    await user.click(await screen.findByRole("button", { name: "Undo Reopen" }));
+
+    await waitFor(() =>
+      expect(completeGeneralActionAction).toHaveBeenCalledWith({
+        generalActionId: resolved.id,
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Complete" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull();
+    expect(screen.getAllByText("Renew the registration")).toHaveLength(1);
+    expect(screen.getByRole("status").textContent).toContain(
+      "This record changed elsewhere. Refresh and try again.",
+    );
+    expect(screen.getByRole("status").textContent).not.toContain("Action restored.");
+  });
+
+  it("restores a failed reopen to its original resolved-list position", async () => {
+    const user = userEvent.setup();
+    const resolved = ["First", "Middle", "Last"].map((title, index) =>
+      generalActionViewFixture({
+        id: `resolved-${index}`,
+        revision: "1",
+        status: "completed",
+        title,
+      }),
+    );
+    vi.mocked(reopenGeneralActionAction).mockResolvedValue({
+      ok: false,
+      error: "Unable to reopen this action.",
+    });
+    render(<ActionsSurface active={[]} areas={[]} resolved={resolved} />);
+
+    const middleReopen = screen.getAllByRole("button", { name: "Reopen" })[1];
+    if (!middleReopen) throw new Error("expected the middle resolved action");
+    await user.click(middleReopen);
+    await screen.findByText("Unable to reopen this action.");
+
+    expect(
+      Array.from(document.querySelectorAll("article[id^='action-']")).map((row) => row.id),
+    ).toEqual(resolved.map((action) => `action-${action.id}`));
+  });
+
+  it("expires historical displacement before a later lifecycle mutation", async () => {
+    vi.useFakeTimers();
+    try {
+      const resolved = ["First", "Middle", "Last"].map((title, index) =>
+        generalActionViewFixture({
+          id: `sequential-${index}`,
+          revision: "1",
+          status: "completed",
+          title,
+        }),
+      );
+      const middle = resolved[1];
+      if (!middle) throw new Error("expected a middle action");
+      const reopened = { ...middle, revision: "2", status: "open" as const };
+      vi.mocked(reopenGeneralActionAction).mockResolvedValue({ ok: true, view: reopened });
+      vi.mocked(completeGeneralActionAction).mockResolvedValue({
+        ok: true,
+        view: { ...reopened, revision: "3", status: "completed" as const },
+      });
+      render(<ActionsSurface active={[]} areas={[]} resolved={resolved} />);
+
+      const middleReopen = screen.getAllByRole("button", { name: "Reopen" })[1];
+      if (!middleReopen) throw new Error("expected the middle resolved action");
+      fireEvent.click(middleReopen);
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Complete" }));
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(5_000);
+        await vi.runAllTimersAsync();
+      });
+
+      expect(
+        Array.from(document.querySelectorAll("article[id^='action-']")).map((row) => row.id),
+      ).toEqual([
+        `action-${resolved[0]?.id}`,
+        `action-${resolved[2]?.id}`,
+        `action-${resolved[1]?.id}`,
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("moves focus to the page heading after the final active row leaves", async () => {
+    vi.useFakeTimers();
+    try {
+      const action = generalActionViewFixture({
+        id: "only-active-action",
+        revision: "1",
+        status: "open",
+        title: "Only active action",
+      });
+      vi.mocked(completeGeneralActionAction).mockResolvedValue({
+        ok: true,
+        view: { ...action, revision: "2", status: "completed" },
+      });
+      render(
+        <main>
+          <h1>Actions</h1>
+          <ActionsSurface active={[action]} areas={[]} resolved={[]} />
+        </main>,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Complete" }));
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(5_000);
+        await vi.runAllTimersAsync();
+      });
+
+      const heading = screen.getByRole("heading", { name: "Actions" });
+      expect(screen.queryByRole("button", { name: "Complete" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Reopen" })).toBeTruthy();
+      expect(document.activeElement).toBe(heading);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("puts the archive focus target on the archive control, not History", () => {
+    render(
+      <ActionsSurface
+        active={[]}
+        areas={[]}
+        paused={[
+          generalActionViewFixture({
+            isRoutine: true,
+            recurrence: { interval: 1, unit: "month" },
+            recurrenceLabel: "Every month",
+            status: "paused",
+          }),
+        ]}
+        resolved={[]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Archive" }).getAttribute("data-action-control"),
+    ).toBe("archive");
+    expect(
+      screen.getByRole("button", { name: "History" }).hasAttribute("data-action-control"),
+    ).toBe(false);
+  });
+
   it("narrows the active ledger to the selected Area, then restores it with All", async () => {
     const user = userEvent.setup();
     renderSurface([FIX_SINK, BOOK_DENTIST], [HOME, HEALTH]);

@@ -27,24 +27,27 @@ import { ReminderSettings } from "./reminder-settings";
 
 const CURRENT_ID = "11111111-1111-4111-8111-111111111111";
 const REMOTE_ID = "22222222-2222-4222-8222-222222222222";
+const success = <T,>(view: T) => ({ ok: true as const, view });
 
 beforeEach(() => {
   window.localStorage.clear();
   window.localStorage.setItem("tendnote.reminder-installation-id", "browser-installation-1");
-  getReminderInstallationStateAction.mockResolvedValue({
-    optInState: "registered",
-    installation: {
-      id: CURRENT_ID,
-      clientInstallationId: "browser-installation-1",
-      label: "Windows browser",
-      status: "enabled",
-      previewMode: "generic",
-      updatedAt: new Date("2026-07-21T15:00:00.000Z"),
-    },
-  });
-  disableCurrentReminderInstallationAction.mockResolvedValue({ ok: true });
-  revokeReminderInstallationAction.mockResolvedValue({ ok: true });
-  setReminderInstallationPreviewModeAction.mockResolvedValue({ previewMode: "detailed" });
+  getReminderInstallationStateAction.mockResolvedValue(
+    success({
+      optInState: "registered",
+      installation: {
+        id: CURRENT_ID,
+        clientInstallationId: "browser-installation-1",
+        label: "Windows browser",
+        status: "enabled",
+        previewMode: "generic",
+        updatedAt: new Date("2026-07-21T15:00:00.000Z"),
+      },
+    }),
+  );
+  disableCurrentReminderInstallationAction.mockResolvedValue(success({ ok: true }));
+  revokeReminderInstallationAction.mockResolvedValue(success({ ok: true }));
+  setReminderInstallationPreviewModeAction.mockResolvedValue(success({ previewMode: "detailed" }));
 });
 
 const installations = [
@@ -117,10 +120,12 @@ it("turns off the current installation and revokes another independently", async
 });
 
 it("shows Check again instead of a contextual prompt after permission denial", async () => {
-  getReminderInstallationStateAction.mockResolvedValue({
-    optInState: "denied",
-    installation: null,
-  });
+  getReminderInstallationStateAction.mockResolvedValue(
+    success({
+      optInState: "denied",
+      installation: null,
+    }),
+  );
   render(<ReminderSettings installations={[remoteInstallation]} />);
 
   expect(await screen.findByRole("button", { name: "Check again" })).toBeTruthy();

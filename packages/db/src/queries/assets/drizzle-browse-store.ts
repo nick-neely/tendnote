@@ -42,9 +42,10 @@ function pendingReviewForAsset(callerUserId: string) {
   )`;
 }
 
-function nextDueActionForAsset(callerUserId: string) {
-  return sql<Date | null>`(
-    select min(ga.due_at)
+function nextDueActionValue<T>(callerUserId: string, column: "status" | "due_at" | "defer_until") {
+  const value = sql.raw(`ga.${column}`);
+  return sql<T | null>`(
+    select ${value}
     from general_action_assets gaa
     join general_actions ga on ga.id = gaa.general_action_id
     where gaa.asset_id = ${visibleAssetId}
@@ -55,12 +56,26 @@ function nextDueActionForAsset(callerUserId: string) {
         tableAlias: "ga",
         recordKind: "general_action",
       })}
-  )`.mapWith(generalActions.dueAt);
+    order by ga.due_at asc, ga.id asc
+    limit 1
+  )`;
+}
+
+function nextDueActionAtForAsset(callerUserId: string) {
+  return nextDueActionValue<Date>(callerUserId, "due_at").mapWith(generalActions.dueAt);
+}
+
+function nextDueActionStatusForAsset(callerUserId: string) {
+  return nextDueActionValue<"open" | "deferred">(callerUserId, "status");
+}
+
+function nextDueActionDeferUntilForAsset(callerUserId: string) {
+  return nextDueActionValue<Date>(callerUserId, "defer_until").mapWith(generalActions.deferUntil);
 }
 
 function browseOrder(input: ListAssetBrowseRowsInput) {
   const name = sql`lower(${visibleAssets.name})`;
-  const nextDue = nextDueActionForAsset(input.callerUserId);
+  const nextDue = nextDueActionAtForAsset(input.callerUserId);
   const needsReview = pendingReviewForAsset(input.callerUserId);
   if (input.sort === "due_action") {
     return [sql`${nextDue} asc nulls last`, asc(name), desc(visibleAssets.createdAt)];
@@ -80,12 +95,16 @@ export function createDrizzleAssetBrowseStore(): AssetBrowseStore {
     // fallow-ignore-next-line complexity
     async listAssetBrowseRows(input) {
       const needsReview = pendingReviewForAsset(input.callerUserId);
-      const nextDueActionAt = nextDueActionForAsset(input.callerUserId);
+      const nextDueActionAt = nextDueActionAtForAsset(input.callerUserId);
+      const nextDueActionStatus = nextDueActionStatusForAsset(input.callerUserId);
+      const nextDueActionDeferUntil = nextDueActionDeferUntilForAsset(input.callerUserId);
       const rows = await getDb()
         .select({
           asset: visibleAssets,
           needsReview: needsReview.as("needs_review"),
           nextDueActionAt: nextDueActionAt.as("next_due_action_at"),
+          nextDueActionStatus: nextDueActionStatus.as("next_due_action_status"),
+          nextDueActionDeferUntil: nextDueActionDeferUntil.as("next_due_action_defer_until"),
         })
         .from(visibleAssets)
         .where(
@@ -112,7 +131,14 @@ export function createDrizzleAssetBrowseStore(): AssetBrowseStore {
       return rows.map((row) => ({
         asset: assetSchema.parse(row.asset),
         needsReview: Boolean(row.needsReview),
-        nextDueActionAt: row.nextDueActionAt,
+        nextDueAction:
+          row.nextDueActionAt && row.nextDueActionStatus
+            ? {
+                status: row.nextDueActionStatus,
+                dueAt: row.nextDueActionAt,
+                deferUntil: row.nextDueActionDeferUntil,
+              }
+            : null,
       }));
     },
 

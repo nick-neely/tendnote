@@ -33,7 +33,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { VisibilityChoiceControl } from "@/components/visibility-choice-control";
 import { type AssetEvidenceView, formatEvidenceSize } from "@/lib/asset-evidence-view";
-import { useMutationSubmit } from "@/lib/use-mutation-submit";
+import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 import { cn } from "@/lib/utils";
 
 /** Where a capture lands: an existing Asset, or a still-open review group (#200). */
@@ -90,7 +90,7 @@ export function AssetEvidenceCapture({
   shareableMembers?: ShareableActionMember[];
 }) {
   const [draft, setDraft] = useState<Draft | null>(null);
-  const { error, setError, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+  const { error, setError, pending, submit } = usePendingMutationSubmit(GENERIC_ERROR);
 
   // Object URLs live exactly as long as the preview they back.
   useEffect(() => {

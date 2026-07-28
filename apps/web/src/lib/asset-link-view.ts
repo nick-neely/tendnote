@@ -1,6 +1,7 @@
 import type { AssetPersonLinkEntry, RelatedAssetLink } from "@tendnote/db/queries/assets";
 import type { AssetLinkRelation } from "@tendnote/domain";
 import { assetLinkRelationLabel, assetPersonRelationLabel } from "@tendnote/domain";
+import type { OwnerActionResult } from "./owner-action";
 
 /**
  * Result of a link mutation server action (#202): links carry no editable view of
@@ -8,7 +9,7 @@ import { assetLinkRelationLabel, assetPersonRelationLabel } from "@tendnote/doma
  * whole story (the null view keeps the shared submit runner happy), plus the
  * curated message when validation refuses.
  */
-export type AssetLinkMutationResult = { ok: true; view: null } | { ok: false; error: string };
+export type AssetLinkMutationResult = OwnerActionResult<null>;
 
 /**
  * A Related Asset Link shaped for one profile's row (#202): the other asset's

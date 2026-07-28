@@ -21,7 +21,7 @@ function item(
     generalActionId: "11111111-1111-1111-1111-111111111111",
     title: "Book the campsite for the trip",
     status: "suggested",
-    dueLabel: "Jul 15, 2026",
+    timingLabel: "Was due Jul 15",
     isRoutine: false,
     recurrenceLabel: null,
     personNames: [],
@@ -40,7 +40,8 @@ describe("ChatGeneralActionReviewCard (interactive in-chat review)", () => {
     expect(html).toContain("Suggested action:");
     expect(html).not.toContain("Suggested action for");
     expect(html).toContain("Book the campsite for the trip");
-    expect(html).toContain("Proposed for Jul 15, 2026");
+    expect(html).toContain("Was due Jul 15");
+    expect(html).not.toContain("Proposed for");
     expect(html).toContain("Only me");
     expect(html).toContain("Accept");
     expect(html).toContain("Dismiss");
@@ -59,7 +60,7 @@ describe("ChatGeneralActionReviewCard (interactive in-chat review)", () => {
           title: "Change the furnace filter",
           isRoutine: true,
           recurrenceLabel: "Every 6 months",
-          dueLabel: null,
+          timingLabel: null,
           personNames: ["Sam"],
         })}
       />,
@@ -80,7 +81,7 @@ describe("ChatGeneralActionReviewList", () => {
           kind: "suggested_general_action_review_list",
           reviews: [
             item(),
-            item({ generalActionId: "ga-2", title: "Rent the gear", dueLabel: null }),
+            item({ generalActionId: "ga-2", title: "Rent the gear", timingLabel: null }),
           ],
         }}
       />,

@@ -14,6 +14,12 @@ import type {
 /** Person summary used to name a follow-up's person without leaking raw ids. */
 export type FollowupPersonRef = Pick<Person, "id" | "displayName">;
 
+/** A Follow-Up plus the audience context its product view names. */
+export type FollowupWithContext = Followup & {
+  sharedWithCount: number;
+  householdName: string | null;
+};
+
 /** An active follow-up paired with its (owner-scoped) person, for the dashboard. */
 export type ActiveFollowupSummary = {
   followup: Followup;
@@ -91,13 +97,19 @@ export type FollowupStore = FollowupContextStore & {
  * and Eve callers share one lifecycle layer (PRD #42).
  */
 export type FollowupLifecycleStore = FollowupStore &
-  Pick<SourceRecordResolutionStore, "getPerson" | "getSourceRecord" | "createAuditLogEntry"> &
+  Pick<
+    SourceRecordResolutionStore,
+    "getPerson" | "getSourceRecord" | "createAuditLogEntry" | "listAuditLogEntries"
+  > &
   Pick<
     HouseholdStore,
     | "getHouseholdMembership"
+    | "getHouseholdWorkspace"
+    | "getHouseholdWorkspaces"
     | "listHouseholdMemberships"
     | "createHouseholdRecordShare"
     | "listHouseholdRecordShares"
+    | "listHouseholdRecordSharesForRecords"
   >;
 
 export type InMemoryFollowupLifecycleStore = InMemorySourceRecordStore &

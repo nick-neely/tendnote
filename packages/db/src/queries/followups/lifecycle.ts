@@ -2,6 +2,7 @@ import {
   assertConcreteDueAt,
   assertFollowupEditable,
   birthdayAnnualFollowupCadence,
+  type Followup,
   type FollowupLifecycleAction,
   followupEditSchema,
   resolveFollowupTransition,
@@ -345,6 +346,45 @@ export function createFollowupLifecycle(store: FollowupLifecycleStore) {
 
     archiveFollowup(input: FollowupActionInput) {
       return transition(input, "archive");
+    },
+
+    /** Restores the exact pre-archive lifecycle state for the bounded Undo path. */
+    async restoreArchivedFollowup(input: FollowupActionInput) {
+      const followup = await requireFollowup(input);
+      if (followup.status !== "archived") {
+        throw new Error("Only archived follow-ups can be restored.");
+      }
+      const audit = await store.listAuditLogEntries({ ownerUserId: followup.ownerUserId });
+      const archive = audit
+        .filter((entry) => entry.entityType === "followup" && entry.entityId === followup.id)
+        .at(-1);
+      const previousStatus = archive?.metadataJson.previousStatus;
+      if (
+        archive?.action !== "followup.archive" ||
+        typeof previousStatus !== "string" ||
+        previousStatus === "archived"
+      ) {
+        throw new Error("This follow-up can no longer be restored from its archive.");
+      }
+      resolveFollowupTransition(previousStatus as Followup["status"], "archive");
+      const updated = await store.updateFollowup({
+        ownerUserId: followup.ownerUserId,
+        followupId: followup.id,
+        patch: { status: previousStatus as Followup["status"], lastActorUserId: input.actorUserId },
+      });
+      await store.createAuditLogEntry({
+        ownerUserId: updated.ownerUserId,
+        action: "followup.archive_restore",
+        entityType: "followup",
+        entityId: updated.id,
+        metadataJson: {
+          actorUserId: input.actorUserId,
+          personId: updated.personId,
+          previousStatus: followup.status,
+          status: updated.status,
+        },
+      });
+      return updated;
     },
 
     /** Snoozes an active follow-up to a new concrete due date. */

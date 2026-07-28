@@ -14,15 +14,16 @@ import {
 import type { AssetEdit, AssetMemoryEdit } from "@tendnote/domain";
 import { assetEditSchema, assetMemoryEditSchema } from "@tendnote/domain";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { toAssetReviewGroupViewWithOrigin } from "@/lib/asset-review-origin";
-import type { AssetReviewGroupView } from "@/lib/asset-review-view";
-import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
-import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
+import { runOwnerAction } from "@/lib/owner-action";
 
 const groupIdSchema = z.object({ groupId: z.uuid() });
-const assetIdSchema = z.object({ assetId: z.uuid() });
 const memoryIdSchema = z.object({ memoryId: z.uuid() });
+const acceptAssetSchema = z.object({ assetId: z.uuid(), edit: assetEditSchema.optional() });
+const editAssetSchema = z.object({ assetId: z.uuid(), edit: assetEditSchema });
+const acceptMemorySchema = z.object({ memoryId: z.uuid(), edit: assetMemoryEditSchema.optional() });
+const editMemorySchema = z.object({ memoryId: z.uuid(), edit: assetMemoryEditSchema });
+const linkGroupSchema = z.object({ groupId: z.uuid(), targetAssetId: z.uuid() });
 
 // Edit-before-accept payloads are the domain's own edit schemas — no local
 // re-declaration to drift; the review layer re-validates against the record.
@@ -33,115 +34,96 @@ const memoryIdSchema = z.object({ memoryId: z.uuid() });
  * promoted-from action origin, #199). Named for both effects — this is
  * deliberately not a pure mapper.
  */
-function revalidateAndView(
-  ownerUserId: string,
-  result: AssetReviewGroupResult,
-): Promise<AssetReviewGroupView> {
-  invalidateReviewOwner(ownerUserId);
-  updateAssetMutationScopes(
-    assetMutationScopes.forAsset({
-      callerUserId: ownerUserId,
-      assetId: result.asset.id,
-      householdId: result.asset.householdId,
+function runReviewAction<TInput>(
+  schema: { parse(input: unknown): TInput },
+  input: unknown,
+  mutate: (
+    ownerUserId: string,
+    parsed: TInput,
+  ) => Promise<{
+    result: AssetReviewGroupResult;
+    affectedScopes: import("@tendnote/db/queries/general-actions").AffectedScope[];
+  }>,
+) {
+  return runOwnerAction({
+    schema,
+    input,
+    body: ({ ownerUserId, input: parsed }) => mutate(ownerUserId, parsed),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toAssetReviewGroupViewWithOrigin(outcome.result),
+  });
+}
+
+export async function acceptSuggestedAssetAction(input: { assetId: string; edit?: AssetEdit }) {
+  return runReviewAction(acceptAssetSchema, input, (ownerUserId, parsed) =>
+    acceptSuggestedAsset({
+      actorUserId: ownerUserId,
+      assetId: parsed.assetId,
+      edit: parsed.edit ?? {},
     }),
   );
-  return toAssetReviewGroupViewWithOrigin(result);
 }
 
-export async function acceptSuggestedAssetAction(input: {
-  assetId: string;
-  edit?: AssetEdit;
-}): Promise<AssetReviewGroupView> {
-  const { assetId } = assetIdSchema.parse({ assetId: input.assetId });
-  const edit = assetEditSchema.parse(input.edit ?? {});
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(
-    ownerUserId,
-    await acceptSuggestedAsset({ actorUserId: ownerUserId, assetId, edit }),
-  );
-}
-
-export async function editSuggestedAssetAction(input: {
-  assetId: string;
-  edit: AssetEdit;
-}): Promise<AssetReviewGroupView> {
-  const { assetId } = assetIdSchema.parse({ assetId: input.assetId });
-  const edit = assetEditSchema.parse(input.edit);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(
-    ownerUserId,
-    await editSuggestedAsset({ actorUserId: ownerUserId, assetId, edit }),
+export async function editSuggestedAssetAction(input: { assetId: string; edit: AssetEdit }) {
+  return runReviewAction(editAssetSchema, input, (ownerUserId, parsed) =>
+    editSuggestedAsset({
+      actorUserId: ownerUserId,
+      assetId: parsed.assetId,
+      edit: parsed.edit,
+    }),
   );
 }
 
 export async function acceptSuggestedAssetMemoryAction(input: {
   memoryId: string;
   edit?: AssetMemoryEdit;
-}): Promise<AssetReviewGroupView> {
-  const { memoryId } = memoryIdSchema.parse({ memoryId: input.memoryId });
-  const edit = assetMemoryEditSchema.parse(input.edit ?? {});
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(
-    ownerUserId,
-    await acceptSuggestedAssetMemory({ actorUserId: ownerUserId, memoryId, edit }),
+}) {
+  return runReviewAction(acceptMemorySchema, input, (ownerUserId, parsed) =>
+    acceptSuggestedAssetMemory({
+      actorUserId: ownerUserId,
+      memoryId: parsed.memoryId,
+      edit: parsed.edit ?? {},
+    }),
   );
 }
 
 export async function editSuggestedAssetMemoryAction(input: {
   memoryId: string;
   edit: AssetMemoryEdit;
-}): Promise<AssetReviewGroupView> {
-  const { memoryId } = memoryIdSchema.parse({ memoryId: input.memoryId });
-  const edit = assetMemoryEditSchema.parse(input.edit);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(
-    ownerUserId,
-    await editSuggestedAssetMemory({ actorUserId: ownerUserId, memoryId, edit }),
+}) {
+  return runReviewAction(editMemorySchema, input, (ownerUserId, parsed) =>
+    editSuggestedAssetMemory({
+      actorUserId: ownerUserId,
+      memoryId: parsed.memoryId,
+      edit: parsed.edit,
+    }),
   );
 }
 
-export async function dismissSuggestedAssetMemoryAction(input: {
-  memoryId: string;
-}): Promise<AssetReviewGroupView> {
-  const { memoryId } = memoryIdSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(
-    ownerUserId,
-    await dismissSuggestedAssetMemory({ actorUserId: ownerUserId, memoryId }),
+export async function dismissSuggestedAssetMemoryAction(input: { memoryId: string }) {
+  return runReviewAction(memoryIdSchema, input, (ownerUserId, parsed) =>
+    dismissSuggestedAssetMemory({ actorUserId: ownerUserId, memoryId: parsed.memoryId }),
   );
 }
 
-export async function acceptAssetReviewGroupAction(input: {
-  groupId: string;
-}): Promise<AssetReviewGroupView> {
-  const { groupId } = groupIdSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(
-    ownerUserId,
-    await acceptAssetReviewGroup({ actorUserId: ownerUserId, groupId }),
+export async function acceptAssetReviewGroupAction(input: { groupId: string }) {
+  return runReviewAction(groupIdSchema, input, (ownerUserId, parsed) =>
+    acceptAssetReviewGroup({ actorUserId: ownerUserId, groupId: parsed.groupId }),
   );
 }
 
-export async function dismissAssetReviewGroupAction(input: {
-  groupId: string;
-}): Promise<AssetReviewGroupView> {
-  const { groupId } = groupIdSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(
-    ownerUserId,
-    await dismissAssetReviewGroup({ actorUserId: ownerUserId, groupId }),
+export async function dismissAssetReviewGroupAction(input: { groupId: string }) {
+  return runReviewAction(groupIdSchema, input, (ownerUserId, parsed) =>
+    dismissAssetReviewGroup({ actorUserId: ownerUserId, groupId: parsed.groupId }),
   );
 }
 
 export async function linkAssetReviewGroupAction(input: {
   groupId: string;
   targetAssetId: string;
-}): Promise<AssetReviewGroupView> {
-  const parsed = z.object({ groupId: z.uuid(), targetAssetId: z.uuid() }).parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return revalidateAndView(
-    ownerUserId,
-    await linkAssetReviewGroup({
+}) {
+  return runReviewAction(linkGroupSchema, input, (ownerUserId, parsed) =>
+    linkAssetReviewGroup({
       actorUserId: ownerUserId,
       groupId: parsed.groupId,
       targetAssetId: parsed.targetAssetId,

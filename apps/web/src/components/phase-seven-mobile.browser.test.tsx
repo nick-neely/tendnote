@@ -5,8 +5,21 @@ import { page, userEvent } from "vitest/browser";
 import type { ReviewQueueItem } from "@/lib/review-queue";
 import { renderInBrowser } from "@/test/browser";
 import { AppShell } from "./app-shell";
-import { ReminderOptInInvitation } from "./general-action-reminder";
+import { MobileTodayDestination } from "./mobile-today-destination";
+import { ReminderOptInInvitation } from "./reminder-opt-in-invitation";
 import { ReviewQueueSection } from "./review-queue-section";
+
+vi.mock("@/components/mobile-eve-surface", () => ({
+  EveSurface: () => (
+    <div className="flex h-full flex-col gap-3">
+      <div aria-label="Eve transcript" role="log">
+        <p>What would you like to recall?</p>
+      </div>
+      <label htmlFor="phase-seven-eve-composer">Message Eve</label>
+      <textarea className="min-h-20 shrink-0" id="phase-seven-eve-composer" />
+    </div>
+  ),
+}));
 
 const cleanups: Array<() => Promise<void>> = [];
 const originalUserAgent = Object.getOwnPropertyDescriptor(navigator, "userAgent");
@@ -92,9 +105,13 @@ describe("Phase Seven phone browser proof", () => {
     await page.viewport(390, 844);
     document.documentElement.style.fontSize = "200%";
     const handlers = {
-      refresh: vi.fn(async () => today),
-      suppress: vi.fn(async () => ({ ...today, items: [] })),
-      act: vi.fn(async () => today),
+      refresh: vi.fn(async () => ({ ok: true as const, view: today })),
+      restore: vi.fn(async () => ({ ok: true as const, view: today })),
+      suppress: vi.fn(async () => ({
+        ok: true as const,
+        view: { ...today, items: [] },
+      })),
+      act: vi.fn(async () => ({ ok: true as const, view: today })),
     };
     const captureHandlers = {
       addPerson: vi.fn(),
@@ -106,26 +123,16 @@ describe("Phase Seven phone browser proof", () => {
       undo: vi.fn(),
     };
     const container = await mount(
-      <AppShell
-        captureHandlers={captureHandlers}
-        mobileEve={
-          <div className="flex h-full flex-col gap-3">
-            <div aria-label="Eve transcript" role="log">
-              <p>What would you like to recall?</p>
-            </div>
-            <label htmlFor="phase-seven-eve-composer">Message Eve</label>
-            <textarea className="min-h-20 shrink-0" id="phase-seven-eve-composer" />
-          </div>
-        }
-        mobileHome
-        ownerUserId="owner-1"
-        searchHandler={vi.fn()}
-        todayHandlers={handlers}
-        todayInitial={today}
-        todayLocalDate="2026-08-14"
-        todayTimeZone="America/Chicago"
-      >
-        <p>Desktop fallback</p>
+      <AppShell captureHandlers={captureHandlers} ownerUserId="owner-1" searchHandler={vi.fn()}>
+        <div data-mobile-bleed>
+          <MobileTodayDestination
+            ownerUserId="owner-1"
+            todayHandlers={handlers}
+            todayInitial={today}
+            todayLocalDate="2026-08-14"
+            todayTimeZone="America/Chicago"
+          />
+        </div>
       </AppShell>,
     );
     const closeFocusedFlow = () =>
@@ -219,15 +226,13 @@ describe("Phase Seven phone browser proof", () => {
     await page.viewport(390, 844);
     document.documentElement.style.fontSize = "200%";
     const container = await mount(
-      <AppShell mobileReview ownerUserId="owner-1">
+      <AppShell ownerUserId="owner-1">
         <ReviewQueueSection items={[sourceReview]} onResolve={vi.fn()} onUpdate={vi.fn()} />
       </AppShell>,
     );
 
     await expect.element(page.getByRole("list", { name: "Review queue" })).toBeVisible();
     await expect.element(page.getByText(/Maya recommended checking/)).toBeVisible();
-    const reviewLink = page.getByRole("link", { name: "Review" });
-    await expect.element(reviewLink).toHaveAttribute("aria-current", "page");
     const linkPerson = page.getByRole("link", { name: "Link someone else" });
     const addPerson = page.getByRole("button", { name: "Add Maya" });
     for (const control of [linkPerson, addPerson]) {

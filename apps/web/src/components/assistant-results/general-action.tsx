@@ -3,6 +3,7 @@ import {
   type GeneralActionRefOutput,
   type GeneralActionStatus,
   isReviewGeneralActionStatus,
+  resolveRecordTiming,
   type SuggestedGeneralActionReviewItemOutput,
 } from "@tendnote/domain";
 import Link from "next/link";
@@ -14,7 +15,7 @@ import type {
   SuggestedGeneralActionReviewItemView,
 } from "@/lib/eve/tool-result-view";
 import { defineModule } from "./module";
-import { flagIsFalse, formatDueLabel } from "./shared";
+import { flagIsFalse } from "./shared";
 import { DisclosureShell, ToolActivityLine } from "./shells";
 
 /**
@@ -29,22 +30,17 @@ import { DisclosureShell, ToolActivityLine } from "./shells";
 // Projections
 // ---------------------------------------------------------------------------
 
-/**
- * The calm surfacing cue for a General Action, mirroring the /actions ledger: a
- * paused Routine reads as set aside, a deferred one as "Set aside until …", a dated
- * one by its due date, and an undated one carries no cue.
- */
-function formatGeneralActionTiming(action: GeneralActionRefOutput): string | null {
-  if (action.status === "paused") {
-    return "Paused";
-  }
-  if (action.status === "deferred" && action.deferUntil) {
-    return `Set aside until ${formatDueLabel(action.deferUntil)}`;
-  }
-  if (action.dueAt) {
-    return `Due ${formatDueLabel(action.dueAt)}`;
-  }
-  return null;
+function generalActionTiming(action: GeneralActionRefOutput): string | null {
+  const timing = resolveRecordTiming(
+    {
+      kind: "general_action",
+      status: action.status as GeneralActionStatus,
+      dueAt: action.dueAt ? new Date(action.dueAt) : null,
+      deferUntil: action.deferUntil ? new Date(action.deferUntil) : null,
+    },
+    new Date(),
+  );
+  return timing.state === "unscheduled" ? null : timing.timingLabel;
 }
 
 /** Whether a ledger row is a review-status proposal rather than a committed action. */
@@ -59,7 +55,7 @@ function toGeneralActionListItem(action: GeneralActionRefOutput): GeneralActionL
     status: action.status,
     isRoutine: action.isRoutine,
     recurrenceLabel: action.recurrence,
-    timingLabel: formatGeneralActionTiming(action),
+    timingLabel: generalActionTiming(action),
     personNames: action.people.map((person) => person.displayName),
     visibilityLabel: action.visibilityLabel,
   };
@@ -73,7 +69,7 @@ function toSuggestedGeneralActionReviewItem(
     generalActionId: action.id,
     title: action.title,
     status: action.status,
-    dueLabel: action.dueAt ? formatDueLabel(action.dueAt) : null,
+    timingLabel: action.dueAt ? generalActionTiming(action) : null,
     isRoutine: action.isRoutine,
     recurrenceLabel: action.recurrence,
     personNames: action.people.map((person) => person.displayName),

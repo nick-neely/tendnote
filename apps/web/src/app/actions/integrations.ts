@@ -1,22 +1,27 @@
 "use server";
 
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import {
-  accountMutationScopes,
-  updateAccountMutationScopes,
-} from "@/lib/cache/account-mutation-scopes";
-import type { DisconnectDiscordResult } from "@/lib/integrations/discord-disconnect";
+import { z } from "zod";
 import {
   configureOwnerDiscordTarget,
   setOwnerDiscordDeliveryEnabled,
 } from "@/lib/integrations/discord-install-server";
-import type { DisconnectGoogleCalendarResult } from "@/lib/integrations/google-calendar-disconnect";
 import {
   disconnectOwnerDiscord,
   disconnectOwnerGoogleCalendar,
   disconnectOwnerGoogleContacts,
   prepareOwnerGoogleContactsConnect,
 } from "@/lib/integrations/provider-connections";
+import { runOwnerAction } from "@/lib/owner-action";
+
+const emptyInputSchema = z.undefined();
+const discordTargetSchema = z.object({
+  guildId: z.string().min(1),
+  targetChannelId: z.string().trim().min(1),
+});
+const discordDeliverySchema = z.object({
+  guildId: z.string().min(1),
+  enabled: z.boolean(),
+});
 
 /**
  * Owner-scoped Google Calendar disconnect action (Phase 2C, ADR-0080). Delegates
@@ -24,25 +29,34 @@ import {
  * unlinks, clears the cache, and marks the connection revoked) and revalidates the
  * account page so connection health reflects the change.
  */
-export async function disconnectGoogleCalendarAction(): Promise<DisconnectGoogleCalendarResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await disconnectOwnerGoogleCalendar();
-  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
-  return result;
+export async function disconnectGoogleCalendarAction() {
+  return runOwnerAction({
+    schema: emptyInputSchema,
+    input: undefined,
+    body: ({ ownerUserId }) => disconnectOwnerGoogleCalendar({ ownerUserId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => outcome.result,
+  });
 }
 
 export async function disconnectGoogleContactsAction() {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await disconnectOwnerGoogleContacts();
-  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
-  return result;
+  return runOwnerAction({
+    schema: emptyInputSchema,
+    input: undefined,
+    body: ({ ownerUserId }) => disconnectOwnerGoogleContacts({ ownerUserId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => outcome.result,
+  });
 }
 
 export async function prepareGoogleContactsConnectAction() {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await prepareOwnerGoogleContactsConnect();
-  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
-  return result;
+  return runOwnerAction({
+    schema: emptyInputSchema,
+    input: undefined,
+    body: ({ ownerUserId }) => prepareOwnerGoogleContactsConnect({ ownerUserId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => outcome.result,
+  });
 }
 
 /**
@@ -51,11 +65,14 @@ export async function prepareGoogleContactsConnectAction() {
  * Better Auth account, removes the persisted Discord identity mapping, and marks the
  * connection revoked) and revalidates the account page so the row reflects the change.
  */
-export async function disconnectDiscordAction(): Promise<DisconnectDiscordResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await disconnectOwnerDiscord();
-  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
-  return result;
+export async function disconnectDiscordAction() {
+  return runOwnerAction({
+    schema: emptyInputSchema,
+    input: undefined,
+    body: ({ ownerUserId }) => disconnectOwnerDiscord({ ownerUserId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => outcome.result,
+  });
 }
 
 /**
@@ -67,13 +84,15 @@ export async function disconnectDiscordAction(): Promise<DisconnectDiscordResult
 export async function configureDiscordTargetAction(input: {
   guildId: string;
   targetChannelId: string;
-}): Promise<void> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  await configureOwnerDiscordTarget({
-    guildId: input.guildId,
-    targetChannelId: input.targetChannelId.trim(),
+}) {
+  return runOwnerAction({
+    schema: discordTargetSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      configureOwnerDiscordTarget({ ownerUserId, ...parsed }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: () => undefined,
   });
-  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
 }
 
 /**
@@ -83,8 +102,13 @@ export async function configureDiscordTargetAction(input: {
 export async function setDiscordDeliveryEnabledAction(input: {
   guildId: string;
   enabled: boolean;
-}): Promise<void> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  await setOwnerDiscordDeliveryEnabled({ guildId: input.guildId, enabled: input.enabled });
-  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
+}) {
+  return runOwnerAction({
+    schema: discordDeliverySchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      setOwnerDiscordDeliveryEnabled({ ownerUserId, ...parsed }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: () => undefined,
+  });
 }

@@ -9,7 +9,12 @@ import {
 import { CalendarDotsIcon, CheckIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import type { CalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
-import { useResolvingAction } from "@/lib/use-resolving-action";
+import type { OwnerActionResult } from "@/lib/owner-action-result";
+import {
+  REVERSIBLE_MUTATION_TRANSITION_MS,
+  ReversibleMutationProvider,
+  useReversibleMutation,
+} from "@/lib/reversible-mutation";
 
 /**
  * Reviewable Calendar-derived follow-up suggestions (#118). These are provider
@@ -50,6 +55,19 @@ export function DashboardCalendarSuggestionsSection({
 }
 
 function CalendarSuggestionRow({
+  ...props
+}: {
+  suggestion: CalendarSuggestionReviewView;
+  onResolve: (suggestionId: string) => void;
+}) {
+  return (
+    <ReversibleMutationProvider>
+      <CalendarSuggestionRowContent {...props} />
+    </ReversibleMutationProvider>
+  );
+}
+
+function CalendarSuggestionRowContent({
   suggestion,
   onResolve,
 }: {
@@ -60,10 +78,37 @@ function CalendarSuggestionRow({
   const displayName =
     suggestion.personName ?? suggestion.unresolvedAttendee ?? "Unresolved attendee";
   const canAccept = Boolean(suggestion.personId);
-  const { leaving, error, pending, run } = useResolvingAction(() => {
-    onResolve(suggestion.id);
-    router.refresh();
-  });
+  const mutation = useReversibleMutation(suggestion.id, "resolve");
+  const { error, leaving, pending } = mutation.state;
+
+  function resolve<TView>(
+    command: () => Promise<OwnerActionResult<TView>>,
+    focusTarget: HTMLElement,
+    pendingLabel: string,
+    successLabel: string,
+  ) {
+    mutation.run({
+      kind: "pending",
+      apply: () => true,
+      command,
+      focusTarget,
+      labels: {
+        pending: pendingLabel,
+        success: successLabel,
+        rollback: "The Calendar suggestion was not changed.",
+        undo: "",
+        undone: "",
+      },
+      leave: {
+        afterMs: REVERSIBLE_MUTATION_TRANSITION_MS,
+        apply: () => {
+          onResolve(suggestion.id);
+          router.refresh();
+          return true;
+        },
+      },
+    });
+  }
 
   return (
     <li
@@ -103,8 +148,16 @@ function CalendarSuggestionRow({
         <Button
           aria-label={`Dismiss Calendar suggestion for ${displayName}`}
           disabled={pending}
-          onClick={() =>
-            run(() => dismissCalendarSuggestedFollowupAction({ suggestionId: suggestion.id }))
+          onClick={(event) =>
+            resolve(
+              () =>
+                dismissCalendarSuggestedFollowupAction({
+                  suggestionId: suggestion.id,
+                }),
+              event.currentTarget,
+              "Dismissing Calendar suggestion…",
+              "Calendar suggestion dismissed.",
+            )
           }
           size="sm"
           type="button"
@@ -116,8 +169,16 @@ function CalendarSuggestionRow({
         <Button
           aria-label={`Accept Calendar suggestion for ${displayName}`}
           disabled={pending || !canAccept}
-          onClick={() =>
-            run(() => acceptCalendarSuggestedFollowupAction({ suggestionId: suggestion.id }))
+          onClick={(event) =>
+            resolve(
+              () =>
+                acceptCalendarSuggestedFollowupAction({
+                  suggestionId: suggestion.id,
+                }),
+              event.currentTarget,
+              "Adding follow-up…",
+              "Follow-up added.",
+            )
           }
           size="sm"
           type="button"

@@ -35,6 +35,7 @@ export const acceptSuggestedGeneralActionAction = unusedAction;
 export const dismissSuggestedGeneralActionAction = unusedAction;
 export const editSuggestedGeneralActionAction = unusedAction;
 export const ignoreSuggestedGeneralActionAction = unusedAction;
+export const restoreDismissedSuggestedGeneralActionAction = unusedAction;
 
 export const acceptAssetReviewGroupAction = unusedAction;
 export const acceptSuggestedAssetAction = unusedAction;
@@ -52,6 +53,7 @@ export const removeAssetEvidenceAction = unusedAction;
 export const archiveSuggestedMemoryAction = unusedAction;
 export const dismissSuggestedMemoryAction = unusedAction;
 export const editSuggestedMemoryAction = unusedAction;
+export const restoreDismissedSuggestedMemoryAction = unusedAction;
 export const saveSuggestedMemoryAction = unusedAction;
 
 export const addCapturePersonAction = unusedAction;
@@ -63,6 +65,7 @@ export const globalRecallAction = unusedAction;
 
 export const actOnTodayItemAction = unusedAction;
 export const refreshTodayAction = unusedAction;
+export const restoreTodayItemAction = unusedAction;
 export const suppressTodayItemAction = unusedAction;
 
 export const beginReminderInstallationOptInAction = unusedAction;
@@ -74,7 +77,10 @@ export const getReminderInstallationStateAction = async () => ({
   installation: null,
 });
 export const markReminderStandaloneContinuationAction = unusedAction;
-export const reconcileReminderTimeZoneAction = async () => ({ reconciled: 0 });
+export const reconcileReminderTimeZoneAction = async () => ({
+  ok: true as const,
+  view: { reconciled: 0, remaining: 0, nextOffset: 0 },
+});
 export const registerReminderInstallationAction = async () => ({ enabled: true });
 export const revokeReminderInstallationAction = unusedAction;
 export const saveReminderAction = unusedAction;

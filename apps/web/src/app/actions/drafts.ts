@@ -10,9 +10,8 @@ import {
   regenerateDraft,
 } from "@tendnote/db/queries/drafts";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
 import { type DraftView, toDraftView } from "@/lib/draft-view";
+import { runOwnerAction } from "@/lib/owner-action";
 
 const draftActionSchema = z.object({ draftId: z.uuid() });
 const editDraftSchema = z.object({ draftId: z.uuid(), body: z.string().trim().min(1) });
@@ -23,22 +22,12 @@ const editDraftSchema = z.object({ draftId: z.uuid(), body: z.string().trim().mi
  * revalidates the person profile. None of these send, schedule, or create anything
  * externally — every action stays inside Tendnote.
  */
-export async function approveDraftAction(input: { draftId: string }): Promise<DraftView> {
-  const { draftId } = draftActionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const draft = await approveDraft({ ownerUserId, draftId });
-
-  invalidatePersonMutation({ ownerUserId, personId: draft.personId });
-  return toDraftView(draft);
+export async function approveDraftAction(input: { draftId: string }) {
+  return runDraftMutation(input, approveDraft);
 }
 
-export async function dismissDraftAction(input: { draftId: string }): Promise<DraftView> {
-  const { draftId } = draftActionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const draft = await dismissDraft({ ownerUserId, draftId });
-
-  invalidatePersonMutation({ ownerUserId, personId: draft.personId });
-  return toDraftView(draft);
+export async function dismissDraftAction(input: { draftId: string }) {
+  return runDraftMutation(input, dismissDraft);
 }
 
 /**
@@ -46,26 +35,30 @@ export async function dismissDraftAction(input: { draftId: string }): Promise<Dr
  * it only marks the draft so Tendnote can remember the user acted (PRD user story
  * #10).
  */
-export async function markDraftSentManuallyAction(input: { draftId: string }): Promise<DraftView> {
-  const { draftId } = draftActionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const draft = await markDraftSentManually({ ownerUserId, draftId });
+export async function markDraftSentManuallyAction(input: { draftId: string }) {
+  return runDraftMutation(input, markDraftSentManually);
+}
 
-  invalidatePersonMutation({ ownerUserId, personId: draft.personId });
-  return toDraftView(draft);
+function runDraftMutation(input: { draftId: string }, mutate: typeof approveDraft) {
+  return runOwnerAction({
+    schema: draftActionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) => mutate({ ownerUserId, draftId: parsed.draftId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toDraftView(outcome.result),
+  });
 }
 
 /** Edits the draft body while preserving the persisted source-reference grounding. */
-export async function editDraftBodyAction(input: {
-  draftId: string;
-  body: string;
-}): Promise<DraftView> {
-  const { draftId, body } = editDraftSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const draft = await editDraftBody({ ownerUserId, draftId, body });
-
-  invalidatePersonMutation({ ownerUserId, personId: draft.personId });
-  return toDraftView(draft);
+export async function editDraftBodyAction(input: { draftId: string; body: string }) {
+  return runOwnerAction({
+    schema: editDraftSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      editDraftBody({ ownerUserId, draftId: parsed.draftId, body: parsed.body }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toDraftView(outcome.result),
+  });
 }
 
 /**
@@ -75,15 +68,16 @@ export async function editDraftBodyAction(input: {
  * record instead — reflecting an inline edit or a lifecycle change made on the
  * person page. Owner-scoped and read-only; returns null if the draft is gone.
  */
-export async function getDraftViewAction(input: { draftId: string }): Promise<DraftView | null> {
-  const { draftId } = draftActionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const draft = await getDraft({ ownerUserId, draftId });
-
-  return draft ? toDraftView(draft) : null;
+export async function getDraftViewAction(input: { draftId: string }) {
+  return runOwnerAction({
+    schema: draftActionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) => getDraft({ ownerUserId, draftId: parsed.draftId }),
+    result: (draft) => (draft ? toDraftView(draft) : null),
+  });
 }
 
-export type RegenerateDraftResult = {
+type RegenerateDraftResult = {
   outcome: GenerateDraftOutcome["status"];
   draft: DraftView | null;
 };
@@ -93,17 +87,16 @@ export type RegenerateDraftResult = {
  * draft is left untouched, so reviewed text is never silently replaced. A skipped
  * outcome (e.g. thin context) returns no draft so the UI can explain it.
  */
-export async function regenerateDraftAction(input: {
-  draftId: string;
-}): Promise<RegenerateDraftResult> {
-  const { draftId } = draftActionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const outcome = await regenerateDraft({ ownerUserId, draftId });
-
-  if (outcome.status === "created") {
-    invalidatePersonMutation({ ownerUserId, personId: outcome.draft.personId });
-    return { outcome: outcome.status, draft: toDraftView(outcome.draft) };
-  }
-
-  return { outcome: outcome.status, draft: null };
+export async function regenerateDraftAction(input: { draftId: string }) {
+  return runOwnerAction({
+    schema: draftActionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      regenerateDraft({ ownerUserId, draftId: parsed.draftId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome): RegenerateDraftResult =>
+      outcome.result.status === "created"
+        ? { outcome: outcome.result.status, draft: toDraftView(outcome.result.draft) }
+        : { outcome: outcome.result.status, draft: null },
+  });
 }

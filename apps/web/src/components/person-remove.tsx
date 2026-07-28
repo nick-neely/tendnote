@@ -97,7 +97,12 @@ export function PersonRemove({ personId, personName }: { personId: string; perso
     setOpen(true);
     startTransition(async () => {
       try {
-        setPreview(await getPersonRemovalPreviewAction({ personId }));
+        const result = await getPersonRemovalPreviewAction({ personId });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setPreview(result.view);
       } catch {
         setError(GENERIC_ERROR);
       }
@@ -122,7 +127,11 @@ export function PersonRemove({ personId, personName }: { personId: string; perso
     setError(null);
     startTransition(async () => {
       try {
-        await deletePersonAction({ personId });
+        const result = await deletePersonAction({ personId });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         // Leave the (now-deleted) profile for the People list, and refresh so any
         // cached view of this person elsewhere drops away.
         router.push("/people");

@@ -136,3 +136,13 @@ export function suppressTodayCandidate(input: {
 }) {
   return defaultTodayService.suppressTodayCandidate(input);
 }
+
+export function restoreTodayCandidate(input: {
+  ownerUserId: string;
+  localDate: string;
+  candidateIdentity: string;
+  reasonKey: string;
+  kind: "later" | "not_today";
+}) {
+  return defaultTodayService.restoreTodayCandidate(input);
+}

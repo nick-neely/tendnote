@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInMemorySavedItemLifecycleStore, createSavedItemLifecycle } from "../saved-items";
+import { createAffectedSavedItemLifecycle } from "../saved-items/mutation-lifecycle";
 import { createConversationalCapture } from "./conversational-capture";
 
 type CaptureResult = Awaited<ReturnType<ReturnType<typeof createConversationalCapture>["capture"]>>;
@@ -9,14 +10,66 @@ function savedItemFrom(result: CaptureResult) {
   return result.savedItem;
 }
 
-describe("conversational Capture", () => {
-  it("routes explicit one-time work to a private source-grounded unscheduled Action", async () => {
-    const store = createInMemorySavedItemLifecycleStore();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
+const ACTION_SCOPE = {
+  kind: "owner-collection" as const,
+  collection: "today" as const,
+  ownerUserId: "owner-1",
+};
+
+function actionMutationOutcome<T>(result: T, affectedScopes = [ACTION_SCOPE]) {
+  return { result, affectedScopes };
+}
+
+function createFollowupMutationMock() {
+  return vi.fn().mockImplementation(async (input) =>
+    actionMutationOutcome({
       ...input,
       id: input.id,
       status: "open",
-    }));
+    }),
+  );
+}
+
+async function expectOnePersistedSavedItem(
+  store: ReturnType<typeof createInMemorySavedItemLifecycleStore>,
+  result: CaptureResult,
+) {
+  expect(await store.listVisibleSavedItems({ callerUserId: "owner-1" })).toHaveLength(1);
+  expect(
+    await store.listSavedItemEvents({
+      ownerUserId: "owner-1",
+      savedItemId: savedItemFrom(result).id,
+    }),
+  ).toHaveLength(1);
+}
+
+function actionCaptureHarness() {
+  const store = createInMemorySavedItemLifecycleStore();
+  const createGeneralAction = vi.fn().mockImplementation(async (input) =>
+    actionMutationOutcome({
+      ...input,
+      id: input.id,
+      status: "open",
+    }),
+  );
+  const capture = createConversationalCapture(store, {
+    createGeneralAction,
+    now: () => new Date("2026-07-21T04:30:00.000Z"),
+    ownerTimeZone: () => "America/Chicago",
+  });
+  return { capture, createGeneralAction, store };
+}
+
+describe("conversational Capture", () => {
+  it("routes explicit one-time work to a private source-grounded unscheduled Action", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const createGeneralAction = vi.fn().mockImplementation(async (input) =>
+      actionMutationOutcome({
+        ...input,
+        id: input.id,
+        status: "open",
+      }),
+    );
     const capture = createConversationalCapture(store, { createGeneralAction });
 
     const result = await capture.capture({
@@ -41,6 +94,7 @@ describe("conversational Capture", () => {
     );
     expect(result).toMatchObject({
       generalAction: { status: "open" },
+      affectedScopes: [ACTION_SCOPE],
       confirmation: {
         destination: "Actions",
         groundedBySourceRecordId: result.sourceRecord.id,
@@ -54,17 +108,7 @@ describe("conversational Capture", () => {
   });
 
   it("routes clear cadence and owner-timezone dates through the same Action boundary", async () => {
-    const store = createInMemorySavedItemLifecycleStore();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      id: input.id,
-      status: "open",
-    }));
-    const capture = createConversationalCapture(store, {
-      createGeneralAction,
-      now: () => new Date("2026-07-21T04:30:00.000Z"),
-      ownerTimeZone: () => "America/Chicago",
-    });
+    const { capture, createGeneralAction } = actionCaptureHarness();
 
     const result = await capture.capture({
       authority: "explicit",
@@ -89,7 +133,7 @@ describe("conversational Capture", () => {
     let persisted: { id: string; status: string } | null = null;
     const createGeneralAction = vi.fn().mockImplementation(async (input) => {
       persisted = { id: input.id, status: "open" };
-      return persisted;
+      return actionMutationOutcome(persisted);
     });
     const capture = createConversationalCapture(store, {
       createGeneralAction,
@@ -148,17 +192,7 @@ describe("conversational Capture", () => {
   });
 
   it("reuses the original Source Record when a timing clarification completes the flow", async () => {
-    const store = createInMemorySavedItemLifecycleStore();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      id: input.id,
-      status: "open",
-    }));
-    const capture = createConversationalCapture(store, {
-      createGeneralAction,
-      now: () => new Date("2026-07-21T04:30:00.000Z"),
-      ownerTimeZone: () => "America/Chicago",
-    });
+    const { capture, createGeneralAction, store } = actionCaptureHarness();
     const base = {
       authority: "explicit" as const,
       interactionId: "clarify-complete",
@@ -184,17 +218,7 @@ describe("conversational Capture", () => {
   });
 
   it("replaces impossible timing and unsupported cadence when clarification completes", async () => {
-    const store = createInMemorySavedItemLifecycleStore();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      id: input.id,
-      status: "open",
-    }));
-    const capture = createConversationalCapture(store, {
-      createGeneralAction,
-      now: () => new Date("2026-07-21T04:30:00.000Z"),
-      ownerTimeZone: () => "America/Chicago",
-    });
+    const { capture, createGeneralAction } = actionCaptureHarness();
     const cases = [
       {
         interactionId: "replace-invalid-date",
@@ -234,11 +258,7 @@ describe("conversational Capture", () => {
 
   it("creates a Follow-Up only for one exact owner-scoped person and concrete timing", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const createFollowup = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      id: input.id,
-      status: "open",
-    }));
+    const createFollowup = createFollowupMutationMock();
     const capture = createConversationalCapture(store, {
       createFollowup,
       now: () => new Date("2026-07-21T04:30:00.000Z"),
@@ -267,6 +287,7 @@ describe("conversational Capture", () => {
       }),
     );
     expect(result).toMatchObject({
+      affectedScopes: [ACTION_SCOPE],
       confirmation: {
         destination: "Follow-Ups",
         interpreted: { person: "Maya", scope: "Only me" },
@@ -276,11 +297,7 @@ describe("conversational Capture", () => {
 
   it("keeps an ambiguous person grounded and asks one focused clarification", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const createFollowup = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      id: input.id,
-      status: "open",
-    }));
+    const createFollowup = createFollowupMutationMock();
     const capture = createConversationalCapture(store, {
       createFollowup,
       now: () => new Date("2026-07-21T04:30:00.000Z"),
@@ -323,6 +340,7 @@ describe("conversational Capture", () => {
         sourceRecordId: result.sourceRecord.id,
       }),
     );
+    expect(completed.affectedScopes).toEqual([ACTION_SCOPE]);
   });
 
   it("offers explicit Add and Link actions when a Follow-Up person is unknown", async () => {
@@ -371,8 +389,10 @@ describe("conversational Capture", () => {
       content: "I need to correct the action wording",
       scope: "private",
     });
-    const editGeneralAction = vi.fn().mockResolvedValue({ id: "action-1" });
-    const archiveGeneralAction = vi.fn().mockResolvedValue({ id: "action-1", status: "archived" });
+    const editGeneralAction = vi.fn().mockResolvedValue(actionMutationOutcome({ id: "action-1" }));
+    const archiveGeneralAction = vi
+      .fn()
+      .mockResolvedValue(actionMutationOutcome({ id: "action-1", status: "archived" }));
     const getGeneralAction = vi
       .fn()
       .mockResolvedValueOnce({ id: "action-1", status: "open", sourceRecordId: source.id })
@@ -417,6 +437,7 @@ describe("conversational Capture", () => {
       },
     });
     expect(changed).toMatchObject({
+      affectedScopes: [ACTION_SCOPE],
       confirmation: {
         destination: "Actions",
         interpreted: {
@@ -452,7 +473,7 @@ describe("conversational Capture", () => {
         recurrence: null,
       };
       actions.set(action.id, action);
-      return action;
+      return actionMutationOutcome(action);
     });
     const capture = createConversationalCapture(store, {
       createGeneralAction,
@@ -463,7 +484,7 @@ describe("conversational Capture", () => {
         const action = actions.get(generalActionId);
         if (!action) throw new Error("missing action");
         action.status = "archived";
-        return action;
+        return actionMutationOutcome(action);
       }),
       createFollowup: vi.fn().mockImplementation(async (input) => {
         const followup = {
@@ -473,7 +494,7 @@ describe("conversational Capture", () => {
           personId: input.personId,
         };
         followups.set(followup.id, followup);
-        return followup;
+        return actionMutationOutcome(followup);
       }),
       getFollowup: vi
         .fn()
@@ -482,7 +503,7 @@ describe("conversational Capture", () => {
         const followup = followups.get(followupId);
         if (!followup) throw new Error("missing follow-up");
         followup.status = "archived";
-        return followup;
+        return actionMutationOutcome(followup);
       }),
       searchPeople: vi.fn().mockResolvedValue([{ id: "person-maya", displayName: "Maya" }]),
       now: () => new Date("2026-07-21T04:30:00.000Z"),
@@ -523,6 +544,9 @@ describe("conversational Capture", () => {
       target: followup.confirmation.change,
       originalText: "I need to order a replacement filter",
     });
+    if (!("affectedScopes" in followup) || !("affectedScopes" in secondAction)) {
+      throw new Error("Expected rerouted mutation scopes.");
+    }
     const firstActionRecord =
       "generalAction" in firstAction ? firstAction.generalAction : undefined;
     const secondActionRecord =
@@ -531,6 +555,8 @@ describe("conversational Capture", () => {
       throw new Error("Expected both Action reroutes to create Actions.");
     }
 
+    expect(followup.affectedScopes).toEqual([ACTION_SCOPE, ACTION_SCOPE]);
+    expect(secondAction.affectedScopes).toEqual([ACTION_SCOPE, ACTION_SCOPE]);
     expect(secondActionRecord).toMatchObject({ status: "open" });
     expect(secondActionRecord.id).not.toBe(firstActionRecord.id);
     expect(createGeneralAction).toHaveBeenCalledTimes(2);
@@ -554,7 +580,7 @@ describe("conversational Capture", () => {
     const createGeneralAction = vi.fn().mockImplementation(async (input) => {
       const action = { id: input.id, status: "open", sourceRecordId: input.sourceRecordId };
       createdActions.set(action.id, action);
-      return action;
+      return actionMutationOutcome(action);
     });
     const capture = createConversationalCapture(store, {
       createGeneralAction,
@@ -622,7 +648,7 @@ describe("conversational Capture", () => {
       createGeneralAction: vi.fn().mockImplementation(async (input) => {
         const action = { id: input.id, status: "open", sourceRecordId: input.sourceRecordId };
         createdActions.set(action.id, action);
-        return action;
+        return actionMutationOutcome(action);
       }),
       getGeneralAction: vi
         .fn()
@@ -743,13 +769,7 @@ describe("conversational Capture", () => {
 
     expect(retry.sourceRecord.id).toBe(first.sourceRecord.id);
     expect(savedItemFrom(retry).id).toBe(savedItemFrom(first).id);
-    expect(await store.listVisibleSavedItems({ callerUserId: "owner-1" })).toHaveLength(1);
-    expect(
-      await store.listSavedItemEvents({
-        ownerUserId: "owner-1",
-        savedItemId: savedItemFrom(first).id,
-      }),
-    ).toHaveLength(1);
+    await expectOnePersistedSavedItem(store, first);
   });
 
   it("collapses concurrent rapid retries to one auditable outcome", async () => {
@@ -766,13 +786,7 @@ describe("conversational Capture", () => {
 
     const [first, second] = await Promise.all([capture.capture(input), capture.capture(input)]);
     expect(savedItemFrom(second).id).toBe(savedItemFrom(first).id);
-    expect(await store.listVisibleSavedItems({ callerUserId: "owner-1" })).toHaveLength(1);
-    expect(
-      await store.listSavedItemEvents({
-        ownerUserId: "owner-1",
-        savedItemId: savedItemFrom(first).id,
-      }),
-    ).toHaveLength(1);
+    await expectOnePersistedSavedItem(store, first);
     expect(await store.listAuditLogEntries({ ownerUserId: "owner-1" })).toHaveLength(1);
   });
 
@@ -911,7 +925,7 @@ describe("conversational Capture", () => {
         fail = false;
         throw new Error("action unavailable");
       }
-      return { id: input.id, status: "open" };
+      return actionMutationOutcome({ id: input.id, status: "open" });
     });
     const capture = createConversationalCapture(store, { createGeneralAction });
     const input = {
@@ -933,7 +947,7 @@ describe("conversational Capture", () => {
 
   it("corrects and safely undoes the Saved Item without rewriting source evidence", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const lifecycle = createSavedItemLifecycle(store);
+    const lifecycle = createAffectedSavedItemLifecycle(createSavedItemLifecycle(store));
     const editSavedItem = vi.fn(lifecycle.editSavedItem);
     const archiveSavedItem = vi.fn(lifecycle.archiveSavedItem);
     const capture = createConversationalCapture(store, { archiveSavedItem, editSavedItem });
@@ -945,13 +959,24 @@ describe("conversational Capture", () => {
       originalText: "Original wording",
       surface: "global_capture",
     });
+    expect(created.affectedScopes).toEqual(
+      expect.arrayContaining([
+        { kind: "owner-collection", collection: "saved-items", ownerUserId: "owner-1" },
+        { kind: "owner-collection", collection: "today", ownerUserId: "owner-1" },
+      ]),
+    );
 
     const changed = await capture.change({
       actorUserId: "owner-1",
       savedItemId: savedItemFrom(created).id,
       originalText: "Corrected wording",
     });
-    expect(changed).toMatchObject({ content: "Corrected wording", title: "Corrected wording" });
+    expect(changed).toMatchObject({
+      result: { content: "Corrected wording", title: "Corrected wording" },
+      affectedScopes: expect.arrayContaining([
+        { kind: "owner-collection", collection: "saved-items", ownerUserId: "owner-1" },
+      ]),
+    });
     expect(editSavedItem).toHaveBeenCalledOnce();
     expect(
       await store.getSourceRecord({
@@ -964,13 +989,16 @@ describe("conversational Capture", () => {
       actorUserId: "owner-1",
       target: { kind: "archive_saved_item", savedItemId: savedItemFrom(created).id },
     });
-    expect(undone).toMatchObject({ status: "archived" });
+    expect(undone).toMatchObject({
+      result: { status: "archived" },
+      affectedScopes: expect.any(Array),
+    });
     expect(archiveSavedItem).toHaveBeenCalledOnce();
     const retriedUndo = await capture.undoOutcome({
       actorUserId: "owner-1",
       target: { kind: "archive_saved_item", savedItemId: savedItemFrom(created).id },
     });
-    expect(retriedUndo).toMatchObject({ status: "archived" });
+    expect(retriedUndo).toMatchObject({ result: { status: "archived" }, affectedScopes: [] });
     expect(
       (
         await store.listSavedItemEvents({

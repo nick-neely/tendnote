@@ -8,7 +8,7 @@ import type {
 } from "@tendnote/domain/global-recall";
 import Link from "next/link";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
-import { appDestinations } from "@/components/app-destinations";
+import { destinationsInGroup } from "@/components/app-destinations";
 import { ArrowLeftIcon, SearchIcon } from "@/components/icons";
 import { type CaptureHandlers, MobileCaptureFlow } from "@/components/mobile-capture-flow";
 import { MobileFailureState } from "@/components/mobile-failure-state";
@@ -21,11 +21,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  type OwnerActionResult,
+  ownerActionFailureMessage,
+  unwrapOwnerActionResult,
+} from "@/lib/owner-action-result";
 
-export type FocusedFlow = "eve" | "search" | "capture" | "menu";
+export type FocusedFlow = "search" | "capture" | "menu";
 
 export type { CaptureHandlers } from "@/components/mobile-capture-flow";
-export type GlobalRecallHandler = (input: GlobalRecallInput) => Promise<GlobalRecallResponse>;
+export type GlobalRecallHandler = (
+  input: GlobalRecallInput,
+) => Promise<OwnerActionResult<GlobalRecallResponse>>;
 
 function FullScreenFlow({
   children,
@@ -109,7 +116,7 @@ export function SearchFlow({
     setQuery,
     storageKey,
   });
-  const { failed, loading, response } = useRecallRequest({
+  const { failed, failureMessage, loading, response } = useRecallRequest({
     family,
     includeArchived,
     includeRestricted,
@@ -192,6 +199,7 @@ export function SearchFlow({
           exact={exact}
           expanded={expanded}
           failed={failed}
+          failureMessage={failureMessage}
           loading={loading}
           onNavigate={navigateToResult}
           onRetry={() => setQuery(`${query} `)}
@@ -281,30 +289,36 @@ function useRecallRequest(input: {
   const [response, setResponse] = useState<GlobalRecallResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [failureMessage, setFailureMessage] = useState<string | null>(null);
   useEffect(() => {
     const meaningfulQuery = query.trim();
     if (meaningfulQuery.length < 2) {
       setResponse(null);
       setFailed(false);
+      setFailureMessage(null);
       setLoading(false);
       return;
     }
     setLoading(true);
     setFailed(false);
+    setFailureMessage(null);
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
-        const next = await search({
-          query: meaningfulQuery,
-          family,
-          includeArchived,
-          includeRestricted,
-          ...(matchKind === "all" ? {} : { matchKinds: [matchKind] }),
-        });
+        const next = unwrapOwnerActionResult(
+          await search({
+            query: meaningfulQuery,
+            family,
+            includeArchived,
+            includeRestricted,
+            ...(matchKind === "all" ? {} : { matchKinds: [matchKind] }),
+          }),
+        );
         if (!controller.signal.aborted) setResponse(next);
-      } catch {
+      } catch (error) {
         if (!controller.signal.aborted) {
           setFailed(true);
+          setFailureMessage(ownerActionFailureMessage(error));
           setResponse(null);
         }
       } finally {
@@ -316,7 +330,7 @@ function useRecallRequest(input: {
       window.clearTimeout(timer);
     };
   }, [family, includeArchived, includeRestricted, matchKind, query, search]);
-  return { failed, loading, response };
+  return { failed, failureMessage, loading, response };
 }
 
 function useRestoreRecallPosition(input: {
@@ -466,6 +480,7 @@ function RecallSearchResults({
   exact,
   expanded,
   failed,
+  failureMessage,
   loading,
   onNavigate,
   onRetry,
@@ -478,6 +493,7 @@ function RecallSearchResults({
   exact: GlobalRecallResponse["results"];
   expanded: string[];
   failed: boolean;
+  failureMessage: string | null;
   loading: boolean;
   onNavigate: (key: string) => void;
   onRetry: () => void;
@@ -490,7 +506,9 @@ function RecallSearchResults({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" onScroll={onScroll} ref={resultsRef}>
       {loading ? <SearchResultSkeleton /> : null}
-      {failed ? <MobileFailureState kind="app_server" onRetry={onRetry} /> : null}
+      {failed ? (
+        <MobileFailureState kind="app_server" message={failureMessage} onRetry={onRetry} />
+      ) : null}
       {response?.limitations.map((limitation) => (
         <p className="border-b py-3 text-muted-foreground text-sm" key={limitation.source}>
           {limitation.message}
@@ -637,13 +655,13 @@ export function MenuFlow({ onClose }: { onClose: () => void }) {
   return (
     <FullScreenFlow description="Go to another part of Tendnote." onClose={onClose} title="Menu">
       <nav aria-label="Menu destinations" className="flex flex-col divide-y px-5 py-4">
-        {appDestinations.slice(1).map((item) => {
+        {destinationsInGroup("menu").map((item) => {
           const Icon = item.icon;
           return (
             <Link
               className="flex min-h-14 items-center gap-3 text-base focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              href={item.href}
-              key={item.href}
+              href={item.route}
+              key={item.id}
             >
               <Icon aria-hidden className="size-5 text-muted-foreground" />
               {item.label}

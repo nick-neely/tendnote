@@ -8,11 +8,17 @@ import type {
   GeneralActionRecurrence,
   GeneralActionStatus,
   PrivacyScope,
+  RecordSurfacingState,
 } from "@tendnote/domain";
 import { assetLabelForKind } from "@tendnote/domain/assets";
-import { describeRecurrence, startOfLocalDay } from "@tendnote/domain/general-actions";
-import { visibilityLabelForScope } from "@tendnote/domain/privacy";
+import { describeRecurrence } from "@tendnote/domain/general-actions";
+import {
+  formatSurfacingDay,
+  resolveRecordSurfacing,
+  resolveRecordTiming,
+} from "@tendnote/domain/record-surfacing";
 import { toDateInputValue } from "@/lib/followup-view";
+import type { OwnerActionResult } from "@/lib/owner-action";
 import { type ReminderScheduleView, toReminderScheduleView } from "@/lib/reminder-schedule-view";
 
 /** A linked person named for a calm chip — id + display name, nothing more (ADR 0155). */
@@ -54,13 +60,7 @@ export function toGeneralActionLinkedAssetView(
  * an Action need not have a date, and a deferred one is deliberately set aside
  * (DESIGN.md §3; ADR 0149). Never red, never "overdue/missed" language.
  */
-export type ActionSurfaceState =
-  | "overdue"
-  | "today"
-  | "upcoming"
-  | "unscheduled"
-  | "deferred"
-  | "paused";
+export type ActionSurfaceState = RecordSurfacingState;
 
 /**
  * Result of a General Action mutation server action. Validation failures (a bad
@@ -69,14 +69,12 @@ export type ActionSurfaceState =
  * swallowing it; unexpected/infra failures reject instead, and the client shows a
  * generic fallback.
  */
-export type GeneralActionMutationResult =
-  | { ok: true; view: GeneralActionView }
-  | { ok: false; error: string };
+export type GeneralActionMutationResult = OwnerActionResult<GeneralActionView>;
 
 export type GeneralActionView = {
   id: string;
   /** Durable server revision used to reject older Action projections after a write. */
-  revision?: string;
+  revision: string;
   title: string;
   notes: string | null;
   links: GeneralActionLink[];
@@ -125,47 +123,6 @@ export type GeneralActionView = {
   surfaceLabel: string;
 };
 
-function formatDay(date: Date, now: Date): string {
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
-  });
-}
-
-function dueState(dueAt: Date, now: Date): "overdue" | "today" | "upcoming" {
-  const due = startOfLocalDay(dueAt);
-  const today = startOfLocalDay(now);
-  if (due < today) {
-    return "overdue";
-  }
-  if (due === today) {
-    return "today";
-  }
-  return "upcoming";
-}
-
-/**
- * The scope label for the calm visibility chip, resolved to say *who* rather than
- * just the scope name: a member count for a selected-shared Action, the household's
- * name for a household one (both fall back to the plain scope label). Private returns
- * "Only me" but the surface never renders a chip for it.
- */
-function scopeAudienceLabel(action: {
-  scope: PrivacyScope;
-  sharedWithCount: number;
-  householdName: string | null;
-}): string {
-  if (action.scope === "shared") {
-    const base = visibilityLabelForScope("shared");
-    return action.sharedWithCount > 0 ? `${base} · ${action.sharedWithCount}` : base;
-  }
-  if (action.scope === "household") {
-    return action.householdName ?? visibilityLabelForScope("household");
-  }
-  return visibilityLabelForScope("private");
-}
-
 /**
  * Resolves the calm surfacing cue — state + human label — for an Action: a paused Routine
  * reads as set aside (never overdue), a deferred one as "Set aside until …", a dated one by
@@ -177,29 +134,8 @@ export function resolveSurfacing(
   action: { status: GeneralActionStatus; deferUntil: Date | null; dueAt: Date | null },
   now: Date,
 ): { surfaceState: ActionSurfaceState; surfaceLabel: string } {
-  if (action.status === "paused") {
-    // A paused Routine reads as quietly set aside — never as an overdue backlog,
-    // whatever its last due date was.
-    return { surfaceState: "paused", surfaceLabel: "Paused" };
-  }
-  if (action.status === "deferred" && action.deferUntil) {
-    return {
-      surfaceState: "deferred",
-      surfaceLabel: `Set aside until ${formatDay(action.deferUntil, now)}`,
-    };
-  }
-  if (action.dueAt) {
-    const surfaceState = dueState(action.dueAt, now);
-    const day = formatDay(action.dueAt, now);
-    const surfaceLabel =
-      surfaceState === "overdue"
-        ? `Was due ${day}`
-        : surfaceState === "today"
-          ? "Due today"
-          : `Due ${day}`;
-    return { surfaceState, surfaceLabel };
-  }
-  return { surfaceState: "unscheduled", surfaceLabel: "No date" };
+  const timing = resolveRecordTiming({ ...action, kind: "general_action" }, now);
+  return { surfaceState: timing.state, surfaceLabel: timing.timingLabel };
 }
 
 /**
@@ -210,7 +146,7 @@ export function resolveSurfacing(
 export function toGeneralActionView(
   action: {
     id: string;
-    updatedAt?: Date;
+    updatedAt: Date;
     title: string;
     notes: string | null;
     links: GeneralActionLink[];
@@ -241,11 +177,25 @@ export function toGeneralActionView(
   },
 ): GeneralActionView {
   const now = options.now ?? new Date();
-  const { surfaceState, surfaceLabel } = resolveSurfacing(action, now);
+  const surfacing = resolveRecordSurfacing(
+    {
+      kind: "general_action",
+      status: action.status,
+      dueAt: action.dueAt,
+      deferUntil: action.deferUntil,
+      ownerUserId: action.ownerUserId,
+      viewerUserId: options.callerUserId,
+      scope: action.scope,
+      sharedWithCount: action.sharedWithCount,
+      householdName: action.householdName,
+      updatedAt: action.updatedAt,
+    },
+    now,
+  );
 
   return {
     id: action.id,
-    revision: action.updatedAt?.toISOString(),
+    revision: surfacing.revision,
     title: action.title,
     notes: action.notes,
     links: action.links,
@@ -260,16 +210,16 @@ export function toGeneralActionView(
       ? toReminderScheduleView(options.reminderSchedule)
       : null,
     scope: action.scope,
-    visibilityLabel: scopeAudienceLabel(action),
-    owned: action.ownerUserId === options.callerUserId,
+    visibilityLabel: surfacing.audienceLabel,
+    owned: surfacing.owned,
     ownerUserId: action.ownerUserId,
     areaId: action.areaId,
     dueAtISO: action.dueAt?.toISOString() ?? null,
     dueAtDate: action.dueAt ? toDateInputValue(action.dueAt) : "",
     deferUntilISO: action.deferUntil?.toISOString() ?? null,
     deferUntilDate: action.deferUntil ? toDateInputValue(action.deferUntil) : "",
-    surfaceState,
-    surfaceLabel,
+    surfaceState: surfacing.state,
+    surfaceLabel: surfacing.timingLabel,
   };
 }
 
@@ -312,7 +262,7 @@ export function toGeneralActionEventView(
   if (event.kind === "deferred" && typeof deferUntil === "string") {
     const date = new Date(deferUntil);
     if (!Number.isNaN(date.getTime())) {
-      label = `Set aside until ${formatDay(date, now)}`;
+      label = `Set aside until ${formatSurfacingDay(date, now)}`;
     }
   }
 
@@ -321,10 +271,6 @@ export function toGeneralActionEventView(
     kind: event.kind,
     label,
     atISO: event.createdAt.toISOString(),
-    atLabel: event.createdAt.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: event.createdAt.getFullYear() === now.getFullYear() ? undefined : "numeric",
-    }),
+    atLabel: formatSurfacingDay(event.createdAt, now),
   };
 }

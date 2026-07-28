@@ -3,9 +3,7 @@
 import { generateDraft } from "@tendnote/db/queries/drafts";
 import { messageDraftPurposeSchema } from "@tendnote/domain";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
-import { enforceProductBudget } from "@/lib/rate-limit/guards";
+import { runOwnerAction } from "@/lib/owner-action";
 
 /**
  * Narrow entry-point input for starting a Tendnote draft from a product surface
@@ -24,7 +22,7 @@ const createDraftSchema = z.object({
     .optional(),
 });
 
-export type CreateDraftResult = {
+type CreateDraftResult = {
   outcome: "created" | "skipped";
   personId: string;
   draftId: string | null;
@@ -37,26 +35,27 @@ export type CreateDraftResult = {
  * ineligible context) returns no draft so the caller can explain instead of
  * showing a misleading one.
  */
-export async function createDraftAction(
-  input: z.input<typeof createDraftSchema>,
-): Promise<CreateDraftResult> {
-  const parsed = createDraftSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  // Draft generation is model-backed; charge the shared server-action budget.
-  await enforceProductBudget({ subject: ownerUserId, costCategory: "server-action" });
-
-  const outcome = await generateDraft({
-    ownerUserId,
-    personId: parsed.personId,
-    purpose: parsed.purpose,
-    followupContext: parsed.followupContext,
-    briefItemContext: parsed.briefItemContext,
+export async function createDraftAction(input: z.input<typeof createDraftSchema>) {
+  return runOwnerAction({
+    schema: createDraftSchema,
+    input,
+    budget: { costCategory: "server-action" },
+    body: ({ ownerUserId, input: parsed }) =>
+      generateDraft({
+        ownerUserId,
+        personId: parsed.personId,
+        purpose: parsed.purpose,
+        followupContext: parsed.followupContext,
+        briefItemContext: parsed.briefItemContext,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome): CreateDraftResult =>
+      outcome.result.status === "created"
+        ? {
+            outcome: "created",
+            personId: input.personId,
+            draftId: outcome.result.draft.id,
+          }
+        : { outcome: "skipped", personId: input.personId, draftId: null },
   });
-
-  if (outcome.status === "created") {
-    invalidatePersonMutation({ ownerUserId, personId: parsed.personId });
-    return { outcome: "created", personId: parsed.personId, draftId: outcome.draft.id };
-  }
-
-  return { outcome: "skipped", personId: parsed.personId, draftId: null };
 }

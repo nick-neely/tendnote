@@ -12,6 +12,7 @@ import type {
   ReminderScheduleChoice,
   SourceRecord,
 } from "@tendnote/domain";
+import type { AffectedScope, MutationOutcome } from "../../affected-scopes";
 import type { SavedItemWithContext } from "../../saved-items/types";
 
 export type ConversationalCaptureInput = ConversationalCaptureRequest;
@@ -28,6 +29,7 @@ export type ConversationalCaptureResult = {
   assetReview?: CaptureAssetReview;
   outcomes?: CaptureOutcomeResult[];
   reminderSchedule?: ReminderScheduleChoice;
+  affectedScopes?: AffectedScope[];
 };
 
 export type CaptureGeneralAction = {
@@ -69,6 +71,7 @@ type CaptureOutcomeBase = {
   id: string;
   confirmation: Exclude<ConversationalCaptureConfirmation, { destination: "Grouped" }>;
   reminderSchedule?: ReminderScheduleChoice;
+  affectedScopes?: AffectedScope[];
 };
 export type CaptureOutcomeResult =
   | (CaptureOutcomeBase & { kind: "saved_item"; savedItem: SavedItemWithContext })
@@ -113,13 +116,13 @@ export type ConversationalCaptureDeps = {
     scope: PrivacyScope;
     householdId: string | null;
     selectedUserIds: string[];
-  }) => Promise<CaptureMemory>;
+  }) => Promise<MutationOutcome<CaptureMemory>>;
   createSuggestedMemory?: (input: {
     ownerUserId: string;
     personId: string;
     content: string;
     sourceRecordId: string;
-  }) => Promise<CaptureMemory>;
+  }) => Promise<MutationOutcome<CaptureMemory>>;
   suggestAsset?: (input: {
     ownerUserId: string;
     name: string;
@@ -131,7 +134,7 @@ export type ConversationalCaptureDeps = {
     directlyRequested: boolean;
     memories: Array<{ label: string; notes: string }>;
     source: "assistant";
-  }) => Promise<CaptureAssetReview>;
+  }) => Promise<MutationOutcome<CaptureAssetReview>>;
   addAssetEvidence?: (input: {
     ownerUserId: string;
     reviewGroupId: string;
@@ -144,18 +147,20 @@ export type ConversationalCaptureDeps = {
     selectedUserIds?: string[];
     sourceRecordId: string;
     source: "assistant";
-  }) => Promise<{ id: string; sourceRecordId?: string | null; reviewGroupId?: string | null }>;
+  }) => Promise<
+    MutationOutcome<{ id: string; sourceRecordId?: string | null; reviewGroupId?: string | null }>
+  >;
   getPerson?: (input: { ownerUserId: string; personId: string }) => Promise<CapturePerson | null>;
   updatePerson?: (input: {
     ownerUserId: string;
     personId: string;
     displayName: string;
-  }) => Promise<CapturePerson | null>;
+  }) => Promise<MutationOutcome<CapturePerson | null>>;
   deleteCapturedPerson?: (input: {
     ownerUserId: string;
     personId: string;
     sourceRecordId: string;
-  }) => Promise<CapturePerson | null>;
+  }) => Promise<MutationOutcome<CapturePerson | null>>;
   unlinkCapturedPerson?: (input: {
     ownerUserId: string;
     personId: string;
@@ -167,7 +172,10 @@ export type ConversationalCaptureDeps = {
     sourceRecordId: string;
   }) => Promise<void>;
   getMemory?: (input: { ownerUserId: string; memoryId: string }) => Promise<CaptureMemory | null>;
-  archiveMemory?: (input: { ownerUserId: string; memoryId: string }) => Promise<CaptureMemory>;
+  archiveMemory?: (input: {
+    ownerUserId: string;
+    memoryId: string;
+  }) => Promise<MutationOutcome<CaptureMemory>>;
   getAssetReview?: (input: {
     actorUserId: string;
     groupId: string;
@@ -181,7 +189,7 @@ export type ConversationalCaptureDeps = {
     actorUserId: string;
     groupId: string;
     source: "assistant";
-  }) => Promise<CaptureAssetReview>;
+  }) => Promise<MutationOutcome<CaptureAssetReview>>;
   createGeneralAction?: (input: {
     id: string;
     ownerUserId: string;
@@ -192,7 +200,7 @@ export type ConversationalCaptureDeps = {
     scope: PrivacyScope;
     householdId?: string | null;
     selectedUserIds?: string[];
-  }) => Promise<CaptureGeneralAction>;
+  }) => Promise<MutationOutcome<CaptureGeneralAction>>;
   getGeneralAction?: (input: {
     ownerUserId: string;
     generalActionId: string;
@@ -205,20 +213,20 @@ export type ConversationalCaptureDeps = {
       dueAt?: Date | null;
       recurrence?: GeneralActionRecurrence | null;
     };
-  }) => Promise<CaptureGeneralAction>;
+  }) => Promise<MutationOutcome<CaptureGeneralAction>>;
   archiveGeneralAction?: (input: {
     actorUserId: string;
     generalActionId: string;
-  }) => Promise<CaptureGeneralAction>;
+  }) => Promise<MutationOutcome<CaptureGeneralAction>>;
   editSavedItem?: (input: {
     actorUserId: string;
     savedItemId: string;
     edit: { title: string; content?: string | null; url?: string | null };
-  }) => Promise<SavedItemWithContext>;
+  }) => Promise<MutationOutcome<SavedItemWithContext>>;
   archiveSavedItem?: (input: {
     actorUserId: string;
     savedItemId: string;
-  }) => Promise<SavedItemWithContext>;
+  }) => Promise<MutationOutcome<SavedItemWithContext>>;
   createFollowup?: (input: {
     id: string;
     ownerUserId: string;
@@ -229,7 +237,7 @@ export type ConversationalCaptureDeps = {
     scope: PrivacyScope;
     householdId?: string | null;
     selectedUserIds?: string[];
-  }) => Promise<CaptureFollowup>;
+  }) => Promise<MutationOutcome<CaptureFollowup>>;
   getFollowup?: (input: {
     ownerUserId: string;
     followupId: string;
@@ -238,11 +246,11 @@ export type ConversationalCaptureDeps = {
     actorUserId: string;
     followupId: string;
     edit: { reason: string; dueAt?: Date };
-  }) => Promise<CaptureFollowup>;
+  }) => Promise<MutationOutcome<CaptureFollowup>>;
   archiveFollowup?: (input: {
     actorUserId: string;
     followupId: string;
-  }) => Promise<CaptureFollowup>;
+  }) => Promise<MutationOutcome<CaptureFollowup>>;
   searchPeople?: (input: {
     ownerUserId: string;
     query: string;

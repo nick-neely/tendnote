@@ -13,9 +13,6 @@ let capturedAuthorize: ((input: unknown) => Promise<{ ok: boolean; reason?: stri
 
 // `server-only` throws outside an RSC bundle; stub it so the boundary loads in tests.
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/access/current-access", () => ({
-  requireAdmittedOwnerForAction: async () => "user-1",
-}));
 vi.mock("@tendnote/db/queries/drafts", () => ({
   getDraft: (...args: unknown[]) => getDraft(...args),
   editDraftBody: (...args: unknown[]) => editDraftBody(...args),
@@ -100,6 +97,12 @@ const RECIPIENT = {
   source: "manual_entry" as const,
   contactMethodId: null,
 };
+const DRAFT_SCOPE = {
+  kind: "viewer-entity" as const,
+  entity: "person" as const,
+  entityId: "p1",
+  viewerUserId: "user-1",
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -111,12 +114,14 @@ beforeEach(() => {
     status: "approved",
     body: "Original body",
   });
+  editDraftBody.mockResolvedValue({ result: {}, affectedScopes: [DRAFT_SCOPE] });
 });
 
 describe("createOwnerGmailDraft gate", () => {
   it("blocks when Gmail is not connected", async () => {
     isProviderCapabilityConnected.mockResolvedValue(false);
     const { outcome } = await createOwnerGmailDraft({
+      ownerUserId: "user-1",
       draftId: "d1",
       recipient: RECIPIENT,
       subject: "Hi",
@@ -133,6 +138,7 @@ describe("createOwnerGmailDraft gate", () => {
       body: "Original body",
     });
     const { outcome } = await createOwnerGmailDraft({
+      ownerUserId: "user-1",
       draftId: "d1",
       recipient: RECIPIENT,
       subject: "Hi",
@@ -145,6 +151,7 @@ describe("createOwnerGmailDraft gate", () => {
 
   it("creates when connected and approved, returning the person id for revalidation", async () => {
     const { outcome, personId } = await createOwnerGmailDraft({
+      ownerUserId: "user-1",
       draftId: "d1",
       recipient: RECIPIENT,
       subject: "Hi",
@@ -162,6 +169,7 @@ describe("createOwnerGmailDraft input confirmation", () => {
   it("requires a confirmed recipient — rejects a blank/invalid address", async () => {
     await expect(
       createOwnerGmailDraft({
+        ownerUserId: "user-1",
         draftId: "d1",
         recipient: { email: "", source: "manual_entry", contactMethodId: null },
         subject: "Hi",
@@ -172,13 +180,23 @@ describe("createOwnerGmailDraft input confirmation", () => {
 
   it("requires an approved subject — rejects a blank subject", async () => {
     await expect(
-      createOwnerGmailDraft({ draftId: "d1", recipient: RECIPIENT, subject: "   " }),
+      createOwnerGmailDraft({
+        ownerUserId: "user-1",
+        draftId: "d1",
+        recipient: RECIPIENT,
+        subject: "   ",
+      }),
     ).rejects.toThrow();
     expect(createGmailDraft).not.toHaveBeenCalled();
   });
 
   it("keeps a manually entered recipient action-specific (no silent contact save)", async () => {
-    await createOwnerGmailDraft({ draftId: "d1", recipient: RECIPIENT, subject: "Hi" });
+    await createOwnerGmailDraft({
+      ownerUserId: "user-1",
+      draftId: "d1",
+      recipient: RECIPIENT,
+      subject: "Hi",
+    });
     // The recipient reaches the write as a manual entry with no contact-method id, so
     // it can never be promoted to a durable contact method (ADR-0085).
     expect(createGmailDraft).toHaveBeenCalledWith(
@@ -192,6 +210,7 @@ describe("createOwnerGmailDraft input confirmation", () => {
 describe("updateOwnerGmailDraft (explicit revision, ADR-0088)", () => {
   it("updates through the shared gate only on an explicit call, targeting the linked draft", async () => {
     const { outcome } = await updateOwnerGmailDraft({
+      ownerUserId: "user-1",
       draftId: "d1",
       recipient: RECIPIENT,
       subject: "Revised",
@@ -205,6 +224,7 @@ describe("updateOwnerGmailDraft (explicit revision, ADR-0088)", () => {
 
   it("write-through persists the revised body before the Gmail update", async () => {
     await updateOwnerGmailDraft({
+      ownerUserId: "user-1",
       draftId: "d1",
       recipient: RECIPIENT,
       subject: "Revised",
@@ -221,6 +241,7 @@ describe("updateOwnerGmailDraft (explicit revision, ADR-0088)", () => {
   it("blocks the update when the Tendnote draft is no longer approved", async () => {
     getDraft.mockResolvedValue({ id: "d1", personId: "p1", status: "draft", body: "b" });
     const { outcome } = await updateOwnerGmailDraft({
+      ownerUserId: "user-1",
       draftId: "d1",
       recipient: RECIPIENT,
       subject: "Revised",
@@ -235,6 +256,7 @@ describe("updateOwnerGmailDraft (explicit revision, ADR-0088)", () => {
       action: { id: "act-2", kind: "update" },
     });
     const { outcome, personId } = await updateOwnerGmailDraft({
+      ownerUserId: "user-1",
       draftId: "d1",
       recipient: RECIPIENT,
       subject: "Revised",
@@ -246,7 +268,8 @@ describe("updateOwnerGmailDraft (explicit revision, ADR-0088)", () => {
 
 describe("createOwnerGmailDraft write-through", () => {
   it("persists a changed last-mile body through the draft lifecycle before the write", async () => {
-    await createOwnerGmailDraft({
+    const result = await createOwnerGmailDraft({
+      ownerUserId: "user-1",
       draftId: "d1",
       recipient: RECIPIENT,
       subject: "Hi",
@@ -257,16 +280,19 @@ describe("createOwnerGmailDraft write-through", () => {
       draftId: "d1",
       body: "Edited body",
     });
+    expect(result.affectedScopes).toEqual([DRAFT_SCOPE]);
     expect(createGmailDraft).toHaveBeenCalled();
   });
 
   it("does not write through an unchanged body", async () => {
-    await createOwnerGmailDraft({
+    const result = await createOwnerGmailDraft({
+      ownerUserId: "user-1",
       draftId: "d1",
       recipient: RECIPIENT,
       subject: "Hi",
       bodyEdit: "Original body",
     });
     expect(editDraftBody).not.toHaveBeenCalled();
+    expect(result.affectedScopes).toEqual([]);
   });
 });

@@ -6,7 +6,7 @@ import { vi } from "vitest";
  * invalidation seam. Importing this module registers all three — so import it above the
  * adapter under test, and assert on the spies it exports:
  *
- *   import { invalidateActionMutationSpy, revalidatePathSpy } from "@/test/action-adapter-mocks";
+ *   import { revalidatePathSpy } from "@/test/action-adapter-mocks";
  *   import { promoteSavedItemToGeneralActionAction } from "./saved-items";
  *
  * `requireAdmittedOwnerForAction` always resolves the same owner and takes no input, which
@@ -19,15 +19,18 @@ const OWNER_USER_ID = "owner-1";
 
 export const revalidatePathSpy = vi.fn();
 export const updateTagSpy = vi.fn();
-export const invalidateActionMutationSpy = vi.fn();
+export const enforceProductBudgetSpy = vi.fn();
+export const requireAdmittedOwnerForActionSpy = vi.fn().mockResolvedValue(OWNER_USER_ID);
 
+vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({
   revalidatePath: revalidatePathSpy,
   updateTag: updateTagSpy,
 }));
 vi.mock("@/lib/access/current-access", () => ({
-  requireAdmittedOwnerForAction: vi.fn().mockResolvedValue(OWNER_USER_ID),
+  requireAdmittedOwnerForAction: requireAdmittedOwnerForActionSpy,
 }));
-vi.mock("@/lib/cache/action-mutation-scopes", () => ({
-  invalidateActionMutation: invalidateActionMutationSpy,
+vi.mock("@/lib/rate-limit/guards", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/rate-limit/guards")>()),
+  enforceProductBudget: enforceProductBudgetSpy,
 }));

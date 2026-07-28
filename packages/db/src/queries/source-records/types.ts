@@ -124,6 +124,7 @@ export type SourceRecordResolutionStore = SourceRecordCaptureStore & {
     sourceRecordId: string;
     unresolvedMentionId: string;
   }) => Promise<UnresolvedPersonMention>;
+  listAuditLogEntries: (input: { ownerUserId: string }) => Promise<SourceRecordAuditLogEntry[]>;
 };
 
 export type SourceRecordEmbeddingScheduler = (input: {
@@ -136,5 +137,4 @@ export type InMemorySourceRecordStore = SourceRecordResolutionStore & {
   getSourceRecordById: (sourceRecordId: string) => Promise<SourceRecord | null>;
   listPeople: (input: { ownerUserId: string }) => Promise<Person[]>;
   listSourceRecordPeople: (input: { sourceRecordId: string }) => Promise<SourceRecordPerson[]>;
-  listAuditLogEntries: (input: { ownerUserId: string }) => Promise<SourceRecordAuditLogEntry[]>;
 };

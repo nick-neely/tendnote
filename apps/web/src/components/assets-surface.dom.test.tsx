@@ -61,7 +61,8 @@ describe("AssetsSurface filters (DOM)", () => {
             id: "a-review",
             name: "Boiler",
             needsReview: true,
-            nextDueActionLabel: "Next action Sep 2",
+            nextDueActionLabel: "Due Sep 2",
+            nextDueActionState: "upcoming",
           }),
         ]}
         nextOffset={24}
@@ -71,7 +72,7 @@ describe("AssetsSurface filters (DOM)", () => {
 
     expect(screen.getByRole("link", { name: /2 asset reviews/i })).toBeDefined();
     expect(screen.getByText("Needs review")).toBeDefined();
-    expect(screen.getByText("Next action Sep 2")).toBeDefined();
+    expect(screen.getByText("Due Sep 2")).toBeDefined();
     expect(screen.getByRole("button", { name: "Load more assets" })).toBeDefined();
   });
 

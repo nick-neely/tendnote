@@ -13,7 +13,7 @@ const {
   recordProviderConnectionError,
   getAccessToken,
   admittedOwnerOrNull,
-  updateAccountMutationScopes,
+  reconcileAffectedScopes,
 } = vi.hoisted(() => ({
   getDiscordIdentity: vi.fn(),
   linkDiscordIdentity: vi.fn(),
@@ -23,7 +23,7 @@ const {
   recordProviderConnectionError: vi.fn(),
   getAccessToken: vi.fn(),
   admittedOwnerOrNull: vi.fn(),
-  updateAccountMutationScopes: vi.fn(),
+  reconcileAffectedScopes: vi.fn(),
 }));
 
 // `server-only` throws outside an RSC bundle; stub it so the module loads in tests.
@@ -47,12 +47,7 @@ vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn(),
   admittedOwnerOrNull,
 }));
-vi.mock("@/lib/cache/account-mutation-scopes", () => ({
-  accountMutationScopes: {
-    forOwner: (ownerUserId: string) => [{ kind: "account-owner", ownerUserId }],
-  },
-  updateAccountMutationScopes,
-}));
+vi.mock("@/lib/cache/reconcile-affected-scopes", () => ({ reconcileAffectedScopes }));
 // `fetchDiscordUsername` resolves the username via Better Auth's access token; the
 // account row the hook receives only carries an encrypted token, so the reconcile
 // fetches a fresh one the same way the page path does.
@@ -127,9 +122,10 @@ describe("reconcileDiscordAfterLink", () => {
       authorizedScopes: ["identify"],
     });
     expect(recordProviderConnectionError).not.toHaveBeenCalled();
-    expect(updateAccountMutationScopes).toHaveBeenCalledWith([
-      { kind: "account-owner", ownerUserId: OWNER },
-    ]);
+    expect(reconcileAffectedScopes).toHaveBeenCalledWith(
+      [{ kind: "owner-collection", collection: "account", ownerUserId: OWNER }],
+      { origin: "background" },
+    );
   });
 
   it("is a no-op re-mirror when the identity is already current — no re-link, no username fetch", async () => {

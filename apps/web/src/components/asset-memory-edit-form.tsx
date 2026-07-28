@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { deriveMemoryDraft, valueDraftFor } from "@/lib/asset-memory-value";
-import type { AssetReviewGroupView, AssetReviewMemoryView } from "@/lib/asset-review-view";
+import type { AssetReviewMemoryView } from "@/lib/asset-review-view";
 
 /**
  * The inline edit-before-accept form for one Suggested Asset Memory (#198):
@@ -29,7 +29,7 @@ export function MemoryEditForm({
   onClose,
 }: {
   memory: AssetReviewMemoryView;
-  run: (mutate: () => Promise<AssetReviewGroupView>) => void;
+  run: (mutate: () => ReturnType<typeof acceptSuggestedAssetMemoryAction>) => void;
   disabled: boolean;
   onClose: () => void;
 }) {

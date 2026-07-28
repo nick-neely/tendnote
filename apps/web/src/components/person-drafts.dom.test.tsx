@@ -106,9 +106,10 @@ describe("DraftReviewCard", () => {
 
   it("approves a draft and moves the card into its approved state", async () => {
     const user = userEvent.setup();
-    actions.approveDraftAction.mockResolvedValue(
-      view({ status: "approved", statusLabel: "Approved" }),
-    );
+    actions.approveDraftAction.mockResolvedValue({
+      ok: true,
+      view: view({ status: "approved", statusLabel: "Approved" }),
+    });
     renderCard();
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
@@ -125,9 +126,10 @@ describe("DraftReviewCard", () => {
 
   it("dismisses a draft and retires its review actions", async () => {
     const user = userEvent.setup();
-    actions.dismissDraftAction.mockResolvedValue(
-      view({ status: "dismissed", statusLabel: "Dismissed", editable: false }),
-    );
+    actions.dismissDraftAction.mockResolvedValue({
+      ok: true,
+      view: view({ status: "dismissed", statusLabel: "Dismissed", editable: false }),
+    });
     renderCard();
 
     await user.click(screen.getByRole("button", { name: "Dismiss draft" }));
@@ -141,11 +143,14 @@ describe("DraftReviewCard", () => {
   it("keeps a regenerated draft beside the one it was written from", async () => {
     const user = userEvent.setup();
     actions.regenerateDraftAction.mockResolvedValue({
-      draft: view({
-        id: REGENERATED_ID,
-        body: "Hey Mark, how is Denver treating you?",
-        createdAt: "2026-06-28T00:00:00.000Z",
-      }),
+      ok: true,
+      view: {
+        draft: view({
+          id: REGENERATED_ID,
+          body: "Hey Mark, how is Denver treating you?",
+          createdAt: "2026-06-28T00:00:00.000Z",
+        }),
+      },
     });
     renderCard();
 
@@ -159,7 +164,7 @@ describe("DraftReviewCard", () => {
 
   it("says why a regenerate produced nothing rather than failing silently", async () => {
     const user = userEvent.setup();
-    actions.regenerateDraftAction.mockResolvedValue({ draft: null });
+    actions.regenerateDraftAction.mockResolvedValue({ ok: true, view: { draft: null } });
     renderCard();
 
     await user.click(screen.getByRole("button", { name: "Regenerate" }));
@@ -193,7 +198,7 @@ describe("DraftReviewCard", () => {
   it("saves an edited body and returns to the read view", async () => {
     const user = userEvent.setup();
     const edited = `${view().body} Congrats!`;
-    actions.editDraftBodyAction.mockResolvedValue(view({ body: edited }));
+    actions.editDraftBodyAction.mockResolvedValue({ ok: true, view: view({ body: edited }) });
     renderCard();
 
     await user.click(screen.getByRole("button", { name: "Edit" }));

@@ -15,7 +15,7 @@ function item(
   return {
     followupId: "11111111-1111-1111-1111-111111111111",
     reason: "Check in about the new job.",
-    dueLabel: "Jul 15, 2026",
+    timingLabel: "Was due Jul 15",
     sourceRecordId: "s1",
     personId: "person-1",
     personName: "Mark",
@@ -31,7 +31,8 @@ describe("ChatFollowupReviewCard (interactive in-chat review)", () => {
     expect(html).toContain("Tentative. No reminder until you accept.");
     expect(html).toContain("Suggested follow-up for Mark:");
     expect(html).toContain("Check in about the new job.");
-    expect(html).toContain("Proposed for Jul 15, 2026");
+    expect(html).toContain("Was due Jul 15");
+    expect(html).not.toContain("Proposed for");
     expect(html).toContain("Accept");
     expect(html).toContain("Dismiss");
     expect(html).toContain('href="/people/person-1#follow-ups"');

@@ -1,29 +1,18 @@
 "use client";
 
-import {
-  type GeneralActionLink,
-  type GeneralActionRecurrence,
-  nextRoutineDueAt,
-} from "@tendnote/domain/general-actions";
+import type { GeneralActionLink, GeneralActionRecurrence } from "@tendnote/domain/general-actions";
 import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { formatSurfacingDay } from "@tendnote/domain/record-surfacing";
+import { useRef, useState } from "react";
 import {
-  archiveGeneralActionAction,
   completeGeneralActionAction,
   deferGeneralActionAction,
-  dismissGeneralActionAction,
   editGeneralActionAction,
-  pauseGeneralActionAction,
-  reopenGeneralActionAction,
-  restoreGeneralActionAction,
-  resumeGeneralActionAction,
   setGeneralActionPeopleAction,
   setGeneralActionVisibilityAction,
   skipGeneralActionOccurrenceAction,
-  undeferGeneralActionAction,
-  undoRoutineOccurrenceAction,
 } from "@/app/actions/general-actions";
-import { clearReminderAction, saveReminderAction } from "@/app/actions/reminders";
+import { clearReminderAction } from "@/app/actions/reminders";
 import { AreaSelect } from "@/components/general-action-area-select";
 import {
   ActionAssetHintsField,
@@ -46,9 +35,8 @@ import { RecurrenceField } from "@/components/general-action-recurrence-field";
 import {
   type GeneralActionReminderChoice,
   GeneralActionReminderField,
-  ReminderOptInInvitation,
 } from "@/components/general-action-reminder";
-import { ActionDueChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import { ErrorText } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
   AudiencePreview,
@@ -69,6 +57,8 @@ import {
   UsersIcon,
   XIcon,
 } from "@/components/icons";
+import { RecordTimingChip } from "@/components/record-timing-chip";
+import { pastReminderLeadTimeMessage } from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -81,9 +71,24 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
+import {
+  GENERAL_ACTION_MUTATION_INTENTS,
+  generalActionDeferAdapter,
+  generalActionLifecycleAdapter,
+  generalActionLifecycleCommand,
+  generalActionMutationLabels,
+  routineOccurrenceInverse,
+} from "@/lib/general-action-reversible-mutation";
 import type { GeneralActionMutationResult, GeneralActionView } from "@/lib/general-action-view";
-import { getReminderInstallationId } from "@/lib/reminder-registration";
-import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
+import { toReminderScheduleChoice, toReminderScheduleView } from "@/lib/reminder-schedule-view";
+import {
+  type ReversibleMutationApplyPhase,
+  type ReversibleMutationApplyResult,
+  useActiveReversibleMutation,
+  useReversibleMutation,
+} from "@/lib/reversible-mutation";
+import { useReminderScheduleWriter } from "@/lib/use-reminder-schedule-writer";
 
 function linkLabel(link: GeneralActionLink): string {
   if (link.label) {
@@ -144,7 +149,7 @@ function sameRecurrence(
 
 /** Short calendar label ("Aug 12") for the roll-forward confirmation. */
 function shortDay(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatSurfacingDay(new Date(iso), new Date());
 }
 
 /**
@@ -153,39 +158,42 @@ function shortDay(iso: string): string {
  * success hands the updated view to the parent and returns the row to view mode. The three
  * forms own their own field state but share this submit/return contract.
  */
-function useInPlaceActionUpdate(onUpdate: (view: GeneralActionView) => void, onDone: () => void) {
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [pending, startTransition] = useTransition();
+function useInPlaceActionUpdate(
+  actionId: string,
+  intent: "edit" | "share",
+  onUpdate: (view: GeneralActionView) => void,
+  onDone: () => void,
+) {
+  const mutation = useReversibleMutation(actionId, intent);
 
   function submit(
     run: () => Promise<GeneralActionMutationResult>,
-    optimistic?: GeneralActionView,
-    rollback?: GeneralActionView,
+    focusTarget: HTMLElement | null,
   ) {
-    setError(null);
-    setSaving(true);
-    if (optimistic) onUpdate(optimistic);
-    startTransition(async () => {
-      try {
-        const result = await run();
-        if (!result.ok) {
-          setError(result.error);
-          setSaving(false);
-          if (rollback) onUpdate(rollback);
-          return;
-        }
-        onUpdate(result.view);
+    mutation.run({
+      kind: "pending",
+      apply: (view) => {
+        onUpdate(view);
         onDone();
-      } catch {
-        setError(GENERIC_ERROR);
-        setSaving(false);
-        if (rollback) onUpdate(rollback);
-      }
+      },
+      command: run,
+      focusTarget,
+      labels: {
+        pending: "Saving action…",
+        success: "Action saved.",
+        rollback: "The action was not changed.",
+        undo: "",
+        undone: "",
+      },
     });
   }
 
-  return { error, saving, pending, submit };
+  return {
+    error: mutation.state.error,
+    saving: mutation.state.pending,
+    pending: mutation.state.pending,
+    submit,
+  };
 }
 
 /**
@@ -201,31 +209,33 @@ function ActionEditForm({
   people,
   onUpdate,
   onCancel,
-  onReminderOptIn,
 }: {
   action: GeneralActionView;
   areas: GeneralActionAreaView[];
   areaName: string | null;
   people: ActionPersonOption[];
-  onUpdate: (view: GeneralActionView) => void;
+  onUpdate: (view: GeneralActionView, phase?: ReversibleMutationApplyPhase) => void;
   onCancel: () => void;
-  onReminderOptIn: (clientInstallationId: string) => void;
 }) {
+  const reminderWriter = useReminderScheduleWriter();
   const [title, setTitle] = useState(action.title);
   const [notes, setNotes] = useState(action.notes ?? "");
   const [dueDate, setDueDate] = useState(action.dueAtDate);
   const [recurrence, setRecurrence] = useState<GeneralActionRecurrence | null>(action.recurrence);
   const [reminderEnabled, setReminderEnabled] = useState(Boolean(action.reminderSchedule));
   const [reminderChoice, setReminderChoice] = useState<GeneralActionReminderChoice>(() =>
-    action.reminderSchedule?.kind === "relative"
-      ? { kind: "relative", leadMinutes: action.reminderSchedule.leadMinutes ?? 0 }
-      : { kind: "exact", localTime: action.reminderSchedule?.localTime ?? "09:00" },
+    toReminderScheduleChoice(action.reminderSchedule),
   );
   const [links, setLinks] = useState<LinkDraft[]>(toLinkDrafts(action.links));
   const [hintLabels, setHintLabels] = useState<string[]>(toHintLabels(action.assetHints));
   const [personIds, setPersonIds] = useState<string[]>(action.linkedPeople.map((p) => p.id));
   const [areaId, setAreaId] = useState<string | null>(action.areaId);
-  const { error, saving, pending, submit } = useInPlaceActionUpdate(onUpdate, onCancel);
+  const { error, saving, pending, submit } = useInPlaceActionUpdate(
+    action.id,
+    "edit",
+    onUpdate,
+    onCancel,
+  );
 
   const trimmedTitle = title.trim();
   const trimmedNotes = notes.trim();
@@ -266,9 +276,7 @@ function ActionEditForm({
     action.linkedPeople.map((p) => p.id),
   );
   const currentReminderChoice = action.reminderSchedule
-    ? action.reminderSchedule.kind === "relative"
-      ? { kind: "relative" as const, leadMinutes: action.reminderSchedule.leadMinutes ?? 0 }
-      : { kind: "exact" as const, localTime: action.reminderSchedule.localTime ?? "09:00" }
+    ? toReminderScheduleChoice(action.reminderSchedule)
     : null;
   const reminderChanged =
     reminderEnabled !== Boolean(action.reminderSchedule) ||
@@ -292,58 +300,57 @@ function ActionEditForm({
         // Content and people links live behind separate lifecycle mutations; apply
         // content first, then people, and surface whichever ran last so the row
         // reflects both. Either half short-circuits on its own validation message.
-        // fallow-ignore-next-line complexity -- Sequential content and people mutations keep partial failures visible.
-        submit(async () => {
-          let result: GeneralActionMutationResult | null = null;
-          if (Object.keys(edit).length > 0) {
-            result = await editGeneralActionAction({ generalActionId: action.id, edit });
-            if (!result.ok) {
-              return result;
+        submit(
+          // fallow-ignore-next-line complexity -- Sequential content, people, and reminder mutations keep partial failures visible at their shared commit boundary.
+          async () => {
+            let result: GeneralActionMutationResult | null = null;
+            if (Object.keys(edit).length > 0) {
+              result = await editGeneralActionAction({ generalActionId: action.id, edit });
+              if (!result.ok) {
+                return result;
+              }
             }
-          }
-          if (peopleChanged) {
-            result = await setGeneralActionPeopleAction({
-              generalActionId: action.id,
-              personIds,
-            });
-          }
-          if (reminderEnabled && dueDate) {
-            const clientInstallationId = getReminderInstallationId(window.localStorage);
-            const scheduleResult = await saveReminderAction({
-              recordKind: recurrence ? "routine" : "general_action",
-              recordId: action.id,
-              clientInstallationId,
-              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-              schedule: reminderChoice,
-            });
-            if (scheduleResult.nextValidChoice) {
-              setReminderChoice({ kind: "relative", leadMinutes: 0 });
-              return {
-                ok: false,
-                error: `That lead time has passed. Save again to use ${scheduleResult.nextValidChoice.label}.`,
+            if (peopleChanged) {
+              result = await setGeneralActionPeopleAction({
+                generalActionId: action.id,
+                personIds,
+              });
+            }
+            if (reminderEnabled && dueDate) {
+              const scheduleResult = await reminderWriter.save(
+                recurrence ? "routine" : "general_action",
+                action.id,
+                reminderChoice,
+              );
+              if (scheduleResult.nextValidChoice) {
+                setReminderChoice({ kind: "relative", leadMinutes: 0 });
+                return {
+                  ok: false,
+                  error: pastReminderLeadTimeMessage(scheduleResult.nextValidChoice.label),
+                };
+              }
+              const view = result?.ok ? result.view : action;
+              result = {
+                ok: true,
+                view: {
+                  ...view,
+                  reminderSchedule: toReminderScheduleView(scheduleResult.schedule),
+                },
               };
+            } else if (action.reminderSchedule) {
+              unwrapOwnerActionResult(
+                await clearReminderAction({
+                  recordKind: action.recurrence ? "routine" : "general_action",
+                  recordId: action.id,
+                }),
+              );
+              const view = result?.ok ? result.view : action;
+              result = { ok: true, view: { ...view, reminderSchedule: null } };
             }
-            if (scheduleResult.optIn.state === "offer") {
-              onReminderOptIn(clientInstallationId);
-            }
-            const view = result?.ok ? result.view : action;
-            result = {
-              ok: true,
-              view: {
-                ...view,
-                reminderSchedule: toReminderScheduleView(scheduleResult.schedule),
-              },
-            };
-          } else if (action.reminderSchedule) {
-            await clearReminderAction({
-              recordKind: action.recurrence ? "routine" : "general_action",
-              recordId: action.id,
-            });
-            const view = result?.ok ? result.view : action;
-            result = { ok: true, view: { ...view, reminderSchedule: null } };
-          }
-          return result ?? { ok: true, view: action };
-        });
+            return result ?? { ok: true, view: action };
+          },
+          event.nativeEvent.submitter instanceof HTMLElement ? event.nativeEvent.submitter : null,
+        );
       }}
     >
       <Input
@@ -432,7 +439,12 @@ function ActionShareForm({
     visibilityChoiceForScope(action.scope),
   );
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const { error, saving, pending, submit } = useInPlaceActionUpdate(onUpdate, onCancel);
+  const { error, saving, pending, submit } = useInPlaceActionUpdate(
+    action.id,
+    "share",
+    onUpdate,
+    onCancel,
+  );
 
   const selectedMembersRequired =
     visibilityChoice === "selected_members" && selectedUserIds.length === 0;
@@ -447,12 +459,14 @@ function ActionShareForm({
         if (selectedMembersRequired) {
           return;
         }
-        submit(() =>
-          setGeneralActionVisibilityAction({
-            generalActionId: action.id,
-            visibilityChoice,
-            ...(selectedUserIds.length ? { selectedUserIds } : {}),
-          }),
+        submit(
+          () =>
+            setGeneralActionVisibilityAction({
+              generalActionId: action.id,
+              visibilityChoice,
+              ...(selectedUserIds.length ? { selectedUserIds } : {}),
+            }),
+          event.nativeEvent.submitter instanceof HTMLElement ? event.nativeEvent.submitter : null,
         );
       }}
     >
@@ -500,93 +514,30 @@ function ActionDeferForm({
   onCancel,
 }: {
   action: GeneralActionView;
-  onUpdate: (view: GeneralActionView) => void;
+  onUpdate: (view: GeneralActionView, phase?: ReversibleMutationApplyPhase) => void;
   onCancel: () => void;
 }) {
   const [deferDate, setDeferDate] = useState(action.deferUntilDate);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [undoRequested, setUndoRequested] = useState(false);
-  const [undoAvailable, setUndoAvailable] = useState(false);
-  const undoTimer = useRef<number | null>(null);
-  const undoRequestedRef = useRef(false);
-  const [pending, startTransition] = useTransition();
+  const mutation = useReversibleMutation(action.id, "defer");
 
   const unchanged = deferDate === action.deferUntilDate && action.status === "deferred";
 
-  useEffect(
-    () => () => {
-      if (undoTimer.current !== null) window.clearTimeout(undoTimer.current);
-    },
-    [],
-  );
-
-  function requestUndo() {
-    if (saving) {
-      undoRequestedRef.current = true;
-      setUndoRequested(true);
-      return;
-    }
-    if (undoTimer.current !== null) window.clearTimeout(undoTimer.current);
-    startTransition(async () => {
-      setError(null);
-      try {
-        const result = await undeferGeneralActionAction({ generalActionId: action.id });
-        if (!result.ok) {
-          setError(result.error);
-          return;
-        }
-        onUpdate(result.view);
-        onCancel();
-      } catch {
-        setError(GENERIC_ERROR);
-      }
-    });
-  }
-
-  function submitDefer() {
+  function submitDefer(focusTarget: HTMLElement | null) {
     if (!deferDate || unchanged) return;
     const deferUntilISO = `${deferDate}T00:00:00.000Z`;
-    const optimistic = {
-      ...action,
-      status: "deferred" as const,
-      deferUntilDate: deferDate,
-      deferUntilISO,
-      surfaceState: "deferred" as const,
-      surfaceLabel: `Set aside until ${shortDay(deferUntilISO)}`,
-    };
-    setError(null);
-    setSaving(true);
-    setUndoAvailable(true);
-    undoRequestedRef.current = false;
-    setUndoRequested(false);
-    onUpdate(optimistic);
-    startTransition(async () => {
-      try {
-        const result = await deferGeneralActionAction({
+    mutation.run({
+      kind: "optimistic",
+      adapter: generalActionDeferAdapter(deferDate, `Set aside until ${shortDay(deferUntilISO)}`),
+      apply: onUpdate,
+      command: () =>
+        deferGeneralActionAction({
           generalActionId: action.id,
           deferUntil: deferDate,
-        });
-        if (!result.ok) {
-          setError(result.error);
-          setSaving(false);
-          setUndoAvailable(false);
-          onUpdate(action);
-          return;
-        }
-        onUpdate(result.view);
-        setSaving(false);
-        if (undoRequestedRef.current) {
-          requestUndo();
-          return;
-        }
-        undoTimer.current = window.setTimeout(onCancel, 5000);
-      } catch {
-        setError(GENERIC_ERROR);
-        setSaving(false);
-        setUndoAvailable(false);
-        onUpdate(action);
-      }
+        }),
+      focusTarget,
+      labels: generalActionMutationLabels("defer"),
+      leave: { apply: () => onCancel() },
+      prior: action,
     });
   }
 
@@ -595,7 +546,9 @@ function ActionDeferForm({
       className="flex flex-wrap items-end justify-between gap-2 px-4 py-3.5"
       onSubmit={(event) => {
         event.preventDefault();
-        submitDefer();
+        submitDefer(
+          event.nativeEvent.submitter instanceof HTMLElement ? event.nativeEvent.submitter : null,
+        );
       }}
     >
       <div className="flex flex-col gap-1.5">
@@ -615,28 +568,28 @@ function ActionDeferForm({
           Cancel
         </Button>
         <Button
-          disabled={pending || !deferDate || unchanged}
+          disabled={mutation.state.pending || !deferDate || unchanged}
           size="sm"
           type="submit"
           variant="outline"
         >
-          {saving ? <Spinner /> : <MoonIcon />}
+          {mutation.state.pending ? <Spinner /> : <MoonIcon />}
           Set aside
         </Button>
-        {undoAvailable ? (
+        {mutation.state.undoAvailable ? (
           <Button
-            disabled={pending && !saving}
-            onClick={requestUndo}
+            disabled={mutation.state.undoRequested}
+            onClick={mutation.requestUndo}
             size="sm"
             type="button"
             variant="outline"
           >
-            {pending && !saving ? <Spinner /> : null}
-            {undoRequested ? "Undoing…" : "Undo set aside"}
+            {mutation.state.undoRequested ? <Spinner /> : null}
+            {mutation.state.undoRequested ? "Undoing…" : mutation.state.labels.undo}
           </Button>
         ) : null}
       </div>
-      {error ? <ErrorText message={error} /> : null}
+      {mutation.state.error ? <ErrorText message={mutation.state.error} /> : null}
     </form>
   );
 }
@@ -661,15 +614,16 @@ function ActionOverflowMenu({
   pending: boolean;
   busyKey: string | null;
   onSetAside: () => void;
-  onPause: () => void;
-  onSkip: () => void;
+  onPause: (focusTarget: HTMLElement | null) => void;
+  onSkip: (focusTarget: HTMLElement | null) => void;
   onEdit: () => void;
   onShare: () => void;
   onHistory: () => void;
-  onDismiss: () => void;
-  onArchive: () => void;
+  onDismiss: (focusTarget: HTMLElement | null) => void;
+  onArchive: (focusTarget: HTMLElement | null) => void;
 }) {
   const mobileItemClassName = "max-sm:min-h-11";
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
     <DropdownMenu>
@@ -677,7 +631,9 @@ function ActionOverflowMenu({
         <Button
           aria-label="More actions"
           className="max-sm:min-h-11 max-sm:min-w-11"
+          data-action-control="overflow"
           disabled={pending}
+          ref={triggerRef}
           size="icon-sm"
           type="button"
           variant="ghost"
@@ -698,11 +654,17 @@ function ActionOverflowMenu({
             Action has nothing to pause, so this only shows for Routines (ADR 0148). */}
         {action.isRoutine ? (
           <>
-            <DropdownMenuItem className={mobileItemClassName} onSelect={onSkip}>
+            <DropdownMenuItem
+              className={mobileItemClassName}
+              onSelect={() => onSkip(triggerRef.current)}
+            >
               <SkipForwardIcon />
               Skip this occurrence
             </DropdownMenuItem>
-            <DropdownMenuItem className={mobileItemClassName} onSelect={onPause}>
+            <DropdownMenuItem
+              className={mobileItemClassName}
+              onSelect={() => onPause(triggerRef.current)}
+            >
               <PauseIcon />
               Pause routine
             </DropdownMenuItem>
@@ -727,11 +689,17 @@ function ActionOverflowMenu({
           History
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem className={mobileItemClassName} onSelect={onDismiss}>
+        <DropdownMenuItem
+          className={mobileItemClassName}
+          onSelect={() => onDismiss(triggerRef.current)}
+        >
           <XIcon />
           Dismiss
         </DropdownMenuItem>
-        <DropdownMenuItem className={mobileItemClassName} onSelect={onArchive}>
+        <DropdownMenuItem
+          className={mobileItemClassName}
+          onSelect={() => onArchive(triggerRef.current)}
+        >
           <ArchiveIcon />
           Archive
         </DropdownMenuItem>
@@ -763,9 +731,9 @@ export function ActionRow({
   areaName = null,
   people = [],
   shareableMembers = [],
+  onMutationFinalize,
   onResolve,
   onUpdate,
-  secondaryUndo,
 }: {
   action: GeneralActionView;
   /** Active Areas the Action can be re-filed under. */
@@ -776,235 +744,108 @@ export function ActionRow({
   people?: ActionPersonOption[];
   /** Household members the Action can be shared with; empty hides the share control. */
   shareableMembers?: ShareableActionMember[];
-  onResolve: (view: GeneralActionView) => void;
-  onUpdate: (view: GeneralActionView) => void;
-  secondaryUndo?: {
-    error?: string;
-    label: string;
-    requested: boolean;
-    originalPending: boolean;
-    onUndo?: () => void;
-  };
+  onMutationFinalize?: (id: string) => void;
+  onResolve: (view: GeneralActionView) => ReversibleMutationApplyResult;
+  onUpdate: (
+    view: GeneralActionView,
+    phase?: ReversibleMutationApplyPhase,
+  ) => ReversibleMutationApplyResult;
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "defer" | "share">("view");
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [leaving, setLeaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // A brief, self-clearing confirmation after a Routine occurrence rolls forward, so
-  // the in-place update isn't silent — the user sees when it comes back.
   const [notice, setNotice] = useState<string | null>(null);
-  // Which control initiated the in-flight mutation, so the spinner lands on the
-  // button the user pressed rather than the whole row.
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [optInInstallationId, setOptInInstallationId] = useState<string | null>(null);
-  const [undo, setUndo] = useState<null | {
-    label: string;
-    run: () => Promise<GeneralActionMutationResult>;
-    requested: boolean;
-  }>(null);
-  const resolveTimer = useRef<number | null>(null);
-  const undoRequestedRef = useRef(false);
-  const initiatingControlRef = useRef<HTMLElement | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  useEffect(
-    () => () => {
-      if (resolveTimer.current !== null) window.clearTimeout(resolveTimer.current);
-    },
-    [],
+  const completeMutation = useReversibleMutation(action.id, "complete");
+  const dismissMutation = useReversibleMutation(action.id, "dismiss");
+  const archiveMutation = useReversibleMutation(action.id, "archive");
+  const pauseMutation = useReversibleMutation(action.id, "pause");
+  const routineCompleteMutation = useReversibleMutation(action.id, "routine-complete");
+  const routineSkipMutation = useReversibleMutation(action.id, "routine-skip");
+  const activeMutation = useActiveReversibleMutation(action.id, GENERAL_ACTION_MUTATION_INTENTS);
+  const pending = Boolean(activeMutation?.state.pending);
+  const leaving = Boolean(activeMutation?.state.leaving);
+  const busyKey = activeMutation?.intent ?? null;
+  const error = activeMutation?.state.error ?? null;
+  const controlsBlocked = Boolean(
+    activeMutation?.state.pending ||
+      activeMutation?.state.undoAvailable ||
+      activeMutation?.state.undoRequested ||
+      activeMutation?.state.leaving,
   );
 
   const returnToView = () => setMode("view");
 
-  function restoreInitiatingFocus() {
-    requestAnimationFrame(() => initiatingControlRef.current?.focus());
-  }
-
   function reconcileResolvedView(view: GeneralActionView) {
     const row = document.getElementById(`action-${action.id}`);
     const fallback = row?.nextElementSibling ?? row?.previousElementSibling;
-    onResolve(view);
+    const heading = row?.closest("main")?.querySelector<HTMLElement>("h1");
+    const accepted = onResolve(view);
     requestAnimationFrame(() => {
       const focusTarget = fallback?.querySelector<HTMLElement>("button, [tabindex]");
       if (focusTarget) {
         focusTarget.focus();
         return;
       }
-      const heading = row?.closest("main")?.querySelector<HTMLElement>("h1");
       if (heading) {
         heading.tabIndex = -1;
         heading.focus();
       }
     });
+    return accepted;
   }
 
-  // Resolving mutations (complete/dismiss/archive) animate the row out on success;
-  // a validation failure surfaces the message and leaves the row in place.
-  function leaveThen(
-    key: string,
-    run: () => Promise<GeneralActionMutationResult>,
-    inverse?: { label: string; run: () => Promise<GeneralActionMutationResult> },
+  function runLifecycle(
+    intent: "complete" | "dismiss" | "archive" | "pause",
+    focusTarget: HTMLElement | null,
   ) {
-    setError(null);
-    setNotice(null);
-    setBusyKey(key);
-    initiatingControlRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    // These lifecycle changes have a deterministic inverse. Acknowledge the
-    // intent immediately, then restore this exact row if the server rejects it.
-    setLeaving(true);
-    if (inverse) {
-      undoRequestedRef.current = false;
-      setUndo({ ...inverse, requested: false });
-    }
-    startTransition(async () => {
-      try {
-        const result = await run();
-        if (!result.ok) {
-          setError(result.error);
-          setBusyKey(null);
-          setLeaving(false);
-          setUndo(null);
-          undoRequestedRef.current = false;
-          restoreInitiatingFocus();
-          return;
-        }
-        if (inverse) {
-          setLeaving(false);
-          setBusyKey(null);
-          if (undoRequestedRef.current) {
-            runUndo(inverse);
-            return;
-          }
-          setNotice(
-            `${
-              key === "complete"
-                ? "Completed"
-                : key === "pause"
-                  ? "Paused"
-                  : key === "dismiss"
-                    ? "Dismissed"
-                    : "Archived"
-            }. Undo available.`,
-          );
-          resolveTimer.current = window.setTimeout(() => reconcileResolvedView(result.view), 5000);
-          return;
-        }
-        window.setTimeout(() => reconcileResolvedView(result.view), 200);
-      } catch {
-        setError(GENERIC_ERROR);
-        setBusyKey(null);
-        setLeaving(false);
-        setUndo(null);
-        undoRequestedRef.current = false;
-        restoreInitiatingFocus();
-      }
-    });
-  }
-
-  function runUndo(override?: { label: string; run: () => Promise<GeneralActionMutationResult> }) {
-    const inverse = override ?? undo;
-    if (!inverse) return;
-    if (busyKey && busyKey !== "undo") {
-      undoRequestedRef.current = true;
-      setUndo({ ...inverse, requested: true });
+    if (intent === "complete" && action.isRoutine) {
+      runRoutineOccurrence("complete", focusTarget);
       return;
     }
-    if (resolveTimer.current !== null) window.clearTimeout(resolveTimer.current);
-    setUndo(null);
-    setBusyKey("undo");
-    startTransition(async () => {
-      try {
-        const result = await inverse.run();
-        if (!result.ok) {
-          setError(result.error);
-          setBusyKey(null);
-          return;
-        }
-        onUpdate(result.view);
-        setNotice("Action restored");
-        setBusyKey(null);
-      } catch {
-        setError(GENERIC_ERROR);
-        setBusyKey(null);
-      }
+    setNotice(null);
+    const mutation =
+      intent === "complete"
+        ? completeMutation
+        : intent === "dismiss"
+          ? dismissMutation
+          : intent === "archive"
+            ? archiveMutation
+            : pauseMutation;
+    mutation.run({
+      kind: "optimistic",
+      adapter: generalActionLifecycleAdapter(intent),
+      apply: onUpdate,
+      command: () => generalActionLifecycleCommand(intent, action.id),
+      focusTarget,
+      labels: generalActionMutationLabels(intent),
+      leave: { apply: reconcileResolvedView },
+      onFinalize: () => onMutationFinalize?.(action.id),
+      prior: action,
     });
   }
 
-  // Completing a Routine occurrence isn't terminal: it rolls forward and stays on the
-  // list, so update in place (with a self-clearing confirmation) rather than animating out.
-  function advanceRoutineInPlace(kind: "complete" | "skip") {
-    setError(null);
+  function runRoutineOccurrence(kind: "complete" | "skip", focusTarget: HTMLElement | null) {
     setNotice(null);
-    setBusyKey(kind);
     const prior = action;
-    const priorDueAtISO = prior.dueAtISO;
-    let expectedDueAtISO: string | null = null;
-    const inverse = priorDueAtISO
-      ? {
-          label: kind === "complete" ? "Complete" : "Skip",
-          run: () =>
-            expectedDueAtISO
-              ? undoRoutineOccurrenceAction({
-                  expectedDueAt: expectedDueAtISO,
-                  generalActionId: prior.id,
-                  restoreDueAt: priorDueAtISO,
-                })
-              : Promise.resolve({ ok: false as const, error: "The Routine is still updating." }),
-        }
-      : undefined;
-    if (inverse) {
-      undoRequestedRef.current = false;
-      setUndo({ ...inverse, requested: false });
-    }
-    const nextDueAt = action.recurrence
-      ? nextRoutineDueAt(action.recurrence, new Date(action.dueAtISO ?? Date.now()))
-      : null;
-    if (nextDueAt) {
-      const nextISO = nextDueAt.toISOString();
-      onUpdate({
-        ...action,
-        dueAtISO: nextISO,
-        dueAtDate: nextISO.slice(0, 10),
-        surfaceLabel: `Due ${shortDay(nextISO)}`,
-      });
-    }
-    startTransition(async () => {
-      try {
-        const result = await (kind === "complete"
-          ? completeGeneralActionAction({ generalActionId: action.id })
-          : skipGeneralActionOccurrenceAction({ generalActionId: action.id }));
-        if (!result.ok) {
-          setError(result.error);
-          setBusyKey(null);
-          onUpdate(prior);
-          setUndo(null);
-          undoRequestedRef.current = false;
-          return;
-        }
-        expectedDueAtISO = result.view.dueAtISO;
-        onUpdate(result.view);
-        setBusyKey(null);
-        if (inverse && undoRequestedRef.current) {
-          runUndo(inverse);
-          return;
-        }
-        if (result.view.dueAtISO) {
+    const mutation = kind === "complete" ? routineCompleteMutation : routineSkipMutation;
+    mutation.run({
+      kind: "pending",
+      apply: (view) => {
+        onUpdate(view);
+        if (view.dueAtISO) {
           setNotice(
-            `${kind === "complete" ? "Done" : "Skipped"} · next ${shortDay(result.view.dueAtISO)}`,
+            `${kind === "complete" ? "Done" : "Skipped"} · next ${shortDay(view.dueAtISO)}`,
           );
-          resolveTimer.current = window.setTimeout(() => {
-            setNotice(null);
-            setUndo(null);
-          }, 5000);
         }
-      } catch {
-        setError(GENERIC_ERROR);
-        setBusyKey(null);
-        onUpdate(prior);
-        setUndo(null);
-        undoRequestedRef.current = false;
-      }
+      },
+      command: () =>
+        kind === "complete"
+          ? completeGeneralActionAction({ generalActionId: action.id })
+          : skipGeneralActionOccurrenceAction({ generalActionId: action.id }),
+      focusTarget,
+      inverse: prior.dueAtISO ? routineOccurrenceInverse(prior) : undefined,
+      labels: generalActionMutationLabels(
+        kind === "complete" ? "routine-complete" : "routine-skip",
+      ),
     });
   }
 
@@ -1015,7 +856,6 @@ export function ActionRow({
         areaName={areaName}
         areas={areas}
         onCancel={returnToView}
-        onReminderOptIn={setOptInInstallationId}
         onUpdate={onUpdate}
         people={people}
       />
@@ -1051,8 +891,8 @@ export function ActionRow({
 
   return (
     <article
-      aria-busy={pending || secondaryUndo?.originalPending}
-      className={`flex scroll-mt-24 flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) motion-reduce:transition-none ${leaving && !undo ? "translate-y-0.5 opacity-0" : ""}`}
+      aria-busy={pending}
+      className={`flex scroll-mt-24 flex-col gap-2 px-4 py-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) motion-reduce:transition-none ${leaving ? "translate-y-0.5 opacity-70" : ""}`}
       data-leaving={leaving}
       // Deep-link target for the Action Today surface: `/actions#action-<id>` scrolls
       // to and briefly highlights this row (see useDeepLinkHighlight). tabIndex lets the
@@ -1090,104 +930,54 @@ export function ActionRow({
           ) : null}
         </div>
         <div className="shrink-0 pt-0.5">
-          <ActionDueChip surfaceLabel={action.surfaceLabel} surfaceState={action.surfaceState} />
+          <RecordTimingChip label={action.surfaceLabel} state={action.surfaceState} />
         </div>
       </div>
       <div className="flex items-center justify-end gap-1.5">
-        {undo ? (
+        {activeMutation?.state.undoAvailable ? (
           <Button
-            disabled={busyKey === "undo"}
-            onClick={() => runUndo()}
+            disabled={activeMutation.state.undoRequested}
+            onClick={activeMutation.requestUndo}
             size="sm"
             type="button"
             variant="outline"
           >
-            {busyKey === "undo" ? <Spinner /> : null}
-            {undo.requested ? "Undoing…" : `Undo ${undo.label}`}
-          </Button>
-        ) : null}
-        {!undo && secondaryUndo ? (
-          <Button
-            disabled={secondaryUndo.requested}
-            onClick={secondaryUndo.onUndo}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {secondaryUndo.requested ? <Spinner /> : null}
-            {secondaryUndo.requested ? "Undoing…" : `Undo ${secondaryUndo.label}`}
+            {activeMutation.state.undoRequested ? <Spinner aria-hidden /> : null}
+            {activeMutation.state.undoRequested ? "Undoing…" : activeMutation.state.labels.undo}
           </Button>
         ) : null}
         <Button
           className="max-sm:min-h-11"
-          disabled={pending || undo !== null || secondaryUndo !== undefined}
-          onClick={() => {
-            if (action.isRoutine) {
-              advanceRoutineInPlace("complete");
-            } else {
-              leaveThen(
-                "complete",
-                () => completeGeneralActionAction({ generalActionId: action.id }),
-                {
-                  label: "Complete",
-                  run: () => reopenGeneralActionAction({ generalActionId: action.id }),
-                },
-              );
-            }
-          }}
+          disabled={controlsBlocked}
+          onClick={(event) => runLifecycle("complete", event.currentTarget)}
           size="sm"
           type="button"
           variant="outline"
         >
-          {busyKey === "complete" ? <Spinner /> : <CheckIcon />}
+          {busyKey === "complete" || busyKey === "routine-complete" ? <Spinner /> : <CheckIcon />}
           {action.isRoutine ? "Done for now" : "Complete"}
         </Button>
         <ActionOverflowMenu
           action={action}
           busyKey={busyKey}
-          onArchive={() =>
-            leaveThen("archive", () => archiveGeneralActionAction({ generalActionId: action.id }), {
-              label: "Archive",
-              run: () => restoreGeneralActionAction({ generalActionId: action.id }),
-            })
-          }
-          onDismiss={() =>
-            leaveThen("dismiss", () => dismissGeneralActionAction({ generalActionId: action.id }), {
-              label: "Dismiss",
-              run: () => reopenGeneralActionAction({ generalActionId: action.id }),
-            })
-          }
-          onEdit={() => {
-            setError(null);
-            setMode("edit");
-          }}
+          onArchive={(focusTarget) => runLifecycle("archive", focusTarget)}
+          onDismiss={(focusTarget) => runLifecycle("dismiss", focusTarget)}
+          onEdit={() => setMode("edit")}
           onHistory={() => setHistoryOpen(true)}
-          onPause={() =>
-            leaveThen("pause", () => pauseGeneralActionAction({ generalActionId: action.id }), {
-              label: "Pause",
-              run: () => resumeGeneralActionAction({ generalActionId: action.id }),
-            })
-          }
-          onSkip={() => advanceRoutineInPlace("skip")}
-          onSetAside={() => {
-            setError(null);
-            setMode("defer");
-          }}
-          onShare={() => {
-            setError(null);
-            setMode("share");
-          }}
-          pending={pending}
+          onPause={(focusTarget) => runLifecycle("pause", focusTarget)}
+          onSkip={(focusTarget) => runRoutineOccurrence("skip", focusTarget)}
+          onSetAside={() => setMode("defer")}
+          onShare={() => setMode("share")}
+          pending={controlsBlocked}
           shareableMembers={shareableMembers}
         />
       </div>
       {pending ? (
         <p aria-live="polite" className="text-[length:var(--text-caption)] text-muted-foreground">
-          Updating action…
+          {activeMutation?.state.labels.pending || "Updating action…"}
         </p>
       ) : null}
       {error ? <ErrorText message={error} /> : null}
-      {secondaryUndo?.error ? <ErrorText message={secondaryUndo.error} /> : null}
       {notice ? (
         <p
           className="inline-flex items-center gap-1.5 self-end text-[length:var(--text-caption)] text-muted-foreground"
@@ -1196,12 +986,6 @@ export function ActionRow({
           <CheckIcon aria-hidden className="size-3 text-primary" />
           {notice}
         </p>
-      ) : null}
-      {optInInstallationId ? (
-        <ReminderOptInInvitation
-          clientInstallationId={optInInstallationId}
-          onDismiss={() => setOptInInstallationId(null)}
-        />
       ) : null}
       <ActionHistoryDialog
         generalActionId={action.id}

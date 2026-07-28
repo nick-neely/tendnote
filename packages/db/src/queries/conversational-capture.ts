@@ -53,8 +53,14 @@ const defaultConversationalCapture = createConversationalCapture(
   {
     resolveOrCreateAndLinkPerson: resolveOrCreateAndLinkPersonToSourceRecord,
     linkSourceRecordToPerson: linkSourceRecordToExistingPerson,
-    createApprovedMemory: async (input) => (await captureExplicitMemoryFromSource(input)).memory,
-    createSuggestedMemory: async (input) => (await captureSuggestedMemoryFromSource(input)).memory,
+    createApprovedMemory: async (input) => {
+      const outcome = await captureExplicitMemoryFromSource(input);
+      return { result: outcome.result.memory, affectedScopes: outcome.affectedScopes };
+    },
+    createSuggestedMemory: async (input) => {
+      const outcome = await captureSuggestedMemoryFromSource(input);
+      return { result: outcome.result.memory, affectedScopes: outcome.affectedScopes };
+    },
     suggestAsset,
     addAssetEvidence,
     getPerson,

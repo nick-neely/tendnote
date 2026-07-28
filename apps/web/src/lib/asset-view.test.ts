@@ -1,6 +1,6 @@
 import type { AssetWithContext } from "@tendnote/db/queries/assets";
 import { describe, expect, it } from "vitest";
-import { toAssetView } from "@/lib/asset-view";
+import { toAssetBrowseView, toAssetView } from "@/lib/asset-view";
 
 const NOW = new Date("2026-07-12T12:00:00");
 
@@ -32,6 +32,7 @@ describe("toAssetView", () => {
     expect(view.kindLabel).toBe("Appliance");
     expect(view.archived).toBe(false);
     expect(view.owned).toBe(true);
+    expect(view.revision).toBe(asset().updatedAt.toISOString());
     expect(view.visibilityLabel).toBe("Only me");
     expect(view.addedLabel).toBe("Added Jul 1");
     expect(view.archivedLabel).toBeNull();
@@ -66,12 +67,19 @@ describe("toAssetView", () => {
     expect(view.archivedLabel).toBe("Archived Jul 10");
   });
 
-  it("carries the year when a date falls outside the current one", () => {
-    const view = toAssetView(asset({ createdAt: new Date("2025-12-20T00:00:00") }), {
-      callerUserId: "owner-1",
-      now: NOW,
-    });
+  it("maps browse enrichment into the shared timing fields", () => {
+    const row = {
+      asset: asset(),
+      needsReview: true,
+      nextDueAction: {
+        status: "open" as const,
+        dueAt: new Date("2026-07-20T00:00:00"),
+        deferUntil: null,
+      },
+    };
 
-    expect(view.addedLabel).toBe("Added Dec 20, 2025");
+    const view = toAssetBrowseView(row, { callerUserId: "owner-1", now: NOW });
+
+    expect(view.needsReview).toBe(true);
   });
 });

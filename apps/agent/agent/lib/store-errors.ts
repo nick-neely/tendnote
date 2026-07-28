@@ -21,7 +21,7 @@ const OPAQUE_STORE_FAILURE =
  * values, and invites it to reason about the database instead of the user. That is how a
  * hallucinated `assetId` became a `22P02` transcript in chat.
  *
- * The rule mirrors the one the web surfaces already follow (`runAssetsMutation`): a
+ * The rule mirrors the shared owner-action protocol used by web surfaces: a
  * curated {@link AssetValidationError} is a sentence the domain wrote *for a person*, so
  * it passes through; everything else is infrastructure, and infrastructure gets one
  * opaque sentence and a line in the operator's log. Fail closed on the model's side too —

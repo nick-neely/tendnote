@@ -9,6 +9,7 @@ import {
   type ReviewActionLabels,
 } from "@/components/chat-review-action-card";
 import type { AssistantToolView, SuggestedReviewItemView } from "@/lib/eve/tool-result-view";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
 /**
  * Renders the interactive review cards for a `list_suggested_memory_reviews`
@@ -71,8 +72,12 @@ export function ChatReviewCard({
       isNew={isNew}
       kind="suggested_memory_review"
       labels={labels}
-      onDismiss={() => dismissSuggestedMemoryAction({ memoryId: item.memoryId })}
-      onResolve={() => saveSuggestedMemoryAction({ memoryId: item.memoryId })}
+      onDismiss={async () =>
+        unwrapOwnerActionResult(await dismissSuggestedMemoryAction({ memoryId: item.memoryId }))
+      }
+      onResolve={async () =>
+        unwrapOwnerActionResult(await saveSuggestedMemoryAction({ memoryId: item.memoryId }))
+      }
       personHref={item.personId ? `/people/${item.personId}#needs-review` : null}
       personName={personName}
     />

@@ -3,6 +3,45 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
+ * The one list reconciliation policy for cached server trees and local
+ * acknowledgements: add genuinely new rows, replace only with a newer revision,
+ * and preserve local order and locally removed rows.
+ */
+export function reconcileRevisionedItems<T>(
+  current: T[],
+  incoming: T[],
+  getId: (item: T) => string,
+  getRevision?: (item: T) => string | undefined,
+  canAdd: (item: T) => boolean = () => true,
+): T[] {
+  const next = [...current];
+  const indexById = new Map(next.map((item, index) => [getId(item), index]));
+  let changed = false;
+
+  for (const item of incoming) {
+    const id = getId(item);
+    const existingIndex = indexById.get(id);
+    if (existingIndex === undefined) {
+      if (!canAdd(item)) continue;
+      indexById.set(id, next.length);
+      next.push(item);
+      changed = true;
+      continue;
+    }
+    if (!getRevision) continue;
+    const existing = next[existingIndex];
+    const currentRevision = existing ? getRevision(existing) : undefined;
+    const incomingRevision = getRevision(item);
+    if (incomingRevision && (!currentRevision || incomingRevision > currentRevision)) {
+      next[existingIndex] = item;
+      changed = true;
+    }
+  }
+
+  return changed ? next : current;
+}
+
+/**
  * A locally-editable list that also absorbs items the server adds out of band —
  * the instant-feedback primitive for cross-component updates.
  *
@@ -24,6 +63,7 @@ export function useServerSyncedList<T>(
   getId: (item: T) => string,
   sort?: (items: T[]) => T[],
   getRevision?: (item: T) => string | undefined,
+  shouldAcceptServerItem: (item: T) => boolean = () => true,
 ): [T[], React.Dispatch<React.SetStateAction<T[]>>] {
   const [items, setItems] = useState(serverItems);
 
@@ -36,40 +76,25 @@ export function useServerSyncedList<T>(
   sortRef.current = sort;
   const getRevisionRef = useRef(getRevision);
   getRevisionRef.current = getRevision;
+  const shouldAcceptServerItemRef = useRef(shouldAcceptServerItem);
+  shouldAcceptServerItemRef.current = shouldAcceptServerItem;
 
   useEffect(() => {
     const id = getIdRef.current;
-    const additions = serverItems.filter((item) => !seenIds.current.has(id(item)));
+    const acceptedServerItems = serverItems.filter(shouldAcceptServerItemRef.current);
+    const additions = acceptedServerItems.filter((item) => !seenIds.current.has(id(item)));
 
     for (const item of serverItems) {
       seenIds.current.add(id(item));
     }
 
     setItems((current) => {
-      const currentIds = new Set(current.map(id));
-      const fresh = additions.filter((item) => !currentIds.has(id(item)));
       const revision = getRevisionRef.current;
-      const replacements = revision
-        ? serverItems.filter((item) => {
-            const existing = current.find((candidate) => id(candidate) === id(item));
-            const currentRevision = existing ? revision(existing) : undefined;
-            const incomingRevision = revision(item);
-            return Boolean(
-              existing &&
-                incomingRevision &&
-                (!currentRevision || incomingRevision > currentRevision),
-            );
-          })
-        : [];
-
-      if (fresh.length === 0 && replacements.length === 0) {
-        return current;
-      }
-
-      const replacementById = new Map(replacements.map((item) => [id(item), item]));
-      const next = [...current.map((item) => replacementById.get(id(item)) ?? item), ...fresh];
-
-      return sortRef.current ? sortRef.current(next) : next;
+      const additionIds = new Set(additions.map(id));
+      const next = reconcileRevisionedItems(current, acceptedServerItems, id, revision, (item) =>
+        additionIds.has(id(item)),
+      );
+      return next === current || !sortRef.current ? next : sortRef.current(next);
     });
   }, [serverItems]);
 

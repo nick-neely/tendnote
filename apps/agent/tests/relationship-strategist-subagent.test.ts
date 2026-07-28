@@ -135,20 +135,23 @@ describe("Relationship Strategist subagent", () => {
 
   it("executes grounded Suggested Follow-Up creation through the review-gated shared path", async () => {
     suggestFollowup.mockResolvedValue({
-      component: {
-        type: "suggested_followup",
-        followupId: FOLLOWUP_ID,
-        sourceRecordId: SOURCE_RECORD_ID,
+      affectedScopes: [],
+      result: {
+        component: {
+          type: "suggested_followup",
+          followupId: FOLLOWUP_ID,
+          sourceRecordId: SOURCE_RECORD_ID,
+        },
+        person: { id: PERSON_ID, displayName: "Alex" },
+        followup: {
+          id: FOLLOWUP_ID,
+          personId: PERSON_ID,
+          reason: "Check in about the job search.",
+          dueAt: new Date("2026-07-06T00:00:00.000Z"),
+          status: "suggested",
+        },
+        sourceRecord: { id: SOURCE_RECORD_ID },
       },
-      person: { id: PERSON_ID, displayName: "Alex" },
-      followup: {
-        id: FOLLOWUP_ID,
-        personId: PERSON_ID,
-        reason: "Check in about the job search.",
-        dueAt: new Date("2026-07-06T00:00:00.000Z"),
-        status: "suggested",
-      },
-      sourceRecord: { id: SOURCE_RECORD_ID },
     });
     const { default: proposalTool } = await import(
       "../agent/subagents/relationship_strategist/tools/propose_followup"

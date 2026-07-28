@@ -5,7 +5,10 @@ import {
   promoteGeneralActionAssetHint,
 } from "@tendnote/db/queries/assets";
 import { listGeneralActionAreas } from "@tendnote/db/queries/general-action-areas";
-import type { GeneralActionWithContext } from "@tendnote/db/queries/general-actions";
+import type {
+  GeneralActionWithContext,
+  MutationOutcome,
+} from "@tendnote/db/queries/general-actions";
 import {
   archiveGeneralAction,
   completeGeneralAction,
@@ -31,22 +34,16 @@ import { searchPeople } from "@tendnote/db/queries/people";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
 import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
 import { getCachedActionLedgerViews } from "@/lib/cache/action-views";
-import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
 import { parseDateInputValue } from "@/lib/followup-view";
-import { runActionsMutation } from "@/lib/general-action-mutation";
 import {
-  type GeneralActionEventView,
   type GeneralActionMutationResult,
   toGeneralActionEventView,
   toGeneralActionLinkedAssetView,
   toGeneralActionView,
 } from "@/lib/general-action-view";
-import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
+import { runOwnerAction } from "@/lib/owner-action";
 import { toSuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 
 const actionIdSchema = z.object({ generalActionId: z.uuid() });
@@ -85,16 +82,18 @@ const createActionSchema = z.object({
 
 const editActionSchema = z.object({
   generalActionId: z.uuid(),
-  title: z.string().trim().min(1).max(280).optional(),
-  // `null` clears the field; `undefined` leaves it untouched.
-  notes: z.string().trim().min(1).max(2000).nullable().optional(),
-  dueAt: dateInputSchema.nullable().optional(),
-  // `null` makes a Routine one-time again; an object sets/changes cadence (ADR 0148).
-  recurrence: generalActionRecurrenceSchema.nullable().optional(),
-  links: linksSchema.optional(),
-  assetHints: assetHintsSchema.optional(),
-  // `null` unfiles the Action; `undefined` leaves its Area untouched.
-  areaId: z.uuid().nullable().optional(),
+  edit: z.object({
+    title: z.string().trim().min(1).max(280).optional(),
+    // `null` clears the field; `undefined` leaves it untouched.
+    notes: z.string().trim().min(1).max(2000).nullable().optional(),
+    dueAt: dateInputSchema.nullable().optional(),
+    // `null` makes a Routine one-time again; an object sets/changes cadence (ADR 0148).
+    recurrence: generalActionRecurrenceSchema.nullable().optional(),
+    links: linksSchema.optional(),
+    assetHints: assetHintsSchema.optional(),
+    // `null` unfiles the Action; `undefined` leaves its Area untouched.
+    areaId: z.uuid().nullable().optional(),
+  }),
 });
 
 const deferActionSchema = z.object({
@@ -118,44 +117,38 @@ const peopleActionSchema = z.object({
   generalActionId: z.uuid(),
   personIds: personIdsSchema,
 });
+const noInputSchema = z.undefined();
 
-/**
- * Runs an Action mutation and maps the result to a view for the acting caller, so
- * `owned` reflects whoever is viewing. The refreshed view re-hydrates the action's
- * linked Assets (#199) so a mutation never quietly drops the asset chips from the
- * row it returns. Thin wrapper over the shared runner so the Action and Area
- * server actions share one result-union path.
- */
-function runMutation(
+/** Maps a persisted Action outcome to the authoritative view for its acting owner. */
+async function toAuthoritativeActionView(
   callerUserId: string,
-  run: () => Promise<Parameters<typeof toGeneralActionView>[0]>,
-): Promise<GeneralActionMutationResult> {
-  return runActionsMutation(
-    async () => {
-      const action = await run();
-      // A direct Action write must synchronously expire every owner-scoped
-      // projection before its authoritative view crosses back to the client.
-      // This prevents a cached Today/linked-Asset/RSC response from reviving an
-      // older lifecycle state after the local reconciliation has acknowledged it.
-      invalidateActionMutation({ ownerUserId: callerUserId, actionId: action.id });
-      const [linkedByAction, reminderSchedules] = await Promise.all([
-        listLinkedAssetsForGeneralActions({
-          callerUserId,
-          generalActionIds: [action.id],
-        }),
-        listReminderSchedulesForOwner({ ownerUserId: callerUserId }),
-      ]);
-      const linkedAssets = (linkedByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView);
-      return {
-        action,
-        linkedAssets,
-        reminderSchedule:
-          reminderSchedules.find((schedule) => schedule.generalActionId === action.id) ?? null,
-      };
-    },
-    ({ action, linkedAssets, reminderSchedule }) =>
-      toGeneralActionView(action, { callerUserId, linkedAssets, reminderSchedule }),
-  );
+  action: Parameters<typeof toGeneralActionView>[0],
+) {
+  const hydrated = await hydrateAuthoritativeActionView(callerUserId, action);
+  return toGeneralActionView(hydrated.action, {
+    callerUserId,
+    linkedAssets: hydrated.linkedAssets,
+    reminderSchedule: hydrated.reminderSchedule,
+  });
+}
+
+async function hydrateAuthoritativeActionView(
+  callerUserId: string,
+  action: Parameters<typeof toGeneralActionView>[0],
+) {
+  const [linkedByAction, reminderSchedules] = await Promise.all([
+    listLinkedAssetsForGeneralActions({
+      callerUserId,
+      generalActionIds: [action.id],
+    }),
+    listReminderSchedulesForOwner({ ownerUserId: callerUserId }),
+  ]);
+  return {
+    action,
+    linkedAssets: (linkedByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView),
+    reminderSchedule:
+      reminderSchedules.find((schedule) => schedule.generalActionId === action.id) ?? null,
+  };
 }
 
 export async function createGeneralActionAction(input: {
@@ -170,27 +163,31 @@ export async function createGeneralActionAction(input: {
   visibilityChoice?: z.infer<typeof visibilityChoiceSchema>;
   selectedUserIds?: string[];
 }): Promise<GeneralActionMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, async () => {
-    const parsed = createActionSchema.parse(input);
-    const { scope, householdId } = await resolveScopeForCaller(
-      ownerUserId,
-      parsed.visibilityChoice,
-    );
-    return createGeneralAction({
-      ownerUserId,
-      title: parsed.title,
-      notes: parsed.notes,
-      dueAt: parsed.dueAt,
-      recurrence: parsed.recurrence,
-      links: parsed.links,
-      assetHints: parsed.assetHints,
-      personIds: parsed.personIds,
-      areaId: parsed.areaId,
-      scope,
-      householdId,
-      selectedUserIds: parsed.selectedUserIds,
-    });
+  return runOwnerAction({
+    schema: createActionSchema,
+    input,
+    visibilityChoice: (parsed) => parsed.visibilityChoice,
+    body: async ({ ownerUserId, input: parsed, resolvedScope }) => {
+      if (!resolvedScope) {
+        throw new Error("Owner action visibility scope was not resolved.");
+      }
+      return createGeneralAction({
+        ownerUserId,
+        title: parsed.title,
+        notes: parsed.notes,
+        dueAt: parsed.dueAt,
+        recurrence: parsed.recurrence,
+        links: parsed.links,
+        assetHints: parsed.assetHints,
+        personIds: parsed.personIds,
+        areaId: parsed.areaId,
+        scope: resolvedScope.scope,
+        householdId: resolvedScope.householdId,
+        selectedUserIds: parsed.selectedUserIds,
+      });
+    },
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
   });
 }
 
@@ -206,25 +203,25 @@ export async function editGeneralActionAction(input: {
     areaId?: string | null;
   };
 }): Promise<GeneralActionMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, async () => {
-    const parsed = editActionSchema.parse({
-      generalActionId: input.generalActionId,
-      ...input.edit,
-    });
-    return editGeneralAction({
-      actorUserId: ownerUserId,
-      generalActionId: parsed.generalActionId,
-      edit: {
-        ...(parsed.title !== undefined ? { title: parsed.title } : {}),
-        ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
-        ...(parsed.dueAt !== undefined ? { dueAt: parsed.dueAt } : {}),
-        ...(parsed.recurrence !== undefined ? { recurrence: parsed.recurrence } : {}),
-        ...(parsed.links !== undefined ? { links: parsed.links } : {}),
-        ...(parsed.assetHints !== undefined ? { assetHints: parsed.assetHints } : {}),
-        ...(parsed.areaId !== undefined ? { areaId: parsed.areaId } : {}),
-      },
-    });
+  return runOwnerAction({
+    schema: editActionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      editGeneralAction({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+        edit: {
+          ...(parsed.edit.title !== undefined ? { title: parsed.edit.title } : {}),
+          ...(parsed.edit.notes !== undefined ? { notes: parsed.edit.notes } : {}),
+          ...(parsed.edit.dueAt !== undefined ? { dueAt: parsed.edit.dueAt } : {}),
+          ...(parsed.edit.recurrence !== undefined ? { recurrence: parsed.edit.recurrence } : {}),
+          ...(parsed.edit.links !== undefined ? { links: parsed.edit.links } : {}),
+          ...(parsed.edit.assetHints !== undefined ? { assetHints: parsed.edit.assetHints } : {}),
+          ...(parsed.edit.areaId !== undefined ? { areaId: parsed.edit.areaId } : {}),
+        },
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
   });
 }
 
@@ -238,17 +235,25 @@ export async function promoteAssetHintAction(input: {
   generalActionId: string;
   hintLabel: string;
 }): Promise<GeneralActionMutationResult> {
-  const parsed = z
-    .object({ generalActionId: z.uuid(), hintLabel: z.string().trim().min(1).max(120) })
-    .parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, async () => {
-    await promoteGeneralActionAssetHint({ actorUserId: ownerUserId, ...parsed });
-    // The proposal lands in the shared Review Queue and (once accepted) on the
-    // Assets surface — re-render both alongside the Actions page.
-    invalidateReviewOwner(ownerUserId);
-    revalidatePath("/assets");
-    return getGeneralAction({ actorUserId: ownerUserId, generalActionId: parsed.generalActionId });
+  return runOwnerAction({
+    schema: z.object({
+      generalActionId: z.uuid(),
+      hintLabel: z.string().trim().min(1).max(120),
+    }),
+    input,
+    body: async ({ ownerUserId, input: parsed }) => {
+      const promotion = await promoteGeneralActionAssetHint({
+        actorUserId: ownerUserId,
+        ...parsed,
+      });
+      const action = await getGeneralAction({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+      });
+      return { promotion, action };
+    },
+    affectedScopes: (outcome) => outcome.promotion.affectedScopes,
+    result: (outcome) => toAuthoritativeActionView(outcome.action.ownerUserId, outcome.action),
   });
 }
 
@@ -258,20 +263,24 @@ export async function setGeneralActionVisibilityAction(input: {
   visibilityChoice: z.infer<typeof visibilityChoiceSchema>;
   selectedUserIds?: string[];
 }): Promise<GeneralActionMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, async () => {
-    const parsed = visibilityActionSchema.parse(input);
-    const { scope, householdId } = await resolveScopeForCaller(
-      ownerUserId,
-      parsed.visibilityChoice,
-    );
-    return setGeneralActionVisibility({
-      actorUserId: ownerUserId,
-      generalActionId: parsed.generalActionId,
-      scope,
-      householdId,
-      selectedUserIds: parsed.selectedUserIds,
-    });
+  return runOwnerAction({
+    schema: visibilityActionSchema,
+    input,
+    visibilityChoice: (parsed) => parsed.visibilityChoice,
+    body: ({ ownerUserId, input: parsed, resolvedScope }) => {
+      if (!resolvedScope) {
+        throw new Error("Owner action visibility scope was not resolved.");
+      }
+      return setGeneralActionVisibility({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+        scope: resolvedScope.scope,
+        householdId: resolvedScope.householdId,
+        selectedUserIds: parsed.selectedUserIds,
+      });
+    },
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
   });
 }
 
@@ -280,91 +289,98 @@ export async function setGeneralActionPeopleAction(input: {
   generalActionId: string;
   personIds: string[];
 }): Promise<GeneralActionMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, async () => {
-    const parsed = peopleActionSchema.parse(input);
-    return setGeneralActionPeople({
-      actorUserId: ownerUserId,
-      generalActionId: parsed.generalActionId,
-      personIds: parsed.personIds,
-    });
+  return runOwnerAction({
+    schema: peopleActionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      setGeneralActionPeople({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+        personIds: parsed.personIds,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
   });
 }
 
 function transitionAction(
-  generalActionId: string,
+  input: unknown,
   run: (input: {
     actorUserId: string;
     generalActionId: string;
-  }) => Promise<GeneralActionWithContext>,
+  }) => Promise<MutationOutcome<GeneralActionWithContext>>,
 ): Promise<GeneralActionMutationResult> {
-  return (async () => {
-    const ownerUserId = await requireAdmittedOwnerForAction();
-    return runMutation(ownerUserId, () => {
-      const parsed = actionIdSchema.parse({ generalActionId });
-      return run({ actorUserId: ownerUserId, generalActionId: parsed.generalActionId });
-    });
-  })();
+  return runOwnerAction({
+    schema: actionIdSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      run({ actorUserId: ownerUserId, generalActionId: parsed.generalActionId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
+  });
 }
 
 export async function completeGeneralActionAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
-  return transitionAction(input.generalActionId, completeGeneralAction);
+  return transitionAction(input, completeGeneralAction);
 }
 
 export async function skipGeneralActionOccurrenceAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
-  return transitionAction(input.generalActionId, skipGeneralActionOccurrence);
+  return transitionAction(input, skipGeneralActionOccurrence);
 }
 
 export async function dismissGeneralActionAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
-  return transitionAction(input.generalActionId, dismissGeneralAction);
+  return transitionAction(input, dismissGeneralAction);
 }
 
 export async function reopenGeneralActionAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
-  return transitionAction(input.generalActionId, reopenGeneralAction);
+  return transitionAction(input, reopenGeneralAction);
 }
 
 export async function restoreGeneralActionAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
-  return transitionAction(input.generalActionId, restoreGeneralAction);
+  return transitionAction(input, restoreGeneralAction);
 }
 
 export async function archiveGeneralActionAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
-  return transitionAction(input.generalActionId, archiveGeneralAction);
+  return transitionAction(input, archiveGeneralAction);
 }
 
 /** Pauses a Routine (recurring Action). Routine-only downstream (ADR 0148). */
 export async function pauseGeneralActionAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
-  return transitionAction(input.generalActionId, pauseGeneralAction);
+  return transitionAction(input, pauseGeneralAction);
 }
 
 /** Resumes a paused Routine back to active. */
 export async function resumeGeneralActionAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
-  return transitionAction(input.generalActionId, resumeGeneralAction);
+  return transitionAction(input, resumeGeneralAction);
 }
 
 export async function deferGeneralActionAction(input: {
   generalActionId: string;
   deferUntil: string;
 }): Promise<GeneralActionMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, () => {
-    const parsed = deferActionSchema.parse(input);
-    return deferGeneralAction({ actorUserId: ownerUserId, ...parsed });
+  return runOwnerAction({
+    schema: deferActionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      deferGeneralAction({ actorUserId: ownerUserId, ...parsed }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
   });
 }
 
@@ -372,7 +388,7 @@ export async function deferGeneralActionAction(input: {
 export async function undeferGeneralActionAction(input: {
   generalActionId: string;
 }): Promise<GeneralActionMutationResult> {
-  return transitionAction(input.generalActionId, undeferGeneralAction);
+  return transitionAction(input, undeferGeneralAction);
 }
 
 export async function undoRoutineOccurrenceAction(input: {
@@ -380,71 +396,96 @@ export async function undoRoutineOccurrenceAction(input: {
   generalActionId: string;
   restoreDueAt: string;
 }): Promise<GeneralActionMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, () => {
-    const parsed = undoRoutineOccurrenceSchema.parse(input);
-    return undoRoutineOccurrence({
-      actorUserId: ownerUserId,
-      expectedDueAt: parsed.expectedDueAt,
-      generalActionId: parsed.generalActionId,
-      restoreDueAt: parsed.restoreDueAt,
-    });
+  return runOwnerAction({
+    schema: undoRoutineOccurrenceSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      undoRoutineOccurrence({
+        actorUserId: ownerUserId,
+        expectedDueAt: parsed.expectedDueAt,
+        generalActionId: parsed.generalActionId,
+        restoreDueAt: parsed.restoreDueAt,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
   });
 }
 
-export async function listGeneralActionHistoryAction(input: {
-  generalActionId: string;
-}): Promise<GeneralActionEventView[]> {
-  const parsed = actionIdSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const events = await listGeneralActionHistory({
-    actorUserId: ownerUserId,
-    generalActionId: parsed.generalActionId,
+export async function listGeneralActionHistoryAction(input: { generalActionId: string }) {
+  return runOwnerAction({
+    schema: actionIdSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      listGeneralActionHistory({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+      }),
+    result: (events) => events.map((event) => toGeneralActionEventView(event)),
   });
-
-  return events.map((event) => toGeneralActionEventView(event));
 }
 
 const secondaryLedgerInputSchema = z.object({ resolvedLimit: z.number().int().min(1).max(50) });
 
 /** Paused and resolved panes load only when their shared disclosure opens. */
 export async function getActionSecondaryLedgerViewsAction(input: { resolvedLimit: number }) {
-  const { resolvedLimit } = secondaryLedgerInputSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const now = new Date();
-  const ledger = await getCachedActionLedgerViews({ ownerUserId, now, resolvedLimit });
-  return { paused: ledger.paused, resolved: ledger.resolved };
+  return runOwnerAction({
+    schema: secondaryLedgerInputSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      getCachedActionLedgerViews({
+        ownerUserId,
+        now: new Date(),
+        resolvedLimit: parsed.resolvedLimit,
+      }),
+    result: (ledger) => ({ paused: ledger.paused, resolved: ledger.resolved }),
+  });
 }
 
 /** People and household choices load only when creating or editing rich Action details. */
 export async function getActionComposerOptionsAction() {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const [shareableMembers, people] = await Promise.all([
-    listShareableHouseholdMembersForUser({ userId: ownerUserId }),
-    searchPeople({ ownerUserId, limit: 100 }),
-  ]);
-  return {
-    people: people.map((person) => ({ id: person.id, displayName: person.displayName })),
-    shareableMembers: shareableMembers.map((member) => ({
-      userId: member.userId,
-      name: member.name,
-      email: member.email,
-    })),
-  };
+  return runOwnerAction({
+    schema: noInputSchema,
+    input: undefined,
+    body: async ({ ownerUserId }) =>
+      Promise.all([
+        listShareableHouseholdMembersForUser({ userId: ownerUserId }),
+        searchPeople({ ownerUserId, limit: 100 }),
+      ]),
+    result: ([shareableMembers, people]) => ({
+      people: people.map((person) => ({ id: person.id, displayName: person.displayName })),
+      shareableMembers: shareableMembers.map((member) => ({
+        userId: member.userId,
+        name: member.name,
+        email: member.email,
+      })),
+    }),
+  });
 }
 
 /** Suggested Actions are a separate review pane and fail independently of the ledger. */
 export async function getSuggestedActionViewsAction() {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const now = new Date();
-  const [suggested, areas] = await Promise.all([
-    listSuggestedGeneralActionReviews({ ownerUserId }),
-    listGeneralActionAreas({ ownerUserId, includeArchived: true }),
-  ]);
-  const areaNameById = new Map(areas.map((area) => [area.id, area.name]));
-  return {
-    suggested: suggested.map((review) =>
-      toSuggestedGeneralActionReviewView(review, { now, callerUserId: ownerUserId, areaNameById }),
-    ),
-  };
+  return runOwnerAction({
+    schema: noInputSchema,
+    input: undefined,
+    body: async ({ ownerUserId }) => ({
+      ownerUserId,
+      now: new Date(),
+      results: await Promise.all([
+        listSuggestedGeneralActionReviews({ ownerUserId }),
+        listGeneralActionAreas({ ownerUserId, includeArchived: true }),
+      ]),
+    }),
+    result: ({ ownerUserId, now, results: [suggested, areas] }) => {
+      const areaNameById = new Map(areas.map((area) => [area.id, area.name]));
+      return {
+        suggested: suggested.map((review) =>
+          toSuggestedGeneralActionReviewView(review, {
+            now,
+            callerUserId: ownerUserId,
+            areaNameById,
+          }),
+        ),
+      };
+    },
+  });
 }

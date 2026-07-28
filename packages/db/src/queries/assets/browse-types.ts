@@ -1,4 +1,10 @@
-import type { Asset, AssetKind, AssetStatus, PrivacyScope } from "@tendnote/domain";
+import type {
+  Asset,
+  AssetKind,
+  AssetStatus,
+  GeneralActionStatus,
+  PrivacyScope,
+} from "@tendnote/domain";
 
 export type AssetDueFilter = "with_due_action" | "without_due_action";
 export type AssetReviewFilter = "needs_review" | "ready";
@@ -15,7 +21,11 @@ export type AssetBrowseFilters = {
 export type AssetBrowseRow = {
   asset: Asset;
   needsReview: boolean;
-  nextDueActionAt: Date | null;
+  nextDueAction: {
+    status: Extract<GeneralActionStatus, "open" | "deferred">;
+    dueAt: Date;
+    deferUntil: Date | null;
+  } | null;
 };
 
 export type ListAssetBrowseRowsInput = AssetBrowseFilters & {

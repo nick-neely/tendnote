@@ -16,6 +16,7 @@ import { ActionScopeChip } from "@/components/general-action-shared";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { ChevronRightIcon } from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { RecordTimingChip } from "@/components/record-timing-chip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AssetBrowseRunner, AssetView } from "@/lib/asset-view";
@@ -212,10 +213,8 @@ function AssetRow({ asset }: { asset: AssetView }) {
               Needs review
             </Badge>
           ) : null}
-          {asset.nextDueActionLabel ? (
-            <span className="text-[length:var(--text-caption)] text-muted-foreground">
-              {asset.nextDueActionLabel}
-            </span>
+          {asset.nextDueActionLabel && asset.nextDueActionState ? (
+            <RecordTimingChip label={asset.nextDueActionLabel} state={asset.nextDueActionState} />
           ) : null}
           <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
             {asset.addedLabel}

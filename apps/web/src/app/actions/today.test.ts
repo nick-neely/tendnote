@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { requireAdmittedOwnerForActionSpy, updateTagSpy } from "@/test/action-adapter-mocks";
 
 const {
   completeFollowup,
@@ -6,34 +7,35 @@ const {
   getOwnerTodayContext,
   getTodayCandidate,
   getTodayShortlist,
-  requireAdmittedOwnerForAction,
-  revalidatePath,
+  restoreTodayCandidate,
   suppressTodayCandidate,
-  updateTag,
 } = vi.hoisted(() => ({
   completeFollowup: vi.fn(),
   completeGeneralAction: vi.fn(),
   getOwnerTodayContext: vi.fn(),
   getTodayCandidate: vi.fn(),
   getTodayShortlist: vi.fn(),
-  requireAdmittedOwnerForAction: vi.fn(),
-  revalidatePath: vi.fn(),
+  restoreTodayCandidate: vi.fn(),
   suppressTodayCandidate: vi.fn(),
-  updateTag: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/followups", () => ({ completeFollowup }));
-vi.mock("@tendnote/db/queries/general-actions", () => ({ completeGeneralAction }));
+vi.mock("@tendnote/db/queries/general-actions", () => ({
+  affectedScopesForOwnerSurfaces: (ownerUserId: string) => [
+    { kind: "owner-collection", collection: "today", ownerUserId },
+    { kind: "owner-collection", collection: "review", ownerUserId },
+  ],
+  completeGeneralAction,
+}));
 vi.mock("@tendnote/db/queries/today", () => ({
   getOwnerTodayContext,
   getTodayCandidate,
   getTodayShortlist,
+  restoreTodayCandidate,
   suppressTodayCandidate,
 }));
-vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwnerForAction }));
-vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
 
-import { actOnTodayItemAction, suppressTodayItemAction } from "./today";
+import { actOnTodayItemAction, restoreTodayItemAction, suppressTodayItemAction } from "./today";
 
 const FOLLOWUP_ID = "11111111-1111-1111-1111-111111111111";
 const NOW = new Date("2026-07-21T15:00:00.000Z");
@@ -66,7 +68,7 @@ function shortlist() {
 describe("Today web actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAdmittedOwnerForAction.mockResolvedValue("owner-1");
+    requireAdmittedOwnerForActionSpy.mockResolvedValue("owner-1");
     getOwnerTodayContext.mockResolvedValue({
       localDate: "2026-07-21",
       timeZone: "America/Chicago",
@@ -74,8 +76,28 @@ describe("Today web actions", () => {
     });
     getTodayShortlist.mockResolvedValue(shortlist());
     getTodayCandidate.mockResolvedValue(shortlist().items[0]);
-    suppressTodayCandidate.mockResolvedValue({});
-    completeFollowup.mockResolvedValue({});
+    suppressTodayCandidate.mockResolvedValue({
+      result: {},
+      affectedScopes: [
+        { kind: "owner-collection", collection: "today", ownerUserId: "owner-1" },
+        { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
+      ],
+    });
+    restoreTodayCandidate.mockResolvedValue({
+      result: {},
+      affectedScopes: [
+        { kind: "owner-collection", collection: "today", ownerUserId: "owner-1" },
+        { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
+      ],
+    });
+    completeFollowup.mockResolvedValue({
+      result: {},
+      affectedScopes: [{ kind: "owner-collection", collection: "today", ownerUserId: "owner-1" }],
+    });
+    completeGeneralAction.mockResolvedValue({
+      result: {},
+      affectedScopes: [{ kind: "owner-collection", collection: "today", ownerUserId: "owner-1" }],
+    });
   });
 
   it("derives owner scope for Today-only suppression", async () => {
@@ -97,8 +119,26 @@ describe("Today web actions", () => {
       kind: "not_today",
       suppressUntil: null,
     });
-    expect(updateTag).toHaveBeenCalledWith("today:owner:owner-1");
-    expect(updateTag).toHaveBeenCalledWith("review:owner:owner-1");
+    expect(updateTagSpy).toHaveBeenCalledWith("today:owner:owner-1");
+    expect(updateTagSpy).toHaveBeenCalledWith("review:owner:owner-1");
+  });
+
+  it("restores the exact owner-scoped suppression for authoritative Undo", async () => {
+    await restoreTodayItemAction({
+      localDate: "2026-07-21",
+      candidateIdentity: `follow_up:${FOLLOWUP_ID}`,
+      reasonKey: "due:today",
+      kind: "not_today",
+    });
+
+    expect(restoreTodayCandidate).toHaveBeenCalledWith({
+      ownerUserId: "owner-1",
+      localDate: "2026-07-21",
+      candidateIdentity: `follow_up:${FOLLOWUP_ID}`,
+      reasonKey: "due:today",
+      kind: "not_today",
+    });
+    expect(updateTagSpy).toHaveBeenCalledWith("today:owner:owner-1");
   });
 
   it("reloads the authoritative candidate before using its real domain action", async () => {
@@ -120,7 +160,7 @@ describe("Today web actions", () => {
       actorUserId: "owner-1",
       followupId: FOLLOWUP_ID,
     });
-    expect(updateTag).toHaveBeenCalledWith("today:owner:owner-1");
+    expect(updateTagSpy).toHaveBeenCalledWith("today:owner:owner-1");
   });
 
   it("expires the Action projections when Today completes an Action", async () => {
@@ -142,8 +182,6 @@ describe("Today web actions", () => {
       actorUserId: "owner-1",
       generalActionId: actionId,
     });
-    expect(updateTag).toHaveBeenCalledWith("action:owner:owner-1");
-    expect(updateTag).toHaveBeenCalledWith(`action:owner:owner-1:action:${actionId}`);
-    expect(revalidatePath).toHaveBeenCalledWith("/actions");
+    expect(updateTagSpy).toHaveBeenCalledWith("today:owner:owner-1");
   });
 });

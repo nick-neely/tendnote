@@ -31,6 +31,12 @@ import type {
   SuggestAssetLinkInput,
 } from "./assets/link-types";
 import { createAssetContextLinks } from "./assets/links";
+import { createAffectedAssetLifecycle } from "./assets/mutation-lifecycle";
+import {
+  assetAndGeneralActionMutationOutcome,
+  assetIdsMutationOutcome,
+  reviewMutationOutcome,
+} from "./assets/mutation-outcomes";
 import { createAssetReview } from "./assets/review";
 import type {
   AcceptSuggestedAssetInput,
@@ -96,9 +102,11 @@ export type * from "./assets/types";
 // on the shared pipeline (#204) — the same trigger General Actions use.
 const scheduleAssetEmbedding = enqueueAndTriggerSemanticEmbeddingJob;
 
-const defaultAssetLifecycle = createAssetLifecycle(createDrizzleAssetLifecycleStore(), {
-  scheduleAssetEmbedding,
-});
+const defaultAssetLifecycle = createAffectedAssetLifecycle(
+  createAssetLifecycle(createDrizzleAssetLifecycleStore(), {
+    scheduleAssetEmbedding,
+  }),
+);
 const defaultAssetBrowser = createAssetBrowser(createDrizzleAssetBrowseStore());
 const defaultAssetReview = createAssetReview(createDrizzleAssetReviewLifecycleStore(), {
   scheduleAssetEmbedding,
@@ -183,15 +191,19 @@ export async function listAssetAudit(input: ListAssetAuditInput) {
 // --- Review-gated Asset Memory and duplicate review (#198) ---
 
 export async function suggestAsset(input: SuggestAssetInput) {
-  return defaultAssetReview.suggestAsset(input);
+  return reviewMutationOutcome(defaultAssetReview.suggestAsset(input));
 }
 
 export async function suggestAssetMemories(input: SuggestAssetMemoriesInput) {
-  return defaultAssetReview.suggestAssetMemories(input);
+  return reviewMutationOutcome(defaultAssetReview.suggestAssetMemories(input));
 }
 
 export async function createActiveAssetMemory(input: CreateActiveAssetMemoryInput) {
-  return defaultAssetReview.createActiveAssetMemory(input);
+  return assetIdsMutationOutcome(
+    defaultAssetReview.createActiveAssetMemory(input),
+    input.ownerUserId,
+    (result) => [result.assetId],
+  );
 }
 
 export async function listAssetReviewGroups(input: ListAssetReviewGroupsInput) {
@@ -215,45 +227,52 @@ export async function listAssetMemories(input: { callerUserId: string; assetId: 
 }
 
 export async function acceptSuggestedAsset(input: AcceptSuggestedAssetInput) {
-  return defaultAssetReview.acceptSuggestedAsset(input);
+  return reviewMutationOutcome(defaultAssetReview.acceptSuggestedAsset(input));
 }
 
 export async function editSuggestedAsset(input: EditSuggestedAssetInput) {
-  return defaultAssetReview.editSuggestedAsset(input);
+  return reviewMutationOutcome(defaultAssetReview.editSuggestedAsset(input));
 }
 
 export async function dismissSuggestedAsset(input: SuggestedAssetActionInput) {
-  return defaultAssetReview.dismissSuggestedAsset(input);
+  return reviewMutationOutcome(defaultAssetReview.dismissSuggestedAsset(input));
 }
 
 export async function acceptSuggestedAssetMemory(input: AcceptSuggestedAssetMemoryInput) {
-  return defaultAssetReview.acceptSuggestedAssetMemory(input);
+  return reviewMutationOutcome(defaultAssetReview.acceptSuggestedAssetMemory(input));
 }
 
 export async function editSuggestedAssetMemory(input: EditSuggestedAssetMemoryInput) {
-  return defaultAssetReview.editSuggestedAssetMemory(input);
+  return reviewMutationOutcome(defaultAssetReview.editSuggestedAssetMemory(input));
 }
 
 export async function dismissSuggestedAssetMemory(input: AssetMemoryActionInput) {
-  return defaultAssetReview.dismissSuggestedAssetMemory(input);
+  return reviewMutationOutcome(defaultAssetReview.dismissSuggestedAssetMemory(input));
 }
 
 export async function acceptAssetReviewGroup(input: AssetReviewGroupActionInput) {
-  return defaultAssetReview.acceptAssetReviewGroup(input);
+  return reviewMutationOutcome(defaultAssetReview.acceptAssetReviewGroup(input));
 }
 
 export async function dismissAssetReviewGroup(input: AssetReviewGroupActionInput) {
-  return defaultAssetReview.dismissAssetReviewGroup(input);
+  return reviewMutationOutcome(defaultAssetReview.dismissAssetReviewGroup(input));
 }
 
 export async function linkAssetReviewGroup(input: LinkAssetReviewGroupInput) {
-  return defaultAssetReview.linkAssetReviewGroup(input);
+  return reviewMutationOutcome(defaultAssetReview.linkAssetReviewGroup(input));
 }
 
 // --- General Action asset-hint promotion and action↔asset links (#199) ---
 
 export async function promoteGeneralActionAssetHint(input: PromoteGeneralActionAssetHintInput) {
-  return defaultAssetActionLinks.promoteGeneralActionAssetHint(input);
+  return assetAndGeneralActionMutationOutcome(
+    defaultAssetActionLinks.promoteGeneralActionAssetHint(input),
+    {
+      ownerUserId: input.actorUserId,
+      asset: (result) => (result.outcome === "pending_review" ? result.group.asset : result.asset),
+      generalActionIds: () => [input.generalActionId],
+    },
+  );
 }
 
 export async function listLinkedAssetsForGeneralActions(input: ListLinkedAssetsInput) {
@@ -265,7 +284,14 @@ export async function listLinkedAssetsForGeneralActions(input: ListLinkedAssetsI
  * Every proposal lands in review — this can never create an active action.
  */
 export async function proposeAssetMemoryActions(input: ProposeAssetMemoryActionsInput) {
-  return defaultAssetActionProposals.proposeAssetMemoryActions(input);
+  return assetAndGeneralActionMutationOutcome(
+    defaultAssetActionProposals.proposeAssetMemoryActions(input),
+    {
+      ownerUserId: input.actorUserId,
+      asset: (result) => result.asset,
+      generalActionIds: (result) => result.proposed.map((proposal) => proposal.action.id),
+    },
+  );
 }
 
 /** The owner's still-suggested asset-derived actions, for the Asset Profile (#203). */
@@ -287,11 +313,19 @@ export async function getPromotedFromGeneralAction(input: {
 // --- Shared Asset Evidence Capture (#200) ---
 
 export async function addAssetEvidence(input: AddAssetEvidenceInput) {
-  return defaultAssetReview.addAssetEvidence(input);
+  return assetIdsMutationOutcome(
+    defaultAssetReview.addAssetEvidence(input),
+    input.ownerUserId,
+    (result) => [result.assetId],
+  );
 }
 
 export async function addAssetEvidenceToNewAsset(input: AddAssetEvidenceToNewAssetInput) {
-  return defaultAssetReview.addAssetEvidenceToNewAsset(input);
+  return assetIdsMutationOutcome(
+    defaultAssetReview.addAssetEvidenceToNewAsset(input),
+    input.ownerUserId,
+    (result) => [result.evidence.assetId, result.group.asset.id],
+  );
 }
 
 export async function listAssetEvidenceCaptureTargets(input: { ownerUserId: string }) {
@@ -299,7 +333,11 @@ export async function listAssetEvidenceCaptureTargets(input: { ownerUserId: stri
 }
 
 export async function removeAssetEvidence(input: RemoveAssetEvidenceInput) {
-  return defaultAssetReview.removeAssetEvidence(input);
+  return assetIdsMutationOutcome(
+    defaultAssetReview.removeAssetEvidence(input),
+    input.actorUserId,
+    (result) => [result.assetId],
+  );
 }
 
 export async function listAssetEvidence(input: { callerUserId: string; assetId: string }) {
@@ -313,23 +351,43 @@ export async function getAssetEvidenceFile(input: { callerUserId: string; eviden
 // --- Related Asset Links, Asset Person Links, and Asset History (#202) ---
 
 export async function addAssetLink(input: AddAssetLinkInput) {
-  return defaultAssetContextLinks.addAssetLink(input);
+  return assetIdsMutationOutcome(
+    defaultAssetContextLinks.addAssetLink(input),
+    input.actorUserId,
+    (result) => [result.fromAssetId, result.toAssetId],
+  );
 }
 
 export async function suggestAssetLink(input: SuggestAssetLinkInput) {
-  return defaultAssetContextLinks.suggestAssetLink(input);
+  return assetIdsMutationOutcome(
+    defaultAssetContextLinks.suggestAssetLink(input),
+    input.ownerUserId,
+    (result) => [result.fromAssetId, result.toAssetId],
+  );
 }
 
 export async function acceptSuggestedAssetLink(input: AssetLinkActionInput) {
-  return defaultAssetContextLinks.acceptSuggestedAssetLink(input);
+  return assetIdsMutationOutcome(
+    defaultAssetContextLinks.acceptSuggestedAssetLink(input),
+    input.actorUserId,
+    (result) => [result.fromAssetId, result.toAssetId],
+  );
 }
 
 export async function dismissSuggestedAssetLink(input: AssetLinkActionInput) {
-  return defaultAssetContextLinks.dismissSuggestedAssetLink(input);
+  return assetIdsMutationOutcome(
+    defaultAssetContextLinks.dismissSuggestedAssetLink(input),
+    input.actorUserId,
+    (result) => [result.fromAssetId, result.toAssetId],
+  );
 }
 
 export async function removeAssetLink(input: AssetLinkActionInput) {
-  return defaultAssetContextLinks.removeAssetLink(input);
+  return assetIdsMutationOutcome(
+    defaultAssetContextLinks.removeAssetLink(input),
+    input.actorUserId,
+    (result) => [result.fromAssetId, result.toAssetId],
+  );
 }
 
 export async function listRelatedAssetLinks(input: ListAssetContextInput) {
@@ -337,11 +395,19 @@ export async function listRelatedAssetLinks(input: ListAssetContextInput) {
 }
 
 export async function addAssetPersonLink(input: AddAssetPersonLinkInput) {
-  return defaultAssetContextLinks.addAssetPersonLink(input);
+  return assetIdsMutationOutcome(
+    defaultAssetContextLinks.addAssetPersonLink(input),
+    input.actorUserId,
+    (result) => [result.assetId],
+  );
 }
 
 export async function removeAssetPersonLink(input: AssetLinkActionInput) {
-  return defaultAssetContextLinks.removeAssetPersonLink(input);
+  return assetIdsMutationOutcome(
+    defaultAssetContextLinks.removeAssetPersonLink(input),
+    input.actorUserId,
+    (result) => [result.assetId],
+  );
 }
 
 export async function listAssetPersonLinks(input: ListAssetContextInput) {

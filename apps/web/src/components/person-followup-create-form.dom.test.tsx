@@ -28,28 +28,34 @@ import { CreateFollowupForm } from "./person-followup-create-form";
 it("does not confirm a Follow-Up reminder whose selected alert time has passed", async () => {
   const user = userEvent.setup();
   createFollowupAction.mockResolvedValue({
-    id: "11111111-1111-4111-8111-111111111111",
-    reason: "Check in",
-    status: "open",
-    dueAtISO: "2026-07-21T00:00:00.000Z",
-    dueAtDate: "2026-07-21",
-    dueLabel: "Jul 21",
-    dueState: "upcoming",
-    visibilityChoice: "only_me",
-    visibilityLabel: "Only me",
+    ok: true,
+    view: {
+      id: "11111111-1111-4111-8111-111111111111",
+      reason: "Check in",
+      status: "open",
+      dueAtISO: "2026-07-21T00:00:00.000Z",
+      dueAtDate: "2026-07-21",
+      dueLabel: "Jul 21",
+      dueState: "upcoming",
+      visibilityChoice: "only_me",
+      visibilityLabel: "Only me",
+    },
   });
   saveReminderAction.mockResolvedValue({
-    optIn: { state: "none", clientInstallationId: "browser-installation-1" },
-    nextValidChoice: {
-      label: "At 9:00 AM on the due date",
-      choice: { kind: "relative", leadMinutes: 0 },
-    },
-    schedule: {
-      kind: "exact",
-      localTime: "09:00",
-      leadMinutes: null,
-      timeZone: "America/Chicago",
-      intendedAtISO: "2026-07-21T14:00:00.000Z",
+    ok: true,
+    view: {
+      optIn: { state: "none", clientInstallationId: "browser-installation-1" },
+      nextValidChoice: {
+        label: "At 9:00 AM on the due date",
+        choice: { kind: "relative", leadMinutes: 0 },
+      },
+      schedule: {
+        kind: "exact",
+        localTime: "09:00",
+        leadMinutes: null,
+        timeZone: "America/Chicago",
+        intendedAtISO: "2026-07-21T14:00:00.000Z",
+      },
     },
   });
   render(
@@ -67,5 +73,6 @@ it("does not confirm a Follow-Up reminder whose selected alert time has passed",
   await user.click(screen.getByRole("button", { name: "Add follow-up" }));
 
   expect(await screen.findByText(/alert time has passed/i)).toBeDefined();
+  expect(screen.getByRole("button", { name: /Use At 9:00 AM on the due date/i })).toBeDefined();
   expect(screen.queryByText(/Reminder at/i)).toBeNull();
 });

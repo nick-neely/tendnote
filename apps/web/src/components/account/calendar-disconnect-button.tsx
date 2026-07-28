@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { disconnectGoogleCalendarAction } from "@/app/actions/integrations";
 import { Button } from "@/components/ui/button";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
 /**
  * Disconnects Google Calendar (Phase 2C, ADR-0080). Calls the audited server
@@ -16,7 +17,7 @@ export function CalendarDisconnectButton({ label }: { label: string }) {
   function disconnect() {
     startTransition(async () => {
       try {
-        await disconnectGoogleCalendarAction();
+        unwrapOwnerActionResult(await disconnectGoogleCalendarAction());
       } catch {
         // The connection state is unchanged; the page reflects reality on reload.
       }

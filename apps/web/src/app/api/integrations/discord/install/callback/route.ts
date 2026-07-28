@@ -1,12 +1,10 @@
+import { affectedScopesForAccount } from "@tendnote/db/queries/general-actions";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { admittedOwnerOrNull } from "@/lib/access/current-access";
 import { getBetterAuthSecret } from "@/lib/auth/server";
 import { discordEnvFromProcess } from "@/lib/auth/social";
-import {
-  accountMutationScopes,
-  updateAccountMutationScopes,
-} from "@/lib/cache/account-mutation-scopes";
+import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 import { syncDiscordGuildCommands } from "@/lib/integrations/discord-commands";
 import {
   DISCORD_INSTALL_STATE_COOKIE,
@@ -77,7 +75,7 @@ async function recordInstall(
   // This callback owns a persisted install write, outside a Server Action. Make
   // the next Account request observe it through the same typed owner scope as
   // direct settings writes.
-  updateAccountMutationScopes(accountMutationScopes.forOwner(result.ownerUserId));
+  reconcileAffectedScopes(affectedScopesForAccount(result.ownerUserId), { origin: "background" });
   return registerCommandsForInstall(result.guildId);
 }
 

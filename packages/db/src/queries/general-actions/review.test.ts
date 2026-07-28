@@ -327,6 +327,30 @@ describe("edit, dismiss, and ignore a suggested general action", () => {
     expect(resolved.map((a) => a.id)).toEqual([result.action.id]);
   });
 
+  it("restores a just-dismissed proposal to review for authoritative Undo", async () => {
+    const { review, seedSuggested, historyKinds } = await setup();
+    const { result } = await seedSuggested();
+    await review.dismissSuggestedGeneralAction({
+      actorUserId: OWNER,
+      generalActionId: result.action.id,
+    });
+
+    const restored = await review.restoreDismissedSuggestedGeneralAction({
+      actorUserId: OWNER,
+      generalActionId: result.action.id,
+    });
+
+    expect(restored.action.status).toBe("suggested");
+    await expect(
+      review.listSuggestedGeneralActionReviews({ ownerUserId: OWNER }),
+    ).resolves.toHaveLength(1);
+    await expect(historyKinds(result.action.id)).resolves.toEqual([
+      "suggested",
+      "dismissed",
+      "reopened",
+    ]);
+  });
+
   it("reopens a dismissed proposal into a durable action as a late-acceptance recovery", async () => {
     const { review, lifecycle, seedSuggested, historyKinds } = await setup();
     const { result } = await seedSuggested();

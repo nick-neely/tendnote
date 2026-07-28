@@ -256,5 +256,42 @@ export function createSuggestedFollowupReview(store: FollowupLifecycleStore) {
 
       return updated;
     },
+
+    /** Restores a dismissed proposal to the tentative review state for Undo. */
+    async restoreDismissedSuggestedFollowup(
+      input: FollowupActionInput,
+    ): Promise<SuggestedFollowupReviewResult> {
+      const followup = await store.getFollowup({
+        ownerUserId: input.actorUserId,
+        followupId: input.followupId,
+      });
+      if (followup?.status !== "dismissed" || followup.sourceRecordId === null) {
+        throw new Error("Only dismissed suggested follow-ups can be restored to review.");
+      }
+      const audit = await store.listAuditLogEntries({ ownerUserId: followup.ownerUserId });
+      const dismissal = audit
+        .filter((entry) => entry.entityType === "followup" && entry.entityId === followup.id)
+        .at(-1);
+      if (dismissal?.action !== "followup.review_dismiss") {
+        throw new Error("Only dismissed suggested follow-ups can be restored to review.");
+      }
+      const updated = await store.updateFollowup({
+        ownerUserId: followup.ownerUserId,
+        followupId: followup.id,
+        patch: { status: "suggested" },
+      });
+      await store.createAuditLogEntry({
+        ownerUserId: updated.ownerUserId,
+        action: "followup.review_restore",
+        entityType: "followup",
+        entityId: updated.id,
+        metadataJson: {
+          personId: updated.personId,
+          sourceRecordId: updated.sourceRecordId,
+          previousStatus: followup.status,
+        },
+      });
+      return buildReviewResult(updated.ownerUserId, updated);
+    },
   };
 }

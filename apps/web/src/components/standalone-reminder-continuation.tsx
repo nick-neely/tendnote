@@ -2,26 +2,31 @@
 
 import { useEffect, useState } from "react";
 import { claimReminderStandaloneContinuationAction } from "@/app/actions/reminders";
-import { ReminderOptInInvitation } from "@/components/general-action-reminder";
-import {
-  getReminderInstallationId,
-  isStandaloneReminderContext,
-} from "@/lib/reminder-registration";
+import { useReminderInstallation } from "@/components/reminder-installation-context";
+import { ReminderOptInInvitation } from "@/components/reminder-opt-in-invitation";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
+import { isStandaloneReminderContext } from "@/lib/reminder-registration";
 
 export function StandaloneReminderContinuation() {
+  const installation = useReminderInstallation();
   const [clientInstallationId, setClientInstallationId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isStandaloneReminderContext() || !/iPad|iPhone|iPod/.test(navigator.userAgent)) return;
-    const installationId = getReminderInstallationId(window.localStorage);
+    if (
+      !installation ||
+      !isStandaloneReminderContext() ||
+      !/iPad|iPhone|iPod/.test(navigator.userAgent)
+    )
+      return;
+    const installationId = installation.clientInstallationId;
     claimReminderStandaloneContinuationAction({ clientInstallationId: installationId })
       .then((result) => {
-        if (result.claimed) {
+        if (unwrapOwnerActionResult(result).claimed) {
           setClientInstallationId(installationId);
         }
       })
       .catch(() => undefined);
-  }, []);
+  }, [installation]);
 
   if (!clientInstallationId) return null;
   return (

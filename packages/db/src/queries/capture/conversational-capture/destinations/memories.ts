@@ -9,7 +9,7 @@ export async function createMemoryDestination(
   if (!input.resolvedPerson || !input.deps.createApprovedMemory) {
     throw new Error("Memory capture is unavailable.");
   }
-  const memory = await input.deps.createApprovedMemory({
+  const outcome = await input.deps.createApprovedMemory({
     ownerUserId: input.ownerUserId,
     personId: input.resolvedPerson.id,
     content: input.route.content,
@@ -18,6 +18,7 @@ export async function createMemoryDestination(
     householdId: input.visibility.householdId,
     selectedUserIds: input.visibility.selectedUserIds,
   });
+  const memory = outcome.result;
   const confirmation = parseOutcomeConfirmation({
     destination: "Memories",
     groundedBySourceRecordId: input.sourceRecordId,
@@ -33,7 +34,13 @@ export async function createMemoryDestination(
     },
     undo: { kind: "archive_memory", memoryId: memory.id },
   });
-  return { kind: "memory" as const, memory, confirmation, id: memory.id };
+  return {
+    kind: "memory" as const,
+    memory,
+    confirmation,
+    id: memory.id,
+    affectedScopes: outcome.affectedScopes,
+  };
 }
 
 export async function createSuggestedMemoryReview(input: {
@@ -45,16 +52,18 @@ export async function createSuggestedMemoryReview(input: {
   if (!input.deps.createSuggestedMemory) {
     throw new Error("Suggested Memory capture is unavailable.");
   }
-  const memory = await input.deps.createSuggestedMemory({
+  const outcome = await input.deps.createSuggestedMemory({
     ownerUserId: input.ownerUserId,
     personId: input.suggestion.personId,
     content: input.suggestion.content,
     sourceRecordId: input.sourceRecordId,
   });
+  const memory = outcome.result;
   return {
     kind: "memory" as const,
     memory,
     id: memory.id,
+    affectedScopes: outcome.affectedScopes,
     confirmation: parseOutcomeConfirmation({
       destination: "Review",
       groundedBySourceRecordId: input.sourceRecordId,

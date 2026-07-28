@@ -11,7 +11,6 @@ import {
 } from "@tendnote/db/queries/contacts-import-preview";
 import { getPerson, searchPeople } from "@tendnote/db/queries/people";
 import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-connections";
-import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
 
 /**
@@ -24,8 +23,9 @@ import { googleEnvFromProcess, isGoogleConfigured } from "@/lib/auth/social";
  * path's limit) rather than the default per-bucket preview cap. No `query` is
  * passed — filtering happens in the table, not via a server round-trip.
  */
-export async function getOwnerContactImportPreview(): Promise<ContactImportPreviewSession> {
-  const ownerUserId = await requireAdmittedOwner();
+export async function getOwnerContactImportPreview(
+  ownerUserId: string,
+): Promise<ContactImportPreviewSession> {
   return createContactImportPreviewSession(
     { ownerUserId, limit: 200 },
     {

@@ -8,7 +8,6 @@ import {
   generateBriefAction,
   snoozeBriefItemAction,
 } from "@/app/actions/briefs";
-import { DueChip } from "@/components/followup-due-chip";
 import {
   CheckIcon,
   ClockIcon,
@@ -17,9 +16,12 @@ import {
   RefreshCwIcon,
   XIcon,
 } from "@/components/icons";
+import { RecordTimingChip } from "@/components/record-timing-chip";
 import { Button } from "@/components/ui/button";
 import { useCreateDraft } from "@/components/use-create-draft";
 import type { BriefItemView, BriefView } from "@/lib/brief-view";
+import { ownerActionFailureMessage, unwrapOwnerActionResult } from "@/lib/owner-action-result";
+import { REVERSIBLE_MUTATION_TRANSITION_MS } from "@/lib/reversible-mutation";
 
 const CADENCE_COPY = {
   daily: {
@@ -60,9 +62,9 @@ export function DashboardBriefSection({
     setError(null);
     startTransition(async () => {
       try {
-        await generateBriefAction({ cadence, regenerate: true });
-      } catch {
-        setError("Couldn't refresh the brief. Try again.");
+        unwrapOwnerActionResult(await generateBriefAction({ cadence, regenerate: true }));
+      } catch (error) {
+        setError(ownerActionFailureMessage(error) ?? "Couldn't refresh the brief. Try again.");
       }
     });
   }
@@ -71,9 +73,9 @@ export function DashboardBriefSection({
     setError(null);
     startTransition(async () => {
       try {
-        await generateBriefAction({ cadence });
-      } catch {
-        setError("Couldn't generate the brief. Try again.");
+        unwrapOwnerActionResult(await generateBriefAction({ cadence }));
+      } catch (error) {
+        setError(ownerActionFailureMessage(error) ?? "Couldn't generate the brief. Try again.");
       }
     });
   }
@@ -178,7 +180,7 @@ function BriefItemRow({
       try {
         await action();
         setLeaving(true);
-        window.setTimeout(() => onResolve(item.id), 200);
+        window.setTimeout(() => onResolve(item.id), REVERSIBLE_MUTATION_TRANSITION_MS);
       } catch {
         setError("That didn't go through. Try again.");
       }
@@ -201,9 +203,9 @@ function BriefItemRow({
         ) : (
           <span className="min-w-0 text-pretty text-sm font-medium">{item.title}</span>
         )}
-        {item.dueLabel && item.dueState ? (
+        {item.surfaceLabel && item.dueState ? (
           <span className="shrink-0">
-            <DueChip dueLabel={item.dueLabel} dueState={item.dueState} />
+            <RecordTimingChip label={item.surfaceLabel} state={item.dueState} />
           </span>
         ) : null}
       </div>
@@ -225,7 +227,11 @@ function BriefItemRow({
           <Button
             aria-label={labels.snooze}
             disabled={pending}
-            onClick={() => run(() => snoozeBriefItemAction({ briefItemId: item.id }))}
+            onClick={() =>
+              run(async () =>
+                unwrapOwnerActionResult(await snoozeBriefItemAction({ briefItemId: item.id })),
+              )
+            }
             size="sm"
             type="button"
             variant="ghost"
@@ -236,7 +242,11 @@ function BriefItemRow({
           <Button
             aria-label={labels.dismiss}
             disabled={pending}
-            onClick={() => run(() => dismissBriefItemAction({ briefItemId: item.id }))}
+            onClick={() =>
+              run(async () =>
+                unwrapOwnerActionResult(await dismissBriefItemAction({ briefItemId: item.id })),
+              )
+            }
             size="sm"
             type="button"
             variant="ghost"
@@ -266,7 +276,13 @@ function BriefItemRow({
             <Button
               aria-label={labels.accept}
               disabled={pending}
-              onClick={() => run(() => acceptBriefFollowupAction({ briefItemId: item.id }))}
+              onClick={() =>
+                run(async () =>
+                  unwrapOwnerActionResult(
+                    await acceptBriefFollowupAction({ briefItemId: item.id }),
+                  ),
+                )
+              }
               size="sm"
               type="button"
             >

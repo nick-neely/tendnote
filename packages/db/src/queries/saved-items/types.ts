@@ -7,6 +7,7 @@ import type {
   SavedItemEventKind,
   SavedItemOutcome,
 } from "@tendnote/domain";
+import type { MutationOutcome } from "../affected-scopes";
 import type { HouseholdStore } from "../households/types";
 import type { SourceRecordCaptureStore } from "../source-records/types";
 
@@ -162,5 +163,5 @@ export type SavedItemLifecycleDeps = {
     scope: PrivacyScope;
     householdId: string | null;
     selectedUserIds: string[];
-  }) => Promise<{ id: string }>;
+  }) => Promise<MutationOutcome<{ id: string }>>;
 };

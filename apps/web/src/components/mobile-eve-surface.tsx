@@ -4,8 +4,14 @@ import { useEffect, useState } from "react";
 import { loadMobileEveContextAction } from "@/app/actions/eve-context";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { MobileFailureState } from "@/components/mobile-failure-state";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
-type EveContext = Awaited<ReturnType<typeof loadMobileEveContextAction>>;
+type EveContext =
+  Awaited<ReturnType<typeof loadMobileEveContextAction>> extends infer TResult
+    ? TResult extends { ok: true; view: infer TView }
+      ? TView
+      : never
+    : never;
 
 /** Loads Eve's optional owner context only after the owner opens an Eve surface. */
 export function EveSurface({ ownerUserId }: { ownerUserId: string }) {
@@ -19,7 +25,7 @@ export function EveSurface({ ownerUserId }: { ownerUserId: string }) {
     setFailed(false);
     void loadMobileEveContextAction()
       .then((next) => {
-        if (current) setContext(next);
+        if (current) setContext(unwrapOwnerActionResult(next));
       })
       .catch(() => {
         if (current) setFailed(true);

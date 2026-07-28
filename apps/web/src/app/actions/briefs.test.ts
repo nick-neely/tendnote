@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ProductRateLimitError } from "@/lib/rate-limit/errors";
+import {
+  enforceProductBudgetSpy,
+  requireAdmittedOwnerForActionSpy,
+} from "@/test/action-adapter-mocks";
 
-const { generateManualBrief, revalidatePath, requireAdmittedOwnerForAction, enforceProductBudget } =
-  vi.hoisted(() => ({
-    generateManualBrief: vi.fn(),
-    revalidatePath: vi.fn(),
-    requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("user-1"),
-    enforceProductBudget: vi.fn(),
-  }));
+const { generateManualBrief } = vi.hoisted(() => ({
+  generateManualBrief: vi.fn(),
+}));
 
 vi.mock("@tendnote/db/queries/briefs", () => ({
   generateManualBrief,
@@ -14,39 +15,51 @@ vi.mock("@tendnote/db/queries/briefs", () => ({
   dismissBriefItem: vi.fn(),
   snoozeBriefItem: vi.fn(),
 }));
-vi.mock("next/cache", () => ({ revalidatePath }));
-vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwnerForAction }));
 vi.mock("@/lib/brief-local-date", () => ({ currentLocalDate: () => "2026-06-29" }));
-vi.mock("@/lib/rate-limit/guards", () => ({ enforceProductBudget }));
 
 import { generateBriefAction } from "./briefs";
 
 beforeEach(() => {
   generateManualBrief.mockReset();
-  revalidatePath.mockReset();
-  enforceProductBudget.mockReset();
-  requireAdmittedOwnerForAction.mockResolvedValue("user-1");
+  enforceProductBudgetSpy.mockReset();
+  requireAdmittedOwnerForActionSpy.mockResolvedValue("user-1");
 });
 
 describe("generateBriefAction product budget", () => {
   it("charges the server-action budget and generates while under budget", async () => {
     generateManualBrief.mockResolvedValue({
-      brief: { id: "brief-1" },
-      outcome: "generated",
+      result: {
+        brief: { id: "brief-1", cadence: "daily" },
+        outcome: "created",
+      },
+      affectedScopes: [{ kind: "owner-collection", collection: "briefs", ownerUserId: "user-1" }],
     });
 
     await generateBriefAction({ cadence: "daily" });
 
-    expect(enforceProductBudget).toHaveBeenCalledWith(
+    expect(enforceProductBudgetSpy).toHaveBeenCalledWith(
       expect.objectContaining({ subject: "user-1", costCategory: "server-action" }),
     );
     expect(generateManualBrief).toHaveBeenCalledTimes(1);
   });
 
   it("does not generate when the budget is exceeded", async () => {
-    enforceProductBudget.mockRejectedValueOnce(new Error("rate limited"));
+    enforceProductBudgetSpy.mockRejectedValueOnce(
+      new ProductRateLimitError({
+        allowed: false,
+        limit: 1,
+        count: 2,
+        remaining: 0,
+        resetAt: new Date("2026-07-28T03:00:00Z"),
+        costCategory: "server-action",
+        reason: "limit_exceeded",
+      }),
+    );
 
-    await expect(generateBriefAction({ cadence: "daily" })).rejects.toThrow();
+    await expect(generateBriefAction({ cadence: "daily" })).resolves.toEqual({
+      ok: false,
+      error: "You've reached a usage limit for this action. Please try again shortly.",
+    });
     expect(generateManualBrief).not.toHaveBeenCalled();
   });
 });

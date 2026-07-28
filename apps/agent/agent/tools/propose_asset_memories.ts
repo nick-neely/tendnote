@@ -1,8 +1,4 @@
-import {
-  type AssetReviewGroupResult,
-  suggestAsset,
-  suggestAssetMemories,
-} from "@tendnote/db/queries/assets";
+import { suggestAsset, suggestAssetMemories } from "@tendnote/db/queries/assets";
 import { captureSourceRecord } from "@tendnote/db/queries/source-records";
 import {
   AssetValidationError,
@@ -15,6 +11,7 @@ import {
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 /**
@@ -154,7 +151,7 @@ export default defineTool({
     // Anchor to the asset the user named; propose a new (suggested) asset only when
     // there was nothing to anchor to. Scope is left to the seam's private default —
     // widening an asset fact is the user's choice at review, never Eve's here.
-    const result: AssetReviewGroupResult = await withModelSafeStoreErrors(() =>
+    const outcome = await withModelSafeStoreErrors(() =>
       typeof anchor === "string"
         ? suggestAssetMemories({
             ownerUserId,
@@ -172,6 +169,8 @@ export default defineTool({
             source: "assistant",
           }),
     );
+    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
+    const result = outcome.result;
 
     return {
       found: true as const,

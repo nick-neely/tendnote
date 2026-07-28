@@ -2,19 +2,14 @@
 
 import {
   applyOwnerContactImportCandidates,
-  type ContactImportApplyResult,
   type ContactImportCandidateConfirmation,
 } from "@tendnote/db/queries/contacts-import-preview";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import {
-  type PeopleMutationScope,
-  peopleMutationScopes,
-  updatePeopleMutationScopes,
-} from "@/lib/cache/people-mutation-scopes";
+import { z } from "zod";
 import {
   createOwnerContactImportAdapter,
   getOwnerContactImportPreview,
 } from "@/lib/integrations/contact-import-preview-data";
+import { runOwnerAction } from "@/lib/owner-action";
 
 export type ConfirmSafeContactImportInput = {
   candidates: Array<{ candidateId: string; fingerprint: string }>;
@@ -28,71 +23,55 @@ export type ConfirmContactImportCandidateInput = {
   birthdayChoice?: "provider" | "existing" | "skip";
 };
 
-export type ContactImportMutationResult = ContactImportApplyResult & {
-  affectedScopes: PeopleMutationScope[];
-  revision: string;
-};
-
-function authoritativeImportResult(
-  ownerUserId: string,
-  result: ContactImportApplyResult,
-): ContactImportMutationResult {
-  const scopes = new Map<string, PeopleMutationScope>();
-  for (const scope of peopleMutationScopes.forCollection({ ownerUserId })) {
-    scopes.set(`${scope.kind}:${ownerUserId}`, scope);
-  }
-  for (const candidate of result.candidates) {
-    for (const scope of peopleMutationScopes.forPerson({
-      ownerUserId,
-      personId: candidate.personId,
-    })) {
-      const key =
-        scope.kind === "person"
-          ? `${scope.kind}:${scope.personId}`
-          : `${scope.kind}:${candidate.personId}`;
-      scopes.set(key, scope);
-    }
-  }
-  const affectedScopes = [...scopes.values()];
-  updatePeopleMutationScopes(affectedScopes);
-  return {
-    ...result,
-    affectedScopes,
-    revision:
-      result.candidates
-        .map((candidate) => candidate.personId)
-        .sort()
-        .join(",") || "no-change",
-  };
-}
+const safeImportSchema = z.object({
+  candidates: z.array(z.object({ candidateId: z.string().min(1), fingerprint: z.string().min(1) })),
+});
+const explicitImportSchema = z.object({
+  candidateId: z.string().min(1),
+  fingerprint: z.string().min(1),
+  targetPersonId: z.string().nullable().optional(),
+  createPerson: z.boolean().optional(),
+  birthdayChoice: z.enum(["provider", "existing", "skip"]).optional(),
+});
+const noInputSchema = z.undefined();
 
 export async function confirmSafeContactImportCandidatesAction(
   input: ConfirmSafeContactImportInput,
-): Promise<ContactImportMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await applyOwnerContactImportCandidates({
-    ownerUserId,
-    mode: "safe_bulk",
-    confirmations: input.candidates.map((candidate) => ({
-      candidateId: candidate.candidateId,
-      expectedFingerprint: candidate.fingerprint,
-    })),
-    adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
+) {
+  return runOwnerAction({
+    schema: safeImportSchema,
+    input,
+    body: async ({ ownerUserId, input: parsed }) =>
+      applyOwnerContactImportCandidates({
+        ownerUserId,
+        mode: "safe_bulk",
+        confirmations: parsed.candidates.map((candidate) => ({
+          candidateId: candidate.candidateId,
+          expectedFingerprint: candidate.fingerprint,
+        })),
+        adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => outcome.result,
   });
-  return authoritativeImportResult(ownerUserId, result);
 }
 
 export async function confirmContactImportCandidateAction(
   input: ConfirmContactImportCandidateInput,
-): Promise<ContactImportMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await applyOwnerContactImportCandidates({
-    ownerUserId,
-    mode: "explicit",
-    confirmations: [toConfirmation(input)],
-    adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
+) {
+  return runOwnerAction({
+    schema: explicitImportSchema,
+    input,
+    body: async ({ ownerUserId, input: parsed }) =>
+      applyOwnerContactImportCandidates({
+        ownerUserId,
+        mode: "explicit",
+        confirmations: [toConfirmation(parsed)],
+        adapter: await createOwnerContactImportAdapter({ allowFixture: false }),
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => outcome.result,
   });
-  return authoritativeImportResult(ownerUserId, result);
 }
 
 function toConfirmation(
@@ -111,5 +90,10 @@ function toConfirmation(
 
 /** Provider data stays interaction-started; this action is never route-prefetched or cached. */
 export async function loadContactImportPreviewAction() {
-  return getOwnerContactImportPreview();
+  return runOwnerAction({
+    schema: noInputSchema,
+    input: undefined,
+    body: ({ ownerUserId }) => getOwnerContactImportPreview(ownerUserId),
+    result: (preview) => preview,
+  });
 }

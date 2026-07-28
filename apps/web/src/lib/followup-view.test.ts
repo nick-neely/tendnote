@@ -1,6 +1,6 @@
 import type { Followup } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { followupDueState, parseDateInputValue, toFollowupView } from "./followup-view";
+import { parseDateInputValue, toFollowupView } from "./followup-view";
 
 const NOW = new Date("2026-06-27T12:00:00Z");
 
@@ -23,20 +23,6 @@ function followup(overrides: Partial<Followup> = {}): Followup {
     ...overrides,
   };
 }
-
-describe("followupDueState", () => {
-  it("marks a past due date as overdue", () => {
-    expect(followupDueState(new Date("2026-06-20T00:00:00"), NOW)).toBe("overdue");
-  });
-
-  it("marks today's date as today", () => {
-    expect(followupDueState(new Date("2026-06-27T23:00:00"), NOW)).toBe("today");
-  });
-
-  it("marks a future date as upcoming", () => {
-    expect(followupDueState(new Date("2026-07-10T00:00:00"), NOW)).toBe("upcoming");
-  });
-});
 
 describe("parseDateInputValue", () => {
   it("parses a date input value to local midnight on the same calendar day", () => {
@@ -72,7 +58,30 @@ describe("toFollowupView", () => {
     expect(view.dueState).toBe("upcoming");
     expect(view.dueAtDate).toBe("2026-07-04");
     expect(view.dueLabel).toContain("Jul");
+    expect(view.surfaceLabel).toBe("Due Jul 4");
     expect(view.visibilityChoice).toBe("only_me");
     expect(view.visibilityLabel).toBe("Only me");
+    expect(view.owned).toBe(true);
+    expect(view.revision).toBe(NOW.toISOString());
+  });
+
+  it("names a selected audience and marks a viewing member as a non-owner", () => {
+    const view = toFollowupView(
+      {
+        ...followup({
+          householdId: "household-1",
+          scope: "shared",
+        }),
+        householdName: "Home",
+        sharedWithCount: 2,
+      },
+      NOW,
+      null,
+      "member-1",
+    );
+
+    expect(view.visibilityLabel).toBe("Specific people · 2");
+    expect(view.owned).toBe(false);
+    expect(view.ownerUserId).toBe("user-1");
   });
 });

@@ -6,7 +6,10 @@ import { TriangleAlertIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { ContactImportReview } from "./contact-import-review";
 
-type Preview = Awaited<ReturnType<typeof loadContactImportPreviewAction>>;
+type Preview = Extract<
+  Awaited<ReturnType<typeof loadContactImportPreviewAction>>,
+  { ok: true }
+>["view"];
 
 /** Provider work starts only after explicit owner intent. */
 export function ContactImportPreviewClient() {
@@ -17,7 +20,11 @@ export function ContactImportPreviewClient() {
     startTransition(async () => {
       try {
         const nextPreview = await loadContactImportPreviewAction();
-        setPreview(nextPreview);
+        if (!nextPreview.ok) {
+          setError(nextPreview.error);
+          return;
+        }
+        setPreview(nextPreview.view);
         setError(null);
       } catch {
         setError("Contact import preview is unavailable right now. Try again shortly.");

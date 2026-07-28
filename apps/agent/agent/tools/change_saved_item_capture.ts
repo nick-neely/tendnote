@@ -7,6 +7,7 @@ import {
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 
 export default defineTool({
   description:
@@ -21,6 +22,12 @@ export default defineTool({
   async execute(input, ctx) {
     const actorUserId = resolveOwnerUserId(ctx);
     const result = await changeExplicitCaptureOutcome({ actorUserId, ...input });
+    if (result && typeof result === "object" && "affectedScopes" in result) {
+      const affectedScopes = result.affectedScopes;
+      if (Array.isArray(affectedScopes)) {
+        await requestBackgroundAffectedScopeReconciliation(affectedScopes);
+      }
+    }
     const rawConfirmation =
       result && typeof result === "object" && "confirmation" in result
         ? result.confirmation

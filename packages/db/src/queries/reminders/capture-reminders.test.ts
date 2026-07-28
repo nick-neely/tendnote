@@ -34,26 +34,31 @@ function followupConfirmation() {
   };
 }
 
-function setup() {
+function setup(optInState: "none" | "offer" = "none") {
   const save = vi.fn(async (input: Parameters<typeof saveReminder>[0]) => ({
-    optIn: { state: "none" as const, clientInstallationId: input.clientInstallationId },
-    nextValidChoice: null,
-    occurrenceIntent: null,
-    schedule: {
-      id: "schedule-1",
-      ownerUserId: OWNER,
-      recordKind: input.recordKind,
-      recordId: input.recordId,
-      generalActionId: input.recordKind === "general_action" ? input.recordId : null,
-      kind: input.schedule.kind,
-      localTime: input.schedule.kind === "exact" ? input.schedule.localTime : null,
-      leadMinutes: input.schedule.kind === "relative" ? input.schedule.leadMinutes : null,
-      timeZone: input.timeZone,
-      occurrenceKey: "occurrence-1",
-      intendedAt: new Date("2026-08-14T14:00:00.000Z"),
-      createdAt: input.now,
-      updatedAt: input.now,
+    result: {
+      optIn: { state: optInState, clientInstallationId: input.clientInstallationId },
+      nextValidChoice: null,
+      occurrenceIntent: null,
+      schedule: {
+        id: "schedule-1",
+        ownerUserId: OWNER,
+        recordKind: input.recordKind,
+        recordId: input.recordId,
+        generalActionId: input.recordKind === "general_action" ? input.recordId : null,
+        kind: input.schedule.kind,
+        localTime: input.schedule.kind === "exact" ? input.schedule.localTime : null,
+        leadMinutes: input.schedule.kind === "relative" ? input.schedule.leadMinutes : null,
+        timeZone: input.timeZone,
+        occurrenceKey: "occurrence-1",
+        intendedAt: new Date("2026-08-14T14:00:00.000Z"),
+        createdAt: input.now,
+        updatedAt: input.now,
+      },
     },
+    affectedScopes: [
+      { kind: "owner-collection" as const, collection: "today" as const, ownerUserId: OWNER },
+    ],
   }));
   return {
     save,
@@ -82,7 +87,34 @@ describe("explicit Capture Reminder product policy", () => {
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({ recordKind: "general_action", recordId: ACTION }),
     );
-    expect(result).toMatchObject({ interpreted: { reminderSchedule: expect.any(String) } });
+    expect(result.result.confirmation).toMatchObject({
+      interpreted: { reminderSchedule: expect.any(String) },
+    });
+    expect(result.affectedScopes).toContainEqual({
+      kind: "owner-collection",
+      collection: "today",
+      ownerUserId: OWNER,
+    });
+  });
+
+  it("preserves an earned opt-in offer for the shell presenter", async () => {
+    const { schedule } = setup("offer");
+    const confirmation = actionConfirmation();
+
+    const result = await schedule({
+      ownerUserId: OWNER,
+      originalText: "Remember to replace the filter on August 14",
+      clientInstallationId: "browser-installation-1",
+      timeZone: "America/Chicago",
+      now: new Date("2026-07-21T15:00:00.000Z"),
+      result: {
+        sourceRecord: {} as never,
+        confirmation,
+        generalAction: { id: ACTION, status: "open", recurrence: null },
+      },
+    });
+
+    expect(result.result.reminderOptInOffered).toBe(true);
   });
 
   it("schedules every eligible outcome in a grouped explicit Capture", async () => {
@@ -121,7 +153,7 @@ describe("explicit Capture Reminder product policy", () => {
     });
 
     expect(save).toHaveBeenCalledTimes(2);
-    expect(result?.destination).toBe("Grouped");
+    expect(result.result.confirmation?.destination).toBe("Grouped");
   });
 
   it("applies an explicitly scoped lead only to the outcome that requested an alert", async () => {
@@ -180,7 +212,7 @@ describe("explicit Capture Reminder product policy", () => {
         schedule: { kind: "relative", leadMinutes: 10_080 },
       }),
     );
-    expect(result).toMatchObject({
+    expect(result.result.confirmation).toMatchObject({
       destination: "Grouped",
       outcomes: [
         { interpreted: { reminderSchedule: expect.stringMatching(/one week before/) } },
@@ -215,7 +247,7 @@ describe("explicit Capture Reminder product policy", () => {
         schedule: { kind: "relative", leadMinutes: 10_080 },
       }),
     );
-    expect(result).toMatchObject({
+    expect(result.result.confirmation).toMatchObject({
       interpreted: { reminderSchedule: expect.stringMatching(/one week before/) },
     });
   });

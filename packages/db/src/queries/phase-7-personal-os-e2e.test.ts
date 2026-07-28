@@ -6,7 +6,7 @@ import { createAssetActionLinks } from "./assets/action-links";
 import { createInMemoryAssetActionLinkStore } from "./assets/in-memory-action-link-store";
 import { createAssetReview } from "./assets/review";
 import { createConversationalCapture } from "./capture/conversational-capture";
-import { createGeneralActionLifecycle } from "./general-actions/lifecycle";
+import { createAffectedGeneralActionLifecycle } from "./general-actions/mutation-lifecycle";
 import { createGlobalRecall } from "./global-recall/queries";
 import { createExplicitCaptureReminderScheduler } from "./reminders";
 import { createInMemoryReminderStore } from "./reminders/in-memory-store";
@@ -16,6 +16,8 @@ import { createSavedItemLifecycle } from "./saved-items/lifecycle";
 import { createTodayCandidateLoaders } from "./today/candidate-loaders";
 import { createInMemoryTodayFeedbackStore } from "./today/in-memory-store";
 import { createTodayShortlistService } from "./today/service";
+
+const reminderDeepLink = (kind: string, id: string) => `/reminders/open?kind=${kind}&id=${id}`;
 
 /**
  * Phase Seven's refrigerator-filter proof, composed through the same owner-scoped product
@@ -39,7 +41,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       ...createInMemoryAssetActionLinkStore(),
       ...createInMemorySavedItemLifecycleStore(),
     };
-    const actions = createGeneralActionLifecycle(productStore);
+    const actions = createAffectedGeneralActionLifecycle(productStore);
     const savedItems = createSavedItemLifecycle(productStore);
     const assetReview = createAssetReview(productStore);
     const assetLinks = createAssetActionLinks(productStore);
@@ -47,7 +49,10 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       createGeneralAction: actions.createGeneralAction,
       getGeneralAction: ({ ownerUserId, generalActionId }) =>
         productStore.getGeneralAction({ ownerUserId, generalActionId }),
-      suggestAsset: assetReview.suggestAsset,
+      suggestAsset: async (input) => ({
+        result: await assetReview.suggestAsset(input),
+        affectedScopes: [],
+      }),
       ownerTimeZone: async () => "America/Chicago",
       now: () => CAPTURED_AT,
     });
@@ -119,11 +124,12 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
         status: "active",
       }),
     ]);
-    const linkedAction = await actions.editGeneralAction({
+    const linkedActionOutcome = await actions.editGeneralAction({
       actorUserId: OWNER,
       generalActionId: actionOutcome.generalAction.id,
       edit: { assetHints: [{ label: "kitchen refrigerator filter" }] },
     });
+    const linkedAction = linkedActionOutcome.result;
     expect(linkedAction.sourceRecordId).toBe(captured.sourceRecord.id);
     const promotedHint = await assetLinks.promoteGeneralActionAssetHint({
       actorUserId: OWNER,
@@ -169,7 +175,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
                 recurrence: action.recurrence,
                 sensitivity: "normal" as const,
                 scope: action.scope,
-                deepLink: `/actions#action-${action.id}`,
+                personId: null,
               }
             : null;
         }
@@ -190,16 +196,21 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
                 recurrence: null,
                 sensitivity: "normal" as const,
                 scope: item.scope,
-                deepLink: `/saved-items#saved-item-${item.id}`,
+                personId: null,
               }
             : null;
         }
         return null;
       },
     });
-    const scheduleCapturedReminders = createExplicitCaptureReminderScheduler(
-      reminders.saveReminder as never,
-    );
+    const scheduleCapturedReminders = createExplicitCaptureReminderScheduler((async (
+      input: Parameters<typeof reminders.saveReminder>[0],
+    ) => ({
+      result: await reminders.saveReminder(input),
+      affectedScopes: [
+        { kind: "owner-collection", collection: "today", ownerUserId: input.ownerUserId },
+      ],
+    })) as never);
     const confirmed = await scheduleCapturedReminders({
       ownerUserId: OWNER,
       originalText: captured.sourceRecord.content,
@@ -208,7 +219,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       result: captured,
       now: CAPTURED_AT,
     });
-    expect(confirmed).toMatchObject({
+    expect(confirmed.result.confirmation).toMatchObject({
       destination: "Grouped",
       outcomes: [
         { interpreted: { reminderSchedule: expect.stringMatching(/one week before/) } },
@@ -249,6 +260,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
     });
     await expect(
       reminders.dispatchReminder({
+        deepLink: reminderDeepLink,
         jobId: registration.deliveryJobs[0]?.id ?? "missing-job",
         now: new Date("2026-08-14T14:00:05.000Z"),
         sender,
@@ -267,12 +279,16 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       }),
     );
     await expect(
-      reminders.resolveReminderDeepLink({
+      reminders.resolveReminderDeepLinkTarget({
         ownerUserId: OWNER,
         recordKind: "general_action",
         recordId: actionOutcome.generalAction.id,
       }),
-    ).resolves.toBe(`/actions#action-${actionOutcome.generalAction.id}`);
+    ).resolves.toEqual({
+      recordKind: "general_action",
+      recordId: actionOutcome.generalAction.id,
+      personId: null,
+    });
 
     const today = createTodayShortlistService({
       feedbackStore: createInMemoryTodayFeedbackStore(),

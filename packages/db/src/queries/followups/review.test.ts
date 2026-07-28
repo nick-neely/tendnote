@@ -237,6 +237,26 @@ describe("accept, edit-before-accept, dismiss", () => {
     await expect(auditActions()).resolves.toContain("followup.review_dismiss");
   });
 
+  it("restores a dismissed suggestion to review for authoritative Undo", async () => {
+    const { review, seedSuggestion, auditActions } = await setup();
+    const { result } = await seedSuggestion();
+    await review.dismissSuggestedFollowup({
+      actorUserId: OWNER,
+      followupId: result.followup.id,
+    });
+
+    const restored = await review.restoreDismissedSuggestedFollowup({
+      actorUserId: OWNER,
+      followupId: result.followup.id,
+    });
+
+    expect(restored.followup.status).toBe("suggested");
+    await expect(review.listSuggestedFollowupReviews({ ownerUserId: OWNER })).resolves.toHaveLength(
+      1,
+    );
+    await expect(auditActions()).resolves.toContain("followup.review_restore");
+  });
+
   it("rejects accepting a follow-up that is no longer suggested", async () => {
     const { review, seedSuggestion } = await setup();
     const { result } = await seedSuggestion();

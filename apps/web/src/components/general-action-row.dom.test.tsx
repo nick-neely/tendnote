@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { generalActionViewFixture } from "@/components/general-action-fixtures";
 import type { GeneralActionView } from "@/lib/general-action-view";
+import { ReversibleMutationProvider } from "@/lib/reversible-mutation";
 import { render, screen, userEvent, waitFor } from "@/test/dom";
 
 vi.stubGlobal(
@@ -50,6 +51,7 @@ vi.mock("@/app/actions/reminders", () => ({
 vi.mock("next/link", () => import("@/test/next-link-mock"));
 
 import {
+  archiveGeneralActionAction,
   completeGeneralActionAction,
   deferGeneralActionAction,
   promoteAssetHintAction,
@@ -63,7 +65,11 @@ import { ActionRow } from "./general-action-row";
 const HINT = "refrigerator water filter";
 
 function renderRow(action: GeneralActionView, onUpdate = vi.fn()) {
-  render(<ActionRow action={action} areas={[]} onResolve={vi.fn()} onUpdate={onUpdate} />);
+  render(
+    <ReversibleMutationProvider>
+      <ActionRow action={action} areas={[]} onResolve={vi.fn()} onUpdate={onUpdate} />
+    </ReversibleMutationProvider>,
+  );
   return onUpdate;
 }
 
@@ -176,6 +182,32 @@ describe("asset hints on an Action row (#199)", () => {
 });
 
 describe("Routine occurrence lifecycle", () => {
+  it("waits for the server-owned next occurrence instead of projecting a date", async () => {
+    const user = userEvent.setup();
+    const action = actionWithHint({
+      isRoutine: true,
+      recurrence: { interval: 1, unit: "week" },
+      recurrenceLabel: "Every week",
+      dueAtISO: "2026-08-14T00:00:00.000Z",
+      dueAtDate: "2026-08-14",
+    });
+    const next = { ...action, dueAtISO: "2026-08-21T00:00:00.000Z", dueAtDate: "2026-08-21" };
+    let settle: ((value: { ok: true; view: GeneralActionView }) => void) | undefined;
+    vi.mocked(skipGeneralActionOccurrenceAction).mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    const onUpdate = renderRow(action);
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Skip this occurrence" }));
+
+    expect(onUpdate).not.toHaveBeenCalled();
+    settle?.({ ok: true, view: next });
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(next));
+  });
+
   it("skips the current occurrence and updates the row to the next one", async () => {
     const user = userEvent.setup();
     const next = actionWithHint({
@@ -287,7 +319,7 @@ describe("reversible Action lifecycle acknowledgement", () => {
     expect(row?.dataset.leaving).toBe("true");
     expect(row?.getAttribute("aria-busy")).toBe("true");
     expect(row?.className).not.toContain("opacity-0");
-    expect(screen.getByText("Updating action…")).toBeDefined();
+    expect(screen.getAllByText("Updating action…").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Undo Complete" }));
     expect(screen.getByRole("button", { name: "Undoing…" })).toBeDefined();
 
@@ -314,5 +346,24 @@ describe("reversible Action lifecycle acknowledgement", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Undo Complete" })).toBeNull());
     expect(document.activeElement).toBe(complete);
     expect(screen.getByText("That action is already complete.")).toBeDefined();
+  });
+
+  it("restores overflow focus to the stable trigger and permits retry after failure", async () => {
+    const user = userEvent.setup();
+    const action = actionWithHint({ isRoutine: false, recurrence: null });
+    vi.mocked(archiveGeneralActionAction).mockResolvedValue({
+      ok: false,
+      error: "Unable to archive this action.",
+    });
+    renderRow(action);
+
+    const overflow = screen.getByRole("button", { name: "More actions" });
+    await user.click(overflow);
+    await user.click(await screen.findByRole("menuitem", { name: "Archive" }));
+
+    await screen.findByText("Unable to archive this action.");
+    await waitFor(() => expect(document.activeElement).toBe(overflow));
+    expect(overflow.hasAttribute("disabled")).toBe(false);
+    expect(overflow.getAttribute("data-action-control")).toBe("overflow");
   });
 });

@@ -11,6 +11,7 @@ import {
   dispatchReminder,
   type ReminderPushSender,
 } from "@tendnote/db/queries/reminders";
+import { reminderOpenDeepLink } from "@/components/app-destinations";
 import type { ProductRateLimiter } from "@/lib/rate-limit";
 import { type BackgroundJobQueueLogger, consumeBackgroundJobQueueMessage } from "./queue-runtime";
 import { getWebPushSender } from "./web-push";
@@ -22,7 +23,12 @@ type ReminderJob = Awaited<
 function createReminderQueueProcessor(input: {
   now: Date;
   getJob: (jobId: string) => Promise<ReminderJob>;
-  dispatch: (input: { jobId: string; now: Date; sender: ReminderPushSender }) => Promise<unknown>;
+  dispatch: (input: {
+    jobId: string;
+    now: Date;
+    sender: ReminderPushSender;
+    deepLink: typeof reminderOpenDeepLink;
+  }) => Promise<unknown>;
   sender: ReminderPushSender;
 }): BackgroundJobQueueProcessor {
   return {
@@ -40,7 +46,12 @@ function createReminderQueueProcessor(input: {
       return { status: "not_claimable", reason: `Reminder delivery job is ${job.status}.` };
     },
     async processJob({ jobId }) {
-      await input.dispatch({ jobId, now: input.now, sender: input.sender });
+      await input.dispatch({
+        jobId,
+        now: input.now,
+        sender: input.sender,
+        deepLink: reminderOpenDeepLink,
+      });
     },
   };
 }

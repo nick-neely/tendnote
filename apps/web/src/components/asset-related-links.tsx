@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import type { AssetLinkMutationResult, RelatedAssetLinkView } from "@/lib/asset-link-view";
-import { useMutationSubmit } from "@/lib/use-mutation-submit";
+import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 
 /** One linkable candidate for the add form: id + name, nothing more. */
 export type LinkableAssetOption = { id: string; name: string };
@@ -185,7 +185,7 @@ function LinkSentence({ link }: { link: RelatedAssetLinkView }) {
 /** Runs a link mutation and refreshes the server-rendered profile on success. */
 function useLinkMutation() {
   const router = useRouter();
-  const { error, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+  const { error, pending, submit } = usePendingMutationSubmit(GENERIC_ERROR);
 
   function run(action: () => Promise<AssetLinkMutationResult>, after?: () => void): void {
     submit(action, () => {

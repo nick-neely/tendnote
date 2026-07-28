@@ -14,12 +14,14 @@ type AssetDestinationInput = Omit<
 export async function createAssetReviewDestination(input: AssetDestinationInput) {
   if (!input.deps.suggestAsset) throw new Error("Asset review capture is unavailable.");
   const evidenceText = capturedEvidenceText(input.route.fact);
-  const assetReview = await getOrSuggestAssetReview(
+  const reviewOutcome = await getOrSuggestAssetReview(
     input.deps,
     assetSuggestionInput(input, evidenceText),
     input.excludedAssetReviewGroupId,
   );
-  const evidence = await attachCapturedEvidence(input, assetReview, evidenceText);
+  const assetReview = reviewOutcome.result;
+  const evidenceOutcome = await attachCapturedEvidence(input, assetReview, evidenceText);
+  const evidence = evidenceOutcome?.result ?? null;
   const confirmation = parseOutcomeConfirmation({
     destination: "Review",
     groundedBySourceRecordId: input.sourceRecordId,
@@ -40,6 +42,7 @@ export async function createAssetReviewDestination(input: AssetDestinationInput)
     kind: "asset_review" as const,
     assetReview,
     ...(evidence ? { evidence: [evidence] } : {}),
+    affectedScopes: [...reviewOutcome.affectedScopes, ...(evidenceOutcome?.affectedScopes ?? [])],
     confirmation,
     id: assetReview.group.id,
   };
@@ -78,7 +81,7 @@ async function attachCapturedEvidence(
   const existing = assetReview.evidence?.find(
     (candidate) => candidate.sourceRecordId === input.sourceRecordId,
   );
-  if (existing) return existing;
+  if (existing) return { result: existing, affectedScopes: [] };
   if (!input.deps.addAssetEvidence) throw new Error("Asset evidence capture is unavailable.");
   const url = captureEvidenceUrl(evidenceText);
   return input.deps.addAssetEvidence({
@@ -109,13 +112,15 @@ async function getOrSuggestAssetReview(
   deps: ConversationalCaptureDeps,
   input: Parameters<NonNullable<ConversationalCaptureDeps["suggestAsset"]>>[0],
   excludedGroupId?: string,
-): Promise<CaptureAssetReview> {
+): Promise<import("../../../affected-scopes").MutationOutcome<CaptureAssetReview>> {
   const existing = await deps.findAssetReviewBySource?.({
     ownerUserId: input.ownerUserId,
     sourceRecordId: input.sourceRecordId,
     assetName: input.name,
   });
-  if (existing && existing.group.id !== excludedGroupId) return existing;
+  if (existing && existing.group.id !== excludedGroupId) {
+    return { result: existing, affectedScopes: [] };
+  }
   if (!deps.suggestAsset) throw new Error("Asset review capture is unavailable.");
   return deps.suggestAsset(input);
 }

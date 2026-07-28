@@ -214,6 +214,44 @@ async function dismissSuggestedMemory(ctx: MemoryReviewContext, input: MemoryRev
   return updated;
 }
 
+/** Restores only the suggestion most recently dismissed through this review surface. */
+async function restoreDismissedSuggestedMemory(
+  ctx: MemoryReviewContext,
+  input: MemoryReviewActionInput,
+) {
+  const { store } = ctx;
+  const memory = await store.getMemory(input);
+  if (memory?.status !== "dismissed") {
+    throw new Error("Only dismissed suggested memories can be restored to review.");
+  }
+  const audit = await store.listAuditLogEntries({ ownerUserId: input.ownerUserId });
+  const dismissal = audit
+    .filter((entry) => entry.entityType === "memory" && entry.entityId === memory.id)
+    .at(-1);
+  if (dismissal?.action !== "memory.review_dismiss") {
+    throw new Error("Only dismissed suggested memories can be restored to review.");
+  }
+  const updated = await store.updateMemory({
+    ownerUserId: input.ownerUserId,
+    memoryId: memory.id,
+    patch: { status: "suggested", dismissedAt: null },
+  });
+  await store.createAuditLogEntry({
+    ownerUserId: input.ownerUserId,
+    action: "memory.review_restore",
+    entityType: "memory",
+    entityId: updated.id,
+    metadataJson: {
+      personId: updated.personId,
+      sourceRecordId: updated.sourceRecordId,
+      previousStatus: memory.status,
+    },
+  });
+  const result = await buildReviewResult(ctx, input.ownerUserId, updated);
+  if (!result) throw new Error("Restored memory could not be reloaded.");
+  return result;
+}
+
 /**
  * Approve a logged note inline — the "approve" action on the in-chat logged-note
  * card. This rides the automatic extraction pipeline rather than replacing it: it
@@ -420,6 +458,8 @@ export function createMemoryReview(
     saveSuggestedMemory: (input: SaveSuggestedMemoryInput) => saveSuggestedMemory(ctx, input),
     editSuggestedMemory: (input: EditSuggestedMemoryInput) => editSuggestedMemory(ctx, input),
     dismissSuggestedMemory: (input: MemoryReviewActionInput) => dismissSuggestedMemory(ctx, input),
+    restoreDismissedSuggestedMemory: (input: MemoryReviewActionInput) =>
+      restoreDismissedSuggestedMemory(ctx, input),
     approveExtractedMemoriesForSourceRecord: (input: SourceRecordMemoryActionInput) =>
       approveExtractedMemoriesForSourceRecord(ctx, input),
     dismissExtractedMemoriesForSourceRecord: (input: SourceRecordMemoryActionInput) =>

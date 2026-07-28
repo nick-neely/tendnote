@@ -1,15 +1,15 @@
 import type { AssetChildScope, AssetEvidence, AssetEvidenceKind } from "@tendnote/domain";
 import { assetEvidenceLabelForKind, isAssetEvidenceImage } from "@tendnote/domain";
+import { formatSurfacingDay } from "@tendnote/domain/record-surfacing";
 import { formatAssetMemoryValue } from "./asset-memory-value";
+import type { OwnerActionResult } from "./owner-action";
 
 /**
  * Result of an Asset Evidence mutation server action: the same result union the
  * Asset and Action families use, so validation failures render inline and infra
  * failures fall back generically.
  */
-export type AssetEvidenceMutationResult =
-  | { ok: true; view: AssetEvidenceView }
-  | { ok: false; error: string };
+export type AssetEvidenceMutationResult = OwnerActionResult<AssetEvidenceView>;
 
 /**
  * Serializable, fixed-shape view of one piece of Asset Evidence (#200) — what
@@ -61,8 +61,8 @@ export function formatEvidenceSize(sizeBytes: number): string {
 }
 
 /** A day-precise date label via the shared value codec, so days never shift. */
-function dayLabel(date: string | null): string | null {
-  return date === null ? null : formatAssetMemoryValue({ type: "date", date });
+function dayLabel(date: string | null, now: Date): string | null {
+  return date === null ? null : formatAssetMemoryValue({ type: "date", date }, now);
 }
 
 /** Maps one evidence record to the flat view capture and profile surfaces render. */
@@ -92,14 +92,10 @@ export function toAssetEvidenceView(
             currency: record.money.currency,
           })
         : null,
-    purchasedOnLabel: dayLabel(record.purchasedOn),
-    renewsOnLabel: dayLabel(record.renewsOn),
+    purchasedOnLabel: dayLabel(record.purchasedOn, now),
+    renewsOnLabel: dayLabel(record.renewsOn, now),
     scope: record.scope,
     owned: record.ownerUserId === options.callerUserId,
-    addedLabel: `Added ${record.createdAt.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: record.createdAt.getFullYear() === now.getFullYear() ? undefined : "numeric",
-    })}`,
+    addedLabel: `Added ${formatSurfacingDay(record.createdAt, now)}`,
   };
 }

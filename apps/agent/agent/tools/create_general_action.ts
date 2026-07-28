@@ -4,6 +4,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
@@ -65,7 +66,7 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const action = await withModelSafeStoreErrors(() =>
+    const outcome = await withModelSafeStoreErrors(() =>
       createGeneralAction({
         ownerUserId,
         title: input.title,
@@ -79,8 +80,9 @@ export default defineTool({
         sourceRecordId: input.sourceRecordId ?? null,
       }),
     );
+    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
 
-    return { action: toGeneralActionRef(action) };
+    return { action: toGeneralActionRef(outcome.result) };
   },
   // The chat renders a confirmation card carrying the action's title, timing, and
   // cadence, so the model only acknowledges it — it must not reprint what the card shows.

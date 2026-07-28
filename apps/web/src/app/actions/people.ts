@@ -2,35 +2,35 @@
 
 import { deletePerson, getPersonProfile } from "@tendnote/db/queries/people";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import {
-  peopleMutationScopes,
-  updatePeopleMutationScopes,
-} from "@/lib/cache/people-mutation-scopes";
+import { runOwnerAction } from "@/lib/owner-action";
 
 const deletePersonActionSchema = z.object({ personId: z.uuid() });
 
-export type PersonRemovalPreview = {
+type PersonRemovalPreview = {
   memories: Array<{ id: string; text: string }>;
   followups: Array<{ id: string; text: string }>;
   drafts: Array<{ id: string; text: string }>;
 };
 
 /** Loaded only after the owner opens the destructive confirmation dialog. */
-export async function getPersonRemovalPreviewAction(input: {
-  personId: string;
-}): Promise<PersonRemovalPreview> {
-  const { personId } = deletePersonActionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const profile = await getPersonProfile({ ownerUserId, personId });
-
-  if (!profile) throw new Error("That person is no longer available.");
-
-  return {
-    memories: profile.memories.map((memory) => ({ id: memory.id, text: memory.content })),
-    followups: profile.followups.map((followup) => ({ id: followup.id, text: followup.reason })),
-    drafts: [],
-  };
+export async function getPersonRemovalPreviewAction(input: { personId: string }) {
+  return runOwnerAction({
+    schema: deletePersonActionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      getPersonProfile({ ownerUserId, personId: parsed.personId }),
+    result: (profile) => {
+      if (!profile) throw new Error("That person is no longer available.");
+      return {
+        memories: profile.memories.map((memory) => ({ id: memory.id, text: memory.content })),
+        followups: profile.followups.map((followup) => ({
+          id: followup.id,
+          text: followup.reason,
+        })),
+        drafts: [],
+      } satisfies PersonRemovalPreview;
+    },
+  });
 }
 
 /**
@@ -40,22 +40,15 @@ export async function getPersonRemovalPreviewAction(input: {
  * The person's profile is gone after this, so the caller navigates away rather than
  * refreshing; the People list is revalidated so the removed person drops out of it.
  */
-export async function deletePersonAction(input: { personId: string }): Promise<{
-  affectedScopes: ReturnType<typeof peopleMutationScopes.forPerson>;
-  revision: string;
-}> {
-  const parsed = deletePersonActionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-
-  const removed = await deletePerson({ ownerUserId, personId: parsed.personId });
-  const affectedScopes = peopleMutationScopes.forPerson({
-    ownerUserId,
-    personId: parsed.personId,
+export async function deletePersonAction(input: { personId: string }) {
+  return runOwnerAction({
+    schema: deletePersonActionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      deletePerson({ ownerUserId, personId: parsed.personId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => ({
+      revision: outcome.result?.updatedAt.toISOString() ?? `missing:${input.personId}`,
+    }),
   });
-  updatePeopleMutationScopes(affectedScopes);
-
-  return {
-    affectedScopes,
-    revision: removed?.updatedAt.toISOString() ?? `missing:${parsed.personId}`,
-  };
 }

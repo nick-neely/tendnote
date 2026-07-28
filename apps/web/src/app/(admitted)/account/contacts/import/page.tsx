@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { AdmittedRoute } from "@/components/admitted-route";
+import { appDestination } from "@/components/app-destinations";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { ContactImportPreviewClient } from "./contact-import-preview-client";
 
 export default function ContactsImportPage() {
   return (
-    <AdmittedRoute title="Contact import">
+    <AdmittedRoute destination="account-contact-import">
       <ContactsImportContent />
     </AdmittedRoute>
   );
@@ -27,7 +28,7 @@ async function ContactsImportContent() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-1">
             <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
-              Contact import preview
+              {appDestination("account-contact-import").label}
             </h1>
             <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
               Review contacts from Google before anything is saved to Tendnote.

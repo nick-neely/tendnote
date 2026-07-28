@@ -7,6 +7,7 @@ const navigationState = vi.hoisted(() => ({
   searchParams: new URLSearchParams(),
   sessionOwnerUserId: "owner-1",
 }));
+const success = <T,>(view: T) => ({ ok: true as const, view });
 
 vi.mock("@/app/actions/conversational-capture", () => ({
   addCapturePersonAction: vi.fn(),
@@ -16,25 +17,35 @@ vi.mock("@/app/actions/conversational-capture", () => ({
   undoExplicitCaptureOutcomeAction: vi.fn(),
 }));
 vi.mock("@/app/actions/reminders", () => ({
-  reconcileReminderTimeZoneAction: vi.fn().mockResolvedValue({ reconciled: 0 }),
+  reconcileReminderTimeZoneAction: vi.fn().mockResolvedValue({
+    ok: true,
+    view: { reconciled: 0 },
+  }),
 }));
 vi.mock("@/app/actions/global-recall", () => ({
   globalRecallAction: vi.fn().mockResolvedValue({
-    query: "",
-    results: [],
-    limitations: [],
-    hasMore: false,
+    ok: true,
+    view: {
+      query: "",
+      results: [],
+      limitations: [],
+      hasMore: false,
+    },
   }),
 }));
 vi.mock("@/app/actions/today", () => ({
   actOnTodayItemAction: vi.fn(),
   refreshTodayAction: vi.fn().mockResolvedValue({
-    items: [],
-    candidateFingerprint: "",
-    curation: "deterministic",
-    overflow: null,
-    limitations: [],
+    ok: true,
+    view: {
+      items: [],
+      candidateFingerprint: "",
+      curation: "deterministic",
+      overflow: null,
+      limitations: [],
+    },
   }),
+  restoreTodayItemAction: vi.fn(),
   suppressTodayItemAction: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
@@ -52,7 +63,9 @@ vi.mock("@/lib/auth/client", () => ({
 
 import { AppShell } from "./app-shell";
 import { AppShellEffects } from "./app-shell-effects";
+import { DesktopAppNavigationFallback } from "./desktop-app-navigation";
 import { MobileHomeReserve } from "./mobile-home-reserve";
+import { MobileTodayDestination } from "./mobile-today-destination";
 
 beforeEach(() => {
   navigationState.pathname = "/";
@@ -60,6 +73,30 @@ beforeEach(() => {
   navigationState.sessionOwnerUserId = "owner-1";
   sessionStorage.clear();
 });
+
+function mobileTodayDestination() {
+  const view = {
+    items: [],
+    candidateFingerprint: "",
+    curation: "deterministic" as const,
+    overflow: null,
+    limitations: [],
+  };
+  return (
+    <MobileTodayDestination
+      ownerUserId="owner-1"
+      todayHandlers={{
+        act: vi.fn(async () => success(view)),
+        refresh: vi.fn(async () => success(view)),
+        restore: vi.fn(async () => success(view)),
+        suppress: vi.fn(async () => success(view)),
+      }}
+      todayInitial={view}
+      todayLocalDate="2026-08-14"
+      todayTimeZone="America/Chicago"
+    />
+  );
+}
 
 /**
  * Saves the open capture, reopens it via Change, and hands back the emptied
@@ -94,7 +131,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
    */
   it("renders the route into exactly one main, unpadded only when the destination asks", () => {
     render(
-      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+      <AppShell ownerUserId="owner-1">
         <div data-mobile-bleed>
           <p>Destination</p>
         </div>
@@ -109,7 +146,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
   it("updates route-aware Today and Review state without remounting the frame", () => {
     const view = render(
-      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+      <AppShell ownerUserId="owner-1">
         <p>Destination</p>
       </AppShell>,
     );
@@ -118,9 +155,14 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(mobileNav.getByRole("link", { name: "Today" }).getAttribute("aria-current")).toBe(
       "page",
     );
+    expect(
+      within(screen.getByRole("navigation", { name: "Primary" }))
+        .getByRole("link", { name: "Today" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
     navigationState.searchParams = new URLSearchParams("tab=review");
     view.rerender(
-      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+      <AppShell ownerUserId="owner-1">
         <p>Destination</p>
       </AppShell>,
     );
@@ -128,24 +170,51 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(mobileNav.getByRole("link", { name: "Review" }).getAttribute("aria-current")).toBe(
       "page",
     );
+    expect(
+      within(screen.getByRole("navigation", { name: "Primary" }))
+        .getByRole("link", { name: "Today" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
 
     navigationState.pathname = "/people";
     navigationState.searchParams = new URLSearchParams();
     view.rerender(
-      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+      <AppShell ownerUserId="owner-1">
         <p>Destination</p>
       </AppShell>,
     );
     mobileNav = within(screen.getByRole("navigation", { name: "Mobile primary" }));
     expect(mobileNav.getByRole("link", { name: "Today" }).getAttribute("aria-current")).toBeNull();
     expect(mobileNav.getByRole("link", { name: "Review" }).getAttribute("aria-current")).toBeNull();
+    expect(
+      within(screen.getByRole("navigation", { name: "Primary" }))
+        .getByRole("link", { name: "People" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
     expect(screen.getAllByRole("navigation", { name: "Mobile primary" })).toHaveLength(1);
+  });
+
+  it("keeps the complete primary navigation present before current state resolves", () => {
+    render(<DesktopAppNavigationFallback />);
+
+    const primary = within(screen.getByRole("navigation", { name: "Primary" }));
+    expect(primary.getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Today",
+      "People",
+      "Actions",
+      "Assets",
+      "Saved Items",
+      "Account",
+    ]);
+    for (const link of primary.getAllByRole("link")) {
+      expect(link.getAttribute("aria-current")).toBeNull();
+    }
   });
 
   it("remounts owner-keyed mobile flow state when the admitted session rotates", async () => {
     const user = userEvent.setup();
     const view = render(
-      <AppShell routeAwareMobileNavigation>
+      <AppShell>
         <p>Destination</p>
       </AppShell>,
     );
@@ -159,7 +228,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
     navigationState.sessionOwnerUserId = "owner-2";
     view.rerender(
-      <AppShell routeAwareMobileNavigation>
+      <AppShell>
         <p>Destination</p>
       </AppShell>,
     );
@@ -171,11 +240,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
   it("uses exactly the five selected phone destinations and keeps domain links in Menu", async () => {
     const user = userEvent.setup();
-    render(
-      <AppShell mobileHome ownerUserId="owner-1">
-        <p>Desktop dashboard</p>
-      </AppShell>,
-    );
+    render(<AppShell ownerUserId="owner-1">{mobileTodayDestination()}</AppShell>);
 
     const mobileNav = screen.getByRole("navigation", { name: "Mobile primary" });
     expect(
@@ -194,8 +259,9 @@ describe("AppShell Phase Seven mobile navigation", () => {
   });
 
   it("marks Review as the active phone destination without adding a count", () => {
+    navigationState.searchParams = new URLSearchParams("tab=review");
     render(
-      <AppShell mobileReview ownerUserId="owner-1">
+      <AppShell ownerUserId="owner-1">
         <p>Review queue</p>
       </AppShell>,
     );
@@ -210,7 +276,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
   it("opens focused flows without the bottom bar and restores invoking focus and surface state", async () => {
     const user = userEvent.setup();
     render(
-      <AppShell mobileHome ownerUserId="owner-1">
+      <AppShell ownerUserId="owner-1">
         <input aria-label="Desktop state" defaultValue="still here" />
       </AppShell>,
     );
@@ -236,50 +302,52 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
   it("renders typed Exact and Related Global Recall results with filters and honest limitations", async () => {
     const user = userEvent.setup();
-    const searchHandler = vi.fn().mockResolvedValue({
-      query: "fridge filter",
-      results: [
-        {
-          family: "asset_memory",
-          canonical: { kind: "asset_memory", id: "memory-1" },
-          label: "Filter size",
-          supportingText: "RPWFE",
-          lifecycle: "active",
-          match: { kind: "exact", reason: "Matched an exact Asset value", excerpt: "RPWFE" },
-          trust: "asset_fact",
-          sensitivity: "normal",
-          visibility: { choice: "only_me", label: "Only me" },
-          grounding: [{ kind: "asset_memory", id: "memory-1" }],
-          href: "/assets/asset-1#asset-memory-memory-1",
-          parent: { kind: "asset", id: "asset-1" },
-          details: {
-            assetId: "asset-1",
-            assetName: "Fridge",
-            assetKind: "appliance",
-            value: { type: "text", text: "RPWFE" },
+    const searchHandler = vi.fn().mockResolvedValue(
+      success({
+        query: "fridge filter",
+        results: [
+          {
+            family: "asset_memory",
+            canonical: { kind: "asset_memory", id: "memory-1" },
+            label: "Filter size",
+            supportingText: "RPWFE",
+            lifecycle: "active",
+            match: { kind: "exact", reason: "Matched an exact Asset value", excerpt: "RPWFE" },
+            trust: "asset_fact",
+            sensitivity: "normal",
+            visibility: { choice: "only_me", label: "Only me" },
+            grounding: [{ kind: "asset_memory", id: "memory-1" }],
+            href: "/assets/asset-1#asset-memory-memory-1",
+            parent: { kind: "asset", id: "asset-1" },
+            details: {
+              assetId: "asset-1",
+              assetName: "Fridge",
+              assetKind: "appliance",
+              value: { type: "text", text: "RPWFE" },
+            },
           },
-        },
-        {
-          family: "saved_item",
-          canonical: { kind: "saved_item", id: "saved-1" },
-          label: "Filter notes",
-          supportingText: "Replacement notes",
-          lifecycle: "active",
-          match: { kind: "related", reason: "Related by meaning", excerpt: "replacement" },
-          trust: "saved_context",
-          sensitivity: "normal",
-          visibility: { choice: "only_me", label: "Only me" },
-          grounding: [{ kind: "saved_item", id: "saved-1" }],
-          href: "/saved-items#saved-item-saved-1",
-          parent: null,
-          details: { kind: "note" },
-        },
-      ],
-      limitations: [{ source: "calendar", message: "Calendar results are unavailable." }],
-      hasMore: false,
-    });
+          {
+            family: "saved_item",
+            canonical: { kind: "saved_item", id: "saved-1" },
+            label: "Filter notes",
+            supportingText: "Replacement notes",
+            lifecycle: "active",
+            match: { kind: "related", reason: "Related by meaning", excerpt: "replacement" },
+            trust: "saved_context",
+            sensitivity: "normal",
+            visibility: { choice: "only_me", label: "Only me" },
+            grounding: [{ kind: "saved_item", id: "saved-1" }],
+            href: "/saved-items#saved-item-saved-1",
+            parent: null,
+            details: { kind: "note" },
+          },
+        ],
+        limitations: [{ source: "calendar", message: "Calendar results are unavailable." }],
+        hasMore: false,
+      }),
+    );
     render(
-      <AppShell mobileHome ownerUserId="owner-search" searchHandler={searchHandler}>
+      <AppShell ownerUserId="owner-search" searchHandler={searchHandler}>
         <p>Today</p>
       </AppShell>,
     );
@@ -324,31 +392,33 @@ describe("AppShell Phase Seven mobile navigation", () => {
       "",
       window.location.href,
     );
-    const searchHandler = vi.fn().mockResolvedValue({
-      query: "filter note",
-      results: [
-        {
-          family: "saved_item",
-          canonical: { kind: "saved_item", id: "saved-return" },
-          label: "Filter note",
-          supportingText: "Replacement details",
-          lifecycle: "active",
-          match: { kind: "exact", reason: "Matched wording", excerpt: "filter" },
-          trust: "saved_context",
-          sensitivity: "normal",
-          visibility: { choice: "only_me", label: "Only me" },
-          grounding: [{ kind: "saved_item", id: "saved-return" }],
-          href: "/saved-items#saved-item-saved-return",
-          parent: null,
-          details: { kind: "note" },
-        },
-      ],
-      limitations: [],
-      hasMore: false,
-    });
+    const searchHandler = vi.fn().mockResolvedValue(
+      success({
+        query: "filter note",
+        results: [
+          {
+            family: "saved_item",
+            canonical: { kind: "saved_item", id: "saved-return" },
+            label: "Filter note",
+            supportingText: "Replacement details",
+            lifecycle: "active",
+            match: { kind: "exact", reason: "Matched wording", excerpt: "filter" },
+            trust: "saved_context",
+            sensitivity: "normal",
+            visibility: { choice: "only_me", label: "Only me" },
+            grounding: [{ kind: "saved_item", id: "saved-return" }],
+            href: "/saved-items#saved-item-saved-return",
+            parent: null,
+            details: { kind: "note" },
+          },
+        ],
+        limitations: [],
+        hasMore: false,
+      }),
+    );
 
     render(
-      <AppShell mobileHome ownerUserId="owner-return" searchHandler={searchHandler}>
+      <AppShell ownerUserId="owner-return" searchHandler={searchHandler}>
         <p>Today</p>
       </AppShell>,
     );
@@ -368,28 +438,30 @@ describe("AppShell Phase Seven mobile navigation", () => {
     window.history.replaceState({}, "", "/saved-items");
     HTMLElement.prototype.scrollIntoView = vi.fn();
     const user = userEvent.setup();
-    const searchHandler = vi.fn().mockResolvedValue({
-      query: "filter note",
-      results: [
-        {
-          family: "saved_item",
-          canonical: { kind: "saved_item", id: "saved-same-route" },
-          label: "Same-route filter note",
-          supportingText: "Replacement details",
-          lifecycle: "active",
-          match: { kind: "exact", reason: "Matched wording", excerpt: "filter" },
-          trust: "saved_context",
-          sensitivity: "normal",
-          visibility: { choice: "only_me", label: "Only me" },
-          grounding: [{ kind: "saved_item", id: "saved-same-route" }],
-          href: "/saved-items#saved-item-saved-same-route",
-          parent: null,
-          details: { kind: "note" },
-        },
-      ],
-      limitations: [],
-      hasMore: false,
-    });
+    const searchHandler = vi.fn().mockResolvedValue(
+      success({
+        query: "filter note",
+        results: [
+          {
+            family: "saved_item",
+            canonical: { kind: "saved_item", id: "saved-same-route" },
+            label: "Same-route filter note",
+            supportingText: "Replacement details",
+            lifecycle: "active",
+            match: { kind: "exact", reason: "Matched wording", excerpt: "filter" },
+            trust: "saved_context",
+            sensitivity: "normal",
+            visibility: { choice: "only_me", label: "Only me" },
+            grounding: [{ kind: "saved_item", id: "saved-same-route" }],
+            href: "/saved-items#saved-item-saved-same-route",
+            parent: null,
+            details: { kind: "note" },
+          },
+        ],
+        limitations: [],
+        hasMore: false,
+      }),
+    );
 
     render(
       <>
@@ -414,11 +486,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
   });
 
   it("renders the selected shaded Today band and the authoritative shortlist empty state", () => {
-    render(
-      <AppShell mobileHome ownerUserId="owner-1">
-        <p>Desktop dashboard</p>
-      </AppShell>,
-    );
+    render(<AppShell ownerUserId="owner-1">{mobileTodayDestination()}</AppShell>);
 
     expect(screen.getByRole("heading", { name: "Today" })).toBeDefined();
     expect(screen.getByTestId("today-orientation-band").className).toContain("bg-panel");
@@ -430,11 +498,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
   it("keeps the compact Today Eve composer usable before opening the focused flow", async () => {
     const user = userEvent.setup();
-    render(
-      <AppShell mobileHome ownerUserId="owner-1">
-        <p>Desktop dashboard</p>
-      </AppShell>,
-    );
+    render(<AppShell ownerUserId="owner-1">{mobileTodayDestination()}</AppShell>);
 
     await user.type(screen.getByRole("textbox", { name: "Ask Eve anything" }), "What is due?");
     await user.click(screen.getByRole("button", { name: "Send to Eve" }));
@@ -446,7 +510,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
   it("restores one visibly unsaved Capture draft, then clears it on discard", async () => {
     const user = userEvent.setup();
     render(
-      <AppShell mobileHome ownerUserId="owner-1">
+      <AppShell ownerUserId="owner-1">
         <p>Desktop dashboard</p>
       </AppShell>,
     );
@@ -479,10 +543,9 @@ describe("AppShell Phase Seven mobile navigation", () => {
       <AppShell
         captureHandlers={{
           change: vi.fn(),
-          submit: async () => ({ confirmation }),
+          submit: async () => ({ ok: true, view: { confirmation } }),
           undo: vi.fn(),
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -503,9 +566,11 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
   it("changes a confirmed Capture reminder schedule without rewriting the saved wording", async () => {
     const user = userEvent.setup();
-    const changeReminder = vi.fn().mockResolvedValue({
-      reminderSchedule: "Reminder one day before at 9:00 AM · America/Chicago",
-    });
+    const changeReminder = vi.fn().mockResolvedValue(
+      success({
+        reminderSchedule: "Reminder one day before at 9:00 AM · America/Chicago",
+      }),
+    );
     const confirmation = {
       destination: "Actions" as const,
       groundedBySourceRecordId: "source-1",
@@ -524,10 +589,9 @@ describe("AppShell Phase Seven mobile navigation", () => {
         captureHandlers={{
           change: vi.fn(),
           changeReminder,
-          submit: vi.fn().mockResolvedValue({ confirmation }),
+          submit: vi.fn().mockResolvedValue(success({ confirmation })),
           undo: vi.fn(),
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -562,33 +626,33 @@ describe("AppShell Phase Seven mobile navigation", () => {
     const user = userEvent.setup();
     const submit = vi
       .fn()
-      .mockResolvedValueOnce({
-        clarification: {
-          field: "timing" as const,
-          question: "When should I remind you to replace the filter?",
-          sourceRecordId: "source-1",
-        },
-      })
-      .mockResolvedValueOnce({
-        confirmation: {
-          destination: "Actions" as const,
-          groundedBySourceRecordId: "source-1",
-          interpreted: {
-            title: "Replace the filter",
-            dueAt: "2026-07-22T14:00:00.000Z",
-            cadence: null,
-            scope: "Only me" as const,
+      .mockResolvedValueOnce(
+        success({
+          clarification: {
+            field: "timing" as const,
+            question: "When should I remind you to replace the filter?",
+            sourceRecordId: "source-1",
           },
-          change: { kind: "edit_general_action" as const, generalActionId: "action-1" },
-          undo: { kind: "archive_general_action" as const, generalActionId: "action-1" },
-        },
-      });
+        }),
+      )
+      .mockResolvedValueOnce(
+        success({
+          confirmation: {
+            destination: "Actions" as const,
+            groundedBySourceRecordId: "source-1",
+            interpreted: {
+              title: "Replace the filter",
+              dueAt: "2026-07-22T14:00:00.000Z",
+              cadence: null,
+              scope: "Only me" as const,
+            },
+            change: { kind: "edit_general_action" as const, generalActionId: "action-1" },
+            undo: { kind: "archive_general_action" as const, generalActionId: "action-1" },
+          },
+        }),
+      );
     render(
-      <AppShell
-        captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }}
-        mobileHome
-        ownerUserId="owner-1"
-      >
+      <AppShell captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }} ownerUserId="owner-1">
         <p>Desktop dashboard</p>
       </AppShell>,
     );
@@ -639,11 +703,11 @@ describe("AppShell Phase Seven mobile navigation", () => {
       change: { kind: "edit_followup" as const, followupId: "followup-1" },
       undo: { kind: "archive_followup" as const, followupId: "followup-1" },
     };
-    const addPerson = vi.fn().mockResolvedValue({ displayName: "Maya" });
+    const addPerson = vi.fn().mockResolvedValue(success({ displayName: "Maya" }));
     const submit = vi
       .fn()
-      .mockResolvedValueOnce({ clarification })
-      .mockResolvedValueOnce({ confirmation });
+      .mockResolvedValueOnce(success({ clarification }))
+      .mockResolvedValueOnce(success({ confirmation }));
     render(
       <AppShell
         captureHandlers={{
@@ -652,7 +716,6 @@ describe("AppShell Phase Seven mobile navigation", () => {
           submit,
           undo: vi.fn(),
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -702,16 +765,15 @@ describe("AppShell Phase Seven mobile navigation", () => {
       change: { kind: "edit_general_action" as const, generalActionId: "action-1" },
       undo: { kind: "archive_general_action" as const, generalActionId: "action-1" },
     };
-    const change = vi.fn().mockResolvedValue({ confirmation: actionConfirmation });
-    const undo = vi.fn().mockResolvedValue({ ok: true });
+    const change = vi.fn().mockResolvedValue(success({ confirmation: actionConfirmation }));
+    const undo = vi.fn().mockResolvedValue(success({ ok: true }));
     render(
       <AppShell
         captureHandlers={{
           change,
-          submit: vi.fn().mockResolvedValue({ confirmation: savedConfirmation }),
+          submit: vi.fn().mockResolvedValue(success({ confirmation: savedConfirmation })),
           undo,
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -745,22 +807,23 @@ describe("AppShell Phase Seven mobile navigation", () => {
     };
     const change = vi
       .fn()
-      .mockResolvedValueOnce({
-        clarification: {
-          field: "timing" as const,
-          question: "When should I remind you to replace the filter?",
-          sourceRecordId: "source-1",
-        },
-      })
-      .mockResolvedValueOnce({ confirmation });
+      .mockResolvedValueOnce(
+        success({
+          clarification: {
+            field: "timing" as const,
+            question: "When should I remind you to replace the filter?",
+            sourceRecordId: "source-1",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(success({ confirmation }));
     render(
       <AppShell
         captureHandlers={{
           change,
-          submit: vi.fn().mockResolvedValue({ confirmation }),
-          undo: vi.fn().mockResolvedValue({ ok: true }),
+          submit: vi.fn().mockResolvedValue(success({ confirmation })),
+          undo: vi.fn().mockResolvedValue(success({ ok: true })),
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -797,11 +860,11 @@ describe("AppShell Phase Seven mobile navigation", () => {
     const submit = vi
       .fn()
       .mockRejectedValueOnce(new Error("offline"))
-      .mockResolvedValueOnce({ confirmation });
-    const change = vi.fn().mockResolvedValue({ ok: true });
-    const undo = vi.fn().mockResolvedValue({ ok: true });
+      .mockResolvedValueOnce(success({ confirmation }));
+    const change = vi.fn().mockResolvedValue(success({ ok: true }));
+    const undo = vi.fn().mockResolvedValue(success({ ok: true }));
     render(
-      <AppShell captureHandlers={{ change, submit, undo }} mobileHome ownerUserId="owner-1">
+      <AppShell captureHandlers={{ change, submit, undo }} ownerUserId="owner-1">
         <p>Desktop dashboard</p>
       </AppShell>,
     );
@@ -902,15 +965,14 @@ describe("AppShell Phase Seven mobile navigation", () => {
       change: { kind: "edit_general_action" as const, generalActionId: "action-oat" },
       undo: { kind: "archive_general_action" as const, generalActionId: "action-oat" },
     };
-    const change = vi.fn().mockResolvedValue({ confirmation: replacement });
+    const change = vi.fn().mockResolvedValue(success({ confirmation: replacement }));
     render(
       <AppShell
         captureHandlers={{
           change,
-          submit: vi.fn().mockResolvedValue({ confirmation: grouped }),
+          submit: vi.fn().mockResolvedValue(success({ confirmation: grouped })),
           undo: vi.fn(),
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -981,13 +1043,9 @@ describe("AppShell Phase Seven mobile navigation", () => {
       change: { kind: "edit_saved_item" as const, savedItemId: "saved-1" },
       undo: { kind: "archive_saved_item" as const, savedItemId: "saved-1" },
     };
-    const submit = vi.fn().mockResolvedValue({ confirmation });
+    const submit = vi.fn().mockResolvedValue(success({ confirmation }));
     render(
-      <AppShell
-        captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }}
-        mobileHome
-        ownerUserId="owner-1"
-      >
+      <AppShell captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }} ownerUserId="owner-1">
         <p>Desktop dashboard</p>
       </AppShell>,
     );
@@ -1022,13 +1080,9 @@ describe("AppShell Phase Seven mobile navigation", () => {
     const submit = vi
       .fn()
       .mockRejectedValueOnce(new Error("ambiguous failure"))
-      .mockResolvedValueOnce({ confirmation });
+      .mockResolvedValueOnce(success({ confirmation }));
     render(
-      <AppShell
-        captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }}
-        mobileHome
-        ownerUserId="owner-1"
-      >
+      <AppShell captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }} ownerUserId="owner-1">
         <p>Desktop dashboard</p>
       </AppShell>,
     );
@@ -1059,11 +1113,14 @@ describe("AppShell Phase Seven mobile navigation", () => {
       undo: { kind: "archive_saved_item" as const, savedItemId: "saved-1" },
     };
     const change = vi.fn().mockRejectedValue(new Error("change failed"));
-    const undo = vi.fn().mockResolvedValue({ ok: true });
+    const undo = vi.fn().mockResolvedValue(success({ ok: true }));
     render(
       <AppShell
-        captureHandlers={{ change, submit: vi.fn().mockResolvedValue({ confirmation }), undo }}
-        mobileHome
+        captureHandlers={{
+          change,
+          submit: vi.fn().mockResolvedValue(success({ confirmation })),
+          undo,
+        }}
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>

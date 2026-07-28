@@ -11,6 +11,14 @@ export type ReminderScheduleView = {
   label: string;
 };
 
+export function toReminderScheduleChoice(
+  schedule: ReminderScheduleView | null | undefined,
+): ReminderScheduleChoice {
+  return schedule?.kind === "relative"
+    ? { kind: "relative", leadMinutes: schedule.leadMinutes ?? 0 }
+    : { kind: "exact", localTime: schedule?.localTime ?? "09:00" };
+}
+
 export function toReminderScheduleView(
   schedule: {
     kind: ReminderScheduleChoice["kind"];

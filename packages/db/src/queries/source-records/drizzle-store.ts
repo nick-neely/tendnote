@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike } from "drizzle-orm";
+import { and, asc, desc, eq, ilike } from "drizzle-orm";
 import { getDb } from "../../client";
 import {
   auditLog,
@@ -248,6 +248,17 @@ export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
         .limit(1);
 
       return sourceRecord ?? null;
+    },
+    async listAuditLogEntries(input) {
+      const rows = await getDb()
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.ownerUserId, input.ownerUserId))
+        .orderBy(asc(auditLog.createdAt));
+      return rows.map((entry) => ({
+        ...entry,
+        ownerUserId: entry.ownerUserId ?? input.ownerUserId,
+      }));
     },
   };
 }

@@ -12,8 +12,10 @@ import {
   SavedItemValidationError,
   type SourceRecord,
 } from "@tendnote/domain";
+import type { AffectedScope, MutationOutcome } from "../../affected-scopes";
 import { hydrateSavedItem } from "../../saved-items/context";
 import { createSavedItemLifecycle } from "../../saved-items/lifecycle";
+import { createAffectedSavedItemLifecycle } from "../../saved-items/mutation-lifecycle";
 import type { SavedItemLifecycleStore, SavedItemWithContext } from "../../saved-items/types";
 import { createCaptureDestination } from "./destinations";
 import {
@@ -53,7 +55,7 @@ export function createCorrectionOperations(
   store: SavedItemLifecycleStore,
   deps: ConversationalCaptureDeps,
 ) {
-  const lifecycle = createSavedItemLifecycle(store);
+  const lifecycle = createAffectedSavedItemLifecycle(createSavedItemLifecycle(store));
   const outcomeLifecycle = createCaptureOutcomeLifecycleOperations(store, deps);
 
   async function changeSavedItem(input: {
@@ -168,7 +170,9 @@ export function createCorrectionOperations(
       savedItemId: parsed.savedItemId,
     });
     if (!current) throw new Error("That Saved Item is no longer available.");
-    if (current.status === "archived") return hydrateSavedItem(store, current);
+    if (current.status === "archived") {
+      return { result: await hydrateSavedItem(store, current), affectedScopes: [] };
+    }
     return lifecycle.archiveSavedItem(parsed);
   }
 
@@ -268,14 +272,27 @@ async function rerouteCapturedOutcome(input: {
   const rerouteId = createRerouteId(input.parsed, input.sourceRecord.id, to);
   const corrected = await createReroutedDestination(input, rerouteId);
   await shareCorrectedMemory(input.store, input.parsed.actorUserId, input.visibility, corrected);
-  await input.outcomeLifecycle[input.target.kind].archive(
+  const archived = await input.outcomeLifecycle[input.target.kind].archive(
     input.parsed.actorUserId,
     input.target.id,
     input.current.status,
     input.target,
   );
   await writeRerouteAudit(input, corrected, to, rerouteId("audit"));
-  return { sourceRecord: input.sourceRecord, ...corrected };
+  return {
+    sourceRecord: input.sourceRecord,
+    ...corrected,
+    affectedScopes: [
+      ...affectedScopesFromUnknown(corrected),
+      ...affectedScopesFromUnknown(archived),
+    ],
+  };
+}
+
+function affectedScopesFromUnknown(value: unknown): AffectedScope[] {
+  if (!value || typeof value !== "object" || !("affectedScopes" in value)) return [];
+  const scopes = value.affectedScopes;
+  return Array.isArray(scopes) ? (scopes as AffectedScope[]) : [];
 }
 
 async function assertSafePersonReroute(
@@ -379,7 +396,7 @@ type EditSameDestinationInput = {
     actorUserId: string;
     savedItemId: string;
     originalText: string;
-  }) => Promise<SavedItemWithContext>;
+  }) => Promise<MutationOutcome<SavedItemWithContext>>;
   actorUserId: string;
   target: CaptureOutcomeReference;
   originalText: string;
@@ -409,13 +426,17 @@ async function editPersonDestination(input: EditSameDestinationInput) {
   if (input.target.kind !== "person" || input.route.destination !== "person") return null;
   if (!input.target.createdByCapture) return unchangedEstablishedPerson(input);
   if (!input.deps.updatePerson) throw new Error("Person correction is unavailable.");
-  const person = await input.deps.updatePerson({
+  const outcome = await input.deps.updatePerson({
     ownerUserId: input.actorUserId,
     personId: input.target.id,
     displayName: input.route.displayName,
   });
+  const person = outcome.result;
   if (!person) throw new Error("That Person is no longer available.");
-  return personCorrectionResult(input, person, true);
+  return {
+    ...personCorrectionResult(input, person, true),
+    affectedScopes: outcome.affectedScopes,
+  };
 }
 
 async function unchangedEstablishedPerson(input: EditSameDestinationInput) {
@@ -483,18 +504,19 @@ async function keepUnchangedMemoryDestination(input: EditSameDestinationInput) {
 
 async function editSavedItemDestination(input: EditSameDestinationInput) {
   if (input.target.kind !== "saved_item" || input.route.destination !== "saved_item") return null;
-  const savedItem = await input.changeSavedItem({
+  const outcome = await input.changeSavedItem({
     actorUserId: input.actorUserId,
     savedItemId: input.target.id,
     originalText: input.originalText,
   });
   return {
-    savedItem,
+    savedItem: outcome.result,
+    affectedScopes: outcome.affectedScopes,
     confirmation: conversationalCaptureConfirmationSchema.parse(
       savedItemConfirmation({
         sourceRecordId: input.sourceRecordId,
         savedItemId: input.target.id,
-        kind: savedItem.kind,
+        kind: outcome.result.kind,
         visibilityLabel: input.visibilityLabel,
       }),
     ),
@@ -504,7 +526,7 @@ async function editSavedItemDestination(input: EditSameDestinationInput) {
 async function editActionDestination(input: EditSameDestinationInput) {
   if (input.target.kind !== "general_action" || input.route.destination !== "action") return null;
   if (!input.deps.editGeneralAction) throw new Error("Action correction is unavailable.");
-  const generalAction = await input.deps.editGeneralAction({
+  const outcome = await input.deps.editGeneralAction({
     actorUserId: input.actorUserId,
     generalActionId: input.target.id,
     edit: {
@@ -514,7 +536,8 @@ async function editActionDestination(input: EditSameDestinationInput) {
     },
   });
   return {
-    generalAction,
+    generalAction: outcome.result,
+    affectedScopes: outcome.affectedScopes,
     confirmation: conversationalCaptureConfirmationSchema.parse(
       actionConfirmation({
         sourceRecordId: input.sourceRecordId,
@@ -531,13 +554,14 @@ async function editFollowupDestination(input: EditSameDestinationInput) {
   const resolvedPerson = input.resolvedPerson;
   if (!resolvedPerson || resolvedPerson.id !== input.currentPersonId) return null;
   if (!input.deps.editFollowup) throw new Error("Follow-Up correction is unavailable.");
-  const followup = await input.deps.editFollowup({
+  const outcome = await input.deps.editFollowup({
     actorUserId: input.actorUserId,
     followupId: input.target.id,
     edit: { reason: input.route.reason, dueAt: input.route.dueAt },
   });
   return {
-    followup,
+    followup: outcome.result,
+    affectedScopes: outcome.affectedScopes,
     confirmation: conversationalCaptureConfirmationSchema.parse(
       followupConfirmation({
         sourceRecordId: input.sourceRecordId,

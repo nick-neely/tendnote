@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import type { AssetLinkMutationResult, AssetPersonLinkView } from "@/lib/asset-link-view";
-import { useMutationSubmit } from "@/lib/use-mutation-submit";
+import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 
 /** One of the viewer's people, offered by the add form: id + name only. */
 export type LinkablePersonOption = { id: string; displayName: string };
@@ -88,7 +88,7 @@ function AssetPersonLinkRow({
   onRemoved: () => void;
 }) {
   const router = useRouter();
-  const { error, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+  const { error, pending, submit } = usePendingMutationSubmit(GENERIC_ERROR);
 
   function remove() {
     submit(
@@ -140,7 +140,7 @@ function AddAssetPersonLinkForm({
   const router = useRouter();
   const [personId, setPersonId] = useState(people[0]?.id ?? "");
   const [relation, setRelation] = useState<AssetPersonRelation>("recommended");
-  const { error, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+  const { error, pending, submit } = usePendingMutationSubmit(GENERIC_ERROR);
 
   function add() {
     if (!personId) {

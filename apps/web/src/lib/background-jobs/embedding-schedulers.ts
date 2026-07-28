@@ -1,4 +1,8 @@
 import {
+  type AffectedScope,
+  affectedScopesForOwnerSurfaces,
+} from "@tendnote/db/queries/general-actions";
+import {
   type CaptureExplicitMemoryInput,
   createDrizzleMemoryStore,
   createMemoryCapture,
@@ -6,6 +10,7 @@ import {
   type SaveSuggestedMemoryInput,
   type SourceRecordMemoryActionInput,
 } from "@tendnote/db/queries/memories";
+import { affectedScopesForPerson } from "@tendnote/db/queries/people";
 import {
   createDrizzleSourceRecordStore,
   createSourceRecordResolution,
@@ -25,18 +30,28 @@ const sourceRecordResolution = createSourceRecordResolution(createDrizzleSourceR
   scheduleSourceRecordEmbedding: enqueueAndPublishSemanticEmbeddingJob,
 });
 
-export function captureExplicitMemoryWithEmbeddingDelivery(input: CaptureExplicitMemoryInput) {
-  return memoryCapture.captureExplicitMemory(input);
+export async function captureExplicitMemoryWithEmbeddingDelivery(
+  input: CaptureExplicitMemoryInput,
+) {
+  const result = await memoryCapture.captureExplicitMemory(input);
+  return {
+    result,
+    affectedScopes: memoryScopes(result.memory),
+  };
 }
 
-export function saveSuggestedMemoryWithEmbeddingDelivery(input: SaveSuggestedMemoryInput) {
-  return memoryReview.saveSuggestedMemory(input);
+export async function saveSuggestedMemoryWithEmbeddingDelivery(input: SaveSuggestedMemoryInput) {
+  const result = await memoryReview.saveSuggestedMemory(input);
+  return { result, affectedScopes: memoryScopes(result.memory) };
 }
 
 export function approveExtractedMemoriesForSourceRecordWithEmbeddingDelivery(
   input: SourceRecordMemoryActionInput,
 ) {
-  return memoryReview.approveExtractedMemoriesForSourceRecord(input);
+  return memoryReview.approveExtractedMemoriesForSourceRecord(input).then((result) => ({
+    result,
+    affectedScopes: affectedScopesForOwnerSurfaces(input.ownerUserId),
+  }));
 }
 
 export function captureSourceRecordForPersonWithEmbeddingDelivery(input: {
@@ -48,5 +63,21 @@ export function captureSourceRecordForPersonWithEmbeddingDelivery(input: {
   role?: SourceRecordPersonRole;
   metadataJson?: Record<string, unknown>;
 }) {
-  return sourceRecordResolution.captureSourceRecordForPerson(input);
+  return sourceRecordResolution.captureSourceRecordForPerson(input).then((result) => ({
+    result,
+    affectedScopes: [
+      ...affectedScopesForPerson({ ownerUserId: input.ownerUserId, personId: input.personId }),
+      ...affectedScopesForOwnerSurfaces(input.ownerUserId),
+    ],
+  }));
+}
+
+function memoryScopes(memory: { ownerUserId: string; personId: string }): AffectedScope[] {
+  return [
+    ...affectedScopesForPerson({
+      ownerUserId: memory.ownerUserId,
+      personId: memory.personId,
+    }),
+    ...affectedScopesForOwnerSurfaces(memory.ownerUserId),
+  ];
 }

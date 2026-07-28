@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { disconnectGoogleContactsAction } from "@/app/actions/integrations";
 import { Button } from "@/components/ui/button";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
 /**
  * Disconnects only the Google Contacts Provider Connection. Confirmed Tendnote
@@ -15,7 +16,7 @@ export function ContactsDisconnectButton({ label }: { label: string }) {
   function disconnect() {
     startTransition(async () => {
       try {
-        await disconnectGoogleContactsAction();
+        unwrapOwnerActionResult(await disconnectGoogleContactsAction());
       } catch {
         // The connection state is unchanged; the page reflects reality on reload.
       }

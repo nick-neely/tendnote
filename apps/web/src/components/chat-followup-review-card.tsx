@@ -73,9 +73,15 @@ export function ChatFollowupReviewCard({
       isNew={isNew}
       kind="suggested_followup_review"
       labels={labels}
-      meta={`Proposed for ${item.dueLabel}`}
-      onDismiss={() => dismissSuggestedFollowupAction({ followupId: item.followupId })}
-      onResolve={() => acceptSuggestedFollowupAction({ followupId: item.followupId })}
+      meta={item.timingLabel}
+      onDismiss={async () => {
+        const result = await dismissSuggestedFollowupAction({ followupId: item.followupId });
+        if (!result.ok) throw new Error(result.error);
+      }}
+      onResolve={async () => {
+        const result = await acceptSuggestedFollowupAction({ followupId: item.followupId });
+        if (!result.ok) throw new Error(result.error);
+      }}
       personHref={item.personId ? `/people/${item.personId}#follow-ups` : null}
       personName={personName}
     />

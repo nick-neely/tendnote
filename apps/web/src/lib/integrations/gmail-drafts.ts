@@ -2,18 +2,19 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { editDraftBody, getDraft } from "@tendnote/db/queries/drafts";
+import type { AffectedScope } from "@tendnote/db/queries/general-actions";
 import {
   createDefaultGmailApprovalGate,
   createDefaultGoogleGmailDraftService,
   type GmailDraftActionOutcome,
 } from "@tendnote/db/queries/gmail-drafts";
 import { type GmailDraftRecipient, gmailDraftApprovalSchema } from "@tendnote/domain";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 
 /**
  * Hosted product boundary for Gmail draft creation (Phase 2D, ADR-0083). Every path
- * resolves the admitted owner first, then goes through the ONE shared Gmail draft
- * service, composed with the ONE shared approval gate (connected `google/gmail` +
+ * receives an admitted owner from the server-action protocol, then goes through the
+ * ONE shared Gmail draft service, composed with the ONE shared approval gate
+ * (connected `google/gmail` +
  * approved Tendnote draft), so web and Eve cannot fork external-write policy
  * (ADR-0092). Gmail is only ever written from an approved, source-grounded draft
  * (ADR-0086); the write itself uses the persisted draft body, never modal-only text.
@@ -26,9 +27,12 @@ export type OwnerGmailDraftResult = {
   outcome: GmailDraftActionOutcome;
   /** The person the draft belongs to, for revalidation (null if the draft is gone). */
   personId: string | null;
+  /** Tendnote data changed while preparing the external write. */
+  affectedScopes: AffectedScope[];
 };
 
 export type GmailDraftWriteRequest = {
+  ownerUserId: string;
   draftId: string;
   recipient: GmailDraftRecipient;
   subject: string;
@@ -37,7 +41,7 @@ export type GmailDraftWriteRequest = {
 };
 
 /**
- * Resolve the admitted owner, validate the approval, and write a last-mile body edit
+ * Validate the approval and write a last-mile body edit
  * through the Tendnote draft lifecycle BEFORE Gmail is touched (ADR-0086), so both
  * the create and update paths use the persisted draft snapshot rather than an
  * unpersisted variation. The edit persists even if the Gmail write is later blocked
@@ -45,23 +49,28 @@ export type GmailDraftWriteRequest = {
  * write, and Gmail itself is never mutated on a blocked outcome.
  */
 async function prepareApprovedGmailWrite(input: GmailDraftWriteRequest) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
   const approval = gmailDraftApprovalSchema.parse({
     subject: input.subject,
     recipient: input.recipient,
   });
 
-  const draft = await getDraft({ ownerUserId, draftId: input.draftId });
+  const draft = await getDraft({ ownerUserId: input.ownerUserId, draftId: input.draftId });
   const personId = draft?.personId ?? null;
+  let affectedScopes: AffectedScope[] = [];
 
   if (draft && input.bodyEdit !== undefined) {
     const nextBody = input.bodyEdit.trim();
     if (nextBody && nextBody !== draft.body) {
-      await editDraftBody({ ownerUserId, draftId: input.draftId, body: nextBody });
+      const outcome = await editDraftBody({
+        ownerUserId: input.ownerUserId,
+        draftId: input.draftId,
+        body: nextBody,
+      });
+      affectedScopes = outcome.affectedScopes;
     }
   }
 
-  return { ownerUserId, approval, personId };
+  return { approval, personId, affectedScopes };
 }
 
 /**
@@ -72,15 +81,15 @@ async function prepareApprovedGmailWrite(input: GmailDraftWriteRequest) {
 export async function createOwnerGmailDraft(
   input: GmailDraftWriteRequest,
 ): Promise<OwnerGmailDraftResult> {
-  const { ownerUserId, approval, personId } = await prepareApprovedGmailWrite(input);
+  const { approval, personId, affectedScopes } = await prepareApprovedGmailWrite(input);
   const outcome = await gmailService().createGmailDraft({
-    ownerUserId,
+    ownerUserId: input.ownerUserId,
     messageDraftId: input.draftId,
     subject: approval.subject,
     recipient: approval.recipient,
     idempotencyKey: `create:${input.draftId}`,
   });
-  return { outcome, personId };
+  return { outcome, personId, affectedScopes };
 }
 
 /**
@@ -95,15 +104,15 @@ export async function createOwnerGmailDraft(
 export async function updateOwnerGmailDraft(
   input: GmailDraftWriteRequest,
 ): Promise<OwnerGmailDraftResult> {
-  const { ownerUserId, approval, personId } = await prepareApprovedGmailWrite(input);
+  const { approval, personId, affectedScopes } = await prepareApprovedGmailWrite(input);
   const outcome = await gmailService().updateGmailDraft({
-    ownerUserId,
+    ownerUserId: input.ownerUserId,
     messageDraftId: input.draftId,
     subject: approval.subject,
     recipient: approval.recipient,
     idempotencyKey: `update:${input.draftId}:${randomUUID()}`,
   });
-  return { outcome, personId };
+  return { outcome, personId, affectedScopes };
 }
 
 /**
@@ -112,14 +121,14 @@ export async function updateOwnerGmailDraft(
  * Gmail connection or un-approved draft blocks the retry.
  */
 export async function retryOwnerGmailDraft(input: {
+  ownerUserId: string;
   actionId: string;
   draftId: string;
 }): Promise<OwnerGmailDraftResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const draft = await getDraft({ ownerUserId, draftId: input.draftId });
+  const draft = await getDraft({ ownerUserId: input.ownerUserId, draftId: input.draftId });
   const outcome = await gmailService().retryGmailDraftAction({
-    ownerUserId,
+    ownerUserId: input.ownerUserId,
     actionId: input.actionId,
   });
-  return { outcome, personId: draft?.personId ?? null };
+  return { outcome, personId: draft?.personId ?? null, affectedScopes: [] };
 }

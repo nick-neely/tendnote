@@ -22,6 +22,7 @@
     "./drafts": "./src/drafts.ts",
     "./gmail-drafts": "./src/gmail-drafts.ts",
     "./privacy": "./src/privacy.ts",
+    "./record-surfacing": "./src/record-surfacing.ts",
     "./reminders": "./src/reminders.ts",
     "./saved-items": "./src/saved-items.ts",
     "./semantic-retrieval": "./src/semantic-retrieval.ts",

@@ -18,7 +18,7 @@ const row = (name: string): AssetBrowseRow => ({
     updatedAt: new Date("2026-01-01T00:00:00Z"),
   },
   needsReview: false,
-  nextDueActionAt: null,
+  nextDueAction: null,
 });
 
 describe("asset browser", () => {

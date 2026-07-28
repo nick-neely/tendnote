@@ -1,7 +1,7 @@
-import type { Followup, FollowupStatus } from "@tendnote/domain";
-import { startOfLocalDay } from "@tendnote/domain/general-actions";
+import type { Followup, FollowupStatus, RecordSurfacingState } from "@tendnote/domain";
 import { parseLocalCalendarDate } from "@tendnote/domain/local-calendar-dates";
-import { visibilityChoiceForScope, visibilityLabelForScope } from "@tendnote/domain/privacy";
+import { visibilityChoiceForScope } from "@tendnote/domain/privacy";
+import { formatSurfacingDay, resolveRecordSurfacing } from "@tendnote/domain/record-surfacing";
 import type { ReminderScheduleView } from "@/lib/reminder-schedule-view";
 
 /**
@@ -9,18 +9,22 @@ import type { ReminderScheduleView } from "@/lib/reminder-schedule-view";
  * due and overdue reminders easy to spot (PRD #42, issue #44/#45) without turning
  * the surface into a task feed.
  */
-export type FollowupDueState = "overdue" | "today" | "upcoming";
+export type FollowupDueState = Extract<RecordSurfacingState, "overdue" | "today" | "upcoming">;
 
 export type FollowupView = {
   id: string;
+  revision: string;
   reason: string;
   status: FollowupStatus;
+  ownerUserId: string;
+  owned: boolean;
   /** ISO timestamp for client-side date inputs (snooze/edit), kept exact. */
   dueAtISO: string;
   /** `YYYY-MM-DD` for a date input's default value, in local time. */
   dueAtDate: string;
   dueLabel: string;
   dueState: FollowupDueState;
+  surfaceLabel: string;
   visibilityChoice: ReturnType<typeof visibilityChoiceForScope>;
   visibilityLabel: string;
   reminderSchedule?: ReminderScheduleView | null;
@@ -55,46 +59,49 @@ export function toDateInputValue(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-export function followupDueState(dueAt: Date, now: Date = new Date()): FollowupDueState {
-  const due = startOfLocalDay(dueAt);
-  const today = startOfLocalDay(now);
-
-  if (due < today) {
-    return "overdue";
-  }
-  if (due === today) {
-    return "today";
-  }
-  return "upcoming";
-}
-
 /**
  * Maps a persisted follow-up to a serializable view for client components. Dates
  * are pre-resolved (label + date-input value) so the client never re-derives
  * timezones, and `dueState` is computed once server-side (PRD #42).
  */
 export function toFollowupView(
-  followup: Followup,
+  followup: Followup & {
+    sharedWithCount?: number;
+    householdName?: string | null;
+  },
   now: Date = new Date(),
   reminderSchedule: ReminderScheduleView | null = null,
+  callerUserId: string = followup.ownerUserId,
 ): FollowupView {
-  const dueState = followupDueState(followup.dueAt, now);
-  const dueLabel = followup.dueAt.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: followup.dueAt.getFullYear() === now.getFullYear() ? undefined : "numeric",
-  });
+  const surfacing = resolveRecordSurfacing(
+    {
+      kind: "followup",
+      status: followup.status,
+      dueAt: followup.dueAt,
+      ownerUserId: followup.ownerUserId,
+      viewerUserId: callerUserId,
+      scope: followup.scope,
+      sharedWithCount: followup.sharedWithCount ?? 0,
+      householdName: followup.householdName ?? null,
+      updatedAt: followup.updatedAt,
+    },
+    now,
+  );
 
   return {
     id: followup.id,
+    revision: surfacing.revision,
     reason: followup.reason,
     status: followup.status,
+    ownerUserId: followup.ownerUserId,
+    owned: surfacing.owned,
     dueAtISO: followup.dueAt.toISOString(),
     dueAtDate: toDateInputValue(followup.dueAt),
-    dueLabel,
-    dueState,
+    dueLabel: formatSurfacingDay(followup.dueAt, now),
+    dueState: surfacing.state as FollowupDueState,
+    surfaceLabel: surfacing.timingLabel,
     visibilityChoice: visibilityChoiceForScope(followup.scope),
-    visibilityLabel: visibilityLabelForScope(followup.scope),
+    visibilityLabel: surfacing.audienceLabel,
     reminderSchedule,
   };
 }
@@ -108,9 +115,10 @@ export type DashboardFollowupView = FollowupView & {
 export function toDashboardFollowupView(
   summary: { followup: Followup; person: { id: string; displayName: string } | null },
   now: Date = new Date(),
+  callerUserId: string = summary.followup.ownerUserId,
 ): DashboardFollowupView {
   return {
-    ...toFollowupView(summary.followup, now),
+    ...toFollowupView(summary.followup, now, null, callerUserId),
     personId: summary.followup.personId,
     personName: summary.person?.displayName ?? null,
   };

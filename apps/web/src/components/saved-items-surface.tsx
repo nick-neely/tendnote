@@ -3,7 +3,7 @@
 import type { SavedItemKind } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import Link from "next/link";
-import { useEffect, useId, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import {
   archiveSavedItemAction,
   createSavedItemAction,
@@ -14,10 +14,7 @@ import {
   reopenSavedItemAction,
   resolveSavedItemAction,
 } from "@/app/actions/saved-items";
-import {
-  GeneralActionReminderField,
-  ReminderOptInInvitation,
-} from "@/components/general-action-reminder";
+import { GeneralActionReminderField } from "@/components/general-action-reminder";
 import { ActionScopeChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
@@ -34,13 +31,26 @@ import {
   RotateCcwIcon,
 } from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { RecordTimingChip } from "@/components/record-timing-chip";
+import { ReminderPastLeadRecovery } from "@/components/reminder-past-lead-recovery";
 import { SavedItemEditForm } from "@/components/saved-item-edit-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
+import {
+  type ReversibleMutationApplyPhase,
+  type ReversibleMutationApplyResult,
+  ReversibleMutationProvider,
+  useActiveReversibleMutation,
+  usePendingMutationSubmit,
+  useReversibleMutation,
+} from "@/lib/reversible-mutation";
+import { savedItemLifecycleAdapter } from "@/lib/saved-item-reversible-mutation";
 import type { SavedItemView } from "@/lib/saved-item-view";
-import { useMutationSubmit } from "@/lib/use-mutation-submit";
 import { useReminderSchedule } from "@/lib/use-reminder-schedule";
+import { useReminderScheduleWriter } from "@/lib/use-reminder-schedule-writer";
+import { reconcileRevisionedItems, useServerSyncedList } from "@/lib/use-server-synced-list";
 
 const KIND_OPTIONS: Array<{ value: SavedItemKind; label: string }> = [
   { value: "note", label: "Note" },
@@ -60,22 +70,57 @@ const EMPTY_SAVED_ITEM_DRAFT = {
 };
 
 export function SavedItemsSurface({
+  ...props
+}: {
+  items: SavedItemView[];
+  shareableMembers?: ShareableActionMember[];
+}) {
+  return (
+    <ReversibleMutationProvider>
+      <SavedItemsSurfaceContent {...props} />
+    </ReversibleMutationProvider>
+  );
+}
+
+function SavedItemsSurfaceContent({
   items,
   shareableMembers = [],
 }: {
   items: SavedItemView[];
   shareableMembers?: ShareableActionMember[];
 }) {
-  const [list, setList] = useState(items);
+  const acknowledgedRevisions = useRef(new Map<string, string>());
+  const [list, setList] = useServerSyncedList(
+    items,
+    (item) => item.id,
+    undefined,
+    (item) => item.revision,
+    (item) => {
+      const acknowledged = acknowledgedRevisions.current.get(item.id);
+      return !acknowledged || item.revision > acknowledged;
+    },
+  );
   const [state, setState] = useState<"active" | "archived">("active");
   const [archivedLoaded, setArchivedLoaded] = useState(false);
   const [archivedError, setArchivedError] = useState<string | null>(null);
   const [archivedLoading, startArchivedTransition] = useTransition();
-  useEffect(() => setList(items), [items]);
 
   const visible = list.filter((item) => item.status === state);
-  function upsert(item: SavedItemView) {
-    setList((current) => [item, ...current.filter((entry) => entry.id !== item.id)]);
+  function upsert(item: SavedItemView, phase: ReversibleMutationApplyPhase = "authoritative") {
+    const acknowledged = acknowledgedRevisions.current.get(item.id);
+    if (phase === "authoritative") {
+      if (acknowledged && item.revision <= acknowledged) return false;
+      acknowledgedRevisions.current.set(item.id, item.revision);
+    }
+    setList((current) =>
+      reconcileRevisionedItems(
+        current,
+        [item],
+        (entry) => entry.id,
+        (entry) => entry.revision,
+      ),
+    );
+    return true;
   }
   function remove(savedItemId: string) {
     setList((current) => current.filter((entry) => entry.id !== savedItemId));
@@ -154,6 +199,7 @@ function CreateSavedItemForm({
   onCreate: (item: SavedItemView) => void;
   shareableMembers: ShareableActionMember[];
 }) {
+  const reminderWriter = useReminderScheduleWriter();
   const [draft, setDraft] = useState(EMPTY_SAVED_ITEM_DRAFT);
   const {
     choice: reminderChoice,
@@ -163,8 +209,12 @@ function CreateSavedItemForm({
     setChoice: setReminderChoice,
     setEnabled: setReminderEnabled,
   } = useReminderSchedule();
-  const [optInInstallationId, setOptInInstallationId] = useState<string | null>(null);
-  const { error, setError, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+  const { error, setError, pending, submit } = usePendingMutationSubmit(GENERIC_ERROR);
+  const [pastLeadRecovery, setPastLeadRecovery] = useState<{
+    label: string;
+    recordId: string;
+  } | null>(null);
+  const [recoveryPending, setRecoveryPending] = useState(false);
   const { kind, title, content, url, bringBackAt, showSharing, visibilityChoice, selectedUserIds } =
     draft;
   const selectedMembersRequired =
@@ -202,22 +252,20 @@ function CreateSavedItemForm({
             async (item) => {
               let view = item;
               if (reminderEnabled && bringBackAt) {
-                const reminder = await saveSchedule("saved_item", item.id, "instant");
+                const reminder = await saveSchedule("saved_item", item.id);
                 if (reminder.nextValidChoice) {
                   onCreate(item);
                   reset();
-                  setError(
-                    `The Saved Item was saved, but that alert time has passed. Choose ${reminder.nextValidChoice.label} when you edit its reminder.`,
-                  );
+                  setPastLeadRecovery({
+                    label: reminder.nextValidChoice.label,
+                    recordId: item.id,
+                  });
                   return;
                 }
                 view = {
                   ...item,
                   reminderSchedule: reminder.scheduleView,
                 };
-                if (reminder.optIn.state === "offer") {
-                  setOptInInstallationId(reminder.clientInstallationId);
-                }
               }
               onCreate(view);
               reset();
@@ -264,10 +312,22 @@ function CreateSavedItemForm({
 
         {error ? <ErrorText message={error} /> : null}
       </form>
-      {optInInstallationId ? (
-        <ReminderOptInInvitation
-          clientInstallationId={optInInstallationId}
-          onDismiss={() => setOptInInstallationId(null)}
+      {pastLeadRecovery ? (
+        <ReminderPastLeadRecovery
+          label={pastLeadRecovery.label}
+          onRecover={async () => {
+            setRecoveryPending(true);
+            try {
+              await reminderWriter.save("saved_item", pastLeadRecovery.recordId, {
+                kind: "relative",
+                leadMinutes: 0,
+              });
+              setPastLeadRecovery(null);
+            } finally {
+              setRecoveryPending(false);
+            }
+          }}
+          pending={recoveryPending}
         />
       ) : null}
     </div>
@@ -463,15 +523,70 @@ function SavedItemRow({
 }: {
   item: SavedItemView;
   onDelete: (savedItemId: string) => void;
-  onUpdate: (item: SavedItemView) => void;
+  onUpdate: (
+    item: SavedItemView,
+    phase?: ReversibleMutationApplyPhase,
+  ) => ReversibleMutationApplyResult;
 }) {
   const [editing, setEditing] = useState(false);
-  const { error, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+  const archive = useReversibleMutation(item.id, "archive");
+  const reopen = useReversibleMutation(item.id, "reopen");
+  const update = useReversibleMutation(item.id, "update");
+  const active = useActiveReversibleMutation(item.id, ["archive", "reopen", "update"]);
+  const pending = Boolean(active?.state.pending);
 
-  function run(runMutation: () => ReturnType<typeof archiveSavedItemAction>) {
-    submit(runMutation, (updated) => {
-      onUpdate(updated);
-      setEditing(false);
+  function runPending(
+    runMutation: () => ReturnType<typeof archiveSavedItemAction>,
+    focusTarget: HTMLElement | null,
+  ) {
+    update.run({
+      kind: "pending",
+      apply: (view, phase) => {
+        const accepted = onUpdate(view, phase);
+        setEditing(false);
+        return accepted;
+      },
+      command: runMutation,
+      focusTarget,
+      labels: {
+        pending: "Updating Saved Item…",
+        success: "Saved Item updated.",
+        rollback: "The Saved Item was not changed.",
+        undo: "",
+        undone: "",
+      },
+    });
+  }
+
+  // fallow-ignore-next-line complexity -- Archive and reopen are one paired reversible lifecycle with mirrored labels and commands.
+  function runLifecycle(intent: "archive" | "reopen", focusTarget: HTMLElement) {
+    const mutation = intent === "archive" ? archive : reopen;
+    const row = document.getElementById(`saved-item-${item.id}`);
+    const moveFocus = captureFocusAfterRemoval(row);
+    mutation.run({
+      kind: "optimistic",
+      adapter: savedItemLifecycleAdapter(intent),
+      apply: onUpdate,
+      command: () =>
+        intent === "archive"
+          ? archiveSavedItemAction({ savedItemId: item.id })
+          : reopenSavedItemAction({ savedItemId: item.id }),
+      focusTarget,
+      labels: {
+        pending: `${intent === "archive" ? "Archiving" : "Reopening"} Saved Item…`,
+        success: `Saved Item ${intent === "archive" ? "archived" : "reopened"}. Undo available.`,
+        rollback: `The Saved Item was restored after ${intent} failed.`,
+        undo: `Undo ${intent === "archive" ? "Archive" : "Reopen"}`,
+        undone: "Saved Item restored.",
+      },
+      leave: {
+        apply: (view) => {
+          const accepted = onUpdate(view, "authoritative");
+          moveFocus();
+          return accepted;
+        },
+      },
+      prior: item,
     });
   }
 
@@ -489,20 +604,34 @@ function SavedItemRow({
         <SavedItemEditForm
           item={item}
           onCancel={() => setEditing(false)}
-          onSave={run}
+          onSave={runPending}
           pending={pending}
         />
       ) : null}
-      <OpenQuestionResolution item={item} onResolve={run} pending={pending} />
+      <OpenQuestionResolution item={item} onResolve={runPending} pending={pending} />
       <SavedItemControls
         item={item}
         onEdit={() => setEditing((current) => !current)}
-        onRun={run}
+        onLifecycle={runLifecycle}
+        onPending={runPending}
         pending={pending}
       />
-      {error ? (
+      {active?.state.undoAvailable ? (
         <div className="ml-7">
-          <ErrorText message={error} />
+          <Button
+            disabled={active.state.undoRequested}
+            onClick={active.requestUndo}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {active.state.undoRequested ? "Undoing…" : active.state.labels.undo}
+          </Button>
+        </div>
+      ) : null}
+      {active?.state.error ? (
+        <div className="ml-7">
+          <ErrorText message={active.state.error} />
         </div>
       ) : null}
     </article>
@@ -539,7 +668,9 @@ function SavedItemSummary({ item }: { item: SavedItemView }) {
           </a>
         ) : null}
         <div className="mt-1 flex flex-wrap gap-x-2 text-[length:var(--text-caption)] text-muted-foreground">
-          {item.bringBackLabel ? <span>{item.bringBackLabel}</span> : null}
+          {item.bringBackLabel && item.bringBackState ? (
+            <RecordTimingChip label={item.bringBackLabel} state={item.bringBackState} />
+          ) : null}
           {item.reminderSchedule ? (
             <span className="inline-flex items-center gap-1">
               <BellIcon className="size-3" />
@@ -580,9 +711,7 @@ function SourceGroundingDetails({
 }) {
   const [checking, setChecking] = useState(false);
   const [impactError, setImpactError] = useState<string | null>(null);
-  const [impact, setImpact] = useState<Awaited<
-    ReturnType<typeof getSavedItemSourceDeletionImpactAction>
-  > | null>(null);
+  const [impact, setImpact] = useState<SourceDeletionImpact | null>(null);
   return (
     <details className="pl-7 text-[length:var(--text-small)] text-muted-foreground">
       <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
@@ -601,11 +730,11 @@ function SourceGroundingDetails({
             setChecking(true);
             setImpactError(null);
             try {
-              setImpact(
-                await getSavedItemSourceDeletionImpactAction({
-                  sourceRecordId: item.sourceRecordId,
-                }),
-              );
+              const result = await getSavedItemSourceDeletionImpactAction({
+                sourceRecordId: item.sourceRecordId,
+              });
+              if (!result.ok) throw new Error(result.error);
+              setImpact(result.view);
             } catch {
               setImpactError("Could not check the source impact. Try again.");
             } finally {
@@ -634,12 +763,17 @@ function SourceGroundingDetails({
   );
 }
 
+type SourceDeletionImpact = Extract<
+  Awaited<ReturnType<typeof getSavedItemSourceDeletionImpactAction>>,
+  { ok: true }
+>["view"];
+
 function SourceDeletionControls({
   impact,
   itemId,
   onDelete,
 }: {
-  impact: Awaited<ReturnType<typeof getSavedItemSourceDeletionImpactAction>> | null;
+  impact: SourceDeletionImpact | null;
   itemId: string;
   onDelete: (savedItemId: string) => void;
 }) {
@@ -664,7 +798,12 @@ function SourceDeletionControls({
           setDeleting(true);
           setError(null);
           try {
-            await deleteUniqueSavedItemSourceAction({ savedItemId: itemId });
+            const result = await deleteUniqueSavedItemSourceAction({ savedItemId: itemId });
+            if (!result.ok) {
+              setError(result.error);
+              setDeleting(false);
+              return;
+            }
             onDelete(itemId);
           } catch {
             setError("Could not delete this source evidence. Try again.");
@@ -691,7 +830,10 @@ function OpenQuestionResolution({
   pending,
 }: {
   item: SavedItemView;
-  onResolve: (run: () => ReturnType<typeof resolveSavedItemAction>) => void;
+  onResolve: (
+    run: () => ReturnType<typeof resolveSavedItemAction>,
+    focusTarget: HTMLElement | null,
+  ) => void;
   pending: boolean;
 }) {
   const [reason, setReason] = useState("");
@@ -702,7 +844,10 @@ function OpenQuestionResolution({
       onSubmit={(event) => {
         event.preventDefault();
         if (!reason.trim()) return;
-        onResolve(() => resolveSavedItemAction({ savedItemId: item.id, reason: reason.trim() }));
+        onResolve(
+          () => resolveSavedItemAction({ savedItemId: item.id, reason: reason.trim() }),
+          event.nativeEvent.submitter instanceof HTMLElement ? event.nativeEvent.submitter : null,
+        );
       }}
     >
       <Input
@@ -721,12 +866,17 @@ function OpenQuestionResolution({
 function SavedItemControls({
   item,
   onEdit,
-  onRun,
+  onLifecycle,
+  onPending,
   pending,
 }: {
   item: SavedItemView;
   onEdit: () => void;
-  onRun: (run: () => ReturnType<typeof archiveSavedItemAction>) => void;
+  onLifecycle: (intent: "archive" | "reopen", focusTarget: HTMLElement) => void;
+  onPending: (
+    run: () => ReturnType<typeof archiveSavedItemAction>,
+    focusTarget: HTMLElement | null,
+  ) => void;
   pending: boolean;
 }) {
   if (item.archived) {
@@ -736,7 +886,7 @@ function SavedItemControls({
         <Button
           aria-busy={pending}
           disabled={pending}
-          onClick={() => onRun(() => reopenSavedItemAction({ savedItemId: item.id }))}
+          onClick={(event) => onLifecycle("reopen", event.currentTarget)}
           size="sm"
           type="button"
           variant="outline"
@@ -754,7 +904,12 @@ function SavedItemControls({
       <Button
         aria-busy={pending}
         disabled={pending}
-        onClick={() => onRun(() => promoteSavedItemToGeneralActionAction({ savedItemId: item.id }))}
+        onClick={(event) =>
+          onPending(
+            () => promoteSavedItemToGeneralActionAction({ savedItemId: item.id }),
+            event.currentTarget,
+          )
+        }
         size="sm"
         type="button"
         variant="outline"
@@ -764,7 +919,7 @@ function SavedItemControls({
       <Button
         aria-busy={pending}
         disabled={pending}
-        onClick={() => onRun(() => archiveSavedItemAction({ savedItemId: item.id }))}
+        onClick={(event) => onLifecycle("archive", event.currentTarget)}
         size="sm"
         type="button"
         variant="ghost"

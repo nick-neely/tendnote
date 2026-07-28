@@ -6,6 +6,7 @@ import {
   type DiscordInstallView,
 } from "@/components/account/discord-delivery-settings";
 import { AdmittedRoute } from "@/components/admitted-route";
+import { appDestination } from "@/components/app-destinations";
 import { CheckIcon, TriangleAlertIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
@@ -54,7 +55,7 @@ type DiscordDeliveryPageProps = {
 
 export default function DiscordDeliveryPage(props: DiscordDeliveryPageProps) {
   return (
-    <AdmittedRoute title="Discord delivery">
+    <AdmittedRoute destination="account-discord">
       <DiscordDeliveryContent {...props} />
     </AdmittedRoute>
   );
@@ -78,7 +79,7 @@ async function DiscordDeliveryContent({ searchParams }: DiscordDeliveryPageProps
         </Link>
         <div className="flex flex-col gap-1">
           <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
-            Discord delivery
+            {appDestination("account-discord").label}
           </h1>
           <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
             Delivery stays private to you, and Tendnote never sends without your approval.

@@ -3,11 +3,12 @@ import { gateway, generateText } from "ai";
 import { createLlmDraftAdapter, type DraftAdapter } from "./drafts/draft-adapter";
 import { createDrizzleDraftLifecycleStore, createDrizzleDraftStore } from "./drafts/drizzle-store";
 import { createDraftGenerator, type GenerateDraftInput } from "./drafts/generator";
+import type { DraftActionInput, EditDraftBodyInput } from "./drafts/lifecycle";
 import {
-  createDraftLifecycle,
-  type DraftActionInput,
-  type EditDraftBodyInput,
-} from "./drafts/lifecycle";
+  createAffectedDraftGenerator,
+  createAffectedDraftLifecycle,
+  createAffectedDraftRegeneration,
+} from "./drafts/mutation-lifecycle";
 import { createDraftRegeneration } from "./drafts/regenerate";
 import { getPersonContext } from "./person-context";
 
@@ -38,6 +39,12 @@ export {
   type DraftActionInput,
   type EditDraftBodyInput,
 } from "./drafts/lifecycle";
+export {
+  createAffectedDraftGenerator,
+  createAffectedDraftLifecycle,
+  createAffectedDraftRegeneration,
+  draftGenerationOutcome,
+} from "./drafts/mutation-lifecycle";
 export { createDraftRegeneration, type DraftRegenerationDeps } from "./drafts/regenerate";
 export type * from "./drafts/types";
 
@@ -79,9 +86,10 @@ const defaultDraftGenerator = createDraftGenerator(
   { getPersonContext },
   { draftAdapter: defaultDraftAdapter },
 );
+const defaultAffectedDraftGenerator = createAffectedDraftGenerator(defaultDraftGenerator);
 
 export function generateDraft(input: GenerateDraftInput) {
-  return defaultDraftGenerator.generateDraft(input);
+  return defaultAffectedDraftGenerator.generateDraft(input);
 }
 
 // Default owner-scoped draft reads + lifecycle (issues #76/#78). One drizzle
@@ -90,7 +98,7 @@ export function generateDraft(input: GenerateDraftInput) {
 // the shared lifecycle without forking draft storage.
 const defaultDraftLifecycleStore = createDrizzleDraftLifecycleStore();
 const defaultDraftStore = createDrizzleDraftStore();
-const defaultDraftLifecycle = createDraftLifecycle(defaultDraftLifecycleStore);
+const defaultDraftLifecycle = createAffectedDraftLifecycle(defaultDraftLifecycleStore);
 
 /** A single owner-scoped draft (with its persisted source references), or null. */
 export function getDraft(input: { ownerUserId: string; draftId: string }) {
@@ -126,9 +134,10 @@ export function editDraftBody(input: EditDraftBodyInput) {
 // generator, so it cannot fork generation or audit behavior (issue #78).
 const defaultDraftRegeneration = createDraftRegeneration({
   store: defaultDraftLifecycleStore,
-  generateDraft,
+  generateDraft: (input) => defaultDraftGenerator.generateDraft(input),
 });
+const defaultAffectedDraftRegeneration = createAffectedDraftRegeneration(defaultDraftRegeneration);
 
 export function regenerateDraft(input: DraftActionInput) {
-  return defaultDraftRegeneration.regenerateDraft(input);
+  return defaultAffectedDraftRegeneration.regenerateDraft(input);
 }

@@ -27,6 +27,22 @@ import { useReviewWorkingSet } from "./use-review-working-set";
 
 type Candidate = ContactImportPreviewCandidate;
 
+async function confirmOneCandidate(
+  input: Parameters<typeof confirmContactImportCandidateAction>[0],
+) {
+  const result = await confirmContactImportCandidateAction(input);
+  if (!result.ok) throw new Error(result.error);
+  return result.view;
+}
+
+async function confirmSafeCandidates(
+  input: Parameters<typeof confirmSafeContactImportCandidatesAction>[0],
+) {
+  const result = await confirmSafeContactImportCandidatesAction(input);
+  if (!result.ok) throw new Error(result.error);
+  return result.view;
+}
+
 /**
  * Everything the contact import review surface does, assembled from its three parts:
  * the session working set (`useReviewWorkingSet`), the confirmation path
@@ -69,7 +85,7 @@ export function useContactImportReview(candidates: Candidate[]): ContactImportRe
       void runConfirm(
         [candidate],
         () =>
-          confirmContactImportCandidateAction({
+          confirmOneCandidate({
             candidateId: candidate.id,
             fingerprint: candidate.fingerprint,
             targetPersonId: resolution?.targetPersonId,
@@ -138,7 +154,7 @@ export function useContactImportReview(candidates: Candidate[]): ContactImportRe
     void runConfirm(
       bulkTargets,
       () =>
-        confirmSafeContactImportCandidatesAction({
+        confirmSafeCandidates({
           candidates: bulkTargets.map((candidate) => ({
             candidateId: candidate.id,
             fingerprint: candidate.fingerprint,

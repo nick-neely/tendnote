@@ -50,6 +50,7 @@ import { SavedItemsSurface } from "./saved-items-surface";
 function fixture(overrides: Partial<SavedItemView> = {}): SavedItemView {
   return {
     id: "saved-1",
+    revision: "2026-07-01T12:00:00.000Z",
     kind: "note",
     kindLabel: "Note",
     title: "Filter measurements",
@@ -57,7 +58,10 @@ function fixture(overrides: Partial<SavedItemView> = {}): SavedItemView {
     url: null,
     status: "active",
     archived: false,
+    ownerUserId: "owner-1",
+    owned: true,
     bringBackAt: null,
+    bringBackState: null,
     bringBackLabel: null,
     scope: "private",
     visibilityLabel: "Only me",
@@ -96,17 +100,20 @@ describe("SavedItemsSurface", () => {
     const created = fixture({ bringBackAt: "2026-07-21T16:00:00.000Z" });
     createSavedItemAction.mockResolvedValue({ ok: true, view: created });
     saveReminderAction.mockResolvedValue({
-      optIn: { state: "none", clientInstallationId: "browser-installation-1" },
-      nextValidChoice: {
-        label: "At the bring-back time",
-        choice: { kind: "relative", leadMinutes: 0 },
-      },
-      schedule: {
-        kind: "relative",
-        localTime: null,
-        leadMinutes: 1_440,
-        timeZone: "America/Chicago",
-        intendedAtISO: "2026-07-20T16:00:00.000Z",
+      ok: true,
+      view: {
+        optIn: { state: "none", clientInstallationId: "browser-installation-1" },
+        nextValidChoice: {
+          label: "At the bring-back time",
+          choice: { kind: "relative", leadMinutes: 0 },
+        },
+        schedule: {
+          kind: "relative",
+          localTime: null,
+          leadMinutes: 1_440,
+          timeZone: "America/Chicago",
+          intendedAtISO: "2026-07-20T16:00:00.000Z",
+        },
       },
     });
     render(<SavedItemsSurface items={[]} />);
@@ -117,6 +124,7 @@ describe("SavedItemsSurface", () => {
     await user.click(screen.getByRole("button", { name: "Save item" }));
 
     expect(await screen.findByText(/alert time has passed/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: /Use At the bring-back time/i })).toBeDefined();
     expect(screen.queryByText(/Reminder at|Reminder one|Reminder at the/i)).toBeNull();
   });
 
@@ -139,11 +147,14 @@ describe("SavedItemsSurface", () => {
       view: { ...question, status: "archived", archived: true, resolutionReason: "Local store" },
     });
     getSavedItemSourceDeletionImpactAction.mockResolvedValue({
-      sourceRecordId: "source-1",
-      linkedSavedItemIds: ["saved-1"],
-      linkedOutcomes: [{ destinationKind: "general_action", destinationRecordId: "action-1" }],
-      linkedRecords: [{ recordKind: "memory", recordId: "memory-1" }],
-      requiresImpactDisclosure: true,
+      ok: true,
+      view: {
+        sourceRecordId: "source-1",
+        linkedSavedItemIds: ["saved-1"],
+        linkedOutcomes: [{ destinationKind: "general_action", destinationRecordId: "action-1" }],
+        linkedRecords: [{ recordKind: "memory", recordId: "memory-1" }],
+        requiresImpactDisclosure: true,
+      },
     });
     render(<SavedItemsSurface items={[question]} />);
 
@@ -184,15 +195,21 @@ describe("SavedItemsSurface", () => {
   it("requires impact inspection and a second confirmation before deleting unique evidence", async () => {
     const user = userEvent.setup();
     getSavedItemSourceDeletionImpactAction.mockResolvedValue({
-      sourceRecordId: "source-1",
-      linkedSavedItemIds: ["saved-1"],
-      linkedOutcomes: [],
-      linkedRecords: [],
-      requiresImpactDisclosure: false,
+      ok: true,
+      view: {
+        sourceRecordId: "source-1",
+        linkedSavedItemIds: ["saved-1"],
+        linkedOutcomes: [],
+        linkedRecords: [],
+        requiresImpactDisclosure: false,
+      },
     });
     deleteUniqueSavedItemSourceAction.mockResolvedValue({
-      deletedSavedItemId: "saved-1",
-      deletedSourceRecordId: "source-1",
+      ok: true,
+      view: {
+        deletedSavedItemId: "saved-1",
+        deletedSourceRecordId: "source-1",
+      },
     });
     render(<SavedItemsSurface items={[fixture()]} />);
 

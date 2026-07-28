@@ -11,7 +11,7 @@ export async function getCachedPeopleList(input: { ownerUserId: string; limit: n
 async function cachedPeopleList(ownerUserId: string, limit: number) {
   "use cache";
   cacheLife(cacheProfiles.interactive);
-  cacheTag(...peopleCacheContract.list({ ownerUserId, limit }).tags);
+  cacheTag(...peopleCacheContract.list({ ownerUserId }).tags);
   return listPeopleProductView({ ownerUserId, limit });
 }
 

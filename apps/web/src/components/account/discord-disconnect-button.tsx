@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { disconnectDiscordAction } from "@/app/actions/integrations";
 import { Button } from "@/components/ui/button";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
 /**
  * Disconnects Discord (ADR-0138). Calls the audited server
@@ -17,7 +18,7 @@ export function DiscordDisconnectButton({ label }: { label: string }) {
   function disconnect() {
     startTransition(async () => {
       try {
-        await disconnectDiscordAction();
+        unwrapOwnerActionResult(await disconnectDiscordAction());
       } catch {
         // The connection state is unchanged; the page reflects reality on reload.
       }

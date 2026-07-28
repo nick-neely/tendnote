@@ -15,6 +15,7 @@ const NOW = new Date(2026, 6, 6, 9, 0, 0);
 function view(overrides: Partial<GeneralActionView> = {}): GeneralActionView {
   return {
     id: "a1",
+    revision: "2026-07-24T00:00:00.000Z",
     title: "Replace the water filter",
     notes: null,
     links: [],

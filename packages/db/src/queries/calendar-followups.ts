@@ -51,7 +51,7 @@ export async function listCalendarSuggestedFollowups(ownerUserId: string) {
 /** Accept a Calendar suggestion, promoting it into the active follow-up lifecycle. */
 export async function acceptCalendarSuggestedFollowup(input: { ownerUserId: string; id: string }) {
   return defaultReview.acceptSuggestedFollowup(input, {
-    createActiveFollowup: (followup) => createFollowup(followup),
+    createActiveFollowup: async (followup) => (await createFollowup(followup)).result,
   });
 }
 

@@ -6,6 +6,7 @@ import { captureGlobalAssistantSourceRecord } from "@/app/actions/source-records
 import { CheckIcon, LockIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { ownerActionFailureMessage, unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
 /**
  * Person-scoped capture: the assistant's job on a profile is to take a quick note,
@@ -40,13 +41,15 @@ export function PersonCapture({
 
     startTransition(async () => {
       try {
-        await captureGlobalAssistantSourceRecord({ retainedContent: text, personId });
+        unwrapOwnerActionResult(
+          await captureGlobalAssistantSourceRecord({ retainedContent: text, personId }),
+        );
         setValue("");
         setSaved(true);
         router.refresh();
         window.setTimeout(() => setSaved(false), 4000);
-      } catch {
-        setError("That didn't save. Try again.");
+      } catch (error) {
+        setError(ownerActionFailureMessage(error) ?? "That didn't save. Try again.");
       }
     });
   }

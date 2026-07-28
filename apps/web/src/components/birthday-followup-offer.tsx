@@ -3,12 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createBirthdayFollowupAction } from "@/app/actions/followups";
-import { ReminderOptInInvitation } from "@/components/general-action-reminder";
 import { CakeIcon } from "@/components/icons";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
+import {
+  reminderInstallationIdentity,
+  useReminderInstallation,
+} from "@/components/reminder-installation-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getReminderInstallationId } from "@/lib/reminder-registration";
 
 export function BirthdayFollowupOffer({
   personId,
@@ -17,11 +19,11 @@ export function BirthdayFollowupOffer({
   personId: string;
   personName: string;
 }) {
+  const installation = useReminderInstallation();
   const router = useRouter();
   const [choice, setChoice] = useState<"day_of" | "week_before" | "custom">("day_of");
   const [customDays, setCustomDays] = useState(3);
   const [createdLabel, setCreatedLabel] = useState<string | null>(null);
-  const [optInInstallationId, setOptInInstallationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -69,19 +71,22 @@ export function BirthdayFollowupOffer({
             setError(null);
             startTransition(async () => {
               try {
-                const clientInstallationId = getReminderInstallationId(window.localStorage);
+                if (!installation) throw new Error("Reminder installation identity is loading.");
                 const leadMinutes =
                   choice === "day_of" ? 0 : choice === "week_before" ? 10_080 : customDays * 1_440;
                 const result = await createBirthdayFollowupAction({
                   personId,
-                  clientInstallationId,
-                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                  ...reminderInstallationIdentity(installation),
                   schedule: { kind: "relative", leadMinutes },
                 });
+                if (!result.ok) {
+                  setError(result.error);
+                  return;
+                }
                 setCreatedLabel(
-                  `${result.view.reason} · ${result.view.reminderSchedule?.label ?? "Reminder saved"}`,
+                  `${result.view.view.reason} · ${result.view.view.reminderSchedule?.label ?? "Reminder saved"}`,
                 );
-                if (result.optIn.state === "offer") setOptInInstallationId(clientInstallationId);
+                if (result.view.optIn.state === "offer") installation.offerReminderOptIn();
                 router.refresh();
               } catch {
                 setError(GENERIC_ERROR);
@@ -95,12 +100,6 @@ export function BirthdayFollowupOffer({
       </div>
       {createdLabel ? <p className="text-sm text-muted-foreground">{createdLabel}</p> : null}
       {error ? <ErrorText message={error} /> : null}
-      {optInInstallationId ? (
-        <ReminderOptInInvitation
-          clientInstallationId={optInInstallationId}
-          onDismiss={() => setOptInInstallationId(null)}
-        />
-      ) : null}
     </div>
   );
 }

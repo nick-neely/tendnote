@@ -34,6 +34,30 @@ export function createInMemoryTodayFeedbackStore(): TodayFeedbackStore & {
       auditEntries.push(toAuditEntry(parsed));
       return record;
     },
+    async deleteFeedback(input) {
+      const index = records.findIndex(
+        (record) =>
+          record.ownerUserId === input.ownerUserId &&
+          record.candidateIdentity === input.candidateIdentity &&
+          record.reasonKey === input.reasonKey &&
+          record.kind === input.kind,
+      );
+      if (index < 0) return false;
+      records.splice(index, 1);
+      auditEntries.push({
+        ownerUserId: input.ownerUserId,
+        action: "today.feedback_restored",
+        entityType: "today_candidate",
+        entityId: input.candidateIdentity,
+        metadataJson: {
+          kind: input.kind,
+          reasonKey: input.reasonKey,
+          localDate: input.localDate,
+          suppressUntil: null,
+        },
+      });
+      return true;
+    },
   };
 }
 

@@ -15,12 +15,14 @@ const accept = vi.fn();
 const dismiss = vi.fn();
 const ignore = vi.fn();
 const edit = vi.fn();
+const restore = vi.fn();
 
 vi.mock("@/app/actions/suggested-general-actions", () => ({
   acceptSuggestedGeneralActionAction: (input: unknown) => accept(input),
   dismissSuggestedGeneralActionAction: (input: unknown) => dismiss(input),
   ignoreSuggestedGeneralActionAction: (input: unknown) => ignore(input),
   editSuggestedGeneralActionAction: (input: unknown) => edit(input),
+  restoreDismissedSuggestedGeneralActionAction: (input: unknown) => restore(input),
 }));
 
 const refresh = vi.fn();
@@ -54,12 +56,13 @@ beforeEach(() => {
   dismiss.mockReset();
   ignore.mockReset();
   edit.mockReset();
+  restore.mockReset();
   refresh.mockReset();
 });
 
 describe("SuggestedGeneralActionReviewCard interaction", () => {
   it("accepts: click promotes through the accept mutation and leaves the list", async () => {
-    accept.mockResolvedValue({ status: "open" });
+    accept.mockResolvedValue({ ok: true, view: { status: "open" } });
     const onResolve = vi.fn();
     const user = userEvent.setup();
     render(<SuggestedGeneralActionReviewCard onResolve={onResolve} review={view()} />);
@@ -79,7 +82,7 @@ describe("SuggestedGeneralActionReviewCard interaction", () => {
       ...view(),
       action: generalActionViewFixture({ id: ACTION_ID, title: "Replace the HVAC filter" }),
     };
-    edit.mockResolvedValue(updated);
+    edit.mockResolvedValue({ ok: true, view: updated });
     const onUpdate = vi.fn();
     const user = userEvent.setup();
     render(

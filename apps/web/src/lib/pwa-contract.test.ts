@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { runInNewContext } from "node:vm";
+import { describe, expect, it, vi } from "vitest";
 import manifest from "../app/manifest";
 
 const serviceWorker = readFileSync(join(import.meta.dirname, "../../public/sw.js"), "utf8");
@@ -95,5 +96,55 @@ describe("Phase Seven installable online-required PWA", () => {
     expect(serviceWorker).toContain("event.notification.close()");
     expect(serviceWorker).toContain("existing.navigate(target.href)");
     expect(serviceWorker).toContain("self.clients.openWindow(target.href)");
+  });
+
+  it("refreshes destination configuration before falling back to an installed cache", async () => {
+    const listeners = new Map<string, (event: unknown) => void>();
+    const showNotification = vi.fn(async () => {});
+    const put = vi.fn(async () => {});
+    const fetch = vi.fn(async () => Response.json({ notificationFallback: "/new-actions" }));
+    const caches = {
+      match: vi.fn(async () => Response.json({ notificationFallback: "/stale-actions" })),
+      open: vi.fn(async () => ({ addAll: vi.fn(), put })),
+      keys: vi.fn(async () => []),
+      delete: vi.fn(async () => true),
+    };
+    const self = {
+      addEventListener: (name: string, listener: (event: unknown) => void) => {
+        listeners.set(name, listener);
+      },
+      clients: {
+        claim: vi.fn(),
+        matchAll: vi.fn(async () => []),
+        openWindow: vi.fn(),
+      },
+      location: { origin: "https://tendnote.test" },
+      registration: { showNotification },
+      skipWaiting: vi.fn(),
+    };
+    runInNewContext(serviceWorker, {
+      Response,
+      URL,
+      caches,
+      fetch,
+      self,
+    });
+    let pending: Promise<unknown> | undefined;
+    listeners.get("push")?.({
+      data: null,
+      waitUntil(value: Promise<unknown>) {
+        pending = value;
+      },
+    });
+
+    await pending;
+
+    expect(fetch).toHaveBeenCalledWith("/app-destinations.json");
+    expect(showNotification).toHaveBeenCalledWith(
+      "Tendnote reminder",
+      expect.objectContaining({ data: { url: "/new-actions" } }),
+    );
+    expect(put).toHaveBeenCalledWith("/app-destinations.json", expect.any(Response));
+    expect(caches.match).not.toHaveBeenCalled();
   });
 });

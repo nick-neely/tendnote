@@ -4,6 +4,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 /**
@@ -76,7 +77,7 @@ export default defineTool({
     // writes. Sequential keeps the persisted/embedded order stable and predictable.
     const proposed = [];
     for (const step of input.steps) {
-      const result = await withModelSafeStoreErrors(() =>
+      const outcome = await withModelSafeStoreErrors(() =>
         suggestGeneralAction({
           ownerUserId,
           title: step.title,
@@ -89,6 +90,8 @@ export default defineTool({
           directlyRequested: input.directlyRequested,
         }),
       );
+      await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
+      const result = outcome.result;
       proposed.push({
         component: result.component,
         action: toGeneralActionRef(result.action),

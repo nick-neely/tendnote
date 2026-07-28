@@ -245,8 +245,10 @@ describe("draft proposal generation", () => {
       ],
     });
 
-    expect(result.draft.body).toBe("Exact accepted proposal body.");
-    expect(result.draft.sourceRefs[0]).toMatchObject({ id: "memory-1" });
+    expect(result.result.status).toBe("created");
+    if (result.result.status !== "created") throw new Error("Expected a persisted draft.");
+    expect(result.result.draft.body).toBe("Exact accepted proposal body.");
+    expect(result.result.draft.sourceRefs[0]).toMatchObject({ id: "memory-1" });
     expect(await store.listDraftsForOwner({ ownerUserId: OWNER })).toHaveLength(1);
     expect(
       (await store.listAuditLogEntries({ ownerUserId: OWNER })).map((entry) => entry.action),

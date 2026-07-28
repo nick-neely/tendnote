@@ -172,7 +172,7 @@ export type SuggestedReviewItemView = {
 export type SuggestedFollowupReviewItemView = {
   followupId: string;
   reason: string;
-  dueLabel: string;
+  timingLabel: string;
   sourceRecordId: string | null;
   personId: string | null;
   personName: string | null;
@@ -187,8 +187,8 @@ export type SuggestedGeneralActionReviewItemView = {
   generalActionId: string;
   title: string;
   status: string;
-  /** Proposed due date, formatted, or null for an unscheduled "someday" proposal. */
-  dueLabel: string | null;
+  /** Calm domain timing phrase, or null for an unscheduled "someday" proposal. */
+  timingLabel: string | null;
   isRoutine: boolean;
   /** Plain cadence label ("Every 6 months") for a Routine proposal; else null. */
   recurrenceLabel: string | null;

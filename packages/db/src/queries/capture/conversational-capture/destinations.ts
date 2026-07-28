@@ -1,4 +1,6 @@
 import type { ConversationalCaptureRoute } from "@tendnote/domain";
+import type { AffectedScope } from "../../affected-scopes";
+import { affectedScopesForSavedItem } from "../../assets/affected-scopes";
 import { hydrateSavedItem } from "../../saved-items/context";
 import { createGroundedSavedItem } from "../../saved-items/creation";
 import type { SavedItemLifecycleStore } from "../../saved-items/types";
@@ -105,9 +107,10 @@ async function createActionDestination(
       generalActionId: input.ids.generalActionId,
     });
   let generalAction = await getExisting();
+  let affectedScopes: AffectedScope[] = [];
   if (!generalAction) {
     try {
-      generalAction = await createGeneralAction({
+      const outcome = await createGeneralAction({
         id: input.ids.generalActionId,
         ownerUserId: input.ownerUserId,
         title: input.route.title,
@@ -120,6 +123,8 @@ async function createActionDestination(
           ? { selectedUserIds: input.visibility.selectedUserIds }
           : {}),
       });
+      generalAction = outcome.result;
+      affectedScopes = outcome.affectedScopes;
     } catch (error) {
       const racedAction = await getExisting();
       if (!racedAction) throw error;
@@ -137,6 +142,7 @@ async function createActionDestination(
   return {
     kind: "general_action" as const,
     generalAction,
+    affectedScopes,
     confirmation,
     id: generalAction.id,
     ...(input.route.reminderSchedule ? { reminderSchedule: input.route.reminderSchedule } : {}),
@@ -156,9 +162,10 @@ async function createFollowupDestination(
       followupId: input.ids.followupId,
     });
   let followup = await getExisting();
+  let affectedScopes: AffectedScope[] = [];
   if (!followup) {
     try {
-      followup = await createFollowup({
+      const outcome = await createFollowup({
         id: input.ids.followupId,
         ownerUserId: input.ownerUserId,
         personId: input.resolvedPerson.id,
@@ -171,6 +178,8 @@ async function createFollowupDestination(
           ? { selectedUserIds: input.visibility.selectedUserIds }
           : {}),
       });
+      followup = outcome.result;
+      affectedScopes = outcome.affectedScopes;
     } catch (error) {
       const racedFollowup = await getExisting();
       if (!racedFollowup) throw error;
@@ -186,7 +195,13 @@ async function createFollowupDestination(
       visibilityLabel: input.visibility.label,
     }),
   );
-  return { kind: "followup" as const, followup, confirmation, id: followup.id };
+  return {
+    kind: "followup" as const,
+    followup,
+    affectedScopes,
+    confirmation,
+    id: followup.id,
+  };
 }
 
 async function createSavedItemDestination(
@@ -202,6 +217,7 @@ async function createSavedItemDestination(
   const kind = fallbackKind(input.originalText);
   const itemKind = input.route.kind ?? kind;
   const itemText = input.route.text ?? input.originalText;
+  const created = !existing;
   const savedItem = existing
     ? await hydrateSavedItem(input.store, existing)
     : await createGroundedSavedItem(input.store, {
@@ -229,5 +245,11 @@ async function createSavedItemDestination(
       visibilityLabel: input.visibility.label,
     }),
   );
-  return { kind: "saved_item" as const, savedItem, confirmation, id: savedItem.id };
+  return {
+    kind: "saved_item" as const,
+    savedItem,
+    affectedScopes: created ? affectedScopesForSavedItem(savedItem) : [],
+    confirmation,
+    id: savedItem.id,
+  };
 }

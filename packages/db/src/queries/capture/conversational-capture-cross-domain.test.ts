@@ -5,7 +5,7 @@ import { createConversationalCapture } from "./conversational-capture";
 import { createCaptureVisibilityResolver } from "./conversational-capture/visibility";
 
 async function capturedAssetReview(input: { name: string; sourceRecordId: string }) {
-  return {
+  return actionMutationOutcome({
     asset: { id: "asset-filter", name: input.name, status: "suggested" as const },
     group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
     component: {
@@ -15,16 +15,19 @@ async function capturedAssetReview(input: { name: string; sourceRecordId: string
       sourceRecordId: input.sourceRecordId,
     },
     duplicateCandidates: [],
-  };
+  });
+}
+
+function actionMutationOutcome<T>(result: T) {
+  return { result, affectedScopes: [] };
 }
 
 describe("cross-domain conversational Capture", () => {
   it("persists an explicitly grouped Action and open question against one source", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      status: "open",
-    }));
+    const createGeneralAction = vi
+      .fn()
+      .mockImplementation(async (input) => actionMutationOutcome({ ...input, status: "open" }));
     const capture = createConversationalCapture(store, {
       createGeneralAction,
       ownerTimeZone: async () => "America/Chicago",
@@ -70,6 +73,16 @@ describe("cross-domain conversational Capture", () => {
 
   it("creates a minimal Person only for explicit add intent and attaches the shared evidence", async () => {
     const store = createInMemorySavedItemLifecycleStore();
+    const personScopes = [
+      { kind: "owner-collection" as const, collection: "people" as const, ownerUserId: "owner-1" },
+      {
+        kind: "viewer-entity" as const,
+        entity: "person" as const,
+        entityId: "person-priya",
+        viewerUserId: "owner-1",
+      },
+      { kind: "visible-entity" as const, entity: "person" as const, entityId: "person-priya" },
+    ];
     const resolveOrCreateAndLinkPerson = vi.fn().mockImplementation(async (input) => ({
       person: { id: "person-priya", displayName: input.displayName },
       created: true,
@@ -96,6 +109,7 @@ describe("cross-domain conversational Capture", () => {
       role: "primary",
     });
     expect(result).toMatchObject({
+      affectedScopes: personScopes,
       person: { id: "person-priya", displayName: "Priya" },
       confirmation: {
         destination: "People",
@@ -107,12 +121,14 @@ describe("cross-domain conversational Capture", () => {
 
   it("uses the approved-memory contract for explicit Memory intent and the same source", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const createApprovedMemory = vi.fn().mockResolvedValue({
-      id: "memory-priya",
-      status: "approved",
-      sourceRecordId: "filled-by-expectation",
-      personId: "person-priya",
-    });
+    const createApprovedMemory = vi.fn().mockResolvedValue(
+      actionMutationOutcome({
+        id: "memory-priya",
+        status: "approved",
+        sourceRecordId: "filled-by-expectation",
+        personId: "person-priya",
+      }),
+    );
     const capture = createConversationalCapture(store, {
       createApprovedMemory,
       searchPeople: vi.fn().mockResolvedValue([{ id: "person-priya", displayName: "Priya" }]),
@@ -152,12 +168,14 @@ describe("cross-domain conversational Capture", () => {
         ["member-1", "member"],
       ],
     });
-    const createApprovedMemory = vi.fn().mockResolvedValue({
-      id: "memory-priya",
-      status: "approved",
-      sourceRecordId: "filled-by-expectation",
-      personId: "person-priya",
-    });
+    const createApprovedMemory = vi.fn().mockResolvedValue(
+      actionMutationOutcome({
+        id: "memory-priya",
+        status: "approved",
+        sourceRecordId: "filled-by-expectation",
+        personId: "person-priya",
+      }),
+    );
     const capture = createConversationalCapture(store, {
       createApprovedMemory,
       searchPeople: vi.fn().mockResolvedValue([{ id: "person-priya", displayName: "Priya" }]),
@@ -245,14 +263,18 @@ describe("cross-domain conversational Capture", () => {
 
   it("attaches captured Asset evidence to the review group instead of approving a new Asset", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const addAssetEvidence = vi.fn().mockResolvedValue({
-      id: "evidence-filter",
-      reviewGroupId: "review-filter",
-    });
-    const suggestAsset = vi.fn().mockImplementation(async (input) => ({
-      asset: { id: "asset-filter", name: input.name, status: "suggested" },
-      group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
-    }));
+    const addAssetEvidence = vi.fn().mockResolvedValue(
+      actionMutationOutcome({
+        id: "evidence-filter",
+        reviewGroupId: "review-filter",
+      }),
+    );
+    const suggestAsset = vi.fn().mockImplementation(async (input) =>
+      actionMutationOutcome({
+        asset: { id: "asset-filter", name: input.name, status: "suggested" },
+        group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
+      }),
+    );
     const capture = createConversationalCapture(store, { addAssetEvidence, suggestAsset });
 
     const result = await capture.capture({
@@ -296,7 +318,7 @@ describe("cross-domain conversational Capture", () => {
         asset: { id: "asset-filter", name: input.name, status: "suggested" },
         group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
       };
-      return persisted;
+      return actionMutationOutcome(persisted);
     });
     const capture = createConversationalCapture(store, {
       findAssetReviewBySource: vi.fn().mockImplementation(async () => persisted),
@@ -325,11 +347,13 @@ describe("cross-domain conversational Capture", () => {
       person: { id: "person-priya", displayName: "Priya" },
       created: true,
     });
-    const createApprovedMemory = vi.fn().mockResolvedValue({
-      id: "memory-priya",
-      status: "approved",
-      personId: "person-priya",
-    });
+    const createApprovedMemory = vi.fn().mockResolvedValue(
+      actionMutationOutcome({
+        id: "memory-priya",
+        status: "approved",
+        personId: "person-priya",
+      }),
+    );
     const suggestAsset = vi.fn().mockImplementation(capturedAssetReview);
     const capture = createConversationalCapture(store, {
       resolveOrCreateAndLinkPerson,
@@ -370,19 +394,18 @@ describe("cross-domain conversational Capture", () => {
         sourceRecordId: input.sourceRecordId,
       };
       memories.set(memory.id, memory);
-      return memory;
+      return actionMutationOutcome(memory);
     });
     const archiveMemory = vi.fn().mockImplementation(async ({ memoryId }) => {
       const memory = memories.get(memoryId);
       if (!memory) throw new Error("missing memory");
       memory.status = "archived";
-      return memory;
+      return actionMutationOutcome(memory);
     });
     const dismissAssetReview = vi.fn();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      status: "open",
-    }));
+    const createGeneralAction = vi
+      .fn()
+      .mockImplementation(async (input) => actionMutationOutcome({ ...input, status: "open" }));
     const capture = createConversationalCapture(store, {
       archiveMemory,
       resolveOrCreateAndLinkPerson: vi.fn().mockResolvedValue({
@@ -394,10 +417,12 @@ describe("cross-domain conversational Capture", () => {
       dismissAssetReview,
       getMemory: vi.fn().mockImplementation(async ({ memoryId }) => memories.get(memoryId) ?? null),
       searchPeople: vi.fn().mockResolvedValue([{ id: "person-priya", displayName: "Priya" }]),
-      suggestAsset: vi.fn().mockImplementation(async (input) => ({
-        asset: { id: "asset-filter", name: input.name, status: "suggested" },
-        group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
-      })),
+      suggestAsset: vi.fn().mockImplementation(async (input) =>
+        actionMutationOutcome({
+          asset: { id: "asset-filter", name: input.name, status: "suggested" },
+          group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
+        }),
+      ),
     });
     const grouped = await capture.capture({
       authority: "explicit",
@@ -442,17 +467,18 @@ describe("cross-domain conversational Capture", () => {
 
   it("keeps inferred secondary outcomes typed, private, review-gated, and source-grounded", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      status: "open",
-    }));
+    const createGeneralAction = vi
+      .fn()
+      .mockImplementation(async (input) => actionMutationOutcome({ ...input, status: "open" }));
     const createApprovedMemory = vi.fn();
-    const createSuggestedMemory = vi.fn().mockImplementation(async (input) => ({
-      id: "suggested-memory-priya",
-      personId: input.personId,
-      sourceRecordId: input.sourceRecordId,
-      status: "suggested",
-    }));
+    const createSuggestedMemory = vi.fn().mockImplementation(async (input) =>
+      actionMutationOutcome({
+        id: "suggested-memory-priya",
+        personId: input.personId,
+        sourceRecordId: input.sourceRecordId,
+        status: "suggested",
+      }),
+    );
     const capture = createConversationalCapture(store, {
       createApprovedMemory,
       createGeneralAction,
@@ -507,13 +533,23 @@ describe("cross-domain conversational Capture", () => {
   it("reroutes a newly captured minimal Person through its guarded delete lifecycle", async () => {
     const store = createInMemorySavedItemLifecycleStore();
     const person = { id: "person-priya", displayName: "Priya" };
-    const deleteCapturedPerson = vi.fn().mockResolvedValue(person);
+    const personScope = {
+      kind: "owner-collection" as const,
+      collection: "people" as const,
+      ownerUserId: "owner-1",
+    };
+    const deleteCapturedPerson = vi.fn().mockResolvedValue({
+      result: person,
+      affectedScopes: [personScope],
+    });
     const assertCapturedPersonRemovable = vi.fn().mockResolvedValue(undefined);
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      id: input.id,
-      status: "open",
-    }));
+    const createGeneralAction = vi.fn().mockImplementation(async (input) =>
+      actionMutationOutcome({
+        ...input,
+        id: input.id,
+        status: "open",
+      }),
+    );
     const capture = createConversationalCapture(store, {
       resolveOrCreateAndLinkPerson: vi.fn().mockResolvedValue({ person, created: true }),
       searchPeople: vi.fn().mockResolvedValue([]),
@@ -552,6 +588,7 @@ describe("cross-domain conversational Capture", () => {
       sourceRecordId: original.sourceRecord.id,
     });
     expect(corrected).toMatchObject({
+      affectedScopes: [personScope],
       generalAction: { status: "open", sourceRecordId: original.sourceRecord.id },
       confirmation: { destination: "Actions" },
     });
@@ -562,10 +599,9 @@ describe("cross-domain conversational Capture", () => {
     const person = { id: "person-priya", displayName: "Priya" };
     const unlinkCapturedPerson = vi.fn().mockResolvedValue(person);
     const deleteCapturedPerson = vi.fn();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      status: "open",
-    }));
+    const createGeneralAction = vi
+      .fn()
+      .mockImplementation(async (input) => actionMutationOutcome({ ...input, status: "open" }));
     const capture = createConversationalCapture(store, {
       resolveOrCreateAndLinkPerson: vi.fn().mockResolvedValue({ person, created: false }),
       getPerson: vi.fn().mockResolvedValue(person),
@@ -641,7 +677,7 @@ describe("cross-domain conversational Capture", () => {
         group: { id: `group-${index}`, sourceRecordId: input.sourceRecordId },
       };
       groups.set(review.group.id, review);
-      return review;
+      return actionMutationOutcome(review);
     });
     const dismissAssetReview = vi.fn().mockImplementation(async ({ groupId }) => {
       const review = groups.get(groupId);

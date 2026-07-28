@@ -3,7 +3,8 @@
 import type { Person } from "@tendnote/domain";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import { homePanelForLocation } from "@/components/app-destinations";
 import { DashboardBriefSection } from "@/components/dashboard-brief-section";
 import { DashboardCalendarSuggestionsSection } from "@/components/dashboard-calendar-suggestions-section";
 import { DashboardFollowupsSection } from "@/components/dashboard-followups-section";
@@ -33,8 +34,7 @@ const PANEL =
   "data-[state=inactive]:hidden data-[state=active]:flex flex-col gap-6 min-h-0 pb-1 lg:overflow-y-auto lg:pr-2";
 
 /** The two panels a Home URL can name, and the full set the rail offers. */
-type UrlTab = "today" | "review";
-type RailTab = UrlTab | "followups" | "people";
+type RailTab = "today" | "review" | "followups" | "people";
 
 /**
  * The dashboard's right-hand context panel: a tabbed gutter beside the assistant
@@ -83,13 +83,12 @@ export function DashboardRail({
   reviewContent?: ReactNode;
   initialTab?: RailTab;
 }) {
-  // `?tab=` names the two panels a URL can express, and it stays authoritative:
+  // The destination module resolves the two panels a URL can express:
   // arriving from anywhere — a nav link, the narrow-viewport Review destination, a
   // shared link — selects the panel that URL names. Follow-ups and People have no
   // URL of their own, so picking one is purely local and leaves the URL alone.
-  const urlTab = useSearchParams().get("tab") === "review" ? "review" : "today";
+  const urlTab = homePanelForLocation("/", useSearchParams());
   const [activeTab, setActiveTab] = useState<RailTab>(initialTab);
-  const lastUrlTab = useRef<UrlTab>(urlTab);
   const [followups, setFollowups] = useState(initialFollowups);
   const [suggestedFollowups, setSuggestedFollowups] = useState(initialFollowupReviews);
   const [calendarSuggestions, setCalendarSuggestions] = useState(initialCalendarSuggestions);
@@ -118,28 +117,15 @@ export function DashboardRail({
     setReviewQueue(initialReviewQueue);
   }, [initialCalendarSuggestions, initialFollowupReviews, initialFollowups, initialReviewQueue]);
 
-  // A URL the owner did not just ask for — a nav link back to Home, a Review deep
-  // link, Back — takes the rail with it. Our own writes bump the ref first so they
-  // never bounce back through here and undo a local pick.
+  // A nav link back to Home, a Review deep link, or Back takes the rail with it.
+  // Local picks do not mutate the URL, so a data refresh cannot eject the owner
+  // from the panel they are using.
   useEffect(() => {
-    if (lastUrlTab.current === urlTab) return;
-    lastUrlTab.current = urlTab;
     setActiveTab(urlTab);
   }, [urlTab]);
 
   function selectTab(tab: RailTab) {
     setActiveTab(tab);
-    // Every panel is served on every Home URL, so a tab is a view the owner
-    // already holds — switching one is local state, never a navigation. Today and
-    // Review still write the URL through the History API so a refresh or a shared
-    // link lands on the same panel, without re-rendering the route to say so.
-    if (tab !== "today" && tab !== "review") return;
-    const params = new URLSearchParams(window.location.search);
-    if (tab === "review") params.set("tab", "review");
-    else params.delete("tab");
-    const query = params.toString();
-    lastUrlTab.current = tab;
-    window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
   }
 
   return (
@@ -190,11 +176,17 @@ export function DashboardRail({
         ) : (
           <>
             <DashboardFollowupsSection
+              fallbackFocusTarget={() =>
+                document.querySelector<HTMLElement>('[role="tab"][data-state="active"]')
+              }
               followups={followups}
               heading="Reminders"
               onResolve={resolveFollowup}
             />
             <DashboardSuggestedFollowupsSection
+              fallbackFocusTarget={() =>
+                document.querySelector<HTMLElement>('[role="tab"][data-state="active"]')
+              }
               heading="Suggested"
               onResolve={resolveSuggestedFollowup}
               reviews={suggestedFollowups}

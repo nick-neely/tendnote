@@ -5,6 +5,7 @@ import {
   MAX_RECURRENCE_INTERVAL,
   parseLocalCalendarDate,
 } from "@tendnote/domain";
+import { formatSurfacingDay } from "@tendnote/domain/record-surfacing";
 
 /**
  * The one codec for typed Asset Memory values (#198): how a value is *formatted*
@@ -24,7 +25,10 @@ function intervalDraft(value: Extract<AssetMemoryValue, { type: "interval" }>): 
 }
 
 /** Formats a typed memory value for calm display. Exact facts, plainly rendered. */
-export function formatAssetMemoryValue(value: AssetMemoryValue | null): string | null {
+export function formatAssetMemoryValue(
+  value: AssetMemoryValue | null,
+  now: Date = new Date(),
+): string | null {
   if (value === null) {
     return null;
   }
@@ -35,13 +39,7 @@ export function formatAssetMemoryValue(value: AssetMemoryValue | null): string |
       // A plain calendar date, parsed as local so the day never shifts — one shared
       // parser, so a malformed row degrades to its raw text rather than a wrong day.
       const date = parseLocalCalendarDate(value.date);
-      return (
-        date?.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }) ?? value.date
-      );
+      return date ? formatSurfacingDay(date, now) : value.date;
     }
     case "interval":
       // The same phrasing a Routine's cadence chip uses ("Every 6 months"), so the

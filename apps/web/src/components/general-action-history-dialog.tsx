@@ -40,7 +40,12 @@ export function ActionHistoryDialog({
       setError(null);
       startTransition(async () => {
         try {
-          setEvents(await listGeneralActionHistoryAction({ generalActionId }));
+          const result = await listGeneralActionHistoryAction({ generalActionId });
+          if (!result.ok) {
+            setError(result.error);
+            return;
+          }
+          setEvents(result.view);
         } catch {
           setError(GENERIC_ERROR);
         }

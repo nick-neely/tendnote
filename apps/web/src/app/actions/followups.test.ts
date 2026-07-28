@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { revalidatePathSpy, updateTagSpy } from "@/test/action-adapter-mocks";
+import { updateTagSpy } from "@/test/action-adapter-mocks";
 
 const { createFollowup, listActiveHouseholdMembershipsForUser } = vi.hoisted(() => ({
   createFollowup: vi.fn(),
@@ -48,7 +48,19 @@ const FOLLOWUP = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  createFollowup.mockResolvedValue(FOLLOWUP);
+  createFollowup.mockResolvedValue({
+    result: FOLLOWUP,
+    affectedScopes: [
+      { kind: "owner-collection", collection: "people", ownerUserId: "owner-1" },
+      {
+        kind: "viewer-entity",
+        entity: "person",
+        entityId: PERSON_ID,
+        viewerUserId: "owner-1",
+      },
+      { kind: "visible-entity", entity: "person", entityId: PERSON_ID },
+    ],
+  });
   listActiveHouseholdMembershipsForUser.mockResolvedValue([{ householdId: HOUSEHOLD_ID }]);
 });
 
@@ -70,12 +82,9 @@ describe("Follow-Up server adapters", () => {
       selectedUserIds: undefined,
     });
     expect(listActiveHouseholdMembershipsForUser).not.toHaveBeenCalled();
-    expect(updateTagSpy).toHaveBeenCalled();
-    expect(revalidatePathSpy).toHaveBeenCalledWith(`/people/${PERSON_ID}`);
-    expect(result).toMatchObject({
-      id: FOLLOWUP_ID,
-      revision: FOLLOWUP.updatedAt.toISOString(),
-    });
+    expect(updateTagSpy).toHaveBeenCalledWith(`people:owner:owner-1:person:${PERSON_ID}`);
+    expect(updateTagSpy).toHaveBeenCalledWith(`people:visible-person:${PERSON_ID}`);
+    expect(result).toMatchObject({ ok: true, view: { id: FOLLOWUP_ID } });
   });
 
   it("resolves the active household before creating a shared Follow-Up", async () => {
@@ -100,16 +109,12 @@ describe("Follow-Up server adapters", () => {
     );
   });
 
-  it("rejects invalid input before calling the shared mutation", async () => {
+  it("returns invalid input through the owner-action result before calling the mutation", async () => {
     await expect(
-      createFollowupAction({
-        personId: PERSON_ID,
-        reason: " ",
-        dueAt: "2026-08-15",
-      }),
-    ).rejects.toThrow("Add a reason for this follow-up.");
+      createFollowupAction({ personId: PERSON_ID, reason: " ", dueAt: "2026-08-15" }),
+    ).resolves.toEqual({ ok: false, error: "Add a reason for this follow-up." });
 
     expect(createFollowup).not.toHaveBeenCalled();
-    expect(revalidatePathSpy).not.toHaveBeenCalled();
+    expect(updateTagSpy).not.toHaveBeenCalled();
   });
 });
