@@ -1,5 +1,6 @@
 import type { ConversationalCaptureRoute } from "@tendnote/domain";
 import type { AffectedScope } from "../../affected-scopes";
+import { affectedScopesForSavedItem } from "../../assets/affected-scopes";
 import { hydrateSavedItem } from "../../saved-items/context";
 import { createGroundedSavedItem } from "../../saved-items/creation";
 import type { SavedItemLifecycleStore } from "../../saved-items/types";
@@ -216,6 +217,7 @@ async function createSavedItemDestination(
   const kind = fallbackKind(input.originalText);
   const itemKind = input.route.kind ?? kind;
   const itemText = input.route.text ?? input.originalText;
+  const created = !existing;
   const savedItem = existing
     ? await hydrateSavedItem(input.store, existing)
     : await createGroundedSavedItem(input.store, {
@@ -243,5 +245,11 @@ async function createSavedItemDestination(
       visibilityLabel: input.visibility.label,
     }),
   );
-  return { kind: "saved_item" as const, savedItem, confirmation, id: savedItem.id };
+  return {
+    kind: "saved_item" as const,
+    savedItem,
+    affectedScopes: created ? affectedScopesForSavedItem(savedItem) : [],
+    confirmation,
+    id: savedItem.id,
+  };
 }

@@ -9,6 +9,7 @@ import type {
 } from "@tendnote/domain";
 import { hydrateSavedItem } from "../../saved-items/context";
 import { createSavedItemLifecycle } from "../../saved-items/lifecycle";
+import { createAffectedSavedItemLifecycle } from "../../saved-items/mutation-lifecycle";
 import type { SavedItemLifecycleStore } from "../../saved-items/types";
 import type { ConversationalCaptureDeps } from "./types";
 
@@ -89,7 +90,7 @@ export function createCaptureOutcomeLifecycleOperations(
   store: SavedItemLifecycleStore,
   deps: ConversationalCaptureDeps,
 ): Record<CaptureOutcomeKind, CaptureOutcomeLifecycleOperation> {
-  const savedItemLifecycle = createSavedItemLifecycle(store);
+  const savedItemLifecycle = createAffectedSavedItemLifecycle(createSavedItemLifecycle(store));
   return {
     saved_item: {
       async load(actorUserId, savedItemId) {
@@ -105,7 +106,7 @@ export function createCaptureOutcomeLifecycleOperations(
         if (status === "archived") {
           const current = await store.getSavedItem({ ownerUserId: actorUserId, savedItemId });
           if (!current) throw new Error("That Saved Item is no longer available.");
-          return hydrateSavedItem(store, current);
+          return { result: await hydrateSavedItem(store, current), affectedScopes: [] };
         }
         return (deps.archiveSavedItem ?? savedItemLifecycle.archiveSavedItem)({
           actorUserId,
@@ -115,7 +116,9 @@ export function createCaptureOutcomeLifecycleOperations(
       async undo(actorUserId, savedItemId) {
         const current = await store.getSavedItem({ ownerUserId: actorUserId, savedItemId });
         if (!current) throw new Error("That Saved Item is no longer available.");
-        if (current.status === "archived") return hydrateSavedItem(store, current);
+        if (current.status === "archived") {
+          return { result: await hydrateSavedItem(store, current), affectedScopes: [] };
+        }
         return (deps.archiveSavedItem ?? savedItemLifecycle.archiveSavedItem)({
           actorUserId,
           savedItemId,

@@ -1,7 +1,11 @@
 import "server-only";
 
 import type { AffectedScope } from "@tendnote/db/queries/general-actions";
-import { AssetValidationError, GeneralActionValidationError } from "@tendnote/domain";
+import {
+  AssetValidationError,
+  GeneralActionValidationError,
+  SavedItemValidationError,
+} from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import { ZodError } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
@@ -28,7 +32,7 @@ type OwnerActionDependencies = {
 type OwnerActionInput<TInput, TEntity, TView> = {
   schema: InputSchema<TInput>;
   input: unknown;
-  visibilityChoice?: (input: TInput) => VisibilityChoice;
+  visibilityChoice?: (input: TInput) => VisibilityChoice | undefined;
   budget?: Omit<RateLimitRequest, "subject">;
   body: (context: {
     ownerUserId: string;
@@ -38,7 +42,7 @@ type OwnerActionInput<TInput, TEntity, TView> = {
   affectedScopes?: (entity: TEntity) => readonly AffectedScope[];
   /** Additional surface reconciliation for records not yet covered by affected scopes. */
   reconcile?: (entity: TEntity, ownerUserId: string) => void | Promise<void>;
-  result: (entity: TEntity) => TView | Promise<TView>;
+  result: (entity: TEntity, ownerUserId: string) => TView | Promise<TView>;
 };
 
 function userSafeErrorMessage(error: unknown): string | null {
@@ -48,6 +52,7 @@ function userSafeErrorMessage(error: unknown): string | null {
   if (
     error instanceof GeneralActionValidationError ||
     error instanceof AssetValidationError ||
+    error instanceof SavedItemValidationError ||
     error instanceof ProductRateLimitError
   ) {
     return error.message;
@@ -81,7 +86,7 @@ export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
       const entity = await action.body({ ownerUserId, input, resolvedScope });
       dependencies.reconcile(action.affectedScopes?.(entity) ?? []);
       await action.reconcile?.(entity, ownerUserId);
-      return { ok: true, view: await action.result(entity) };
+      return { ok: true, view: await action.result(entity, ownerUserId) };
     } catch (error) {
       const message = userSafeErrorMessage(error);
       if (message) {

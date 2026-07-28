@@ -94,11 +94,13 @@ export function AssetReviewGroupCard({
   const [pending, startTransition] = useTransition();
 
   /** Runs a review mutation; the returned view either updates the card or resolves it. */
-  function run(mutate: () => Promise<AssetReviewGroupView>) {
+  function run(mutate: () => ReturnType<typeof acceptAssetReviewGroupAction>) {
     setError(null);
     startTransition(async () => {
       try {
-        const view = await mutate();
+        const result = await mutate();
+        if (!result.ok) throw new Error(result.error);
+        const view = result.view;
         // Keep the Review tab count honest after members resolve.
         router.refresh();
         if (view.pendingCount === 0) {
@@ -218,7 +220,7 @@ function AnchorBlock({
   disabled,
 }: {
   review: AssetReviewGroupView;
-  run: (mutate: () => Promise<AssetReviewGroupView>) => void;
+  run: (mutate: () => ReturnType<typeof acceptAssetReviewGroupAction>) => void;
   disabled: boolean;
 }) {
   const { asset } = review;
@@ -369,7 +371,7 @@ function DuplicatePrompt({
   disabled,
 }: {
   review: AssetReviewGroupView;
-  run: (mutate: () => Promise<AssetReviewGroupView>) => void;
+  run: (mutate: () => ReturnType<typeof acceptAssetReviewGroupAction>) => void;
   disabled: boolean;
 }) {
   return (
@@ -414,7 +416,7 @@ function MemoryRow({
   disabled,
 }: {
   memory: AssetReviewMemoryView;
-  run: (mutate: () => Promise<AssetReviewGroupView>) => void;
+  run: (mutate: () => ReturnType<typeof acceptAssetReviewGroupAction>) => void;
   disabled: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);

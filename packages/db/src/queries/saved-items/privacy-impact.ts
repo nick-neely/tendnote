@@ -1,3 +1,4 @@
+import { SavedItemValidationError } from "@tendnote/domain";
 import { requireOwnedSavedItem } from "./context";
 import type { SavedItemLifecycleStore } from "./types";
 
@@ -9,7 +10,7 @@ export async function getSourceDeletionImpact(
     ownerUserId: input.actorUserId,
     sourceRecordId: input.sourceRecordId,
   });
-  if (!source) throw new Error("Source record not found.");
+  if (!source) throw new SavedItemValidationError("Source record not found.");
   const linkedItems = await store.listSavedItemsBySourceRecord({
     ownerUserId: input.actorUserId,
     sourceRecordId: source.id,
@@ -49,7 +50,9 @@ export async function deleteUniqueSavedItemSource(
     sourceRecordId: item.sourceRecordId,
   });
   if (impact.requiresImpactDisclosure) {
-    throw new Error("This source is shared or reused. Review its impact before deleting evidence.");
+    throw new SavedItemValidationError(
+      "This source is shared or reused. Review its impact before deleting evidence.",
+    );
   }
   await store.deleteUniqueSavedItemSourceEvidence({
     ownerUserId: input.actorUserId,

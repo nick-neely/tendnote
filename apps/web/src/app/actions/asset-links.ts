@@ -10,10 +10,8 @@ import {
 } from "@tendnote/db/queries/assets";
 import { assetLinkRelationSchema, assetPersonRelationSchema } from "@tendnote/domain";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import type { AssetLinkMutationResult } from "@/lib/asset-link-view";
-import { runAssetsMutation } from "@/lib/asset-mutation";
-import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
+import { runOwnerAction } from "@/lib/owner-action";
 
 /**
  * Server actions for the Asset Profile's lightweight links (#202): Related
@@ -37,16 +35,23 @@ const addAssetPersonLinkSchema = z.object({
 });
 
 /** Runs a link mutation; success carries no view — the profile re-renders. */
-function runLinkMutation<T extends { fromAssetId?: string; toAssetId?: string; assetId?: string }>(
-  callerUserId: string,
-  run: () => Promise<T>,
+function runLinkMutation<TInput>(
+  schema: { parse(input: unknown): TInput },
+  input: unknown,
+  mutate: (
+    actorUserId: string,
+    parsed: TInput,
+  ) => Promise<{
+    result: unknown;
+    affectedScopes: import("@tendnote/db/queries/general-actions").AffectedScope[];
+  }>,
 ): Promise<AssetLinkMutationResult> {
-  return runAssetsMutation(run, (result) => {
-    const assetIds = [result.fromAssetId, result.toAssetId, result.assetId].filter(
-      (assetId): assetId is string => Boolean(assetId),
-    );
-    updateAssetMutationScopes(assetMutationScopes.forAssetIds({ callerUserId, assetIds }));
-    return null;
+  return runOwnerAction({
+    schema,
+    input,
+    body: ({ ownerUserId, input: parsed }) => mutate(ownerUserId, parsed),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: () => null,
   });
 }
 
@@ -56,44 +61,36 @@ export async function addAssetLinkAction(input: {
   toAssetId: string;
   relation: string;
 }): Promise<AssetLinkMutationResult> {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(actorUserId, () => {
-    const parsed = addAssetLinkSchema.parse(input);
-    return addAssetLink({ actorUserId, ...parsed });
-  });
+  return runLinkMutation(addAssetLinkSchema, input, (actorUserId, parsed) =>
+    addAssetLink({ actorUserId, ...parsed }),
+  );
 }
 
 /** Accepts a pending inferred link — the review gate opening on explicit intent. */
 export async function acceptSuggestedAssetLinkAction(input: {
   linkId: string;
 }): Promise<AssetLinkMutationResult> {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(actorUserId, () => {
-    const parsed = linkIdSchema.parse(input);
-    return acceptSuggestedAssetLink({ actorUserId, linkId: parsed.linkId });
-  });
+  return runLinkMutation(linkIdSchema, input, (actorUserId, parsed) =>
+    acceptSuggestedAssetLink({ actorUserId, linkId: parsed.linkId }),
+  );
 }
 
 /** Sets a pending inferred link aside — remembered, never re-proposed. */
 export async function dismissSuggestedAssetLinkAction(input: {
   linkId: string;
 }): Promise<AssetLinkMutationResult> {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(actorUserId, () => {
-    const parsed = linkIdSchema.parse(input);
-    return dismissSuggestedAssetLink({ actorUserId, linkId: parsed.linkId });
-  });
+  return runLinkMutation(linkIdSchema, input, (actorUserId, parsed) =>
+    dismissSuggestedAssetLink({ actorUserId, linkId: parsed.linkId }),
+  );
 }
 
 /** Removes the caller's own Related Asset Link. */
 export async function removeAssetLinkAction(input: {
   linkId: string;
 }): Promise<AssetLinkMutationResult> {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(actorUserId, () => {
-    const parsed = linkIdSchema.parse(input);
-    return removeAssetLink({ actorUserId, linkId: parsed.linkId });
-  });
+  return runLinkMutation(linkIdSchema, input, (actorUserId, parsed) =>
+    removeAssetLink({ actorUserId, linkId: parsed.linkId }),
+  );
 }
 
 /** Links one of the caller's own people to an asset as context. */
@@ -102,20 +99,16 @@ export async function addAssetPersonLinkAction(input: {
   personId: string;
   relation: string;
 }): Promise<AssetLinkMutationResult> {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(actorUserId, () => {
-    const parsed = addAssetPersonLinkSchema.parse(input);
-    return addAssetPersonLink({ actorUserId, ...parsed });
-  });
+  return runLinkMutation(addAssetPersonLinkSchema, input, (actorUserId, parsed) =>
+    addAssetPersonLink({ actorUserId, ...parsed }),
+  );
 }
 
 /** Removes the caller's own Asset Person Link. */
 export async function removeAssetPersonLinkAction(input: {
   linkId: string;
 }): Promise<AssetLinkMutationResult> {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  return runLinkMutation(actorUserId, () => {
-    const parsed = linkIdSchema.parse(input);
-    return removeAssetPersonLink({ actorUserId, linkId: parsed.linkId });
-  });
+  return runLinkMutation(linkIdSchema, input, (actorUserId, parsed) =>
+    removeAssetPersonLink({ actorUserId, linkId: parsed.linkId }),
+  );
 }

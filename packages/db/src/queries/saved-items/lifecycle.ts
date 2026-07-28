@@ -192,17 +192,16 @@ export function createSavedItemLifecycle(
       const items = await store.searchVisibleSavedItems({ ...input, query: query.data });
       return Promise.all(items.map((item) => hydrateSavedItem(store, item)));
     },
-    async promoteSavedItemToGeneralAction(
-      input: PromoteSavedItemInput,
-    ): Promise<SavedItemWithContext> {
+    async promoteSavedItemToGeneralAction(input: PromoteSavedItemInput) {
       return withRejectedSavedItemAudit(store, input, "promote", async () => {
-        const item = await promoteSavedItem(store, deps, input);
+        const promotion = await promoteSavedItem(store, deps, input);
+        const item = promotion.savedItem;
         await scheduleEmbeddingBestEffort({
           ownerUserId: item.ownerUserId,
           recordKind: "saved_item",
           recordId: item.id,
         });
-        return item;
+        return promotion;
       });
     },
     getSourceDeletionImpact(input: { actorUserId: string; sourceRecordId: string }) {

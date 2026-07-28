@@ -5,7 +5,7 @@ import { createConversationalCapture } from "./conversational-capture";
 import { createCaptureVisibilityResolver } from "./conversational-capture/visibility";
 
 async function capturedAssetReview(input: { name: string; sourceRecordId: string }) {
-  return {
+  return actionMutationOutcome({
     asset: { id: "asset-filter", name: input.name, status: "suggested" as const },
     group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
     component: {
@@ -15,7 +15,7 @@ async function capturedAssetReview(input: { name: string; sourceRecordId: string
       sourceRecordId: input.sourceRecordId,
     },
     duplicateCandidates: [],
-  };
+  });
 }
 
 function actionMutationOutcome<T>(result: T) {
@@ -259,14 +259,18 @@ describe("cross-domain conversational Capture", () => {
 
   it("attaches captured Asset evidence to the review group instead of approving a new Asset", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const addAssetEvidence = vi.fn().mockResolvedValue({
-      id: "evidence-filter",
-      reviewGroupId: "review-filter",
-    });
-    const suggestAsset = vi.fn().mockImplementation(async (input) => ({
-      asset: { id: "asset-filter", name: input.name, status: "suggested" },
-      group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
-    }));
+    const addAssetEvidence = vi.fn().mockResolvedValue(
+      actionMutationOutcome({
+        id: "evidence-filter",
+        reviewGroupId: "review-filter",
+      }),
+    );
+    const suggestAsset = vi.fn().mockImplementation(async (input) =>
+      actionMutationOutcome({
+        asset: { id: "asset-filter", name: input.name, status: "suggested" },
+        group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
+      }),
+    );
     const capture = createConversationalCapture(store, { addAssetEvidence, suggestAsset });
 
     const result = await capture.capture({
@@ -310,7 +314,7 @@ describe("cross-domain conversational Capture", () => {
         asset: { id: "asset-filter", name: input.name, status: "suggested" },
         group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
       };
-      return persisted;
+      return actionMutationOutcome(persisted);
     });
     const capture = createConversationalCapture(store, {
       findAssetReviewBySource: vi.fn().mockImplementation(async () => persisted),
@@ -407,10 +411,12 @@ describe("cross-domain conversational Capture", () => {
       dismissAssetReview,
       getMemory: vi.fn().mockImplementation(async ({ memoryId }) => memories.get(memoryId) ?? null),
       searchPeople: vi.fn().mockResolvedValue([{ id: "person-priya", displayName: "Priya" }]),
-      suggestAsset: vi.fn().mockImplementation(async (input) => ({
-        asset: { id: "asset-filter", name: input.name, status: "suggested" },
-        group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
-      })),
+      suggestAsset: vi.fn().mockImplementation(async (input) =>
+        actionMutationOutcome({
+          asset: { id: "asset-filter", name: input.name, status: "suggested" },
+          group: { id: "review-filter", sourceRecordId: input.sourceRecordId },
+        }),
+      ),
     });
     const grouped = await capture.capture({
       authority: "explicit",
@@ -663,7 +669,7 @@ describe("cross-domain conversational Capture", () => {
         group: { id: `group-${index}`, sourceRecordId: input.sourceRecordId },
       };
       groups.set(review.group.id, review);
-      return review;
+      return actionMutationOutcome(review);
     });
     const dismissAssetReview = vi.fn().mockImplementation(async ({ groupId }) => {
       const review = groups.get(groupId);

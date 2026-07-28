@@ -135,7 +135,7 @@ describe("AssetReviewGroupCard", () => {
   it("batch-accepts the group and resolves the card", async () => {
     const user = userEvent.setup();
     const onResolve = vi.fn();
-    acceptAssetReviewGroupAction.mockResolvedValue(resolved());
+    acceptAssetReviewGroupAction.mockResolvedValue({ ok: true, view: resolved() });
     render(<AssetReviewGroupCard onResolve={onResolve} review={reviewFixture()} />);
 
     await user.click(screen.getByRole("button", { name: /Accept all/ }));
@@ -150,7 +150,7 @@ describe("AssetReviewGroupCard", () => {
   it("batch-dismisses without guilt", async () => {
     const user = userEvent.setup();
     const onResolve = vi.fn();
-    dismissAssetReviewGroupAction.mockResolvedValue(resolved());
+    dismissAssetReviewGroupAction.mockResolvedValue({ ok: true, view: resolved() });
     render(<AssetReviewGroupCard onResolve={onResolve} review={reviewFixture()} />);
 
     await user.click(screen.getByRole("button", { name: /Dismiss all/ }));
@@ -177,7 +177,7 @@ describe("AssetReviewGroupCard", () => {
       duplicates: [],
       pendingCount: 2,
     });
-    linkAssetReviewGroupAction.mockResolvedValue(linkedView);
+    linkAssetReviewGroupAction.mockResolvedValue({ ok: true, view: linkedView });
     render(
       <AssetReviewGroupCard onResolve={vi.fn()} onUpdate={onUpdate} review={reviewFixture()} />,
     );
@@ -195,7 +195,10 @@ describe("AssetReviewGroupCard", () => {
 
   it("edits a detail before accepting it", async () => {
     const user = userEvent.setup();
-    acceptSuggestedAssetMemoryAction.mockResolvedValue(reviewFixture({ pendingCount: 2 }));
+    acceptSuggestedAssetMemoryAction.mockResolvedValue({
+      ok: true,
+      view: reviewFixture({ pendingCount: 2 }),
+    });
     render(
       <AssetReviewGroupCard onResolve={vi.fn()} onUpdate={vi.fn()} review={reviewFixture()} />,
     );
@@ -242,7 +245,7 @@ describe("AssetReviewGroupCard", () => {
       memories: [reviewFixture().memories[1] as AssetReviewGroupView["memories"][number]],
       pendingCount: 2,
     });
-    dismissSuggestedAssetMemoryAction.mockResolvedValue(remaining);
+    dismissSuggestedAssetMemoryAction.mockResolvedValue({ ok: true, view: remaining });
     render(
       <AssetReviewGroupCard onResolve={vi.fn()} onUpdate={onUpdate} review={reviewFixture()} />,
     );
@@ -257,7 +260,10 @@ describe("AssetReviewGroupCard", () => {
 
   it("corrects the suggested asset's name before accepting it", async () => {
     const user = userEvent.setup();
-    acceptSuggestedAssetAction.mockResolvedValue(reviewFixture({ pendingCount: 2 }));
+    acceptSuggestedAssetAction.mockResolvedValue({
+      ok: true,
+      view: reviewFixture({ pendingCount: 2 }),
+    });
     render(
       <AssetReviewGroupCard onResolve={vi.fn()} onUpdate={vi.fn()} review={reviewFixture()} />,
     );
@@ -352,7 +358,7 @@ describe("AssetReviewGroupCard", () => {
   });
 
   it("dismisses a group with evidence only through an informed, armed confirm (#196)", async () => {
-    dismissAssetReviewGroupAction.mockResolvedValue(resolved());
+    dismissAssetReviewGroupAction.mockResolvedValue({ ok: true, view: resolved() });
     const user = userEvent.setup();
     const view = reviewFixture({
       evidence: [

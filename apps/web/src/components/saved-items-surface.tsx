@@ -580,9 +580,7 @@ function SourceGroundingDetails({
 }) {
   const [checking, setChecking] = useState(false);
   const [impactError, setImpactError] = useState<string | null>(null);
-  const [impact, setImpact] = useState<Awaited<
-    ReturnType<typeof getSavedItemSourceDeletionImpactAction>
-  > | null>(null);
+  const [impact, setImpact] = useState<SourceDeletionImpact | null>(null);
   return (
     <details className="pl-7 text-[length:var(--text-small)] text-muted-foreground">
       <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
@@ -601,11 +599,11 @@ function SourceGroundingDetails({
             setChecking(true);
             setImpactError(null);
             try {
-              setImpact(
-                await getSavedItemSourceDeletionImpactAction({
-                  sourceRecordId: item.sourceRecordId,
-                }),
-              );
+              const result = await getSavedItemSourceDeletionImpactAction({
+                sourceRecordId: item.sourceRecordId,
+              });
+              if (!result.ok) throw new Error(result.error);
+              setImpact(result.view);
             } catch {
               setImpactError("Could not check the source impact. Try again.");
             } finally {
@@ -634,12 +632,17 @@ function SourceGroundingDetails({
   );
 }
 
+type SourceDeletionImpact = Extract<
+  Awaited<ReturnType<typeof getSavedItemSourceDeletionImpactAction>>,
+  { ok: true }
+>["view"];
+
 function SourceDeletionControls({
   impact,
   itemId,
   onDelete,
 }: {
-  impact: Awaited<ReturnType<typeof getSavedItemSourceDeletionImpactAction>> | null;
+  impact: SourceDeletionImpact | null;
   itemId: string;
   onDelete: (savedItemId: string) => void;
 }) {
@@ -664,7 +667,12 @@ function SourceDeletionControls({
           setDeleting(true);
           setError(null);
           try {
-            await deleteUniqueSavedItemSourceAction({ savedItemId: itemId });
+            const result = await deleteUniqueSavedItemSourceAction({ savedItemId: itemId });
+            if (!result.ok) {
+              setError(result.error);
+              setDeleting(false);
+              return;
+            }
             onDelete(itemId);
           } catch {
             setError("Could not delete this source evidence. Try again.");

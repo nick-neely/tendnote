@@ -34,10 +34,8 @@ import { searchPeople } from "@tendnote/db/queries/people";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
 import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCachedActionLedgerViews } from "@/lib/cache/action-views";
-import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
 import { parseDateInputValue } from "@/lib/followup-view";
 import {
   type GeneralActionMutationResult,
@@ -244,20 +242,18 @@ export async function promoteAssetHintAction(input: {
     }),
     input,
     body: async ({ ownerUserId, input: parsed }) => {
-      await promoteGeneralActionAssetHint({ actorUserId: ownerUserId, ...parsed });
-      return getGeneralAction({
+      const promotion = await promoteGeneralActionAssetHint({
+        actorUserId: ownerUserId,
+        ...parsed,
+      });
+      const action = await getGeneralAction({
         actorUserId: ownerUserId,
         generalActionId: parsed.generalActionId,
       });
+      return { promotion, action };
     },
-    // The proposal lands in Review and, once accepted, Assets. These paths remain
-    // until those record families emit affected scopes in their migration tickets.
-    reconcile: (_action, ownerUserId) => {
-      invalidateReviewOwner(ownerUserId);
-      revalidatePath("/assets");
-      revalidatePath("/actions");
-    },
-    result: (action) => toAuthoritativeActionView(action.ownerUserId, action),
+    affectedScopes: (outcome) => outcome.promotion.affectedScopes,
+    result: (outcome) => toAuthoritativeActionView(outcome.action.ownerUserId, outcome.action),
   });
 }
 

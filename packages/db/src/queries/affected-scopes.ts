@@ -9,29 +9,33 @@
 export type AffectedScope =
   | {
       kind: "owner-collection";
-      collection: "people" | "review" | "today";
+      collection: "assets" | "people" | "review" | "saved-items" | "today";
       ownerUserId: string;
     }
   | {
       kind: "viewer-collection";
-      collection: "general-actions";
+      collection: "assets" | "general-actions" | "saved-items";
       viewerUserId: string;
     }
   | {
       kind: "viewer-entity";
-      entity: "general-action";
-      entityId: string;
-      viewerUserId: string;
-    }
-  | {
-      kind: "viewer-entity";
-      entity: "person";
+      entity: "asset" | "general-action" | "person" | "saved-item";
       entityId: string;
       viewerUserId: string;
     }
   | {
       kind: "visible-entity";
-      entity: "person";
+      entity: "asset" | "person" | "saved-item";
+      entityId: string;
+    }
+  | {
+      kind: "household-collection";
+      collection: "assets" | "saved-items";
+      householdId: string;
+    }
+  | {
+      kind: "linked-entity";
+      entity: "asset";
       entityId: string;
     };
 

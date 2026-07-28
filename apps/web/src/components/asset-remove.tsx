@@ -64,7 +64,11 @@ export function AssetRemove({
     setError(null);
     startTransition(async () => {
       try {
-        await hardDeleteAssetAction({ assetId });
+        const result = await hardDeleteAssetAction({ assetId });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         router.push("/assets");
         router.refresh();
       } catch {

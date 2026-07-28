@@ -12,9 +12,10 @@ import {
   SavedItemValidationError,
   type SourceRecord,
 } from "@tendnote/domain";
-import type { AffectedScope } from "../../affected-scopes";
+import type { AffectedScope, MutationOutcome } from "../../affected-scopes";
 import { hydrateSavedItem } from "../../saved-items/context";
 import { createSavedItemLifecycle } from "../../saved-items/lifecycle";
+import { createAffectedSavedItemLifecycle } from "../../saved-items/mutation-lifecycle";
 import type { SavedItemLifecycleStore, SavedItemWithContext } from "../../saved-items/types";
 import { createCaptureDestination } from "./destinations";
 import {
@@ -54,7 +55,7 @@ export function createCorrectionOperations(
   store: SavedItemLifecycleStore,
   deps: ConversationalCaptureDeps,
 ) {
-  const lifecycle = createSavedItemLifecycle(store);
+  const lifecycle = createAffectedSavedItemLifecycle(createSavedItemLifecycle(store));
   const outcomeLifecycle = createCaptureOutcomeLifecycleOperations(store, deps);
 
   async function changeSavedItem(input: {
@@ -169,7 +170,9 @@ export function createCorrectionOperations(
       savedItemId: parsed.savedItemId,
     });
     if (!current) throw new Error("That Saved Item is no longer available.");
-    if (current.status === "archived") return hydrateSavedItem(store, current);
+    if (current.status === "archived") {
+      return { result: await hydrateSavedItem(store, current), affectedScopes: [] };
+    }
     return lifecycle.archiveSavedItem(parsed);
   }
 
@@ -393,7 +396,7 @@ type EditSameDestinationInput = {
     actorUserId: string;
     savedItemId: string;
     originalText: string;
-  }) => Promise<SavedItemWithContext>;
+  }) => Promise<MutationOutcome<SavedItemWithContext>>;
   actorUserId: string;
   target: CaptureOutcomeReference;
   originalText: string;
@@ -501,18 +504,19 @@ async function keepUnchangedMemoryDestination(input: EditSameDestinationInput) {
 
 async function editSavedItemDestination(input: EditSameDestinationInput) {
   if (input.target.kind !== "saved_item" || input.route.destination !== "saved_item") return null;
-  const savedItem = await input.changeSavedItem({
+  const outcome = await input.changeSavedItem({
     actorUserId: input.actorUserId,
     savedItemId: input.target.id,
     originalText: input.originalText,
   });
   return {
-    savedItem,
+    savedItem: outcome.result,
+    affectedScopes: outcome.affectedScopes,
     confirmation: conversationalCaptureConfirmationSchema.parse(
       savedItemConfirmation({
         sourceRecordId: input.sourceRecordId,
         savedItemId: input.target.id,
-        kind: savedItem.kind,
+        kind: outcome.result.kind,
         visibilityLabel: input.visibilityLabel,
       }),
     ),

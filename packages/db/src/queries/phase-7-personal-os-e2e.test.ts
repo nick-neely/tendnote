@@ -47,7 +47,10 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       createGeneralAction: actions.createGeneralAction,
       getGeneralAction: ({ ownerUserId, generalActionId }) =>
         productStore.getGeneralAction({ ownerUserId, generalActionId }),
-      suggestAsset: assetReview.suggestAsset,
+      suggestAsset: async (input) => ({
+        result: await assetReview.suggestAsset(input),
+        affectedScopes: [],
+      }),
       ownerTimeZone: async () => "America/Chicago",
       now: () => CAPTURED_AT,
     });

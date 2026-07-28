@@ -68,7 +68,10 @@ export async function promoteSavedItem(
     (outcome) => outcome.idempotencyKey === idempotencyKey,
   );
   if (existing) {
-    return completePromotion(store, input, existing, true);
+    return {
+      savedItem: await completePromotion(store, input, existing, true),
+      affectedGeneralActionScopes: [],
+    };
   }
   if (input.authority !== "explicit") {
     throw new SavedItemValidationError(
@@ -88,11 +91,14 @@ export async function promoteSavedItem(
     householdId: current.householdId,
     selectedUserIds: current.scope === "shared" ? context.sharedWithUserIds : [],
   });
-  const outcome = await store.createSavedItemOutcome({
+  const savedItemOutcome = await store.createSavedItemOutcome({
     savedItemId: current.id,
     destinationKind: "general_action",
-    destinationRecordId: action.id,
+    destinationRecordId: action.result.id,
     idempotencyKey,
   });
-  return completePromotion(store, input, outcome, false);
+  return {
+    savedItem: await completePromotion(store, input, savedItemOutcome, false),
+    affectedGeneralActionScopes: action.affectedScopes,
+  };
 }

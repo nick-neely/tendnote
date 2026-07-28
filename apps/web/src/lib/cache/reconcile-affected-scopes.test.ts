@@ -33,6 +33,26 @@ const scopes: AffectedScope[] = [
     viewerUserId: "owner-1",
   },
   { kind: "visible-entity", entity: "person", entityId: "person-1" },
+  { kind: "owner-collection", collection: "assets", ownerUserId: "owner-1" },
+  { kind: "viewer-collection", collection: "assets", viewerUserId: "member-1" },
+  {
+    kind: "viewer-entity",
+    entity: "asset",
+    entityId: "asset-1",
+    viewerUserId: "owner-1",
+  },
+  { kind: "visible-entity", entity: "asset", entityId: "asset-1" },
+  { kind: "household-collection", collection: "assets", householdId: "household-1" },
+  { kind: "linked-entity", entity: "asset", entityId: "asset-1" },
+  { kind: "owner-collection", collection: "saved-items", ownerUserId: "owner-1" },
+  { kind: "viewer-collection", collection: "saved-items", viewerUserId: "member-1" },
+  {
+    kind: "viewer-entity",
+    entity: "saved-item",
+    entityId: "saved-1",
+    viewerUserId: "owner-1",
+  },
+  { kind: "visible-entity", entity: "saved-item", entityId: "saved-1" },
 ];
 
 describe("affected-scope reconciliation", () => {
@@ -54,7 +74,17 @@ describe("affected-scope reconciliation", () => {
     expect(updateTag).toHaveBeenCalledWith("people:owner:owner-1:list");
     expect(updateTag).toHaveBeenCalledWith("people:owner:owner-1:person:person-1");
     expect(updateTag).toHaveBeenCalledWith("people:visible-person:person-1");
+    expect(updateTag).toHaveBeenCalledWith("asset:viewer:member-1:collection");
+    expect(updateTag).toHaveBeenCalledWith("asset:viewer:owner-1:asset:asset-1");
+    expect(updateTag).toHaveBeenCalledWith("asset:visible:asset:asset-1");
+    expect(updateTag).toHaveBeenCalledWith("asset:household:household-1:collection");
+    expect(updateTag).toHaveBeenCalledWith("saved-item:viewer:member-1:collection");
+    expect(updateTag).toHaveBeenCalledWith("saved-item:viewer:owner-1:item:saved-1");
+    expect(updateTag).toHaveBeenCalledWith("saved-item:visible:item:saved-1");
     expect(revalidatePath).toHaveBeenCalledWith("/actions");
+    expect(revalidatePath).toHaveBeenCalledWith("/assets");
+    expect(revalidatePath).toHaveBeenCalledWith("/assets/asset-1");
+    expect(revalidatePath).toHaveBeenCalledWith("/saved-items");
     expect(revalidatePath).toHaveBeenCalledWith("/people");
     expect(revalidatePath).toHaveBeenCalledWith("/people/person-1");
     expect(revalidateTag).not.toHaveBeenCalled();

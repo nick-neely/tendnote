@@ -139,11 +139,14 @@ describe("SavedItemsSurface", () => {
       view: { ...question, status: "archived", archived: true, resolutionReason: "Local store" },
     });
     getSavedItemSourceDeletionImpactAction.mockResolvedValue({
-      sourceRecordId: "source-1",
-      linkedSavedItemIds: ["saved-1"],
-      linkedOutcomes: [{ destinationKind: "general_action", destinationRecordId: "action-1" }],
-      linkedRecords: [{ recordKind: "memory", recordId: "memory-1" }],
-      requiresImpactDisclosure: true,
+      ok: true,
+      view: {
+        sourceRecordId: "source-1",
+        linkedSavedItemIds: ["saved-1"],
+        linkedOutcomes: [{ destinationKind: "general_action", destinationRecordId: "action-1" }],
+        linkedRecords: [{ recordKind: "memory", recordId: "memory-1" }],
+        requiresImpactDisclosure: true,
+      },
     });
     render(<SavedItemsSurface items={[question]} />);
 
@@ -184,15 +187,21 @@ describe("SavedItemsSurface", () => {
   it("requires impact inspection and a second confirmation before deleting unique evidence", async () => {
     const user = userEvent.setup();
     getSavedItemSourceDeletionImpactAction.mockResolvedValue({
-      sourceRecordId: "source-1",
-      linkedSavedItemIds: ["saved-1"],
-      linkedOutcomes: [],
-      linkedRecords: [],
-      requiresImpactDisclosure: false,
+      ok: true,
+      view: {
+        sourceRecordId: "source-1",
+        linkedSavedItemIds: ["saved-1"],
+        linkedOutcomes: [],
+        linkedRecords: [],
+        requiresImpactDisclosure: false,
+      },
     });
     deleteUniqueSavedItemSourceAction.mockResolvedValue({
-      deletedSavedItemId: "saved-1",
-      deletedSourceRecordId: "source-1",
+      ok: true,
+      view: {
+        deletedSavedItemId: "saved-1",
+        deletedSourceRecordId: "source-1",
+      },
     });
     render(<SavedItemsSurface items={[fixture()]} />);
 

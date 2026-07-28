@@ -6,7 +6,6 @@ import {
   createSavedItem,
   deleteUniqueSavedItemSource,
   editSavedItem,
-  getSavedItem,
   getSavedItemSourceDeletionImpact,
   listSavedItems,
   promoteSavedItemToGeneralAction,
@@ -21,10 +20,8 @@ import {
 import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
-import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
+import { runOwnerAction } from "@/lib/owner-action";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
-import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
 import { type SavedItemMutationResult, toSavedItemView } from "@/lib/saved-item-view";
 
 const savedItemIdSchema = z.object({ savedItemId: z.uuid() });
@@ -45,6 +42,12 @@ const editSchema = z.object({
   url: z.string().trim().max(2_000).nullable().optional(),
   bringBackAt: z.string().trim().nullable().optional(),
 });
+const resolveSchema = z.object({
+  savedItemId: z.uuid(),
+  reason: savedItemResolutionReasonSchema,
+});
+const promoteSchema = z.object({ savedItemId: z.uuid(), title: z.string().trim().optional() });
+const sourceImpactSchema = z.object({ sourceRecordId: z.uuid() });
 
 function parseOptionalDate(value: string | null | undefined): Date | null | undefined {
   if (value === undefined) return undefined;
@@ -60,35 +63,6 @@ function originalText(input: z.infer<typeof createSchema>): string {
   return input.content || input.title;
 }
 
-function userSafeError(error: unknown): string | null {
-  if (error instanceof SavedItemValidationError) return error.message;
-  if (error instanceof z.ZodError)
-    return error.issues[0]?.message ?? "Check the Saved Item details.";
-  return null;
-}
-
-async function runMutation(
-  callerUserId: string,
-  run: () => Promise<Parameters<typeof toSavedItemView>[0]>,
-): Promise<SavedItemMutationResult> {
-  try {
-    const item = await run();
-    updateAssetMutationScopes(
-      assetMutationScopes.forSavedItem({
-        callerUserId,
-        savedItemId: item.id,
-        householdId: item.householdId,
-        sharedWithUserIds: item.sharedWithUserIds,
-      }),
-    );
-    return { ok: true, view: toSavedItemView(item) };
-  } catch (error) {
-    const message = userSafeError(error);
-    if (message) return { ok: false, error: message };
-    throw error;
-  }
-}
-
 export async function createSavedItemAction(input: {
   kind: string;
   title: string;
@@ -98,26 +72,26 @@ export async function createSavedItemAction(input: {
   visibilityChoice?: z.infer<typeof visibilityChoiceSchema>;
   selectedUserIds?: string[];
 }): Promise<SavedItemMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, async () => {
-    const parsed = createSchema.parse(input);
-    const { scope, householdId } = await resolveScopeForCaller(
-      ownerUserId,
-      parsed.visibilityChoice,
-    );
-    return createSavedItem({
-      ownerUserId,
-      kind: parsed.kind,
-      title: parsed.title,
-      content: parsed.content || null,
-      url: parsed.url || null,
-      bringBackAt: parseOptionalDate(parsed.bringBackAt) ?? null,
-      bringBackTimeSemantics: parsed.bringBackAt ? "instant" : "date_only",
-      originalText: originalText(parsed),
-      scope,
-      householdId,
-      selectedUserIds: parsed.selectedUserIds,
-    });
+  return runOwnerAction({
+    schema: createSchema,
+    input,
+    visibilityChoice: (parsed) => parsed.visibilityChoice,
+    body: ({ ownerUserId, input: parsed, resolvedScope }) =>
+      createSavedItem({
+        ownerUserId,
+        kind: parsed.kind,
+        title: parsed.title,
+        content: parsed.content || null,
+        url: parsed.url || null,
+        bringBackAt: parseOptionalDate(parsed.bringBackAt) ?? null,
+        bringBackTimeSemantics: parsed.bringBackAt ? "instant" : "date_only",
+        originalText: originalText(parsed),
+        scope: resolvedScope?.scope,
+        householdId: resolvedScope?.householdId,
+        selectedUserIds: parsed.selectedUserIds,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toSavedItemView(outcome.result),
   });
 }
 
@@ -128,104 +102,111 @@ export async function editSavedItemAction(input: {
   url?: string | null;
   bringBackAt?: string | null;
 }): Promise<SavedItemMutationResult> {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  return runMutation(actorUserId, async () => {
-    const parsed = editSchema.parse(input);
-    return editSavedItem({
-      actorUserId,
-      savedItemId: parsed.savedItemId,
-      edit: {
-        ...(parsed.title !== undefined ? { title: parsed.title } : {}),
-        ...(parsed.content !== undefined ? { content: parsed.content || null } : {}),
-        ...(parsed.url !== undefined ? { url: parsed.url || null } : {}),
-        ...(parsed.bringBackAt !== undefined
-          ? {
-              bringBackAt: parseOptionalDate(parsed.bringBackAt) ?? null,
-              bringBackTimeSemantics: parsed.bringBackAt
-                ? ("instant" as const)
-                : ("date_only" as const),
-            }
-          : {}),
-      },
-    });
+  return runOwnerAction({
+    schema: editSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      editSavedItem({
+        actorUserId: ownerUserId,
+        savedItemId: parsed.savedItemId,
+        edit: {
+          ...(parsed.title !== undefined ? { title: parsed.title } : {}),
+          ...(parsed.content !== undefined ? { content: parsed.content || null } : {}),
+          ...(parsed.url !== undefined ? { url: parsed.url || null } : {}),
+          ...(parsed.bringBackAt !== undefined
+            ? {
+                bringBackAt: parseOptionalDate(parsed.bringBackAt) ?? null,
+                bringBackTimeSemantics: parsed.bringBackAt
+                  ? ("instant" as const)
+                  : ("date_only" as const),
+              }
+            : {}),
+        },
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toSavedItemView(outcome.result),
   });
 }
 
 export async function archiveSavedItemAction(input: { savedItemId: string }) {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  return runMutation(actorUserId, () =>
-    archiveSavedItem({ actorUserId, savedItemId: savedItemIdSchema.parse(input).savedItemId }),
-  );
+  return runSavedItemIdMutation(input, archiveSavedItem);
 }
 
 export async function reopenSavedItemAction(input: { savedItemId: string }) {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  return runMutation(actorUserId, () =>
-    reopenSavedItem({ actorUserId, savedItemId: savedItemIdSchema.parse(input).savedItemId }),
-  );
+  return runSavedItemIdMutation(input, reopenSavedItem);
 }
 
 export async function resolveSavedItemAction(input: { savedItemId: string; reason: string }) {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  return runMutation(actorUserId, () =>
-    resolveSavedItem({
-      actorUserId,
-      savedItemId: savedItemIdSchema.parse(input).savedItemId,
-      reason: savedItemResolutionReasonSchema.parse(input.reason),
-    }),
-  );
+  return runOwnerAction({
+    schema: resolveSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      resolveSavedItem({
+        actorUserId: ownerUserId,
+        savedItemId: parsed.savedItemId,
+        reason: parsed.reason,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toSavedItemView(outcome.result),
+  });
+}
+
+function runSavedItemIdMutation(input: { savedItemId: string }, mutate: typeof archiveSavedItem) {
+  return runOwnerAction({
+    schema: savedItemIdSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      mutate({ actorUserId: ownerUserId, savedItemId: parsed.savedItemId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toSavedItemView(outcome.result),
+  });
 }
 
 export async function promoteSavedItemToGeneralActionAction(input: {
   savedItemId: string;
   title?: string;
 }) {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  const result = await runMutation(actorUserId, () => {
-    const { savedItemId } = savedItemIdSchema.parse(input);
-    return promoteSavedItemToGeneralAction({
-      actorUserId,
-      savedItemId,
-      authority: "explicit",
-      idempotencyKey: `saved-item:${savedItemId}:general-action`,
-      title: input.title,
-    });
+  return runOwnerAction({
+    schema: promoteSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      promoteSavedItemToGeneralAction({
+        actorUserId: ownerUserId,
+        savedItemId: parsed.savedItemId,
+        authority: "explicit",
+        idempotencyKey: `saved-item:${parsed.savedItemId}:general-action`,
+        title: parsed.title,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toSavedItemView(outcome.result),
   });
-  if (result.ok) {
-    for (const outcome of result.view.outcomes) {
-      if (outcome.destinationKind === "general_action") {
-        invalidateActionMutation({
-          ownerUserId: actorUserId,
-          actionId: outcome.destinationRecordId,
-        });
-      }
-    }
-  }
-  return result;
 }
 
 export async function getSavedItemSourceDeletionImpactAction(input: { sourceRecordId: string }) {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  return getSavedItemSourceDeletionImpact({
-    actorUserId,
-    sourceRecordId: z.uuid().parse(input.sourceRecordId),
+  return runOwnerAction({
+    schema: sourceImpactSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      getSavedItemSourceDeletionImpact({
+        actorUserId: ownerUserId,
+        sourceRecordId: parsed.sourceRecordId,
+      }),
+    result: (impact) => impact,
   });
 }
 
 export async function deleteUniqueSavedItemSourceAction(input: { savedItemId: string }) {
-  const actorUserId = await requireAdmittedOwnerForAction();
-  const { savedItemId } = savedItemIdSchema.parse(input);
-  const item = await getSavedItem({ callerUserId: actorUserId, savedItemId });
-  const deleted = await deleteUniqueSavedItemSource({ actorUserId, savedItemId });
-  updateAssetMutationScopes(
-    assetMutationScopes.forSavedItem({
-      callerUserId: actorUserId,
-      savedItemId,
-      householdId: item?.householdId,
-      sharedWithUserIds: item?.sharedWithUserIds,
-    }),
-  );
-  return deleted;
+  return runOwnerAction({
+    schema: savedItemIdSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      deleteUniqueSavedItemSource({
+        actorUserId: ownerUserId,
+        savedItemId: parsed.savedItemId,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => outcome.result,
+  });
 }
 
 /** Archived Saved Items are quiet secondary history, read only when the owner opens it. */

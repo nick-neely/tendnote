@@ -2,11 +2,8 @@
 
 import { proposeAssetMemoryActions } from "@tendnote/db/queries/assets";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import type { AssetActionProposalMutationResult } from "@/lib/asset-action-proposal-view";
-import { runAssetsMutation } from "@/lib/asset-mutation";
-import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
-import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
+import { runOwnerAction } from "@/lib/owner-action";
 
 /**
  * Server action for the Asset Profile's reminder proposals (#203): the owner asks their
@@ -25,27 +22,24 @@ const proposeSchema = z.object({ assetId: z.uuid() });
 export async function proposeAssetMemoryActionsAction(input: {
   assetId: string;
 }): Promise<AssetActionProposalMutationResult> {
-  const { assetId } = proposeSchema.parse(input);
-  const actorUserId = await requireAdmittedOwnerForAction();
-
-  return runAssetsMutation(
-    () => proposeAssetMemoryActions({ actorUserId, assetId, source: "user" }),
-    (outcome) => {
-      updateAssetMutationScopes(
-        assetMutationScopes.forAssetIds({
-          callerUserId: actorUserId,
-          assetIds: [outcome.asset.id],
-        }),
-      );
-      for (const proposal of outcome.proposed) {
-        invalidateActionMutation({ ownerUserId: actorUserId, actionId: proposal.action.id });
-      }
+  return runOwnerAction({
+    schema: proposeSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      proposeAssetMemoryActions({
+        actorUserId: ownerUserId,
+        assetId: parsed.assetId,
+        source: "user",
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => {
+      const result = outcome.result;
       return {
-        proposed: outcome.proposed.length,
+        proposed: result.proposed.length,
         // Carried through so an empty pass can say which kind of empty it was — see
         // `describeProposalOutcome`.
-        alreadySpokenFor: outcome.alreadySpokenFor,
+        alreadySpokenFor: result.alreadySpokenFor,
       };
     },
-  );
+  });
 }

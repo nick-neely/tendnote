@@ -134,7 +134,7 @@ export type ConversationalCaptureDeps = {
     directlyRequested: boolean;
     memories: Array<{ label: string; notes: string }>;
     source: "assistant";
-  }) => Promise<CaptureAssetReview>;
+  }) => Promise<MutationOutcome<CaptureAssetReview>>;
   addAssetEvidence?: (input: {
     ownerUserId: string;
     reviewGroupId: string;
@@ -147,7 +147,9 @@ export type ConversationalCaptureDeps = {
     selectedUserIds?: string[];
     sourceRecordId: string;
     source: "assistant";
-  }) => Promise<{ id: string; sourceRecordId?: string | null; reviewGroupId?: string | null }>;
+  }) => Promise<
+    MutationOutcome<{ id: string; sourceRecordId?: string | null; reviewGroupId?: string | null }>
+  >;
   getPerson?: (input: { ownerUserId: string; personId: string }) => Promise<CapturePerson | null>;
   updatePerson?: (input: {
     ownerUserId: string;
@@ -184,7 +186,7 @@ export type ConversationalCaptureDeps = {
     actorUserId: string;
     groupId: string;
     source: "assistant";
-  }) => Promise<CaptureAssetReview>;
+  }) => Promise<MutationOutcome<CaptureAssetReview>>;
   createGeneralAction?: (input: {
     id: string;
     ownerUserId: string;
@@ -217,11 +219,11 @@ export type ConversationalCaptureDeps = {
     actorUserId: string;
     savedItemId: string;
     edit: { title: string; content?: string | null; url?: string | null };
-  }) => Promise<SavedItemWithContext>;
+  }) => Promise<MutationOutcome<SavedItemWithContext>>;
   archiveSavedItem?: (input: {
     actorUserId: string;
     savedItemId: string;
-  }) => Promise<SavedItemWithContext>;
+  }) => Promise<MutationOutcome<SavedItemWithContext>>;
   createFollowup?: (input: {
     id: string;
     ownerUserId: string;

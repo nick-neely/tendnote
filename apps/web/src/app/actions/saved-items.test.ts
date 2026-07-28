@@ -1,5 +1,6 @@
+import { SavedItemValidationError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { invalidateActionMutationSpy, revalidatePathSpy } from "@/test/action-adapter-mocks";
+import { revalidatePathSpy } from "@/test/action-adapter-mocks";
 
 const {
   createSavedItem,
@@ -34,6 +35,7 @@ vi.mock("@/lib/resolve-scope-for-caller", () => ({ resolveScopeForCaller }));
 
 import {
   createSavedItemAction,
+  deleteUniqueSavedItemSourceAction,
   editSavedItemAction,
   promoteSavedItemToGeneralActionAction,
 } from "./saved-items";
@@ -65,10 +67,19 @@ const ITEM = {
 beforeEach(() => {
   vi.clearAllMocks();
   resolveScopeForCaller.mockResolvedValue({ scope: "private", householdId: null });
-  createSavedItem.mockResolvedValue(ITEM);
-  editSavedItem.mockResolvedValue(ITEM);
+  createSavedItem.mockResolvedValue({
+    result: ITEM,
+    affectedScopes: [
+      { kind: "owner-collection", collection: "saved-items", ownerUserId: "owner-1" },
+    ],
+  });
+  editSavedItem.mockResolvedValue({ result: ITEM, affectedScopes: [] });
   getSavedItem.mockResolvedValue(ITEM);
-  promoteSavedItemToGeneralAction.mockResolvedValue(ITEM);
+  promoteSavedItemToGeneralAction.mockResolvedValue({ result: ITEM, affectedScopes: [] });
+  deleteUniqueSavedItemSource.mockResolvedValue({
+    result: { deletedSavedItemId: ITEM.id, deletedSourceRecordId: ITEM.sourceRecordId },
+    affectedScopes: [],
+  });
 });
 
 describe("Saved Item server adapters", () => {
@@ -106,11 +117,21 @@ describe("Saved Item server adapters", () => {
 
   it("supplies explicit authority and a stable retry key for promotion", async () => {
     promoteSavedItemToGeneralAction.mockResolvedValue({
-      ...ITEM,
-      outcomes: [
+      result: {
+        ...ITEM,
+        outcomes: [
+          {
+            destinationKind: "general_action",
+            destinationRecordId: "33333333-3333-4333-8333-333333333333",
+          },
+        ],
+      },
+      affectedScopes: [
         {
-          destinationKind: "general_action",
-          destinationRecordId: "33333333-3333-4333-8333-333333333333",
+          kind: "viewer-entity",
+          entity: "general-action",
+          entityId: "33333333-3333-4333-8333-333333333333",
+          viewerUserId: "owner-1",
         },
       ],
     });
@@ -123,10 +144,7 @@ describe("Saved Item server adapters", () => {
       authority: "explicit",
       idempotencyKey: `saved-item:${ITEM.id}:general-action`,
     });
-    expect(invalidateActionMutationSpy).toHaveBeenCalledWith({
-      ownerUserId: "owner-1",
-      actionId: "33333333-3333-4333-8333-333333333333",
-    });
+    expect(revalidatePathSpy).toHaveBeenCalledWith("/actions");
   });
 
   it("forwards every supplied edit field and preserves explicit clearing values", async () => {
@@ -191,5 +209,18 @@ describe("Saved Item server adapters", () => {
     await expect(editSavedItemAction({ savedItemId: ITEM.id })).rejects.toThrow(
       "database unavailable",
     );
+  });
+
+  it("returns an inline refusal when unique source evidence is shared or reused", async () => {
+    deleteUniqueSavedItemSource.mockRejectedValue(
+      new SavedItemValidationError(
+        "This source is shared or reused. Review its impact before deleting evidence.",
+      ),
+    );
+
+    await expect(deleteUniqueSavedItemSourceAction({ savedItemId: ITEM.id })).resolves.toEqual({
+      ok: false,
+      error: "This source is shared or reused. Review its impact before deleting evidence.",
+    });
   });
 });

@@ -13,11 +13,7 @@ import {
   assetKindSchema,
   assetLabelForKind,
 } from "@tendnote/domain";
-import {
-  scopeForVisibilityChoice,
-  visibilityChoiceSchema,
-  visibilityLabelForScope,
-} from "@tendnote/domain/privacy";
+import { visibilityChoiceSchema, visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import type { EvidenceDestination } from "@/lib/asset-evidence-destination";
@@ -26,8 +22,7 @@ import {
   type AssetEvidenceView,
   toAssetEvidenceView,
 } from "@/lib/asset-evidence-view";
-import { runAssetsMutation } from "@/lib/asset-mutation";
-import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
+import { runOwnerAction } from "@/lib/owner-action";
 
 /**
  * The shared Asset Evidence Capture server actions (#200): one thin layer over
@@ -94,6 +89,7 @@ async function readUploadedFile(formData: FormData): Promise<AddAssetEvidenceInp
 function toEvidenceFields(
   fields: z.infer<typeof evidenceFieldsSchema>,
   file: AddAssetEvidenceInput["file"],
+  resolvedScope?: { scope: AddAssetEvidenceInput["scope"] } | null,
 ): Omit<AddAssetEvidenceInput, "ownerUserId" | "assetId" | "reviewGroupId"> {
   return {
     kind: fields.kind,
@@ -106,8 +102,17 @@ function toEvidenceFields(
     renewsOn: fields.renewsOn ?? null,
     // Absent lets the seam inherit the anchor. Every explicit choice is re-checked
     // against the authoritative parent Asset in the owner-scoped seam.
-    ...toEvidenceVisibility(fields),
+    ...toResolvedEvidenceVisibility(fields, resolvedScope),
   };
+}
+
+function toResolvedEvidenceVisibility(
+  fields: z.infer<typeof evidenceFieldsSchema>,
+  resolvedScope?: { scope: AddAssetEvidenceInput["scope"] } | null,
+): Partial<Pick<AddAssetEvidenceInput, "scope" | "selectedUserIds">> {
+  if (!resolvedScope) return {};
+  if (!fields.selectedUserIds?.length) return { scope: resolvedScope.scope };
+  return { scope: resolvedScope.scope, selectedUserIds: fields.selectedUserIds };
 }
 
 function toEvidenceMoney(
@@ -117,24 +122,29 @@ function toEvidenceMoney(
   return { amount: fields.amount, currency: (fields.currency ?? "USD").toUpperCase() };
 }
 
-function toEvidenceVisibility(
-  fields: z.infer<typeof evidenceFieldsSchema>,
-): Partial<Pick<AddAssetEvidenceInput, "scope" | "selectedUserIds">> {
-  if (!fields.visibilityChoice) return {};
-  const scope = scopeForVisibilityChoice(fields.visibilityChoice);
-  if (!fields.selectedUserIds?.length) return { scope };
-  return { scope, selectedUserIds: fields.selectedUserIds };
-}
-
 /** Maps parsed fields + upload into the seam's capture input. */
 function toCaptureInput(
   ownerUserId: string,
   target: z.infer<typeof targetSchema>,
   fields: z.infer<typeof evidenceFieldsSchema>,
   file: AddAssetEvidenceInput["file"],
+  resolvedScope: { scope: AddAssetEvidenceInput["scope"] } | null,
 ): AddAssetEvidenceInput {
-  return { ownerUserId, ...target, ...toEvidenceFields(fields, file) };
+  return { ownerUserId, ...target, ...toEvidenceFields(fields, file, resolvedScope) };
 }
+
+const evidenceActionSchema = z.instanceof(FormData).transform((formData) => ({
+  formData,
+  target: targetSchema.parse(
+    formData.get("reviewGroupId")
+      ? { reviewGroupId: formData.get("reviewGroupId") }
+      : { assetId: formData.get("assetId") },
+  ),
+  fields: evidenceFieldsSchema.parse({
+    ...Object.fromEntries(formData.entries()),
+    selectedUserIds: formData.getAll("selectedUserIds").map(String),
+  }),
+}));
 
 /**
  * Captures one piece of Asset Evidence from multipart form data, attached to an
@@ -145,31 +155,20 @@ function toCaptureInput(
 export async function addAssetEvidenceAction(
   formData: FormData,
 ): Promise<AssetEvidenceMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runAssetsMutation(
-    async () => {
-      const target = targetSchema.parse(
-        formData.get("reviewGroupId")
-          ? { reviewGroupId: formData.get("reviewGroupId") }
-          : { assetId: formData.get("assetId") },
+  return runOwnerAction({
+    schema: evidenceActionSchema,
+    input: formData,
+    visibilityChoice: (parsed) => parsed.fields.visibilityChoice,
+    body: async ({ ownerUserId, input: parsed, resolvedScope }) => {
+      const file = await readUploadedFile(parsed.formData);
+      return addAssetEvidence(
+        toCaptureInput(ownerUserId, parsed.target, parsed.fields, file, resolvedScope),
       );
-      const fields = evidenceFieldsSchema.parse({
-        ...Object.fromEntries(formData.entries()),
-        selectedUserIds: formData.getAll("selectedUserIds").map(String),
-      });
-      const file = await readUploadedFile(formData);
-      return addAssetEvidence(toCaptureInput(ownerUserId, target, fields, file));
     },
-    (evidence) => {
-      updateAssetMutationScopes(
-        assetMutationScopes.forAssetIds({
-          callerUserId: ownerUserId,
-          assetIds: [evidence.assetId],
-        }),
-      );
-      return toAssetEvidenceView(evidence, { callerUserId: ownerUserId });
-    },
-  );
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, ownerUserId) =>
+      toAssetEvidenceView(outcome.result, { callerUserId: ownerUserId }),
+  });
 }
 
 // The chat capture's new-asset arm names the thing being proposed; `kind` and
@@ -191,18 +190,19 @@ export type AssetEvidenceToNewAssetResult =
 export async function addAssetEvidenceToNewAssetAction(
   formData: FormData,
 ): Promise<AssetEvidenceToNewAssetResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runAssetsMutation(
-    async () => {
+  return runOwnerAction({
+    schema: z.instanceof(FormData),
+    input: formData,
+    body: async ({ ownerUserId, input: parsedFormData }) => {
       const asset = newAssetSchema.parse({
-        assetName: formData.get("assetName"),
-        assetKind: formData.get("assetKind"),
+        assetName: parsedFormData.get("assetName"),
+        assetKind: parsedFormData.get("assetKind"),
       });
       const fields = evidenceFieldsSchema.parse({
-        ...Object.fromEntries(formData.entries()),
-        selectedUserIds: formData.getAll("selectedUserIds").map(String),
+        ...Object.fromEntries(parsedFormData.entries()),
+        selectedUserIds: parsedFormData.getAll("selectedUserIds").map(String),
       });
-      const file = await readUploadedFile(formData);
+      const file = await readUploadedFile(parsedFormData);
       // A brand-new proposal is private until acceptance widens it, so the
       // keep-private narrowing has nothing to narrow — the scope choice drops.
       const {
@@ -210,26 +210,21 @@ export async function addAssetEvidenceToNewAssetAction(
         selectedUserIds: _selectedUserIds,
         ...evidenceFields
       } = toEvidenceFields(fields, file);
-      const result = await addAssetEvidenceToNewAsset({
+      return addAssetEvidenceToNewAsset({
         ownerUserId,
         asset: { name: asset.assetName, kind: asset.assetKind },
         ...evidenceFields,
       });
-      return result;
     },
-    ({ evidence, group }) => {
-      updateAssetMutationScopes(
-        assetMutationScopes.forAssetIds({
-          callerUserId: ownerUserId,
-          assetIds: [evidence.assetId, group.asset.id],
-        }),
-      );
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, ownerUserId) => {
+      const { evidence, group } = outcome.result;
       return {
         evidence: toAssetEvidenceView(evidence, { callerUserId: ownerUserId }),
         assetName: group.asset.name,
       };
     },
-  );
+  });
 }
 
 /**
@@ -268,21 +263,17 @@ export async function listAssetEvidenceDestinationsAction(): Promise<EvidenceDes
 export async function removeAssetEvidenceAction(input: {
   evidenceId: string;
 }): Promise<{ ok: true; view: { evidenceId: string } } | { ok: false; error: string }> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runAssetsMutation(
-    async () => {
-      const parsed = z.object({ evidenceId: z.uuid() }).parse(input);
-      const evidence = await removeAssetEvidence({
+  return runOwnerAction({
+    schema: z.object({ evidenceId: z.uuid() }),
+    input,
+    body: async ({ ownerUserId, input: parsed }) => {
+      const outcome = await removeAssetEvidence({
         actorUserId: ownerUserId,
         evidenceId: parsed.evidenceId,
       });
-      return { evidenceId: parsed.evidenceId, assetId: evidence.assetId };
+      return { ...outcome, evidenceId: parsed.evidenceId };
     },
-    (parsed) => {
-      updateAssetMutationScopes(
-        assetMutationScopes.forAssetIds({ callerUserId: ownerUserId, assetIds: [parsed.assetId] }),
-      );
-      return { evidenceId: parsed.evidenceId };
-    },
-  );
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => ({ evidenceId: outcome.evidenceId }),
+  });
 }

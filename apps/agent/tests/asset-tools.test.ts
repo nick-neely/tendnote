@@ -321,9 +321,12 @@ describe("get_asset_context tool", () => {
 describe("propose_asset_actions tool", () => {
   it("proposes from the asset the model resolved, as the assistant", async () => {
     proposeAssetMemoryActions.mockResolvedValue({
-      asset: { id: ASSET_ID, name: "Kitchen refrigerator" },
-      proposed: [],
-      alreadySpokenFor: 0,
+      result: {
+        asset: { id: ASSET_ID, name: "Kitchen refrigerator" },
+        proposed: [],
+        alreadySpokenFor: 0,
+      },
+      affectedScopes: [],
     });
 
     await proposeAssetActionsTool.execute({ assetId: ASSET_ID }, ctx);
@@ -418,7 +421,7 @@ describe("propose_asset_memories tool", () => {
   });
 
   it("anchors the fact to the asset the model resolved, as a suggestion", async () => {
-    suggestAssetMemories.mockResolvedValue(groupResult());
+    suggestAssetMemories.mockResolvedValue({ result: groupResult(), affectedScopes: [] });
 
     const output = await proposeAssetMemoriesTool.execute(
       { assetId: ASSET_ID, saidByUser: SAID, details: [detail] },
@@ -442,7 +445,7 @@ describe("propose_asset_memories tool", () => {
   });
 
   it("grounds every proposal in the user's own words (ADR 0151)", async () => {
-    suggestAssetMemories.mockResolvedValue(groupResult());
+    suggestAssetMemories.mockResolvedValue({ result: groupResult(), affectedScopes: [] });
 
     const output = await proposeAssetMemoriesTool.execute(
       { assetId: ASSET_ID, saidByUser: SAID, details: [detail] },
@@ -463,8 +466,8 @@ describe("propose_asset_memories tool", () => {
   });
 
   it("proposes a new (suggested) asset when there was nothing to anchor to", async () => {
-    suggestAsset.mockResolvedValue(
-      groupResult({
+    suggestAsset.mockResolvedValue({
+      result: groupResult({
         assetPending: true,
         asset: {
           id: ASSET_ID,
@@ -474,7 +477,8 @@ describe("propose_asset_memories tool", () => {
           status: "suggested",
         },
       }),
-    );
+      affectedScopes: [],
+    });
 
     const output = await proposeAssetMemoriesTool.execute(
       {
@@ -534,7 +538,7 @@ describe("propose_asset_memories tool", () => {
   });
 
   it("tells the model, in the result itself, that nothing was saved", async () => {
-    suggestAssetMemories.mockResolvedValue(groupResult());
+    suggestAssetMemories.mockResolvedValue({ result: groupResult(), affectedScopes: [] });
 
     const output = await proposeAssetMemoriesTool.execute(
       { assetId: ASSET_ID, saidByUser: SAID, details: [detail] },

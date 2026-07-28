@@ -1,7 +1,6 @@
 "use server";
 
 import { searchAssets } from "@tendnote/db/queries/asset-search";
-import type { AssetWithContext } from "@tendnote/db/queries/assets";
 import {
   archiveAsset,
   browseAssets,
@@ -14,7 +13,6 @@ import { assetKindSchema } from "@tendnote/domain";
 import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { runAssetsMutation } from "@/lib/asset-mutation";
 import { type AssetSearchResultView, toAssetSearchResultView } from "@/lib/asset-search-view";
 import {
   type AssetBrowsePageView,
@@ -23,8 +21,7 @@ import {
   toAssetBrowseView,
   toAssetView,
 } from "@/lib/asset-view";
-import { assetMutationScopes, updateAssetMutationScopes } from "@/lib/cache/asset-mutation-scopes";
-import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
+import { runOwnerAction } from "@/lib/owner-action";
 
 const assetIdSchema = z.object({ assetId: z.uuid() });
 
@@ -50,44 +47,27 @@ const editAssetActionSchema = z.object({
  * Runs an Asset mutation and maps the result to a view for the acting caller, so
  * `owned` reflects whoever is viewing.
  */
-function runMutation(
-  callerUserId: string,
-  run: () => Promise<AssetWithContext>,
-): Promise<AssetMutationResult> {
-  return runAssetsMutation(run, (asset) => {
-    updateAssetMutationScopes(
-      assetMutationScopes.forAsset({
-        callerUserId,
-        assetId: asset.id,
-        householdId: asset.householdId,
-        sharedWithUserIds: asset.sharedWithUserIds,
-      }),
-    );
-    return toAssetView(asset, { callerUserId });
-  });
-}
-
 export async function createAssetAction(input: {
   name: string;
   kind: string;
   visibilityChoice?: z.infer<typeof visibilityChoiceSchema>;
   selectedUserIds?: string[];
 }): Promise<AssetMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, async () => {
-    const parsed = createAssetActionSchema.parse(input);
-    const { scope, householdId } = await resolveScopeForCaller(
-      ownerUserId,
-      parsed.visibilityChoice,
-    );
-    return createAsset({
-      ownerUserId,
-      name: parsed.name,
-      kind: parsed.kind,
-      scope,
-      householdId,
-      selectedUserIds: parsed.selectedUserIds,
-    });
+  return runOwnerAction({
+    schema: createAssetActionSchema,
+    input,
+    visibilityChoice: (parsed) => parsed.visibilityChoice,
+    body: ({ ownerUserId, input: parsed, resolvedScope }) =>
+      createAsset({
+        ownerUserId,
+        name: parsed.name,
+        kind: parsed.kind,
+        scope: resolvedScope?.scope,
+        householdId: resolvedScope?.householdId,
+        selectedUserIds: parsed.selectedUserIds,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, callerUserId) => toAssetView(outcome.result, { callerUserId }),
   });
 }
 
@@ -97,46 +77,57 @@ export async function editAssetAction(input: {
   name?: string;
   kind?: string;
 }): Promise<AssetMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, async () => {
-    const parsed = editAssetActionSchema.parse(input);
-    return editAsset({
-      actorUserId: ownerUserId,
-      assetId: parsed.assetId,
-      edit: {
-        ...(parsed.name !== undefined ? { name: parsed.name } : {}),
-        ...(parsed.kind !== undefined ? { kind: parsed.kind } : {}),
-      },
-    });
+  return runOwnerAction({
+    schema: editAssetActionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      editAsset({
+        actorUserId: ownerUserId,
+        assetId: parsed.assetId,
+        edit: {
+          ...(parsed.name !== undefined ? { name: parsed.name } : {}),
+          ...(parsed.kind !== undefined ? { kind: parsed.kind } : {}),
+        },
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, callerUserId) => toAssetView(outcome.result, { callerUserId }),
   });
 }
 
 /** Archives an Asset — the normal inactive path; history stays intact. */
 export async function archiveAssetAction(input: { assetId: string }): Promise<AssetMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, () => {
-    const parsed = assetIdSchema.parse(input);
-    return archiveAsset({ actorUserId: ownerUserId, assetId: parsed.assetId });
+  return runOwnerAction({
+    schema: assetIdSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      archiveAsset({ actorUserId: ownerUserId, assetId: parsed.assetId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, callerUserId) => toAssetView(outcome.result, { callerUserId }),
   });
 }
 
 /** Restores an archived Asset back to active. */
 export async function restoreAssetAction(input: { assetId: string }): Promise<AssetMutationResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, () => {
-    const parsed = assetIdSchema.parse(input);
-    return restoreAsset({ actorUserId: ownerUserId, assetId: parsed.assetId });
+  return runOwnerAction({
+    schema: assetIdSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      restoreAsset({ actorUserId: ownerUserId, assetId: parsed.assetId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, callerUserId) => toAssetView(outcome.result, { callerUserId }),
   });
 }
 
 /** Human-only correction/privacy delete; intentionally not exposed as an Eve tool. */
-export async function hardDeleteAssetAction(input: { assetId: string }): Promise<void> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = assetIdSchema.parse(input);
-  await hardDeleteAsset({ actorUserId: ownerUserId, assetId: parsed.assetId });
-  updateAssetMutationScopes(
-    assetMutationScopes.forAsset({ callerUserId: ownerUserId, assetId: parsed.assetId }),
-  );
+export async function hardDeleteAssetAction(input: { assetId: string }) {
+  return runOwnerAction({
+    schema: assetIdSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      hardDeleteAsset({ actorUserId: ownerUserId, assetId: parsed.assetId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: () => undefined,
+  });
 }
 
 const searchAssetsActionSchema = z.object({

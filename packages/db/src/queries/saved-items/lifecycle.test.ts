@@ -4,6 +4,7 @@ import { createInMemorySavedItemLifecycleStore } from "./in-memory-store";
 import { createSavedItemLifecycle } from "./lifecycle";
 
 const OWNER = "owner-1";
+const actionOutcome = (id: string) => ({ result: { id }, affectedScopes: [] });
 
 describe("create Saved Item", () => {
   it("persists immutable source evidence first and defaults the item to private", async () => {
@@ -208,7 +209,7 @@ describe("Saved Item promotion", () => {
     const lifecycle = createSavedItemLifecycle(store, {
       createGeneralAction: async (input) => {
         created.push({ title: input.title, sourceRecordId: input.sourceRecordId });
-        return { id: "action-1" };
+        return actionOutcome("action-1");
       },
     });
     const item = await lifecycle.createSavedItem({
@@ -250,11 +251,11 @@ describe("Saved Item promotion", () => {
     expect(created).toEqual([
       { title: "Find a refrigerator filter seller", sourceRecordId: item.sourceRecordId },
     ]);
-    expect(promoted).toMatchObject({
+    expect(promoted.savedItem).toMatchObject({
       status: "archived",
       outcomes: [{ destinationKind: "general_action", destinationRecordId: "action-1" }],
     });
-    expect(retried.outcomes).toEqual(promoted.outcomes);
+    expect(retried.savedItem.outcomes).toEqual(promoted.savedItem.outcomes);
   });
 
   it("resumes safely across failures before and after the idempotency outcome is linked", async () => {
@@ -273,10 +274,10 @@ describe("Saved Item promotion", () => {
     const lifecycle = createSavedItemLifecycle(store, {
       createGeneralAction: async (input) => {
         const existing = actions.get(input.id);
-        if (existing) return existing;
+        if (existing) return actionOutcome(existing.id);
         const created = { id: input.id };
         actions.set(input.id, created);
-        return created;
+        return actionOutcome(created.id);
       },
     });
     const item = await lifecycle.createSavedItem({
@@ -296,7 +297,7 @@ describe("Saved Item promotion", () => {
     await expect(promote()).rejects.toThrow("outcome write failed");
     const afterOutcomeRetry = await promote();
     expect(actions.size).toBe(1);
-    expect(afterOutcomeRetry.status).toBe("archived");
+    expect(afterOutcomeRetry.savedItem.status).toBe("archived");
 
     await store.updateSavedItem({
       ownerUserId: OWNER,
@@ -312,7 +313,7 @@ describe("Saved Item promotion", () => {
       return originalUpdate(input);
     };
     await expect(promote()).rejects.toThrow("archive write failed");
-    await expect(promote()).resolves.toMatchObject({ status: "archived" });
+    await expect(promote()).resolves.toMatchObject({ savedItem: { status: "archived" } });
     expect(actions.size).toBe(1);
   });
 
@@ -328,7 +329,7 @@ describe("Saved Item promotion", () => {
       return originalCreateEvent(input);
     };
     const lifecycle = createSavedItemLifecycle(store, {
-      createGeneralAction: async (input) => ({ id: input.id }),
+      createGeneralAction: async (input) => actionOutcome(input.id),
     });
     const item = await lifecycle.createSavedItem({
       ownerUserId: OWNER,
@@ -345,7 +346,7 @@ describe("Saved Item promotion", () => {
       });
 
     await expect(promote()).rejects.toThrow("promotion audit failed");
-    await expect(promote()).resolves.toMatchObject({ status: "archived" });
+    await expect(promote()).resolves.toMatchObject({ savedItem: { status: "archived" } });
     const events = await store.listSavedItemEvents({
       ownerUserId: OWNER,
       savedItemId: item.id,
@@ -366,7 +367,7 @@ describe("Source deletion impact", () => {
   it("reports shared evidence and linked outcomes without deleting through archive", async () => {
     const store = createInMemorySavedItemLifecycleStore();
     const lifecycle = createSavedItemLifecycle(store, {
-      createGeneralAction: async () => ({ id: "action-1" }),
+      createGeneralAction: async () => actionOutcome("action-1"),
     });
     const item = await lifecycle.createSavedItem({
       ownerUserId: OWNER,

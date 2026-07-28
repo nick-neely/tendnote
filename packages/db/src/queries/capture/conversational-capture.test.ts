@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInMemorySavedItemLifecycleStore, createSavedItemLifecycle } from "../saved-items";
+import { createAffectedSavedItemLifecycle } from "../saved-items/mutation-lifecycle";
 import { createConversationalCapture } from "./conversational-capture";
 
 type CaptureResult = Awaited<ReturnType<ReturnType<typeof createConversationalCapture>["capture"]>>;
@@ -946,7 +947,7 @@ describe("conversational Capture", () => {
 
   it("corrects and safely undoes the Saved Item without rewriting source evidence", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const lifecycle = createSavedItemLifecycle(store);
+    const lifecycle = createAffectedSavedItemLifecycle(createSavedItemLifecycle(store));
     const editSavedItem = vi.fn(lifecycle.editSavedItem);
     const archiveSavedItem = vi.fn(lifecycle.archiveSavedItem);
     const capture = createConversationalCapture(store, { archiveSavedItem, editSavedItem });
@@ -958,13 +959,24 @@ describe("conversational Capture", () => {
       originalText: "Original wording",
       surface: "global_capture",
     });
+    expect(created.affectedScopes).toEqual(
+      expect.arrayContaining([
+        { kind: "owner-collection", collection: "saved-items", ownerUserId: "owner-1" },
+        { kind: "owner-collection", collection: "today", ownerUserId: "owner-1" },
+      ]),
+    );
 
     const changed = await capture.change({
       actorUserId: "owner-1",
       savedItemId: savedItemFrom(created).id,
       originalText: "Corrected wording",
     });
-    expect(changed).toMatchObject({ content: "Corrected wording", title: "Corrected wording" });
+    expect(changed).toMatchObject({
+      result: { content: "Corrected wording", title: "Corrected wording" },
+      affectedScopes: expect.arrayContaining([
+        { kind: "owner-collection", collection: "saved-items", ownerUserId: "owner-1" },
+      ]),
+    });
     expect(editSavedItem).toHaveBeenCalledOnce();
     expect(
       await store.getSourceRecord({
@@ -977,13 +989,16 @@ describe("conversational Capture", () => {
       actorUserId: "owner-1",
       target: { kind: "archive_saved_item", savedItemId: savedItemFrom(created).id },
     });
-    expect(undone).toMatchObject({ status: "archived" });
+    expect(undone).toMatchObject({
+      result: { status: "archived" },
+      affectedScopes: expect.any(Array),
+    });
     expect(archiveSavedItem).toHaveBeenCalledOnce();
     const retriedUndo = await capture.undoOutcome({
       actorUserId: "owner-1",
       target: { kind: "archive_saved_item", savedItemId: savedItemFrom(created).id },
     });
-    expect(retriedUndo).toMatchObject({ status: "archived" });
+    expect(retriedUndo).toMatchObject({ result: { status: "archived" }, affectedScopes: [] });
     expect(
       (
         await store.listSavedItemEvents({
