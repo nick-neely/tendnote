@@ -25,6 +25,7 @@ import {
 } from "@/lib/general-action-area-filter";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionView } from "@/lib/general-action-view";
+import { acceptMutationRevision } from "@/lib/mutation-revision";
 import {
   type ReversibleMutationApplyPhase,
   ReversibleMutationProvider,
@@ -300,11 +301,7 @@ function ActionsSurfaceContent({
     phase: ReversibleMutationApplyPhase = "authoritative",
   ) {
     if (phase === "projection") displacedActions.current.delete(view.id);
-    const acknowledged = acknowledgedRevisions.current.get(view.id);
-    if (phase === "authoritative") {
-      if (acknowledged && view.revision <= acknowledged) return false;
-      acknowledgedRevisions.current.set(view.id, view.revision);
-    }
+    if (!acceptMutationRevision(acknowledgedRevisions.current, view, phase)) return false;
     const activeDestination = view.status === "open" || view.status === "deferred";
     const pausedDestination = view.status === "paused";
     const resolvedDestination = view.status === "completed" || view.status === "dismissed";

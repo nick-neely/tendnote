@@ -4,6 +4,8 @@ import {
   archiveMemory,
   dismissSuggestedMemory,
   editSuggestedMemory,
+  getSuggestedMemoryReview,
+  restoreDismissedSuggestedMemory,
 } from "@tendnote/db/queries/memories";
 import { memoryReviewEditSchema } from "@tendnote/domain";
 import { z } from "zod";
@@ -48,10 +50,28 @@ export async function dismissSuggestedMemoryAction(input: { memoryId: string }) 
   return runOwnerAction({
     schema: memoryActionSchema,
     input,
-    body: ({ ownerUserId, input: parsed }) =>
-      dismissSuggestedMemory({ ownerUserId, memoryId: parsed.memoryId }),
+    body: async ({ ownerUserId, input: parsed }) => {
+      const review = await getSuggestedMemoryReview({
+        ownerUserId,
+        memoryId: parsed.memoryId,
+      });
+      if (!review) throw new Error("Suggested memory not found.");
+      const outcome = await dismissSuggestedMemory({ ownerUserId, memoryId: parsed.memoryId });
+      return { ...outcome, result: review };
+    },
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => ({ memoryId: outcome.result.id, status: outcome.result.status }),
+    result: (outcome) => toSuggestedMemoryReviewView(outcome.result),
+  });
+}
+
+export async function restoreDismissedSuggestedMemoryAction(input: { memoryId: string }) {
+  return runOwnerAction({
+    schema: memoryActionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      restoreDismissedSuggestedMemory({ ownerUserId, memoryId: parsed.memoryId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => toSuggestedMemoryReviewView(outcome.result),
   });
 }
 

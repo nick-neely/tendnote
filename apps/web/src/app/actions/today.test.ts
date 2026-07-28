@@ -7,6 +7,7 @@ const {
   getOwnerTodayContext,
   getTodayCandidate,
   getTodayShortlist,
+  restoreTodayCandidate,
   suppressTodayCandidate,
 } = vi.hoisted(() => ({
   completeFollowup: vi.fn(),
@@ -14,6 +15,7 @@ const {
   getOwnerTodayContext: vi.fn(),
   getTodayCandidate: vi.fn(),
   getTodayShortlist: vi.fn(),
+  restoreTodayCandidate: vi.fn(),
   suppressTodayCandidate: vi.fn(),
 }));
 
@@ -29,10 +31,11 @@ vi.mock("@tendnote/db/queries/today", () => ({
   getOwnerTodayContext,
   getTodayCandidate,
   getTodayShortlist,
+  restoreTodayCandidate,
   suppressTodayCandidate,
 }));
 
-import { actOnTodayItemAction, suppressTodayItemAction } from "./today";
+import { actOnTodayItemAction, restoreTodayItemAction, suppressTodayItemAction } from "./today";
 
 const FOLLOWUP_ID = "11111111-1111-1111-1111-111111111111";
 const NOW = new Date("2026-07-21T15:00:00.000Z");
@@ -80,6 +83,13 @@ describe("Today web actions", () => {
         { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
       ],
     });
+    restoreTodayCandidate.mockResolvedValue({
+      result: {},
+      affectedScopes: [
+        { kind: "owner-collection", collection: "today", ownerUserId: "owner-1" },
+        { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
+      ],
+    });
     completeFollowup.mockResolvedValue({
       result: {},
       affectedScopes: [{ kind: "owner-collection", collection: "today", ownerUserId: "owner-1" }],
@@ -111,6 +121,24 @@ describe("Today web actions", () => {
     });
     expect(updateTagSpy).toHaveBeenCalledWith("today:owner:owner-1");
     expect(updateTagSpy).toHaveBeenCalledWith("review:owner:owner-1");
+  });
+
+  it("restores the exact owner-scoped suppression for authoritative Undo", async () => {
+    await restoreTodayItemAction({
+      localDate: "2026-07-21",
+      candidateIdentity: `follow_up:${FOLLOWUP_ID}`,
+      reasonKey: "due:today",
+      kind: "not_today",
+    });
+
+    expect(restoreTodayCandidate).toHaveBeenCalledWith({
+      ownerUserId: "owner-1",
+      localDate: "2026-07-21",
+      candidateIdentity: `follow_up:${FOLLOWUP_ID}`,
+      reasonKey: "due:today",
+      kind: "not_today",
+    });
+    expect(updateTagSpy).toHaveBeenCalledWith("today:owner:owner-1");
   });
 
   it("reloads the authoritative candidate before using its real domain action", async () => {

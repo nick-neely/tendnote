@@ -41,7 +41,7 @@ import type { GeneralActionView } from "@/lib/general-action-view";
 import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import { getReminderInstallationId } from "@/lib/reminder-registration";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
-import { useMutationSubmit } from "@/lib/use-mutation-submit";
+import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 
 /**
  * Assembles the create-action server-action payload, including only the optional fields the
@@ -135,7 +135,7 @@ export function CreateActionForm({
   const [visibilityChoice, setVisibilityChoice] = useState<VisibilityChoice>("only_me");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [showDetails, setShowDetails] = useState(false);
-  const { error, setError, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+  const { error, setError, pending, submit } = usePendingMutationSubmit(GENERIC_ERROR);
 
   const trimmedTitle = title.trim();
   const selectedMembersRequired =

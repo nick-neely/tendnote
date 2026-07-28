@@ -93,6 +93,7 @@ describe("Phase Seven phone browser proof", () => {
     document.documentElement.style.fontSize = "200%";
     const handlers = {
       refresh: vi.fn(async () => ({ ok: true as const, view: today })),
+      restore: vi.fn(async () => ({ ok: true as const, view: today })),
       suppress: vi.fn(async () => ({
         ok: true as const,
         view: { ...today, items: [] },

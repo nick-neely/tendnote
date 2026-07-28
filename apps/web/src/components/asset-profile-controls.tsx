@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import type { AssetMutationResult, AssetView } from "@/lib/asset-view";
-import { useMutationSubmit } from "@/lib/use-mutation-submit";
+import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 
 /**
  * Runs an Asset Profile mutation through the shared submit runner, refreshing the
@@ -26,7 +26,7 @@ import { useMutationSubmit } from "@/lib/use-mutation-submit";
  */
 function useAssetProfileMutation() {
   const router = useRouter();
-  const { error, setError, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+  const { error, setError, pending, submit } = usePendingMutationSubmit(GENERIC_ERROR);
 
   function run(action: () => Promise<AssetMutationResult>, after?: () => void): void {
     submit(action, () => {

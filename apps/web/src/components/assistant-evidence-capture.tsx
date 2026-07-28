@@ -21,7 +21,7 @@ import {
   resolveEvidenceDestination,
 } from "@/lib/asset-evidence-destination";
 import type { AssetEvidenceView } from "@/lib/asset-evidence-view";
-import { useMutationSubmit } from "@/lib/use-mutation-submit";
+import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 
 /**
  * Eve's chat plus-menu Asset Evidence capture panel (#201): the pick from
@@ -48,7 +48,7 @@ export function AssistantEvidenceCapture({ file, onClose }: { file: File; onClos
   const router = useRouter();
   const [choice, setChoice] = useState<EvidenceCaptureChoice | null>(null);
   const [done, setDone] = useState<CaptureDone | null>(null);
-  const { error, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+  const { error, pending, submit } = usePendingMutationSubmit(GENERIC_ERROR);
   const panelRef = useCapturePanelFocus();
 
   // Vet the pick before anything else renders — the same domain gate the drop
@@ -259,7 +259,7 @@ function runCaptureSubmit({
 }: {
   formData: FormData;
   choice: EvidenceCaptureChoice;
-  submit: ReturnType<typeof useMutationSubmit>["submit"];
+  submit: ReturnType<typeof usePendingMutationSubmit>["submit"];
   onAdded: (choice: EvidenceCaptureChoice, view: AssetEvidenceView) => void;
 }): void {
   if (choice.kind === "existing") {

@@ -45,6 +45,7 @@ vi.mock("@/app/actions/today", () => ({
       limitations: [],
     },
   }),
+  restoreTodayItemAction: vi.fn(),
   suppressTodayItemAction: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({

@@ -15,12 +15,14 @@ const accept = vi.fn();
 const dismiss = vi.fn();
 const ignore = vi.fn();
 const edit = vi.fn();
+const restore = vi.fn();
 
 vi.mock("@/app/actions/suggested-general-actions", () => ({
   acceptSuggestedGeneralActionAction: (input: unknown) => accept(input),
   dismissSuggestedGeneralActionAction: (input: unknown) => dismiss(input),
   ignoreSuggestedGeneralActionAction: (input: unknown) => ignore(input),
   editSuggestedGeneralActionAction: (input: unknown) => edit(input),
+  restoreDismissedSuggestedGeneralActionAction: (input: unknown) => restore(input),
 }));
 
 const refresh = vi.fn();
@@ -54,6 +56,7 @@ beforeEach(() => {
   dismiss.mockReset();
   ignore.mockReset();
   edit.mockReset();
+  restore.mockReset();
   refresh.mockReset();
 });
 

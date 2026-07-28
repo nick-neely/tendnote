@@ -243,6 +243,24 @@ describe("dismiss and archive", () => {
     await expect(auditActions()).resolves.toContain("memory.review_dismiss");
   });
 
+  it("restores only a suggestion whose latest mutation was review dismissal", async () => {
+    const { review, seedSuggestion, auditActions } = await setup();
+    const { memory } = await seedSuggestion();
+    await review.dismissSuggestedMemory({ ownerUserId: OWNER, memoryId: memory.id });
+
+    const restored = await review.restoreDismissedSuggestedMemory({
+      ownerUserId: OWNER,
+      memoryId: memory.id,
+    });
+
+    expect(restored.memory.status).toBe("suggested");
+    expect(restored.memory.dismissedAt).toBeNull();
+    await expect(auditActions()).resolves.toContain("memory.review_restore");
+    await expect(
+      review.restoreDismissedSuggestedMemory({ ownerUserId: OWNER, memoryId: memory.id }),
+    ).rejects.toThrow("Only dismissed suggested memories can be restored");
+  });
+
   it("archives an approved memory out of normal views while keeping history", async () => {
     const { store, review, person, seedSuggestion, auditActions } = await setup();
     const { memory } = await seedSuggestion();

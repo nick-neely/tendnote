@@ -207,9 +207,20 @@ export async function editSuggestedGeneralAction(input: EditSuggestedGeneralActi
 }
 
 export async function dismissSuggestedGeneralAction(input: GeneralActionActionInput) {
-  return suggestedGeneralActionMutationOutcome(
+  const outcome = await suggestedGeneralActionMutationOutcome(
     defaultGeneralActionStore,
     defaultSuggestedGeneralActionReview.dismissSuggestedGeneralAction(input),
+  );
+  return {
+    ...outcome,
+    result: await defaultGeneralActionLifecycle.getGeneralAction(input),
+  };
+}
+
+export async function restoreDismissedSuggestedGeneralAction(input: GeneralActionActionInput) {
+  return suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.restoreDismissedSuggestedGeneralAction(input),
   );
 }
 

@@ -5,7 +5,9 @@ import {
   acceptSuggestedGeneralAction,
   dismissSuggestedGeneralAction,
   editSuggestedGeneralAction,
+  getSuggestedGeneralActionReview,
   ignoreSuggestedGeneralAction,
+  restoreDismissedSuggestedGeneralAction,
   type SuggestedGeneralActionReviewResult,
 } from "@tendnote/db/queries/general-actions";
 import type { GeneralActionEdit } from "@tendnote/domain";
@@ -81,16 +83,37 @@ export async function dismissSuggestedGeneralActionAction(input: { generalAction
   return runOwnerAction({
     schema: actionSchema,
     input,
+    body: async ({ ownerUserId, input: parsed }) => {
+      const prior = await getSuggestedGeneralActionReview({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+      });
+      if (!prior) throw new Error("Suggested action not found.");
+      const outcome = await dismissSuggestedGeneralAction({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+      });
+      return { outcome, prior };
+    },
+    affectedScopes: ({ outcome }) => outcome.affectedScopes,
+    result: ({ outcome, prior }, ownerUserId) =>
+      toView(ownerUserId, { ...prior, action: outcome.result }),
+  });
+}
+
+export async function restoreDismissedSuggestedGeneralActionAction(input: {
+  generalActionId: string;
+}) {
+  return runOwnerAction({
+    schema: actionSchema,
+    input,
     body: ({ ownerUserId, input: parsed }) =>
-      dismissSuggestedGeneralAction({
+      restoreDismissedSuggestedGeneralAction({
         actorUserId: ownerUserId,
         generalActionId: parsed.generalActionId,
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => ({
-      generalActionId: outcome.result.id,
-      status: outcome.result.status,
-    }),
+    result: (outcome, ownerUserId) => toView(ownerUserId, outcome.result),
   });
 }
 

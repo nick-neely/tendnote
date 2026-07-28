@@ -97,7 +97,10 @@ export type FollowupStore = FollowupContextStore & {
  * and Eve callers share one lifecycle layer (PRD #42).
  */
 export type FollowupLifecycleStore = FollowupStore &
-  Pick<SourceRecordResolutionStore, "getPerson" | "getSourceRecord" | "createAuditLogEntry"> &
+  Pick<
+    SourceRecordResolutionStore,
+    "getPerson" | "getSourceRecord" | "createAuditLogEntry" | "listAuditLogEntries"
+  > &
   Pick<
     HouseholdStore,
     | "getHouseholdMembership"

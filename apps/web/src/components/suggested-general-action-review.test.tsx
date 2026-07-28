@@ -12,6 +12,7 @@ vi.mock("@/app/actions/suggested-general-actions", () => ({
   dismissSuggestedGeneralActionAction: vi.fn(),
   editSuggestedGeneralActionAction: vi.fn(),
   ignoreSuggestedGeneralActionAction: vi.fn(),
+  restoreDismissedSuggestedGeneralActionAction: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({

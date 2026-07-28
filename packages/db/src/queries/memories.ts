@@ -73,6 +73,10 @@ export async function dismissSuggestedMemory(input: MemoryReviewActionInput) {
   return memoryMutationOutcome(defaultMemoryReview.dismissSuggestedMemory(input));
 }
 
+export async function restoreDismissedSuggestedMemory(input: MemoryReviewActionInput) {
+  return memoryMutationOutcome(defaultMemoryReview.restoreDismissedSuggestedMemory(input));
+}
+
 export async function approveExtractedMemoriesForSourceRecord(
   input: SourceRecordMemoryActionInput,
 ) {

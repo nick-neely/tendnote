@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import type { AssetView } from "@/lib/asset-view";
-import { useMutationSubmit } from "@/lib/use-mutation-submit";
+import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 
 /**
  * Capture-first create surface for an Asset: name + kind in one reach, so adding
@@ -46,7 +46,7 @@ export function CreateAssetForm({
   const [visibilityChoice, setVisibilityChoice] = useState<VisibilityChoice>("only_me");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [showSharing, setShowSharing] = useState(false);
-  const { error, setError, pending, submit } = useMutationSubmit(GENERIC_ERROR);
+  const { error, setError, pending, submit } = usePendingMutationSubmit(GENERIC_ERROR);
 
   const trimmedName = name.trim();
   const selectedMembersRequired =

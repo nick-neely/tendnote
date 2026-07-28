@@ -119,6 +119,27 @@ describe("Today shortlist product function", () => {
         kind: "later",
       }),
     ]);
+
+    const restored = await service.restoreTodayCandidate({
+      ownerUserId: "owner-1",
+      localDate: "2026-07-21",
+      candidateIdentity: action.identity,
+      reasonKey: action.reason.key,
+      kind: "later",
+    });
+
+    expect(restored.affectedScopes).toEqual(outcome.affectedScopes);
+    expect(feedbackStore.auditEntries.at(-1)).toMatchObject({
+      action: "today.feedback_restored",
+      entityId: action.identity,
+    });
+    await expect(
+      service.getTodayShortlist({
+        ownerUserId: "owner-1",
+        localDate: "2026-07-21",
+        now: new Date("2026-07-21T16:00:00.000Z"),
+      }),
+    ).resolves.toMatchObject({ items: [expect.objectContaining({ identity: action.identity })] });
   });
 
   it("accepts only supplied optional identities while keeping deterministic facts and actions", async () => {

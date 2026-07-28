@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import {
   actOnTodayItemAction,
   refreshTodayAction,
+  restoreTodayItemAction,
   suppressTodayItemAction,
 } from "@/app/actions/today";
 import { DashboardAssistant } from "@/components/dashboard-assistant";
@@ -254,6 +255,7 @@ async function HomeMobileDestination({ searchParams }: HomeProps) {
       todayHandlers={{
         act: actOnTodayItemAction,
         refresh: refreshTodayAction,
+        restore: restoreTodayItemAction,
         suppress: suppressTodayItemAction,
       }}
       todayInitial={await getHomeToday(ownerUserId, todayContext)}

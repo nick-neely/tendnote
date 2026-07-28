@@ -4,7 +4,7 @@ import type { AssetKind } from "@tendnote/domain";
 import { ASSET_KIND_OPTIONS } from "@tendnote/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   acceptAssetReviewGroupAction,
   acceptSuggestedAssetAction,
@@ -17,7 +17,7 @@ import {
 import { MemoryEditForm } from "@/components/asset-memory-edit-form";
 import { AssetReviewEvidenceBlock, DismissGroupButton } from "@/components/asset-review-evidence";
 import { AssetKindBadge } from "@/components/asset-shared";
-import { ActionScopeChip, GENERIC_ERROR } from "@/components/general-action-shared";
+import { ActionScopeChip } from "@/components/general-action-shared";
 import { CheckIcon, Link2Icon, PencilIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { AssetReviewGroupView, AssetReviewMemoryView } from "@/lib/asset-review-view";
+import { ReversibleMutationProvider, useReversibleMutation } from "@/lib/reversible-mutation";
 import { sourceLabel } from "@/lib/source-labels";
 
 function formatCaptured(iso: string): string {
@@ -80,6 +81,20 @@ function GroundingBlock({ review }: { review: AssetReviewGroupView }) {
  * Suggested-action card vocabulary so the Review tab reads as one system.
  */
 export function AssetReviewGroupCard({
+  ...props
+}: {
+  review: AssetReviewGroupView;
+  onResolve: (groupId: string) => void;
+  onUpdate?: (view: AssetReviewGroupView) => void;
+}) {
+  return (
+    <ReversibleMutationProvider>
+      <AssetReviewGroupCardContent {...props} />
+    </ReversibleMutationProvider>
+  );
+}
+
+function AssetReviewGroupCardContent({
   review,
   onResolve,
   onUpdate,
@@ -89,29 +104,34 @@ export function AssetReviewGroupCard({
   onUpdate?: (view: AssetReviewGroupView) => void;
 }) {
   const router = useRouter();
-  const [leaving, setLeaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const mutation = useReversibleMutation(review.groupId, "review");
+  const { error, pending } = mutation.state;
 
   /** Runs a review mutation; the returned view either updates the card or resolves it. */
   function run(mutate: () => ReturnType<typeof acceptAssetReviewGroupAction>) {
-    setError(null);
-    startTransition(async () => {
-      try {
-        const result = await mutate();
-        if (!result.ok) throw new Error(result.error);
-        const view = result.view;
+    const focusTarget =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    mutation.run({
+      kind: "pending",
+      apply: (view) => {
         // Keep the Review tab count honest after members resolve.
         router.refresh();
         if (view.pendingCount === 0) {
-          setLeaving(true);
-          window.setTimeout(() => onResolve(review.groupId), 200);
+          onResolve(review.groupId);
         } else {
           onUpdate?.(view);
         }
-      } catch {
-        setError(GENERIC_ERROR);
-      }
+        return true;
+      },
+      command: mutate,
+      focusTarget,
+      labels: {
+        pending: "Updating asset review…",
+        success: "Asset review updated.",
+        rollback: "The asset review was not changed.",
+        undo: "",
+        undone: "",
+      },
     });
   }
 
@@ -121,7 +141,7 @@ export function AssetReviewGroupCard({
   return (
     <article
       className="flex flex-col gap-3 rounded-lg border border-accent/25 bg-accent-soft/45 p-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
-      data-leaving={leaving}
+      aria-busy={pending}
     >
       <div className="flex items-center justify-between gap-3">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/15 px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
@@ -168,6 +188,11 @@ export function AssetReviewGroupCard({
 
       <GroundingBlock review={review} />
 
+      {pending ? (
+        <p className="text-muted-foreground text-sm" role="status">
+          {mutation.state.labels.pending}
+        </p>
+      ) : null}
       <div className="flex flex-col gap-2 border-t border-accent/20 pt-3">
         {/* Name the outcome plainly so nothing is resolved blind (calm, honest). */}
         <p className="text-[length:var(--text-caption)] text-muted-foreground">

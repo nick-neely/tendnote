@@ -68,9 +68,10 @@ function handlers(): TodayShortlistHandlers {
       view: { ...response(), items: response().items.slice(1) },
     })),
     refresh: vi.fn(async () => ({ ok: true as const, view: response() })),
+    restore: vi.fn(async () => ({ ok: true as const, view: response() })),
     suppress: vi.fn(async () => ({
       ok: true as const,
-      view: { ...response(), items: response().items.slice(0, 1) },
+      view: { ...response(), items: response().items.slice(1) },
     })),
   };
 }
@@ -136,6 +137,239 @@ describe("TodayShortlist", () => {
         reasonKey: "due:jul-20",
       }),
     );
+  });
+
+  it("projects Not today immediately and restores through authoritative Undo", async () => {
+    const user = userEvent.setup();
+    const actions = handlers();
+    render(
+      <TodayShortlist
+        handlers={actions}
+        initial={response()}
+        localDate="2026-07-21"
+        timeZone="America/Chicago"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
+    await user.click(screen.getByRole("menuitem", { name: "Not today" }));
+
+    expect(screen.queryByRole("link", { name: "Call Sam" })).toBeNull();
+    await user.click(await screen.findByRole("button", { name: "Undo Not today" }));
+
+    await waitFor(() => expect(actions.restore).toHaveBeenCalledOnce());
+    expect(await screen.findByRole("link", { name: "Call Sam" })).toBeTruthy();
+  });
+
+  it("rolls a failed suppression back to the exact row and stable More control", async () => {
+    const user = userEvent.setup();
+    const actions = handlers();
+    vi.mocked(actions.suppress).mockResolvedValue({
+      ok: false,
+      error: "Today changed elsewhere.",
+    });
+    render(
+      <TodayShortlist
+        handlers={actions}
+        initial={response()}
+        localDate="2026-07-21"
+        timeZone="America/Chicago"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
+    await user.click(screen.getByRole("menuitem", { name: "Not today" }));
+
+    const restoredControl = await screen.findByRole("button", {
+      name: "More options for Call Sam",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(restoredControl));
+    expect(screen.getByRole("alert").textContent).toContain("Today changed elsewhere.");
+  });
+
+  it("keeps unrelated rows usable and exposes visible pending state", async () => {
+    const user = userEvent.setup();
+    const actions = handlers();
+    let settle: (result: Awaited<ReturnType<TodayShortlistHandlers["suppress"]>>) => void =
+      () => {};
+    vi.mocked(actions.suppress).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    render(
+      <TodayShortlist
+        handlers={actions}
+        initial={response()}
+        localDate="2026-07-21"
+        timeZone="America/Chicago"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
+    await user.click(screen.getByRole("menuitem", { name: "Not today" }));
+
+    expect(screen.getByRole("region", { name: "Today shortlist" }).getAttribute("aria-busy")).toBe(
+      "true",
+    );
+    expect(screen.getAllByText("Removing item from Today…").length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getByRole("button", { name: "More options for Filter measurements" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+
+    settle({ ok: true, view: { ...response(), items: response().items.slice(1) } });
+    await waitFor(() => expect(screen.queryAllByText("Removing item from Today…")).toHaveLength(0));
+  });
+
+  it("composes concurrent suppressions without hiding feedback or resurrecting rows", async () => {
+    const user = userEvent.setup();
+    const actions = handlers();
+    const settlers = new Map<
+      string,
+      (result: Awaited<ReturnType<TodayShortlistHandlers["suppress"]>>) => void
+    >();
+    vi.mocked(actions.suppress).mockImplementation(
+      (input) =>
+        new Promise((resolve) => {
+          settlers.set(input.candidateIdentity, resolve);
+        }),
+    );
+    render(
+      <TodayShortlist
+        handlers={actions}
+        initial={response()}
+        localDate="2026-07-21"
+        timeZone="America/Chicago"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
+    await user.click(screen.getByRole("menuitem", { name: "Not today" }));
+    await user.click(screen.getByRole("button", { name: "More options for Filter measurements" }));
+    await user.click(screen.getByRole("menuitem", { name: "Not today" }));
+
+    expect(screen.getAllByText("Removing item from Today…")).toHaveLength(3);
+    settlers.get("saved_item:filter")?.({
+      ok: true,
+      view: { ...response(), items: response().items.slice(0, 1) },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("region", { name: "Today shortlist" }).getAttribute("aria-busy"),
+      ).toBe("true"),
+    );
+    settlers.get(`follow_up:${FOLLOWUP_ID}`)?.({
+      ok: true,
+      view: { ...response(), items: response().items.slice(1) },
+    });
+
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: "Undo Not today" })).toHaveLength(2),
+    );
+    expect(screen.queryByRole("link", { name: "Call Sam" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Filter measurements" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Today shortlist" }).getAttribute("aria-busy")).toBe(
+      "false",
+    );
+  });
+
+  it("restores a failed Later submit to the initiating Set button", async () => {
+    const user = userEvent.setup();
+    const actions = handlers();
+    vi.mocked(actions.suppress).mockResolvedValue({
+      ok: false,
+      error: "Today changed elsewhere.",
+    });
+    render(
+      <TodayShortlist
+        handlers={actions}
+        initial={response()}
+        localDate="2026-07-21"
+        timeZone="America/Chicago"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
+    await user.click(screen.getByRole("menuitem", { name: "Later" }));
+    await user.click(screen.getByRole("button", { name: "Set" }));
+
+    const restoredSubmit = await screen.findByRole("button", { name: "Set" });
+    await waitFor(() => expect(document.activeElement).toBe(restoredSubmit));
+  });
+
+  it("moves focus to a logical sibling and then the heading when rows leave", async () => {
+    const user = userEvent.setup();
+    const actions = handlers();
+    const view = render(
+      <TodayShortlist
+        handlers={actions}
+        initial={response()}
+        localDate="2026-07-21"
+        timeZone="America/Chicago"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
+    await user.click(screen.getByRole("menuitem", { name: "Not today" }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("link", { name: "Filter measurements" }),
+      ),
+    );
+
+    const lastOnly = { ...response(), items: response().items.slice(1) };
+    view.rerender(
+      <TodayShortlist
+        handlers={actions}
+        initial={lastOnly}
+        localDate="2026-07-22"
+        timeZone="America/Chicago"
+      />,
+    );
+    vi.mocked(actions.suppress).mockResolvedValue({ ok: true, view: { ...lastOnly, items: [] } });
+    await user.click(screen.getByRole("button", { name: "More options for Filter measurements" }));
+    await user.click(screen.getByRole("menuitem", { name: "Not today" }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("heading", { name: "Worth your attention" }),
+      ),
+    );
+  });
+
+  it("resets candidates and response metadata when the authoritative day changes", () => {
+    const actions = handlers();
+    const view = render(
+      <TodayShortlist
+        handlers={actions}
+        initial={response()}
+        localDate="2026-07-21"
+        timeZone="America/Chicago"
+      />,
+    );
+    const next = {
+      ...response(),
+      items: response()
+        .items.slice(0, 1)
+        .map((item) => ({ ...item, title: "Call Sam tomorrow" })),
+      limitations: ["Calendar is still syncing."],
+    };
+
+    view.rerender(
+      <TodayShortlist
+        handlers={actions}
+        initial={next}
+        localDate="2026-07-22"
+        timeZone="America/Chicago"
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: "Call Sam" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Call Sam tomorrow" })).toBeTruthy();
+    expect(screen.getByText("Calendar is still syncing.")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Filter measurements" })).toBeNull();
   });
 
   it("opens the explicit Later control and links mandatory overflow to its real domains", async () => {

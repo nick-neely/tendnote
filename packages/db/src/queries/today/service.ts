@@ -189,5 +189,18 @@ export function createTodayShortlistService(deps: {
         affectedScopes: affectedScopesForOwnerSurfaces(input.ownerUserId),
       };
     },
+    async restoreTodayCandidate(input: {
+      ownerUserId: string;
+      localDate: string;
+      candidateIdentity: string;
+      reasonKey: string;
+      kind: "later" | "not_today";
+    }) {
+      const result = await deps.feedbackStore.deleteFeedback(input);
+      return {
+        result,
+        affectedScopes: affectedScopesForOwnerSurfaces(input.ownerUserId),
+      };
+    },
   };
 }

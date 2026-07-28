@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { useCreateDraft } from "@/components/use-create-draft";
 import type { BriefItemView, BriefView } from "@/lib/brief-view";
 import { ownerActionFailureMessage, unwrapOwnerActionResult } from "@/lib/owner-action-result";
+import { REVERSIBLE_MUTATION_TRANSITION_MS } from "@/lib/reversible-mutation";
 
 const CADENCE_COPY = {
   daily: {
@@ -179,7 +180,7 @@ function BriefItemRow({
       try {
         await action();
         setLeaving(true);
-        window.setTimeout(() => onResolve(item.id), 200);
+        window.setTimeout(() => onResolve(item.id), REVERSIBLE_MUTATION_TRANSITION_MS);
       } catch {
         setError("That didn't go through. Try again.");
       }

@@ -28,7 +28,10 @@ export function SavedItemEditForm({
 }: {
   item: SavedItemView;
   onCancel: () => void;
-  onSave: (run: () => ReturnType<typeof editSavedItemAction>) => void;
+  onSave: (
+    run: () => ReturnType<typeof editSavedItemAction>,
+    focusTarget: HTMLElement | null,
+  ) => void;
   pending: boolean;
 }) {
   const bringBackAtId = useId();
@@ -64,29 +67,32 @@ export function SavedItemEditForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (!title.trim() || !hasChange) return;
-        onSave(async () => {
-          const result = detailsChanged
-            ? await editSavedItemAction({
-                savedItemId: item.id,
-                title: title.trim(),
-                content: content.trim() || null,
-                bringBackAt: bringBackAt || null,
-                ...(item.kind === "link" ? { url: url.trim() || null } : {}),
-              })
-            : { ok: true as const, view: item };
-          if (!result.ok) return result;
-          let view = result.view;
-          if (reminderEnabled && bringBackAt) {
-            const reminder = await saveSchedule("saved_item", item.id, "instant");
-            if (!reminder.nextValidChoice) {
-              view = { ...view, reminderSchedule: reminder.scheduleView };
+        onSave(
+          async () => {
+            const result = detailsChanged
+              ? await editSavedItemAction({
+                  savedItemId: item.id,
+                  title: title.trim(),
+                  content: content.trim() || null,
+                  bringBackAt: bringBackAt || null,
+                  ...(item.kind === "link" ? { url: url.trim() || null } : {}),
+                })
+              : { ok: true as const, view: item };
+            if (!result.ok) return result;
+            let view = result.view;
+            if (reminderEnabled && bringBackAt) {
+              const reminder = await saveSchedule("saved_item", item.id, "instant");
+              if (!reminder.nextValidChoice) {
+                view = { ...view, reminderSchedule: reminder.scheduleView };
+              }
+            } else if (item.reminderSchedule) {
+              await clearSchedule("saved_item", item.id);
+              view = { ...view, reminderSchedule: null };
             }
-          } else if (item.reminderSchedule) {
-            await clearSchedule("saved_item", item.id);
-            view = { ...view, reminderSchedule: null };
-          }
-          return { ok: true as const, view };
-        });
+            return { ok: true as const, view };
+          },
+          event.nativeEvent.submitter instanceof HTMLElement ? event.nativeEvent.submitter : null,
+        );
       }}
     >
       <Input

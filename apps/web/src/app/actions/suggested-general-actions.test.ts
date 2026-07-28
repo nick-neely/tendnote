@@ -16,6 +16,7 @@ const {
   acceptSuggestedGeneralAction,
   dismissSuggestedGeneralAction,
   editSuggestedGeneralAction,
+  getSuggestedGeneralActionReview,
   ignoreSuggestedGeneralAction,
   listGeneralActionAreas,
   toSuggestedGeneralActionReviewView,
@@ -23,6 +24,7 @@ const {
   acceptSuggestedGeneralAction: vi.fn(),
   dismissSuggestedGeneralAction: vi.fn(),
   editSuggestedGeneralAction: vi.fn(),
+  getSuggestedGeneralActionReview: vi.fn(),
   ignoreSuggestedGeneralAction: vi.fn(),
   listGeneralActionAreas: vi.fn(),
   toSuggestedGeneralActionReviewView: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock("@tendnote/db/queries/general-actions", () => ({
   acceptSuggestedGeneralAction,
   dismissSuggestedGeneralAction,
   editSuggestedGeneralAction,
+  getSuggestedGeneralActionReview,
   ignoreSuggestedGeneralAction,
 }));
 vi.mock("@tendnote/db/queries/general-action-areas", () => ({ listGeneralActionAreas }));
@@ -129,10 +132,15 @@ describe("acceptSuggestedGeneralActionAction (card Accept path)", () => {
 });
 
 describe("dismissSuggestedGeneralActionAction (card Dismiss path)", () => {
-  it("forwards the card's id to the shared dismiss and returns the resolution", async () => {
+  it("forwards the card's id and returns the authoritative review view needed by Undo", async () => {
     dismissSuggestedGeneralAction.mockResolvedValue({
       result: { id: GENERAL_ACTION_ID, status: "dismissed" },
       affectedScopes,
+    });
+    getSuggestedGeneralActionReview.mockResolvedValue({
+      component: { type: "suggested_general_action_review", generalActionId: GENERAL_ACTION_ID },
+      action: { id: GENERAL_ACTION_ID, status: "suggested" },
+      sourceRecord: null,
     });
 
     const result = unwrapOwnerActionResult(
@@ -144,6 +152,8 @@ describe("dismissSuggestedGeneralActionAction (card Dismiss path)", () => {
     expect(dismissSuggestedGeneralAction).toHaveBeenCalledWith(
       expect.objectContaining({ actorUserId: "owner-1", generalActionId: GENERAL_ACTION_ID }),
     );
-    expect(result).toEqual({ generalActionId: GENERAL_ACTION_ID, status: "dismissed" });
+    expect(result).toEqual({
+      action: { id: GENERAL_ACTION_ID, status: "dismissed" },
+    });
   });
 });

@@ -142,6 +142,13 @@ export async function archiveFollowup(input: FollowupActionInput) {
   });
 }
 
+export async function restoreArchivedFollowup(input: FollowupActionInput) {
+  return finalizeReminderMutation(await defaultFollowupLifecycle.restoreArchivedFollowup(input), {
+    reconcile: reconcileFollowupReminder,
+    hydrate: (followup) => hydrateFollowup(defaultFollowupStore, followup),
+  });
+}
+
 export async function listActiveFollowups(input: {
   ownerUserId: string;
   personId?: string;
@@ -276,4 +283,10 @@ export async function editSuggestedFollowup(input: EditSuggestedFollowupInput) {
 
 export async function dismissSuggestedFollowup(input: FollowupActionInput) {
   return hydrateReviewOutcome(await defaultSuggestedFollowupReview.dismissSuggestedFollowup(input));
+}
+
+export async function restoreDismissedSuggestedFollowup(input: FollowupActionInput) {
+  return hydrateReviewOutcome(
+    await defaultSuggestedFollowupReview.restoreDismissedSuggestedFollowup(input),
+  );
 }

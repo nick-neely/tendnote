@@ -190,11 +190,17 @@ export function DashboardRail({
         ) : (
           <>
             <DashboardFollowupsSection
+              fallbackFocusTarget={() =>
+                document.querySelector<HTMLElement>('[role="tab"][data-state="active"]')
+              }
               followups={followups}
               heading="Reminders"
               onResolve={resolveFollowup}
             />
             <DashboardSuggestedFollowupsSection
+              fallbackFocusTarget={() =>
+                document.querySelector<HTMLElement>('[role="tab"][data-state="active"]')
+              }
               heading="Suggested"
               onResolve={resolveSuggestedFollowup}
               reviews={suggestedFollowups}

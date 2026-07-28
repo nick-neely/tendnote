@@ -6,9 +6,11 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
+  useTransition,
 } from "react";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 
@@ -18,10 +20,12 @@ export type ReversibleMutationAdapter<TView> = {
 };
 
 const REVERSIBLE_MUTATION_LEAVE_MS = 5_000;
+export const REVERSIBLE_MUTATION_TRANSITION_MS = 200;
 const RECONCILIATION_CONFLICT = "This record changed elsewhere. Refresh and try again.";
 
 // biome-ignore lint/suspicious/noConfusingVoidType: existing UI callbacks may ignore acceptance; explicit false alone signals a conflict.
 export type ReversibleMutationApplyResult = boolean | void;
+type ReversibleMutationFocusTarget = HTMLElement | (() => HTMLElement | null) | null;
 
 type ReversibleMutationLeave<TView> = {
   afterMs?: number;
@@ -36,7 +40,7 @@ export type ReversibleMutationLabels = {
   undone: string;
 };
 
-export type ReversibleMutationApplyPhase = "authoritative" | "projection" | "rollback";
+export type ReversibleMutationApplyPhase = "authoritative" | "inverse" | "projection" | "rollback";
 
 type OptimisticMutation<TView> = {
   kind: "optimistic";
@@ -44,7 +48,7 @@ type OptimisticMutation<TView> = {
   adapter: ReversibleMutationAdapter<TView>;
   command: () => Promise<OwnerActionResult<TView>>;
   apply: (view: TView, phase: ReversibleMutationApplyPhase) => ReversibleMutationApplyResult;
-  focusTarget: HTMLElement | null;
+  focusTarget: ReversibleMutationFocusTarget;
   labels: ReversibleMutationLabels;
   failureAnnouncement?: "polite" | "assertive";
   onFinalize?: () => void;
@@ -55,7 +59,7 @@ type PendingMutation<TView> = {
   kind: "pending";
   command: () => Promise<OwnerActionResult<TView>>;
   apply: (view: TView, phase: ReversibleMutationApplyPhase) => ReversibleMutationApplyResult;
-  focusTarget: HTMLElement | null;
+  focusTarget: ReversibleMutationFocusTarget;
   labels: ReversibleMutationLabels;
   failureAnnouncement?: "polite" | "assertive";
   onFinalize?: () => void;
@@ -110,13 +114,17 @@ type ReversibleMutationContextValue = {
   states: Record<string, ReversibleMutationState>;
   run: <TView>(key: string, mutation: Mutation<TView>) => boolean;
   requestUndo: (key: string) => void;
+  setError: (key: string, error: string | null) => void;
 };
 
 const ReversibleMutationContext = createContext<ReversibleMutationContextValue | null>(null);
 
-function restoreFocus(target: HTMLElement | null) {
+function restoreFocus(target: ReversibleMutationFocusTarget) {
   if (!target) return;
-  requestAnimationFrame(() => target.focus());
+  requestAnimationFrame(() => {
+    const resolved = typeof target === "function" ? target() : target;
+    resolved?.focus();
+  });
 }
 
 export function ReversibleMutationProvider({ children }: { children: ReactNode }) {
@@ -192,7 +200,7 @@ export function ReversibleMutationProvider({ children }: { children: ReactNode }
           }
           return;
         }
-        const accepted = entry.mutation.apply(result.view, "authoritative");
+        const accepted = entry.mutation.apply(result.view, "inverse");
         if (accepted === false) {
           finalizeEntry(key, entry);
           setState(key, (current) => ({
@@ -212,6 +220,7 @@ export function ReversibleMutationProvider({ children }: { children: ReactNode }
           pending: false,
           undoAvailable: false,
           undoRequested: false,
+          leaving: false,
           error: null,
         }));
         setPoliteAnnouncement(entry.mutation.labels.undone);
@@ -242,6 +251,15 @@ export function ReversibleMutationProvider({ children }: { children: ReactNode }
       if (!entry.originalPending) void runInverse(key, entry);
     },
     [runInverse, setState],
+  );
+
+  const setExternalError = useCallback(
+    (key: string, error: string | null) =>
+      setState(key, (current) => ({
+        ...current,
+        error,
+      })),
+    [setState],
   );
 
   const run = useCallback(
@@ -377,7 +395,10 @@ export function ReversibleMutationProvider({ children }: { children: ReactNode }
     [finalizeEntry, runInverse, setState],
   );
 
-  const value = useMemo(() => ({ states, run, requestUndo }), [requestUndo, run, states]);
+  const value = useMemo(
+    () => ({ states, run, requestUndo, setError: setExternalError }),
+    [requestUndo, run, setExternalError, states],
+  );
 
   return (
     <ReversibleMutationContext.Provider value={value}>
@@ -406,6 +427,29 @@ export function useReversibleMutation(recordId: string, intent: string) {
     state: context.states[key] ?? EMPTY_STATE,
     run: <TView,>(mutation: Mutation<TView>) => context.run(key, mutation),
     requestUndo: () => context.requestUndo(key),
+  };
+}
+
+/**
+ * Registry access for collection surfaces whose record key is selected by the
+ * initiating row. This keeps serialization scoped to record + intent without
+ * requiring one hook instance for every member of a dynamic list.
+ */
+export function useReversibleMutationController() {
+  const context = useContext(ReversibleMutationContext);
+  if (!context) {
+    throw new Error(
+      "useReversibleMutationController must be used within ReversibleMutationProvider",
+    );
+  }
+  const keyFor = (recordId: string, intent: string) => `${recordId}:${intent}`;
+  return {
+    state: (recordId: string, intent: string) =>
+      context.states[keyFor(recordId, intent)] ?? EMPTY_STATE,
+    run: <TView,>(recordId: string, intent: string, mutation: Mutation<TView>) =>
+      context.run(keyFor(recordId, intent), mutation),
+    requestUndo: (recordId: string, intent: string) =>
+      context.requestUndo(keyFor(recordId, intent)),
   };
 }
 
@@ -440,4 +484,83 @@ export function useActiveReversibleMutation(
     }
   }
   return null;
+}
+
+/**
+ * Pending Mutation facade for forms and relation controls. In the application,
+ * the root provider serializes and reports the write through the same module as
+ * lifecycle mutations. The local fallback keeps isolated component tests and
+ * server-rendered fixture tests usable without inventing per-component wrappers.
+ */
+export function usePendingMutationSubmit(genericError: string) {
+  const context = useContext(ReversibleMutationContext);
+  const localId = useId();
+  const key = `pending-submit:${localId}`;
+  const [fallbackError, setFallbackError] = useState<string | null>(null);
+  const [fallbackPending, startFallbackTransition] = useTransition();
+  const moduleState = context?.states[key] ?? EMPTY_STATE;
+
+  function setError(error: string | null) {
+    if (context) {
+      context.setError(key, error);
+      return;
+    }
+    setFallbackError(error);
+  }
+
+  function submit<TView>(
+    command: () => Promise<OwnerActionResult<TView>>,
+    onSuccess: (view: TView) => void | Promise<void>,
+  ): void {
+    if (!context) {
+      setFallbackError(null);
+      startFallbackTransition(async () => {
+        try {
+          const result = await command();
+          if (!result.ok) {
+            setFallbackError(result.error);
+            return;
+          }
+          await onSuccess(result.view);
+        } catch {
+          setFallbackError(genericError);
+        }
+      });
+      return;
+    }
+
+    const focusTarget =
+      typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    context.run(key, {
+      kind: "pending",
+      apply: () => true,
+      command: async () => {
+        try {
+          const result = await command();
+          if (!result.ok) return result;
+          await onSuccess(result.view);
+          return result;
+        } catch {
+          return { ok: false, error: genericError };
+        }
+      },
+      focusTarget,
+      labels: {
+        pending: "Updating…",
+        success: "Updated.",
+        rollback: "The change was not applied.",
+        undo: "",
+        undone: "",
+      },
+    });
+  }
+
+  return {
+    error: context ? moduleState.error : fallbackError,
+    pending: context ? moduleState.pending : fallbackPending,
+    setError,
+    submit,
+  };
 }

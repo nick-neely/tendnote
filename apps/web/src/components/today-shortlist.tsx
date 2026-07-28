@@ -3,7 +3,7 @@
 import type { TodayCandidate, TodayShortlistResponse } from "@tendnote/domain/today";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BookmarkIcon,
   CakeIcon,
@@ -26,13 +26,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { type OwnerActionResult, unwrapOwnerActionResult } from "@/lib/owner-action-result";
+import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
+import type { OwnerActionResult } from "@/lib/owner-action-result";
+import {
+  ReversibleMutationProvider,
+  useReversibleMutationController,
+} from "@/lib/reversible-mutation";
+import { todaySuppressionAdapter } from "@/lib/today-reversible-mutation";
+import { useServerSyncedList } from "@/lib/use-server-synced-list";
 
 type CandidateRef = {
   localDate: string;
   candidateIdentity: string;
   reasonKey: string;
 };
+
+type TodayMutationKey = { recordId: string; intent: "pending" | "suppress" };
 
 export type TodayShortlistHandlers = {
   refresh: (input: { localDate: string }) => Promise<OwnerActionResult<TodayShortlistResponse>>;
@@ -41,6 +50,9 @@ export type TodayShortlistHandlers = {
       kind: "later" | "not_today";
       suppressUntil: Date | null;
     },
+  ) => Promise<OwnerActionResult<TodayShortlistResponse>>;
+  restore: (
+    input: CandidateRef & { kind: "later" | "not_today" },
   ) => Promise<OwnerActionResult<TodayShortlistResponse>>;
   act: (input: CandidateRef) => Promise<OwnerActionResult<TodayShortlistResponse>>;
 };
@@ -57,6 +69,23 @@ const familyPresentation: Record<TodayCandidate["family"], { label: string; icon
 };
 
 export function TodayShortlist({
+  ...props
+}: {
+  handlers: TodayShortlistHandlers;
+  initial: TodayShortlistResponse;
+  localDate: string;
+  timeZone: string;
+  showRefresh?: boolean;
+}) {
+  return (
+    <ReversibleMutationProvider>
+      <TodayShortlistContent key={props.localDate} {...props} />
+    </ReversibleMutationProvider>
+  );
+}
+
+// fallow-ignore-next-line complexity -- Today owns one bounded shortlist interaction surface; family rendering, rollover, and reversible suppression share the same authoritative response.
+function TodayShortlistContent({
   handlers,
   initial,
   localDate,
@@ -69,13 +98,33 @@ export function TodayShortlist({
   timeZone: string;
   showRefresh?: boolean;
 }) {
-  const [response, setResponse] = useState(initial);
+  const [items, setItems] = useServerSyncedList(initial.items, (item) => item.identity);
+  const [responseMeta, setResponseMeta] = useState<Omit<TodayShortlistResponse, "items">>(() => {
+    const { items: _items, ...meta } = initial;
+    return meta;
+  });
+  const response = { ...responseMeta, items };
   const [laterItem, setLaterItem] = useState<TodayCandidate | null>(null);
   const [laterAt, setLaterAt] = useState(() => defaultLaterValue());
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const mutations = useReversibleMutationController();
+  const [activeKeys, setActiveKeys] = useState<TodayMutationKey[]>([]);
+  const suppressedIds = useRef(new Set<string>());
+  const activeStates = activeKeys.map((key) => ({
+    key,
+    state: mutations.state(key.recordId, key.intent),
+  }));
+  const pending = activeStates.some(({ state }) => state.pending);
   const requestRollover = useTodayRollover(localDate, timeZone);
-  useEffect(() => setResponse(initial), [initial]);
+
+  useEffect(() => {
+    setItems((current) =>
+      current.map(
+        (item) => initial.items.find((candidate) => candidate.identity === item.identity) ?? item,
+      ),
+    );
+    const { items: _items, ...meta } = initial;
+    setResponseMeta(meta);
+  }, [initial, setItems]);
 
   function candidateRef(item: TodayCandidate): CandidateRef {
     return {
@@ -85,21 +134,121 @@ export function TodayShortlist({
     };
   }
 
-  function run(action: () => Promise<OwnerActionResult<TodayShortlistResponse>>) {
-    setError(null);
-    startTransition(async () => {
-      try {
-        setResponse(unwrapOwnerActionResult(await action()));
-        setLaterItem(null);
-      } catch {
-        if (requestRollover()) return;
-        setError("Today couldn't update. Your records are unchanged.");
-      }
+  function applyResponse(
+    view: TodayShortlistResponse,
+    phase: "authoritative" | "inverse" | "projection" | "rollback",
+  ) {
+    setItems(view.items.filter((item) => !suppressedIds.current.has(item.identity)));
+    const { items: _items, ...meta } = view;
+    setResponseMeta(meta);
+    if (phase === "authoritative") setLaterItem(null);
+    return true;
+  }
+
+  function trackMutation(key: TodayMutationKey) {
+    setActiveKeys((current) =>
+      current.some(
+        (candidate) => candidate.recordId === key.recordId && candidate.intent === key.intent,
+      )
+        ? current
+        : [...current, key],
+    );
+  }
+
+  function runPending(
+    item: TodayCandidate | null,
+    action: () => Promise<OwnerActionResult<TodayShortlistResponse>>,
+    focusTarget: HTMLElement | null,
+  ) {
+    const recordId = item?.identity ?? "today-shortlist";
+    const moveFocus = item ? focusAfterRowRemoval(item.identity) : null;
+    trackMutation({ recordId, intent: "pending" });
+    mutations.run(recordId, "pending", {
+      kind: "pending",
+      apply: (view, phase) => {
+        const accepted = applyResponse(view, phase);
+        if (
+          phase === "authoritative" &&
+          item &&
+          !view.items.some((candidate) => candidate.identity === item.identity)
+        ) {
+          moveFocus?.();
+        }
+        return accepted;
+      },
+      command: action,
+      focusTarget,
+      labels: {
+        pending: "Updating Today…",
+        success: "Today updated.",
+        rollback: "Today was not changed.",
+        undo: "",
+        undone: "",
+      },
     });
   }
 
+  function runSuppression(
+    item: TodayCandidate,
+    kind: "later" | "not_today",
+    suppressUntil: Date | null,
+    focusTarget: () => HTMLElement | null,
+  ) {
+    const reference = candidateRef(item);
+    const moveFocus = focusAfterRowRemoval(item.identity);
+    const key = { recordId: item.identity, intent: "suppress" } as const;
+    suppressedIds.current.add(item.identity);
+    trackMutation(key);
+    const started = mutations.run(item.identity, "suppress", {
+      kind: "optimistic",
+      adapter: todaySuppressionAdapter(item.identity, () =>
+        handlers.restore({ ...reference, kind }),
+      ),
+      apply: (view, phase) => {
+        if (phase === "rollback" || phase === "inverse") {
+          suppressedIds.current.delete(item.identity);
+        }
+        const accepted = applyResponse(view, phase);
+        if (phase === "projection") moveFocus();
+        return accepted;
+      },
+      command: () => handlers.suppress({ ...reference, kind, suppressUntil }),
+      focusTarget,
+      labels: {
+        pending: kind === "later" ? "Setting Today item aside…" : "Removing item from Today…",
+        success: "Today updated. Undo available.",
+        rollback: "The Today item was restored after the change failed.",
+        undo: kind === "later" ? "Undo Later" : "Undo Not today",
+        undone: "Today item restored.",
+      },
+      prior: response,
+    });
+    if (!started) suppressedIds.current.delete(item.identity);
+  }
+
+  function runWithRollover(
+    item: TodayCandidate | null,
+    action: () => Promise<OwnerActionResult<TodayShortlistResponse>>,
+    focusTarget: HTMLElement | null,
+  ) {
+    runPending(
+      item,
+      async () => {
+        try {
+          return await action();
+        } catch (cause) {
+          if (requestRollover()) {
+            return { ok: false, error: "Today rolled to a new day. Refreshing…" };
+          }
+          throw cause;
+        }
+      },
+      focusTarget,
+    );
+  }
+
   return (
-    <section aria-label="Today shortlist" className="px-5 pt-6">
+    <section aria-busy={pending} aria-label="Today shortlist" className="px-5 pt-6">
       <div className="mb-2 flex items-start justify-between gap-4">
         <h2 className="font-semibold text-sm">Worth your attention</h2>
         {showRefresh ? (
@@ -107,7 +256,9 @@ export function TodayShortlist({
             aria-label="Refresh Today shortlist"
             className="size-11 shrink-0"
             disabled={pending}
-            onClick={() => run(() => handlers.refresh({ localDate }))}
+            onClick={(event) =>
+              runWithRollover(null, () => handlers.refresh({ localDate }), event.currentTarget)
+            }
             size="icon-lg"
             variant="ghost"
           >
@@ -119,13 +270,22 @@ export function TodayShortlist({
       {response.items.length > 0 ? (
         <div className="divide-y" data-testid="today-ledger">
           {response.items.map((item) => {
+            const itemPending =
+              mutations.state(item.identity, "pending").pending ||
+              mutations.state(item.identity, "suppress").pending;
             const presentation = familyPresentation[item.family];
             const Icon = presentation.icon;
             const completesRecord =
               item.action.kind === "complete_follow_up" || item.action.kind === "complete_action";
             const actionHref = "href" in item.action ? item.action.href : undefined;
             return (
-              <article className="py-4" data-today-ledger-row key={item.identity}>
+              <article
+                aria-busy={itemPending}
+                className="py-4"
+                data-today-ledger-row
+                data-today-row={item.identity}
+                key={item.identity}
+              >
                 <div className="flex items-start gap-3">
                   <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
                     <Icon aria-hidden className="size-4" />
@@ -149,8 +309,14 @@ export function TodayShortlist({
                         <Button
                           aria-label={`${item.action.label} ${item.title}`}
                           className="min-h-11"
-                          disabled={pending}
-                          onClick={() => run(() => handlers.act(candidateRef(item)))}
+                          disabled={itemPending}
+                          onClick={(event) =>
+                            runWithRollover(
+                              item,
+                              () => handlers.act(candidateRef(item)),
+                              event.currentTarget,
+                            )
+                          }
                           size="sm"
                           variant="secondary"
                         >
@@ -167,7 +333,8 @@ export function TodayShortlist({
                           <Button
                             aria-label={`More options for ${item.title}`}
                             className="min-h-11"
-                            disabled={pending}
+                            disabled={itemPending}
+                            data-today-control={item.identity}
                             size="sm"
                             variant="ghost"
                           >
@@ -188,12 +355,16 @@ export function TodayShortlist({
                           <DropdownMenuItem
                             className="min-h-11"
                             onSelect={() =>
-                              run(() =>
-                                handlers.suppress({
-                                  ...candidateRef(item),
-                                  kind: "not_today",
-                                  suppressUntil: null,
-                                }),
+                              runSuppression(
+                                item,
+                                "not_today",
+                                null,
+                                () =>
+                                  Array.from(
+                                    document.querySelectorAll<HTMLElement>("[data-today-control]"),
+                                  ).find(
+                                    (control) => control.dataset.todayControl === item.identity,
+                                  ) ?? null,
                               )
                             }
                           >
@@ -209,12 +380,15 @@ export function TodayShortlist({
                     className="mt-3 ml-12 flex flex-wrap items-end gap-2 border-t pt-3"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      run(() =>
-                        handlers.suppress({
-                          ...candidateRef(item),
-                          kind: "later",
-                          suppressUntil: new Date(laterAt),
-                        }),
+                      runSuppression(
+                        item,
+                        "later",
+                        new Date(laterAt),
+                        () =>
+                          Array.from(
+                            document.querySelectorAll<HTMLElement>("[data-today-later-submit]"),
+                          ).find((control) => control.dataset.todayLaterSubmit === item.identity) ??
+                          null,
                       );
                     }}
                   >
@@ -233,7 +407,13 @@ export function TodayShortlist({
                         value={laterAt}
                       />
                     </label>
-                    <Button className="min-h-11" disabled={pending} size="sm" type="submit">
+                    <Button
+                      className="min-h-11"
+                      data-today-later-submit={item.identity}
+                      disabled={itemPending}
+                      size="sm"
+                      type="submit"
+                    >
                       Set
                     </Button>
                     <Button
@@ -282,14 +462,36 @@ export function TodayShortlist({
           {limitation}
         </p>
       ))}
-      <p aria-live="polite" className="sr-only">
-        {pending ? "Updating Today." : ""}
-      </p>
-      {error ? (
-        <p className="mt-3 text-destructive text-sm" role="alert">
-          {error}
-        </p>
-      ) : null}
+      {activeStates.map(({ key, state }) =>
+        state.pending || state.undoAvailable || state.error ? (
+          <div
+            className="mt-3 flex flex-wrap items-center gap-2"
+            key={`${key.recordId}:${key.intent}`}
+          >
+            {state.undoAvailable ? (
+              <Button
+                disabled={state.undoRequested}
+                onClick={() => mutations.requestUndo(key.recordId, key.intent)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {state.undoRequested ? "Undoing…" : state.labels.undo}
+              </Button>
+            ) : null}
+            {state.pending ? (
+              <p aria-live="polite" className="text-muted-foreground text-sm">
+                {state.labels.pending || "Updating Today…"}
+              </p>
+            ) : null}
+            {state.error ? (
+              <p className="text-destructive text-sm" role="alert">
+                {state.error}
+              </p>
+            ) : null}
+          </div>
+        ) : null,
+      )}
     </section>
   );
 }
@@ -298,17 +500,25 @@ function defaultLaterValue(): string {
   return toDatetimeLocal(new Date(Date.now() + 60 * 60 * 1_000));
 }
 
+function focusAfterRowRemoval(identity: string): () => void {
+  const row = Array.from(document.querySelectorAll<HTMLElement>("[data-today-row]")).find(
+    (candidate) => candidate.dataset.todayRow === identity,
+  );
+  return captureFocusAfterRemoval(row, "h2");
+}
+
 function useTodayRollover(localDate: string, timeZone: string): () => boolean {
   const router = useRouter();
+  const refresh = router.refresh;
   const rolloverRequested = useRef(false);
   const requestRollover = useCallback(() => {
     if (localDateInTimeZone(new Date(), timeZone) === localDate || rolloverRequested.current) {
       return false;
     }
     rolloverRequested.current = true;
-    router.refresh();
+    refresh();
     return true;
-  }, [localDate, router, timeZone]);
+  }, [localDate, refresh, timeZone]);
 
   useEffect(() => {
     rolloverRequested.current = false;

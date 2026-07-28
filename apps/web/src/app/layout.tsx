@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, IBM_Plex_Sans, IBM_Plex_Serif } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ReversibleMutationProvider } from "@/lib/reversible-mutation";
 import "./globals.css";
 
 // IBM Plex superfamily — one voice, three registers (DESIGN.md §4). next/font
@@ -99,7 +100,9 @@ export default function RootLayout({
           disableTransitionOnChange
           enableSystem
         >
-          <TooltipProvider>{children}</TooltipProvider>
+          <ReversibleMutationProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </ReversibleMutationProvider>
           <Toaster position="bottom-center" />
         </ThemeProvider>
       </body>

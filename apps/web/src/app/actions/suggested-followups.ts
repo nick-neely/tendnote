@@ -8,6 +8,8 @@ import {
   acceptSuggestedFollowup,
   dismissSuggestedFollowup,
   editSuggestedFollowup,
+  getSuggestedFollowupReview,
+  restoreDismissedSuggestedFollowup,
 } from "@tendnote/db/queries/followups";
 import { affectedScopesForOwnerSurfaces } from "@tendnote/db/queries/general-actions";
 import { affectedScopesForPerson } from "@tendnote/db/queries/people";
@@ -28,10 +30,6 @@ const followupActionSchema = z.object({
 
 // One edit-validation path for both accept and edit: trims the reason and resolves
 // a `YYYY-MM-DD` due date to local midnight. The shared review layer re-validates.
-type SuggestedFollowupResolution = {
-  followupId: string;
-  status: string;
-};
 
 export async function acceptSuggestedFollowupAction(input: {
   followupId: string;
@@ -73,13 +71,35 @@ export async function dismissSuggestedFollowupAction(input: { followupId: string
   return runOwnerAction({
     schema: followupActionSchema,
     input,
+    body: async ({ ownerUserId, input: parsed }) => {
+      const prior = await getSuggestedFollowupReview({
+        actorUserId: ownerUserId,
+        followupId: parsed.followupId,
+      });
+      if (!prior) throw new Error("Suggested follow-up not found.");
+      const outcome = await dismissSuggestedFollowup({
+        actorUserId: ownerUserId,
+        followupId: parsed.followupId,
+      });
+      return { outcome, prior };
+    },
+    affectedScopes: ({ outcome }) => outcome.affectedScopes,
+    result: ({ outcome, prior }) =>
+      toSuggestedFollowupReviewView({ ...prior, followup: outcome.result }),
+  });
+}
+
+export async function restoreDismissedSuggestedFollowupAction(input: { followupId: string }) {
+  return runOwnerAction({
+    schema: followupActionSchema,
+    input,
     body: ({ ownerUserId, input: parsed }) =>
-      dismissSuggestedFollowup({ actorUserId: ownerUserId, followupId: parsed.followupId }),
+      restoreDismissedSuggestedFollowup({
+        actorUserId: ownerUserId,
+        followupId: parsed.followupId,
+      }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome): SuggestedFollowupResolution => ({
-      followupId: outcome.result.id,
-      status: outcome.result.status,
-    }),
+    result: (outcome) => toSuggestedFollowupReviewView(outcome.result),
   });
 }
 

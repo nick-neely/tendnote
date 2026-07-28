@@ -8,6 +8,7 @@ import {
   dismissFollowup,
   editFollowup,
   reopenFollowup,
+  restoreArchivedFollowup,
   snoozeFollowup,
 } from "@tendnote/db/queries/followups";
 import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
@@ -156,6 +157,10 @@ export async function reopenFollowupAction(input: { followupId: string }) {
 
 export async function archiveFollowupAction(input: { followupId: string }) {
   return transitionAction(input, archiveFollowup);
+}
+
+export async function restoreArchivedFollowupAction(input: { followupId: string }) {
+  return transitionAction(input, restoreArchivedFollowup);
 }
 
 export async function snoozeFollowupAction(input: { followupId: string; dueAt: string }) {

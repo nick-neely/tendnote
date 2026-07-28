@@ -9,6 +9,7 @@ import {
   getOwnerTodayContext,
   getTodayCandidate,
   getTodayShortlist,
+  restoreTodayCandidate,
   suppressTodayCandidate,
 } from "@tendnote/db/queries/today";
 import { todayShortlistResponseSchema } from "@tendnote/domain/today";
@@ -55,6 +56,28 @@ export async function suppressTodayItemAction(input: {
       if (parsed.localDate !== context.localDate)
         throw new Error("Today has rolled to a new local day.");
       const outcome = await suppressTodayCandidate({ ownerUserId, ...parsed, ...context });
+      return { context, outcome };
+    },
+    affectedScopes: ({ outcome }) => outcome.affectedScopes,
+    result: async ({ context }, ownerUserId) =>
+      todayShortlistResponseSchema.parse(await getTodayShortlist({ ownerUserId, ...context })),
+  });
+}
+
+export async function restoreTodayItemAction(input: {
+  localDate: string;
+  candidateIdentity: string;
+  reasonKey: string;
+  kind: "later" | "not_today";
+}) {
+  return runOwnerAction({
+    schema: candidateRefSchema.extend({ kind: z.enum(["later", "not_today"]) }),
+    input,
+    body: async ({ ownerUserId, input: parsed }) => {
+      const context = await getOwnerTodayContext({ ownerUserId });
+      if (parsed.localDate !== context.localDate)
+        throw new Error("Today has rolled to a new local day.");
+      const outcome = await restoreTodayCandidate({ ownerUserId, ...parsed });
       return { context, outcome };
     },
     affectedScopes: ({ outcome }) => outcome.affectedScopes,

@@ -9,8 +9,8 @@ import { PaperclipIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import type { AssetEvidenceView } from "@/lib/asset-evidence-view";
 import type { AssetReviewGroupView } from "@/lib/asset-review-view";
+import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 import { useArmedConfirm } from "@/lib/use-armed-confirm";
-import { useMutationSubmit } from "@/lib/use-mutation-submit";
 
 /**
  * The review card's evidence strip (#200): what has been captured for this group
@@ -31,7 +31,7 @@ export function AssetReviewEvidenceBlock({
 }) {
   const [capturing, setCapturing] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
-  const removal = useMutationSubmit(GENERIC_ERROR);
+  const removal = usePendingMutationSubmit(GENERIC_ERROR);
 
   function removeEvidence(view: AssetEvidenceView) {
     setRemovingId(view.id);

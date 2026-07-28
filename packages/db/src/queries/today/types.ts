@@ -8,7 +8,7 @@ export type TodayFeedbackRecord = TodayFeedback & {
 
 export type TodayFeedbackAuditEntry = {
   ownerUserId: string;
-  action: "today.feedback_saved";
+  action: "today.feedback_saved" | "today.feedback_restored";
   entityType: "today_candidate";
   entityId: string;
   metadataJson: {
@@ -22,6 +22,13 @@ export type TodayFeedbackAuditEntry = {
 export type TodayFeedbackStore = {
   listFeedback: (input: { ownerUserId: string }) => Promise<TodayFeedbackRecord[]>;
   saveFeedback: (input: TodayFeedback) => Promise<TodayFeedbackRecord>;
+  deleteFeedback: (input: {
+    ownerUserId: string;
+    candidateIdentity: string;
+    reasonKey: string;
+    kind: TodayFeedback["kind"];
+    localDate: string;
+  }) => Promise<boolean>;
 };
 
 export type TodayCandidateLoader = (input: {

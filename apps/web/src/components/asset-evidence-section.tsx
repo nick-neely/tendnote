@@ -10,7 +10,7 @@ import { GENERIC_ERROR } from "@/components/general-action-shared";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import type { AssetEvidenceView } from "@/lib/asset-evidence-view";
-import { useMutationSubmit } from "@/lib/use-mutation-submit";
+import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 
 /**
  * The Asset Profile's evidence surface (#200): the caller-visible evidence at
@@ -36,7 +36,7 @@ export function AssetEvidenceSection({
   const router = useRouter();
   const [evidence, setEvidence] = useState(initialEvidence);
   const [removingId, setRemovingId] = useState<string | null>(null);
-  const removal = useMutationSubmit(GENERIC_ERROR);
+  const removal = usePendingMutationSubmit(GENERIC_ERROR);
 
   function removeEvidence(view: AssetEvidenceView) {
     setRemovingId(view.id);

@@ -26,6 +26,8 @@ export function createAffectedFollowupLifecycle(store: FollowupLifecycleStore) {
       withAffectedScopes(lifecycle.reopenFollowup(input)),
     archiveFollowup: (input: Parameters<typeof lifecycle.archiveFollowup>[0]) =>
       withAffectedScopes(lifecycle.archiveFollowup(input)),
+    restoreArchivedFollowup: (input: Parameters<typeof lifecycle.restoreArchivedFollowup>[0]) =>
+      withAffectedScopes(lifecycle.restoreArchivedFollowup(input)),
     snoozeFollowup: (input: Parameters<typeof lifecycle.snoozeFollowup>[0]) =>
       withAffectedScopes(lifecycle.snoozeFollowup(input)),
   };
@@ -59,6 +61,9 @@ export function createAffectedSuggestedFollowupReview(store: FollowupLifecycleSt
       withReviewScopes(review.editSuggestedFollowup(input)),
     dismissSuggestedFollowup: (input: Parameters<typeof review.dismissSuggestedFollowup>[0]) =>
       withReviewScopes(review.dismissSuggestedFollowup(input)),
+    restoreDismissedSuggestedFollowup: (
+      input: Parameters<typeof review.restoreDismissedSuggestedFollowup>[0],
+    ) => withReviewScopes(review.restoreDismissedSuggestedFollowup(input)),
   };
 }
 

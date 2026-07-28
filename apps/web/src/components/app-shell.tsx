@@ -12,6 +12,7 @@ import { globalRecallAction } from "@/app/actions/global-recall";
 import {
   actOnTodayItemAction,
   refreshTodayAction,
+  restoreTodayItemAction,
   suppressTodayItemAction,
 } from "@/app/actions/today";
 import { appDestinations } from "@/components/app-destinations";
@@ -34,6 +35,7 @@ const defaultCaptureHandlers: CaptureHandlers = {
 const defaultTodayHandlers: TodayShortlistHandlers = {
   act: actOnTodayItemAction,
   refresh: refreshTodayAction,
+  restore: restoreTodayItemAction,
   suppress: suppressTodayItemAction,
 };
 

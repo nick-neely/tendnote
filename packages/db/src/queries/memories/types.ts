@@ -12,7 +12,11 @@ import type {
   SourceRecordPerson,
   SourceRecordPersonRole,
 } from "@tendnote/domain";
-import type { InMemorySourceRecordStore, SourceRecordCaptureStore } from "../source-records/types";
+import type {
+  InMemorySourceRecordStore,
+  SourceRecordCaptureStore,
+  SourceRecordResolutionStore,
+} from "../source-records/types";
 
 export type CaptureExplicitMemoryInput = {
   ownerUserId: string;
@@ -102,19 +106,20 @@ export type MemoryUpdatePatch = Partial<
  * mutations load a persisted memory by id, apply a bounded patch (provenance
  * fields stay untouched), and list suggested memories awaiting review.
  */
-export type MemoryReviewStore = MemoryCaptureStore & {
-  getMemory: (input: { ownerUserId: string; memoryId: string }) => Promise<Memory | null>;
-  updateMemory: (input: {
-    ownerUserId: string;
-    memoryId: string;
-    patch: MemoryUpdatePatch;
-  }) => Promise<Memory>;
-  listSuggestedMemoriesForOwner: (input: {
-    ownerUserId: string;
-    personId?: string;
-    limit?: number;
-  }) => Promise<Memory[]>;
-};
+export type MemoryReviewStore = MemoryCaptureStore &
+  Pick<SourceRecordResolutionStore, "listAuditLogEntries"> & {
+    getMemory: (input: { ownerUserId: string; memoryId: string }) => Promise<Memory | null>;
+    updateMemory: (input: {
+      ownerUserId: string;
+      memoryId: string;
+      patch: MemoryUpdatePatch;
+    }) => Promise<Memory>;
+    listSuggestedMemoriesForOwner: (input: {
+      ownerUserId: string;
+      personId?: string;
+      limit?: number;
+    }) => Promise<Memory[]>;
+  };
 
 export type InMemoryMemoryStore = InMemorySourceRecordStore &
   Pick<

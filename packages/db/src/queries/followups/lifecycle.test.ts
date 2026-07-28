@@ -263,6 +263,24 @@ describe("lifecycle transitions", () => {
     await expect(auditActions()).resolves.toContain("followup.archive");
   });
 
+  it("restores the exact pre-archive state only while archive is the latest mutation", async () => {
+    const { lifecycle, seedOpen, auditActions } = await setup();
+    const followup = await seedOpen();
+    await lifecycle.dismissFollowup({ actorUserId: OWNER, followupId: followup.id });
+    await lifecycle.archiveFollowup({ actorUserId: OWNER, followupId: followup.id });
+
+    const restored = await lifecycle.restoreArchivedFollowup({
+      actorUserId: OWNER,
+      followupId: followup.id,
+    });
+
+    expect(restored.status).toBe("dismissed");
+    await expect(auditActions()).resolves.toContain("followup.archive_restore");
+    await expect(
+      lifecycle.restoreArchivedFollowup({ actorUserId: OWNER, followupId: followup.id }),
+    ).rejects.toThrow("Only archived follow-ups can be restored.");
+  });
+
   it("edits the reason and due date of an active follow-up", async () => {
     const { lifecycle, seedOpen, auditActions } = await setup();
     const followup = await seedOpen();
