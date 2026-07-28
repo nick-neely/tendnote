@@ -1,10 +1,14 @@
 import type { SavedItemWithContext } from "@tendnote/db/queries/saved-items";
-import type { PrivacyScope, SavedItemKind } from "@tendnote/domain";
-import { visibilityLabelForScope } from "@tendnote/domain/privacy";
+import type { PrivacyScope, RecordSurfacingState, SavedItemKind } from "@tendnote/domain";
+import { resolveRecordSurfacing } from "@tendnote/domain/record-surfacing";
+import type { OwnerActionResult } from "@/lib/owner-action";
 import type { ReminderScheduleView } from "@/lib/reminder-schedule-view";
+
+export type SavedItemSurfaceState = Extract<RecordSurfacingState, "overdue" | "today" | "upcoming">;
 
 export type SavedItemView = {
   id: string;
+  revision: string;
   kind: SavedItemKind;
   kindLabel: string;
   title: string;
@@ -12,7 +16,10 @@ export type SavedItemView = {
   url: string | null;
   status: "active" | "archived";
   archived: boolean;
+  ownerUserId: string;
+  owned: boolean;
   bringBackAt: string | null;
+  bringBackState: SavedItemSurfaceState | null;
   bringBackLabel: string | null;
   scope: PrivacyScope;
   visibilityLabel: string;
@@ -36,9 +43,26 @@ export function toSavedItemView(
   item: SavedItemWithContext,
   now = new Date(),
   reminderSchedule: ReminderScheduleView | null = null,
+  callerUserId: string = item.ownerUserId,
 ): SavedItemView {
+  const surfacing = resolveRecordSurfacing(
+    {
+      kind: "saved_item",
+      status: item.status,
+      bringBackAt: item.bringBackAt,
+      ownerUserId: item.ownerUserId,
+      viewerUserId: callerUserId,
+      scope: item.scope,
+      sharedWithCount: item.sharedWithUserIds.length,
+      householdName: item.householdName,
+      updatedAt: item.updatedAt,
+    },
+    now,
+  );
+  const hasActiveBringBack = item.status === "active" && item.bringBackAt !== null;
   return {
     id: item.id,
+    revision: surfacing.revision,
     kind: item.kind,
     kindLabel: KIND_LABELS[item.kind],
     title: item.title,
@@ -46,19 +70,13 @@ export function toSavedItemView(
     url: item.url,
     status: item.status,
     archived: item.status === "archived",
+    ownerUserId: item.ownerUserId,
+    owned: surfacing.owned,
     bringBackAt: item.bringBackAt?.toISOString() ?? null,
-    bringBackLabel: item.bringBackAt
-      ? `Bring back ${item.bringBackAt.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: item.bringBackAt.getFullYear() === now.getFullYear() ? undefined : "numeric",
-        })}`
-      : null,
+    bringBackState: hasActiveBringBack ? (surfacing.state as SavedItemSurfaceState) : null,
+    bringBackLabel: hasActiveBringBack ? surfacing.timingLabel : null,
     scope: item.scope,
-    visibilityLabel:
-      item.scope === "shared" && item.sharedWithUserIds.length
-        ? `${visibilityLabelForScope(item.scope)} · ${item.sharedWithUserIds.length}`
-        : (item.householdName ?? visibilityLabelForScope(item.scope)),
+    visibilityLabel: surfacing.audienceLabel,
     sourceRecordId: item.sourceRecordId,
     resolutionReason: item.resolutionReason,
     reminderSchedule,
@@ -70,6 +88,4 @@ export function toSavedItemView(
   };
 }
 
-export type SavedItemMutationResult =
-  | { ok: true; view: SavedItemView }
-  | { ok: false; error: string };
+export type SavedItemMutationResult = OwnerActionResult<SavedItemView>;

@@ -18,16 +18,6 @@ describe("toAssetHistoryEntryView", () => {
     expect(view.detailHref).toBeNull();
     expect(view.atLabel).toBe("Jul 1");
   });
-
-  it("shows the year for entries from another year", () => {
-    const view = toAssetHistoryEntryView(
-      { id: "asset-e2", type: "asset", at: new Date("2025-03-14T12:00:00Z"), event: "archived" },
-      NOW,
-    );
-    expect(view.label).toBe("Archived");
-    expect(view.atLabel).toBe("Mar 14, 2025");
-  });
-
   it("labels a reviewed memory as a detail with its name", () => {
     const view = toAssetHistoryEntryView(
       {

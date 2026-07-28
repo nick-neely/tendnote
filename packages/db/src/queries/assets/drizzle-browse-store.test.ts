@@ -10,6 +10,8 @@ describe("asset browse Postgres adapter", () => {
     expect(source).toContain("asset_review_groups");
     expect(source).toContain("general_action_assets");
     expect(source).toContain("next_due_action_at");
+    expect(source).toContain("next_due_action_status");
+    expect(source).toContain("next_due_action_defer_until");
     expect(source).toContain(`sql.raw('"a"."id"')`);
     expect(source).toContain(".mapWith(generalActions.dueAt)");
     expect(source).toContain("input.offset");

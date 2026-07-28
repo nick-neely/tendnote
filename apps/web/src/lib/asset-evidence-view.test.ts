@@ -55,7 +55,7 @@ describe("toAssetEvidenceView (#200)", () => {
     );
 
     expect(view.moneyLabel).toBe("$42.99");
-    expect(view.purchasedOnLabel).toBe("Mar 14, 2026");
+    expect(view.purchasedOnLabel).toBe("Mar 14");
     expect(view.renewsOnLabel).toBe("Mar 14, 2027");
   });
 

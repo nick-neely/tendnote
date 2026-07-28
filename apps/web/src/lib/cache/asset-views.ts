@@ -169,6 +169,7 @@ async function cachedActiveSavedItemViews(callerUserId: string, refreshedAt: num
       item,
       now,
       schedule ? toReminderScheduleView(schedule, "instant") : null,
+      callerUserId,
     );
   });
 }

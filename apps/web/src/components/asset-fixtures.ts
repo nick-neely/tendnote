@@ -8,6 +8,7 @@ import type { AssetView } from "@/lib/asset-view";
 export function assetViewFixture(overrides: Partial<AssetView> = {}): AssetView {
   return {
     id: "asset-1",
+    revision: "2026-07-01T12:00:00.000Z",
     name: "Refrigerator water filter",
     kind: "appliance",
     kindLabel: "Appliance",
@@ -21,6 +22,7 @@ export function assetViewFixture(overrides: Partial<AssetView> = {}): AssetView 
     archivedLabel: null,
     needsReview: false,
     nextDueActionLabel: null,
+    nextDueActionState: null,
     ...overrides,
   };
 }

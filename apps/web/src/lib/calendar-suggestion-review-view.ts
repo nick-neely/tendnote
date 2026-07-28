@@ -1,4 +1,5 @@
 import { type CalendarSuggestedFollowup, resolveRecordTiming } from "@tendnote/domain";
+import { formatSurfacingDay } from "@tendnote/domain/record-surfacing";
 import { type FollowupDueState, toDateInputValue } from "./followup-view";
 
 export type CalendarSuggestionReviewView = {
@@ -42,11 +43,7 @@ export function toCalendarSuggestionReviewView(
     reason: suggestion.reason,
     dueAtISO: suggestion.dueAt.toISOString(),
     dueAtDate: toDateInputValue(suggestion.dueAt),
-    dueLabel: suggestion.dueAt.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: suggestion.dueAt.getFullYear() === now.getFullYear() ? undefined : "numeric",
-    }),
+    dueLabel: formatSurfacingDay(suggestion.dueAt, now),
     dueState: timing.state as FollowupDueState,
   };
 }

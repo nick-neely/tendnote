@@ -12,7 +12,12 @@ describe("formatAssetMemoryValue", () => {
   });
 
   it("renders calendar dates as local days, never shifting across timezones", () => {
-    expect(formatAssetMemoryValue({ type: "date", date: "2026-03-14" })).toBe("Mar 14, 2026");
+    expect(
+      formatAssetMemoryValue(
+        { type: "date", date: "2026-03-14" },
+        new Date("2026-07-13T12:00:00Z"),
+      ),
+    ).toBe("Mar 14");
   });
 
   it("renders amounts as plain currency", () => {

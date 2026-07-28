@@ -271,10 +271,6 @@ export function toGeneralActionEventView(
     kind: event.kind,
     label,
     atISO: event.createdAt.toISOString(),
-    atLabel: event.createdAt.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: event.createdAt.getFullYear() === now.getFullYear() ? undefined : "numeric",
-    }),
+    atLabel: formatSurfacingDay(event.createdAt, now),
   };
 }

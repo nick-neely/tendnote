@@ -34,6 +34,7 @@ import {
   RotateCcwIcon,
 } from "@/components/icons";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { RecordTimingChip } from "@/components/record-timing-chip";
 import { SavedItemEditForm } from "@/components/saved-item-edit-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -539,7 +540,9 @@ function SavedItemSummary({ item }: { item: SavedItemView }) {
           </a>
         ) : null}
         <div className="mt-1 flex flex-wrap gap-x-2 text-[length:var(--text-caption)] text-muted-foreground">
-          {item.bringBackLabel ? <span>{item.bringBackLabel}</span> : null}
+          {item.bringBackLabel && item.bringBackState ? (
+            <RecordTimingChip label={item.bringBackLabel} state={item.bringBackState} />
+          ) : null}
           {item.reminderSchedule ? (
             <span className="inline-flex items-center gap-1">
               <BellIcon className="size-3" />

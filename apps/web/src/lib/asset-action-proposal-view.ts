@@ -1,6 +1,7 @@
 import type { PendingAssetActionProposal } from "@tendnote/db/queries/assets";
 import { describeRecurrence } from "@tendnote/domain";
 import { resolveSurfacing } from "@/lib/general-action-view";
+import type { OwnerActionResult } from "@/lib/owner-action";
 
 /**
  * A still-suggested asset-derived action, shaped for the Asset Profile's review
@@ -72,6 +73,4 @@ export function describeProposalOutcome(summary: AssetActionProposalSummary): st
 }
 
 /** The proposal pass's result union, matching the shared surface-mutation contract. */
-export type AssetActionProposalMutationResult =
-  | { ok: true; view: AssetActionProposalSummary }
-  | { ok: false; error: string };
+export type AssetActionProposalMutationResult = OwnerActionResult<AssetActionProposalSummary>;

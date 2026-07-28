@@ -91,7 +91,8 @@ export async function createSavedItemAction(input: {
         selectedUserIds: parsed.selectedUserIds,
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toSavedItemView(outcome.result),
+    result: (outcome, ownerUserId) =>
+      toSavedItemView(outcome.result, new Date(), null, ownerUserId),
   });
 }
 
@@ -124,7 +125,8 @@ export async function editSavedItemAction(input: {
         },
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toSavedItemView(outcome.result),
+    result: (outcome, ownerUserId) =>
+      toSavedItemView(outcome.result, new Date(), null, ownerUserId),
   });
 }
 
@@ -147,7 +149,8 @@ export async function resolveSavedItemAction(input: { savedItemId: string; reaso
         reason: parsed.reason,
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toSavedItemView(outcome.result),
+    result: (outcome, ownerUserId) =>
+      toSavedItemView(outcome.result, new Date(), null, ownerUserId),
   });
 }
 
@@ -158,7 +161,8 @@ function runSavedItemIdMutation(input: { savedItemId: string }, mutate: typeof a
     body: ({ ownerUserId, input: parsed }) =>
       mutate({ actorUserId: ownerUserId, savedItemId: parsed.savedItemId }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toSavedItemView(outcome.result),
+    result: (outcome, ownerUserId) =>
+      toSavedItemView(outcome.result, new Date(), null, ownerUserId),
   });
 }
 
@@ -178,7 +182,8 @@ export async function promoteSavedItemToGeneralActionAction(input: {
         title: parsed.title,
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toSavedItemView(outcome.result),
+    result: (outcome, ownerUserId) =>
+      toSavedItemView(outcome.result, new Date(), null, ownerUserId),
   });
 }
 
@@ -230,6 +235,7 @@ export async function getArchivedSavedItemViewsAction() {
         item,
         now,
         schedule ? toReminderScheduleView(schedule, "instant") : null,
+        callerUserId,
       );
     });
 }

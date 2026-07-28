@@ -5,9 +5,14 @@ import type {
   AssetReviewFilter,
   AssetWithContext,
 } from "@tendnote/db/queries/assets";
-import type { AssetKind, AssetStatus, PrivacyScope } from "@tendnote/domain";
+import type { AssetKind, AssetStatus, PrivacyScope, RecordSurfacingState } from "@tendnote/domain";
 import { assetLabelForKind } from "@tendnote/domain";
-import { visibilityLabelForScope } from "@tendnote/domain/privacy";
+import {
+  formatSurfacingDay,
+  resolveRecordContext,
+  resolveRecordTiming,
+} from "@tendnote/domain/record-surfacing";
+import type { OwnerActionResult } from "@/lib/owner-action";
 
 /**
  * Result of an Asset mutation server action. Validation failures (a blank name,
@@ -15,7 +20,7 @@ import { visibilityLabelForScope } from "@tendnote/domain/privacy";
  * message so the surface can show it inline; unexpected/infra failures reject and
  * the client shows a generic fallback — mirroring the General Action result union.
  */
-export type AssetMutationResult = { ok: true; view: AssetView } | { ok: false; error: string };
+export type AssetMutationResult = OwnerActionResult<AssetView>;
 
 export type AssetBrowseRequest = {
   kind: AssetKind | null;
@@ -37,6 +42,7 @@ export type AssetBrowseRunner = (input: AssetBrowseRequest) => Promise<AssetBrow
 
 export type AssetView = {
   id: string;
+  revision: string;
   name: string;
   kind: AssetKind;
   /** The canonical kind label ("Appliance"), shared with pickers and chips. */
@@ -63,36 +69,8 @@ export type AssetView = {
   needsReview?: boolean;
   /** Calm display label for the soonest visible linked action with a due date. */
   nextDueActionLabel?: string | null;
+  nextDueActionState?: RecordSurfacingState | null;
 };
-
-function formatDay(date: Date, now: Date): string {
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
-  });
-}
-
-/**
- * The audience label for the calm visibility chip — a member count for a
- * selected-shared asset, the household's name for a household one (both falling
- * back to the plain scope label). Mirrors the General Action view's audience
- * resolution so scope language never forks between surfaces.
- */
-function scopeAudienceLabel(asset: {
-  scope: PrivacyScope;
-  sharedWithCount: number;
-  householdName: string | null;
-}): string {
-  if (asset.scope === "shared") {
-    const base = visibilityLabelForScope("shared");
-    return asset.sharedWithCount > 0 ? `${base} · ${asset.sharedWithCount}` : base;
-  }
-  if (asset.scope === "household") {
-    return asset.householdName ?? visibilityLabelForScope("household");
-  }
-  return visibilityLabelForScope("private");
-}
 
 /** Maps a hydrated Asset to the flat view the Assets surface and profile render. */
 export function toAssetView(
@@ -100,19 +78,30 @@ export function toAssetView(
   options: { callerUserId: string; now?: Date },
 ): AssetView {
   const now = options.now ?? new Date();
+  const surfacing = resolveRecordContext({
+    ownerUserId: asset.ownerUserId,
+    viewerUserId: options.callerUserId,
+    scope: asset.scope,
+    sharedWithCount: asset.sharedWithCount,
+    householdName: asset.householdName,
+    updatedAt: asset.updatedAt,
+  });
   return {
     id: asset.id,
+    revision: surfacing.revision,
     name: asset.name,
     kind: asset.kind,
     kindLabel: assetLabelForKind(asset.kind),
     status: asset.status,
     archived: asset.status === "archived",
     scope: asset.scope,
-    visibilityLabel: scopeAudienceLabel(asset),
-    owned: asset.ownerUserId === options.callerUserId,
+    visibilityLabel: surfacing.audienceLabel,
+    owned: surfacing.owned,
     ownerUserId: asset.ownerUserId,
-    addedLabel: `Added ${formatDay(asset.createdAt, now)}`,
-    archivedLabel: asset.archivedAt ? `Archived ${formatDay(asset.archivedAt, now)}` : null,
+    addedLabel: `Added ${formatSurfacingDay(asset.createdAt, now)}`,
+    archivedLabel: asset.archivedAt
+      ? `Archived ${formatSurfacingDay(asset.archivedAt, now)}`
+      : null,
   };
 }
 
@@ -122,11 +111,13 @@ export function toAssetBrowseView(
   options: { callerUserId: string; now?: Date },
 ): AssetView {
   const now = options.now ?? new Date();
+  const timing = row.nextDueAction
+    ? resolveRecordTiming({ kind: "general_action", ...row.nextDueAction }, now)
+    : null;
   return {
     ...toAssetView(row.asset, { ...options, now }),
     needsReview: row.needsReview,
-    nextDueActionLabel: row.nextDueActionAt
-      ? `Next action ${formatDay(row.nextDueActionAt, now)}`
-      : null,
+    nextDueActionLabel: timing?.timingLabel ?? null,
+    nextDueActionState: timing?.state ?? null,
   };
 }

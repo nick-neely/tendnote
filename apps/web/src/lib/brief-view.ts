@@ -1,5 +1,5 @@
 import type { BriefItemKind, BriefWithItems } from "@tendnote/domain";
-import { resolveRecordTiming } from "@tendnote/domain/record-surfacing";
+import { formatSurfacingDay, resolveRecordTiming } from "@tendnote/domain/record-surfacing";
 import type { FollowupDueState } from "@/lib/followup-view";
 
 /**
@@ -30,10 +30,6 @@ export type BriefView = {
   items: BriefItemView[];
 };
 
-function dueLabelFor(dueAt: Date): string {
-  return dueAt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
 /**
  * Maps a persisted brief to its dashboard view, keeping only the items still
  * active — dismissed, snoozed, and acted-on items leave the rail. Rank order from
@@ -55,7 +51,7 @@ export function toBriefView(brief: BriefWithItems, now: Date = new Date()): Brie
         reason: item.reason,
         personId: item.personId,
         personName: item.personDisplayName,
-        dueLabel: due ? dueLabelFor(due) : null,
+        dueLabel: due ? formatSurfacingDay(due, now) : null,
         dueState: timing ? (timing.state as FollowupDueState) : null,
         surfaceLabel: timing?.timingLabel ?? null,
         isSensitive: item.sensitivity === "sensitive",

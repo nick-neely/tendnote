@@ -50,6 +50,7 @@ import { SavedItemsSurface } from "./saved-items-surface";
 function fixture(overrides: Partial<SavedItemView> = {}): SavedItemView {
   return {
     id: "saved-1",
+    revision: "2026-07-01T12:00:00.000Z",
     kind: "note",
     kindLabel: "Note",
     title: "Filter measurements",
@@ -57,7 +58,10 @@ function fixture(overrides: Partial<SavedItemView> = {}): SavedItemView {
     url: null,
     status: "active",
     archived: false,
+    ownerUserId: "owner-1",
+    owned: true,
     bringBackAt: null,
+    bringBackState: null,
     bringBackLabel: null,
     scope: "private",
     visibilityLabel: "Only me",

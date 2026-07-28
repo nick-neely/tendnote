@@ -4,6 +4,7 @@ import {
   assetLinkRelationLabel,
   assetPersonRelationLabel,
 } from "@tendnote/domain";
+import { formatSurfacingDay } from "@tendnote/domain/record-surfacing";
 
 /**
  * One user-facing Asset History row (#202): a calm label ("Completed", "Detail
@@ -39,14 +40,6 @@ const ACTION_EVENT_LABELS: Partial<Record<GeneralActionEventKind, string>> = {
   dismissed: "Dismissed",
   archived: "Archived",
 };
-
-function formatDay(date: Date, now: Date): string {
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
-  });
-}
 
 /** The moment a history entry names, minus the shared date/id scaffolding. */
 type HistoryMoment = Pick<AssetHistoryEntryView, "label" | "detail" | "detailHref">;
@@ -102,7 +95,7 @@ export function toAssetHistoryEntryView(
   return {
     id: entry.id,
     atISO: entry.at.toISOString(),
-    atLabel: formatDay(entry.at, now),
+    atLabel: formatSurfacingDay(entry.at, now),
     ...toHistoryMoment(entry),
   };
 }

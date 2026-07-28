@@ -6,6 +6,7 @@ import {
   nextRoutineDueAt,
 } from "@tendnote/domain/general-actions";
 import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
+import { formatSurfacingDay } from "@tendnote/domain/record-surfacing";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   archiveGeneralActionAction,
@@ -146,7 +147,7 @@ function sameRecurrence(
 
 /** Short calendar label ("Aug 12") for the roll-forward confirmation. */
 function shortDay(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatSurfacingDay(new Date(iso), new Date());
 }
 
 /**
