@@ -1,6 +1,6 @@
 import { SavedItemValidationError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { revalidatePathSpy } from "@/test/action-adapter-mocks";
+import { updateTagSpy } from "@/test/action-adapter-mocks";
 
 const {
   createSavedItem,
@@ -99,7 +99,7 @@ describe("Saved Item server adapters", () => {
       }),
     );
     expect(result).toMatchObject({ ok: true, view: { title: "Filter measurements" } });
-    expect(revalidatePathSpy).toHaveBeenCalledWith("/saved-items");
+    expect(updateTagSpy).toHaveBeenCalledWith("saved-item:viewer:owner-1:collection");
   });
 
   it("marks a datetime-local bring-back as an explicit instant", async () => {
@@ -144,7 +144,9 @@ describe("Saved Item server adapters", () => {
       authority: "explicit",
       idempotencyKey: `saved-item:${ITEM.id}:general-action`,
     });
-    expect(revalidatePathSpy).toHaveBeenCalledWith("/actions");
+    expect(updateTagSpy).toHaveBeenCalledWith(
+      "action:owner:owner-1:action:33333333-3333-4333-8333-333333333333",
+    );
   });
 
   it("forwards every supplied edit field and preserves explicit clearing values", async () => {

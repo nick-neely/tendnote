@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  requireAdmittedOwnerForActionSpy,
-  revalidatePathSpy,
-  updateTagSpy,
-} from "@/test/action-adapter-mocks";
+import { requireAdmittedOwnerForActionSpy, updateTagSpy } from "@/test/action-adapter-mocks";
 
 const { createOwnerGmailDraft, retryOwnerGmailDraft, updateOwnerGmailDraft } = vi.hoisted(() => ({
   createOwnerGmailDraft: vi.fn(),
@@ -104,8 +100,9 @@ describe("Gmail draft server actions", () => {
       bodyEdit: "How have you been?",
     });
     expect(result).toMatchObject({ ok: true, view: { status: "succeeded" } });
-    expect(updateTagSpy).toHaveBeenCalled();
-    expect(revalidatePathSpy).toHaveBeenCalledWith(`/people/${PERSON_ID}`);
+    expect(updateTagSpy).toHaveBeenCalledWith("people:owner:owner-1");
+    expect(updateTagSpy).toHaveBeenCalledWith(`people:owner:owner-1:person:${PERSON_ID}`);
+    expect(updateTagSpy).toHaveBeenCalledWith(`people:visible-person:${PERSON_ID}`);
   });
 
   it("runs retry through the same owner-action seam", async () => {

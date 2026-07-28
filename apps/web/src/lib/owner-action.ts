@@ -40,9 +40,7 @@ type OwnerActionInput<TInput, TEntity, TView> = {
     input: TInput;
     resolvedScope: ResolvedOwnerScope | null;
   }) => Promise<TEntity>;
-  affectedScopes?: (entity: TEntity) => readonly AffectedScope[];
-  /** Additional surface reconciliation for records not yet covered by affected scopes. */
-  reconcile?: (entity: TEntity, ownerUserId: string) => void | Promise<void>;
+  affectedScopes?: (entity: TEntity, ownerUserId: string) => readonly AffectedScope[];
   result: (entity: TEntity, ownerUserId: string) => TView | Promise<TView>;
 };
 
@@ -85,8 +83,7 @@ export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
       }
 
       const entity = await action.body({ ownerUserId, input, resolvedScope });
-      dependencies.reconcile(action.affectedScopes?.(entity) ?? []);
-      await action.reconcile?.(entity, ownerUserId);
+      dependencies.reconcile(action.affectedScopes?.(entity, ownerUserId) ?? []);
       return { ok: true, view: await action.result(entity, ownerUserId) };
     } catch (error) {
       const message = userSafeErrorMessage(error);

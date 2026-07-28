@@ -83,18 +83,12 @@ describe("affected-scope reconciliation", () => {
     expect(updateTag).toHaveBeenCalledWith("saved-item:viewer:member-1:collection");
     expect(updateTag).toHaveBeenCalledWith("saved-item:viewer:owner-1:item:saved-1");
     expect(updateTag).toHaveBeenCalledWith("saved-item:visible:item:saved-1");
-    expect(revalidatePath).toHaveBeenCalledWith("/actions");
-    expect(revalidatePath).toHaveBeenCalledWith("/assets");
-    expect(revalidatePath).toHaveBeenCalledWith("/assets/asset-1");
-    expect(revalidatePath).toHaveBeenCalledWith("/saved-items");
-    expect(revalidatePath).toHaveBeenCalledWith("/people");
-    expect(revalidatePath).toHaveBeenCalledWith("/people/person-1");
+    expect(updateTag).toHaveBeenCalledWith("account:owner:owner-1");
+    expect(updateTag).toHaveBeenCalledWith("briefs:owner:owner-1");
     expect(revalidatePath).toHaveBeenCalledWith("/account");
     expect(revalidatePath).toHaveBeenCalledWith("/account/contacts/import");
     expect(revalidatePath).toHaveBeenCalledWith("/account/discord");
-    expect(revalidatePath).toHaveBeenCalledWith("/");
-    expect(revalidatePath).not.toHaveBeenCalledWith("/review");
-    expect(revalidatePath).not.toHaveBeenCalledWith("/today");
+    expect(revalidatePath).toHaveBeenCalledTimes(3);
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
@@ -104,11 +98,12 @@ describe("affected-scope reconciliation", () => {
     expect(revalidateTag).toHaveBeenCalledWith("action:owner:owner-1", "max");
     expect(revalidateTag).toHaveBeenCalledWith("action:owner:owner-1:action:action-1", "max");
     expect(revalidateTag).toHaveBeenCalledWith("people:visible-person:person-1", "max");
+    expect(revalidateTag).toHaveBeenCalledWith("account:owner:owner-1", "max");
+    expect(revalidateTag).toHaveBeenCalledWith("briefs:owner:owner-1", "max");
     expect(updateTag).not.toHaveBeenCalled();
     expect(revalidatePath).toHaveBeenCalledWith("/account");
     expect(revalidatePath).toHaveBeenCalledWith("/account/contacts/import");
     expect(revalidatePath).toHaveBeenCalledWith("/account/discord");
-    expect(revalidatePath).toHaveBeenCalledWith("/");
-    expect(revalidatePath).not.toHaveBeenCalledWith("/actions");
+    expect(revalidatePath).toHaveBeenCalledTimes(3);
   });
 });

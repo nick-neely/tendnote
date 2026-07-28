@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
-import { revalidatePathSpy, updateTagSpy } from "@/test/action-adapter-mocks";
+import { updateTagSpy } from "@/test/action-adapter-mocks";
 
 /**
  * The chat review card's Accept/Dismiss buttons call these server actions directly
@@ -76,9 +76,8 @@ describe("acceptSuggestedGeneralActionAction (card Accept path)", () => {
     expect(acceptSuggestedGeneralAction).toHaveBeenCalledWith(
       expect.objectContaining({ actorUserId: "owner-1", generalActionId: GENERAL_ACTION_ID }),
     );
-    // Both review surfaces re-render so chat and /actions agree.
-    expect(revalidatePathSpy).toHaveBeenCalledWith("/actions");
-    expect(revalidatePathSpy).toHaveBeenCalledWith("/");
+    // Both review surfaces expire from the scopes returned by the mutation.
+    expect(updateTagSpy).toHaveBeenCalledWith("action:owner:owner-1");
     expect(updateTagSpy).toHaveBeenCalledWith("review:owner:owner-1");
   });
 

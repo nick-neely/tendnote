@@ -9,9 +9,9 @@ import {
   dismissSuggestedFollowup,
   editSuggestedFollowup,
 } from "@tendnote/db/queries/followups";
-import { revalidatePath } from "next/cache";
+import { affectedScopesForOwnerSurfaces } from "@tendnote/db/queries/general-actions";
+import { affectedScopesForPerson } from "@tendnote/db/queries/people";
 import { z } from "zod";
-import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
 import { parseDateInputValue } from "@/lib/followup-view";
 import { runOwnerAction } from "@/lib/owner-action";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
@@ -91,17 +91,22 @@ type CalendarSuggestedFollowupResolution = {
   acceptedFollowupId: string | null;
 };
 
+function calendarSuggestionScopes(suggestion: { personId: string | null }, ownerUserId: string) {
+  return [
+    ...affectedScopesForOwnerSurfaces(ownerUserId),
+    ...(suggestion.personId
+      ? affectedScopesForPerson({ ownerUserId, personId: suggestion.personId })
+      : []),
+  ];
+}
+
 export async function acceptCalendarSuggestedFollowupAction(input: { suggestionId: string }) {
   return runOwnerAction({
     schema: calendarSuggestionActionSchema,
     input,
     body: ({ ownerUserId, input: parsed }) =>
       acceptCalendarSuggestedFollowup({ ownerUserId, id: parsed.suggestionId }),
-    reconcile: (suggestion, ownerUserId) => {
-      if (suggestion.personId)
-        invalidatePersonMutation({ ownerUserId, personId: suggestion.personId });
-      revalidatePath("/");
-    },
+    affectedScopes: calendarSuggestionScopes,
     result: (suggestion): CalendarSuggestedFollowupResolution => ({
       suggestionId: suggestion.id,
       status: suggestion.status,
@@ -116,7 +121,7 @@ export async function dismissCalendarSuggestedFollowupAction(input: { suggestion
     input,
     body: ({ ownerUserId, input: parsed }) =>
       dismissCalendarSuggestedFollowup({ ownerUserId, id: parsed.suggestionId }),
-    reconcile: () => revalidatePath("/"),
+    affectedScopes: (_suggestion, ownerUserId) => affectedScopesForOwnerSurfaces(ownerUserId),
     result: (suggestion): CalendarSuggestedFollowupResolution => ({
       suggestionId: suggestion.id,
       status: suggestion.status,

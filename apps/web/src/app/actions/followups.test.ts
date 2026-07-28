@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { revalidatePathSpy, updateTagSpy } from "@/test/action-adapter-mocks";
+import { updateTagSpy } from "@/test/action-adapter-mocks";
 
 const { createFollowup, listActiveHouseholdMembershipsForUser } = vi.hoisted(() => ({
   createFollowup: vi.fn(),
@@ -82,8 +82,8 @@ describe("Follow-Up server adapters", () => {
       selectedUserIds: undefined,
     });
     expect(listActiveHouseholdMembershipsForUser).not.toHaveBeenCalled();
-    expect(updateTagSpy).toHaveBeenCalled();
-    expect(revalidatePathSpy).toHaveBeenCalledWith(`/people/${PERSON_ID}`);
+    expect(updateTagSpy).toHaveBeenCalledWith(`people:owner:owner-1:person:${PERSON_ID}`);
+    expect(updateTagSpy).toHaveBeenCalledWith(`people:visible-person:${PERSON_ID}`);
     expect(result).toMatchObject({ ok: true, view: { id: FOLLOWUP_ID } });
   });
 
@@ -115,6 +115,6 @@ describe("Follow-Up server adapters", () => {
     ).resolves.toEqual({ ok: false, error: "Add a reason for this follow-up." });
 
     expect(createFollowup).not.toHaveBeenCalled();
-    expect(revalidatePathSpy).not.toHaveBeenCalled();
+    expect(updateTagSpy).not.toHaveBeenCalled();
   });
 });

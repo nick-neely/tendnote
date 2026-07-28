@@ -58,9 +58,6 @@ vi.mock("@/lib/cache/action-views", () => ({ getCachedActionLedgerViews: vi.fn()
 vi.mock("@/lib/cache/reconcile-affected-scopes", () => ({
   reconcileAffectedScopes: vi.fn(),
 }));
-vi.mock("@/lib/cache/today-review-mutation-scopes", () => ({
-  invalidateReviewOwner: vi.fn(),
-}));
 vi.mock("@/lib/general-action-view", () => ({
   toGeneralActionEventView: vi.fn(),
   toGeneralActionLinkedAssetView,

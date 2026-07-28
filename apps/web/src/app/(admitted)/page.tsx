@@ -1,4 +1,3 @@
-import { getCurrentBrief } from "@tendnote/db/queries/briefs";
 import { getOwnerTodayContext } from "@tendnote/db/queries/today";
 import type { BriefCadence, TodayShortlistResponse } from "@tendnote/domain";
 import { connection } from "next/server";
@@ -22,7 +21,8 @@ import { MobileTodayDestination } from "@/components/mobile-today-destination";
 import { ReviewQueueFamilySection } from "@/components/review-queue-section";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
-import { type BriefView, toBriefView } from "@/lib/brief-view";
+import type { BriefView } from "@/lib/brief-view";
+import { getCachedCurrentBriefView } from "@/lib/cache/brief-views";
 import {
   getCachedReviewQueueFamily,
   getCachedTodayShortlist,
@@ -287,8 +287,11 @@ async function getDashboardBrief(
   try {
     // Render the current persisted brief from stored snapshots — never a live
     // relationship-agenda recomputation (PRD #65, issue #70).
-    const brief = await getCurrentBrief({ ownerUserId, cadence, localDate: currentLocalDate() });
-    return brief ? toBriefView(brief) : null;
+    return await getCachedCurrentBriefView({
+      ownerUserId,
+      cadence,
+      localDate: currentLocalDate(),
+    });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.warn(`Unable to load the ${cadence} brief.`, error);

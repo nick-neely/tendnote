@@ -1,10 +1,16 @@
 import { browseAssets, getAsset } from "@tendnote/db/queries/assets";
+import type { AffectedScope } from "@tendnote/db/queries/general-actions";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { listSavedItems } from "@tendnote/db/queries/saved-items";
 import { cacheLife, cacheTag } from "next/cache";
 import { toAssetBrowseView, toAssetView } from "@/lib/asset-view";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 import { toSavedItemView } from "@/lib/saved-item-view";
+import {
+  tagForAffectedScope,
+  tagsForAffectedScope,
+  tagsForAffectedScopes,
+} from "./affected-scope-tags";
 import { cacheProfiles } from "./cache-profiles";
 
 const ASSET_REFRESH_MS = 30_000;
@@ -12,39 +18,67 @@ const ASSET_REFRESH_MS = 30_000;
 /** Cache identity and tags for bounded caller-visible Asset and Saved Item views. */
 export const assetCacheContract = {
   assetCollection(callerUserId: string) {
-    return [`asset:viewer:${callerUserId}`, `asset:viewer:${callerUserId}:collection`] as const;
+    return tagsForAffectedScope({
+      kind: "viewer-collection",
+      collection: "assets",
+      viewerUserId: callerUserId,
+    });
   },
   assetEntity(callerUserId: string, assetId: string) {
-    return `asset:viewer:${callerUserId}:asset:${assetId}`;
+    return tagForAffectedScope({
+      kind: "viewer-entity",
+      entity: "asset",
+      entityId: assetId,
+      viewerUserId: callerUserId,
+    });
   },
   /**
    * A record identity can be invalidated without knowing every eligible viewer.
    * It never participates in cache identity, so it cannot widen a read.
    */
   visibleAssetEntity(assetId: string) {
-    return `asset:visible:asset:${assetId}`;
+    return tagForAffectedScope({
+      kind: "visible-entity",
+      entity: "asset",
+      entityId: assetId,
+    });
   },
   /** A household audience may change its bounded default ledger together. */
   householdAssetCollection(householdId: string) {
-    return `asset:household:${householdId}:collection`;
+    return tagForAffectedScope({
+      kind: "household-collection",
+      collection: "assets",
+      householdId,
+    });
   },
   savedItemCollection(callerUserId: string) {
-    return [
-      `saved-item:viewer:${callerUserId}`,
-      `saved-item:viewer:${callerUserId}:collection`,
-    ] as const;
+    return tagsForAffectedScope({
+      kind: "viewer-collection",
+      collection: "saved-items",
+      viewerUserId: callerUserId,
+    });
   },
   savedItemEntity(callerUserId: string, savedItemId: string) {
-    return `saved-item:viewer:${callerUserId}:item:${savedItemId}`;
+    return tagForAffectedScope({
+      kind: "viewer-entity",
+      entity: "saved-item",
+      entityId: savedItemId,
+      viewerUserId: callerUserId,
+    });
   },
   visibleSavedItemEntity(savedItemId: string) {
-    return `saved-item:visible:item:${savedItemId}`;
+    return tagForAffectedScope({
+      kind: "visible-entity",
+      entity: "saved-item",
+      entityId: savedItemId,
+    });
   },
   householdSavedItemCollection(householdId: string) {
-    return `saved-item:household:${householdId}:collection`;
-  },
-  savedItemReminders(callerUserId: string) {
-    return `saved-item:viewer:${callerUserId}:reminders`;
+    return tagForAffectedScope({
+      kind: "household-collection",
+      collection: "saved-items",
+      householdId,
+    });
   },
 };
 
@@ -104,8 +138,16 @@ async function cachedAssetCoreView(callerUserId: string, assetId: string, refres
 async function cachedActiveSavedItemViews(callerUserId: string, refreshedAt: number) {
   "use cache";
   cacheLife(cacheProfiles.interactive);
-  cacheTag(...assetCacheContract.savedItemCollection(callerUserId));
-  cacheTag(assetCacheContract.savedItemReminders(callerUserId));
+  cacheTag(
+    ...tagsForAffectedScopes([
+      {
+        kind: "viewer-collection",
+        collection: "saved-items",
+        viewerUserId: callerUserId,
+      },
+      { kind: "owner-collection", collection: "account", ownerUserId: callerUserId },
+    ] satisfies AffectedScope[]),
+  );
   const [items, schedules] = await Promise.all([
     listSavedItems({ callerUserId, includeArchived: false }),
     listReminderSchedulesForOwner({ ownerUserId: callerUserId }),

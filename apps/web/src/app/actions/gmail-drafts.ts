@@ -1,8 +1,8 @@
 "use server";
 
 import type { GmailDraftActionOutcome } from "@tendnote/db/queries/gmail-drafts";
+import { affectedScopesForPerson } from "@tendnote/db/queries/people";
 import { z } from "zod";
-import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
 import { type GmailDraftView, toGmailDraftView } from "@/lib/gmail-draft-view";
 import {
   createOwnerGmailDraft,
@@ -67,12 +67,12 @@ function runGmailWrite(input: GmailDraftInput, write: typeof createOwnerGmailDra
         recipient: parsed.recipient,
         bodyEdit: parsed.bodyEdit,
       }),
-    affectedScopes: (result) => result.affectedScopes,
-    reconcile: (result, ownerUserId) => {
-      if (result.personId) {
-        invalidatePersonMutation({ ownerUserId, personId: result.personId });
-      }
-    },
+    affectedScopes: (result, ownerUserId) => [
+      ...result.affectedScopes,
+      ...(result.personId
+        ? affectedScopesForPerson({ ownerUserId, personId: result.personId })
+        : []),
+    ],
     result: ({ outcome }) => toResult(outcome),
   });
 }
@@ -105,12 +105,12 @@ export async function retryGmailDraftAction(input: { draftId: string; actionId: 
         draftId: parsed.draftId,
         actionId: parsed.actionId,
       }),
-    affectedScopes: (result) => result.affectedScopes,
-    reconcile: (result, ownerUserId) => {
-      if (result.personId) {
-        invalidatePersonMutation({ ownerUserId, personId: result.personId });
-      }
-    },
+    affectedScopes: (result, ownerUserId) => [
+      ...result.affectedScopes,
+      ...(result.personId
+        ? affectedScopesForPerson({ ownerUserId, personId: result.personId })
+        : []),
+    ],
     result: ({ outcome }) => toResult(outcome),
   });
 }

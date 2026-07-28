@@ -6,8 +6,8 @@ import {
   renameGeneralActionArea,
   unarchiveGeneralActionArea,
 } from "@tendnote/db/queries/general-action-areas";
+import type { AffectedScope } from "@tendnote/db/queries/general-actions";
 import { generalActionAreaNameSchema } from "@tendnote/domain";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
   type GeneralActionAreaMutationResult,
@@ -18,7 +18,13 @@ import { runOwnerAction } from "@/lib/owner-action";
 const areaIdSchema = z.object({ areaId: z.uuid() });
 const areaNameInputSchema = z.object({ name: generalActionAreaNameSchema });
 const renameAreaInputSchema = areaIdSchema.extend({ name: generalActionAreaNameSchema });
-const reconcileActionsSurface = () => revalidatePath("/actions");
+const affectedActionScopes = (_area: unknown, ownerUserId: string): AffectedScope[] => [
+  {
+    kind: "viewer-collection",
+    collection: "general-actions",
+    viewerUserId: ownerUserId,
+  },
+];
 
 export async function createGeneralActionAreaAction(input: {
   name: string;
@@ -28,7 +34,7 @@ export async function createGeneralActionAreaAction(input: {
     input,
     body: ({ ownerUserId, input: parsed }) =>
       createGeneralActionArea({ ownerUserId, name: parsed.name }),
-    reconcile: reconcileActionsSurface,
+    affectedScopes: affectedActionScopes,
     result: toGeneralActionAreaView,
   });
 }
@@ -46,7 +52,7 @@ export async function renameGeneralActionAreaAction(input: {
         areaId: parsed.areaId,
         name: parsed.name,
       }),
-    reconcile: reconcileActionsSurface,
+    affectedScopes: affectedActionScopes,
     result: toGeneralActionAreaView,
   });
 }
@@ -59,7 +65,7 @@ export async function archiveGeneralActionAreaAction(input: {
     input,
     body: ({ ownerUserId, input: parsed }) =>
       archiveGeneralActionArea({ ownerUserId, areaId: parsed.areaId }),
-    reconcile: reconcileActionsSurface,
+    affectedScopes: affectedActionScopes,
     result: toGeneralActionAreaView,
   });
 }
@@ -72,7 +78,7 @@ export async function unarchiveGeneralActionAreaAction(input: {
     input,
     body: ({ ownerUserId, input: parsed }) =>
       unarchiveGeneralActionArea({ ownerUserId, areaId: parsed.areaId }),
-    reconcile: reconcileActionsSurface,
+    affectedScopes: affectedActionScopes,
     result: toGeneralActionAreaView,
   });
 }

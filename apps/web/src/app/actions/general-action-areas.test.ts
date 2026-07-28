@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { revalidatePathSpy } from "@/test/action-adapter-mocks";
+import { updateTagSpy } from "@/test/action-adapter-mocks";
 
 const {
   archiveGeneralActionArea,
@@ -74,8 +74,9 @@ describe("General Action Area server adapters", () => {
       ownerUserId: "owner-1",
       areaId: AREA_ID,
     });
-    expect(revalidatePathSpy).toHaveBeenCalledTimes(4);
-    expect(revalidatePathSpy).toHaveBeenNthCalledWith(1, "/actions");
+    expect(updateTagSpy).toHaveBeenCalledTimes(8);
+    expect(updateTagSpy).toHaveBeenCalledWith("action:owner:owner-1");
+    expect(updateTagSpy).toHaveBeenCalledWith("action:owner:owner-1:linked-assets");
   });
 
   it("returns parse failures as data without calling the Area mutation", async () => {
@@ -85,6 +86,6 @@ describe("General Action Area server adapters", () => {
     });
 
     expect(createGeneralActionArea).not.toHaveBeenCalled();
-    expect(revalidatePathSpy).not.toHaveBeenCalled();
+    expect(updateTagSpy).not.toHaveBeenCalled();
   });
 });
