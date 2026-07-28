@@ -82,6 +82,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionMutationResult, GeneralActionView } from "@/lib/general-action-view";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import { getReminderInstallationId } from "@/lib/reminder-registration";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 
@@ -309,13 +310,15 @@ function ActionEditForm({
           }
           if (reminderEnabled && dueDate) {
             const clientInstallationId = getReminderInstallationId(window.localStorage);
-            const scheduleResult = await saveReminderAction({
-              recordKind: recurrence ? "routine" : "general_action",
-              recordId: action.id,
-              clientInstallationId,
-              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-              schedule: reminderChoice,
-            });
+            const scheduleResult = unwrapOwnerActionResult(
+              await saveReminderAction({
+                recordKind: recurrence ? "routine" : "general_action",
+                recordId: action.id,
+                clientInstallationId,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                schedule: reminderChoice,
+              }),
+            );
             if (scheduleResult.nextValidChoice) {
               setReminderChoice({ kind: "relative", leadMinutes: 0 });
               return {
@@ -335,10 +338,12 @@ function ActionEditForm({
               },
             };
           } else if (action.reminderSchedule) {
-            await clearReminderAction({
-              recordKind: action.recurrence ? "routine" : "general_action",
-              recordId: action.id,
-            });
+            unwrapOwnerActionResult(
+              await clearReminderAction({
+                recordKind: action.recurrence ? "routine" : "general_action",
+                recordId: action.id,
+              }),
+            );
             const view = result?.ok ? result.view : action;
             result = { ok: true, view: { ...view, reminderSchedule: null } };
           }

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { requireAdmittedOwnerForActionSpy, updateTagSpy } from "@/test/action-adapter-mocks";
 
 const {
   completeFollowup,
@@ -6,35 +7,30 @@ const {
   getOwnerTodayContext,
   getTodayCandidate,
   getTodayShortlist,
-  reconcileAffectedScopes,
-  requireAdmittedOwnerForAction,
-  revalidatePath,
   suppressTodayCandidate,
-  updateTag,
 } = vi.hoisted(() => ({
   completeFollowup: vi.fn(),
   completeGeneralAction: vi.fn(),
   getOwnerTodayContext: vi.fn(),
   getTodayCandidate: vi.fn(),
   getTodayShortlist: vi.fn(),
-  reconcileAffectedScopes: vi.fn(),
-  requireAdmittedOwnerForAction: vi.fn(),
-  revalidatePath: vi.fn(),
   suppressTodayCandidate: vi.fn(),
-  updateTag: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/followups", () => ({ completeFollowup }));
-vi.mock("@tendnote/db/queries/general-actions", () => ({ completeGeneralAction }));
+vi.mock("@tendnote/db/queries/general-actions", () => ({
+  affectedScopesForOwnerSurfaces: (ownerUserId: string) => [
+    { kind: "owner-collection", collection: "today", ownerUserId },
+    { kind: "owner-collection", collection: "review", ownerUserId },
+  ],
+  completeGeneralAction,
+}));
 vi.mock("@tendnote/db/queries/today", () => ({
   getOwnerTodayContext,
   getTodayCandidate,
   getTodayShortlist,
   suppressTodayCandidate,
 }));
-vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwnerForAction }));
-vi.mock("@/lib/cache/reconcile-affected-scopes", () => ({ reconcileAffectedScopes }));
-vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
 
 import { actOnTodayItemAction, suppressTodayItemAction } from "./today";
 
@@ -69,7 +65,7 @@ function shortlist() {
 describe("Today web actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAdmittedOwnerForAction.mockResolvedValue("owner-1");
+    requireAdmittedOwnerForActionSpy.mockResolvedValue("owner-1");
     getOwnerTodayContext.mockResolvedValue({
       localDate: "2026-07-21",
       timeZone: "America/Chicago",
@@ -77,8 +73,17 @@ describe("Today web actions", () => {
     });
     getTodayShortlist.mockResolvedValue(shortlist());
     getTodayCandidate.mockResolvedValue(shortlist().items[0]);
-    suppressTodayCandidate.mockResolvedValue({});
-    completeFollowup.mockResolvedValue({});
+    suppressTodayCandidate.mockResolvedValue({
+      result: {},
+      affectedScopes: [
+        { kind: "owner-collection", collection: "today", ownerUserId: "owner-1" },
+        { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
+      ],
+    });
+    completeFollowup.mockResolvedValue({
+      result: {},
+      affectedScopes: [{ kind: "owner-collection", collection: "today", ownerUserId: "owner-1" }],
+    });
     completeGeneralAction.mockResolvedValue({
       result: {},
       affectedScopes: [{ kind: "owner-collection", collection: "today", ownerUserId: "owner-1" }],
@@ -104,8 +109,8 @@ describe("Today web actions", () => {
       kind: "not_today",
       suppressUntil: null,
     });
-    expect(updateTag).toHaveBeenCalledWith("today:owner:owner-1");
-    expect(updateTag).toHaveBeenCalledWith("review:owner:owner-1");
+    expect(updateTagSpy).toHaveBeenCalledWith("today:owner:owner-1");
+    expect(updateTagSpy).toHaveBeenCalledWith("review:owner:owner-1");
   });
 
   it("reloads the authoritative candidate before using its real domain action", async () => {
@@ -127,7 +132,7 @@ describe("Today web actions", () => {
       actorUserId: "owner-1",
       followupId: FOLLOWUP_ID,
     });
-    expect(updateTag).toHaveBeenCalledWith("today:owner:owner-1");
+    expect(updateTagSpy).toHaveBeenCalledWith("today:owner:owner-1");
   });
 
   it("expires the Action projections when Today completes an Action", async () => {
@@ -149,9 +154,6 @@ describe("Today web actions", () => {
       actorUserId: "owner-1",
       generalActionId: actionId,
     });
-    expect(reconcileAffectedScopes).toHaveBeenCalledWith(
-      [{ kind: "owner-collection", collection: "today", ownerUserId: "owner-1" }],
-      { origin: "owner-action" },
-    );
+    expect(updateTagSpy).toHaveBeenCalledWith("today:owner:owner-1");
   });
 });

@@ -25,6 +25,7 @@ export async function proposeAssetMemoryActionsAction(input: {
   return runOwnerAction({
     schema: proposeSchema,
     input,
+    budget: { costCategory: "server-action" },
     body: ({ ownerUserId, input: parsed }) =>
       proposeAssetMemoryActions({
         actorUserId: ownerUserId,

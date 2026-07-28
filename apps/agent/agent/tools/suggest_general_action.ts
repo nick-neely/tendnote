@@ -4,6 +4,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
@@ -66,7 +67,7 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const result = await withModelSafeStoreErrors(() =>
+    const outcome = await withModelSafeStoreErrors(() =>
       suggestGeneralAction({
         ownerUserId,
         title: input.title,
@@ -80,6 +81,8 @@ export default defineTool({
         directlyRequested: input.directlyRequested,
       }),
     );
+    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
+    const result = outcome.result;
 
     return {
       found: true as const,

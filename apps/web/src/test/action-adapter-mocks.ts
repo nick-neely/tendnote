@@ -19,6 +19,7 @@ const OWNER_USER_ID = "owner-1";
 
 export const revalidatePathSpy = vi.fn();
 export const updateTagSpy = vi.fn();
+export const enforceProductBudgetSpy = vi.fn();
 const invalidateActionMutationSpy = vi.fn();
 export const requireAdmittedOwnerForActionSpy = vi.fn().mockResolvedValue(OWNER_USER_ID);
 
@@ -29,6 +30,10 @@ vi.mock("next/cache", () => ({
 }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: requireAdmittedOwnerForActionSpy,
+}));
+vi.mock("@/lib/rate-limit/guards", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/rate-limit/guards")>()),
+  enforceProductBudget: enforceProductBudgetSpy,
 }));
 vi.mock("@/lib/cache/action-mutation-scopes", () => ({
   invalidateActionMutation: invalidateActionMutationSpy,

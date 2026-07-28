@@ -19,6 +19,7 @@ import { CheckIcon, FolderIcon, MoonIcon, PencilIcon, XIcon } from "@/components
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import { sourceLabel } from "@/lib/source-labels";
 import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 
@@ -109,20 +110,30 @@ export function SuggestedGeneralActionReviewCard({
   }
 
   function handleAccept() {
-    leaveThen(() =>
-      acceptSuggestedGeneralActionAction({
-        generalActionId: action.id,
-        edit: isEditing ? buildEdit() : {},
-      }),
+    leaveThen(async () =>
+      unwrapOwnerActionResult(
+        await acceptSuggestedGeneralActionAction({
+          generalActionId: action.id,
+          edit: isEditing ? buildEdit() : {},
+        }),
+      ),
     );
   }
 
   function handleDismiss() {
-    leaveThen(() => dismissSuggestedGeneralActionAction({ generalActionId: action.id }));
+    leaveThen(async () =>
+      unwrapOwnerActionResult(
+        await dismissSuggestedGeneralActionAction({ generalActionId: action.id }),
+      ),
+    );
   }
 
   function handleIgnore() {
-    leaveThen(() => ignoreSuggestedGeneralActionAction({ generalActionId: action.id }));
+    leaveThen(async () =>
+      unwrapOwnerActionResult(
+        await ignoreSuggestedGeneralActionAction({ generalActionId: action.id }),
+      ),
+    );
   }
 
   function handleApplyEdit() {
@@ -132,10 +143,12 @@ export function SuggestedGeneralActionReviewCard({
     setError(null);
     startTransition(async () => {
       try {
-        const updated = await editSuggestedGeneralActionAction({
-          generalActionId: action.id,
-          edit: buildEdit(),
-        });
+        const updated = unwrapOwnerActionResult(
+          await editSuggestedGeneralActionAction({
+            generalActionId: action.id,
+            edit: buildEdit(),
+          }),
+        );
         onUpdate?.(updated);
         setDraftTitle(updated.action.title);
         setDraftNotes(updated.action.notes ?? "");

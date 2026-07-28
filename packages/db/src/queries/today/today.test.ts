@@ -90,7 +90,7 @@ describe("Today shortlist product function", () => {
       loadCandidateFamilies: [vi.fn(async () => [action])],
     });
 
-    await service.suppressTodayCandidate({
+    const outcome = await service.suppressTodayCandidate({
       ownerUserId: "owner-1",
       localDate: "2026-07-21",
       now: NOW,
@@ -99,6 +99,10 @@ describe("Today shortlist product function", () => {
       kind: "later",
       suppressUntil: new Date("2026-07-21T18:00:00.000Z"),
     });
+    expect(outcome.affectedScopes).toEqual([
+      { kind: "owner-collection", collection: "today", ownerUserId: "owner-1" },
+      { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
+    ]);
 
     await expect(
       service.getTodayShortlist({

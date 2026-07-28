@@ -162,8 +162,9 @@ export async function createBirthdayFollowupReminder(input: {
     now: input.now,
   });
   return {
-    result: { followup, reminder },
+    result: { followup, reminder: reminder.result },
     affectedScopes: [
+      ...reminder.affectedScopes,
       {
         kind: "owner-collection" as const,
         collection: "people" as const,

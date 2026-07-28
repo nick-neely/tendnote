@@ -3,6 +3,7 @@ import {
   type TodayCandidate,
   todayRankingOutputSchema,
 } from "@tendnote/domain";
+import { affectedScopesForOwnerSurfaces } from "../affected-scopes";
 import type {
   TodayCandidateLoader,
   TodayFeedbackStore,
@@ -175,7 +176,7 @@ export function createTodayShortlistService(deps: {
       );
       if (!candidate) throw new Error("Today candidate unavailable.");
 
-      return deps.feedbackStore.saveFeedback({
+      const result = await deps.feedbackStore.saveFeedback({
         ownerUserId: input.ownerUserId,
         candidateIdentity: candidate.identity,
         reasonKey: candidate.reason.key,
@@ -183,6 +184,10 @@ export function createTodayShortlistService(deps: {
         localDate: input.localDate,
         suppressUntil: input.kind === "later" ? input.suppressUntil : null,
       });
+      return {
+        result,
+        affectedScopes: affectedScopesForOwnerSurfaces(input.ownerUserId),
+      };
     },
   };
 }

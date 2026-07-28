@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { claimReminderStandaloneContinuationAction } from "@/app/actions/reminders";
 import { ReminderOptInInvitation } from "@/components/general-action-reminder";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import {
   getReminderInstallationId,
   isStandaloneReminderContext,
@@ -16,7 +17,7 @@ export function StandaloneReminderContinuation() {
     const installationId = getReminderInstallationId(window.localStorage);
     claimReminderStandaloneContinuationAction({ clientInstallationId: installationId })
       .then((result) => {
-        if (result.claimed) {
+        if (unwrapOwnerActionResult(result).claimed) {
           setClientInstallationId(installationId);
         }
       })

@@ -15,6 +15,20 @@ vi.mock("@/app/actions/reminders", () => ({
 
 import { StandaloneReminderContinuation } from "./standalone-reminder-continuation";
 
+function setStandaloneDisplayMode() {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn(() => ({ matches: true })),
+  });
+}
+
+function claimResult(claimed: boolean) {
+  claimReminderStandaloneContinuationAction.mockResolvedValue({
+    ok: true,
+    view: { claimed },
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
@@ -26,11 +40,8 @@ beforeEach(() => {
 
 it("continues the earned iOS opt-in after Tendnote opens from the Home Screen", async () => {
   window.localStorage.setItem("tendnote.reminder-installation-id", "browser-installation-1");
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: vi.fn(() => ({ matches: true })),
-  });
-  claimReminderStandaloneContinuationAction.mockResolvedValue({ claimed: true });
+  setStandaloneDisplayMode();
+  claimResult(true);
 
   render(<StandaloneReminderContinuation />);
 
@@ -43,11 +54,8 @@ it("continues the earned iOS opt-in after Tendnote opens from the Home Screen", 
 });
 
 it("creates a separate standalone identity when Safari storage is not shared", async () => {
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: vi.fn(() => ({ matches: true })),
-  });
-  claimReminderStandaloneContinuationAction.mockResolvedValue({ claimed: true });
+  setStandaloneDisplayMode();
+  claimResult(true);
 
   render(<StandaloneReminderContinuation />);
 
@@ -58,10 +66,7 @@ it("creates a separate standalone identity when Safari storage is not shared", a
 });
 
 it("does not continue an earned iOS offer in an unrelated desktop standalone app", async () => {
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: vi.fn(() => ({ matches: true })),
-  });
+  setStandaloneDisplayMode();
   Object.defineProperty(navigator, "userAgent", {
     configurable: true,
     value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -74,11 +79,8 @@ it("does not continue an earned iOS offer in an unrelated desktop standalone app
 });
 
 it("does not show a standalone offer without a live single-use continuation", async () => {
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: vi.fn(() => ({ matches: true })),
-  });
-  claimReminderStandaloneContinuationAction.mockResolvedValue({ claimed: false });
+  setStandaloneDisplayMode();
+  claimResult(false);
 
   render(<StandaloneReminderContinuation />);
 

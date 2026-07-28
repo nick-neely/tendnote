@@ -2,6 +2,7 @@ import { dismissSuggestedGeneralAction } from "@tendnote/db/queries/general-acti
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
@@ -20,12 +21,14 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const action = await withModelSafeStoreErrors(() =>
+    const outcome = await withModelSafeStoreErrors(() =>
       dismissSuggestedGeneralAction({
         actorUserId: ownerUserId,
         generalActionId: input.generalActionId,
       }),
     );
+    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
+    const action = outcome.result;
 
     return {
       action: {

@@ -7,6 +7,10 @@ import {
   unlinkDiscordIdentity,
 } from "@tendnote/db/queries/discord-identities";
 import {
+  affectedScopesForAccount,
+  type MutationOutcome,
+} from "@tendnote/db/queries/general-actions";
+import {
   connectProviderConnection,
   isProviderCapabilityConnected,
   listProviderConnections,
@@ -15,21 +19,14 @@ import {
   setProviderConnectionStatus,
 } from "@tendnote/db/queries/provider-connections";
 import { PROVIDER_DISCORD, PROVIDER_GOOGLE, type ProviderConnectionStatus } from "@tendnote/domain";
-import {
-  admittedOwnerOrNull,
-  requireAdmittedOwner,
-  requireAdmittedOwnerForAction,
-} from "@/lib/access/current-access";
+import { admittedOwnerOrNull, requireAdmittedOwner } from "@/lib/access/current-access";
 import {
   discordEnvFromProcess,
   googleEnvFromProcess,
   isDiscordConfigured,
   isGoogleConfigured,
 } from "@/lib/auth/social";
-import {
-  accountMutationScopes,
-  updateAccountMutationScopes,
-} from "@/lib/cache/account-mutation-scopes";
+import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 import {
   type CapabilityReconcileContext,
   type LinkedProviderAccount,
@@ -275,7 +272,7 @@ export async function reconcileDiscordAfterLink(
     );
     // The Better Auth hook runs outside a Server Action. Its owner-scoped
     // connection/identity writes must make the next Account request fresh.
-    updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
+    reconcileAffectedScopes(affectedScopesForAccount(ownerUserId), { origin: "background" });
   } catch (error) {
     // Guards the pre-reconcile admission check (`admittedOwnerOrNull`); reconcile errors
     // are handled by `onError` above, so this is a distinct failure surface.
@@ -290,12 +287,15 @@ export async function reconcileDiscordAfterLink(
  * that owner. Phase 2B affordances stay inert; future provider slices call this.
  */
 export async function setOwnerProviderConnectionStatus(input: {
+  ownerUserId: string;
   providerKey: string;
   capabilityKey: string;
   status: ProviderConnectionStatus;
-}) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return setProviderConnectionStatus({ ownerUserId, ...input });
+}): Promise<MutationOutcome<Awaited<ReturnType<typeof setProviderConnectionStatus>>>> {
+  return {
+    result: await setProviderConnectionStatus(input),
+    affectedScopes: affectedScopesForAccount(input.ownerUserId),
+  };
 }
 
 /**
@@ -304,10 +304,9 @@ export async function setOwnerProviderConnectionStatus(input: {
  * block, so only the Contacts connect button clears that local opt-out before
  * starting Better Auth's narrow Contacts consent flow.
  */
-export async function prepareOwnerGoogleContactsConnect() {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return setProviderConnectionStatus({
-    ownerUserId,
+export function prepareOwnerGoogleContactsConnect(input: { ownerUserId: string }) {
+  return setOwnerProviderConnectionStatus({
+    ...input,
     providerKey: "google",
     capabilityKey: "contacts",
     status: "ready",
@@ -322,11 +321,11 @@ export async function prepareOwnerGoogleContactsConnect() {
  * marks the Provider Connection revoked. Returns whether the user still needs to
  * finish cleanup at their Google Account permissions.
  */
-export async function disconnectOwnerGoogleCalendar(): Promise<DisconnectGoogleCalendarResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-
-  return disconnectGoogleCalendar({
-    ownerUserId,
+export async function disconnectOwnerGoogleCalendar(input: {
+  ownerUserId: string;
+}): Promise<MutationOutcome<DisconnectGoogleCalendarResult>> {
+  const result = await disconnectGoogleCalendar({
+    ownerUserId: input.ownerUserId,
     revokeAndUnlink: async () => {
       // Best-effort provider-side grant revocation first — it needs the access
       // token that the authoritative unlink below discards. Never throws, so an
@@ -361,6 +360,7 @@ export async function disconnectOwnerGoogleCalendar(): Promise<DisconnectGoogleC
     },
     markRevoked: markProviderConnectionRevoked,
   });
+  return { result, affectedScopes: affectedScopesForAccount(input.ownerUserId) };
 }
 
 /**
@@ -368,14 +368,16 @@ export async function disconnectOwnerGoogleCalendar(): Promise<DisconnectGoogleC
  * contact methods, and birthdays are Tendnote-owned data and are intentionally not
  * deleted; the revoked Provider Connection blocks future Contacts preview reads.
  */
-export async function disconnectOwnerGoogleContacts() {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return markProviderConnectionRevoked({
-    ownerUserId,
-    providerKey: "google",
-    capabilityKey: "contacts",
-    reason: "user_disconnect",
-  });
+export async function disconnectOwnerGoogleContacts(input: { ownerUserId: string }) {
+  return {
+    result: await markProviderConnectionRevoked({
+      ownerUserId: input.ownerUserId,
+      providerKey: "google",
+      capabilityKey: "contacts",
+      reason: "user_disconnect",
+    }),
+    affectedScopes: affectedScopesForAccount(input.ownerUserId),
+  };
 }
 
 /**
@@ -386,13 +388,15 @@ export async function disconnectOwnerGoogleContacts() {
  * closed), and marks the Discord Provider Connection revoked. Scoped to Discord —
  * unrelated Google capabilities are untouched.
  */
-export async function disconnectOwnerDiscord(): Promise<DisconnectDiscordResult> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
+export async function disconnectOwnerDiscord(input: {
+  ownerUserId: string;
+}): Promise<MutationOutcome<DisconnectDiscordResult>> {
+  const ownerUserId = input.ownerUserId;
   // Resolve the linked Discord account's id up front so the unlink targets exactly
   // that account (unambiguous if a second Discord account is ever linked).
   const linkedDiscord = deriveDiscordConnection(await listOwnerLinkedAccounts());
 
-  return disconnectDiscord({
+  const result = await disconnectDiscord({
     ownerUserId,
     // Best-effort provider-side token revocation (#176), mirroring the Google
     // disconnect. Reads the linked account's decrypted access token ONLY for this
@@ -433,4 +437,5 @@ export async function disconnectOwnerDiscord(): Promise<DisconnectDiscordResult>
     },
     markRevoked: markProviderConnectionRevoked,
   });
+  return { result, affectedScopes: affectedScopesForAccount(ownerUserId) };
 }

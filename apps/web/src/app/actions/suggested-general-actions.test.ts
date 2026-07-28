@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import { revalidatePathSpy, updateTagSpy } from "@/test/action-adapter-mocks";
 
 /**
@@ -44,6 +45,10 @@ import {
 } from "./suggested-general-actions";
 
 const GENERAL_ACTION_ID = randomUUID();
+const affectedScopes = [
+  { kind: "viewer-collection", collection: "general-actions", viewerUserId: "owner-1" },
+  { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
+];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -58,9 +63,12 @@ beforeEach(() => {
 describe("acceptSuggestedGeneralActionAction (card Accept path)", () => {
   it("resolves the owner from the session and forwards the card's id to the shared accept", async () => {
     acceptSuggestedGeneralAction.mockResolvedValue({
-      component: { type: "suggested_general_action_review", generalActionId: GENERAL_ACTION_ID },
-      action: { id: GENERAL_ACTION_ID, status: "open", areaId: null },
-      sourceRecord: null,
+      result: {
+        component: { type: "suggested_general_action_review", generalActionId: GENERAL_ACTION_ID },
+        action: { id: GENERAL_ACTION_ID, status: "open", areaId: null },
+        sourceRecord: null,
+      },
+      affectedScopes,
     });
 
     await acceptSuggestedGeneralActionAction({ generalActionId: GENERAL_ACTION_ID });
@@ -83,18 +91,25 @@ describe("acceptSuggestedGeneralActionAction (card Accept path)", () => {
         promotions += 1;
       }
       return {
-        component: { type: "suggested_general_action_review", generalActionId },
-        action: { id: generalActionId, status: "open", areaId: null },
-        sourceRecord: null,
+        result: {
+          component: { type: "suggested_general_action_review", generalActionId },
+          action: { id: generalActionId, status: "open", areaId: null },
+          sourceRecord: null,
+        },
+        affectedScopes,
       };
     });
 
-    const first = await acceptSuggestedGeneralActionAction({
-      generalActionId: GENERAL_ACTION_ID,
-    });
-    const second = await acceptSuggestedGeneralActionAction({
-      generalActionId: GENERAL_ACTION_ID,
-    });
+    const first = unwrapOwnerActionResult(
+      await acceptSuggestedGeneralActionAction({
+        generalActionId: GENERAL_ACTION_ID,
+      }),
+    );
+    const second = unwrapOwnerActionResult(
+      await acceptSuggestedGeneralActionAction({
+        generalActionId: GENERAL_ACTION_ID,
+      }),
+    );
 
     // The same id is forwarded both times, and both settle to a single promoted action.
     expect(acceptSuggestedGeneralAction).toHaveBeenNthCalledWith(
@@ -109,7 +124,7 @@ describe("acceptSuggestedGeneralActionAction (card Accept path)", () => {
   it("rejects a non-uuid id before touching the shared mutation", async () => {
     await expect(
       acceptSuggestedGeneralActionAction({ generalActionId: "not-a-uuid" }),
-    ).rejects.toThrow();
+    ).resolves.toMatchObject({ ok: false });
     expect(acceptSuggestedGeneralAction).not.toHaveBeenCalled();
   });
 });
@@ -117,13 +132,15 @@ describe("acceptSuggestedGeneralActionAction (card Accept path)", () => {
 describe("dismissSuggestedGeneralActionAction (card Dismiss path)", () => {
   it("forwards the card's id to the shared dismiss and returns the resolution", async () => {
     dismissSuggestedGeneralAction.mockResolvedValue({
-      id: GENERAL_ACTION_ID,
-      status: "dismissed",
+      result: { id: GENERAL_ACTION_ID, status: "dismissed" },
+      affectedScopes,
     });
 
-    const result = await dismissSuggestedGeneralActionAction({
-      generalActionId: GENERAL_ACTION_ID,
-    });
+    const result = unwrapOwnerActionResult(
+      await dismissSuggestedGeneralActionAction({
+        generalActionId: GENERAL_ACTION_ID,
+      }),
+    );
 
     expect(dismissSuggestedGeneralAction).toHaveBeenCalledWith(
       expect.objectContaining({ actorUserId: "owner-1", generalActionId: GENERAL_ACTION_ID }),

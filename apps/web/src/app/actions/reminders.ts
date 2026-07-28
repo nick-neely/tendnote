@@ -21,16 +21,7 @@ import {
   reminderScheduleChoiceSchema,
 } from "@tendnote/domain/reminders";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import {
-  accountMutationScopes,
-  updateAccountMutationScopes,
-} from "@/lib/cache/account-mutation-scopes";
-import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
-
-function invalidateAccount(ownerUserId: string) {
-  updateAccountMutationScopes(accountMutationScopes.forOwner(ownerUserId));
-}
+import { runOwnerAction } from "@/lib/owner-action";
 
 const installationSchema = z.string().trim().min(12).max(200);
 const recordReferenceSchema = z.object({
@@ -42,14 +33,14 @@ export async function clearReminderAction(input: {
   recordKind: z.infer<typeof reminderRecordKindSchema>;
   recordId: string;
 }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = recordReferenceSchema.parse(input);
-  await clearReminder({ ownerUserId, ...parsed, now: new Date() });
-  invalidateAccount(ownerUserId);
-  if (parsed.recordKind === "general_action" || parsed.recordKind === "routine") {
-    invalidateActionMutation({ ownerUserId, actionId: parsed.recordId });
-  }
-  return { ok: true as const };
+  return runOwnerAction({
+    schema: recordReferenceSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      clearReminder({ ownerUserId, ...parsed, now: new Date() }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: () => ({ ok: true as const }),
+  });
 }
 
 export async function saveReminderAction(input: {
@@ -59,42 +50,45 @@ export async function saveReminderAction(input: {
   timeZone: string;
   schedule: { kind: "exact"; localTime: string } | { kind: "relative"; leadMinutes: number };
 }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = recordReferenceSchema
-    .extend({
+  return runOwnerAction({
+    schema: recordReferenceSchema.extend({
       clientInstallationId: installationSchema,
       timeZone: z.string().trim().min(1).max(100),
       schedule: reminderScheduleChoiceSchema,
-    })
-    .parse(input);
-  const result = await saveReminder({ ownerUserId, ...parsed, now: new Date() });
-  invalidateAccount(ownerUserId);
-  if (parsed.recordKind === "general_action" || parsed.recordKind === "routine") {
-    invalidateActionMutation({ ownerUserId, actionId: parsed.recordId });
-  }
-  return reminderScheduleResult(result);
+    }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      saveReminder({ ownerUserId, ...parsed, now: new Date() }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => reminderScheduleResult(outcome.result),
+  });
 }
 
 export async function reconcileReminderTimeZoneAction(input: { timeZone: string }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const { timeZone } = z.object({ timeZone: z.string().trim().min(1).max(100) }).parse(input);
-  const schedules = await listReminderSchedulesForOwner({ ownerUserId });
-  await Promise.all(
-    schedules.map((schedule) =>
-      reconcileReminderRecord({
-        ownerUserId,
-        recordKind: schedule.recordKind,
-        recordId: schedule.recordId,
-        timeZone,
-        now: new Date(),
-      }),
-    ),
-  );
-  invalidateAccount(ownerUserId);
-  return { reconciled: schedules.length };
+  return runOwnerAction({
+    schema: z.object({ timeZone: z.string().trim().min(1).max(100) }),
+    input,
+    body: async ({ ownerUserId, input: { timeZone } }) => {
+      const schedules = await listReminderSchedulesForOwner({ ownerUserId });
+      const outcomes = await Promise.all(
+        schedules.map((schedule) =>
+          reconcileReminderRecord({
+            ownerUserId,
+            recordKind: schedule.recordKind,
+            recordId: schedule.recordId,
+            timeZone,
+            now: new Date(),
+          }),
+        ),
+      );
+      return { outcomes, schedules };
+    },
+    affectedScopes: ({ outcomes }) => outcomes.flatMap((outcome) => outcome.affectedScopes),
+    result: ({ schedules }) => ({ reconciled: schedules.length }),
+  });
 }
 
-function reminderScheduleResult(result: Awaited<ReturnType<typeof saveReminder>>) {
+function reminderScheduleResult(result: Awaited<ReturnType<typeof saveReminder>>["result"]) {
   return {
     optIn: result.optIn,
     nextValidChoice: result.nextValidChoice,
@@ -117,117 +111,140 @@ export async function registerReminderInstallationAction(input: {
     keys: { p256dh: string; auth: string };
   };
 }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = z
-    .object({
+  return runOwnerAction({
+    schema: z.object({
       clientInstallationId: installationSchema,
       label: z.string().trim().min(1).max(80).optional(),
       subscription: reminderPushSubscriptionSchema,
-    })
-    .parse(input);
-  const result = await registerReminderInstallation({ ownerUserId, ...parsed, now: new Date() });
-  invalidateAccount(ownerUserId);
-  return { enabled: result.installation.status === "enabled" };
+    }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      registerReminderInstallation({ ownerUserId, ...parsed, now: new Date() }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => ({ enabled: outcome.result.installation.status === "enabled" }),
+  });
 }
 
 export async function setReminderOptInDecisionAction(input: {
   clientInstallationId: string;
   decision: "postponed" | "denied";
 }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = z
-    .object({ clientInstallationId: installationSchema, decision: z.enum(["postponed", "denied"]) })
-    .parse(input);
-  await setReminderOptInDecision({ ownerUserId, ...parsed, now: new Date() });
-  invalidateAccount(ownerUserId);
-  return { ok: true as const };
+  return runOwnerAction({
+    schema: z.object({
+      clientInstallationId: installationSchema,
+      decision: z.enum(["postponed", "denied"]),
+    }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      setReminderOptInDecision({ ownerUserId, ...parsed, now: new Date() }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: () => ({ ok: true as const }),
+  });
 }
 
 export async function getReminderInstallationStateAction(input: { clientInstallationId: string }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = z.object({ clientInstallationId: installationSchema }).parse(input);
-  return getReminderInstallationState({ ownerUserId, ...parsed });
+  return runOwnerAction({
+    schema: z.object({ clientInstallationId: installationSchema }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      getReminderInstallationState({ ownerUserId, ...parsed }),
+    result: (state) => state,
+  });
 }
 
 export async function beginReminderInstallationOptInAction(input: {
   clientInstallationId: string;
 }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = z.object({ clientInstallationId: installationSchema }).parse(input);
-  await beginReminderInstallationOptIn({ ownerUserId, ...parsed, now: new Date() });
-  invalidateAccount(ownerUserId);
-  return { ok: true as const };
+  return runOwnerAction({
+    schema: z.object({ clientInstallationId: installationSchema }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      beginReminderInstallationOptIn({ ownerUserId, ...parsed, now: new Date() }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: () => ({ ok: true as const }),
+  });
 }
 
 export async function markReminderStandaloneContinuationAction(input: {
   clientInstallationId: string;
 }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = z.object({ clientInstallationId: installationSchema }).parse(input);
-  await markReminderStandaloneContinuation({ ownerUserId, ...parsed, now: new Date() });
-  invalidateAccount(ownerUserId);
-  return { ok: true as const };
+  return runOwnerAction({
+    schema: z.object({ clientInstallationId: installationSchema }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      markReminderStandaloneContinuation({ ownerUserId, ...parsed, now: new Date() }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: () => ({ ok: true as const }),
+  });
 }
 
 export async function claimReminderStandaloneContinuationAction(input: {
   clientInstallationId: string;
 }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = z.object({ clientInstallationId: installationSchema }).parse(input);
-  const claimed = await claimReminderStandaloneContinuation({
-    ownerUserId,
-    ...parsed,
-    now: new Date(),
+  return runOwnerAction({
+    schema: z.object({ clientInstallationId: installationSchema }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      claimReminderStandaloneContinuation({
+        ownerUserId,
+        ...parsed,
+        now: new Date(),
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => ({ claimed: outcome.result !== null }),
   });
-  invalidateAccount(ownerUserId);
-  return { claimed: claimed !== null };
 }
 
 export async function setReminderInstallationPreviewModeAction(input: {
   clientInstallationId: string;
   previewMode: "generic" | "detailed";
 }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = z
-    .object({
+  return runOwnerAction({
+    schema: z.object({
       clientInstallationId: installationSchema,
       previewMode: z.enum(["generic", "detailed"]),
-    })
-    .parse(input);
-  const installation = await setReminderInstallationPreviewMode({
-    ownerUserId,
-    ...parsed,
-    now: new Date(),
+    }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      setReminderInstallationPreviewMode({
+        ownerUserId,
+        ...parsed,
+        now: new Date(),
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => ({ previewMode: outcome.result.previewMode }),
   });
-  invalidateAccount(ownerUserId);
-  return { previewMode: installation.previewMode };
 }
 
 export async function disableCurrentReminderInstallationAction(input: {
   clientInstallationId: string;
   reason: "current_installation" | "sign_out";
 }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const parsed = z
-    .object({
+  return runOwnerAction({
+    schema: z.object({
       clientInstallationId: installationSchema,
       reason: z.enum(["current_installation", "sign_out"]),
-    })
-    .parse(input);
-  await disableCurrentReminderInstallation({ ownerUserId, ...parsed, now: new Date() });
-  invalidateAccount(ownerUserId);
-  return { ok: true as const };
+    }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      disableCurrentReminderInstallation({ ownerUserId, ...parsed, now: new Date() }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: () => ({ ok: true as const }),
+  });
 }
 
 export async function revokeReminderInstallationAction(input: { installationId: string }) {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const { installationId } = z.object({ installationId: z.uuid() }).parse(input);
-  await disableReminderInstallation({
-    ownerUserId,
-    installationId,
-    reason: "remote_revocation",
-    now: new Date(),
+  return runOwnerAction({
+    schema: z.object({ installationId: z.uuid() }),
+    input,
+    body: ({ ownerUserId, input: { installationId } }) =>
+      disableReminderInstallation({
+        ownerUserId,
+        installationId,
+        reason: "remote_revocation",
+        now: new Date(),
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: () => ({ ok: true as const }),
   });
-  invalidateAccount(ownerUserId);
-  return { ok: true as const };
 }

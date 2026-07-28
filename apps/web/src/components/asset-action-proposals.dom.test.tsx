@@ -65,7 +65,7 @@ describe("AssetActionProposals (#203)", () => {
 
   it("accepts a proposal through the existing Suggested General Action path", async () => {
     const user = userEvent.setup();
-    acceptSuggestedGeneralActionAction.mockResolvedValue({});
+    acceptSuggestedGeneralActionAction.mockResolvedValue({ ok: true, view: {} });
     render(<AssetActionProposals assetId={ASSET_ID} canPropose proposals={[proposal()]} />);
 
     // The verbs are named, not glyphs — the same two words the suggested links above
@@ -84,7 +84,7 @@ describe("AssetActionProposals (#203)", () => {
 
   it("keeps focus in the section and announces the outcome when a row resolves", async () => {
     const user = userEvent.setup();
-    ignoreSuggestedGeneralActionAction.mockResolvedValue({});
+    ignoreSuggestedGeneralActionAction.mockResolvedValue({ ok: true, view: {} });
     render(<AssetActionProposals assetId={ASSET_ID} canPropose proposals={[proposal()]} />);
 
     await user.click(screen.getByRole("button", { name: "Set aside" }));
@@ -101,7 +101,7 @@ describe("AssetActionProposals (#203)", () => {
 
   it("sets a proposal aside through the existing ignore path", async () => {
     const user = userEvent.setup();
-    ignoreSuggestedGeneralActionAction.mockResolvedValue({});
+    ignoreSuggestedGeneralActionAction.mockResolvedValue({ ok: true, view: {} });
     render(<AssetActionProposals assetId={ASSET_ID} canPropose proposals={[proposal()]} />);
 
     await user.click(screen.getByRole("button", { name: /Set aside/ }));

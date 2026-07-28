@@ -5,6 +5,7 @@ import type {
   GeneralActionLifecycleDeps,
   GeneralActionLifecycleStore,
   GeneralActionWithContext,
+  SuggestedGeneralActionReviewResult,
 } from "./types";
 
 type GeneralActionResult = GeneralActionWithContext;
@@ -105,6 +106,39 @@ async function scopesForGeneralAction(
       ownerUserId: current.ownerUserId,
     },
   ];
+}
+
+export async function suggestedGeneralActionMutationOutcome<
+  TResult extends SuggestedGeneralActionReviewResult | GeneralAction,
+>(
+  store: GeneralActionLifecycleStore,
+  resultPromise: Promise<TResult>,
+  input: { includeCurrentAudience?: boolean } = {},
+): Promise<MutationOutcome<TResult>> {
+  const result = await resultPromise;
+  const action = ("action" in result ? result.action : result) as GeneralAction;
+  if (input.includeCurrentAudience) {
+    return { result, affectedScopes: await scopesForGeneralAction(store, action) };
+  }
+  const ownerUserId = action.ownerUserId;
+  return {
+    result,
+    affectedScopes: [
+      {
+        kind: "viewer-collection",
+        collection: "general-actions",
+        viewerUserId: ownerUserId,
+      },
+      {
+        kind: "viewer-entity",
+        entity: "general-action",
+        entityId: action.id,
+        viewerUserId: ownerUserId,
+      },
+      { kind: "owner-collection", collection: "today", ownerUserId },
+      { kind: "owner-collection", collection: "review", ownerUserId },
+    ],
+  };
 }
 
 async function listGeneralActionViewerUserIds(

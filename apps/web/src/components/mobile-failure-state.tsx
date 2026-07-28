@@ -60,10 +60,12 @@ const FAILURE_COPY: Record<MobileFailureKind, { action: string; body: string; he
 export function MobileFailureState({
   className,
   kind,
+  message,
   onRetry,
 }: {
   className?: string;
   kind: MobileFailureKind;
+  message?: string | null;
   onRetry?: () => void;
 }) {
   const copy = FAILURE_COPY[kind];
@@ -74,7 +76,9 @@ export function MobileFailureState({
     >
       <div>
         <h2 className="font-semibold text-[length:var(--text-title)]">{copy.heading}</h2>
-        <p className="mt-1 text-muted-foreground text-[length:var(--text-small)]">{copy.body}</p>
+        <p className="mt-1 text-muted-foreground text-[length:var(--text-small)]">
+          {message || copy.body}
+        </p>
       </div>
       {kind === "authentication" ? (
         <Button asChild className="min-h-11" size="lg" variant="outline">

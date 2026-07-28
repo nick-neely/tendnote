@@ -1,20 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ProductRateLimitError } from "@/lib/rate-limit/errors";
+import {
+  enforceProductBudgetSpy,
+  revalidatePathSpy,
+  updateTagSpy,
+} from "@/test/action-adapter-mocks";
 
-const { generateDraft, revalidatePath, updateTag, enforceProductBudget } = vi.hoisted(() => ({
+const { generateDraft } = vi.hoisted(() => ({
   generateDraft: vi.fn(),
-  revalidatePath: vi.fn(),
-  updateTag: vi.fn(),
-  enforceProductBudget: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/drafts", () => ({ generateDraft }));
-vi.mock("server-only", () => ({}));
-vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
-vi.mock("@/lib/access/current-access", () => ({
-  requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("user-1"),
-}));
-vi.mock("@/lib/rate-limit/guards", () => ({ enforceProductBudget }));
 
 import { createDraftAction } from "./create-draft";
 
@@ -25,9 +22,9 @@ const DRAFT_ID = randomUUID();
 
 beforeEach(() => {
   generateDraft.mockReset();
-  revalidatePath.mockReset();
-  updateTag.mockReset();
-  enforceProductBudget.mockReset();
+  revalidatePathSpy.mockReset();
+  updateTagSpy.mockReset();
+  enforceProductBudgetSpy.mockReset();
 });
 
 describe("createDraftAction", () => {
@@ -37,7 +34,7 @@ describe("createDraftAction", () => {
         status: "created",
         draft: { id: DRAFT_ID, personId: PERSON_ID },
       },
-      affectedScopes: [{ kind: "owner-collection", collection: "people", ownerUserId: "user-1" }],
+      affectedScopes: [{ kind: "owner-collection", collection: "people", ownerUserId: "owner-1" }],
     };
   }
 
@@ -51,7 +48,7 @@ describe("createDraftAction", () => {
 
     expect(generateDraft).toHaveBeenCalledWith(
       expect.objectContaining({
-        ownerUserId: "user-1",
+        ownerUserId: "owner-1",
         personId: PERSON_ID,
         followupContext: { id: FOLLOWUP_ID, reason: "check in after the move" },
       }),
@@ -60,7 +57,7 @@ describe("createDraftAction", () => {
       ok: true,
       view: { outcome: "created", personId: PERSON_ID, draftId: DRAFT_ID },
     });
-    expect(updateTag).toHaveBeenCalled();
+    expect(updateTagSpy).toHaveBeenCalled();
   });
 
   it("passes explicit brief-item context", async () => {
@@ -115,7 +112,7 @@ describe("createDraftAction", () => {
       view: { outcome: "skipped", personId: PERSON_ID, draftId: null },
     });
     // No routing/revalidation for a draft that wasn't created.
-    expect(revalidatePath).not.toHaveBeenCalled();
+    expect(revalidatePathSpy).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid person id", async () => {
@@ -126,11 +123,24 @@ describe("createDraftAction", () => {
   });
 
   it("charges the product budget and does not generate when the limit is exceeded", async () => {
-    enforceProductBudget.mockRejectedValueOnce(new Error("rate limited"));
+    enforceProductBudgetSpy.mockRejectedValueOnce(
+      new ProductRateLimitError({
+        allowed: false,
+        limit: 1,
+        count: 2,
+        remaining: 0,
+        resetAt: new Date("2026-07-28T03:00:00Z"),
+        costCategory: "server-action",
+        reason: "limit_exceeded",
+      }),
+    );
 
-    await expect(createDraftAction({ personId: PERSON_ID })).rejects.toThrow();
-    expect(enforceProductBudget).toHaveBeenCalledWith(
-      expect.objectContaining({ subject: "user-1", costCategory: "server-action" }),
+    await expect(createDraftAction({ personId: PERSON_ID })).resolves.toEqual({
+      ok: false,
+      error: "You've reached a usage limit for this action. Please try again shortly.",
+    });
+    expect(enforceProductBudgetSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: "owner-1", costCategory: "server-action" }),
     );
     expect(generateDraft).not.toHaveBeenCalled();
   });

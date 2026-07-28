@@ -4,6 +4,7 @@ import type { ReminderRecordKind } from "@tendnote/domain/reminders";
 import { useState } from "react";
 import { clearReminderAction, saveReminderAction } from "@/app/actions/reminders";
 import type { GeneralActionReminderChoice } from "@/components/general-action-reminder";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import { getReminderInstallationId } from "@/lib/reminder-registration";
 import { type ReminderScheduleView, toReminderScheduleView } from "@/lib/reminder-schedule-view";
 
@@ -30,13 +31,15 @@ export function useReminderSchedule(schedule?: ReminderScheduleView | null) {
     timeSemantics: "date_only" | "instant" = "date_only",
   ) {
     const clientInstallationId = getReminderInstallationId(window.localStorage);
-    const result = await saveReminderAction({
-      recordKind,
-      recordId,
-      clientInstallationId,
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      schedule: choice,
-    });
+    const result = unwrapOwnerActionResult(
+      await saveReminderAction({
+        recordKind,
+        recordId,
+        clientInstallationId,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        schedule: choice,
+      }),
+    );
     return {
       ...result,
       clientInstallationId,
@@ -45,7 +48,7 @@ export function useReminderSchedule(schedule?: ReminderScheduleView | null) {
   }
 
   async function clear(recordKind: ReminderRecordKind, recordId: string) {
-    await clearReminderAction({ recordKind, recordId });
+    unwrapOwnerActionResult(await clearReminderAction({ recordKind, recordId }));
   }
 
   return { choice, clear, enabled, reset, save, setChoice, setEnabled };

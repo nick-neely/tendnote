@@ -10,11 +10,12 @@ import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import { ZodError } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
+import type { OwnerActionResult } from "@/lib/owner-action-result";
 import { enforceProductBudget, ProductRateLimitError } from "@/lib/rate-limit/guards";
 import type { RateLimitRequest } from "@/lib/rate-limit/types";
 import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
 
-export type OwnerActionResult<TView> = { ok: true; view: TView } | { ok: false; error: string };
+export type { OwnerActionResult } from "@/lib/owner-action-result";
 
 type ResolvedOwnerScope = Awaited<ReturnType<typeof resolveScopeForCaller>>;
 

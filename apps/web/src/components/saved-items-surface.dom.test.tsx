@@ -96,17 +96,20 @@ describe("SavedItemsSurface", () => {
     const created = fixture({ bringBackAt: "2026-07-21T16:00:00.000Z" });
     createSavedItemAction.mockResolvedValue({ ok: true, view: created });
     saveReminderAction.mockResolvedValue({
-      optIn: { state: "none", clientInstallationId: "browser-installation-1" },
-      nextValidChoice: {
-        label: "At the bring-back time",
-        choice: { kind: "relative", leadMinutes: 0 },
-      },
-      schedule: {
-        kind: "relative",
-        localTime: null,
-        leadMinutes: 1_440,
-        timeZone: "America/Chicago",
-        intendedAtISO: "2026-07-20T16:00:00.000Z",
+      ok: true,
+      view: {
+        optIn: { state: "none", clientInstallationId: "browser-installation-1" },
+        nextValidChoice: {
+          label: "At the bring-back time",
+          choice: { kind: "relative", leadMinutes: 0 },
+        },
+        schedule: {
+          kind: "relative",
+          localTime: null,
+          leadMinutes: 1_440,
+          timeZone: "America/Chicago",
+          intendedAtISO: "2026-07-20T16:00:00.000Z",
+        },
       },
     });
     render(<SavedItemsSurface items={[]} />);

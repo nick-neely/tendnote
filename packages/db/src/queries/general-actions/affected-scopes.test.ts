@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryGeneralActionLifecycleStore } from "./in-memory-store";
-import { createAffectedGeneralActionLifecycle } from "./mutation-lifecycle";
+import {
+  createAffectedGeneralActionLifecycle,
+  suggestedGeneralActionMutationOutcome,
+} from "./mutation-lifecycle";
+import { createSuggestedGeneralActionReview } from "./review";
 
 const OWNER = "owner-1";
 const MEMBER = "member-1";
@@ -21,6 +25,32 @@ function expectedPrivateScopes(actionId: string) {
     { kind: "owner-collection", collection: "today", ownerUserId: OWNER },
     { kind: "owner-collection", collection: "review", ownerUserId: OWNER },
   ];
+}
+
+async function createSharedHousehold(
+  store: ReturnType<typeof createInMemoryGeneralActionLifecycleStore>,
+) {
+  const household = await store.createHouseholdWorkspace({
+    ownerUserId: OWNER,
+    name: "Home",
+    defaultScope: "private",
+  });
+  for (const [userId, role] of [
+    [OWNER, "owner"],
+    [MEMBER, "member"],
+  ] as const) {
+    await store.createHouseholdMembership({
+      householdId: household.id,
+      userId,
+      invitedByUserId: OWNER,
+      role,
+      status: "active",
+      invitedAt: new Date("2026-07-01T00:00:00Z"),
+      acceptedAt: new Date("2026-07-01T00:00:00Z"),
+      removedAt: null,
+    });
+  }
+  return household;
 }
 
 describe("General Action affected-scope contract", () => {
@@ -168,26 +198,7 @@ describe("General Action affected-scope contract", () => {
 
   it("invalidates both the former and current audience when visibility changes", async () => {
     const store = createInMemoryGeneralActionLifecycleStore();
-    const household = await store.createHouseholdWorkspace({
-      ownerUserId: OWNER,
-      name: "Home",
-      defaultScope: "private",
-    });
-    for (const [userId, role] of [
-      [OWNER, "owner"],
-      [MEMBER, "member"],
-    ] as const) {
-      await store.createHouseholdMembership({
-        householdId: household.id,
-        userId,
-        invitedByUserId: OWNER,
-        role,
-        status: "active",
-        invitedAt: new Date("2026-07-01T00:00:00Z"),
-        acceptedAt: new Date("2026-07-01T00:00:00Z"),
-        removedAt: null,
-      });
-    }
+    const household = await createSharedHousehold(store);
     const lifecycle = createAffectedGeneralActionLifecycle(store);
     const created = await lifecycle.createGeneralAction({
       ownerUserId: OWNER,
@@ -214,5 +225,57 @@ describe("General Action affected-scope contract", () => {
       entityId: created.result.id,
       viewerUserId: MEMBER,
     });
+  });
+
+  it("returns every selected viewer scope when a suggestion is accepted as shared", async () => {
+    const store = createInMemoryGeneralActionLifecycleStore();
+    const household = await createSharedHousehold(store);
+    const source = await store.createSourceRecord({
+      ownerUserId: OWNER,
+      sourceType: "manual",
+      content: "Plan the shared household repair.",
+      rawContent: null,
+      retentionPolicy: "retain",
+      status: "active",
+      confidence: "medium",
+      sensitivity: "normal",
+      scope: "private",
+      importance: 3,
+      metadataJson: {},
+    });
+    const review = createSuggestedGeneralActionReview(store);
+    const suggested = await review.suggestGeneralAction({
+      ownerUserId: OWNER,
+      title: "Plan the household repair",
+      sourceRecordId: source.id,
+    });
+    const accepted = await suggestedGeneralActionMutationOutcome(
+      store,
+      review.acceptSuggestedGeneralAction({
+        actorUserId: OWNER,
+        generalActionId: suggested.action.id,
+        scope: "shared",
+        householdId: household.id,
+        selectedUserIds: [MEMBER],
+      }),
+      { includeCurrentAudience: true },
+    );
+
+    expect(accepted.affectedScopes).toEqual(
+      expect.arrayContaining([
+        {
+          kind: "viewer-collection",
+          collection: "general-actions",
+          viewerUserId: MEMBER,
+        },
+        {
+          kind: "viewer-entity",
+          entity: "general-action",
+          entityId: suggested.action.id,
+          viewerUserId: MEMBER,
+        },
+        { kind: "owner-collection", collection: "today", ownerUserId: MEMBER },
+      ]),
+    );
   });
 });

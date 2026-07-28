@@ -92,9 +92,12 @@ describe("Phase Seven phone browser proof", () => {
     await page.viewport(390, 844);
     document.documentElement.style.fontSize = "200%";
     const handlers = {
-      refresh: vi.fn(async () => today),
-      suppress: vi.fn(async () => ({ ...today, items: [] })),
-      act: vi.fn(async () => today),
+      refresh: vi.fn(async () => ({ ok: true as const, view: today })),
+      suppress: vi.fn(async () => ({
+        ok: true as const,
+        view: { ...today, items: [] },
+      })),
+      act: vi.fn(async () => ({ ok: true as const, view: today })),
     };
     const captureHandlers = {
       addPerson: vi.fn(),

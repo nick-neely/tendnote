@@ -45,6 +45,8 @@ const scopes: AffectedScope[] = [
   { kind: "household-collection", collection: "assets", householdId: "household-1" },
   { kind: "linked-entity", entity: "asset", entityId: "asset-1" },
   { kind: "owner-collection", collection: "saved-items", ownerUserId: "owner-1" },
+  { kind: "owner-collection", collection: "account", ownerUserId: "owner-1" },
+  { kind: "owner-collection", collection: "briefs", ownerUserId: "owner-1" },
   { kind: "viewer-collection", collection: "saved-items", viewerUserId: "member-1" },
   {
     kind: "viewer-entity",
@@ -87,6 +89,12 @@ describe("affected-scope reconciliation", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/saved-items");
     expect(revalidatePath).toHaveBeenCalledWith("/people");
     expect(revalidatePath).toHaveBeenCalledWith("/people/person-1");
+    expect(revalidatePath).toHaveBeenCalledWith("/account");
+    expect(revalidatePath).toHaveBeenCalledWith("/account/contacts/import");
+    expect(revalidatePath).toHaveBeenCalledWith("/account/discord");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
+    expect(revalidatePath).not.toHaveBeenCalledWith("/review");
+    expect(revalidatePath).not.toHaveBeenCalledWith("/today");
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
@@ -97,6 +105,10 @@ describe("affected-scope reconciliation", () => {
     expect(revalidateTag).toHaveBeenCalledWith("action:owner:owner-1:action:action-1", "max");
     expect(revalidateTag).toHaveBeenCalledWith("people:visible-person:person-1", "max");
     expect(updateTag).not.toHaveBeenCalled();
-    expect(revalidatePath).not.toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledWith("/account");
+    expect(revalidatePath).toHaveBeenCalledWith("/account/contacts/import");
+    expect(revalidatePath).toHaveBeenCalledWith("/account/discord");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
+    expect(revalidatePath).not.toHaveBeenCalledWith("/actions");
   });
 });

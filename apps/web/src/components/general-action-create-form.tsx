@@ -38,6 +38,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
 import type { GeneralActionView } from "@/lib/general-action-view";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import { getReminderInstallationId } from "@/lib/reminder-registration";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 import { useMutationSubmit } from "@/lib/use-mutation-submit";
@@ -184,13 +185,15 @@ export function CreateActionForm({
         if (reminderEnabled && dueDate) {
           try {
             const clientInstallationId = getReminderInstallationId(window.localStorage);
-            const result = await saveReminderAction({
-              recordKind: recurrence ? "routine" : "general_action",
-              recordId: view.id,
-              clientInstallationId,
-              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-              schedule: reminderChoice,
-            });
+            const result = unwrapOwnerActionResult(
+              await saveReminderAction({
+                recordKind: recurrence ? "routine" : "general_action",
+                recordId: view.id,
+                clientInstallationId,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                schedule: reminderChoice,
+              }),
+            );
             if (result.nextValidChoice) {
               setPastLeadRecovery({
                 actionId: view.id,
@@ -328,13 +331,15 @@ export function CreateActionForm({
             onClick={async () => {
               setRecoveryPending(true);
               try {
-                const result = await saveReminderAction({
-                  recordKind: pastLeadRecovery.recordKind,
-                  recordId: pastLeadRecovery.actionId,
-                  clientInstallationId: pastLeadRecovery.clientInstallationId,
-                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                  schedule: { kind: "relative", leadMinutes: 0 },
-                });
+                const result = unwrapOwnerActionResult(
+                  await saveReminderAction({
+                    recordKind: pastLeadRecovery.recordKind,
+                    recordId: pastLeadRecovery.actionId,
+                    clientInstallationId: pastLeadRecovery.clientInstallationId,
+                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    schedule: { kind: "relative", leadMinutes: 0 },
+                  }),
+                );
                 setPastLeadRecovery(null);
                 if (result.optIn.state === "offer") {
                   setOptInInstallationId(result.optIn.clientInstallationId);

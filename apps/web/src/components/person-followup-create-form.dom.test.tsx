@@ -42,17 +42,20 @@ it("does not confirm a Follow-Up reminder whose selected alert time has passed",
     },
   });
   saveReminderAction.mockResolvedValue({
-    optIn: { state: "none", clientInstallationId: "browser-installation-1" },
-    nextValidChoice: {
-      label: "At 9:00 AM on the due date",
-      choice: { kind: "relative", leadMinutes: 0 },
-    },
-    schedule: {
-      kind: "exact",
-      localTime: "09:00",
-      leadMinutes: null,
-      timeZone: "America/Chicago",
-      intendedAtISO: "2026-07-21T14:00:00.000Z",
+    ok: true,
+    view: {
+      optIn: { state: "none", clientInstallationId: "browser-installation-1" },
+      nextValidChoice: {
+        label: "At 9:00 AM on the due date",
+        choice: { kind: "relative", leadMinutes: 0 },
+      },
+      schedule: {
+        kind: "exact",
+        localTime: "09:00",
+        leadMinutes: null,
+        timeZone: "America/Chicago",
+        intendedAtISO: "2026-07-21T14:00:00.000Z",
+      },
     },
   });
   render(

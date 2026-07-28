@@ -27,8 +27,8 @@ type MockAssetCardProps = {
 };
 
 vi.mock("@/app/actions/memory-review", () => ({
-  dismissSuggestedMemoryAction: vi.fn(),
-  saveSuggestedMemoryAction: vi.fn(),
+  dismissSuggestedMemoryAction: vi.fn().mockResolvedValue({ ok: true, view: undefined }),
+  saveSuggestedMemoryAction: vi.fn().mockResolvedValue({ ok: true, view: undefined }),
 }));
 vi.mock("@/app/actions/conversational-capture", () => ({
   addCapturePersonAction: vi.fn(),

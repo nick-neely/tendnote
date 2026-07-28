@@ -1,6 +1,11 @@
 import type { ConversationalCaptureConfirmation } from "@tendnote/domain";
 import { conversationalCaptureOutcomeConfirmationSchema } from "@tendnote/domain/conversational-capture";
 import { formatReminderScheduleLabel } from "@tendnote/domain/reminders";
+import {
+  affectedScopesForAccount,
+  affectedScopesForReminder,
+  type MutationOutcome,
+} from "./affected-scopes";
 import { createDrizzleBackgroundJobDeliveryStore } from "./background-job-deliveries";
 import type {
   CaptureOutcomeResult,
@@ -159,21 +164,113 @@ export const reminderService = createReminderService({
 
 export const saveGeneralActionReminder = reminderService.saveGeneralActionReminder;
 export const clearGeneralActionReminder = reminderService.clearGeneralActionReminder;
-export const saveReminder = reminderService.saveReminder;
-export const clearReminder = reminderService.clearReminder;
-export const reconcileReminderRecord = reminderService.reconcileReminderRecord;
-export const registerReminderInstallation = reminderService.registerReminderInstallation;
-export const setReminderOptInDecision = reminderService.setReminderOptInDecision;
-export const beginReminderInstallationOptIn = reminderService.beginReminderInstallationOptIn;
-export const markReminderStandaloneContinuation =
-  reminderService.markReminderStandaloneContinuation;
-export const claimReminderStandaloneContinuation =
-  reminderService.claimReminderStandaloneContinuation;
-export const setReminderInstallationPreviewMode =
-  reminderService.setReminderInstallationPreviewMode;
-export const disableReminderInstallation = reminderService.disableReminderInstallation;
-export const disableCurrentReminderInstallation =
-  reminderService.disableCurrentReminderInstallation;
+
+export async function reminderMutationOutcome<
+  TInput extends {
+    ownerUserId: string;
+    recordKind: "general_action" | "saved_item" | "follow_up" | "routine";
+    recordId: string;
+  },
+  T,
+>(input: TInput, resultPromise: Promise<T>): Promise<MutationOutcome<T>> {
+  return {
+    result: await resultPromise,
+    affectedScopes: affectedScopesForReminder(input),
+  };
+}
+
+export async function accountMutationOutcome<T>(
+  ownerUserId: string,
+  resultPromise: Promise<T>,
+): Promise<MutationOutcome<T>> {
+  return {
+    result: await resultPromise,
+    affectedScopes: affectedScopesForAccount(ownerUserId),
+  };
+}
+
+export function saveReminder(input: Parameters<typeof reminderService.saveReminder>[0]) {
+  return reminderMutationOutcome(input, reminderService.saveReminder(input));
+}
+
+export function clearReminder(input: Parameters<typeof reminderService.clearReminder>[0]) {
+  return reminderMutationOutcome(input, reminderService.clearReminder(input));
+}
+
+export function reconcileReminderRecord(
+  input: Parameters<typeof reminderService.reconcileReminderRecord>[0],
+) {
+  return reminderMutationOutcome(input, reminderService.reconcileReminderRecord(input));
+}
+
+export function registerReminderInstallation(
+  input: Parameters<typeof reminderService.registerReminderInstallation>[0],
+) {
+  return accountMutationOutcome(
+    input.ownerUserId,
+    reminderService.registerReminderInstallation(input),
+  );
+}
+
+export function setReminderOptInDecision(
+  input: Parameters<typeof reminderService.setReminderOptInDecision>[0],
+) {
+  return accountMutationOutcome(input.ownerUserId, reminderService.setReminderOptInDecision(input));
+}
+
+export function beginReminderInstallationOptIn(
+  input: Parameters<typeof reminderService.beginReminderInstallationOptIn>[0],
+) {
+  return accountMutationOutcome(
+    input.ownerUserId,
+    reminderService.beginReminderInstallationOptIn(input),
+  );
+}
+
+export function markReminderStandaloneContinuation(
+  input: Parameters<typeof reminderService.markReminderStandaloneContinuation>[0],
+) {
+  return accountMutationOutcome(
+    input.ownerUserId,
+    reminderService.markReminderStandaloneContinuation(input),
+  );
+}
+
+export function claimReminderStandaloneContinuation(
+  input: Parameters<typeof reminderService.claimReminderStandaloneContinuation>[0],
+) {
+  return accountMutationOutcome(
+    input.ownerUserId,
+    reminderService.claimReminderStandaloneContinuation(input),
+  );
+}
+
+export function setReminderInstallationPreviewMode(
+  input: Parameters<typeof reminderService.setReminderInstallationPreviewMode>[0],
+) {
+  return accountMutationOutcome(
+    input.ownerUserId,
+    reminderService.setReminderInstallationPreviewMode(input),
+  );
+}
+
+export function disableReminderInstallation(
+  input: Parameters<typeof reminderService.disableReminderInstallation>[0],
+) {
+  return accountMutationOutcome(
+    input.ownerUserId,
+    reminderService.disableReminderInstallation(input),
+  );
+}
+
+export function disableCurrentReminderInstallation(
+  input: Parameters<typeof reminderService.disableCurrentReminderInstallation>[0],
+) {
+  return accountMutationOutcome(
+    input.ownerUserId,
+    reminderService.disableCurrentReminderInstallation(input),
+  );
+}
 export const listReminderInstallations = reminderService.listReminderInstallations;
 export const getReminderInstallationState = reminderService.getReminderInstallationState;
 export const resolveReminderDeepLink = reminderService.resolveReminderDeepLink;
@@ -260,7 +357,7 @@ function singleCaptureOutcome(result: ConversationalCaptureResult): CaptureOutco
 export function createExplicitCaptureReminderScheduler(saveReminderImpl: typeof saveReminder) {
   return async function scheduleExplicitCaptureReminders(
     input: ExplicitCaptureReminderInput,
-  ): Promise<ConversationalCaptureConfirmation | undefined> {
+  ): Promise<MutationOutcome<ConversationalCaptureConfirmation | undefined>> {
     const { result } = input;
     const hasScopedReminderSchedule =
       result.reminderSchedule !== undefined ||
@@ -274,17 +371,19 @@ export function createExplicitCaptureReminderScheduler(saveReminderImpl: typeof 
       !input.timeZone ||
       !result.confirmation
     ) {
-      return result.confirmation;
+      return { result: result.confirmation, affectedScopes: [] };
     }
     const clientInstallationId = input.clientInstallationId;
     const timeZone = input.timeZone;
 
     async function scheduleOutcome(
       outcome: CaptureOutcomeResult,
-    ): Promise<CaptureOutcomeResult["confirmation"]> {
-      if (hasScopedReminderSchedule && !outcome.reminderSchedule) return outcome.confirmation;
+    ): Promise<MutationOutcome<CaptureOutcomeResult["confirmation"]>> {
+      if (hasScopedReminderSchedule && !outcome.reminderSchedule) {
+        return { result: outcome.confirmation, affectedScopes: [] };
+      }
       const target = captureReminderTarget(outcome);
-      if (!target) return outcome.confirmation;
+      if (!target) return { result: outcome.confirmation, affectedScopes: [] };
       const reminder = await saveReminderImpl({
         ownerUserId: input.ownerUserId,
         ...target,
@@ -292,23 +391,33 @@ export function createExplicitCaptureReminderScheduler(saveReminderImpl: typeof 
         timeZone,
         now: input.now,
       });
-      return conversationalCaptureOutcomeConfirmationSchema.parse({
-        ...outcome.confirmation,
-        interpreted: {
-          ...outcome.confirmation.interpreted,
-          reminderSchedule: formatReminderScheduleLabel(reminder.schedule, target.timeSemantics),
-        },
-      });
+      return {
+        result: conversationalCaptureOutcomeConfirmationSchema.parse({
+          ...outcome.confirmation,
+          interpreted: {
+            ...outcome.confirmation.interpreted,
+            reminderSchedule: formatReminderScheduleLabel(
+              reminder.result.schedule,
+              target.timeSemantics,
+            ),
+          },
+        }),
+        affectedScopes: reminder.affectedScopes,
+      };
     }
 
     if (result.confirmation.destination === "Grouped") {
+      const outcomes = await Promise.all((result.outcomes ?? []).map(scheduleOutcome));
       return {
-        ...result.confirmation,
-        outcomes: await Promise.all((result.outcomes ?? []).map(scheduleOutcome)),
+        result: {
+          ...result.confirmation,
+          outcomes: outcomes.map((outcome) => outcome.result),
+        },
+        affectedScopes: outcomes.flatMap((outcome) => outcome.affectedScopes),
       };
     }
     const outcome = singleCaptureOutcome(result);
-    return outcome ? scheduleOutcome(outcome) : result.confirmation;
+    return outcome ? scheduleOutcome(outcome) : { result: result.confirmation, affectedScopes: [] };
   };
 }
 

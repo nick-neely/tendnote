@@ -8,8 +8,6 @@ const {
   markProviderConnectionRevoked,
   recordProviderConnectionError,
   requireAdmittedOwner,
-  requireAdmittedOwnerForAction,
-  updateAccountMutationScopes,
 } = vi.hoisted(() => ({
   listProviderConnections: vi.fn(),
   setProviderConnectionStatus: vi.fn(),
@@ -18,8 +16,6 @@ const {
   markProviderConnectionRevoked: vi.fn(),
   recordProviderConnectionError: vi.fn(),
   requireAdmittedOwner: vi.fn(),
-  requireAdmittedOwnerForAction: vi.fn(),
-  updateAccountMutationScopes: vi.fn(),
 }));
 
 // `server-only` throws outside an RSC bundle; stub it so the module loads in tests.
@@ -34,17 +30,10 @@ vi.mock("@tendnote/db/queries/provider-connections", () => ({
 }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwner,
-  requireAdmittedOwnerForAction,
 }));
-vi.mock("@/lib/cache/account-mutation-scopes", () => ({
-  accountMutationScopes: {
-    forOwner: (ownerUserId: string) => [{ kind: "account-owner", ownerUserId }],
-  },
-  updateAccountMutationScopes,
-}));
+vi.mock("@/lib/cache/reconcile-affected-scopes", () => ({ reconcileAffectedScopes: vi.fn() }));
 
 import {
-  disconnectOwnerGoogleCalendar,
   disconnectOwnerGoogleContacts,
   getOwnerProviderConnections,
   prepareOwnerGoogleContactsConnect,
@@ -57,7 +46,6 @@ beforeEach(() => {
   connectProviderConnection.mockReset();
   isProviderCapabilityConnected.mockReset();
   requireAdmittedOwner.mockReset();
-  requireAdmittedOwnerForAction.mockReset();
   markProviderConnectionRevoked.mockReset();
   recordProviderConnectionError.mockReset();
 });
@@ -84,10 +72,10 @@ describe("getOwnerProviderConnections", () => {
 
 describe("setOwnerProviderConnectionStatus", () => {
   it("mutates status scoped to the resolved admitted owner", async () => {
-    requireAdmittedOwnerForAction.mockResolvedValue("user-1");
     setProviderConnectionStatus.mockResolvedValue({ id: "pc-1", status: "pending" });
 
-    await setOwnerProviderConnectionStatus({
+    const outcome = await setOwnerProviderConnectionStatus({
+      ownerUserId: "user-1",
       providerKey: "google",
       capabilityKey: "calendar",
       status: "pending",
@@ -99,47 +87,17 @@ describe("setOwnerProviderConnectionStatus", () => {
       capabilityKey: "calendar",
       status: "pending",
     });
-  });
-
-  it("does not mutate when the action gate denies a pending/unauthenticated caller", async () => {
-    // requireAdmittedOwnerForAction fails closed (throws) for non-admitted callers.
-    requireAdmittedOwnerForAction.mockRejectedValue(new Error("not admitted"));
-
-    await expect(
-      setOwnerProviderConnectionStatus({
-        providerKey: "google",
-        capabilityKey: "calendar",
-        status: "connected",
-      }),
-    ).rejects.toThrow();
-    expect(setProviderConnectionStatus).not.toHaveBeenCalled();
-  });
-});
-
-describe("disconnectOwnerGoogleCalendar", () => {
-  it("fails closed when the action gate denies the caller — nothing is revoked", async () => {
-    requireAdmittedOwnerForAction.mockRejectedValue(new Error("not admitted"));
-
-    await expect(disconnectOwnerGoogleCalendar()).rejects.toThrow();
-    // The gate runs before any provider mutation; markRevoked — which also clears the
-    // Calendar cache now (ADR-0080) — is never reached.
-    expect(markProviderConnectionRevoked).not.toHaveBeenCalled();
+    expect(outcome.affectedScopes).toEqual([
+      { kind: "owner-collection", collection: "account", ownerUserId: "user-1" },
+    ]);
   });
 });
 
 describe("disconnectOwnerGoogleContacts", () => {
-  it("fails closed when the action gate denies the caller — nothing is revoked", async () => {
-    requireAdmittedOwnerForAction.mockRejectedValue(new Error("not admitted"));
-
-    await expect(disconnectOwnerGoogleContacts()).rejects.toThrow();
-    expect(markProviderConnectionRevoked).not.toHaveBeenCalled();
-  });
-
   it("marks only the Contacts capability revoked for the admitted owner", async () => {
-    requireAdmittedOwnerForAction.mockResolvedValue("user-1");
     markProviderConnectionRevoked.mockResolvedValue({ status: "revoked" });
 
-    await disconnectOwnerGoogleContacts();
+    await disconnectOwnerGoogleContacts({ ownerUserId: "user-1" });
 
     expect(markProviderConnectionRevoked).toHaveBeenCalledWith({
       ownerUserId: "user-1",
@@ -152,10 +110,9 @@ describe("disconnectOwnerGoogleContacts", () => {
 
 describe("prepareOwnerGoogleContactsConnect", () => {
   it("clears only the local Contacts connection state after an admitted owner explicitly reconnects", async () => {
-    requireAdmittedOwnerForAction.mockResolvedValue("user-1");
     setProviderConnectionStatus.mockResolvedValue({ status: "ready" });
 
-    await prepareOwnerGoogleContactsConnect();
+    await prepareOwnerGoogleContactsConnect({ ownerUserId: "user-1" });
 
     expect(setProviderConnectionStatus).toHaveBeenCalledWith({
       ownerUserId: "user-1",

@@ -11,6 +11,7 @@ import { BellIcon, BellRingIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import {
   attemptReminderRegistration,
   detectReminderCapability,
@@ -161,8 +162,12 @@ function useReminderOptIn(clientInstallationId: string, onDismiss: () => void) {
       notification: "Notification" in window ? Notification : null,
       serviceWorker: "serviceWorker" in navigator ? navigator.serviceWorker : null,
       pushSupported: "PushManager" in window,
-      register: registerReminderInstallationAction,
-      decide: (decision) => setReminderOptInDecisionAction({ clientInstallationId, decision }),
+      register: async (input) =>
+        unwrapOwnerActionResult(await registerReminderInstallationAction(input)),
+      decide: async (decision) =>
+        unwrapOwnerActionResult(
+          await setReminderOptInDecisionAction({ clientInstallationId, decision }),
+        ),
     });
     setOutcome(result);
     try {
@@ -177,7 +182,12 @@ function useReminderOptIn(clientInstallationId: string, onDismiss: () => void) {
   async function postpone() {
     setPendingAction("postpone");
     try {
-      await setReminderOptInDecisionAction({ clientInstallationId, decision: "postponed" });
+      unwrapOwnerActionResult(
+        await setReminderOptInDecisionAction({
+          clientInstallationId,
+          decision: "postponed",
+        }),
+      );
       onDismiss();
     } finally {
       setPendingAction(null);

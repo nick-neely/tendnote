@@ -1,5 +1,8 @@
 import { createDrizzleGeneralActionLifecycleStore } from "./general-actions/drizzle-store";
-import { createAffectedGeneralActionLifecycle } from "./general-actions/mutation-lifecycle";
+import {
+  createAffectedGeneralActionLifecycle,
+  suggestedGeneralActionMutationOutcome,
+} from "./general-actions/mutation-lifecycle";
 import { createSuggestedGeneralActionReview } from "./general-actions/review";
 import type {
   AcceptSuggestedGeneralActionInput,
@@ -18,7 +21,7 @@ import type {
 import { reconcileReminderRecord } from "./reminders";
 import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 
-export type * from "./affected-scopes";
+export * from "./affected-scopes";
 export {
   createDrizzleGeneralActionLifecycleStore,
   createDrizzleGeneralActionStore,
@@ -172,7 +175,10 @@ export async function listGeneralActionHistory(input: GeneralActionActionInput) 
 }
 
 export async function suggestGeneralAction(input: SuggestGeneralActionInput) {
-  return defaultSuggestedGeneralActionReview.suggestGeneralAction(input);
+  return suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.suggestGeneralAction(input),
+  );
 }
 
 export async function listSuggestedGeneralActionReviews(
@@ -186,17 +192,30 @@ export async function getSuggestedGeneralActionReview(input: GeneralActionAction
 }
 
 export async function acceptSuggestedGeneralAction(input: AcceptSuggestedGeneralActionInput) {
-  return defaultSuggestedGeneralActionReview.acceptSuggestedGeneralAction(input);
+  return suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.acceptSuggestedGeneralAction(input),
+    { includeCurrentAudience: true },
+  );
 }
 
 export async function editSuggestedGeneralAction(input: EditSuggestedGeneralActionInput) {
-  return defaultSuggestedGeneralActionReview.editSuggestedGeneralAction(input);
+  return suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.editSuggestedGeneralAction(input),
+  );
 }
 
 export async function dismissSuggestedGeneralAction(input: GeneralActionActionInput) {
-  return defaultSuggestedGeneralActionReview.dismissSuggestedGeneralAction(input);
+  return suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.dismissSuggestedGeneralAction(input),
+  );
 }
 
 export async function ignoreSuggestedGeneralAction(input: GeneralActionActionInput) {
-  return defaultSuggestedGeneralActionReview.ignoreSuggestedGeneralAction(input);
+  return suggestedGeneralActionMutationOutcome(
+    defaultGeneralActionStore,
+    defaultSuggestedGeneralActionReview.ignoreSuggestedGeneralAction(input),
+  );
 }

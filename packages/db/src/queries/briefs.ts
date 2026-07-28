@@ -1,6 +1,11 @@
 import type { BriefCadence } from "@tendnote/domain";
 import { generateDeterministicBriefSummary } from "@tendnote/domain";
 import { gateway, generateText } from "ai";
+import {
+  affectedScopesForBriefs,
+  affectedScopesForOwnerSurfaces,
+  type MutationOutcome,
+} from "./affected-scopes";
 import type { AcceptBriefSuggestedFollowupInput } from "./briefs/accept-followup";
 import { createBriefSuggestedFollowupAcceptance } from "./briefs/accept-followup";
 import {
@@ -142,10 +147,28 @@ const defaultManualBriefGeneration = createManualBriefGeneration(
   { summaryAdapter: defaultBriefSummaryAdapter, calendarContext: defaultCalendarBriefContext },
 );
 
-export async function generateManualBrief(input: ManualBriefInput) {
+export async function generateManualBrief(
+  input: ManualBriefInput,
+): Promise<
+  MutationOutcome<Awaited<ReturnType<typeof defaultManualBriefGeneration.generateCurrentBrief>>>
+> {
   const brief = await defaultManualBriefGeneration.generateCurrentBrief(input);
   await runCalendarSuggestionsBestEffort({ ownerUserId: input.ownerUserId, now: input.now });
-  return brief;
+  return {
+    result: brief,
+    affectedScopes:
+      brief.outcome === "returned_existing" ? [] : affectedScopesForBriefs(input.ownerUserId),
+  };
+}
+
+export async function briefMutationOutcome<T>(
+  ownerUserId: string,
+  resultPromise: Promise<T>,
+): Promise<MutationOutcome<T>> {
+  return {
+    result: await resultPromise,
+    affectedScopes: affectedScopesForBriefs(ownerUserId),
+  };
 }
 
 // Dashboard read + item-action defaults (issue #70). One drizzle lifecycle store
@@ -164,16 +187,16 @@ export function getCurrentBrief(input: {
   return defaultBriefLifecycleStore.findCurrentBrief(input);
 }
 
-export function dismissBriefItem(input: BriefItemActionInput) {
-  return defaultBriefLifecycle.dismissBriefItem(input);
+export async function dismissBriefItem(input: BriefItemActionInput) {
+  return briefMutationOutcome(input.ownerUserId, defaultBriefLifecycle.dismissBriefItem(input));
 }
 
-export function snoozeBriefItem(input: SnoozeBriefItemInput) {
-  return defaultBriefLifecycle.snoozeBriefItem(input);
+export async function snoozeBriefItem(input: SnoozeBriefItemInput) {
+  return briefMutationOutcome(input.ownerUserId, defaultBriefLifecycle.snoozeBriefItem(input));
 }
 
-export function markBriefItemActed(input: BriefItemActionInput) {
-  return defaultBriefLifecycle.markBriefItemActed(input);
+export async function markBriefItemActed(input: BriefItemActionInput) {
+  return briefMutationOutcome(input.ownerUserId, defaultBriefLifecycle.markBriefItemActed(input));
 }
 
 // Accepting a suggested-followup brief item delegates to the existing shared
@@ -186,5 +209,29 @@ const defaultBriefSuggestedFollowupAcceptance = createBriefSuggestedFollowupAcce
 });
 
 export function acceptBriefSuggestedFollowup(input: AcceptBriefSuggestedFollowupInput) {
-  return defaultBriefSuggestedFollowupAcceptance.acceptBriefSuggestedFollowup(input);
+  return defaultBriefSuggestedFollowupAcceptance
+    .acceptBriefSuggestedFollowup(input)
+    .then((result) => ({
+      result,
+      affectedScopes: [
+        ...affectedScopesForBriefs(input.ownerUserId),
+        {
+          kind: "owner-collection" as const,
+          collection: "people" as const,
+          ownerUserId: input.ownerUserId,
+        },
+        {
+          kind: "viewer-entity" as const,
+          entity: "person" as const,
+          entityId: result.followup.followup.personId,
+          viewerUserId: input.ownerUserId,
+        },
+        {
+          kind: "visible-entity" as const,
+          entity: "person" as const,
+          entityId: result.followup.followup.personId,
+        },
+        ...affectedScopesForOwnerSurfaces(input.ownerUserId),
+      ],
+    }));
 }

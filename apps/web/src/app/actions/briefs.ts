@@ -4,16 +4,12 @@ import {
   acceptBriefSuggestedFollowup,
   dismissBriefItem,
   generateManualBrief,
-  type ManualBriefOutcome,
   snoozeBriefItem,
 } from "@tendnote/db/queries/briefs";
 import { briefCadenceSchema } from "@tendnote/domain";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
-import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
-import { enforceProductBudget } from "@/lib/rate-limit/guards";
+import { runOwnerAction } from "@/lib/owner-action";
 
 // Default snooze defers a brief item by a week — long enough to clear it from the
 // rail without losing the underlying relationship context (PRD #65).
@@ -27,12 +23,6 @@ const generateBriefSchema = z.object({
   regenerate: z.boolean().optional(),
 });
 
-export type GenerateBriefResult = {
-  briefId: string;
-  cadence: "daily" | "weekly";
-  outcome: ManualBriefOutcome;
-};
-
 /**
  * Narrow owner-scoped manual generate/regenerate action for the current daily or
  * weekly brief (PRD #65, issue #69). It resolves the signed-in owner, calls the
@@ -42,54 +32,64 @@ export type GenerateBriefResult = {
 export async function generateBriefAction(input: {
   cadence: "daily" | "weekly";
   regenerate?: boolean;
-}): Promise<GenerateBriefResult> {
-  const { cadence, regenerate } = generateBriefSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  // Brief generation is model-backed; charge the shared server-action budget.
-  await enforceProductBudget({ subject: ownerUserId, costCategory: "server-action" });
-
-  const result = await generateManualBrief({
-    ownerUserId,
-    cadence,
-    localDate: currentLocalDate(),
-    regenerate,
+}) {
+  return runOwnerAction({
+    schema: generateBriefSchema,
+    input,
+    budget: { costCategory: "server-action" },
+    body: ({ ownerUserId, input: { cadence, regenerate } }) =>
+      generateManualBrief({
+        ownerUserId,
+        cadence,
+        localDate: currentLocalDate(),
+        regenerate,
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => ({
+      briefId: outcome.result.brief.id,
+      cadence: outcome.result.brief.cadence,
+      outcome: outcome.result.outcome,
+    }),
   });
-
-  revalidatePath("/");
-
-  return { briefId: result.brief.id, cadence, outcome: result.outcome };
 }
 
 const briefItemActionSchema = z.object({ briefItemId: z.uuid() });
-
-export type BriefItemResolution = { briefItemId: string; status: string };
 
 /**
  * Dismisses a brief item from the dashboard. Local to the brief surface — the
  * underlying memory, source record, and follow-up are untouched (PRD #65).
  */
-export async function dismissBriefItemAction(input: {
-  briefItemId: string;
-}): Promise<BriefItemResolution> {
-  const { briefItemId } = briefItemActionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const item = await dismissBriefItem({ ownerUserId, briefItemId });
-
-  revalidatePath("/");
-  return { briefItemId: item.id, status: item.status };
+export async function dismissBriefItemAction(input: { briefItemId: string }) {
+  return runOwnerAction({
+    schema: briefItemActionSchema,
+    input,
+    body: ({ ownerUserId, input: { briefItemId } }) =>
+      dismissBriefItem({ ownerUserId, briefItemId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => ({
+      briefItemId: outcome.result.id,
+      status: outcome.result.status,
+    }),
+  });
 }
 
 /** Snoozes a brief item, deferring it without losing the underlying context. */
-export async function snoozeBriefItemAction(input: {
-  briefItemId: string;
-}): Promise<BriefItemResolution> {
-  const { briefItemId } = briefItemActionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const snoozedUntil = new Date(Date.now() + SNOOZE_DAYS * 24 * 60 * 60 * 1000);
-  const item = await snoozeBriefItem({ ownerUserId, briefItemId, snoozedUntil });
-
-  revalidatePath("/");
-  return { briefItemId: item.id, status: item.status };
+export async function snoozeBriefItemAction(input: { briefItemId: string }) {
+  return runOwnerAction({
+    schema: briefItemActionSchema,
+    input,
+    body: ({ ownerUserId, input: { briefItemId } }) =>
+      snoozeBriefItem({
+        ownerUserId,
+        briefItemId,
+        snoozedUntil: new Date(Date.now() + SNOOZE_DAYS * 24 * 60 * 60 * 1000),
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => ({
+      briefItemId: outcome.result.id,
+      status: outcome.result.status,
+    }),
+  });
 }
 
 /**
@@ -98,19 +98,16 @@ export async function snoozeBriefItemAction(input: {
  * marks the brief item acted-on only after that succeeds (PRD #65, issue #71). A
  * failure propagates so the rail keeps the item rather than hiding it.
  */
-export async function acceptBriefFollowupAction(input: {
-  briefItemId: string;
-}): Promise<BriefItemResolution> {
-  const { briefItemId } = briefItemActionSchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const result = await acceptBriefSuggestedFollowup({ ownerUserId, briefItemId });
-
-  revalidatePath("/");
-  // Acceptance promotes a real reminder on the person's ledger, so re-render their
-  // profile too — unlike dismiss/snooze, which never touch underlying records.
-  invalidatePersonMutation({
-    ownerUserId,
-    personId: result.followup.followup.personId,
+export async function acceptBriefFollowupAction(input: { briefItemId: string }) {
+  return runOwnerAction({
+    schema: briefItemActionSchema,
+    input,
+    body: ({ ownerUserId, input: { briefItemId } }) =>
+      acceptBriefSuggestedFollowup({ ownerUserId, briefItemId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome) => ({
+      briefItemId: outcome.result.briefItem.id,
+      status: outcome.result.briefItem.status,
+    }),
   });
-  return { briefItemId: result.briefItem.id, status: result.briefItem.status };
 }

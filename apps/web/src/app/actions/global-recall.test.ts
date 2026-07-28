@@ -1,19 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  enforceProductBudgetSpy,
+  requireAdmittedOwnerForActionSpy,
+} from "@/test/action-adapter-mocks";
 
-const { requireAdmittedOwnerForAction, searchGlobalRecall } = vi.hoisted(() => ({
+const { searchGlobalRecall } = vi.hoisted(() => ({
   searchGlobalRecall: vi.fn(),
-  requireAdmittedOwnerForAction: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/global-recall", () => ({ searchGlobalRecall }));
-vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwnerForAction }));
 
 import { globalRecallAction } from "./global-recall";
 
 describe("globalRecallAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAdmittedOwnerForAction.mockResolvedValue("owner-1");
+    requireAdmittedOwnerForActionSpy.mockResolvedValue("owner-1");
     searchGlobalRecall.mockResolvedValue({
       query: "filter",
       results: [],
@@ -24,7 +26,8 @@ describe("globalRecallAction", () => {
 
   it("derives the admitted owner and delegates validated input to the shared seam", async () => {
     await expect(globalRecallAction({ query: " filter " })).resolves.toMatchObject({
-      query: "filter",
+      ok: true,
+      view: { query: "filter" },
     });
     expect(searchGlobalRecall).toHaveBeenCalledWith({
       ownerUserId: "owner-1",
@@ -34,6 +37,10 @@ describe("globalRecallAction", () => {
       includeRestricted: false,
       offset: 0,
       limit: 12,
+    });
+    expect(enforceProductBudgetSpy).toHaveBeenCalledWith({
+      subject: "owner-1",
+      costCategory: "embedding",
     });
   });
 });

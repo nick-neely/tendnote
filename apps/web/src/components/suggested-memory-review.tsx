@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import type { SuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 
 const SENSITIVITY_OPTIONS: { value: Sensitivity; label: string }[] = [
@@ -131,19 +132,21 @@ function SuggestedMemoryReviewCard({
 
   function handleSave() {
     leaveThen(async () => {
-      await saveSuggestedMemoryAction({ memoryId: memory.id, edit: buildEdit() });
+      unwrapOwnerActionResult(
+        await saveSuggestedMemoryAction({ memoryId: memory.id, edit: buildEdit() }),
+      );
     });
   }
 
   function handleDismiss() {
     leaveThen(async () => {
-      await dismissSuggestedMemoryAction({ memoryId: memory.id });
+      unwrapOwnerActionResult(await dismissSuggestedMemoryAction({ memoryId: memory.id }));
     });
   }
 
   function handleArchive() {
     leaveThen(async () => {
-      await archiveSuggestedMemoryAction({ memoryId: memory.id });
+      unwrapOwnerActionResult(await archiveSuggestedMemoryAction({ memoryId: memory.id }));
     });
   }
 
@@ -155,10 +158,12 @@ function SuggestedMemoryReviewCard({
     setError(null);
     startTransition(async () => {
       try {
-        const updated = await editSuggestedMemoryAction({
-          memoryId: memory.id,
-          edit: { content: trimmedDraft, ...(sensitivityChanged ? { sensitivity } : {}) },
-        });
+        const updated = unwrapOwnerActionResult(
+          await editSuggestedMemoryAction({
+            memoryId: memory.id,
+            edit: { content: trimmedDraft, ...(sensitivityChanged ? { sensitivity } : {}) },
+          }),
+        );
         onUpdate(updated);
         setIsEditing(false);
       } catch {

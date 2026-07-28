@@ -16,6 +16,7 @@ import {
   describeProposalOutcome,
   type PendingAssetActionProposalView,
 } from "@/lib/asset-action-proposal-view";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
 /**
  * The Asset Profile's reminder proposals (#203): the owner asks this asset's reviewed
@@ -166,8 +167,12 @@ function ProposalRow({
           disabled={pending}
           onClick={() =>
             run(
-              () =>
-                acceptSuggestedGeneralActionAction({ generalActionId: proposal.generalActionId }),
+              async () =>
+                unwrapOwnerActionResult(
+                  await acceptSuggestedGeneralActionAction({
+                    generalActionId: proposal.generalActionId,
+                  }),
+                ),
               `Added “${proposal.title}” to your actions.`,
             )
           }

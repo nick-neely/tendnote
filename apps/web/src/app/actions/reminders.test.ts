@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { requireAdmittedOwnerForActionSpy, revalidatePathSpy } from "@/test/action-adapter-mocks";
 
 const {
   beginReminderInstallationOptIn,
@@ -8,11 +9,8 @@ const {
   disableReminderInstallation,
   getReminderInstallationState,
   markReminderStandaloneContinuation,
-  requireAdmittedOwnerForAction,
   saveReminder,
   setReminderInstallationPreviewMode,
-  invalidateActionMutation,
-  updateAccountMutationScopes,
 } = vi.hoisted(() => ({
   beginReminderInstallationOptIn: vi.fn(),
   claimReminderStandaloneContinuation: vi.fn(),
@@ -21,11 +19,8 @@ const {
   disableReminderInstallation: vi.fn(),
   getReminderInstallationState: vi.fn(),
   markReminderStandaloneContinuation: vi.fn(),
-  requireAdmittedOwnerForAction: vi.fn(),
   saveReminder: vi.fn(),
   setReminderInstallationPreviewMode: vi.fn(),
-  invalidateActionMutation: vi.fn(),
-  updateAccountMutationScopes: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/reminders", () => ({
@@ -42,14 +37,6 @@ vi.mock("@tendnote/db/queries/reminders", () => ({
   saveReminder,
   setReminderInstallationPreviewMode,
   setReminderOptInDecision: vi.fn(),
-}));
-vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwnerForAction }));
-vi.mock("@/lib/cache/action-mutation-scopes", () => ({ invalidateActionMutation }));
-vi.mock("@/lib/cache/account-mutation-scopes", () => ({
-  accountMutationScopes: {
-    forOwner: (ownerUserId: string) => [{ kind: "account-owner", ownerUserId }],
-  },
-  updateAccountMutationScopes,
 }));
 
 import {
@@ -68,24 +55,47 @@ const RECORD_ID = "22222222-2222-4222-8222-222222222222";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requireAdmittedOwnerForAction.mockResolvedValue("owner-1");
-  clearReminder.mockResolvedValue(undefined);
+  requireAdmittedOwnerForActionSpy.mockResolvedValue("owner-1");
+  const accountScopes = [
+    { kind: "owner-collection", collection: "account", ownerUserId: "owner-1" },
+  ];
+  clearReminder.mockResolvedValue({ result: undefined, affectedScopes: accountScopes });
   saveReminder.mockResolvedValue({
-    optIn: { state: "none", clientInstallationId: "browser-installation-1" },
-    nextValidChoice: null,
-    schedule: {
-      kind: "relative",
-      localTime: null,
-      leadMinutes: 0,
-      timeZone: "America/Chicago",
-      intendedAt: new Date("2026-08-14T14:00:00.000Z"),
+    result: {
+      optIn: { state: "none", clientInstallationId: "browser-installation-1" },
+      nextValidChoice: null,
+      schedule: {
+        kind: "relative",
+        localTime: null,
+        leadMinutes: 0,
+        timeZone: "America/Chicago",
+        intendedAt: new Date("2026-08-14T14:00:00.000Z"),
+      },
     },
+    affectedScopes: accountScopes,
   });
-  disableCurrentReminderInstallation.mockResolvedValue({ installation: null, suppressedJobs: [] });
-  disableReminderInstallation.mockResolvedValue({ installation: null, suppressedJobs: [] });
+  disableCurrentReminderInstallation.mockResolvedValue({
+    result: { installation: null, suppressedJobs: [] },
+    affectedScopes: accountScopes,
+  });
+  disableReminderInstallation.mockResolvedValue({
+    result: { installation: null, suppressedJobs: [] },
+    affectedScopes: accountScopes,
+  });
   getReminderInstallationState.mockResolvedValue({ optIn: null, installation: null });
-  claimReminderStandaloneContinuation.mockResolvedValue(null);
-  setReminderInstallationPreviewMode.mockResolvedValue({ previewMode: "detailed" });
+  beginReminderInstallationOptIn.mockResolvedValue({ result: {}, affectedScopes: accountScopes });
+  markReminderStandaloneContinuation.mockResolvedValue({
+    result: {},
+    affectedScopes: accountScopes,
+  });
+  claimReminderStandaloneContinuation.mockResolvedValue({
+    result: null,
+    affectedScopes: accountScopes,
+  });
+  setReminderInstallationPreviewMode.mockResolvedValue({
+    result: { previewMode: "detailed" },
+    affectedScopes: accountScopes,
+  });
 });
 
 describe("generic Reminder server adapters", () => {
@@ -107,14 +117,9 @@ describe("generic Reminder server adapters", () => {
       expect.objectContaining({ ownerUserId: "owner-1", recordKind, recordId: RECORD_ID }),
     );
     if (recordKind === "general_action" || recordKind === "routine") {
-      expect(invalidateActionMutation).toHaveBeenCalledWith({
-        ownerUserId: "owner-1",
-        actionId: RECORD_ID,
-      });
+      expect(revalidatePathSpy).toHaveBeenCalledWith("/account");
     }
-    expect(updateAccountMutationScopes).toHaveBeenCalledWith([
-      { kind: "account-owner", ownerUserId: "owner-1" },
-    ]);
+    expect(revalidatePathSpy).toHaveBeenCalledWith("/account");
   });
 
   it.each([
@@ -139,7 +144,7 @@ describe("generic Reminder server adapters", () => {
         timeZone: "America/Chicago",
         schedule: { kind: "relative", leadMinutes: 0 },
       }),
-    ).rejects.toThrow();
+    ).resolves.toMatchObject({ ok: false });
     expect(saveReminder).not.toHaveBeenCalled();
   });
 

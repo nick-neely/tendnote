@@ -6,6 +6,7 @@ import { prepareGoogleContactsConnectAction } from "@/app/actions/integrations";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
 import { ensureLocalDemoAuthSessionIfNeeded } from "@/lib/auth/local-demo-session-client";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
 /**
  * Starts the Google Contacts connect flow (Phase 2E, ADR-0107/0110). Uses Better
@@ -26,7 +27,7 @@ export function ContactsConnectButton({
     setPending(true);
     try {
       await ensureLocalDemoAuthSessionIfNeeded(ensureLocalDemoAuthSession);
-      await prepareGoogleContactsConnectAction();
+      unwrapOwnerActionResult(await prepareGoogleContactsConnectAction());
       await authClient.linkSocial({
         provider: "google",
         scopes: [GOOGLE_CONTACTS_READONLY_SCOPE],

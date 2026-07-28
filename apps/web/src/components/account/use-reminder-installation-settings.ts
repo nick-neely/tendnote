@@ -11,6 +11,7 @@ import {
   setReminderInstallationPreviewModeAction,
   setReminderOptInDecisionAction,
 } from "@/app/actions/reminders";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import {
   attemptReminderRegistration,
   getExistingReminderInstallationId,
@@ -35,7 +36,8 @@ export function useReminderInstallationSettings(initialItems: ReminderInstallati
     setCurrentClientId(clientInstallationId);
     if (!clientInstallationId) return;
     getReminderInstallationStateAction({ clientInstallationId })
-      .then((state) => {
+      .then((result) => {
+        const state = unwrapOwnerActionResult(result);
         setCurrentOptInState(state.optInState);
         if (state.installation) {
           setItems((current) => [
@@ -51,10 +53,12 @@ export function useReminderInstallationSettings(initialItems: ReminderInstallati
     setPending(`preview:${installation.id}`);
     setMessage(null);
     try {
-      const result = await setReminderInstallationPreviewModeAction({
-        clientInstallationId: installation.clientInstallationId,
-        previewMode: detailed ? "detailed" : "generic",
-      });
+      const result = unwrapOwnerActionResult(
+        await setReminderInstallationPreviewModeAction({
+          clientInstallationId: installation.clientInstallationId,
+          previewMode: detailed ? "detailed" : "generic",
+        }),
+      );
       setItems((current) =>
         current.map((item) =>
           item.id === installation.id ? { ...item, previewMode: result.previewMode } : item,
@@ -71,10 +75,12 @@ export function useReminderInstallationSettings(initialItems: ReminderInstallati
     setPending(`disable:${installation.id}`);
     setMessage(null);
     try {
-      await disableCurrentReminderInstallationAction({
-        clientInstallationId: installation.clientInstallationId,
-        reason: "current_installation",
-      });
+      unwrapOwnerActionResult(
+        await disableCurrentReminderInstallationAction({
+          clientInstallationId: installation.clientInstallationId,
+          reason: "current_installation",
+        }),
+      );
       await unsubscribeReminderRegistration(
         "serviceWorker" in navigator ? navigator.serviceWorker : null,
       );
@@ -96,7 +102,9 @@ export function useReminderInstallationSettings(initialItems: ReminderInstallati
     setPending(`revoke:${installation.id}`);
     setMessage(null);
     try {
-      await revokeReminderInstallationAction({ installationId: installation.id });
+      unwrapOwnerActionResult(
+        await revokeReminderInstallationAction({ installationId: installation.id }),
+      );
       setItems((current) =>
         current.map((item) =>
           item.id === installation.id ? { ...item, status: "revoked" } : item,
@@ -124,19 +132,31 @@ export function useReminderInstallationSettings(initialItems: ReminderInstallati
         notification: "Notification" in window ? Notification : null,
         serviceWorker: "serviceWorker" in navigator ? navigator.serviceWorker : null,
         pushSupported: "PushManager" in window,
-        begin: () =>
-          beginReminderInstallationOptInAction({ clientInstallationId: currentClientId }),
-        register: registerReminderInstallationAction,
-        decide: (decision) =>
-          setReminderOptInDecisionAction({ clientInstallationId: currentClientId, decision }),
+        begin: async () =>
+          unwrapOwnerActionResult(
+            await beginReminderInstallationOptInAction({
+              clientInstallationId: currentClientId,
+            }),
+          ),
+        register: async (input) =>
+          unwrapOwnerActionResult(await registerReminderInstallationAction(input)),
+        decide: async (decision) =>
+          unwrapOwnerActionResult(
+            await setReminderOptInDecisionAction({
+              clientInstallationId: currentClientId,
+              decision,
+            }),
+          ),
       });
       setRegistrationOutcome(outcome);
       if (outcome.status === "denied" || outcome.status === "postponed") {
         setCurrentOptInState(outcome.status);
       } else if (outcome.status === "enabled") {
-        const state = await getReminderInstallationStateAction({
-          clientInstallationId: currentClientId,
-        });
+        const state = unwrapOwnerActionResult(
+          await getReminderInstallationStateAction({
+            clientInstallationId: currentClientId,
+          }),
+        );
         setCurrentOptInState(state.optInState);
         if (state.installation) {
           setItems((current) => [

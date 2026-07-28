@@ -17,7 +17,7 @@ import {
   type SessionUser,
 } from "./access/access-state";
 import { createOwnerActionRunner } from "./owner-action";
-import { ProductRateLimitError } from "./rate-limit/guards";
+import { ProductRateLimitError } from "./rate-limit/errors";
 
 const USER: SessionUser = { id: "owner-1", email: "owner@example.com", name: "Owner" };
 const admittedDecision: AccessDecision = {

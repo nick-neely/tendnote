@@ -8,7 +8,11 @@ import {
   recordDiscordInstall,
   setDiscordDeliveryEnabled,
 } from "@tendnote/db/queries/discord-installs";
-import { requireAdmittedOwner, requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import {
+  affectedScopesForAccount,
+  type MutationOutcome,
+} from "@tendnote/db/queries/general-actions";
+import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { isDiscordChannelId } from "./discord-install";
 
 /**
@@ -80,31 +84,37 @@ export async function recordOwnerDiscordInstall(input: {
  * client validation), so a direct action call can't persist an empty target.
  */
 export async function configureOwnerDiscordTarget(input: {
+  ownerUserId: string;
   guildId: string;
   targetChannelId: string;
-}): Promise<DiscordInstall | null> {
+}): Promise<MutationOutcome<DiscordInstall | null>> {
   const targetChannelId = input.targetChannelId.trim();
   if (!isDiscordChannelId(targetChannelId)) {
     throw new Error("A Discord channel id must be 17–20 digits.");
   }
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return configureDiscordTarget({
-    ownerUserId,
-    guildId: input.guildId,
-    targetKind: "channel",
-    targetChannelId,
-  });
+  return {
+    result: await configureDiscordTarget({
+      ownerUserId: input.ownerUserId,
+      guildId: input.guildId,
+      targetKind: "channel",
+      targetChannelId,
+    }),
+    affectedScopes: affectedScopesForAccount(input.ownerUserId),
+  };
 }
 
 /** Enable or pause proactive delivery for the admitted owner's install in a guild. */
 export async function setOwnerDiscordDeliveryEnabled(input: {
+  ownerUserId: string;
   guildId: string;
   enabled: boolean;
-}): Promise<DiscordInstall | null> {
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  return setDiscordDeliveryEnabled({
-    ownerUserId,
-    guildId: input.guildId,
-    enabled: input.enabled,
-  });
+}): Promise<MutationOutcome<DiscordInstall | null>> {
+  return {
+    result: await setDiscordDeliveryEnabled({
+      ownerUserId: input.ownerUserId,
+      guildId: input.guildId,
+      enabled: input.enabled,
+    }),
+    affectedScopes: affectedScopesForAccount(input.ownerUserId),
+  };
 }

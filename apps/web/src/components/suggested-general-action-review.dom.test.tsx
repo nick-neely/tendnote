@@ -59,7 +59,7 @@ beforeEach(() => {
 
 describe("SuggestedGeneralActionReviewCard interaction", () => {
   it("accepts: click promotes through the accept mutation and leaves the list", async () => {
-    accept.mockResolvedValue({ status: "open" });
+    accept.mockResolvedValue({ ok: true, view: { status: "open" } });
     const onResolve = vi.fn();
     const user = userEvent.setup();
     render(<SuggestedGeneralActionReviewCard onResolve={onResolve} review={view()} />);
@@ -79,7 +79,7 @@ describe("SuggestedGeneralActionReviewCard interaction", () => {
       ...view(),
       action: generalActionViewFixture({ id: ACTION_ID, title: "Replace the HVAC filter" }),
     };
-    edit.mockResolvedValue(updated);
+    edit.mockResolvedValue({ ok: true, view: updated });
     const onUpdate = vi.fn();
     const user = userEvent.setup();
     render(

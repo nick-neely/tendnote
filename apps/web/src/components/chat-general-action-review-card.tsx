@@ -13,6 +13,7 @@ import type {
   AssistantToolView,
   SuggestedGeneralActionReviewItemView,
 } from "@/lib/eve/tool-result-view";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
 /**
  * Renders the interactive cards for a `plan_suggested_general_actions` or
@@ -103,11 +104,19 @@ export function ChatGeneralActionReviewCard({
       kind="suggested_general_action_review"
       labels={labels}
       meta={reviewMeta(item)}
-      onDismiss={() =>
-        dismissSuggestedGeneralActionAction({ generalActionId: item.generalActionId })
+      onDismiss={async () =>
+        unwrapOwnerActionResult(
+          await dismissSuggestedGeneralActionAction({
+            generalActionId: item.generalActionId,
+          }),
+        )
       }
-      onResolve={() =>
-        acceptSuggestedGeneralActionAction({ generalActionId: item.generalActionId })
+      onResolve={async () =>
+        unwrapOwnerActionResult(
+          await acceptSuggestedGeneralActionAction({
+            generalActionId: item.generalActionId,
+          }),
+        )
       }
       // Deep-link the exact row so the ledger scroll-and-pulse highlight fires
       // (useDeepLinkHighlight), instead of dropping the user at the top of a long list.

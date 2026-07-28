@@ -9,7 +9,7 @@
 export type AffectedScope =
   | {
       kind: "owner-collection";
-      collection: "assets" | "people" | "review" | "saved-items" | "today";
+      collection: "account" | "assets" | "briefs" | "people" | "review" | "saved-items" | "today";
       ownerUserId: string;
     }
   | {
@@ -44,3 +44,47 @@ export type MutationOutcome<TResult> = {
   result: TResult;
   affectedScopes: AffectedScope[];
 };
+
+export function affectedScopesForAccount(ownerUserId: string): AffectedScope[] {
+  return [{ kind: "owner-collection", collection: "account", ownerUserId }];
+}
+
+export function affectedScopesForBriefs(ownerUserId: string): AffectedScope[] {
+  return [{ kind: "owner-collection", collection: "briefs", ownerUserId }];
+}
+
+export function affectedScopesForOwnerSurfaces(ownerUserId: string): AffectedScope[] {
+  return [
+    { kind: "owner-collection", collection: "today", ownerUserId },
+    { kind: "owner-collection", collection: "review", ownerUserId },
+  ];
+}
+
+export function affectedScopesForReminder(input: {
+  ownerUserId: string;
+  recordKind: ReminderRecordKind;
+  recordId: string;
+}): AffectedScope[] {
+  const entity =
+    input.recordKind === "general_action" || input.recordKind === "routine"
+      ? "general-action"
+      : input.recordKind === "saved_item"
+        ? "saved-item"
+        : null;
+  return [
+    ...affectedScopesForAccount(input.ownerUserId),
+    ...(entity
+      ? ([
+          {
+            kind: "viewer-entity",
+            entity,
+            entityId: input.recordId,
+            viewerUserId: input.ownerUserId,
+          },
+        ] satisfies AffectedScope[])
+      : []),
+    ...affectedScopesForOwnerSurfaces(input.ownerUserId),
+  ];
+}
+
+import type { ReminderRecordKind } from "@tendnote/domain/reminders";

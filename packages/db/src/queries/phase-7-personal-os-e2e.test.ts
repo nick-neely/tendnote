@@ -201,9 +201,14 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
         return null;
       },
     });
-    const scheduleCapturedReminders = createExplicitCaptureReminderScheduler(
-      reminders.saveReminder as never,
-    );
+    const scheduleCapturedReminders = createExplicitCaptureReminderScheduler((async (
+      input: Parameters<typeof reminders.saveReminder>[0],
+    ) => ({
+      result: await reminders.saveReminder(input),
+      affectedScopes: [
+        { kind: "owner-collection", collection: "today", ownerUserId: input.ownerUserId },
+      ],
+    })) as never);
     const confirmed = await scheduleCapturedReminders({
       ownerUserId: OWNER,
       originalText: captured.sourceRecord.content,
@@ -212,7 +217,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       result: captured,
       now: CAPTURED_AT,
     });
-    expect(confirmed).toMatchObject({
+    expect(confirmed.result).toMatchObject({
       destination: "Grouped",
       outcomes: [
         { interpreted: { reminderSchedule: expect.stringMatching(/one week before/) } },

@@ -31,6 +31,7 @@ import { DashboardBriefSection } from "./dashboard-brief-section";
 
 const ITEM_ID = "11111111-1111-1111-1111-111111111111";
 const OTHER_ITEM_ID = "22222222-2222-2222-2222-222222222222";
+const success = <T,>(view: T) => ({ ok: true as const, view });
 
 function itemView(overrides: Partial<BriefItemView> = {}): BriefItemView {
   return {
@@ -66,8 +67,8 @@ describe("DashboardBriefSection", () => {
     let finish = () => {};
     actions.generateBriefAction.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
+        new Promise((resolve) => {
+          finish = () => resolve(success(undefined));
         }),
     );
     render(<DashboardBriefSection brief={null} cadence="weekly" />);
@@ -97,9 +98,24 @@ describe("DashboardBriefSection", () => {
     expect(screen.getByRole("button", { name: "Generate" }).hasAttribute("disabled")).toBe(false);
   });
 
+  it("shows a curated product-budget message without exposing raw infrastructure errors", async () => {
+    const user = userEvent.setup();
+    actions.generateBriefAction.mockResolvedValue({
+      ok: false,
+      error: "You've reached a usage limit for this action. Please try again shortly.",
+    });
+    render(<DashboardBriefSection brief={null} cadence="daily" />);
+
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "You've reached a usage limit for this action. Please try again shortly.",
+    );
+  });
+
   it("refreshes an existing brief by regenerating the same cadence", async () => {
     const user = userEvent.setup();
-    actions.generateBriefAction.mockResolvedValue(undefined);
+    actions.generateBriefAction.mockResolvedValue(success(undefined));
     render(<DashboardBriefSection brief={briefView()} cadence="daily" />);
 
     await user.click(screen.getByRole("button", { name: "Refresh Today's brief" }));
@@ -146,7 +162,7 @@ describe("BriefItemRow", () => {
 
   it("snoozes the row it belongs to and drops it from the brief", async () => {
     const user = userEvent.setup();
-    actions.snoozeBriefItemAction.mockResolvedValue(undefined);
+    actions.snoozeBriefItemAction.mockResolvedValue(success(undefined));
     render(<DashboardBriefSection brief={twoItemBrief()} cadence="daily" />);
 
     await user.click(screen.getByRole("button", { name: "Snooze brief item for Mark" }));
@@ -159,7 +175,7 @@ describe("BriefItemRow", () => {
 
   it("dismisses the row it belongs to and drops it from the brief", async () => {
     const user = userEvent.setup();
-    actions.dismissBriefItemAction.mockResolvedValue(undefined);
+    actions.dismissBriefItemAction.mockResolvedValue(success(undefined));
     render(<DashboardBriefSection brief={twoItemBrief()} cadence="daily" />);
 
     await user.click(screen.getByRole("button", { name: "Dismiss brief item for Mara" }));

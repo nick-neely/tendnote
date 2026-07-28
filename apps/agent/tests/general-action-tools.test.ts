@@ -66,7 +66,7 @@ function action(overrides: Partial<GeneralActionWithContext> = {}): GeneralActio
   };
 }
 
-function mutationOutcome(result: GeneralActionWithContext) {
+function mutationOutcome<TResult>(result: TResult) {
   return { result, affectedScopes: [] };
 }
 
@@ -149,15 +149,17 @@ function toRef() {
 
 describe("suggest_general_action — grounded, review-gated proposal", () => {
   it("proposes a suggestion grounded in a source record, never active", async () => {
-    mocks.suggestGeneralAction.mockResolvedValue({
-      action: action({ status: "suggested" }),
-      sourceRecord: { id: SOURCE_ID },
-      component: {
-        type: "suggested_general_action_review",
-        generalActionId: ACTION_ID,
-        sourceRecordId: SOURCE_ID,
-      },
-    });
+    mocks.suggestGeneralAction.mockResolvedValue(
+      mutationOutcome({
+        action: action({ status: "suggested" }),
+        sourceRecord: { id: SOURCE_ID },
+        component: {
+          type: "suggested_general_action_review",
+          generalActionId: ACTION_ID,
+          sourceRecordId: SOURCE_ID,
+        },
+      }),
+    );
 
     const result = await suggestTool.execute(
       { title: "Book the campsite", sourceRecordId: SOURCE_ID },
@@ -175,15 +177,17 @@ describe("suggest_general_action — grounded, review-gated proposal", () => {
 
 describe("plan_suggested_general_actions — shallow planning", () => {
   it("proposes each step through the review-gated seam, grounded, never active", async () => {
-    mocks.suggestGeneralAction.mockImplementation(async (input: { title: string }) => ({
-      action: action({ title: input.title, status: "suggested" }),
-      sourceRecord: { id: SOURCE_ID },
-      component: {
-        type: "suggested_general_action_review",
-        generalActionId: ACTION_ID,
-        sourceRecordId: SOURCE_ID,
-      },
-    }));
+    mocks.suggestGeneralAction.mockImplementation(async (input: { title: string }) =>
+      mutationOutcome({
+        action: action({ title: input.title, status: "suggested" }),
+        sourceRecord: { id: SOURCE_ID },
+        component: {
+          type: "suggested_general_action_review",
+          generalActionId: ACTION_ID,
+          sourceRecordId: SOURCE_ID,
+        },
+      }),
+    );
 
     const result = await planTool.execute(
       {

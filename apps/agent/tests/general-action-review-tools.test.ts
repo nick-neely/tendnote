@@ -6,9 +6,13 @@ const mocks = vi.hoisted(() => ({
   getSuggestedGeneralActionReview: vi.fn(),
   acceptSuggestedGeneralAction: vi.fn(),
   dismissSuggestedGeneralAction: vi.fn(),
+  requestBackgroundAffectedScopeReconciliation: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/general-actions", () => mocks);
+vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
+  requestBackgroundAffectedScopeReconciliation: mocks.requestBackgroundAffectedScopeReconciliation,
+}));
 
 const { default: listReviewsTool } = await import(
   "../agent/tools/list_suggested_general_action_reviews"
@@ -63,6 +67,15 @@ function reviewResult(action = suggested()) {
   };
 }
 
+function mutationOutcome<TResult>(result: TResult) {
+  return {
+    result,
+    affectedScopes: [
+      { kind: "owner-collection" as const, collection: "review" as const, ownerUserId: "user-1" },
+    ],
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -112,7 +125,9 @@ describe("get_suggested_general_action_review", () => {
 describe("accept_suggested_general_action — only promotes on explicit approval", () => {
   it("promotes a proposal to an active action, applying an optional edit", async () => {
     mocks.acceptSuggestedGeneralAction.mockResolvedValue(
-      reviewResult(suggested({ status: "open", title: "Book the lakeside campsite" })),
+      mutationOutcome(
+        reviewResult(suggested({ status: "open", title: "Book the lakeside campsite" })),
+      ),
     );
 
     const result = await acceptTool.execute(
@@ -128,11 +143,14 @@ describe("accept_suggested_general_action — only promotes on explicit approval
     expect(passed.edit.title).toBe("Book the lakeside campsite");
     expect(passed.edit.dueAt).toBeInstanceOf(Date);
     expect(result.action.status).toBe("open");
+    expect(mocks.requestBackgroundAffectedScopeReconciliation).toHaveBeenCalledWith([
+      { kind: "owner-collection", collection: "review", ownerUserId: "user-1" },
+    ]);
   });
 
   it("accepts with no edit when the proposal is approved as-is", async () => {
     mocks.acceptSuggestedGeneralAction.mockResolvedValue(
-      reviewResult(suggested({ status: "open" })),
+      mutationOutcome(reviewResult(suggested({ status: "open" }))),
     );
 
     await acceptTool.execute({ generalActionId: ACTION_ID }, ctx);
@@ -144,7 +162,9 @@ describe("accept_suggested_general_action — only promotes on explicit approval
 
 describe("dismiss_suggested_general_action", () => {
   it("dismisses a proposal without promoting it", async () => {
-    mocks.dismissSuggestedGeneralAction.mockResolvedValue(suggested({ status: "dismissed" }));
+    mocks.dismissSuggestedGeneralAction.mockResolvedValue(
+      mutationOutcome(suggested({ status: "dismissed" })),
+    );
 
     const result = await dismissTool.execute({ generalActionId: ACTION_ID }, ctx);
 

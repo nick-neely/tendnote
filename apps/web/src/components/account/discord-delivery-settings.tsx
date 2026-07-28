@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isDiscordChannelId } from "@/lib/integrations/discord-install";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
 /** Lean, serializable view of one install the settings list renders. */
 export type DiscordInstallView = {
@@ -112,10 +113,12 @@ function PauseResumeControl({
     onError(null);
     startToggle(async () => {
       try {
-        await setDiscordDeliveryEnabledAction({
-          guildId: install.guildId,
-          enabled: !install.enabled,
-        });
+        unwrapOwnerActionResult(
+          await setDiscordDeliveryEnabledAction({
+            guildId: install.guildId,
+            enabled: !install.enabled,
+          }),
+        );
       } catch {
         // No optimistic flip: the badge reflects real state, and the failure is
         // surfaced rather than swallowed.
@@ -174,7 +177,12 @@ function ChannelIdForm({
     onError(null);
     startSave(async () => {
       try {
-        await configureDiscordTargetAction({ guildId: install.guildId, targetChannelId: trimmed });
+        unwrapOwnerActionResult(
+          await configureDiscordTargetAction({
+            guildId: install.guildId,
+            targetChannelId: trimmed,
+          }),
+        );
       } catch {
         // Surface the failure instead of letting a failed save look like a slow
         // success; the input keeps the owner's value so they can retry.

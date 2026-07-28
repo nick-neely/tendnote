@@ -63,9 +63,15 @@ function response(): TodayShortlistResponse {
 
 function handlers(): TodayShortlistHandlers {
   return {
-    act: vi.fn(async () => ({ ...response(), items: response().items.slice(1) })),
-    refresh: vi.fn(async () => response()),
-    suppress: vi.fn(async () => ({ ...response(), items: response().items.slice(0, 1) })),
+    act: vi.fn(async () => ({
+      ok: true as const,
+      view: { ...response(), items: response().items.slice(1) },
+    })),
+    refresh: vi.fn(async () => ({ ok: true as const, view: response() })),
+    suppress: vi.fn(async () => ({
+      ok: true as const,
+      view: { ...response(), items: response().items.slice(0, 1) },
+    })),
   };
 }
 

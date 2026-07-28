@@ -11,6 +11,7 @@ import { AssetReviewGroupCard } from "@/components/asset-review-group-card";
 import { CheckIcon, XIcon } from "@/components/icons";
 import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general-action-review";
 import { Button } from "@/components/ui/button";
+import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import {
   type ReviewQueueIdentity,
   type ReviewQueueItem,
@@ -158,12 +159,14 @@ function SourceRecordQueueCard({
           className="min-h-11"
           disabled={pending}
           onClick={() =>
-            run(() =>
-              addCapturePersonAction({
-                displayName: mention.mentionText,
-                sourceRecordId: review.sourceRecord.id,
-                unresolvedMentionId: mention.id,
-              }),
+            run(async () =>
+              unwrapOwnerActionResult(
+                await addCapturePersonAction({
+                  displayName: mention.mentionText,
+                  sourceRecordId: review.sourceRecord.id,
+                  unresolvedMentionId: mention.id,
+                }),
+              ),
             )
           }
           size="sm"
@@ -219,7 +222,11 @@ function SuggestedMemoryQueueCard({
         <Button
           aria-label={`Dismiss suggestion about ${personName}`}
           disabled={pending}
-          onClick={() => run(() => dismissSuggestedMemoryAction({ memoryId: memory.id }))}
+          onClick={() =>
+            run(async () =>
+              unwrapOwnerActionResult(await dismissSuggestedMemoryAction({ memoryId: memory.id })),
+            )
+          }
           size="sm"
           type="button"
           variant="ghost"
@@ -230,7 +237,11 @@ function SuggestedMemoryQueueCard({
         <Button
           aria-label={`Save suggestion about ${personName}`}
           disabled={pending}
-          onClick={() => run(() => saveSuggestedMemoryAction({ memoryId: memory.id }))}
+          onClick={() =>
+            run(async () =>
+              unwrapOwnerActionResult(await saveSuggestedMemoryAction({ memoryId: memory.id })),
+            )
+          }
           size="sm"
           type="button"
         >

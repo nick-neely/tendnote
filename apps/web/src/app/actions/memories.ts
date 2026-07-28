@@ -2,8 +2,8 @@
 
 import { parseExplicitMemoryRequest, sensitivitySchema } from "@tendnote/domain";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { captureExplicitMemoryWithEmbeddingDelivery } from "@/lib/background-jobs/embedding-schedulers";
+import { runOwnerAction } from "@/lib/owner-action";
 
 const captureExplicitMemorySchema = z.object({
   personId: z.uuid(),
@@ -36,37 +36,40 @@ export async function captureExplicitMemoryForPerson(input: {
   personId: string;
   request: string;
   sensitivity?: "normal" | "sensitive" | "restricted";
-}): Promise<ExplicitMemoryCaptureView> {
-  const parsedInput = captureExplicitMemorySchema.parse(input);
-  const ownerUserId = await requireAdmittedOwnerForAction();
-  const { content } = parseExplicitMemoryRequest(parsedInput.request);
-
-  const { memory, sourceRecord, person } = await captureExplicitMemoryWithEmbeddingDelivery({
-    ownerUserId,
-    personId: parsedInput.personId,
-    content,
-    sensitivity: parsedInput.sensitivity,
-    metadataJson: { captureSurface: "person_profile_assistant" },
+}) {
+  return runOwnerAction({
+    schema: captureExplicitMemorySchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) => {
+      const { content } = parseExplicitMemoryRequest(parsed.request);
+      return captureExplicitMemoryWithEmbeddingDelivery({
+        ownerUserId,
+        personId: parsed.personId,
+        content,
+        sensitivity: parsed.sensitivity,
+        metadataJson: { captureSurface: "person_profile_assistant" },
+      });
+    },
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: ({ result: { memory, sourceRecord, person } }) => ({
+      memory: {
+        id: memory.id,
+        personId: memory.personId,
+        content: memory.content,
+        status: memory.status,
+        sensitivity: memory.sensitivity,
+        confidence: memory.confidence,
+        sourceRecordId: memory.sourceRecordId,
+        approvedAt: memory.approvedAt?.toISOString() ?? null,
+      },
+      sourceRecord: {
+        id: sourceRecord.id,
+        status: sourceRecord.status,
+      },
+      person: {
+        id: person.id,
+        displayName: person.displayName,
+      },
+    }),
   });
-
-  return {
-    memory: {
-      id: memory.id,
-      personId: memory.personId,
-      content: memory.content,
-      status: memory.status,
-      sensitivity: memory.sensitivity,
-      confidence: memory.confidence,
-      sourceRecordId: memory.sourceRecordId,
-      approvedAt: memory.approvedAt?.toISOString() ?? null,
-    },
-    sourceRecord: {
-      id: sourceRecord.id,
-      status: sourceRecord.status,
-    },
-    person: {
-      id: person.id,
-      displayName: person.displayName,
-    },
-  };
 }

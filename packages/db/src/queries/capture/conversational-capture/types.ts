@@ -116,13 +116,13 @@ export type ConversationalCaptureDeps = {
     scope: PrivacyScope;
     householdId: string | null;
     selectedUserIds: string[];
-  }) => Promise<CaptureMemory>;
+  }) => Promise<MutationOutcome<CaptureMemory>>;
   createSuggestedMemory?: (input: {
     ownerUserId: string;
     personId: string;
     content: string;
     sourceRecordId: string;
-  }) => Promise<CaptureMemory>;
+  }) => Promise<MutationOutcome<CaptureMemory>>;
   suggestAsset?: (input: {
     ownerUserId: string;
     name: string;
@@ -172,7 +172,10 @@ export type ConversationalCaptureDeps = {
     sourceRecordId: string;
   }) => Promise<void>;
   getMemory?: (input: { ownerUserId: string; memoryId: string }) => Promise<CaptureMemory | null>;
-  archiveMemory?: (input: { ownerUserId: string; memoryId: string }) => Promise<CaptureMemory>;
+  archiveMemory?: (input: {
+    ownerUserId: string;
+    memoryId: string;
+  }) => Promise<MutationOutcome<CaptureMemory>>;
   getAssetReview?: (input: {
     actorUserId: string;
     groupId: string;

@@ -1,23 +1,11 @@
 import "server-only";
 
 import { getProductRateLimiter } from ".";
+import { ProductRateLimitError } from "./errors";
 import type { ProductRateLimiter } from "./limiter";
 import type { RateLimitRequest, RateLimitResult } from "./types";
 
-/**
- * Thrown when a product rate-limited entry point exceeds its budget. Server
- * actions let this propagate so the caller fails closed rather than running
- * expensive work (#103, ADR-0070).
- */
-export class ProductRateLimitError extends Error {
-  readonly result: RateLimitResult;
-
-  constructor(result: RateLimitResult) {
-    super("You've reached a usage limit for this action. Please try again shortly.");
-    this.name = "ProductRateLimitError";
-    this.result = result;
-  }
-}
+export { ProductRateLimitError } from "./errors";
 
 /**
  * Charge the product budget for an admitted product action, throwing

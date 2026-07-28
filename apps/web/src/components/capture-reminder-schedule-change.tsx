@@ -11,6 +11,7 @@ import {
   GeneralActionReminderField,
 } from "@/components/general-action-reminder";
 import { Button } from "@/components/ui/button";
+import { type OwnerActionResult, unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import { getReminderInstallationId } from "@/lib/reminder-registration";
 
 type ChangeReminder = (input: {
@@ -18,7 +19,7 @@ type ChangeReminder = (input: {
   clientInstallationId: string;
   timeZone: string;
   schedule: GeneralActionReminderChoice;
-}) => Promise<{ reminderSchedule: string }>;
+}) => Promise<OwnerActionResult<{ reminderSchedule: string }>>;
 
 function replaceOutcomeReminderSchedule(
   confirmation: ConversationalCaptureConfirmation,
@@ -103,12 +104,14 @@ export function CaptureReminderScheduleChange({
             setPending(true);
             setError(null);
             try {
-              const result = await changeReminder({
-                target: outcome.change,
-                clientInstallationId: getReminderInstallationId(window.localStorage),
-                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                schedule: choice,
-              });
+              const result = unwrapOwnerActionResult(
+                await changeReminder({
+                  target: outcome.change,
+                  clientInstallationId: getReminderInstallationId(window.localStorage),
+                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                  schedule: choice,
+                }),
+              );
               onConfirmationChange(
                 replaceOutcomeReminderSchedule(confirmation, index, result.reminderSchedule),
               );

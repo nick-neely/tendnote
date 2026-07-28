@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { type OwnerActionResult, unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
 type CandidateRef = {
   localDate: string;
@@ -34,14 +35,14 @@ type CandidateRef = {
 };
 
 export type TodayShortlistHandlers = {
-  refresh: (input: { localDate: string }) => Promise<TodayShortlistResponse>;
+  refresh: (input: { localDate: string }) => Promise<OwnerActionResult<TodayShortlistResponse>>;
   suppress: (
     input: CandidateRef & {
       kind: "later" | "not_today";
       suppressUntil: Date | null;
     },
-  ) => Promise<TodayShortlistResponse>;
-  act: (input: CandidateRef) => Promise<TodayShortlistResponse>;
+  ) => Promise<OwnerActionResult<TodayShortlistResponse>>;
+  act: (input: CandidateRef) => Promise<OwnerActionResult<TodayShortlistResponse>>;
 };
 
 const familyPresentation: Record<TodayCandidate["family"], { label: string; icon: Icon }> = {
@@ -84,11 +85,11 @@ export function TodayShortlist({
     };
   }
 
-  function run(action: () => Promise<TodayShortlistResponse>) {
+  function run(action: () => Promise<OwnerActionResult<TodayShortlistResponse>>) {
     setError(null);
     startTransition(async () => {
       try {
-        setResponse(await action());
+        setResponse(unwrapOwnerActionResult(await action()));
         setLaterItem(null);
       } catch {
         if (requestRollover()) return;

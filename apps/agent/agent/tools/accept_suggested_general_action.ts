@@ -4,6 +4,7 @@ import { z } from "zod";
 import { buildGeneralActionEdit } from "../lib/general-action-edit";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
@@ -38,7 +39,7 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const result = await withModelSafeStoreErrors(() =>
+    const outcome = await withModelSafeStoreErrors(() =>
       acceptSuggestedGeneralAction({
         actorUserId: ownerUserId,
         generalActionId: input.generalActionId,
@@ -46,6 +47,8 @@ export default defineTool({
         edit: input.edit ? buildGeneralActionEdit(input.edit) : undefined,
       }),
     );
+    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
+    const result = outcome.result;
 
     return {
       component: result.component,

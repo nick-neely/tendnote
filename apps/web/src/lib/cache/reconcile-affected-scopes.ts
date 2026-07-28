@@ -24,20 +24,24 @@ export function reconcileAffectedScopes(
     else revalidateTag(tag, "max");
   }
 
-  if (input.origin !== "owner-action") return;
-
   // Route calls remain the ADR-0206 migration safety net until the final
   // tag-coverage ticket proves each family is fully expressed by tags.
   const personIds = new Set<string>();
   const assetIds = new Set<string>();
   let actions = false;
+  let account = false;
   let assets = false;
+  let briefs = false;
   let people = false;
   let savedItems = false;
   let today = false;
   let review = false;
   for (const scope of scopes) {
-    if (
+    if (scope.kind === "owner-collection" && scope.collection === "account") {
+      account = true;
+    } else if (scope.kind === "owner-collection" && scope.collection === "briefs") {
+      briefs = true;
+    } else if (
       (scope.kind === "viewer-collection" && scope.collection === "general-actions") ||
       (scope.kind === "viewer-entity" && scope.entity === "general-action") ||
       scope.kind === "linked-entity"
@@ -79,13 +83,31 @@ export function reconcileAffectedScopes(
     }
   }
 
+  if (input.origin !== "owner-action") {
+    // Account and Brief reads do not yet have cache-tag contracts. Keep background
+    // callbacks effective during the migration instead of silently translating
+    // these scopes to no cache operation.
+    if (account) {
+      revalidatePath("/account");
+      revalidatePath("/account/contacts/import");
+      revalidatePath("/account/discord");
+    }
+    if (briefs) revalidatePath("/");
+    return;
+  }
+
   if (actions) revalidatePath("/actions");
+  if (account) {
+    revalidatePath("/account");
+    revalidatePath("/account/contacts/import");
+    revalidatePath("/account/discord");
+  }
   if (assets) revalidatePath("/assets");
   for (const assetId of assetIds) revalidatePath(`/assets/${assetId}`);
   if (people) revalidatePath("/people");
   for (const personId of personIds) revalidatePath(`/people/${personId}`);
   if (actions || today) revalidatePath("/actions/today");
-  if (today || review) revalidatePath("/");
+  if (briefs || today || review) revalidatePath("/");
   if (savedItems) revalidatePath("/saved-items");
 }
 
@@ -148,6 +170,9 @@ function tagsForHouseholdCollection(
 function tagsForOwnerCollection(
   scope: Extract<AffectedScope, { kind: "owner-collection" }>,
 ): readonly string[] {
+  if (scope.collection === "account" || scope.collection === "briefs") {
+    return [];
+  }
   if (scope.collection === "assets") {
     return assetCacheContract.assetCollection(scope.ownerUserId);
   }
