@@ -109,6 +109,7 @@ function SuggestedFollowupReviewCard({
   }
 
   function leaveThen(action: () => Promise<{ ok: true } | { ok: false; error: string }>) {
+    // fallow-ignore-next-line code-duplication -- Proposal review and owned-row lifecycle remain separate domain boundaries even though both unwrap owner-action results before leaving.
     setError(null);
     startTransition(async () => {
       try {

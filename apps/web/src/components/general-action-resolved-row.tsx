@@ -1,12 +1,22 @@
 "use client";
 
-import {
-  ActionRowControls,
-  useActionRowTransition,
-} from "@/components/general-action-row-controls";
+import { useState } from "react";
+import { ActionRowControls } from "@/components/general-action-row-controls";
 import { RotateCcwIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  GENERAL_ACTION_MUTATION_INTENTS,
+  generalActionLifecycleAdapter,
+  generalActionLifecycleCommand,
+  generalActionMutationLabels,
+} from "@/lib/general-action-reversible-mutation";
 import type { GeneralActionView } from "@/lib/general-action-view";
+import {
+  type ReversibleMutationApplyPhase,
+  useActiveReversibleMutation,
+  useReversibleMutation,
+} from "@/lib/reversible-mutation";
 
 const RESOLVED_LABEL: Record<string, string> = {
   completed: "Completed",
@@ -20,21 +30,43 @@ const RESOLVED_LABEL: Record<string, string> = {
  */
 export function ResolvedActionRow({
   action,
-  onReopen,
-  onArchive,
+  onMutationFinalize,
+  onUpdate,
 }: {
   action: GeneralActionView;
-  onReopen: (action: GeneralActionView) => void;
-  onArchive: (action: GeneralActionView) => void;
+  onMutationFinalize?: (id: string) => void;
+  onUpdate: (action: GeneralActionView, phase?: ReversibleMutationApplyPhase) => void;
 }) {
-  const { historyOpen, setHistoryOpen } = useActionRowTransition();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const reopen = useReversibleMutation(action.id, "reopen");
+  const archive = useReversibleMutation(action.id, "archive");
+  const activeMutation = useActiveReversibleMutation(action.id, GENERAL_ACTION_MUTATION_INTENTS);
+  const pending = Boolean(activeMutation?.state.pending);
+
+  function run(intent: "reopen" | "archive", focusTarget: HTMLElement) {
+    // fallow-ignore-next-line code-duplication -- Paused and resolved rows intentionally expose the same lifecycle contract while preserving distinct row semantics and controls.
+    const mutation = intent === "reopen" ? reopen : archive;
+    mutation.run({
+      kind: "optimistic",
+      adapter: generalActionLifecycleAdapter(intent),
+      apply: onUpdate,
+      command: () => generalActionLifecycleCommand(intent, action.id),
+      focusTarget,
+      labels: generalActionMutationLabels(intent),
+      onFinalize: () => onMutationFinalize?.(action.id),
+      prior: action,
+      ...(intent === "archive" ? { leave: { apply: onUpdate } } : {}),
+    });
+  }
 
   return (
     // Deep-link target (`/actions#action-<id>`), like the active rows: an asset
     // profile's related-actions list can land on a resolved row too (#199).
     // tabIndex lets the highlight move focus here so the jump is announced.
     <article
-      className="flex scroll-mt-24 flex-col gap-2 px-4 py-3"
+      aria-busy={pending}
+      className={`flex scroll-mt-24 flex-col gap-2 px-4 py-3 transition-[opacity,transform] duration-200 ${activeMutation?.state.leaving ? "translate-y-0.5 opacity-70" : ""}`}
+      data-leaving={activeMutation?.state.leaving ?? false}
       id={`action-${action.id}`}
       tabIndex={-1}
     >
@@ -48,24 +80,36 @@ export function ResolvedActionRow({
       </div>
       <ActionRowControls
         action={action}
-        archiveBusy={false}
-        error={null}
+        archiveBusy={archive.state.pending}
+        error={activeMutation?.state.error ?? null}
         historyOpen={historyOpen}
-        onArchive={() => onArchive(action)}
+        onArchive={(control) => run("archive", control)}
         onHistoryOpenChange={setHistoryOpen}
-        pending={false}
+        pending={pending}
       >
         <Button
-          disabled={false}
+          disabled={pending}
           data-action-control="reopen"
-          onClick={() => onReopen(action)}
+          onClick={(event) => run("reopen", event.currentTarget)}
           size="sm"
           type="button"
           variant="ghost"
         >
-          <RotateCcwIcon />
+          {reopen.state.pending ? <Spinner /> : <RotateCcwIcon />}
           Reopen
         </Button>
+        {activeMutation?.state.undoAvailable ? (
+          <Button
+            disabled={activeMutation.state.undoRequested}
+            onClick={activeMutation.requestUndo}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {activeMutation.state.undoRequested ? <Spinner aria-hidden /> : null}
+            {activeMutation.state.undoRequested ? "Undoing…" : activeMutation.state.labels.undo}
+          </Button>
+        ) : null}
       </ActionRowControls>
     </article>
   );
