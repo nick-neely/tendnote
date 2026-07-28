@@ -2,6 +2,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { ActionTodaySurface } from "@/components/action-today-surface";
 import { AdmittedRoute } from "@/components/admitted-route";
+import { appDestination } from "@/components/app-destinations";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { groupActionTodayItems, selectActionTodayItems } from "@/lib/action-today";
 import { getCachedActionTodayViews } from "@/lib/cache/action-views";
@@ -15,7 +16,7 @@ import { getCachedActionTodayViews } from "@/lib/cache/action-views";
  */
 export default function ActionTodayPage() {
   return (
-    <AdmittedRoute title="Today">
+    <AdmittedRoute destination="action-today">
       <ActionTodayContent />
     </AdmittedRoute>
   );
@@ -35,7 +36,7 @@ async function ActionTodayContent() {
       <header className="flex flex-col gap-1">
         <div className="flex items-baseline justify-between gap-4">
           <h1 className="text-[length:var(--text-h1)] font-semibold leading-[var(--text-h1-line)] tracking-normal">
-            Today
+            {appDestination("action-today").label}
           </h1>
           <Link
             className="rounded-sm text-[length:var(--text-small)] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"

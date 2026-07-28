@@ -3,6 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { ActionsSurface } from "@/components/actions-surface";
 import { AdmittedRoute } from "@/components/admitted-route";
+import { appDestination } from "@/components/app-destinations";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { getCachedActionPrimaryViews } from "@/lib/cache/action-views";
 
@@ -12,7 +13,7 @@ const RESOLVED_LIMIT = 20;
 
 export default function ActionsPage() {
   return (
-    <AdmittedRoute title="Actions">
+    <AdmittedRoute destination="actions">
       <ActionsContent />
     </AdmittedRoute>
   );
@@ -33,7 +34,7 @@ async function ActionsContent() {
       <header className="flex flex-col gap-1">
         <div className="flex items-baseline justify-between gap-4">
           <h1 className="text-[length:var(--text-h1)] font-semibold leading-[var(--text-h1-line)] tracking-normal">
-            Actions
+            {appDestination("actions").label}
           </h1>
           <Link
             className="rounded-sm text-[length:var(--text-small)] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"

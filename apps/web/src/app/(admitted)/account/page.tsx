@@ -6,6 +6,7 @@ import { CalendarPreviewSection } from "@/components/account/calendar-preview-se
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
 import { ReminderSettings } from "@/components/account/reminder-settings";
 import { AdmittedRoute } from "@/components/admitted-route";
+import { appDestination } from "@/components/app-destinations";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { CheckIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +31,7 @@ type AccountPageProps = {
 
 export default function AccountPage(props: AccountPageProps = {}) {
   return (
-    <AdmittedRoute title="Account">
+    <AdmittedRoute destination="account">
       <AccountContent {...props} />
     </AdmittedRoute>
   );
@@ -67,7 +68,7 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
       <header className="flex flex-col gap-1">
         <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
-          Account
+          {appDestination("account").label}
         </h1>
       </header>
 

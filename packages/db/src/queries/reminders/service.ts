@@ -42,7 +42,7 @@ export function createReminderService(input: {
           kind: "general_action",
           occursAt: action.dueAt,
           timeSemantics: "date_only",
-          deepLink: `/actions#action-${action.id}`,
+          personId: null,
         }
       : null;
   }
@@ -175,7 +175,7 @@ export function createReminderService(input: {
   });
 
   return {
-    async resolveReminderDeepLink(values: {
+    async resolveReminderDeepLinkTarget(values: {
       ownerUserId: string;
       recordKind: ReminderRecordKind;
       recordId: string;
@@ -185,7 +185,11 @@ export function createReminderService(input: {
         record.ownerUserId === values.ownerUserId &&
         record.kind === values.recordKind &&
         record.id === values.recordId
-        ? record.deepLink
+        ? {
+            recordKind: record.kind,
+            recordId: record.id,
+            personId: record.personId,
+          }
         : null;
     },
     ...installationService,

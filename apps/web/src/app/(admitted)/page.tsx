@@ -8,6 +8,11 @@ import {
   restoreTodayItemAction,
   suppressTodayItemAction,
 } from "@/app/actions/today";
+import {
+  appDestination,
+  type HomePanel,
+  homePanelForLocation,
+} from "@/components/app-destinations";
 import { DashboardAssistant } from "@/components/dashboard-assistant";
 import { DashboardFrame } from "@/components/dashboard-frame";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
@@ -41,11 +46,13 @@ import { toDashboardFollowupView } from "@/lib/followup-view";
 import type { ReviewQueueFamily } from "@/lib/review-queue";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 
-type HomeTab = "today" | "review";
 type HomeProps = { searchParams?: Promise<{ tab?: string }> };
 
-async function homeTab(searchParams: HomeProps["searchParams"]): Promise<HomeTab> {
-  return (await searchParams)?.tab === "review" ? "review" : "today";
+async function homeTab(searchParams: HomeProps["searchParams"]): Promise<HomePanel> {
+  const params = new URLSearchParams();
+  const tab = (await searchParams)?.tab;
+  if (tab) params.set("tab", tab);
+  return homePanelForLocation("/", params);
 }
 
 /**
@@ -53,7 +60,7 @@ async function homeTab(searchParams: HomeProps["searchParams"]): Promise<HomeTab
  * name the URL the owner comes back to — including the tab they were on, since
  * whichever region resolves first is the one that redirects.
  */
-function admittedHomeOwner(tab: HomeTab): Promise<string> {
+function admittedHomeOwner(tab: HomePanel): Promise<string> {
   return requireAdmittedOwner({ returnTo: tab === "review" ? "/?tab=review" : "/" });
 }
 
@@ -239,7 +246,7 @@ async function HomeMobileDestination({ searchParams }: HomeProps) {
       <div className="flex flex-col gap-6 px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6">
         <header className="flex flex-col gap-1">
           <h1 className="font-semibold text-[length:var(--text-h1)] leading-[var(--text-h1-line)]">
-            Review
+            {appDestination("review").label}
           </h1>
         </header>
         <ReviewQueueStreams ownerUserId={ownerUserId} />

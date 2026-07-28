@@ -5,6 +5,7 @@ import { createReminderService } from "./service";
 const OWNER = "owner-1";
 const ACTION = "11111111-1111-1111-1111-111111111111";
 const SAVED_ITEM = "44444444-4444-4444-4444-444444444444";
+const reminderDeepLink = (kind: string, id: string) => `/reminders/open?kind=${kind}&id=${id}`;
 
 describe("Reminder installation privacy and delivery", () => {
   it("continues an earned iOS offer once, on a new installation, within seven days", async () => {
@@ -243,6 +244,7 @@ describe("Reminder installation privacy and delivery", () => {
     const sender = vi.fn(async () => ({ status: "accepted" as const }));
 
     await service.dispatchReminder({
+      deepLink: reminderDeepLink,
       jobId: registration.deliveryJobs[0]?.id ?? "missing",
       now: new Date("2026-08-14T14:00:05.000Z"),
       sender,
@@ -291,6 +293,7 @@ describe("Reminder installation privacy and delivery", () => {
     sender.mockClear();
 
     await service.dispatchReminder({
+      deepLink: reminderDeepLink,
       jobId: second.deliveryJobs[0]?.id ?? "missing",
       now: new Date("2026-08-14T14:00:05.000Z"),
       sender,
@@ -418,7 +421,7 @@ describe("Reminder installation privacy and delivery", () => {
       recurrence: null,
       sensitivity: "normal" as const,
       scope: "private" as const,
-      deepLink: `/saved-items#saved-item-${SAVED_ITEM}`,
+      personId: null,
     };
     const service = createReminderService({ store, loadReminderRecord: vi.fn(async () => record) });
     const scheduled = await service.saveReminder({
@@ -468,6 +471,7 @@ describe("Reminder installation privacy and delivery", () => {
 
     await expect(
       service.dispatchReminder({
+        deepLink: reminderDeepLink,
         jobId,
         now: new Date("2026-08-14T20:59:30.000Z"),
         sender,
@@ -478,6 +482,7 @@ describe("Reminder installation privacy and delivery", () => {
     });
     await expect(
       service.dispatchReminder({
+        deepLink: reminderDeepLink,
         jobId,
         now: new Date("2026-08-14T20:59:59.000Z"),
         sender,
@@ -487,6 +492,7 @@ describe("Reminder installation privacy and delivery", () => {
     const staleSender = vi.fn(async () => ({ status: "accepted" as const }));
     await expect(
       service.dispatchReminder({
+        deepLink: reminderDeepLink,
         jobId: staleRegistration.deliveryJobs[0]?.id ?? "missing",
         now: new Date("2026-08-14T21:00:00.000Z"),
         sender: staleSender,
@@ -537,12 +543,14 @@ describe("Reminder installation privacy and delivery", () => {
     const second = await register("browser-installation-2");
 
     await service.dispatchReminder({
+      deepLink: reminderDeepLink,
       jobId: first.deliveryJobs[0]?.id ?? "missing",
       now: new Date("2026-08-14T14:00:05.000Z"),
       sender: vi.fn(async () => ({ status: "terminal" as const })),
     });
     await expect(
       service.dispatchReminder({
+        deepLink: reminderDeepLink,
         jobId: second.deliveryJobs[0]?.id ?? "missing",
         now: new Date("2026-08-14T14:00:06.000Z"),
         sender: vi.fn(async () => ({ status: "accepted" as const })),

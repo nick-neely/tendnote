@@ -73,7 +73,7 @@ async function loadFollowupReminderRecord(input: {
     recurrence: null,
     sensitivity,
     scope: followup.scope,
-    deepLink: `/people/${followup.personId}#followup-${followup.id}`,
+    personId: followup.personId,
   };
 }
 
@@ -102,7 +102,7 @@ async function loadSavedItemReminderRecord(input: {
     recurrence: null,
     sensitivity,
     scope: item.scope,
-    deepLink: `/saved-items#saved-item-${item.id}`,
+    personId: null,
   };
 }
 
@@ -134,7 +134,7 @@ async function loadActionReminderRecord(input: {
     recurrence: action.recurrence,
     sensitivity,
     scope: action.scope,
-    deepLink: `/actions#action-${action.id}`,
+    personId: null,
   };
 }
 
@@ -273,7 +273,7 @@ export function disableCurrentReminderInstallation(
 }
 export const listReminderInstallations = reminderService.listReminderInstallations;
 export const getReminderInstallationState = reminderService.getReminderInstallationState;
-export const resolveReminderDeepLink = reminderService.resolveReminderDeepLink;
+export const resolveReminderDeepLinkTarget = reminderService.resolveReminderDeepLinkTarget;
 export const dispatchReminder = reminderService.dispatchReminder;
 export const listReminderSchedulesForOwner = reminderStore.listSchedulesForOwner;
 

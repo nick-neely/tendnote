@@ -1,4 +1,5 @@
 import { type ReactNode, Suspense } from "react";
+import type { AppDestinationId } from "@/components/app-destinations";
 import { RouteReserve } from "@/components/route-reserve";
 
 /**
@@ -7,23 +8,10 @@ import { RouteReserve } from "@/components/route-reserve";
  */
 export function AdmittedRoute({
   children,
-  mobileDestination,
-  title,
+  destination,
 }: {
   children: ReactNode;
-  mobileDestination?: ReactNode;
-  title: string;
+  destination: AppDestinationId;
 }) {
-  return (
-    <>
-      {mobileDestination ? (
-        <div className="lg:hidden">
-          <Suspense fallback={<RouteReserve title={title} />}>{mobileDestination}</Suspense>
-        </div>
-      ) : null}
-      <div className={mobileDestination ? "hidden lg:contents" : undefined}>
-        <Suspense fallback={<RouteReserve title={title} />}>{children}</Suspense>
-      </div>
-    </>
-  );
+  return <Suspense fallback={<RouteReserve destination={destination} />}>{children}</Suspense>;
 }

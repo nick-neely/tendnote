@@ -2,13 +2,14 @@ import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/house
 import { connection } from "next/server";
 import { browseAssetsAction, searchAssetsAction } from "@/app/actions/assets";
 import { AdmittedRoute } from "@/components/admitted-route";
+import { appDestination } from "@/components/app-destinations";
 import { AssetsSurface } from "@/components/assets-surface";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { getCachedDefaultAssetViews } from "@/lib/cache/asset-views";
 
 export default function AssetsPage() {
   return (
-    <AdmittedRoute title="Assets">
+    <AdmittedRoute destination="assets">
       <AssetsContent />
     </AdmittedRoute>
   );
@@ -32,7 +33,7 @@ async function AssetsContent() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <header className="flex flex-col gap-1">
         <h1 className="text-[length:var(--text-h1)] font-semibold leading-[var(--text-h1-line)] tracking-normal">
-          Assets
+          {appDestination("assets").label}
         </h1>
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           The practical things you keep track of: appliances, vehicles, subscriptions. Private by

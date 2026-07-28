@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { appDestination, homePanelForLocation } from "@/components/app-destinations";
 
 /**
  * The narrow-viewport Home reserve. Home owns its own mobile canvas (the shell
@@ -23,10 +24,10 @@ export function MobileHomeReserve() {
 
 function ResolvedMobileHomeReserve() {
   const searchParams = useSearchParams();
-  return searchParams.get("tab") === "review" ? (
+  return homePanelForLocation("/", searchParams) === "review" ? (
     <ReviewListReserve />
   ) : (
-    <TodayBandReserve title="Today" />
+    <TodayBandReserve title={appDestination("today").label} />
   );
 }
 
@@ -71,12 +72,12 @@ function ReviewListReserve() {
   return (
     <section
       aria-busy="true"
-      aria-label="Loading Review"
+      aria-label={`Loading ${appDestination("review").label}`}
       className="flex flex-col gap-6 px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6"
     >
       <header className="flex flex-col gap-2">
         <h1 className="font-semibold text-[length:var(--text-h1)] leading-[var(--text-h1-line)]">
-          Review
+          {appDestination("review").label}
         </h1>
         <p className="text-muted-foreground text-sm">Suggestions appear here as they are ready.</p>
       </header>

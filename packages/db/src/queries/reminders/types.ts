@@ -148,12 +148,12 @@ export type ReminderRecord = {
   recurrence: unknown | null;
   sensitivity: "normal" | "sensitive" | "restricted";
   scope: "private" | "shared" | "household";
-  deepLink: string;
+  personId: string | null;
 };
 
 export type ReminderGeneralAction = Omit<
   ReminderRecord,
-  "kind" | "occursAt" | "deepLink" | "timeSemantics"
+  "kind" | "occursAt" | "personId" | "timeSemantics"
 > & {
   dueAt: Date | null;
 };

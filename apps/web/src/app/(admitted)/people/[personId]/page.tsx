@@ -193,7 +193,7 @@ function selectedPersonTab(query: Record<string, string | string[] | undefined>)
 
 export default function PersonDetailPage(props: PersonDetailPageProps) {
   return (
-    <AdmittedRoute title="Person">
+    <AdmittedRoute destination="person">
       <PersonDetailContent {...props} />
     </AdmittedRoute>
   );

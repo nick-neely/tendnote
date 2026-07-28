@@ -123,16 +123,6 @@ function renderRail(reviewQueue: ReviewQueue, initialTab: "today" | "review" = "
   return render(rail(reviewQueue, initialTab));
 }
 
-/**
- * Next keeps `useSearchParams` in step with History API writes; the mock has to do
- * the same, or a tab that writes the URL would appear to be contradicted by it.
- */
-function spyOnUrlWrites() {
-  return vi.spyOn(window.history, "replaceState").mockImplementation((_state, _title, url) => {
-    navigation.searchParams = new URLSearchParams(String(url ?? "").split("?")[1] ?? "");
-  });
-}
-
 /** The label of the one selected tab, so a failure names the tab instead of "false". */
 function selected(): string | undefined {
   return screen
@@ -156,7 +146,7 @@ describe("DashboardRail Review Queue", () => {
   it("switches tabs instantly, with no navigation and no reserve", async () => {
     const user = userEvent.setup();
     replace.mockReset();
-    const replaceState = spyOnUrlWrites();
+    const replaceState = vi.spyOn(window.history, "replaceState");
     renderRail({ count: 0, failures: [], items: [] });
 
     await user.click(screen.getByRole("tab", { name: "Today" }));
@@ -166,14 +156,9 @@ describe("DashboardRail Review Queue", () => {
     expect(screen.queryByRole("region", { name: "Loading Today" })).toBeNull();
     expect(screen.queryByText(/Nothing waiting to review/)).toBeNull();
 
-    // Today and Review still write the URL, so a refresh or a share lands on the
-    // same panel. Follow-ups and People have no URL of their own and leave it be.
-    expect(replaceState).toHaveBeenLastCalledWith(null, "", "/");
     await user.click(screen.getByRole("tab", { name: "Review" }));
-    expect(replaceState).toHaveBeenLastCalledWith(null, "", "?tab=review");
     expect(selected()).toBe("Review");
 
-    replaceState.mockClear();
     await user.click(screen.getByRole("tab", { name: "People" }));
     expect(replaceState).not.toHaveBeenCalled();
     expect(selected()).toBe("People");
@@ -181,14 +166,12 @@ describe("DashboardRail Review Queue", () => {
   });
 
   /**
-   * The rail writes the URL itself, so a later refresh re-renders the route against
-   * that new URL. If the rail took the tab from the server on every render, an
-   * approve in the Follow-ups panel — which calls `router.refresh()` — would fling
-   * the owner out of the panel they were working in.
+   * A later refresh re-renders the route against the same URL. If the rail took
+   * the server prop on every render, an approve in Follow-ups — which calls
+   * `router.refresh()` — would fling the owner out of the panel they were using.
    */
   it("stays on the owner's tab when a refresh re-renders the route", async () => {
     const user = userEvent.setup();
-    spyOnUrlWrites();
     const view = renderRail({ count: 0, failures: [], items: [] });
     await user.click(screen.getByRole("tab", { name: "Follow-ups" }));
     expect(selected()).toBe("Follow-ups");
@@ -203,7 +186,6 @@ describe("DashboardRail Review Queue", () => {
   /** A URL the owner navigated to — a nav link, Back, a shared link — still wins. */
   it("follows the URL when the destination itself changes", async () => {
     const user = userEvent.setup();
-    spyOnUrlWrites();
     const view = renderRail({ count: 0, failures: [], items: [] });
     await user.click(screen.getByRole("tab", { name: "People" }));
     expect(selected()).toBe("People");

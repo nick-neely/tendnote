@@ -63,7 +63,9 @@ vi.mock("@/lib/auth/client", () => ({
 
 import { AppShell } from "./app-shell";
 import { AppShellEffects } from "./app-shell-effects";
+import { DesktopAppNavigationFallback } from "./desktop-app-navigation";
 import { MobileHomeReserve } from "./mobile-home-reserve";
+import { MobileTodayDestination } from "./mobile-today-destination";
 
 beforeEach(() => {
   navigationState.pathname = "/";
@@ -71,6 +73,30 @@ beforeEach(() => {
   navigationState.sessionOwnerUserId = "owner-1";
   sessionStorage.clear();
 });
+
+function mobileTodayDestination() {
+  const view = {
+    items: [],
+    candidateFingerprint: "",
+    curation: "deterministic" as const,
+    overflow: null,
+    limitations: [],
+  };
+  return (
+    <MobileTodayDestination
+      ownerUserId="owner-1"
+      todayHandlers={{
+        act: vi.fn(async () => success(view)),
+        refresh: vi.fn(async () => success(view)),
+        restore: vi.fn(async () => success(view)),
+        suppress: vi.fn(async () => success(view)),
+      }}
+      todayInitial={view}
+      todayLocalDate="2026-08-14"
+      todayTimeZone="America/Chicago"
+    />
+  );
+}
 
 /**
  * Saves the open capture, reopens it via Change, and hands back the emptied
@@ -105,7 +131,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
    */
   it("renders the route into exactly one main, unpadded only when the destination asks", () => {
     render(
-      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+      <AppShell ownerUserId="owner-1">
         <div data-mobile-bleed>
           <p>Destination</p>
         </div>
@@ -120,7 +146,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
   it("updates route-aware Today and Review state without remounting the frame", () => {
     const view = render(
-      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+      <AppShell ownerUserId="owner-1">
         <p>Destination</p>
       </AppShell>,
     );
@@ -129,9 +155,14 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(mobileNav.getByRole("link", { name: "Today" }).getAttribute("aria-current")).toBe(
       "page",
     );
+    expect(
+      within(screen.getByRole("navigation", { name: "Primary" }))
+        .getByRole("link", { name: "Today" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
     navigationState.searchParams = new URLSearchParams("tab=review");
     view.rerender(
-      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+      <AppShell ownerUserId="owner-1">
         <p>Destination</p>
       </AppShell>,
     );
@@ -139,24 +170,51 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(mobileNav.getByRole("link", { name: "Review" }).getAttribute("aria-current")).toBe(
       "page",
     );
+    expect(
+      within(screen.getByRole("navigation", { name: "Primary" }))
+        .getByRole("link", { name: "Today" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
 
     navigationState.pathname = "/people";
     navigationState.searchParams = new URLSearchParams();
     view.rerender(
-      <AppShell ownerUserId="owner-1" routeAwareMobileNavigation>
+      <AppShell ownerUserId="owner-1">
         <p>Destination</p>
       </AppShell>,
     );
     mobileNav = within(screen.getByRole("navigation", { name: "Mobile primary" }));
     expect(mobileNav.getByRole("link", { name: "Today" }).getAttribute("aria-current")).toBeNull();
     expect(mobileNav.getByRole("link", { name: "Review" }).getAttribute("aria-current")).toBeNull();
+    expect(
+      within(screen.getByRole("navigation", { name: "Primary" }))
+        .getByRole("link", { name: "People" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
     expect(screen.getAllByRole("navigation", { name: "Mobile primary" })).toHaveLength(1);
+  });
+
+  it("keeps the complete primary navigation present before current state resolves", () => {
+    render(<DesktopAppNavigationFallback />);
+
+    const primary = within(screen.getByRole("navigation", { name: "Primary" }));
+    expect(primary.getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Today",
+      "People",
+      "Actions",
+      "Assets",
+      "Saved Items",
+      "Account",
+    ]);
+    for (const link of primary.getAllByRole("link")) {
+      expect(link.getAttribute("aria-current")).toBeNull();
+    }
   });
 
   it("remounts owner-keyed mobile flow state when the admitted session rotates", async () => {
     const user = userEvent.setup();
     const view = render(
-      <AppShell routeAwareMobileNavigation>
+      <AppShell>
         <p>Destination</p>
       </AppShell>,
     );
@@ -170,7 +228,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
     navigationState.sessionOwnerUserId = "owner-2";
     view.rerender(
-      <AppShell routeAwareMobileNavigation>
+      <AppShell>
         <p>Destination</p>
       </AppShell>,
     );
@@ -182,11 +240,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
   it("uses exactly the five selected phone destinations and keeps domain links in Menu", async () => {
     const user = userEvent.setup();
-    render(
-      <AppShell mobileHome ownerUserId="owner-1">
-        <p>Desktop dashboard</p>
-      </AppShell>,
-    );
+    render(<AppShell ownerUserId="owner-1">{mobileTodayDestination()}</AppShell>);
 
     const mobileNav = screen.getByRole("navigation", { name: "Mobile primary" });
     expect(
@@ -205,8 +259,9 @@ describe("AppShell Phase Seven mobile navigation", () => {
   });
 
   it("marks Review as the active phone destination without adding a count", () => {
+    navigationState.searchParams = new URLSearchParams("tab=review");
     render(
-      <AppShell mobileReview ownerUserId="owner-1">
+      <AppShell ownerUserId="owner-1">
         <p>Review queue</p>
       </AppShell>,
     );
@@ -221,7 +276,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
   it("opens focused flows without the bottom bar and restores invoking focus and surface state", async () => {
     const user = userEvent.setup();
     render(
-      <AppShell mobileHome ownerUserId="owner-1">
+      <AppShell ownerUserId="owner-1">
         <input aria-label="Desktop state" defaultValue="still here" />
       </AppShell>,
     );
@@ -292,7 +347,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
       }),
     );
     render(
-      <AppShell mobileHome ownerUserId="owner-search" searchHandler={searchHandler}>
+      <AppShell ownerUserId="owner-search" searchHandler={searchHandler}>
         <p>Today</p>
       </AppShell>,
     );
@@ -363,7 +418,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     );
 
     render(
-      <AppShell mobileHome ownerUserId="owner-return" searchHandler={searchHandler}>
+      <AppShell ownerUserId="owner-return" searchHandler={searchHandler}>
         <p>Today</p>
       </AppShell>,
     );
@@ -431,11 +486,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
   });
 
   it("renders the selected shaded Today band and the authoritative shortlist empty state", () => {
-    render(
-      <AppShell mobileHome ownerUserId="owner-1">
-        <p>Desktop dashboard</p>
-      </AppShell>,
-    );
+    render(<AppShell ownerUserId="owner-1">{mobileTodayDestination()}</AppShell>);
 
     expect(screen.getByRole("heading", { name: "Today" })).toBeDefined();
     expect(screen.getByTestId("today-orientation-band").className).toContain("bg-panel");
@@ -447,11 +498,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
 
   it("keeps the compact Today Eve composer usable before opening the focused flow", async () => {
     const user = userEvent.setup();
-    render(
-      <AppShell mobileHome ownerUserId="owner-1">
-        <p>Desktop dashboard</p>
-      </AppShell>,
-    );
+    render(<AppShell ownerUserId="owner-1">{mobileTodayDestination()}</AppShell>);
 
     await user.type(screen.getByRole("textbox", { name: "Ask Eve anything" }), "What is due?");
     await user.click(screen.getByRole("button", { name: "Send to Eve" }));
@@ -463,7 +510,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
   it("restores one visibly unsaved Capture draft, then clears it on discard", async () => {
     const user = userEvent.setup();
     render(
-      <AppShell mobileHome ownerUserId="owner-1">
+      <AppShell ownerUserId="owner-1">
         <p>Desktop dashboard</p>
       </AppShell>,
     );
@@ -499,7 +546,6 @@ describe("AppShell Phase Seven mobile navigation", () => {
           submit: async () => ({ ok: true, view: { confirmation } }),
           undo: vi.fn(),
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -546,7 +592,6 @@ describe("AppShell Phase Seven mobile navigation", () => {
           submit: vi.fn().mockResolvedValue(success({ confirmation })),
           undo: vi.fn(),
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -607,11 +652,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
         }),
       );
     render(
-      <AppShell
-        captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }}
-        mobileHome
-        ownerUserId="owner-1"
-      >
+      <AppShell captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }} ownerUserId="owner-1">
         <p>Desktop dashboard</p>
       </AppShell>,
     );
@@ -675,7 +716,6 @@ describe("AppShell Phase Seven mobile navigation", () => {
           submit,
           undo: vi.fn(),
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -734,7 +774,6 @@ describe("AppShell Phase Seven mobile navigation", () => {
           submit: vi.fn().mockResolvedValue(success({ confirmation: savedConfirmation })),
           undo,
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -785,7 +824,6 @@ describe("AppShell Phase Seven mobile navigation", () => {
           submit: vi.fn().mockResolvedValue(success({ confirmation })),
           undo: vi.fn().mockResolvedValue(success({ ok: true })),
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -826,7 +864,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     const change = vi.fn().mockResolvedValue(success({ ok: true }));
     const undo = vi.fn().mockResolvedValue(success({ ok: true }));
     render(
-      <AppShell captureHandlers={{ change, submit, undo }} mobileHome ownerUserId="owner-1">
+      <AppShell captureHandlers={{ change, submit, undo }} ownerUserId="owner-1">
         <p>Desktop dashboard</p>
       </AppShell>,
     );
@@ -935,7 +973,6 @@ describe("AppShell Phase Seven mobile navigation", () => {
           submit: vi.fn().mockResolvedValue(success({ confirmation: grouped })),
           undo: vi.fn(),
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>
@@ -1008,11 +1045,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     };
     const submit = vi.fn().mockResolvedValue(success({ confirmation }));
     render(
-      <AppShell
-        captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }}
-        mobileHome
-        ownerUserId="owner-1"
-      >
+      <AppShell captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }} ownerUserId="owner-1">
         <p>Desktop dashboard</p>
       </AppShell>,
     );
@@ -1049,11 +1082,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
       .mockRejectedValueOnce(new Error("ambiguous failure"))
       .mockResolvedValueOnce(success({ confirmation }));
     render(
-      <AppShell
-        captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }}
-        mobileHome
-        ownerUserId="owner-1"
-      >
+      <AppShell captureHandlers={{ change: vi.fn(), submit, undo: vi.fn() }} ownerUserId="owner-1">
         <p>Desktop dashboard</p>
       </AppShell>,
     );
@@ -1092,7 +1121,6 @@ describe("AppShell Phase Seven mobile navigation", () => {
           submit: vi.fn().mockResolvedValue(success({ confirmation })),
           undo,
         }}
-        mobileHome
         ownerUserId="owner-1"
       >
         <p>Desktop dashboard</p>

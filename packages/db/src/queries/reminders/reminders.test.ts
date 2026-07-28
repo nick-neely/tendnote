@@ -10,6 +10,7 @@ const ACTION = "11111111-1111-1111-1111-111111111111";
 const FOLLOW_UP = "22222222-2222-2222-2222-222222222222";
 const ROUTINE = "33333333-3333-3333-3333-333333333333";
 const SAVED_ITEM = "44444444-4444-4444-4444-444444444444";
+const reminderDeepLink = (kind: string, id: string) => `/reminders/open?kind=${kind}&id=${id}`;
 
 describe("Reminder product function", () => {
   it("schedules one explicit alert for an owner's open Follow-Up", async () => {
@@ -27,7 +28,7 @@ describe("Reminder product function", () => {
         recurrence: null,
         sensitivity: "normal" as const,
         scope: "private" as const,
-        deepLink: `/people/person-1#followup-${FOLLOW_UP}`,
+        personId: "person-1",
       })),
     });
 
@@ -73,7 +74,7 @@ describe("Reminder product function", () => {
         recurrence: { interval: 6, unit: "month" },
         sensitivity: "normal" as const,
         scope: "private" as const,
-        deepLink: `/actions#action-${ROUTINE}`,
+        personId: null,
       })),
     });
     await service.saveReminder({
@@ -141,7 +142,7 @@ describe("Reminder product function", () => {
           recurrence: current.recurrence,
           sensitivity: "normal" as const,
           scope: current.scope,
-          deepLink: `/actions#action-${current.id}`,
+          personId: null,
         };
       },
     });
@@ -192,7 +193,7 @@ describe("Reminder product function", () => {
         recurrence: null,
         sensitivity: "normal" as const,
         scope: "private" as const,
-        deepLink: `/people/person-1#followup-${FOLLOW_UP}`,
+        personId: "person-1",
       })),
     });
     const first = await service.saveReminder({
@@ -238,7 +239,7 @@ describe("Reminder product function", () => {
         recurrence: null,
         sensitivity: "normal" as const,
         scope: "private" as const,
-        deepLink: `/saved-items#saved-item-${SAVED_ITEM}`,
+        personId: null,
       })),
     });
     const first = await service.saveReminder({
@@ -294,7 +295,7 @@ describe("Reminder product function", () => {
         recurrence: null,
         sensitivity: "normal" as const,
         scope: "private" as const,
-        deepLink: `/saved-items#saved-item-${SAVED_ITEM}`,
+        personId: null,
       })),
     });
 
@@ -330,7 +331,7 @@ describe("Reminder product function", () => {
         recurrence: { interval: 6, unit: "month" },
         sensitivity: "normal" as const,
         scope: "household" as const,
-        deepLink: `/actions#action-${ROUTINE}`,
+        personId: null,
       })),
     });
     const base = {
@@ -370,7 +371,7 @@ describe("Reminder product function", () => {
       recurrence: null as unknown | null,
       sensitivity: "normal" as const,
       scope: "private" as const,
-      deepLink: `/actions#action-${ACTION}`,
+      personId: null,
     };
     const service = createReminderService({
       store,
@@ -765,11 +766,13 @@ describe("Reminder product function", () => {
     const sender = vi.fn(async () => ({ status: "accepted" as const, providerId: "push-1" }));
 
     const accepted = await service.dispatchReminder({
+      deepLink: reminderDeepLink,
       jobId,
       now: new Date("2026-08-14T14:00:05.000Z"),
       sender,
     });
     const duplicate = await service.dispatchReminder({
+      deepLink: reminderDeepLink,
       jobId,
       now: new Date("2026-08-14T14:00:06.000Z"),
       sender,
@@ -849,6 +852,7 @@ describe("Reminder product function", () => {
 
     await expect(
       service.dispatchReminder({
+        deepLink: reminderDeepLink,
         jobId: registration.deliveryJobs[0]?.id ?? "missing",
         now: new Date("2026-08-14T14:00:05.000Z"),
         sender,
@@ -900,6 +904,7 @@ describe("Reminder product function", () => {
 
     await expect(
       service.dispatchReminder({
+        deepLink: reminderDeepLink,
         jobId: registration.deliveryJobs[0]?.id ?? "missing",
         now: new Date("2026-08-14T14:00:05.000Z"),
         sender,
@@ -948,11 +953,13 @@ describe("Reminder product function", () => {
       .mockResolvedValueOnce({ status: "accepted" as const });
 
     const failed = await service.dispatchReminder({
+      deepLink: reminderDeepLink,
       jobId,
       now: new Date("2026-08-14T14:00:05.000Z"),
       sender,
     });
     const retried = await service.dispatchReminder({
+      deepLink: reminderDeepLink,
       jobId,
       now: new Date("2026-08-14T14:05:05.000Z"),
       sender,
@@ -1016,11 +1023,13 @@ describe("Reminder product function", () => {
     const sender = vi.fn(async () => ({ status: "terminal" as const }));
 
     const result = await service.dispatchReminder({
+      deepLink: reminderDeepLink,
       jobId,
       now: new Date("2026-08-14T14:00:05.000Z"),
       sender,
     });
     const duplicate = await service.dispatchReminder({
+      deepLink: reminderDeepLink,
       jobId,
       now: new Date("2026-08-14T14:00:06.000Z"),
       sender,

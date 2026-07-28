@@ -16,7 +16,7 @@ export default function AdmittedLayout({ children }: { children: React.ReactNode
         <AdmissionMarker />
       </Suspense>
       <div className="admitted-layout-content">
-        <AppShell routeAwareMobileNavigation>{children}</AppShell>
+        <AppShell>{children}</AppShell>
       </div>
     </div>
   );

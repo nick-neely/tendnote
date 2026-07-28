@@ -142,7 +142,7 @@ describe("in-memory mutation outcome behavior", () => {
         recurrence: null,
         sensitivity: "normal" as const,
         scope: "private" as const,
-        deepLink: "/actions#action-action-1",
+        personId: null,
       })),
     });
     const reminderInput = {

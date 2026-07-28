@@ -1,12 +1,13 @@
 import { connection } from "next/server";
 import { AdmittedRoute } from "@/components/admitted-route";
+import { appDestination } from "@/components/app-destinations";
 import { PeopleList } from "@/components/people-list";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { getCachedPeopleList } from "@/lib/cache/people-views";
 
 export default function PeoplePage() {
   return (
-    <AdmittedRoute title="People">
+    <AdmittedRoute destination="people">
       <PeopleContent />
     </AdmittedRoute>
   );
@@ -21,7 +22,7 @@ async function PeopleContent() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <header className="flex flex-col gap-1">
         <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-normal">
-          People
+          {appDestination("people").label}
         </h1>
         <p className="text-sm text-muted-foreground">
           {people.length === 0

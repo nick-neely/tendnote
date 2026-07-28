@@ -56,7 +56,7 @@ type AssetProfilePageProps = {
 
 export default function AssetProfilePage(props: AssetProfilePageProps) {
   return (
-    <AdmittedRoute title="Asset">
+    <AdmittedRoute destination="asset">
       <AssetProfileContent {...props} />
     </AdmittedRoute>
   );

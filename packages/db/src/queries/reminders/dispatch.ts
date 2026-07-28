@@ -36,7 +36,12 @@ type ReminderDispatcherDependencies = {
   }) => Promise<void>;
 };
 
-type DispatchValues = { jobId: string; now: Date; sender: ReminderPushSender };
+type DispatchValues = {
+  jobId: string;
+  now: Date;
+  sender: ReminderPushSender;
+  deepLink: (recordKind: ReminderDeliveryJob["recordKind"], recordId: string) => string;
+};
 
 type DispatchContext = {
   record: ReminderRecord | null;
@@ -60,10 +65,6 @@ function formatDetailedPreview(input: {
     title: `${title} · ${time}`,
     body: "Open Tendnote to view this reminder.",
   };
-}
-
-function reminderOpenPath(recordKind: ReminderDeliveryJob["recordKind"], recordId: string) {
-  return `/reminders/open?kind=${encodeURIComponent(recordKind)}&id=${encodeURIComponent(recordId)}`;
 }
 
 async function loadDispatchContext(
@@ -320,7 +321,7 @@ export function createReminderDispatcher(input: ReminderDispatcherDependencies) 
           ...preview,
           tag: `reminder-${claimed.id}`,
           data: {
-            url: reminderOpenPath(claimed.recordKind, claimed.recordId),
+            url: values.deepLink(claimed.recordKind, claimed.recordId),
             recordKind: claimed.recordKind,
             recordId: claimed.recordId,
           },

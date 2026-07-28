@@ -17,6 +17,8 @@ import { createTodayCandidateLoaders } from "./today/candidate-loaders";
 import { createInMemoryTodayFeedbackStore } from "./today/in-memory-store";
 import { createTodayShortlistService } from "./today/service";
 
+const reminderDeepLink = (kind: string, id: string) => `/reminders/open?kind=${kind}&id=${id}`;
+
 /**
  * Phase Seven's refrigerator-filter proof, composed through the same owner-scoped product
  * functions used by Capture, Today, Search, Eve, Review, and Reminder delivery. Slice suites
@@ -173,7 +175,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
                 recurrence: action.recurrence,
                 sensitivity: "normal" as const,
                 scope: action.scope,
-                deepLink: `/actions#action-${action.id}`,
+                personId: null,
               }
             : null;
         }
@@ -194,7 +196,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
                 recurrence: null,
                 sensitivity: "normal" as const,
                 scope: item.scope,
-                deepLink: `/saved-items#saved-item-${item.id}`,
+                personId: null,
               }
             : null;
         }
@@ -258,6 +260,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
     });
     await expect(
       reminders.dispatchReminder({
+        deepLink: reminderDeepLink,
         jobId: registration.deliveryJobs[0]?.id ?? "missing-job",
         now: new Date("2026-08-14T14:00:05.000Z"),
         sender,
@@ -276,12 +279,16 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       }),
     );
     await expect(
-      reminders.resolveReminderDeepLink({
+      reminders.resolveReminderDeepLinkTarget({
         ownerUserId: OWNER,
         recordKind: "general_action",
         recordId: actionOutcome.generalAction.id,
       }),
-    ).resolves.toBe(`/actions#action-${actionOutcome.generalAction.id}`);
+    ).resolves.toEqual({
+      recordKind: "general_action",
+      recordId: actionOutcome.generalAction.id,
+      personId: null,
+    });
 
     const today = createTodayShortlistService({
       feedbackStore: createInMemoryTodayFeedbackStore(),

@@ -8,7 +8,7 @@ import type {
 } from "@tendnote/domain/global-recall";
 import Link from "next/link";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
-import { appDestinations } from "@/components/app-destinations";
+import { destinationsInGroup } from "@/components/app-destinations";
 import { ArrowLeftIcon, SearchIcon } from "@/components/icons";
 import { type CaptureHandlers, MobileCaptureFlow } from "@/components/mobile-capture-flow";
 import { MobileFailureState } from "@/components/mobile-failure-state";
@@ -27,7 +27,7 @@ import {
   unwrapOwnerActionResult,
 } from "@/lib/owner-action-result";
 
-export type FocusedFlow = "eve" | "search" | "capture" | "menu";
+export type FocusedFlow = "search" | "capture" | "menu";
 
 export type { CaptureHandlers } from "@/components/mobile-capture-flow";
 export type GlobalRecallHandler = (
@@ -655,13 +655,13 @@ export function MenuFlow({ onClose }: { onClose: () => void }) {
   return (
     <FullScreenFlow description="Go to another part of Tendnote." onClose={onClose} title="Menu">
       <nav aria-label="Menu destinations" className="flex flex-col divide-y px-5 py-4">
-        {appDestinations.slice(1).map((item) => {
+        {destinationsInGroup("menu").map((item) => {
           const Icon = item.icon;
           return (
             <Link
               className="flex min-h-14 items-center gap-3 text-base focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              href={item.href}
-              key={item.href}
+              href={item.route}
+              key={item.id}
             >
               <Icon aria-hidden className="size-5 text-muted-foreground" />
               {item.label}
