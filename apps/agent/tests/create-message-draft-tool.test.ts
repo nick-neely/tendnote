@@ -2,13 +2,17 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { generateDraft, persistAcceptedDraftProposal } = vi.hoisted(() => ({
+const { generateDraft, persistAcceptedDraftProposal, reconcile } = vi.hoisted(() => ({
   generateDraft: vi.fn(),
   persistAcceptedDraftProposal: vi.fn(),
+  reconcile: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/drafts", () => ({ generateDraft }));
 vi.mock("@tendnote/db/queries/draft-proposals", () => ({ persistAcceptedDraftProposal }));
+vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
+  requestBackgroundAffectedScopeReconciliation: reconcile,
+}));
 
 const { default: tool } = await import("../agent/tools/create_message_draft");
 
@@ -23,22 +27,29 @@ beforeEach(() => {
 
 function createdDraft() {
   return {
-    status: "created" as const,
-    draft: {
-      id: DRAFT_ID,
-      personId: PERSON_ID,
-      channel: "text",
-      purpose: "check_in",
-      status: "draft",
-      body: "Hi Mark — heard you moved to Denver, how's it going?",
-      sourceRefs: [
-        { kind: "approved_memory", id: "m1", label: "Moved to Denver", trust: "confirmed_fact" },
-        { kind: "suggested_memory", id: "m2", label: "Maybe runs marathons", trust: "tentative" },
-      ],
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    affectedScopes: [{ kind: "owner-collection", collection: "people", ownerUserId: "user-1" }],
+    result: {
+      status: "created" as const,
+      draft: {
+        id: DRAFT_ID,
+        personId: PERSON_ID,
+        channel: "text",
+        purpose: "check_in",
+        status: "draft",
+        body: "Hi Mark — heard you moved to Denver, how's it going?",
+        sourceRefs: [
+          { kind: "approved_memory", id: "m1", label: "Moved to Denver", trust: "confirmed_fact" },
+          { kind: "suggested_memory", id: "m2", label: "Maybe runs marathons", trust: "tentative" },
+        ],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
     },
   };
+}
+
+function skippedDraft(reason: string) {
+  return { result: { status: "skipped", reason }, affectedScopes: [] };
 }
 
 describe("create_message_draft tool", () => {
@@ -55,6 +66,7 @@ describe("create_message_draft tool", () => {
     if (!result.created) return;
     // Component references the PERSISTED draft, not unpersisted model output.
     expect(result.component).toEqual({ type: "message_draft", draftId: DRAFT_ID });
+    expect(reconcile).toHaveBeenCalledWith(createdDraft().affectedScopes);
     expect(result.draft.body).toContain("Denver");
     // Grounding is exposed by trust tier with labels only — never raw ids.
     expect(result.grounding).toEqual([
@@ -148,7 +160,7 @@ describe("create_message_draft tool", () => {
   });
 
   it("declines (no draft) when the person can't be resolved", async () => {
-    generateDraft.mockResolvedValue({ status: "skipped", reason: "person_not_found" });
+    generateDraft.mockResolvedValue(skippedDraft("person_not_found"));
 
     const result = await tool.execute({ personId: PERSON_ID }, ctx);
 
@@ -159,7 +171,7 @@ describe("create_message_draft tool", () => {
   });
 
   it("declines without inventing when context is too thin", async () => {
-    generateDraft.mockResolvedValue({ status: "skipped", reason: "insufficient_context" });
+    generateDraft.mockResolvedValue(skippedDraft("insufficient_context"));
 
     const result = await tool.execute({ personId: PERSON_ID }, ctx);
 
@@ -169,7 +181,7 @@ describe("create_message_draft tool", () => {
   });
 
   it("gives adapter-failure-specific guidance, not a thin-context message", async () => {
-    generateDraft.mockResolvedValue({ status: "skipped", reason: "generation_failed" });
+    generateDraft.mockResolvedValue(skippedDraft("generation_failed"));
 
     const result = await tool.execute({ personId: PERSON_ID }, ctx);
 

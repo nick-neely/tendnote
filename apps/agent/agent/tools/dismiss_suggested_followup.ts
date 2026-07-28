@@ -2,6 +2,7 @@ import { dismissSuggestedFollowup } from "@tendnote/db/queries/followups";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 
 const inputSchema = z.object({
   followupId: z.uuid().describe("The persisted suggested follow-up id to dismiss."),
@@ -20,10 +21,12 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const followup = await dismissSuggestedFollowup({
+    const outcome = await dismissSuggestedFollowup({
       actorUserId: ownerUserId,
       followupId: input.followupId,
     });
+    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
+    const followup = outcome.result;
 
     return {
       followup: {

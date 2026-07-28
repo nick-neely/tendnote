@@ -6,7 +6,7 @@ import {
   createFakeContactImportFuzzyMatcher,
   createFakeContactImportPreviewAdapter,
 } from "./contacts-import-preview/fake-adapter";
-import { applyContactImportCandidates } from "./contacts-import-preview/service";
+import { applyContactImportCandidatesWithAffectedScopes } from "./contacts-import-preview/service";
 import type {
   ContactImportApplyDeps,
   ContactImportAuditEntry,
@@ -27,6 +27,7 @@ export {
 } from "./contacts-import-preview/google-adapter";
 export {
   applyContactImportCandidates,
+  applyContactImportCandidatesWithAffectedScopes,
   createContactImportPreviewSession,
 } from "./contacts-import-preview/service";
 export type * from "./contacts-import-preview/types";
@@ -62,7 +63,7 @@ export async function applyOwnerContactImportCandidates(input: {
 }) {
   const db = getDb();
 
-  return applyContactImportCandidates(input, {
+  return applyContactImportCandidatesWithAffectedScopes(input, {
     adapter: input.adapter ?? createFakeContactImportPreviewAdapter(),
     fuzzyMatcher: createFakeContactImportFuzzyMatcher(),
     isProviderCapabilityConnected: async (ref) => {

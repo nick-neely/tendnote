@@ -28,12 +28,15 @@ describe("BirthdayFollowupOffer", () => {
   it("creates only an explicit annual Follow-Up with a concrete relative schedule", async () => {
     const user = userEvent.setup();
     createBirthdayFollowupAction.mockResolvedValue({
+      ok: true,
       view: {
-        id: "11111111-1111-1111-1111-111111111111",
-        reason: "Celebrate Mara's birthday",
-        reminderSchedule: { label: "Reminder one week before at 9:00 AM · America/Chicago" },
+        view: {
+          id: "11111111-1111-1111-1111-111111111111",
+          reason: "Celebrate Mara's birthday",
+          reminderSchedule: { label: "Reminder one week before at 9:00 AM · America/Chicago" },
+        },
+        optIn: { state: "none", clientInstallationId: "installation-1" },
       },
-      optIn: { state: "none", clientInstallationId: "installation-1" },
     });
     render(
       <BirthdayFollowupOffer personId="22222222-2222-2222-2222-222222222222" personName="Mara" />,

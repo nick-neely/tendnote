@@ -93,7 +93,12 @@ function FollowupRow({
         <Button
           aria-label={`Dismiss follow-up for ${personName}`}
           disabled={pending}
-          onClick={() => run(() => dismissFollowupAction({ followupId: followup.id }))}
+          onClick={() =>
+            run(async () => {
+              const result = await dismissFollowupAction({ followupId: followup.id });
+              if (!result.ok) throw new Error(result.error);
+            })
+          }
           size="sm"
           type="button"
           variant="ghost"
@@ -104,7 +109,12 @@ function FollowupRow({
         <Button
           aria-label={`Complete follow-up for ${personName}`}
           disabled={pending}
-          onClick={() => run(() => completeFollowupAction({ followupId: followup.id }))}
+          onClick={() =>
+            run(async () => {
+              const result = await completeFollowupAction({ followupId: followup.id });
+              if (!result.ok) throw new Error(result.error);
+            })
+          }
           size="sm"
           type="button"
         >

@@ -9,7 +9,7 @@
 export type AffectedScope =
   | {
       kind: "owner-collection";
-      collection: "review" | "today";
+      collection: "people" | "review" | "today";
       ownerUserId: string;
     }
   | {
@@ -22,6 +22,17 @@ export type AffectedScope =
       entity: "general-action";
       entityId: string;
       viewerUserId: string;
+    }
+  | {
+      kind: "viewer-entity";
+      entity: "person";
+      entityId: string;
+      viewerUserId: string;
+    }
+  | {
+      kind: "visible-entity";
+      entity: "person";
+      entityId: string;
     };
 
 /** A committed domain result paired with the stable scopes changed by the write. */

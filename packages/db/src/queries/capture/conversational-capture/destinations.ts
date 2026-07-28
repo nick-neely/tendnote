@@ -161,9 +161,10 @@ async function createFollowupDestination(
       followupId: input.ids.followupId,
     });
   let followup = await getExisting();
+  let affectedScopes: AffectedScope[] = [];
   if (!followup) {
     try {
-      followup = await createFollowup({
+      const outcome = await createFollowup({
         id: input.ids.followupId,
         ownerUserId: input.ownerUserId,
         personId: input.resolvedPerson.id,
@@ -176,6 +177,8 @@ async function createFollowupDestination(
           ? { selectedUserIds: input.visibility.selectedUserIds }
           : {}),
       });
+      followup = outcome.result;
+      affectedScopes = outcome.affectedScopes;
     } catch (error) {
       const racedFollowup = await getExisting();
       if (!racedFollowup) throw error;
@@ -191,7 +194,13 @@ async function createFollowupDestination(
       visibilityLabel: input.visibility.label,
     }),
   );
-  return { kind: "followup" as const, followup, confirmation, id: followup.id };
+  return {
+    kind: "followup" as const,
+    followup,
+    affectedScopes,
+    confirmation,
+    id: followup.id,
+  };
 }
 
 async function createSavedItemDestination(

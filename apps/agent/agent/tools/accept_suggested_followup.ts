@@ -2,6 +2,7 @@ import { acceptSuggestedFollowup } from "@tendnote/db/queries/followups";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 
 const inputSchema = z.object({
   followupId: z.uuid().describe("The persisted suggested follow-up id to accept."),
@@ -29,7 +30,7 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const result = await acceptSuggestedFollowup({
+    const outcome = await acceptSuggestedFollowup({
       actorUserId: ownerUserId,
       followupId: input.followupId,
       // Parse the proposed date here; the shared layer validates it is concrete.
@@ -40,6 +41,8 @@ export default defineTool({
           }
         : undefined,
     });
+    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
+    const result = outcome.result;
 
     return {
       component: result.component,

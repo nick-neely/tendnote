@@ -109,11 +109,15 @@ export function CreateFollowupForm({
                 visibilityChoice,
                 selectedUserIds,
               });
-              let view = created;
+              if (!created.ok) {
+                setError(created.error);
+                return;
+              }
+              let view = created.view;
               if (reminderEnabled) {
-                const reminder = await saveSchedule("follow_up", created.id);
+                const reminder = await saveSchedule("follow_up", created.view.id);
                 if (reminder.nextValidChoice) {
-                  onCreate(created);
+                  onCreate(created.view);
                   reset();
                   setError(
                     `The follow-up was saved, but that alert time has passed. Choose ${reminder.nextValidChoice.label} when you edit its reminder.`,
@@ -121,7 +125,7 @@ export function CreateFollowupForm({
                   return;
                 }
                 view = {
-                  ...created,
+                  ...created.view,
                   reminderSchedule: reminder.scheduleView,
                 };
                 if (reminder.optIn.state === "offer") {

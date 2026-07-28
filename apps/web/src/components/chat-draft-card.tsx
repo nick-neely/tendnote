@@ -46,9 +46,11 @@ export function ChatDraftCard({ view, isNew = false }: { view: DraftView; isNew?
     }
     getDraftViewAction({ draftId: view.draftId })
       .then((live) => {
-        if (active && live) {
-          setBody(live.body);
-          setGrounding(live.grounding.map((item) => ({ trust: item.trust, label: item.label })));
+        if (active && live.ok && live.view) {
+          setBody(live.view.body);
+          setGrounding(
+            live.view.grounding.map((item) => ({ trust: item.trust, label: item.label })),
+          );
         }
       })
       .catch(() => {
@@ -80,7 +82,11 @@ export function ChatDraftCard({ view, isNew = false }: { view: DraftView; isNew?
     startTransition(async () => {
       try {
         const updated = await editDraftBodyAction({ draftId: view.draftId, body: nextBody });
-        setBody(updated.body);
+        if (!updated.ok) {
+          setError(updated.error);
+          return;
+        }
+        setBody(updated.view.body);
         setIsEditing(false);
       } catch {
         setError("That edit didn't save. Try again.");

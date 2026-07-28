@@ -153,12 +153,12 @@ export type ConversationalCaptureDeps = {
     ownerUserId: string;
     personId: string;
     displayName: string;
-  }) => Promise<CapturePerson | null>;
+  }) => Promise<MutationOutcome<CapturePerson | null>>;
   deleteCapturedPerson?: (input: {
     ownerUserId: string;
     personId: string;
     sourceRecordId: string;
-  }) => Promise<CapturePerson | null>;
+  }) => Promise<MutationOutcome<CapturePerson | null>>;
   unlinkCapturedPerson?: (input: {
     ownerUserId: string;
     personId: string;
@@ -232,7 +232,7 @@ export type ConversationalCaptureDeps = {
     scope: PrivacyScope;
     householdId?: string | null;
     selectedUserIds?: string[];
-  }) => Promise<CaptureFollowup>;
+  }) => Promise<MutationOutcome<CaptureFollowup>>;
   getFollowup?: (input: {
     ownerUserId: string;
     followupId: string;
@@ -241,11 +241,11 @@ export type ConversationalCaptureDeps = {
     actorUserId: string;
     followupId: string;
     edit: { reason: string; dueAt?: Date };
-  }) => Promise<CaptureFollowup>;
+  }) => Promise<MutationOutcome<CaptureFollowup>>;
   archiveFollowup?: (input: {
     actorUserId: string;
     followupId: string;
-  }) => Promise<CaptureFollowup>;
+  }) => Promise<MutationOutcome<CaptureFollowup>>;
   searchPeople?: (input: {
     ownerUserId: string;
     query: string;

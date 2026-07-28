@@ -182,7 +182,7 @@ export function markBriefItemActed(input: BriefItemActionInput) {
 const defaultBriefSuggestedFollowupAcceptance = createBriefSuggestedFollowupAcceptance({
   getBriefItem: (input) => defaultBriefLifecycleStore.getBriefItem(input),
   markBriefItemActed: (input) => defaultBriefLifecycle.markBriefItemActed(input),
-  acceptSuggestedFollowup,
+  acceptSuggestedFollowup: async (input) => (await acceptSuggestedFollowup(input)).result,
 });
 
 export function acceptBriefSuggestedFollowup(input: AcceptBriefSuggestedFollowupInput) {

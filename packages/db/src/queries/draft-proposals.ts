@@ -13,6 +13,7 @@ import {
 import { createDefaultDraftAdapter } from "./drafts";
 import type { DraftAdapter } from "./drafts/draft-adapter";
 import { createDrizzleDraftLifecycleStore } from "./drafts/drizzle-store";
+import { draftGenerationOutcome } from "./drafts/mutation-lifecycle";
 import type { DraftLifecycleStore } from "./drafts/types";
 import type { GetPersonContextInput, PersonContextResult } from "./person-context";
 import { getPersonContext } from "./person-context";
@@ -200,7 +201,7 @@ export function createAcceptedDraftProposalPersister(store: DraftLifecycleStore)
         },
       });
 
-      return { status: "created" as const, draft };
+      return draftGenerationOutcome({ status: "created" as const, draft });
     },
   };
 }

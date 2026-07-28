@@ -98,7 +98,12 @@ function ReviewRow({
         <Button
           aria-label={`Dismiss suggested follow-up for ${personName}`}
           disabled={pending}
-          onClick={() => run(() => dismissSuggestedFollowupAction({ followupId: followup.id }))}
+          onClick={() =>
+            run(async () => {
+              const result = await dismissSuggestedFollowupAction({ followupId: followup.id });
+              if (!result.ok) throw new Error(result.error);
+            })
+          }
           size="sm"
           type="button"
           variant="ghost"
@@ -109,7 +114,12 @@ function ReviewRow({
         <Button
           aria-label={`Accept suggested follow-up for ${personName}`}
           disabled={pending}
-          onClick={() => run(() => acceptSuggestedFollowupAction({ followupId: followup.id }))}
+          onClick={() =>
+            run(async () => {
+              const result = await acceptSuggestedFollowupAction({ followupId: followup.id });
+              if (!result.ok) throw new Error(result.error);
+            })
+          }
           size="sm"
           type="button"
         >

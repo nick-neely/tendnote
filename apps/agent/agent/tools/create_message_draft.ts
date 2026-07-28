@@ -8,6 +8,7 @@ import {
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 
 const inputSchema = z.object({
   personId: z
@@ -95,7 +96,7 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const outcome = input.acceptedProposal
+    const mutation = input.acceptedProposal
       ? await persistAcceptedDraftProposal({
           ownerUserId,
           personId: input.personId,
@@ -114,6 +115,8 @@ export default defineTool({
           followupContext: input.followupContext,
           briefItemContext: input.briefItemContext,
         });
+    await requestBackgroundAffectedScopeReconciliation(mutation.affectedScopes);
+    const outcome = mutation.result;
 
     if (outcome.status === "skipped") {
       // Refuse over inventing: surface why so the model can clarify or capture a

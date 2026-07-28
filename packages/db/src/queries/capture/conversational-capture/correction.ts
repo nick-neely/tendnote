@@ -423,13 +423,17 @@ async function editPersonDestination(input: EditSameDestinationInput) {
   if (input.target.kind !== "person" || input.route.destination !== "person") return null;
   if (!input.target.createdByCapture) return unchangedEstablishedPerson(input);
   if (!input.deps.updatePerson) throw new Error("Person correction is unavailable.");
-  const person = await input.deps.updatePerson({
+  const outcome = await input.deps.updatePerson({
     ownerUserId: input.actorUserId,
     personId: input.target.id,
     displayName: input.route.displayName,
   });
+  const person = outcome.result;
   if (!person) throw new Error("That Person is no longer available.");
-  return personCorrectionResult(input, person, true);
+  return {
+    ...personCorrectionResult(input, person, true),
+    affectedScopes: outcome.affectedScopes,
+  };
 }
 
 async function unchangedEstablishedPerson(input: EditSameDestinationInput) {
@@ -546,13 +550,14 @@ async function editFollowupDestination(input: EditSameDestinationInput) {
   const resolvedPerson = input.resolvedPerson;
   if (!resolvedPerson || resolvedPerson.id !== input.currentPersonId) return null;
   if (!input.deps.editFollowup) throw new Error("Follow-Up correction is unavailable.");
-  const followup = await input.deps.editFollowup({
+  const outcome = await input.deps.editFollowup({
     actorUserId: input.actorUserId,
     followupId: input.target.id,
     edit: { reason: input.route.reason, dueAt: input.route.dueAt },
   });
   return {
-    followup,
+    followup: outcome.result,
+    affectedScopes: outcome.affectedScopes,
     confirmation: conversationalCaptureConfirmationSchema.parse(
       followupConfirmation({
         sourceRecordId: input.sourceRecordId,

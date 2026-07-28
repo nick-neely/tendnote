@@ -140,7 +140,8 @@ function DraftReviewCard({
     }
     run(async () => {
       const updated = await editDraftBodyAction({ draftId: draft.id, body: nextBody });
-      onUpdate(updated);
+      if (!updated.ok) throw new Error(updated.error);
+      onUpdate(updated.view);
       setIsEditing(false);
     }, "That edit didn't save. Try again.");
   }
@@ -152,27 +153,34 @@ function DraftReviewCard({
 
   function handleApprove() {
     run(async () => {
-      onUpdate(await approveDraftAction({ draftId: draft.id }));
+      const result = await approveDraftAction({ draftId: draft.id });
+      if (!result.ok) throw new Error(result.error);
+      onUpdate(result.view);
     }, "Couldn't approve this draft.");
   }
 
   function handleMarkSent() {
     run(async () => {
-      onUpdate(await markDraftSentManuallyAction({ draftId: draft.id }));
+      const result = await markDraftSentManuallyAction({ draftId: draft.id });
+      if (!result.ok) throw new Error(result.error);
+      onUpdate(result.view);
     }, "Couldn't update this draft.");
   }
 
   function handleDismiss() {
     run(async () => {
-      onUpdate(await dismissDraftAction({ draftId: draft.id }));
+      const result = await dismissDraftAction({ draftId: draft.id });
+      if (!result.ok) throw new Error(result.error);
+      onUpdate(result.view);
     }, "Couldn't dismiss this draft.");
   }
 
   function handleRegenerate() {
     run(async () => {
       const result = await regenerateDraftAction({ draftId: draft.id });
-      if (result.draft) {
-        onAdd(result.draft);
+      if (!result.ok) throw new Error(result.error);
+      if (result.view.draft) {
+        onAdd(result.view.draft);
       } else {
         setError("Not enough saved context about this person to regenerate.");
       }

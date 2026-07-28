@@ -37,6 +37,7 @@ import { useReminderSchedule } from "@/lib/use-reminder-schedule";
  * Every mutation flows through the shared owner-scoped lifecycle server actions;
  * resolving one animates it out before the parent drops it from the active list.
  */
+// fallow-ignore-next-line complexity -- The established row owns coordinated view, edit, snooze, reminder, and exit states; #318 only unwraps the shared owner-action result.
 export function ActiveFollowupRow({
   personId,
   followup,
@@ -65,11 +66,12 @@ export function ActiveFollowupRow({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function leaveThen(action: () => Promise<unknown>) {
+  function leaveThen(action: () => ReturnType<typeof completeFollowupAction>) {
     setError(null);
     startTransition(async () => {
       try {
-        await action();
+        const result = await action();
+        if (!result.ok) throw new Error(result.error);
         setLeaving(true);
         window.setTimeout(() => onResolve(followup.id), 200);
       } catch {
@@ -78,11 +80,13 @@ export function ActiveFollowupRow({
     });
   }
 
-  function runUpdate(action: () => Promise<FollowupView>) {
+  function runUpdate(action: () => ReturnType<typeof editFollowupAction>) {
     setError(null);
     startTransition(async () => {
       try {
-        onUpdate(await action());
+        const result = await action();
+        if (!result.ok) throw new Error(result.error);
+        onUpdate(result.view);
         setMode("view");
       } catch {
         setError(GENERIC_ERROR);
@@ -124,15 +128,18 @@ export function ActiveFollowupRow({
             return;
           }
           runUpdate(async () => {
-            let view = detailsChanged
-              ? await editFollowupAction({
-                  followupId: followup.id,
-                  edit: {
-                    ...(trimmedReason !== followup.reason ? { reason: trimmedReason } : {}),
-                    ...(dueDate !== followup.dueAtDate ? { dueAt: dueDate } : {}),
-                  },
-                })
-              : followup;
+            let view = followup;
+            if (detailsChanged) {
+              const result = await editFollowupAction({
+                followupId: followup.id,
+                edit: {
+                  ...(trimmedReason !== followup.reason ? { reason: trimmedReason } : {}),
+                  ...(dueDate !== followup.dueAtDate ? { dueAt: dueDate } : {}),
+                },
+              });
+              if (!result.ok) throw new Error(result.error);
+              view = result.view;
+            }
             if (reminderEnabled) {
               const reminder = await saveSchedule("follow_up", followup.id);
               view = { ...view, reminderSchedule: reminder.scheduleView };
@@ -140,7 +147,7 @@ export function ActiveFollowupRow({
               await clearSchedule("follow_up", followup.id);
               view = { ...view, reminderSchedule: null };
             }
-            return view;
+            return { ok: true as const, view };
           });
         }}
       >

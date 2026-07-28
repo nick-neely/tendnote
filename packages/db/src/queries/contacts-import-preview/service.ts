@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { MutationOutcome } from "../affected-scopes";
+import { affectedScopesForPeople } from "../people/affected-scopes";
 import {
   type ContactImportImportedCandidate,
   emptyApplyResult,
@@ -188,6 +190,21 @@ export async function applyContactImportCandidates(
   }
 
   return summarizeApply(imported, notImported);
+}
+
+/** Adds stable People scopes to the adapter-independent Contact Import write. */
+export async function applyContactImportCandidatesWithAffectedScopes(
+  input: Parameters<typeof applyContactImportCandidates>[0],
+  deps: ContactImportApplyDeps,
+): Promise<MutationOutcome<ContactImportApplyResult>> {
+  const result = await applyContactImportCandidates(input, deps);
+  return {
+    result,
+    affectedScopes: affectedScopesForPeople({
+      ownerUserId: input.ownerUserId,
+      personIds: result.candidates.map((candidate) => candidate.personId),
+    }),
+  };
 }
 
 function candidateMatchesSearch(candidate: ContactImportPreviewCandidate, query: string): boolean {

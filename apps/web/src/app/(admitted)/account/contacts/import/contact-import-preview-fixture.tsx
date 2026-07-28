@@ -1,4 +1,5 @@
 import { TriangleAlertIcon } from "@/components/icons";
+import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { getOwnerContactImportPreview } from "@/lib/integrations/contact-import-preview-data";
 import { ContactImportReview } from "./contact-import-review";
 import { RefreshPreviewButton } from "./refresh-preview-button";
@@ -7,7 +8,7 @@ import { RefreshPreviewButton } from "./refresh-preview-button";
  * loads provider data through an explicit client-triggered server action. */
 export async function ContactImportPreviewFixture() {
   try {
-    const preview = await getOwnerContactImportPreview();
+    const preview = await getOwnerContactImportPreview(await requireAdmittedOwner());
     if (!preview.connected) {
       return (
         <PreviewMessage message="Connect Google Contacts from Account before starting an import preview." />

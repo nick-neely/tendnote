@@ -5,7 +5,11 @@ import {
   createFakeContactImportFuzzyMatcher,
   createFakeContactImportPreviewAdapter,
 } from "./fake-adapter";
-import { applyContactImportCandidates, createContactImportPreviewSession } from "./service";
+import {
+  applyContactImportCandidates,
+  applyContactImportCandidatesWithAffectedScopes,
+  createContactImportPreviewSession,
+} from "./service";
 import {
   advisoryFixture,
   driftedMaraContacts,
@@ -1237,6 +1241,29 @@ describe("Contact Import apply drift guard and reconciliation", () => {
 
     expect(result).toMatchObject({ importedCount: 1, addedContactMethods: 1 });
     expect(result.notImported).toEqual([]);
+  });
+
+  it("returns the imported People scopes from the shared apply seam", async () => {
+    const deps = createApplyDeps(maraEmailFixture({ contact: { phones: ["+1 (312) 555-0101"] } }));
+    const preview = await createContactImportPreviewSession({ ownerUserId: OWNER }, deps);
+    const reviewed = preview.candidates[0];
+
+    const outcome = await applyContactImportCandidatesWithAffectedScopes(
+      { ownerUserId: OWNER, confirmations: [confirmationFor(reviewed)] },
+      deps,
+    );
+
+    expect(outcome.result.importedCount).toBe(1);
+    expect(outcome.affectedScopes).toEqual([
+      { kind: "owner-collection", collection: "people", ownerUserId: OWNER },
+      {
+        kind: "viewer-entity",
+        entity: "person",
+        entityId: "person-mara",
+        viewerUserId: OWNER,
+      },
+      { kind: "visible-entity", entity: "person", entityId: "person-mara" },
+    ]);
   });
 
   it("refuses to attach to a target the workflow never offered", async () => {

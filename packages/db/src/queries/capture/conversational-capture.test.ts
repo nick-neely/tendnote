@@ -19,6 +19,29 @@ function actionMutationOutcome<T>(result: T, affectedScopes = [ACTION_SCOPE]) {
   return { result, affectedScopes };
 }
 
+function createFollowupMutationMock() {
+  return vi.fn().mockImplementation(async (input) =>
+    actionMutationOutcome({
+      ...input,
+      id: input.id,
+      status: "open",
+    }),
+  );
+}
+
+async function expectOnePersistedSavedItem(
+  store: ReturnType<typeof createInMemorySavedItemLifecycleStore>,
+  result: CaptureResult,
+) {
+  expect(await store.listVisibleSavedItems({ callerUserId: "owner-1" })).toHaveLength(1);
+  expect(
+    await store.listSavedItemEvents({
+      ownerUserId: "owner-1",
+      savedItemId: savedItemFrom(result).id,
+    }),
+  ).toHaveLength(1);
+}
+
 function actionCaptureHarness() {
   const store = createInMemorySavedItemLifecycleStore();
   const createGeneralAction = vi.fn().mockImplementation(async (input) =>
@@ -234,11 +257,7 @@ describe("conversational Capture", () => {
 
   it("creates a Follow-Up only for one exact owner-scoped person and concrete timing", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const createFollowup = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      id: input.id,
-      status: "open",
-    }));
+    const createFollowup = createFollowupMutationMock();
     const capture = createConversationalCapture(store, {
       createFollowup,
       now: () => new Date("2026-07-21T04:30:00.000Z"),
@@ -267,6 +286,7 @@ describe("conversational Capture", () => {
       }),
     );
     expect(result).toMatchObject({
+      affectedScopes: [ACTION_SCOPE],
       confirmation: {
         destination: "Follow-Ups",
         interpreted: { person: "Maya", scope: "Only me" },
@@ -276,11 +296,7 @@ describe("conversational Capture", () => {
 
   it("keeps an ambiguous person grounded and asks one focused clarification", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const createFollowup = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      id: input.id,
-      status: "open",
-    }));
+    const createFollowup = createFollowupMutationMock();
     const capture = createConversationalCapture(store, {
       createFollowup,
       now: () => new Date("2026-07-21T04:30:00.000Z"),
@@ -323,6 +339,7 @@ describe("conversational Capture", () => {
         sourceRecordId: result.sourceRecord.id,
       }),
     );
+    expect(completed.affectedScopes).toEqual([ACTION_SCOPE]);
   });
 
   it("offers explicit Add and Link actions when a Follow-Up person is unknown", async () => {
@@ -476,7 +493,7 @@ describe("conversational Capture", () => {
           personId: input.personId,
         };
         followups.set(followup.id, followup);
-        return followup;
+        return actionMutationOutcome(followup);
       }),
       getFollowup: vi
         .fn()
@@ -485,7 +502,7 @@ describe("conversational Capture", () => {
         const followup = followups.get(followupId);
         if (!followup) throw new Error("missing follow-up");
         followup.status = "archived";
-        return followup;
+        return actionMutationOutcome(followup);
       }),
       searchPeople: vi.fn().mockResolvedValue([{ id: "person-maya", displayName: "Maya" }]),
       now: () => new Date("2026-07-21T04:30:00.000Z"),
@@ -526,6 +543,9 @@ describe("conversational Capture", () => {
       target: followup.confirmation.change,
       originalText: "I need to order a replacement filter",
     });
+    if (!("affectedScopes" in followup) || !("affectedScopes" in secondAction)) {
+      throw new Error("Expected rerouted mutation scopes.");
+    }
     const firstActionRecord =
       "generalAction" in firstAction ? firstAction.generalAction : undefined;
     const secondActionRecord =
@@ -534,6 +554,8 @@ describe("conversational Capture", () => {
       throw new Error("Expected both Action reroutes to create Actions.");
     }
 
+    expect(followup.affectedScopes).toEqual([ACTION_SCOPE, ACTION_SCOPE]);
+    expect(secondAction.affectedScopes).toEqual([ACTION_SCOPE, ACTION_SCOPE]);
     expect(secondActionRecord).toMatchObject({ status: "open" });
     expect(secondActionRecord.id).not.toBe(firstActionRecord.id);
     expect(createGeneralAction).toHaveBeenCalledTimes(2);
@@ -746,13 +768,7 @@ describe("conversational Capture", () => {
 
     expect(retry.sourceRecord.id).toBe(first.sourceRecord.id);
     expect(savedItemFrom(retry).id).toBe(savedItemFrom(first).id);
-    expect(await store.listVisibleSavedItems({ callerUserId: "owner-1" })).toHaveLength(1);
-    expect(
-      await store.listSavedItemEvents({
-        ownerUserId: "owner-1",
-        savedItemId: savedItemFrom(first).id,
-      }),
-    ).toHaveLength(1);
+    await expectOnePersistedSavedItem(store, first);
   });
 
   it("collapses concurrent rapid retries to one auditable outcome", async () => {
@@ -769,13 +785,7 @@ describe("conversational Capture", () => {
 
     const [first, second] = await Promise.all([capture.capture(input), capture.capture(input)]);
     expect(savedItemFrom(second).id).toBe(savedItemFrom(first).id);
-    expect(await store.listVisibleSavedItems({ callerUserId: "owner-1" })).toHaveLength(1);
-    expect(
-      await store.listSavedItemEvents({
-        ownerUserId: "owner-1",
-        savedItemId: savedItemFrom(first).id,
-      }),
-    ).toHaveLength(1);
+    await expectOnePersistedSavedItem(store, first);
     expect(await store.listAuditLogEntries({ ownerUserId: "owner-1" })).toHaveLength(1);
   });
 

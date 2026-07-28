@@ -108,11 +108,12 @@ function SuggestedFollowupReviewCard({
     };
   }
 
-  function leaveThen(action: () => Promise<unknown>) {
+  function leaveThen(action: () => Promise<{ ok: true } | { ok: false; error: string }>) {
     setError(null);
     startTransition(async () => {
       try {
-        await action();
+        const result = await action();
+        if (!result.ok) throw new Error(result.error);
         setLeaving(true);
         window.setTimeout(() => onResolve(followup.id), 200);
       } catch {
@@ -141,7 +142,12 @@ function SuggestedFollowupReviewCard({
     setError(null);
     startTransition(async () => {
       try {
-        onUpdate(await editSuggestedFollowupAction({ followupId: followup.id, edit: buildEdit() }));
+        const result = await editSuggestedFollowupAction({
+          followupId: followup.id,
+          edit: buildEdit(),
+        });
+        if (!result.ok) throw new Error(result.error);
+        onUpdate(result.view);
         setIsEditing(false);
       } catch {
         setError(GENERIC_ERROR);

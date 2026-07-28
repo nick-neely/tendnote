@@ -78,10 +78,15 @@ export function BirthdayFollowupOffer({
                   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                   schedule: { kind: "relative", leadMinutes },
                 });
+                if (!result.ok) {
+                  setError(result.error);
+                  return;
+                }
                 setCreatedLabel(
-                  `${result.view.reason} · ${result.view.reminderSchedule?.label ?? "Reminder saved"}`,
+                  `${result.view.view.reason} · ${result.view.view.reminderSchedule?.label ?? "Reminder saved"}`,
                 );
-                if (result.optIn.state === "offer") setOptInInstallationId(clientInstallationId);
+                if (result.view.optIn.state === "offer")
+                  setOptInInstallationId(clientInstallationId);
                 router.refresh();
               } catch {
                 setError(GENERIC_ERROR);

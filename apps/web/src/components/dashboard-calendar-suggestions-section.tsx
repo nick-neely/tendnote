@@ -104,7 +104,12 @@ function CalendarSuggestionRow({
           aria-label={`Dismiss Calendar suggestion for ${displayName}`}
           disabled={pending}
           onClick={() =>
-            run(() => dismissCalendarSuggestedFollowupAction({ suggestionId: suggestion.id }))
+            run(async () => {
+              const result = await dismissCalendarSuggestedFollowupAction({
+                suggestionId: suggestion.id,
+              });
+              if (!result.ok) throw new Error(result.error);
+            })
           }
           size="sm"
           type="button"
@@ -117,7 +122,12 @@ function CalendarSuggestionRow({
           aria-label={`Accept Calendar suggestion for ${displayName}`}
           disabled={pending || !canAccept}
           onClick={() =>
-            run(() => acceptCalendarSuggestedFollowupAction({ suggestionId: suggestion.id }))
+            run(async () => {
+              const result = await acceptCalendarSuggestedFollowupAction({
+                suggestionId: suggestion.id,
+              });
+              if (!result.ok) throw new Error(result.error);
+            })
           }
           size="sm"
           type="button"

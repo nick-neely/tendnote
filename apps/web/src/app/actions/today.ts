@@ -68,7 +68,11 @@ export async function actOnTodayItemAction(input: {
   if (!candidate) throw new Error("Today item is no longer available.");
 
   if (candidate.action.kind === "complete_follow_up" && candidate.record.kind === "follow_up") {
-    await completeFollowup({ actorUserId: ownerUserId, followupId: candidate.record.id });
+    const outcome = await completeFollowup({
+      actorUserId: ownerUserId,
+      followupId: candidate.record.id,
+    });
+    reconcileAffectedScopes(outcome.affectedScopes, { origin: "owner-action" });
   } else if (
     candidate.action.kind === "complete_action" &&
     candidate.record.kind === "general_action"

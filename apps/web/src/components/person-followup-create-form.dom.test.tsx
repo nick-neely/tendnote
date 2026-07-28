@@ -28,15 +28,18 @@ import { CreateFollowupForm } from "./person-followup-create-form";
 it("does not confirm a Follow-Up reminder whose selected alert time has passed", async () => {
   const user = userEvent.setup();
   createFollowupAction.mockResolvedValue({
-    id: "11111111-1111-4111-8111-111111111111",
-    reason: "Check in",
-    status: "open",
-    dueAtISO: "2026-07-21T00:00:00.000Z",
-    dueAtDate: "2026-07-21",
-    dueLabel: "Jul 21",
-    dueState: "upcoming",
-    visibilityChoice: "only_me",
-    visibilityLabel: "Only me",
+    ok: true,
+    view: {
+      id: "11111111-1111-4111-8111-111111111111",
+      reason: "Check in",
+      status: "open",
+      dueAtISO: "2026-07-21T00:00:00.000Z",
+      dueAtDate: "2026-07-21",
+      dueLabel: "Jul 21",
+      dueState: "upcoming",
+      visibilityChoice: "only_me",
+      visibilityLabel: "Only me",
+    },
   });
   saveReminderAction.mockResolvedValue({
     optIn: { state: "none", clientInstallationId: "browser-installation-1" },

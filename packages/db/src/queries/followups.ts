@@ -4,8 +4,10 @@ import {
   type ReminderScheduleChoice,
 } from "@tendnote/domain";
 import { createDrizzleFollowupLifecycleStore } from "./followups/drizzle-store";
-import { createFollowupLifecycle } from "./followups/lifecycle";
-import { createSuggestedFollowupReview } from "./followups/review";
+import {
+  createAffectedFollowupLifecycle,
+  createAffectedSuggestedFollowupReview,
+} from "./followups/mutation-lifecycle";
 import type {
   AcceptSuggestedFollowupInput,
   CreateActiveFollowupInput,
@@ -28,12 +30,16 @@ export {
   createInMemoryFollowupStore,
 } from "./followups/in-memory-store";
 export { createFollowupLifecycle } from "./followups/lifecycle";
+export {
+  createAffectedFollowupLifecycle,
+  createAffectedSuggestedFollowupReview,
+} from "./followups/mutation-lifecycle";
 export { createSuggestedFollowupReview } from "./followups/review";
 export type * from "./followups/types";
 
 const defaultFollowupStore = createDrizzleFollowupLifecycleStore();
-const defaultFollowupLifecycle = createFollowupLifecycle(defaultFollowupStore);
-const defaultSuggestedFollowupReview = createSuggestedFollowupReview(defaultFollowupStore);
+const defaultFollowupLifecycle = createAffectedFollowupLifecycle(defaultFollowupStore);
+const defaultSuggestedFollowupReview = createAffectedSuggestedFollowupReview(defaultFollowupStore);
 
 async function reconcileFollowupReminder(followup: { id: string; ownerUserId: string }) {
   await reconcileReminderRecord({
@@ -49,9 +55,9 @@ export async function createFollowup(input: CreateActiveFollowupInput) {
 }
 
 export async function editFollowup(input: EditFollowupInput) {
-  const followup = await defaultFollowupLifecycle.editFollowup(input);
-  await reconcileFollowupReminder(followup);
-  return followup;
+  const outcome = await defaultFollowupLifecycle.editFollowup(input);
+  await reconcileFollowupReminder(outcome.result);
+  return outcome;
 }
 
 export async function getFollowup(input: FollowupActionInput) {
@@ -59,33 +65,33 @@ export async function getFollowup(input: FollowupActionInput) {
 }
 
 export async function completeFollowup(input: FollowupActionInput) {
-  const followup = await defaultFollowupLifecycle.completeFollowup(input);
-  await reconcileFollowupReminder(followup);
-  return followup;
+  const outcome = await defaultFollowupLifecycle.completeFollowup(input);
+  await reconcileFollowupReminder(outcome.result);
+  return outcome;
 }
 
 export async function dismissFollowup(input: FollowupActionInput) {
-  const followup = await defaultFollowupLifecycle.dismissFollowup(input);
-  await reconcileFollowupReminder(followup);
-  return followup;
+  const outcome = await defaultFollowupLifecycle.dismissFollowup(input);
+  await reconcileFollowupReminder(outcome.result);
+  return outcome;
 }
 
 export async function snoozeFollowup(input: SnoozeFollowupInput) {
-  const followup = await defaultFollowupLifecycle.snoozeFollowup(input);
-  await reconcileFollowupReminder(followup);
-  return followup;
+  const outcome = await defaultFollowupLifecycle.snoozeFollowup(input);
+  await reconcileFollowupReminder(outcome.result);
+  return outcome;
 }
 
 export async function reopenFollowup(input: FollowupActionInput) {
-  const followup = await defaultFollowupLifecycle.reopenFollowup(input);
-  await reconcileFollowupReminder(followup);
-  return followup;
+  const outcome = await defaultFollowupLifecycle.reopenFollowup(input);
+  await reconcileFollowupReminder(outcome.result);
+  return outcome;
 }
 
 export async function archiveFollowup(input: FollowupActionInput) {
-  const followup = await defaultFollowupLifecycle.archiveFollowup(input);
-  await reconcileFollowupReminder(followup);
-  return followup;
+  const outcome = await defaultFollowupLifecycle.archiveFollowup(input);
+  await reconcileFollowupReminder(outcome.result);
+  return outcome;
 }
 
 export async function listActiveFollowups(input: {
@@ -136,14 +142,16 @@ export async function createBirthdayFollowupReminder(input: {
   )?.followup;
   const followup =
     existing ??
-    (await createFollowup({
-      ownerUserId: input.ownerUserId,
-      personId: person.id,
-      reason,
-      dueAt,
-      cadence: birthdayAnnualFollowupCadence,
-      scope: "private",
-    }));
+    (
+      await defaultFollowupLifecycle.createFollowup({
+        ownerUserId: input.ownerUserId,
+        personId: person.id,
+        reason,
+        dueAt,
+        cadence: birthdayAnnualFollowupCadence,
+        scope: "private",
+      })
+    ).result;
   const reminder = await saveReminder({
     ownerUserId: input.ownerUserId,
     recordKind: "follow_up",
@@ -153,7 +161,28 @@ export async function createBirthdayFollowupReminder(input: {
     schedule: input.schedule,
     now: input.now,
   });
-  return { followup, reminder };
+  return {
+    result: { followup, reminder },
+    affectedScopes: [
+      {
+        kind: "owner-collection" as const,
+        collection: "people" as const,
+        ownerUserId: followup.ownerUserId,
+      },
+      {
+        kind: "viewer-entity" as const,
+        entity: "person" as const,
+        entityId: followup.personId,
+        viewerUserId: followup.ownerUserId,
+      },
+      { kind: "visible-entity" as const, entity: "person" as const, entityId: followup.personId },
+      {
+        kind: "owner-collection" as const,
+        collection: "today" as const,
+        ownerUserId: followup.ownerUserId,
+      },
+    ],
+  };
 }
 
 export async function suggestFollowup(input: SuggestFollowupInput) {

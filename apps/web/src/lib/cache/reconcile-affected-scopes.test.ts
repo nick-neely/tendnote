@@ -25,6 +25,14 @@ const scopes: AffectedScope[] = [
   },
   { kind: "owner-collection", collection: "today", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
+  { kind: "owner-collection", collection: "people", ownerUserId: "owner-1" },
+  {
+    kind: "viewer-entity",
+    entity: "person",
+    entityId: "person-1",
+    viewerUserId: "owner-1",
+  },
+  { kind: "visible-entity", entity: "person", entityId: "person-1" },
 ];
 
 describe("affected-scope reconciliation", () => {
@@ -42,6 +50,13 @@ describe("affected-scope reconciliation", () => {
     expect(updateTag).toHaveBeenCalledWith("action:owner:owner-1:action:action-1");
     expect(updateTag).toHaveBeenCalledWith("today:owner:owner-1");
     expect(updateTag).toHaveBeenCalledWith("review:owner:owner-1");
+    expect(updateTag).toHaveBeenCalledWith("people:owner:owner-1");
+    expect(updateTag).toHaveBeenCalledWith("people:owner:owner-1:list");
+    expect(updateTag).toHaveBeenCalledWith("people:owner:owner-1:person:person-1");
+    expect(updateTag).toHaveBeenCalledWith("people:visible-person:person-1");
+    expect(revalidatePath).toHaveBeenCalledWith("/actions");
+    expect(revalidatePath).toHaveBeenCalledWith("/people");
+    expect(revalidatePath).toHaveBeenCalledWith("/people/person-1");
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
@@ -50,6 +65,7 @@ describe("affected-scope reconciliation", () => {
 
     expect(revalidateTag).toHaveBeenCalledWith("action:owner:owner-1", "max");
     expect(revalidateTag).toHaveBeenCalledWith("action:owner:owner-1:action:action-1", "max");
+    expect(revalidateTag).toHaveBeenCalledWith("people:visible-person:person-1", "max");
     expect(updateTag).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
   });

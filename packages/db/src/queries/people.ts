@@ -1,6 +1,6 @@
 import { createDrizzlePeopleStore } from "./people/drizzle-store";
+import { createAffectedPeopleQueries } from "./people/mutation-queries";
 import { createPeopleProductQueries } from "./people/product-views";
-import { createPeopleQueries } from "./people/queries";
 import type {
   CreatePersonMutationInput,
   DeleteCaptureOnlyPersonInput,
@@ -11,8 +11,10 @@ import type {
   UpdatePersonMutationInput,
 } from "./people/types";
 
+export { affectedScopesForPeople, affectedScopesForPerson } from "./people/affected-scopes";
 export { createDrizzlePeopleStore } from "./people/drizzle-store";
 export { createInMemoryPeopleStore } from "./people/in-memory-store";
+export { createAffectedPeopleQueries } from "./people/mutation-queries";
 export type {
   PeopleListItemView,
   PersonDetailCoreView,
@@ -21,7 +23,7 @@ export { createPeopleProductQueries } from "./people/product-views";
 export { createPeopleQueries } from "./people/queries";
 export type * from "./people/types";
 
-const defaultPeopleQueries = createPeopleQueries(createDrizzlePeopleStore());
+const defaultPeopleQueries = createAffectedPeopleQueries(createDrizzlePeopleStore());
 const defaultPeopleProductQueries = createPeopleProductQueries(createDrizzlePeopleStore());
 
 export async function createPerson(input: CreatePersonMutationInput) {

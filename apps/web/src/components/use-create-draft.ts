@@ -23,8 +23,10 @@ export function useCreateDraft() {
     startTransition(async () => {
       try {
         const result = await createDraftAction(input);
-        if (result.outcome === "created") {
-          router.push(`/people/${result.personId}#message-drafts`);
+        if (!result.ok) {
+          setError(result.error);
+        } else if (result.view.outcome === "created") {
+          router.push(`/people/${result.view.personId}#message-drafts`);
           router.refresh();
         } else {
           setError("There isn't enough saved context about this person to draft a message yet.");

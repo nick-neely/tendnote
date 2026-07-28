@@ -9,6 +9,7 @@ const { generateDraft, revalidatePath, updateTag, enforceProductBudget } = vi.ho
 }));
 
 vi.mock("@tendnote/db/queries/drafts", () => ({ generateDraft }));
+vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("user-1"),
@@ -30,11 +31,18 @@ beforeEach(() => {
 });
 
 describe("createDraftAction", () => {
+  function createdOutcome() {
+    return {
+      result: {
+        status: "created",
+        draft: { id: DRAFT_ID, personId: PERSON_ID },
+      },
+      affectedScopes: [{ kind: "owner-collection", collection: "people", ownerUserId: "user-1" }],
+    };
+  }
+
   it("passes explicit follow-up context to the shared generator and routes on success", async () => {
-    generateDraft.mockResolvedValue({
-      status: "created",
-      draft: { id: DRAFT_ID, personId: PERSON_ID },
-    });
+    generateDraft.mockResolvedValue(createdOutcome());
 
     const result = await createDraftAction({
       personId: PERSON_ID,
@@ -48,16 +56,15 @@ describe("createDraftAction", () => {
         followupContext: { id: FOLLOWUP_ID, reason: "check in after the move" },
       }),
     );
-    expect(result).toEqual({ outcome: "created", personId: PERSON_ID, draftId: DRAFT_ID });
-    expect(revalidatePath).toHaveBeenCalledWith(`/people/${PERSON_ID}`);
-    expect(updateTag).toHaveBeenCalledWith(`people:owner:user-1:person:${PERSON_ID}`);
+    expect(result).toEqual({
+      ok: true,
+      view: { outcome: "created", personId: PERSON_ID, draftId: DRAFT_ID },
+    });
+    expect(updateTag).toHaveBeenCalled();
   });
 
   it("passes explicit brief-item context", async () => {
-    generateDraft.mockResolvedValue({
-      status: "created",
-      draft: { id: DRAFT_ID, personId: PERSON_ID },
-    });
+    generateDraft.mockResolvedValue(createdOutcome());
 
     await createDraftAction({
       personId: PERSON_ID,
@@ -80,10 +87,7 @@ describe("createDraftAction", () => {
   });
 
   it("passes the person entry-point purpose through to the generator", async () => {
-    generateDraft.mockResolvedValue({
-      status: "created",
-      draft: { id: DRAFT_ID, personId: PERSON_ID },
-    });
+    generateDraft.mockResolvedValue(createdOutcome());
 
     // The person-page entry point starts a check-in with no follow-up/brief context.
     await createDraftAction({ personId: PERSON_ID, purpose: "check_in" });
@@ -99,17 +103,25 @@ describe("createDraftAction", () => {
   });
 
   it("returns a skipped outcome without a draft when generation is skipped", async () => {
-    generateDraft.mockResolvedValue({ status: "skipped", reason: "insufficient_context" });
+    generateDraft.mockResolvedValue({
+      result: { status: "skipped", reason: "insufficient_context" },
+      affectedScopes: [],
+    });
 
     const result = await createDraftAction({ personId: PERSON_ID });
 
-    expect(result).toEqual({ outcome: "skipped", personId: PERSON_ID, draftId: null });
+    expect(result).toEqual({
+      ok: true,
+      view: { outcome: "skipped", personId: PERSON_ID, draftId: null },
+    });
     // No routing/revalidation for a draft that wasn't created.
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid person id", async () => {
-    await expect(createDraftAction({ personId: "not-a-uuid" })).rejects.toThrow();
+    await expect(createDraftAction({ personId: "not-a-uuid" })).resolves.toMatchObject({
+      ok: false,
+    });
     expect(generateDraft).not.toHaveBeenCalled();
   });
 

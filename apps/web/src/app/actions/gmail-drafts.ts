@@ -2,16 +2,14 @@
 
 import type { GmailDraftActionOutcome } from "@tendnote/db/queries/gmail-drafts";
 import { z } from "zod";
-import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
 import { type GmailDraftView, toGmailDraftView } from "@/lib/gmail-draft-view";
 import {
   createOwnerGmailDraft,
-  type GmailDraftWriteRequest,
-  type OwnerGmailDraftResult,
   retryOwnerGmailDraft,
   updateOwnerGmailDraft,
 } from "@/lib/integrations/gmail-drafts";
+import { runOwnerAction } from "@/lib/owner-action";
 
 const recipientSchema = z.object({
   email: z.string().trim().min(3).max(320),
@@ -49,42 +47,41 @@ export type GmailDraftActionResult =
   | { status: "succeeded" | "failed"; view: GmailDraftView }
   | { status: "blocked"; reason: string };
 
-async function toResult(
-  outcome: GmailDraftActionOutcome,
-  personId: string | null,
-): Promise<GmailDraftActionResult> {
+function toResult(outcome: GmailDraftActionOutcome): GmailDraftActionResult {
   if (outcome.status === "blocked") {
     return { status: "blocked", reason: outcome.reason };
-  }
-  if (personId) {
-    const ownerUserId = await requireAdmittedOwnerForAction();
-    invalidatePersonMutation({ ownerUserId, personId });
   }
   return { status: outcome.status, view: toGmailDraftView(outcome.action) };
 }
 
 /** Validate the shared input and run one owner-scoped Gmail write to a UI result. */
-async function runGmailWrite(
-  input: GmailDraftInput,
-  write: (request: GmailDraftWriteRequest) => Promise<OwnerGmailDraftResult>,
-): Promise<GmailDraftActionResult> {
-  const parsed = gmailDraftInputSchema.parse(input);
-  const { outcome, personId } = await write({
-    draftId: parsed.draftId,
-    subject: parsed.subject,
-    recipient: parsed.recipient,
-    bodyEdit: parsed.bodyEdit,
+function runGmailWrite(input: GmailDraftInput, write: typeof createOwnerGmailDraft) {
+  return runOwnerAction({
+    schema: gmailDraftInputSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      write({
+        ownerUserId,
+        draftId: parsed.draftId,
+        subject: parsed.subject,
+        recipient: parsed.recipient,
+        bodyEdit: parsed.bodyEdit,
+      }),
+    affectedScopes: (result) => result.affectedScopes,
+    reconcile: (result, ownerUserId) => {
+      if (result.personId) {
+        invalidatePersonMutation({ ownerUserId, personId: result.personId });
+      }
+    },
+    result: ({ outcome }) => toResult(outcome),
   });
-  return toResult(outcome, personId);
 }
 
 /**
  * Create a Gmail draft from an approved Tendnote draft through the shared approval
  * gate. Persists last-mile body edits through the Tendnote draft first; never sends.
  */
-export async function createGmailDraftAction(
-  input: GmailDraftInput,
-): Promise<GmailDraftActionResult> {
+export async function createGmailDraftAction(input: GmailDraftInput) {
   return runGmailWrite(input, createOwnerGmailDraft);
 }
 
@@ -93,21 +90,27 @@ export async function createGmailDraftAction(
  * user intent only — editing the draft alone never updates Gmail — and targets the
  * existing Gmail draft id rather than creating a duplicate.
  */
-export async function updateGmailDraftAction(
-  input: GmailDraftInput,
-): Promise<GmailDraftActionResult> {
+export async function updateGmailDraftAction(input: GmailDraftInput) {
   return runGmailWrite(input, updateOwnerGmailDraft);
 }
 
 /** Explicitly retry a failed Gmail draft write (visible retry only, no background). */
-export async function retryGmailDraftAction(input: {
-  draftId: string;
-  actionId: string;
-}): Promise<GmailDraftActionResult> {
-  const parsed = retrySchema.parse(input);
-  const { outcome, personId } = await retryOwnerGmailDraft({
-    draftId: parsed.draftId,
-    actionId: parsed.actionId,
+export async function retryGmailDraftAction(input: { draftId: string; actionId: string }) {
+  return runOwnerAction({
+    schema: retrySchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      retryOwnerGmailDraft({
+        ownerUserId,
+        draftId: parsed.draftId,
+        actionId: parsed.actionId,
+      }),
+    affectedScopes: (result) => result.affectedScopes,
+    reconcile: (result, ownerUserId) => {
+      if (result.personId) {
+        invalidatePersonMutation({ ownerUserId, personId: result.personId });
+      }
+    },
+    result: ({ outcome }) => toResult(outcome),
   });
-  return toResult(outcome, personId);
 }

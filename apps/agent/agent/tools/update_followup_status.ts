@@ -5,10 +5,12 @@ import {
   reopenFollowup,
   snoozeFollowup,
 } from "@tendnote/db/queries/followups";
+import type { MutationOutcome } from "@tendnote/db/queries/general-actions";
 import type { Followup } from "@tendnote/domain";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 
 const inputSchema = z.object({
   followupId: z.uuid().describe("The persisted follow-up id to update."),
@@ -32,7 +34,7 @@ type UpdateFollowupInput = z.infer<typeof inputSchema>;
  */
 const followupTransitions: Record<
   UpdateFollowupInput["status"],
-  (input: UpdateFollowupInput, ownerUserId: string) => Promise<Followup>
+  (input: UpdateFollowupInput, ownerUserId: string) => Promise<MutationOutcome<Followup>>
 > = {
   complete: ({ followupId }, ownerUserId) =>
     completeFollowup({ actorUserId: ownerUserId, followupId }),
@@ -50,7 +52,10 @@ const followupTransitions: Record<
 };
 
 /** Dispatches one validated transition to its shared lifecycle function. */
-function applyTransition(input: UpdateFollowupInput, ownerUserId: string): Promise<Followup> {
+function applyTransition(
+  input: UpdateFollowupInput,
+  ownerUserId: string,
+): Promise<MutationOutcome<Followup>> {
   return followupTransitions[input.status](input, ownerUserId);
 }
 
@@ -67,7 +72,9 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const followup = await applyTransition(input, ownerUserId);
+    const outcome = await applyTransition(input, ownerUserId);
+    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
+    const followup = outcome.result;
 
     return {
       followup: {

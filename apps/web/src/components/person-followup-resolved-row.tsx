@@ -33,11 +33,12 @@ export function ResolvedFollowupRow({
     startTransition(async () => {
       try {
         const reopened = await reopenFollowupAction({ followupId: followup.id });
+        if (!reopened.ok) throw new Error(reopened.error);
         setLeaving(true);
         window.setTimeout(() => {
           onResolve(followup.id);
           // Reopened reminders are active again, so they rejoin the active list.
-          onReopen(reopened);
+          onReopen(reopened.view);
         }, 200);
       } catch {
         setError(GENERIC_ERROR);
@@ -49,7 +50,8 @@ export function ResolvedFollowupRow({
     setError(null);
     startTransition(async () => {
       try {
-        await archiveFollowupAction({ followupId: followup.id });
+        const result = await archiveFollowupAction({ followupId: followup.id });
+        if (!result.ok) throw new Error(result.error);
         setLeaving(true);
         window.setTimeout(() => onResolve(followup.id), 200);
       } catch {

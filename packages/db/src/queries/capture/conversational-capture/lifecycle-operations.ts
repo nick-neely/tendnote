@@ -211,13 +211,13 @@ export function createCaptureOutcomeLifecycleOperations(
           return unlinked;
         }
         if (!deps.deleteCapturedPerson) throw new Error("Person correction is unavailable.");
-        const removed = await deps.deleteCapturedPerson({
+        const outcome = await deps.deleteCapturedPerson({
           ownerUserId: actorUserId,
           personId,
           sourceRecordId: reference.sourceRecordId,
         });
-        if (!removed) throw new Error("That Person is no longer available.");
-        return removed;
+        if (!outcome.result) throw new Error("That Person is no longer available.");
+        return outcome;
       },
       async undo() {
         throw new Error("A captured Person has no safe Undo operation.");

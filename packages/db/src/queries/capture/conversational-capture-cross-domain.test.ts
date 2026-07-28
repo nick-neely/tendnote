@@ -73,6 +73,16 @@ describe("cross-domain conversational Capture", () => {
 
   it("creates a minimal Person only for explicit add intent and attaches the shared evidence", async () => {
     const store = createInMemorySavedItemLifecycleStore();
+    const personScopes = [
+      { kind: "owner-collection" as const, collection: "people" as const, ownerUserId: "owner-1" },
+      {
+        kind: "viewer-entity" as const,
+        entity: "person" as const,
+        entityId: "person-priya",
+        viewerUserId: "owner-1",
+      },
+      { kind: "visible-entity" as const, entity: "person" as const, entityId: "person-priya" },
+    ];
     const resolveOrCreateAndLinkPerson = vi.fn().mockImplementation(async (input) => ({
       person: { id: "person-priya", displayName: input.displayName },
       created: true,
@@ -99,6 +109,7 @@ describe("cross-domain conversational Capture", () => {
       role: "primary",
     });
     expect(result).toMatchObject({
+      affectedScopes: personScopes,
       person: { id: "person-priya", displayName: "Priya" },
       confirmation: {
         destination: "People",
@@ -508,7 +519,15 @@ describe("cross-domain conversational Capture", () => {
   it("reroutes a newly captured minimal Person through its guarded delete lifecycle", async () => {
     const store = createInMemorySavedItemLifecycleStore();
     const person = { id: "person-priya", displayName: "Priya" };
-    const deleteCapturedPerson = vi.fn().mockResolvedValue(person);
+    const personScope = {
+      kind: "owner-collection" as const,
+      collection: "people" as const,
+      ownerUserId: "owner-1",
+    };
+    const deleteCapturedPerson = vi.fn().mockResolvedValue({
+      result: person,
+      affectedScopes: [personScope],
+    });
     const assertCapturedPersonRemovable = vi.fn().mockResolvedValue(undefined);
     const createGeneralAction = vi.fn().mockImplementation(async (input) =>
       actionMutationOutcome({
@@ -555,6 +574,7 @@ describe("cross-domain conversational Capture", () => {
       sourceRecordId: original.sourceRecord.id,
     });
     expect(corrected).toMatchObject({
+      affectedScopes: [personScope],
       generalAction: { status: "open", sourceRecordId: original.sourceRecord.id },
       confirmation: { destination: "Actions" },
     });
