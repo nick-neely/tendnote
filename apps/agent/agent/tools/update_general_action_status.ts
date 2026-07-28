@@ -1,4 +1,7 @@
-import type { GeneralActionWithContext } from "@tendnote/db/queries/general-actions";
+import type {
+  GeneralActionWithContext,
+  MutationOutcome,
+} from "@tendnote/db/queries/general-actions";
 import {
   archiveGeneralAction,
   completeGeneralAction,
@@ -13,6 +16,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
@@ -40,7 +44,7 @@ type UpdateInput = z.infer<typeof inputSchema>;
 function applyTransition(
   input: UpdateInput,
   ownerUserId: string,
-): Promise<GeneralActionWithContext> {
+): Promise<MutationOutcome<GeneralActionWithContext>> {
   const { generalActionId } = input;
 
   switch (input.action) {
@@ -87,9 +91,10 @@ export default defineTool({
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
-    const action = await withModelSafeStoreErrors(() => applyTransition(input, ownerUserId));
+    const outcome = await withModelSafeStoreErrors(() => applyTransition(input, ownerUserId));
+    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
 
-    return { action: toGeneralActionRef(action) };
+    return { action: toGeneralActionRef(outcome.result) };
   },
   // A status change has no card — the model confirms the transition in prose. (The
   // ledger-list and review cards render separately; a lone transition does not.)

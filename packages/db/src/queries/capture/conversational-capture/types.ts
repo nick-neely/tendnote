@@ -12,6 +12,7 @@ import type {
   ReminderScheduleChoice,
   SourceRecord,
 } from "@tendnote/domain";
+import type { AffectedScope, MutationOutcome } from "../../affected-scopes";
 import type { SavedItemWithContext } from "../../saved-items/types";
 
 export type ConversationalCaptureInput = ConversationalCaptureRequest;
@@ -28,6 +29,7 @@ export type ConversationalCaptureResult = {
   assetReview?: CaptureAssetReview;
   outcomes?: CaptureOutcomeResult[];
   reminderSchedule?: ReminderScheduleChoice;
+  affectedScopes?: AffectedScope[];
 };
 
 export type CaptureGeneralAction = {
@@ -69,6 +71,7 @@ type CaptureOutcomeBase = {
   id: string;
   confirmation: Exclude<ConversationalCaptureConfirmation, { destination: "Grouped" }>;
   reminderSchedule?: ReminderScheduleChoice;
+  affectedScopes?: AffectedScope[];
 };
 export type CaptureOutcomeResult =
   | (CaptureOutcomeBase & { kind: "saved_item"; savedItem: SavedItemWithContext })
@@ -192,7 +195,7 @@ export type ConversationalCaptureDeps = {
     scope: PrivacyScope;
     householdId?: string | null;
     selectedUserIds?: string[];
-  }) => Promise<CaptureGeneralAction>;
+  }) => Promise<MutationOutcome<CaptureGeneralAction>>;
   getGeneralAction?: (input: {
     ownerUserId: string;
     generalActionId: string;
@@ -205,11 +208,11 @@ export type ConversationalCaptureDeps = {
       dueAt?: Date | null;
       recurrence?: GeneralActionRecurrence | null;
     };
-  }) => Promise<CaptureGeneralAction>;
+  }) => Promise<MutationOutcome<CaptureGeneralAction>>;
   archiveGeneralAction?: (input: {
     actorUserId: string;
     generalActionId: string;
-  }) => Promise<CaptureGeneralAction>;
+  }) => Promise<MutationOutcome<CaptureGeneralAction>>;
   editSavedItem?: (input: {
     actorUserId: string;
     savedItemId: string;

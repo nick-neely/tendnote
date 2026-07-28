@@ -6,6 +6,7 @@ const {
   getOwnerTodayContext,
   getTodayCandidate,
   getTodayShortlist,
+  reconcileAffectedScopes,
   requireAdmittedOwnerForAction,
   revalidatePath,
   suppressTodayCandidate,
@@ -16,6 +17,7 @@ const {
   getOwnerTodayContext: vi.fn(),
   getTodayCandidate: vi.fn(),
   getTodayShortlist: vi.fn(),
+  reconcileAffectedScopes: vi.fn(),
   requireAdmittedOwnerForAction: vi.fn(),
   revalidatePath: vi.fn(),
   suppressTodayCandidate: vi.fn(),
@@ -31,6 +33,7 @@ vi.mock("@tendnote/db/queries/today", () => ({
   suppressTodayCandidate,
 }));
 vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwnerForAction }));
+vi.mock("@/lib/cache/reconcile-affected-scopes", () => ({ reconcileAffectedScopes }));
 vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
 
 import { actOnTodayItemAction, suppressTodayItemAction } from "./today";
@@ -76,6 +79,10 @@ describe("Today web actions", () => {
     getTodayCandidate.mockResolvedValue(shortlist().items[0]);
     suppressTodayCandidate.mockResolvedValue({});
     completeFollowup.mockResolvedValue({});
+    completeGeneralAction.mockResolvedValue({
+      result: {},
+      affectedScopes: [{ kind: "owner-collection", collection: "today", ownerUserId: "owner-1" }],
+    });
   });
 
   it("derives owner scope for Today-only suppression", async () => {
@@ -142,8 +149,9 @@ describe("Today web actions", () => {
       actorUserId: "owner-1",
       generalActionId: actionId,
     });
-    expect(updateTag).toHaveBeenCalledWith("action:owner:owner-1");
-    expect(updateTag).toHaveBeenCalledWith(`action:owner:owner-1:action:${actionId}`);
-    expect(revalidatePath).toHaveBeenCalledWith("/actions");
+    expect(reconcileAffectedScopes).toHaveBeenCalledWith(
+      [{ kind: "owner-collection", collection: "today", ownerUserId: "owner-1" }],
+      { origin: "owner-action" },
+    );
   });
 });

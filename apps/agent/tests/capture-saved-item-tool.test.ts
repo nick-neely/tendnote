@@ -1,16 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { captureExplicitOutcome, changeExplicitCaptureOutcome, undoExplicitCaptureOutcome } =
-  vi.hoisted(() => ({
-    captureExplicitOutcome: vi.fn(),
-    changeExplicitCaptureOutcome: vi.fn(),
-    undoExplicitCaptureOutcome: vi.fn(),
-  }));
+const {
+  captureExplicitOutcome,
+  changeExplicitCaptureOutcome,
+  requestBackgroundAffectedScopeReconciliation,
+  undoExplicitCaptureOutcome,
+} = vi.hoisted(() => ({
+  captureExplicitOutcome: vi.fn(),
+  changeExplicitCaptureOutcome: vi.fn(),
+  requestBackgroundAffectedScopeReconciliation: vi.fn(),
+  undoExplicitCaptureOutcome: vi.fn(),
+}));
 
 vi.mock("@tendnote/db/queries/conversational-capture", () => ({
   captureExplicitOutcome,
   changeExplicitCaptureOutcome,
   undoExplicitCaptureOutcome,
+}));
+vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
+  requestBackgroundAffectedScopeReconciliation,
 }));
 
 const { default: tool } = await import("../agent/tools/capture_saved_item");
@@ -57,6 +65,7 @@ describe("capture_saved_item", () => {
       surface: "eve",
     });
     expect(result.confirmation?.destination).toBe("Saved Items");
+    expect(requestBackgroundAffectedScopeReconciliation).toHaveBeenCalledWith([]);
   });
 
   it("returns the one source-first clarification and reuses the operation to complete it", async () => {

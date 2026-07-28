@@ -12,6 +12,7 @@ import {
   SavedItemValidationError,
   type SourceRecord,
 } from "@tendnote/domain";
+import type { AffectedScope } from "../../affected-scopes";
 import { hydrateSavedItem } from "../../saved-items/context";
 import { createSavedItemLifecycle } from "../../saved-items/lifecycle";
 import type { SavedItemLifecycleStore, SavedItemWithContext } from "../../saved-items/types";
@@ -268,14 +269,27 @@ async function rerouteCapturedOutcome(input: {
   const rerouteId = createRerouteId(input.parsed, input.sourceRecord.id, to);
   const corrected = await createReroutedDestination(input, rerouteId);
   await shareCorrectedMemory(input.store, input.parsed.actorUserId, input.visibility, corrected);
-  await input.outcomeLifecycle[input.target.kind].archive(
+  const archived = await input.outcomeLifecycle[input.target.kind].archive(
     input.parsed.actorUserId,
     input.target.id,
     input.current.status,
     input.target,
   );
   await writeRerouteAudit(input, corrected, to, rerouteId("audit"));
-  return { sourceRecord: input.sourceRecord, ...corrected };
+  return {
+    sourceRecord: input.sourceRecord,
+    ...corrected,
+    affectedScopes: [
+      ...affectedScopesFromUnknown(corrected),
+      ...affectedScopesFromUnknown(archived),
+    ],
+  };
+}
+
+function affectedScopesFromUnknown(value: unknown): AffectedScope[] {
+  if (!value || typeof value !== "object" || !("affectedScopes" in value)) return [];
+  const scopes = value.affectedScopes;
+  return Array.isArray(scopes) ? (scopes as AffectedScope[]) : [];
 }
 
 async function assertSafePersonReroute(
@@ -504,7 +518,7 @@ async function editSavedItemDestination(input: EditSameDestinationInput) {
 async function editActionDestination(input: EditSameDestinationInput) {
   if (input.target.kind !== "general_action" || input.route.destination !== "action") return null;
   if (!input.deps.editGeneralAction) throw new Error("Action correction is unavailable.");
-  const generalAction = await input.deps.editGeneralAction({
+  const outcome = await input.deps.editGeneralAction({
     actorUserId: input.actorUserId,
     generalActionId: input.target.id,
     edit: {
@@ -514,7 +528,8 @@ async function editActionDestination(input: EditSameDestinationInput) {
     },
   });
   return {
-    generalAction,
+    generalAction: outcome.result,
+    affectedScopes: outcome.affectedScopes,
     confirmation: conversationalCaptureConfirmationSchema.parse(
       actionConfirmation({
         sourceRecordId: input.sourceRecordId,

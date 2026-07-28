@@ -21,7 +21,7 @@ export type * from "./saved-items/types";
 
 const defaultSavedItemLifecycle = createSavedItemLifecycle(createDrizzleSavedItemLifecycleStore(), {
   scheduleEmbedding: enqueueAndTriggerSemanticEmbeddingJob,
-  createGeneralAction: (input) => createGeneralAction(input),
+  createGeneralAction: async (input) => (await createGeneralAction(input)).result,
 });
 
 async function reconcileSavedItemReminder(item: { id: string; ownerUserId: string }) {

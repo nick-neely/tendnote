@@ -1,4 +1,5 @@
 import type { ConversationalCaptureRoute } from "@tendnote/domain";
+import type { AffectedScope } from "../../affected-scopes";
 import { hydrateSavedItem } from "../../saved-items/context";
 import { createGroundedSavedItem } from "../../saved-items/creation";
 import type { SavedItemLifecycleStore } from "../../saved-items/types";
@@ -105,9 +106,10 @@ async function createActionDestination(
       generalActionId: input.ids.generalActionId,
     });
   let generalAction = await getExisting();
+  let affectedScopes: AffectedScope[] = [];
   if (!generalAction) {
     try {
-      generalAction = await createGeneralAction({
+      const outcome = await createGeneralAction({
         id: input.ids.generalActionId,
         ownerUserId: input.ownerUserId,
         title: input.route.title,
@@ -120,6 +122,8 @@ async function createActionDestination(
           ? { selectedUserIds: input.visibility.selectedUserIds }
           : {}),
       });
+      generalAction = outcome.result;
+      affectedScopes = outcome.affectedScopes;
     } catch (error) {
       const racedAction = await getExisting();
       if (!racedAction) throw error;
@@ -137,6 +141,7 @@ async function createActionDestination(
   return {
     kind: "general_action" as const,
     generalAction,
+    affectedScopes,
     confirmation,
     id: generalAction.id,
     ...(input.route.reminderSchedule ? { reminderSchedule: input.route.reminderSchedule } : {}),

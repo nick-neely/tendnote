@@ -6,7 +6,7 @@ import { createAssetActionLinks } from "./assets/action-links";
 import { createInMemoryAssetActionLinkStore } from "./assets/in-memory-action-link-store";
 import { createAssetReview } from "./assets/review";
 import { createConversationalCapture } from "./capture/conversational-capture";
-import { createGeneralActionLifecycle } from "./general-actions/lifecycle";
+import { createAffectedGeneralActionLifecycle } from "./general-actions/mutation-lifecycle";
 import { createGlobalRecall } from "./global-recall/queries";
 import { createExplicitCaptureReminderScheduler } from "./reminders";
 import { createInMemoryReminderStore } from "./reminders/in-memory-store";
@@ -39,7 +39,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       ...createInMemoryAssetActionLinkStore(),
       ...createInMemorySavedItemLifecycleStore(),
     };
-    const actions = createGeneralActionLifecycle(productStore);
+    const actions = createAffectedGeneralActionLifecycle(productStore);
     const savedItems = createSavedItemLifecycle(productStore);
     const assetReview = createAssetReview(productStore);
     const assetLinks = createAssetActionLinks(productStore);
@@ -119,11 +119,12 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
         status: "active",
       }),
     ]);
-    const linkedAction = await actions.editGeneralAction({
+    const linkedActionOutcome = await actions.editGeneralAction({
       actorUserId: OWNER,
       generalActionId: actionOutcome.generalAction.id,
       edit: { assetHints: [{ label: "kitchen refrigerator filter" }] },
     });
+    const linkedAction = linkedActionOutcome.result;
     expect(linkedAction.sourceRecordId).toBe(captured.sourceRecord.id);
     const promotedHint = await assetLinks.promoteGeneralActionAssetHint({
       actorUserId: OWNER,

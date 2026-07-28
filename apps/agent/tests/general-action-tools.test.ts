@@ -15,9 +15,13 @@ const mocks = vi.hoisted(() => ({
   pauseGeneralAction: vi.fn(),
   resumeGeneralAction: vi.fn(),
   editGeneralAction: vi.fn(),
+  requestBackgroundAffectedScopeReconciliation: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/general-actions", () => mocks);
+vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
+  requestBackgroundAffectedScopeReconciliation: mocks.requestBackgroundAffectedScopeReconciliation,
+}));
 
 const { default: createTool } = await import("../agent/tools/create_general_action");
 const { default: suggestTool } = await import("../agent/tools/suggest_general_action");
@@ -62,13 +66,17 @@ function action(overrides: Partial<GeneralActionWithContext> = {}): GeneralActio
   };
 }
 
+function mutationOutcome(result: GeneralActionWithContext) {
+  return { result, affectedScopes: [] };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
 describe("create_general_action — explicit active creation", () => {
   it("creates an unscheduled active action owner-scoped, without a due date", async () => {
-    mocks.createGeneralAction.mockResolvedValue(action());
+    mocks.createGeneralAction.mockResolvedValue(mutationOutcome(action()));
 
     const result = await createTool.execute({ title: "Replace the fridge water filter" }, ctx);
 
@@ -83,14 +91,17 @@ describe("create_general_action — explicit active creation", () => {
     expect(result.action.id).toBe(ACTION_ID);
     expect(result.action.status).toBe("open");
     expect(result.action.isRoutine).toBe(false);
+    expect(mocks.requestBackgroundAffectedScopeReconciliation).toHaveBeenCalledWith([]);
   });
 
   it("parses a concrete due date and a cadence into a Routine", async () => {
     mocks.createGeneralAction.mockResolvedValue(
-      action({
-        dueAt: new Date("2026-08-01T00:00:00.000Z"),
-        recurrence: { interval: 6, unit: "month" },
-      }),
+      mutationOutcome(
+        action({
+          dueAt: new Date("2026-08-01T00:00:00.000Z"),
+          recurrence: { interval: 6, unit: "month" },
+        }),
+      ),
     );
 
     const result = await createTool.execute(
@@ -220,7 +231,7 @@ describe("update_general_action_status — explicit, single-record mutation", ()
     ["pause", "pauseGeneralAction"],
     ["resume", "resumeGeneralAction"],
   ] as const)("dispatches %s to the shared lifecycle function", async (action_, fnName) => {
-    mocks[fnName].mockResolvedValue(action());
+    mocks[fnName].mockResolvedValue(mutationOutcome(action()));
 
     await updateTool.execute({ generalActionId: ACTION_ID, action: action_ }, ctx);
 
@@ -228,10 +239,11 @@ describe("update_general_action_status — explicit, single-record mutation", ()
       actorUserId: "user-1",
       generalActionId: ACTION_ID,
     });
+    expect(mocks.requestBackgroundAffectedScopeReconciliation).toHaveBeenCalledWith([]);
   });
 
   it("defers to a concrete resurface date", async () => {
-    mocks.deferGeneralAction.mockResolvedValue(action({ status: "deferred" }));
+    mocks.deferGeneralAction.mockResolvedValue(mutationOutcome(action({ status: "deferred" })));
 
     await updateTool.execute(
       { generalActionId: ACTION_ID, action: "defer", deferUntil: "2026-09-01" },
@@ -253,7 +265,9 @@ describe("update_general_action_status — explicit, single-record mutation", ()
 
 describe("edit_general_action — content edit only on named record", () => {
   it("builds a sparse edit: converts a due date, clears with null, omits unset keys", async () => {
-    mocks.editGeneralAction.mockResolvedValue(action({ title: "Renew the passport" }));
+    mocks.editGeneralAction.mockResolvedValue(
+      mutationOutcome(action({ title: "Renew the passport" })),
+    );
 
     await editTool.execute(
       { generalActionId: ACTION_ID, title: "Renew the passport", notes: null, dueAt: "2026-10-01" },
@@ -268,6 +282,7 @@ describe("edit_general_action — content edit only on named record", () => {
     // Untouched fields are absent, so the shared layer never wipes them.
     expect("areaId" in passed.edit).toBe(false);
     expect("recurrence" in passed.edit).toBe(false);
+    expect(mocks.requestBackgroundAffectedScopeReconciliation).toHaveBeenCalledWith([]);
   });
 });
 

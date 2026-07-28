@@ -544,6 +544,7 @@ function captureResult(input: {
   return {
     sourceRecord: input.sourceRecord,
     outcomes: allOutcomes,
+    affectedScopes: allOutcomes.flatMap((outcome) => outcome.affectedScopes ?? []),
     confirmation: conversationalCaptureConfirmationSchema.parse({
       destination: "Grouped",
       groundedBySourceRecordId: input.sourceRecord.id,

@@ -11,7 +11,7 @@ import {
 import { type TodayShortlistResponse, todayShortlistResponseSchema } from "@tendnote/domain/today";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
+import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 import { invalidateTodayOwner } from "@/lib/cache/today-review-mutation-scopes";
 
 const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -73,12 +73,11 @@ export async function actOnTodayItemAction(input: {
     candidate.action.kind === "complete_action" &&
     candidate.record.kind === "general_action"
   ) {
-    await completeGeneralAction({ actorUserId: ownerUserId, generalActionId: candidate.record.id });
-    // Today owns only its shortlist, but this durable Action write also changes the
-    // cached Action ledger, linked details, and the owner dashboard. Expire those
-    // scopes before returning the rebuilt shortlist so a navigation cannot revive
-    // the completed row from an older cached RSC response.
-    invalidateActionMutation({ ownerUserId, actionId: candidate.record.id });
+    const outcome = await completeGeneralAction({
+      actorUserId: ownerUserId,
+      generalActionId: candidate.record.id,
+    });
+    reconcileAffectedScopes(outcome.affectedScopes, { origin: "owner-action" });
   } else {
     throw new Error("Open this Today item to use its domain action.");
   }

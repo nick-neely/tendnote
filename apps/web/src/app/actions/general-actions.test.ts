@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { invalidateActionMutationSpy, revalidatePathSpy } from "@/test/action-adapter-mocks";
+import { revalidatePathSpy } from "@/test/action-adapter-mocks";
 
 const {
   createGeneralAction,
   editGeneralAction,
   listLinkedAssetsForGeneralActions,
   listReminderSchedulesForOwner,
+  reconcileAffectedScopes,
   resolveScopeForCaller,
   toGeneralActionLinkedAssetView,
   toGeneralActionView,
@@ -15,6 +16,7 @@ const {
   editGeneralAction: vi.fn(),
   listLinkedAssetsForGeneralActions: vi.fn(),
   listReminderSchedulesForOwner: vi.fn(),
+  reconcileAffectedScopes: vi.fn(),
   resolveScopeForCaller: vi.fn(),
   toGeneralActionLinkedAssetView: vi.fn((entry) => entry),
   toGeneralActionView: vi.fn((action) => action),
@@ -53,6 +55,7 @@ vi.mock("@tendnote/db/queries/households", () => ({
 vi.mock("@tendnote/db/queries/people", () => ({ searchPeople: vi.fn() }));
 vi.mock("@tendnote/db/queries/reminders", () => ({ listReminderSchedulesForOwner }));
 vi.mock("@/lib/cache/action-views", () => ({ getCachedActionLedgerViews: vi.fn() }));
+vi.mock("@/lib/cache/reconcile-affected-scopes", () => ({ reconcileAffectedScopes }));
 vi.mock("@/lib/cache/today-review-mutation-scopes", () => ({
   invalidateReviewOwner: vi.fn(),
 }));
@@ -76,11 +79,18 @@ const ACTION = {
   id: ACTION_ID,
   title: "Replace the water filter",
 };
+const AFFECTED_SCOPES = [
+  {
+    kind: "viewer-collection",
+    collection: "general-actions",
+    viewerUserId: "owner-1",
+  },
+];
 
 beforeEach(() => {
   vi.clearAllMocks();
-  createGeneralAction.mockResolvedValue(ACTION);
-  editGeneralAction.mockResolvedValue(ACTION);
+  createGeneralAction.mockResolvedValue({ result: ACTION, affectedScopes: AFFECTED_SCOPES });
+  editGeneralAction.mockResolvedValue({ result: ACTION, affectedScopes: AFFECTED_SCOPES });
   listLinkedAssetsForGeneralActions.mockResolvedValue({});
   listReminderSchedulesForOwner.mockResolvedValue([]);
   resolveScopeForCaller.mockResolvedValue({ scope: "private", householdId: null });
@@ -102,9 +112,8 @@ describe("General Action server adapters", () => {
         householdId: null,
       }),
     );
-    expect(invalidateActionMutationSpy).toHaveBeenCalledWith({
-      ownerUserId: "owner-1",
-      actionId: ACTION_ID,
+    expect(reconcileAffectedScopes).toHaveBeenCalledWith(AFFECTED_SCOPES, {
+      origin: "owner-action",
     });
     expect(revalidatePathSpy).toHaveBeenCalledWith("/actions");
     expect(result).toEqual({ ok: true, view: ACTION });
@@ -115,7 +124,7 @@ describe("General Action server adapters", () => {
 
     expect(result).toEqual({ ok: false, error: "Name the action." });
     expect(createGeneralAction).not.toHaveBeenCalled();
-    expect(invalidateActionMutationSpy).not.toHaveBeenCalled();
+    expect(reconcileAffectedScopes).not.toHaveBeenCalled();
   });
 
   it("forwards every supplied edit field and preserves explicit clearing values", async () => {

@@ -18,13 +18,16 @@ async function capturedAssetReview(input: { name: string; sourceRecordId: string
   };
 }
 
+function actionMutationOutcome<T>(result: T) {
+  return { result, affectedScopes: [] };
+}
+
 describe("cross-domain conversational Capture", () => {
   it("persists an explicitly grouped Action and open question against one source", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      status: "open",
-    }));
+    const createGeneralAction = vi
+      .fn()
+      .mockImplementation(async (input) => actionMutationOutcome({ ...input, status: "open" }));
     const capture = createConversationalCapture(store, {
       createGeneralAction,
       ownerTimeZone: async () => "America/Chicago",
@@ -379,10 +382,9 @@ describe("cross-domain conversational Capture", () => {
       return memory;
     });
     const dismissAssetReview = vi.fn();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      status: "open",
-    }));
+    const createGeneralAction = vi
+      .fn()
+      .mockImplementation(async (input) => actionMutationOutcome({ ...input, status: "open" }));
     const capture = createConversationalCapture(store, {
       archiveMemory,
       resolveOrCreateAndLinkPerson: vi.fn().mockResolvedValue({
@@ -442,10 +444,9 @@ describe("cross-domain conversational Capture", () => {
 
   it("keeps inferred secondary outcomes typed, private, review-gated, and source-grounded", async () => {
     const store = createInMemorySavedItemLifecycleStore();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      status: "open",
-    }));
+    const createGeneralAction = vi
+      .fn()
+      .mockImplementation(async (input) => actionMutationOutcome({ ...input, status: "open" }));
     const createApprovedMemory = vi.fn();
     const createSuggestedMemory = vi.fn().mockImplementation(async (input) => ({
       id: "suggested-memory-priya",
@@ -509,11 +510,13 @@ describe("cross-domain conversational Capture", () => {
     const person = { id: "person-priya", displayName: "Priya" };
     const deleteCapturedPerson = vi.fn().mockResolvedValue(person);
     const assertCapturedPersonRemovable = vi.fn().mockResolvedValue(undefined);
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      id: input.id,
-      status: "open",
-    }));
+    const createGeneralAction = vi.fn().mockImplementation(async (input) =>
+      actionMutationOutcome({
+        ...input,
+        id: input.id,
+        status: "open",
+      }),
+    );
     const capture = createConversationalCapture(store, {
       resolveOrCreateAndLinkPerson: vi.fn().mockResolvedValue({ person, created: true }),
       searchPeople: vi.fn().mockResolvedValue([]),
@@ -562,10 +565,9 @@ describe("cross-domain conversational Capture", () => {
     const person = { id: "person-priya", displayName: "Priya" };
     const unlinkCapturedPerson = vi.fn().mockResolvedValue(person);
     const deleteCapturedPerson = vi.fn();
-    const createGeneralAction = vi.fn().mockImplementation(async (input) => ({
-      ...input,
-      status: "open",
-    }));
+    const createGeneralAction = vi
+      .fn()
+      .mockImplementation(async (input) => actionMutationOutcome({ ...input, status: "open" }));
     const capture = createConversationalCapture(store, {
       resolveOrCreateAndLinkPerson: vi.fn().mockResolvedValue({ person, created: false }),
       getPerson: vi.fn().mockResolvedValue(person),

@@ -6,6 +6,7 @@ const {
   changeExplicitCaptureOutcome,
   getGeneralAction,
   revalidatePath,
+  reconcileAffectedScopes,
   updateTag,
   saveReminder,
   scheduleExplicitCaptureReminders,
@@ -16,6 +17,7 @@ const {
   changeExplicitCaptureOutcome: vi.fn(),
   getGeneralAction: vi.fn(),
   revalidatePath: vi.fn(),
+  reconcileAffectedScopes: vi.fn(),
   updateTag: vi.fn(),
   saveReminder: vi.fn(),
   scheduleExplicitCaptureReminders: vi.fn(),
@@ -39,6 +41,7 @@ vi.mock("next/cache", () => ({ revalidatePath, updateTag }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: vi.fn().mockResolvedValue("owner-1"),
 }));
+vi.mock("@/lib/cache/reconcile-affected-scopes", () => ({ reconcileAffectedScopes }));
 
 import {
   addCapturePersonAction,

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { buildGeneralActionEdit } from "../lib/general-action-edit";
 import { toGeneralActionModelRef, toGeneralActionRef } from "../lib/general-action-view";
 import { resolveOwnerUserId } from "../lib/owner";
+import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-affected-scope-reconciliation";
 import { withModelSafeStoreErrors } from "../lib/store-errors";
 
 const inputSchema = z.object({
@@ -58,15 +59,16 @@ export default defineTool({
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
 
-    const action = await withModelSafeStoreErrors(() =>
+    const outcome = await withModelSafeStoreErrors(() =>
       editGeneralAction({
         actorUserId: ownerUserId,
         generalActionId: input.generalActionId,
         edit: buildGeneralActionEdit(input),
       }),
     );
+    await requestBackgroundAffectedScopeReconciliation(outcome.affectedScopes);
 
-    return { action: toGeneralActionRef(action) };
+    return { action: toGeneralActionRef(outcome.result) };
   },
   // A content edit has no card of its own — the model confirms what changed in prose.
   toModelOutput(output) {

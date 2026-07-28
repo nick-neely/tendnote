@@ -20,6 +20,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
 import { invalidatePersonMutation } from "@/lib/cache/people-mutation-scopes";
+import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 
 const submitSchema = z
@@ -148,6 +149,7 @@ export async function captureExplicitOutcomeAction(input: z.input<typeof submitS
     result,
     now: new Date(),
   });
+  reconcileAffectedScopes(result.affectedScopes ?? [], { origin: "owner-action" });
   revalidateCapturePaths();
   return { confirmation: conversationalCaptureConfirmationSchema.parse(confirmation) };
 }
@@ -161,6 +163,7 @@ export async function changeExplicitCaptureOutcomeAction(input: z.input<typeof c
     target: parsed.target,
     originalText: parsed.originalText,
   });
+  reconcileCaptureResult(result);
   revalidateCapturePaths();
   if (result && typeof result === "object" && "clarification" in result && result.clarification) {
     return {
@@ -176,7 +179,16 @@ export async function changeExplicitCaptureOutcomeAction(input: z.input<typeof c
 export async function undoExplicitCaptureOutcomeAction(input: z.input<typeof undoSchema>) {
   const actorUserId = await requireAdmittedOwnerForAction();
   const parsed = undoSchema.parse(input);
-  await undoExplicitCaptureOutcome({ actorUserId, target: parsed.target });
+  const result = await undoExplicitCaptureOutcome({ actorUserId, target: parsed.target });
+  reconcileCaptureResult(result);
   revalidateCapturePaths();
   return { ok: true as const };
+}
+
+function reconcileCaptureResult(result: unknown) {
+  if (!result || typeof result !== "object" || !("affectedScopes" in result)) return;
+  const affectedScopes = result.affectedScopes;
+  if (Array.isArray(affectedScopes)) {
+    reconcileAffectedScopes(affectedScopes, { origin: "owner-action" });
+  }
 }

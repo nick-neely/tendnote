@@ -5,7 +5,10 @@ import {
   promoteGeneralActionAssetHint,
 } from "@tendnote/db/queries/assets";
 import { listGeneralActionAreas } from "@tendnote/db/queries/general-action-areas";
-import type { GeneralActionWithContext } from "@tendnote/db/queries/general-actions";
+import type {
+  GeneralActionWithContext,
+  MutationOutcome,
+} from "@tendnote/db/queries/general-actions";
 import {
   archiveGeneralAction,
   completeGeneralAction,
@@ -34,8 +37,8 @@ import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
-import { invalidateActionMutation } from "@/lib/cache/action-mutation-scopes";
 import { getCachedActionLedgerViews } from "@/lib/cache/action-views";
+import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 import { invalidateReviewOwner } from "@/lib/cache/today-review-mutation-scopes";
 import { parseDateInputValue } from "@/lib/followup-view";
 import { runActionsMutation } from "@/lib/general-action-mutation";
@@ -128,34 +131,48 @@ const peopleActionSchema = z.object({
  */
 function runMutation(
   callerUserId: string,
-  run: () => Promise<Parameters<typeof toGeneralActionView>[0]>,
+  run: () => Promise<MutationOutcome<Parameters<typeof toGeneralActionView>[0]>>,
 ): Promise<GeneralActionMutationResult> {
   return runActionsMutation(
     async () => {
-      const action = await run();
-      // A direct Action write must synchronously expire every owner-scoped
-      // projection before its authoritative view crosses back to the client.
-      // This prevents a cached Today/linked-Asset/RSC response from reviving an
-      // older lifecycle state after the local reconciliation has acknowledged it.
-      invalidateActionMutation({ ownerUserId: callerUserId, actionId: action.id });
-      const [linkedByAction, reminderSchedules] = await Promise.all([
-        listLinkedAssetsForGeneralActions({
-          callerUserId,
-          generalActionIds: [action.id],
-        }),
-        listReminderSchedulesForOwner({ ownerUserId: callerUserId }),
-      ]);
-      const linkedAssets = (linkedByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView);
-      return {
-        action,
-        linkedAssets,
-        reminderSchedule:
-          reminderSchedules.find((schedule) => schedule.generalActionId === action.id) ?? null,
-      };
+      const { result: action, affectedScopes } = await run();
+      reconcileAffectedScopes(affectedScopes, { origin: "owner-action" });
+      return hydrateAuthoritativeActionView(callerUserId, action);
     },
     ({ action, linkedAssets, reminderSchedule }) =>
       toGeneralActionView(action, { callerUserId, linkedAssets, reminderSchedule }),
   );
+}
+
+/** Temporary expand-phase runner for the Asset-hint bridge, migrated with Assets. */
+function runAssetHintMutation(
+  callerUserId: string,
+  run: () => Promise<Parameters<typeof toGeneralActionView>[0]>,
+): Promise<GeneralActionMutationResult> {
+  return runActionsMutation(
+    async () => hydrateAuthoritativeActionView(callerUserId, await run()),
+    ({ action, linkedAssets, reminderSchedule }) =>
+      toGeneralActionView(action, { callerUserId, linkedAssets, reminderSchedule }),
+  );
+}
+
+async function hydrateAuthoritativeActionView(
+  callerUserId: string,
+  action: Parameters<typeof toGeneralActionView>[0],
+) {
+  const [linkedByAction, reminderSchedules] = await Promise.all([
+    listLinkedAssetsForGeneralActions({
+      callerUserId,
+      generalActionIds: [action.id],
+    }),
+    listReminderSchedulesForOwner({ ownerUserId: callerUserId }),
+  ]);
+  return {
+    action,
+    linkedAssets: (linkedByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView),
+    reminderSchedule:
+      reminderSchedules.find((schedule) => schedule.generalActionId === action.id) ?? null,
+  };
 }
 
 export async function createGeneralActionAction(input: {
@@ -242,7 +259,7 @@ export async function promoteAssetHintAction(input: {
     .object({ generalActionId: z.uuid(), hintLabel: z.string().trim().min(1).max(120) })
     .parse(input);
   const ownerUserId = await requireAdmittedOwnerForAction();
-  return runMutation(ownerUserId, async () => {
+  return runAssetHintMutation(ownerUserId, async () => {
     await promoteGeneralActionAssetHint({ actorUserId: ownerUserId, ...parsed });
     // The proposal lands in the shared Review Queue and (once accepted) on the
     // Assets surface — re-render both alongside the Actions page.
@@ -296,7 +313,7 @@ function transitionAction(
   run: (input: {
     actorUserId: string;
     generalActionId: string;
-  }) => Promise<GeneralActionWithContext>,
+  }) => Promise<MutationOutcome<GeneralActionWithContext>>,
 ): Promise<GeneralActionMutationResult> {
   return (async () => {
     const ownerUserId = await requireAdmittedOwnerForAction();
