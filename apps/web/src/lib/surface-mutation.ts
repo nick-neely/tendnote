@@ -28,9 +28,8 @@ function validationMessage(error: unknown, options: SurfaceMutationOptions): str
 /**
  * Runs a mutation for a surface, revalidating its pages on success and returning
  * a validation message as data instead of throwing so the surface can show it
- * inline. Unknown/infra failures re-throw. The single result-union runner behind
- * the Action, Area, and Asset server actions, so the policy never drifts between
- * families.
+ * inline. Unknown/infra failures re-throw. Kept temporarily for record families
+ * that have not yet migrated to the owner-action protocol.
  */
 export async function runSurfaceMutation<TEntity, TView>(
   run: () => Promise<TEntity>,

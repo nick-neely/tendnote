@@ -1,0 +1,100 @@
+import "server-only";
+
+import type { AffectedScope } from "@tendnote/db/queries/general-actions";
+import { AssetValidationError, GeneralActionValidationError } from "@tendnote/domain";
+import type { VisibilityChoice } from "@tendnote/domain/privacy";
+import { ZodError } from "zod";
+import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
+import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
+import { enforceProductBudget, ProductRateLimitError } from "@/lib/rate-limit/guards";
+import type { RateLimitRequest } from "@/lib/rate-limit/types";
+import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
+
+export type OwnerActionResult<TView> = { ok: true; view: TView } | { ok: false; error: string };
+
+type ResolvedOwnerScope = Awaited<ReturnType<typeof resolveScopeForCaller>>;
+
+type InputSchema<TInput> = {
+  parse(input: unknown): TInput;
+};
+
+type OwnerActionDependencies = {
+  gate: () => Promise<string>;
+  resolveScope: typeof resolveScopeForCaller;
+  enforceBudget: (request: RateLimitRequest) => Promise<unknown>;
+  reconcile: (scopes: readonly AffectedScope[]) => void;
+};
+
+type OwnerActionInput<TInput, TEntity, TView> = {
+  schema: InputSchema<TInput>;
+  input: unknown;
+  visibilityChoice?: (input: TInput) => VisibilityChoice;
+  budget?: Omit<RateLimitRequest, "subject">;
+  body: (context: {
+    ownerUserId: string;
+    input: TInput;
+    resolvedScope: ResolvedOwnerScope | null;
+  }) => Promise<TEntity>;
+  affectedScopes?: (entity: TEntity) => readonly AffectedScope[];
+  /** Additional surface reconciliation for records not yet covered by affected scopes. */
+  reconcile?: (entity: TEntity, ownerUserId: string) => void | Promise<void>;
+  result: (entity: TEntity) => TView | Promise<TView>;
+};
+
+function userSafeErrorMessage(error: unknown): string | null {
+  if (error instanceof ZodError) {
+    return error.issues[0]?.message ?? "Check the highlighted fields and try again.";
+  }
+  if (
+    error instanceof GeneralActionValidationError ||
+    error instanceof AssetValidationError ||
+    error instanceof ProductRateLimitError
+  ) {
+    return error.message;
+  }
+  return null;
+}
+
+/**
+ * Creates the one owner-mutation protocol: admission precedes parsing, then
+ * optional scope and budget resolution, mutation, cache reconciliation, and view
+ * mapping. Curated validation failures are data; admission and infrastructure
+ * failures still reject.
+ */
+export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
+  return async function runOwnerAction<TInput, TEntity, TView>(
+    action: OwnerActionInput<TInput, TEntity, TView>,
+  ): Promise<OwnerActionResult<Awaited<TView>>> {
+    try {
+      const ownerUserId = await dependencies.gate();
+      const input = action.schema.parse(action.input);
+      const visibilityChoice = action.visibilityChoice?.(input);
+      const resolvedScope =
+        visibilityChoice === undefined
+          ? null
+          : await dependencies.resolveScope(ownerUserId, visibilityChoice);
+
+      if (action.budget) {
+        await dependencies.enforceBudget({ ...action.budget, subject: ownerUserId });
+      }
+
+      const entity = await action.body({ ownerUserId, input, resolvedScope });
+      dependencies.reconcile(action.affectedScopes?.(entity) ?? []);
+      await action.reconcile?.(entity, ownerUserId);
+      return { ok: true, view: await action.result(entity) };
+    } catch (error) {
+      const message = userSafeErrorMessage(error);
+      if (message) {
+        return { ok: false, error: message };
+      }
+      throw error;
+    }
+  };
+}
+
+export const runOwnerAction = createOwnerActionRunner({
+  gate: requireAdmittedOwnerForAction,
+  resolveScope: resolveScopeForCaller,
+  enforceBudget: enforceProductBudget,
+  reconcile: (scopes) => reconcileAffectedScopes(scopes, { origin: "owner-action" }),
+});

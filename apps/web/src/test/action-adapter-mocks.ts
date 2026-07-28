@@ -20,13 +20,15 @@ const OWNER_USER_ID = "owner-1";
 export const revalidatePathSpy = vi.fn();
 export const updateTagSpy = vi.fn();
 export const invalidateActionMutationSpy = vi.fn();
+export const requireAdmittedOwnerForActionSpy = vi.fn().mockResolvedValue(OWNER_USER_ID);
 
+vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({
   revalidatePath: revalidatePathSpy,
   updateTag: updateTagSpy,
 }));
 vi.mock("@/lib/access/current-access", () => ({
-  requireAdmittedOwnerForAction: vi.fn().mockResolvedValue(OWNER_USER_ID),
+  requireAdmittedOwnerForAction: requireAdmittedOwnerForActionSpy,
 }));
 vi.mock("@/lib/cache/action-mutation-scopes", () => ({
   invalidateActionMutation: invalidateActionMutationSpy,

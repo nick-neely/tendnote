@@ -201,8 +201,12 @@ export function ActionsSurface({
     startLedgerTransition(async () => {
       try {
         const result = await getActionSecondaryLedgerViewsAction({ resolvedLimit });
-        setPausedList((current) => mergeByRevision(current, result.paused));
-        setResolvedList((current) => mergeByRevision(current, result.resolved));
+        if (!result.ok) {
+          setSecondaryLoadErrors((current) => ({ ...current, ledger: result.error }));
+          return;
+        }
+        setPausedList((current) => mergeByRevision(current, result.view.paused));
+        setResolvedList((current) => mergeByRevision(current, result.view.resolved));
         setLedgerLoaded(true);
       } catch {
         setSecondaryLoadErrors((current) => ({
@@ -219,8 +223,12 @@ export function ActionsSurface({
     startComposerTransition(async () => {
       try {
         const result = await getActionComposerOptionsAction();
-        setSecondaryPeople(result.people);
-        setSecondaryMembers(result.shareableMembers);
+        if (!result.ok) {
+          setSecondaryLoadErrors((current) => ({ ...current, composer: result.error }));
+          return;
+        }
+        setSecondaryPeople(result.view.people);
+        setSecondaryMembers(result.view.shareableMembers);
         setComposerLoaded(true);
       } catch {
         setSecondaryLoadErrors((current) => ({
@@ -237,7 +245,11 @@ export function ActionsSurface({
     startSuggestedTransition(async () => {
       try {
         const result = await getSuggestedActionViewsAction();
-        setSuggestedList(result.suggested);
+        if (!result.ok) {
+          setSecondaryLoadErrors((current) => ({ ...current, suggested: result.error }));
+          return;
+        }
+        setSuggestedList(result.view.suggested);
         setSuggestedLoaded(true);
       } catch {
         setSecondaryLoadErrors((current) => ({

@@ -13,6 +13,7 @@ import { assetLabelForKind } from "@tendnote/domain/assets";
 import { describeRecurrence, startOfLocalDay } from "@tendnote/domain/general-actions";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { toDateInputValue } from "@/lib/followup-view";
+import type { OwnerActionResult } from "@/lib/owner-action";
 import { type ReminderScheduleView, toReminderScheduleView } from "@/lib/reminder-schedule-view";
 
 /** A linked person named for a calm chip — id + display name, nothing more (ADR 0155). */
@@ -69,9 +70,7 @@ export type ActionSurfaceState =
  * swallowing it; unexpected/infra failures reject instead, and the client shows a
  * generic fallback.
  */
-export type GeneralActionMutationResult =
-  | { ok: true; view: GeneralActionView }
-  | { ok: false; error: string };
+export type GeneralActionMutationResult = OwnerActionResult<GeneralActionView>;
 
 export type GeneralActionView = {
   id: string;
