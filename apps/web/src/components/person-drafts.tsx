@@ -265,8 +265,10 @@ function DraftReviewCard({
       data-status={draft.status}
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
-          <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+        {/* Neutral, not clay: the Drafts tab already says what these cards are, and a clay
+            pill on every card spends the one accent moment §3 allows on repetition. The
+            status word carries the state, so the demotion loses no meaning. */}
+        <span className="inline-flex shrink-0 items-center rounded-full bg-secondary px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-muted-foreground">
           {draft.statusLabel}
         </span>
         <span className="text-[length:var(--text-caption)] text-muted-foreground capitalize">

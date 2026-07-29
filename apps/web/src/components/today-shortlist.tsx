@@ -291,7 +291,7 @@ function TodayShortlistContent({
                     <Icon aria-hidden className="size-4" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-muted-foreground text-xs">
+                    <p className="font-medium text-[length:var(--text-caption)] text-muted-foreground leading-[var(--text-caption-line)]">
                       {presentation.label}
                     </p>
                     <Link
@@ -301,7 +301,7 @@ function TodayShortlistContent({
                       {item.title}
                     </Link>
                     <p className="mt-1 text-foreground/80 text-sm">{item.context}</p>
-                    <p className="mt-1.5 text-muted-foreground text-xs">
+                    <p className="mt-1.5 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
                       Why today: {item.reason.explanation}
                     </p>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -440,7 +440,7 @@ function TodayShortlistContent({
       )}
 
       {response.overflow ? (
-        <div className="mt-2 text-muted-foreground text-xs">
+        <div className="mt-2 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
           <span>
             {response.overflow.omittedCount} more dated{" "}
             {response.overflow.omittedCount === 1 ? "item is" : "items are"} waiting in
@@ -460,7 +460,11 @@ function TodayShortlistContent({
         </div>
       ) : null}
       {response.limitations.map((limitation) => (
-        <p className="mt-2 text-muted-foreground text-xs" key={limitation} role="status">
+        <p
+          className="mt-2 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
+          key={limitation}
+          role="status"
+        >
           {limitation}
         </p>
       ))}
