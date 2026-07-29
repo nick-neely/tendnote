@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, userEvent, waitFor } from "@/test/dom";
+import { toDateValue } from "@/components/ui/date-picker";
+import { fireEvent, render, screen, userEvent, waitFor } from "@/test/dom";
 
+// Radix's Select measures and scrolls its content on open; jsdom implements
+// none of that.
 vi.stubGlobal(
   "ResizeObserver",
   class {
@@ -10,6 +13,9 @@ vi.stubGlobal(
     disconnect() {}
   },
 );
+HTMLElement.prototype.scrollIntoView ??= vi.fn();
+HTMLElement.prototype.hasPointerCapture ??= vi.fn();
+HTMLElement.prototype.releasePointerCapture ??= vi.fn();
 
 const createSavedItemAction = vi.fn();
 const archiveSavedItemAction = vi.fn();
@@ -72,6 +78,19 @@ function fixture(overrides: Partial<SavedItemView> = {}): SavedItemView {
   };
 }
 
+/** The day button for a `yyyy-mm-dd` date in the open calendar (portaled to body). */
+function dayButton(date: string): HTMLButtonElement {
+  const button = document.querySelector<HTMLButtonElement>(`[data-day="${date}"] button`);
+  if (!button) throw new Error(`no day button for ${date}`);
+  return button;
+}
+
+/** The same day-of-month in whichever month the picker opens on, so nothing drifts with the clock. */
+function dayThisMonth(day: number): string {
+  const now = new Date();
+  return toDateValue(new Date(now.getFullYear(), now.getMonth(), day));
+}
+
 describe("SavedItemsSurface", () => {
   it("creates a private note through the fast capture form", async () => {
     const user = userEvent.setup();
@@ -79,6 +98,7 @@ describe("SavedItemsSurface", () => {
     createSavedItemAction.mockResolvedValue({ ok: true, view: created });
     render(<SavedItemsSurface items={[]} />);
 
+    expect(screen.getByText("Nothing saved here yet.")).toBeDefined();
     await user.type(screen.getByRole("textbox", { name: "Title" }), "Filter measurements");
     await user.type(screen.getByRole("textbox", { name: "Details" }), "Eight inches long");
     await user.click(screen.getByRole("button", { name: "Save item" }));
@@ -93,6 +113,35 @@ describe("SavedItemsSurface", () => {
     );
     const title = await screen.findByText("Filter measurements");
     expect(title.closest("article")?.id).toBe("saved-item-saved-1");
+  });
+
+  it("switches kind through the Select, which reveals the link field", async () => {
+    const user = userEvent.setup();
+    createSavedItemAction.mockResolvedValue({
+      ok: true,
+      view: fixture({ kind: "link", kindLabel: "Link", url: "https://example.com/filter" }),
+    });
+    render(<SavedItemsSurface items={[]} />);
+
+    expect(screen.queryByRole("textbox", { name: "Link URL" })).toBeNull();
+    await user.click(screen.getByRole("combobox", { name: "Kind" }));
+    await user.click(await screen.findByRole("option", { name: "Link" }));
+
+    await user.type(screen.getByRole("textbox", { name: "Title" }), "Filter spec");
+    await user.type(
+      await screen.findByRole("textbox", { name: "Link URL" }),
+      "https://example.com/filter",
+    );
+    await user.click(screen.getByRole("button", { name: "Save item" }));
+
+    await waitFor(() =>
+      expect(createSavedItemAction).toHaveBeenCalledWith({
+        kind: "link",
+        title: "Filter spec",
+        url: "https://example.com/filter",
+        visibilityChoice: "only_me",
+      }),
+    );
   });
 
   it("does not confirm a Saved Item reminder whose selected alert time has passed", async () => {
@@ -119,7 +168,9 @@ describe("SavedItemsSurface", () => {
     render(<SavedItemsSurface items={[]} />);
 
     await user.type(screen.getByRole("textbox", { name: "Title" }), "Filter measurements");
-    await user.type(screen.getByLabelText("Bring back"), "2026-07-21T16:00");
+    await user.click(screen.getByRole("combobox", { name: "Bring back" }));
+    await user.click(dayButton(dayThisMonth(21)));
+    fireEvent.change(screen.getByLabelText("Time"), { target: { value: "16:00" } });
     await user.click(screen.getByRole("checkbox", { name: "Remind me" }));
     await user.click(screen.getByRole("button", { name: "Save item" }));
 

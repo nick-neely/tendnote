@@ -2,7 +2,7 @@
 
 import { type MessageDraftPurpose, suggestGmailSubject } from "@tendnote/domain";
 import Link from "next/link";
-import { useId, useState, useTransition } from "react";
+import { type ReactNode, useId, useState, useTransition } from "react";
 import {
   createGmailDraftAction,
   type GmailDraftActionResult,
@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import type { DraftView } from "@/lib/draft-view";
 import type { GmailDraftView } from "@/lib/gmail-draft-view";
@@ -78,6 +79,7 @@ export function GmailDraftPanel({
   );
   const [body, setBody] = useState(draft.body);
 
+  const recipientLegendId = useId();
   const subjectId = useId();
   const manualEmailId = useId();
   const bodyId = useId();
@@ -253,38 +255,34 @@ export function GmailDraftPanel({
   return (
     <div className="flex flex-col gap-3 border-t pt-3">
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-[length:var(--text-small)] font-medium text-muted-foreground">
+        <legend
+          className="text-[length:var(--text-small)] font-medium text-muted-foreground"
+          id={recipientLegendId}
+        >
           Recipient
         </legend>
-        {personEmails.map((option) => (
-          <label className="flex items-center gap-2 text-[length:var(--text-body)]" key={option.id}>
-            <input
-              checked={recipientId === option.id}
-              className="size-4 shrink-0 [accent-color:var(--primary)]"
-              name={`gmail-recipient-${draft.id}`}
-              onChange={() => setRecipientId(option.id)}
-              type="radio"
-              value={option.id}
-            />
-            <span>{option.value}</span>
-            {option.isPrimary ? (
-              <span className="text-[length:var(--text-caption)] text-muted-foreground">
-                Primary
-              </span>
-            ) : null}
-          </label>
-        ))}
-        <label className="flex items-center gap-2 text-[length:var(--text-body)]">
-          <input
-            checked={recipientId === MANUAL}
-            className="size-4 shrink-0 [accent-color:var(--primary)]"
-            name={`gmail-recipient-${draft.id}`}
-            onChange={() => setRecipientId(MANUAL)}
-            type="radio"
-            value={MANUAL}
-          />
-          <span>{personEmails.length ? "Another address" : "Email address"}</span>
-        </label>
+        {/* The legend names the radiogroup too, so the group is announced with the
+            same word the fieldset shows. */}
+        <RadioGroup
+          aria-labelledby={recipientLegendId}
+          name={`gmail-recipient-${draft.id}`}
+          onValueChange={setRecipientId}
+          value={recipientId}
+        >
+          {personEmails.map((option) => (
+            <RecipientOption key={option.id} value={option.id}>
+              <span>{option.value}</span>
+              {option.isPrimary ? (
+                <span className="text-[length:var(--text-caption)] text-muted-foreground">
+                  Primary
+                </span>
+              ) : null}
+            </RecipientOption>
+          ))}
+          <RecipientOption value={MANUAL}>
+            <span>{personEmails.length ? "Another address" : "Email address"}</span>
+          </RecipientOption>
+        </RadioGroup>
         {recipientId === MANUAL ? (
           <>
             <Label className="sr-only" htmlFor={manualEmailId}>
@@ -352,5 +350,24 @@ export function GmailDraftPanel({
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * One row of the recipient {@link RadioGroup}. The label carries the whole target -
+ * it forwards its click to the radio - and keeps a 44px reach on touch without
+ * loosening desktop density.
+ */
+function RecipientOption({ children, value }: { children: ReactNode; value: string }) {
+  const id = useId();
+
+  return (
+    <label
+      className="flex items-center gap-2 text-[length:var(--text-body)] max-sm:min-h-11"
+      htmlFor={id}
+    >
+      <RadioGroupItem id={id} value={value} />
+      {children}
+    </label>
   );
 }

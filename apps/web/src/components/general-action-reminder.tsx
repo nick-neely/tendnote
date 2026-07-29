@@ -3,6 +3,13 @@
 import type { ReminderScheduleChoice } from "@tendnote/domain/reminders";
 import { BellIcon } from "@/components/icons";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export type GeneralActionReminderChoice = ReminderScheduleChoice;
 
@@ -24,13 +31,15 @@ function ReminderAlertOptions({
     : "One week before at 9:00 AM";
   return (
     <>
-      {relativeOnly ? null : <option value="exact:09:00">At 9:00 AM on the due date</option>}
-      <option value="relative:0">{occurrenceLabel}</option>
+      {relativeOnly ? null : (
+        <SelectItem value="exact:09:00">At 9:00 AM on the due date</SelectItem>
+      )}
+      <SelectItem value="relative:0">{occurrenceLabel}</SelectItem>
       {instantRelative ? (
-        <option value="relative:60">One hour before the bring-back time</option>
+        <SelectItem value="relative:60">One hour before the bring-back time</SelectItem>
       ) : null}
-      <option value="relative:1440">{dayLabel}</option>
-      <option value="relative:10080">{weekLabel}</option>
+      <SelectItem value="relative:1440">{dayLabel}</SelectItem>
+      <SelectItem value="relative:10080">{weekLabel}</SelectItem>
     </>
   );
 }
@@ -70,28 +79,38 @@ export function GeneralActionReminderField({
         Remind me
       </div>
       {enabled ? (
-        <label className="flex flex-col gap-1.5 text-[length:var(--text-small)] text-muted-foreground">
+        // The caption is a plain span, not a label: the trigger is a button carrying its
+        // own accessible name, so a wrapping label would only add a second click target.
+        <div className="flex flex-col gap-1.5 text-[length:var(--text-small)] text-muted-foreground">
           Alert time
-          <select
-            aria-label="Reminder alert time"
-            className="h-9 rounded-md border bg-background px-2.5 text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            onChange={(event) => {
-              const [kind, raw] = event.target.value.split(":");
+          <Select
+            onValueChange={(next) => {
+              // Split on the first colon only: an exact rule's payload is itself an
+              // "hh:mm" time, and splitting on every colon truncated it to the hour,
+              // which the schedule schema rejects.
+              const separator = next.indexOf(":");
+              const kind = next.slice(0, separator);
+              const raw = next.slice(separator + 1);
               onChoiceChange(
                 kind === "exact"
-                  ? { kind: "exact", localTime: raw ?? "09:00" }
+                  ? { kind: "exact", localTime: raw || "09:00" }
                   : { kind: "relative", leadMinutes: Number(raw) },
               );
             }}
             value={value}
           >
-            <ReminderAlertOptions instantRelative={instantRelative} relativeOnly={relativeOnly} />
-          </select>
+            <SelectTrigger aria-label="Reminder alert time" className="w-full text-foreground">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <ReminderAlertOptions instantRelative={instantRelative} relativeOnly={relativeOnly} />
+            </SelectContent>
+          </Select>
           <span>
             One alert. Changing the {instantRelative ? "bring-back time" : "due date"} or this
             schedule replaces it.
           </span>
-        </label>
+        </div>
       ) : null}
     </div>
   );

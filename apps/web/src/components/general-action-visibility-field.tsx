@@ -1,7 +1,9 @@
 "use client";
 
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
+import { useId } from "react";
 import { EyeIcon } from "@/components/icons";
+import { Checkbox } from "@/components/ui/checkbox";
 import { VisibilityChoiceControl } from "@/components/visibility-choice-control";
 
 /** A household member an Action can be shared with. */
@@ -77,6 +79,8 @@ export function ActionVisibilityField({
   onSelectedChange: (userIds: string[]) => void;
   name: string;
 }) {
+  const memberFieldId = useId();
+
   if (members.length === 0) {
     return null;
   }
@@ -98,21 +102,25 @@ export function ActionVisibilityField({
           <legend className="text-sm font-medium text-foreground">Share with</legend>
           <div className="grid gap-2 sm:grid-cols-2">
             {members.map((member) => (
+              // The row's selected fill keys off the Checkbox's own data-state rather than
+              // `has-checked:`: the registry control is a button, so there is no `:checked`
+              // in the row to match. Association is spelled out with htmlFor/id - the whole
+              // row stays clickable, and a nested component is not a control lint can see.
               <label
-                className="flex min-h-16 cursor-pointer items-center gap-2 rounded-md border border-border bg-card p-3 text-sm transition-colors hover:border-primary/45 has-checked:border-primary has-checked:bg-secondary"
+                className="flex min-h-16 cursor-pointer items-center gap-2 rounded-md border border-border bg-card p-3 text-sm transition-colors hover:border-primary/45 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-secondary"
+                htmlFor={`${memberFieldId}-${member.userId}`}
                 key={member.userId}
               >
-                <input
+                <Checkbox
                   checked={selectedUserIds.includes(member.userId)}
-                  className="size-4 accent-primary"
-                  onChange={(event) => {
+                  id={`${memberFieldId}-${member.userId}`}
+                  onCheckedChange={(checked) => {
                     onSelectedChange(
-                      event.target.checked
+                      checked === true
                         ? [...selectedUserIds, member.userId]
                         : selectedUserIds.filter((userId) => userId !== member.userId),
                     );
                   }}
-                  type="checkbox"
                   value={member.userId}
                 />
                 <span className="min-w-0">

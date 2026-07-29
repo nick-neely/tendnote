@@ -158,8 +158,8 @@ describe("GmailDraftPanel write gate", () => {
 
     await user.click(screen.getByRole("button", { name: "Save to Gmail" }));
     // The primary saved address is the prefilled default; picking another overrides it.
-    const primary = screen.getByRole<HTMLInputElement>("radio", { name: /^casey@example\.com/ });
-    expect(primary.checked).toBe(true);
+    const primary = screen.getByRole("radio", { name: /^casey@example\.com/ });
+    expect(primary.getAttribute("aria-checked")).toBe("true");
     await user.click(screen.getByRole("radio", { name: WORK_EMAIL.value }));
     await user.click(screen.getByRole("button", { name: "Save to Gmail" }));
 

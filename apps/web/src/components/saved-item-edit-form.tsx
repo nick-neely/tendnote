@@ -5,6 +5,7 @@ import { editSavedItemAction } from "@/app/actions/saved-items";
 import { GeneralActionReminderField } from "@/components/general-action-reminder";
 import { pastReminderLeadTimeMessage } from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toReminderScheduleChoice } from "@/lib/reminder-schedule-view";
@@ -117,19 +118,25 @@ export function SavedItemEditForm({
         rows={2}
         value={content}
       />
-      <label className="flex max-w-xs flex-col gap-1.5 text-sm font-medium" htmlFor={bringBackAtId}>
-        Bring back
-        <Input
-          aria-label="Edit bring-back time"
+      {/* The label sits beside the picker rather than wrapping it: a wrapping label folds
+          the time input's own name into the date trigger's. Both halves keep the "Edit"
+          naming the single field had, so they stay distinct from the capture form's copy
+          of this field sitting above the row. */}
+      <div className="flex max-w-xs flex-col gap-1.5">
+        <label className="text-sm font-medium" htmlFor={bringBackAtId}>
+          Bring back
+        </label>
+        <DateTimePicker
+          aria-label="Edit bring-back date"
           id={bringBackAtId}
-          onChange={(event) => {
-            setBringBackAt(event.target.value);
-            if (!event.target.value) setReminderEnabled(false);
+          onChange={(value) => {
+            setBringBackAt(value);
+            if (!value) setReminderEnabled(false);
           }}
-          type="datetime-local"
+          timeLabel="Edit bring-back time"
           value={bringBackAt}
         />
-      </label>
+      </div>
       {bringBackAt ? (
         <GeneralActionReminderField
           choice={reminderChoice}

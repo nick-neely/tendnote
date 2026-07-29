@@ -25,6 +25,7 @@ import {
   ArchiveIcon,
   BellIcon,
   BookmarkIcon,
+  ChevronDownIcon,
   CircleHelpIcon,
   LinkIcon,
   ListPlusIcon,
@@ -35,7 +36,17 @@ import { RecordTimingChip } from "@/components/record-timing-chip";
 import { ReminderPastLeadRecovery } from "@/components/reminder-past-lead-recovery";
 import { SavedItemEditForm } from "@/components/saved-item-edit-form";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { DateTimePicker } from "@/components/ui/date-picker";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
 import {
@@ -175,10 +186,13 @@ function SavedItemsSurfaceContent({
             <SavedItemRow item={item} key={item.id} onDelete={remove} onUpdate={upsert} />
           ))}
         </LedgerList>
+      ) : state === "active" ? (
+        <EmptyState
+          description="Keep a note, a link, or an open question you want to come back to."
+          title="Nothing saved here yet."
+        />
       ) : (
-        <LedgerEmpty>
-          {state === "active" ? "Nothing saved here yet." : "No archived Saved Items."}
-        </LedgerEmpty>
+        <EmptyState title="No archived Saved Items." />
       )}
       {state === "archived" && archivedError ? (
         <div className="flex items-center gap-2" role="status">
@@ -303,8 +317,8 @@ function CreateSavedItemForm({
         <CreateSavedItemSharing
           members={shareableMembers}
           onChoiceChange={(value) => updateDraft({ visibilityChoice: value })}
+          onOpenChange={(open) => updateDraft({ showSharing: open })}
           onSelectedChange={(value) => updateDraft({ selectedUserIds: value })}
-          onToggle={() => updateDraft({ showSharing: !showSharing })}
           selectedUserIds={selectedUserIds}
           show={showSharing}
           value={visibilityChoice}
@@ -373,6 +387,7 @@ function CreateSavedItemFields({
   title: string;
   url: string;
 }) {
+  const kindId = useId();
   const titleId = useId();
   const urlId = useId();
   const contentId = useId();
@@ -380,19 +395,22 @@ function CreateSavedItemFields({
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
-        <label className="flex flex-col gap-1.5 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium" htmlFor={kindId}>
           Kind
-          <select
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            onChange={(event) => onKindChange(event.target.value as SavedItemKind)}
-            value={kind}
-          >
-            {KIND_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <Select onValueChange={(value) => onKindChange(value as SavedItemKind)} value={kind}>
+            {/* `w-full` because the trigger is `w-fit` by default and this one owns a grid
+                column beside a full-width Title field. */}
+            <SelectTrigger className="w-full" id={kindId}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {KIND_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
         <label className="flex flex-col gap-1.5 text-sm font-medium" htmlFor={titleId}>
           Title
@@ -445,18 +463,14 @@ function CreateSavedItemFooter({
   const bringBackAtId = useId();
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <label
-        className="flex max-w-xs flex-1 flex-col gap-1.5 text-sm font-medium"
-        htmlFor={bringBackAtId}
-      >
-        Bring back
-        <Input
-          id={bringBackAtId}
-          onChange={(event) => onBringBackAtChange(event.target.value)}
-          type="datetime-local"
-          value={bringBackAt}
-        />
-      </label>
+      {/* The label sits beside the picker rather than wrapping it: a wrapping label
+          folds the time input's own name into the date trigger's. */}
+      <div className="flex max-w-xs flex-1 flex-col gap-1.5">
+        <label className="text-sm font-medium" htmlFor={bringBackAtId}>
+          Bring back
+        </label>
+        <DateTimePicker id={bringBackAtId} onChange={onBringBackAtChange} value={bringBackAt} />
+      </div>
       <Button disabled={disabled} type="submit">
         <BookmarkIcon aria-hidden />
         {pending ? "Saving…" : "Save item"}
@@ -468,51 +482,44 @@ function CreateSavedItemFooter({
 function CreateSavedItemSharing({
   members,
   onChoiceChange,
+  onOpenChange,
   onSelectedChange,
-  onToggle,
   selectedUserIds,
   show,
   value,
 }: {
   members: ShareableActionMember[];
   onChoiceChange: (value: VisibilityChoice) => void;
+  onOpenChange: (open: boolean) => void;
   onSelectedChange: (value: string[]) => void;
-  onToggle: () => void;
   selectedUserIds: string[];
   show: boolean;
   value: VisibilityChoice;
 }) {
-  const id = useId();
   if (!members.length) return null;
   return (
-    <div className="flex flex-col gap-3">
-      <button
-        aria-controls={id}
-        aria-expanded={show}
-        className="self-start rounded-md text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-        onClick={onToggle}
-        type="button"
-      >
+    // Collapsible owns the trigger/content wiring the hand-rolled `aria-expanded`
+    // button did, so the panel id no longer needs a `useId` of its own.
+    <Collapsible className="flex flex-col gap-3" onOpenChange={onOpenChange} open={show}>
+      <CollapsibleTrigger className="self-start rounded-md text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
         Share with your household
-      </button>
-      {show ? (
-        <div className="flex flex-col gap-2" id={id}>
-          <ActionVisibilityField
-            members={members}
-            name="saved-item-visibility"
-            onChoiceChange={onChoiceChange}
-            onSelectedChange={onSelectedChange}
-            selectedUserIds={selectedUserIds}
-            value={value}
-          />
-          <AudiencePreview
-            choice={value}
-            householdSize={members.length + 1}
-            selectedCount={selectedUserIds.length}
-          />
-        </div>
-      ) : null}
-    </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-2">
+        <ActionVisibilityField
+          members={members}
+          name="saved-item-visibility"
+          onChoiceChange={onChoiceChange}
+          onSelectedChange={onSelectedChange}
+          selectedUserIds={selectedUserIds}
+          value={value}
+        />
+        <AudiencePreview
+          choice={value}
+          householdSize={members.length + 1}
+          selectedCount={selectedUserIds.length}
+        />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -709,15 +716,26 @@ function SourceGroundingDetails({
   item: SavedItemView;
   onDelete: (savedItemId: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const [checking, setChecking] = useState(false);
   const [impactError, setImpactError] = useState<string | null>(null);
   const [impact, setImpact] = useState<SourceDeletionImpact | null>(null);
   return (
-    <details className="pl-7 text-[length:var(--text-small)] text-muted-foreground">
-      <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+    <Collapsible
+      className="pl-7 text-[length:var(--text-small)] text-muted-foreground"
+      onOpenChange={setOpen}
+      open={open}
+    >
+      {/* The chevron stands in for the `<summary>` marker this replaced - without it
+          the line reads as a caption rather than something that opens. */}
+      <CollapsibleTrigger className="group flex w-fit cursor-pointer items-center gap-1.5 rounded-sm text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        <ChevronDownIcon
+          aria-hidden
+          className="size-3.5 shrink-0 transition-transform duration-150 ease-(--motion-ease-out) group-data-[state=open]:rotate-180"
+        />
         Source grounding
-      </summary>
-      <div className="mt-2 flex flex-col items-start gap-1">
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-2 flex flex-col items-start gap-1">
         <code className="font-mono text-[length:var(--text-caption)]">{item.sourceRecordId}</code>
         <p>
           {item.outcomes.length
@@ -758,8 +776,8 @@ function SourceGroundingDetails({
         ) : null}
         <SourceDeletionControls impact={impact} itemId={item.id} onDelete={onDelete} />
         {impactError ? <ErrorText message={impactError} /> : null}
-      </div>
-    </details>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
