@@ -36,7 +36,7 @@ import {
   type GeneralActionReminderChoice,
   GeneralActionReminderField,
 } from "@/components/general-action-reminder";
-import { ErrorText } from "@/components/general-action-shared";
+import { ACTION_CONTROL_TOUCH_TARGET, ErrorText } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
   AudiencePreview,
@@ -60,6 +60,7 @@ import {
 import { RecordTimingChip } from "@/components/record-timing-chip";
 import { pastReminderLeadTimeMessage } from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -367,11 +368,10 @@ function ActionEditForm({
       />
       <div className="flex flex-col gap-1.5">
         <span className="text-[length:var(--text-small)] text-muted-foreground">Due date</span>
-        <Input
+        <DatePicker
           aria-label="Due date"
           className="w-full sm:w-48"
-          onChange={(event) => setDueDate(event.target.value)}
-          type="date"
+          onChange={setDueDate}
           value={dueDate}
         />
       </div>
@@ -555,11 +555,10 @@ function ActionDeferForm({
         <span className="text-[length:var(--text-caption)] text-muted-foreground">
           Set aside until
         </span>
-        <Input
+        <DatePicker
           aria-label="Set aside until"
           className="w-44"
-          onChange={(event) => setDeferDate(event.target.value)}
-          type="date"
+          onChange={setDeferDate}
           value={deferDate}
         />
       </div>
@@ -622,7 +621,6 @@ function ActionOverflowMenu({
   onDismiss: (focusTarget: HTMLElement | null) => void;
   onArchive: (focusTarget: HTMLElement | null) => void;
 }) {
-  const mobileItemClassName = "max-sm:min-h-11";
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
@@ -630,7 +628,7 @@ function ActionOverflowMenu({
       <DropdownMenuTrigger asChild>
         <Button
           aria-label="More actions"
-          className="max-sm:min-h-11 max-sm:min-w-11"
+          className={`${ACTION_CONTROL_TOUCH_TARGET} max-sm:min-w-11`}
           data-action-control="overflow"
           disabled={pending}
           ref={triggerRef}
@@ -646,7 +644,7 @@ function ActionOverflowMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem className={mobileItemClassName} onSelect={onSetAside}>
+        <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onSetAside}>
           <ClockIcon />
           Set aside
         </DropdownMenuItem>
@@ -655,14 +653,14 @@ function ActionOverflowMenu({
         {action.isRoutine ? (
           <>
             <DropdownMenuItem
-              className={mobileItemClassName}
+              className={ACTION_CONTROL_TOUCH_TARGET}
               onSelect={() => onSkip(triggerRef.current)}
             >
               <SkipForwardIcon />
               Skip this occurrence
             </DropdownMenuItem>
             <DropdownMenuItem
-              className={mobileItemClassName}
+              className={ACTION_CONTROL_TOUCH_TARGET}
               onSelect={() => onPause(triggerRef.current)}
             >
               <PauseIcon />
@@ -673,31 +671,31 @@ function ActionOverflowMenu({
         {/* Content, people, and visibility belong to the owner; a viewing member
             can still act on the Action above, but not re-author it (ADR 0153). */}
         {action.owned ? (
-          <DropdownMenuItem className={mobileItemClassName} onSelect={onEdit}>
+          <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onEdit}>
             <PencilIcon />
             Edit
           </DropdownMenuItem>
         ) : null}
         {action.owned && shareableMembers.length ? (
-          <DropdownMenuItem className={mobileItemClassName} onSelect={onShare}>
+          <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onShare}>
             <UsersIcon />
             Visibility
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem className={mobileItemClassName} onSelect={onHistory}>
+        <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onHistory}>
           <HistoryIcon />
           History
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          className={mobileItemClassName}
+          className={ACTION_CONTROL_TOUCH_TARGET}
           onSelect={() => onDismiss(triggerRef.current)}
         >
           <XIcon />
           Dismiss
         </DropdownMenuItem>
         <DropdownMenuItem
-          className={mobileItemClassName}
+          className={ACTION_CONTROL_TOUCH_TARGET}
           onSelect={() => onArchive(triggerRef.current)}
         >
           <ArchiveIcon />
@@ -947,7 +945,7 @@ export function ActionRow({
           </Button>
         ) : null}
         <Button
-          className="max-sm:min-h-11"
+          className={ACTION_CONTROL_TOUCH_TARGET}
           disabled={controlsBlocked}
           onClick={(event) => runLifecycle("complete", event.currentTarget)}
           size="sm"

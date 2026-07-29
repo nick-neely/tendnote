@@ -26,6 +26,20 @@ vi.mock("@/app/actions/general-actions", () => ({
   deferGeneralActionAction: vi.fn(),
   dismissGeneralActionAction: vi.fn(),
   editGeneralActionAction: vi.fn(),
+  // The secondary shelf fetches on open, so opening a section in a test hits these.
+  // They reconcile additively, so an empty result never clears the fixtures.
+  getActionComposerOptionsAction: vi.fn(async () => ({
+    ok: true as const,
+    view: { people: [], shareableMembers: [] },
+  })),
+  getActionSecondaryLedgerViewsAction: vi.fn(async () => ({
+    ok: true as const,
+    view: { paused: [], resolved: [] },
+  })),
+  getSuggestedActionViewsAction: vi.fn(async () => ({
+    ok: true as const,
+    view: { suggested: [] },
+  })),
   listGeneralActionHistoryAction: vi.fn(),
   pauseGeneralActionAction: vi.fn(),
   promoteAssetHintAction: vi.fn(),
@@ -253,8 +267,16 @@ describe("ActionsSurface area filter (click-through)", () => {
 
       const heading = screen.getByRole("heading", { name: "Actions" });
       expect(screen.queryByRole("button", { name: "Complete" })).toBeNull();
-      expect(screen.getByRole("button", { name: "Reopen" })).toBeTruthy();
       expect(document.activeElement).toBe(heading);
+
+      // The completed action filed itself under the folded Resolved shelf rather than
+      // vanishing; opening that shelf finds it, still reopenable.
+      fireEvent.click(screen.getByRole("button", { name: "Resolved" }));
+      await act(async () => {
+        await Promise.resolve();
+        await vi.runAllTimersAsync();
+      });
+      expect(screen.getByRole("button", { name: "Reopen" })).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
@@ -294,17 +316,16 @@ describe("ActionsSurface area filter (click-through)", () => {
     expect(screen.getByText("Fix the kitchen sink")).toBeTruthy();
     expect(screen.getByText("Book the dentist")).toBeTruthy();
 
-    // Selecting Health narrows the ledger to that Area's action only.
-    await user.click(screen.getByRole("button", { name: "Health", pressed: false }));
+    // Selecting Health narrows the ledger to that Area's action only. The chips are a
+    // single-select group (Radix ToggleGroup type="single"), so each is a radio.
+    await user.click(screen.getByRole("radio", { name: "Health", checked: false }));
     expect(screen.getByText("Book the dentist")).toBeTruthy();
     expect(screen.queryByText("Fix the kitchen sink")).toBeNull();
     // The chosen chip reads as the current selection to AT.
-    expect(screen.getByRole("button", { name: "Health" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
+    expect(screen.getByRole("radio", { name: "Health" }).getAttribute("aria-checked")).toBe("true");
 
     // All restores the full ledger.
-    await user.click(screen.getByRole("button", { name: "All" }));
+    await user.click(screen.getByRole("radio", { name: "All" }));
     expect(screen.getByText("Fix the kitchen sink")).toBeTruthy();
     expect(screen.getByText("Book the dentist")).toBeTruthy();
   });
@@ -313,17 +334,12 @@ describe("ActionsSurface area filter (click-through)", () => {
     const user = userEvent.setup();
     renderSurface([FIX_SINK], [HOME, HEALTH]);
 
-    await user.click(screen.getByRole("button", { name: "Health", pressed: false }));
+    await user.click(screen.getByRole("radio", { name: "Health", checked: false }));
 
     expect(screen.getByText(/Nothing in (Home|Health) right now\./)).toBeTruthy();
-    // The empty state carries its own inline "All" restore affordance (last of the "All"
-    // buttons: the filter chip plus this inline one).
-    const restoreButtons = screen.getAllByRole("button", { name: "All" });
-    const inlineAll = restoreButtons.at(-1);
-    if (!inlineAll) {
-      throw new Error("expected an inline All restore button in the empty state");
-    }
-    await user.click(inlineAll);
+    // The empty state teaches the way back: its own "All" action, distinct from the
+    // filter chip of the same name (which is a radio, not a button).
+    await user.click(screen.getByRole("button", { name: "All" }));
     expect(screen.getByText("Fix the kitchen sink")).toBeTruthy();
   });
 });
@@ -337,20 +353,19 @@ describe("ActionsSurface narrow viewport (mobile-first base layer)", () => {
     renderSurface([FIX_SINK, BOOK_DENTIST], [HOME, HEALTH]);
 
     // The whole interactive surface is present and reachable on a narrow viewport.
-    expect(screen.getByRole("group", { name: "Filter by area" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "All" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
+    expect(screen.getByRole("radiogroup", { name: "Filter by area" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "All" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Home" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Manage areas" })).toBeTruthy();
 
     // The filter reflow container is authored mobile-first: it stacks (`flex-col`) at the
     // base width and only becomes a row at `sm:` — the layer jsdom cannot compute.
-    const filterGroup = screen.getByRole("group", { name: "Filter by area" });
-    const reflow = filterGroup.parentElement;
+    const reflow = document.querySelector("[data-slot=action-filter-bar]");
     expect(reflow?.className).toContain("flex-col");
     expect(reflow?.className).toContain("sm:flex-row");
 
     // Controls stay operable (not just present) at this width — the filter still works.
-    await user.click(screen.getByRole("button", { name: "Health", pressed: false }));
+    await user.click(screen.getByRole("radio", { name: "Health", checked: false }));
     expect(screen.queryByText("Fix the kitchen sink")).toBeNull();
   });
 });

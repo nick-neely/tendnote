@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ActionRowControls } from "@/components/general-action-row-controls";
-import { ActionRoutineChip } from "@/components/general-action-shared";
+import { ACTION_CONTROL_TOUCH_TARGET, ActionRoutineChip } from "@/components/general-action-shared";
 import { PlayIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -94,6 +94,7 @@ export function PausedRoutineRow({
         pending={pending}
       >
         <Button
+          className={ACTION_CONTROL_TOUCH_TARGET}
           disabled={pending}
           data-action-control="resume"
           onClick={(event) => run("resume", event.currentTarget)}
@@ -106,6 +107,7 @@ export function PausedRoutineRow({
         </Button>
         {activeMutation?.state.undoAvailable ? (
           <Button
+            className={ACTION_CONTROL_TOUCH_TARGET}
             disabled={activeMutation.state.undoRequested}
             onClick={activeMutation.requestUndo}
             size="sm"

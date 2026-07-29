@@ -33,8 +33,10 @@ describe("Action mobile browser contracts", () => {
       />,
     );
 
-    const filter = await page.getByRole("group", { name: "Filter by area" }).element();
-    const reflowContainer = filter.parentElement;
+    // The Area chips are a single-select ToggleGroup (a radio group); the reflow
+    // container is named so this asserts on it directly rather than on a parent chain.
+    await page.getByRole("radiogroup", { name: "Filter by area" }).element();
+    const reflowContainer = container.querySelector("[data-slot=action-filter-bar]");
 
     expect(getComputedStyle(reflowContainer as Element).flexDirection).toBe("column");
     expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
@@ -112,6 +114,47 @@ describe("Action mobile browser contracts", () => {
       await userEvent.keyboard("{Escape}");
       await new Promise((resolve) => window.setTimeout(resolve, 150));
     });
+  });
+
+  // The check above mounts an active row only, which is exactly how the shelf rows
+  // drifted: Paused and Resolved kept the dense 28px `sm` button after the active
+  // row was raised to 44px. A control behind a fold is still a control a thumb has
+  // to hit, so the contract covers all three row kinds.
+  it("gives paused and resolved shelf controls a 44px mobile hit area", async () => {
+    await page.viewport(390, 844);
+    await mount(
+      <ActionsSurface
+        active={[]}
+        areas={[]}
+        paused={[
+          generalActionViewFixture({
+            id: "22222222-2222-2222-2222-222222222222",
+            isRoutine: true,
+            recurrence: { interval: 1, unit: "week" },
+            recurrenceLabel: "Every week",
+            status: "paused",
+            title: "Water the plants",
+          }),
+        ]}
+        resolved={[
+          generalActionViewFixture({
+            id: "33333333-3333-3333-3333-333333333333",
+            status: "completed",
+            title: "Book the dentist",
+          }),
+        ]}
+      />,
+    );
+
+    for (const label of ["Paused routines", "Resolved"]) {
+      await act(async () => page.getByRole("button", { name: label }).click());
+    }
+
+    for (const name of ["Resume", "Reopen", "History", "Archive"]) {
+      for (const control of await page.getByRole("button", { name }).elements()) {
+        await expect.poll(() => control.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+      }
+    }
   });
 
   it("lands and pulses a deep link inside a real scroll container", async () => {

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { generalActionViewFixture } from "@/components/general-action-fixtures";
+import { toDateValue } from "@/components/ui/date-picker";
 import type { GeneralActionView } from "@/lib/general-action-view";
 import { ReversibleMutationProvider } from "@/lib/reversible-mutation";
 import { render, screen, userEvent, waitFor } from "@/test/dom";
@@ -63,6 +64,24 @@ import {
 import { ActionRow } from "./general-action-row";
 
 const HINT = "refrigerator water filter";
+
+/**
+ * Pick a day in the open DatePicker calendar (portaled to body). The set-aside field
+ * starts empty, so the calendar opens on the current month and a day-of-month is
+ * always present in the grid.
+ */
+async function pickDayThisMonth(
+  user: ReturnType<typeof userEvent.setup>,
+  trigger: HTMLElement,
+  day: number,
+): Promise<void> {
+  const now = new Date();
+  const value = toDateValue(new Date(now.getFullYear(), now.getMonth(), day));
+  await user.click(trigger);
+  const button = document.querySelector<HTMLButtonElement>(`[data-day="${value}"] button`);
+  if (!button) throw new Error(`no day button for ${value}`);
+  await user.click(button);
+}
 
 function renderRow(action: GeneralActionView, onUpdate = vi.fn()) {
   render(
@@ -286,9 +305,7 @@ describe("reversible Action lifecycle acknowledgement", () => {
 
     await user.click(screen.getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Set aside" }));
-    const date = screen.getByLabelText("Set aside until");
-    await user.clear(date);
-    await user.type(date, "2026-08-21");
+    await pickDayThisMonth(user, screen.getByRole("combobox", { name: "Set aside until" }), 21);
     await user.click(screen.getByRole("button", { name: "Set aside" }));
     await user.click(screen.getByRole("button", { name: "Undo set aside" }));
 

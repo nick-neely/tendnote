@@ -11,12 +11,14 @@ import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
   ArchiveIcon,
   CheckIcon,
+  ChevronDownIcon,
   PencilIcon,
   PlusIcon,
   RotateCcwIcon,
   XIcon,
 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import type {
@@ -206,36 +209,47 @@ export function AreaManagerDialog({
             ))}
           </ul>
         ) : (
-          <p className="rounded-xl border border-dashed px-4 py-5 text-[length:var(--text-small)] text-muted-foreground">
-            No areas yet.
-          </p>
+          <EmptyState
+            description="Areas group related actions, like Home or Finance. Add one above."
+            size="compact"
+            title="No areas yet."
+          />
         )}
 
         {archivedAreas.length ? (
-          <details className="group">
-            <summary className="cursor-pointer list-none text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground">
+          // The same disclosure vocabulary as the Actions surface's shelf: a real chevron
+          // affordance and a 44px row, rather than a marker-less summary that reads as a
+          // caption nobody thinks to click.
+          <Collapsible className="flex flex-col gap-2">
+            <CollapsibleTrigger className="group -mx-1.5 flex min-h-11 w-fit items-center gap-1.5 rounded-lg px-1.5 text-left text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+              <ChevronDownIcon
+                aria-hidden
+                className="size-3.5 shrink-0 transition-transform duration-150 ease-(--motion-ease-out) group-data-[state=open]:rotate-180"
+              />
               Archived
-            </summary>
-            <ul className="mt-2 flex flex-col divide-y overflow-hidden rounded-xl border bg-surface">
-              {archivedAreas.map((area) => (
-                <li className="flex items-center gap-2 px-3 py-2" key={area.id}>
-                  <span className="flex-1 truncate text-[length:var(--text-small)] text-muted-foreground">
-                    {area.name}
-                  </span>
-                  <Button
-                    disabled={pending}
-                    onClick={() => unarchiveArea(area.id)}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    {busyKey === `unarchive-${area.id}` ? <Spinner /> : <RotateCcwIcon />}
-                    Restore
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </details>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-surface">
+                {archivedAreas.map((area) => (
+                  <li className="flex items-center gap-2 px-3 py-2" key={area.id}>
+                    <span className="flex-1 truncate text-[length:var(--text-small)] text-muted-foreground">
+                      {area.name}
+                    </span>
+                    <Button
+                      disabled={pending}
+                      onClick={() => unarchiveArea(area.id)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      {busyKey === `unarchive-${area.id}` ? <Spinner /> : <RotateCcwIcon />}
+                      Restore
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </CollapsibleContent>
+          </Collapsible>
         ) : null}
 
         {error ? <ErrorText message={error} /> : null}
