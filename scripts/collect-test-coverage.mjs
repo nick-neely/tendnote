@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import istanbulCoverage from "istanbul-lib-coverage";
+import { normalizeCoverageCounts } from "./normalize-coverage-counts.mjs";
 
 const { createCoverageMap } = istanbulCoverage;
 
@@ -45,7 +46,7 @@ async function collectWorkspace({ directory, include }) {
       "run",
       "--passWithNoTests",
       "--coverage.enabled",
-      "--coverage.provider=istanbul",
+      "--coverage.provider=v8",
       "--coverage.reporter=json",
       `--coverage.reportsDirectory=${reportDirectory}`,
       ...include.map((pattern) => `--coverage.include=${pattern}`),
@@ -59,7 +60,7 @@ await rm(coverageRoot, { recursive: true, force: true });
 await mkdir(coverageRoot, { recursive: true });
 
 // The root contract test validates this collector and the workflow that calls
-// it. It is intentionally outside the Istanbul map because it checks CI wiring
+// it. It is intentionally outside the merged coverage map because it checks CI wiring
 // rather than product functions scored by Fallow.
 await runPnpm(["exec", "vitest", "run", "scripts"], "root script tests");
 
@@ -72,4 +73,10 @@ for (const report of reports) {
   merged.merge(JSON.parse(await readFile(report, "utf8")));
 }
 
-await writeFile(join(coverageRoot, "coverage-final.json"), JSON.stringify(merged.toJSON()));
+const normalized = normalizeCoverageCounts(merged.toJSON());
+if (normalized.normalizedCount > 0) {
+  console.warn(
+    `Normalized ${normalized.normalizedCount} impossible negative V8 coverage counter(s) to zero.`,
+  );
+}
+await writeFile(join(coverageRoot, "coverage-final.json"), JSON.stringify(normalized.coverage));

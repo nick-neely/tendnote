@@ -52,14 +52,69 @@ describe("CI workflow optimization contract", () => {
     expect(workflow).not.toContain("- 'README.md'");
   });
 
-  it("trusts protected PR verification and only releases deployable main changes", () => {
+  it("keeps draft iteration fast and requires an explicit full CI qualification before merge", () => {
+    const pullRequest = read(".github/workflows/pr-verify.yml");
+    const reusable = read(".github/workflows/reusable-verify.yml");
+
+    expect(pullRequest).toContain("full-ci");
+    expect(pullRequest).toContain("github.event.pull_request.draft");
+    expect(pullRequest).toContain("run_full:");
+    expect(pullRequest).toContain("Full CI qualification is required before merge.");
+
+    expect(reusable).toContain("run_full:");
+    expect(reusable).toMatch(/fast_tests:[\s\S]*if: \$\{\{[^}]*!inputs\.run_full/);
+    expect(reusable).toMatch(
+      /test_fallow:[\s\S]*if: \$\{\{[^}]*(inputs\.run_tests \|\| inputs\.run_browser)[^}]*inputs\.run_full/,
+    );
+    expect(reusable).toMatch(/name: Run tests with coverage\s+if: \$\{\{ inputs\.run_tests \}\}/);
+    expect(reusable).toMatch(
+      /name: Run real-browser contracts\s+if: \$\{\{ inputs\.run_browser \}\}/,
+    );
+    expect(reusable).toMatch(
+      /instant_matrix:[\s\S]*if: \$\{\{[^}]*inputs\.run_full[^}]*inputs\.run_instant/,
+    );
+  });
+
+  it("shares one Chromium cache and primes it from the trusted default branch", () => {
+    const reusable = read(".github/workflows/reusable-verify.yml");
+    const prime = read(".github/workflows/playwright-cache.yml");
+    const chromiumKey =
+      "$" + "{{ runner.os }}-playwright-chromium-$" + "{{ hashFiles('pnpm-lock.yaml') }}";
+
+    expect(reusable.split(chromiumKey)).toHaveLength(3);
+    expect(prime).toContain("push:");
+    expect(prime).toContain("- main");
+    expect(prime).toContain("- 'pnpm-lock.yaml'");
+    expect(prime).toContain(chromiumKey);
+    expect(prime).toContain("playwright install chromium");
+    expect(prime).not.toContain("playwright install --with-deps chromium");
+  });
+
+  it("releases ready Vercel deployments through an event-driven migration check", () => {
     const workflow = read(".github/workflows/production-migrations.yml");
     const vercel = JSON.parse(read("apps/web/vercel.json"));
 
     expect(workflow).not.toContain("uses: ./.github/workflows/reusable-verify.yml");
-    expect(workflow).toContain("if: needs.changes.outputs.deploy == 'true'");
-    expect(workflow).not.toContain("- 'docs/**'");
-    expect(workflow).not.toContain("- 'README.md'");
+    expect(workflow).toContain("repository_dispatch:");
+    expect(workflow).toContain("- vercel.deployment.ready");
+    expect(workflow).toContain("statuses: write");
+    expect(workflow).toContain("vercel/repository-dispatch/actions/status@v1");
+    expect(workflow).toContain("vercel/repository-dispatch/actions/checkout@v1");
+    expect(workflow).toContain("github.event.client_payload.environment == 'production'");
+    expect(workflow).toContain(
+      "github.event.client_payload.project.id == 'prj_hdGusP01mnLoDvQc3CQ1gha2at7E'",
+    );
+    expect(workflow).toContain("github.event.client_payload.git.ref == 'main'");
+    expect(workflow).toContain("github.event.client_payload.state.type == 'ready'");
+    expect(workflow).toContain("pnpm install --frozen-lockfile --filter @tendnote/db...");
+    expect(workflow).toContain("pnpm db:migrate");
+    expect(workflow).not.toContain("git diff --quiet");
+    expect(workflow).not.toContain("steps.changes.outputs.database");
+    expect(workflow).not.toContain("push:");
+    expect(workflow).not.toContain("sleep 10");
+    expect(workflow).not.toContain("vercel promote");
+    expect(workflow).not.toContain("VERCEL_TOKEN");
+    expect(workflow).not.toContain("VERCEL_CLI_VERSION");
     expect(vercel.ignoreCommand).toBe("npx turbo-ignore --fallback=HEAD^1");
   });
 });

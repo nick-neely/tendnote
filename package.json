@@ -21,6 +21,7 @@
     "format:check": "biome format .",
     "typecheck": "turbo typecheck",
     "test": "vitest run scripts/*.test.ts && turbo test",
+    "test:affected": "vitest run scripts/*.test.ts && turbo test --affected",
     "test:browser": "pnpm --filter @tendnote/web test:browser",
     "test:instant": "pnpm --filter @tendnote/web test:instant",
     "test:instant:full": "pnpm --filter @tendnote/web test:instant:full",
@@ -36,7 +37,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
-    "@vitest/coverage-istanbul": "^4.1.9",
+    "@vitest/coverage-v8": "4.1.9",
     "fallow": "^2.102.0",
     "istanbul-lib-coverage": "^3.2.2",
     "turbo": "^2.6.3",

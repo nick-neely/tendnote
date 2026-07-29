@@ -46,9 +46,16 @@ describe("Instant Interaction matrix CI contract", () => {
   });
 
   it("fails verification when the matrix fails", () => {
-    const verifyJob = workflow.slice(workflow.indexOf("  verify:"));
-    expect(verifyJob).toContain("- instant_matrix");
-    expect(verifyJob).toContain("needs.instant_matrix.result");
+    const matrixGate = workflow.slice(
+      workflow.indexOf("- name: Run the routine Chromium matrix"),
+      workflow.indexOf("- name: Summarise recorded diagnostics"),
+    );
+    const pullRequest = read(".github/workflows/pr-verify.yml");
+    const promotion = read(".github/workflows/promotion-verify.yml");
+
+    expect(matrixGate).not.toContain("continue-on-error: true");
+    expect(pullRequest).toContain('needs.verify.result }}" != "success"');
+    expect(promotion).toContain('needs.verify.result }}" != "success"');
   });
 
   it("gives the matrix the database and cache its fixture needs, and a wall clock", () => {

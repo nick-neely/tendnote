@@ -4,6 +4,14 @@ on:
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - converted_to_draft
+      - labeled
+      - unlabeled
 
 permissions:
   contents: read
@@ -19,7 +27,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       verify: ${{ steps.filter.outputs.verify }}
+      tests: ${{ steps.filter.outputs.tests }}
+      browser: ${{ steps.filter.outputs.browser }}
+      instant: ${{ steps.filter.outputs.instant }}
       database: ${{ steps.filter.outputs.database }}
+      full_requested: ${{ steps.mode.outputs.full_requested }}
+      full_required: ${{ steps.mode.outputs.full_required }}
     steps:
       - name: Check paths
         id: filter
@@ -41,6 +54,45 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
               - 'tsconfig*.json'
+            tests:
+              - '.github/workflows/**'
+              - '.fallowrc*'
+              - 'apps/**/*.{ts,tsx,js,mjs,cjs}'
+              - 'apps/*/package.json'
+              - 'packages/**/*.{ts,tsx,js,mjs,cjs}'
+              - 'packages/*/package.json'
+              - 'scripts/**/*.{ts,tsx,js,mjs,cjs}'
+              - 'biome.json'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - 'tsconfig*.json'
+            browser:
+              - '.github/workflows/**'
+              - 'apps/web/src/**'
+              - 'apps/web/vitest.browser.config.ts'
+              - 'apps/web/package.json'
+              - 'packages/*/src/**'
+              - 'packages/*/package.json'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+            instant:
+              - '.github/workflows/**'
+              - 'apps/web/src/**'
+              - 'apps/web/tests/instant/**'
+              - 'apps/web/public/**'
+              - 'apps/web/next.config.ts'
+              - 'apps/web/playwright.config.ts'
+              - 'apps/web/package.json'
+              - 'apps/agent/agent/**'
+              - 'apps/agent/package.json'
+              - 'packages/*/src/**'
+              - 'packages/*/package.json'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
             database:
               - '.github/workflows/**'
               - 'packages/db/src/schema/**'
@@ -50,19 +102,38 @@ jobs:
               - 'package.json'
               - 'pnpm-lock.yaml'
 
+      - name: Select verification tier
+        id: mode
+        env:
+          FULL_CI_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          VERIFY_CHANGED: ${{ steps.filter.outputs.verify }}
+        run: |
+          echo "full_requested=${FULL_CI_LABEL}" >>"${GITHUB_OUTPUT}"
+
+          if [[ "${VERIFY_CHANGED}" == "true" && "${PR_DRAFT}" != "true" ]]; then
+            echo "full_required=true" >>"${GITHUB_OUTPUT}"
+          else
+            echo "full_required=false" >>"${GITHUB_OUTPUT}"
+          fi
+
   verify:
     needs: changes
     if: needs.changes.outputs.verify == 'true'
     uses: ./.github/workflows/reusable-verify.yml
     with:
+      run_tests: ${{ needs.changes.outputs.tests == 'true' }}
+      run_browser: ${{ needs.changes.outputs.browser == 'true' }}
+      run_instant: ${{ needs.changes.outputs.instant == 'true' }}
       run_database: ${{ needs.changes.outputs.database == 'true' }}
+      run_full: ${{ needs.changes.outputs.full_requested == 'true' }}
 
   gate:
     name: Verify
     needs:
       - changes
       - verify
-    if: always()
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - name: Check PR verification
@@ -74,6 +145,11 @@ jobs:
 
           if [[ "${{ needs.changes.outputs.verify }}" == "true" && "${{ needs.verify.result }}" != "success" ]]; then
             echo "Verification was required but did not succeed. Result: ${{ needs.verify.result }}"
+            exit 1
+          fi
+
+          if [[ "${{ needs.changes.outputs.full_required }}" == "true" && "${{ needs.changes.outputs.full_requested }}" != "true" ]]; then
+            echo "Full CI qualification is required before merge. Apply the full-ci label."
             exit 1
           fi
 

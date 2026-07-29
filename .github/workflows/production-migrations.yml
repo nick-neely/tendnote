@@ -1,133 +1,43 @@
 name: Release production
 
 on:
-  push:
-    branches:
-      - main
+  repository_dispatch:
+    types:
+      - vercel.deployment.ready
 
 permissions:
   contents: read
+  statuses: write
 
 env:
-  VERCEL_CLI_VERSION: 56.2.1
-  VERCEL_ORG_ID: team_8INDibYV08yytiZJHcMuAaYO
-  VERCEL_PROJECT_ID: prj_hdGusP01mnLoDvQc3CQ1gha2at7E
+  NODE_VERSION: 24
+  PNPM_VERSION: 10.32.1
 
 concurrency:
-  group: production-release
+  group: production-release-${{ github.event.client_payload.project.id }}
   cancel-in-progress: false
 
 jobs:
-  changes:
-    name: Detect changes
+  release:
+    name: Production Release Gate
+    if: >-
+      github.event.client_payload.environment == 'production' &&
+      github.event.client_payload.project.id == 'prj_hdGusP01mnLoDvQc3CQ1gha2at7E' &&
+      github.event.client_payload.git.ref == 'main' &&
+      github.event.client_payload.state.type == 'ready'
     runs-on: ubuntu-latest
-    outputs:
-      deploy: ${{ steps.filter.outputs.deploy }}
-      database: ${{ steps.filter.outputs.database }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Check paths
-        id: filter
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            deploy:
-              - 'apps/**'
-              - 'packages/**'
-              - 'public/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-              - 'turbo.json'
-              - 'tsconfig*.json'
-            database:
-              - 'packages/db/src/schema/**'
-              - 'packages/db/migrations/**'
-              - 'packages/db/drizzle.config.ts'
-              - 'packages/db/package.json'
-
-  staged-deployment:
-    name: Wait for staged Vercel deployment
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.deploy == 'true'
-    outputs:
-      deployment-id: ${{ steps.deployment.outputs.id }}
-      deployment-url: ${{ steps.deployment.outputs.url }}
-    steps:
-      - name: Find production build for this commit
-        id: deployment
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          for attempt in {1..90}; do
-            response="$(
-              curl --fail --silent --show-error \
-                --retry 3 \
-                --retry-all-errors \
-                --retry-delay 2 \
-                --header "Authorization: Bearer ${VERCEL_TOKEN}" \
-                "https://api.vercel.com/v6/deployments?projectId=${VERCEL_PROJECT_ID}&teamId=${VERCEL_ORG_ID}&target=production&limit=20"
-            )"
-
-            deployment="$(
-              jq --compact-output --arg sha "${GITHUB_SHA}" \
-                '.deployments
-                 | map(select(.meta.githubCommitSha == $sha))
-                 | sort_by(.created)
-                 | reverse
-                 | .[0] // empty' \
-                <<<"${response}"
-            )"
-
-            if [[ -z "${deployment}" ]]; then
-              echo "Production build for ${GITHUB_SHA} has not appeared yet (attempt ${attempt}/90)."
-              sleep 10
-              continue
-            fi
-
-            state="$(jq --raw-output '.state' <<<"${deployment}")"
-            deployment_id="$(jq --raw-output '.uid // .id' <<<"${deployment}")"
-            deployment_url="$(jq --raw-output '.url' <<<"${deployment}")"
-            echo "Deployment ${deployment_id} is ${state}."
-
-            case "${state}" in
-              READY)
-                echo "id=${deployment_id}" >>"${GITHUB_OUTPUT}"
-                echo "url=https://${deployment_url}" >>"${GITHUB_OUTPUT}"
-                exit 0
-                ;;
-              ERROR|CANCELED)
-                echo "Vercel could not produce a releasable build for ${GITHUB_SHA}."
-                exit 1
-                ;;
-              *)
-                sleep 10
-                ;;
-            esac
-          done
-
-          echo "Timed out waiting for Vercel to build ${GITHUB_SHA}."
-          exit 1
-
-  migrate:
-    name: Migrate production
-    runs-on: ubuntu-latest
-    needs:
-      - changes
-      - staged-deployment
-    if: needs.changes.outputs.database == 'true' && needs.staged-deployment.result == 'success'
+    environment: production
     env:
-      NODE_VERSION: 24
-      PNPM_VERSION: 10.32.1
       DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_DIRECT_URL }}
+      DEPLOY_SHA: ${{ github.event.client_payload.git.sha }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Report migration status to Vercel
+        uses: vercel/repository-dispatch/actions/status@v1
+        with:
+          name: Production Release Gate
+
+      - name: Checkout deployed revision
+        uses: vercel/repository-dispatch/actions/checkout@v1
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -140,66 +50,20 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install database dependencies
+        run: pnpm install --frozen-lockfile --filter @tendnote/db...
 
-      - name: Apply migrations
+      - name: Apply pending production migrations
         run: pnpm db:migrate
 
-  release-gate:
-    name: Production Release Gate
-    runs-on: ubuntu-latest
-    needs:
-      - changes
-      - staged-deployment
-      - migrate
-    if: always()
-    steps:
-      - name: Check production release prerequisites
-        run: |
-          if [[ "${{ needs.changes.result }}" != "success" ]]; then
-            echo "Change detection failed."
-            exit 1
-          fi
-
-          if [[ "${{ needs.changes.outputs.deploy }}" == "true" && "${{ needs.staged-deployment.result }}" != "success" ]]; then
-            echo "A staged Vercel production build was not ready. Result: ${{ needs.staged-deployment.result }}"
-            exit 1
-          fi
-
-          if [[ "${{ needs.changes.outputs.database }}" == "true" && "${{ needs.migrate.result }}" != "success" ]]; then
-            echo "Production migration was required but did not succeed. Result: ${{ needs.migrate.result }}"
-            exit 1
-          fi
-
-          if [[ "${{ needs.changes.outputs.deploy }}" != "true" ]]; then
-            echo "No deployable paths changed."
-          fi
-
-          if [[ "${{ needs.changes.outputs.database }}" != "true" ]]; then
-            echo "No production database migration required."
-          fi
-
-          echo "Production release gate passed."
-
-  promote:
-    name: Promote staged Vercel deployment
-    runs-on: ubuntu-latest
-    needs:
-      - changes
-      - staged-deployment
-      - release-gate
-    if: always() && needs.changes.outputs.deploy == 'true' && needs.release-gate.result == 'success' && needs.staged-deployment.result == 'success'
-    steps:
-      - name: Promote verified deployment to production
+      - name: Summarize release gate
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_DEPLOYMENT_ID: ${{ needs.staged-deployment.outputs.deployment-id }}
+          DEPLOYMENT_URL: ${{ github.event.client_payload.url }}
         run: |
-          npx --yes "vercel@${VERCEL_CLI_VERSION}" promote "${VERCEL_DEPLOYMENT_ID}" \
-            --yes \
-            --scope nick-neely \
-            --token "${VERCEL_TOKEN}"
-
-      - name: Publish production URL
-        run: echo "Promoted ${{ needs.staged-deployment.outputs.deployment-url }} to production."
+          {
+            echo "## Production release gate"
+            echo
+            echo "- Deployment: ${DEPLOYMENT_URL}"
+            echo "- Revision: \`${DEPLOY_SHA}\`"
+            echo "- Pending database migrations applied"
+          } >>"${GITHUB_STEP_SUMMARY}"

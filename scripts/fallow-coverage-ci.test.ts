@@ -9,12 +9,13 @@ function read(relativePath: string): string {
 }
 
 describe("Fallow CI coverage contract (#193)", () => {
-  it("produces one Istanbul coverage map for every tested workspace", () => {
+  it("produces one merged coverage map for every tested workspace", () => {
     const rootPackage = JSON.parse(read("package.json"));
     const collector = read("scripts/collect-test-coverage.mjs");
 
     expect(rootPackage.scripts["coverage:ci"]).toBe("node scripts/collect-test-coverage.mjs");
-    expect(rootPackage.devDependencies).toHaveProperty("@vitest/coverage-istanbul");
+    expect(rootPackage.devDependencies).toHaveProperty("@vitest/coverage-v8");
+    expect(rootPackage.devDependencies).not.toHaveProperty("@vitest/coverage-istanbul");
     expect(rootPackage.devDependencies).toHaveProperty("istanbul-lib-coverage");
     expect(collector).toContain('"packages/auth"');
     expect(collector).toContain('"packages/rate-limit"');
@@ -22,7 +23,8 @@ describe("Fallow CI coverage contract (#193)", () => {
     expect(collector).toContain('"apps/web"');
     expect(collector).toContain('"packages/db"');
     expect(collector).toContain('"packages/domain"');
-    expect(collector).toContain("--coverage.provider=istanbul");
+    expect(collector).toContain("--coverage.provider=v8");
+    expect(collector).toContain("normalizeCoverageCounts");
     expect(collector).toContain("coverage-final.json");
     expect(collector).toContain('["exec", "vitest", "run", "scripts"]');
   });
@@ -49,8 +51,8 @@ describe("Fallow CI coverage contract (#193)", () => {
     expect(workflow).toMatch(
       new RegExp(
         [
-          String.raw`- name: Run tests with coverage\s+run: pnpm coverage:ci`,
-          String.raw`- name: Confirm exact CRAP scoring\s+run: pnpm fallow:coverage:check`,
+          String.raw`- name: Run tests with coverage\s+if: \$\{\{ inputs\.run_tests \}\}\s+run: pnpm coverage:ci`,
+          String.raw`- name: Confirm exact CRAP scoring\s+if: \$\{\{ inputs\.run_tests \}\}\s+run: pnpm fallow:coverage:check`,
           // No escapes in this one, so no `String.raw` - it is the same source.
           `- name: Run Fallow audit`,
         ].join(commentsOrBlanks),
