@@ -54,6 +54,23 @@ describe("CI workflow optimization contract", () => {
     expect(workflow).not.toContain("- 'README.md'");
   });
 
+  it("runs only workflow contracts for CI-only draft changes", () => {
+    const pullRequest = read(".github/workflows/pr-verify.yml");
+    const reusable = read(".github/workflows/reusable-verify.yml");
+    const fastPackageFilter = pullRequest.match(
+      /fast_packages:\n([\s\S]*?)\n            browser:/,
+    )?.[1];
+
+    expect(fastPackageFilter).toBeDefined();
+    expect(fastPackageFilter).not.toContain(".github/workflows");
+    expect(fastPackageFilter).not.toContain("scripts/");
+    expect(reusable).toContain("run_fast_packages:");
+    expect(reusable).toContain("pnpm exec vitest run scripts/*.test.ts");
+    expect(reusable).toMatch(
+      /name: Run affected package tests\s+if: \$\{\{ inputs\.run_fast_packages \}\}/,
+    );
+  });
+
   it("does not rerun PR verification when an already-qualified draft becomes ready", () => {
     const workflow = read(".github/workflows/pr-verify.yml");
 

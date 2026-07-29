@@ -36,6 +36,7 @@ jobs:
     outputs:
       verify: ${{ steps.filter.outputs.verify }}
       tests: ${{ steps.filter.outputs.tests }}
+      fast_packages: ${{ steps.filter.outputs.fast_packages }}
       browser: ${{ steps.filter.outputs.browser }}
       instant: ${{ steps.filter.outputs.instant }}
       database: ${{ steps.filter.outputs.database }}
@@ -69,6 +70,17 @@ jobs:
               - 'packages/**/*.{ts,tsx,js,mjs,cjs}'
               - 'packages/*/package.json'
               - 'scripts/**/*.{ts,tsx,js,mjs,cjs}'
+              - 'biome.json'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - 'tsconfig*.json'
+            fast_packages:
+              - 'apps/**/*.{ts,tsx,js,mjs,cjs}'
+              - 'apps/*/package.json'
+              - 'packages/**/*.{ts,tsx,js,mjs,cjs}'
+              - 'packages/*/package.json'
               - 'biome.json'
               - 'package.json'
               - 'pnpm-lock.yaml'
@@ -122,6 +134,7 @@ jobs:
     uses: ./.github/workflows/reusable-verify.yml
     with:
       run_tests: ${{ needs.changes.outputs.tests == 'true' }}
+      run_fast_packages: ${{ needs.changes.outputs.fast_packages == 'true' }}
       run_browser: ${{ needs.changes.outputs.browser == 'true' }}
       run_instant: ${{ needs.changes.outputs.instant == 'true' }}
       run_database: ${{ needs.changes.outputs.database == 'true' }}

@@ -8,6 +8,11 @@ on:
         required: false
         type: boolean
         default: true
+      run_fast_packages:
+        description: Add affected package tests to the fast workflow-contract lane
+        required: false
+        type: boolean
+        default: false
       run_browser:
         description: Run the focused real-browser component contracts
         required: false
@@ -148,8 +153,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run affected tests
-        run: pnpm test:affected
+      - name: Run workflow contracts
+        run: pnpm exec vitest run scripts/*.test.ts
+
+      - name: Run affected package tests
+        if: ${{ inputs.run_fast_packages }}
+        run: pnpm turbo test --affected
 
   test_fallow:
     name: Test and Fallow
