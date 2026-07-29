@@ -204,6 +204,15 @@ export function createInMemoryEmbeddingStore(
     },
     async settleEmbeddingJob(input) {
       const job = requireJob(input.jobId);
+
+      // Only the row's current run may settle it, mirroring the Postgres store's
+      // `status = 'running'` predicate. A second pass over the same job arrives here with a
+      // verdict that has already been superseded, and writing it would overwrite the
+      // `pending` a rerun marker just produced - losing the edit that asked for it.
+      if (job.status !== "running") {
+        return job;
+      }
+
       // The Postgres store reads the marker inside the statement that writes the status;
       // here the whole method is the atomic unit, so the same read happens before the merge.
       const settled =

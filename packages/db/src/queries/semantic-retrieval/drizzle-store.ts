@@ -118,6 +118,17 @@ function branch(guard: SQL, instead: SQL, stands: SQL): SQL {
   return sql`case when ${guard} then ${instead} else ${stands} end`;
 }
 
+/** One job row by id, or null. Shared by the reader and by settle's superseded-pass path. */
+async function readEmbeddingJob(jobId: string) {
+  const [job] = await getDb()
+    .select()
+    .from(relationshipContextEmbeddingJobs)
+    .where(eq(relationshipContextEmbeddingJobs.id, jobId))
+    .limit(1);
+
+  return job ?? null;
+}
+
 /** The job mechanics a settle carries through untouched when no rerun marker fires. */
 type CarriedJobColumn = "runAfter" | "claimedAt" | "completedAt" | "lastError";
 
@@ -224,13 +235,7 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
       return job ?? null;
     },
     async getEmbeddingJob(jobId) {
-      const [job] = await getDb()
-        .select()
-        .from(relationshipContextEmbeddingJobs)
-        .where(eq(relationshipContextEmbeddingJobs.id, jobId))
-        .limit(1);
-
-      return job ?? null;
+      return readEmbeddingJob(jobId);
     },
     async claimEmbeddingJob(input) {
       const [job] = await getDb()
@@ -321,14 +326,35 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
       const [job] = await getDb()
         .update(relationshipContextEmbeddingJobs)
         .set(buildSettleUpdate(input))
-        .where(eq(relationshipContextEmbeddingJobs.id, input.jobId))
+        .where(
+          and(
+            eq(relationshipContextEmbeddingJobs.id, input.jobId),
+            eq(relationshipContextEmbeddingJobs.status, "running"),
+          ),
+        )
         .returning();
 
-      if (!job) {
+      if (job) {
+        return job;
+      }
+
+      // The row left `running` between this pass reading it and settling, so another pass
+      // over the same job settled first and this verdict is superseded. Writing it anyway
+      // is what would lose a rerun: the first settle consumes the marker and leaves
+      // `pending`, and an unguarded second write puts its own `completed` over the top,
+      // stranding the edit that asked for the extra pass.
+      //
+      // Two passes can genuinely be in flight at once - `claimJobForProcessing` runs a job
+      // that is already `running` without re-claiming it, which is how a redelivery makes
+      // progress after a worker dies - and both hold the same `claimedAt`, so the status is
+      // the only thing that tells the superseded one apart.
+      const current = await readEmbeddingJob(input.jobId);
+
+      if (!current) {
         throw new Error("Embedding job not found.");
       }
 
-      return job;
+      return current;
     },
     async getGeneralActionForEmbedding(input) {
       return selectOwnedGeneralAction(input);

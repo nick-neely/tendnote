@@ -125,6 +125,58 @@ describe("an enqueue that lands while its embedding job is running", () => {
     expect(harness.adapterCalls).toBe(2);
   });
 
+  /**
+   * The marker survives a duplicate pass finishing after the pass that consumed it.
+   *
+   * Two passes can hold one job at once: `claimJobForProcessing` runs a job that is already
+   * `running` without re-claiming it, so an at-least-once redelivery lands a second pass
+   * beside the first. Both read the record before the edit and both mean to write a
+   * verdict, but only the first finds the marker. An unguarded second write would put
+   * `completed` over the `pending` the first one produced, stranding the edit on a terminal
+   * job - the exact loss the marker exists to prevent, reintroduced one layer down.
+   *
+   * The duplicate's settle is issued directly because that is precisely what it is: the
+   * same call {@link processEmbeddingJob} makes for a completed pass, arriving late.
+   */
+  it("keeps the rerun when a superseded duplicate pass settles after the marker was consumed", async () => {
+    const harness = createInterleavedHarness();
+    const memory = await harness.createApprovedMemory();
+    const { job } = await harness.enqueue(memory.id);
+    harness.interleave(async () => {
+      await harness.store.updateMemory({
+        ownerUserId: OWNER,
+        memoryId: memory.id,
+        patch: { content: EDITED_CONTENT },
+      });
+      await harness.enqueue(memory.id);
+    });
+
+    const inFlight = await harness.processor.processEmbeddingJob({ jobId: job.id });
+    expect(inFlight.job.status).toBe("pending");
+
+    const superseded = await harness.store.settleEmbeddingJob({
+      jobId: job.id,
+      status: "completed",
+      now: new Date(),
+      completedAt: new Date(),
+      lastError: null,
+    });
+
+    // The late verdict is dropped whole: the job is still the queued rerun, not a
+    // completed one, and it carries none of the settling the duplicate tried to write.
+    expect(superseded.status).toBe("pending");
+    expect(superseded.completedAt).toBeNull();
+    expect(superseded.claimedAt).toBeNull();
+
+    const rerun = await harness.processor.processEmbeddingJob({ jobId: job.id });
+
+    expect(rerun.outcome).toBe("completed");
+    expect(rerun.embedding?.embeddedText).toBe(EDITED_CONTENT);
+    await expect(harness.store.listRelationshipContextEmbeddings()).resolves.toEqual([
+      expect.objectContaining({ embeddedText: EDITED_CONTENT }),
+    ]);
+  });
+
   it("costs no second provider call when the record did not actually change", async () => {
     const harness = createInterleavedHarness();
     const memory = await harness.createApprovedMemory();
@@ -321,17 +373,19 @@ describe("the Drizzle store decides both handoffs inside one statement", () => {
   const isSql = (value: unknown) =>
     typeof value === "object" && value !== null && "queryChunks" in value;
 
-  async function captureSetClause(
+  async function captureStatement(
     run: (store: EmbeddingJobLifecycleStore) => Promise<unknown>,
-  ): Promise<Record<string, unknown>> {
-    const captured: Record<string, unknown>[] = [];
+  ): Promise<{ set: Record<string, unknown>; where: unknown }> {
+    const captured: { set: Record<string, unknown>; where: unknown }[] = [];
     const db = {
       update: () => ({
-        set: (values: Record<string, unknown>) => {
-          captured.push(values);
+        set: (values: Record<string, unknown>) => ({
+          where: (predicate: unknown) => {
+            captured.push({ set: values, where: predicate });
 
-          return { where: () => ({ returning: async () => [{ id: "job-1" }] }) };
-        },
+            return { returning: async () => [{ id: "job-1" }] };
+          },
+        }),
       }),
     };
 
@@ -341,10 +395,16 @@ describe("the Drizzle store decides both handoffs inside one statement", () => {
     await run(createDrizzleEmbeddingStore());
     vi.doUnmock("../../client");
 
-    const [clause] = captured;
-    if (!clause) throw new Error("No update statement was built.");
+    const [statement] = captured;
+    if (!statement) throw new Error("No update statement was built.");
 
-    return clause;
+    return statement;
+  }
+
+  async function captureSetClause(
+    run: (store: EmbeddingJobLifecycleStore) => Promise<unknown>,
+  ): Promise<Record<string, unknown>> {
+    return (await captureStatement(run)).set;
   }
 
   it("marks a rerun only for a running job, and reopens only a terminal verdict", async () => {
@@ -362,6 +422,27 @@ describe("the Drizzle store decides both handoffs inside one statement", () => {
         '"relationship_context_embedding_jobs"."status" in ($1, $2)',
       );
     }
+  });
+
+  /**
+   * The marker is durable only if the settle that consumes it is the last word. Two passes
+   * can be in flight over one job - `claimJobForProcessing` runs an already-`running` job
+   * without re-claiming, which is how a redelivery makes progress - and both hold the same
+   * `claimedAt`, so the status is the only thing that distinguishes the superseded one.
+   */
+  it("settles only the row's current running pass, so a superseded verdict writes nothing", async () => {
+    const { where } = await captureStatement((store) =>
+      store.settleEmbeddingJob({
+        jobId: "job-1",
+        status: "completed",
+        now: new Date(),
+        completedAt: new Date(),
+        lastError: null,
+      }),
+    );
+
+    expect(rendered(where)).toContain('"relationship_context_embedding_jobs"."status" = ');
+    expect(query(where).params).toContain("running");
   });
 
   it("reads the rerun marker in the statement that writes the verdict and clears it", async () => {
