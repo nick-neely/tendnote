@@ -71,7 +71,7 @@ const today: TodayShortlistResponse = {
   candidateFingerprint: "phase-seven-proof",
   curation: "deterministic_fallback",
   overflow: null,
-  limitations: ["Eve ranking is unavailable; deterministic ordering used."],
+  limitations: ["Part of Today is temporarily unavailable. Your records are unchanged."],
 };
 
 const sourceReview: ReviewQueueItem = {
@@ -162,7 +162,7 @@ describe("Phase Seven phone browser proof", () => {
     }
     expect(page.getByText("Set to return Aug 14.")).toBeVisible();
     await expect
-      .element(page.getByText(/deterministic ordering used/i))
+      .element(page.getByText(/Part of Today is temporarily unavailable/i))
       .toHaveAttribute("role", "status");
     const itemMenu = page.getByRole("button", {
       name: "More options for Where should I buy the replacement filter?",

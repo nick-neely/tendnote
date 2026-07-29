@@ -57,7 +57,7 @@ function dueFollowupCandidate(
   const personId = candidate.personId;
   const followup = candidate.sourceRefs.find((ref) => ref.kind === "followup");
   if (!followup || !personId || !dueAt) return null;
-  const overdue = dateOnlyKey(dueAt) < localDate;
+  const past = dateOnlyKey(dueAt) < localDate;
   return baseCandidate(candidate, {
     identity: `follow_up:${followup.id}`,
     family: "follow_up",
@@ -67,9 +67,11 @@ function dueFollowupCandidate(
       href: `/people/${personId}#followup-${followup.id}`,
     },
     reason: {
-      code: overdue ? "overdue" : "due_today",
+      // `code` is the machine key Today ranks and suppresses on; the explanation is
+      // the sentence the owner reads, and it never says "overdue" (DESIGN.md §9).
+      code: past ? "overdue" : "due_today",
       key: `due:${dueAt.toISOString()}`,
-      explanation: overdue ? `Overdue since ${formatDateOnly(dueAt)}.` : "Due today.",
+      explanation: past ? `Waiting since ${formatDateOnly(dueAt)}.` : "Due today.",
     },
     action: { kind: "complete_follow_up", label: "Complete" },
     mandatory: true,

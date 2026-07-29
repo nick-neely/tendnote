@@ -829,7 +829,7 @@ describe("Global Recall", () => {
     expect(result.results).toEqual([]);
     expect(result.limitations).toContainEqual({
       source: "relationship",
-      message: "Related relationship matches were too weak to show confidently.",
+      message: "Showing the closest related People and context matches only.",
     });
   });
 

@@ -36,9 +36,26 @@ export function createTodayShortlistService(deps: {
     const limitations: string[] = [];
     for (const result of settled) {
       if (result.status === "fulfilled") candidates.push(...result.value);
-      else limitations.push("One Today source is temporarily unavailable.");
+      // The owner is told only what changes what they see: part of Today is
+      // missing, and nothing of theirs moved. Which internal source failed is a
+      // log line, not copy (DESIGN.md §9).
+      else
+        limitations.push("Part of Today is temporarily unavailable. Your records are unchanged.");
     }
     return { candidates, limitations };
+  }
+
+  /**
+   * Eve's optional ranking is a nicety over an already-complete deterministic
+   * list: when it is unavailable the owner sees the same items in a sensible
+   * order, so there is nothing to tell them. The fallback is recorded in
+   * `curation` for logs and tests, and warned in development. It never becomes
+   * a limitation the UI renders.
+   */
+  function noteRankingFallback(error: unknown): void {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Eve ranking is unavailable; using deterministic Today ordering.", error);
+    }
   }
 
   return {
@@ -99,9 +116,6 @@ export function createTodayShortlistService(deps: {
       if (canReuse) {
         optionalOrder = prior.optionalOrder;
         curation = prior.curation;
-        if (curation === "deterministic_fallback") {
-          limitations.push("Eve ranking is unavailable; deterministic ordering used.");
-        }
       } else if (deps.rankOptional && deterministic.optionalCandidates.length > 0) {
         try {
           const ranked = todayRankingOutputSchema.parse(
@@ -119,8 +133,8 @@ export function createTodayShortlistService(deps: {
             curation: "eve_ranked",
           });
           curation = "eve_ranked";
-        } catch {
-          limitations.push("Eve ranking is unavailable; deterministic ordering used.");
+        } catch (error) {
+          noteRankingFallback(error);
           curation = "deterministic_fallback";
           curationByOwner.set(input.ownerUserId, {
             localDate: input.localDate,

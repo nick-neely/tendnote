@@ -76,10 +76,11 @@ describe("Today shortlist product function", () => {
       review.identity,
       saved.identity,
     ]);
+    // The fallback is recorded for logs and tests, never told to the owner: the
+    // list is complete either way, so there is nothing about it worth their
+    // attention (and "deterministic ordering" is not a sentence Tendnote says).
     expect(result.curation).toBe("deterministic_fallback");
-    expect(result.limitations).toEqual([
-      "Eve ranking is unavailable; deterministic ordering used.",
-    ]);
+    expect(result.limitations).toEqual([]);
   });
 
   it("records Today-only Later feedback after reloading the authoritative candidate", async () => {

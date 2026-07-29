@@ -37,7 +37,7 @@ function relationshipLimitation(
   if (sources.related.some((result) => result.similarity < RELATED_MINIMUM_SIMILARITY)) {
     return {
       source: "relationship",
-      message: "Related relationship matches were too weak to show confidently.",
+      message: "Showing the closest related People and context matches only.",
     };
   }
   return null;
@@ -78,7 +78,7 @@ function savedItemLimitation(
   if (sources.savedItemsRelated.some((item) => item.similarity < RELATED_MINIMUM_SIMILARITY)) {
     return {
       source: "saved_items",
-      message: "Related Saved Item matches were too weak to show confidently.",
+      message: "Showing the closest related Saved Item matches only.",
     };
   }
   return null;

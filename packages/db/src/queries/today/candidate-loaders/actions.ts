@@ -30,9 +30,11 @@ export async function loadActionCandidates(
         reason: {
           code: reason,
           key: `${reason}:${reasonAt.toISOString()}`,
+          // `code` stays the machine key; the sentence the owner reads never says
+          // "overdue" (DESIGN.md §9: no guilt language on surfaced records).
           explanation:
             reason === "overdue"
-              ? `Overdue since ${formatDateOnly(reasonAt)}.`
+              ? `Waiting since ${formatDateOnly(reasonAt)}.`
               : reason === "due_today"
                 ? "Due today."
                 : `Set to return ${formatDateInZone(reasonAt, input.timeZone)}.`,

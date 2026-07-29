@@ -1,34 +1,57 @@
 import type { SourceRecord } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { createHouseholdLifecycle } from "../households/lifecycle";
 import {
   OTHER_OWNER,
   OWNER,
   setup,
+  setupWithHouseholdMember,
   suggestedMemory,
   WINDOW_END,
   WINDOW_START,
 } from "./query.test-helpers";
 
+/**
+ * One active note that has already produced both kinds of review work: a suggested
+ * memory and a suggested follow-up.
+ *
+ * The `includeKinds` cases below share this arrangement because a filter is only
+ * proven to separate the two kinds when both are present to be separated - each
+ * still spells out its own read and its own assertions.
+ */
+async function bothReviewKindsFromOneNote() {
+  const { store, agenda, person, sourceRecord } = await setup();
+  const mara = await person("Mara Lin", null);
+  const moveNote = await sourceRecord({ content: "Mara mentioned a possible move." });
+  const followup = await store.createFollowup({
+    ownerUserId: OWNER,
+    personId: mara.id,
+    reason: "Ask whether the move happened.",
+    dueAt: new Date("2026-07-04T12:00:00Z"),
+    status: "suggested",
+    sourceRecordId: moveNote.id,
+  });
+  store.seedSuggestedMemories([
+    suggestedMemory({
+      id: "memory-1",
+      personId: mara.id,
+      sourceRecordId: moveNote.id,
+      content: "Mara may be moving.",
+    }),
+  ]);
+  store.seedSourceRecordReviews([
+    { sourceRecord: moveNote, linkedPeople: [{ id: mara.id, displayName: mara.displayName }] },
+  ]);
+
+  return { agenda, moveNote, followup };
+}
+
 describe("relationship agenda — review candidates", () => {
-  it("returns suggested memories, suggested follow-ups, and source-record reviews as typed review candidates", async () => {
-    const { store, agenda, person } = await setup();
+  it("returns suggested memories and suggested follow-ups as typed review candidates, leaving filed context alone", async () => {
+    const { store, agenda, person, sourceRecord } = await setup();
     const mara = await person("Mara Lin", null);
-    const sourceRecord = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
-      content: "Mara mentioned a possible move.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
-    });
+    const moveNote = await sourceRecord({ content: "Mara mentioned a possible move." });
     await store.linkSourceRecordPerson({
-      sourceRecordId: sourceRecord.id,
+      sourceRecordId: moveNote.id,
       personId: mara.id,
       role: "primary",
     });
@@ -38,7 +61,7 @@ describe("relationship agenda — review candidates", () => {
       reason: "Ask whether the move happened.",
       dueAt: new Date("2026-07-04T12:00:00Z"),
       status: "suggested",
-      sourceRecordId: sourceRecord.id,
+      sourceRecordId: moveNote.id,
     });
     const completedFollowup = await store.createFollowup({
       ownerUserId: OWNER,
@@ -46,7 +69,7 @@ describe("relationship agenda — review candidates", () => {
       reason: "Completed suggestion should stay out.",
       dueAt: new Date("2026-07-05T12:00:00Z"),
       status: "completed",
-      sourceRecordId: sourceRecord.id,
+      sourceRecordId: moveNote.id,
     });
     const dismissedFollowup = await store.createFollowup({
       ownerUserId: OWNER,
@@ -54,7 +77,7 @@ describe("relationship agenda — review candidates", () => {
       reason: "Dismissed suggestion should stay out.",
       dueAt: new Date("2026-07-06T12:00:00Z"),
       status: "dismissed",
-      sourceRecordId: sourceRecord.id,
+      sourceRecordId: moveNote.id,
     });
     const archivedFollowup = await store.createFollowup({
       ownerUserId: OWNER,
@@ -62,27 +85,27 @@ describe("relationship agenda — review candidates", () => {
       reason: "Archived suggestion should stay out.",
       dueAt: new Date("2026-07-07T12:00:00Z"),
       status: "archived",
-      sourceRecordId: sourceRecord.id,
+      sourceRecordId: moveNote.id,
     });
     store.seedSuggestedMemories([
       suggestedMemory({
         id: "memory-1",
         personId: mara.id,
-        sourceRecordId: sourceRecord.id,
+        sourceRecordId: moveNote.id,
         content: "Mara may be moving.",
         sensitivity: "sensitive",
       }),
       suggestedMemory({
         id: "memory-dismissed",
         personId: mara.id,
-        sourceRecordId: sourceRecord.id,
+        sourceRecordId: moveNote.id,
         content: "Dismissed context.",
         status: "dismissed",
       }),
       suggestedMemory({
         id: "memory-approved",
         personId: mara.id,
-        sourceRecordId: sourceRecord.id,
+        sourceRecordId: moveNote.id,
         content: "Approved context.",
         status: "approved",
       }),
@@ -94,7 +117,7 @@ describe("relationship agenda — review candidates", () => {
       archivedFollowup,
     ];
     store.seedSourceRecordReviews([
-      { sourceRecord, linkedPeople: [{ id: mara.id, displayName: mara.displayName }] },
+      { sourceRecord: moveNote, linkedPeople: [{ id: mara.id, displayName: mara.displayName }] },
     ]);
 
     const result = await agenda.getRelationshipAgenda({
@@ -116,7 +139,7 @@ describe("relationship agenda — review candidates", () => {
         rank: 1,
         sourceRefs: [
           { kind: "memory", id: "memory-1" },
-          { kind: "source_record", id: sourceRecord.id },
+          { kind: "source_record", id: moveNote.id },
         ],
       }),
       expect.objectContaining({
@@ -128,18 +151,14 @@ describe("relationship agenda — review candidates", () => {
         rank: 2,
         sourceRefs: [
           { kind: "followup", id: followup.id },
-          { kind: "source_record", id: sourceRecord.id },
+          { kind: "source_record", id: moveNote.id },
         ],
       }),
-      expect.objectContaining({
-        kind: "review_item",
-        personId: mara.id,
-        title: "Review logged context for Mara Lin",
-        reason: "Mara mentioned a possible move.",
-        trustLevel: "logged_context",
-        rank: 3,
-      }),
     ]);
+    // Plain active logged context is filed, not pending: it never becomes a review chore.
+    expect(result.map((candidate) => candidate.reason)).not.toContain(
+      "Mara mentioned a possible move.",
+    );
     expect(result.map((candidate) => candidate.reason)).not.toContain("Dismissed context.");
     expect(result.map((candidate) => candidate.reason)).not.toContain("Approved context.");
     expect(result.map((candidate) => candidate.reason)).not.toContain(
@@ -154,30 +173,14 @@ describe("relationship agenda — review candidates", () => {
   });
 
   it("includes selected-member visible review candidates without leaking private review items", async () => {
-    const { store, agenda, person } = await setup();
-    const households = createHouseholdLifecycle(store);
-    const memberUserId = "user-3";
-    const { household } = await households.createHousehold({ ownerUserId: OWNER, name: "Home" });
-    await households.inviteMember({
-      ownerUserId: OWNER,
-      householdId: household.id,
-      invitedUserId: memberUserId,
-    });
-    await households.acceptInvite({ householdId: household.id, userId: memberUserId });
+    const { store, agenda, person, sourceRecord, household, memberUserId } =
+      await setupWithHouseholdMember();
     const mara = await person("Mara Lin", null);
-    const sharedSource = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
+    const sharedSource = await sourceRecord({
       content: "Mara shared context for review.",
-      rawContent: null,
-      retentionPolicy: "retain",
       status: "pending_resolution",
-      confidence: "medium",
-      sensitivity: "normal",
       scope: "shared",
       householdId: household.id,
-      importance: 3,
-      metadataJson: {},
     });
     await store.createHouseholdRecordShare({
       householdId: household.id,
@@ -186,18 +189,9 @@ describe("relationship agenda — review candidates", () => {
       sharedWithUserId: memberUserId,
       sharedByUserId: OWNER,
     });
-    const privateSource = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
+    const privateSource = await sourceRecord({
       content: "Private review source should not leak.",
-      rawContent: null,
-      retentionPolicy: "retain",
       status: "pending_resolution",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
     });
     const sharedFollowup = await store.createFollowup({
       ownerUserId: OWNER,
@@ -298,21 +292,60 @@ describe("relationship agenda — review candidates", () => {
     );
   });
 
-  it("keeps personless source-record reviews lower priority and asks for resolution", async () => {
-    const { store, followups, agenda, person } = await setup();
+  /**
+   * A note that names someone Tendnote could not match still needs the owner, even
+   * though it is already attached to a person. Once the same note is resolved to
+   * `active` it is filed and must stop asking: that is the difference between work
+   * waiting and work done, and it is the whole reason the gate is on status.
+   */
+  it("asks about a person-linked source record only while it awaits resolution", async () => {
+    const { store, agenda, person, sourceRecord } = await setup();
     const mara = await person("Mara Lin", null);
-    const personless = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
-      content: "Someone from the conference mentioned a promotion.",
-      rawContent: null,
-      retentionPolicy: "retain",
+    const pending = await sourceRecord({
+      content: "Mara and Kris are coming to dinner.",
       status: "pending_resolution",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
+    });
+    const linkedPeople = [{ id: mara.id, displayName: mara.displayName }];
+    store.seedSourceRecordReviews([{ sourceRecord: pending, linkedPeople }]);
+
+    await expect(
+      agenda.getRelationshipAgenda({
+        ownerUserId: OWNER,
+        windowStart: WINDOW_START,
+        windowEnd: WINDOW_END,
+        includeKinds: ["review_item"],
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        kind: "review_item",
+        personId: mara.id,
+        personDisplayName: "Mara Lin",
+        title: "Who else is in this note?",
+        reason: "Mara and Kris are coming to dinner.",
+        sourceRefs: [{ kind: "source_record", id: pending.id }],
+      }),
+    ]);
+
+    store.seedSourceRecordReviews([
+      { sourceRecord: { ...pending, status: "active" }, linkedPeople },
+    ]);
+
+    await expect(
+      agenda.getRelationshipAgenda({
+        ownerUserId: OWNER,
+        windowStart: WINDOW_START,
+        windowEnd: WINDOW_END,
+        includeKinds: ["review_item"],
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it("keeps personless source-record reviews lower priority and asks for resolution", async () => {
+    const { store, followups, agenda, person, sourceRecord } = await setup();
+    const mara = await person("Mara Lin", null);
+    const personless = await sourceRecord({
+      content: "Someone from the conference mentioned a promotion.",
+      status: "pending_resolution",
     });
     await followups.createFollowup({
       ownerUserId: OWNER,
@@ -345,9 +378,8 @@ describe("relationship agenda — review candidates", () => {
         kind: "review_item",
         personId: null,
         personDisplayName: null,
-        title: "Resolve a personless source record",
-        reason:
-          "This source record needs person resolution before it becomes relationship context.",
+        title: "Who is this note about?",
+        reason: "Someone from the conference mentioned a promotion.",
         sourceRefs: [{ kind: "source_record", id: personless.id }],
         rank: 2,
       }),
@@ -356,25 +388,13 @@ describe("relationship agenda — review candidates", () => {
   });
 
   it("kind filters exclude review items from deterministic agenda reads", async () => {
-    const { store, agenda, person } = await setup();
+    const { store, agenda, person, sourceRecord } = await setup();
     const mara = await person("Mara Lin", null);
-    const sourceRecord = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
-      content: "Mara mentioned a possible move.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
-    });
+    const moveNote = await sourceRecord({ content: "Mara mentioned a possible move." });
     store.seedSuggestedMemories([
       suggestedMemory({
         personId: mara.id,
-        sourceRecordId: sourceRecord.id,
+        sourceRecordId: moveNote.id,
         content: "Mara may be moving.",
       }),
     ]);
@@ -390,40 +410,7 @@ describe("relationship agenda — review candidates", () => {
   });
 
   it("lets suggested_followup filters return only suggested follow-up review candidates", async () => {
-    const { store, agenda, person } = await setup();
-    const mara = await person("Mara Lin", null);
-    const sourceRecord = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
-      content: "Mara mentioned a possible move.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
-    });
-    const followup = await store.createFollowup({
-      ownerUserId: OWNER,
-      personId: mara.id,
-      reason: "Ask whether the move happened.",
-      dueAt: new Date("2026-07-04T12:00:00Z"),
-      status: "suggested",
-      sourceRecordId: sourceRecord.id,
-    });
-    store.seedSuggestedMemories([
-      suggestedMemory({
-        id: "memory-1",
-        personId: mara.id,
-        sourceRecordId: sourceRecord.id,
-        content: "Mara may be moving.",
-      }),
-    ]);
-    store.seedSourceRecordReviews([
-      { sourceRecord, linkedPeople: [{ id: mara.id, displayName: mara.displayName }] },
-    ]);
+    const { agenda, moveNote, followup } = await bothReviewKindsFromOneNote();
 
     const result = await agenda.getRelationshipAgenda({
       ownerUserId: OWNER,
@@ -439,47 +426,14 @@ describe("relationship agenda — review candidates", () => {
         reason: "Ask whether the move happened.",
         sourceRefs: [
           { kind: "followup", id: followup.id },
-          { kind: "source_record", id: sourceRecord.id },
+          { kind: "source_record", id: moveNote.id },
         ],
       }),
     ]);
   });
 
   it("keeps review_item filters separate from suggested follow-up filters", async () => {
-    const { store, agenda, person } = await setup();
-    const mara = await person("Mara Lin", null);
-    const sourceRecord = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
-      content: "Mara mentioned a possible move.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
-    });
-    await store.createFollowup({
-      ownerUserId: OWNER,
-      personId: mara.id,
-      reason: "Ask whether the move happened.",
-      dueAt: new Date("2026-07-04T12:00:00Z"),
-      status: "suggested",
-      sourceRecordId: sourceRecord.id,
-    });
-    store.seedSuggestedMemories([
-      suggestedMemory({
-        id: "memory-1",
-        personId: mara.id,
-        sourceRecordId: sourceRecord.id,
-        content: "Mara may be moving.",
-      }),
-    ]);
-    store.seedSourceRecordReviews([
-      { sourceRecord, linkedPeople: [{ id: mara.id, displayName: mara.displayName }] },
-    ]);
+    const { agenda } = await bothReviewKindsFromOneNote();
 
     const reviewOnly = await agenda.getRelationshipAgenda({
       ownerUserId: OWNER,
@@ -493,43 +447,18 @@ describe("relationship agenda — review candidates", () => {
         kind: "review_item",
         title: "Review suggested memory for Mara Lin",
       }),
-      expect.objectContaining({
-        kind: "review_item",
-        title: "Review logged context for Mara Lin",
-      }),
     ]);
     expect(reviewOnly.map((candidate) => candidate.kind)).not.toContain("suggested_followup");
   });
 
   it("owner-scopes review candidates even when an adapter returns extra rows", async () => {
-    const { store, agenda, person } = await setup();
+    const { store, agenda, person, sourceRecord } = await setup();
     const mara = await person("Mara Lin", null);
     const intruder = await person("Hidden Person", null, OTHER_OWNER);
-    const sourceRecord = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
-      content: "Mara mentioned a possible move.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
-    });
-    const otherSourceRecord = await store.createSourceRecord({
-      ownerUserId: OTHER_OWNER,
-      sourceType: "manual",
+    const moveNote = await sourceRecord({ content: "Mara mentioned a possible move." });
+    const otherSourceRecord = await sourceRecord({
       content: "Should not leak.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
+      ownerUserId: OTHER_OWNER,
     });
     await store.createFollowup({
       ownerUserId: OTHER_OWNER,
@@ -543,7 +472,7 @@ describe("relationship agenda — review candidates", () => {
       suggestedMemory({
         id: "memory-1",
         personId: mara.id,
-        sourceRecordId: sourceRecord.id,
+        sourceRecordId: moveNote.id,
         content: "Mara may be moving.",
       }),
       suggestedMemory({

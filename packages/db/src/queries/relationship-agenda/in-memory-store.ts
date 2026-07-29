@@ -113,8 +113,8 @@ export function createInMemoryRelationshipAgendaStore(): InMemoryRelationshipAge
       });
       const visible = [];
 
-      for (const review of sourceRecordReviews.filter((candidate) =>
-        ["active", "pending_resolution"].includes(candidate.sourceRecord.status),
+      for (const review of sourceRecordReviews.filter(
+        (candidate) => candidate.sourceRecord.status === "pending_resolution",
       )) {
         const shares = review.sourceRecord.householdId
           ? await base.listHouseholdRecordShares({

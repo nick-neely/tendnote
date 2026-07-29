@@ -46,7 +46,7 @@ async function ActionTodayContent() {
           </Link>
         </div>
         <p className="max-w-[68ch] text-sm text-muted-foreground">
-          The actions and routines that are due, overdue, or set aside and back around. Everything
+          The actions and routines that are due, waiting, or set aside and back around. Everything
           else waits on Actions.
         </p>
       </header>
