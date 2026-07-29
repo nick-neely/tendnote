@@ -24,6 +24,30 @@ export type DiagnosticRecord = {
   /** Baseline-comparable "DOM stable" reading; see `StageTiming.stable`. */
   stableMs: number;
   cumulativeLayoutShift: number;
+  /**
+   * The budget `shellMs` (and the acknowledgement beside it) was gated against.
+   *
+   * Carried on the record rather than looked up by whatever reads it, so a run's
+   * artifacts stay self-describing: the summariser can report each row's margin
+   * without importing the harness, and an archived run re-summarised a year later
+   * is still measured against the budget it actually ran under rather than
+   * today's. #331 asked for the margin on green runs; this is what makes one
+   * computable.
+   *
+   * Absent on the records that carry no gated timing at all — the payload
+   * diagnostics and the `instant()` contract pass — so a reader can tell "inside
+   * its budget" from "there was no budget" rather than reading a zero margin
+   * against a zero reading.
+   */
+  shellBudgetMs?: number;
+  /** The budget `completeMs` was gated against, for the rows where it is gated. */
+  completeBudgetMs?: number;
+  /**
+   * Median animation-frame interval during the interaction. See
+   * `StageTiming.frameIntervalMs`: it separates a slower route from a runner
+   * that stopped painting. Absent wherever no interaction was measured.
+   */
+  frameIntervalMs?: number;
   /** RSC responses observed between the click and settled content. */
   rscResponses: number;
   /** Bytes transferred by those RSC responses. */

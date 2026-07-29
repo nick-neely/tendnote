@@ -254,6 +254,29 @@ jobs:
         run: node scripts/summarize-instant-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
         continue-on-error: true
 
+      # The step summary above is for a human and is not retrievable through the
+      # API, so on its own a green run leaves no record of how close it came
+      # (#331). The same rows go to the job log as `INSTANT_MARGIN` JSON, which
+      # is retrievable, greppable, and kept for as long as the run is.
+      - name: Publish measured margins to the job log
+        if: always()
+        run: node scripts/summarize-instant-diagnostics.mjs --format=margins
+        continue-on-error: true
+
+      # On success as well as failure. Traces below answer "why did this break";
+      # this answers "how much headroom has this row been losing", which only has
+      # an answer if the passing runs are kept too.
+      - name: Upload recorded diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instant-matrix-diagnostics
+          path: |
+            apps/web/.instant/diagnostics.jsonl
+            apps/web/.instant/uncovered-engines.jsonl
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Upload failure traces
         if: failure()
         uses: actions/upload-artifact@v4

@@ -7,6 +7,7 @@
     "./client": "./src/client.ts",
     "./schema": "./src/schema/index.ts",
     "./instant/fixture-data": "./src/instant/fixture-data.ts",
+    "./instant/restore": "./src/instant/restore.ts",
     "./queries/access-profiles": "./src/queries/access-profiles.ts",
     "./queries/action-extraction-jobs": "./src/queries/action-extraction-jobs.ts",
     "./queries/action-summary": "./src/queries/action-summary.ts",

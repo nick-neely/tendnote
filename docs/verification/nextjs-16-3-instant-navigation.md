@@ -359,6 +359,149 @@ Two harness details came out of the same traces:
   because there is no reusable shell to commit from. It is the row to watch if CI
   hardware ever gets slower.
 
+### The acknowledgement is quantised, and the gate now reads a median (#331)
+
+CI hardware did not get slower, but the margin ran out anyway. Across seven
+routine runs on `design/ui-ux-overhaul`, spanning six commits,
+`desktop critical navigation › person detail to Today` passed five times and
+failed twice — at **104.0 ms** and **103.8 ms** against 100 ms — with passes and
+failures interleaved, including the same commit passing and then failing on a
+re-run. `mobile Today to Review` breached at 106 ms and the Action reconciliation
+at 615 ms in the same window.
+
+**There is nothing route-specific to remove.** Measured on this workstation, all
+three desktop rows acknowledge in the same 25–29 ms:
+
+| Row | Ack (cold) | Ack (warm, n=3) | Frame interval |
+| --- | ---: | ---: | ---: |
+| Today → People | 26 ms | 27 ms | 17 ms |
+| People → person detail | 26 ms | 28 ms | 17 ms |
+| Person detail → Today | 26 ms | 26 ms | 17 ms |
+
+Pinning the whole rig to one core — the same reproduction that settled
+`workers: 1` above — moves it nowhere: 25–28 ms warm over nine samples, 23–43 ms
+cold over three, still indistinguishable from its neighbours. Under CDP CPU
+throttling the reading does not climb smoothly either; it steps: 26 ms at 1×,
+13/14 ms *or* 28/32 ms at 4×, 35/36 ms *or* 51/52 ms at 6×. Those clusters are
+one frame apart.
+
+That is the mechanism. Every stage is stamped inside a `requestAnimationFrame`
+callback, so no reading can be finer than the cadence the browser is painting at:
+an acknowledgement is a whole number of frames, and 100 ms is about six of them
+at 60 Hz. On a two-vCPU runner hosting Postgres, Redis, `next start`, and a
+headless Chromium, the difference between passing at 99 ms and failing at 104 ms
+is one dropped frame. Two failures landing 0.2 ms apart looks like a systematic
+constant; it is what a threshold does to a distribution it only samples the tail
+of.
+
+**Decision: the budget stays at 100 ms and the gate reads the row's median.**
+`runNavigationRow` already takes four samples — one cold, three warm — precisely
+because "a single warm reading on a contended runner is not a median", and then
+asserted each of them individually, which threw that away. It now asserts:
+
+- the **median** acknowledgement and shell inside `SHELL_BUDGET_MS`, the
+  statistic ADR 0210 reasons in everywhere else; and
+- **every** sample inside `SHELL_BUDGET_MS × SAMPLE_CEILING_MULTIPLE` (200 ms),
+  so a row cannot hide one genuinely broken transition behind three good ones.
+  The 621 ms reading above still fails on its own.
+
+Cold and warm are pooled because the cold penalty lands in `complete`, not in the
+acknowledgement — 23–27 ms cold against 16–29 ms warm on the pinned run. Layout
+shift and "the navigation was acknowledged at all" stay per sample: neither is a
+clock reading, and every recorded row is `0.0000`.
+
+Taking the observed failure rate at face value — one run in three, four samples
+per row — a single sample breaches about 8 % of the time. Requiring two of four
+to breach takes the row's failure rate from roughly 29 % to under 4 %, while a
+row whose median genuinely reached the budget would fail about half its runs.
+
+**The mutation budgets were left alone, deliberately.** The optimistic
+acknowledgement and the 500 ms reconciliation are single-sample by construction —
+one complete, one reopen — so there is no median to read, and the 615 ms breach
+has no recorded distribution behind it. Moving a number on one observation is the
+mistake this section exists to avoid; the margins published below are what will
+settle it.
+
+### Margins are published on every run, not only on breaches (#331)
+
+The harness only ever *reported* a measurement when it exceeded its budget, so
+failures clustered just above 100 ms by construction and a green run revealed
+nothing about its headroom — "passed at 40 ms" and "passed at 99 ms" were the
+same observation. The diagnostics that would have settled it went to
+`$GITHUB_STEP_SUMMARY`, which is not retrievable through the API, and traces
+upload on failure only.
+
+Three changes, so drift is visible before it breaches:
+
+- Every `DiagnosticRecord` carries the **budget it was gated against**
+  (`shellBudgetMs`, and `completeBudgetMs` where `complete` is gated), so a run's
+  artifacts are self-describing and an archived run re-summarised later is still
+  read against the budget it actually ran under.
+- Every measured interaction records its **median frame interval**. It is the
+  discriminator the paragraphs above needed and did not have: 17 ms on every row
+  of a healthy local run, so a CI reading of 104 ms alongside a 50 ms frame
+  interval is the runner, and the same reading alongside 17 ms is the route.
+- `summarize-instant-diagnostics.mjs` gains a **Margin** column and a
+  `--format=margins` mode that prints one `INSTANT_MARGIN <json>` line per row.
+  CI runs both: the table into the step summary for a human, the JSON into the
+  job log, which is retrievable and greppable. `diagnostics.jsonl` now uploads as
+  an artifact on success as well as failure, for 30 days.
+
+### A failed mutation no longer dirties the other browser project (#331)
+
+Both browser projects share the one Postgres service the CI job runs. In the
+re-run of job 90490968865, `action-reconciliation.spec.ts` failed on
+`desktop-chromium` at its reconciliation budget, which aborted the test *before*
+the reopen half; the same spec then failed on `mobile-chromium` with
+`element(s) not found` for the action row — not a timing breach, just an Action
+left completed. One real failure, reported twice, the second report describing a
+defect that does not exist.
+
+The spec now has an unconditional `afterEach` that puts its own Action back,
+however the test exited. **Restoring the row is only half of it**, and that half
+was measured rather than assumed: with the database write alone in place, forcing
+the desktop spec to fail mid-way left the row correctly `open` in Postgres and
+`mobile-chromium` still failed on the same missing locator, because the Actions
+surface is `use cache` backed and the completed projection outlived the row that
+produced it. The teardown therefore finishes through
+`POST /api/internal/cache/reconcile` — the product's own signed endpoint for
+naming the scopes an out-of-band writer invalidated — rather than a test-only
+cache door. With both halves in place the same forced failure fails once, on
+`desktop-chromium`, and `mobile-chromium` passes.
+
+`restoreInstantMutationAction` refuses any identifier the fixture did not seed as
+a private mutation Action, which is what keeps a teardown from becoming an
+arbitrary update against whatever `DATABASE_URL` points at; it is scoped to one
+record rather than reseeding, because the matrix is fully parallel and a reseed
+would reach into a record another live worker is mid-mutation on.
+
+### Open: the local default worker count stalls a surface at admission
+
+Not #331, and recorded here because it was reproduced while verifying it. At the
+local default worker count (`workers` is only pinned to 1 under `CI`), the
+routine matrix on this workstation fails roughly two runs in five, always the
+same way: a measured pass finds the primary navigation gone and the page holding
+`Checking access…` until the 60 s test timeout. Not a budget breach and not
+slowness — a stall.
+
+The reproduction narrows it to concurrency alone rather than to any one spec:
+
+| Selection | Workers | Result |
+| --- | ---: | --- |
+| Whole matrix | default (4) | 2 of 4 runs failed |
+| Whole matrix, mutation teardown disabled | default (4) | 2 of 4 runs failed |
+| Whole matrix, mutation spec excluded | default (4) | 4 of 4 runs failed |
+| `desktop-navigation` only | default (3) | 1 of 3 runs failed |
+| Whole matrix | 1 | 3 of 3 runs passed, 19/19 |
+
+So it is not the teardown added above and not the mutation scenario: three
+headless Chromiums and the measured `next start` on one workstation are enough.
+It is the same shape ADR 0210's `workers: 1` already answers on CI, which is why
+the gate does not see it, and every measurement in this record was taken at one
+worker for the same reason. Worth its own issue: an admission stream that holds
+for 54 s under load is a product question, not a harness one, and pinning the
+local worker count would hide it rather than answer it.
+
 ## Finding: Review has no reusable shell to commit from
 
 Mobile Today → Review meets every measured budget (26 / 25 ms shell, CLS 0), but
