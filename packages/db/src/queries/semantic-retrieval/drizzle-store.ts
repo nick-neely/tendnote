@@ -29,6 +29,7 @@ import { selectOwnedGeneralAction } from "../general-actions/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleMemoryStore } from "../memories/drizzle-store";
 import {
+  type EmbeddingClaimFence,
   type EmbeddingStore,
   type SettleEmbeddingJobInput,
   STALE_EMBEDDING_JOB_RECOVERY_MESSAGE,
@@ -110,6 +111,17 @@ const REOPENABLE = inArray(relationshipContextEmbeddingJobs.status, REOPENABLE_S
 /** True of a job a repeat enqueue can only leave a marker on. */
 const RUNNING = eq(relationshipContextEmbeddingJobs.status, "running");
 
+/** The exact running generation a processor-side embedding mutation belongs to. */
+function activeClaim(input: EmbeddingClaimFence) {
+  return and(
+    eq(relationshipContextEmbeddingJobs.id, input.jobId),
+    RUNNING,
+    input.expectedClaimedAt === null
+      ? isNull(relationshipContextEmbeddingJobs.claimedAt)
+      : eq(relationshipContextEmbeddingJobs.claimedAt, input.expectedClaimedAt),
+  );
+}
+
 /**
  * `stands` unless the guard fires, in which case `instead`.
  *
@@ -180,6 +192,97 @@ function buildSettleUpdate(input: SettleEmbeddingJobInput) {
     completedAt: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "completedAt")),
     lastError: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "lastError")),
   };
+}
+
+type EmbeddingTransaction = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
+type ParsedEmbedding = ReturnType<typeof createRelationshipContextEmbeddingSchema.parse>;
+
+async function withActiveClaim<T>(
+  input: EmbeddingClaimFence,
+  mutate: (tx: EmbeddingTransaction) => Promise<T>,
+): Promise<T | null> {
+  return getDb().transaction(async (tx) => {
+    const [claim] = await tx
+      .select({ id: relationshipContextEmbeddingJobs.id })
+      .from(relationshipContextEmbeddingJobs)
+      .where(activeClaim(input))
+      .limit(1)
+      .for("update");
+
+    return claim ? mutate(tx) : null;
+  });
+}
+
+async function upsertEmbedding(tx: EmbeddingTransaction, parsed: ParsedEmbedding) {
+  const [embedding] = await tx
+    .insert(relationshipContextEmbeddings)
+    .values(parsed)
+    .onConflictDoUpdate({
+      target: [
+        relationshipContextEmbeddings.ownerUserId,
+        relationshipContextEmbeddings.recordKind,
+        relationshipContextEmbeddings.recordId,
+        relationshipContextEmbeddings.embeddingModel,
+        relationshipContextEmbeddings.embeddingVersion,
+      ],
+      set: {
+        personId: parsed.personId,
+        embedding: parsed.embedding,
+        embeddingDimensions: parsed.embeddingDimensions,
+        embeddedText: parsed.embeddedText,
+        contentFingerprint: parsed.contentFingerprint,
+        trustLevel: parsed.trustLevel,
+        sensitivity: parsed.sensitivity,
+        sourceUpdatedAt: parsed.sourceUpdatedAt,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+
+  if (!embedding) throw new Error("Failed to upsert relationship-context embedding.");
+  return embedding;
+}
+
+async function refreshEmbeddingMetadata(
+  tx: EmbeddingTransaction,
+  input: Parameters<EmbeddingStore["refreshRelationshipContextEmbeddingMetadata"]>[0],
+) {
+  const [embedding] = await tx
+    .update(relationshipContextEmbeddings)
+    .set({
+      personId: input.personId,
+      trustLevel: input.trustLevel,
+      sensitivity: input.sensitivity,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(relationshipContextEmbeddings.id, input.embeddingId),
+        eq(relationshipContextEmbeddings.ownerUserId, input.ownerUserId),
+      ),
+    )
+    .returning();
+
+  if (!embedding) throw new Error("Relationship-context embedding not found.");
+  return embedding;
+}
+
+async function deleteRecordEmbeddings(
+  tx: EmbeddingTransaction,
+  input: Parameters<EmbeddingStore["deleteRelationshipContextEmbeddingsForRecord"]>[0],
+) {
+  const deleted = await tx
+    .delete(relationshipContextEmbeddings)
+    .where(
+      and(
+        eq(relationshipContextEmbeddings.ownerUserId, input.ownerUserId),
+        eq(relationshipContextEmbeddings.recordKind, input.recordKind),
+        eq(relationshipContextEmbeddings.recordId, input.recordId),
+      ),
+    )
+    .returning({ id: relationshipContextEmbeddings.id });
+
+  return deleted.length;
 }
 
 export function createDrizzleEmbeddingStore(): EmbeddingStore {
@@ -438,59 +541,17 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
     },
     async upsertRelationshipContextEmbedding(values) {
       const parsed = createRelationshipContextEmbeddingSchema.parse(values);
-      const [embedding] = await getDb()
-        .insert(relationshipContextEmbeddings)
-        .values(parsed)
-        .onConflictDoUpdate({
-          target: [
-            relationshipContextEmbeddings.ownerUserId,
-            relationshipContextEmbeddings.recordKind,
-            relationshipContextEmbeddings.recordId,
-            relationshipContextEmbeddings.embeddingModel,
-            relationshipContextEmbeddings.embeddingVersion,
-          ],
-          set: {
-            personId: parsed.personId,
-            embedding: parsed.embedding,
-            embeddingDimensions: parsed.embeddingDimensions,
-            embeddedText: parsed.embeddedText,
-            contentFingerprint: parsed.contentFingerprint,
-            trustLevel: parsed.trustLevel,
-            sensitivity: parsed.sensitivity,
-            sourceUpdatedAt: parsed.sourceUpdatedAt,
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
-
-      if (!embedding) {
-        throw new Error("Failed to upsert relationship-context embedding.");
-      }
-
-      return embedding;
+      return getDb().transaction((tx) => upsertEmbedding(tx, parsed));
+    },
+    async upsertRelationshipContextEmbeddingForClaim(input) {
+      const parsed = createRelationshipContextEmbeddingSchema.parse(input.embedding);
+      return withActiveClaim(input.claim, (tx) => upsertEmbedding(tx, parsed));
     },
     async refreshRelationshipContextEmbeddingMetadata(input) {
-      const [embedding] = await getDb()
-        .update(relationshipContextEmbeddings)
-        .set({
-          personId: input.personId,
-          trustLevel: input.trustLevel,
-          sensitivity: input.sensitivity,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(relationshipContextEmbeddings.id, input.embeddingId),
-            eq(relationshipContextEmbeddings.ownerUserId, input.ownerUserId),
-          ),
-        )
-        .returning();
-
-      if (!embedding) {
-        throw new Error("Relationship-context embedding not found.");
-      }
-
-      return embedding;
+      return getDb().transaction((tx) => refreshEmbeddingMetadata(tx, input));
+    },
+    async refreshRelationshipContextEmbeddingMetadataForClaim(input) {
+      return withActiveClaim(input.claim, (tx) => refreshEmbeddingMetadata(tx, input));
     },
     async findRelationshipContextEmbedding(input) {
       const [embedding] = await getDb()
@@ -512,18 +573,11 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
     async deleteRelationshipContextEmbeddingsForRecord(input) {
       // No model/version predicate on purpose: every row for this record goes, because a
       // row left behind under a superseded model still holds the record's text.
-      const deleted = await getDb()
-        .delete(relationshipContextEmbeddings)
-        .where(
-          and(
-            eq(relationshipContextEmbeddings.ownerUserId, input.ownerUserId),
-            eq(relationshipContextEmbeddings.recordKind, input.recordKind),
-            eq(relationshipContextEmbeddings.recordId, input.recordId),
-          ),
-        )
-        .returning({ id: relationshipContextEmbeddings.id });
-
-      return deleted.length;
+      return getDb().transaction((tx) => deleteRecordEmbeddings(tx, input));
+    },
+    async deleteRelationshipContextEmbeddingsForRecordForClaim(input) {
+      const deleted = await withActiveClaim(input.claim, (tx) => deleteRecordEmbeddings(tx, input));
+      return deleted === null ? null : { deleted };
     },
     async searchSavedItemsSemantic(input) {
       const queryVector = `[${input.queryEmbedding.join(",")}]`;

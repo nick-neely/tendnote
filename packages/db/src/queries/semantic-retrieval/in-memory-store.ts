@@ -132,6 +132,64 @@ export function createInMemoryEmbeddingStore(
     return claimed;
   }
 
+  function ownsClaim(input: { jobId: string; expectedClaimedAt: Date | null }) {
+    const job = jobs.get(input.jobId);
+    return (
+      job?.status === "running" &&
+      (job.claimedAt?.getTime() ?? null) === (input.expectedClaimedAt?.getTime() ?? null)
+    );
+  }
+
+  function upsertEmbedding(
+    values: Parameters<InMemoryEmbeddingStore["upsertRelationshipContextEmbedding"]>[0],
+  ) {
+    const parsed = createRelationshipContextEmbeddingSchema.parse(values);
+    const existing = embeddings.get(embeddingKey(parsed));
+    const now = new Date();
+    const embedding: RelationshipContextEmbedding = {
+      ...parsed,
+      id: existing?.id ?? randomUUID(),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    embeddings.set(embeddingKey(embedding), embedding);
+    return embedding;
+  }
+
+  function refreshEmbeddingMetadata(
+    input: Parameters<InMemoryEmbeddingStore["refreshRelationshipContextEmbeddingMetadata"]>[0],
+  ) {
+    const existing = [...embeddings.values()].find(
+      (embedding) =>
+        embedding.id === input.embeddingId && embedding.ownerUserId === input.ownerUserId,
+    );
+    if (!existing) throw new Error("Relationship-context embedding not found.");
+
+    const updated: RelationshipContextEmbedding = {
+      ...existing,
+      personId: input.personId,
+      trustLevel: input.trustLevel,
+      sensitivity: input.sensitivity,
+      updatedAt: new Date(),
+    };
+    embeddings.set(embeddingKey(updated), updated);
+    return updated;
+  }
+
+  function deleteRecordEmbeddings(
+    input: Parameters<InMemoryEmbeddingStore["deleteRelationshipContextEmbeddingsForRecord"]>[0],
+  ) {
+    const matches = [...embeddings.entries()].filter(
+      ([, embedding]) =>
+        embedding.ownerUserId === input.ownerUserId &&
+        embedding.recordKind === input.recordKind &&
+        embedding.recordId === input.recordId,
+    );
+    for (const [key] of matches) embeddings.delete(key);
+    return matches.length;
+  }
+
   return {
     ...base,
     async listSourceRecordPeople(input) {
@@ -326,43 +384,20 @@ export function createInMemoryEmbeddingStore(
       return item?.ownerUserId === input.ownerUserId ? item : null;
     },
     async upsertRelationshipContextEmbedding(values) {
-      const parsed = createRelationshipContextEmbeddingSchema.parse(values);
-      const existing = embeddings.get(embeddingKey(parsed));
-      const now = new Date();
-      const embedding: RelationshipContextEmbedding = {
-        ...parsed,
-        id: existing?.id ?? randomUUID(),
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      };
-
-      embeddings.set(embeddingKey(embedding), embedding);
-
-      return embedding;
+      return upsertEmbedding(values);
+    },
+    async upsertRelationshipContextEmbeddingForClaim(input) {
+      if (!ownsClaim(input.claim)) return null;
+      return upsertEmbedding(input.embedding);
     },
     async refreshRelationshipContextEmbeddingMetadata(input) {
-      const existing = [...embeddings.values()].find(
-        (embedding) =>
-          embedding.id === input.embeddingId && embedding.ownerUserId === input.ownerUserId,
-      );
-
-      if (!existing) {
-        throw new Error("Relationship-context embedding not found.");
-      }
-
       // None of these columns take part in `embeddingKey`, so the row converges in place
       // under its existing key - exactly what the Drizzle `update ... where id` does.
-      const updated: RelationshipContextEmbedding = {
-        ...existing,
-        personId: input.personId,
-        trustLevel: input.trustLevel,
-        sensitivity: input.sensitivity,
-        updatedAt: new Date(),
-      };
-
-      embeddings.set(embeddingKey(updated), updated);
-
-      return updated;
+      return refreshEmbeddingMetadata(input);
+    },
+    async refreshRelationshipContextEmbeddingMetadataForClaim(input) {
+      if (!ownsClaim(input.claim)) return null;
+      return refreshEmbeddingMetadata(input);
     },
     async findRelationshipContextEmbedding(input) {
       return embeddings.get(embeddingKey(input)) ?? null;
@@ -371,18 +406,11 @@ export function createInMemoryEmbeddingStore(
       // The map key carries model and version, so matching on the record alone is what
       // sweeps the superseded-model rows out with the current one - the same reason the
       // Drizzle delete leaves those columns out of its predicate.
-      const matches = [...embeddings.entries()].filter(
-        ([, embedding]) =>
-          embedding.ownerUserId === input.ownerUserId &&
-          embedding.recordKind === input.recordKind &&
-          embedding.recordId === input.recordId,
-      );
-
-      for (const [key] of matches) {
-        embeddings.delete(key);
-      }
-
-      return matches.length;
+      return deleteRecordEmbeddings(input);
+    },
+    async deleteRelationshipContextEmbeddingsForRecordForClaim(input) {
+      if (!ownsClaim(input.claim)) return null;
+      return { deleted: deleteRecordEmbeddings(input) };
     },
     async searchSemanticContext(input) {
       const kinds = new Set(input.recordKinds ?? ["memory", "source_record", "general_action"]);

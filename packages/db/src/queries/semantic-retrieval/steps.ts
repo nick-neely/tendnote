@@ -45,6 +45,14 @@ export type EmbeddingContext = {
 /** A successfully produced or reused embedding plus the record it came from. */
 export type EmbeddingProduced = Omit<ProcessEmbeddingJobResult, "job" | "outcome">;
 
+/** Internal control flow for a pass that lost its claim before mutating embedding data. */
+export class SupersededEmbeddingClaimError extends Error {
+  constructor() {
+    super("Embedding job claim was superseded.");
+    this.name = "SupersededEmbeddingClaimError";
+  }
+}
+
 type RelationshipContextEmbedding = Awaited<
   ReturnType<EmbeddingStore["upsertRelationshipContextEmbedding"]>
 >;
@@ -105,6 +113,7 @@ function hasMetadataDrifted(
  */
 async function converge(
   ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
   existing: RelationshipContextEmbedding,
   live: DenormalizedEmbeddingMetadata,
 ): Promise<RelationshipContextEmbedding> {
@@ -112,13 +121,17 @@ async function converge(
     return existing;
   }
 
-  return ctx.store.refreshRelationshipContextEmbeddingMetadata({
+  const embedding = await ctx.store.refreshRelationshipContextEmbeddingMetadataForClaim({
+    claim: { jobId: job.id, expectedClaimedAt: job.claimedAt ?? null },
     ownerUserId: existing.ownerUserId,
     embeddingId: existing.id,
     personId: live.personId,
     trustLevel: live.trustLevel,
     sensitivity: live.sensitivity,
   });
+
+  if (!embedding) throw new SupersededEmbeddingClaimError();
+  return embedding;
 }
 
 /**
@@ -134,6 +147,7 @@ async function converge(
 async function reuseOrEmbed(
   ctx: EmbeddingContext,
   params: {
+    job: ProcessEmbeddingJobResult["job"];
     ownerUserId: string;
     recordKind: SemanticRecordKind;
     recordId: string;
@@ -160,7 +174,7 @@ async function reuseOrEmbed(
   });
 
   if (existing?.contentFingerprint === contentFingerprint) {
-    return converge(ctx, existing, {
+    return converge(ctx, params.job, existing, {
       personId: params.personId,
       trustLevel: params.trustLevel,
       sensitivity: params.sensitivity,
@@ -173,8 +187,12 @@ async function reuseOrEmbed(
     version: config.version,
   });
 
-  return store.upsertRelationshipContextEmbedding(
-    createRelationshipContextEmbeddingSchema.parse({
+  const embedding = await store.upsertRelationshipContextEmbeddingForClaim({
+    claim: {
+      jobId: params.job.id,
+      expectedClaimedAt: params.job.claimedAt ?? null,
+    },
+    embedding: createRelationshipContextEmbeddingSchema.parse({
       ownerUserId: params.ownerUserId,
       personId: params.personId,
       recordKind: params.recordKind,
@@ -189,7 +207,10 @@ async function reuseOrEmbed(
       sensitivity: params.sensitivity,
       sourceUpdatedAt: params.sourceUpdatedAt,
     }),
-  );
+  });
+
+  if (!embedding) throw new SupersededEmbeddingClaimError();
+  return embedding;
 }
 
 /**
@@ -276,11 +297,14 @@ export async function scrubRestrictedEmbeddings(
     return 0;
   }
 
-  const deleted = await ctx.store.deleteRelationshipContextEmbeddingsForRecord({
+  const result = await ctx.store.deleteRelationshipContextEmbeddingsForRecordForClaim({
+    claim: { jobId: job.id, expectedClaimedAt: job.claimedAt ?? null },
     ownerUserId: job.ownerUserId,
     recordKind: job.recordKind,
     recordId: job.recordId,
   });
+  if (!result) throw new SupersededEmbeddingClaimError();
+  const { deleted } = result;
 
   if (deleted === 0) {
     return 0;
@@ -386,6 +410,7 @@ export async function processApprovedMemory(
   }
 
   const embedding = await reuseOrEmbed(ctx, {
+    job,
     ownerUserId: memory.ownerUserId,
     recordKind: "memory",
     recordId: memory.id,
@@ -449,6 +474,7 @@ export async function processSourceRecord(
 
   const primaryPerson = people[0] ?? null;
   const embedding = await reuseOrEmbed(ctx, {
+    job,
     ownerUserId: sourceRecord.ownerUserId,
     recordKind: "source_record",
     recordId: sourceRecord.id,
@@ -491,6 +517,7 @@ export async function processGeneralAction(
   }
 
   const embedding = await reuseOrEmbed(ctx, {
+    job,
     ownerUserId: action.ownerUserId,
     recordKind: "general_action",
     recordId: action.id,
@@ -521,6 +548,7 @@ export async function processSavedItem(
     return { skipReason: decision.reason, sourceSavedItem: item };
   }
   const embedding = await reuseOrEmbed(ctx, {
+    job,
     ownerUserId: item.ownerUserId,
     recordKind: "saved_item",
     recordId: item.id,
@@ -561,6 +589,7 @@ export async function processAsset(
   }
 
   const embedding = await reuseOrEmbed(ctx, {
+    job,
     ownerUserId: asset.ownerUserId,
     recordKind: "asset",
     recordId: asset.id,
@@ -603,6 +632,7 @@ export async function processAssetMemory(
   }
 
   const embedding = await reuseOrEmbed(ctx, {
+    job,
     ownerUserId: memory.ownerUserId,
     recordKind: "asset_memory",
     recordId: memory.id,

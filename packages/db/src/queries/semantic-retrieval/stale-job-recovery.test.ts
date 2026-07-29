@@ -199,7 +199,78 @@ describe("stale embedding job recovery", () => {
       embedding: null,
       job: { status: "running", claimedAt: secondClaimedAt },
     });
+    await expect(
+      store.findRelationshipContextEmbedding({
+        ownerUserId: OWNER,
+        recordKind: "memory",
+        recordId: memory.id,
+        embeddingModel: "fake-semantic-retrieval",
+        embeddingVersion: "v1",
+      }),
+    ).resolves.toBeNull();
     const audit = await store.listAuditLogEntries({ ownerUserId: OWNER });
     expect(audit.filter((entry) => entry.action === "embedding_job.completed")).toEqual([]);
+  });
+
+  it("does not let an expired pass overwrite the replacement's embedding", async () => {
+    let releaseFirstEmbedding!: () => void;
+    let markFirstEmbeddingStarted!: () => void;
+    const firstEmbeddingMayFinish = new Promise<void>((resolve) => {
+      releaseFirstEmbedding = resolve;
+    });
+    const firstEmbeddingStarted = new Promise<void>((resolve) => {
+      markFirstEmbeddingStarted = resolve;
+    });
+    let calls = 0;
+    const { store, processor, createApprovedMemory } = createHarness({
+      adapter: {
+        async embedText(input) {
+          calls += 1;
+          if (calls === 1) {
+            markFirstEmbeddingStarted();
+            await firstEmbeddingMayFinish;
+            return { vector: [1, 0, 0, 0], model: input.model, version: input.version };
+          }
+          return { vector: [0, 1, 0, 0], model: input.model, version: input.version };
+        },
+      },
+    });
+    const firstClaimedAt = new Date("2026-07-29T12:00:00.000Z");
+    const recoveredAt = new Date("2026-07-29T12:10:00.000Z");
+    const secondClaimedAt = new Date("2026-07-29T12:10:01.000Z");
+    const memory = await createApprovedMemory();
+    const { job } = await processor.enqueueEmbeddingJob({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: memory.id,
+      runAfter: firstClaimedAt,
+    });
+
+    const expiredPass = processor.processEmbeddingJob({ jobId: job.id, now: firstClaimedAt });
+    await firstEmbeddingStarted;
+    await processor.recoverStaleEmbeddingJobs({
+      now: recoveredAt,
+      leaseDurationMs: 600_000,
+    });
+    await store.claimEmbeddingJob({ jobId: job.id, now: secondClaimedAt });
+    await expect(
+      processor.processEmbeddingJob({
+        jobId: job.id,
+        now: secondClaimedAt,
+        claim: false,
+      }),
+    ).resolves.toMatchObject({ outcome: "completed" });
+    releaseFirstEmbedding();
+
+    await expect(expiredPass).resolves.toMatchObject({ outcome: "not_claimable" });
+    await expect(
+      store.findRelationshipContextEmbedding({
+        ownerUserId: OWNER,
+        recordKind: "memory",
+        recordId: memory.id,
+        embeddingModel: "fake-semantic-retrieval",
+        embeddingVersion: "v1",
+      }),
+    ).resolves.toMatchObject({ embedding: [0, 1, 0, 0] });
   });
 });

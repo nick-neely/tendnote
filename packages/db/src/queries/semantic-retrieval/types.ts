@@ -129,6 +129,12 @@ export type SettleEmbeddingJobResult = {
   settled: boolean;
 };
 
+/** Identifies the exact running pass that is allowed to mutate embedding data. */
+export type EmbeddingClaimFence = {
+  jobId: string;
+  expectedClaimedAt: Date | null;
+};
+
 export type EmbeddingJobLifecycleStore = {
   createEmbeddingJob: (job: CreateEmbeddingJobInput) => Promise<EmbeddingJob>;
   findEmbeddingJobByIdempotencyKey: (idempotencyKey: string) => Promise<EmbeddingJob | null>;
@@ -210,6 +216,14 @@ export type EmbeddingStore = MemoryReviewStore &
       embedding: CreateRelationshipContextEmbeddingInput,
     ) => Promise<RelationshipContextEmbedding>;
     /**
+     * Processor-only write seam. The claim check and embedding upsert are atomic, so an
+     * expired pass cannot overwrite data produced by the replacement that reclaimed it.
+     */
+    upsertRelationshipContextEmbeddingForClaim: (input: {
+      claim: EmbeddingClaimFence;
+      embedding: CreateRelationshipContextEmbeddingInput;
+    }) => Promise<RelationshipContextEmbedding | null>;
+    /**
      * Converges the columns a row denormalizes from its source record - person linkage,
      * trust register, sensitivity - leaving the vector, the embedded text, and the content
      * fingerprint alone. `reuseOrEmbed` calls this on a fingerprint match, the one case the
@@ -224,6 +238,14 @@ export type EmbeddingStore = MemoryReviewStore &
       trustLevel: SemanticTrustLevel;
       sensitivity: Sensitivity;
     }) => Promise<RelationshipContextEmbedding>;
+    refreshRelationshipContextEmbeddingMetadataForClaim: (input: {
+      claim: EmbeddingClaimFence;
+      ownerUserId: string;
+      embeddingId: string;
+      personId: string | null;
+      trustLevel: SemanticTrustLevel;
+      sensitivity: Sensitivity;
+    }) => Promise<RelationshipContextEmbedding | null>;
     findRelationshipContextEmbedding: (input: {
       ownerUserId: string;
       recordKind: SemanticRecordKind;
@@ -247,6 +269,12 @@ export type EmbeddingStore = MemoryReviewStore &
       recordKind: SemanticRecordKind;
       recordId: string;
     }) => Promise<number>;
+    deleteRelationshipContextEmbeddingsForRecordForClaim: (input: {
+      claim: EmbeddingClaimFence;
+      ownerUserId: string;
+      recordKind: SemanticRecordKind;
+      recordId: string;
+    }) => Promise<{ deleted: number } | null>;
     searchSemanticContext: (
       input: SearchSemanticContextQueryInput & {
         queryEmbedding: number[];

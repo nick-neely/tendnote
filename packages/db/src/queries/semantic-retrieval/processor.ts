@@ -12,6 +12,7 @@ import {
   processGeneralAction,
   processSavedItem,
   processSourceRecord,
+  SupersededEmbeddingClaimError,
   scrubRestrictedEmbeddings,
   skipJob,
 } from "./steps";
@@ -225,6 +226,12 @@ async function processEmbeddingJob(
       sourceSavedItem: result.sourceSavedItem,
     };
   } catch (error) {
+    if (error instanceof SupersededEmbeddingClaimError) {
+      const current = await store.getEmbeddingJob(job.id);
+      if (!current) throw new Error("Embedding job not found.");
+      return { job: current, outcome: "not_claimable", embedding: null };
+    }
+
     const message = error instanceof Error ? error.message : String(error);
     return failJob(ctx, job, message, now, retryDelayMs);
   }
