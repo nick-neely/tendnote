@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useDeepLinkHighlight } from "@/lib/use-deep-link-highlight";
-import { render, setMatchMedia } from "@/test/dom";
+import { useDeepLinkHighlight, useDeepLinkReveal } from "@/lib/use-deep-link-highlight";
+import { render, setMatchMedia, waitFor } from "@/test/dom";
 
 /**
  * DOM-level coverage for the deep-link scroll-highlight hook (#186), previously untested
@@ -109,6 +110,57 @@ describe("useDeepLinkHighlight", () => {
     }
     expect(target?.scrollIntoView).toHaveBeenCalled();
     expect(document.activeElement).toBe(target);
+  });
+
+  it("waits for a surface to reveal a claimed target, then lands on it", async () => {
+    // A resolved Action lives in a folded shelf that fetches on open, so its row is not in
+    // the DOM when the hash arrives. The surface claims the id and reveals it; the hook has
+    // to keep watching rather than give up on the first miss.
+    window.location.hash = "#action-lazy";
+    setMatchMedia(true);
+
+    function LazyShelf() {
+      const [revealed, setRevealed] = useState(false);
+      useDeepLinkReveal((elementId) => {
+        if (elementId !== "action-lazy") return false;
+        setRevealed(true);
+        return true;
+      });
+      return revealed ? (
+        <div id="action-lazy" tabIndex={-1}>
+          the resolved row
+        </div>
+      ) : null;
+    }
+    function RevealHarness() {
+      useDeepLinkHighlight();
+      return <LazyShelf />;
+    }
+    render(<RevealHarness />);
+
+    await waitFor(() => {
+      const target = document.getElementById("action-lazy");
+      expect(target?.scrollIntoView).toHaveBeenCalled();
+      expect(document.activeElement).toBe(target);
+    });
+  });
+
+  it("stays quiet when no surface claims the hash", async () => {
+    window.location.hash = "#action-unknown";
+
+    const reveal = vi.fn(() => false);
+    function DecliningHarness() {
+      useDeepLinkHighlight();
+      return <DecliningShelf />;
+    }
+    function DecliningShelf() {
+      useDeepLinkReveal(reveal);
+      return <div id="action-42" tabIndex={-1} />;
+    }
+    render(<DecliningHarness />);
+
+    expect(reveal).toHaveBeenCalledWith("action-unknown");
+    expect(document.getElementById("action-42")?.scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("re-highlights when the hash changes in place", () => {

@@ -79,8 +79,10 @@ vi.mock("next/link", () => import("@/test/next-link-mock"));
 
 import {
   completeGeneralActionAction,
+  getActionSecondaryLedgerViewsAction,
   reopenGeneralActionAction,
 } from "@/app/actions/general-actions";
+import { useDeepLinkHighlight } from "@/lib/use-deep-link-highlight";
 import { ActionsSurface } from "./actions-surface";
 
 function area(id: string, name: string, archived = false): GeneralActionAreaView {
@@ -341,6 +343,81 @@ describe("ActionsSurface area filter (click-through)", () => {
     // filter chip of the same name (which is a radio, not a button).
     await user.click(screen.getByRole("button", { name: "All" }));
     expect(screen.getByText("Fix the kitchen sink")).toBeTruthy();
+  });
+});
+
+describe("ActionsSurface deep link into the secondary shelf", () => {
+  /**
+   * The landing half of the deep link lives in the app shell, not in this surface, so the
+   * harness pairs them the way the real page does: `useDeepLinkHighlight` above,
+   * `ActionsSurface` below, talking through the reveal registry.
+   */
+  function DeepLinkedSurface({ active = [] }: { active?: GeneralActionView[] }) {
+    useDeepLinkHighlight();
+    return <ActionsSurface active={active} areas={[]} />;
+  }
+
+  it("opens the Resolved shelf, loads it, and highlights the deep-linked row", async () => {
+    // `/actions#action-<id>` can name a resolved Action, whose row exists only once the
+    // Resolved shelf is opened and the secondary read returns - so before this, the deep
+    // link landed nowhere at all.
+    const resolvedAction = generalActionViewFixture({
+      id: "deep-linked-action",
+      status: "completed",
+      title: "Renew the registration",
+    });
+    vi.mocked(getActionSecondaryLedgerViewsAction).mockResolvedValueOnce({
+      ok: true,
+      view: { paused: [], resolved: [resolvedAction] },
+    });
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = vi.fn();
+    window.location.hash = "#action-deep-linked-action";
+
+    try {
+      render(<DeepLinkedSurface />);
+
+      // The shelf the owner never touched is open, and the lazily fetched row is on screen.
+      await screen.findByText("Renew the registration");
+      expect(screen.getByRole("button", { name: "Resolved" }).getAttribute("aria-expanded")).toBe(
+        "true",
+      );
+
+      const row = document.getElementById("action-deep-linked-action");
+      await waitFor(() => {
+        expect(row?.scrollIntoView).toHaveBeenCalled();
+        expect(document.activeElement).toBe(row);
+      });
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+      window.location.hash = "";
+    }
+  });
+
+  it("leaves the shelves folded when the deep link names no action on this surface", async () => {
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = vi.fn();
+    window.location.hash = "#action-nothing-here";
+
+    try {
+      render(<DeepLinkedSurface active={[FIX_SINK]} />);
+
+      // The claim still runs the one read that could hold the row; finding nothing is a
+      // quiet no-op, not an opened shelf or an error.
+      await waitFor(() => expect(getActionSecondaryLedgerViewsAction).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "Resolved" }).getAttribute("aria-expanded")).toBe(
+          "false",
+        ),
+      );
+      expect(
+        screen.getByRole("button", { name: "Paused routines" }).getAttribute("aria-expanded"),
+      ).toBe("false");
+      expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+      window.location.hash = "";
+    }
   });
 });
 

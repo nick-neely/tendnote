@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   getActionComposerOptionsAction,
   getActionSecondaryLedgerViewsAction,
@@ -35,10 +35,14 @@ import {
   ReversibleMutationProvider,
 } from "@/lib/reversible-mutation";
 import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
+import { useDeepLinkReveal } from "@/lib/use-deep-link-highlight";
 import { reconcileRevisionedItems, useServerSyncedList } from "@/lib/use-server-synced-list";
 
 /** The Area filter's "everything" option; `null` selection in toggle-group terms. */
 const ALL_AREAS = "all";
+
+/** Anchor prefix the Action rows publish as their element id (`action-<id>`). */
+const ACTION_ANCHOR_PREFIX = "action-";
 
 const actionId = (action: GeneralActionView) => action.id;
 const actionRevision = (action: GeneralActionView) => action.revision;
@@ -173,6 +177,9 @@ function ActionsSurfaceContent({
   const [suggestedOpen, setSuggestedOpen] = useState(suggested.length > 0);
   const [pausedOpen, setPausedOpen] = useState(paused.length > 0);
   const [resolvedOpen, setResolvedOpen] = useState(resolved.length > 0);
+  // The Action a deep link is trying to land on, held until this surface can make its row
+  // visible. See the reveal wiring below.
+  const [revealActionId, setRevealActionId] = useState<string | null>(null);
   // Paused and Resolved deliberately share one loading and one error: they are two
   // halves of a single secondary-ledger read, so opening either fetches both and
   // splitting the state would only let one of them report a failure the other had.
@@ -288,6 +295,45 @@ function ActionsSurfaceContent({
       }
     });
   }
+
+  // Deep-link landing for rows this surface can show but has not rendered. `/actions#action-<id>`
+  // is linked from Action Today, asset profiles, and Eve's review cards, and it can name a
+  // resolved or paused Action - rows that only exist once their shelf is opened and the
+  // secondary read returns. Claiming the id starts that read; the effect below then reveals
+  // whichever shelf turns out to hold it, and `useDeepLinkHighlight` waits for the row to
+  // render before scrolling and highlighting it.
+  useDeepLinkReveal((elementId) => {
+    if (!elementId.startsWith(ACTION_ANCHOR_PREFIX)) return false;
+    const id = elementId.slice(ACTION_ANCHOR_PREFIX.length);
+    if (!id) return false;
+    setRevealActionId(id);
+    loadSecondaryLedger();
+    return true;
+  });
+
+  useEffect(() => {
+    if (!revealActionId) return;
+    // Active rows are already on screen, so this only has to unfold or unfilter; paused and
+    // resolved need their shelf open as well.
+    const shelves = [
+      { actions: activeList, open: null },
+      { actions: pausedList, open: setPausedOpen },
+      { actions: resolvedList, open: setResolvedOpen },
+    ] as const;
+    for (const { actions, open } of shelves) {
+      const action = actions.find((candidate) => candidate.id === revealActionId);
+      if (!action) continue;
+      open?.(true);
+      // An Area filter keeps the row out of the DOM even with its shelf open, so landing on
+      // a row from another Area means stepping back to every Area.
+      if (effectiveAreaId && action.areaId !== effectiveAreaId) setSelectedAreaId(null);
+      setRevealActionId(null);
+      return;
+    }
+    // The read finished and no list holds it - a stale or foreign link. Stop looking; the
+    // highlight simply never happens, with no error and no jump.
+    if (ledgerLoaded) setRevealActionId(null);
+  }, [activeList, effectiveAreaId, ledgerLoaded, pausedList, resolvedList, revealActionId]);
 
   function removeUnlessNewer(
     current: GeneralActionView[],
