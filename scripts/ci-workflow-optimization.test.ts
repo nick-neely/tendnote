@@ -28,6 +28,7 @@ describe("CI workflow optimization contract", () => {
     expect(rules.has("non_fast_forward")).toBe(true);
     expect(pullRequest.parameters.required_approving_review_count).toBe(0);
     expect(pullRequest.parameters.required_review_thread_resolution).toBe(true);
+    expect(pullRequest.parameters.allowed_merge_methods).toEqual(["squash", "rebase"]);
     expect(statusChecks.parameters.strict_required_status_checks_policy).toBe(true);
     expect(statusChecks.parameters.required_status_checks.map(({ context }) => context)).toEqual([
       "Verify",
@@ -72,6 +73,7 @@ describe("CI workflow optimization contract", () => {
     const pullRequest = read(".github/workflows/pr-verify.yml");
     const reusable = read(".github/workflows/reusable-verify.yml");
 
+    expect(pullRequest).not.toMatch(/name: >-\s+\$\{\{/);
     expect(pullRequest).toContain("full-ci");
     expect(pullRequest).toContain("- labeled");
     expect(pullRequest).not.toContain("- unlabeled");

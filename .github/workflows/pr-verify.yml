@@ -128,15 +128,7 @@ jobs:
       run_full: ${{ needs.changes.outputs.full_requested == 'true' }}
 
   gate:
-    name: >-
-      ${{
-        github.event.action == 'labeled' &&
-        github.event.label.name == 'full-ci' &&
-        'Full CI qualification' ||
-        github.event.action == 'labeled' &&
-        format('Ignore qualification label {0}', github.event.label.name) ||
-        'Verify'
-      }}
+    name: ${{ github.event.action == 'labeled' && github.event.label.name == 'full-ci' && 'Full CI qualification' || github.event.action == 'labeled' && format('Ignore qualification label {0}', github.event.label.name) || 'Verify' }}
     needs:
       - changes
       - verify
@@ -166,13 +158,7 @@ jobs:
           echo "PR verification gate passed."
 
   docs_qualification:
-    name: >-
-      ${{
-        github.event.action != 'labeled' &&
-        needs.changes.outputs.verify != 'true' &&
-        'Full CI qualification' ||
-        'Qualification required'
-      }}
+    name: ${{ github.event.action != 'labeled' && needs.changes.outputs.verify != 'true' && 'Full CI qualification' || 'Qualification required' }}
     needs: changes
     if: >-
       always() &&
