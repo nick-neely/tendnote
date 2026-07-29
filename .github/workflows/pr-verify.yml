@@ -178,8 +178,8 @@ jobs:
       run_database: ${{ needs.changes.outputs.database == 'true' }}
       run_full: ${{ needs.changes.outputs.full_requested == 'true' }}
 
-  gate:
-    name: ${{ github.event.action == 'labeled' && github.event.label.name == 'full-ci' && 'Full CI qualification' || github.event.action == 'labeled' && format('Ignore qualification label {0}', github.event.label.name) || 'Verify' }}
+  verify_gate:
+    name: ${{ github.event.action == 'labeled' && github.event.label.name != 'full-ci' && 'Ignore unrelated label' || 'Verify' }}
     needs:
       - changes
       - verify
@@ -208,16 +208,34 @@ jobs:
 
           echo "PR verification gate passed."
 
-  docs_qualification:
-    name: ${{ github.event.action != 'labeled' && needs.changes.outputs.verify != 'true' && 'Full CI qualification' || 'Qualification required' }}
-    needs: changes
+  qualification_gate:
+    name: ${{ github.event.action == 'labeled' && github.event.label.name == 'full-ci' && 'Full CI qualification' || github.event.action != 'labeled' && needs.changes.outputs.verify != 'true' && 'Full CI qualification' || 'Qualification pending' }}
+    needs:
+      - changes
+      - verify
     if: >-
       always() &&
       !cancelled() &&
-      github.event.action != 'labeled' &&
       needs.changes.result == 'success' &&
-      needs.changes.outputs.verify != 'true'
+      (github.event.action != 'labeled' ||
+      github.event.label.name == 'full-ci')
     runs-on: ubuntu-latest
     steps:
-      - name: Confirm no full qualification is needed
-        run: echo "Documentation-only changes do not require full CI."
+      - name: Check full CI qualification
+        run: |
+          if [[ "${{ needs.changes.outputs.full_requested }}" == "true" ]]; then
+            if [[ "${{ needs.changes.outputs.verify }}" == "true" && "${{ needs.verify.result }}" != "success" ]]; then
+              echo "Full CI was requested but did not succeed. Result: ${{ needs.verify.result }}"
+              exit 1
+            fi
+
+            echo "Full CI qualification passed."
+            exit 0
+          fi
+
+          if [[ "${{ needs.changes.outputs.verify }}" != "true" ]]; then
+            echo "Documentation-only changes do not require full CI."
+            exit 0
+          fi
+
+          echo "Full CI qualification has not been requested for this commit."

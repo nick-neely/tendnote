@@ -47,7 +47,16 @@ describe("CI workflow optimization contract", () => {
   it("keeps one stable PR gate and does not verify documentation-only changes", () => {
     const workflow = read(".github/workflows/pr-verify.yml");
 
-    expect(workflow).toContain("'Verify'");
+    expect(workflow).toMatch(
+      /verify_gate:\n\s+name: \$\{\{[^}]*'Verify'[^}]*\}\}/,
+    );
+    expect(workflow).toMatch(
+      /qualification_gate:\n\s+name: \$\{\{[^}]*'Full CI qualification'[^}]*'Qualification pending'[^}]*\}\}/,
+    );
+    expect(workflow).not.toContain("docs_qualification:");
+    expect(workflow).not.toContain(
+      "github.event.action != 'labeled' && needs.changes.outputs.verify != 'true' && 'Full CI qualification' || 'Qualification required'",
+    );
     expect(workflow).toContain("uses: ./.github/workflows/reusable-verify.yml");
     expect(workflow).toContain("- 'scripts/**'");
     expect(workflow).not.toContain("- 'docs/**'");
@@ -96,7 +105,10 @@ describe("CI workflow optimization contract", () => {
     const workflow = read(".github/workflows/pr-verify.yml");
 
     expect(workflow).toMatch(
-      /docs_qualification:[\s\S]*needs\.changes\.outputs\.verify != 'true'[\s\S]*'Full CI qualification'/,
+      /qualification_gate:[\s\S]*needs\.changes\.outputs\.verify != 'true'[\s\S]*'Full CI qualification'/,
+    );
+    expect(workflow).toMatch(
+      /qualification_gate:[\s\S]*github\.event\.action != 'labeled'[\s\S]*needs\.changes\.result == 'success'/,
     );
   });
 
@@ -109,6 +121,9 @@ describe("CI workflow optimization contract", () => {
     expect(pullRequest).toContain("- labeled");
     expect(pullRequest).not.toContain("- unlabeled");
     expect(pullRequest).toContain("'Full CI qualification'");
+    expect(pullRequest).toMatch(
+      /verify_gate:[\s\S]*github\.event\.label\.name == 'full-ci'/,
+    );
     expect(pullRequest).toContain(
       "github.event.action == 'labeled' && github.event.label.name == 'full-ci'",
     );
