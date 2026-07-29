@@ -1,10 +1,10 @@
 import type { HouseholdMembership, Memory, Person } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import type { HouseholdRecordShare } from "../households/types";
+import { HOUSEHOLD_ID, householdMembership, householdRecordShare, now } from "./fixtures";
 import { createInMemoryRelationshipContextSearchStore } from "./in-memory-store";
 import { createRelationshipContextSearchQueries } from "./queries";
 
-const now = new Date("2026-06-26T00:00:00Z");
 const maraId = "11111111-1111-4111-8111-111111111111";
 const noahId = "22222222-2222-4222-8222-222222222222";
 
@@ -48,36 +48,6 @@ function memory(overrides: Partial<Memory>): Memory {
   };
 }
 
-function householdMembership(overrides: Partial<HouseholdMembership>): HouseholdMembership {
-  return {
-    id: `membership-${overrides.userId ?? "user"}`,
-    householdId: "99999999-9999-4999-8999-999999999999",
-    userId: "member-1",
-    invitedByUserId: "owner-1",
-    role: "member",
-    status: "active",
-    invitedAt: now,
-    acceptedAt: now,
-    removedAt: null,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
-
-function householdRecordShare(overrides: Partial<HouseholdRecordShare>): HouseholdRecordShare {
-  return {
-    id: `share-${overrides.recordId ?? "record"}`,
-    householdId: "99999999-9999-4999-8999-999999999999",
-    recordKind: "memory",
-    recordId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    sharedWithUserId: "member-1",
-    sharedByUserId: "owner-1",
-    createdAt: now,
-    ...overrides,
-  };
-}
-
 function queries(seed: {
   people?: Person[];
   memories?: Memory[];
@@ -89,7 +59,6 @@ function queries(seed: {
 
 describe("relationship-context search - memory results", () => {
   it("applies household visibility before returning memory exact-recall results", async () => {
-    const householdId = "99999999-9999-4999-8999-999999999999";
     const sharedMemoryId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const householdMemoryId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     const removedMemoryId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
@@ -104,34 +73,34 @@ describe("relationship-context search - memory results", () => {
           id: sharedMemoryId,
           content: "shared kayaking plan",
           scope: "shared",
-          householdId,
+          householdId: HOUSEHOLD_ID,
         }),
         memory({
           id: householdMemoryId,
           content: "household kayaking plan",
           scope: "household",
-          householdId,
+          householdId: HOUSEHOLD_ID,
         }),
         memory({
           id: removedMemoryId,
           content: "removed kayaking plan",
           scope: "shared",
-          householdId,
+          householdId: HOUSEHOLD_ID,
         }),
       ],
       householdMemberships: [
-        householdMembership({ householdId, userId: "owner-1", role: "owner" }),
-        householdMembership({ householdId, userId: "member-1" }),
-        householdMembership({ householdId, userId: "removed-1", status: "removed" }),
+        householdMembership({ userId: "owner-1", role: "owner" }),
+        householdMembership({ userId: "member-1" }),
+        householdMembership({ userId: "removed-1", status: "removed" }),
       ],
       householdRecordShares: [
         householdRecordShare({
-          householdId,
+          recordKind: "memory",
           recordId: sharedMemoryId,
           sharedWithUserId: "member-1",
         }),
         householdRecordShare({
-          householdId,
+          recordKind: "memory",
           recordId: removedMemoryId,
           sharedWithUserId: "removed-1",
         }),
@@ -177,13 +146,17 @@ describe("relationship-context search - memory results", () => {
    * why their own search has never heard of it.
    */
   it("returns an owner's shared memory only once it is anchored to their household", async () => {
-    const householdId = "99999999-9999-4999-8999-999999999999";
     const anchoredId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const unanchoredId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     const search = queries({
       people: [person({})],
       memories: [
-        memory({ id: anchoredId, content: "anchored kayaking plan", scope: "shared", householdId }),
+        memory({
+          id: anchoredId,
+          content: "anchored kayaking plan",
+          scope: "shared",
+          householdId: HOUSEHOLD_ID,
+        }),
         memory({
           id: unanchoredId,
           content: "unanchored kayaking plan",
@@ -191,9 +164,7 @@ describe("relationship-context search - memory results", () => {
           householdId: null,
         }),
       ],
-      householdMemberships: [
-        householdMembership({ householdId, userId: "owner-1", role: "owner" }),
-      ],
+      householdMemberships: [householdMembership({ userId: "owner-1", role: "owner" })],
     });
 
     const results = await search.searchRelationshipContext({

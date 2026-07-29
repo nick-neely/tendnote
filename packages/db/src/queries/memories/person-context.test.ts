@@ -2,6 +2,10 @@ import { canUseMemoryProactively, isDurableMemoryFact } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { createInMemoryMemoryStore, createMemoryCapture } from "../memories";
 
+/** The person's ordinary approved fact, and the one they marked restricted. */
+const DENVER_MOVE = "Caleb is moving to Denver in August";
+const BETWEEN_JOBS = "Caleb is between jobs right now";
+
 async function seedPerson(
   store: ReturnType<typeof createInMemoryMemoryStore>,
   displayName: string,
@@ -19,6 +23,31 @@ async function seedPerson(
   });
 }
 
+/**
+ * Caleb with one memory in each half: an ordinary approved fact and an approved fact he
+ * marked restricted. Both halves have to be populated for a caller's view of them to say
+ * anything - with only one seeded, "withheld" and "absent" look identical from the outside.
+ */
+async function seedCalebWithBothHalves() {
+  const store = createInMemoryMemoryStore();
+  const capture = createMemoryCapture(store);
+  const caleb = await seedPerson(store, "Caleb");
+
+  await capture.captureExplicitMemory({
+    ownerUserId: "user-1",
+    personId: caleb.id,
+    content: DENVER_MOVE,
+  });
+  await capture.captureExplicitMemory({
+    ownerUserId: "user-1",
+    personId: caleb.id,
+    content: BETWEEN_JOBS,
+    sensitivity: "restricted",
+  });
+
+  return { capture, caleb };
+}
+
 describe("person memory context", () => {
   it("returns approved memories for a person as confirmed facts", async () => {
     const store = createInMemoryMemoryStore();
@@ -28,7 +57,7 @@ describe("person memory context", () => {
     await capture.captureExplicitMemory({
       ownerUserId: "user-1",
       personId: caleb.id,
-      content: "Caleb is moving to Denver in August",
+      content: DENVER_MOVE,
     });
 
     const context = await capture.listPersonMemoryContext({
@@ -38,27 +67,13 @@ describe("person memory context", () => {
 
     expect(context.person?.id).toBe(caleb.id);
     expect(context.memories).toHaveLength(1);
-    expect(context.memories[0]?.content).toBe("Caleb is moving to Denver in August");
+    expect(context.memories[0]?.content).toBe(DENVER_MOVE);
     expect(context.memories.every(isDurableMemoryFact)).toBe(true);
     expect(context.restrictedMemories).toEqual([]);
   });
 
   it("holds restricted memories in their own half instead of dropping them", async () => {
-    const store = createInMemoryMemoryStore();
-    const capture = createMemoryCapture(store);
-    const caleb = await seedPerson(store, "Caleb");
-
-    await capture.captureExplicitMemory({
-      ownerUserId: "user-1",
-      personId: caleb.id,
-      content: "Caleb is moving to Denver in August",
-    });
-    await capture.captureExplicitMemory({
-      ownerUserId: "user-1",
-      personId: caleb.id,
-      content: "Caleb is between jobs right now",
-      sensitivity: "restricted",
-    });
+    const { capture, caleb } = await seedCalebWithBothHalves();
 
     const context = await capture.listPersonMemoryContext({
       ownerUserId: "user-1",
@@ -69,12 +84,8 @@ describe("person memory context", () => {
     // restricted half is everything else that is still an approved fact, so the
     // person's own page can offer it behind a reveal and label the control with
     // a count without showing anything.
-    expect(context.memories.map((memory) => memory.content)).toEqual([
-      "Caleb is moving to Denver in August",
-    ]);
-    expect(context.restrictedMemories.map((memory) => memory.content)).toEqual([
-      "Caleb is between jobs right now",
-    ]);
+    expect(context.memories.map((memory) => memory.content)).toEqual([DENVER_MOVE]);
+    expect(context.restrictedMemories.map((memory) => memory.content)).toEqual([BETWEEN_JOBS]);
     expect(context.memories.every((memory) => canUseMemoryProactively(memory))).toBe(true);
     expect(context.restrictedMemories.every((memory) => !canUseMemoryProactively(memory))).toBe(
       true,
@@ -90,7 +101,7 @@ describe("person memory context", () => {
     const { sourceRecord } = await capture.captureExplicitMemory({
       ownerUserId: "user-1",
       personId: caleb.id,
-      content: "Caleb is moving to Denver in August",
+      content: DENVER_MOVE,
     });
     await capture.captureSuggestedMemoryFromSource({
       ownerUserId: "user-1",
@@ -111,21 +122,7 @@ describe("person memory context", () => {
   });
 
   it("scopes memories to the requesting owner", async () => {
-    const store = createInMemoryMemoryStore();
-    const capture = createMemoryCapture(store);
-    const caleb = await seedPerson(store, "Caleb");
-
-    await capture.captureExplicitMemory({
-      ownerUserId: "user-1",
-      personId: caleb.id,
-      content: "Caleb is moving to Denver in August",
-    });
-    await capture.captureExplicitMemory({
-      ownerUserId: "user-1",
-      personId: caleb.id,
-      content: "Caleb is between jobs right now",
-      sensitivity: "restricted",
-    });
+    const { capture, caleb } = await seedCalebWithBothHalves();
 
     const context = await capture.listPersonMemoryContext({
       ownerUserId: "user-2",
@@ -148,7 +145,7 @@ describe("person memory context", () => {
     await capture.captureExplicitMemory({
       ownerUserId: "user-1",
       personId: caleb.id,
-      content: "Caleb is moving to Denver in August",
+      content: DENVER_MOVE,
     });
 
     const danaContext = await capture.listPersonMemoryContext({

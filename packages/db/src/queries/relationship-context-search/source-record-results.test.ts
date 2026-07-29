@@ -7,10 +7,10 @@ import type {
 } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import type { HouseholdRecordShare } from "../households/types";
+import { HOUSEHOLD_ID, householdMembership, householdRecordShare, now } from "./fixtures";
 import { createInMemoryRelationshipContextSearchStore } from "./in-memory-store";
 import { createRelationshipContextSearchQueries } from "./queries";
 
-const now = new Date("2026-06-26T00:00:00Z");
 const maraId = "11111111-1111-4111-8111-111111111111";
 const sourceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
@@ -97,39 +97,8 @@ function queries(seed: {
   return createRelationshipContextSearchQueries(createInMemoryRelationshipContextSearchStore(seed));
 }
 
-function householdMembership(overrides: Partial<HouseholdMembership>): HouseholdMembership {
-  return {
-    id: `membership-${overrides.userId ?? "user"}`,
-    householdId: "99999999-9999-4999-8999-999999999999",
-    userId: "member-1",
-    invitedByUserId: "owner-1",
-    role: "member",
-    status: "active",
-    invitedAt: now,
-    acceptedAt: now,
-    removedAt: null,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
-
-function householdRecordShare(overrides: Partial<HouseholdRecordShare>): HouseholdRecordShare {
-  return {
-    id: `share-${overrides.recordId ?? "record"}`,
-    householdId: "99999999-9999-4999-8999-999999999999",
-    recordKind: "source_record",
-    recordId: sourceId,
-    sharedWithUserId: "member-1",
-    sharedByUserId: "owner-1",
-    createdAt: now,
-    ...overrides,
-  };
-}
-
 describe("relationship-context search - source-record results", () => {
   it("applies household visibility before returning source-record exact recall results", async () => {
-    const householdId = "99999999-9999-4999-8999-999999999999";
     const sharedRecordId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const householdRecordId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     const removedRecordId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
@@ -140,34 +109,34 @@ describe("relationship-context search - source-record results", () => {
           id: sharedRecordId,
           content: "shared pottery note",
           scope: "shared",
-          householdId,
+          householdId: HOUSEHOLD_ID,
         }),
         sourceRecord({
           id: householdRecordId,
           content: "household pottery note",
           scope: "household",
-          householdId,
+          householdId: HOUSEHOLD_ID,
         }),
         sourceRecord({
           id: removedRecordId,
           content: "removed pottery note",
           scope: "shared",
-          householdId,
+          householdId: HOUSEHOLD_ID,
         }),
       ],
       householdMemberships: [
-        householdMembership({ householdId, userId: "owner-1", role: "owner" }),
-        householdMembership({ householdId, userId: "member-1" }),
-        householdMembership({ householdId, userId: "removed-1", status: "removed" }),
+        householdMembership({ userId: "owner-1", role: "owner" }),
+        householdMembership({ userId: "member-1" }),
+        householdMembership({ userId: "removed-1", status: "removed" }),
       ],
       householdRecordShares: [
         householdRecordShare({
-          householdId,
+          recordKind: "source_record",
           recordId: sharedRecordId,
           sharedWithUserId: "member-1",
         }),
         householdRecordShare({
-          householdId,
+          recordKind: "source_record",
           recordId: removedRecordId,
           sharedWithUserId: "removed-1",
         }),

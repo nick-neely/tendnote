@@ -2,10 +2,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { projectSourceRecordEmbeddedText } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { createHarness, EMBEDDING_CONFIG, OWNER } from "./harness";
+import { createCountingAdapter, createHarness, EMBEDDING_CONFIG, OWNER } from "./harness";
 import { fingerprintEmbeddedText } from "./processor";
 import { createSemanticRetrievalQueries } from "./queries";
-import type { EmbeddingAdapter } from "./types";
+import type { EmbeddingAdapter, ProcessEmbeddingJobResult } from "./types";
 
 /**
  * Restricting a record scrubs its embedded representation.
@@ -34,18 +34,30 @@ const vectorAdapter: EmbeddingAdapter = {
 /** A row left over from a superseded embedding model, holding the same text. */
 const SUPERSEDED_CONFIG = { model: "superseded-model", version: "v0" };
 
+/**
+ * What "scrubbed" has to mean, asserted as one indivisible claim: the job refused the
+ * record *for secrecy*, the index holds nothing for it any more, and the deletion is on the
+ * audit trail. Each of the three alone is satisfiable by a wrong implementation - a skip
+ * that leaves the row, a delete for the wrong reason, a silent delete - so the cases below
+ * always assert all three together.
+ */
+async function expectScrubbed(
+  result: ProcessEmbeddingJobResult,
+  harness: Pick<ReturnType<typeof createHarness>, "store" | "auditActions">,
+) {
+  expect(result).toEqual(
+    expect.objectContaining({ outcome: "skipped", reason: "restricted_content" }),
+  );
+  await expect(harness.store.listRelationshipContextEmbeddings()).resolves.toEqual([]);
+  await expect(harness.auditActions()).resolves.toContain("embedding_job.restricted_scrubbed");
+}
+
 describe("restricted records are scrubbed from the embedding index", () => {
   it("deletes every embedding row for a memory edited to restricted", async () => {
-    const { store, processor, createApprovedMemory, auditActions } = createHarness({
-      adapter: vectorAdapter,
-    });
+    const harness = createHarness({ adapter: vectorAdapter });
+    const { store, createApprovedMemory, embedMemory } = harness;
     const memory = await createApprovedMemory();
-    const first = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: memory.id,
-    });
-    await processor.processEmbeddingJob({ jobId: first.job.id });
+    await embedMemory(memory.id);
     // A row under a retired model carries the same text as the active one, so the scrub
     // has to sweep the whole record, not just the pair the current config names.
     await store.upsertRelationshipContextEmbedding({
@@ -74,23 +86,16 @@ describe("restricted records are scrubbed from the embedding index", () => {
       memoryId: memory.id,
       patch: { sensitivity: "restricted" },
     });
-    const second = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: restricted.id,
-    });
-    const result = await processor.processEmbeddingJob({ jobId: second.job.id });
 
-    expect(result).toEqual(
-      expect.objectContaining({ outcome: "skipped", reason: "restricted_content" }),
-    );
-    await expect(store.listRelationshipContextEmbeddings()).resolves.toEqual([]);
-    await expect(auditActions()).resolves.toContain("embedding_job.restricted_scrubbed");
+    const result = await embedMemory(restricted.id);
+
+    await expectScrubbed(result, harness);
   });
 
   it("deletes the embedding row of a source record that is restricted after embedding", async () => {
-    const { store, processor, createPerson, createSourceRecord, linkSourceRecord, auditActions } =
-      createHarness({ adapter: vectorAdapter });
+    const harness = createHarness({ adapter: vectorAdapter });
+    const { store, createPerson, createSourceRecord, linkSourceRecord, embedSourceRecord } =
+      harness;
     const mara = await createPerson("Mara Lin");
     // The store has no sensitivity edit for source records, so the post-edit state is
     // planted directly: a restricted record whose row still holds the text it was embedded
@@ -120,18 +125,9 @@ describe("restricted records are scrubbed from the embedding index", () => {
       sourceUpdatedAt: sourceRecord.updatedAt,
     });
 
-    const { job } = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "source_record",
-      recordId: sourceRecord.id,
-    });
-    const result = await processor.processEmbeddingJob({ jobId: job.id });
+    const result = await embedSourceRecord(sourceRecord.id);
 
-    expect(result).toEqual(
-      expect.objectContaining({ outcome: "skipped", reason: "restricted_content" }),
-    );
-    await expect(store.listRelationshipContextEmbeddings()).resolves.toEqual([]);
-    await expect(auditActions()).resolves.toContain("embedding_job.restricted_scrubbed");
+    await expectScrubbed(result, harness);
   });
 
   /**
@@ -140,7 +136,7 @@ describe("restricted records are scrubbed from the embedding index", () => {
    * directly, and for any future query path that never learns to check sensitivity at all.
    */
   it("leaves nothing for even a direct request to retrieve", async () => {
-    const { store, processor, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
+    const { store, createApprovedMemory, embedMemory } = createHarness({ adapter: vectorAdapter });
     const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
     const search = (directlyRequested: boolean) =>
       queries.searchSemanticContext({
@@ -151,12 +147,7 @@ describe("restricted records are scrubbed from the embedding index", () => {
         directlyRequested,
       });
     const memory = await createApprovedMemory();
-    const first = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: memory.id,
-    });
-    await processor.processEmbeddingJob({ jobId: first.job.id });
+    await embedMemory(memory.id);
 
     const beforeRestriction = await search(false);
     const restricted = await store.updateMemory({
@@ -164,12 +155,7 @@ describe("restricted records are scrubbed from the embedding index", () => {
       memoryId: memory.id,
       patch: { sensitivity: "restricted" },
     });
-    const second = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: restricted.id,
-    });
-    await processor.processEmbeddingJob({ jobId: second.job.id });
+    await embedMemory(restricted.id);
 
     expect(beforeRestriction.map((result) => result.recordId)).toEqual([memory.id]);
     await expect(search(false)).resolves.toEqual([]);
@@ -183,45 +169,23 @@ describe("restricted records are scrubbed from the embedding index", () => {
    * row, because the fingerprint has nothing to reuse.
    */
   it("re-embeds cleanly once the restriction is lifted", async () => {
-    let adapterCalls = 0;
-    const { store, processor, createApprovedMemory } = createHarness({
-      adapter: {
-        async embedText(request) {
-          adapterCalls += 1;
-          return { vector: [1, 0, 0, 0], model: request.model, version: request.version };
-        },
-      },
-    });
+    const adapter = createCountingAdapter();
+    const { store, createApprovedMemory, embedMemory } = createHarness({ adapter });
     const memory = await createApprovedMemory();
-    const first = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: memory.id,
-    });
-    const embedded = await processor.processEmbeddingJob({ jobId: first.job.id });
+    const embedded = await embedMemory(memory.id);
     const restricted = await store.updateMemory({
       ownerUserId: OWNER,
       memoryId: memory.id,
       patch: { sensitivity: "restricted" },
     });
-    const second = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: restricted.id,
-    });
-    await processor.processEmbeddingJob({ jobId: second.job.id });
+    await embedMemory(restricted.id);
 
     const lifted = await store.updateMemory({
       ownerUserId: OWNER,
       memoryId: memory.id,
       patch: { sensitivity: "normal" },
     });
-    const third = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: lifted.id,
-    });
-    const reEmbedded = await processor.processEmbeddingJob({ jobId: third.job.id });
+    const reEmbedded = await embedMemory(lifted.id);
     const rows = await store.listRelationshipContextEmbeddings();
 
     expect(reEmbedded.outcome).toBe("completed");
@@ -229,7 +193,7 @@ describe("restricted records are scrubbed from the embedding index", () => {
     expect(reEmbedded.embedding?.id).not.toBe(embedded.embedding?.id);
     expect(reEmbedded.embedding?.sensitivity).toBe("normal");
     expect(reEmbedded.embedding?.embeddedText).toBe(memory.content);
-    expect(adapterCalls).toBe(2);
+    expect(adapter.calls).toBe(2);
   });
 
   /**
@@ -239,29 +203,25 @@ describe("restricted records are scrubbed from the embedding index", () => {
    * keeping them spares a re-embed when it is.
    */
   it("keeps the row for skips that are about eligibility rather than secrecy", async () => {
-    const { store, processor, createPerson, createSourceRecord, linkSourceRecord, auditActions } =
-      createHarness({ adapter: vectorAdapter });
+    const {
+      store,
+      createPerson,
+      createSourceRecord,
+      linkSourceRecord,
+      embedSourceRecord,
+      auditActions,
+    } = createHarness({ adapter: vectorAdapter });
     const mara = await createPerson("Mara Lin");
     const sourceRecord = await createSourceRecord();
     await linkSourceRecord(sourceRecord.id, mara.id);
-    const first = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "source_record",
-      recordId: sourceRecord.id,
-    });
-    await processor.processEmbeddingJob({ jobId: first.job.id });
+    await embedSourceRecord(sourceRecord.id);
 
     await store.updateSourceRecordStatus({
       ownerUserId: OWNER,
       sourceRecordId: sourceRecord.id,
       status: "archived",
     });
-    const second = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "source_record",
-      recordId: sourceRecord.id,
-    });
-    const result = await processor.processEmbeddingJob({ jobId: second.job.id });
+    const result = await embedSourceRecord(sourceRecord.id);
 
     expect(result).toEqual(
       expect.objectContaining({ outcome: "skipped", reason: "source_record_not_active" }),

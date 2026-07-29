@@ -1,26 +1,13 @@
 import { projectSourceRecordEmbeddedText } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { createHarness, EMBEDDING_CONFIG, OWNER } from "./harness";
+import {
+  createHarness,
+  EMBEDDING_CONFIG,
+  OWNER,
+  topicVectorAdapter,
+  topicVectorFor,
+} from "./harness";
 import { createSemanticRetrievalQueries } from "./queries";
-import type { EmbeddingAdapter } from "./types";
-
-const vectorAdapter: EmbeddingAdapter = {
-  async embedText(input) {
-    return {
-      vector: vectorFor(input.text),
-      model: input.model,
-      version: input.version,
-    };
-  },
-};
-
-function vectorFor(text: string) {
-  const lower = text.toLowerCase();
-  if (lower.includes("cooking") || lower.includes("gift")) return [1, 0, 0, 0];
-  if (lower.includes("career") || lower.includes("job")) return [0, 1, 0, 0];
-  if (lower.includes("stress")) return [0, 0, 1, 0];
-  return [0, 0, 0, 1];
-}
 
 describe("semantic retrieval - mixed memory and source-record results", () => {
   it("returns approved memories and eligible source records through one query", async () => {
@@ -31,7 +18,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       createPerson,
       createSourceRecord,
       linkSourceRecord,
-    } = createHarness({ adapter: vectorAdapter });
+    } = createHarness({ adapter: topicVectorAdapter });
     const memory = await createApprovedMemory({
       content: "Mara loves cooking classes and handmade kitchen gifts.",
       importance: 4,
@@ -51,7 +38,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       await processor.processEmbeddingJob({ jobId: job.id });
     }
 
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
     const results = await queries.searchSemanticContext({
       ownerUserId: OWNER,
       query: "gift ideas",
@@ -93,7 +80,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       createPerson,
       createSourceRecord,
       linkSourceRecord,
-    } = createHarness({ adapter: vectorAdapter });
+    } = createHarness({ adapter: topicVectorAdapter });
     const maraMemory = await createApprovedMemory({
       content: "Mara loves cooking classes and handmade kitchen gifts.",
     });
@@ -112,7 +99,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       await processor.processEmbeddingJob({ jobId: job.id });
     }
 
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
     const maraOnly = await queries.searchSemanticContext({
       ownerUserId: OWNER,
       query: "gift ideas",
@@ -137,7 +124,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
 
   it("matches source records for any linked person and routes to the requested person", async () => {
     const { store, processor, createPerson, createSourceRecord, linkSourceRecord } = createHarness({
-      adapter: vectorAdapter,
+      adapter: topicVectorAdapter,
     });
     const mara = await createPerson("Mara Lin");
     const jules = await createPerson("Jules Park");
@@ -157,7 +144,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
     });
     await processor.processEmbeddingJob({ jobId: job.id });
 
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
     const results = await queries.searchSemanticContext({
       ownerUserId: OWNER,
       query: "gift ideas",
@@ -195,7 +182,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
    */
   it("keeps retrieving a source record whose sourceUpdatedAt trails its updatedAt", async () => {
     const { store, createPerson, createSourceRecord, linkSourceRecord } = createHarness({
-      adapter: vectorAdapter,
+      adapter: topicVectorAdapter,
     });
     const person = await createPerson("Mara Lin");
     const sourceRecord = await createSourceRecord({
@@ -207,7 +194,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       personId: person.id,
       recordKind: "source_record",
       recordId: sourceRecord.id,
-      embedding: vectorFor(sourceRecord.content),
+      embedding: topicVectorFor(sourceRecord.content),
       embeddingModel: EMBEDDING_CONFIG.model,
       embeddingVersion: EMBEDDING_CONFIG.version,
       embeddingDimensions: 4,
@@ -223,7 +210,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       // milliseconds after the embedding row was written.
       sourceUpdatedAt: new Date(sourceRecord.updatedAt.getTime() - 1000),
     });
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
 
     const results = await queries.searchSemanticContext({
       ownerUserId: OWNER,
@@ -244,7 +231,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       createPerson,
       createSourceRecord,
       linkSourceRecord,
-    } = createHarness({ adapter: vectorAdapter });
+    } = createHarness({ adapter: topicVectorAdapter });
     const suggested = await createApprovedMemory({
       content: "Mara likes cooking gifts.",
       status: "suggested",
@@ -288,7 +275,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       personId: suggested.personId,
       recordKind: "memory",
       recordId: suggested.id,
-      embedding: vectorFor(suggested.content),
+      embedding: topicVectorFor(suggested.content),
       embeddingModel: EMBEDDING_CONFIG.model,
       embeddingVersion: EMBEDDING_CONFIG.version,
       embeddingDimensions: 4,
@@ -303,7 +290,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       personId: person.id,
       recordKind: "source_record",
       recordId: oldVersionSource.id,
-      embedding: vectorFor(oldVersionSource.content),
+      embedding: topicVectorFor(oldVersionSource.content),
       embeddingModel: EMBEDDING_CONFIG.model,
       embeddingVersion: "old-version",
       embeddingDimensions: 4,
@@ -320,7 +307,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       personId: person.id,
       recordKind: "source_record",
       recordId: restrictedSource.id,
-      embedding: vectorFor(restrictedSource.content),
+      embedding: topicVectorFor(restrictedSource.content),
       embeddingModel: EMBEDDING_CONFIG.model,
       embeddingVersion: EMBEDDING_CONFIG.version,
       embeddingDimensions: 4,
@@ -337,7 +324,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       personId: wrongTrustMemory.personId,
       recordKind: "memory",
       recordId: wrongTrustMemory.id,
-      embedding: vectorFor(wrongTrustMemory.content),
+      embedding: topicVectorFor(wrongTrustMemory.content),
       embeddingModel: EMBEDDING_CONFIG.model,
       embeddingVersion: EMBEDDING_CONFIG.version,
       embeddingDimensions: 4,
@@ -352,7 +339,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       personId: person.id,
       recordKind: "source_record",
       recordId: wrongTrustSource.id,
-      embedding: vectorFor(wrongTrustSource.content),
+      embedding: topicVectorFor(wrongTrustSource.content),
       embeddingModel: EMBEDDING_CONFIG.model,
       embeddingVersion: EMBEDDING_CONFIG.version,
       embeddingDimensions: 4,
@@ -365,7 +352,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       sourceUpdatedAt: wrongTrustSource.updatedAt,
     });
 
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
     const results = await queries.searchSemanticContext({
       ownerUserId: OWNER,
       query: "gift ideas",
@@ -385,7 +372,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       createPerson,
       createSourceRecord,
       linkSourceRecord,
-    } = createHarness({ adapter: vectorAdapter });
+    } = createHarness({ adapter: topicVectorAdapter });
     const giftMemory = await createApprovedMemory({
       content: "Mara loves cooking classes and handmade kitchen gifts.",
       importance: 1,
@@ -410,7 +397,7 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
       await processor.processEmbeddingJob({ jobId: job.id });
     }
 
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
     const results = await queries.searchSemanticContext({
       ownerUserId: OWNER,
       query: "gift ideas",

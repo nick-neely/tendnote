@@ -1,18 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { createHarness, EMBEDDING_CONFIG, OWNER } from "./harness";
+import type { MemoryUpdatePatch } from "../memories/types";
+import { createCountingAdapter, createHarness, EMBEDDING_CONFIG, OWNER } from "./harness";
 import { fingerprintEmbeddedText } from "./processor";
+
+/**
+ * Embed an approved memory, edit it, and embed it again.
+ *
+ * Every convergence case below asks the same question of that second pass - which row it
+ * wrote, what the row ended up holding, whether it went back to the provider - and differs
+ * only in the edit. The patch is therefore the one parameter, and the counting adapter
+ * numbers its vectors so a re-embed is distinguishable from a reuse by the vector alone.
+ */
+async function reembedAfterEdit(patch: MemoryUpdatePatch) {
+  const adapter = createCountingAdapter((call) => [call, 0, 0, 0]);
+  const { store, embedMemory, createApprovedMemory } = createHarness({ adapter });
+  const memory = await createApprovedMemory();
+  const first = await embedMemory(memory.id);
+  const edited = await store.updateMemory({ ownerUserId: OWNER, memoryId: memory.id, patch });
+  const second = await embedMemory(edited.id);
+
+  return { adapter, store, memory, first, second };
+}
 
 describe("semantic embedding jobs - approved memories", () => {
   it("enqueues approved-memory embedding work idempotently without calling the adapter", async () => {
-    let adapterCalls = 0;
-    const { processor, createApprovedMemory } = createHarness({
-      adapter: {
-        async embedText(request) {
-          adapterCalls += 1;
-          return { vector: [1, 0, 0, 0], model: request.model, version: request.version };
-        },
-      },
-    });
+    const adapter = createCountingAdapter();
+    const { processor, createApprovedMemory } = createHarness({ adapter });
     const memory = await createApprovedMemory();
 
     const first = await processor.enqueueEmbeddingJob({
@@ -32,19 +45,14 @@ describe("semantic embedding jobs - approved memories", () => {
     expect(first.job.status).toBe("pending");
     expect(first.job.attempts).toBe(0);
     expect(first.job.idempotencyKey).toContain(memory.id);
-    expect(adapterCalls).toBe(0);
+    expect(adapter.calls).toBe(0);
   });
 
   it("claims and completes a due job with a current approved-memory embedding row", async () => {
-    const { store, processor, createApprovedMemory, auditActions } = createHarness();
+    const { store, createApprovedMemory, embedMemory, auditActions } = createHarness();
     const memory = await createApprovedMemory();
-    const { job } = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: memory.id,
-    });
 
-    const result = await processor.processEmbeddingJob({ jobId: job.id });
+    const result = await embedMemory(memory.id);
 
     expect(result.outcome).toBe("completed");
     expect(result.job.status).toBe("completed");
@@ -103,40 +111,10 @@ describe("semantic embedding jobs - approved memories", () => {
   });
 
   it("replaces stale current rows in place when approved memory content changes", async () => {
-    let vectorSeed = 0;
-    const { store, processor, createApprovedMemory } = createHarness({
-      adapter: {
-        async embedText(request) {
-          vectorSeed += 1;
-          return {
-            vector: [vectorSeed, 0, 0, 0],
-            model: request.model,
-            version: request.version,
-          };
-        },
-      },
-    });
-    const memory = await createApprovedMemory();
-    const firstJob = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: memory.id,
-    });
-    const first = await processor.processEmbeddingJob({ jobId: firstJob.job.id });
-    const updatedMemory = await store.updateMemory({
-      ownerUserId: OWNER,
-      memoryId: memory.id,
-      patch: {
-        content: "Mara prefers ceramic cooking gifts.",
-      },
-    });
-    const secondJob = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: updatedMemory.id,
+    const { store, first, second } = await reembedAfterEdit({
+      content: "Mara prefers ceramic cooking gifts.",
     });
 
-    const second = await processor.processEmbeddingJob({ jobId: secondJob.job.id });
     const embeddings = await store.listRelationshipContextEmbeddings();
 
     expect(embeddings).toHaveLength(1);
@@ -147,40 +125,9 @@ describe("semantic embedding jobs - approved memories", () => {
   });
 
   it("does not re-embed when only non-embedded metadata changes", async () => {
-    let adapterCalls = 0;
-    const { store, processor, createApprovedMemory } = createHarness({
-      adapter: {
-        async embedText(request) {
-          adapterCalls += 1;
-          return {
-            vector: [adapterCalls, 0, 0, 0],
-            model: request.model,
-            version: request.version,
-          };
-        },
-      },
-    });
-    const memory = await createApprovedMemory();
-    const firstJob = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: memory.id,
-    });
-    const first = await processor.processEmbeddingJob({ jobId: firstJob.job.id });
-    const updatedMemory = await store.updateMemory({
-      ownerUserId: OWNER,
-      memoryId: memory.id,
-      patch: { importance: 5 },
-    });
-    const secondJob = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: updatedMemory.id,
-    });
+    const { adapter, first, second } = await reembedAfterEdit({ importance: 5 });
 
-    const second = await processor.processEmbeddingJob({ jobId: secondJob.job.id });
-
-    expect(adapterCalls).toBe(1);
+    expect(adapter.calls).toBe(1);
     expect(second.embedding?.id).toBe(first.embedding?.id);
     expect(second.embedding?.contentFingerprint).toBe(first.embedding?.contentFingerprint);
   });
@@ -199,34 +146,9 @@ describe("semantic embedding jobs - approved memories", () => {
    * the migration-shape tripwire now forbids.
    */
   it("refreshes denormalized sensitivity on a reused embedding instead of leaving it drifted", async () => {
-    let adapterCalls = 0;
-    const { store, processor, createApprovedMemory } = createHarness({
-      adapter: {
-        async embedText(request) {
-          adapterCalls += 1;
-          return { vector: [1, 0, 0, 0], model: request.model, version: request.version };
-        },
-      },
+    const { adapter, store, first, second } = await reembedAfterEdit({
+      sensitivity: "sensitive",
     });
-    const memory = await createApprovedMemory();
-    const firstJob = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: memory.id,
-    });
-    const first = await processor.processEmbeddingJob({ jobId: firstJob.job.id });
-    const edited = await store.updateMemory({
-      ownerUserId: OWNER,
-      memoryId: memory.id,
-      patch: { sensitivity: "sensitive" },
-    });
-    const secondJob = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: edited.id,
-    });
-
-    const second = await processor.processEmbeddingJob({ jobId: secondJob.job.id });
 
     expect(first.embedding?.sensitivity).toBe("normal");
     expect(second.embedding?.sensitivity).toBe("sensitive");
@@ -234,7 +156,7 @@ describe("semantic embedding jobs - approved memories", () => {
     expect(second.embedding?.id).toBe(first.embedding?.id);
     expect(second.embedding?.embedding).toEqual(first.embedding?.embedding);
     expect(second.embedding?.contentFingerprint).toBe(first.embedding?.contentFingerprint);
-    expect(adapterCalls).toBe(1);
+    expect(adapter.calls).toBe(1);
     await expect(store.listRelationshipContextEmbeddings()).resolves.toHaveLength(1);
   });
 
@@ -245,15 +167,8 @@ describe("semantic embedding jobs - approved memories", () => {
    * point is that no source edit can produce this state on its own.
    */
   it("refreshes denormalized person linkage on a reused embedding", async () => {
-    let adapterCalls = 0;
-    const { store, processor, createPerson, createApprovedMemory } = createHarness({
-      adapter: {
-        async embedText(request) {
-          adapterCalls += 1;
-          return { vector: [1, 0, 0, 0], model: request.model, version: request.version };
-        },
-      },
-    });
+    const adapter = createCountingAdapter();
+    const { store, createPerson, createApprovedMemory, embedMemory } = createHarness({ adapter });
     const memory = await createApprovedMemory();
     const otherPerson = await createPerson("Sam Rivera");
     await store.upsertRelationshipContextEmbedding({
@@ -275,17 +190,12 @@ describe("semantic embedding jobs - approved memories", () => {
       sensitivity: "normal",
       sourceUpdatedAt: memory.updatedAt,
     });
-    const { job } = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: memory.id,
-    });
 
-    const result = await processor.processEmbeddingJob({ jobId: job.id });
+    const result = await embedMemory(memory.id);
 
     expect(result.outcome).toBe("completed");
     expect(result.embedding?.personId).toBe(memory.personId);
-    expect(adapterCalls).toBe(0);
+    expect(adapter.calls).toBe(0);
   });
 
   /**
