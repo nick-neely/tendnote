@@ -10,6 +10,7 @@ import type { EveDynamicToolPart, EveMessage } from "eve/react";
 import { useState } from "react";
 import { CheckIcon, ChevronRightIcon, CopyIcon, TerminalIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
 type ToolCall = {
@@ -52,11 +53,13 @@ const TONE_BADGE: Record<Tone, string> = {
   pending: "bg-muted text-muted-foreground",
 };
 
+// Both folds here are Collapsibles, so the chevron reads the root's `data-state`
+// through a named group rather than `<details>`'s `[open]`.
 const DISCLOSURE_SUMMARY =
-  "flex cursor-pointer list-none items-center gap-2 px-3 py-2 outline-none transition-colors duration-150 ease-(--motion-ease-out) hover:bg-muted/40 focus-visible:bg-muted/40 motion-reduce:transition-none [&::-webkit-details-marker]:hidden";
+  "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left outline-none transition-colors duration-150 ease-(--motion-ease-out) hover:bg-muted/40 focus-visible:bg-muted/40 motion-reduce:transition-none";
 
 const DISCLOSURE_CHEVRON =
-  "size-3 shrink-0 text-muted-foreground/70 transition-transform duration-150 ease-(--motion-ease-out) group-open:rotate-90 motion-reduce:transition-none";
+  "size-3 shrink-0 text-muted-foreground/70 transition-transform duration-150 ease-(--motion-ease-out) group-data-[state=open]/disclosure:rotate-90 motion-reduce:transition-none";
 
 function stringify(value: unknown): string {
   if (typeof value === "string") {
@@ -180,8 +183,8 @@ function TraceCall({ call, index }: { call: ToolCall; index: number }) {
   const tone = STATE_TONE[call.state] ?? "pending";
 
   return (
-    <details className="group">
-      <summary className={DISCLOSURE_SUMMARY}>
+    <Collapsible className="group/disclosure">
+      <CollapsibleTrigger className={DISCLOSURE_SUMMARY}>
         <ChevronRightIcon aria-hidden className={DISCLOSURE_CHEVRON} />
         <span className="w-4 shrink-0 text-right font-mono text-[11px] text-muted-foreground/70 tabular-nums">
           {index + 1}
@@ -210,9 +213,11 @@ function TraceCall({ call, index }: { call: ToolCall; index: number }) {
         >
           {call.state}
         </span>
-      </summary>
-      <TraceCallPayloads call={call} />
-    </details>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <TraceCallPayloads call={call} />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -290,16 +295,18 @@ function TraceHeader({
 /** Collapsed raw stream-event log; copyable from the header above. */
 function RawEvents({ events }: { events: readonly unknown[] }) {
   return (
-    <details className="group rounded-lg border bg-card">
-      <summary className={DISCLOSURE_SUMMARY}>
+    <Collapsible className="group/disclosure rounded-lg border bg-card">
+      <CollapsibleTrigger className={DISCLOSURE_SUMMARY}>
         <ChevronRightIcon aria-hidden className={DISCLOSURE_CHEVRON} />
         <span className="font-mono text-[11px] text-muted-foreground">Raw stream events</span>
         <span className="font-mono text-[11px] text-muted-foreground/60">({events.length})</span>
-      </summary>
-      <pre className="max-h-72 overflow-auto border-t px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground/85">
-        {stringify(events)}
-      </pre>
-    </details>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <pre className="max-h-72 overflow-auto border-t px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground/85">
+          {stringify(events)}
+        </pre>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
