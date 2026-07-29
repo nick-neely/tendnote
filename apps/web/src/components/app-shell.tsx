@@ -14,6 +14,7 @@ import {
 } from "@/components/desktop-app-navigation";
 import type { CaptureHandlers, GlobalRecallHandler } from "@/components/mobile-focused-flows";
 import { MobileShell } from "@/components/mobile-shell";
+import { SearchPalette } from "@/components/search-palette";
 import { TendnoteLogo } from "@/components/tendnote-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Separator } from "@/components/ui/separator";
@@ -52,6 +53,12 @@ export function AppShell({
               <DesktopAppNavigation />
             </Suspense>
             <Separator className="mx-1 h-5" orientation="vertical" />
+            {/* Search and appearance are tools, not destinations, so they sit
+                with each other on the far side of the rule rather than becoming
+                a seventh item in Primary. The palette registers Cmd+K here, once
+                for every admitted route, and stays inert below `lg` where the
+                phone shell's Search flow owns recall. */}
+            <SearchPalette search={searchHandler} />
             <ThemeToggle />
           </div>
         </div>
