@@ -31,28 +31,53 @@ import { afterEach } from "vitest";
 import { ReminderInstallationProvider } from "@/components/reminder-installation-context";
 
 let matchMediaMatches = false;
+/** Every list handed out this test, so {@link resizeMatchMedia} can reach their listeners. */
+let matchMediaLists: { list: MediaQueryList; listeners: Set<() => void> }[] = [];
 
 /**
  * Point `window.matchMedia` at a `true`/`false` answer for every query until the next test.
  * jsdom ships no matchMedia, so without this any `window.matchMedia(...)` call throws. Tests
  * that care about a specific query (reduced motion, a narrow breakpoint) set it before render.
+ *
+ * Sets the answer for lists created *after* it, which is why it is called before render. To
+ * change the answer for a mounted component, use {@link resizeMatchMedia}.
  */
 export function setMatchMedia(matches: boolean): void {
   matchMediaMatches = matches;
 }
 
+/**
+ * Change the answer and tell the components that asked, the way a real resize would.
+ *
+ * A stub whose `addEventListener` drops the listener silently cannot fail a test about what
+ * happens when the viewport changes under a mounted component - the component simply never
+ * hears, and the assertion passes for the wrong reason. Registrations are real here, so a
+ * breakpoint-gated surface can be driven across its breakpoint in both directions.
+ */
+export function resizeMatchMedia(matches: boolean): void {
+  matchMediaMatches = matches;
+  for (const entry of matchMediaLists) {
+    Object.defineProperty(entry.list, "matches", { value: matches, configurable: true });
+    for (const listener of entry.listeners) listener();
+  }
+}
+
 function installMatchMedia(): void {
-  window.matchMedia = (query: string): MediaQueryList =>
-    ({
+  window.matchMedia = (query: string): MediaQueryList => {
+    const listeners = new Set<() => void>();
+    const list = {
       matches: matchMediaMatches,
       media: query,
       onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
+      addListener: (listener: () => void) => listeners.add(listener),
+      removeListener: (listener: () => void) => listeners.delete(listener),
+      addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
       dispatchEvent: () => false,
-    }) as MediaQueryList;
+    } as unknown as MediaQueryList;
+    matchMediaLists.push({ list, listeners });
+    return list;
+  };
 }
 
 installMatchMedia();
@@ -60,6 +85,7 @@ installMatchMedia();
 afterEach(() => {
   cleanup();
   matchMediaMatches = false;
+  matchMediaLists = [];
 });
 
 export function render(ui: ReactElement, options?: RenderOptions) {

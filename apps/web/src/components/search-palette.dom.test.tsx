@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, setMatchMedia, userEvent, waitFor, within } from "@/test/dom";
+import {
+  render,
+  resizeMatchMedia,
+  screen,
+  setMatchMedia,
+  userEvent,
+  waitFor,
+  within,
+} from "@/test/dom";
 import { expectRestrictedGateOpensOnRecordType } from "@/test/global-recall-filters";
 import { ThemeProvider } from "./theme-provider";
 
@@ -334,6 +342,30 @@ describe("SearchPalette", () => {
     // Nothing to narrow yet either, so the filter bar stays away.
     expect(screen.queryByRole("checkbox", { name: "Reveal restricted matches" })).toBeNull();
     expect(search).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Narrowing past `lg` hands recall back to the phone shell, and the palette goes
+   * with it. If it went without also being marked closed, widening again would put
+   * an open palette back over whatever the owner had moved on to - a dialog nobody
+   * asked for, on a surface they were not looking at when they last saw it.
+   */
+  it("does not reopen itself when the viewport comes back to desktop", async () => {
+    const user = userEvent.setup();
+    renderPalette();
+    await openWithHotkey(user);
+
+    resizeMatchMedia(false);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    resizeMatchMedia(true);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Search Tendnote" })).toBeTruthy(),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // And it still opens when actually asked.
+    await openWithHotkey(user);
   });
 
   it("reopens onto the command menu rather than the last search", async () => {

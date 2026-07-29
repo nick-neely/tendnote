@@ -102,6 +102,14 @@ export function SearchPalette({ search }: { search: GlobalRecallHandler }) {
     if (open) setEverOpened(true);
   }, [open]);
 
+  // Narrowing past `lg` hands recall back to the phone shell's Search flow, and
+  // the dialog goes with it. `open` has to go too: left set, widening again
+  // would remount an already-open palette over whatever the owner had navigated
+  // to in the meantime, with nothing having asked for it.
+  useEffect(() => {
+    if (!wide) setOpen(false);
+  }, [wide]);
+
   return (
     <>
       <SearchPaletteTrigger onOpen={() => setOpen(true)} />
