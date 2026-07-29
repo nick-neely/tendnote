@@ -337,6 +337,10 @@ describe("TodayShortlist", () => {
 
     expect(screen.getByLabelText("Show again")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Set" })).toBeTruthy();
+    // The date is required, so there is nothing a clear button could mean. Left
+    // clearable it emptied the date while `required` still only covered the time
+    // half, and the submit handed an Invalid Date to the suppression.
+    expect(screen.queryByRole("button", { name: "Clear date" })).toBeNull();
     expect(screen.getByRole("link", { name: "People" }).getAttribute("href")).toBe("/people");
     expect(screen.getByRole("link", { name: "Actions" }).getAttribute("href")).toBe("/actions");
   });

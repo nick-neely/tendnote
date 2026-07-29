@@ -398,6 +398,14 @@ function TodayShortlistContent({
                     <div className="flex min-w-52 flex-1 flex-col gap-1 text-[length:var(--text-small)]">
                       <label htmlFor={`today-later-${item.identity}`}>Show again</label>
                       <DateTimePicker
+                        // The form cannot be submitted without a date, so there
+                        // is nothing for a clear button to mean here. Left
+                        // clearable it also let the date be emptied while
+                        // `required` still only covered the time half, and the
+                        // submit handed `new Date("")` - an Invalid Date - to
+                        // the suppression, which the native `datetime-local`
+                        // this replaced had blocked outright.
+                        clearable={false}
                         id={`today-later-${item.identity}`}
                         min={toDateTimeValue(new Date())}
                         onChange={setLaterAt}
