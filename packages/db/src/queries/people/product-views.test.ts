@@ -1,4 +1,12 @@
-import type { Followup, HouseholdMembership } from "@tendnote/domain";
+import type {
+  Followup,
+  HouseholdMembership,
+  Memory,
+  MemoryStatus,
+  MessageDraft,
+  MessageDraftStatus,
+  Sensitivity,
+} from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import type { HouseholdRecordShare } from "../households/types";
 import { createInMemoryPeopleStore } from "./in-memory-store";
@@ -25,6 +33,68 @@ function person(input: { id: string; ownerUserId: string; displayName: string })
     createdAt: now,
     updatedAt: now,
   };
+}
+
+const COUNTED_PERSON = "counted-person";
+const COUNTED_AT = new Date("2026-07-24T12:00:00.000Z");
+
+function memory(input: {
+  id: string;
+  status: MemoryStatus;
+  sensitivity?: Sensitivity;
+  ownerUserId?: string;
+}) {
+  return {
+    id: input.id,
+    personId: COUNTED_PERSON,
+    ownerUserId: input.ownerUserId ?? OWNER,
+    sourceRecordId: "source-1",
+    memoryType: "context",
+    content: "Remembered something",
+    status: input.status,
+    importance: 3,
+    sensitivity: input.sensitivity ?? "normal",
+    confidence: "medium",
+    scope: "private",
+    householdId: null,
+    approvedAt: null,
+    dismissedAt: null,
+    createdAt: COUNTED_AT,
+    updatedAt: COUNTED_AT,
+  } as Memory;
+}
+
+function followup(input: { id: string; status: Followup["status"] }) {
+  return {
+    id: input.id,
+    personId: COUNTED_PERSON,
+    ownerUserId: OWNER,
+    reason: "Check in",
+    dueAt: COUNTED_AT,
+    status: input.status,
+    scope: "private",
+    householdId: null,
+    sourceRecordId: null,
+    cadence: null,
+    createdAt: COUNTED_AT,
+    updatedAt: COUNTED_AT,
+    lastActorUserId: null,
+  } as Followup;
+}
+
+function draft(input: { id: string; status: MessageDraftStatus }) {
+  return {
+    id: input.id,
+    personId: COUNTED_PERSON,
+    ownerUserId: OWNER,
+    channel: "text",
+    purpose: "check_in",
+    body: "Hey, thinking of you.",
+    status: input.status,
+    sourceRefs: [],
+    createdAt: COUNTED_AT,
+    updatedAt: COUNTED_AT,
+  } as MessageDraft;
 }
 
 describe("People product views", () => {
@@ -65,7 +135,7 @@ describe("People product views", () => {
         relationshipType: "friend",
         closenessLevel: 3,
       },
-      counts: { memories: 0, followups: 0, sourceRecords: 0 },
+      counts: { memories: 0, review: 0, followups: 0, drafts: 0 },
     });
     expect(JSON.stringify(detail)).not.toContain(OWNER);
   });
@@ -96,7 +166,7 @@ describe("People product views", () => {
   it("uses the bounded core/count seam instead of loading profile collections", async () => {
     const boundedCore = {
       person: person({ id: "owner-person", ownerUserId: OWNER, displayName: "Ada Owner" }),
-      counts: { memories: 4, followups: 2, sourceRecords: 1 },
+      counts: { memories: 4, review: 1, followups: 2, drafts: 3 },
     };
     const views = createPeopleProductQueries({
       searchPeople: async () => [],
@@ -114,7 +184,44 @@ describe("People product views", () => {
         relationshipType: "friend",
         closenessLevel: 3,
       },
-      counts: { memories: 4, followups: 2, sourceRecords: 1 },
+      counts: { memories: 4, review: 1, followups: 2, drafts: 3 },
+    });
+  });
+
+  it("counts each person-detail tab as exactly what its label claims", async () => {
+    const views = createPeopleProductQueries(
+      createInMemoryPeopleStore({
+        people: [person({ id: COUNTED_PERSON, ownerUserId: OWNER, displayName: "Cal" })],
+        memories: [
+          memory({ id: "confirmed", status: "approved" }),
+          // Approved but restricted: the ledger will not show it, so it is not
+          // one of the "confirmed facts you've saved" either.
+          memory({ id: "restricted", status: "approved", sensitivity: "restricted" }),
+          memory({ id: "suggestion-1", status: "suggested" }),
+          memory({ id: "suggestion-2", status: "suggested" }),
+          memory({ id: "dismissed", status: "dismissed" }),
+          memory({ id: "other-owner", status: "approved", ownerUserId: OTHER_OWNER }),
+        ],
+        followups: [
+          followup({ id: "open", status: "open" }),
+          followup({ id: "proposed", status: "suggested" }),
+          followup({ id: "done", status: "completed" }),
+        ],
+        messageDrafts: [
+          draft({ id: "written", status: "draft" }),
+          draft({ id: "approved", status: "approved" }),
+          draft({ id: "sent", status: "sent_manually" }),
+        ],
+      }),
+    );
+
+    // Memories counts confirmed facts only - suggestions are review work, which is
+    // the contradiction the person header used to show ("Memories 3" over an empty
+    // Memories section).
+    await expect(
+      views.detail({ ownerUserId: OWNER, personId: COUNTED_PERSON }),
+    ).resolves.toMatchObject({
+      counts: { memories: 1, review: 2, followups: 2, drafts: 2 },
     });
   });
 

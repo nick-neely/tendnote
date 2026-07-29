@@ -30,8 +30,11 @@ function LedgerSection({
   id?: string;
   children: React.ReactNode;
 }) {
+  // `scroll-mt-40` because these sections are the deep-link anchors (#memories,
+  // #logged-context) and the person page's identity-plus-tabs bar is sticky -
+  // without the offset a linked section lands underneath it.
   return (
-    <section className="flex flex-col gap-3" id={id}>
+    <section className="scroll-mt-40 flex flex-col gap-3" id={id}>
       <div className="flex flex-col gap-0.5">
         <h2 className="text-[length:var(--text-h2)] font-semibold leading-[var(--text-h2-line)]">
           {title}

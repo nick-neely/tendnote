@@ -59,16 +59,30 @@ export type PersonProfile = {
 };
 
 /**
+ * One count per person-detail tab. Each field is defined as exactly what its
+ * tab label claims, so a badge can never disagree with the list underneath it:
+ * `memories` counts *confirmed* memories (the ones `canUseMemoryProactively`
+ * admits, which is what the Memories section renders), while suggestions still
+ * waiting on the owner are counted separately under `review`.
+ */
+export type PersonDetailCounts = {
+  /** Approved, non-restricted memories - the confirmed facts on the ledger. */
+  memories: number;
+  /** Suggested memories still waiting to be reviewed. */
+  review: number;
+  /** Follow-ups asking for something: active reminders plus tentative proposals. */
+  followups: number;
+  /** Drafts still in play - written or approved, not yet sent or dismissed. */
+  drafts: number;
+};
+
+/**
  * The small, visible detail projection that can safely sit behind a route
  * cache. Unlike `PersonProfile`, it never materializes a person's ledgers.
  */
 export type PersonDetailCore = {
   person: Person;
-  counts: {
-    memories: number;
-    followups: number;
-    sourceRecords: number;
-  };
+  counts: PersonDetailCounts;
 };
 
 export type PersistPersonInput = Omit<Person, "id" | "createdAt" | "updatedAt">;

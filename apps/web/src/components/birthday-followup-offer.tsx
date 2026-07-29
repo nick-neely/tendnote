@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { createBirthdayFollowupAction } from "@/app/actions/followups";
 import { CakeIcon } from "@/components/icons";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
@@ -11,6 +11,13 @@ import {
 } from "@/components/reminder-installation-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function BirthdayFollowupOffer({
   personId,
@@ -21,6 +28,7 @@ export function BirthdayFollowupOffer({
 }) {
   const installation = useReminderInstallation();
   const router = useRouter();
+  const scheduleFieldId = useId();
   const [choice, setChoice] = useState<"day_of" | "week_before" | "custom">("day_of");
   const [customDays, setCustomDays] = useState(3);
   const [createdLabel, setCreatedLabel] = useState<string | null>(null);
@@ -39,17 +47,20 @@ export function BirthdayFollowupOffer({
         </div>
       </div>
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-sm">
+        {/* The trigger is a button, which `htmlFor` still names and activates, so
+            the whole label stays the way into the chooser. */}
+        <label className="flex flex-col gap-1 text-sm" htmlFor={scheduleFieldId}>
           Reminder schedule
-          <select
-            className="h-9 rounded-md border bg-background px-2.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            onChange={(event) => setChoice(event.target.value as typeof choice)}
-            value={choice}
-          >
-            <option value="day_of">Day of at 9:00 AM</option>
-            <option value="week_before">One week before</option>
-            <option value="custom">Custom</option>
-          </select>
+          <Select onValueChange={(next) => setChoice(next as typeof choice)} value={choice}>
+            <SelectTrigger className="min-w-44" id={scheduleFieldId}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="day_of">Day of at 9:00 AM</SelectItem>
+              <SelectItem value="week_before">One week before</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
         </label>
         {choice === "custom" ? (
           <div className="flex flex-col gap-1 text-sm">

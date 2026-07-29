@@ -6,6 +6,8 @@ import { PlusIcon } from "@/components/icons";
 import { ErrorText, GENERIC_ERROR } from "@/components/person-followup-shared";
 import { ReminderPastLeadRecovery } from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { VisibilityChoiceControl } from "@/components/visibility-choice-control";
 import type { FollowupView } from "@/lib/followup-view";
@@ -168,11 +170,13 @@ export function CreateFollowupForm({
           value={reason}
         />
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Input
+          {/* Not clearable: the submit gate already requires a due date, so the
+              picker's clear affordance would only offer an unsubmittable state. */}
+          <DatePicker
             aria-label="Due date"
             className="w-44"
-            onChange={(event) => setDueDate(event.target.value)}
-            type="date"
+            clearable={false}
+            onChange={setDueDate}
             value={dueDate}
           />
           <div className="flex items-center gap-1.5">
@@ -210,34 +214,41 @@ export function CreateFollowupForm({
               <fieldset className="grid gap-2">
                 <legend className="text-sm font-medium text-foreground">Share with</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {shareableMembers.map((member) => (
-                    <label
-                      className="flex min-h-16 cursor-pointer items-center gap-2 rounded-md border border-border bg-card p-3 text-sm transition-colors hover:border-primary/45 has-checked:border-primary has-checked:bg-secondary"
-                      key={member.userId}
-                    >
-                      <input
-                        checked={selectedUserIds.includes(member.userId)}
-                        className="size-4 accent-primary"
-                        onChange={(event) => {
-                          setSelectedUserIds((current) =>
-                            event.target.checked
-                              ? [...current, member.userId]
-                              : current.filter((userId) => userId !== member.userId),
-                          );
-                        }}
-                        type="checkbox"
-                        value={member.userId}
-                      />
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium text-foreground">
-                          {member.name}
+                  {shareableMembers.map((member) => {
+                    const checkboxId = `followup-share-${personId}-${member.userId}`;
+                    return (
+                      // The whole card stays the hit target, so `htmlFor` carries the
+                      // association the wrapped native input used to imply. Radix's
+                      // checkbox is a button, so the checked card treatment keys off
+                      // its `data-state` rather than `:checked`.
+                      <label
+                        className="flex min-h-16 cursor-pointer items-center gap-2 rounded-md border border-border bg-card p-3 text-sm transition-colors hover:border-primary/45 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-secondary"
+                        htmlFor={checkboxId}
+                        key={member.userId}
+                      >
+                        <Checkbox
+                          checked={selectedUserIds.includes(member.userId)}
+                          id={checkboxId}
+                          onCheckedChange={(checked) => {
+                            setSelectedUserIds((current) =>
+                              checked === true
+                                ? [...current, member.userId]
+                                : current.filter((userId) => userId !== member.userId),
+                            );
+                          }}
+                          value={member.userId}
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-foreground">
+                            {member.name}
+                          </span>
+                          <span className="block truncate text-muted-foreground text-xs">
+                            {member.email}
+                          </span>
                         </span>
-                        <span className="block truncate text-muted-foreground text-xs">
-                          {member.email}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
+                      </label>
+                    );
+                  })}
                 </div>
               </fieldset>
             ) : null}

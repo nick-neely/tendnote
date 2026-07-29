@@ -1,10 +1,12 @@
-import { and, count, eq, ilike, or, type SQL } from "drizzle-orm";
+import { ACTIVE_FOLLOWUP_STATUSES } from "@tendnote/domain";
+import { and, count, eq, ilike, inArray, ne, or, type SQL, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import {
   auditLog,
   followups,
   memories,
+  messageDrafts,
   people,
   sourceRecordPeople,
   sourceRecords,
@@ -13,6 +15,25 @@ import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import type { PeopleStore } from "./types";
 
 const visibleProfileFollowups = alias(followups, "f");
+
+/**
+ * Follow-ups the person page asks the owner to do something about: the active
+ * reminders (`ACTIVE_FOLLOWUP_STATUSES`, shared with `isActiveFollowupStatus`)
+ * plus the tentative proposals still awaiting a yes or no.
+ */
+const FOLLOWUP_TAB_STATUSES = [...ACTIVE_FOLLOWUP_STATUSES, "suggested" as const];
+
+/** Drafts that are still in play: written or approved, not yet sent or dismissed. */
+const DRAFT_TAB_STATUSES = ["draft", "approved"] as const;
+
+/**
+ * `count(*) filter (where ...)` as a number. Postgres evaluates every filtered
+ * aggregate in a single pass over the rows the query already scans, so one table
+ * costs one query however many tab counts it feeds.
+ */
+function countWhere(condition: SQL | undefined) {
+  return sql<number>`count(*) filter (where ${condition})`.mapWith(Number);
+}
 
 /** The owner-scoped person row, or null when the caller does not own this person. */
 async function selectOwnedPerson(input: { ownerUserId: string; personId: string }) {
@@ -134,8 +155,14 @@ export function createDrizzlePeopleStore(): PeopleStore {
       let person = await selectOwnedPerson(input);
 
       if (!person) {
+        // Visibility is still decided by *any* shared follow-up; the second
+        // aggregate is only what the viewer's Follow-ups tab would list, so the
+        // gate and the badge can be honest about different things at once.
         const [visibleCounts] = await getDb()
-          .select({ followups: count() })
+          .select({
+            visible: count(),
+            followups: countWhere(inArray(visibleProfileFollowups.status, FOLLOWUP_TAB_STATUSES)),
+          })
           .from(visibleProfileFollowups)
           .where(
             visibleProfileFollowupsWhere({
@@ -144,20 +171,31 @@ export function createDrizzlePeopleStore(): PeopleStore {
             }),
           );
 
-        if (!visibleCounts?.followups) return null;
+        if (!visibleCounts?.visible) return null;
 
         person = await selectPersonById(input.personId);
         if (!person) return null;
 
+        // A household viewer reaches this profile through follow-ups alone -
+        // memories, review, and drafts are the owner's and stay invisible here.
         return {
           person,
-          counts: { memories: 0, followups: visibleCounts.followups, sourceRecords: 0 },
+          counts: { memories: 0, review: 0, followups: visibleCounts.followups, drafts: 0 },
         };
       }
 
-      const [[memoryCount], [followupCount], [sourceRecordCount]] = await Promise.all([
+      // Each aggregate below is the SQL mirror of the filter its surface applies
+      // in memory: `canUseMemoryProactively` for confirmed memories, the
+      // suggested-review queries, `isActiveFollowupStatus` plus proposals, and
+      // the drafts the review surface keeps open.
+      const [[memoryCounts], [followupCount], [draftCount]] = await Promise.all([
         getDb()
-          .select({ count: count() })
+          .select({
+            confirmed: countWhere(
+              and(eq(memories.status, "approved"), ne(memories.sensitivity, "restricted")),
+            ),
+            suggested: countWhere(eq(memories.status, "suggested")),
+          })
           .from(memories)
           .where(
             and(eq(memories.personId, input.personId), eq(memories.ownerUserId, input.ownerUserId)),
@@ -169,16 +207,17 @@ export function createDrizzlePeopleStore(): PeopleStore {
             and(
               eq(followups.personId, input.personId),
               eq(followups.ownerUserId, input.ownerUserId),
+              inArray(followups.status, FOLLOWUP_TAB_STATUSES),
             ),
           ),
         getDb()
           .select({ count: count() })
-          .from(sourceRecordPeople)
-          .innerJoin(sourceRecords, eq(sourceRecordPeople.sourceRecordId, sourceRecords.id))
+          .from(messageDrafts)
           .where(
             and(
-              eq(sourceRecordPeople.personId, input.personId),
-              eq(sourceRecords.ownerUserId, input.ownerUserId),
+              eq(messageDrafts.personId, input.personId),
+              eq(messageDrafts.ownerUserId, input.ownerUserId),
+              inArray(messageDrafts.status, DRAFT_TAB_STATUSES),
             ),
           ),
       ]);
@@ -186,9 +225,10 @@ export function createDrizzlePeopleStore(): PeopleStore {
       return {
         person,
         counts: {
-          memories: memoryCount?.count ?? 0,
+          memories: memoryCounts?.confirmed ?? 0,
+          review: memoryCounts?.suggested ?? 0,
           followups: followupCount?.count ?? 0,
-          sourceRecords: sourceRecordCount?.count ?? 0,
+          drafts: draftCount?.count ?? 0,
         },
       };
     },

@@ -20,6 +20,7 @@ import {
 import { ErrorText } from "@/components/person-followup-shared";
 import { RecordTimingChip } from "@/components/record-timing-chip";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -231,11 +232,13 @@ export function ActiveFollowupRow({
           value={reason}
         />
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Input
+          {/* Not clearable: a follow-up always has a due date, so the picker's
+              clear affordance would only offer an empty edit the action rejects. */}
+          <DatePicker
             aria-label="Due date"
             className="w-44"
-            onChange={(event) => setDueDate(event.target.value)}
-            type="date"
+            clearable={false}
+            onChange={setDueDate}
             value={dueDate}
           />
           <div className="flex items-center gap-1.5">
@@ -280,11 +283,11 @@ export function ActiveFollowupRow({
           <span className="text-[length:var(--text-caption)] text-muted-foreground">
             Snooze until
           </span>
-          <Input
+          <DatePicker
             aria-label="Snooze until"
             className="w-44"
-            onChange={(event) => setDueDate(event.target.value)}
-            type="date"
+            clearable={false}
+            onChange={setDueDate}
             value={dueDate}
           />
         </div>

@@ -13,16 +13,25 @@ import { DraftBody } from "@/components/draft-body";
 import { DraftEditor } from "@/components/draft-editor";
 import { DraftGroundingPopover } from "@/components/draft-grounding-popover";
 import { DraftMessageButton } from "@/components/draft-message-button";
+import { ACTION_CONTROL_TOUCH_TARGET } from "@/components/general-action-shared";
 import { GmailDraftPanel, type PersonEmailOption } from "@/components/gmail-draft-panel";
 import {
   CheckIcon,
   CopyIcon,
+  MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
   SendIcon,
   XIcon,
 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { copyDraftToClipboard } from "@/lib/draft-markdown";
 import type { DraftView } from "@/lib/draft-view";
 import type { GmailDraftView } from "@/lib/gmail-draft-view";
@@ -88,6 +97,69 @@ export function PersonDrafts({
         ))
       )}
     </div>
+  );
+}
+
+/**
+ * Everything a draft can do that is not its next step in the approval flow.
+ *
+ * A person can hold four near-identical generated drafts, and giving each one two
+ * adjacent affirmative buttons made the page read as eight equal choices. Exactly
+ * one filled button stays on the card - Approve while the draft is still being
+ * considered, Mark sent once it is approved - and the rest live here. `Mark sent`
+ * remains reachable for a draft the user already sent without approving it first,
+ * which the lifecycle allows. Nothing in this menu sends anything.
+ */
+function DraftOverflowMenu({
+  pending,
+  onEdit,
+  onRegenerate,
+  onMarkSent,
+  onDismiss,
+}: {
+  pending: boolean;
+  onEdit: () => void;
+  onRegenerate: () => void;
+  /** Present only while the draft is unapproved; otherwise it is the card's primary. */
+  onMarkSent: (() => void) | null;
+  onDismiss: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label="More draft actions"
+          className={`${ACTION_CONTROL_TOUCH_TARGET} max-sm:min-w-11`}
+          disabled={pending}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          <MoreHorizontalIcon />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onEdit}>
+          <PencilIcon />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onRegenerate}>
+          <RefreshCwIcon />
+          Regenerate
+        </DropdownMenuItem>
+        {onMarkSent ? (
+          <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onMarkSent}>
+            <SendIcon />
+            Mark sent
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onDismiss}>
+          <XIcon />
+          Dismiss
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -219,60 +291,34 @@ function DraftReviewCard({
           <DraftGroundingPopover
             grounding={draft.grounding.map((item) => ({ trust: item.trust, label: item.label }))}
           />
+          {/* One draft, one next step. Copying is how the user actually sends the
+              message, so it stays visible as the secondary action; everything else
+              a draft can do moves behind the overflow. */}
           <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <Button onClick={handleCopy} size="sm" type="button" variant="ghost">
+            <Button onClick={handleCopy} size="sm" type="button" variant="outline">
               {copied ? <CheckIcon /> : <CopyIcon />}
               {copied ? "Copied" : "Copy"}
             </Button>
             {isActive ? (
               <>
-                <Button
-                  disabled={pending}
-                  onClick={() => setIsEditing(true)}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <PencilIcon />
-                  Edit
-                </Button>
-                <Button
-                  disabled={pending}
-                  onClick={handleRegenerate}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <RefreshCwIcon />
-                  Regenerate
-                </Button>
-                <Button
-                  aria-label="Dismiss draft"
-                  disabled={pending}
-                  onClick={handleDismiss}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <XIcon />
-                  Dismiss
-                </Button>
                 {draft.status === "draft" ? (
-                  <Button
-                    disabled={pending}
-                    onClick={handleApprove}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
+                  <Button disabled={pending} onClick={handleApprove} size="sm" type="button">
                     <CheckIcon />
                     Approve
                   </Button>
-                ) : null}
-                <Button disabled={pending} onClick={handleMarkSent} size="sm" type="button">
-                  <SendIcon />
-                  Mark sent
-                </Button>
+                ) : (
+                  <Button disabled={pending} onClick={handleMarkSent} size="sm" type="button">
+                    <SendIcon />
+                    Mark sent
+                  </Button>
+                )}
+                <DraftOverflowMenu
+                  onDismiss={handleDismiss}
+                  onEdit={() => setIsEditing(true)}
+                  onMarkSent={draft.status === "draft" ? handleMarkSent : null}
+                  onRegenerate={handleRegenerate}
+                  pending={pending}
+                />
               </>
             ) : null}
           </div>

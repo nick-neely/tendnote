@@ -8,7 +8,11 @@ import {
 import { listGmailDraftActionsForDraft } from "@tendnote/db/queries/gmail-drafts";
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
 import { listPersonMemoryContext, listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
-import { getPerson, getPersonProfile } from "@tendnote/db/queries/people";
+import {
+  getPerson,
+  getPersonProfile,
+  type PersonDetailCoreView,
+} from "@tendnote/db/queries/people";
 import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-connections";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { listSourceRecordsForPersonContext } from "@tendnote/db/queries/source-records";
@@ -185,10 +189,13 @@ type AdmittedPersonRequest = {
 
 function selectedPersonTab(query: Record<string, string | string[] | undefined>): PersonTab {
   const tab = query.tab;
+  // Snapshot is the landing pane: it reads like the page of the notebook this
+  // person is on, and it is the first tab, so arriving anywhere else made the
+  // rail lie about where you were.
   return typeof tab === "string" &&
     ["snapshot", "review", "memory", "followups", "drafts"].includes(tab)
     ? (tab as PersonTab)
-    : "memory";
+    : "snapshot";
 }
 
 export default function PersonDetailPage(props: PersonDetailPageProps) {
@@ -209,27 +216,17 @@ async function PersonDetailContent({ params, searchParams }: PersonDetailPagePro
   const core = await getCachedPersonDetailCore({ ownerUserId, personId });
   if (!core) notFound();
 
+  // Identity leads; the tab badges below carry every count on this page, so the
+  // header stays a person rather than a stat line about one.
   return (
     <>
-      <div className="flex flex-col gap-4">
-        <PersonHeader person={core.person} />
-        <dl className="grid grid-cols-3 gap-3 rounded-xl border bg-surface p-4 text-center text-sm">
-          <div>
-            <dt className="text-muted-foreground">Memories</dt>
-            <dd className="mt-1 font-medium">{core.counts.memories}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Follow-ups</dt>
-            <dd className="mt-1 font-medium">{core.counts.followups}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Context</dt>
-            <dd className="mt-1 font-medium">{core.counts.sourceRecords}</dd>
-          </div>
-        </dl>
-      </div>
+      <PersonHeader person={core.person} />
       <Suspense fallback={<div className="h-72 animate-pulse rounded-xl border bg-muted/40" />}>
-        <PersonDetailEnrichment request={{ ownerUserId, personId }} selectedTab={selectedTab} />
+        <PersonDetailEnrichment
+          counts={core.counts}
+          request={{ ownerUserId, personId }}
+          selectedTab={selectedTab}
+        />
       </Suspense>
     </>
   );
@@ -238,9 +235,18 @@ async function PersonDetailContent({ params, searchParams }: PersonDetailPagePro
 async function PersonDetailEnrichment({
   request,
   selectedTab,
+  counts,
 }: {
   request: AdmittedPersonRequest;
   selectedTab: PersonTab;
+  /**
+   * Per-tab counts from the cached core read, so every badge is present whatever
+   * tab is open - only the selected pane's rows are loaded below. Each count is
+   * defined in the query as exactly what its label claims, and every mutation on
+   * this page expires the person's cache tag, so `router.refresh()` keeps them
+   * honest without a second count vocabulary in the header.
+   */
+  counts: PersonDetailCoreView["counts"];
 }) {
   const { ownerUserId, personId } = request;
   let person = await getPerson({ ownerUserId, personId });
@@ -308,27 +314,18 @@ async function PersonDetailEnrichment({
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
     .map((followup) => toFollowupView(followup, now, null, ownerUserId));
 
-  // Tab counts are server-derived and stay live because every section calls
-  // router.refresh() on mutation: pending suggestions to review, things to act on
-  // under follow-ups (active reminders + tentative proposals), and drafts not yet
-  // marked sent. Confirmed memories and the snapshot don't carry a count.
-  const reviewCount = suggestedReviews.length;
-  const followupCount = activeFollowups.length + suggestedFollowupReviews.length;
-  const draftsCount = drafts.filter((draft) => draft.status !== "sent_manually").length;
   return (
     <PersonDetailTabs
       aside={
         <>
-          <PersonCapture
-            firstName={firstName}
-            personId={person.id}
-            personName={person.displayName}
-          />
           <PersonDetailsCard person={person} />
           <PersonRemove personId={person.id} personName={person.displayName} />
         </>
       }
-      draftsCount={selectedTab === "drafts" ? draftsCount : 0}
+      capture={
+        <PersonCapture firstName={firstName} personId={person.id} personName={person.displayName} />
+      }
+      draftsCount={counts.drafts}
       draftsPanel={
         selectedTab === "drafts" ? (
           <div className="flex flex-col gap-3">
@@ -348,7 +345,7 @@ async function PersonDetailEnrichment({
           </div>
         ) : null
       }
-      followupCount={selectedTab === "followups" ? followupCount : 0}
+      followupCount={counts.followups}
       followupsPanel={
         selectedTab === "followups" ? (
           <div className="flex flex-col gap-3">
@@ -373,6 +370,7 @@ async function PersonDetailEnrichment({
       hasSnapshot
       header={null}
       initialTab={selectedTab}
+      memoryCount={counts.memories}
       memoryPanel={
         selectedTab === "memory" ? (
           <div className="flex flex-col gap-8">
@@ -381,7 +379,7 @@ async function PersonDetailEnrichment({
           </div>
         ) : null
       }
-      reviewCount={selectedTab === "review" ? reviewCount : 0}
+      reviewCount={counts.review}
       reviewPanel={
         selectedTab === "review" ? (
           <div className="flex flex-col gap-3">

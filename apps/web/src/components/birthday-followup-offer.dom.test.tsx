@@ -16,6 +16,20 @@ vi.mock("@/app/actions/reminders", () => ({
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 
+// Radix's Select measures and scrolls its content on open; jsdom implements
+// none of that.
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
+HTMLElement.prototype.scrollIntoView ??= vi.fn();
+HTMLElement.prototype.hasPointerCapture ??= vi.fn();
+HTMLElement.prototype.releasePointerCapture ??= vi.fn();
+
 import { BirthdayFollowupOffer } from "./birthday-followup-offer";
 
 describe("BirthdayFollowupOffer", () => {
@@ -42,10 +56,8 @@ describe("BirthdayFollowupOffer", () => {
       <BirthdayFollowupOffer personId="22222222-2222-2222-2222-222222222222" personName="Mara" />,
     );
 
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Reminder schedule" }),
-      "week_before",
-    );
+    await user.click(screen.getByRole("combobox", { name: "Reminder schedule" }));
+    await user.click(await screen.findByRole("option", { name: "One week before" }));
     await user.click(screen.getByRole("button", { name: "Create for Mara" }));
 
     await waitFor(() =>

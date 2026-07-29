@@ -104,6 +104,11 @@ describe("DraftReviewCard", () => {
     return render(<PersonDrafts gmail={gmail} initialDrafts={[draft]} personId={PERSON_ID} />);
   }
 
+  /** Everything but the draft's one next step lives behind the overflow menu. */
+  async function openOverflow(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: "More draft actions" }));
+  }
+
   it("approves a draft and moves the card into its approved state", async () => {
     const user = userEvent.setup();
     actions.approveDraftAction.mockResolvedValue({
@@ -132,12 +137,14 @@ describe("DraftReviewCard", () => {
     });
     renderCard();
 
-    await user.click(screen.getByRole("button", { name: "Dismiss draft" }));
+    await openOverflow(user);
+    await user.click(screen.getByRole("menuitem", { name: "Dismiss" }));
 
     expect(actions.dismissDraftAction).toHaveBeenCalledWith({ draftId: DRAFT_ID });
     expect(await screen.findByText("Dismissed")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Mark sent" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More draft actions" })).toBeNull();
   });
 
   it("keeps a regenerated draft beside the one it was written from", async () => {
@@ -154,7 +161,8 @@ describe("DraftReviewCard", () => {
     });
     renderCard();
 
-    await user.click(screen.getByRole("button", { name: "Regenerate" }));
+    await openOverflow(user);
+    await user.click(screen.getByRole("menuitem", { name: "Regenerate" }));
 
     expect(actions.regenerateDraftAction).toHaveBeenCalledWith({ draftId: DRAFT_ID });
     expect(await screen.findByText(/how is Denver treating you/)).toBeTruthy();
@@ -167,7 +175,8 @@ describe("DraftReviewCard", () => {
     actions.regenerateDraftAction.mockResolvedValue({ ok: true, view: { draft: null } });
     renderCard();
 
-    await user.click(screen.getByRole("button", { name: "Regenerate" }));
+    await openOverflow(user);
+    await user.click(screen.getByRole("menuitem", { name: "Regenerate" }));
 
     expect((await screen.findByRole("alert")).textContent).toBe(
       "Not enough saved context about this person to regenerate.",
@@ -180,7 +189,8 @@ describe("DraftReviewCard", () => {
     actions.regenerateDraftAction.mockRejectedValue(new Error("offline"));
     renderCard();
 
-    await user.click(screen.getByRole("button", { name: "Regenerate" }));
+    await openOverflow(user);
+    await user.click(screen.getByRole("menuitem", { name: "Regenerate" }));
 
     expect((await screen.findByRole("alert")).textContent).toBe("Couldn't regenerate this draft.");
   });
@@ -201,7 +211,8 @@ describe("DraftReviewCard", () => {
     actions.editDraftBodyAction.mockResolvedValue({ ok: true, view: view({ body: edited }) });
     renderCard();
 
-    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await openOverflow(user);
+    await user.click(screen.getByRole("menuitem", { name: "Edit" }));
     // Focused directly rather than clicked: ProseMirror maps a click through
     // `document.elementFromPoint`, which jsdom does not implement. The editor opens
     // with the caret at the end of the draft, so typing continues the message.
@@ -223,11 +234,12 @@ describe("DraftReviewCard", () => {
     const user = userEvent.setup();
     renderCard();
 
-    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await openOverflow(user);
+    await user.click(screen.getByRole("menuitem", { name: "Edit" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(actions.editDraftBodyAction).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "More draft actions" })).toBeTruthy();
     expect(screen.getByText(/heard you moved to Denver/)).toBeTruthy();
   });
 });
