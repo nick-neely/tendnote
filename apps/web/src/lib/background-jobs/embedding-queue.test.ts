@@ -20,6 +20,7 @@ const embeddingJob = {
   runAfter: new Date("2026-06-29T12:00:00.000Z"),
   claimedAt: null,
   completedAt: null,
+  rerunRequestedAt: null,
   createdAt: new Date("2026-06-29T12:00:00.000Z"),
   updatedAt: new Date("2026-06-29T12:00:00.000Z"),
 } as const;

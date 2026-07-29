@@ -82,6 +82,9 @@ export const relationshipContextEmbeddingJobs = pgTable(
     runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
     claimedAt: timestamp("claimed_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    // Set when an enqueue lands on a job that is already `running`, and consumed by the
+    // statement that settles that run - see `rerunRequestedAt` in the domain schema (#330).
+    rerunRequestedAt: timestamp("rerun_requested_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [

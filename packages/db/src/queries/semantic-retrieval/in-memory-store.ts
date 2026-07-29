@@ -24,6 +24,7 @@ import {
   projectSavedItemEmbeddedText,
   projectSourceRecordEmbeddedText,
   type RelationshipContextEmbedding,
+  reopenableEmbeddingJobStatuses,
   type SourceRecord,
   visibilityChoiceForScope,
   visibilityLabelForScope,
@@ -36,6 +37,41 @@ import { createInMemorySavedItemRecordStore } from "../saved-items/in-memory-sto
 import type { InMemoryEmbeddingStore } from "./types";
 
 const CLAIMABLE_STATUSES = new Set<EmbeddingJob["status"]>(claimableEmbeddingJobStatuses);
+const REOPENABLE_STATUSES = new Set<EmbeddingJob["status"]>(reopenableEmbeddingJobStatuses);
+
+/**
+ * What a repeat enqueue leaves on a job that already exists, chosen by the status it finds.
+ * Mirrors the Drizzle store's single conditional statement arm for arm: a terminal verdict
+ * is reopened outright, a run in flight takes a marker to consume when it settles, and
+ * anything else is already going to re-decide the record and only sheds a stale marker.
+ */
+function reopenFields(job: EmbeddingJob, input: { now: Date; runAfter: Date }) {
+  if (REOPENABLE_STATUSES.has(job.status)) {
+    return {
+      status: "pending",
+      runAfter: input.runAfter,
+      lastError: null,
+      claimedAt: null,
+      completedAt: null,
+      rerunRequestedAt: null,
+    } satisfies Partial<EmbeddingJob>;
+  }
+
+  return {
+    rerunRequestedAt: job.status === "running" ? input.now : null,
+  } satisfies Partial<EmbeddingJob>;
+}
+
+/** The fresh pending job a rerun-marked pass lands on in place of its verdict. */
+function rerunFields(now: Date) {
+  return {
+    status: "pending",
+    runAfter: now,
+    lastError: null,
+    claimedAt: null,
+    completedAt: null,
+  } satisfies Partial<EmbeddingJob>;
+}
 
 /** The parsed request the per-kind embedding matchers operate on. */
 type SemanticSearchInput = Parameters<InMemoryEmbeddingStore["searchSemanticContext"]>[0];
@@ -70,6 +106,16 @@ export function createInMemoryEmbeddingStore(
       embedding.embeddingModel,
       embedding.embeddingVersion,
     ].join(":");
+  }
+
+  function requireJob(jobId: string): EmbeddingJob {
+    const job = jobs.get(jobId);
+
+    if (!job) {
+      throw new Error("Embedding job not found.");
+    }
+
+    return job;
   }
 
   function claim(job: EmbeddingJob, now: Date): EmbeddingJob {
@@ -142,13 +188,34 @@ export function createInMemoryEmbeddingStore(
       return next ? claim(next, input.now) : null;
     },
     async updateEmbeddingJob(input) {
-      const job = jobs.get(input.jobId);
+      const updated = applyJobUpdateFields(requireJob(input.jobId), input);
 
-      if (!job) {
-        throw new Error("Embedding job not found.");
-      }
+      jobs.set(updated.id, updated);
 
-      const updated = applyJobUpdateFields(job, input);
+      return updated;
+    },
+    async reopenEmbeddingJob(input) {
+      const job = requireJob(input.jobId);
+      const updated = { ...job, ...reopenFields(job, input), updatedAt: input.now };
+
+      jobs.set(updated.id, updated);
+
+      return updated;
+    },
+    async settleEmbeddingJob(input) {
+      const job = requireJob(input.jobId);
+      // The Postgres store reads the marker inside the statement that writes the status;
+      // here the whole method is the atomic unit, so the same read happens before the merge.
+      const settled =
+        job.rerunRequestedAt && input.status !== "failed"
+          ? rerunFields(input.now)
+          : applyJobUpdateFields(job, input);
+      const updated = {
+        ...job,
+        ...settled,
+        rerunRequestedAt: null,
+        updatedAt: input.now,
+      };
 
       jobs.set(updated.id, updated);
 

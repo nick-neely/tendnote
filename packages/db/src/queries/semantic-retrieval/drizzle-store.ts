@@ -4,13 +4,15 @@ import {
   claimableEmbeddingJobStatuses,
   createEmbeddingJobSchema,
   createRelationshipContextEmbeddingSchema,
+  type EmbeddingJobStatus,
   type GeneralActionStatus,
+  reopenableEmbeddingJobStatuses,
   type SemanticRetrievalResult,
   savedItemSchema,
   visibilityChoiceForScope,
   visibilityLabelForScope,
 } from "@tendnote/domain";
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { type AnyColumn, and, asc, eq, inArray, lte, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import {
   assetMemories,
@@ -26,9 +28,10 @@ import { selectOwnedAsset } from "../assets/drizzle-store";
 import { selectOwnedGeneralAction } from "../general-actions/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleMemoryStore } from "../memories/drizzle-store";
-import type { EmbeddingStore, UpdateEmbeddingJobInput } from "./types";
+import type { EmbeddingStore, SettleEmbeddingJobInput, UpdateEmbeddingJobInput } from "./types";
 
 const CLAIMABLE_STATUSES = [...claimableEmbeddingJobStatuses];
+const REOPENABLE_STATUSES = [...reopenableEmbeddingJobStatuses];
 
 type SemanticMemorySearchRow = {
   record_kind: "memory" | "source_record" | "general_action";
@@ -70,6 +73,97 @@ function buildJobUpdate(input: UpdateEmbeddingJobInput) {
   if ("completedAt" in input) updates.completedAt = input.completedAt;
 
   return updates;
+}
+
+/**
+ * A job column, a literal, or a bound value, as an SQL fragment a `case` arm can hold.
+ *
+ * Two conversions the ordinary `set` path does for free and a hand-built fragment does not.
+ * A null becomes the SQL keyword rather than an untyped `$n` Postgres would have to infer a
+ * type for. A `Date` becomes an ISO string with an explicit cast, because a parameter
+ * inside a `sql` template bypasses drizzle's column mapping and reaches the driver as a raw
+ * value it refuses to serialize.
+ */
+function jobValue(value: Date | string | null | AnyColumn): SQL {
+  if (value === null) return sql`null`;
+  if (value instanceof Date) return sql`${value.toISOString()}::timestamptz`;
+
+  return sql`${value}`;
+}
+
+/** A status as a literal typed for the job table's enum, so a `case` arm can return it. */
+function jobStatus(status: EmbeddingJobStatus): SQL {
+  return sql`${status}::"public"."embedding_job_status"`;
+}
+
+/** Whether the row picked up a rerun request while this run was in flight. */
+const RERUN_REQUESTED = sql`${relationshipContextEmbeddingJobs.rerunRequestedAt} is not null`;
+
+/** True of the terminal verdicts a repeat enqueue sends straight back to `pending`. */
+const REOPENABLE = inArray(relationshipContextEmbeddingJobs.status, REOPENABLE_STATUSES);
+
+/** True of a job a repeat enqueue can only leave a marker on. */
+const RUNNING = eq(relationshipContextEmbeddingJobs.status, "running");
+
+/**
+ * `stands` unless the guard fires, in which case `instead`.
+ *
+ * Every column {@link EmbeddingStore.reopenEmbeddingJob} and
+ * {@link EmbeddingStore.settleEmbeddingJob} touch is conditional on a status or a marker
+ * the row holds at write time, and each of them tests that condition again rather than
+ * trusting a value read earlier. Postgres evaluates all of these against the pre-update
+ * row, so the arms stay consistent with one another within the statement.
+ */
+function branch(guard: SQL, instead: SQL, stands: SQL): SQL {
+  return sql`case when ${guard} then ${instead} else ${stands} end`;
+}
+
+/** The job mechanics a settle carries through untouched when no rerun marker fires. */
+type CarriedJobColumn = "runAfter" | "claimedAt" | "completedAt" | "lastError";
+
+/**
+ * What a column holds on the unmarked arm of its branch: the value the caller supplied, or
+ * the column's own value where the caller supplied none.
+ *
+ * `undefined` means "leave it standing" for every one of these keys, which is exactly what
+ * the ordinary `set` path does with them - drizzle drops undefined values, so
+ * {@link buildJobUpdate} omitting a key and assigning `undefined` to it reach the same row.
+ * Reproducing that rule here, once, is what keeps a settle with no marker equal to the
+ * plain update it replaces.
+ */
+function standingValue(input: SettleEmbeddingJobInput, key: CarriedJobColumn): SQL {
+  const supplied = input[key];
+
+  return jobValue(supplied === undefined ? relationshipContextEmbeddingJobs[key] : supplied);
+}
+
+/**
+ * The `set` clause that writes a finished pass's verdict and consumes the rerun marker.
+ *
+ * A `failed` verdict needs no branch: its retry backoff is already the extra pass a rerun
+ * request asks for, so the verdict stands as written and the marker is simply cleared. A
+ * `completed` or `skipped` verdict is a statement about the record as the run read it, so a
+ * marker turns it into a fresh `pending` job with the run mechanics reset - the same shape
+ * a repeat enqueue would have produced had it arrived a moment later.
+ *
+ * Every mechanic is branched, not just the ones the caller named, because the marked arm
+ * has to reset the run being superseded whether or not this verdict mentioned it.
+ */
+function buildSettleUpdate(input: SettleEmbeddingJobInput) {
+  const cleared = { rerunRequestedAt: null, updatedAt: input.now };
+
+  if (input.status === "failed") {
+    return { ...buildJobUpdate(input), ...cleared };
+  }
+
+  return {
+    ...cleared,
+    status: branch(RERUN_REQUESTED, jobStatus("pending"), jobStatus(input.status)),
+    runAfter: branch(RERUN_REQUESTED, jobValue(input.now), standingValue(input, "runAfter")),
+    claimedAt: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "claimedAt")),
+    completedAt: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "completedAt")),
+    lastError: branch(RERUN_REQUESTED, sql`null`, standingValue(input, "lastError")),
+  };
 }
 
 export function createDrizzleEmbeddingStore(): EmbeddingStore {
@@ -189,6 +283,44 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
       const [job] = await getDb()
         .update(relationshipContextEmbeddingJobs)
         .set(buildJobUpdate(input))
+        .where(eq(relationshipContextEmbeddingJobs.id, input.jobId))
+        .returning();
+
+      if (!job) {
+        throw new Error("Embedding job not found.");
+      }
+
+      return job;
+    },
+    async reopenEmbeddingJob(input) {
+      const columns = relationshipContextEmbeddingJobs;
+      const [job] = await getDb()
+        .update(columns)
+        .set({
+          status: branch(REOPENABLE, jobStatus("pending"), jobValue(columns.status)),
+          // Only a job that is still running takes the marker. Every other status either is
+          // about to run anyway or has just been sent back to `pending` by the arms above,
+          // so a marker on it could only be a stale one this clears.
+          rerunRequestedAt: branch(RUNNING, jobValue(input.now), sql`null`),
+          runAfter: branch(REOPENABLE, jobValue(input.runAfter), jobValue(columns.runAfter)),
+          lastError: branch(REOPENABLE, sql`null`, jobValue(columns.lastError)),
+          claimedAt: branch(REOPENABLE, sql`null`, jobValue(columns.claimedAt)),
+          completedAt: branch(REOPENABLE, sql`null`, jobValue(columns.completedAt)),
+          updatedAt: input.now,
+        })
+        .where(eq(columns.id, input.jobId))
+        .returning();
+
+      if (!job) {
+        throw new Error("Embedding job not found.");
+      }
+
+      return job;
+    },
+    async settleEmbeddingJob(input) {
+      const [job] = await getDb()
+        .update(relationshipContextEmbeddingJobs)
+        .set(buildSettleUpdate(input))
         .where(eq(relationshipContextEmbeddingJobs.id, input.jobId))
         .returning();
 
