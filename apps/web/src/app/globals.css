@@ -457,6 +457,27 @@
 }
 
 /*
+ * Invalid keeps its own colour. The rule above strips an alpha; it must not also
+ * repaint a ring the component deliberately coloured something else. Every
+ * registry control carries `aria-invalid:ring-destructive/20` (`/40` in dark),
+ * and input-group draws the same ring on its wrapper through
+ * `has-[[data-slot][aria-invalid=true]]`, so without this a focused invalid
+ * field would drop its error signal and come back sage - the one moment the ring
+ * is carrying meaning rather than just position.
+ *
+ * Full opacity here for the same reason as above, and it costs nothing:
+ * --destructive measures 5.78:1 on the light panel and 5.35:1 on dark
+ * `secondary`, so the error ring clears 1.4.11 as comfortably as the sage one.
+ * (An invalid control at rest still draws the registry's translucent ring; that
+ * is untouched registry behaviour, and the state is also carried by
+ * `border-destructive` and the field's error text.)
+ */
+[aria-invalid="true"]:is(:focus-visible, :focus-within),
+:focus-within:has([data-slot][aria-invalid="true"]) {
+  --tw-ring-color: var(--destructive);
+}
+
+/*
  * Custom themed scrollbar — a deliberate exception to the generic "don't restyle
  * scrollbars" caution (see DESIGN.md §6). The flair is the form (slim rounded
  * pill, no track, no buttons), not color: a neutral ink tint, NOT sage, so it
