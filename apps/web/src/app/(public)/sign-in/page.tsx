@@ -17,6 +17,7 @@ function signInCopy(returningToApp: boolean) {
   return { title: "Welcome back", subtitle: "Sign in to your private Tendnote." };
 }
 
+// fallow-ignore-next-line complexity -- The existing auth state flow moved unchanged beneath the URL-transparent public loading boundary; #334 changes boundary ownership, not this page.
 export default async function SignInPage({
   searchParams,
 }: {

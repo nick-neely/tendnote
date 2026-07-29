@@ -6,6 +6,7 @@ import { ClockIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentAccess } from "@/lib/access/current-access";
 
+// fallow-ignore-next-line complexity -- The existing auth state flow moved unchanged beneath the URL-transparent public loading boundary; #334 changes boundary ownership, not this page.
 export default async function PendingPage() {
   if (process.env.NODE_ENV !== "test") await connection();
   const access = await getCurrentAccess();

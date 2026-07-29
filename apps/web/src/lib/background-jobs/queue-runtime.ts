@@ -96,7 +96,7 @@ export const BACKGROUND_JOB_QUEUE_CONFIG = {
 >;
 
 /** Hosted embedding invocations are terminated before a ten-minute claim may expire. */
-export const EMBEDDING_QUEUE_MAX_DURATION_SECONDS = 300;
+const EMBEDDING_QUEUE_MAX_DURATION_SECONDS = 300;
 
 /**
  * A claim outlives both one queue visibility window and twice the hosted execution cap.
