@@ -330,6 +330,107 @@ describe("semantic retrieval - approved memory results", () => {
     expect(results.map((result) => result.recordId)).toEqual([memory.id]);
   });
 
+  /**
+   * The retrieval-side half of the write-side convergence pinned in the approved-memory job
+   * suite. Raising a memory from `normal` to `sensitive` changes no word of what was
+   * embedded, so the vector still describes it exactly and it must stay retrievable:
+   * `sensitive` is a labelling register, not a withholding one.
+   *
+   * Before the reuse seam converged its metadata this was an unrecoverable eviction: the
+   * fingerprint still matched, so the row kept saying `normal` forever while `e.sensitivity
+   * = m.sensitivity` dropped it from every search.
+   */
+  it("keeps retrieving a memory whose sensitivity was edited after it was embedded", async () => {
+    const { store, processor, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
+    const memory = await createApprovedMemory({
+      content: "Mara loves cooking classes and handmade kitchen gifts.",
+    });
+    const firstJob = await processor.enqueueEmbeddingJob({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: memory.id,
+    });
+    await processor.processEmbeddingJob({ jobId: firstJob.job.id });
+    const edited = await store.updateMemory({
+      ownerUserId: OWNER,
+      memoryId: memory.id,
+      patch: { sensitivity: "sensitive" },
+    });
+    const secondJob = await processor.enqueueEmbeddingJob({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: edited.id,
+    });
+    await processor.processEmbeddingJob({ jobId: secondJob.job.id });
+    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+
+    const results = await queries.searchSemanticContext({
+      ownerUserId: OWNER,
+      query: "gift ideas",
+      recordKinds: ["memory"],
+      limit: 5,
+      minimumSimilarity: 0.5,
+      directlyRequested: false,
+    });
+
+    expect(results.map((result) => result.recordId)).toEqual([memory.id]);
+    expect(results[0]?.sensitivity).toBe("sensitive");
+  });
+
+  /**
+   * Convergence must not become a back door into restricted content. A memory edited to
+   * `restricted` is skipped by the embed decision (restricted text is never sent to an
+   * embedding provider), so the reuse seam never runs and the row keeps the `normal`
+   * sensitivity, and the full text, it was embedded with. The `e.sensitivity = m.sensitivity`
+   * equality is what withholds it, and it withholds it even from a direct request: the
+   * vector predates the restriction and nothing has re-authorised it.
+   */
+  it("withholds a memory restricted after embedding, direct request included", async () => {
+    const { store, processor, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
+    const memory = await createApprovedMemory({
+      content: "Mara loves cooking classes and handmade kitchen gifts.",
+    });
+    const firstJob = await processor.enqueueEmbeddingJob({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: memory.id,
+    });
+    await processor.processEmbeddingJob({ jobId: firstJob.job.id });
+    const restricted = await store.updateMemory({
+      ownerUserId: OWNER,
+      memoryId: memory.id,
+      patch: { sensitivity: "restricted" },
+    });
+    const secondJob = await processor.enqueueEmbeddingJob({
+      ownerUserId: OWNER,
+      recordKind: "memory",
+      recordId: restricted.id,
+    });
+    const reprocessed = await processor.processEmbeddingJob({ jobId: secondJob.job.id });
+    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+
+    const hidden = await queries.searchSemanticContext({
+      ownerUserId: OWNER,
+      query: "gift ideas",
+      limit: 5,
+      minimumSimilarity: 0,
+      directlyRequested: false,
+    });
+    const direct = await queries.searchSemanticContext({
+      ownerUserId: OWNER,
+      query: "gift ideas",
+      limit: 5,
+      minimumSimilarity: 0,
+      directlyRequested: true,
+    });
+
+    expect(reprocessed).toEqual(
+      expect.objectContaining({ outcome: "skipped", reason: "restricted_content" }),
+    );
+    expect(hidden).toEqual([]);
+    expect(direct).toEqual([]);
+  });
+
   it("excludes restricted memory embeddings by default and returns them only when directly requested", async () => {
     const { store, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
     const restricted = await createApprovedMemory({

@@ -236,8 +236,49 @@ export function createInMemoryEmbeddingStore(
 
       return embedding;
     },
+    async refreshRelationshipContextEmbeddingMetadata(input) {
+      const existing = [...embeddings.values()].find(
+        (embedding) =>
+          embedding.id === input.embeddingId && embedding.ownerUserId === input.ownerUserId,
+      );
+
+      if (!existing) {
+        throw new Error("Relationship-context embedding not found.");
+      }
+
+      // None of these columns take part in `embeddingKey`, so the row converges in place
+      // under its existing key - exactly what the Drizzle `update ... where id` does.
+      const updated: RelationshipContextEmbedding = {
+        ...existing,
+        personId: input.personId,
+        trustLevel: input.trustLevel,
+        sensitivity: input.sensitivity,
+        updatedAt: new Date(),
+      };
+
+      embeddings.set(embeddingKey(updated), updated);
+
+      return updated;
+    },
     async findRelationshipContextEmbedding(input) {
       return embeddings.get(embeddingKey(input)) ?? null;
+    },
+    async deleteRelationshipContextEmbeddingsForRecord(input) {
+      // The map key carries model and version, so matching on the record alone is what
+      // sweeps the superseded-model rows out with the current one - the same reason the
+      // Drizzle delete leaves those columns out of its predicate.
+      const matches = [...embeddings.entries()].filter(
+        ([, embedding]) =>
+          embedding.ownerUserId === input.ownerUserId &&
+          embedding.recordKind === input.recordKind &&
+          embedding.recordId === input.recordId,
+      );
+
+      for (const [key] of matches) {
+        embeddings.delete(key);
+      }
+
+      return matches.length;
     },
     async searchSemanticContext(input) {
       const kinds = new Set(input.recordKinds ?? ["memory", "source_record", "general_action"]);

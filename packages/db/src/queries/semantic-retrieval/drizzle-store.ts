@@ -273,6 +273,29 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
 
       return embedding;
     },
+    async refreshRelationshipContextEmbeddingMetadata(input) {
+      const [embedding] = await getDb()
+        .update(relationshipContextEmbeddings)
+        .set({
+          personId: input.personId,
+          trustLevel: input.trustLevel,
+          sensitivity: input.sensitivity,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(relationshipContextEmbeddings.id, input.embeddingId),
+            eq(relationshipContextEmbeddings.ownerUserId, input.ownerUserId),
+          ),
+        )
+        .returning();
+
+      if (!embedding) {
+        throw new Error("Relationship-context embedding not found.");
+      }
+
+      return embedding;
+    },
     async findRelationshipContextEmbedding(input) {
       const [embedding] = await getDb()
         .select()
@@ -289,6 +312,22 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
         .limit(1);
 
       return embedding ?? null;
+    },
+    async deleteRelationshipContextEmbeddingsForRecord(input) {
+      // No model/version predicate on purpose: every row for this record goes, because a
+      // row left behind under a superseded model still holds the record's text.
+      const deleted = await getDb()
+        .delete(relationshipContextEmbeddings)
+        .where(
+          and(
+            eq(relationshipContextEmbeddings.ownerUserId, input.ownerUserId),
+            eq(relationshipContextEmbeddings.recordKind, input.recordKind),
+            eq(relationshipContextEmbeddings.recordId, input.recordId),
+          ),
+        )
+        .returning({ id: relationshipContextEmbeddings.id });
+
+      return deleted.length;
     },
     async searchSavedItemsSemantic(input) {
       const queryVector = `[${input.queryEmbedding.join(",")}]`;
