@@ -13,8 +13,9 @@ import {
 } from "@/app/actions/asset-links";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import { CheckIcon, XIcon } from "@/components/icons";
-import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { LedgerList } from "@/components/person-ledger";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Select,
   SelectContent,
@@ -72,7 +73,11 @@ export function AssetRelatedLinks({
           ))}
         </LedgerList>
       ) : suggested.length === 0 ? (
-        <LedgerEmpty>No related assets yet.</LedgerEmpty>
+        <EmptyState
+          description="Link what this fits, uses, replaces, covers, or is stored with."
+          size="compact"
+          title="No related assets yet."
+        />
       ) : null}
 
       {suggested.length > 0 ? <SuggestedLinks links={suggested} onResolved={restoreFocus} /> : null}

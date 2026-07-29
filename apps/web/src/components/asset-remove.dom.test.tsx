@@ -53,6 +53,23 @@ describe("AssetRemove", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
+  it("keeps the confirm phrase when the counts could not be read", async () => {
+    const user = userEvent.setup();
+    render(<AssetRemove assetId="asset-1" assetName="Kitchen refrigerator" summary={null} />);
+
+    await user.click(screen.getByRole("button", { name: "Delete asset permanently" }));
+
+    // An unreadable summary is not an empty asset: the gate that a genuinely
+    // empty asset waives has to stay up, and the dialog must not claim zeros.
+    expect(screen.getByLabelText(/Type .* to confirm/i)).toBeDefined();
+    expect(screen.getByText(/can't list what is stored here/i)).toBeDefined();
+    expect(screen.queryByText(/0 memories/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Delete asset" })).toHaveProperty("disabled", true);
+
+    await user.click(screen.getByRole("button", { name: "Delete asset" }));
+    expect(hardDeleteAssetAction).not.toHaveBeenCalled();
+  });
+
   it("keeps the dialog open and shows an inline refusal when deletion is rejected", async () => {
     hardDeleteAssetAction.mockResolvedValue({
       ok: false,

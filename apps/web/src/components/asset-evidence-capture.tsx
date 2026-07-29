@@ -21,6 +21,8 @@ import {
 } from "@/components/general-action-visibility-field";
 import { CameraIcon, Link2Icon, StickyNoteIcon, UploadIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -580,56 +582,50 @@ function EvidenceSubstanceField({
 
 /**
  * The optional money/date metadata behind one quiet disclosure. Self-contained:
- * uncontrolled named inputs the submit handler reads straight off the form.
+ * uncontrolled named fields the submit handler reads straight off the form - the
+ * date pickers post through their own hidden inputs, exactly as the native date
+ * fields they replace did.
  */
 function EvidenceMetadataDisclosure() {
   const detailsId = useId();
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex flex-col gap-2">
-      <button
-        aria-controls={detailsId}
-        aria-expanded={open}
-        className="w-fit rounded-sm text-[length:var(--text-small)] text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-        onClick={() => setOpen((current) => !current)}
-        type="button"
-      >
+    <Collapsible className="flex flex-col gap-2" onOpenChange={setOpen} open={open}>
+      <CollapsibleTrigger className="w-fit rounded-sm text-[length:var(--text-small)] text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
         {open ? "Hide amount and dates" : "Add amount or dates"}
-      </button>
-      {open ? (
-        <div className="flex flex-col gap-2 sm:flex-row" id={detailsId}>
-          {/* Implied USD this slice — money is recall metadata, not accounting. */}
-          <div className="relative sm:w-32">
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[length:var(--text-small)] text-muted-foreground"
-            >
-              $
-            </span>
-            <Input
-              aria-label="Amount paid in US dollars"
-              className="pl-7"
-              inputMode="decimal"
-              name="amount"
-              placeholder="0.00"
-            />
-          </div>
-          <div className="flex flex-1 items-center gap-2 text-[length:var(--text-small)] text-muted-foreground">
-            <label className="whitespace-nowrap" htmlFor={`${detailsId}-bought`}>
-              Bought
-            </label>
-            <Input id={`${detailsId}-bought`} name="purchasedOn" type="date" />
-          </div>
-          <div className="flex flex-1 items-center gap-2 text-[length:var(--text-small)] text-muted-foreground">
-            <label className="whitespace-nowrap" htmlFor={`${detailsId}-renews`}>
-              Renews
-            </label>
-            <Input id={`${detailsId}-renews`} name="renewsOn" type="date" />
-          </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-2 sm:flex-row">
+        {/* Implied USD this slice - money is recall metadata, not accounting. */}
+        <div className="relative sm:w-32">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[length:var(--text-small)] text-muted-foreground"
+          >
+            $
+          </span>
+          <Input
+            aria-label="Amount paid in US dollars"
+            className="pl-7"
+            inputMode="decimal"
+            name="amount"
+            placeholder="0.00"
+          />
         </div>
-      ) : null}
-    </div>
+        <div className="flex flex-1 items-center gap-2 text-[length:var(--text-small)] text-muted-foreground">
+          <label className="whitespace-nowrap" htmlFor={`${detailsId}-bought`}>
+            Bought
+          </label>
+          <DatePicker id={`${detailsId}-bought`} name="purchasedOn" placeholder="Add a date" />
+        </div>
+        <div className="flex flex-1 items-center gap-2 text-[length:var(--text-small)] text-muted-foreground">
+          <label className="whitespace-nowrap" htmlFor={`${detailsId}-renews`}>
+            Renews
+          </label>
+          <DatePicker id={`${detailsId}-renews`} name="renewsOn" placeholder="Add a date" />
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

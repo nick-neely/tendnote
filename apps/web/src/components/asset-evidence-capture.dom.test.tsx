@@ -70,6 +70,36 @@ function browseInput(): HTMLInputElement {
   return input;
 }
 
+/**
+ * The fields the one write path actually received, once a submit has landed.
+ *
+ * Every capture surface submits through addAssetEvidenceAction, so reading the
+ * recorded call is how these tests assert what was *written* rather than what the
+ * form happened to display.
+ */
+async function submittedEvidenceFields(): Promise<FormData> {
+  await waitFor(() => expect(addAssetEvidenceAction).toHaveBeenCalled());
+
+  return addAssetEvidenceAction.mock.calls[0]?.[0] as FormData;
+}
+
+/**
+ * The audience the submit actually carried.
+ *
+ * Both narrowing paths below - widening a household asset's default, and paring
+ * back a shared asset's inherited members - are only correct if the write path
+ * receives the same thing: an explicit selected-members choice naming exactly who
+ * was left checked. An inherited audience that submits as anything looser is the
+ * bug this asserts against, so the two cases share the verdict and differ only in
+ * how they reach it.
+ */
+async function expectSubmittedAudience(selectedUserIds: string[]): Promise<void> {
+  const formData = await submittedEvidenceFields();
+
+  expect(formData.get("visibilityChoice")).toBe("selected_members");
+  expect(formData.getAll("selectedUserIds")).toEqual(selectedUserIds);
+}
+
 describe("AssetEvidenceCapture", () => {
   it("renders the idle drop zone with browse, link, and note entries", () => {
     render(
@@ -140,7 +170,7 @@ describe("AssetEvidenceCapture", () => {
     await user.click(screen.getByRole("button", { name: /attach evidence/i }));
 
     await waitFor(() => expect(onAdded).toHaveBeenCalledWith(evidenceView()));
-    const formData = addAssetEvidenceAction.mock.calls[0]?.[0] as FormData;
+    const formData = await submittedEvidenceFields();
     expect(formData.get("assetId")).toBe("a-1");
     expect(formData.get("kind")).toBe("photo");
     expect(formData.get("label")).toBe("washer-label");
@@ -176,7 +206,7 @@ describe("AssetEvidenceCapture", () => {
     await user.click(attach);
 
     await waitFor(() => expect(onAdded).toHaveBeenCalled());
-    const formData = addAssetEvidenceAction.mock.calls[0]?.[0] as FormData;
+    const formData = await submittedEvidenceFields();
     expect(formData.get("reviewGroupId")).toBe("g-1");
     expect(formData.get("kind")).toBe("link");
     expect(formData.get("url")).toBe("https://example.com/manual.pdf");
@@ -199,10 +229,7 @@ describe("AssetEvidenceCapture", () => {
     await user.click(screen.getByRole("checkbox", { name: /mara/i }));
     await user.click(screen.getByRole("button", { name: /attach evidence/i }));
 
-    await waitFor(() => expect(addAssetEvidenceAction).toHaveBeenCalled());
-    const formData = addAssetEvidenceAction.mock.calls[0]?.[0] as FormData;
-    expect(formData.get("visibilityChoice")).toBe("selected_members");
-    expect(formData.getAll("selectedUserIds")).toEqual(["member-1"]);
+    await expectSubmittedAudience(["member-1"]);
     unmount();
 
     // A private asset has nothing to narrow — the choice never renders.
@@ -229,15 +256,20 @@ describe("AssetEvidenceCapture", () => {
     );
 
     await user.upload(browseInput(), pngFile());
-    expect(screen.getByRole("checkbox", { name: /mara/i })).toHaveProperty("checked", true);
-    expect(screen.getByRole("checkbox", { name: /noah/i })).toHaveProperty("checked", true);
+    // Asserted through ARIA rather than the `checked` DOM property: the member
+    // picker renders the design-system Checkbox, which is a button with
+    // `aria-checked`, so the property assertion only ever held for the native
+    // input it replaced. This reads the state the user's assistive tech reads.
+    expect(screen.getByRole("checkbox", { name: /mara/i }).getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("checkbox", { name: /noah/i }).getAttribute("aria-checked")).toBe(
+      "true",
+    );
     await user.click(screen.getByRole("checkbox", { name: /noah/i }));
     await user.click(screen.getByRole("button", { name: /attach evidence/i }));
 
-    await waitFor(() => expect(addAssetEvidenceAction).toHaveBeenCalled());
-    const formData = addAssetEvidenceAction.mock.calls[0]?.[0] as FormData;
-    expect(formData.get("visibilityChoice")).toBe("selected_members");
-    expect(formData.getAll("selectedUserIds")).toEqual(["member-1"]);
+    await expectSubmittedAudience(["member-1"]);
   });
 
   it("renders a validation failure inline and keeps the form editable", async () => {

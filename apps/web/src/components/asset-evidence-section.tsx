@@ -8,7 +8,8 @@ import { AssetEvidenceCapture } from "@/components/asset-evidence-capture";
 import { AssetEvidenceRow } from "@/components/asset-evidence-shared";
 import { GENERIC_ERROR } from "@/components/general-action-shared";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
-import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { LedgerList } from "@/components/person-ledger";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { AssetEvidenceView } from "@/lib/asset-evidence-view";
 import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 
@@ -65,7 +66,7 @@ export function AssetEvidenceSection({
           ))}
         </LedgerList>
       ) : canCapture ? null : ( // The capture zone below already says "nothing here yet" better.
-        <LedgerEmpty>No receipts, manuals, or photos attached yet.</LedgerEmpty>
+        <EmptyState size="compact" title="No receipts, manuals, or photos attached yet." />
       )}
 
       {removal.error ? (

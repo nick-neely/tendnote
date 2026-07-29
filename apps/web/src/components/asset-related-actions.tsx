@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ActionRoutineChip } from "@/components/general-action-shared";
 import { ArrowUpRightIcon } from "@/components/icons";
-import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { LedgerList } from "@/components/person-ledger";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { AssetRelatedActionView } from "@/lib/asset-related-action-view";
 
 /**
@@ -13,7 +14,13 @@ import type { AssetRelatedActionView } from "@/lib/asset-related-action-view";
  */
 export function AssetRelatedActions({ actions }: { actions: AssetRelatedActionView[] }) {
   if (actions.length === 0) {
-    return <LedgerEmpty>No related actions yet.</LedgerEmpty>;
+    return (
+      <EmptyState
+        description="Add a reminder for a replacement, renewal, or service visit and link it here."
+        size="compact"
+        title="No related actions yet."
+      />
+    );
   }
 
   return (

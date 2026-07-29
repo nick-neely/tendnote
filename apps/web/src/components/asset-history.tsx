@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRightIcon } from "@/components/icons";
-import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { LedgerList } from "@/components/person-ledger";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { AssetHistoryEntryView } from "@/lib/asset-history-view";
 
 /**
@@ -14,7 +15,13 @@ import type { AssetHistoryEntryView } from "@/lib/asset-history-view";
  */
 export function AssetHistory({ entries }: { entries: AssetHistoryEntryView[] }) {
   if (entries.length === 0) {
-    return <LedgerEmpty>Nothing has happened here yet.</LedgerEmpty>;
+    return (
+      <EmptyState
+        description="Details, attachments, and links you add show up here as they happen."
+        size="compact"
+        title="Nothing has happened here yet."
+      />
+    );
   }
 
   return (
