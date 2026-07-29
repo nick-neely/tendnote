@@ -31,6 +31,7 @@ describe("CI workflow optimization contract", () => {
     expect(statusChecks.parameters.strict_required_status_checks_policy).toBe(true);
     expect(statusChecks.parameters.required_status_checks.map(({ context }) => context)).toEqual([
       "Verify",
+      "Full CI qualification",
       "Vercel",
     ]);
     expect(ruleset.bypass_actors).toEqual([
@@ -45,24 +46,45 @@ describe("CI workflow optimization contract", () => {
   it("keeps one stable PR gate and does not verify documentation-only changes", () => {
     const workflow = read(".github/workflows/pr-verify.yml");
 
-    expect(workflow).toContain("name: Verify");
+    expect(workflow).toContain("'Verify'");
     expect(workflow).toContain("uses: ./.github/workflows/reusable-verify.yml");
     expect(workflow).toContain("- 'scripts/**'");
     expect(workflow).not.toContain("- 'docs/**'");
     expect(workflow).not.toContain("- 'README.md'");
   });
 
-  it("keeps draft iteration fast and requires an explicit full CI qualification before merge", () => {
+  it("does not rerun PR verification when an already-qualified draft becomes ready", () => {
+    const workflow = read(".github/workflows/pr-verify.yml");
+
+    expect(workflow).not.toContain("- ready_for_review");
+    expect(workflow).not.toContain("- converted_to_draft");
+  });
+
+  it("auto-qualifies documentation-only commits without running full CI", () => {
+    const workflow = read(".github/workflows/pr-verify.yml");
+
+    expect(workflow).toMatch(
+      /docs_qualification:[\s\S]*needs\.changes\.outputs\.verify != 'true'[\s\S]*'Full CI qualification'/,
+    );
+  });
+
+  it("qualifies only the exact commit where full-ci is newly applied", () => {
     const pullRequest = read(".github/workflows/pr-verify.yml");
     const reusable = read(".github/workflows/reusable-verify.yml");
 
     expect(pullRequest).toContain("full-ci");
-    expect(pullRequest).toContain("github.event.pull_request.draft");
+    expect(pullRequest).toContain("- labeled");
+    expect(pullRequest).not.toContain("- unlabeled");
+    expect(pullRequest).toContain("'Full CI qualification'");
+    expect(pullRequest).toContain(
+      "github.event.action == 'labeled' && github.event.label.name == 'full-ci'",
+    );
+    expect(pullRequest).not.toContain(
+      "contains(github.event.pull_request.labels.*.name, 'full-ci')",
+    );
     expect(pullRequest).toContain("run_full:");
-    expect(pullRequest).toContain("Full CI qualification is required before merge.");
     expect(pullRequest).toContain("github.run_id");
-    expect(pullRequest).toContain("github.event.label.name != 'full-ci'");
-    expect(pullRequest.split("github.event.label.name == 'full-ci'")).toHaveLength(3);
+    expect(pullRequest).toContain("format('pr-verify-{0}-ignored-{1}'");
 
     expect(reusable).toContain("run_full:");
     expect(reusable).toMatch(/fast_tests:[\s\S]*if: \$\{\{[^}]*!inputs\.run_full/);

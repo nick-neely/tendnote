@@ -8,10 +8,7 @@ on:
       - opened
       - synchronize
       - reopened
-      - ready_for_review
-      - converted_to_draft
       - labeled
-      - unlabeled
 
 permissions:
   contents: read
@@ -20,8 +17,10 @@ permissions:
 concurrency:
   group: >-
     ${{
-      ((github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
-      github.event.label.name != 'full-ci') &&
+      (github.event.action == 'labeled' &&
+      github.event.label.name == 'full-ci') &&
+      format('pr-full-ci-{0}', github.event.pull_request.number) ||
+      github.event.action == 'labeled' &&
       format('pr-verify-{0}-ignored-{1}', github.event.pull_request.number, github.run_id) ||
       format('pr-verify-{0}', github.event.pull_request.number)
     }}
@@ -31,7 +30,7 @@ jobs:
   changes:
     name: Detect changes
     if: >-
-      (github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+      github.event.action != 'labeled' ||
       github.event.label.name == 'full-ci'
     runs-on: ubuntu-latest
     outputs:
@@ -41,7 +40,6 @@ jobs:
       instant: ${{ steps.filter.outputs.instant }}
       database: ${{ steps.filter.outputs.database }}
       full_requested: ${{ steps.mode.outputs.full_requested }}
-      full_required: ${{ steps.mode.outputs.full_required }}
     steps:
       - name: Check paths
         id: filter
@@ -114,17 +112,9 @@ jobs:
       - name: Select verification tier
         id: mode
         env:
-          FULL_CI_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
-          PR_DRAFT: ${{ github.event.pull_request.draft }}
-          VERIFY_CHANGED: ${{ steps.filter.outputs.verify }}
+          FULL_CI_EVENT: ${{ github.event.action == 'labeled' && github.event.label.name == 'full-ci' }}
         run: |
-          echo "full_requested=${FULL_CI_LABEL}" >>"${GITHUB_OUTPUT}"
-
-          if [[ "${VERIFY_CHANGED}" == "true" && "${PR_DRAFT}" != "true" ]]; then
-            echo "full_required=true" >>"${GITHUB_OUTPUT}"
-          else
-            echo "full_required=false" >>"${GITHUB_OUTPUT}"
-          fi
+          echo "full_requested=${FULL_CI_EVENT}" >>"${GITHUB_OUTPUT}"
 
   verify:
     needs: changes
@@ -138,14 +128,22 @@ jobs:
       run_full: ${{ needs.changes.outputs.full_requested == 'true' }}
 
   gate:
-    name: Verify
+    name: >-
+      ${{
+        github.event.action == 'labeled' &&
+        github.event.label.name == 'full-ci' &&
+        'Full CI qualification' ||
+        github.event.action == 'labeled' &&
+        format('Ignore qualification label {0}', github.event.label.name) ||
+        'Verify'
+      }}
     needs:
       - changes
       - verify
     if: >-
       always() &&
       !cancelled() &&
-      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+      (github.event.action != 'labeled' ||
       github.event.label.name == 'full-ci')
     runs-on: ubuntu-latest
     steps:
@@ -161,13 +159,28 @@ jobs:
             exit 1
           fi
 
-          if [[ "${{ needs.changes.outputs.full_required }}" == "true" && "${{ needs.changes.outputs.full_requested }}" != "true" ]]; then
-            echo "Full CI qualification is required before merge. Apply the full-ci label."
-            exit 1
-          fi
-
           if [[ "${{ needs.changes.outputs.verify }}" != "true" ]]; then
             echo "No application, package, workflow, or CI script paths changed."
           fi
 
           echo "PR verification gate passed."
+
+  docs_qualification:
+    name: >-
+      ${{
+        github.event.action != 'labeled' &&
+        needs.changes.outputs.verify != 'true' &&
+        'Full CI qualification' ||
+        'Qualification required'
+      }}
+    needs: changes
+    if: >-
+      always() &&
+      !cancelled() &&
+      github.event.action != 'labeled' &&
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.verify != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm no full qualification is needed
+        run: echo "Documentation-only changes do not require full CI."

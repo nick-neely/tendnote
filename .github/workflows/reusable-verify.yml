@@ -223,7 +223,7 @@ jobs:
   # The Instant Interaction contract (#310, ADR 0210). A separate job rather than
   # more steps in Test and Fallow: it must run *alongside* the existing critical
   # path so protecting navigation does not lengthen every pull request, and the
-  # aggregate Verify wall time has to stay under nine minutes.
+  # aggregate full-qualification wall time has to stay under nine minutes.
   instant_matrix:
     name: Instant matrix
     if: ${{ inputs.run_full && inputs.run_instant }}
