@@ -28,6 +28,11 @@ import {
  * action (e.g. a "See all" link) are passed in so the same list can render as a
  * full tab ("Reminders") or a limited Overview peek. Renders nothing when empty;
  * the rail decides whether an empty tab shows a teaching empty state.
+ *
+ * Exactly one row wears the clay timing chip: the first reminder whose date has
+ * arrived or passed. The list is sorted due-first, so that is the most timely
+ * thing on the panel, and clay is reserved for one such moment per screen
+ * (DESIGN.md §3). Every other row keeps the same words in the quiet treatment.
  */
 export function DashboardFollowupsSection({
   followups,
@@ -46,6 +51,10 @@ export function DashboardFollowupsSection({
     return null;
   }
 
+  const timelyId = followups.find(
+    (followup) => followup.dueState === "overdue" || followup.dueState === "today",
+  )?.id;
+
   return (
     <section className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-2">
@@ -62,6 +71,7 @@ export function DashboardFollowupsSection({
               followup={followup}
               key={followup.id}
               onResolve={onResolve}
+              timingEmphasis={followup.id === timelyId ? "accent" : "quiet"}
             />
           ))}
         </ul>
@@ -76,6 +86,7 @@ function FollowupRow({
   followup: DashboardFollowupView;
   onResolve: (id: string) => void;
   fallbackFocusTarget?: () => HTMLElement | null;
+  timingEmphasis?: "accent" | "quiet";
 }) {
   return (
     <ReversibleMutationProvider>
@@ -88,10 +99,12 @@ function FollowupRowContent({
   followup,
   onResolve,
   fallbackFocusTarget,
+  timingEmphasis = "accent",
 }: {
   followup: DashboardFollowupView;
   onResolve: (id: string) => void;
   fallbackFocusTarget?: () => HTMLElement | null;
+  timingEmphasis?: "accent" | "quiet";
 }) {
   const personName = followup.personName ?? "Someone";
   const completeMutation = useReversibleMutation(followup.id, "complete");
@@ -148,7 +161,11 @@ function FollowupRowContent({
             {personName}
           </Link>
           <div className="flex shrink-0 flex-col items-end gap-0.5">
-            <RecordTimingChip label={followup.surfaceLabel} state={followup.dueState} />
+            <RecordTimingChip
+              emphasis={timingEmphasis}
+              label={followup.surfaceLabel}
+              state={followup.dueState}
+            />
             {followup.status === "snoozed" ? (
               <span className="text-[length:var(--text-caption)] text-muted-foreground">
                 Snoozed

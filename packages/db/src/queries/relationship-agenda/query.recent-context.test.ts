@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { createHouseholdLifecycle } from "../households/lifecycle";
-import { OTHER_OWNER, OWNER, setup, WINDOW_END, WINDOW_START } from "./query.test-helpers";
+import {
+  OTHER_OWNER,
+  OWNER,
+  setup,
+  setupWithHouseholdMember,
+  WINDOW_END,
+  WINDOW_START,
+} from "./query.test-helpers";
 
 describe("relationship agenda — recent context", () => {
   it("includes capped recent context by default from active person-linked non-restricted source records", async () => {
-    const { store, agenda, person } = await setup();
+    const { store, agenda, person, sourceRecord } = await setup();
     const mara = await person("Mara Lin", null);
     const sam = await person("Sam Rivera", null);
     const recentRows: Array<{
@@ -46,28 +52,16 @@ describe("relationship agenda — recent context", () => {
     ];
     const records = await Promise.all(
       recentRows.map(async ({ id, content, personId, sensitivity }, index) => {
-        const sourceRecord = await store.createSourceRecord({
-          ownerUserId: OWNER,
-          sourceType: "manual",
-          content,
-          rawContent: null,
-          retentionPolicy: "retain",
-          status: "active",
-          confidence: "medium",
-          sensitivity,
-          scope: "private",
-          importance: 3,
-          metadataJson: {},
-        });
+        const record = await sourceRecord({ content, sensitivity });
         await store.linkSourceRecordPerson({
-          sourceRecordId: sourceRecord.id,
+          sourceRecordId: record.id,
           personId,
           role: "primary",
         });
 
         return {
           sourceRecord: {
-            ...sourceRecord,
+            ...record,
             id,
             createdAt: new Date(`2026-06-0${index + 1}T00:00:00Z`),
           },
@@ -118,30 +112,13 @@ describe("relationship agenda — recent context", () => {
   });
 
   it("includes selected-member visible recent source records with provenance", async () => {
-    const { store, agenda, person } = await setup();
-    const households = createHouseholdLifecycle(store);
-    const memberUserId = "user-3";
-    const { household } = await households.createHousehold({ ownerUserId: OWNER, name: "Home" });
-    await households.inviteMember({
-      ownerUserId: OWNER,
-      householdId: household.id,
-      invitedUserId: memberUserId,
-    });
-    await households.acceptInvite({ householdId: household.id, userId: memberUserId });
+    const { store, agenda, person, sourceRecord, household, memberUserId } =
+      await setupWithHouseholdMember();
     const mara = await person("Mara Lin", null);
-    const shared = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
+    const shared = await sourceRecord({
       content: "Mara shared a dinner plan.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
       scope: "shared",
       householdId: household.id,
-      importance: 3,
-      metadataJson: {},
     });
     await store.createHouseholdRecordShare({
       householdId: household.id,
@@ -150,19 +127,7 @@ describe("relationship agenda — recent context", () => {
       sharedWithUserId: memberUserId,
       sharedByUserId: OWNER,
     });
-    const privateRecord = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
-      content: "Private source should not leak.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
-    });
+    const privateRecord = await sourceRecord({ content: "Private source should not leak." });
     store.seedRecentSourceRecords([
       {
         sourceRecord: shared,
@@ -195,34 +160,13 @@ describe("relationship agenda — recent context", () => {
   });
 
   it("ranks recent context below concrete agenda items and honors recent_context filters", async () => {
-    const { store, followups, agenda, person } = await setup();
+    const { store, followups, agenda, person, sourceRecord } = await setup();
     const mara = await person("Mara Lin", "1990-07-05");
-    const reviewSourceRecord = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
+    const reviewSourceRecord = await sourceRecord({
       content: "Mara has pending logged context to review.",
-      rawContent: null,
-      retentionPolicy: "retain",
       status: "pending_resolution",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
     });
-    const sourceRecord = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
-      content: "Mara shared a recent update.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
-    });
+    const recentRecord = await sourceRecord({ content: "Mara shared a recent update." });
     await followups.createFollowup({
       ownerUserId: OWNER,
       personId: mara.id,
@@ -231,7 +175,7 @@ describe("relationship agenda — recent context", () => {
     });
     store.seedRecentSourceRecords([
       {
-        sourceRecord,
+        sourceRecord: recentRecord,
         linkedPeople: [{ id: mara.id, displayName: mara.displayName }],
       },
     ]);
@@ -276,22 +220,10 @@ describe("relationship agenda — recent context", () => {
   });
 
   it("excludes personless, non-active, restricted, unclear-recency, and other-owner recent context", async () => {
-    const { store, agenda, person } = await setup();
+    const { store, agenda, person, sourceRecord } = await setup();
     const mara = await person("Mara Lin", null);
     const intruder = await person("Hidden Person", null, OTHER_OWNER);
-    const eligible = await store.createSourceRecord({
-      ownerUserId: OWNER,
-      sourceType: "manual",
-      content: "Mara shared a recent update.",
-      rawContent: null,
-      retentionPolicy: "retain",
-      status: "active",
-      confidence: "medium",
-      sensitivity: "normal",
-      scope: "private",
-      importance: 3,
-      metadataJson: {},
-    });
+    const eligible = await sourceRecord({ content: "Mara shared a recent update." });
     const personless = {
       ...eligible,
       id: "personless-recent",

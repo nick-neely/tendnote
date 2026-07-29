@@ -37,7 +37,8 @@ describe("relationship agenda — follow-ups and birthdays", () => {
         kind: "due_followup",
         personId: mara.id,
         personDisplayName: "Mara Lin",
-        title: "Overdue follow-up for Mara Lin",
+        // The reminder's own words, never a generated "Overdue follow-up for X".
+        title: "Ask about the move.",
         reason: "Ask about the move.",
         trustLevel: "active_reminder",
         sensitivity: "normal",

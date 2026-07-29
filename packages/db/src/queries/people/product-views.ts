@@ -1,5 +1,5 @@
 import type { RelationshipType } from "@tendnote/domain";
-import type { PeopleStore } from "./types";
+import type { PeopleStore, PersonDetailCounts } from "./types";
 
 /**
  * Bounded, serialized data contracts for product surfaces. These deliberately
@@ -22,11 +22,7 @@ export type PersonDetailCoreView = {
     closenessLevel: number;
     profileBlurb: string | null;
   };
-  counts: {
-    memories: number;
-    followups: number;
-    sourceRecords: number;
-  };
+  counts: PersonDetailCounts;
 };
 
 function toListItemView(person: {

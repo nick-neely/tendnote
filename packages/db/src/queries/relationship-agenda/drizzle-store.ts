@@ -1,4 +1,5 @@
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import type { Person, SourceRecord } from "@tendnote/domain";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import { memories, people, sourceRecordPeople, sourceRecords } from "../../schema";
@@ -10,6 +11,78 @@ import type { RelationshipAgendaSourceRecordReview, RelationshipAgendaStore } fr
 
 const visibleAgendaMemories = alias(memories, "m");
 const visibleAgendaSourceRecords = alias(sourceRecords, "sr");
+
+/**
+ * The people a source record names, in display order.
+ *
+ * `ownerUserId` narrows the join to that owner's own people, which is what the
+ * owner-scoped reads need: a record can be linked to a person row belonging to
+ * someone else, and an owner-scoped read must not surface it. The
+ * visibility-scoped reads leave it off deliberately - `visibleHouseholdRecordSql`
+ * has already decided the caller may see the record, and a shared note is only
+ * answerable with everyone it names.
+ */
+async function linkedPeopleForSourceRecord(sourceRecordId: string, ownerUserId?: string) {
+  return getDb()
+    .select({ id: people.id, displayName: people.displayName })
+    .from(sourceRecordPeople)
+    .innerJoin(people, eq(sourceRecordPeople.personId, people.id))
+    .where(
+      and(
+        eq(sourceRecordPeople.sourceRecordId, sourceRecordId),
+        ...(ownerUserId ? [eq(people.ownerUserId, ownerUserId)] : []),
+      ),
+    )
+    .orderBy(people.displayName);
+}
+
+/**
+ * Attach each record's people, turning a page of source records into the review
+ * shape the agenda reads. Owner-scoped and visibility-scoped reads share this so
+ * they can only ever differ on *who* is allowed in a review, never on how one is
+ * assembled.
+ */
+async function toSourceRecordReviews(
+  rows: SourceRecord[],
+  ownerUserId?: string,
+): Promise<RelationshipAgendaSourceRecordReview[]> {
+  return Promise.all(
+    rows.map(async (sourceRecord) => ({
+      sourceRecord,
+      linkedPeople: await linkedPeopleForSourceRecord(sourceRecord.id, ownerUserId),
+    })),
+  );
+}
+
+/**
+ * Fold person-joined rows back into one review per record.
+ *
+ * The recent-context reads join through `sourceRecordPeople`, so a note naming
+ * three people arrives as three rows. That is why they over-fetch by 4x and cap
+ * here instead of in SQL: `limit` counts notes, not links, and a note keeps every
+ * person it named.
+ */
+function toReviewsFromLinkedRows(
+  rows: Array<{ sourceRecord: SourceRecord; person: Pick<Person, "id" | "displayName"> }>,
+  limit: number,
+): RelationshipAgendaSourceRecordReview[] {
+  const reviewsByRecord = new Map<string, RelationshipAgendaSourceRecordReview>();
+
+  for (const row of rows) {
+    const existing = reviewsByRecord.get(row.sourceRecord.id);
+
+    if (existing) {
+      existing.linkedPeople.push(row.person);
+    } else {
+      reviewsByRecord.set(row.sourceRecord.id, {
+        sourceRecord: row.sourceRecord,
+        linkedPeople: [row.person],
+      });
+    }
+  }
+
+  return [...reviewsByRecord.values()].slice(0, limit);
+}
 
 export function createDrizzleRelationshipAgendaStore(): RelationshipAgendaStore {
   const followupStore = createDrizzleFollowupLifecycleStore();
@@ -60,24 +133,13 @@ export function createDrizzleRelationshipAgendaStore(): RelationshipAgendaStore 
         .orderBy(desc(sourceRecords.createdAt))
         .limit(input.limit ?? 20);
 
-      return Promise.all(
-        rows.map(async (sourceRecord) => {
-          const linkedPeople = await getDb()
-            .select({ id: people.id, displayName: people.displayName })
-            .from(sourceRecordPeople)
-            .innerJoin(people, eq(sourceRecordPeople.personId, people.id))
-            .where(
-              and(
-                eq(sourceRecordPeople.sourceRecordId, sourceRecord.id),
-                eq(people.ownerUserId, input.ownerUserId),
-              ),
-            )
-            .orderBy(people.displayName);
-
-          return { sourceRecord, linkedPeople };
-        }),
-      );
+      return toSourceRecordReviews(rows, input.ownerUserId);
     },
+    /**
+     * Source records awaiting person resolution: the same gate the owner-scoped
+     * read above applies, now that plain `active` logged context no longer counts
+     * as review (it is filed, not pending).
+     */
     async listVisibleSourceRecordReviews(input) {
       const rows = await getDb()
         .select()
@@ -89,24 +151,13 @@ export function createDrizzleRelationshipAgendaStore(): RelationshipAgendaStore 
               tableAlias: "sr",
               recordKind: "source_record",
             }),
-            inArray(visibleAgendaSourceRecords.status, ["active", "pending_resolution"]),
+            eq(visibleAgendaSourceRecords.status, "pending_resolution"),
           ),
         )
         .orderBy(desc(visibleAgendaSourceRecords.createdAt))
         .limit(input.limit ?? 20);
 
-      return Promise.all(
-        rows.map(async (sourceRecord) => {
-          const linkedPeople = await getDb()
-            .select({ id: people.id, displayName: people.displayName })
-            .from(sourceRecordPeople)
-            .innerJoin(people, eq(sourceRecordPeople.personId, people.id))
-            .where(eq(sourceRecordPeople.sourceRecordId, sourceRecord.id))
-            .orderBy(people.displayName);
-
-          return { sourceRecord, linkedPeople };
-        }),
-      );
+      return toSourceRecordReviews(rows);
     },
     async listRecentSourceRecordsForOwner(input) {
       const rows = await getDb()
@@ -128,22 +179,7 @@ export function createDrizzleRelationshipAgendaStore(): RelationshipAgendaStore 
         .orderBy(desc(sourceRecords.createdAt))
         .limit((input.limit ?? 3) * 4);
 
-      const reviewsByRecord = new Map<string, RelationshipAgendaSourceRecordReview>();
-
-      for (const row of rows) {
-        const existing = reviewsByRecord.get(row.sourceRecord.id);
-
-        if (existing) {
-          existing.linkedPeople.push(row.person);
-        } else {
-          reviewsByRecord.set(row.sourceRecord.id, {
-            sourceRecord: row.sourceRecord,
-            linkedPeople: [row.person],
-          });
-        }
-      }
-
-      return [...reviewsByRecord.values()].slice(0, input.limit ?? 3);
+      return toReviewsFromLinkedRows(rows, input.limit ?? 3);
     },
     async listVisibleRecentSourceRecords(input) {
       const rows = await getDb()
@@ -171,22 +207,7 @@ export function createDrizzleRelationshipAgendaStore(): RelationshipAgendaStore 
         .orderBy(desc(visibleAgendaSourceRecords.createdAt), people.displayName)
         .limit((input.limit ?? 3) * 4);
 
-      const reviewsByRecord = new Map<string, RelationshipAgendaSourceRecordReview>();
-
-      for (const row of rows) {
-        const existing = reviewsByRecord.get(row.sourceRecord.id);
-
-        if (existing) {
-          existing.linkedPeople.push(row.person);
-        } else {
-          reviewsByRecord.set(row.sourceRecord.id, {
-            sourceRecord: row.sourceRecord,
-            linkedPeople: [row.person],
-          });
-        }
-      }
-
-      return [...reviewsByRecord.values()].slice(0, input.limit ?? 3);
+      return toReviewsFromLinkedRows(rows, input.limit ?? 3);
     },
     async searchSemanticContext(input) {
       return searchSemanticContext({

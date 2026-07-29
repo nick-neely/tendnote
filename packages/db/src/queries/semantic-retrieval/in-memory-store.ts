@@ -236,8 +236,49 @@ export function createInMemoryEmbeddingStore(
 
       return embedding;
     },
+    async refreshRelationshipContextEmbeddingMetadata(input) {
+      const existing = [...embeddings.values()].find(
+        (embedding) =>
+          embedding.id === input.embeddingId && embedding.ownerUserId === input.ownerUserId,
+      );
+
+      if (!existing) {
+        throw new Error("Relationship-context embedding not found.");
+      }
+
+      // None of these columns take part in `embeddingKey`, so the row converges in place
+      // under its existing key - exactly what the Drizzle `update ... where id` does.
+      const updated: RelationshipContextEmbedding = {
+        ...existing,
+        personId: input.personId,
+        trustLevel: input.trustLevel,
+        sensitivity: input.sensitivity,
+        updatedAt: new Date(),
+      };
+
+      embeddings.set(embeddingKey(updated), updated);
+
+      return updated;
+    },
     async findRelationshipContextEmbedding(input) {
       return embeddings.get(embeddingKey(input)) ?? null;
+    },
+    async deleteRelationshipContextEmbeddingsForRecord(input) {
+      // The map key carries model and version, so matching on the record alone is what
+      // sweeps the superseded-model rows out with the current one - the same reason the
+      // Drizzle delete leaves those columns out of its predicate.
+      const matches = [...embeddings.entries()].filter(
+        ([, embedding]) =>
+          embedding.ownerUserId === input.ownerUserId &&
+          embedding.recordKind === input.recordKind &&
+          embedding.recordId === input.recordId,
+      );
+
+      for (const [key] of matches) {
+        embeddings.delete(key);
+      }
+
+      return matches.length;
     },
     async searchSemanticContext(input) {
       const kinds = new Set(input.recordKinds ?? ["memory", "source_record", "general_action"]);
@@ -426,8 +467,13 @@ export function createInMemoryEmbeddingStore(
 
   /**
    * Freshness/eligibility gate for a logged source record: the embedding decision must
-   * still say "embed", and the projected text, sensitivity, and source timestamp must
-   * all still match the persisted embedding (a stale embedding is skipped).
+   * still say "embed", and the projected text and sensitivity must still match the
+   * persisted embedding (a stale embedding is skipped).
+   *
+   * Staleness is content-addressed, not timestamp-addressed (ADR 0013). Comparing
+   * `sourceUpdatedAt` to `updatedAt` would drop records that are perfectly fresh - see the
+   * rationale on the matching Drizzle predicate, where the comparison was additionally
+   * unsatisfiable because Postgres keeps microseconds a JS `Date` cannot carry.
    */
   async function isSourceRecordEmbeddingFresh(
     embedding: RelationshipContextEmbedding,
@@ -443,9 +489,7 @@ export function createInMemoryEmbeddingStore(
     if (decideSourceRecordEmbedding(sourceRecord, people, unresolvedMentionCount).action === "skip")
       return false;
     if (sourceRecord.sensitivity !== embedding.sensitivity) return false;
-    if (projectSourceRecordEmbeddedText(sourceRecord, people) !== embedding.embeddedText)
-      return false;
-    return sourceRecord.updatedAt.getTime() === embedding.sourceUpdatedAt.getTime();
+    return projectSourceRecordEmbeddedText(sourceRecord, people) === embedding.embeddedText;
   }
 
   async function matchSourceRecordEmbedding(
@@ -497,8 +541,18 @@ export function createInMemoryEmbeddingStore(
 
   /**
    * Freshness/eligibility gate for an approved memory: it must be approved, viewer
-   * visible, not restricted (unless directly requested), and its sensitivity, projected
-   * text, and source timestamp must still match the persisted embedding.
+   * visible, not restricted (unless directly requested), and its sensitivity and projected
+   * text must still match the persisted embedding.
+   *
+   * Staleness is content-addressed, not timestamp-addressed (ADR 0013). A memory whose
+   * importance was nudged is still described by its vector, so `sourceUpdatedAt` is
+   * embed-time provenance rather than a retrieval gate - see the matching Drizzle predicate.
+   *
+   * The sensitivity equality is live privacy gating and stays even though the write side
+   * already acts twice on a sensitivity edit - `reuseOrEmbed` converges the column, and a
+   * memory edited to `restricted` has its row deleted by the embed decision's skip path.
+   * Neither is synchronous with the edit, so this comparison is what withholds a vector
+   * whose `embeddedText` still holds the pre-restriction content until the job runs.
    */
   function isMemoryEmbeddingFresh(
     embedding: RelationshipContextEmbedding,
@@ -509,8 +563,7 @@ export function createInMemoryEmbeddingStore(
     if (!canViewerSeeRecord(input.ownerUserId, memory, "memory")) return false;
     if (memory.sensitivity === "restricted" && !input.directlyRequested) return false;
     if (memory.sensitivity !== embedding.sensitivity) return false;
-    if (projectApprovedMemoryEmbeddedText(memory) !== embedding.embeddedText) return false;
-    return memory.updatedAt.getTime() === embedding.sourceUpdatedAt.getTime();
+    return projectApprovedMemoryEmbeddedText(memory) === embedding.embeddedText;
   }
 
   async function matchMemoryEmbedding(

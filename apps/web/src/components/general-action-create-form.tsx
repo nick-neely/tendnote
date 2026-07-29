@@ -2,7 +2,7 @@
 
 import type { GeneralActionRecurrence } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { createGeneralActionAction } from "@/app/actions/general-actions";
 import { AreaSelect } from "@/components/general-action-area-select";
 import {
@@ -32,6 +32,8 @@ import {
 import { ChevronDownIcon, PlusIcon } from "@/components/icons";
 import { ReminderPastLeadRecovery } from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -109,7 +111,6 @@ export function CreateActionForm({
   detailsLoadError?: string | null;
 }) {
   const reminderWriter = useReminderScheduleWriter();
-  const detailsId = useId();
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [recurrence, setRecurrence] = useState<GeneralActionRecurrence | null>(null);
@@ -236,24 +237,21 @@ export function CreateActionForm({
           </Button>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <button
-            aria-controls={detailsId}
-            aria-expanded={showDetails}
-            className="inline-flex items-center gap-1 self-start rounded-md text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            onClick={() => {
-              if (!showDetails) onDetailsRequested?.();
-              setShowDetails((open) => !open);
-            }}
-            type="button"
-          >
+        <Collapsible
+          className="flex flex-col gap-3"
+          onOpenChange={(open) => {
+            if (open) onDetailsRequested?.();
+            setShowDetails(open);
+          }}
+          open={showDetails}
+        >
+          <CollapsibleTrigger className="group/details inline-flex items-center gap-1 self-start rounded-md text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             <ChevronDownIcon
               aria-hidden
-              className="size-3.5 transition-transform data-[open=true]:rotate-180 motion-reduce:transition-none"
-              data-open={showDetails}
+              className="size-3.5 transition-transform group-data-[state=open]/details:rotate-180 motion-reduce:transition-none"
             />
             Add date, details, or sharing
-          </button>
+          </CollapsibleTrigger>
 
           {detailsLoadError ? (
             <div className="flex items-center gap-2">
@@ -264,11 +262,10 @@ export function CreateActionForm({
             </div>
           ) : null}
 
-          {showDetails ? (
+          <CollapsibleContent>
             <CreateActionDetails
               areaId={areaId}
               areas={areas}
-              detailsId={detailsId}
               dueDate={dueDate}
               hintLabels={hintLabels}
               links={links}
@@ -298,8 +295,8 @@ export function CreateActionForm({
               shareableMembers={shareableMembers}
               visibilityChoice={visibilityChoice}
             />
-          ) : null}
-        </div>
+          </CollapsibleContent>
+        </Collapsible>
 
         {error ? <ErrorText message={error} /> : null}
       </form>
@@ -335,7 +332,6 @@ export function CreateActionForm({
 // disclosure panel without reducing genuine complexity.
 // fallow-ignore-next-line complexity
 function CreateActionDetails({
-  detailsId,
   dueDate,
   recurrence,
   reminderEnabled,
@@ -362,7 +358,6 @@ function CreateActionDetails({
   onVisibilityChange,
   onSelectedUserIdsChange,
 }: {
-  detailsId: string;
   dueDate: string;
   recurrence: GeneralActionRecurrence | null;
   reminderEnabled: boolean;
@@ -390,18 +385,17 @@ function CreateActionDetails({
   onSelectedUserIdsChange: (value: string[]) => void;
 }) {
   return (
-    <div className="flex flex-col gap-4" id={detailsId}>
+    <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3">
         <span className="text-[length:var(--text-small)] font-medium text-foreground">Details</span>
         <div className="flex flex-col gap-1.5">
           <span className="text-[length:var(--text-small)] text-muted-foreground">
             Due date (optional)
           </span>
-          <Input
+          <DatePicker
             aria-label="Due date (optional)"
             className="w-full sm:w-48"
-            onChange={(event) => onDueDateChange(event.target.value)}
-            type="date"
+            onChange={onDueDateChange}
             value={dueDate}
           />
         </div>

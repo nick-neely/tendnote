@@ -8,6 +8,7 @@ import {
 } from "@/app/actions/asset-review";
 import { CheckIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { deriveMemoryDraft, valueDraftFor } from "@/lib/asset-memory-value";
@@ -48,7 +49,7 @@ export function MemoryEditForm({
   const draft = deriveMemoryDraft(memory, { label, value, notes });
 
   return (
-    <li className="flex flex-col gap-2 px-3 py-2.5">
+    <li className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0">
       <div className="flex flex-col gap-1">
         <label
           className="text-[length:var(--text-caption)] text-muted-foreground"
@@ -154,15 +155,7 @@ function MemoryValueInput({
   currency: string | null;
 }) {
   if (valueType === "date") {
-    return (
-      <Input
-        className="w-44"
-        id={id}
-        onChange={(event) => onChange(event.target.value)}
-        type="date"
-        value={value}
-      />
-    );
+    return <DatePicker className="w-48" id={id} onChange={onChange} value={value} />;
   }
   if (valueType === "amount") {
     return (

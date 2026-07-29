@@ -8,8 +8,10 @@ import {
   generateBriefAction,
   snoozeBriefItemAction,
 } from "@/app/actions/briefs";
+import { appDestination } from "@/components/app-destinations";
 import {
   CheckIcon,
+  ClipboardTextIcon,
   ClockIcon,
   LockIcon,
   PenLineIcon,
@@ -150,6 +152,7 @@ function briefItemActionLabels(person: string | null) {
       dismiss: "Dismiss this brief item",
       draft: "Draft a message",
       accept: "Accept this suggested follow-up",
+      review: "Open this in Review",
     };
   }
 
@@ -158,9 +161,24 @@ function briefItemActionLabels(person: string | null) {
     dismiss: `Dismiss brief item for ${person}`,
     draft: `Draft a message for ${person}`,
     accept: `Accept suggested follow-up for ${person}`,
+    review: `Open the review about ${person}`,
   };
 }
 
+/**
+ * One snapshotted brief item.
+ *
+ * The title is the record's own words (a reminder reads as what it says, not as
+ * "Overdue follow-up for Mara Lin"), so the person it concerns is named above it
+ * unless the snapshot's title already carries the name, which the tentative
+ * review kinds still do.
+ *
+ * Actions follow what the item actually is. A review item is a question only the
+ * owner can answer, and the place to answer it is the Review panel, which holds
+ * the mention text and the add/link controls, so it gets Review as its primary
+ * action and never Draft: there is no message to write about a name Tendnote
+ * could not place. Later and Dismiss stay secondary on every kind.
+ */
 function BriefItemRow({
   item,
   onResolve,
@@ -172,7 +190,8 @@ function BriefItemRow({
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const labels = briefItemActionLabels(item.personName);
+  const personLabel =
+    item.personName && !item.title.includes(item.personName) ? item.personName : null;
 
   function run(action: () => Promise<unknown>) {
     setError(null);
@@ -193,26 +212,40 @@ function BriefItemRow({
       data-leaving={leaving}
     >
       <div className="flex items-start justify-between gap-2">
-        {item.personId ? (
-          <Link
-            className="min-w-0 text-pretty text-sm font-medium underline-offset-4 transition-colors hover:underline"
-            href={`/people/${item.personId}`}
-          >
-            {item.title}
-          </Link>
-        ) : (
-          <span className="min-w-0 text-pretty text-sm font-medium">{item.title}</span>
-        )}
+        <div className="flex min-w-0 flex-col gap-0.5">
+          {personLabel ? (
+            <span className="truncate text-[length:var(--text-caption)] text-muted-foreground">
+              {personLabel}
+            </span>
+          ) : null}
+          {item.personId ? (
+            <Link
+              className="min-w-0 text-pretty text-sm font-medium underline-offset-4 transition-colors hover:underline"
+              href={`/people/${item.personId}`}
+            >
+              {item.title}
+            </Link>
+          ) : (
+            <span className="min-w-0 text-pretty text-sm font-medium">{item.title}</span>
+          )}
+        </div>
         {item.surfaceLabel && item.dueState ? (
           <span className="shrink-0">
-            <RecordTimingChip label={item.surfaceLabel} state={item.dueState} />
+            {/* The brief is a digest of several dated rows; the clay moment on the
+                dashboard belongs to the Follow-ups panel, not to every line here. */}
+            <RecordTimingChip emphasis="quiet" label={item.surfaceLabel} state={item.dueState} />
           </span>
         ) : null}
       </div>
 
-      <p className="line-clamp-3 text-pretty text-[length:var(--text-small)] leading-[var(--text-small-line)]">
-        {item.reason}
-      </p>
+      {/* For an explicit reminder the headline and the explanation are the same
+          sentence (the reminder's own words), so the second copy is dropped rather
+          than shown twice. */}
+      {item.reason === item.title ? null : (
+        <p className="line-clamp-3 text-pretty text-[length:var(--text-small)] leading-[var(--text-small-line)]">
+          {item.reason}
+        </p>
+      )}
 
       <div className="flex items-center justify-between gap-2">
         {item.isSensitive ? (
@@ -223,74 +256,13 @@ function BriefItemRow({
         ) : (
           <span />
         )}
-        <div className="flex items-center gap-1.5">
-          <Button
-            aria-label={labels.snooze}
-            disabled={pending}
-            onClick={() =>
-              run(async () =>
-                unwrapOwnerActionResult(await snoozeBriefItemAction({ briefItemId: item.id })),
-              )
-            }
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <ClockIcon />
-            Later
-          </Button>
-          <Button
-            aria-label={labels.dismiss}
-            disabled={pending}
-            onClick={() =>
-              run(async () =>
-                unwrapOwnerActionResult(await dismissBriefItemAction({ briefItemId: item.id })),
-              )
-            }
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <XIcon />
-            Dismiss
-          </Button>
-          {item.personId ? (
-            <Button
-              aria-label={labels.draft}
-              disabled={draftPending}
-              onClick={() =>
-                createDraft({
-                  personId: item.personId as string,
-                  briefItemContext: { id: item.id, title: item.title, reason: item.reason },
-                })
-              }
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              <PenLineIcon />
-              Draft
-            </Button>
-          ) : null}
-          {item.isSuggestedFollowup ? (
-            <Button
-              aria-label={labels.accept}
-              disabled={pending}
-              onClick={() =>
-                run(async () =>
-                  unwrapOwnerActionResult(
-                    await acceptBriefFollowupAction({ briefItemId: item.id }),
-                  ),
-                )
-              }
-              size="sm"
-              type="button"
-            >
-              <CheckIcon />
-              Accept
-            </Button>
-          ) : null}
-        </div>
+        <BriefItemActions
+          createDraft={createDraft}
+          draftPending={draftPending}
+          item={item}
+          pending={pending}
+          run={run}
+        />
       </div>
 
       {error || draftError ? (
@@ -299,5 +271,107 @@ function BriefItemRow({
         </p>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * The controls for one brief row. Later and Dismiss are always there; the third
+ * control is whatever the item can actually be moved forward with, which depends
+ * on the kind it snapshots (see `BriefItemRow`). The row owns the mutation runner
+ * and its pending state so a control cannot start a change the row does not know
+ * about.
+ */
+function BriefItemActions({
+  item,
+  pending,
+  draftPending,
+  run,
+  createDraft,
+}: {
+  item: BriefItemView;
+  pending: boolean;
+  draftPending: boolean;
+  run: (action: () => Promise<unknown>) => void;
+  createDraft: ReturnType<typeof useCreateDraft>["create"];
+}) {
+  const labels = briefItemActionLabels(item.personName);
+  const needsReview = item.kind === "review_item";
+  const personId = item.personId;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Button
+        aria-label={labels.snooze}
+        disabled={pending}
+        onClick={() =>
+          run(async () =>
+            unwrapOwnerActionResult(await snoozeBriefItemAction({ briefItemId: item.id })),
+          )
+        }
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        <ClockIcon />
+        Later
+      </Button>
+      <Button
+        aria-label={labels.dismiss}
+        disabled={pending}
+        onClick={() =>
+          run(async () =>
+            unwrapOwnerActionResult(await dismissBriefItemAction({ briefItemId: item.id })),
+          )
+        }
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        <XIcon />
+        Dismiss
+      </Button>
+      {personId && !needsReview ? (
+        <Button
+          aria-label={labels.draft}
+          disabled={draftPending}
+          onClick={() =>
+            createDraft({
+              personId,
+              briefItemContext: { id: item.id, title: item.title, reason: item.reason },
+            })
+          }
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <PenLineIcon />
+          Draft
+        </Button>
+      ) : null}
+      {needsReview ? (
+        <Button aria-label={labels.review} asChild size="sm" type="button">
+          <Link href={appDestination("review").route}>
+            <ClipboardTextIcon />
+            Review
+          </Link>
+        </Button>
+      ) : null}
+      {item.isSuggestedFollowup ? (
+        <Button
+          aria-label={labels.accept}
+          disabled={pending}
+          onClick={() =>
+            run(async () =>
+              unwrapOwnerActionResult(await acceptBriefFollowupAction({ briefItemId: item.id })),
+            )
+          }
+          size="sm"
+          type="button"
+        >
+          <CheckIcon />
+          Accept
+        </Button>
+      ) : null}
+    </div>
   );
 }

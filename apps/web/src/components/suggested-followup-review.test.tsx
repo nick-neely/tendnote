@@ -1,20 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
+import "@/test/followup-surface-mocks";
 
 vi.mock("@/app/actions/suggested-followups", () => ({
   acceptSuggestedFollowupAction: vi.fn(),
   dismissSuggestedFollowupAction: vi.fn(),
   editSuggestedFollowupAction: vi.fn(),
   restoreDismissedSuggestedFollowupAction: vi.fn(),
-}));
-
-vi.mock("@/components/use-create-draft", () => ({
-  useCreateDraft: () => ({ create: () => {}, pending: false, error: null }),
-}));
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }));
 
 import { SuggestedFollowupReviewSection } from "./suggested-followup-review";

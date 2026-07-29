@@ -1,6 +1,10 @@
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { describe, expect, it, vi } from "vitest";
 import type { GroupableToolView } from "@/components/assistant-results/registry";
+import { renderExpanded } from "@/test/expanded-markup";
+
+vi.mock("next/link", () => import("@/test/next-link-mock"));
+
 import { AssistantToolGroup } from "./assistant-tool-group";
 
 function savedMemory(
@@ -20,7 +24,7 @@ function savedMemory(
 
 describe("AssistantToolGroup (collapsed group of same-kind durable records)", () => {
   it("collapses several saved memories into one summary, named by count and person", () => {
-    const html = renderToStaticMarkup(
+    const html = renderExpanded(
       <AssistantToolGroup
         kind="saved_memory"
         views={[
@@ -46,7 +50,7 @@ describe("AssistantToolGroup (collapsed group of same-kind durable records)", ()
   });
 
   it("prefixes each row with its person when a memory group spans several people", () => {
-    const html = renderToStaticMarkup(
+    const html = renderExpanded(
       <AssistantToolGroup
         kind="saved_memory"
         views={[
@@ -63,7 +67,7 @@ describe("AssistantToolGroup (collapsed group of same-kind durable records)", ()
   });
 
   it("does not claim source grounding for a memory group with no source records", () => {
-    const html = renderToStaticMarkup(
+    const html = renderExpanded(
       <AssistantToolGroup
         kind="saved_memory"
         views={[savedMemory("A fact.", "Mara"), savedMemory("Another fact.", "Mara")]}
@@ -75,7 +79,7 @@ describe("AssistantToolGroup (collapsed group of same-kind durable records)", ()
   });
 
   it("renders a logged-notes group as logged context, not confirmed facts", () => {
-    const html = renderToStaticMarkup(
+    const html = renderExpanded(
       <AssistantToolGroup
         kind="saved_source_record"
         views={[

@@ -1,4 +1,6 @@
 import type { Memory, Person, SourceRecord } from "@tendnote/domain";
+import { LockIcon } from "@/components/icons";
+import { RestrictedMemoriesDisclosure } from "@/components/person-restricted-memories";
 import {
   formatBirthday,
   formatMonthYear,
@@ -30,8 +32,11 @@ function LedgerSection({
   id?: string;
   children: React.ReactNode;
 }) {
+  // `scroll-mt-40` because these sections are the deep-link anchors (#memories,
+  // #logged-context) and the person page's identity-plus-tabs bar is sticky -
+  // without the offset a linked section lands underneath it.
   return (
-    <section className="flex flex-col gap-3" id={id}>
+    <section className="scroll-mt-40 flex flex-col gap-3" id={id}>
       <div className="flex flex-col gap-0.5">
         <h2 className="text-[length:var(--text-h2)] font-semibold leading-[var(--text-h2-line)]">
           {title}
@@ -61,26 +66,60 @@ export function LedgerEmpty({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function MemoriesSection({ memories }: { memories: Memory[] }) {
+/**
+ * One memory on the ledger. Restricted memories render through the same row as
+ * confirmed ones - the only difference is the marker, so a revealed memory reads
+ * as the same kind of record it has always been rather than a second class of
+ * thing. The marker is an icon plus the word, never a color on its own (DESIGN
+ * §6 badges, §8 accessibility).
+ */
+function MemoryRow({ memory, restricted = false }: { memory: Memory; restricted?: boolean }) {
+  return (
+    <article
+      className="scroll-mt-36 flex flex-col gap-1.5 px-4 py-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      id={`memory-${encodeURIComponent(memory.id)}`}
+      tabIndex={-1}
+    >
+      <p className="max-w-[68ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
+        {memory.content}
+      </p>
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[length:var(--text-caption)] text-muted-foreground">
+        <span>
+          {humanize(memory.memoryType)} · {memory.confidence} confidence
+          {/* A restricted row already says so in its marker; repeating the raw
+              sensitivity here would only make the caption longer. */}
+          {!restricted && memory.sensitivity !== "normal" ? ` · ${memory.sensitivity}` : ""}
+        </span>
+        {restricted ? (
+          <span className="inline-flex items-center gap-1 font-sans font-medium text-foreground">
+            <LockIcon aria-hidden className="size-3 shrink-0" />
+            Restricted
+          </span>
+        ) : null}
+      </p>
+    </article>
+  );
+}
+
+export function MemoriesSection({
+  memories,
+  restrictedMemories = [],
+}: {
+  memories: Memory[];
+  /**
+   * Approved memories held back from proactive use. They are the owner's own
+   * facts, so the page they belong to can reach them - behind the reveal below
+   * the confirmed list, never mixed into it, and never counted by the Memory tab
+   * badge, which promises confirmed facts.
+   */
+  restrictedMemories?: Memory[];
+}) {
   return (
     <LedgerSection description="Confirmed facts you've saved." id="memories" title="Memories">
       {memories.length ? (
         <LedgerList>
           {memories.map((memory) => (
-            <article
-              className="scroll-mt-36 flex flex-col gap-1.5 px-4 py-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              id={`memory-${encodeURIComponent(memory.id)}`}
-              key={memory.id}
-              tabIndex={-1}
-            >
-              <p className="max-w-[68ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-                {memory.content}
-              </p>
-              <p className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
-                {humanize(memory.memoryType)} · {memory.confidence} confidence
-                {memory.sensitivity !== "normal" ? ` · ${memory.sensitivity}` : ""}
-              </p>
-            </article>
+            <MemoryRow key={memory.id} memory={memory} />
           ))}
         </LedgerList>
       ) : (
@@ -88,6 +127,15 @@ export function MemoriesSection({ memories }: { memories: Memory[] }) {
           No confirmed memories yet. Save a suggestion, or add a note and review it.
         </LedgerEmpty>
       )}
+      {restrictedMemories.length ? (
+        <RestrictedMemoriesDisclosure count={restrictedMemories.length}>
+          <LedgerList>
+            {restrictedMemories.map((memory) => (
+              <MemoryRow key={memory.id} memory={memory} restricted />
+            ))}
+          </LedgerList>
+        </RestrictedMemoriesDisclosure>
+      ) : null}
     </LedgerSection>
   );
 }

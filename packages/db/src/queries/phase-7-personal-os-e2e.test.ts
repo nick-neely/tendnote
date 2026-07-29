@@ -312,10 +312,10 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       timeZone: "America/Chicago",
       now: new Date("2026-08-14T15:00:00.000Z"),
     });
+    // Ranking fell back, which the response records; the owner is told nothing,
+    // because the shortlist they see is complete either way.
     expect(todayResult.curation).toBe("deterministic_fallback");
-    expect(todayResult.limitations).toContain(
-      "Eve ranking is unavailable; deterministic ordering used.",
-    );
+    expect(todayResult.limitations).toEqual([]);
     expect(todayResult.items).toHaveLength(1);
     expect(todayResult.items[0]?.identity).toBe(`saved_item:${savedOutcome.savedItem.id}`);
     expect(todayResult.items[0]?.reason.explanation).toMatch(/bring back|set to return/i);

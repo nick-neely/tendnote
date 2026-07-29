@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import {
+  canUseMemoryProactively,
   comparePeopleForSearch,
   type Followup,
   type HouseholdMembership,
+  isActiveFollowupStatus,
   type Memory,
+  type MessageDraft,
   type Person,
   personMatchesPeopleSearch,
   type SourceRecord,
@@ -17,11 +20,21 @@ export type InMemoryPeopleStoreSeed = {
   people?: Person[];
   memories?: Memory[];
   followups?: Followup[];
+  messageDrafts?: MessageDraft[];
   sourceRecords?: SourceRecord[];
   sourceRecordPeople?: SourceRecordPerson[];
   householdMemberships?: HouseholdMembership[];
   householdRecordShares?: HouseholdRecordShare[];
 };
+
+/**
+ * The follow-ups the person page asks the owner to do something about: active
+ * reminders plus tentative proposals. Mirrors `FOLLOWUP_TAB_STATUSES` in the
+ * Drizzle adapter.
+ */
+function needsFollowupAttention(followup: Followup): boolean {
+  return isActiveFollowupStatus(followup.status) || followup.status === "suggested";
+}
 
 export type InMemoryPeopleStore = PeopleStore & {
   listAuditLogEntries: (input: { ownerUserId: string }) => Promise<PersonAuditLogEntry[]>;
@@ -31,6 +44,7 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
   const people = new Map((seed.people ?? []).map((person) => [person.id, person]));
   const memories = new Map((seed.memories ?? []).map((memory) => [memory.id, memory]));
   const followups = new Map((seed.followups ?? []).map((followup) => [followup.id, followup]));
+  const messageDrafts = new Map((seed.messageDrafts ?? []).map((draft) => [draft.id, draft]));
   const sourceRecords = new Map(
     (seed.sourceRecords ?? []).map((sourceRecord) => [sourceRecord.id, sourceRecord]),
   );
@@ -95,7 +109,7 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
 
       // The production adapter leans on database cascades to remove owned rows;
       // mirror that here so the double stays faithful — drop the person and any
-      // memories, follow-ups, source records, and links that belonged to them.
+      // memories, follow-ups, drafts, source records, and links that belonged to them.
       people.delete(personId);
       for (const [id, memory] of memories) {
         if (memory.personId === personId) {
@@ -105,6 +119,11 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
       for (const [id, followup] of followups) {
         if (followup.personId === personId) {
           followups.delete(id);
+        }
+      }
+      for (const [id, draft] of messageDrafts) {
+        if (draft.personId === personId) {
+          messageDrafts.delete(id);
         }
       }
       for (const [key, link] of sourceRecordPeople) {
@@ -151,30 +170,39 @@ export function createInMemoryPeopleStore(seed: InMemoryPeopleStoreSeed = {}): I
         });
         if (!visibleFollowups.length) return null;
 
+        // Visibility is decided by any shared follow-up; the count is only what
+        // the viewer's Follow-ups tab would actually list.
         return {
           person,
-          counts: { memories: 0, followups: visibleFollowups.length, sourceRecords: 0 },
+          counts: {
+            memories: 0,
+            review: 0,
+            followups: visibleFollowups.filter(needsFollowupAttention).length,
+            drafts: 0,
+          },
         };
       }
+
+      const ownedMemories = [...memories.values()].filter(
+        (memory) => memory.personId === input.personId && memory.ownerUserId === input.ownerUserId,
+      );
 
       return {
         person,
         counts: {
-          memories: [...memories.values()].filter(
-            (memory) =>
-              memory.personId === input.personId && memory.ownerUserId === input.ownerUserId,
-          ).length,
+          memories: ownedMemories.filter((memory) => canUseMemoryProactively(memory)).length,
+          review: ownedMemories.filter((memory) => memory.status === "suggested").length,
           followups: [...followups.values()].filter(
             (followup) =>
-              followup.personId === input.personId && followup.ownerUserId === input.ownerUserId,
+              followup.personId === input.personId &&
+              followup.ownerUserId === input.ownerUserId &&
+              needsFollowupAttention(followup),
           ).length,
-          sourceRecords: [...sourceRecords.values()].filter(
-            (sourceRecord) =>
-              sourceRecord.ownerUserId === input.ownerUserId &&
-              [...sourceRecordPeople.values()].some(
-                (link) =>
-                  link.personId === input.personId && link.sourceRecordId === sourceRecord.id,
-              ),
+          drafts: [...messageDrafts.values()].filter(
+            (draft) =>
+              draft.personId === input.personId &&
+              draft.ownerUserId === input.ownerUserId &&
+              (draft.status === "draft" || draft.status === "approved"),
           ).length,
         },
       };

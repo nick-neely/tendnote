@@ -65,7 +65,10 @@ function AccordionContent({
   return (
     <AccordionPrimitive.Content
       data-slot="accordion-content"
-      className="overflow-hidden text-sm data-open:animate-accordion-down data-closed:animate-accordion-up"
+      // Radix reports open/closed through `data-state`, so the variants have to
+      // read that attribute: `data-open:` compiles to `[data-open]`, which is an
+      // attribute nothing ever sets, and the animation never ran.
+      className="overflow-hidden text-sm data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
       {...props}
     >
       <div

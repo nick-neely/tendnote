@@ -52,7 +52,9 @@ export function createInMemoryRelationshipContextSearchStore(
 
       if (kinds.has("person")) results.push(...collectPeopleMatches(input, query));
       if (kinds.has("memory")) results.push(...collectMemoryMatches(input, query));
-      if (kinds.has("source_record")) results.push(...collectSourceRecordMatches(input, query));
+      if (kinds.has("source_record")) {
+        results.push(...collectSourceRecordMatches(input, query, kinds));
+      }
       if (kinds.has("general_action")) results.push(...collectGeneralActionMatches(input, query));
 
       return results.sort(compareResults).slice(0, input.limit);
@@ -142,19 +144,44 @@ export function createInMemoryRelationshipContextSearchStore(
     sourceRecord: SourceRecord,
     input: RelationshipContextSearchInput,
     query: string,
+    kinds: ReadonlySet<string>,
   ): boolean {
     if (!canViewerSeeRecord(input.ownerUserId, sourceRecord, "source_record")) return false;
     if (sourceRecord.status !== "active") return false;
     if (sourceRecord.sensitivity === "restricted" && !input.directlyRequested) return false;
-    return matchesText(sourceRecord.content, query);
+    if (!matchesText(sourceRecord.content, query)) return false;
+    return !isProvenanceDuplicate(sourceRecord, input, query, kinds);
+  }
+
+  /**
+   * Mirrors the drizzle adapter: explicit memory capture writes the memory's own provenance
+   * note with the same sentence, so a note is withheld when an approved memory grounded in
+   * it repeats its text and is itself admissible for this same search. A note that says more
+   * than the memory it grounds still stands on its own.
+   */
+  function isProvenanceDuplicate(
+    sourceRecord: SourceRecord,
+    input: RelationshipContextSearchInput,
+    query: string,
+    kinds: ReadonlySet<string>,
+  ): boolean {
+    if (!kinds.has("memory")) return false;
+    return memories.some(
+      (memory) =>
+        memory.sourceRecordId === sourceRecord.id &&
+        isMemoryCandidate(memory, input) &&
+        matchesText(memory.content, query) &&
+        normalizeContent(memory.content) === normalizeContent(sourceRecord.content),
+    );
   }
 
   function collectSourceRecordMatches(
     input: RelationshipContextSearchInput,
     query: string,
+    kinds: ReadonlySet<string>,
   ): ExactRecallResult[] {
     return sourceRecords
-      .filter((sourceRecord) => isSourceRecordCandidate(sourceRecord, input, query))
+      .filter((sourceRecord) => isSourceRecordCandidate(sourceRecord, input, query, kinds))
       .map((sourceRecord) => {
         const relatedPeople = sourceRecordPeople
           .filter((link) => link.sourceRecordId === sourceRecord.id)
@@ -265,6 +292,11 @@ export function createInMemoryRelationshipContextSearchStore(
       householdRecordShares,
     });
   }
+}
+
+/** Mirrors the adapter's `regexp_replace(btrim(...), '\s+', ' ', 'g')` content normalization. */
+function normalizeContent(value: string) {
+  return value.trim().replace(/\s+/g, " ");
 }
 
 function snippet(value: string) {

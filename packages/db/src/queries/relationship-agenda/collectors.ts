@@ -162,8 +162,20 @@ function shouldIncludeRestrictedSemanticResult(input: RelationshipAgendaInput) {
 }
 
 /**
- * Active follow-ups due before the window end. Overdue reminders sort ahead of
- * the rest; both are the highest-trust candidate kind (an explicit reminder).
+ * Active follow-ups due before the window end. Reminders whose date has passed
+ * sort ahead of the rest; both are the highest-trust candidate kind (an explicit
+ * reminder).
+ *
+ * A candidate's title is the reminder's own words, never a generated wrapper
+ * naming the person ("Overdue follow-up for Mara Lin"): that reads as a chore,
+ * buries what the owner actually wrote, and puts banned guilt vocabulary in a
+ * headline (DESIGN.md §9). The person travels beside it in `personDisplayName`
+ * and the date in `dueAt`, so every surface can show who and when without the
+ * title carrying either.
+ *
+ * Headline and explanation are therefore the same sentence here: for an explicit
+ * reminder, its text is both what it is and why it is showing. Surfaces that
+ * render both suppress the repeat rather than inventing a second sentence.
  */
 export async function collectDueFollowups(
   store: RelationshipAgendaStore,
@@ -185,14 +197,12 @@ export async function collectDueFollowups(
       continue;
     }
 
-    const overdue = followup.dueAt.getTime() < input.windowStart.getTime();
+    const past = followup.dueAt.getTime() < input.windowStart.getTime();
     candidates.push({
       kind: "due_followup",
       personId: person.id,
       personDisplayName: person.displayName,
-      title: overdue
-        ? `Overdue follow-up for ${person.displayName}`
-        : `Follow up with ${person.displayName}`,
+      title: followup.reason,
       reason: followup.reason,
       dueAt: followup.dueAt,
       sourceRefs: [{ kind: "followup", id: followup.id }],
@@ -203,7 +213,7 @@ export async function collectDueFollowups(
       scope: followup.scope,
       householdId: followup.householdId,
       rank: 0,
-      score: overdue ? 0 : 10,
+      score: past ? 0 : 10,
     });
   }
 
@@ -388,24 +398,41 @@ async function collectSuggestedFollowupReviews(
   return candidates;
 }
 
-/** Source records still needing attention (including personless records blocking resolution). */
+/**
+ * Source records that still need something from the owner: a name Tendnote could
+ * not match to a person.
+ *
+ * Only `pending_resolution` qualifies. Plain `active` logged context is finished
+ * work: it is already attached to the people it names, the person page shows it
+ * read-only, and there is nothing to accept or correct. Surfacing it as review
+ * manufactured a chore out of a note the owner had already filed ("Kris Moore is
+ * my grandmother" coming back as something to handle), so it stays out. Recent
+ * active context still reaches the agenda as `recent_context`, where it reads as
+ * something to remember rather than something to clear.
+ */
 function collectSourceRecordReviewItems(
   sourceRecordReviews: Awaited<
     ReturnType<RelationshipAgendaStore["listVisibleSourceRecordReviews"]>
   >,
 ): ScoredCandidate[] {
   return sourceRecordReviews
-    .filter((candidate) => ["active", "pending_resolution"].includes(candidate.sourceRecord.status))
+    .filter((candidate) => candidate.sourceRecord.status === "pending_resolution")
     .map(sourceRecordReviewCandidate);
 }
 
-/** Build the review candidate for one source record, handling the personless case. */
+/**
+ * Build the review candidate for one unresolved source record. Both shapes ask
+ * the question the owner is the only one who can answer, and both carry the note
+ * itself as the explanation so the question has context. Answering happens on the
+ * Review surface, which holds the mention text and the add/link controls.
+ */
 function sourceRecordReviewCandidate(
   review: Awaited<ReturnType<RelationshipAgendaStore["listVisibleSourceRecordReviews"]>>[number],
 ): ScoredCandidate {
   const { sourceRecord } = review;
   const shared = {
     kind: "review_item" as const,
+    reason: sourceRecord.content,
     sourceRefs: [{ kind: "source_record" as const, id: sourceRecord.id }],
     trustLevel: "logged_context" as const,
     sensitivity: sourceRecord.sensitivity,
@@ -423,8 +450,7 @@ function sourceRecordReviewCandidate(
       ...shared,
       personId: null,
       personDisplayName: null,
-      title: "Resolve a personless source record",
-      reason: "This source record needs person resolution before it becomes relationship context.",
+      title: "Who is this note about?",
       score: 80,
     };
   }
@@ -433,8 +459,7 @@ function sourceRecordReviewCandidate(
     ...shared,
     personId: primaryPerson.id,
     personDisplayName: primaryPerson.displayName,
-    title: `Review logged context for ${primaryPerson.displayName}`,
-    reason: sourceRecord.content,
+    title: "Who else is in this note?",
     score: 50,
   };
 }

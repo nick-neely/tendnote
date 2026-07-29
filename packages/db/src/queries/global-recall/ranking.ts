@@ -50,6 +50,6 @@ function diversifyBand(results: GlobalRecallResult[]): GlobalRecallResult[] {
   return [...preferred, ...overflow];
 }
 
-function canonicalKey(result: GlobalRecallResult): string {
+export function canonicalKey(result: GlobalRecallResult): string {
   return `${result.canonical.kind}:${result.canonical.id}`;
 }

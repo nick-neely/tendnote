@@ -194,6 +194,18 @@ export function toRelatedRelationshipResult(
   result: SemanticRetrievalResult,
 ): GlobalRecallResult | null {
   if (result.similarity < RELATED_MINIMUM_SIMILARITY) return null;
+  return relatedRelationshipCandidate(result);
+}
+
+/**
+ * The record a semantic candidate would become if the similarity floor let it
+ * through. Limitation reporting needs this for candidates the floor rejected, so
+ * it can tell a record that was actually lost from one the Exact pass already put
+ * on screen under the same canonical id.
+ */
+export function relatedRelationshipCandidate(
+  result: SemanticRetrievalResult,
+): GlobalRecallResult | null {
   return toRelationshipResult({
     ...result,
     label:

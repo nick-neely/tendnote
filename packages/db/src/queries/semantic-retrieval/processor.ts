@@ -12,6 +12,7 @@ import {
   processGeneralAction,
   processSavedItem,
   processSourceRecord,
+  scrubRestrictedEmbeddings,
   skipJob,
 } from "./steps";
 import type {
@@ -55,10 +56,30 @@ function idempotencyKeyFor(input: {
 }
 
 /**
+ * The job states an enqueue reopens rather than returns untouched.
+ *
+ * Both are verdicts on a state the record may since have left: `completed` embedded the
+ * text it had then, `skipped` reported the eligibility it had then. An enqueue is how this
+ * pipeline is told the record changed, so re-deciding is the whole point of the call.
+ *
+ * Leaving `skipped` terminal made every reversible skip a one-way door. A note logged
+ * alongside an unresolved mention is skipped, and the resolve path's enqueue then handed
+ * back the terminal job, so the note was never embedded once the mention was resolved. The
+ * restricted scrub sharpens the same edge: with the row deleted, a record edited back out
+ * of `restricted` would have stayed unretrievable forever. `pending` and `running` are
+ * already queued or in flight, and `failed` carries a retry backoff, so all three are left
+ * alone.
+ */
+const REOPENABLE_JOB_STATUSES = new Set<ProcessEmbeddingJobResult["job"]["status"]>([
+  "completed",
+  "skipped",
+]);
+
+/**
  * Idempotently enqueues an embedding job. The idempotency key folds in the model
- * and version, so a previously completed job for the same record is reopened
- * (set back to pending) to re-embed under the current config rather than left
- * stale; a still-pending job is returned as-is.
+ * and version, so a terminal job for the same record is reopened (set back to
+ * pending) to re-decide under the current config and the record's current state
+ * rather than left stale; a still-pending job is returned as-is.
  */
 async function enqueueEmbeddingJob(
   ctx: EmbeddingContext,
@@ -78,7 +99,7 @@ async function enqueueEmbeddingJob(
   const existing = await store.findEmbeddingJobByIdempotencyKey(parsed.idempotencyKey);
 
   if (existing) {
-    if (existing.status === "completed") {
+    if (REOPENABLE_JOB_STATUSES.has(existing.status)) {
       const job = await store.updateEmbeddingJob({
         jobId: existing.id,
         status: "pending",
@@ -172,6 +193,8 @@ async function processEmbeddingJob(
     const result = await processJobByKind(ctx, job);
 
     if ("skipReason" in result) {
+      await scrubRestrictedEmbeddings(ctx, job, result.skipReason);
+
       return skipJob(ctx, job, result.skipReason, now, extractSkipSources(result));
     }
 

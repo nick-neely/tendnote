@@ -16,7 +16,9 @@ vi.mock("@/app/actions/assets", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+  usePathname: () => "/assets",
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 import { AssetsSurface, filterAssets } from "./assets-surface";
@@ -57,27 +59,14 @@ describe("AssetsSurface", () => {
     const html = render([FRIDGE, OLD_PLAN]);
 
     expect(html).not.toContain("Old streaming plan");
-    // The state filter appears exactly because an archived asset exists.
-    expect(html).toContain("Filter by state");
+    // The filter disclosure appears exactly because an archived asset exists; the
+    // rows themselves stay collapsed (which groups it offers is a DOM-test concern).
+    expect(html).toContain("Filters and sort");
+    expect(html).not.toContain("Archived");
   });
 
   it("hides filter chrome entirely when there is nothing to narrow", () => {
-    const html = render([FRIDGE]);
-
-    expect(html).not.toContain("Filter by kind");
-    expect(html).not.toContain("Filter by state");
-    expect(html).not.toContain("Filter by visibility");
-  });
-
-  it("offers a visibility filter only when a non-private asset is visible", () => {
-    const shared = assetViewFixture({
-      id: "a-shared",
-      name: "Streaming plan",
-      scope: "household",
-      visibilityLabel: "Home",
-    });
-    expect(render([FRIDGE, shared])).toContain("Filter by visibility");
-    expect(render([FRIDGE, CAR])).not.toContain("Filter by visibility");
+    expect(render([FRIDGE])).not.toContain("Filters and sort");
   });
 
   it("teaches the first capture when nothing is tracked yet", () => {

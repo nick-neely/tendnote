@@ -273,6 +273,29 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
 
       return embedding;
     },
+    async refreshRelationshipContextEmbeddingMetadata(input) {
+      const [embedding] = await getDb()
+        .update(relationshipContextEmbeddings)
+        .set({
+          personId: input.personId,
+          trustLevel: input.trustLevel,
+          sensitivity: input.sensitivity,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(relationshipContextEmbeddings.id, input.embeddingId),
+            eq(relationshipContextEmbeddings.ownerUserId, input.ownerUserId),
+          ),
+        )
+        .returning();
+
+      if (!embedding) {
+        throw new Error("Relationship-context embedding not found.");
+      }
+
+      return embedding;
+    },
     async findRelationshipContextEmbedding(input) {
       const [embedding] = await getDb()
         .select()
@@ -289,6 +312,22 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
         .limit(1);
 
       return embedding ?? null;
+    },
+    async deleteRelationshipContextEmbeddingsForRecord(input) {
+      // No model/version predicate on purpose: every row for this record goes, because a
+      // row left behind under a superseded model still holds the record's text.
+      const deleted = await getDb()
+        .delete(relationshipContextEmbeddings)
+        .where(
+          and(
+            eq(relationshipContextEmbeddings.ownerUserId, input.ownerUserId),
+            eq(relationshipContextEmbeddings.recordKind, input.recordKind),
+            eq(relationshipContextEmbeddings.recordId, input.recordId),
+          ),
+        )
+        .returning({ id: relationshipContextEmbeddings.id });
+
+      return deleted.length;
     },
     async searchSavedItemsSemantic(input) {
       const queryVector = `[${input.queryEmbedding.join(",")}]`;
@@ -375,9 +414,37 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
             and e.embedding_model = ${input.embeddingModel}
             and e.embedding_version = ${input.embeddingVersion}
             and e.embedding_dimensions = ${input.queryEmbedding.length}
-            and e.source_updated_at = m.updated_at
+            -- Staleness is content-addressed, never timestamp-addressed (ADR 0013:
+            -- "content_fingerprint should drive staleness"). The embedded-text equality
+            -- below is the real guard - it compares the live projected text against the
+            -- exact text that was embedded, so a vector can only match a record that
+            -- still says what the vector encodes.
+            --
+            -- An e.source_updated_at = m.updated_at guard used to sit here and silently
+            -- emptied this branch. Two independent reasons, both unrecoverable:
+            --   1. Precision. memories.updated_at is written by Postgres defaultNow() at
+            --      microsecond resolution; source_updated_at is written back from a JS
+            --      Date, which the driver truncates to milliseconds. The two are unequal
+            --      by construction for any row whose timestamp has sub-millisecond digits
+            --      - the row is disqualified the instant it is embedded.
+            --   2. Harmless touches. Editing importance or re-approving a memory bumps
+            --      updated_at without changing the embedded text, and reuseOrEmbed
+            --      short-circuits on a matching fingerprint, so re-enqueueing never
+            --      refreshes source_updated_at. The row could never come back.
+            -- The general-action branch below already omits this guard for reason 2.
+            -- source_updated_at stays on the row as embed-time provenance, not a gate.
             and e.embedded_text = regexp_replace(btrim(m.content), '\\s+', ' ', 'g')
             and e.trust_level = 'confirmed_fact'
+            -- Live privacy gating, not redundant bookkeeping. Two write-side mechanisms
+            -- already act on a sensitivity edit - reuseOrEmbed converges the denormalized
+            -- column, and a memory edited to restricted has its row *deleted* outright by
+            -- the embed decision's skip path (restricted text is never re-sent to a
+            -- provider, so the row could never be corrected in place). Neither is
+            -- synchronous with the edit: this equality is what fails closed across the
+            -- window between the edit and its job running, and what still withholds a row
+            -- if a future change ever lets one survive the scrub. The gate below reads
+            -- e.sensitivity, so the two together are equivalent to gating on
+            -- m.sensitivity - which is the point.
             and e.sensitivity = m.sensitivity
             and (${input.personId ? sql`e.person_id = ${input.personId}` : sql`true`})
             and (${input.directlyRequested}::boolean or e.sensitivity <> 'restricted')
@@ -451,7 +518,14 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
             and e.embedding_model = ${input.embeddingModel}
             and e.embedding_version = ${input.embeddingVersion}
             and e.embedding_dimensions = ${input.queryEmbedding.length}
-            and e.source_updated_at = sr.updated_at
+            -- No e.source_updated_at = sr.updated_at guard, for the same reason as the
+            -- memory branch above: it is unsatisfiable by construction (Postgres-microsecond
+            -- updated_at vs millisecond-truncated JS Date) and unrecoverable once a
+            -- post-embed touch - linking a person, resolving a mention - bumps updated_at
+            -- without changing the embedded text. The projection equality below is the real
+            -- staleness guard, and it is strictly stronger: it re-derives People /
+            -- Interaction type / Logged context from the live rows, so an edit to the
+            -- content, the linked people, or the interaction type all invalidate the vector.
             and e.embedded_text = concat_ws(E'\n',
               concat('People: ', related_people.display_names),
               case
@@ -462,6 +536,10 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
               concat('Logged context: ', regexp_replace(btrim(sr.content), '[ \t]+', ' ', 'g'))
             )
             and e.trust_level = 'logged_context'
+            -- Kept for the same reason as the memory branch: the write side deletes a
+            -- restricted record's row rather than rewriting it (the embed decision skips
+            -- it), and this equality is what withholds a row still carrying its
+            -- pre-restriction text until that scrub runs.
             and e.sensitivity = sr.sensitivity
             and sr.sensitivity <> 'restricted'
             and (${

@@ -32,6 +32,12 @@ import type { AssetReviewGroupView, AssetReviewMemoryView } from "@/lib/asset-re
 import { ReversibleMutationProvider, useReversibleMutation } from "@/lib/reversible-mutation";
 import { sourceLabel } from "@/lib/source-labels";
 
+/**
+ * The card is the only frame: every part inside it is a hairline-split row at
+ * this padding, never a box of its own (DESIGN.md §6).
+ */
+const REVIEW_ROW_CLASS = "px-3.5 py-2.5";
+
 function formatCaptured(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
     month: "short",
@@ -50,7 +56,7 @@ function GroundingBlock({ review }: { review: AssetReviewGroupView }) {
     return null;
   }
   return (
-    <div className="border-t border-accent/20 pt-2.5">
+    <div className={REVIEW_ROW_CLASS}>
       {review.fromAction ? (
         <p className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
           From action · {review.fromAction.title}
@@ -79,6 +85,12 @@ function GroundingBlock({ review }: { review: AssetReviewGroupView }) {
  * can be edited inline before accepting, straightforward groups resolve in one
  * calm batch action, and dismissing carries no guilt (DESIGN.md §2). Matches the
  * Suggested-action card vocabulary so the Review tab reads as one system.
+ *
+ * Button weight maps to scope, because there are three real ones here - this one
+ * detail, just the asset, the whole group - and five identical sage buttons made
+ * "which Accept am I pressing?" a genuine question. Exactly one primary survives:
+ * the group decision in the footer. Narrower accepts are outline, edit and dismiss
+ * are ghost, and every label names its own scope.
  */
 export function AssetReviewGroupCard({
   ...props
@@ -140,10 +152,10 @@ function AssetReviewGroupCardContent({
 
   return (
     <article
-      className="flex flex-col gap-3 rounded-lg border border-accent/25 bg-accent-soft/45 p-3.5 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
       aria-busy={pending}
+      className="flex flex-col divide-y divide-accent/15 overflow-hidden rounded-lg border border-accent/25 bg-accent-soft/45 transition-[opacity,transform] duration-200 ease-(--motion-ease-out) data-[leaving=true]:translate-y-0.5 data-[leaving=true]:opacity-0 motion-reduce:transition-none"
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className={`${REVIEW_ROW_CLASS} flex items-center justify-between gap-3`}>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/15 px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
           <span aria-hidden className="size-1.5 rounded-full bg-accent" />
           {review.asset.pending ? "Suggested asset" : "Suggested details"}
@@ -166,39 +178,47 @@ function AssetReviewGroupCardContent({
       ) : null}
 
       {memoryCount > 0 ? (
-        <ul className="flex flex-col divide-y divide-accent/15 rounded-md border border-accent/20 bg-background/60">
-          {review.memories.map((memory) => (
-            <MemoryRow
-              disabled={pending}
-              key={`${memory.id}:${memory.label}:${memory.valueLabel ?? ""}:${memory.notes ?? ""}`}
-              memory={memory}
-              run={run}
-            />
-          ))}
-        </ul>
+        <div className={`${REVIEW_ROW_CLASS} flex flex-col gap-1.5`}>
+          {/* Names the scope the per-row buttons act on, so "Accept" here can
+              never be read as accepting the group. */}
+          <p className="text-[length:var(--text-caption)] text-muted-foreground">
+            {memoryCount === 1 ? "Suggested detail" : `Suggested details · ${memoryCount}`}
+          </p>
+          <ul className="flex flex-col divide-y divide-accent/15">
+            {review.memories.map((memory) => (
+              <MemoryRow
+                disabled={pending}
+                key={`${memory.id}:${memory.label}:${memory.valueLabel ?? ""}:${memory.notes ?? ""}`}
+                memory={memory}
+                run={run}
+              />
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       {/* Evidence captured for this group — attachable before the destination
           Asset is accepted, reviewed alongside what it grounds (#200). */}
-      <AssetReviewEvidenceBlock
-        disabled={pending}
-        onEvidenceChange={(evidence) => onUpdate?.({ ...review, evidence })}
-        review={review}
-      />
+      <div className={REVIEW_ROW_CLASS}>
+        <AssetReviewEvidenceBlock
+          disabled={pending}
+          onEvidenceChange={(evidence) => onUpdate?.({ ...review, evidence })}
+          review={review}
+        />
+      </div>
 
       <GroundingBlock review={review} />
 
-      {pending ? (
-        <p className="text-muted-foreground text-sm" role="status">
-          {mutation.state.labels.pending}
-        </p>
-      ) : null}
-      <div className="flex flex-col gap-2 border-t border-accent/20 pt-3">
-        {/* Name the outcome plainly so nothing is resolved blind (calm, honest). */}
+      <div className={`${REVIEW_ROW_CLASS} flex flex-col gap-2`}>
+        {pending ? (
+          <p className="text-[length:var(--text-small)] text-muted-foreground" role="status">
+            {mutation.state.labels.pending}
+          </p>
+        ) : null}
+        {/* Name the outcome plainly so nothing is resolved blind (calm, honest),
+            and say which scope this row decides - the whole group. */}
         <p className="text-[length:var(--text-caption)] text-muted-foreground">
-          {review.asset.pending
-            ? "Accept keeps this asset and its details. Dismiss clears the whole suggestion."
-            : "Accepted details are added to the asset. Dismiss clears the rest."}
+          {groupOutcomeCopy(review.asset.pending, batchable)}
         </p>
         {/* biome-ignore lint/a11y/useSemanticElements: a related-controls group, not a form fieldset */}
         <div
@@ -214,6 +234,7 @@ function AssetReviewGroupCardContent({
             evidenceAtRisk={review.asset.pending ? review.evidence.length : 0}
             onDismiss={() => run(() => dismissAssetReviewGroupAction({ groupId: review.groupId }))}
           />
+          {/* The one primary on this card: the decision for everything above it. */}
           <Button
             disabled={pending}
             onClick={() => run(() => acceptAssetReviewGroupAction({ groupId: review.groupId }))}
@@ -224,15 +245,26 @@ function AssetReviewGroupCardContent({
             {batchable ? "Accept all" : "Accept"}
           </Button>
         </div>
+        {error ? (
+          <p className="text-[length:var(--text-small)] text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
-
-      {error ? (
-        <p className="text-[length:var(--text-small)] text-destructive" role="alert">
-          {error}
-        </p>
-      ) : null}
     </article>
   );
+}
+
+/** What the footer's two buttons actually do, in the group's own words. */
+function groupOutcomeCopy(assetPending: boolean, batchable: boolean): string {
+  if (!batchable) {
+    return assetPending
+      ? "Accept keeps this asset. Dismiss clears the whole suggestion."
+      : "Accept adds this detail to the asset. Dismiss clears it.";
+  }
+  return assetPending
+    ? "Accept all keeps this asset and every detail above. Dismiss all clears the whole suggestion."
+    : "Accept all adds every detail above to the asset. Dismiss all clears the rest.";
 }
 
 /**
@@ -273,7 +305,7 @@ function AnchorBlock({
 
   if (!asset.pending) {
     return (
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <div className={`${REVIEW_ROW_CLASS} flex flex-wrap items-center gap-x-2 gap-y-1`}>
         <Link
           className="min-w-0 truncate font-medium text-[length:var(--text-body)] underline-offset-4 transition-colors hover:underline"
           href={`/assets/${asset.id}`}
@@ -287,7 +319,7 @@ function AnchorBlock({
 
   if (isEditing) {
     return (
-      <div className="flex flex-col gap-2.5">
+      <div className={`${REVIEW_ROW_CLASS} flex flex-col gap-2.5`}>
         <div className="flex flex-wrap items-center gap-2">
           <Input
             aria-label="Asset name"
@@ -334,6 +366,8 @@ function AnchorBlock({
           >
             Apply edit
           </Button>
+          {/* Same scope as the collapsed row's accept, so the same weight: the
+              footer's group decision stays the card's only primary. */}
           <Button
             disabled={disabled || !trimmedName}
             onClick={() =>
@@ -341,9 +375,10 @@ function AnchorBlock({
             }
             size="sm"
             type="button"
+            variant="outline"
           >
             <CheckIcon />
-            Accept asset
+            Accept asset only
           </Button>
         </div>
       </div>
@@ -351,7 +386,7 @@ function AnchorBlock({
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className={`${REVIEW_ROW_CLASS} flex flex-wrap items-center justify-between gap-2`}>
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <span className="min-w-0 truncate font-medium text-[length:var(--text-body)] leading-[var(--text-body-line)]">
           {asset.name}
@@ -370,15 +405,18 @@ function AnchorBlock({
           <PencilIcon />
           Edit
         </Button>
+        {/* Narrower than the footer's Accept: it keeps the asset and leaves every
+            detail below still pending, so the label says "only". */}
         <Button
-          aria-label={`Accept suggested asset: ${asset.name}`}
+          aria-label={`Accept suggested asset only: ${asset.name}`}
           disabled={disabled}
           onClick={() => run(() => acceptSuggestedAssetAction({ assetId: asset.id }))}
           size="sm"
           type="button"
+          variant="outline"
         >
           <CheckIcon />
-          Accept asset
+          Accept asset only
         </Button>
       </div>
     </div>
@@ -400,7 +438,7 @@ function DuplicatePrompt({
   disabled: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-md border border-dashed border-accent/30 px-3 py-2.5">
+    <div className={`${REVIEW_ROW_CLASS} flex flex-col gap-1.5`}>
       <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)]">
         Already tracking something like this? Linking adds these details there instead.
       </p>
@@ -458,7 +496,7 @@ function MemoryRow({
   }
 
   return (
-    <li className="flex flex-col gap-2 px-3 py-2.5">
+    <li className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0">
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
           {memory.label}
@@ -500,6 +538,8 @@ function MemoryRow({
           <XIcon />
           Dismiss
         </Button>
+        {/* One detail's worth of decision - outline, so the footer's Accept stays
+            the only primary and the two never read as the same button. */}
         <Button
           aria-label={`Accept detail: ${memory.label}`}
           className="ml-2"
@@ -507,6 +547,7 @@ function MemoryRow({
           onClick={() => run(() => acceptSuggestedAssetMemoryAction({ memoryId: memory.id }))}
           size="sm"
           type="button"
+          variant="outline"
         >
           <CheckIcon />
           Accept

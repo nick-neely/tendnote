@@ -23,7 +23,10 @@ export function createGlobalRecall(deps: GlobalRecallDependencies): GlobalRecall
       return {
         query: parsed.query,
         results,
-        limitations: recallLimitations(outcomes, sources, plan),
+        // Limitations read the full merged match list, not the page: a Related
+        // candidate withheld behind a page of answers is not a gap the owner is
+        // looking at, while an empty search is.
+        limitations: recallLimitations(outcomes, sources, plan, merged, parsed.family),
         hasMore: merged.length > parsed.offset + results.length,
       };
     },

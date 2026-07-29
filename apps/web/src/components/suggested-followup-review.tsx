@@ -15,6 +15,7 @@ import {
   SuggestionReviewControls,
 } from "@/components/suggestion-review-controls";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { useCreateDraft } from "@/components/use-create-draft";
 import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
@@ -247,11 +248,14 @@ function SuggestedFollowupReviewCard({
               onChange={(event) => setDraftReason(event.target.value)}
               value={draftReason}
             />
-            <Input
+            {/* Not clearable: an accepted suggestion always becomes a dated
+                reminder, so the picker's clear affordance would only offer an
+                empty due date the edit action rejects. */}
+            <DatePicker
               aria-label="Proposed due date"
               className="w-44"
-              onChange={(event) => setDraftDate(event.target.value)}
-              type="date"
+              clearable={false}
+              onChange={setDraftDate}
               value={draftDate}
             />
           </div>

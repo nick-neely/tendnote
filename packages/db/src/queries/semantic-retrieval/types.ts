@@ -20,6 +20,8 @@ import type {
   SearchSemanticContextInput,
   SemanticRecordKind,
   SemanticRetrievalResult,
+  SemanticTrustLevel,
+  Sensitivity,
   SourceRecord,
   SourceRecordPerson,
   UnresolvedPersonMention,
@@ -127,6 +129,21 @@ export type EmbeddingStore = MemoryReviewStore &
     upsertRelationshipContextEmbedding: (
       embedding: CreateRelationshipContextEmbeddingInput,
     ) => Promise<RelationshipContextEmbedding>;
+    /**
+     * Converges the columns a row denormalizes from its source record - person linkage,
+     * trust register, sensitivity - leaving the vector, the embedded text, and the content
+     * fingerprint alone. `reuseOrEmbed` calls this on a fingerprint match, the one case the
+     * fingerprint provably cannot detect: the text is unchanged but the metadata beside it
+     * has moved. Owner-scoped like every other store method, so a stray id cannot reach
+     * another owner's row.
+     */
+    refreshRelationshipContextEmbeddingMetadata: (input: {
+      ownerUserId: string;
+      embeddingId: string;
+      personId: string | null;
+      trustLevel: SemanticTrustLevel;
+      sensitivity: Sensitivity;
+    }) => Promise<RelationshipContextEmbedding>;
     findRelationshipContextEmbedding: (input: {
       ownerUserId: string;
       recordKind: SemanticRecordKind;
@@ -134,6 +151,22 @@ export type EmbeddingStore = MemoryReviewStore &
       embeddingModel: string;
       embeddingVersion: string;
     }) => Promise<RelationshipContextEmbedding | null>;
+    /**
+     * Removes every embedding row for one record and returns how many were deleted. The
+     * embed decision calls this when a record turns out to be `restricted`: the row a
+     * pre-restriction run wrote still carries the full `embedded_text` and the vector
+     * derived from it, and withholding that at the search seam is not the same as not
+     * holding it.
+     *
+     * Model and version are deliberately absent from the predicate. A row written under a
+     * superseded model holds the same text as the current one, so a scrub that spared it
+     * would leave the text behind. Owner-scoped like every other method here.
+     */
+    deleteRelationshipContextEmbeddingsForRecord: (input: {
+      ownerUserId: string;
+      recordKind: SemanticRecordKind;
+      recordId: string;
+    }) => Promise<number>;
     searchSemanticContext: (
       input: SearchSemanticContextQueryInput & {
         queryEmbedding: number[];

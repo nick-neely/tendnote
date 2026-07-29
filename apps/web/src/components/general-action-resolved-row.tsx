@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ActionRowControls } from "@/components/general-action-row-controls";
+import { ACTION_CONTROL_TOUCH_TARGET } from "@/components/general-action-shared";
 import { RotateCcwIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -88,6 +89,7 @@ export function ResolvedActionRow({
         pending={pending}
       >
         <Button
+          className={ACTION_CONTROL_TOUCH_TARGET}
           disabled={pending}
           data-action-control="reopen"
           onClick={(event) => run("reopen", event.currentTarget)}
@@ -100,6 +102,7 @@ export function ResolvedActionRow({
         </Button>
         {activeMutation?.state.undoAvailable ? (
           <Button
+            className={ACTION_CONTROL_TOUCH_TARGET}
             disabled={activeMutation.state.undoRequested}
             onClick={activeMutation.requestUndo}
             size="sm"

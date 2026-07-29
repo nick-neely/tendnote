@@ -24,7 +24,7 @@ function response(): TodayShortlistResponse {
         },
         title: "Call Sam",
         context: "Sam · Follow-Up",
-        reason: { code: "overdue", key: "due:jul-20", explanation: "Overdue since Jul 20." },
+        reason: { code: "overdue", key: "due:jul-20", explanation: "Waiting since Jul 20." },
         sourceRefs: [{ kind: "followup", id: FOLLOWUP_ID }],
         action: { kind: "complete_follow_up", label: "Complete" },
         mandatory: true,
@@ -76,6 +76,38 @@ function handlers(): TodayShortlistHandlers {
   };
 }
 
+/**
+ * The shortlist as its owner meets it: one authoritative day, in the owner's zone.
+ * Every case reads the same day because what varies between them is handler
+ * behavior and interaction, not the date - the two that do cross a day boundary
+ * pass their own `localDate` and say so.
+ */
+function shortlist(
+  actions: TodayShortlistHandlers,
+  initial: TodayShortlistResponse = response(),
+  localDate = "2026-07-21",
+) {
+  return (
+    <TodayShortlist
+      handlers={actions}
+      initial={initial}
+      localDate={localDate}
+      timeZone="America/Chicago"
+    />
+  );
+}
+
+/**
+ * Handlers whose suppression is rejected by the server, so the row has to come
+ * back and take focus with it.
+ */
+function handlersRejectingSuppression(): TodayShortlistHandlers {
+  const actions = handlers();
+  vi.mocked(actions.suppress).mockResolvedValue({ ok: false, error: "Today changed elsewhere." });
+
+  return actions;
+}
+
 describe("TodayShortlist", () => {
   beforeEach(() => routerRefresh.mockClear());
   afterEach(() => vi.useRealTimers());
@@ -83,18 +115,11 @@ describe("TodayShortlist", () => {
   it("renders flat explainable rows with real actions and a labelled More menu", async () => {
     const user = userEvent.setup();
     const actions = handlers();
-    render(
-      <TodayShortlist
-        handlers={actions}
-        initial={response()}
-        localDate="2026-07-21"
-        timeZone="America/Chicago"
-      />,
-    );
+    render(shortlist(actions));
 
     expect(screen.getByText("Follow-Up")).toBeTruthy();
     expect(screen.getByText("Sam · Follow-Up")).toBeTruthy();
-    expect(screen.getByText("Why today: Overdue since Jul 20.")).toBeTruthy();
+    expect(screen.getByText("Why today: Waiting since Jul 20.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Filter measurements" }).getAttribute("href")).toBe(
       "/saved-items#saved-item-filter",
     );
@@ -119,14 +144,7 @@ describe("TodayShortlist", () => {
   it("uses the backing domain completion action instead of a generic Today mutation", async () => {
     const user = userEvent.setup();
     const actions = handlers();
-    render(
-      <TodayShortlist
-        handlers={actions}
-        initial={response()}
-        localDate="2026-07-21"
-        timeZone="America/Chicago"
-      />,
-    );
+    render(shortlist(actions));
 
     await user.click(screen.getByRole("button", { name: "Complete Call Sam" }));
 
@@ -142,14 +160,7 @@ describe("TodayShortlist", () => {
   it("projects Not today immediately and restores through authoritative Undo", async () => {
     const user = userEvent.setup();
     const actions = handlers();
-    render(
-      <TodayShortlist
-        handlers={actions}
-        initial={response()}
-        localDate="2026-07-21"
-        timeZone="America/Chicago"
-      />,
-    );
+    render(shortlist(actions));
 
     await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
     await user.click(screen.getByRole("menuitem", { name: "Not today" }));
@@ -163,19 +174,7 @@ describe("TodayShortlist", () => {
 
   it("rolls a failed suppression back to the exact row and stable More control", async () => {
     const user = userEvent.setup();
-    const actions = handlers();
-    vi.mocked(actions.suppress).mockResolvedValue({
-      ok: false,
-      error: "Today changed elsewhere.",
-    });
-    render(
-      <TodayShortlist
-        handlers={actions}
-        initial={response()}
-        localDate="2026-07-21"
-        timeZone="America/Chicago"
-      />,
-    );
+    render(shortlist(handlersRejectingSuppression()));
 
     await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
     await user.click(screen.getByRole("menuitem", { name: "Not today" }));
@@ -198,14 +197,7 @@ describe("TodayShortlist", () => {
           settle = resolve;
         }),
     );
-    render(
-      <TodayShortlist
-        handlers={actions}
-        initial={response()}
-        localDate="2026-07-21"
-        timeZone="America/Chicago"
-      />,
-    );
+    render(shortlist(actions));
 
     await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
     await user.click(screen.getByRole("menuitem", { name: "Not today" }));
@@ -237,14 +229,7 @@ describe("TodayShortlist", () => {
           settlers.set(input.candidateIdentity, resolve);
         }),
     );
-    render(
-      <TodayShortlist
-        handlers={actions}
-        initial={response()}
-        localDate="2026-07-21"
-        timeZone="America/Chicago"
-      />,
-    );
+    render(shortlist(actions));
 
     await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
     await user.click(screen.getByRole("menuitem", { name: "Not today" }));
@@ -278,19 +263,7 @@ describe("TodayShortlist", () => {
 
   it("restores a failed Later submit to the initiating Set button", async () => {
     const user = userEvent.setup();
-    const actions = handlers();
-    vi.mocked(actions.suppress).mockResolvedValue({
-      ok: false,
-      error: "Today changed elsewhere.",
-    });
-    render(
-      <TodayShortlist
-        handlers={actions}
-        initial={response()}
-        localDate="2026-07-21"
-        timeZone="America/Chicago"
-      />,
-    );
+    render(shortlist(handlersRejectingSuppression()));
 
     await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
     await user.click(screen.getByRole("menuitem", { name: "Later" }));
@@ -303,14 +276,7 @@ describe("TodayShortlist", () => {
   it("moves focus to a logical sibling and then the heading when rows leave", async () => {
     const user = userEvent.setup();
     const actions = handlers();
-    const view = render(
-      <TodayShortlist
-        handlers={actions}
-        initial={response()}
-        localDate="2026-07-21"
-        timeZone="America/Chicago"
-      />,
-    );
+    const view = render(shortlist(actions));
 
     await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
     await user.click(screen.getByRole("menuitem", { name: "Not today" }));
@@ -321,14 +287,7 @@ describe("TodayShortlist", () => {
     );
 
     const lastOnly = { ...response(), items: response().items.slice(1) };
-    view.rerender(
-      <TodayShortlist
-        handlers={actions}
-        initial={lastOnly}
-        localDate="2026-07-22"
-        timeZone="America/Chicago"
-      />,
-    );
+    view.rerender(shortlist(actions, lastOnly, "2026-07-22"));
     vi.mocked(actions.suppress).mockResolvedValue({ ok: true, view: { ...lastOnly, items: [] } });
     await user.click(screen.getByRole("button", { name: "More options for Filter measurements" }));
     await user.click(screen.getByRole("menuitem", { name: "Not today" }));
@@ -341,14 +300,7 @@ describe("TodayShortlist", () => {
 
   it("resets candidates and response metadata when the authoritative day changes", () => {
     const actions = handlers();
-    const view = render(
-      <TodayShortlist
-        handlers={actions}
-        initial={response()}
-        localDate="2026-07-21"
-        timeZone="America/Chicago"
-      />,
-    );
+    const view = render(shortlist(actions));
     const next = {
       ...response(),
       items: response()
@@ -357,14 +309,7 @@ describe("TodayShortlist", () => {
       limitations: ["Calendar is still syncing."],
     };
 
-    view.rerender(
-      <TodayShortlist
-        handlers={actions}
-        initial={next}
-        localDate="2026-07-22"
-        timeZone="America/Chicago"
-      />,
-    );
+    view.rerender(shortlist(actions, next, "2026-07-22"));
 
     expect(screen.queryByRole("link", { name: "Call Sam" })).toBeNull();
     expect(screen.getByRole("link", { name: "Call Sam tomorrow" })).toBeTruthy();
@@ -385,20 +330,17 @@ describe("TodayShortlist", () => {
         ],
       },
     };
-    render(
-      <TodayShortlist
-        handlers={handlers()}
-        initial={overflowResponse}
-        localDate="2026-07-21"
-        timeZone="America/Chicago"
-      />,
-    );
+    render(shortlist(handlers(), overflowResponse));
 
     await user.click(screen.getByRole("button", { name: "More options for Call Sam" }));
     await user.click(screen.getByRole("menuitem", { name: "Later" }));
 
     expect(screen.getByLabelText("Show again")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Set" })).toBeTruthy();
+    // The date is required, so there is nothing a clear button could mean. Left
+    // clearable it emptied the date while `required` still only covered the time
+    // half, and the submit handed an Invalid Date to the suppression.
+    expect(screen.queryByRole("button", { name: "Clear date" })).toBeNull();
     expect(screen.getByRole("link", { name: "People" }).getAttribute("href")).toBe("/people");
     expect(screen.getByRole("link", { name: "Actions" }).getAttribute("href")).toBe("/actions");
   });
@@ -406,14 +348,7 @@ describe("TodayShortlist", () => {
   it("refreshes the authoritative page when an open visit crosses the owner local day", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-22T05:01:00.000Z"));
-    render(
-      <TodayShortlist
-        handlers={handlers()}
-        initial={response()}
-        localDate="2026-07-21"
-        timeZone="America/Chicago"
-      />,
-    );
+    render(shortlist(handlers()));
 
     expect(routerRefresh).toHaveBeenCalledOnce();
   });

@@ -1,10 +1,14 @@
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { describe, expect, it, vi } from "vitest";
 import type { AssistantToolView } from "@/lib/eve/tool-result-view";
+import { renderExpanded } from "@/test/expanded-markup";
+
+vi.mock("next/link", () => import("@/test/next-link-mock"));
+
 import { AssistantToolResult } from "./assistant-tool-result";
 
 function render(view: AssistantToolView): string {
-  return renderToStaticMarkup(<AssistantToolResult view={view} />);
+  return renderExpanded(<AssistantToolResult view={view} />);
 }
 
 describe("AssistantToolResult (persisted Eve tool result rendering)", () => {

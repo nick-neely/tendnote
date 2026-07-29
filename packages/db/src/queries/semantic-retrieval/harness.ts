@@ -19,6 +19,58 @@ export const EMBEDDING_CONFIG: EmbeddingConfig = {
   version: "v1",
 };
 
+/**
+ * A crude topic classifier standing in for an embedding model: text about the same subject
+ * lands on the same basis vector, so a query about gifts scores 1 against a memory about
+ * gifts and 0 against one about careers. Similarity is then exactly decidable from the
+ * fixture text, which is what lets the search suites assert an exact result ordering.
+ */
+export function topicVectorFor(text: string) {
+  const lower = text.toLowerCase();
+  if (lower.includes("cooking") || lower.includes("gift")) return [1, 0, 0, 0];
+  if (lower.includes("career") || lower.includes("job")) return [0, 1, 0, 0];
+  if (lower.includes("stress")) return [0, 0, 1, 0];
+  return [0, 0, 0, 1];
+}
+
+/** {@link topicVectorFor} as an adapter, for suites that search across seeded topics. */
+export const topicVectorAdapter: EmbeddingAdapter = {
+  async embedText(input) {
+    return {
+      vector: topicVectorFor(input.text),
+      model: input.model,
+      version: input.version,
+    };
+  },
+};
+
+/** An adapter that counts the calls it has received, on top of the {@link EmbeddingAdapter}. */
+export type CountingEmbeddingAdapter = EmbeddingAdapter & { readonly calls: number };
+
+/**
+ * An adapter that counts its calls and returns a caller-chosen vector.
+ *
+ * The count is the only way a test can tell a reused embedding from a re-computed one: both
+ * leave a row behind, and only the absence of provider traffic distinguishes them. The
+ * vector is a function of the call number so that a test which *does* expect a second call
+ * can tell the two results apart by what they hold.
+ */
+export function createCountingAdapter(
+  vectorFor: (call: number) => number[] = () => [1, 0, 0, 0],
+): CountingEmbeddingAdapter {
+  let calls = 0;
+
+  return {
+    get calls() {
+      return calls;
+    },
+    async embedText(request) {
+      calls += 1;
+      return { vector: vectorFor(calls), model: request.model, version: request.version };
+    },
+  };
+}
+
 export function createHarness(
   input: {
     adapter?: EmbeddingAdapter;
@@ -149,6 +201,27 @@ export function createHarness(
     });
   }
 
+  // Enqueue-then-process, per record kind. Re-enqueueing is how the pipeline is told a
+  // record changed, so a test that edits a record and wants the index caught up runs this
+  // again rather than reaching for a different entry point.
+  async function embedMemory(memoryId: string, ownerUserId = OWNER) {
+    const { job } = await processor.enqueueEmbeddingJob({
+      ownerUserId,
+      recordKind: "memory",
+      recordId: memoryId,
+    });
+    return processor.processEmbeddingJob({ jobId: job.id });
+  }
+
+  async function embedSourceRecord(sourceRecordId: string, ownerUserId = OWNER) {
+    const { job } = await processor.enqueueEmbeddingJob({
+      ownerUserId,
+      recordKind: "source_record",
+      recordId: sourceRecordId,
+    });
+    return processor.processEmbeddingJob({ jobId: job.id });
+  }
+
   async function embedGeneralAction(actionId: string, ownerUserId = OWNER) {
     const { job } = await processor.enqueueEmbeddingJob({
       ownerUserId,
@@ -227,6 +300,8 @@ export function createHarness(
     linkSourceRecord,
     createApprovedMemory,
     createGeneralAction,
+    embedMemory,
+    embedSourceRecord,
     embedGeneralAction,
     createAsset,
     createAssetMemory,

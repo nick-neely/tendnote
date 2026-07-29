@@ -1,13 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AssetBrowseControls,
   type AssetFilters,
+  assetFilterSearch,
+  assetFiltersFromParams,
+  assetFiltersNarrow,
   DEFAULT_ASSET_FILTERS,
   filterAssets,
+  sameAssetFilters,
 } from "@/components/asset-browse-controls";
 import { CreateAssetForm } from "@/components/asset-create-form";
 import { AssetSearchPanel, type AssetSearchRunner } from "@/components/asset-search-panel";
@@ -15,10 +19,11 @@ import { AssetArchivedBadge, AssetKindBadge } from "@/components/asset-shared";
 import { ActionScopeChip } from "@/components/general-action-shared";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { ChevronRightIcon } from "@/components/icons";
-import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { LedgerList } from "@/components/person-ledger";
 import { RecordTimingChip } from "@/components/record-timing-chip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { AssetBrowseRunner, AssetView } from "@/lib/asset-view";
 import { useServerSyncedList } from "@/lib/use-server-synced-list";
 import { cn } from "@/lib/utils";
@@ -30,12 +35,18 @@ export { filterAssets } from "@/components/asset-browse-controls";
 
 /**
  * The Assets surface: a capture-first create form leading the assets the caller
- * can see, with calm chip filters for kind, lifecycle state, and visibility
- * (Phase 6 #197/#207). Rows deep-link into the Asset Profile. Filter groups appear
- * only when they have something to narrow — a single-kind, all-active, all-private
- * list shows no filter chrome at all (DESIGN.md calm-by-default). Every mutation
- * flows through the shared owner-scoped lifecycle via server actions; this
- * component owns the optimistic list state, mirroring ActionsSurface.
+ * can see, with filters for kind, lifecycle state, visibility, due action, and
+ * review status collapsed behind one quiet control (Phase 6 #197/#207). Rows
+ * deep-link into the Asset Profile. Every mutation flows through the shared
+ * owner-scoped lifecycle via server actions; this component owns the optimistic
+ * list state, mirroring ActionsSurface.
+ *
+ * The URL owns the selection. Filters used to live in `useState` and evaporated on
+ * reload, which made a narrowed ledger unshareable and un-bookmarkable; they now
+ * round-trip through the query string, with defaults omitted so an unfiltered
+ * `/assets` stays bare. State is still applied optimistically first - the URL is
+ * written after the list has already repainted, so persistence costs nothing in
+ * felt speed.
  */
 // fallow-ignore-next-line complexity
 export function AssetsSurface({
@@ -59,24 +70,30 @@ export function AssetsSurface({
   browse?: AssetBrowseRunner;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlFilters = useMemo(() => assetFiltersFromParams(searchParams), [searchParams]);
+
   const [list, setList] = useServerSyncedList(assets, assetId);
-  const [filters, setFilters] = useState<AssetFilters>(DEFAULT_ASSET_FILTERS);
+  const [filters, setFilters] = useState<AssetFilters>(urlFilters);
   const [pageNextOffset, setPageNextOffset] = useState(nextOffset);
   const [browseError, setBrowseError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // The selection the rendered list actually reflects. The server always hands us
+  // the default ledger, so that is where this starts, whatever the URL asks for.
+  const appliedFilters = useRef(DEFAULT_ASSET_FILTERS);
 
-  useEffect(() => setPageNextOffset(nextOffset), [nextOffset]);
+  useEffect(() => {
+    // `nextOffset` describes the server's default ledger. Once a client browse owns
+    // the list, that page has its own paging and the prop must not overwrite it.
+    if (!sameAssetFilters(appliedFilters.current, DEFAULT_ASSET_FILTERS)) return;
+    setPageNextOffset(nextOffset);
+  }, [nextOffset]);
 
   const visible = browseRunner ? list : filterAssets(list, filters);
-  const filtered =
-    filters.kind !== null ||
-    filters.state !== "active" ||
-    filters.scope !== null ||
-    filters.due !== null ||
-    filters.review !== null;
+  const filtered = assetFiltersNarrow(filters);
 
-  function requestPage(nextFilters: AssetFilters, offset?: number, append = false) {
-    setFilters(nextFilters);
+  function runBrowse(nextFilters: AssetFilters, offset?: number, append = false) {
     if (!browseRunner) return;
     setBrowseError(null);
     startTransition(async () => {
@@ -97,12 +114,42 @@ export function AssetsSurface({
     });
   }
 
+  /** Brings the list in line with a selection the URL already carries. */
+  function applyFilters(nextFilters: AssetFilters) {
+    appliedFilters.current = nextFilters;
+    setFilters(nextFilters);
+    runBrowse(nextFilters);
+  }
+
+  /** A deliberate change: repaint first, then record it in the URL. */
+  function changeFilters(nextFilters: AssetFilters) {
+    applyFilters(nextFilters);
+    const query = assetFilterSearch(nextFilters, searchParams.toString());
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
+
+  // Held in a ref so the URL effect below depends on the URL alone: it must replay
+  // a selection, never react to an unrelated re-render. Refreshed in its own effect
+  // rather than during render - a render can be thrown away or replayed, and this
+  // ref is read from a commit.
+  const applyFiltersRef = useRef(applyFilters);
+  useEffect(() => {
+    applyFiltersRef.current = applyFilters;
+  });
+
+  useEffect(() => {
+    // Mount with a filtered link, and every back/forward step, replay the URL's
+    // selection onto the list without writing the URL back.
+    if (sameAssetFilters(urlFilters, appliedFilters.current)) return;
+    applyFiltersRef.current(urlFilters);
+  }, [urlFilters]);
+
   function addAsset(view: AssetView) {
     setList((current) => [view, ...current.filter((asset) => asset.id !== view.id)]);
     router.refresh();
   }
 
-  // Browsing: the chip-filtered list. While a search query is live this steps aside,
+  // Browsing: the filtered list. While a search query is live this steps aside,
   // because results span memories and evidence — records a browse row cannot represent.
   const browse = (
     <>
@@ -116,10 +163,9 @@ export function AssetsSurface({
         </Link>
       ) : null}
       <AssetBrowseControls
-        filtered={filtered}
         filters={filters}
         list={list}
-        onChange={requestPage}
+        onChange={changeFilters}
         serverBacked={Boolean(browseRunner)}
       />
 
@@ -130,14 +176,14 @@ export function AssetsSurface({
           ))}
         </LedgerList>
       ) : (
-        <AssetsEmpty filtered={filtered} onClear={() => requestPage(DEFAULT_ASSET_FILTERS)} />
+        <AssetsEmpty filtered={filtered} onClear={() => changeFilters(DEFAULT_ASSET_FILTERS)} />
       )}
       {browseError ? <p className="text-sm text-destructive">{browseError}</p> : null}
       {pageNextOffset !== null ? (
         <div className="flex justify-center pt-1">
           <Button
             disabled={pending}
-            onClick={() => requestPage(filters, pageNextOffset, true)}
+            onClick={() => runBrowse(filters, pageNextOffset, true)}
             type="button"
             variant="outline"
           >
@@ -157,27 +203,30 @@ export function AssetsSurface({
   );
 }
 
-/** The empty ledger: a filtered miss offers a one-click reset; a bare one teaches capture. */
+/**
+ * The empty ledger, in the product's shared empty treatment. The two emptinesses
+ * are different facts and must not read alike: a filtered miss says the filters
+ * are the reason and offers to drop them, while a bare ledger teaches the first
+ * capture and offers nothing to undo.
+ */
 function AssetsEmpty({ filtered, onClear }: { filtered: boolean; onClear: () => void }) {
   if (!filtered) {
     return (
-      <LedgerEmpty>
-        Nothing tracked yet. Start with the fridge, the car, or a subscription that renews.
-      </LedgerEmpty>
+      <EmptyState
+        description="Start with the fridge, the car, or a subscription that renews."
+        title="Nothing tracked yet"
+      />
     );
   }
   return (
-    <LedgerEmpty>
-      Nothing matches these filters.{" "}
-      <button
-        className="rounded-sm font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-        onClick={onClear}
-        type="button"
-      >
-        Show everything active
-      </button>
-      .
-    </LedgerEmpty>
+    <EmptyState
+      action={
+        <Button onClick={onClear} size="sm" type="button" variant="outline">
+          Clear filters
+        </Button>
+      }
+      title="Nothing matches these filters"
+    />
   );
 }
 

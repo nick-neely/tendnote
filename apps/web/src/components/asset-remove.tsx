@@ -30,7 +30,14 @@ export type AssetRemovalSummary = {
 const countLabel = (count: number, singular: string, plural = `${singular}s`) =>
   `${count} ${count === 1 ? singular : plural}`;
 
-/** Human-only correction/privacy escape hatch. Archive remains normal cleanup. */
+/**
+ * Human-only correction/privacy escape hatch. Archive remains normal cleanup.
+ *
+ * `summary` is `null` when the caller could not read what is stored here. That is
+ * not the same as an empty asset: the type-to-confirm gate is waived only for an
+ * asset with nothing saved in it, so an unreadable summary keeps the gate and the
+ * dialog says it cannot list what will go.
+ */
 export function AssetRemove({
   assetId,
   assetName,
@@ -38,7 +45,7 @@ export function AssetRemove({
 }: {
   assetId: string;
   assetName: string;
-  summary: AssetRemovalSummary;
+  summary: AssetRemovalSummary | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -46,7 +53,8 @@ export function AssetRemove({
   const [typed, setTyped] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const hasSavedContext = summary.memories + summary.evidence + summary.reviewItems > 0;
+  const hasSavedContext =
+    summary === null || summary.memories + summary.evidence + summary.reviewItems > 0;
   const canDelete = !pending && (!hasSavedContext || confirmPhraseMatches(typed, phrase));
 
   function changeOpen(next: boolean) {
@@ -101,19 +109,34 @@ export function AssetRemove({
           </AlertDialogHeader>
 
           <div className="rounded-lg bg-surface px-4 py-3 text-sm">
-            <p className="font-medium text-foreground">Tendnote will permanently delete:</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-              <li>{countLabel(summary.memories, "memory", "memories")}</li>
-              <li>{countLabel(summary.evidence, "evidence item")}</li>
-              <li>{countLabel(summary.reviewItems, "review item")}</li>
-              <li>its generated summary and history</li>
-            </ul>
-            {summary.linkedRecords > 0 ? (
-              <p className="mt-3 text-muted-foreground">
-                {countLabel(summary.linkedRecords, "link")} will be removed. Linked actions, people,
-                and other assets stay intact.
-              </p>
-            ) : null}
+            {summary ? (
+              <>
+                <p className="font-medium text-foreground">Tendnote will permanently delete:</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+                  <li>{countLabel(summary.memories, "memory", "memories")}</li>
+                  <li>{countLabel(summary.evidence, "evidence item")}</li>
+                  <li>{countLabel(summary.reviewItems, "review item")}</li>
+                  <li>its generated summary and history</li>
+                </ul>
+                {summary.linkedRecords > 0 ? (
+                  <p className="mt-3 text-muted-foreground">
+                    {countLabel(summary.linkedRecords, "link")} will be removed. Linked actions,
+                    people, and other assets stay intact.
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <p className="font-medium text-foreground">
+                  Tendnote can't list what is stored here right now.
+                </p>
+                <p className="mt-2 text-muted-foreground">
+                  Deleting still removes this asset and everything saved on it: memories, evidence,
+                  anything waiting in review, its generated summary, and its history. Linked
+                  actions, people, and other assets stay intact.
+                </p>
+              </>
+            )}
           </div>
 
           {hasSavedContext ? (

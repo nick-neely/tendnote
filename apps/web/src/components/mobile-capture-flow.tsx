@@ -16,6 +16,7 @@ import {
   useReminderInstallation,
 } from "@/components/reminder-installation-context";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { captureOutcomePresentation } from "@/lib/capture-outcome-presentation";
 import { useLocalComposerDraft } from "@/lib/local-composer-draft";
 import {
@@ -455,8 +456,8 @@ function CaptureCorrection({
       <label className="font-medium text-sm" htmlFor="mobile-capture-change">
         Rewrite what Tendnote saved
       </label>
-      <textarea
-        className="min-h-40 w-full resize-none rounded-xl border bg-background p-4 text-base leading-6 outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
+      <Textarea
+        className="min-h-40 resize-none rounded-xl p-4 leading-6 md:text-base"
         id="mobile-capture-change"
         onChange={(event) => update({ editText: event.target.value })}
         value={state.editText}
@@ -711,8 +712,7 @@ function CaptureComposer({
   controller: ReturnType<typeof useCaptureController>;
   handlers: CaptureFlowProps["handlers"];
 }) {
-  const { discard, draft, inputRef, setDraftValue, state, submit, toggleDictation, update } =
-    controller;
+  const { discard, draft, inputRef, setDraftValue, state, submit, toggleDictation } = controller;
   return (
     <>
       {draft.restored ? (
@@ -723,30 +723,33 @@ function CaptureComposer({
       <label className="font-medium text-sm" htmlFor="mobile-capture-input">
         What should Tendnote keep?
       </label>
-      <textarea
-        className="min-h-40 w-full resize-none rounded-xl border bg-background p-4 text-base leading-6 outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
+      {/* Capture is the point of this screen, so the writing surface takes the
+          room instead of a fixed 150px box floating above ~400px of nothing.
+          `field-sizing-fixed` hands sizing to the flex layout; the min-height is
+          the floor when the notes below it push the column into scroll.
+
+          There is no manual Typed / Dictated control here any more. `inputMode`
+          is still recorded - dictation sets it, discard resets it, and it rides
+          along to capture metadata and the dedup hash - but it describes how the
+          text arrived, which the app already knows and the owner should not have
+          to declare. */}
+      <Textarea
+        className="min-h-40 flex-1 field-sizing-fixed resize-none rounded-xl p-4 leading-6 md:text-base"
         id="mobile-capture-input"
         onChange={(event) => setDraftValue(event.target.value)}
         placeholder="Capture a note, reminder, link, or open question…"
         ref={inputRef}
         value={draft.value}
       />
-      <fieldset className="flex flex-wrap gap-2">
-        <legend className="sr-only">Capture input mode</legend>
-        {(["typed", "dictated"] as const).map((mode) => (
-          <Button
-            aria-pressed={state.inputMode === mode}
-            key={mode}
-            onClick={() => update({ inputMode: mode })}
-            size="sm"
-            type="button"
-            variant={state.inputMode === mode ? "secondary" : "ghost"}
-          >
-            {mode === "typed" ? "Typed" : "Dictated transcript"}
-          </Button>
-        ))}
-      </fieldset>
-      <Button onClick={toggleDictation} type="button" variant="outline">
+      {/* Same reach as the Discard/Save pair below: this is a thumb control on a
+          phone, so it carries the 44px minimum rather than the default 32px. */}
+      <Button
+        className="min-h-11"
+        onClick={toggleDictation}
+        size="lg"
+        type="button"
+        variant="outline"
+      >
         {state.dictating ? "Stop dictation" : "Start dictation"}
       </Button>
       {state.dictationMessage ? (
@@ -766,7 +769,7 @@ function CaptureComposer({
           Saving is temporarily unavailable. Your draft stays on this device so you can copy it.
         </p>
       ) : null}
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-4">
         <Button className="min-h-11" onClick={discard} size="lg" type="button" variant="ghost">
           Discard draft
         </Button>

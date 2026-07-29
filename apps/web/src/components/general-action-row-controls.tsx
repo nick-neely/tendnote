@@ -1,7 +1,7 @@
 "use client";
 
 import { ActionHistoryDialog } from "@/components/general-action-history-dialog";
-import { ErrorText } from "@/components/general-action-shared";
+import { ACTION_CONTROL_TOUCH_TARGET, ErrorText } from "@/components/general-action-shared";
 import { ArchiveIcon, HistoryIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -35,6 +35,7 @@ export function ActionRowControls({
     <>
       <div className="flex items-center justify-end gap-1.5">
         <Button
+          className={ACTION_CONTROL_TOUCH_TARGET}
           disabled={pending}
           onClick={() => onHistoryOpenChange(true)}
           size="sm"
@@ -46,6 +47,7 @@ export function ActionRowControls({
         </Button>
         {children}
         <Button
+          className={ACTION_CONTROL_TOUCH_TARGET}
           data-action-control="archive"
           disabled={pending}
           onClick={(event) => onArchive(event.currentTarget)}

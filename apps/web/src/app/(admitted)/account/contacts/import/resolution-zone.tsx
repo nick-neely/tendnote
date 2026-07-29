@@ -4,9 +4,10 @@ import type {
   ContactImportCandidateTarget,
   ContactImportPreviewCandidate,
 } from "@tendnote/db/queries/contacts-import-preview";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { TriangleAlertIcon, UsersRoundIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 type Candidate = ContactImportPreviewCandidate;
 
@@ -149,31 +150,31 @@ function TargetChooser({
   name: string;
   onChange: (personId: string) => void;
 }) {
+  const legendId = useId();
+
   return (
     <fieldset className="flex flex-col gap-1.5">
-      <legend className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-foreground">
+      <legend
+        className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-foreground"
+        id={legendId}
+      >
         Choose target person
       </legend>
       {/* Heavily-matched contacts stay calm: cap the height and scroll the
           overflow rather than letting the row grow unbounded. */}
-      <div
+      <RadioGroup
+        aria-labelledby={legendId}
         className={
-          targets.length > TARGET_LIST_CAP
-            ? "flex max-h-44 flex-col gap-1.5 overflow-y-auto pr-1"
-            : "flex flex-col gap-1.5"
+          targets.length > TARGET_LIST_CAP ? "max-h-44 gap-1.5 overflow-y-auto pr-1" : "gap-1.5"
         }
+        name={name}
+        onValueChange={onChange}
+        value={selected}
       >
         {targets.map((target) => (
-          <RadioOption
-            checked={selected === target.personId}
-            key={target.personId}
-            label={target.label}
-            name={name}
-            onSelect={() => onChange(target.personId)}
-            value={target.personId}
-          />
+          <RadioOption key={target.personId} label={target.label} value={target.personId} />
         ))}
-      </div>
+      </RadioGroup>
     </fieldset>
   );
 }
@@ -187,50 +188,37 @@ function BirthdayChooser({
   name: string;
   onChange: (choice: "existing" | "provider") => void;
 }) {
+  const legendId = useId();
+
   return (
     <fieldset className="flex flex-col gap-1.5">
-      <legend className="text-[length:var(--text-small)] font-medium text-muted-foreground">
+      <legend
+        className="text-[length:var(--text-small)] font-medium text-muted-foreground"
+        id={legendId}
+      >
         Birthday
       </legend>
-      <RadioOption
-        checked={selected === "existing"}
-        label="Keep the Tendnote birthday"
+      <RadioGroup
+        aria-labelledby={legendId}
+        className="gap-1.5"
         name={name}
-        onSelect={() => onChange("existing")}
-      />
-      <RadioOption
-        checked={selected === "provider"}
-        label="Use the Google birthday"
-        name={name}
-        onSelect={() => onChange("provider")}
-      />
+        onValueChange={(choice) => onChange(choice as "existing" | "provider")}
+        value={selected}
+      >
+        <RadioOption label="Keep the Tendnote birthday" value="existing" />
+        <RadioOption label="Use the Google birthday" value="provider" />
+      </RadioGroup>
     </fieldset>
   );
 }
 
-function RadioOption({
-  checked,
-  label,
-  name,
-  onSelect,
-  value,
-}: {
-  checked: boolean;
-  label: string;
-  name: string;
-  onSelect: () => void;
-  value?: string;
-}) {
+/** One row of the enclosing {@link RadioGroup}; the label carries the whole target. */
+function RadioOption({ label, value }: { label: string; value: string }) {
+  const id = useId();
+
   return (
-    <label className="flex items-center gap-2 text-[length:var(--text-small)] leading-[var(--text-small-line)]">
-      <input
-        checked={checked}
-        className={RADIO_CLASS}
-        name={name}
-        onChange={onSelect}
-        type="radio"
-        value={value}
-      />
+    <label className={RADIO_OPTION_CLASS} htmlFor={id}>
+      <RadioGroupItem id={id} value={value} />
       <span>{label}</span>
     </label>
   );
@@ -274,8 +262,10 @@ function SkipButton({ busy, onSkip }: { busy: boolean; onSkip: () => void }) {
   );
 }
 
-const RADIO_CLASS =
-  "size-4 shrink-0 rounded-full [accent-color:var(--primary)] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
+// The wrapping label forwards its click to the radio, so the whole row is the
+// target; it keeps a 44px reach on touch without loosening desktop density.
+const RADIO_OPTION_CLASS =
+  "flex items-center gap-2 text-[length:var(--text-small)] leading-[var(--text-small-line)] max-sm:min-h-11";
 
 // Above this many possible targets, scroll the radio list instead of growing
 // the row; keeps heavily-matched contacts calm.

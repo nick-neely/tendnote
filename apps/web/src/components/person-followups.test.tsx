@@ -1,6 +1,9 @@
-import { renderToStaticMarkup } from "react-dom/server";
+// @vitest-environment jsdom
+
 import { describe, expect, it, vi } from "vitest";
 import type { FollowupView } from "@/lib/followup-view";
+import { renderExpanded } from "@/test/expanded-markup";
+import "@/test/followup-surface-mocks";
 
 // The real actions pull in `server-only`; the surface only needs them to exist as
 // callable handlers, which these render tests never fire.
@@ -19,16 +22,6 @@ vi.mock("@/app/actions/reminders", () => ({
   registerReminderInstallationAction: vi.fn(),
   saveReminderAction: vi.fn(),
   setReminderOptInDecisionAction: vi.fn(),
-}));
-
-vi.mock("@/components/use-create-draft", () => ({
-  useCreateDraft: () => ({ create: () => {}, pending: false, error: null }),
-}));
-
-// The surface calls router.refresh() on mutation; static render only needs the
-// hook to resolve.
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }));
 
 import { PersonFollowups } from "./person-followups";
@@ -52,8 +45,10 @@ function view(overrides: Partial<FollowupView> = {}): FollowupView {
   };
 }
 
+// The Resolved list now folds on Radix Collapsible, which only mounts its body
+// while open, so the markup assertions below expand every disclosure first.
 function render(props: Partial<Parameters<typeof PersonFollowups>[0]> = {}) {
-  return renderToStaticMarkup(
+  return renderExpanded(
     <PersonFollowups
       active={props.active ?? []}
       defaultDueDate="2026-06-27"
@@ -128,7 +123,7 @@ describe("PersonFollowups", () => {
   });
 
   it("renders household member sharing choices when members are available", () => {
-    const html = renderToStaticMarkup(
+    const html = renderExpanded(
       <PersonFollowups
         active={[]}
         defaultDueDate="2026-06-27"

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef } from "react";
+import { ChevronDownIcon } from "@/components/icons";
 import { ActiveFollowupRow } from "@/components/person-followup-active-row";
 import {
   CreateFollowupForm,
@@ -9,6 +10,7 @@ import {
 } from "@/components/person-followup-create-form";
 import { ResolvedFollowupRow } from "@/components/person-followup-resolved-row";
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { FollowupView } from "@/lib/followup-view";
 import { acceptMutationRevision } from "@/lib/mutation-revision";
 import {
@@ -164,11 +166,18 @@ function PersonFollowupsContent({
       />
 
       {resolvedList.length ? (
-        <details className="group">
-          <summary className="cursor-pointer list-none text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground">
+        <Collapsible className="flex flex-col gap-2">
+          {/* Matches the Action shelves' disclosure: `min-h-11` is the 44px touch
+              target, and the chevron is the affordance the old `list-none`
+              summary threw away, which left it reading as a footer caption. */}
+          <CollapsibleTrigger className="group -mx-1.5 flex min-h-11 w-fit items-center gap-1.5 rounded-lg px-1.5 text-left text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            <ChevronDownIcon
+              aria-hidden
+              className="size-3.5 shrink-0 transition-transform duration-150 ease-(--motion-ease-out) group-data-[state=open]:rotate-180"
+            />
             Resolved ({resolvedList.length})
-          </summary>
-          <div className="mt-2">
+          </CollapsibleTrigger>
+          <CollapsibleContent>
             <LedgerList>
               {resolvedList.map((followup) => (
                 <ResolvedFollowupRow
@@ -179,8 +188,8 @@ function PersonFollowupsContent({
                 />
               ))}
             </LedgerList>
-          </div>
-        </details>
+          </CollapsibleContent>
+        </Collapsible>
       ) : null}
     </div>
   );

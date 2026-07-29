@@ -299,8 +299,10 @@ function SuggestedMemoryQueueCard({
           >
             {personName}
           </Link>
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
-            <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+          {/* Neutral, not clay: the queue heading already says these rows need review, so a
+              clay pill on every row spends the one accent moment §3 allows on repetition.
+              The word carries the state, so the demotion loses no meaning. */}
+          <span className="inline-flex shrink-0 items-center rounded-full bg-secondary px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-muted-foreground">
             Suggested
           </span>
         </div>

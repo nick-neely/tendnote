@@ -2,7 +2,6 @@
 
 import type {
   GlobalRecallFilter,
-  GlobalRecallInput,
   GlobalRecallMatchKind,
   GlobalRecallResponse,
 } from "@tendnote/domain/global-recall";
@@ -12,27 +11,32 @@ import { destinationsInGroup } from "@/components/app-destinations";
 import { ArrowLeftIcon, SearchIcon } from "@/components/icons";
 import { type CaptureHandlers, MobileCaptureFlow } from "@/components/mobile-capture-flow";
 import { MobileFailureState } from "@/components/mobile-failure-state";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeSegmentedControl } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { recallResultLines } from "@/lib/recall-result-lines";
 import {
-  type OwnerActionResult,
-  ownerActionFailureMessage,
-  unwrapOwnerActionResult,
-} from "@/lib/owner-action-result";
+  GLOBAL_RECALL_FAMILY_OPTIONS,
+  GLOBAL_RECALL_MATCH_OPTIONS,
+  type GlobalRecallFilters,
+  type GlobalRecallHandler,
+  useGlobalRecall,
+} from "@/lib/use-global-recall";
 
 export type FocusedFlow = "search" | "capture" | "menu";
 
 export type { CaptureHandlers } from "@/components/mobile-capture-flow";
-export type GlobalRecallHandler = (
-  input: GlobalRecallInput,
-) => Promise<OwnerActionResult<GlobalRecallResponse>>;
+export type { GlobalRecallHandler };
 
 function FullScreenFlow({
   children,
@@ -58,10 +62,10 @@ function FullScreenFlow({
         }}
         showCloseButton={false}
       >
-        <DialogHeader className="sr-only">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
+        {/* One heading per overlay: the visible bar title *is* the dialog's
+            accessible name, rather than a screen-reader-only copy of it sitting
+            above a second, identical <h2>. */}
+        <DialogDescription className="sr-only">{description}</DialogDescription>
         <header className="flex min-h-14 items-center gap-2 border-b px-3 pt-[env(safe-area-inset-top)]">
           <Button
             aria-label="Close"
@@ -72,7 +76,7 @@ function FullScreenFlow({
           >
             <ArrowLeftIcon aria-hidden />
           </Button>
-          <h2 className="font-semibold text-base">{title}</h2>
+          <DialogTitle className="font-semibold text-base">{title}</DialogTitle>
         </header>
         {children}
       </DialogContent>
@@ -99,30 +103,18 @@ export function SearchFlow({
   const resultsRef = useRef<HTMLDivElement>(null);
   const restoredScrollRef = useRef<number | null>(null);
   const restoredFocusRef = useRef<string | null>(null);
-  const [family, setFamily] = useState<GlobalRecallFilter>("all");
-  const [matchKind, setMatchKind] = useState<GlobalRecallMatchKind | "all">("all");
-  const [includeArchived, setIncludeArchived] = useState(false);
-  const [includeRestricted, setIncludeRestricted] = useState(false);
   const [expanded, setExpanded] = useState<string[]>([]);
   const storageKey = `tendnote:global-recall:${ownerUserId}`;
+  const recall = useGlobalRecall({ query, search });
+  const { failed, failureMessage, loading, response } = recall;
+  const { family, includeArchived, includeRestricted, matchKind } = recall.filters;
   useRestoreRecallState({
+    restoreFilters: recall.restoreFilters,
     restoredFocusRef,
     restoredScrollRef,
     setExpanded,
-    setFamily,
-    setIncludeArchived,
-    setIncludeRestricted,
-    setMatchKind,
     setQuery,
     storageKey,
-  });
-  const { failed, failureMessage, loading, response } = useRecallRequest({
-    family,
-    includeArchived,
-    includeRestricted,
-    matchKind,
-    query,
-    search,
   });
   useRestoreRecallPosition({
     response,
@@ -166,7 +158,7 @@ export function SearchFlow({
     );
   }
 
-  const { exact, related } = partitionRecallResults(response);
+  const { exact, related } = recall;
   const navigateToResult = (key: string) => {
     rememberState(key);
     onNavigate();
@@ -189,10 +181,10 @@ export function SearchFlow({
           inputRef={inputRef}
           matchKind={matchKind}
           query={query}
-          setFamily={setFamily}
-          setIncludeArchived={setIncludeArchived}
-          setIncludeRestricted={setIncludeRestricted}
-          setMatchKind={setMatchKind}
+          setFamily={recall.setFamily}
+          setIncludeArchived={recall.setIncludeArchived}
+          setIncludeRestricted={recall.setIncludeRestricted}
+          setMatchKind={recall.setMatchKind}
           setQuery={setQuery}
         />
         <RecallSearchResults
@@ -214,12 +206,8 @@ export function SearchFlow({
   );
 }
 
-type StoredRecallState = {
+type StoredRecallState = Partial<GlobalRecallFilters> & {
   query?: string;
-  family?: GlobalRecallFilter;
-  matchKind?: GlobalRecallMatchKind | "all";
-  includeArchived?: boolean;
-  includeRestricted?: boolean;
   expanded?: string[];
   focusedKey?: string;
   restoreFocus?: boolean;
@@ -229,108 +217,27 @@ type StoredRecallState = {
 function useRestoreRecallState(input: {
   storageKey: string;
   setQuery: (value: string) => void;
-  setFamily: (value: GlobalRecallFilter) => void;
-  setMatchKind: (value: GlobalRecallMatchKind | "all") => void;
-  setIncludeArchived: (value: boolean) => void;
-  setIncludeRestricted: (value: boolean) => void;
+  restoreFilters: (saved: Partial<GlobalRecallFilters>) => void;
   setExpanded: (value: string[]) => void;
   restoredScrollRef: RefObject<number | null>;
   restoredFocusRef: RefObject<string | null>;
 }) {
-  const {
-    restoredFocusRef,
-    restoredScrollRef,
-    setExpanded,
-    setFamily,
-    setIncludeArchived,
-    setIncludeRestricted,
-    setMatchKind,
-    setQuery,
-    storageKey,
-  } = input;
+  const { restoreFilters, restoredFocusRef, restoredScrollRef, setExpanded, setQuery, storageKey } =
+    input;
   useEffect(() => {
     const raw = sessionStorage.getItem(storageKey);
     if (!raw) return;
     try {
       const saved = JSON.parse(raw) as StoredRecallState;
       if (saved.query) setQuery(saved.query);
-      if (saved.family) setFamily(saved.family);
-      if (saved.matchKind) setMatchKind(saved.matchKind);
-      setIncludeArchived(saved.includeArchived ?? false);
-      setIncludeRestricted(saved.family !== "all" && (saved.includeRestricted ?? false));
+      restoreFilters(saved);
       setExpanded(saved.expanded ?? []);
       restoredScrollRef.current = saved.scrollTop ?? 0;
       restoredFocusRef.current = saved.restoreFocus ? (saved.focusedKey ?? null) : null;
     } catch {
       sessionStorage.removeItem(storageKey);
     }
-  }, [
-    restoredFocusRef,
-    restoredScrollRef,
-    setExpanded,
-    setFamily,
-    setIncludeArchived,
-    setIncludeRestricted,
-    setMatchKind,
-    setQuery,
-    storageKey,
-  ]);
-}
-
-function useRecallRequest(input: {
-  family: GlobalRecallFilter;
-  includeArchived: boolean;
-  includeRestricted: boolean;
-  matchKind: GlobalRecallMatchKind | "all";
-  query: string;
-  search: GlobalRecallHandler;
-}) {
-  const { family, includeArchived, includeRestricted, matchKind, query, search } = input;
-  const [response, setResponse] = useState<GlobalRecallResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [failureMessage, setFailureMessage] = useState<string | null>(null);
-  useEffect(() => {
-    const meaningfulQuery = query.trim();
-    if (meaningfulQuery.length < 2) {
-      setResponse(null);
-      setFailed(false);
-      setFailureMessage(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setFailed(false);
-    setFailureMessage(null);
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      try {
-        const next = unwrapOwnerActionResult(
-          await search({
-            query: meaningfulQuery,
-            family,
-            includeArchived,
-            includeRestricted,
-            ...(matchKind === "all" ? {} : { matchKinds: [matchKind] }),
-          }),
-        );
-        if (!controller.signal.aborted) setResponse(next);
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          setFailed(true);
-          setFailureMessage(ownerActionFailureMessage(error));
-          setResponse(null);
-        }
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    }, 250);
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }, [family, includeArchived, includeRestricted, matchKind, query, search]);
-  return { failed, failureMessage, loading, response };
+  }, [restoreFilters, restoredFocusRef, restoredScrollRef, setExpanded, setQuery, storageKey]);
 }
 
 function useRestoreRecallPosition(input: {
@@ -363,14 +270,6 @@ function clearStoredFocus(storageKey: string) {
   sessionStorage.setItem(storageKey, JSON.stringify({ ...saved, restoreFocus: false }));
 }
 
-function partitionRecallResults(response: GlobalRecallResponse | null) {
-  const results = response?.results ?? [];
-  return {
-    exact: results.filter((result) => result.match.kind === "exact"),
-    related: results.filter((result) => result.match.kind === "related"),
-  };
-}
-
 function RecallSearchControls({
   family,
   includeArchived,
@@ -396,11 +295,9 @@ function RecallSearchControls({
   setMatchKind: (value: GlobalRecallMatchKind | "all") => void;
   setQuery: (value: string) => void;
 }) {
-  function selectFamily(value: GlobalRecallFilter) {
-    setFamily(value);
-    if (value === "all") setIncludeRestricted(false);
-  }
-
+  // The "restricted needs one named family" gate lives in `useGlobalRecall`, so
+  // `setFamily` already re-locks the checkbox when the owner widens back to all.
+  const restrictedLocked = family === "all";
   return (
     <>
       <label className="sr-only" htmlFor="mobile-global-search">
@@ -417,60 +314,86 @@ function RecallSearchControls({
           value={query}
         />
       </div>
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-        <label className="sr-only" htmlFor="global-recall-family">
-          Record type
-        </label>
-        <select
-          className="min-h-11 rounded-lg border bg-background px-3 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          id="global-recall-family"
-          onChange={(event) => selectFamily(event.target.value as GlobalRecallFilter)}
-          value={family}
-        >
-          <option value="all">All records</option>
-          <option value="people">People</option>
-          <option value="follow_ups">Follow-Ups</option>
-          <option value="actions">Actions</option>
-          <option value="assets">Assets</option>
-          <option value="saved_items">Saved Items</option>
-          <option value="calendar">Calendar</option>
-        </select>
-        <label className="sr-only" htmlFor="global-recall-match">
-          Match type
-        </label>
-        <select
-          className="min-h-11 rounded-lg border bg-background px-3 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          id="global-recall-match"
-          onChange={(event) => setMatchKind(event.target.value as GlobalRecallMatchKind | "all")}
-          value={matchKind}
-        >
-          <option value="all">Exact + Related</option>
-          <option value="exact">Exact only</option>
-          <option value="related">Related only</option>
-        </select>
-      </div>
-      <div className="flex min-h-11 flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-        <label className="flex min-h-11 items-center gap-2">
-          <input
-            checked={includeArchived}
-            className="rounded accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            onChange={(event) => setIncludeArchived(event.target.checked)}
-            type="checkbox"
-          />
-          Include archived
-        </label>
-        <label className="flex min-h-11 items-center gap-2">
-          <input
-            checked={includeRestricted}
-            className="rounded accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            disabled={family === "all"}
-            onChange={(event) => setIncludeRestricted(event.target.checked)}
-            type="checkbox"
-          />
-          {family === "all"
-            ? "Pick a record type to reveal restricted matches"
-            : "Reveal restricted matches"}
-        </label>
+      {/* The four narrowing controls read as one quiet panel under the field
+          rather than four loose controls scattered across the canvas: labelled
+          selects on top, the two switches beneath them, all inside one block. */}
+      <div className="mt-3 flex flex-col gap-3 rounded-xl border bg-panel p-3">
+        {/* `basis-36` is rem-based, so the pair sits side by side at normal text
+            and folds to one per row once the owner turns the type up - the point
+            where two columns start truncating their own values. */}
+        <div className="flex flex-wrap gap-3">
+          <div className="flex min-w-0 flex-1 basis-36 flex-col gap-1.5">
+            <Label htmlFor="global-recall-family">Record type</Label>
+            <Select
+              onValueChange={(value) => setFamily(value as GlobalRecallFilter)}
+              value={family}
+            >
+              <SelectTrigger className="min-h-11 w-full bg-background" id="global-recall-family">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {GLOBAL_RECALL_FAMILY_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex min-w-0 flex-1 basis-36 flex-col gap-1.5">
+            <Label htmlFor="global-recall-match">Match</Label>
+            <Select
+              onValueChange={(value) => setMatchKind(value as GlobalRecallMatchKind | "all")}
+              value={matchKind}
+            >
+              <SelectTrigger className="min-h-11 w-full bg-background" id="global-recall-match">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {GLOBAL_RECALL_MATCH_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="flex flex-col">
+          <div className="flex min-h-11 items-center gap-3">
+            <Checkbox
+              checked={includeArchived}
+              id="global-recall-archived"
+              onCheckedChange={(checked) => setIncludeArchived(checked === true)}
+            />
+            <Label className="min-h-11 flex-1 font-normal" htmlFor="global-recall-archived">
+              Include archived
+            </Label>
+          </div>
+          <div className="flex min-h-11 items-center gap-3">
+            <Checkbox
+              aria-describedby={restrictedLocked ? "global-recall-restricted-hint" : undefined}
+              checked={includeRestricted}
+              disabled={restrictedLocked}
+              id="global-recall-restricted"
+              onCheckedChange={(checked) => setIncludeRestricted(checked === true)}
+            />
+            {/* The label stays the name of the control. What is standing in the
+                way belongs in helper text, not in the label - a label that
+                changes into an instruction reads as a broken control. */}
+            <Label className="min-h-11 flex-1 font-normal" htmlFor="global-recall-restricted">
+              Reveal restricted matches
+            </Label>
+          </div>
+          {restrictedLocked ? (
+            <p
+              className="pl-7 text-[length:var(--text-small)] text-muted-foreground"
+              id="global-recall-restricted-hint"
+            >
+              Pick a record type first.
+            </p>
+          ) : null}
+        </div>
       </div>
     </>
   );
@@ -514,8 +437,21 @@ function RecallSearchResults({
           {limitation.message}
         </p>
       ))}
+      {/* The surface below the filters used to be ~640px of nothing until the
+          second keystroke. It now says what is searchable, then what came back. */}
+      {!loading && !failed && !response ? (
+        <EmptyState
+          className="mt-4"
+          description="Type a name or a few words. Tendnote looks across your people, memories, follow-ups, and assets."
+          title="Search your notebook"
+        />
+      ) : null}
       {!loading && response && response.results.length === 0 ? (
-        <p className="py-4 text-muted-foreground text-sm">No matches.</p>
+        <EmptyState
+          className="mt-4"
+          description="Try different wording, or widen the filters above."
+          title="Nothing matched that search."
+        />
       ) : null}
       <RecallResultSection
         expanded={expanded}
@@ -573,13 +509,17 @@ export function RecallResultSection({
   if (results.length === 0) return null;
   return (
     <section aria-label={`${label} matches`}>
-      <h3 className="sticky top-0 border-b bg-background py-2 font-medium text-muted-foreground text-xs">
+      <h3 className="sticky top-0 border-b bg-background py-2 font-medium text-[length:var(--text-small)] text-muted-foreground">
         {label}
       </h3>
       <div className="divide-y">
         {results.map((result) => {
           const key = `${result.canonical.kind}:${result.canonical.id}`;
           const isExpanded = expanded.includes(key);
+          // Both recall surfaces read the same presentation rule, so a memory row
+          // leads with what was remembered here exactly as it does in the desktop
+          // palette rather than repeating the person's name from the row above.
+          const { primary, secondary } = recallResultLines(result);
           return (
             <article className="py-3" key={key}>
               <Link
@@ -588,12 +528,14 @@ export function RecallResultSection({
                 id={resultElementId(key)}
                 onClick={() => onNavigate(key)}
               >
-                <span className="block font-medium text-sm">{result.label}</span>
-                <span className="mt-1 line-clamp-2 block text-muted-foreground text-sm">
-                  {result.supportingText}
-                </span>
+                <span className="block font-medium text-sm">{primary}</span>
+                {secondary ? (
+                  <span className="mt-1 line-clamp-2 block text-muted-foreground text-sm">
+                    {secondary}
+                  </span>
+                ) : null}
               </Link>
-              <div className="mt-1 flex items-center gap-3 text-muted-foreground text-xs">
+              <div className="mt-1 flex items-center gap-3 text-[length:var(--text-small)] text-muted-foreground">
                 <span>{result.visibility?.label ?? result.trust.replaceAll("_", " ")}</span>
                 <button
                   aria-expanded={isExpanded}
@@ -651,7 +593,7 @@ export function EveFlow({ children, onClose }: { children?: ReactNode; onClose: 
   );
 }
 
-export function MenuFlow({ onClose }: { onClose: () => void }) {
+export function MenuFlow({ onClose, onNavigate }: { onClose: () => void; onNavigate: () => void }) {
   return (
     <FullScreenFlow description="Go to another part of Tendnote." onClose={onClose} title="Menu">
       <nav aria-label="Menu destinations" className="flex flex-col divide-y px-5 py-4">
@@ -662,6 +604,11 @@ export function MenuFlow({ onClose }: { onClose: () => void }) {
               className="flex min-h-14 items-center gap-3 text-base focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               href={item.route}
               key={item.id}
+              /* The destination renders under this overlay, so the overlay has
+                 to go on activation - otherwise the app reads as frozen while
+                 the page it hides has already changed. Same contract Search
+                 uses when a result row is opened. */
+              onClick={onNavigate}
             >
               <Icon aria-hidden className="size-5 text-muted-foreground" />
               {item.label}
@@ -669,9 +616,11 @@ export function MenuFlow({ onClose }: { onClose: () => void }) {
           );
         })}
       </nav>
-      <div className="mt-2 flex min-h-14 items-center justify-between gap-3 border-t px-5 py-3">
-        <span className="text-base">Appearance</span>
-        <ThemeToggle className="size-9" />
+      <div className="mt-2 flex flex-col gap-2 border-t px-5 py-4">
+        <p className="text-base" id="mobile-appearance-label">
+          Appearance
+        </p>
+        <ThemeSegmentedControl aria-labelledby="mobile-appearance-label" />
       </div>
     </FullScreenFlow>
   );

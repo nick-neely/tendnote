@@ -8,8 +8,9 @@ import { useRef, useState } from "react";
 import { addAssetPersonLinkAction, removeAssetPersonLinkAction } from "@/app/actions/asset-links";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import { XIcon } from "@/components/icons";
-import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
+import { LedgerList } from "@/components/person-ledger";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Select,
   SelectContent,
@@ -65,7 +66,11 @@ export function AssetPersonLinks({
           ))}
         </LedgerList>
       ) : (
-        <LedgerEmpty>No people linked yet.</LedgerEmpty>
+        <EmptyState
+          description="Note who recommended it, borrowed it, or services it."
+          size="compact"
+          title="No people linked yet."
+        />
       )}
       {canLink && people.length > 0 ? (
         <AddAssetPersonLinkForm assetId={assetId} people={people} />

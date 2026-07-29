@@ -22,6 +22,7 @@ import {
   SuggestionReviewControls,
 } from "@/components/suggestion-review-controls";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
@@ -260,11 +261,13 @@ function SuggestedGeneralActionReviewCardContent({
               placeholder="Notes (optional)"
               value={draftNotes}
             />
-            <Input
+            {/* Clearable, unlike the follow-up card's picker: an action's due date
+                is genuinely optional (`dueAt: null`), so clearing it is a real edit
+                rather than a value the accept path would reject. */}
+            <DatePicker
               aria-label="Proposed due date"
               className="w-44"
-              onChange={(event) => setDraftDate(event.target.value)}
-              type="date"
+              onChange={setDraftDate}
               value={draftDate}
             />
             {/* Be honest about the edit's reach: the review card edits the basics; area,

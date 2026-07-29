@@ -44,10 +44,12 @@ export function AssetReviewEvidenceBlock({
     );
   }
 
+  // Rows, not a framed list: the review card is already the surface, and a
+  // bordered box inside a bordered card is banned (DESIGN.md §6).
   return (
     <div className="flex flex-col gap-2">
       {review.evidence.length > 0 ? (
-        <ul className="flex flex-col divide-y divide-accent/15 rounded-md border border-accent/20 bg-background/60">
+        <ul className="flex flex-col divide-y divide-accent/15">
           {review.evidence.map((view) => (
             <li key={view.id}>
               <AssetEvidenceRow

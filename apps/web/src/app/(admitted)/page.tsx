@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/today";
 import {
   appDestination,
+  explicitHomePanelForLocation,
   type HomePanel,
   homePanelForLocation,
 } from "@/components/app-destinations";
@@ -25,6 +26,7 @@ import {
 import { MobileHomeReserve } from "@/components/mobile-home-reserve";
 import { MobileTodayDestination } from "@/components/mobile-today-destination";
 import { ReviewQueueFamilySection } from "@/components/review-queue-section";
+import { EmptyState } from "@/components/ui/empty-state";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 import { currentLocalDate } from "@/lib/brief-local-date";
 import type { BriefView } from "@/lib/brief-view";
@@ -39,20 +41,26 @@ import {
   dashboardActiveFollowups,
   dashboardAssistantHints,
   dashboardCalendarSuggestions,
+  dashboardNextFollowupBeyondHorizon,
   dashboardPeople,
   dashboardSuggestedFollowups,
 } from "@/lib/dashboard-context";
 import { toDashboardFollowupView } from "@/lib/followup-view";
+import { defaultRailTab } from "@/lib/rail-tabs";
 import type { ReviewQueueFamily } from "@/lib/review-queue";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 
 type HomeProps = { searchParams?: Promise<{ tab?: string }> };
 
-async function homeTab(searchParams: HomeProps["searchParams"]): Promise<HomePanel> {
+async function homeSearchParams(searchParams: HomeProps["searchParams"]): Promise<URLSearchParams> {
   const params = new URLSearchParams();
   const tab = (await searchParams)?.tab;
   if (tab) params.set("tab", tab);
-  return homePanelForLocation("/", params);
+  return params;
+}
+
+async function homeTab(searchParams: HomeProps["searchParams"]): Promise<HomePanel> {
+  return homePanelForLocation("/", await homeSearchParams(searchParams));
 }
 
 /**
@@ -145,35 +153,111 @@ async function HomeAssistant({ searchParams }: HomeProps) {
  */
 async function HomeRail({ searchParams }: HomeProps) {
   if (process.env.NODE_ENV !== "test") await connection();
-  const tab = await homeTab(searchParams);
-  const ownerUserId = await admittedHomeOwner(tab);
-  const [people, followups, followupReviews, calendarSuggestions, dailyBrief, weeklyBrief] =
-    await Promise.all([
-      dashboardPeople(ownerUserId),
-      dashboardActiveFollowups(ownerUserId),
-      dashboardSuggestedFollowups(ownerUserId),
-      dashboardCalendarSuggestions(ownerUserId),
-      getDashboardBrief(ownerUserId, "daily"),
-      getDashboardBrief(ownerUserId, "weekly"),
-    ]);
+  const urlPanel = explicitHomePanelForLocation("/", await homeSearchParams(searchParams));
+  const ownerUserId = await admittedHomeOwner(urlPanel ?? "today");
+  const [
+    people,
+    followups,
+    nextFollowup,
+    followupReviews,
+    calendarSuggestions,
+    dailyBrief,
+    weeklyBrief,
+    reviewCount,
+  ] = await Promise.all([
+    dashboardPeople(ownerUserId),
+    dashboardActiveFollowups(ownerUserId),
+    dashboardNextFollowupBeyondHorizon(ownerUserId),
+    dashboardSuggestedFollowups(ownerUserId),
+    dashboardCalendarSuggestions(ownerUserId),
+    getDashboardBrief(ownerUserId, "daily"),
+    getDashboardBrief(ownerUserId, "weekly"),
+    countOwnerReviewQueue(ownerUserId),
+  ]);
   const now = new Date();
+  const birthdays = getUpcomingBirthdays(people);
 
   return (
     <DashboardRail
-      birthdays={getUpcomingBirthdays(people)}
+      birthdays={birthdays}
       calendarSuggestions={calendarSuggestions.map((suggestion) =>
         toCalendarSuggestionReviewView(suggestion),
       )}
       dailyBrief={dailyBrief}
       followupReviews={followupReviews.map((review) => toSuggestedFollowupReviewView(review))}
       followups={followups.map((summary) => toDashboardFollowupView(summary, now, ownerUserId))}
-      initialTab={tab}
+      initialTab={landingRailTab({
+        birthdays,
+        calendarSuggestions,
+        dailyBrief,
+        followupReviews,
+        followups,
+        reviewCount,
+        urlPanel,
+      })}
+      nextFollowup={nextFollowup ? toDashboardFollowupView(nextFollowup, now, ownerUserId) : null}
       people={people}
       reviewContent={<ReviewQueueStreams ownerUserId={ownerUserId} />}
-      reviewQueue={{ count: 0, failures: [], items: [] }}
+      reviewCount={reviewCount}
       weeklyBrief={weeklyBrief}
     />
   );
+}
+
+/**
+ * Which panel the rail opens on - the whole rule, so it can only be answered one
+ * way. A URL that names a panel always wins; otherwise `defaultRailTab` picks the
+ * first one holding something.
+ *
+ * The counting lives here rather than in `defaultRailTab` because it is the part
+ * that has to agree with what each panel actually lists: Today counts birthdays
+ * plus brief items, and Follow-ups counts the reminders, the suggestions, and the
+ * calendar proposals it shows together. Keep them in step and the rail can never
+ * open on a panel that then renders empty.
+ */
+function landingRailTab({
+  birthdays,
+  calendarSuggestions,
+  dailyBrief,
+  followupReviews,
+  followups,
+  reviewCount,
+  urlPanel,
+}: {
+  birthdays: ReturnType<typeof getUpcomingBirthdays>;
+  calendarSuggestions: Awaited<ReturnType<typeof dashboardCalendarSuggestions>>;
+  dailyBrief: Awaited<ReturnType<typeof getDashboardBrief>>;
+  followupReviews: Awaited<ReturnType<typeof dashboardSuggestedFollowups>>;
+  followups: Awaited<ReturnType<typeof dashboardActiveFollowups>>;
+  reviewCount: number;
+  /** The panel the URL asked for, when it asked for one. */
+  urlPanel: HomePanel | null;
+}) {
+  return (
+    urlPanel ??
+    defaultRailTab({
+      today: birthdays.length + (dailyBrief?.items.length ?? 0),
+      followups: followups.length + followupReviews.length + calendarSuggestions.length,
+      review: reviewCount,
+    })
+  );
+}
+
+/**
+ * How many items are waiting in Review, for the tab's count and for the rail's
+ * content-aware landing panel.
+ *
+ * The families still stream into the panel one by one; this read only asks how
+ * many there are. It costs nothing extra: the per-family reads are cached, so the
+ * streamed sections below hit the same entries rather than querying twice. The
+ * count has to be known before the rail renders, because a panel that changed
+ * under the owner once the streams arrived would be worse than no default at all.
+ */
+async function countOwnerReviewQueue(ownerUserId: string): Promise<number> {
+  const families = await Promise.all(
+    REVIEW_FAMILIES.map(({ family }) => getCachedReviewQueueFamily(ownerUserId, family)),
+  );
+  return families.reduce((total, result) => total + result.items.length, 0);
 }
 
 const REVIEW_FAMILIES: { family: ReviewQueueFamily; heading: string }[] = [
@@ -186,15 +270,32 @@ const REVIEW_FAMILIES: { family: ReviewQueueFamily; heading: string }[] = [
 function ReviewQueueStreams({ ownerUserId }: { ownerUserId: string }) {
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-pretty px-1 text-[length:var(--text-small)] text-muted-foreground">
-        Suggestions appear here as they are ready.
-      </p>
+      {/* The teaching empty state sits behind its own boundary: it has to read
+          every family to know the queue is empty, and that must not hold up a
+          queue that has something in it. Each family below still streams alone,
+          and an empty one renders nothing, so only one of the two ever shows. */}
+      <Suspense fallback={null}>
+        <ReviewQueueEmpty ownerUserId={ownerUserId} />
+      </Suspense>
       {REVIEW_FAMILIES.map(({ family, heading }) => (
         <Suspense fallback={<ReviewFamilyReserve heading={heading} />} key={family}>
           <ReviewQueueFamilyStream family={family} heading={heading} ownerUserId={ownerUserId} />
         </Suspense>
       ))}
     </div>
+  );
+}
+
+/** Same words as the rail's Review tab: what lands here, and who says yes to it. */
+async function ReviewQueueEmpty({ ownerUserId }: { ownerUserId: string }) {
+  if ((await countOwnerReviewQueue(ownerUserId)) > 0) return null;
+
+  return (
+    <EmptyState
+      description="Eve's suggestions land here first: a detail worth keeping, an action to take, a name it couldn't place. Nothing is saved without your yes."
+      size="compact"
+      title="Nothing waiting to review."
+    />
   );
 }
 

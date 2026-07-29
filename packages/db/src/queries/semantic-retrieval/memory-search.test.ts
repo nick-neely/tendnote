@@ -1,34 +1,47 @@
 import { describe, expect, it } from "vitest";
 import type { HouseholdRecordShare } from "../households/types";
-import { createHarness, EMBEDDING_CONFIG, OTHER_OWNER, OWNER } from "./harness";
+import type { MemoryUpdatePatch } from "../memories/types";
+import {
+  createHarness,
+  EMBEDDING_CONFIG,
+  OTHER_OWNER,
+  OWNER,
+  topicVectorAdapter,
+  topicVectorFor,
+} from "./harness";
 import { createSemanticRetrievalQueries } from "./queries";
-import type { EmbeddingAdapter } from "./types";
-
-const vectorAdapter: EmbeddingAdapter = {
-  async embedText(input) {
-    return {
-      vector: vectorFor(input.text),
-      model: input.model,
-      version: input.version,
-    };
-  },
-};
 
 const householdId = "99999999-9999-4999-8999-999999999999";
 
-function vectorFor(text: string) {
-  const lower = text.toLowerCase();
-  if (lower.includes("cooking") || lower.includes("gift")) return [1, 0, 0, 0];
-  if (lower.includes("career") || lower.includes("job")) return [0, 1, 0, 0];
-  if (lower.includes("stress")) return [0, 0, 1, 0];
-  return [0, 0, 0, 1];
+/**
+ * Embed a memory, edit its sensitivity, and run the job again - the write path the
+ * sensitivity cases below ask a *retrieval* question about. The reprocessed job result comes
+ * back with the queries: whether the second pass converged the row or refused it is the
+ * whole difference between a memory that stays retrievable and one that is withheld.
+ */
+async function embedThenEditSensitivity(patch: MemoryUpdatePatch) {
+  const { store, createApprovedMemory, embedMemory } = createHarness({
+    adapter: topicVectorAdapter,
+  });
+  const memory = await createApprovedMemory({
+    content: "Mara loves cooking classes and handmade kitchen gifts.",
+  });
+  await embedMemory(memory.id);
+  const edited = await store.updateMemory({ ownerUserId: OWNER, memoryId: memory.id, patch });
+  const reprocessed = await embedMemory(edited.id);
+
+  return {
+    memory,
+    reprocessed,
+    queries: createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG),
+  };
 }
 
 describe("semantic retrieval - approved memory results", () => {
   it("applies household visibility before returning memory semantic results", async () => {
     const householdRecordShares: HouseholdRecordShare[] = [];
-    const { store, processor, createApprovedMemory } = createHarness({
-      adapter: vectorAdapter,
+    const { store, createApprovedMemory, embedMemory } = createHarness({
+      adapter: topicVectorAdapter,
       householdMemberships: [
         {
           id: "membership-owner",
@@ -80,14 +93,9 @@ describe("semantic retrieval - approved memory results", () => {
     });
 
     for (const memory of [privateMemory, sharedMemory]) {
-      const { job } = await processor.enqueueEmbeddingJob({
-        ownerUserId: memory.ownerUserId,
-        recordKind: "memory",
-        recordId: memory.id,
-      });
-      await processor.processEmbeddingJob({ jobId: job.id });
+      await embedMemory(memory.id, memory.ownerUserId);
     }
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
 
     const results = await queries.searchSemanticContext({
       ownerUserId: OWNER,
@@ -110,17 +118,14 @@ describe("semantic retrieval - approved memory results", () => {
   });
 
   it("searches approved-memory embeddings with compact person-aware results", async () => {
-    const { store, processor, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
+    const { store, createApprovedMemory, embedMemory } = createHarness({
+      adapter: topicVectorAdapter,
+    });
     const memory = await createApprovedMemory({
       content: "Mara loves cooking classes and handmade kitchen gifts.",
     });
-    const { job } = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: memory.id,
-    });
-    await processor.processEmbeddingJob({ jobId: job.id });
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    await embedMemory(memory.id);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
 
     const results = await queries.searchSemanticContext({
       ownerUserId: OWNER,
@@ -152,7 +157,9 @@ describe("semantic retrieval - approved memory results", () => {
   });
 
   it("applies owner, person, kind, limit, and minimum-similarity filters", async () => {
-    const { store, processor, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
+    const { store, createApprovedMemory, embedMemory } = createHarness({
+      adapter: topicVectorAdapter,
+    });
     const cooking = await createApprovedMemory({
       content: "Mara loves cooking classes and handmade kitchen gifts.",
       importance: 1,
@@ -167,15 +174,10 @@ describe("semantic retrieval - approved memory results", () => {
     });
 
     for (const memory of [cooking, career, otherOwner]) {
-      const { job } = await processor.enqueueEmbeddingJob({
-        ownerUserId: memory.ownerUserId,
-        recordKind: "memory",
-        recordId: memory.id,
-      });
-      await processor.processEmbeddingJob({ jobId: job.id });
+      await embedMemory(memory.id, memory.ownerUserId);
     }
 
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
     const personResults = await queries.searchSemanticContext({
       ownerUserId: OWNER,
       query: "gift ideas",
@@ -198,7 +200,9 @@ describe("semantic retrieval - approved memory results", () => {
   });
 
   it("keeps similarity ahead of importance and recency tie-breakers", async () => {
-    const { store, processor, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
+    const { store, createApprovedMemory, embedMemory } = createHarness({
+      adapter: topicVectorAdapter,
+    });
     const strong = await createApprovedMemory({
       content: "Mara loves cooking classes and handmade kitchen gifts.",
       importance: 1,
@@ -211,15 +215,10 @@ describe("semantic retrieval - approved memory results", () => {
     });
 
     for (const memory of [weak, strong]) {
-      const { job } = await processor.enqueueEmbeddingJob({
-        ownerUserId: OWNER,
-        recordKind: "memory",
-        recordId: memory.id,
-      });
-      await processor.processEmbeddingJob({ jobId: job.id });
+      await embedMemory(memory.id);
     }
 
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
     const results = await queries.searchSemanticContext({
       ownerUserId: OWNER,
       query: "gift ideas",
@@ -232,7 +231,9 @@ describe("semantic retrieval - approved memory results", () => {
   });
 
   it("fails open for missing, stale, incompatible, and ineligible embeddings", async () => {
-    const { store, processor, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
+    const { store, createApprovedMemory, embedMemory } = createHarness({
+      adapter: topicVectorAdapter,
+    });
     const stale = await createApprovedMemory({
       content: "Mara loves cooking classes and handmade kitchen gifts.",
     });
@@ -241,12 +242,7 @@ describe("semantic retrieval - approved memory results", () => {
       status: "suggested",
       approvedAt: null,
     });
-    const { job } = await processor.enqueueEmbeddingJob({
-      ownerUserId: OWNER,
-      recordKind: "memory",
-      recordId: stale.id,
-    });
-    await processor.processEmbeddingJob({ jobId: job.id });
+    await embedMemory(stale.id);
     await store.updateMemory({
       ownerUserId: OWNER,
       memoryId: stale.id,
@@ -267,7 +263,7 @@ describe("semantic retrieval - approved memory results", () => {
       sensitivity: "normal",
       sourceUpdatedAt: suggested.updatedAt,
     });
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
 
     const results = await queries.searchSemanticContext({
       ownerUserId: OWNER,
@@ -280,8 +276,117 @@ describe("semantic retrieval - approved memory results", () => {
     expect(results).toEqual([]);
   });
 
+  /**
+   * Staleness is content-addressed, not timestamp-addressed (ADR 0013). Nudging a memory's
+   * importance bumps its `updatedAt` past the embedding's `sourceUpdatedAt` without changing
+   * a word of what was embedded, so the vector still describes the memory exactly.
+   *
+   * This is a regression guard, not a hypothetical. A `sourceUpdatedAt === updatedAt` gate
+   * used to sit in both stores and it emptied the Related bucket of Global Recall: in
+   * Postgres the two columns are unequal by construction (microsecond `defaultNow()` versus
+   * a millisecond-truncated JS `Date`), and because `reuseOrEmbed` short-circuits on a
+   * matching content fingerprint, re-enqueueing the job never refreshed `sourceUpdatedAt`.
+   * Once a memory fell out it could never come back.
+   */
+  it("keeps retrieving a memory whose sourceUpdatedAt trails its updatedAt", async () => {
+    const { store, createApprovedMemory } = createHarness({ adapter: topicVectorAdapter });
+    const memory = await createApprovedMemory({
+      content: "Mara prefers handmade cooking gifts.",
+    });
+    await store.upsertRelationshipContextEmbedding({
+      ownerUserId: OWNER,
+      personId: memory.personId,
+      recordKind: "memory",
+      recordId: memory.id,
+      embedding: topicVectorFor(memory.content),
+      embeddingModel: EMBEDDING_CONFIG.model,
+      embeddingVersion: EMBEDDING_CONFIG.version,
+      embeddingDimensions: 4,
+      // Unchanged: the vector still describes this memory word for word.
+      embeddedText: memory.content,
+      contentFingerprint: "manual-lagging-source-updated-at",
+      trustLevel: "confirmed_fact",
+      sensitivity: "normal",
+      // What Postgres actually stores. `memories.updated_at` is written by `defaultNow()`
+      // with microsecond precision; the driver truncates those microseconds when it hands
+      // the value to JS, so the timestamp written back here trails the record's own by a
+      // fraction of a millisecond - always, and for every row.
+      sourceUpdatedAt: new Date(memory.updatedAt.getTime() - 1),
+    });
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
+
+    const results = await queries.searchSemanticContext({
+      ownerUserId: OWNER,
+      query: "gift ideas",
+      limit: 5,
+      minimumSimilarity: 0,
+      directlyRequested: false,
+    });
+
+    expect(results.map((result) => result.recordId)).toEqual([memory.id]);
+  });
+
+  /**
+   * The retrieval-side half of the write-side convergence pinned in the approved-memory job
+   * suite. Raising a memory from `normal` to `sensitive` changes no word of what was
+   * embedded, so the vector still describes it exactly and it must stay retrievable:
+   * `sensitive` is a labelling register, not a withholding one.
+   *
+   * Before the reuse seam converged its metadata this was an unrecoverable eviction: the
+   * fingerprint still matched, so the row kept saying `normal` forever while `e.sensitivity
+   * = m.sensitivity` dropped it from every search.
+   */
+  it("keeps retrieving a memory whose sensitivity was edited after it was embedded", async () => {
+    const { memory, queries } = await embedThenEditSensitivity({ sensitivity: "sensitive" });
+
+    const results = await queries.searchSemanticContext({
+      ownerUserId: OWNER,
+      query: "gift ideas",
+      recordKinds: ["memory"],
+      limit: 5,
+      minimumSimilarity: 0.5,
+      directlyRequested: false,
+    });
+
+    expect(results.map((result) => result.recordId)).toEqual([memory.id]);
+    expect(results[0]?.sensitivity).toBe("sensitive");
+  });
+
+  /**
+   * Convergence must not become a back door into restricted content. A memory edited to
+   * `restricted` is skipped by the embed decision (restricted text is never sent to an
+   * embedding provider), so the reuse seam never runs and the row keeps the `normal`
+   * sensitivity, and the full text, it was embedded with. The `e.sensitivity = m.sensitivity`
+   * equality is what withholds it, and it withholds it even from a direct request: the
+   * vector predates the restriction and nothing has re-authorised it.
+   */
+  it("withholds a memory restricted after embedding, direct request included", async () => {
+    const { reprocessed, queries } = await embedThenEditSensitivity({ sensitivity: "restricted" });
+
+    const hidden = await queries.searchSemanticContext({
+      ownerUserId: OWNER,
+      query: "gift ideas",
+      limit: 5,
+      minimumSimilarity: 0,
+      directlyRequested: false,
+    });
+    const direct = await queries.searchSemanticContext({
+      ownerUserId: OWNER,
+      query: "gift ideas",
+      limit: 5,
+      minimumSimilarity: 0,
+      directlyRequested: true,
+    });
+
+    expect(reprocessed).toEqual(
+      expect.objectContaining({ outcome: "skipped", reason: "restricted_content" }),
+    );
+    expect(hidden).toEqual([]);
+    expect(direct).toEqual([]);
+  });
+
   it("excludes restricted memory embeddings by default and returns them only when directly requested", async () => {
-    const { store, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
+    const { store, createApprovedMemory } = createHarness({ adapter: topicVectorAdapter });
     const restricted = await createApprovedMemory({
       content: "Mara shared a stressful family situation.",
       sensitivity: "restricted",
@@ -291,7 +396,7 @@ describe("semantic retrieval - approved memory results", () => {
       personId: restricted.personId,
       recordKind: "memory",
       recordId: restricted.id,
-      embedding: vectorFor(restricted.content),
+      embedding: topicVectorFor(restricted.content),
       embeddingModel: EMBEDDING_CONFIG.model,
       embeddingVersion: EMBEDDING_CONFIG.version,
       embeddingDimensions: 4,
@@ -301,7 +406,7 @@ describe("semantic retrieval - approved memory results", () => {
       sensitivity: "restricted",
       sourceUpdatedAt: restricted.updatedAt,
     });
-    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+    const queries = createSemanticRetrievalQueries(store, topicVectorAdapter, EMBEDDING_CONFIG);
 
     const hidden = await queries.searchSemanticContext({
       ownerUserId: OWNER,

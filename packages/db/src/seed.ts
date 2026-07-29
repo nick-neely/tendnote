@@ -71,6 +71,19 @@ const demoUsers = [
 type Db = ReturnType<typeof getDb>;
 
 /**
+ * The household a demo record belongs to, as a value the update path can always write.
+ *
+ * Scope and household travel together: re-seeding a row that names a shared scope must carry
+ * its household across, or the update leaves it visible to nobody. Private fixtures simply
+ * omit the field, and an `undefined` in an `onConflictDoUpdate` set is a no-op rather than a
+ * clear - so absence is resolved to an explicit `null` here, once, instead of putting the
+ * same branch inside every seeder that re-seeds a scoped row.
+ */
+function demoHouseholdId(record: { householdId?: string | null }): string | null {
+  return record.householdId ?? null;
+}
+
+/**
  * Seeds the demo world, one bounded slice at a time.
  *
  * The slices are separate functions on purpose: a single seed() touching twenty tables was
@@ -81,12 +94,14 @@ async function seed() {
   const db = getDb();
 
   await seedUsers(db);
+  // The household comes before every record that anchors to it: a `shared` or `household`
+  // row without its household is visible to nobody, its own owner included.
+  await seedHousehold(db);
   await seedPeopleWorld(db);
   await seedSourceRecordWorld(db);
   await seedExtractionWorld(db);
   await seedEngagementWorld(db);
   await seedEmbeddingWorld(db);
-  await seedAssetHousehold(db);
   await seedAssetRecords(db);
   await seedAssetActions(db);
   await seedStaleAssetSnapshot(db);
@@ -204,6 +219,7 @@ async function seedSourceRecordWorld(db: Db) {
           confidence: sourceRecord.confidence,
           sensitivity: sourceRecord.sensitivity,
           scope: sourceRecord.scope,
+          householdId: demoHouseholdId(sourceRecord),
           importance: sourceRecord.importance,
           metadataJson: sourceRecord.metadataJson,
           updatedAt: new Date(),
@@ -282,6 +298,7 @@ async function seedExtractionWorld(db: Db) {
           sensitivity: memory.sensitivity,
           confidence: memory.confidence,
           scope: memory.scope,
+          householdId: demoHouseholdId(memory),
           approvedAt: memory.approvedAt,
           dismissedAt: memory.dismissedAt,
           updatedAt: new Date(),
@@ -400,12 +417,12 @@ async function seedEmbeddingWorld(db: Db) {
 }
 
 /**
- * The Phase 6 Asset Memory world (`demo-assets.ts`): the household and its co-member, the
- * refrigerator and its filter, their reviewed details, evidence, links, and the actions —
- * including the proposals the owner already dismissed. Seeded in dependency order; every row
- * is keyed by a fixed id, so re-seeding updates rather than duplicates.
+ * The one household the demo world has, and its co-member. Defined alongside the Phase 6
+ * Asset world (`demo-assets.ts`) because that is where it first earned its keep, but it
+ * anchors every non-private record in the demo - the shared Dana contact note and memory
+ * as much as the fridge - so it is seeded ahead of all of them.
  */
-async function seedAssetHousehold(db: Db) {
+async function seedHousehold(db: Db) {
   for (const household of demoHouseholdWorkspaces) {
     await db
       .insert(householdWorkspaces)

@@ -120,7 +120,7 @@ describe("brief generator — daily", () => {
     const [item] = brief.items;
     expect(item?.kind).toBe("due_followup");
     expect(item?.personDisplayName).toBe("Mark");
-    expect(item?.title).toBe("Follow up with Mark");
+    expect(item?.title).toBe("Reconnect about the move.");
     expect(item?.reason).toBe("Reconnect about the move.");
     expect(item?.sourceRefs?.[0]?.kind).toBe("followup");
     expect(item?.rank).toBe(1);

@@ -66,10 +66,10 @@ test.describe("mobile critical navigation", () => {
           .getByRole("link", { name: "Actions" })
           .click(),
       returnToSource: async (target) => {
-        // The Menu flow stays open across the navigation, so the row returns to
-        // its source simply by leaving it open — but Today has to be reached
-        // through the bar beneath it, which the flow hides while it is up.
-        await target.getByRole("button", { name: "Close" }).click();
+        // Choosing a destination closes the Menu: it covers the page it is
+        // navigating to, so leaving it up would read as a frozen app. The row's
+        // source is therefore Home with the Menu re-opened, reached through the
+        // bar the flow is no longer hiding.
         await bottomBar(target).getByRole("link", { name: "Today" }).click();
         await openMenu(target);
       },

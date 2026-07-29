@@ -7,6 +7,18 @@ import type { GeneralActionLinkedAssetView } from "@/lib/general-action-view";
 /** Fallback message when an Action mutation fails for an unknown reason. */
 export const GENERIC_ERROR = "That didn't go through. Try again.";
 
+/**
+ * A thumb-sized floor for a row control, applied below the `sm` breakpoint.
+ *
+ * The Action rows use the dense `sm` button (28px), which reads right under a
+ * mouse and is too small to hit under a thumb. Rather than grow the control
+ * everywhere and coarsen the desktop ledger, every control a finger has to find
+ * carries this minimum on phone widths only. Shared so the active, paused, and
+ * resolved rows cannot drift apart on it - they did once, and only the active row
+ * was reachable.
+ */
+export const ACTION_CONTROL_TOUCH_TARGET = "max-sm:min-h-11";
+
 /** Inline error line shared by the Action rows and the create form. */
 export function ErrorText({ message }: { message: string }) {
   return (

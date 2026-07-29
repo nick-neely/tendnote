@@ -1,12 +1,62 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+
+/**
+ * How long the landing half waits for a claimed target to render before giving up.
+ * A revealed section has to open *and* finish its fetch, so this is generous; it exists
+ * only so a claim that never resolves stops observing rather than leaking.
+ */
+const REVEAL_TIMEOUT_MS = 8_000;
+
+/**
+ * Claims a deep-link target the claiming surface can show but has not rendered yet.
+ *
+ * Return `true` to say "that row is mine, I am revealing it" - the hook then waits for the
+ * element to appear and lands on it. Return `false` for anything the surface does not own,
+ * so an unknown hash stays a quiet no-op.
+ */
+type DeepLinkRevealer = (elementId: string) => boolean;
+
+const revealers = new Set<DeepLinkRevealer>();
+
+/**
+ * Registers a surface's {@link DeepLinkRevealer} for the lifetime of the component.
+ *
+ * The seam exists because the landing half cannot see the whole page: a surface may hold
+ * the deep-linked row behind a folded section whose rows are fetched on open (the Actions
+ * secondary shelf), so the element genuinely is not in the DOM when the hash arrives. The
+ * hook stays generic - it knows only "someone claimed this id, watch for it" - and each
+ * surface keeps its own knowledge of which fold and which fetch reach that row.
+ */
+export function useDeepLinkReveal(reveal: DeepLinkRevealer): void {
+  const latest = useRef(reveal);
+  useEffect(() => {
+    latest.current = reveal;
+  });
+  useEffect(() => {
+    // Registered through a stable indirection so a re-render's fresh closure (which reads
+    // current state) is used without churning the registry on every render.
+    const revealer: DeepLinkRevealer = (elementId) => latest.current(elementId);
+    revealers.add(revealer);
+    return () => {
+      revealers.delete(revealer);
+    };
+  }, []);
+}
 
 /**
  * Scrolls to, focuses, and briefly highlights the element named by the current URL
  * hash — the landing half of a deep link (e.g. the Action Today surface links to
  * `/actions#action-<id>`, and this carries the arriving user to that exact row). Runs on
  * mount and on `hashchange`, so both a fresh navigation and an in-page hash change land.
+ *
+ * When the hash names nothing on the page it asks the registered surfaces
+ * ({@link useDeepLinkReveal}) whether one of them can reveal it. A resolved Action lives in
+ * a folded shelf that fetches on open, so its row is absent until the surface opens the
+ * shelf and the rows arrive; if a surface claims the id, this waits for the element and
+ * then lands on it. An unclaimed hash - a stale or wrong link - does nothing at all: no
+ * scroll, no error, no flash.
  *
  * The pulse uses the Web Animations API against a CSS custom property rather than a
  * Tailwind class, so no class needs to exist in the build for it to render; a
@@ -15,19 +65,12 @@ import { useEffect } from "react";
  */
 export function useDeepLinkHighlight(): void {
   useEffect(() => {
-    function highlightFromHash() {
-      const id = window.location.hash.slice(1);
-      if (!id) {
-        return;
-      }
-      const target = document.getElementById(id);
-      if (!target) {
-        return;
-      }
+    let stopWaiting: (() => void) | null = null;
 
-      // A target inside a collapsed disclosure (the Resolved/Paused sections)
-      // must be revealed before it can be scrolled to — open every containing
-      // <details> so the deep link never lands on a closed section (#199).
+    function landOn(target: HTMLElement) {
+      // A target inside a collapsed native disclosure must be revealed before it can be
+      // scrolled to. Radix `Collapsible` sections unmount their contents instead, so those
+      // go through the reveal contract above rather than this walk.
       for (
         let details = target.closest("details");
         details;
@@ -52,13 +95,73 @@ export function useDeepLinkHighlight(): void {
       }
     }
 
+    function highlightFromHash() {
+      stopWaiting?.();
+      stopWaiting = null;
+
+      const id = window.location.hash.slice(1);
+      if (!id) {
+        return;
+      }
+      const target = document.getElementById(id);
+      if (target) {
+        landOn(target);
+        return;
+      }
+
+      // Nothing under that id yet. Every claim runs - a surface reveals by opening a fold
+      // and starting a fetch, and more than one may hold rows - but one claim is enough to
+      // start watching for the row.
+      let claimed = false;
+      for (const reveal of revealers) {
+        if (reveal(id)) {
+          claimed = true;
+        }
+      }
+      if (claimed) {
+        stopWaiting = waitForElement(id, landOn);
+      }
+    }
+
     // A fresh navigation lands with the hash already set; wait a frame so the target
     // has mounted before scrolling.
     const raf = requestAnimationFrame(highlightFromHash);
     window.addEventListener("hashchange", highlightFromHash);
     return () => {
       cancelAnimationFrame(raf);
+      stopWaiting?.();
       window.removeEventListener("hashchange", highlightFromHash);
     };
   }, []);
+}
+
+/**
+ * Watches the document until `id` appears, then hands the element over once. Returns the
+ * canceller; it also cancels itself on arrival and after {@link REVEAL_TIMEOUT_MS}, so a
+ * claim whose rows never load expires quietly instead of observing forever.
+ */
+function waitForElement(id: string, onFound: (element: HTMLElement) => void): () => void {
+  const revealed = document.getElementById(id);
+  if (revealed) {
+    onFound(revealed);
+    return () => {};
+  }
+
+  const observer = new MutationObserver(() => {
+    const element = document.getElementById(id);
+    if (!element) {
+      return;
+    }
+    stop();
+    onFound(element);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  const timer = window.setTimeout(stop, REVEAL_TIMEOUT_MS);
+
+  function stop() {
+    observer.disconnect();
+    window.clearTimeout(timer);
+  }
+
+  return stop;
 }

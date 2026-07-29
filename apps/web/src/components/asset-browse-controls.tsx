@@ -1,11 +1,22 @@
 "use client";
 
 import type { AssetKind, PrivacyScope } from "@tendnote/domain";
-import { ASSET_KIND_OPTIONS } from "@tendnote/domain";
+import { ASSET_KIND_OPTIONS, assetLabelForKind } from "@tendnote/domain";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
+import { ChevronDownIcon, SlidersHorizontalIcon } from "@/components/icons";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { AssetBrowseRequest, AssetView } from "@/lib/asset-view";
-import { cn } from "@/lib/utils";
 
 export type AssetStateFilter = "active" | "archived" | "all";
 
@@ -52,263 +63,420 @@ export function filterAssets(assets: AssetView[], filters: ClientAssetFilters): 
   return assets.filter((asset) => matchesAsset(asset, filters));
 }
 
+// ---------------------------------------------------------------------------
+// Vocabulary
+// ---------------------------------------------------------------------------
+
+/**
+ * The "no opinion" value for a single-select group. Radix `ToggleGroup type="single"`
+ * speaks in strings, so every row carries an explicit neutral option rather than
+ * asking the user to deduce that clicking the selected chip again clears it.
+ */
+const ANY = "any";
+
+const STATE_OPTIONS = [
+  { value: "active", label: "Active" },
+  { value: "archived", label: "Archived" },
+  { value: "all", label: "Everything" },
+] as const satisfies ReadonlyArray<{ value: AssetStateFilter; label: string }>;
+
+const DUE_OPTIONS = [
+  { value: "with_due_action", label: "Has due action" },
+  { value: "without_due_action", label: "No due action" },
+] as const;
+
+const REVIEW_OPTIONS = [
+  { value: "needs_review", label: "Needs review" },
+  { value: "ready", label: "Reviewed" },
+] as const;
+
+const SORT_OPTIONS = [
+  { value: "name", label: "Name" },
+  { value: "due_action", label: "Due action" },
+  { value: "needs_review", label: "Review status" },
+  { value: "recently_added", label: "Recently added" },
+] as const satisfies ReadonlyArray<{ value: AssetFilters["sort"]; label: string }>;
+
+const SCOPES = ["private", "shared", "household"] as const satisfies readonly PrivacyScope[];
+
+function labelFor<T extends string>(
+  options: ReadonlyArray<{ value: T; label: string }>,
+  value: T,
+): string {
+  return options.find((option) => option.value === value)?.label ?? value;
+}
+
+// ---------------------------------------------------------------------------
+// URL persistence
+// ---------------------------------------------------------------------------
+
+/**
+ * The selection lives in the URL, not in component state, so a reload, a shared
+ * link, and the back button all land on the same ledger. Only non-default values
+ * are written: an unfiltered Assets page keeps a bare `/assets`.
+ */
+function readParam<T extends string>(
+  params: Pick<URLSearchParams, "get">,
+  key: string,
+  allowed: readonly T[],
+): T | null {
+  const raw = params.get(key);
+  return raw !== null && (allowed as readonly string[]).includes(raw) ? (raw as T) : null;
+}
+
+export function assetFiltersFromParams(params: Pick<URLSearchParams, "get">): AssetFilters {
+  const kinds = ASSET_KIND_OPTIONS.map((option) => option.kind);
+  return {
+    kind: readParam(params, "kind", kinds),
+    state:
+      readParam(
+        params,
+        "state",
+        STATE_OPTIONS.map((option) => option.value),
+      ) ?? DEFAULT_ASSET_FILTERS.state,
+    scope: readParam(params, "scope", SCOPES),
+    due: readParam(
+      params,
+      "due",
+      DUE_OPTIONS.map((option) => option.value),
+    ),
+    review: readParam(
+      params,
+      "review",
+      REVIEW_OPTIONS.map((option) => option.value),
+    ),
+    sort:
+      readParam(
+        params,
+        "sort",
+        SORT_OPTIONS.map((option) => option.value),
+      ) ?? DEFAULT_ASSET_FILTERS.sort,
+  };
+}
+
+/**
+ * Rewrites the filter keys on top of the URL's existing query, leaving anything
+ * else the page carries untouched. Returns a bare query string (no leading `?`).
+ */
+export function assetFilterSearch(filters: AssetFilters, currentSearch: string): string {
+  const next = new URLSearchParams(currentSearch);
+  const write = (key: string, value: string | null, fallback: string | null) => {
+    if (value === null || value === fallback) next.delete(key);
+    else next.set(key, value);
+  };
+  write("kind", filters.kind, null);
+  write("state", filters.state, DEFAULT_ASSET_FILTERS.state);
+  write("scope", filters.scope, null);
+  write("due", filters.due, null);
+  write("review", filters.review, null);
+  write("sort", filters.sort, DEFAULT_ASSET_FILTERS.sort);
+  return next.toString();
+}
+
+export function sameAssetFilters(left: AssetFilters, right: AssetFilters): boolean {
+  return (
+    left.kind === right.kind &&
+    left.state === right.state &&
+    left.scope === right.scope &&
+    left.due === right.due &&
+    left.review === right.review &&
+    left.sort === right.sort
+  );
+}
+
+/**
+ * Whether the selection can hide rows. Sort never can, so it is deliberately not
+ * counted: a re-sorted empty ledger is still "nothing tracked yet".
+ */
+export function assetFiltersNarrow(filters: AssetFilters): boolean {
+  return (
+    filters.kind !== null ||
+    filters.state !== DEFAULT_ASSET_FILTERS.state ||
+    filters.scope !== null ||
+    filters.due !== null ||
+    filters.review !== null
+  );
+}
+
+/**
+ * Plain words for everything currently in force, so a collapsed panel never hides
+ * state. Sort is included - it changes what the top of the list means.
+ */
+function activeAssetFilterLabels(filters: AssetFilters): string[] {
+  const labels: string[] = [];
+  if (filters.kind !== null) labels.push(assetLabelForKind(filters.kind));
+  if (filters.state !== DEFAULT_ASSET_FILTERS.state) {
+    labels.push(labelFor(STATE_OPTIONS, filters.state));
+  }
+  if (filters.scope !== null) labels.push(visibilityLabelForScope(filters.scope));
+  if (filters.due !== null) labels.push(labelFor(DUE_OPTIONS, filters.due));
+  if (filters.review !== null) labels.push(labelFor(REVIEW_OPTIONS, filters.review));
+  if (filters.sort !== DEFAULT_ASSET_FILTERS.sort) {
+    labels.push(`Sorted by ${labelFor(SORT_OPTIONS, filters.sort).toLowerCase()}`);
+  }
+  return labels;
+}
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+
+/**
+ * Every filter and the sort order, collapsed behind one quiet control on every
+ * viewport.
+ *
+ * The surface used to sit under five permanently expanded rows of pills plus a
+ * bare `<select>` - more chrome than ledger, and the audit called it button hell.
+ * Mobile had already solved it with a "Filters and sort" disclosure, so desktop
+ * adopts the mobile pattern rather than the other way round: calm by default, one
+ * click from everything.
+ *
+ * Collapsing must never hide state, so whatever is in force is summarised beside
+ * the trigger as neutral badges with a single clear-all. Inside, each row is a
+ * single-select `ToggleGroup` (Radix gives it radiogroup semantics and one tab
+ * stop with arrow-key movement, replacing twenty `aria-pressed` buttons) and sort
+ * is the product's `Select`, so the whole block speaks one control vocabulary.
+ *
+ * Rows still appear only when they have something to narrow: a single-kind,
+ * all-active, all-private client list shows no filter chrome at all.
+ */
 export function AssetBrowseControls({
   list,
   filters,
-  filtered,
   onChange,
   serverBacked,
 }: {
   list: AssetView[];
   filters: AssetFilters;
-  filtered: boolean;
   onChange: (filters: AssetFilters) => void;
   serverBacked: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button
-        aria-controls="asset-browse-controls"
-        aria-expanded={open}
-        className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-left text-[length:var(--text-small)] font-medium text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 motion-reduce:transition-none md:hidden"
-        onClick={() => setOpen((current) => !current)}
-        type="button"
-      >
-        <span>Filters and sort</span>
-        <span className="font-normal text-muted-foreground" aria-hidden>
-          {filtered ? "Adjusted" : open ? "Hide" : "Show"}
-        </span>
-      </button>
-      <div
-        className={cn("flex-col gap-2", open ? "flex" : "hidden md:flex")}
-        id="asset-browse-controls"
-      >
-        <AssetFilterRows
-          filters={filters}
-          list={list}
-          onChange={onChange}
-          serverBacked={serverBacked}
-        />
-        {serverBacked ? <AssetStatusControls filters={filters} onChange={onChange} /> : null}
-      </div>
-    </>
-  );
-}
-
-// fallow-ignore-next-line complexity
-function AssetFilterRows({
-  list,
-  filters,
-  onChange,
-  serverBacked,
-}: {
-  list: AssetView[];
-  filters: AssetFilters;
-  onChange: (filters: AssetFilters) => void;
-  serverBacked: boolean;
-}) {
-  const presentKinds = useMemo(() => {
+  const kindOptions = useMemo(() => {
     const stateVisible = filterAssets(list, { ...DEFAULT_ASSET_FILTERS, state: filters.state });
-    const kinds = new Set(stateVisible.map((asset) => asset.kind));
-    if (filters.kind !== null) kinds.add(filters.kind);
-    return serverBacked
+    const present = new Set(stateVisible.map((asset) => asset.kind));
+    if (filters.kind !== null) present.add(filters.kind);
+    const offered = serverBacked
       ? ASSET_KIND_OPTIONS
-      : ASSET_KIND_OPTIONS.filter((option) => kinds.has(option.kind));
+      : ASSET_KIND_OPTIONS.filter((option) => present.has(option.kind));
+    return offered.map((option) => ({ value: option.kind, label: option.label }));
   }, [list, filters.state, filters.kind, serverBacked]);
-  const hasArchived = list.some((asset) => asset.archived);
-  const hasNonPrivate = list.some((asset) => asset.scope !== "private");
 
-  if (!serverBacked && presentKinds.length <= 1 && !hasArchived && !hasNonPrivate) return null;
+  const showKind = kindOptions.length > 1;
+  const showState = serverBacked || list.some((asset) => asset.archived);
+  const showScope = serverBacked || list.some((asset) => asset.scope !== "private");
+  if (!showKind && !showState && !showScope) return null;
+
+  const active = activeAssetFilterLabels(filters);
+
   return (
-    <div className="flex flex-col gap-2">
-      {presentKinds.length > 1 ? (
-        <FilterChipGroup label="Filter by kind">
-          <FilterChip
-            onSelect={() => onChange({ ...filters, kind: null })}
-            selected={filters.kind === null}
+    <Collapsible className="flex flex-col gap-2" onOpenChange={setOpen} open={open}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <CollapsibleTrigger asChild>
+          <Button
+            className="group/filters -ml-2.5 text-muted-foreground hover:text-foreground"
+            size="sm"
+            type="button"
+            variant="ghost"
           >
-            All kinds
-          </FilterChip>
-          {presentKinds.map((option) => (
-            <FilterChip
-              key={option.kind}
-              onSelect={() => onChange({ ...filters, kind: option.kind })}
-              selected={filters.kind === option.kind}
+            <SlidersHorizontalIcon aria-hidden />
+            Filters and sort
+            <ChevronDownIcon
+              aria-hidden
+              className="transition-transform duration-150 ease-(--motion-ease-out) group-data-[state=open]/filters:rotate-180 motion-reduce:transition-none"
+            />
+          </Button>
+        </CollapsibleTrigger>
+        {active.length ? (
+          <>
+            <ul aria-label="Filters in force" className="flex flex-wrap items-center gap-1.5">
+              {active.map((label) => (
+                <li key={label}>
+                  <Badge variant="secondary">{label}</Badge>
+                </li>
+              ))}
+            </ul>
+            <Button
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => onChange(DEFAULT_ASSET_FILTERS)}
+              size="sm"
+              type="button"
+              variant="ghost"
             >
-              {option.label}
-            </FilterChip>
-          ))}
-        </FilterChipGroup>
-      ) : null}
-      {hasArchived || serverBacked ? (
-        <AssetStateFilterRow filters={filters} onChange={onChange} />
-      ) : null}
-      {hasNonPrivate || serverBacked ? (
-        <AssetScopeFilterRow filters={filters} onChange={onChange} />
-      ) : null}
-    </div>
-  );
-}
-
-function AssetStatusControls({
-  filters,
-  onChange,
-}: {
-  filters: AssetFilters;
-  onChange: (filters: AssetFilters) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2 border-t border-border/70 pt-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-      <div className="flex flex-col gap-2">
-        <FilterChipGroup label="Filter by due action">
-          <FilterChip onSelect={() => onChange({ ...filters, due: null })} selected={!filters.due}>
-            Any timing
-          </FilterChip>
-          <FilterChip
-            onSelect={() => onChange({ ...filters, due: "with_due_action" })}
-            selected={filters.due === "with_due_action"}
-          >
-            Has due action
-          </FilterChip>
-          <FilterChip
-            onSelect={() => onChange({ ...filters, due: "without_due_action" })}
-            selected={filters.due === "without_due_action"}
-          >
-            No due action
-          </FilterChip>
-        </FilterChipGroup>
-        <FilterChipGroup label="Filter by review status">
-          <FilterChip
-            onSelect={() => onChange({ ...filters, review: null })}
-            selected={!filters.review}
-          >
-            Any review status
-          </FilterChip>
-          <FilterChip
-            onSelect={() => onChange({ ...filters, review: "needs_review" })}
-            selected={filters.review === "needs_review"}
-          >
-            Needs review
-          </FilterChip>
-          <FilterChip
-            onSelect={() => onChange({ ...filters, review: "ready" })}
-            selected={filters.review === "ready"}
-          >
-            Reviewed
-          </FilterChip>
-        </FilterChipGroup>
+              Clear all
+            </Button>
+          </>
+        ) : null}
       </div>
-      <label className="flex items-center gap-2 text-[length:var(--text-small)] text-muted-foreground">
-        Sort
-        <select
-          aria-label="Sort assets"
-          className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 motion-reduce:transition-none"
-          onChange={(event) =>
-            onChange({ ...filters, sort: event.target.value as AssetFilters["sort"] })
-          }
-          value={filters.sort}
-        >
-          <option value="name">Name</option>
-          <option value="due_action">Due action</option>
-          <option value="needs_review">Review status</option>
-          <option value="recently_added">Recently added</option>
-        </select>
-      </label>
-    </div>
+
+      <CollapsibleContent className="flex flex-col gap-2.5 rounded-lg border border-border/70 bg-surface p-3">
+        {showKind ? (
+          <FilterToggleRow
+            label="Kind"
+            onValueChange={(kind) => onChange({ ...filters, kind })}
+            options={kindOptions}
+            optional="All kinds"
+            value={filters.kind}
+          />
+        ) : null}
+        {showState ? (
+          <FilterToggleRow
+            label="State"
+            // No `optional` option, so `state` is always one of the three.
+            onValueChange={(state) =>
+              onChange({ ...filters, state: state ?? DEFAULT_ASSET_FILTERS.state })
+            }
+            options={STATE_OPTIONS}
+            value={filters.state}
+          />
+        ) : null}
+        {showScope ? (
+          <FilterToggleRow
+            label="Visibility"
+            onValueChange={(scope) => onChange({ ...filters, scope })}
+            options={SCOPES.map((scope) => ({
+              value: scope,
+              label: visibilityLabelForScope(scope),
+            }))}
+            optional="Any visibility"
+            value={filters.scope}
+          />
+        ) : null}
+        {serverBacked ? (
+          <>
+            <FilterToggleRow
+              label="Due action"
+              onValueChange={(due) => onChange({ ...filters, due })}
+              options={DUE_OPTIONS}
+              optional="Any timing"
+              value={filters.due}
+            />
+            <FilterToggleRow
+              label="Review status"
+              onValueChange={(review) => onChange({ ...filters, review })}
+              options={REVIEW_OPTIONS}
+              optional="Any review status"
+              value={filters.review}
+            />
+            <AssetSortRow
+              onValueChange={(sort) => onChange({ ...filters, sort })}
+              value={filters.sort}
+            />
+          </>
+        ) : null}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
-function AssetStateFilterRow({
-  filters,
-  onChange,
-}: {
-  filters: AssetFilters;
-  onChange: (filters: AssetFilters) => void;
-}) {
-  const options: ReadonlyArray<{ state: AssetStateFilter; label: string }> = [
-    { state: "active", label: "Active" },
-    { state: "archived", label: "Archived" },
-    { state: "all", label: "Everything" },
-  ];
-  return (
-    <FilterChipGroup label="Filter by state">
-      {options.map((option) => (
-        <FilterChip
-          key={option.state}
-          onSelect={() => onChange({ ...filters, state: option.state })}
-          selected={filters.state === option.state}
-        >
-          {option.label}
-        </FilterChip>
-      ))}
-    </FilterChipGroup>
-  );
-}
-
-function AssetScopeFilterRow({
-  filters,
-  onChange,
-}: {
-  filters: AssetFilters;
-  onChange: (filters: AssetFilters) => void;
-}) {
-  const options: ReadonlyArray<{ scope: PrivacyScope | null; label: string }> = [
-    { scope: null, label: "Any visibility" },
-    ...(["private", "shared", "household"] as const).map((scope) => ({
-      scope,
-      label: visibilityLabelForScope(scope),
-    })),
-  ];
-  return (
-    <FilterChipGroup label="Filter by visibility">
-      {options.map((option) => (
-        <FilterChip
-          key={option.label}
-          onSelect={() => onChange({ ...filters, scope: option.scope })}
-          selected={filters.scope === option.scope}
-        >
-          {option.label}
-        </FilterChip>
-      ))}
-    </FilterChipGroup>
-  );
-}
-
-function FilterChipGroup({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: a toggle-button filter group, not a form fieldset
-    <div aria-label={label} className="flex items-start gap-1.5" role="group">
-      <span className="min-w-20 shrink-0 pt-1 text-[length:var(--text-caption)] text-muted-foreground">
-        {label.replace("Filter by ", "").replace(/^./, (character) => character.toUpperCase())}
-      </span>
-      <div className="flex flex-1 flex-wrap items-center gap-1.5">{children}</div>
-    </div>
-  );
-}
-
-function FilterChip({
-  selected,
-  onSelect,
+/**
+ * The shared row scaffold: a quiet caption label naming the axis, then its control.
+ * The caption stacks above the options on a phone, where a fixed label gutter would
+ * squeeze a seven-option row onto three lines.
+ */
+function FilterRow({
   children,
+  label,
+  labelId,
 }: {
-  selected: boolean;
-  onSelect: () => void;
   children: React.ReactNode;
+  label: string;
+  labelId: string;
 }) {
   return (
-    <button
-      aria-pressed={selected}
-      className={cn(
-        "rounded-full border px-3 py-1 text-[length:var(--text-small)] transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-        selected
-          ? "border-primary bg-primary font-medium text-primary-foreground"
-          : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
-      )}
-      onClick={onSelect}
-      type="button"
-    >
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
+      <span
+        className="shrink-0 text-[length:var(--text-caption)] text-muted-foreground sm:min-w-24 sm:pt-1.5"
+        id={labelId}
+      >
+        {label}
+      </span>
       {children}
-    </button>
+    </div>
+  );
+}
+
+/**
+ * One filter axis as a single-select toggle group.
+ *
+ * `optional` names the neutral choice for the axes that allow "no opinion" (kind,
+ * visibility, due action, review status), and is the only way `null` reaches the
+ * handler; omitting it makes every option concrete, which is what lifecycle state
+ * needs - there is no "any state" once Everything exists. Deselecting the current
+ * option is swallowed, so a row is never left with nothing chosen.
+ */
+function FilterToggleRow<T extends string>({
+  label,
+  onValueChange,
+  options,
+  optional,
+  value,
+}: {
+  label: string;
+  onValueChange: (value: T | null) => void;
+  options: ReadonlyArray<{ value: T; label: string }>;
+  optional?: string;
+  value: T | null;
+}) {
+  const labelId = useId();
+  return (
+    <FilterRow label={label} labelId={labelId}>
+      <ToggleGroup
+        aria-labelledby={labelId}
+        className="w-auto flex-1 flex-wrap justify-start"
+        onValueChange={(next) => {
+          if (next) onValueChange(next === ANY ? null : (next as T));
+        }}
+        size="sm"
+        type="single"
+        value={value ?? ANY}
+        variant="outline"
+      >
+        {optional ? (
+          <ToggleGroupItem className={FILTER_TOGGLE} value={ANY}>
+            {optional}
+          </ToggleGroupItem>
+        ) : null}
+        {options.map((option) => (
+          <ToggleGroupItem className={FILTER_TOGGLE} key={option.value} value={option.value}>
+            {option.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </FilterRow>
+  );
+}
+
+/**
+ * Selected state is a held-back sage tint rather than a sage fill: five rows of
+ * solid primary chips would hand the panel most of the screen's color budget
+ * (DESIGN.md §3), and the weight change keeps selection from resting on color.
+ */
+const FILTER_TOGGLE =
+  "border-border text-muted-foreground hover:text-foreground data-[state=on]:border-primary/45 data-[state=on]:bg-primary/10 data-[state=on]:font-medium data-[state=on]:text-primary dark:data-[state=on]:bg-primary/15";
+
+function AssetSortRow({
+  onValueChange,
+  value,
+}: {
+  onValueChange: (value: AssetFilters["sort"]) => void;
+  value: AssetFilters["sort"];
+}) {
+  const labelId = useId();
+  return (
+    <FilterRow label="Sort" labelId={labelId}>
+      <Select onValueChange={(next) => onValueChange(next as AssetFilters["sort"])} value={value}>
+        <SelectTrigger aria-label="Sort assets" className="w-44" size="sm">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SORT_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </FilterRow>
   );
 }

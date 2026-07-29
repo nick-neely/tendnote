@@ -9,6 +9,7 @@ import {
   decideGeneralActionEmbedding,
   decideSavedItemEmbedding,
   decideSourceRecordEmbedding,
+  type EmbeddingDecision,
   type GeneralAction,
   type Memory,
   projectApprovedMemoryEmbeddedText,
@@ -64,11 +65,71 @@ export function fingerprintEmbeddedText(input: {
 }
 
 /**
+ * The columns an embedding row denormalizes from its source record that the content
+ * fingerprint cannot see. The fingerprint covers `(recordKind, recordId, embeddedText)`
+ * only, so every field here can change while the embedded text - and therefore the vector
+ * - stays exactly right: a memory's sensitivity is edited, a source record's primary
+ * person is relinked.
+ *
+ * `sourceUpdatedAt` is deliberately not part of this set. It is embed-time provenance, not
+ * denormalized state to converge: nothing reads it, the migration-shape tripwire forbids it
+ * ever becoming a retrieval gate again, and rewriting it here would restore the appearance
+ * that it tracks source freshness - the exact misreading that once emptied the memory and
+ * source-record halves of semantic recall.
+ */
+type DenormalizedEmbeddingMetadata = Pick<
+  RelationshipContextEmbedding,
+  "personId" | "trustLevel" | "sensitivity"
+>;
+
+function hasMetadataDrifted(
+  existing: RelationshipContextEmbedding,
+  live: DenormalizedEmbeddingMetadata,
+) {
+  return (
+    existing.personId !== live.personId ||
+    existing.trustLevel !== live.trustLevel ||
+    existing.sensitivity !== live.sensitivity
+  );
+}
+
+/**
+ * Reuse the vector, but never the metadata around it.
+ *
+ * A matching fingerprint proves the *text* is unchanged; it says nothing about the
+ * denormalized columns beside it, which the search seam compares against the live record.
+ * Returning the found row untouched is therefore not a no-op - it lets an edited
+ * sensitivity or a relinked person sit on the row permanently, because every later job
+ * takes this same short-circuit and so can never repair it. The record either drops out of
+ * semantic recall for good or is gated on a value the source no longer holds.
+ */
+async function converge(
+  ctx: EmbeddingContext,
+  existing: RelationshipContextEmbedding,
+  live: DenormalizedEmbeddingMetadata,
+): Promise<RelationshipContextEmbedding> {
+  if (!hasMetadataDrifted(existing, live)) {
+    return existing;
+  }
+
+  return ctx.store.refreshRelationshipContextEmbeddingMetadata({
+    ownerUserId: existing.ownerUserId,
+    embeddingId: existing.id,
+    personId: live.personId,
+    trustLevel: live.trustLevel,
+    sensitivity: live.sensitivity,
+  });
+}
+
+/**
  * Returns the existing embedding when its content fingerprint still matches (so
  * unchanged text never re-embeds), otherwise calls the adapter and upserts a
  * fresh one. The fingerprint/find/embed/upsert flow is identical for memories
  * and source records, so both record kinds route through here with only the
  * record-specific fields differing.
+ *
+ * A reused row still converges its {@link DenormalizedEmbeddingMetadata} - reuse is about
+ * not paying for a second embedding call, not about leaving the row behind.
  */
 async function reuseOrEmbed(
   ctx: EmbeddingContext,
@@ -99,7 +160,11 @@ async function reuseOrEmbed(
   });
 
   if (existing?.contentFingerprint === contentFingerprint) {
-    return existing;
+    return converge(ctx, existing, {
+      personId: params.personId,
+      trustLevel: params.trustLevel,
+      sensitivity: params.sensitivity,
+    });
   }
 
   const adapterResult = await adapter.embedText({
@@ -156,6 +221,72 @@ export async function failJob(
   });
 
   return { job: updated, outcome: "failed", embedding: null, error: message };
+}
+
+type EmbeddingSkipReason = Extract<EmbeddingDecision, { action: "skip" }>["reason"];
+
+/**
+ * The one skip reason that must also unwrite what an earlier run wrote.
+ *
+ * Every other skip is a statement about eligibility - an archived record, an unresolved
+ * mention - and the row from a previous run is simply withheld by the search predicates
+ * until the record is eligible again, so keeping it spares a re-embed when it is. A
+ * `restricted` record is different in kind: its row still holds the full `embedded_text`
+ * it was embedded with while `normal`, plus the vector derived from that text, and the
+ * owner has since said that content is not to be surfaced. Restricted text is never sent
+ * to a provider, so no later job can overwrite the row either - the only way its content
+ * stops existing is deletion.
+ *
+ * Pinned against the domain union, so renaming the reason there fails to compile here
+ * rather than silently switching the scrub off.
+ */
+const RESTRICTED_SKIP_REASON = "restricted_content" satisfies EmbeddingSkipReason;
+
+/**
+ * Deletes the embedded representation of a record whose embed decision came back
+ * `restricted_content`, and returns how many rows went. Every model and version for the
+ * record is swept, not just the active pair.
+ *
+ * This runs *before* the job is recorded as skipped: a failed delete then surfaces as a
+ * job failure and retries, rather than a skip logged over text that is still there. Only a
+ * non-zero scrub is audited, so re-enqueueing a record that was restricted from the start
+ * does not write a log entry per attempt.
+ *
+ * The search seam's `e.sensitivity = <record>.sensitivity` equality stays regardless: it is
+ * what fails closed across the window between the sensitivity edit and this job running.
+ */
+export async function scrubRestrictedEmbeddings(
+  ctx: EmbeddingContext,
+  job: ProcessEmbeddingJobResult["job"],
+  skipReason: string,
+): Promise<number> {
+  if (skipReason !== RESTRICTED_SKIP_REASON) {
+    return 0;
+  }
+
+  const deleted = await ctx.store.deleteRelationshipContextEmbeddingsForRecord({
+    ownerUserId: job.ownerUserId,
+    recordKind: job.recordKind,
+    recordId: job.recordId,
+  });
+
+  if (deleted === 0) {
+    return 0;
+  }
+
+  await ctx.store.createAuditLogEntry({
+    ownerUserId: job.ownerUserId,
+    action: "embedding_job.restricted_scrubbed",
+    entityType: "relationship_context_embedding_job",
+    entityId: job.id,
+    metadataJson: {
+      recordKind: job.recordKind,
+      recordId: job.recordId,
+      deletedEmbeddings: deleted,
+    },
+  });
+
+  return deleted;
 }
 
 /** Terminal "skip" outcome: this record is not eligible for embedding. */

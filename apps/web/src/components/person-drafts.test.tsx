@@ -79,11 +79,13 @@ describe("PersonDrafts", () => {
     // so the draft itself leads instead of a wall of provenance.
     expect(html).toContain("About this draft");
     expect(html).toContain("Copy");
-    expect(html).toContain("Edit");
-    expect(html).toContain("Regenerate");
-    expect(html).toContain("Dismiss");
+    // One next step per draft: Approve while it is unapproved. Editing,
+    // regenerating, marking sent, and dismissing sit behind the overflow, which
+    // renders its items only once opened.
     expect(html).toContain("Approve");
-    expect(html).toContain("Mark sent");
+    expect(html).toContain("More draft actions");
+    expect(html).not.toContain("Mark sent");
+    expect(html).not.toContain("Regenerate");
     // Raw ids are never user-facing copy.
     expect(html).not.toContain("33333333-3333-3333-3333-333333333333");
   });
@@ -104,6 +106,7 @@ describe("PersonDrafts", () => {
     expect(html).not.toContain("Approve");
     expect(html).not.toContain("Mark sent");
     expect(html).not.toContain("Regenerate");
+    expect(html).not.toContain("More draft actions");
   });
 
   it("does not show an Approve action once a draft is approved", () => {
@@ -117,8 +120,10 @@ describe("PersonDrafts", () => {
 
     expect(html).toContain("Approved");
     expect(html).not.toContain(">Approve<");
-    // Still actionable: can be marked sent manually or dismissed.
+    // The next step moves with the draft: once approved, sending it yourself and
+    // recording that is the primary action.
     expect(html).toContain("Mark sent");
+    expect(html).toContain("More draft actions");
   });
 
   it("renders an empty state when there are no drafts", () => {

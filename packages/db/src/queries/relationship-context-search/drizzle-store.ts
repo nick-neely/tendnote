@@ -8,7 +8,7 @@ import {
 import { sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
-import type { RelationshipContextSearchStore } from "./types";
+import type { RelationshipContextSearchStore, SearchRelationshipContextQueryInput } from "./types";
 
 type SearchRow = {
   record_kind: ExactRecallRecordKind;
@@ -30,6 +30,12 @@ type SearchRow = {
   general_action_area_id: string | null;
 };
 
+/**
+ * `ts_headline` wraps every matched term in `<b>...</b>` unless told otherwise,
+ * and nothing downstream renders HTML - a snippet is plain text in the recall
+ * result rows and in the agent's search tool alike. `StartSel`/`StopSel` are
+ * emptied so the tags do not leak into the reading surface as literal markup.
+ */
 export function createDrizzleRelationshipContextSearchStore(): RelationshipContextSearchStore {
   return {
     async searchRelationshipContext(input) {
@@ -50,7 +56,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           p.display_name as label,
           case
             when p.profile_blurb is not null and p.profile_blurb <> ''
-              then ts_headline('simple', p.profile_blurb, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2')
+              then ts_headline('simple', p.profile_blurb, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2, StartSel="", StopSel=""')
             else p.display_name
           end as snippet,
           array_remove(array[
@@ -85,7 +91,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           p.id::text as related_person_id,
           p.display_name as related_person_display_name,
           coalesce(p.display_name, 'Memory') as label,
-          ts_headline('simple', m.content, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2') as snippet,
+          ts_headline('simple', m.content, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2, StartSel="", StopSel=""') as snippet,
           array['content']::text[] as matched_fields,
           (
             ts_rank_cd(m.search_vector, search_query.query)
@@ -121,7 +127,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           related_person.id::text as related_person_id,
           related_person.display_name as related_person_display_name,
           coalesce(related_person.display_name, 'Logged note') as label,
-          ts_headline('simple', sr.content, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2') as snippet,
+          ts_headline('simple', sr.content, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2, StartSel="", StopSel=""') as snippet,
           array['content']::text[] as matched_fields,
           (
             ts_rank_cd(sr.search_vector, search_query.query)
@@ -156,6 +162,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           and ${input.personId ? sql`related_person.id = ${input.personId}` : sql`true`}
           and sr.status = 'active'
           and (${input.directlyRequested}::boolean or sr.sensitivity <> 'restricted')
+          and ${withoutProvenanceDuplicateSql(input)}
           and sr.search_vector @@ search_query.query
         union all
         select
@@ -171,7 +178,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
             'simple',
             coalesce(ga.title, '') || ' ' || coalesce(ga.notes, ''),
             search_query.query,
-            'MaxWords=18, MinWords=6, ShortWord=2'
+            'MaxWords=18, MinWords=6, ShortWord=2, StartSel="", StopSel=""'
           ) as snippet,
           coalesce(
             nullif(
@@ -237,6 +244,40 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
 
 function kindFilter(kinds: ExactRecallRecordKind[] | undefined, kind: ExactRecallRecordKind) {
   return !kinds || kinds.includes(kind) ? sql`true` : sql`false`;
+}
+
+/**
+ * Explicit memory capture writes the memory's own provenance note: the source record it
+ * hangs from carries the very same sentence the owner confirmed (`memories/capture.ts`
+ * defaults the retained content to the memory content). Both rows are real, and both match
+ * the same words, so recall used to answer one fact twice - the confirmed memory and its
+ * receipt, verbatim, in adjacent rows.
+ *
+ * A note is withheld only when it adds nothing: an approved memory grounded in that record
+ * repeats its text and is itself admissible for this same search - visible under household
+ * scope, past the restricted-sensitivity gate, inside the person filter, and of a record
+ * kind the caller actually asked for. A note that says more than the memory it grounds
+ * still stands on its own, and a suppressed memory never takes its note down with it.
+ */
+function withoutProvenanceDuplicateSql(input: SearchRelationshipContextQueryInput) {
+  return sql`not exists (
+    select 1
+    from memories m
+    where
+      m.source_record_id = sr.id
+      and m.status = 'approved'
+      and ${kindFilter(input.recordKinds, "memory")}
+      and ${input.personId ? sql`m.person_id = ${input.personId}` : sql`true`}
+      and (${input.directlyRequested}::boolean or m.sensitivity <> 'restricted')
+      and ${visibleHouseholdRecordSql({
+        callerUserId: input.ownerUserId,
+        tableAlias: "m",
+        recordKind: "memory",
+      })}
+      and m.search_vector @@ search_query.query
+      and regexp_replace(btrim(m.content), '\\s+', ' ', 'g')
+        = regexp_replace(btrim(sr.content), '\\s+', ' ', 'g')
+  )`;
 }
 
 function toExactRecallResult(row: SearchRow): ExactRecallResult {

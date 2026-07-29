@@ -130,6 +130,10 @@
   --info-foreground: oklch(0.99 0 0);
   --border: oklch(0.88 0.006 145);
   --input: oklch(0.88 0.006 145);
+  /* Focus/selection sage. Consumed at full opacity by `border-ring`,
+     `outline-ring` and the focus-ring rule near the bottom of this file, which
+     strips the registry's alpha off the ring - see that comment for why the
+     token itself is not darkened. */
   --ring: oklch(0.56 0.095 142);
   --chart-1: oklch(0.39 0.085 142);
   --chart-2: oklch(0.48 0.12 38);
@@ -226,7 +230,11 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    /* `outline-ring`, not the registry's `outline-ring/50`: this colors the UA
+       focus outline on anything that has not opted into a ring, and at /50 that
+       outline lands at 1.94:1 (light) / 2.40:1 (dark). Same reason as the
+       focus-ring rule at the bottom of this file. */
+    @apply border-border outline-ring;
   }
   ::selection {
     background: color-mix(in oklch, var(--primary) 24%, transparent);
@@ -251,15 +259,45 @@
   :focus-visible {
     outline-offset: 2px;
   }
-  @media (prefers-reduced-motion: reduce) {
-    *,
-    ::before,
-    ::after {
-      animation-duration: 1ms;
-      animation-iteration-count: 1;
-      scroll-behavior: auto;
-      transition-duration: 1ms;
-    }
+}
+
+/*
+ * Reduced-motion collapse (DESIGN.md §7: "Reduced motion collapses transitions
+ * to near-instant").
+ *
+ * Deliberately UNLAYERED. Tailwind declares `@layer theme, base, components,
+ * utilities`, so anything inside `@layer base` loses to a utility no matter how
+ * specific it is - layer order is resolved before specificity. This block lived
+ * in `@layer base` and was therefore inert against exactly the declarations it
+ * exists to neutralize: `duration-150`/`duration-200`, tw-animate-css
+ * `animate-in`/`fade-in`/`zoom-in` on dialogs and popovers, `animate-pulse`, and
+ * the `--animate-accordion-*` shorthand. With reduced motion emulated a focused
+ * nav link still computed `transition-duration: 0.15s`. Unlayered normal
+ * declarations beat every layered one, which is the same reason the focus-ring
+ * and scrollbar rules further down are unlayered.
+ *
+ * 1ms rather than 0s: Radix Presence unmounts exiting content on `animationend`,
+ * so the animation still has to run and finish; it just has to be
+ * imperceptible. A true 0s would risk the event never firing and leaving exit
+ * content mounted.
+ *
+ * Components may still opt into a gentler treatment on top of this via
+ * `motion-reduce:*` utilities (e.g. `motion-reduce:transition-none`,
+ * `motion-reduce:animate-none`); those remove the animation outright rather than
+ * lengthening it, so they compose with this floor instead of fighting it. The one
+ * documented carve-out is the Eve processing shimmer, which drops its sweeping
+ * band entirely and leaves the static base line (see `.tn-shimmer-band` below).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+    animation-iteration-count: 1;
+    scroll-behavior: auto;
+    transition-duration: 1ms;
+    transition-delay: 0ms;
   }
 }
 
@@ -378,6 +416,65 @@
   .tn-rich-editor .ProseMirror strong {
     font-weight: 600;
   }
+}
+
+/*
+ * Focus-ring contrast floor - a sanctioned deviation from the shadcn registry,
+ * carried here as one rule rather than as edits in the ~60 components that
+ * inherited the pattern (DESIGN.md §8: focus states must be visible AND
+ * consistent, so this belongs in one place).
+ *
+ * The registry draws focus as a translucent sage halo - `ring-ring/50`, and
+ * /35 on button and badge, /30–/40 on the focus-within fields. Composited over
+ * the page that measures 1.94:1 in light and 2.40:1 in dark, under the 3:1 that
+ * WCAG 1.4.11 asks of a non-text indicator.
+ *
+ * The alpha is the fault, not the token, so the token is left alone:
+ *   - --ring at full opacity already clears the bar on every surface: worst
+ *     case 3.93:1 light (on `panel`) and 6.05:1 dark (on `secondary`).
+ *   - Darkening --ring cannot rescue the halo. For /50 to reach 3:1 on the
+ *     light `panel`, --ring would have to drop to about L 0.275 - darker than
+ *     --primary (0.39), close to the ink itself. That reads as an error
+ *     outline, and it would drag down every other consumer of the token
+ *     (`focus-visible:border-ring`, `hover:border-ring/60`,
+ *     `data-[dragging=true]:border-ring`, `--sidebar-ring`).
+ *   - At /35 no color rescues it at all: even pure black over the light panel
+ *     is 2.41:1. The alpha has to go.
+ *
+ * So the ring keeps its geometry and its sage and only loses the alpha.
+ * Unlayered, so it wins over Tailwind's `@layer utilities` whatever alpha a
+ * component asked for. `--tw-ring-color` is registered `inherits: false`, so
+ * matching ancestors through :focus-within - which is how input-group and the
+ * focus-within fields draw their ring - only reaches elements that draw a ring
+ * of their own. Overlay surfaces are exempt: the dialog, popover, dropdown,
+ * select and hover-card hairlines are `ring-1 ring-foreground/10`, structure
+ * rather than focus, and those surfaces hold focus the whole time they are
+ * open. No `*-content` slot draws a focus ring, so the exemption costs nothing.
+ */
+:focus-visible:not([data-slot$="-content"]),
+:focus-within:not([data-slot$="-content"]) {
+  --tw-ring-color: var(--ring);
+}
+
+/*
+ * Invalid keeps its own colour. The rule above strips an alpha; it must not also
+ * repaint a ring the component deliberately coloured something else. Every
+ * registry control carries `aria-invalid:ring-destructive/20` (`/40` in dark),
+ * and input-group draws the same ring on its wrapper through
+ * `has-[[data-slot][aria-invalid=true]]`, so without this a focused invalid
+ * field would drop its error signal and come back sage - the one moment the ring
+ * is carrying meaning rather than just position.
+ *
+ * Full opacity here for the same reason as above, and it costs nothing:
+ * --destructive measures 5.78:1 on the light panel and 5.35:1 on dark
+ * `secondary`, so the error ring clears 1.4.11 as comfortably as the sage one.
+ * (An invalid control at rest still draws the registry's translucent ring; that
+ * is untouched registry behaviour, and the state is also carried by
+ * `border-destructive` and the field's error text.)
+ */
+[aria-invalid="true"]:is(:focus-visible, :focus-within),
+:focus-within:has([data-slot][aria-invalid="true"]) {
+  --tw-ring-color: var(--destructive);
 }
 
 /*

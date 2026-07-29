@@ -208,7 +208,28 @@ export function homePanelForLocation(
   pathname: string,
   searchParams: SearchParamsReader,
 ): HomePanel {
-  return pathname === "/" && searchParams.get("tab") === "review" ? "review" : "today";
+  return explicitHomePanelForLocation(pathname, searchParams) ?? "today";
+}
+
+/**
+ * The Home panel the URL actually names, or null when it names none.
+ *
+ * `homePanelForLocation` answers "which panel does this URL show", and Today is
+ * the right answer there. A caller that has its own default (the rail, which
+ * opens on whichever panel holds something) needs the narrower question, so that
+ * a bare `/` does not read as an instruction to show Today.
+ *
+ * `?tab=today` names Today as plainly as `?tab=review` names Review, so it is
+ * honored: only a URL carrying no panel at all falls through to the caller's
+ * content-aware default.
+ */
+export function explicitHomePanelForLocation(
+  pathname: string,
+  searchParams: SearchParamsReader,
+): HomePanel | null {
+  if (pathname !== "/") return null;
+  const tab = searchParams.get("tab");
+  return tab === "review" || tab === "today" ? tab : null;
 }
 
 function routeMatches(route: string, pathname: string): boolean {
