@@ -64,6 +64,12 @@ describe("CI workflow optimization contract", () => {
     expect(fastPackageFilter).toBeDefined();
     expect(fastPackageFilter).not.toContain(".github/workflows");
     expect(fastPackageFilter).not.toContain("scripts/");
+    expect(pullRequest).toContain("fast_packages: ${{ steps.mode.outputs.fast_packages }}");
+    expect(pullRequest).toContain("database: ${{ steps.mode.outputs.database }}");
+    expect(pullRequest).toContain("github.event.before");
+    expect(pullRequest).toMatch(
+      /name: Checkout pushed commit range\s+if: github\.event\.action == 'synchronize'/,
+    );
     expect(reusable).toContain("run_fast_packages:");
     expect(reusable).toContain("pnpm exec vitest run scripts/*.test.ts");
     expect(reusable).toMatch(

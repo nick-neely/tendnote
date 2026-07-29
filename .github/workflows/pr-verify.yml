@@ -36,10 +36,10 @@ jobs:
     outputs:
       verify: ${{ steps.filter.outputs.verify }}
       tests: ${{ steps.filter.outputs.tests }}
-      fast_packages: ${{ steps.filter.outputs.fast_packages }}
+      fast_packages: ${{ steps.mode.outputs.fast_packages }}
       browser: ${{ steps.filter.outputs.browser }}
       instant: ${{ steps.filter.outputs.instant }}
-      database: ${{ steps.filter.outputs.database }}
+      database: ${{ steps.mode.outputs.database }}
       full_requested: ${{ steps.mode.outputs.full_requested }}
     steps:
       - name: Check paths
@@ -121,11 +121,48 @@ jobs:
               - 'package.json'
               - 'pnpm-lock.yaml'
 
+      - name: Checkout pushed commit range
+        if: github.event.action == 'synchronize'
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
       - name: Select verification tier
         id: mode
         env:
+          AFTER_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_ACTION: ${{ github.event.action }}
+          FILTER_DATABASE: ${{ steps.filter.outputs.database }}
+          FILTER_FAST_PACKAGES: ${{ steps.filter.outputs.fast_packages }}
           FULL_CI_EVENT: ${{ github.event.action == 'labeled' && github.event.label.name == 'full-ci' }}
         run: |
+          fast_packages="${FILTER_FAST_PACKAGES}"
+          database="${FILTER_DATABASE}"
+
+          if [[ "${EVENT_ACTION}" == "synchronize" ]]; then
+            fast_packages=false
+            database=false
+
+            if ! git diff --quiet "${BEFORE_SHA}" "${AFTER_SHA}" -- \
+              apps packages biome.json package.json pnpm-lock.yaml \
+              pnpm-workspace.yaml turbo.json tsconfig.json
+            then
+              fast_packages=true
+            fi
+
+            if ! git diff --quiet "${BEFORE_SHA}" "${AFTER_SHA}" -- \
+              packages/db/src/schema packages/db/migrations \
+              packages/db/drizzle.config.ts packages/db/package.json \
+              package.json pnpm-lock.yaml
+            then
+              database=true
+            fi
+          fi
+
+          echo "fast_packages=${fast_packages}" >>"${GITHUB_OUTPUT}"
+          echo "database=${database}" >>"${GITHUB_OUTPUT}"
           echo "full_requested=${FULL_CI_EVENT}" >>"${GITHUB_OUTPUT}"
 
   verify:
