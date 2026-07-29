@@ -66,7 +66,16 @@ export const DESKTOP_HOME: DestinationContract = {
     { selector: "h2", text: "Assistant" },
     { selector: "[aria-label='Loading the context rail'], [role='tablist']" },
   ],
-  authoritative: [{ selector: "[role='tabpanel']", text: "Today's brief" }, NO_REMAINING_RESERVE],
+  // The rail opens on the first panel that holds something, and the only thing
+  // waiting for this owner is their review item — so Home settles with Review
+  // open, and the marker is the panel the owner actually sees. Asserting the
+  // Today panel's heading would now be asserting hidden markup: inactive panels
+  // stay mounted for their scroll position but are `hidden`, and a marker has to
+  // be on screen to count.
+  authoritative: [
+    { selector: "[role='tabpanel']", text: PRIMARY_OWNER.review.memoryContent },
+    NO_REMAINING_RESERVE,
+  ],
 };
 
 export const PEOPLE: DestinationContract = {

@@ -34,11 +34,10 @@ import { assertDestinationAccessibility } from "./support/navigate";
  */
 
 async function openResolvedDisclosure(page: Page) {
-  // Resolved rows live under a secondary ledger that is only loaded on demand,
-  // which is itself the interaction-started contract from #309.
-  await page.getByRole("group").filter({ hasText: "More action views" }).first().click();
-  await expect(page.getByText("Resolved")).toBeVisible();
-  await page.getByText("Resolved", { exact: true }).click();
+  // Resolved rows live on their own shelf, loaded on demand — itself the
+  // interaction-started contract from #309. The shelf stays open through that
+  // fetch, so opening it is one click on the section that names itself.
+  await page.getByRole("button", { name: "Resolved", exact: true }).click();
 }
 
 test.describe("@promotion-smoke Action complete and reopen", () => {
