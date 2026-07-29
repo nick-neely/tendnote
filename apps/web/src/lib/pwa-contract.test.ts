@@ -18,6 +18,31 @@ function readPngSize(file: string) {
   return { height: bytes.readUInt32BE(20), width: bytes.readUInt32BE(16) };
 }
 
+function runServiceWorker(input: { caches: unknown; fetch: unknown; showNotification: unknown }) {
+  const listeners = new Map<string, (event: unknown) => void>();
+  const self = {
+    addEventListener: (name: string, listener: (event: unknown) => void) => {
+      listeners.set(name, listener);
+    },
+    clients: {
+      claim: vi.fn(),
+      matchAll: vi.fn(async () => []),
+      openWindow: vi.fn(),
+    },
+    location: { origin: "https://tendnote.test" },
+    registration: { showNotification: input.showNotification },
+    skipWaiting: vi.fn(),
+  };
+  runInNewContext(serviceWorker, {
+    Response,
+    URL,
+    caches: input.caches,
+    fetch: input.fetch,
+    self,
+  });
+  return listeners;
+}
+
 describe("Phase Seven installable online-required PWA", () => {
   it("launches the standalone app at Today with iOS and maskable icon metadata", () => {
     const value = manifest();
@@ -84,9 +109,9 @@ describe("Phase Seven installable online-required PWA", () => {
     expect(readPngSize("icons/tendnote-badge-96.png")).toEqual({ height: 96, width: 96 });
   });
 
-  it("shows only generic reminder copy and opens its canonical record without mutation", () => {
+  it("keeps generic reminder fallback copy and opens its canonical record without mutation", () => {
     expect(serviceWorker).toContain('addEventListener("push"');
-    expect(serviceWorker).toContain('showNotification("Tendnote reminder"');
+    expect(serviceWorker).toContain('"Tendnote reminder"');
     expect(serviceWorker).toContain("Open Tendnote to see what needs your attention.");
     expect(serviceWorker).toMatch(/icon: `\/icons\/tendnote-192\.png\?asset=\$\{SHELL_VERSION\}`/);
     expect(serviceWorker).toMatch(
@@ -98,8 +123,43 @@ describe("Phase Seven installable online-required PWA", () => {
     expect(serviceWorker).toContain("self.clients.openWindow(target.href)");
   });
 
+  it("shows the bounded reminder preview supplied by the server", async () => {
+    const showNotification = vi.fn(async () => {});
+    const fetch = vi.fn(async () => Response.json({ notificationFallback: "/today" }));
+    const caches = {
+      match: vi.fn(),
+      open: vi.fn(async () => ({ addAll: vi.fn(), put: vi.fn() })),
+      keys: vi.fn(async () => []),
+      delete: vi.fn(async () => true),
+    };
+    const listeners = runServiceWorker({ caches, fetch, showNotification });
+    let pending: Promise<unknown> | undefined;
+    listeners.get("push")?.({
+      data: {
+        json: () => ({
+          title: "Replace the refrigerator water filter · 9:00 AM",
+          body: "Open Tendnote to view this reminder.",
+          tag: "reminder-test",
+          data: { url: "/reminders/open?kind=general_action&id=action-test" },
+        }),
+      },
+      waitUntil(value: Promise<unknown>) {
+        pending = value;
+      },
+    });
+
+    await pending;
+
+    expect(showNotification).toHaveBeenCalledWith(
+      "Replace the refrigerator water filter · 9:00 AM",
+      expect.objectContaining({
+        body: "Open Tendnote to view this reminder.",
+        data: { url: "/reminders/open?kind=general_action&id=action-test" },
+      }),
+    );
+  });
+
   it("refreshes destination configuration before falling back to an installed cache", async () => {
-    const listeners = new Map<string, (event: unknown) => void>();
     const showNotification = vi.fn(async () => {});
     const put = vi.fn(async () => {});
     const fetch = vi.fn(async () => Response.json({ notificationFallback: "/new-actions" }));
@@ -109,26 +169,7 @@ describe("Phase Seven installable online-required PWA", () => {
       keys: vi.fn(async () => []),
       delete: vi.fn(async () => true),
     };
-    const self = {
-      addEventListener: (name: string, listener: (event: unknown) => void) => {
-        listeners.set(name, listener);
-      },
-      clients: {
-        claim: vi.fn(),
-        matchAll: vi.fn(async () => []),
-        openWindow: vi.fn(),
-      },
-      location: { origin: "https://tendnote.test" },
-      registration: { showNotification },
-      skipWaiting: vi.fn(),
-    };
-    runInNewContext(serviceWorker, {
-      Response,
-      URL,
-      caches,
-      fetch,
-      self,
-    });
+    const listeners = runServiceWorker({ caches, fetch, showNotification });
     let pending: Promise<unknown> | undefined;
     listeners.get("push")?.({
       data: null,
@@ -142,7 +183,10 @@ describe("Phase Seven installable online-required PWA", () => {
     expect(fetch).toHaveBeenCalledWith("/app-destinations.json");
     expect(showNotification).toHaveBeenCalledWith(
       "Tendnote reminder",
-      expect.objectContaining({ data: { url: "/new-actions" } }),
+      expect.objectContaining({
+        body: "Open Tendnote to see what needs your attention.",
+        data: { url: "/new-actions" },
+      }),
     );
     expect(put).toHaveBeenCalledWith("/app-destinations.json", expect.any(Response));
     expect(caches.match).not.toHaveBeenCalled();

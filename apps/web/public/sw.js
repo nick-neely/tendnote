@@ -48,8 +48,13 @@ self.addEventListener("push", (event) => {
     (async () => {
       const fallback = await notificationFallback();
       const url = typeof payload.data?.url === "string" ? payload.data.url : fallback;
-      await self.registration.showNotification("Tendnote reminder", {
-        body: "Open Tendnote to see what needs your attention.",
+      const title = typeof payload.title === "string" ? payload.title : "Tendnote reminder";
+      const body =
+        typeof payload.body === "string"
+          ? payload.body
+          : "Open Tendnote to see what needs your attention.";
+      await self.registration.showNotification(title, {
+        body,
         icon: `/icons/tendnote-192.png?asset=${SHELL_VERSION}`,
         badge: `/icons/tendnote-badge-96.png?asset=${SHELL_VERSION}`,
         tag: typeof payload.tag === "string" ? payload.tag : "tendnote-reminder",
