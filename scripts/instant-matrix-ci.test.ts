@@ -62,6 +62,31 @@ describe("Instant Interaction matrix CI contract", () => {
     expect(job).toMatch(/timeout-minutes: \$\{\{ inputs\.full_browser_matrix && \d+ \|\| 15 \}\}/);
   });
 
+  it("publishes each row's measured margin on every run, not only on breaches", () => {
+    const job = workflow.slice(workflow.indexOf("instant_matrix:"), workflow.indexOf("  verify:"));
+
+    // The failure #331 records is one of *evidence*, not of measurement: the
+    // harness only reported a timing when it exceeded its budget, and the step
+    // summary that holds the rest is not retrievable through the API. So a green
+    // run said nothing about how close it came, and the first sign of drift was
+    // the breach. Two destinations, deliberately — the summary for a human
+    // reading the run, and `INSTANT_MARGIN` lines in the job log for anyone
+    // asking the question later.
+    expect(job).toContain(
+      'node scripts/summarize-instant-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"',
+    );
+    expect(job).toContain("run: node scripts/summarize-instant-diagnostics.mjs --format=margins");
+
+    // Traces upload on failure only, which is right for traces and wrong for the
+    // distribution: a breach is only readable against the passes around it.
+    const upload = job.slice(
+      job.indexOf("- name: Upload recorded diagnostics"),
+      job.indexOf("- name: Upload failure traces"),
+    );
+    expect(upload).toContain("if: always()");
+    expect(upload).toContain("apps/web/.instant/diagnostics.jsonl");
+  });
+
   it("audits Fallow against main rather than the branch's own upstream", () => {
     const job = workflow.slice(
       workflow.indexOf("test_fallow:"),
@@ -212,5 +237,36 @@ describe("WebKit is gated on a real HTTPS origin", () => {
     const summarize = read("scripts/summarize-instant-diagnostics.mjs");
     expect(summarize).toContain("Engines NOT covered by this run");
     expect(summarize).toContain("uncovered-engines.jsonl");
+  });
+});
+
+/**
+ * One project's failure must stay inside that project (#331).
+ *
+ * Both browser projects read the one Postgres service the job runs, so a
+ * mutation spec that aborts before it restores hands the next project a dirty
+ * world. That is how a single reconciliation-budget breach on `desktop-chromium`
+ * came back as a second, quite different-looking failure on `mobile-chromium` —
+ * "element(s) not found" for a row that was simply still completed. The gate is
+ * only readable if a failure count means what it says.
+ */
+describe("A mutation scenario cannot dirty the next project", () => {
+  it("restores its record however the test exited", () => {
+    const spec = read("apps/web/tests/instant/action-reconciliation.spec.ts");
+    // Unconditional, not `if (testInfo.status !== 'passed')`: a teardown that
+    // only runs on the path nobody exercises is one nobody knows is broken.
+    expect(spec).toContain("test.afterEach");
+    expect(spec).toContain("restoreMutationAction");
+  });
+
+  it("clears the cached projection as well as the row", () => {
+    // Measured, not assumed. With only the database write in place, a forced
+    // mid-way failure left the row correctly `open` and the next project still
+    // failed on the same missing locator: the Actions surface is `use cache`
+    // backed. The teardown finishes through the product's own signed
+    // out-of-band reconciliation endpoint rather than a test-only cache door.
+    const restore = read("apps/web/tests/instant/support/fixture-restore.ts");
+    expect(restore).toContain("restoreInstantMutationAction");
+    expect(restore).toContain("/api/internal/cache/reconcile");
   });
 });

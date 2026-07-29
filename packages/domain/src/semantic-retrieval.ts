@@ -166,6 +166,26 @@ export const embeddingJobSchema = z.object({
   recordId: z.string(),
   status: embeddingJobStatusSchema.default("pending"),
   ...jobQueueMechanicsShape,
+  /**
+   * When an enqueue arrived while this job was already `running`.
+   *
+   * A run reads its record once, at the top; an edit that lands after that read is invisible
+   * to it, and the enqueue announcing the edit finds a job it cannot reopen - the run is
+   * about to write a status of its own over anything the enqueue sets. So the request is
+   * recorded here instead of flipping the status, and the run consumes it when it settles:
+   * a marked job lands back on `pending` rather than on its verdict, guaranteeing exactly
+   * one more pass over the record's current state (#330).
+   *
+   * Only a `running` job ever carries this. Settling clears it in the same statement that
+   * writes the status, so the marker cannot outlive the run that was supposed to consume
+   * it, and a rerun pass with no further edit settles normally - there is no loop.
+   *
+   * Deliberately not part of {@link jobQueueMechanicsShape}. The shared shape is the
+   * mechanics every queue's table actually has; only this one has the column, and the
+   * extraction queues earn it when the same interleaving is shown to bite them, not by
+   * inheritance.
+   */
+  rerunRequestedAt: z.date().nullable().default(null),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
@@ -191,6 +211,30 @@ export type CreateEmbeddingJobInput = z.infer<typeof createEmbeddingJobSchema>;
 export const claimableEmbeddingJobStatuses = [
   "pending",
   "failed",
+] as const satisfies ReadonlyArray<EmbeddingJobStatus>;
+
+/**
+ * The job states an enqueue reopens outright, by setting the job back to `pending`.
+ *
+ * Both are verdicts on a state the record may since have left: `completed` embedded the
+ * text it had then, `skipped` reported the eligibility it had then. An enqueue is how this
+ * pipeline is told the record changed, so re-deciding is the whole point of the call.
+ *
+ * Leaving `skipped` terminal made every reversible skip a one-way door. A note logged
+ * alongside an unresolved mention is skipped, and the resolve path's enqueue then handed
+ * back the terminal job, so the note was never embedded once the mention was resolved. The
+ * restricted scrub sharpens the same edge: with the row deleted, a record edited back out
+ * of `restricted` would have stayed unretrievable forever.
+ *
+ * The three absent statuses are absent for three different reasons. `pending` is already
+ * queued and `failed` already carries a retry backoff, so both will re-decide the record
+ * without help. `running` is the one that needs help and cannot take it here: reopening a
+ * job mid-flight only lets the finishing run write its verdict over the top. It records
+ * {@link embeddingJobSchema}'s `rerunRequestedAt` instead (#330).
+ */
+export const reopenableEmbeddingJobStatuses = [
+  "completed",
+  "skipped",
 ] as const satisfies ReadonlyArray<EmbeddingJobStatus>;
 
 export type ApprovedMemoryEmbeddingSource = {

@@ -17,6 +17,10 @@ const actionRetrievalMigration = readFileSync(
   join(import.meta.dirname, "../../../migrations/0036_action_retrieval.sql"),
   "utf8",
 );
+const rerunMarkerMigration = readFileSync(
+  join(import.meta.dirname, "../../../migrations/0053_embedding_job_rerun_marker.sql"),
+  "utf8",
+);
 const drizzleStore = readFileSync(join(import.meta.dirname, "drizzle-store.ts"), "utf8");
 
 /**
@@ -70,6 +74,21 @@ describe("semantic retrieval migration shape", () => {
     expect(migration).toContain(
       'CREATE INDEX "relationship_context_embedding_jobs_status_run_after_idx"',
     );
+  });
+
+  /**
+   * The rerun marker is a nullable column, deliberately: it is state a job holds only while
+   * it is running, and every job that exists when the migration lands is either running
+   * under the old code - which cannot have been told anything to record - or is not running
+   * at all. There is nothing to backfill and no default to want, so the column arrives
+   * empty and stays empty except across the window it exists for (#330).
+   */
+  it("adds the rerun marker as nullable job state, with nothing to backfill", () => {
+    expect(rerunMarkerMigration).toContain(
+      'ALTER TABLE "relationship_context_embedding_jobs" ADD COLUMN "rerun_requested_at" timestamp with time zone',
+    );
+    expect(rerunMarkerMigration).not.toContain("NOT NULL");
+    expect(rerunMarkerMigration).not.toContain("UPDATE");
   });
 
   it("keeps production mixed semantic retrieval policy in the SQL query", () => {

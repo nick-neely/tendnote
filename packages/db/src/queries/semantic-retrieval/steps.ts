@@ -192,7 +192,13 @@ async function reuseOrEmbed(
   );
 }
 
-/** Fail the job and requeue it on a backoff so a transient error retries. */
+/**
+ * Fail the job and requeue it on a backoff so a transient error retries.
+ *
+ * Settled rather than plainly updated so that a rerun requested mid-run is consumed here
+ * too. It needs no separate pass: the backoff already schedules one, and that retry reads
+ * the record as it now stands.
+ */
 export async function failJob(
   ctx: EmbeddingContext,
   job: ProcessEmbeddingJobResult["job"],
@@ -200,9 +206,10 @@ export async function failJob(
   now: Date,
   retryDelayMs: number,
 ): Promise<ProcessEmbeddingJobResult> {
-  const updated = await ctx.store.updateEmbeddingJob({
+  const updated = await ctx.store.settleEmbeddingJob({
     jobId: job.id,
     status: "failed",
+    now,
     lastError: message,
     runAfter: new Date(now.getTime() + retryDelayMs),
     claimedAt: null,
@@ -289,7 +296,14 @@ export async function scrubRestrictedEmbeddings(
   return deleted;
 }
 
-/** Terminal "skip" outcome: this record is not eligible for embedding. */
+/**
+ * Terminal "skip" outcome: this record is not eligible for embedding.
+ *
+ * Terminal for this pass, not always for the job. Eligibility was decided against the
+ * record as the run read it, so an edit that landed mid-run leaves the settled job back on
+ * `pending` to decide again - which is how a record edited to `restricted` while a run was
+ * in flight still reaches {@link scrubRestrictedEmbeddings}.
+ */
 export async function skipJob(
   ctx: EmbeddingContext,
   job: ProcessEmbeddingJobResult["job"],
@@ -304,9 +318,10 @@ export async function skipJob(
     sourceSavedItem?: SavedItem | null;
   } = {},
 ): Promise<ProcessEmbeddingJobResult> {
-  const updated = await ctx.store.updateEmbeddingJob({
+  const updated = await ctx.store.settleEmbeddingJob({
     jobId: job.id,
     status: "skipped",
+    now,
     completedAt: now,
   });
 

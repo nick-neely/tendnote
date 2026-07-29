@@ -56,36 +56,24 @@ function idempotencyKeyFor(input: {
 }
 
 /**
- * The job states an enqueue reopens rather than returns untouched.
+ * Idempotently enqueues an embedding job. The idempotency key folds in the model and
+ * version, so a second enqueue for the same record never creates a second job: the store
+ * reconciles the one that exists against the news this call is carrying - the record
+ * changed - and hands it back.
  *
- * Both are verdicts on a state the record may since have left: `completed` embedded the
- * text it had then, `skipped` reported the eligibility it had then. An enqueue is how this
- * pipeline is told the record changed, so re-deciding is the whole point of the call.
- *
- * Leaving `skipped` terminal made every reversible skip a one-way door. A note logged
- * alongside an unresolved mention is skipped, and the resolve path's enqueue then handed
- * back the terminal job, so the note was never embedded once the mention was resolved. The
- * restricted scrub sharpens the same edge: with the row deleted, a record edited back out
- * of `restricted` would have stayed unretrievable forever. `pending` and `running` are
- * already queued or in flight, and `failed` carries a retry backoff, so all three are left
- * alone.
- */
-const REOPENABLE_JOB_STATUSES = new Set<ProcessEmbeddingJobResult["job"]["status"]>([
-  "completed",
-  "skipped",
-]);
-
-/**
- * Idempotently enqueues an embedding job. The idempotency key folds in the model
- * and version, so a terminal job for the same record is reopened (set back to
- * pending) to re-decide under the current config and the record's current state
- * rather than left stale; a still-pending job is returned as-is.
+ * How it reconciles is the store's business precisely because the answer depends on the
+ * status the job holds at write time, not the one read here (`reopenEmbeddingJob`). Most of
+ * that is a straight reopen to `pending`; the case worth naming is a job that is already
+ * `running`, whose in-flight pass read the record before this edit and so cannot be allowed
+ * to have the last word. It takes a rerun marker its own settle turns into another pass
+ * (#330).
  */
 async function enqueueEmbeddingJob(
   ctx: EmbeddingContext,
   input: EnqueueEmbeddingJobInput,
 ): Promise<EnqueueEmbeddingJobResult> {
   const { store, config } = ctx;
+  const now = new Date();
   const parsed = createEmbeddingJobSchema.parse({
     ownerUserId: input.ownerUserId,
     recordKind: input.recordKind,
@@ -94,25 +82,18 @@ async function enqueueEmbeddingJob(
     attempts: 0,
     lastError: null,
     idempotencyKey: idempotencyKeyFor({ ...input, config }),
-    runAfter: input.runAfter ?? new Date(),
+    runAfter: input.runAfter ?? now,
   });
   const existing = await store.findEmbeddingJobByIdempotencyKey(parsed.idempotencyKey);
 
   if (existing) {
-    if (REOPENABLE_JOB_STATUSES.has(existing.status)) {
-      const job = await store.updateEmbeddingJob({
-        jobId: existing.id,
-        status: "pending",
-        lastError: null,
-        runAfter: input.runAfter ?? new Date(),
-        claimedAt: null,
-        completedAt: null,
-      });
+    const job = await store.reopenEmbeddingJob({
+      jobId: existing.id,
+      now,
+      runAfter: input.runAfter ?? now,
+    });
 
-      return { job, created: false };
-    }
-
-    return { job: existing, created: false };
+    return { job, created: false };
   }
 
   const job = await store.createEmbeddingJob(parsed);
@@ -132,6 +113,11 @@ async function enqueueEmbeddingJob(
  * Claims an embedding job (unless asked not to), embeds its record by kind, and
  * records the outcome: skip, fail, or complete. A job already `running` is
  * processed without re-claiming; anything not claimable returns early untouched.
+ *
+ * `outcome` describes the pass that just ran; `job.status` describes what the queue holds
+ * afterwards. They part company by design when an edit lands mid-run: the pass really did
+ * complete or skip, and the job is `pending` again to re-decide the record it did that
+ * against.
  */
 /** Applies the per-call defaults (clock, retry delay, claim opt-out) once. */
 function resolveProcessOptions(input: ProcessEmbeddingJobInput) {
@@ -202,9 +188,10 @@ async function processEmbeddingJob(
       return failJob(ctx, job, "Embedding was not created.", now, retryDelayMs);
     }
 
-    const updated = await store.updateEmbeddingJob({
+    const updated = await store.settleEmbeddingJob({
       jobId: job.id,
       status: "completed",
+      now,
       completedAt: now,
       lastError: null,
     });

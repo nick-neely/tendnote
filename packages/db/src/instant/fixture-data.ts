@@ -86,6 +86,12 @@ export type FixtureOwner = {
  * under any parallelism — including a worker that reuses a slot after the
  * previous test in it finished and restored the record.
  *
+ * That last clause is load-bearing, and was for a while only true of tests that
+ * *passed*: a spec aborting mid-scenario left its record completed for whatever
+ * ran next, which is how one browser project's budget breach became a second,
+ * unrelated-looking failure in the other (#331). {@link
+ * restoreInstantMutationAction} is what makes it true however a test exits.
+ *
  * Unscheduled on purpose: an Action with no due date never enters the Today
  * shortlist, so none of these can reach a navigation marker.
  */
@@ -163,6 +169,19 @@ const MUTATION_ACTIONS: FixtureAction[] = [
  * is the exact failure this indexing exists to prevent, and a suite that quietly
  * did it would fail somewhere else entirely.
  */
+/**
+ * The seeded definition of a private mutation Action, or null for anything else.
+ *
+ * The lookup a teardown needs before it writes: it answers both "may this be
+ * restored" and "to what", from the same literals the seed inserted, so a
+ * restore cannot drift from the fixture it is restoring to. Everything outside
+ * this list is deliberately unrestorable — see {@link
+ * restoreInstantMutationAction}.
+ */
+export function isInstantMutationAction(actionId: string): FixtureAction | null {
+  return MUTATION_ACTIONS.find((action) => action.id === actionId) ?? null;
+}
+
 export function mutationActionFor(parallelIndex: number): FixtureAction {
   const action = MUTATION_ACTIONS[parallelIndex];
   if (!action) {

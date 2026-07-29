@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { mutationActionFor } from "@tendnote/db/instant/fixture-data";
 import { recordDiagnostic } from "./support/diagnostics";
+import { restoreMutationAction } from "./support/fixture-restore";
 import { arriveAdmitted, expect, test } from "./support/fixtures";
 import {
   formatTiming,
@@ -41,6 +42,25 @@ async function openResolvedDisclosure(page: Page) {
 }
 
 test.describe("@promotion-smoke Action complete and reopen", () => {
+  /**
+   * Hand the next test a clean fixture however this one ended.
+   *
+   * The scenario below restores its own Action through the product's Reopen
+   * command, which is what ADR 0210 asks for — but only if it gets that far, and
+   * a budget breach in the *complete* half aborts before the reopen. See
+   * `support/fixture-restore.ts` for what one such abort did to the next browser
+   * project, and why putting the row back is only half of putting it back.
+   *
+   * After every test rather than only after a failure: a teardown that only runs
+   * on the path nobody exercises is a teardown nobody knows is broken. On the
+   * happy path it is a write against a row already in seeded state, followed by
+   * a reconciliation of caches that are already correct.
+   */
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads the first parameter's destructuring pattern to decide which fixtures a hook depends on, and an empty pattern is how a hook says "none". This teardown talks to Postgres and the server directly; a named parameter would ask for a browser page it never uses.
+  test.afterEach(async ({}, testInfo) => {
+    await restoreMutationAction(mutationActionFor(testInfo.parallelIndex).id);
+  });
+
   test("acknowledges optimistically and reconciles authoritatively", async ({ page }, testInfo) => {
     const action = mutationActionFor(testInfo.parallelIndex);
     const actionRow = `article[id='action-${action.id}']`;
@@ -120,7 +140,13 @@ test.describe("@promotion-smoke Action complete and reopen", () => {
 function recordMutation(
   project: string,
   scenario: string,
-  timing: { shell: number; complete: number; stable: number; cumulativeLayoutShift: number },
+  timing: {
+    shell: number;
+    complete: number;
+    stable: number;
+    cumulativeLayoutShift: number;
+    frameIntervalMs: number;
+  },
 ) {
   recordDiagnostic({
     scenario,
@@ -131,6 +157,11 @@ function recordMutation(
     completeMs: timing.complete,
     stableMs: timing.stable,
     cumulativeLayoutShift: timing.cumulativeLayoutShift,
+    // Both halves of ADR 0209's promise are gated here, so both budgets travel
+    // with the record and the summariser can report either margin.
+    shellBudgetMs: OPTIMISTIC_ACK_BUDGET_MS,
+    completeBudgetMs: RECONCILIATION_BUDGET_MS,
+    frameIntervalMs: timing.frameIntervalMs,
     rscResponses: 0,
     rscBytes: 0,
     requestFanOut: 0,

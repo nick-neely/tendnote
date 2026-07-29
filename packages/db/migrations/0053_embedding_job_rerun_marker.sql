@@ -1,0 +1,1 @@
+ALTER TABLE "relationship_context_embedding_jobs" ADD COLUMN "rerun_requested_at" timestamp with time zone;

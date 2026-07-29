@@ -85,6 +85,34 @@ export type UpdateEmbeddingJobInput = {
   completedAt?: Date | null;
 };
 
+/** What an enqueue tells an existing job: re-decide this record, from this time. */
+export type ReopenEmbeddingJobInput = {
+  jobId: string;
+  now: Date;
+  runAfter: Date;
+};
+
+/** The statuses a finished pass can reach; `running` and `pending` are not verdicts. */
+export type SettledEmbeddingJobStatus = Extract<
+  EmbeddingJobStatus,
+  "completed" | "skipped" | "failed"
+>;
+
+/**
+ * The verdict a finished pass wants written, before the rerun marker is taken into account.
+ * Mirrors {@link UpdateEmbeddingJobInput} minus `status`, which is narrowed to the three
+ * outcomes a run can actually reach.
+ */
+export type SettleEmbeddingJobInput = {
+  jobId: string;
+  status: SettledEmbeddingJobStatus;
+  now: Date;
+  lastError?: string | null;
+  runAfter?: Date;
+  claimedAt?: Date | null;
+  completedAt?: Date | null;
+};
+
 export type EmbeddingJobLifecycleStore = {
   createEmbeddingJob: (job: CreateEmbeddingJobInput) => Promise<EmbeddingJob>;
   findEmbeddingJobByIdempotencyKey: (idempotencyKey: string) => Promise<EmbeddingJob | null>;
@@ -92,6 +120,36 @@ export type EmbeddingJobLifecycleStore = {
   claimEmbeddingJob: (input: { jobId: string; now: Date }) => Promise<EmbeddingJob | null>;
   claimNextEmbeddingJob: (input: { now: Date }) => Promise<EmbeddingJob | null>;
   updateEmbeddingJob: (input: UpdateEmbeddingJobInput) => Promise<EmbeddingJob>;
+  /**
+   * Applies a repeat enqueue to a job that already exists, in one statement, and returns
+   * the row as it ended up.
+   *
+   * Three outcomes, chosen from the status the row actually has at write time rather than
+   * from the one the caller read a moment earlier: a `reopenableEmbeddingJobStatuses`
+   * verdict goes back to `pending` with its run mechanics reset; a `running` job takes a
+   * `rerunRequestedAt` marker for its own run to consume; a `pending` or `failed` job is
+   * already going to re-decide the record, so only a stale marker is cleared.
+   *
+   * Deciding inside the statement is the point. Read-then-write here loses exactly the edit
+   * this method exists to keep: the job can be claimed, or can settle, between the two, and
+   * the write then lands on a status its branch was never chosen for.
+   */
+  reopenEmbeddingJob: (input: ReopenEmbeddingJobInput) => Promise<EmbeddingJob>;
+  /**
+   * Writes a finished pass's verdict and consumes any rerun marker the row picked up while
+   * that pass was in flight, in one statement, returning the row as it ended up.
+   *
+   * With no marker this is {@link UpdateEmbeddingJobInput} by another name. With one, a
+   * `completed` or `skipped` verdict is downgraded to `pending` - it describes a state the
+   * record left mid-run, so it must not be the last word - while a `failed` verdict stands,
+   * because its retry backoff already schedules the extra pass the marker is asking for.
+   * Either way the marker is cleared, so the next pass settles normally and no loop forms.
+   *
+   * Reading and clearing the marker in the settling statement is what makes the handoff
+   * durable: an enqueue either marks the row before it settles, and is honored here, or
+   * finds a job that is no longer `running` and reopens it outright.
+   */
+  settleEmbeddingJob: (input: SettleEmbeddingJobInput) => Promise<EmbeddingJob>;
 };
 
 export type EmbeddingStore = MemoryReviewStore &

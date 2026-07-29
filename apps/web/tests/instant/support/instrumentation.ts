@@ -69,6 +69,20 @@ export type StageTiming = {
   stable: number;
   /** Layout shift accumulated between the click and settled content. */
   cumulativeLayoutShift: number;
+  /**
+   * Median interval between the animation frames observed during this
+   * interaction, in milliseconds.
+   *
+   * Every stage above is stamped on a frame boundary, so no reading can be finer
+   * than the cadence the browser is actually painting at: an acknowledgement is
+   * always some whole number of frames. On a quiet machine that quantum is
+   * ~16.7 ms and it disappears into the budget; on a contended two-vCPU runner it
+   * is not, and a reading then says as much about the runner's compositor as
+   * about the application. Recording it alongside the timings is what lets a
+   * later reader tell "the route got slower" from "the runner dropped frames"
+   * without re-running anything — the distinction #331 had no evidence for.
+   */
+  frameIntervalMs: number;
 };
 
 /**
@@ -94,6 +108,7 @@ function installRecorder(key: string) {
   let armedAt: number | null = null;
   let lastMutationAt = 0;
   let layoutShift = 0;
+  let frameTimes: number[] = [];
   let result: {
     acknowledgement: number | null;
     shell: number | null;
@@ -150,8 +165,23 @@ function installRecorder(key: string) {
     return location.pathname + location.search;
   }
 
+  /** The frame cadence this interaction was measured at. 0 before two frames. */
+  function frameInterval(): number {
+    const gaps: number[] = [];
+    for (let index = 1; index < frameTimes.length; index += 1) {
+      const current = frameTimes[index];
+      const previous = frameTimes[index - 1];
+      if (current === undefined || previous === undefined) continue;
+      gaps.push(current - previous);
+    }
+    gaps.sort((a, b) => a - b);
+    return gaps[Math.floor(gaps.length / 2)] ?? 0;
+  }
+
   function tick(frameTime: number) {
     if (!spec || armedAt === null) return;
+
+    frameTimes.push(frameTime);
 
     // A `requestAnimationFrame` callback receives the timestamp of the frame it
     // belongs to, which can predate the click handler that armed the recorder
@@ -210,6 +240,7 @@ function installRecorder(key: string) {
       armedAt = performance.now();
       lastMutationAt = armedAt;
       layoutShift = 0;
+      frameTimes = [];
       running = true;
       loop();
     },
@@ -223,6 +254,7 @@ function installRecorder(key: string) {
       armedAt = null;
       running = false;
       settle = null;
+      frameTimes = [];
       result = { acknowledgement: null, shell: null, complete: null, stable: null };
     },
     /** Resolve once every armed stage has been recorded. */
@@ -255,6 +287,7 @@ function installRecorder(key: string) {
         complete: result.complete as number,
         stable: result.stable as number,
         cumulativeLayoutShift: layoutShift,
+        frameIntervalMs: frameInterval(),
       };
     },
   };
