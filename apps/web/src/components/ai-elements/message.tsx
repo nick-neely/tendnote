@@ -279,7 +279,16 @@ const streamdownPlugins = { cjk, code, math, mermaid };
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
-      className={cn("size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
+      className={cn(
+        "size-full",
+        // Streamdown renders bare <p>/<ul>/<ol> with no vertical margin, so a
+        // multi-paragraph answer arrives as one unbroken wall. Give the block
+        // children real paragraph rhythm, then strip it at the edges so the
+        // response still sits flush inside its container.
+        "[&>ol]:my-3 [&>p]:my-3 [&>ul]:my-3",
+        "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        className,
+      )}
       plugins={streamdownPlugins}
       {...props}
     />

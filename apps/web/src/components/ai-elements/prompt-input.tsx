@@ -170,6 +170,15 @@ export interface TextInputContext {
   value: string;
   setInput: (v: string) => void;
   clear: () => void;
+  /**
+   * Puts a rejected submission's text back - but only into a composer the user
+   * has left empty. A send can fail many seconds after it cleared the input, by
+   * which time the next message may already be half typed; `setInput` would
+   * overwrite it, so a restore has to read the live value rather than the one
+   * captured when the message was handed off. Newer input always wins: the
+   * failed message is recoverable by other means, an overwritten one is not.
+   */
+  restore: (v: string) => void;
 }
 
 export interface PromptInputControllerProps {
@@ -222,6 +231,12 @@ export const PromptInputProvider = ({
   // ----- textInput state
   const [textInput, setTextInput] = useState(initialTextInput);
   const clearInput = useCallback(() => setTextInput(""), []);
+  // The functional updater is the whole mechanism: it reads the composer as it
+  // is now, not as it was when the failed submission closed over it.
+  const restoreInput = useCallback(
+    (value: string) => setTextInput((current) => (current === "" ? value : current)),
+    [],
+  );
 
   // ----- attachments state (global when wrapped)
   const [attachmentFiles, setAttachmentFiles] = useState<(FileUIPart & { id: string })[]>([]);
@@ -316,11 +331,12 @@ export const PromptInputProvider = ({
       attachments,
       textInput: {
         clear: clearInput,
+        restore: restoreInput,
         setInput: setTextInput,
         value: textInput,
       },
     }),
-    [textInput, clearInput, attachments, __registerFileInput],
+    [textInput, clearInput, restoreInput, attachments, __registerFileInput],
   );
 
   return (
@@ -801,9 +817,10 @@ export const PromptInput = ({
         form.reset();
       }
 
+      let convertedFiles: FileUIPart[];
       try {
         // Convert blob URLs to data URLs asynchronously
-        const convertedFiles: FileUIPart[] = await Promise.all(
+        convertedFiles = await Promise.all(
           files.map(async ({ id: _id, ...item }) => {
             if (item.url?.startsWith("blob:")) {
               const dataUrl = await convertBlobUrlToDataUrl(item.url);
@@ -816,29 +833,36 @@ export const PromptInput = ({
             return item;
           }),
         );
+      } catch {
+        // Nothing was handed off, so the composer still holds the message as
+        // typed and there is nothing to put back.
+        return;
+      }
 
+      // The text input clears the moment the message is handed off, not when
+      // the response finishes. An `onSubmit` that streams a whole assistant
+      // turn stays pending for many seconds, and text left sitting in the
+      // composer for that long reads as a send that never happened. A rejected
+      // submission puts the text back verbatim so the user can retry without
+      // retyping, unless they have started typing again (see `restore`).
+      // Attachments stay until the submission settles: clearing them early would
+      // revoke blob URLs the pending `onSubmit` may still read.
+      if (usingProvider) {
+        controller.textInput.clear();
+      }
+
+      try {
         const result = onSubmit({ files: convertedFiles, text }, event);
 
         // Handle both sync and async onSubmit
         if (result instanceof Promise) {
-          try {
-            await result;
-            clear();
-            if (usingProvider) {
-              controller.textInput.clear();
-            }
-          } catch {
-            // Don't clear on error - user may want to retry
-          }
-        } else {
-          // Sync function completed without throwing, clear inputs
-          clear();
-          if (usingProvider) {
-            controller.textInput.clear();
-          }
+          await result;
         }
+        clear();
       } catch {
-        // Don't clear on error - user may want to retry
+        if (usingProvider) {
+          controller.textInput.restore(text);
+        }
       }
     },
     [usingProvider, controller, files, onSubmit, clear],

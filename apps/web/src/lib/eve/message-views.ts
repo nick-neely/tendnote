@@ -1,4 +1,4 @@
-import type { EveDynamicToolPart, EveMessage, EveMessagePart } from "eve/react";
+import type { EveDynamicToolPart, EveMessage, EveMessagePart, UseEveAgentStatus } from "eve/react";
 // This lib→components import is deliberate: message-views is the chat view-model glue
 // that turns Eve message parts into renderable turn units, and the result-module
 // registry is the single source for projection and grouping. Co-locating each kind's
@@ -53,6 +53,31 @@ export function messageText(message: EveMessage): string {
     .join("");
 }
 
+/** One thing Eve said in a turn, with the reducer's own part identity as a key. */
+export type AssistantTextSegment = {
+  readonly key: string;
+  readonly text: string;
+};
+
+/**
+ * The assistant's text for one message, kept as the separate utterances it was
+ * actually spoken in. Eve emits one text part per agent step, so a turn that
+ * pauses to run tools comes back as several segments ("I'll look up what you
+ * know about Jordan Rivera." / "Found them." / "Here's what you have."). They
+ * are distinct paragraphs, not one sentence, so the view renders each as its own
+ * block instead of running them together - the separation is layout, never
+ * characters spliced into the streamed text.
+ */
+export function messageTextSegments(message: EveMessage): AssistantTextSegment[] {
+  return message.parts
+    .filter(isTextPart)
+    .map((part, index) => ({
+      key: `text:${part.stepIndex ?? index}`,
+      text: part.text.trim(),
+    }))
+    .filter((segment) => segment.text.length > 0);
+}
+
 /**
  * Renderable views for an assistant message's persisted tool results. Only
  * terminal `output-available` parts on an assistant message carry a persisted
@@ -77,14 +102,35 @@ export type AssistantActiveTool = {
 };
 
 /**
+ * Whether Eve is still working: `submitted` (the turn is sent, no events yet)
+ * and `streaming` (events arriving) are the only live states. `ready` and
+ * `error` are both verdicts on a turn that is over - one settled, one failed -
+ * and neither leaves anything running.
+ */
+export function isTurnInFlight(status: UseEveAgentStatus): boolean {
+  return status === "submitted" || status === "streaming";
+}
+
+/**
  * In-flight tool calls on an assistant message. These carry no persisted output
  * yet, so the UI shows them as ephemeral shimmer activity ("Searching people…")
  * that is replaced by the real view once the call reaches `output-available`
  * (see {@link messageToolViews}). Pending approval, error, denied, and
  * non-assistant parts are skipped (ADR 0028, ADR 0029).
+ *
+ * `turnInFlight` is what keeps a working line from outliving the work. A tool
+ * part does not reliably walk itself to a terminal state: a turn can finish, or
+ * fail, or be dropped mid-stream with a call still parked in `input-available`,
+ * and that part alone will happily claim forever that Eve is searching people.
+ * Activity is a property of the turn, not of a leftover part, so the caller
+ * passes {@link isTurnInFlight} for the live turn and `false` for every settled
+ * one - once the turn is over, nothing is in flight by definition.
  */
-export function messageActiveToolViews(message: EveMessage): AssistantActiveTool[] {
-  if (message.role !== "assistant") {
+export function messageActiveToolViews(
+  message: EveMessage,
+  turnInFlight: boolean,
+): AssistantActiveTool[] {
+  if (message.role !== "assistant" || !turnInFlight) {
     return [];
   }
 

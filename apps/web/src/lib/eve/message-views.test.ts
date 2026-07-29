@@ -4,8 +4,10 @@ import type { AssistantToolEntry } from "./message-views";
 import {
   type AssistantTurnUnit,
   groupTurnToolEntries,
+  isTurnInFlight,
   messageActiveToolViews,
   messageText,
+  messageTextSegments,
   messageToolViews,
 } from "./message-views";
 import type { AssistantToolView } from "./tool-result-view";
@@ -23,6 +25,43 @@ describe("messageText (streamed assistant text)", () => {
     };
 
     expect(messageText(message)).toBe("Saved that note.");
+  });
+});
+
+describe("messageTextSegments (one block per thing Eve said)", () => {
+  it("keeps each step's text apart so segments never run together", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        { type: "step-start" },
+        { type: "text", text: "I'll look up Jordan Rivera.\n", state: "done", stepIndex: 0 },
+        { type: "step-start" },
+        { type: "text", text: "Found them.", state: "done", stepIndex: 1 },
+        { type: "text", text: "   ", state: "streaming", stepIndex: 2 },
+      ],
+    };
+
+    expect(messageTextSegments(message)).toEqual([
+      { key: "text:0", text: "I'll look up Jordan Rivera." },
+      { key: "text:1", text: "Found them." },
+    ]);
+  });
+
+  it("falls back to position when a text part carries no step", () => {
+    const message: EveMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "One.", state: "done" },
+        { type: "text", text: "Two.", state: "done" },
+      ],
+    };
+
+    expect(messageTextSegments(message).map((segment) => segment.key)).toEqual([
+      "text:0",
+      "text:1",
+    ]);
   });
 });
 
@@ -242,7 +281,31 @@ describe("groupTurnToolEntries (folding same-kind durable saves into groups)", (
   });
 });
 
+describe("isTurnInFlight (which statuses mean Eve is still working)", () => {
+  it("counts only the two live states, never a turn that has settled or failed", () => {
+    expect(isTurnInFlight("submitted")).toBe(true);
+    expect(isTurnInFlight("streaming")).toBe(true);
+    expect(isTurnInFlight("ready")).toBe(false);
+    expect(isTurnInFlight("error")).toBe(false);
+  });
+});
+
 describe("messageActiveToolViews (in-flight tool calls → working lines)", () => {
+  /** A turn left with a `search_people` call parked short of any terminal state. */
+  const parkedSearch: EveMessage = {
+    id: "m1",
+    role: "assistant",
+    parts: [
+      {
+        type: "dynamic-tool",
+        toolCallId: "call-1",
+        toolName: "search_people",
+        state: "input-available",
+        input: { query: "Alex" },
+      },
+    ],
+  };
+
   it("surfaces input-streaming and input-available calls with present-continuous labels", () => {
     const message: EveMessage = {
       id: "m1",
@@ -265,10 +328,20 @@ describe("messageActiveToolViews (in-flight tool calls → working lines)", () =
       ],
     };
 
-    expect(messageActiveToolViews(message)).toEqual([
+    expect(messageActiveToolViews(message, true)).toEqual([
       { toolCallId: "call-1", label: "Searching people…" },
       { toolCallId: "call-2", label: "Searching by meaning…" },
     ]);
+  });
+
+  /**
+   * The orphan shimmer: Eve answered, the turn settled, and a `search_people`
+   * part was left parked in `input-available` - claiming forever that a search
+   * is running. A working line is a claim about now, so it ends with the turn.
+   */
+  it("drops a call parked mid-flight once the turn is no longer in flight", () => {
+    expect(messageActiveToolViews(parkedSearch, true)).toHaveLength(1);
+    expect(messageActiveToolViews(parkedSearch, false)).toEqual([]);
   });
 
   it("skips completed, errored, and non-assistant parts", () => {
@@ -308,7 +381,7 @@ describe("messageActiveToolViews (in-flight tool calls → working lines)", () =
       ],
     };
 
-    expect(messageActiveToolViews(completed)).toEqual([]);
-    expect(messageActiveToolViews(onUser)).toEqual([]);
+    expect(messageActiveToolViews(completed, true)).toEqual([]);
+    expect(messageActiveToolViews(onUser, true)).toEqual([]);
   });
 });

@@ -37,10 +37,13 @@ import { AssistantPromptNudges } from "@/components/assistant-prompt-nudges";
 import { AssistantTurnUnitView, turnUnitKey } from "@/components/assistant-turn-unit";
 import { BugIcon } from "@/components/icons";
 import { Shimmer } from "@/components/ui/shimmer";
+import { Toggle } from "@/components/ui/toggle";
 import {
   groupTurnToolEntries,
+  isTurnInFlight,
   messageActiveToolViews,
   messageText,
+  messageTextSegments,
   messageToolViews,
 } from "@/lib/eve/message-views";
 import {
@@ -81,11 +84,23 @@ export function AssistantPanel({
    */
   suggestPersonName?: string | null;
 }) {
+  // A turn that fails does not reject. Eve's store catches the network or stream
+  // error itself, parks it on `status: "error"`, and *resolves* `send` - so the
+  // composer's restore-on-rejection contract would never fire and the message
+  // would be gone with nothing to show for it. `onError` is the store's only
+  // signal that the turn it just settled actually failed; we hold the failure
+  // here so `handleSubmit` can rethrow it and put the text back.
+  const turnFailure = useRef<Error | null>(null);
+
   // Stream turns directly from the same-origin Eve mount (withEve). The hook owns
   // the durable Eve session, so follow-up turns continue the same conversation
   // without a Tendnote chat transcript (ADR 0030). Durable product state still
   // lives in source records, memories, and follow-ups (ADR 0029).
-  const agent = useEveAgent();
+  const agent = useEveAgent({
+    onError: (error) => {
+      turnFailure.current = error;
+    },
+  });
 
   // Toggles the Eve turn trace surface (see assistant-debug-trace.tsx) — a
   // developer diagnostic for tool calls and the raw stream, off by default.
@@ -96,11 +111,35 @@ export function AssistantPanel({
   async function handleSubmit(message: PromptInputMessage) {
     const text = message.text.trim();
 
-    if (!text || agent.status !== "ready") {
+    if (!text) {
       return;
     }
 
+    // The composer clears optimistically the moment it hands a message off, and
+    // only a rejection puts the text back. So a refusal has to reject: resolving
+    // here would silently eat the user's words. Eve's own store throws the same
+    // way when a turn is already in flight - and only then. `error` is the last
+    // turn's verdict, not a busy signal, so refusing on it would wedge the
+    // composer after one failure with no way to retry.
+    if (isTurnInFlight(agent.status)) {
+      throw new Error("Eve is still finishing the previous turn.");
+    }
+
+    // A failure belongs to the turn that produced it. Clearing it as this send
+    // starts is what keeps a stale verdict from rejecting the next message; the
+    // store retires its own `error` at the same moment.
+    turnFailure.current = null;
+
     await agent.send({ message: text, clientContext: clientContextFor(context) });
+
+    // `send` resolved, which says nothing about whether the turn worked. If it
+    // failed, `onError` already ran - the store calls it before settling - so
+    // anything parked here is this submission's failure, not an older one.
+    const failure = turnFailure.current;
+    if (failure) {
+      turnFailure.current = null;
+      throw failure;
+    }
   }
 
   // A prompt nudge starts a conversational turn by sending its text to Eve — it
@@ -176,23 +215,25 @@ function AssistantHeader({
     <AssistantPanelHeader
       actions={
         <>
-          {/* Developer trace toggle for the Eve turn (tool calls + raw stream). */}
-          <button
+          {/* Developer trace toggle for the Eve turn (tool calls + raw stream).
+              Both `aria-pressed:` and `data-[state=on]:` are spelled out so the
+              pressed fill beats the Toggle base's own rule for each - they land
+              at equal specificity, so leaving either to source order is a coin
+              flip. */}
+          <Toggle
             aria-label="Toggle debug trace"
-            aria-pressed={showDebug}
             className={cn(
               assistantChipClass,
-              "transition-colors",
-              showDebug
-                ? "bg-foreground text-background"
-                : "bg-secondary text-muted-foreground hover:text-foreground",
+              "h-auto min-w-0 bg-secondary text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
+              "aria-pressed:bg-foreground aria-pressed:text-background data-[state=on]:bg-foreground data-[state=on]:text-background",
+              "data-[state=on]:hover:bg-foreground data-[state=on]:hover:text-background",
             )}
-            onClick={onToggleDebug}
-            type="button"
+            onPressedChange={onToggleDebug}
+            pressed={showDebug}
           >
             <BugIcon aria-hidden className="size-3" />
             Debug
-          </button>
+          </Toggle>
           <AssistantPrivateChip />
         </>
       }
@@ -209,15 +250,24 @@ function AssistantConversation({
   messages: readonly EveMessage[];
   status: AgentStatus;
 }) {
-  if (messages.length === 0 && status !== "submitted") {
+  // The empty state means "nothing has happened yet" - so it yields as soon as
+  // anything has, including a turn that failed before producing a message. An
+  // error the panel silently replaced with "Start your notebook" would be the
+  // worst of both: no answer and no explanation.
+  if (messages.length === 0 && status === "ready") {
     return <AssistantEmptyCapture />;
   }
+
+  // Only the last message can be the one Eve is still writing, so it is the only
+  // one allowed to show working lines - and only while the turn is live. Every
+  // earlier turn is finished history, however its tool parts happened to end.
+  const liveIndex = isTurnInFlight(status) ? messages.length - 1 : -1;
 
   return (
     <>
       <div aria-hidden className="min-h-0 flex-1" />
-      {messages.map((message) => (
-        <MessageTurn key={message.id} message={message} />
+      {messages.map((message, index) => (
+        <MessageTurn key={message.id} live={index === liveIndex} message={message} />
       ))}
       <TurnStatus status={status} />
     </>
@@ -225,28 +275,57 @@ function AssistantConversation({
 }
 
 /** One conversation turn: the user prompt, or assistant text plus tool activity. */
-function MessageTurn({ message }: { message: EveMessage }) {
+function MessageTurn({ live, message }: { live: boolean; message: EveMessage }) {
   if (message.role === "user") {
+    // A submission that never reached Eve stays in the transcript looking exactly
+    // like one that landed, which quietly lies about what happened. Name it: the
+    // bubble trades its sage fill for a dashed hairline - the same "provisional,
+    // nothing here yet" language the empty states use - and carries a plain "Not
+    // sent" line. No destructive red: nothing broke in the notebook, and the
+    // words are already back in the composer to send again. The fill has to go
+    // to transparent rather than to a neutral one; `muted`, `secondary`, and
+    // `panel` are one value, so a neutral bubble would vanish into the panel.
+    const notSent = message.metadata?.status === "failed";
+
     return (
       <Message from="user">
-        <MessageContent>{messageText(message)}</MessageContent>
+        <MessageContent
+          className={cn(
+            notSent &&
+              "group-[.is-user]:border group-[.is-user]:border-border group-[.is-user]:border-dashed group-[.is-user]:bg-transparent group-[.is-user]:text-muted-foreground",
+          )}
+        >
+          {messageText(message)}
+        </MessageContent>
+        {notSent ? (
+          <span className="ml-auto text-[length:var(--text-caption)] text-muted-foreground">
+            Not sent
+          </span>
+        ) : null}
       </Message>
     );
   }
 
-  const text = messageText(message);
+  // Each agent step contributes its own text part, so a turn that stops to run
+  // tools says several separate things. Render them as separate blocks - running
+  // them into one string is what produced "…about Jordan Rivera.Found them!".
+  const segments = messageTextSegments(message);
   // Fold runs of same-kind durable saves into one collapsed group so a busy
   // capture turn ("added a person, then saved six things about them") reads as a
   // short summary by default; interactive review cards and lookups stay in place.
   const units = groupTurnToolEntries(messageToolViews(message));
-  const active = messageActiveToolViews(message);
+  const active = messageActiveToolViews(message, live);
 
   return (
     <div className="flex flex-col gap-2.5">
-      {text ? (
+      {segments.length > 0 ? (
         <Message from="assistant">
-          <MessageContent>
-            <MessageResponse>{text}</MessageResponse>
+          {/* gap-3 matches the paragraph rhythm inside a segment, so one long
+              answer and several short ones breathe the same way. */}
+          <MessageContent className="gap-3">
+            {segments.map((segment) => (
+              <MessageResponse key={segment.key}>{segment.text}</MessageResponse>
+            ))}
           </MessageContent>
         </Message>
       ) : null}
@@ -404,6 +483,10 @@ function AssistantComposerForm({
               Enter to save · Shift + Enter for a new line
             </span>
           </PromptInputTools>
+          {/* Deliberately never `disabled`: InputGroup fades to 50% around any
+              disabled descendant, and the textarea stays usable during a turn,
+              so a dimmed composer would misread as "you can't type here". A send
+              Eve can't take is refused by handleSubmit, which restores the text. */}
           <PromptInputSubmit status={status} />
         </PromptInputFooter>
       </PromptInput>
@@ -446,17 +529,29 @@ function EveDraftPersistence({
     }
   }, [controller.textInput, ownerUserId]);
 
+  // The handed-off draft leaves the input - and, through the mirror effect
+  // below, local storage - the instant it is sent, on the same optimistic
+  // contract as a typed submission: only a rejected send puts it back. Waiting
+  // for the turn to finish would leave a sent message sitting in the composer
+  // under a "Discard Eve draft" affordance for the whole stream.
   useEffect(() => {
     if (!pendingSubmission || status !== "ready" || autoSubmitting.current) return;
     autoSubmitting.current = true;
+    controller.textInput.clear();
     void onSubmit({ files: [], text: pendingSubmission })
-      .then(() => controller.textInput.clear())
+      .catch(() => controller.textInput.restore(pendingSubmission))
       .finally(() => {
         setPendingSubmission(null);
         autoSubmitting.current = false;
       });
   }, [controller.textInput, onSubmit, pendingSubmission, status]);
 
+  // The mirror tracks the composer, and the composer only ever holds *unsent*
+  // text: a submission empties it optimistically, which lands here as an empty
+  // value and clears the stored draft in the same commit. That is what keeps the
+  // discard affordance below off an in-flight message - a draft is something the
+  // user has not sent yet, never something Eve is already answering. A rejected
+  // send restores the input, and this effect writes the draft back with it.
   useEffect(() => {
     if (hydratedOwner !== ownerUserId) return;
     try {
