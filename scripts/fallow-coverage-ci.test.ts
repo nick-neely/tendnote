@@ -51,7 +51,8 @@ describe("Fallow CI coverage contract (#193)", () => {
         [
           String.raw`- name: Run tests with coverage\s+run: pnpm coverage:ci`,
           String.raw`- name: Confirm exact CRAP scoring\s+run: pnpm fallow:coverage:check`,
-          String.raw`- name: Run Fallow audit`,
+          // No escapes in this one, so no `String.raw` - it is the same source.
+          `- name: Run Fallow audit`,
         ].join(commentsOrBlanks),
       ),
     );
