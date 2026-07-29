@@ -11,12 +11,22 @@ export default defineConfig({
       "class-variance-authority",
       "clsx",
       "@phosphor-icons/react/dist/ssr",
+      // The command palette's primitive. It has to be named even though `radix-ui`
+      // already is: cmdk depends on the individual `@radix-ui/react-dialog` package
+      // rather than the umbrella, and that is a different specifier the umbrella's
+      // entry does not cover.
+      "cmdk",
       "next/dynamic",
       "next/navigation",
       "radix-ui",
       "react",
       "react-dom/client",
       "react/jsx-dev-runtime",
+      // The dev runtime alone is not enough. Our own JSX compiles to `jsxDEV`, but a
+      // prebuilt dependency ships compiled for production and imports `jsx` - and
+      // `react/jsx-runtime` is CJS, so served unbundled that named import throws
+      // rather than resolving. With `noDiscovery` on, nothing adds it for us.
+      "react/jsx-runtime",
       "tailwind-merge",
       "zod",
     ],
