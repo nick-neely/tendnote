@@ -46,12 +46,17 @@ export function householdMembership(
  * `recordKind` and `recordId` are required rather than defaulted: a share says nothing
  * except against a named record, and the suites that seed these disagree about which kind
  * is the usual one - a default would read as harmless and be silently wrong in one of them.
+ *
+ * The generated id is keyed by record *and* recipient, because that is the pair a share is
+ * unique on: sharing one record with two people is a real thing to want to test, and
+ * keying on the record alone would mint the same primary key twice - a row the database
+ * could not hold, in a suite whose whole subject is who can see what.
  */
 export function householdRecordShare(
   overrides: Pick<HouseholdRecordShare, "recordKind" | "recordId"> & Partial<HouseholdRecordShare>,
 ): HouseholdRecordShare {
   return {
-    id: `share-${overrides.recordId}`,
+    id: `share-${overrides.recordId}-${overrides.sharedWithUserId ?? "member-1"}`,
     householdId: HOUSEHOLD_ID,
     sharedWithUserId: "member-1",
     sharedByUserId: "owner-1",
