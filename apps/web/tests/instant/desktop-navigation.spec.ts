@@ -19,6 +19,11 @@ function primaryNav(page: Page) {
 }
 
 async function openPersonDetail(page: Page) {
+  // Wait for the People list to be the surface on screen before reaching for the
+  // row. Home names this person too — its rail links them from the review card —
+  // so a locator evaluated during the swap can resolve against the surface being
+  // left and then wait forever for a link the owner is no longer looking at.
+  await expect(page.getByRole("heading", { level: 1, name: "People" })).toBeVisible();
   await page.getByRole("link", { name: personLinkName }).click();
   await expect(
     page.getByRole("heading", { level: 1, name: PRIMARY_PERSON.displayName }),
