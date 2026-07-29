@@ -169,6 +169,45 @@ describe("relationship-context search - memory results", () => {
     ).resolves.toEqual([]);
   });
 
+  /**
+   * Scope alone does not make a memory shared: a `shared` or `household` row reaches its
+   * audience through its household, and a row that names a non-private scope without one is
+   * anchored to nothing. Recall fails closed on it, so it answers nobody - not even the
+   * owner who wrote it, who goes on seeing it on the person's page and cannot understand
+   * why their own search has never heard of it.
+   */
+  it("returns an owner's shared memory only once it is anchored to their household", async () => {
+    const householdId = "99999999-9999-4999-8999-999999999999";
+    const anchoredId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const unanchoredId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const search = queries({
+      people: [person({})],
+      memories: [
+        memory({ id: anchoredId, content: "anchored kayaking plan", scope: "shared", householdId }),
+        memory({
+          id: unanchoredId,
+          content: "unanchored kayaking plan",
+          scope: "shared",
+          householdId: null,
+        }),
+      ],
+      householdMemberships: [
+        householdMembership({ householdId, userId: "owner-1", role: "owner" }),
+      ],
+    });
+
+    const results = await search.searchRelationshipContext({
+      ownerUserId: "owner-1",
+      query: "kayaking",
+      recordKinds: ["memory"],
+      limit: 10,
+      directlyRequested: false,
+    });
+
+    expect(results.map((result) => result.recordId)).toEqual([anchoredId]);
+    expect(results[0]?.visibilityLabel).toBe("Specific people");
+  });
+
   it("returns approved memories as confirmed exact-recall results with person metadata", async () => {
     const search = queries({ people: [person({})], memories: [memory({})] });
 

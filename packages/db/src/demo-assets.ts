@@ -80,6 +80,15 @@ const assetIds = {
 export const demoFridgeAssetId: string = assetIds.fridge;
 
 /**
+ * The demo world has exactly one household, and every non-private record in it - asset or
+ * relationship context alike - anchors here. Scope alone does not make a record shared:
+ * `visibleHouseholdRecordSql` (and `canViewScopedRecord` behind it) admits a `shared` or
+ * `household` record only through its household, so a seeded row that names a non-private
+ * scope without this id is visible to nobody, its own owner included.
+ */
+export const demoHouseholdId: string = assetIds.household;
+
+/**
  * The prose of a snapshot that has fallen behind its records (#196 decisions; ADR 0009 for
  * Assets): it still names the filter cartridge the fridge USED to take. Nothing regenerates it,
  * because the seed writes it over a freshly-built cache whose fingerprint still matches the

@@ -3,6 +3,7 @@ import {
   projectApprovedMemoryEmbeddedText,
   projectSourceRecordEmbeddedText,
 } from "@tendnote/domain";
+import { demoHouseholdId } from "./demo-assets";
 import { fakeVectorForText } from "./queries/semantic-retrieval/fake-adapter";
 import type {
   contactMethods,
@@ -493,6 +494,7 @@ export const demoSourceRecords: DemoSourceRecord[] = [
     confidence: "medium",
     sensitivity: "normal",
     scope: "shared",
+    householdId: demoHouseholdId,
     importance: 2,
     metadataJson: { externalSource: "contact_import", topic: "contact" },
     createdAt: at("2026-04-12T09:00:00.000Z"),
@@ -866,6 +868,7 @@ export const demoMemories: DemoMemory[] = [
     sensitivity: "normal",
     confidence: "medium",
     scope: "shared",
+    householdId: demoHouseholdId,
     approvedAt: at("2026-04-12T09:05:00.000Z"),
     dismissedAt: null,
     createdAt: at("2026-04-12T09:05:00.000Z"),
