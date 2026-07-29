@@ -164,6 +164,7 @@ describe("CI workflow optimization contract", () => {
     expect(workflow).not.toContain("uses: ./.github/workflows/reusable-verify.yml");
     expect(workflow).toContain("repository_dispatch:");
     expect(workflow).toContain("- vercel.deployment.ready");
+    expect(workflow).toContain("actions: read");
     expect(workflow).toContain("statuses: write");
     expect(workflow).toContain("vercel/repository-dispatch/actions/status@v1");
     expect(workflow).toContain("vercel/repository-dispatch/actions/checkout@v1");
