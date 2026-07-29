@@ -1,5 +1,9 @@
-import type { GlobalRecallResponse, GlobalRecallResult } from "@tendnote/domain";
-import { canonicalKey } from "./ranking";
+import type {
+  GlobalRecallFilter,
+  GlobalRecallResponse,
+  GlobalRecallResult,
+} from "@tendnote/domain";
+import { canonicalKey, matchesFamilyFilter } from "./ranking";
 import {
   RELATED_MINIMUM_SIMILARITY,
   relatedRelationshipCandidate,
@@ -47,6 +51,7 @@ export function recallLimitations(
   sources: RecallSourceResults,
   plan: RecallSearchPlan,
   matches: GlobalRecallResponse["results"],
+  family: GlobalRecallFilter,
 ): GlobalRecallResponse["limitations"] {
   const reported = [
     relationshipLimitation(outcomes, plan),
@@ -55,7 +60,7 @@ export function recallLimitations(
     followupLimitation(outcomes),
     calendarLimitation(outcomes, sources),
   ].filter((item): item is Limitation => item !== null);
-  const withheld = withheldRelatedLimitation(sources, matches);
+  const withheld = withheldRelatedLimitation(sources, matches, family);
   // A family that already reported a retrieval failure has no surviving Related
   // candidates to withhold, but the response must never carry one source twice.
   return withheld && !reported.some((item) => item.source === withheld.source)
@@ -66,8 +71,9 @@ export function recallLimitations(
 function withheldRelatedLimitation(
   sources: RecallSourceResults,
   matches: GlobalRecallResponse["results"],
+  family: GlobalRecallFilter,
 ): Limitation | null {
-  const closest = closestWithheld(sources, new Set(matches.map(canonicalKey)));
+  const closest = closestWithheld(sources, family, new Set(matches.map(canonicalKey)));
   if (!closest) return null;
   if (matches.length === 0) {
     // The surfaces already say nothing matched. The only thing left to add is
@@ -90,44 +96,65 @@ function withheldRelatedLimitation(
 type WithheldCandidate = {
   source: "relationship" | "saved_items";
   similarity: number;
-  key: string | null;
 };
 
 /**
- * The closest candidate the similarity floor actually cost the owner. A candidate
- * whose canonical record the Exact pass already put on screen cost nothing, and a
- * query worded close to a record's own text routinely produces exactly that: the
- * dev database answers "reminder" and "clean" with the Action itself while the
- * same Action trails a 0.43 semantic candidate behind it.
+ * The closest candidate the similarity floor actually cost the owner - the only
+ * kind worth a note, since a candidate the search would have dropped anyway cost
+ * the floor nothing to withhold.
  */
 function closestWithheld(
   sources: RecallSourceResults,
+  family: GlobalRecallFilter,
   shown: Set<string>,
 ): WithheldCandidate | null {
-  const withheld: WithheldCandidate[] = [
+  const withheld = [
     ...sources.related
       .filter((result) => result.similarity < RELATED_MINIMUM_SIMILARITY)
       .map((result) => ({
         source: "relationship" as const,
         similarity: result.similarity,
-        key: keyOf(relatedRelationshipCandidate(result)),
+        candidate: relatedRelationshipCandidate(result),
       })),
     ...sources.savedItemsRelated
       .filter((item) => item.similarity < RELATED_MINIMUM_SIMILARITY)
       .map((item) => ({
         source: "saved_items" as const,
         similarity: item.similarity,
-        key: keyOf(toRelatedSavedItemResult(item)),
+        candidate: toRelatedSavedItemResult(item) as GlobalRecallResult | null,
       })),
-  ].filter((candidate) => !candidate.key || !shown.has(candidate.key));
+  ].filter((withheldCandidate) => lostToTheFloor(withheldCandidate.candidate, family, shown));
   return withheld.reduce<WithheldCandidate | null>(
     (best, candidate) => (best && best.similarity >= candidate.similarity ? best : candidate),
     null,
   );
 }
 
-function keyOf(result: GlobalRecallResult | null): string | null {
-  return result ? canonicalKey(result) : null;
+/**
+ * Whether the similarity floor is the only thing standing between this candidate
+ * and the owner. Three ways it is not, none of them a gap worth reporting:
+ *
+ * - It normalizes to nothing. A logged note with no person behind it has no
+ *   record to route to, so it could never have been shown at any similarity.
+ * - The search was narrowed to a family it is not in. `searchRelationshipRelated`
+ *   answers with people, context, and Actions whatever the filter says, and the
+ *   family filter drops the rest before they are rendered - so an Action trailing
+ *   a People-only search was never a People match being withheld.
+ * - The Exact pass already put its canonical record on screen. A query worded
+ *   close to a record's own text routinely produces exactly that: the dev
+ *   database answers "reminder" with the Action itself while the same Action
+ *   trails a 0.43 semantic candidate behind it.
+ */
+function lostToTheFloor(
+  candidate: GlobalRecallResult | null,
+  family: GlobalRecallFilter,
+  shown: Set<string>,
+): candidate is GlobalRecallResult {
+  return (
+    candidate !== null &&
+    matchesFamilyFilter(candidate, family) &&
+    !shown.has(canonicalKey(candidate))
+  );
 }
 
 function relationshipLimitation(

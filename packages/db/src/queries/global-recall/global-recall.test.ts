@@ -39,6 +39,41 @@ function relatedMemory(similarity: number, recordId = "memory-weak") {
   };
 }
 
+/** A semantic Action candidate - the same relationship read, a different family. */
+function relatedGeneralAction(similarity: number, recordId = "action-weak") {
+  return {
+    ...relatedMemory(similarity, recordId),
+    recordKind: "general_action" as const,
+    relatedPersonId: null,
+    relatedPersonDisplayName: null,
+    trustLevel: "action_item" as const,
+    sourceRefs: [{ kind: "general_action" as const, id: recordId }],
+    routing: { personId: null, recordKind: "general_action" as const, recordId },
+    generalAction: {
+      status: "open" as const,
+      isRoutine: false,
+      isSuggested: false,
+      areaId: null,
+    },
+  };
+}
+
+/**
+ * A logged note with nobody behind it. The relationship normalizer routes context
+ * through its person, so this candidate has no record to become at any similarity.
+ */
+function relatedOrphanSourceRecord(similarity: number, recordId = "note-orphan") {
+  return {
+    ...relatedMemory(similarity, recordId),
+    recordKind: "source_record" as const,
+    relatedPersonId: null,
+    relatedPersonDisplayName: null,
+    trustLevel: "logged_context" as const,
+    sourceRefs: [{ kind: "source_record" as const, id: recordId }],
+    routing: { personId: null, recordKind: "source_record" as const, recordId },
+  };
+}
+
 function exactPerson(recordId = "person-1", label = "Priya Shah") {
   return {
     recordKind: "person" as const,
@@ -882,6 +917,41 @@ describe("Global Recall", () => {
         message: "Some People and context matches were close, but not close enough to show.",
       },
     ]);
+  });
+
+  /**
+   * The relationship read answers with people, context, and Actions whatever the
+   * family filter says, and the filter drops the rest before anything is
+   * rendered. So an Action trailing a People-only search was never a People match
+   * the floor withheld - saying it was would name a gap the owner did not have.
+   */
+  it("does not report a near-miss the family filter would have dropped anyway", async () => {
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchRelationshipExact: async () => [exactPerson()],
+      searchRelationshipRelated: async () => [relatedGeneralAction(0.5)],
+    });
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "priya", family: "people" });
+
+    expect(result.results.map((entry) => entry.canonical.id)).toEqual(["person-1"]);
+    expect(result.limitations).toEqual([]);
+  });
+
+  /**
+   * A candidate that normalizes to nothing could not have been shown at any
+   * similarity, so the floor is not what the owner lost it to.
+   */
+  it("stays silent about a withheld candidate that could never have been a result", async () => {
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchRelationshipRelated: async () => [relatedOrphanSourceRecord(0.2)],
+    });
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "kayaking" });
+
+    expect(result.results).toEqual([]);
+    expect(result.limitations).toEqual([]);
   });
 
   it("does not report a near-miss whose record the Exact pass already returned", async () => {
