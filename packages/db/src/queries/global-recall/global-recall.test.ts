@@ -17,6 +17,43 @@ function assetOutcome(
   return { results, semanticAvailable };
 }
 
+/** A semantic candidate at a chosen similarity, for exercising the Related floor. */
+function relatedMemory(similarity: number, recordId = "memory-weak") {
+  return {
+    recordKind: "memory" as const,
+    recordId,
+    visibilityChoice: "only_me" as const,
+    visibilityLabel: "Only me",
+    relatedPersonId: "person-1",
+    relatedPersonDisplayName: "Priya",
+    snippet: "A loosely related detail",
+    similarity,
+    trustLevel: "confirmed_fact" as const,
+    sensitivity: "normal" as const,
+    sourceRefs: [{ kind: "memory" as const, id: recordId }],
+    routing: { personId: "person-1", recordKind: "memory" as const, recordId },
+    generalAction: null,
+  };
+}
+
+function exactPerson(recordId = "person-1", label = "Priya Shah") {
+  return {
+    recordKind: "person" as const,
+    recordId,
+    visibilityChoice: null,
+    visibilityLabel: null,
+    relatedPersonId: recordId,
+    relatedPersonDisplayName: label,
+    label,
+    snippet: label,
+    matchedFields: ["display name"],
+    rank: 0.9,
+    trustLevel: "identity_reference" as const,
+    sensitivity: "normal" as const,
+    generalAction: null,
+  };
+}
+
 const emptyDependencies = {
   searchRelationshipExact: async () => [],
   searchRelationshipRelated: async () => [],
@@ -798,39 +835,157 @@ describe("Global Recall", () => {
     ]);
   });
 
-  it("omits weak Related matches and states the semantic limitation", async () => {
+  it("omits noise-level Related matches from an answered search without a standing note", async () => {
     const recall = createGlobalRecall({
       ...emptyDependencies,
-      searchRelationshipRelated: async () => [
+      searchRelationshipExact: async () => [exactPerson()],
+      // Retrieval asks for minimumSimilarity 0, so noise like this rides along on
+      // nearly every search. Reporting it would make the note permanent.
+      searchRelationshipRelated: async () => [relatedMemory(0.21)],
+      searchSavedItemsRelated: async () => [
         {
-          recordKind: "memory" as const,
-          recordId: "memory-weak",
-          visibilityChoice: "only_me" as const,
-          visibilityLabel: "Only me",
-          relatedPersonId: "person-1",
-          relatedPersonDisplayName: "Priya",
-          snippet: "A weakly related detail",
-          similarity: 0.31,
-          trustLevel: "confirmed_fact" as const,
-          sensitivity: "normal" as const,
-          sourceRefs: [{ kind: "memory" as const, id: "memory-weak" }],
-          routing: {
-            personId: "person-1",
-            recordKind: "memory" as const,
-            recordId: "memory-weak",
-          },
-          generalAction: null,
+          savedItemId: "saved-noise",
+          title: "Unrelated saved note",
+          snippet: "Unrelated saved note",
+          similarity: 0.18,
+          status: "active" as const,
+          scope: "private" as const,
         },
       ],
+    });
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "priya" });
+
+    expect(result.results.map((entry) => entry.canonical.id)).toEqual(["person-1"]);
+    expect(result.limitations).toEqual([]);
+  });
+
+  it("states that a near-miss Related match was withheld from an answered search", async () => {
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchRelationshipExact: async () => [exactPerson()],
+      searchRelationshipRelated: async () => [
+        relatedMemory(0.21),
+        relatedMemory(0.5, "memory-near"),
+      ],
+    });
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "priya" });
+
+    expect(result.results.map((entry) => entry.canonical.id)).toEqual(["person-1"]);
+    expect(result.limitations).toEqual([
+      {
+        source: "relationship",
+        message: "Some People and context matches were close, but not close enough to show.",
+      },
+    ]);
+  });
+
+  it("does not report a near-miss whose record the Exact pass already returned", async () => {
+    // Wording a query close to a record's own text scores it as a near miss
+    // against itself while Exact already answers with it, so nothing was lost.
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchRelationshipExact: async () => [
+        {
+          recordKind: "general_action" as const,
+          recordId: "action-1",
+          visibilityChoice: "only_me" as const,
+          visibilityLabel: "Only me",
+          relatedPersonId: null,
+          relatedPersonDisplayName: null,
+          label: "Reminder smoke clean",
+          snippet: "Reminder smoke clean",
+          matchedFields: ["title"],
+          rank: 0.9,
+          trustLevel: "action_item" as const,
+          sensitivity: "normal" as const,
+          generalAction: {
+            status: "open" as const,
+            isRoutine: false,
+            isSuggested: false,
+            areaId: null,
+          },
+        },
+      ],
+      searchRelationshipRelated: async () => [
+        {
+          ...relatedMemory(0.5, "action-1"),
+          recordKind: "general_action" as const,
+          relatedPersonId: null,
+          relatedPersonDisplayName: null,
+          routing: {
+            personId: null,
+            recordKind: "general_action" as const,
+            recordId: "action-1",
+          },
+          generalAction: {
+            status: "open" as const,
+            isRoutine: false,
+            isSuggested: false,
+            areaId: null,
+          },
+        },
+      ],
+    });
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "clean" });
+
+    expect(result.results.map((entry) => entry.canonical.id)).toEqual(["action-1"]);
+    expect(result.limitations).toEqual([]);
+  });
+
+  it("attributes a withheld near-miss Saved Item to the Saved Item source", async () => {
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchRelationshipExact: async () => [exactPerson()],
+      searchRelationshipRelated: async () => [relatedMemory(0.21)],
+      searchSavedItemsRelated: async () => [
+        {
+          savedItemId: "saved-near",
+          title: "Nearly matching saved note",
+          snippet: "Nearly matching saved note",
+          similarity: 0.52,
+          status: "active" as const,
+          scope: "private" as const,
+        },
+      ],
+    });
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "priya" });
+
+    expect(result.limitations).toEqual([
+      {
+        source: "saved_items",
+        message: "Some Saved Item matches were close, but not close enough to show.",
+      },
+    ]);
+  });
+
+  it("explains an empty search by what the Related floor withheld", async () => {
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchRelationshipRelated: async () => [relatedMemory(0.31)],
     });
 
     const result = await recall.search({ ownerUserId: OWNER, query: "refrigerator filter" });
 
     expect(result.results).toEqual([]);
-    expect(result.limitations).toContainEqual({
-      source: "relationship",
-      message: "Showing the closest related People and context matches only.",
-    });
+    expect(result.limitations).toEqual([
+      {
+        source: "relationship",
+        message: "The nearest records were only loosely related to that search.",
+      },
+    ]);
+  });
+
+  it("stays silent on an empty search that reached nothing to withhold", async () => {
+    const recall = createGlobalRecall(emptyDependencies);
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "refrigerator filter" });
+
+    expect(result.results).toEqual([]);
+    expect(result.limitations).toEqual([]);
   });
 
   it("keeps one prolific Asset from consuming the first page and reports more results", async () => {
