@@ -81,13 +81,33 @@ import { useWideViewport } from "@/lib/use-wide-viewport";
 
 export function SearchPalette({ search }: { search: GlobalRecallHandler }) {
   const [open, setOpen] = useState(false);
+  const [everOpened, setEverOpened] = useState(false);
   const wide = useWideViewport();
   usePaletteHotkey({ enabled: wide, setOpen });
+
+  /**
+   * The palette's body is built the first time it is asked for, not on every
+   * page load. What lives inside it is not free - the command list, the recall
+   * hook, and cmdk's own tree - and the shell it mounts into is on the path
+   * every desktop navigation is measured against (ADR 0210). Hydrating all of
+   * that on a surface the owner has not opened put the cold person-detail
+   * acknowledgement over its 100ms budget.
+   *
+   * What stays behind is what has to: the trigger, and the hotkey listener that
+   * makes Cmd+K work before anything has been built. Once opened it stays
+   * mounted, so only the first open pays - and that one is a deliberate act
+   * rather than a navigation being timed.
+   */
+  useEffect(() => {
+    if (open) setEverOpened(true);
+  }, [open]);
 
   return (
     <>
       <SearchPaletteTrigger onOpen={() => setOpen(true)} />
-      {wide ? <SearchPaletteDialog onOpenChange={setOpen} open={open} search={search} /> : null}
+      {wide && everOpened ? (
+        <SearchPaletteDialog onOpenChange={setOpen} open={open} search={search} />
+      ) : null}
     </>
   );
 }
