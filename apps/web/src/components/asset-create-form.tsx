@@ -3,7 +3,7 @@
 import type { AssetKind } from "@tendnote/domain";
 import { ASSET_KIND_OPTIONS } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { createAssetAction } from "@/app/actions/assets";
 import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/components/general-action-visibility-field";
 import { ChevronDownIcon, PlusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -40,7 +41,6 @@ export function CreateAssetForm({
   /** Household members the Asset can be shared with; empty keeps it private-only. */
   shareableMembers?: ShareableActionMember[];
 }) {
-  const sharingId = useId();
   const [name, setName] = useState("");
   const [kind, setKind] = useState<AssetKind>("item");
   const [visibilityChoice, setVisibilityChoice] = useState<VisibilityChoice>("only_me");
@@ -117,40 +117,35 @@ export function CreateAssetForm({
       </div>
 
       {shareableMembers.length > 0 ? (
-        <div className="flex flex-col gap-3">
-          <button
-            aria-controls={sharingId}
-            aria-expanded={showSharing}
-            className="inline-flex items-center gap-1 self-start rounded-md text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            onClick={() => setShowSharing((open) => !open)}
-            type="button"
-          >
+        <Collapsible
+          className="flex flex-col gap-3"
+          onOpenChange={setShowSharing}
+          open={showSharing}
+        >
+          <CollapsibleTrigger className="group/sharing inline-flex items-center gap-1 self-start rounded-md text-[length:var(--text-small)] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             <ChevronDownIcon
               aria-hidden
-              className="size-3.5 transition-transform data-[open=true]:rotate-180 motion-reduce:transition-none"
-              data-open={showSharing}
+              className="size-3.5 transition-transform group-data-[state=open]/sharing:rotate-180 motion-reduce:transition-none"
             />
             Share with your household
-          </button>
+          </CollapsibleTrigger>
 
-          {showSharing ? (
-            <div className="flex flex-col gap-2.5" id={sharingId}>
-              <ActionVisibilityField
-                members={shareableMembers}
-                name="asset-visibility"
-                onChoiceChange={setVisibilityChoice}
-                onSelectedChange={setSelectedUserIds}
-                selectedUserIds={selectedUserIds}
-                value={visibilityChoice}
-              />
-              <AudiencePreview
-                choice={visibilityChoice}
-                householdSize={shareableMembers.length + 1}
-                selectedCount={selectedUserIds.length}
-              />
-            </div>
-          ) : null}
-        </div>
+          <CollapsibleContent className="flex flex-col gap-2.5">
+            <ActionVisibilityField
+              members={shareableMembers}
+              name="asset-visibility"
+              onChoiceChange={setVisibilityChoice}
+              onSelectedChange={setSelectedUserIds}
+              selectedUserIds={selectedUserIds}
+              value={visibilityChoice}
+            />
+            <AudiencePreview
+              choice={visibilityChoice}
+              householdSize={shareableMembers.length + 1}
+              selectedCount={selectedUserIds.length}
+            />
+          </CollapsibleContent>
+        </Collapsible>
       ) : null}
 
       {error ? <ErrorText message={error} /> : null}
