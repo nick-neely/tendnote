@@ -60,6 +60,9 @@ describe("CI workflow optimization contract", () => {
     expect(pullRequest).toContain("github.event.pull_request.draft");
     expect(pullRequest).toContain("run_full:");
     expect(pullRequest).toContain("Full CI qualification is required before merge.");
+    expect(pullRequest).toContain("github.run_id");
+    expect(pullRequest).toContain("github.event.label.name != 'full-ci'");
+    expect(pullRequest.split("github.event.label.name == 'full-ci'")).toHaveLength(3);
 
     expect(reusable).toContain("run_full:");
     expect(reusable).toMatch(/fast_tests:[\s\S]*if: \$\{\{[^}]*!inputs\.run_full/);

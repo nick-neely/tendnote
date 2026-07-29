@@ -18,12 +18,21 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: pr-verify-${{ github.event.pull_request.number }}
+  group: >-
+    ${{
+      ((github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
+      github.event.label.name != 'full-ci') &&
+      format('pr-verify-{0}-ignored-{1}', github.event.pull_request.number, github.run_id) ||
+      format('pr-verify-{0}', github.event.pull_request.number)
+    }}
   cancel-in-progress: true
 
 jobs:
   changes:
     name: Detect changes
+    if: >-
+      (github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+      github.event.label.name == 'full-ci'
     runs-on: ubuntu-latest
     outputs:
       verify: ${{ steps.filter.outputs.verify }}
@@ -133,7 +142,11 @@ jobs:
     needs:
       - changes
       - verify
-    if: always() && !cancelled()
+    if: >-
+      always() &&
+      !cancelled() &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+      github.event.label.name == 'full-ci')
     runs-on: ubuntu-latest
     steps:
       - name: Check PR verification
