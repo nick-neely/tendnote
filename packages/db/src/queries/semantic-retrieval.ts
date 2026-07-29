@@ -108,6 +108,14 @@ export async function claimSemanticEmbeddingJob(input: ClaimEmbeddingJobInput) {
   return defaultProcessor.claimEmbeddingJob(input);
 }
 
+export async function recoverStaleSemanticEmbeddingJobs(input: {
+  leaseDurationMs: number;
+  now?: Date;
+  limit?: number;
+}) {
+  return defaultProcessor.recoverStaleEmbeddingJobs(input);
+}
+
 export async function getSemanticEmbeddingJob(jobId: string) {
   return defaultProcessor.getEmbeddingJob(jobId);
 }

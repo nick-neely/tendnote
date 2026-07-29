@@ -95,6 +95,19 @@ export const BACKGROUND_JOB_QUEUE_CONFIG = {
   }
 >;
 
+/** Hosted embedding invocations are terminated before a ten-minute claim may expire. */
+export const EMBEDDING_QUEUE_MAX_DURATION_SECONDS = 300;
+
+/**
+ * A claim outlives both one queue visibility window and twice the hosted execution cap.
+ * Recovery therefore cannot overlap an invocation the platform still permits to run.
+ */
+export const EMBEDDING_JOB_LEASE_DURATION_MS =
+  Math.max(
+    BACKGROUND_JOB_QUEUE_CONFIG.embedding.visibilityTimeoutSeconds,
+    EMBEDDING_QUEUE_MAX_DURATION_SECONDS * 2,
+  ) * 1000;
+
 export function createVercelBackgroundJobQueueAdapter(): BackgroundJobQueueSendAdapter {
   return {
     async send(input) {

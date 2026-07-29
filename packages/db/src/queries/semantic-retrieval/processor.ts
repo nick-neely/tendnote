@@ -188,13 +188,18 @@ async function processEmbeddingJob(
       return failJob(ctx, job, "Embedding was not created.", now, retryDelayMs);
     }
 
-    const updated = await store.settleEmbeddingJob({
+    const settlement = await store.settleEmbeddingJob({
       jobId: job.id,
       status: "completed",
       now,
+      expectedClaimedAt: job.claimedAt ?? null,
       completedAt: now,
       lastError: null,
     });
+
+    if (!settlement.settled) {
+      return { job: settlement.job, outcome: "not_claimable", embedding: null };
+    }
 
     await store.createAuditLogEntry({
       ownerUserId: job.ownerUserId,
@@ -209,7 +214,7 @@ async function processEmbeddingJob(
     });
 
     return {
-      job: updated,
+      job: settlement.job,
       outcome: "completed",
       embedding: result.embedding,
       sourceMemory: result.sourceMemory,
@@ -256,6 +261,38 @@ export function createEmbeddingProcessor(
       store.claimNextEmbeddingJob({ now: input.now ?? new Date() }),
     claimEmbeddingJob: (input: { jobId: string; now?: Date }) =>
       store.claimEmbeddingJob({ jobId: input.jobId, now: input.now ?? new Date() }),
+    async recoverStaleEmbeddingJobs(input: {
+      leaseDurationMs: number;
+      now?: Date;
+      limit?: number;
+    }) {
+      const now = input.now ?? new Date();
+      const leaseDurationMs = input.leaseDurationMs;
+      const jobs = await store.recoverStaleEmbeddingJobs({
+        now,
+        staleBefore: new Date(now.getTime() - leaseDurationMs),
+        limit: input.limit ?? 5,
+      });
+
+      await Promise.all(
+        jobs.map((job) =>
+          store.createAuditLogEntry({
+            ownerUserId: job.ownerUserId,
+            action: "embedding_job.recovered",
+            entityType: "relationship_context_embedding_job",
+            entityId: job.id,
+            metadataJson: {
+              recordKind: job.recordKind,
+              recordId: job.recordId,
+              leaseDurationMs,
+              recoveredAt: now.toISOString(),
+            },
+          }),
+        ),
+      );
+
+      return { jobs };
+    },
     getEmbeddingJob: (jobId: string) => store.getEmbeddingJob(jobId),
     processEmbeddingJob: (input: ProcessEmbeddingJobInput) => processEmbeddingJob(ctx, input),
   };

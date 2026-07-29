@@ -1,6 +1,7 @@
 import { createInMemoryBackgroundJobDeliveryStore } from "@tendnote/db/queries/background-job-deliveries";
 import { describe, expect, it, vi } from "vitest";
 import vercelConfig from "../../../vercel.json";
+import { maxDuration as recoveryMaxDuration } from "../../app/api/cron/background-jobs/route";
 import {
   recoverBackgroundJobDeliveries,
   runBackgroundJobRecovery,
@@ -151,17 +152,29 @@ describe("background job recovery", () => {
       .mockResolvedValueOnce({ id: "job-1" })
       .mockResolvedValueOnce({ id: "job-2" });
     const processJob = vi.fn().mockResolvedValue({ outcome: "completed" });
+    const recoverStaleJobs = vi.fn().mockResolvedValue({ jobs: [{ id: "stale-job-1" }] });
+    const logger = { info: vi.fn(), error: vi.fn() };
 
     const result = await runEmbeddingBackfill({
       limit: 1,
       claimNextJob,
       processJob,
+      recoverStaleJobs,
       now: new Date("2026-06-29T12:00:00.000Z"),
+      logger,
     });
 
-    expect(result).toEqual({ scanned: 1, processed: 1, failed: 0 });
+    expect(result).toEqual({ recovered: 1, scanned: 1, processed: 1, failed: 0 });
+    expect(recoverStaleJobs).toHaveBeenCalledWith({
+      limit: 1,
+      now: new Date("2026-06-29T12:00:00.000Z"),
+      leaseDurationMs: 600_000,
+    });
     expect(claimNextJob).toHaveBeenCalledTimes(1);
     expect(processJob).toHaveBeenCalledWith({ jobId: "job-1", claim: false });
+    expect(logger.info).toHaveBeenCalledWith("background_job_recovery.embedding_job_recovered", {
+      jobId: "stale-job-1",
+    });
   });
 
   it("keeps cron recovery bounded across republish and processor backfill", async () => {
@@ -174,19 +187,22 @@ describe("background job recovery", () => {
         .fn()
         .mockResolvedValue({ scanned: 1, republished: 1, failed: 0, abandoned: 0 }),
       backfillExtraction: vi.fn().mockResolvedValue({ scanned: 1, processed: 1, failed: 0 }),
-      backfillEmbedding: vi.fn().mockResolvedValue({ scanned: 1, processed: 0, failed: 1 }),
+      backfillEmbedding: vi
+        .fn()
+        .mockResolvedValue({ recovered: 1, scanned: 1, processed: 0, failed: 1 }),
       backfillActionExtraction: vi.fn().mockResolvedValue({ scanned: 1, processed: 1, failed: 0 }),
     });
 
     expect(result).toEqual({
       deliveries: { scanned: 1, republished: 1, failed: 0, abandoned: 0 },
       extraction: { scanned: 1, processed: 1, failed: 0 },
-      embedding: { scanned: 1, processed: 0, failed: 1 },
+      embedding: { recovered: 1, scanned: 1, processed: 0, failed: 1 },
       actionExtraction: { scanned: 1, processed: 1, failed: 0 },
     });
   });
 
   it("configures a bounded Vercel cron trigger for recovery", () => {
+    expect(recoveryMaxDuration).toBe(300);
     expect(vercelConfig.crons).toContainEqual({
       path: "/api/cron/background-jobs",
       schedule: "*/10 * * * *",

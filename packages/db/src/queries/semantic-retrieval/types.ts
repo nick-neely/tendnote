@@ -92,6 +92,15 @@ export type ReopenEmbeddingJobInput = {
   runAfter: Date;
 };
 
+export type RecoverStaleEmbeddingJobsInput = {
+  now: Date;
+  staleBefore: Date;
+  limit: number;
+};
+
+export const STALE_EMBEDDING_JOB_RECOVERY_MESSAGE =
+  "Recovered after the embedding claim lease expired.";
+
 /** The statuses a finished pass can reach; `running` and `pending` are not verdicts. */
 export type SettledEmbeddingJobStatus = Extract<
   EmbeddingJobStatus,
@@ -107,10 +116,17 @@ export type SettleEmbeddingJobInput = {
   jobId: string;
   status: SettledEmbeddingJobStatus;
   now: Date;
+  /** The claim generation this verdict belongs to; stale workers may not settle a replacement. */
+  expectedClaimedAt: Date | null;
   lastError?: string | null;
   runAfter?: Date;
   claimedAt?: Date | null;
   completedAt?: Date | null;
+};
+
+export type SettleEmbeddingJobResult = {
+  job: EmbeddingJob;
+  settled: boolean;
 };
 
 export type EmbeddingJobLifecycleStore = {
@@ -119,6 +135,12 @@ export type EmbeddingJobLifecycleStore = {
   getEmbeddingJob: (jobId: string) => Promise<EmbeddingJob | null>;
   claimEmbeddingJob: (input: { jobId: string; now: Date }) => Promise<EmbeddingJob | null>;
   claimNextEmbeddingJob: (input: { now: Date }) => Promise<EmbeddingJob | null>;
+  /**
+   * Reopens a bounded oldest-first batch of `running` jobs whose claim lease expired.
+   * Selection and reset are one store operation so concurrent recovery passes cannot
+   * recover the same row.
+   */
+  recoverStaleEmbeddingJobs: (input: RecoverStaleEmbeddingJobsInput) => Promise<EmbeddingJob[]>;
   updateEmbeddingJob: (input: UpdateEmbeddingJobInput) => Promise<EmbeddingJob>;
   /**
    * Applies a repeat enqueue to a job that already exists, in one statement, and returns
@@ -149,7 +171,7 @@ export type EmbeddingJobLifecycleStore = {
    * durable: an enqueue either marks the row before it settles, and is honored here, or
    * finds a job that is no longer `running` and reopens it outright.
    */
-  settleEmbeddingJob: (input: SettleEmbeddingJobInput) => Promise<EmbeddingJob>;
+  settleEmbeddingJob: (input: SettleEmbeddingJobInput) => Promise<SettleEmbeddingJobResult>;
 };
 
 export type EmbeddingStore = MemoryReviewStore &

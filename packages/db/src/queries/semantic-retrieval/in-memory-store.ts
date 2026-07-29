@@ -34,7 +34,7 @@ import type { HouseholdRecordShare } from "../households/types";
 import { canViewerSeeSeededHouseholdRecord } from "../households/visibility-memory";
 import { createInMemoryMemoryStore } from "../memories/in-memory-store";
 import { createInMemorySavedItemRecordStore } from "../saved-items/in-memory-store";
-import type { InMemoryEmbeddingStore } from "./types";
+import { type InMemoryEmbeddingStore, STALE_EMBEDDING_JOB_RECOVERY_MESSAGE } from "./types";
 
 const CLAIMABLE_STATUSES = new Set<EmbeddingJob["status"]>(claimableEmbeddingJobStatuses);
 const REOPENABLE_STATUSES = new Set<EmbeddingJob["status"]>(reopenableEmbeddingJobStatuses);
@@ -187,6 +187,32 @@ export function createInMemoryEmbeddingStore(
 
       return next ? claim(next, input.now) : null;
     },
+    async recoverStaleEmbeddingJobs(input) {
+      if (input.limit <= 0) return [];
+
+      const stale = [...jobs.values()]
+        .filter(
+          (job) =>
+            job.status === "running" && job.claimedAt != null && job.claimedAt <= input.staleBefore,
+        )
+        .sort((a, b) => (a.claimedAt?.getTime() ?? 0) - (b.claimedAt?.getTime() ?? 0))
+        .slice(0, input.limit);
+
+      return stale.map((job) => {
+        const recovered: EmbeddingJob = {
+          ...job,
+          status: "pending",
+          runAfter: input.now,
+          lastError: STALE_EMBEDDING_JOB_RECOVERY_MESSAGE,
+          claimedAt: null,
+          completedAt: null,
+          rerunRequestedAt: null,
+          updatedAt: input.now,
+        };
+        jobs.set(recovered.id, recovered);
+        return recovered;
+      });
+    },
     async updateEmbeddingJob(input) {
       const updated = applyJobUpdateFields(requireJob(input.jobId), input);
 
@@ -209,8 +235,10 @@ export function createInMemoryEmbeddingStore(
       // `status = 'running'` predicate. A second pass over the same job arrives here with a
       // verdict that has already been superseded, and writing it would overwrite the
       // `pending` a rerun marker just produced - losing the edit that asked for it.
-      if (job.status !== "running") {
-        return job;
+      const expectedClaimedAt = input.expectedClaimedAt?.getTime() ?? null;
+      const currentClaimedAt = job.claimedAt?.getTime() ?? null;
+      if (job.status !== "running" || currentClaimedAt !== expectedClaimedAt) {
+        return { job, settled: false };
       }
 
       // The Postgres store reads the marker inside the statement that writes the status;
@@ -228,7 +256,7 @@ export function createInMemoryEmbeddingStore(
 
       jobs.set(updated.id, updated);
 
-      return updated;
+      return { job: updated, settled: true };
     },
     async createGeneralAction(values) {
       const parsed = createGeneralActionSchema.parse(values);

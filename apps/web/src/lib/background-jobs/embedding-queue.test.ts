@@ -2,11 +2,12 @@ import { createInMemoryBackgroundJobDeliveryStore } from "@tendnote/db/queries/b
 import type { EnqueueAndTriggerSemanticEmbeddingJobResult } from "@tendnote/db/queries/semantic-retrieval";
 import { describe, expect, it, vi } from "vitest";
 import vercelConfig from "../../../vercel.json";
+import { maxDuration } from "../../app/api/queue/embedding/route";
 import {
   consumeEmbeddingQueueMessage,
   enqueueAndPublishSemanticEmbeddingJob,
 } from "./embedding-queue";
-import { BACKGROUND_JOB_QUEUE_CONFIG } from "./queue-runtime";
+import { BACKGROUND_JOB_QUEUE_CONFIG, EMBEDDING_JOB_LEASE_DURATION_MS } from "./queue-runtime";
 
 const embeddingJob = {
   id: "00000000-0000-0000-0000-000000000601",
@@ -187,5 +188,13 @@ describe("embedding queue delivery", () => {
         },
       ],
     });
+  });
+
+  it("expires claims only after the hosted callback must have ended", () => {
+    expect(maxDuration).toBe(300);
+    expect(EMBEDDING_JOB_LEASE_DURATION_MS).toBeGreaterThanOrEqual(maxDuration * 2 * 1000);
+    expect(EMBEDDING_JOB_LEASE_DURATION_MS).toBeGreaterThanOrEqual(
+      BACKGROUND_JOB_QUEUE_CONFIG.embedding.visibilityTimeoutSeconds * 1000,
+    );
   });
 });

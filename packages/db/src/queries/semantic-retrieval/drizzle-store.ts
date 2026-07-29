@@ -12,7 +12,7 @@ import {
   visibilityChoiceForScope,
   visibilityLabelForScope,
 } from "@tendnote/domain";
-import { type AnyColumn, and, asc, eq, inArray, lte, type SQL, sql } from "drizzle-orm";
+import { type AnyColumn, and, asc, eq, inArray, isNull, lte, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import {
   assetMemories,
@@ -28,7 +28,12 @@ import { selectOwnedAsset } from "../assets/drizzle-store";
 import { selectOwnedGeneralAction } from "../general-actions/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleMemoryStore } from "../memories/drizzle-store";
-import type { EmbeddingStore, SettleEmbeddingJobInput, UpdateEmbeddingJobInput } from "./types";
+import {
+  type EmbeddingStore,
+  type SettleEmbeddingJobInput,
+  STALE_EMBEDDING_JOB_RECOVERY_MESSAGE,
+  type UpdateEmbeddingJobInput,
+} from "./types";
 
 const CLAIMABLE_STATUSES = [...claimableEmbeddingJobStatuses];
 const REOPENABLE_STATUSES = [...reopenableEmbeddingJobStatuses];
@@ -284,6 +289,36 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
 
       return job ?? null;
     },
+    async recoverStaleEmbeddingJobs(input) {
+      if (input.limit <= 0) return [];
+
+      const staleJobs = getDb()
+        .select({ id: relationshipContextEmbeddingJobs.id })
+        .from(relationshipContextEmbeddingJobs)
+        .where(
+          and(
+            eq(relationshipContextEmbeddingJobs.status, "running"),
+            lte(relationshipContextEmbeddingJobs.claimedAt, input.staleBefore),
+          ),
+        )
+        .orderBy(asc(relationshipContextEmbeddingJobs.claimedAt))
+        .limit(input.limit)
+        .for("update", { skipLocked: true });
+
+      return getDb()
+        .update(relationshipContextEmbeddingJobs)
+        .set({
+          status: "pending",
+          runAfter: input.now,
+          lastError: STALE_EMBEDDING_JOB_RECOVERY_MESSAGE,
+          claimedAt: null,
+          completedAt: null,
+          rerunRequestedAt: null,
+          updatedAt: input.now,
+        })
+        .where(inArray(relationshipContextEmbeddingJobs.id, staleJobs))
+        .returning();
+    },
     async updateEmbeddingJob(input) {
       const [job] = await getDb()
         .update(relationshipContextEmbeddingJobs)
@@ -330,12 +365,15 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
           and(
             eq(relationshipContextEmbeddingJobs.id, input.jobId),
             eq(relationshipContextEmbeddingJobs.status, "running"),
+            input.expectedClaimedAt === null
+              ? isNull(relationshipContextEmbeddingJobs.claimedAt)
+              : eq(relationshipContextEmbeddingJobs.claimedAt, input.expectedClaimedAt),
           ),
         )
         .returning();
 
       if (job) {
-        return job;
+        return { job, settled: true };
       }
 
       // The row left `running` between this pass reading it and settling, so another pass
@@ -354,7 +392,7 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
         throw new Error("Embedding job not found.");
       }
 
-      return current;
+      return { job: current, settled: false };
     },
     async getGeneralActionForEmbedding(input) {
       return selectOwnedGeneralAction(input);

@@ -206,14 +206,19 @@ export async function failJob(
   now: Date,
   retryDelayMs: number,
 ): Promise<ProcessEmbeddingJobResult> {
-  const updated = await ctx.store.settleEmbeddingJob({
+  const settlement = await ctx.store.settleEmbeddingJob({
     jobId: job.id,
     status: "failed",
     now,
+    expectedClaimedAt: job.claimedAt ?? null,
     lastError: message,
     runAfter: new Date(now.getTime() + retryDelayMs),
     claimedAt: null,
   });
+
+  if (!settlement.settled) {
+    return { job: settlement.job, outcome: "not_claimable", embedding: null };
+  }
 
   await ctx.store.createAuditLogEntry({
     ownerUserId: job.ownerUserId,
@@ -227,7 +232,7 @@ export async function failJob(
     },
   });
 
-  return { job: updated, outcome: "failed", embedding: null, error: message };
+  return { job: settlement.job, outcome: "failed", embedding: null, error: message };
 }
 
 type EmbeddingSkipReason = Extract<EmbeddingDecision, { action: "skip" }>["reason"];
@@ -318,12 +323,17 @@ export async function skipJob(
     sourceSavedItem?: SavedItem | null;
   } = {},
 ): Promise<ProcessEmbeddingJobResult> {
-  const updated = await ctx.store.settleEmbeddingJob({
+  const settlement = await ctx.store.settleEmbeddingJob({
     jobId: job.id,
     status: "skipped",
     now,
+    expectedClaimedAt: job.claimedAt ?? null,
     completedAt: now,
   });
+
+  if (!settlement.settled) {
+    return { job: settlement.job, outcome: "not_claimable", embedding: null };
+  }
 
   await ctx.store.createAuditLogEntry({
     ownerUserId: job.ownerUserId,
@@ -338,7 +348,7 @@ export async function skipJob(
   });
 
   return {
-    job: updated,
+    job: settlement.job,
     outcome: "skipped",
     embedding: null,
     sourceMemory: sources.sourceMemory ?? null,
