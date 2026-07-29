@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, setMatchMedia, userEvent, waitFor, within } from "@/test/dom";
+import { expectRestrictedGateOpensOnRecordType } from "@/test/global-recall-filters";
 import { ThemeProvider } from "./theme-provider";
 
 /**
@@ -297,20 +298,8 @@ describe("SearchPalette", () => {
 
     await user.type(screen.getByRole("combobox", { name: "Search and commands" }), "maya");
 
-    const restricted = await screen.findByRole("checkbox", { name: "Reveal restricted matches" });
-    expect((restricted as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText("Pick a record type first.")).toBeDefined();
+    await expectRestrictedGateOpensOnRecordType(user);
 
-    await user.click(screen.getByRole("combobox", { name: "Record type" }));
-    await user.click(await screen.findByRole("option", { name: "People" }));
-
-    await waitFor(() =>
-      expect(
-        (screen.getByRole("checkbox", { name: "Reveal restricted matches" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false),
-    );
-    expect(screen.queryByText("Pick a record type first.")).toBeNull();
     await waitFor(() =>
       expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ family: "people" })),
     );
