@@ -30,6 +30,12 @@ type SearchRow = {
   general_action_area_id: string | null;
 };
 
+/**
+ * `ts_headline` wraps every matched term in `<b>...</b>` unless told otherwise,
+ * and nothing downstream renders HTML - a snippet is plain text in the recall
+ * result rows and in the agent's search tool alike. `StartSel`/`StopSel` are
+ * emptied so the tags do not leak into the reading surface as literal markup.
+ */
 export function createDrizzleRelationshipContextSearchStore(): RelationshipContextSearchStore {
   return {
     async searchRelationshipContext(input) {
@@ -50,7 +56,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           p.display_name as label,
           case
             when p.profile_blurb is not null and p.profile_blurb <> ''
-              then ts_headline('simple', p.profile_blurb, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2')
+              then ts_headline('simple', p.profile_blurb, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2, StartSel="", StopSel=""')
             else p.display_name
           end as snippet,
           array_remove(array[
@@ -85,7 +91,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           p.id::text as related_person_id,
           p.display_name as related_person_display_name,
           coalesce(p.display_name, 'Memory') as label,
-          ts_headline('simple', m.content, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2') as snippet,
+          ts_headline('simple', m.content, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2, StartSel="", StopSel=""') as snippet,
           array['content']::text[] as matched_fields,
           (
             ts_rank_cd(m.search_vector, search_query.query)
@@ -121,7 +127,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           related_person.id::text as related_person_id,
           related_person.display_name as related_person_display_name,
           coalesce(related_person.display_name, 'Logged note') as label,
-          ts_headline('simple', sr.content, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2') as snippet,
+          ts_headline('simple', sr.content, search_query.query, 'MaxWords=18, MinWords=6, ShortWord=2, StartSel="", StopSel=""') as snippet,
           array['content']::text[] as matched_fields,
           (
             ts_rank_cd(sr.search_vector, search_query.query)
@@ -171,7 +177,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
             'simple',
             coalesce(ga.title, '') || ' ' || coalesce(ga.notes, ''),
             search_query.query,
-            'MaxWords=18, MinWords=6, ShortWord=2'
+            'MaxWords=18, MinWords=6, ShortWord=2, StartSel="", StopSel=""'
           ) as snippet,
           coalesce(
             nullif(
