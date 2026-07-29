@@ -259,15 +259,45 @@
   :focus-visible {
     outline-offset: 2px;
   }
-  @media (prefers-reduced-motion: reduce) {
-    *,
-    ::before,
-    ::after {
-      animation-duration: 1ms;
-      animation-iteration-count: 1;
-      scroll-behavior: auto;
-      transition-duration: 1ms;
-    }
+}
+
+/*
+ * Reduced-motion collapse (DESIGN.md §7: "Reduced motion collapses transitions
+ * to near-instant").
+ *
+ * Deliberately UNLAYERED. Tailwind declares `@layer theme, base, components,
+ * utilities`, so anything inside `@layer base` loses to a utility no matter how
+ * specific it is - layer order is resolved before specificity. This block lived
+ * in `@layer base` and was therefore inert against exactly the declarations it
+ * exists to neutralize: `duration-150`/`duration-200`, tw-animate-css
+ * `animate-in`/`fade-in`/`zoom-in` on dialogs and popovers, `animate-pulse`, and
+ * the `--animate-accordion-*` shorthand. With reduced motion emulated a focused
+ * nav link still computed `transition-duration: 0.15s`. Unlayered normal
+ * declarations beat every layered one, which is the same reason the focus-ring
+ * and scrollbar rules further down are unlayered.
+ *
+ * 1ms rather than 0s: Radix Presence unmounts exiting content on `animationend`,
+ * so the animation still has to run and finish; it just has to be
+ * imperceptible. A true 0s would risk the event never firing and leaving exit
+ * content mounted.
+ *
+ * Components may still opt into a gentler treatment on top of this via
+ * `motion-reduce:*` utilities (e.g. `motion-reduce:transition-none`,
+ * `motion-reduce:animate-none`); those remove the animation outright rather than
+ * lengthening it, so they compose with this floor instead of fighting it. The one
+ * documented carve-out is the Eve processing shimmer, which drops its sweeping
+ * band entirely and leaves the static base line (see `.tn-shimmer-band` below).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+    animation-iteration-count: 1;
+    scroll-behavior: auto;
+    transition-duration: 1ms;
+    transition-delay: 0ms;
   }
 }
 
