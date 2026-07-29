@@ -17,7 +17,6 @@ import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-con
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { listSourceRecordsForPersonContext } from "@tendnote/db/queries/source-records";
 import {
-  canUseMemoryProactively,
   canUseSourceRecordProactively,
   GMAIL_CAPABILITY_KEY,
   GMAIL_PROVIDER_KEY,
@@ -284,9 +283,11 @@ async function PersonDetailEnrichment({
     selectedTab === "followups" ? listFollowupsForPerson({ ownerUserId, personId }) : [],
   ]);
 
-  const approvedMemories = (memoryContext?.memories ?? []).filter((memory) =>
-    canUseMemoryProactively(memory),
-  );
+  // The memory read already applies the proactive-use policy and hands back both
+  // halves, so this page no longer decides what "confirmed" means: it renders the
+  // confirmed list, and offers the restricted ones behind the ledger's reveal.
+  const approvedMemories = memoryContext?.memories ?? [];
+  const restrictedMemories = memoryContext?.restrictedMemories ?? [];
   const trustedSourceRecords = sourceRecords.filter((sourceRecord) =>
     canUseSourceRecordProactively(sourceRecord),
   );
@@ -374,7 +375,7 @@ async function PersonDetailEnrichment({
       memoryPanel={
         selectedTab === "memory" ? (
           <div className="flex flex-col gap-8">
-            <MemoriesSection memories={approvedMemories} />
+            <MemoriesSection memories={approvedMemories} restrictedMemories={restrictedMemories} />
             <LoggedContextSection sourceRecords={trustedSourceRecords} />
           </div>
         ) : null

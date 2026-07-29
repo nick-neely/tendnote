@@ -63,7 +63,20 @@ export type PersonMemoryContextInput = {
 
 export type PersonMemoryContextResult = {
   person: Person | null;
+  /**
+   * Approved memories cleared for proactive use - the confirmed facts the
+   * ledger lists and the Memory tab badge counts.
+   */
   memories: Memory[];
+  /**
+   * Approved memories the owner marked restricted. Policy keeps them out of
+   * every proactive path (suggestions, drafts, snapshots), so they are never
+   * mixed into `memories`; the owner's own person page is the one surface that
+   * may reach them, behind a reveal. `restrictedMemories.length` is the count
+   * that labels that control, so a surface can say how many are held back
+   * without showing any of them.
+   */
+  restrictedMemories: Memory[];
 };
 
 export type MemoryCaptureStore = SourceRecordCaptureStore & {

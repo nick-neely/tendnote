@@ -1,4 +1,4 @@
-import { createMemorySchema } from "@tendnote/domain";
+import { canUseMemoryProactively, createMemorySchema } from "@tendnote/domain";
 import { createSourceRecordCapture } from "../source-records/capture";
 import type {
   ApprovedMemoryEmbeddingScheduler,
@@ -232,13 +232,22 @@ export function createMemoryCapture(
       const person = await store.getPerson(input);
 
       if (!person) {
-        return { person: null, memories: [] };
+        return { person: null, memories: [], restrictedMemories: [] };
       }
 
       // Only approved memories are durable, confirmed facts (ADR 0004).
-      const memories = await store.listApprovedMemoriesForPerson(input);
+      const approved = await store.listApprovedMemoriesForPerson(input);
 
-      return { person, memories };
+      // The split is the proactive-use policy itself, applied once here instead
+      // of by each caller. Reading it back out of the same list is what keeps
+      // the two halves exhaustive: a memory the policy declines is restricted,
+      // and it stays reachable to the owner rather than silently disappearing
+      // the way a caller-side filter used to drop it.
+      return {
+        person,
+        memories: approved.filter((memory) => canUseMemoryProactively(memory)),
+        restrictedMemories: approved.filter((memory) => !canUseMemoryProactively(memory)),
+      };
     },
   };
 }
