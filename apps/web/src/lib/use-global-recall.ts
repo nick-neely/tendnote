@@ -1,10 +1,11 @@
 "use client";
 
-import type {
-  GlobalRecallFilter,
-  GlobalRecallInput,
-  GlobalRecallMatchKind,
-  GlobalRecallResponse,
+import {
+  type GlobalRecallFilter,
+  type GlobalRecallInput,
+  type GlobalRecallMatchKind,
+  type GlobalRecallResponse,
+  isMeaningfulRecallQuery,
 } from "@tendnote/domain/global-recall";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -18,9 +19,9 @@ import {
  *
  * Recall has two front doors - the phone's full-screen Search flow and the desktop
  * command palette - and they must ask the same question of the same seam: the same
- * narrowing controls, the same restricted-match gate, the same debounce, the same
- * "two characters before we bother the server" floor. Only the presentation differs,
- * so only the presentation lives in the components.
+ * narrowing controls, the same restricted-match gate, the same debounce, and the
+ * seam's own floor on what counts as a query worth sending. Only the presentation
+ * differs, so only the presentation lives in the components.
  *
  * What this hook deliberately does *not* own: where a result goes on activation
  * (each surface routes in its own idiom) and session restoration (the phone flow
@@ -78,8 +79,6 @@ export const GLOBAL_RECALL_MATCH_OPTIONS: {
   { value: "related", label: "Related only" },
 ];
 
-/** Below this the query is noise, and the server would reject it anyway. */
-const MIN_QUERY_LENGTH = 2;
 /** Long enough that typing a name is one request, short enough to feel live. */
 const DEBOUNCE_MS = 250;
 
@@ -94,6 +93,13 @@ export type GlobalRecallSearch = {
   restoreFilters: (saved: Partial<GlobalRecallFilters>) => void;
   /** Restricted matches need one named family to reveal, never "all records". */
   restrictedLocked: boolean;
+  /**
+   * Whether the current query is one recall will actually run. A surface needs
+   * this to tell "not a search yet" from "a search that found nothing" - both
+   * leave `response` null and nothing loading, and only one of them is an
+   * answer.
+   */
+  searchable: boolean;
   loading: boolean;
   failed: boolean;
   failureMessage: string | null;
@@ -110,11 +116,32 @@ export function useGlobalRecall({
   search: GlobalRecallHandler;
 }): GlobalRecallSearch {
   const [filters, setFilters] = useState<GlobalRecallFilters>(DEFAULT_GLOBAL_RECALL_FILTERS);
-  const { failed, failureMessage, loading, response } = useRecallRequest({
+  const {
+    failed,
+    failureMessage,
+    loading,
+    response: fetched,
+  } = useRecallRequest({
     filters,
     query,
     search,
   });
+
+  /**
+   * Un-checking "Reveal restricted matches" narrows a privacy boundary, and the
+   * replacement search is a debounce plus a round trip away. The server remains
+   * the gate - it decides whether restricted records are retrieved at all - but
+   * until its answer lands, the rows on screen are the ones the owner has just
+   * asked to stop seeing, so they are withheld here too rather than staying
+   * readable and selectable for the length of the request.
+   */
+  const response = useMemo(() => {
+    if (!fetched || filters.includeRestricted) return fetched;
+    const permitted = fetched.results.filter((result) => result.sensitivity !== "restricted");
+    return permitted.length === fetched.results.length
+      ? fetched
+      : { ...fetched, results: permitted };
+  }, [fetched, filters.includeRestricted]);
 
   const setFamily = useCallback((family: GlobalRecallFilter) => {
     setFilters((current) => ({
@@ -168,6 +195,7 @@ export function useGlobalRecall({
     response,
     restoreFilters,
     restrictedLocked: filters.family === "all",
+    searchable: isMeaningfulRecallQuery(query),
     setFamily,
     setIncludeArchived,
     setIncludeRestricted,
@@ -191,7 +219,10 @@ function useRecallRequest({
   const [failureMessage, setFailureMessage] = useState<string | null>(null);
   useEffect(() => {
     const meaningfulQuery = query.trim();
-    if (meaningfulQuery.length < MIN_QUERY_LENGTH) {
+    // The seam's own floor, not an approximation of it: a query it would reject
+    // is one we never send, so "not a search yet" can never surface as "your
+    // search failed".
+    if (!isMeaningfulRecallQuery(meaningfulQuery)) {
       setResponse(null);
       setFailed(false);
       setFailureMessage(null);

@@ -34,6 +34,9 @@ function RecallHarness({ search }: { search: Parameters<typeof useGlobalRecall>[
       <button onClick={() => recall.setIncludeRestricted(true)} type="button">
         Reveal restricted
       </button>
+      <button onClick={() => recall.setIncludeRestricted(false)} type="button">
+        Hide restricted
+      </button>
       <button onClick={() => recall.setMatchKind("exact")} type="button">
         Exact only
       </button>
@@ -52,6 +55,7 @@ function RecallHarness({ search }: { search: Parameters<typeof useGlobalRecall>[
           `match:${recall.filters.matchKind}`,
           `restricted:${recall.filters.includeRestricted}`,
           `locked:${recall.restrictedLocked}`,
+          `searchable:${recall.searchable}`,
           `loading:${recall.loading}`,
           `failed:${recall.failed}`,
           `exact:${recall.exact.length}`,
@@ -155,6 +159,65 @@ describe("useGlobalRecall", () => {
     expect(state()).toContain("related:2");
   });
 
+  /**
+   * The floor is the seam's own predicate, not an approximation of it. Two
+   * characters of punctuation, or two initials with a space between them, clear a
+   * length check and are still rejected by the input schema - so gating on length
+   * meant sending a query we knew would fail and then telling the owner their
+   * search had failed.
+   */
+  it("holds a query the seam would reject rather than sending it", async () => {
+    const user = userEvent.setup();
+    const search = vi.fn().mockResolvedValue(success(emptyResponse("ok")));
+    render(<RecallHarness search={search} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Query" }), "!!");
+    await waitFor(() => expect(state()).toContain("searchable:false"));
+    expect(search).not.toHaveBeenCalled();
+    expect(state()).toContain("failed:false");
+
+    await user.clear(screen.getByRole("textbox", { name: "Query" }));
+    await user.type(screen.getByRole("textbox", { name: "Query" }), "A B");
+    await waitFor(() => expect(state()).toContain("searchable:false"));
+    expect(search).not.toHaveBeenCalled();
+
+    await user.clear(screen.getByRole("textbox", { name: "Query" }));
+    await user.type(screen.getByRole("textbox", { name: "Query" }), "ok");
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+    expect(state()).toContain("searchable:true");
+  });
+
+  /**
+   * Un-gating restricted matches narrows a privacy boundary, and the replacement
+   * search is a debounce plus a round trip away. The server is still the gate,
+   * but the rows already on screen are the ones the owner has just asked to stop
+   * seeing, so they go immediately rather than staying selectable until the next
+   * answer lands.
+   */
+  it("drops restricted matches the moment the owner un-reveals them", async () => {
+    const user = userEvent.setup();
+    const search = vi.fn().mockResolvedValue(
+      success({
+        query: "filter",
+        results: [
+          recallResult({ id: "open", matchKind: "exact" }),
+          recallResult({ id: "held", matchKind: "exact", sensitivity: "restricted" }),
+        ],
+        limitations: [],
+        hasMore: false,
+      }),
+    );
+    render(<RecallHarness search={search} />);
+
+    await user.click(screen.getByRole("button", { name: "Family people" }));
+    await user.click(screen.getByRole("button", { name: "Reveal restricted" }));
+    await user.type(screen.getByRole("textbox", { name: "Query" }), "filter");
+    await waitFor(() => expect(state()).toContain("exact:2"));
+
+    await user.click(screen.getByRole("button", { name: "Hide restricted" }));
+    expect(state()).toContain("exact:1");
+  });
+
   it("reports a failed search instead of showing a stale answer", async () => {
     const user = userEvent.setup();
     const search = vi.fn().mockRejectedValue(new Error("offline"));
@@ -166,7 +229,15 @@ describe("useGlobalRecall", () => {
   });
 });
 
-function recallResult({ id, matchKind }: { id: string; matchKind: "exact" | "related" }) {
+function recallResult({
+  id,
+  matchKind,
+  sensitivity = "normal",
+}: {
+  id: string;
+  matchKind: "exact" | "related";
+  sensitivity?: "normal" | "restricted";
+}) {
   return {
     family: "saved_item" as const,
     canonical: { kind: "saved_item" as const, id },
@@ -175,7 +246,7 @@ function recallResult({ id, matchKind }: { id: string; matchKind: "exact" | "rel
     lifecycle: "active",
     match: { kind: matchKind, reason: "Matched wording", excerpt: "filter" },
     trust: "saved_context" as const,
-    sensitivity: "normal" as const,
+    sensitivity,
     visibility: { choice: "only_me" as const, label: "Only me" },
     grounding: [{ kind: "saved_item" as const, id }],
     href: `/saved-items#saved-item-${id}`,

@@ -207,13 +207,22 @@ function SearchPaletteDialog({
   );
 
   const recallGroups = useMemo(() => groupResultsByFamily(recall.response), [recall.response]);
-  const showRecall = query.trim().length > 0;
+  // Recall belongs on screen once the query is one recall will run - not merely
+  // once something has been typed. A single character never reaches the seam, so
+  // treating it as a search in progress would let the empty state below present
+  // an unrun search as an answer of "nothing matched".
+  const showRecall = recall.searchable;
   const nothingToShow =
     matchingGroups.length === 0 &&
     recallGroups.length === 0 &&
     !recall.loading &&
     !recall.failed &&
     showRecall;
+  // Something typed, but not yet enough for recall to look, and no command
+  // answers it either. Saying so is the honest reading of an otherwise blank
+  // list - the alternative is a palette that looks broken between the first and
+  // second keystroke.
+  const belowSearchFloor = query.trim().length > 0 && !showRecall && matchingGroups.length === 0;
 
   return (
     <Dialog onOpenChange={(next) => (next ? onOpenChange(true) : close())} open={open}>
@@ -280,6 +289,14 @@ function SearchPaletteDialog({
                 description="Try different wording, or widen the filters below."
                 size="compact"
                 title="Nothing matched that search."
+              />
+            ) : null}
+            {belowSearchFloor ? (
+              <EmptyState
+                className="m-1"
+                description="Recall looks once there are a couple of letters to go on."
+                size="compact"
+                title="Keep typing to search."
               />
             ) : null}
             <RecallFootnotes response={recall.response} showRecall={showRecall} />

@@ -315,6 +315,27 @@ describe("SearchPalette", () => {
     expect(await screen.findByText("Nothing matched that search.")).toBeDefined();
   });
 
+  /**
+   * A search that never ran is not a search that found nothing. One character is
+   * below the seam's floor, so the palette has no answer to report - and calling
+   * that "nothing matched" would tell the owner their notebook is empty of
+   * something it was never asked about.
+   */
+  it("does not present an unrun search as an empty result", async () => {
+    const user = userEvent.setup();
+    const search = vi.fn();
+    renderPalette(search);
+    await openWithHotkey(user);
+
+    await user.type(screen.getByRole("combobox", { name: "Search and commands" }), "z");
+
+    expect(await screen.findByText("Keep typing to search.")).toBeDefined();
+    expect(screen.queryByText("Nothing matched that search.")).toBeNull();
+    // Nothing to narrow yet either, so the filter bar stays away.
+    expect(screen.queryByRole("checkbox", { name: "Reveal restricted matches" })).toBeNull();
+    expect(search).not.toHaveBeenCalled();
+  });
+
   it("reopens onto the command menu rather than the last search", async () => {
     const user = userEvent.setup();
     renderPalette();

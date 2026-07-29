@@ -57,13 +57,28 @@ export const globalRecallTrustSchema = z.enum([
 
 export const globalRecallMatchKindSchema = z.enum(["exact", "related"]);
 
+/**
+ * The floor a recall query has to clear: two consecutive letters or digits
+ * somewhere in it. Punctuation and single initials are not a search, and the
+ * seam rejects them.
+ *
+ * Exported rather than kept inside the refine because the surfaces that offer
+ * recall need to hold their input at the same floor. Gating on trimmed length
+ * alone is not the same test - `"!!"` and `"A B"` both clear two characters -
+ * so a client that guessed would send a query the schema is certain to reject
+ * and then report that rejection to the owner as a failed search.
+ */
+export function isMeaningfulRecallQuery(query: string): boolean {
+  return /[\p{L}\p{N}]{2,}/u.test(query.trim());
+}
+
 const globalRecallInputObjectSchema = z.object({
   query: z
     .string()
     .trim()
     .min(1)
     .max(400)
-    .refine((query) => /[\p{L}\p{N}]{2,}/u.test(query), "Enter a meaningful search term."),
+    .refine(isMeaningfulRecallQuery, "Enter a meaningful search term."),
   family: globalRecallFilterSchema.default("all"),
   includeArchived: z.boolean().default(false),
   includeRestricted: z.boolean().default(false),
