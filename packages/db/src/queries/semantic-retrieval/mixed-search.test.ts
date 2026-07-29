@@ -183,6 +183,59 @@ describe("semantic retrieval - mixed memory and source-record results", () => {
     ]);
   });
 
+  /**
+   * The source-record half of the same guarantee the memory suite pins: a touch that leaves
+   * the projected text alone must not evict the record from semantic retrieval. Writing an
+   * unrelated metadata key bumps `updatedAt` while People / Interaction type / Logged
+   * context all still project to the exact string that was embedded.
+   *
+   * Observed in the dev database before the fix: source records whose `updatedAt` had been
+   * bumped a few hundred milliseconds after their embedding was written - by the person
+   * linking that follows capture - were permanently unreachable through semantic recall.
+   */
+  it("keeps retrieving a source record whose sourceUpdatedAt trails its updatedAt", async () => {
+    const { store, createPerson, createSourceRecord, linkSourceRecord } = createHarness({
+      adapter: vectorAdapter,
+    });
+    const person = await createPerson("Mara Lin");
+    const sourceRecord = await createSourceRecord({
+      content: "Mara wrote down handmade kitchen gift ideas.",
+    });
+    await linkSourceRecord(sourceRecord.id, person.id);
+    await store.upsertRelationshipContextEmbedding({
+      ownerUserId: OWNER,
+      personId: person.id,
+      recordKind: "source_record",
+      recordId: sourceRecord.id,
+      embedding: vectorFor(sourceRecord.content),
+      embeddingModel: EMBEDDING_CONFIG.model,
+      embeddingVersion: EMBEDDING_CONFIG.version,
+      embeddingDimensions: 4,
+      // Unchanged: People / Interaction type / Logged context all still project to this.
+      embeddedText: projectSourceRecordEmbeddedText(sourceRecord, [
+        { id: person.id, displayName: person.displayName },
+      ]),
+      contentFingerprint: "manual-lagging-source-updated-at",
+      trustLevel: "logged_context",
+      sensitivity: "normal",
+      // A whole second behind, standing in for the real drift seen in the dev database:
+      // the person linking that follows capture bumps `updated_at` a few hundred
+      // milliseconds after the embedding row was written.
+      sourceUpdatedAt: new Date(sourceRecord.updatedAt.getTime() - 1000),
+    });
+    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+
+    const results = await queries.searchSemanticContext({
+      ownerUserId: OWNER,
+      query: "gift ideas",
+      limit: 5,
+      minimumSimilarity: 0,
+      directlyRequested: false,
+    });
+
+    expect(results.map((result) => result.recordId)).toEqual([sourceRecord.id]);
+  });
+
   it("fails open for incompatible, stale, and ineligible mixed embeddings", async () => {
     const {
       store,

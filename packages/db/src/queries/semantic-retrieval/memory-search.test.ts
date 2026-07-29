@@ -280,6 +280,56 @@ describe("semantic retrieval - approved memory results", () => {
     expect(results).toEqual([]);
   });
 
+  /**
+   * Staleness is content-addressed, not timestamp-addressed (ADR 0013). Nudging a memory's
+   * importance bumps its `updatedAt` past the embedding's `sourceUpdatedAt` without changing
+   * a word of what was embedded, so the vector still describes the memory exactly.
+   *
+   * This is a regression guard, not a hypothetical. A `sourceUpdatedAt === updatedAt` gate
+   * used to sit in both stores and it emptied the Related bucket of Global Recall: in
+   * Postgres the two columns are unequal by construction (microsecond `defaultNow()` versus
+   * a millisecond-truncated JS `Date`), and because `reuseOrEmbed` short-circuits on a
+   * matching content fingerprint, re-enqueueing the job never refreshed `sourceUpdatedAt`.
+   * Once a memory fell out it could never come back.
+   */
+  it("keeps retrieving a memory whose sourceUpdatedAt trails its updatedAt", async () => {
+    const { store, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
+    const memory = await createApprovedMemory({
+      content: "Mara prefers handmade cooking gifts.",
+    });
+    await store.upsertRelationshipContextEmbedding({
+      ownerUserId: OWNER,
+      personId: memory.personId,
+      recordKind: "memory",
+      recordId: memory.id,
+      embedding: vectorFor(memory.content),
+      embeddingModel: EMBEDDING_CONFIG.model,
+      embeddingVersion: EMBEDDING_CONFIG.version,
+      embeddingDimensions: 4,
+      // Unchanged: the vector still describes this memory word for word.
+      embeddedText: memory.content,
+      contentFingerprint: "manual-lagging-source-updated-at",
+      trustLevel: "confirmed_fact",
+      sensitivity: "normal",
+      // What Postgres actually stores. `memories.updated_at` is written by `defaultNow()`
+      // with microsecond precision; the driver truncates those microseconds when it hands
+      // the value to JS, so the timestamp written back here trails the record's own by a
+      // fraction of a millisecond - always, and for every row.
+      sourceUpdatedAt: new Date(memory.updatedAt.getTime() - 1),
+    });
+    const queries = createSemanticRetrievalQueries(store, vectorAdapter, EMBEDDING_CONFIG);
+
+    const results = await queries.searchSemanticContext({
+      ownerUserId: OWNER,
+      query: "gift ideas",
+      limit: 5,
+      minimumSimilarity: 0,
+      directlyRequested: false,
+    });
+
+    expect(results.map((result) => result.recordId)).toEqual([memory.id]);
+  });
+
   it("excludes restricted memory embeddings by default and returns them only when directly requested", async () => {
     const { store, createApprovedMemory } = createHarness({ adapter: vectorAdapter });
     const restricted = await createApprovedMemory({

@@ -19,6 +19,18 @@ const actionRetrievalMigration = readFileSync(
 );
 const drizzleStore = readFileSync(join(import.meta.dirname, "drizzle-store.ts"), "utf8");
 
+/**
+ * The store with every comment line removed - SQL `--`, TypeScript `//`, and JSDoc bodies.
+ *
+ * Assertions that a predicate is *absent* have to read the executable query, not the prose
+ * around it. The rationale comments in this file necessarily quote the predicates they
+ * explain, and a naive substring check would match those quotes and pass forever.
+ */
+const drizzleStoreSql = drizzleStore
+  .split("\n")
+  .filter((line) => !/^\s*(--|\/\/|\/\*|\*)/.test(line))
+  .join("\n");
+
 describe("semantic retrieval migration shape", () => {
   it("adds pgvector-backed relationship-context embedding storage", () => {
     expect(migration).toContain("CREATE EXTENSION IF NOT EXISTS vector");
@@ -69,6 +81,48 @@ describe("semantic retrieval migration shape", () => {
     expect(drizzleStore).toContain("filtered_person.id is not null");
     expect(drizzleStore).toContain("round(similarity::numeric, 4) desc");
     expect(drizzleStore).toContain("sr.sensitivity <> 'restricted'");
+  });
+
+  /**
+   * A deliberate tripwire against reintroducing a timestamp freshness gate.
+   *
+   * ADR 0013 puts staleness on `content_fingerprint`, and the embedded-text equality below
+   * enforces exactly that: it re-derives the projection from the live rows, so any edit that
+   * invalidates the vector already fails it. Comparing `source_updated_at` to the record's
+   * `updated_at` adds no signal and two failure modes. It cannot hold in Postgres, where
+   * `updated_at` carries `defaultNow()` microseconds and `source_updated_at` is written back
+   * from a millisecond-resolution JS `Date`; and because `reuseOrEmbed` short-circuits on a
+   * matching fingerprint, nothing ever rewrites `source_updated_at`, so a record touched
+   * after embedding is evicted permanently. It shipped once and silently emptied the memory
+   * and source-record halves of semantic recall - only General Actions, whose branch never
+   * had the gate, still returned. The in-memory store must stay in step: its freshness
+   * helpers compare projected text and sensitivity, never timestamps.
+   */
+  it("never gates semantic retrieval on embed-time timestamps", () => {
+    expect(drizzleStoreSql).not.toContain("e.source_updated_at =");
+    expect(drizzleStoreSql).toContain("e.embedded_text = regexp_replace(btrim(m.content)");
+    expect(drizzleStoreSql).toContain("e.embedded_text = concat_ws");
+  });
+
+  /**
+   * The companion tripwire to the one above, guarding the opposite mistake.
+   *
+   * The write side now acts twice on a sensitivity edit - `reuseOrEmbed` converges an
+   * embedding row's denormalized sensitivity, and a record edited to `restricted` has its
+   * rows deleted outright by the embed decision's skip path - which makes these equalities
+   * look like redundant bookkeeping. They are not, and they are asserted against the
+   * comment-stripped query so the prose explaining them cannot satisfy the check.
+   *
+   * Neither write-side mechanism is synchronous with the edit: embedding work is enqueued,
+   * so between the edit and the job there is a window in which a row still holds the
+   * sensitivity - and the full `embedded_text` - it was embedded with while `normal`.
+   * Dropping either equality would serve that text back on an ordinary search during that
+   * window, and would leave nothing behind the scrub if a future change ever let a row
+   * survive it.
+   */
+  it("gates retrieval on the live record's sensitivity, not just the embedding's", () => {
+    expect(drizzleStoreSql).toContain("e.sensitivity = m.sensitivity");
+    expect(drizzleStoreSql).toContain("e.sensitivity = sr.sensitivity");
   });
 
   it("extends the record-kind and trust-level enums and adds the action search vector", () => {
