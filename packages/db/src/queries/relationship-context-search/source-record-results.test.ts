@@ -1,5 +1,6 @@
 import type {
   HouseholdMembership,
+  Memory,
   Person,
   SourceRecord,
   SourceRecordPerson,
@@ -63,8 +64,31 @@ function link(overrides: Partial<SourceRecordPerson>): SourceRecordPerson {
   };
 }
 
+function memory(overrides: Partial<Memory>): Memory {
+  return {
+    id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    personId: maraId,
+    ownerUserId: "owner-1",
+    householdId: null,
+    sourceRecordId: sourceId,
+    memoryType: "context",
+    content: "Mara prefers morning backend reviews",
+    status: "approved",
+    importance: 3,
+    sensitivity: "normal",
+    confidence: "medium",
+    scope: "private",
+    approvedAt: now,
+    dismissedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
 function queries(seed: {
   people?: Person[];
+  memories?: Memory[];
   sourceRecords?: SourceRecord[];
   sourceRecordPeople?: SourceRecordPerson[];
   householdMemberships?: HouseholdMembership[];
@@ -309,6 +333,104 @@ describe("relationship-context search - source-record results", () => {
 
     expect(results.map((result) => result.recordId)).toEqual([sourceId]);
     expect(results[0]?.snippet.length).toBeLessThanOrEqual(160);
+  });
+
+  /**
+   * Explicit memory capture writes the memory's own provenance note, retaining the very
+   * sentence the owner confirmed, so the same fact used to answer a search twice: once as
+   * the confirmed memory, once as its receipt, word for word.
+   */
+  it("withholds a note that only repeats the admissible memory it grounds", async () => {
+    const search = queries({
+      people: [person({})],
+      memories: [memory({})],
+      sourceRecords: [sourceRecord({ content: "Mara prefers morning backend reviews" })],
+      sourceRecordPeople: [link({ role: "primary" })],
+    });
+
+    const results = await search.searchRelationshipContext({
+      ownerUserId: "owner-1",
+      query: "backend",
+      limit: 10,
+      directlyRequested: false,
+    });
+
+    expect(results.map((result) => result.recordKind)).toEqual(["memory"]);
+  });
+
+  it("keeps a note that says more than the memory it grounds", async () => {
+    const search = queries({
+      people: [person({})],
+      memories: [memory({})],
+      sourceRecords: [
+        sourceRecord({
+          content: "Mara prefers morning backend reviews, and is moving to Nashville in March.",
+        }),
+      ],
+      sourceRecordPeople: [link({ role: "primary" })],
+    });
+
+    const results = await search.searchRelationshipContext({
+      ownerUserId: "owner-1",
+      query: "backend",
+      limit: 10,
+      directlyRequested: false,
+    });
+
+    expect(results.map((result) => result.recordKind).sort()).toEqual(["memory", "source_record"]);
+  });
+
+  it("keeps the note when the memory repeating it is not admissible for this search", async () => {
+    const restricted = queries({
+      people: [person({})],
+      memories: [memory({ sensitivity: "restricted" })],
+      sourceRecords: [sourceRecord({ content: "Mara prefers morning backend reviews" })],
+      sourceRecordPeople: [link({ role: "primary" })],
+    });
+    const suggested = queries({
+      people: [person({})],
+      memories: [memory({ status: "suggested" })],
+      sourceRecords: [sourceRecord({ content: "Mara prefers morning backend reviews" })],
+      sourceRecordPeople: [link({ role: "primary" })],
+    });
+
+    // The restricted memory is gated out of this search, so nothing else states its fact.
+    await expect(
+      restricted.searchRelationshipContext({
+        ownerUserId: "owner-1",
+        query: "backend",
+        limit: 10,
+        directlyRequested: false,
+      }),
+    ).resolves.toEqual([expect.objectContaining({ recordKind: "source_record" })]);
+    // A note the owner never confirmed into a memory is still their only record of it.
+    await expect(
+      suggested.searchRelationshipContext({
+        ownerUserId: "owner-1",
+        query: "backend",
+        limit: 10,
+        directlyRequested: false,
+      }),
+    ).resolves.toEqual([expect.objectContaining({ recordKind: "source_record" })]);
+  });
+
+  it("keeps the note when only source records were asked for", async () => {
+    const search = queries({
+      people: [person({})],
+      memories: [memory({})],
+      sourceRecords: [sourceRecord({ content: "Mara prefers morning backend reviews" })],
+      sourceRecordPeople: [link({ role: "primary" })],
+    });
+
+    const results = await search.searchRelationshipContext({
+      ownerUserId: "owner-1",
+      query: "backend",
+      recordKinds: ["source_record"],
+      limit: 10,
+      directlyRequested: false,
+    });
+
+    expect(results.map((result) => result.recordId)).toEqual([sourceId]);
   });
 
   it("returns one owner-scoped source-record reference for multi-person links", async () => {

@@ -8,7 +8,7 @@ import {
 import { sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
-import type { RelationshipContextSearchStore } from "./types";
+import type { RelationshipContextSearchStore, SearchRelationshipContextQueryInput } from "./types";
 
 type SearchRow = {
   record_kind: ExactRecallRecordKind;
@@ -162,6 +162,7 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
           and ${input.personId ? sql`related_person.id = ${input.personId}` : sql`true`}
           and sr.status = 'active'
           and (${input.directlyRequested}::boolean or sr.sensitivity <> 'restricted')
+          and ${withoutProvenanceDuplicateSql(input)}
           and sr.search_vector @@ search_query.query
         union all
         select
@@ -243,6 +244,40 @@ export function createDrizzleRelationshipContextSearchStore(): RelationshipConte
 
 function kindFilter(kinds: ExactRecallRecordKind[] | undefined, kind: ExactRecallRecordKind) {
   return !kinds || kinds.includes(kind) ? sql`true` : sql`false`;
+}
+
+/**
+ * Explicit memory capture writes the memory's own provenance note: the source record it
+ * hangs from carries the very same sentence the owner confirmed (`memories/capture.ts`
+ * defaults the retained content to the memory content). Both rows are real, and both match
+ * the same words, so recall used to answer one fact twice - the confirmed memory and its
+ * receipt, verbatim, in adjacent rows.
+ *
+ * A note is withheld only when it adds nothing: an approved memory grounded in that record
+ * repeats its text and is itself admissible for this same search - visible under household
+ * scope, past the restricted-sensitivity gate, inside the person filter, and of a record
+ * kind the caller actually asked for. A note that says more than the memory it grounds
+ * still stands on its own, and a suppressed memory never takes its note down with it.
+ */
+function withoutProvenanceDuplicateSql(input: SearchRelationshipContextQueryInput) {
+  return sql`not exists (
+    select 1
+    from memories m
+    where
+      m.source_record_id = sr.id
+      and m.status = 'approved'
+      and ${kindFilter(input.recordKinds, "memory")}
+      and ${input.personId ? sql`m.person_id = ${input.personId}` : sql`true`}
+      and (${input.directlyRequested}::boolean or m.sensitivity <> 'restricted')
+      and ${visibleHouseholdRecordSql({
+        callerUserId: input.ownerUserId,
+        tableAlias: "m",
+        recordKind: "memory",
+      })}
+      and m.search_vector @@ search_query.query
+      and regexp_replace(btrim(m.content), '\\s+', ' ', 'g')
+        = regexp_replace(btrim(sr.content), '\\s+', ' ', 'g')
+  )`;
 }
 
 function toExactRecallResult(row: SearchRow): ExactRecallResult {
