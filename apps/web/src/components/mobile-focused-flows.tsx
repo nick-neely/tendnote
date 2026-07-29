@@ -12,15 +12,19 @@ import { destinationsInGroup } from "@/components/app-destinations";
 import { ArrowLeftIcon, SearchIcon } from "@/components/icons";
 import { type CaptureHandlers, MobileCaptureFlow } from "@/components/mobile-capture-flow";
 import { MobileFailureState } from "@/components/mobile-failure-state";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeSegmentedControl } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   type OwnerActionResult,
   ownerActionFailureMessage,
@@ -58,10 +62,10 @@ function FullScreenFlow({
         }}
         showCloseButton={false}
       >
-        <DialogHeader className="sr-only">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
+        {/* One heading per overlay: the visible bar title *is* the dialog's
+            accessible name, rather than a screen-reader-only copy of it sitting
+            above a second, identical <h2>. */}
+        <DialogDescription className="sr-only">{description}</DialogDescription>
         <header className="flex min-h-14 items-center gap-2 border-b px-3 pt-[env(safe-area-inset-top)]">
           <Button
             aria-label="Close"
@@ -72,7 +76,7 @@ function FullScreenFlow({
           >
             <ArrowLeftIcon aria-hidden />
           </Button>
-          <h2 className="font-semibold text-base">{title}</h2>
+          <DialogTitle className="font-semibold text-base">{title}</DialogTitle>
         </header>
         {children}
       </DialogContent>
@@ -401,6 +405,7 @@ function RecallSearchControls({
     if (value === "all") setIncludeRestricted(false);
   }
 
+  const restrictedLocked = family === "all";
   return (
     <>
       <label className="sr-only" htmlFor="mobile-global-search">
@@ -417,60 +422,86 @@ function RecallSearchControls({
           value={query}
         />
       </div>
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-        <label className="sr-only" htmlFor="global-recall-family">
-          Record type
-        </label>
-        <select
-          className="min-h-11 rounded-lg border bg-background px-3 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          id="global-recall-family"
-          onChange={(event) => selectFamily(event.target.value as GlobalRecallFilter)}
-          value={family}
-        >
-          <option value="all">All records</option>
-          <option value="people">People</option>
-          <option value="follow_ups">Follow-Ups</option>
-          <option value="actions">Actions</option>
-          <option value="assets">Assets</option>
-          <option value="saved_items">Saved Items</option>
-          <option value="calendar">Calendar</option>
-        </select>
-        <label className="sr-only" htmlFor="global-recall-match">
-          Match type
-        </label>
-        <select
-          className="min-h-11 rounded-lg border bg-background px-3 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          id="global-recall-match"
-          onChange={(event) => setMatchKind(event.target.value as GlobalRecallMatchKind | "all")}
-          value={matchKind}
-        >
-          <option value="all">Exact + Related</option>
-          <option value="exact">Exact only</option>
-          <option value="related">Related only</option>
-        </select>
-      </div>
-      <div className="flex min-h-11 flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-        <label className="flex min-h-11 items-center gap-2">
-          <input
-            checked={includeArchived}
-            className="rounded accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            onChange={(event) => setIncludeArchived(event.target.checked)}
-            type="checkbox"
-          />
-          Include archived
-        </label>
-        <label className="flex min-h-11 items-center gap-2">
-          <input
-            checked={includeRestricted}
-            className="rounded accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            disabled={family === "all"}
-            onChange={(event) => setIncludeRestricted(event.target.checked)}
-            type="checkbox"
-          />
-          {family === "all"
-            ? "Pick a record type to reveal restricted matches"
-            : "Reveal restricted matches"}
-        </label>
+      {/* The four narrowing controls read as one quiet panel under the field
+          rather than four loose controls scattered across the canvas: labelled
+          selects on top, the two switches beneath them, all inside one block. */}
+      <div className="mt-3 flex flex-col gap-3 rounded-xl border bg-panel p-3">
+        {/* `basis-36` is rem-based, so the pair sits side by side at normal text
+            and folds to one per row once the owner turns the type up - the point
+            where two columns start truncating their own values. */}
+        <div className="flex flex-wrap gap-3">
+          <div className="flex min-w-0 flex-1 basis-36 flex-col gap-1.5">
+            <Label htmlFor="global-recall-family">Record type</Label>
+            <Select
+              onValueChange={(value) => selectFamily(value as GlobalRecallFilter)}
+              value={family}
+            >
+              <SelectTrigger className="min-h-11 w-full bg-background" id="global-recall-family">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All records</SelectItem>
+                <SelectItem value="people">People</SelectItem>
+                <SelectItem value="follow_ups">Follow-Ups</SelectItem>
+                <SelectItem value="actions">Actions</SelectItem>
+                <SelectItem value="assets">Assets</SelectItem>
+                <SelectItem value="saved_items">Saved Items</SelectItem>
+                <SelectItem value="calendar">Calendar</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex min-w-0 flex-1 basis-36 flex-col gap-1.5">
+            <Label htmlFor="global-recall-match">Match</Label>
+            <Select
+              onValueChange={(value) => setMatchKind(value as GlobalRecallMatchKind | "all")}
+              value={matchKind}
+            >
+              <SelectTrigger className="min-h-11 w-full bg-background" id="global-recall-match">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Exact + Related</SelectItem>
+                <SelectItem value="exact">Exact only</SelectItem>
+                <SelectItem value="related">Related only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="flex flex-col">
+          <div className="flex min-h-11 items-center gap-3">
+            <Checkbox
+              checked={includeArchived}
+              id="global-recall-archived"
+              onCheckedChange={(checked) => setIncludeArchived(checked === true)}
+            />
+            <Label className="min-h-11 flex-1 font-normal" htmlFor="global-recall-archived">
+              Include archived
+            </Label>
+          </div>
+          <div className="flex min-h-11 items-center gap-3">
+            <Checkbox
+              aria-describedby={restrictedLocked ? "global-recall-restricted-hint" : undefined}
+              checked={includeRestricted}
+              disabled={restrictedLocked}
+              id="global-recall-restricted"
+              onCheckedChange={(checked) => setIncludeRestricted(checked === true)}
+            />
+            {/* The label stays the name of the control. What is standing in the
+                way belongs in helper text, not in the label - a label that
+                changes into an instruction reads as a broken control. */}
+            <Label className="min-h-11 flex-1 font-normal" htmlFor="global-recall-restricted">
+              Reveal restricted matches
+            </Label>
+          </div>
+          {restrictedLocked ? (
+            <p
+              className="pl-7 text-[length:var(--text-small)] text-muted-foreground"
+              id="global-recall-restricted-hint"
+            >
+              Pick a record type first.
+            </p>
+          ) : null}
+        </div>
       </div>
     </>
   );
@@ -514,8 +545,21 @@ function RecallSearchResults({
           {limitation.message}
         </p>
       ))}
+      {/* The surface below the filters used to be ~640px of nothing until the
+          second keystroke. It now says what is searchable, then what came back. */}
+      {!loading && !failed && !response ? (
+        <EmptyState
+          className="mt-4"
+          description="Type a name or a few words. Tendnote looks across your people, memories, follow-ups, and assets."
+          title="Search your notebook"
+        />
+      ) : null}
       {!loading && response && response.results.length === 0 ? (
-        <p className="py-4 text-muted-foreground text-sm">No matches.</p>
+        <EmptyState
+          className="mt-4"
+          description="Try different wording, or widen the filters above."
+          title="Nothing matched that search."
+        />
       ) : null}
       <RecallResultSection
         expanded={expanded}
@@ -573,7 +617,7 @@ export function RecallResultSection({
   if (results.length === 0) return null;
   return (
     <section aria-label={`${label} matches`}>
-      <h3 className="sticky top-0 border-b bg-background py-2 font-medium text-muted-foreground text-xs">
+      <h3 className="sticky top-0 border-b bg-background py-2 font-medium text-[length:var(--text-small)] text-muted-foreground">
         {label}
       </h3>
       <div className="divide-y">
@@ -593,7 +637,7 @@ export function RecallResultSection({
                   {result.supportingText}
                 </span>
               </Link>
-              <div className="mt-1 flex items-center gap-3 text-muted-foreground text-xs">
+              <div className="mt-1 flex items-center gap-3 text-[length:var(--text-small)] text-muted-foreground">
                 <span>{result.visibility?.label ?? result.trust.replaceAll("_", " ")}</span>
                 <button
                   aria-expanded={isExpanded}
@@ -651,7 +695,7 @@ export function EveFlow({ children, onClose }: { children?: ReactNode; onClose: 
   );
 }
 
-export function MenuFlow({ onClose }: { onClose: () => void }) {
+export function MenuFlow({ onClose, onNavigate }: { onClose: () => void; onNavigate: () => void }) {
   return (
     <FullScreenFlow description="Go to another part of Tendnote." onClose={onClose} title="Menu">
       <nav aria-label="Menu destinations" className="flex flex-col divide-y px-5 py-4">
@@ -662,6 +706,11 @@ export function MenuFlow({ onClose }: { onClose: () => void }) {
               className="flex min-h-14 items-center gap-3 text-base focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               href={item.route}
               key={item.id}
+              /* The destination renders under this overlay, so the overlay has
+                 to go on activation - otherwise the app reads as frozen while
+                 the page it hides has already changed. Same contract Search
+                 uses when a result row is opened. */
+              onClick={onNavigate}
             >
               <Icon aria-hidden className="size-5 text-muted-foreground" />
               {item.label}
@@ -669,9 +718,11 @@ export function MenuFlow({ onClose }: { onClose: () => void }) {
           );
         })}
       </nav>
-      <div className="mt-2 flex min-h-14 items-center justify-between gap-3 border-t px-5 py-3">
-        <span className="text-base">Appearance</span>
-        <ThemeToggle className="size-9" />
+      <div className="mt-2 flex flex-col gap-2 border-t px-5 py-4">
+        <p className="text-base" id="mobile-appearance-label">
+          Appearance
+        </p>
+        <ThemeSegmentedControl aria-labelledby="mobile-appearance-label" />
       </div>
     </FullScreenFlow>
   );

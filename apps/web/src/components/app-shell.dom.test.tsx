@@ -67,12 +67,36 @@ import { DesktopAppNavigationFallback } from "./desktop-app-navigation";
 import { MobileHomeReserve } from "./mobile-home-reserve";
 import { MobileTodayDestination } from "./mobile-today-destination";
 
+// Radix's Select measures and scrolls its content on open; jsdom implements
+// none of that, so stub the three APIs it reaches for.
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
+HTMLElement.prototype.scrollIntoView ??= vi.fn();
+HTMLElement.prototype.hasPointerCapture ??= vi.fn();
+HTMLElement.prototype.releasePointerCapture ??= vi.fn();
+
 beforeEach(() => {
   navigationState.pathname = "/";
   navigationState.searchParams = new URLSearchParams();
   navigationState.sessionOwnerUserId = "owner-1";
   sessionStorage.clear();
 });
+
+/** Opens a Search filter select and picks one of its options. */
+async function chooseFilter(
+  user: ReturnType<typeof userEvent.setup>,
+  filter: string,
+  option: string,
+) {
+  await user.click(screen.getByRole("combobox", { name: filter }));
+  await user.click(await screen.findByRole("option", { name: option }));
+}
 
 function mobileTodayDestination() {
   const view = {
@@ -362,7 +386,7 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await user.click(screen.getAllByRole("button", { name: "Why this result?" })[0] as HTMLElement);
     expect(screen.getByText(/Matched an exact Asset value/)).toBeDefined();
 
-    await user.selectOptions(screen.getByLabelText("Record type"), "assets");
+    await chooseFilter(user, "Record type", "Assets");
     await waitFor(() =>
       expect(searchHandler).toHaveBeenLastCalledWith(expect.objectContaining({ family: "assets" })),
     );
@@ -427,7 +451,9 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await waitFor(() => expect(searchHandler).toHaveBeenCalled());
     const resultLink = await screen.findByRole("link", { name: /Filter note/ });
     await waitFor(() => expect(document.activeElement).toBe(resultLink));
-    expect((screen.getByLabelText("Record type") as HTMLSelectElement).value).toBe("saved_items");
+    expect(screen.getByRole("combobox", { name: "Record type" }).textContent).toContain(
+      "Saved Items",
+    );
     expect(screen.getByText(/Matched wording: filter/)).toBeDefined();
 
     sessionStorage.removeItem(storageKey);
@@ -605,10 +631,8 @@ describe("AppShell Phase Seven mobile navigation", () => {
     );
     await user.click(screen.getByRole("button", { name: "Save capture" }));
     await user.click(await screen.findByRole("button", { name: "Change reminder schedule" }));
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Reminder alert time" }),
-      "relative:1440",
-    );
+    await user.click(screen.getByRole("combobox", { name: "Reminder alert time" }));
+    await user.click(await screen.findByRole("option", { name: "One day before at 9:00 AM" }));
     await user.click(screen.getByRole("button", { name: "Save schedule" }));
 
     await waitFor(() =>
@@ -870,7 +894,6 @@ describe("AppShell Phase Seven mobile navigation", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Capture" }));
-    await user.click(screen.getByRole("button", { name: "Dictated transcript" }));
     await user.type(
       screen.getByRole("textbox", { name: "What should Tendnote keep?" }),
       "Where can I buy this filter?",
@@ -884,7 +907,10 @@ describe("AppShell Phase Seven mobile navigation", () => {
     expect(screen.getByText("Only me")).toBeDefined();
     expect(submit).toHaveBeenCalledTimes(2);
     expect(submit.mock.calls[1]?.[0].interactionId).toBe(submit.mock.calls[0]?.[0].interactionId);
-    expect(submit.mock.calls[1]?.[0].inputMode).toBe("dictated");
+    // `inputMode` is no longer an owner-facing control; it still describes how
+    // the text arrived, and a typed draft rides along as "typed". The dictation
+    // path proving the "dictated" value lives in its own test below.
+    expect(submit.mock.calls[1]?.[0].inputMode).toBe("typed");
 
     await user.click(screen.getByRole("button", { name: "Change" }));
     const changeInput = screen.getByRole("textbox", { name: "Rewrite what Tendnote saved" });

@@ -1,0 +1,164 @@
+// @vitest-environment jsdom
+import { type ComponentProps, useState } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { render, screen, userEvent, waitFor, within } from "@/test/dom";
+import { ThemeProvider } from "./theme-provider";
+
+/**
+ * Phone overlay behavior that the shell-level suites cannot see: the Menu's
+ * navigation contract, the Appearance control, and what the Search surface says
+ * before it has anything to show.
+ */
+
+// Next's Link intercepts the click and routes client-side. jsdom has no
+// navigation at all, so this double keeps the interception and drops the route.
+vi.mock("next/link", () => ({
+  default: ({ children, href, onClick, ...props }: ComponentProps<"a">) => (
+    <a
+      href={href}
+      onClick={(event) => {
+        event.preventDefault();
+        onClick?.(event);
+      }}
+      {...props}
+    >
+      {children}
+    </a>
+  ),
+}));
+
+// Radix's Select measures and scrolls its content on open; jsdom implements
+// none of that.
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
+HTMLElement.prototype.scrollIntoView ??= vi.fn();
+HTMLElement.prototype.hasPointerCapture ??= vi.fn();
+HTMLElement.prototype.releasePointerCapture ??= vi.fn();
+
+import { MenuFlow, SearchFlow } from "./mobile-focused-flows";
+
+function renderMenu(onNavigate = vi.fn(), onClose = vi.fn()) {
+  render(
+    <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange enableSystem>
+      <MenuFlow onClose={onClose} onNavigate={onNavigate} />
+    </ThemeProvider>,
+  );
+  return { onClose, onNavigate };
+}
+
+function SearchHarness({ search }: { search: ComponentProps<typeof SearchFlow>["search"] }) {
+  const [query, setQuery] = useState("");
+  return (
+    <SearchFlow
+      onClose={vi.fn()}
+      onNavigate={vi.fn()}
+      ownerUserId="owner-1"
+      query={query}
+      search={search}
+      setQuery={setQuery}
+    />
+  );
+}
+
+describe("MenuFlow", () => {
+  /**
+   * The regression this locks down: the destination renders *under* the still
+   * open overlay, so a menu that does not close on activation looks like a
+   * frozen app.
+   */
+  it("closes the overlay as every destination is activated", async () => {
+    const user = userEvent.setup();
+    const { onNavigate } = renderMenu();
+
+    const destinations = within(
+      screen.getByRole("navigation", { name: "Menu destinations" }),
+    ).getAllByRole("link");
+    expect(destinations.map((link) => link.textContent)).toEqual([
+      "People",
+      "Actions",
+      "Assets",
+      "Saved Items",
+      "Account",
+    ]);
+
+    for (const destination of destinations) {
+      await user.click(destination);
+    }
+    expect(onNavigate).toHaveBeenCalledTimes(destinations.length);
+  });
+
+  it("shows the current appearance inline and switches theme without opening a menu", async () => {
+    const user = userEvent.setup();
+    window.localStorage.clear();
+    document.documentElement.classList.remove("light", "dark");
+    renderMenu();
+
+    const appearance = screen.getByRole("radiogroup", { name: "Appearance" });
+    const options = within(appearance).getAllByRole("radio");
+    expect(options.map((option) => option.textContent)).toEqual(["Light", "Dark", "System"]);
+    // The current value is readable without touching anything.
+    expect(
+      within(appearance).getByRole("radio", { name: "System" }).getAttribute("aria-checked"),
+    ).toBe("true");
+
+    await user.click(within(appearance).getByRole("radio", { name: "Dark" }));
+
+    await waitFor(() => expect(document.documentElement.classList.contains("dark")).toBe(true));
+    expect(window.localStorage.getItem("theme")).toBe("dark");
+    expect(
+      within(appearance).getByRole("radio", { name: "Dark" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    window.localStorage.clear();
+    document.documentElement.classList.remove("light", "dark");
+  });
+
+  it("gives the overlay exactly one heading", () => {
+    renderMenu();
+
+    const headings = within(screen.getByRole("dialog", { name: "Menu" })).getAllByRole("heading");
+    expect(headings.map((heading) => heading.textContent)).toEqual(["Menu"]);
+  });
+});
+
+describe("SearchFlow", () => {
+  it("teaches what is searchable instead of leaving the surface blank", async () => {
+    render(<SearchHarness search={vi.fn()} />);
+
+    expect(await screen.findByText("Search your notebook")).toBeDefined();
+    expect(screen.getByText(/people, memories, follow-ups, and assets/)).toBeDefined();
+  });
+
+  it("keeps the restricted label a label and moves the reason into helper text", async () => {
+    const user = userEvent.setup();
+    render(<SearchHarness search={vi.fn()} />);
+
+    const restricted = await screen.findByRole("checkbox", { name: "Reveal restricted matches" });
+    expect((restricted as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Pick a record type first.")).toBeDefined();
+
+    await user.click(screen.getByRole("combobox", { name: "Record type" }));
+    await user.click(await screen.findByRole("option", { name: "People" }));
+
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("checkbox", { name: "Reveal restricted matches" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    expect(screen.queryByText("Pick a record type first.")).toBeNull();
+  });
+
+  it("names both filters and the archived switch", async () => {
+    render(<SearchHarness search={vi.fn()} />);
+
+    expect(await screen.findByRole("combobox", { name: "Record type" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Match" })).toBeDefined();
+    expect(screen.getByRole("checkbox", { name: "Include archived" })).toBeDefined();
+  });
+});

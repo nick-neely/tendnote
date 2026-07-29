@@ -6,6 +6,8 @@ import { useRef, useState } from "react";
 import { appDestination } from "@/components/app-destinations";
 import { CornerDownLeftIcon } from "@/components/icons";
 import { TodayShortlist, type TodayShortlistHandlers } from "@/components/today-shortlist";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { requestLocalEveDraftSubmission, useLocalComposerDraft } from "@/lib/local-composer-draft";
 
 const EveFlow = dynamic(
@@ -148,8 +150,11 @@ function TodayEveComposer({
         <label className="sr-only" htmlFor="today-eve-composer">
           Ask Eve anything
         </label>
-        <textarea
-          className="min-h-12 w-full resize-none bg-transparent text-base outline-none placeholder:text-muted-foreground"
+        {/* The bordered form is the field; the control inside it stays chromeless
+            so there is one box, not a box inside a box. It grows with the
+            question up to a cap, then scrolls. */}
+        <Textarea
+          className="max-h-40 min-h-12 resize-none rounded-none border-0 bg-transparent p-0 focus-visible:ring-0 md:text-base dark:bg-transparent"
           id="today-eve-composer"
           onChange={(event) => draft.setValue(event.target.value)}
           placeholder="Ask Eve anything…"
@@ -159,15 +164,16 @@ function TodayEveComposer({
           <span className="text-muted-foreground text-xs">
             Questions stay conversational unless you ask to save.
           </span>
-          <button
+          <Button
             aria-label={draft.value.trim() ? "Send to Eve" : "Open Eve"}
-            className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="size-11"
             data-mobile-flow-trigger="eve"
             ref={submitButton}
+            size="icon"
             type="submit"
           >
             <CornerDownLeftIcon aria-hidden className="size-4" />
-          </button>
+          </Button>
         </span>
       </form>
     </div>

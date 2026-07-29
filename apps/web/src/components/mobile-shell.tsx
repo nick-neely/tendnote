@@ -208,7 +208,7 @@ function MobileFocusedFlow({
     case "capture":
       return <CaptureFlow handlers={captureHandlers} onClose={onClose} ownerUserId={ownerUserId} />;
     case "menu":
-      return <MenuFlow onClose={onClose} />;
+      return <MenuFlow onClose={onClose} onNavigate={onNavigate} />;
     default:
       return null;
   }
