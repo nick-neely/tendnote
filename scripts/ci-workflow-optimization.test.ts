@@ -60,13 +60,21 @@ describe("CI workflow optimization contract", () => {
     const fastPackageFilter = pullRequest.match(
       /fast_packages:\n([\s\S]*?)\n            browser:/,
     )?.[1];
+    const modeScript = pullRequest.match(
+      /- name: Select verification tier[\s\S]*?echo "full_requested=.*?\n/,
+    )?.[0];
 
     expect(fastPackageFilter).toBeDefined();
+    expect(modeScript).toBeDefined();
     expect(fastPackageFilter).not.toContain(".github/workflows");
     expect(fastPackageFilter).not.toContain("scripts/");
     expect(pullRequest).toContain("fast_packages: ${{ steps.mode.outputs.fast_packages }}");
     expect(pullRequest).toContain("database: ${{ steps.mode.outputs.database }}");
     expect(pullRequest).toContain("github.event.before");
+    expect(modeScript).toContain("'tsconfig*.json'");
+    expect(pullRequest).toContain(
+      "Workflow-only pushes intentionally skip Database; full-ci evaluates the complete PR.",
+    );
     expect(pullRequest).toMatch(
       /name: Checkout pushed commit range\s+if: github\.event\.action == 'synchronize'/,
     );

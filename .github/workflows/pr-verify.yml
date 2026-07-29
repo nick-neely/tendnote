@@ -143,11 +143,12 @@ jobs:
 
           if [[ "${EVENT_ACTION}" == "synchronize" ]]; then
             fast_packages=false
+            # Workflow-only pushes intentionally skip Database; full-ci evaluates the complete PR.
             database=false
 
             if ! git diff --quiet "${BEFORE_SHA}" "${AFTER_SHA}" -- \
               apps packages biome.json package.json pnpm-lock.yaml \
-              pnpm-workspace.yaml turbo.json tsconfig.json
+              pnpm-workspace.yaml turbo.json 'tsconfig*.json'
             then
               fast_packages=true
             fi
