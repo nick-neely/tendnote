@@ -4,22 +4,43 @@ on:
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
 
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: pr-verify-${{ github.event.pull_request.number }}
+  group: >-
+    ${{
+      (github.event.action == 'labeled' &&
+      github.event.label.name == 'full-ci') &&
+      format('pr-full-ci-{0}', github.event.pull_request.number) ||
+      github.event.action == 'labeled' &&
+      format('pr-verify-{0}-ignored-{1}', github.event.pull_request.number, github.run_id) ||
+      format('pr-verify-{0}', github.event.pull_request.number)
+    }}
   cancel-in-progress: true
 
 jobs:
   changes:
     name: Detect changes
+    if: >-
+      github.event.action != 'labeled' ||
+      github.event.label.name == 'full-ci'
     runs-on: ubuntu-latest
     outputs:
       verify: ${{ steps.filter.outputs.verify }}
-      database: ${{ steps.filter.outputs.database }}
+      tests: ${{ steps.filter.outputs.tests }}
+      fast_packages: ${{ steps.mode.outputs.fast_packages }}
+      browser: ${{ steps.filter.outputs.browser }}
+      instant: ${{ steps.filter.outputs.instant }}
+      database: ${{ steps.mode.outputs.database }}
+      full_requested: ${{ steps.mode.outputs.full_requested }}
     steps:
       - name: Check paths
         id: filter
@@ -41,6 +62,56 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
               - 'tsconfig*.json'
+            tests:
+              - '.github/workflows/**'
+              - '.fallowrc*'
+              - 'apps/**/*.{ts,tsx,js,mjs,cjs}'
+              - 'apps/*/package.json'
+              - 'packages/**/*.{ts,tsx,js,mjs,cjs}'
+              - 'packages/*/package.json'
+              - 'scripts/**/*.{ts,tsx,js,mjs,cjs}'
+              - 'biome.json'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - 'tsconfig*.json'
+            fast_packages:
+              - 'apps/**/*.{ts,tsx,js,mjs,cjs}'
+              - 'apps/*/package.json'
+              - 'packages/**/*.{ts,tsx,js,mjs,cjs}'
+              - 'packages/*/package.json'
+              - 'biome.json'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - 'tsconfig*.json'
+            browser:
+              - '.github/workflows/**'
+              - 'apps/web/src/**'
+              - 'apps/web/vitest.browser.config.ts'
+              - 'apps/web/package.json'
+              - 'packages/*/src/**'
+              - 'packages/*/package.json'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+            instant:
+              - '.github/workflows/**'
+              - 'apps/web/src/**'
+              - 'apps/web/tests/instant/**'
+              - 'apps/web/public/**'
+              - 'apps/web/next.config.ts'
+              - 'apps/web/playwright.config.ts'
+              - 'apps/web/package.json'
+              - 'apps/agent/agent/**'
+              - 'apps/agent/package.json'
+              - 'packages/*/src/**'
+              - 'packages/*/package.json'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
             database:
               - '.github/workflows/**'
               - 'packages/db/src/schema/**'
@@ -50,19 +121,73 @@ jobs:
               - 'package.json'
               - 'pnpm-lock.yaml'
 
+      - name: Checkout pushed commit range
+        if: github.event.action == 'synchronize'
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Select verification tier
+        id: mode
+        env:
+          AFTER_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_ACTION: ${{ github.event.action }}
+          FILTER_DATABASE: ${{ steps.filter.outputs.database }}
+          FILTER_FAST_PACKAGES: ${{ steps.filter.outputs.fast_packages }}
+          FULL_CI_EVENT: ${{ github.event.action == 'labeled' && github.event.label.name == 'full-ci' }}
+        run: |
+          fast_packages="${FILTER_FAST_PACKAGES}"
+          database="${FILTER_DATABASE}"
+
+          if [[ "${EVENT_ACTION}" == "synchronize" ]]; then
+            fast_packages=false
+            # Workflow-only pushes intentionally skip Database; full-ci evaluates the complete PR.
+            database=false
+
+            if ! git diff --quiet "${BEFORE_SHA}" "${AFTER_SHA}" -- \
+              apps packages biome.json package.json pnpm-lock.yaml \
+              pnpm-workspace.yaml turbo.json 'tsconfig*.json'
+            then
+              fast_packages=true
+            fi
+
+            if ! git diff --quiet "${BEFORE_SHA}" "${AFTER_SHA}" -- \
+              packages/db/src/schema packages/db/migrations \
+              packages/db/drizzle.config.ts packages/db/package.json \
+              package.json pnpm-lock.yaml
+            then
+              database=true
+            fi
+          fi
+
+          echo "fast_packages=${fast_packages}" >>"${GITHUB_OUTPUT}"
+          echo "database=${database}" >>"${GITHUB_OUTPUT}"
+          echo "full_requested=${FULL_CI_EVENT}" >>"${GITHUB_OUTPUT}"
+
   verify:
     needs: changes
     if: needs.changes.outputs.verify == 'true'
     uses: ./.github/workflows/reusable-verify.yml
     with:
+      run_tests: ${{ needs.changes.outputs.tests == 'true' }}
+      run_fast_packages: ${{ needs.changes.outputs.fast_packages == 'true' }}
+      run_browser: ${{ needs.changes.outputs.browser == 'true' }}
+      run_instant: ${{ needs.changes.outputs.instant == 'true' }}
       run_database: ${{ needs.changes.outputs.database == 'true' }}
+      run_full: ${{ needs.changes.outputs.full_requested == 'true' }}
 
-  gate:
-    name: Verify
+  verify_gate:
+    name: ${{ github.event.action == 'labeled' && github.event.label.name != 'full-ci' && 'Ignore unrelated label' || 'Verify' }}
     needs:
       - changes
       - verify
-    if: always()
+    if: >-
+      always() &&
+      !cancelled() &&
+      (github.event.action != 'labeled' ||
+      github.event.label.name == 'full-ci')
     runs-on: ubuntu-latest
     steps:
       - name: Check PR verification
@@ -82,3 +207,35 @@ jobs:
           fi
 
           echo "PR verification gate passed."
+
+  qualification_gate:
+    name: ${{ github.event.action == 'labeled' && github.event.label.name == 'full-ci' && 'Full CI qualification' || github.event.action != 'labeled' && needs.changes.outputs.verify != 'true' && 'Full CI qualification' || 'Qualification pending' }}
+    needs:
+      - changes
+      - verify
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.changes.result == 'success' &&
+      (github.event.action != 'labeled' ||
+      github.event.label.name == 'full-ci')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check full CI qualification
+        run: |
+          if [[ "${{ needs.changes.outputs.full_requested }}" == "true" ]]; then
+            if [[ "${{ needs.changes.outputs.verify }}" == "true" && "${{ needs.verify.result }}" != "success" ]]; then
+              echo "Full CI was requested but did not succeed. Result: ${{ needs.verify.result }}"
+              exit 1
+            fi
+
+            echo "Full CI qualification passed."
+            exit 0
+          fi
+
+          if [[ "${{ needs.changes.outputs.verify }}" != "true" ]]; then
+            echo "Documentation-only changes do not require full CI."
+            exit 0
+          fi
+
+          echo "Full CI qualification has not been requested for this commit."

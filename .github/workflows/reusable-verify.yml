@@ -3,11 +3,36 @@ name: Reusable verify
 on:
   workflow_call:
     inputs:
+      run_tests:
+        description: Run the unit-test lane
+        required: false
+        type: boolean
+        default: true
+      run_fast_packages:
+        description: Add affected package tests to the fast workflow-contract lane
+        required: false
+        type: boolean
+        default: false
+      run_browser:
+        description: Run the focused real-browser component contracts
+        required: false
+        type: boolean
+        default: true
+      run_instant:
+        description: Run the production-build Instant Interaction matrix
+        required: false
+        type: boolean
+        default: true
       run_database:
         description: Run migration drift and clean replay checks
         required: false
         type: boolean
         default: true
+      run_full:
+        description: Replace fast tests with coverage-backed Fallow and browser qualification
+        required: false
+        type: boolean
+        default: false
       full_browser_matrix:
         description: >-
           Run the full upgrade-and-promotion browser matrix (adds reduced Firefox
@@ -104,8 +129,40 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+  fast_tests:
+    name: Fast affected tests
+    if: ${{ inputs.run_tests && !inputs.run_full }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run workflow contracts
+        run: pnpm exec vitest run scripts/*.test.ts
+
+      - name: Run affected package tests
+        if: ${{ inputs.run_fast_packages }}
+        run: pnpm turbo test --affected
+
   test_fallow:
     name: Test and Fallow
+    if: ${{ (inputs.run_tests || inputs.run_browser) && inputs.run_full }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -129,28 +186,31 @@ jobs:
 
       - name: Cache Playwright browsers
         id: playwright-cache
+        if: ${{ inputs.run_browser }}
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install Chromium and system dependencies
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        if: ${{ inputs.run_browser && steps.playwright-cache.outputs.cache-hit != 'true' }}
         run: pnpm --filter @tendnote/web exec playwright install --with-deps chromium
 
       - name: Install Chromium system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        if: ${{ inputs.run_browser && steps.playwright-cache.outputs.cache-hit == 'true' }}
         run: pnpm --filter @tendnote/web exec playwright install-deps chromium
 
-      # This is the canonical CI test pass. Fallow uses its Istanbul map for
+      # This is the canonical CI test pass. Fallow uses the merged V8 map for
       # exact per-function CRAP scores, so running a second non-coverage test
       # job would repeat the same suites without adding another behavior gate.
       # Workspaces stay serial within this two-core runner; concurrent Vitest
       # processes can destabilize async DOM tests under coverage.
       - name: Run tests with coverage
+        if: ${{ inputs.run_tests }}
         run: pnpm coverage:ci
 
       - name: Confirm exact CRAP scoring
+        if: ${{ inputs.run_tests }}
         run: pnpm fallow:coverage:check
 
       # Without an explicit base Fallow resolves one from the branch's own
@@ -158,6 +218,7 @@ jobs:
       # reports almost nothing and the gate passes while blind. `fetch-depth: 0`
       # above is what makes `origin/main` resolvable here.
       - name: Run Fallow audit
+        if: ${{ inputs.run_tests }}
         env:
           FALLOW_AUDIT_BASE: origin/main
         run: pnpm fallow:ci
@@ -165,14 +226,16 @@ jobs:
       # A four-contract Chromium suite closes the layout-engine gap that jsdom cannot:
       # phone-width reflow/overflow, lifecycle hit areas, and real scroll/focus/pulse.
       - name: Run real-browser contracts
+        if: ${{ inputs.run_browser }}
         run: pnpm test:browser
 
   # The Instant Interaction contract (#310, ADR 0210). A separate job rather than
   # more steps in Test and Fallow: it must run *alongside* the existing critical
   # path so protecting navigation does not lengthen every pull request, and the
-  # aggregate Verify wall time has to stay under nine minutes.
+  # aggregate full-qualification wall time has to stay under nine minutes.
   instant_matrix:
     name: Instant matrix
+    if: ${{ inputs.run_full && inputs.run_instant }}
     runs-on: ubuntu-latest
     # The rollout criterion is a wall-time one. Without this a hung `next start`
     # would sit on GitHub's six-hour default instead of failing the gate.
@@ -226,19 +289,32 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Cache Playwright browsers
-        id: playwright-cache
+      - name: Cache Chromium
+        id: playwright-cache-chromium
+        if: ${{ !inputs.full_browser_matrix }}
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ inputs.full_browser_matrix && 'all' || 'chromium' }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Cache promotion browsers
+        id: playwright-cache-all
+        if: ${{ inputs.full_browser_matrix }}
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-all-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        if: >-
+          (!inputs.full_browser_matrix && steps.playwright-cache-chromium.outputs.cache-hit != 'true') ||
+          (inputs.full_browser_matrix && steps.playwright-cache-all.outputs.cache-hit != 'true')
         run: pnpm --filter @tendnote/web exec playwright install --with-deps ${{ inputs.full_browser_matrix && 'chromium firefox webkit' || 'chromium' }}
 
       - name: Install browser system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        if: >-
+          (!inputs.full_browser_matrix && steps.playwright-cache-chromium.outputs.cache-hit == 'true') ||
+          (inputs.full_browser_matrix && steps.playwright-cache-all.outputs.cache-hit == 'true')
         run: pnpm --filter @tendnote/web exec playwright install-deps ${{ inputs.full_browser_matrix && 'chromium firefox webkit' || 'chromium' }}
 
       - name: Run the routine Chromium matrix
@@ -284,32 +360,3 @@ jobs:
           name: instant-matrix-traces
           path: apps/web/.instant/test-results
           retention-days: 7
-
-  verify:
-    name: Verify
-    runs-on: ubuntu-latest
-    if: always()
-    needs:
-      - database
-      - quality
-      - test_fallow
-      - instant_matrix
-    steps:
-      - name: Check verification results
-        run: |
-          if [[ "${{ needs.quality.result }}" != "success" || "${{ needs.test_fallow.result }}" != "success" ]]; then
-            echo "Quality or test-and-Fallow verification did not succeed."
-            exit 1
-          fi
-
-          if [[ "${{ needs.instant_matrix.result }}" != "success" ]]; then
-            echo "The Instant Interaction matrix did not succeed. Result: ${{ needs.instant_matrix.result }}"
-            exit 1
-          fi
-
-          if [[ "${{ inputs.run_database }}" == "true" && "${{ needs.database.result }}" != "success" ]]; then
-            echo "Database verification was required but did not succeed. Result: ${{ needs.database.result }}"
-            exit 1
-          fi
-
-          echo "Verification passed."

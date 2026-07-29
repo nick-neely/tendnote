@@ -48,6 +48,7 @@ jobs:
     uses: ./.github/workflows/reusable-verify.yml
     with:
       run_database: true
+      run_full: true
       full_browser_matrix: true
 
   gate:

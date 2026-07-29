@@ -306,7 +306,8 @@ drift:
   framework upgrade and production promotion.
 
 The browser job (`instant_matrix`) runs in parallel with `Quality` and
-`Test and Fallow` rather than extending either, and `Verify` fails when it fails.
+`Test and Fallow` rather than extending either, and `Full CI qualification` fails
+when it fails.
 
 ### One Playwright worker on CI
 

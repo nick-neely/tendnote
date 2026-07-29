@@ -31,7 +31,7 @@ const report = JSON.parse(await readFile(healthPath, "utf8"));
 const exactFindings = report.findings.filter((finding) => finding.coverage_source === "istanbul");
 // Proof that real coverage reached the CRAP math: a covered function must score below
 // `c^2 + c`, the value CRAP assigns when coverage is 0. Reference-based estimates cannot
-// land under that bound, so any hit here means the Istanbul map was genuinely applied.
+// land under that bound, so any hit here means the exact coverage map was genuinely applied.
 //
 // Deliberately keyed on "covered at all" rather than a high-coverage witness: the repo is
 // not required to keep a *complex* function well covered, and demanding one made this canary
@@ -50,7 +50,7 @@ const uncoveredRisk = exactFindings.find(
 
 if (!coveredRelief || !uncoveredRisk) {
   throw new Error(
-    "Expected Istanbul coverage to reduce a covered function's CRAP score and preserve an uncovered complex function above the gate",
+    "Expected exact coverage to reduce a covered function's CRAP score and preserve an uncovered complex function above the gate",
   );
 }
 

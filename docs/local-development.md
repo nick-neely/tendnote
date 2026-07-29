@@ -147,7 +147,7 @@ pnpm format         # formatter writes only
 
 ### Fallow
 
-`pnpm verify` does **not** run Fallow, but CI does — so a clean local `verify` can still fail the PR gate. CI runs `pnpm coverage:ci` (Istanbul coverage, which Fallow consumes), then `pnpm fallow:coverage:check`, then `pnpm fallow:ci`. To see what that gate sees before pushing:
+`pnpm verify` does **not** run Fallow, but full CI does — so a clean local `verify` can still fail the PR gate. Full CI runs `pnpm coverage:ci` (V8 coverage, which Fallow consumes), then `pnpm fallow:coverage:check`, then `pnpm fallow:ci`. To see what that gate sees before pushing:
 
 ```bash
 pnpm fallow             # full audit
@@ -160,12 +160,17 @@ To reproduce the CI gate exactly, run `pnpm coverage:ci && pnpm fallow:coverage:
 
 ## CI workflows
 
-- `.github/workflows/pr-verify.yml` is the pull request wrapper.
-- `.github/workflows/reusable-verify.yml` runs three jobs in parallel and ends with an aggregate `Verify` job. Vercel owns the deployable production build.
+- `.github/workflows/pr-verify.yml` publishes the stable, inexpensive `Verify` check when a PR opens, reopens, or receives a new commit. Applying `full-ci` runs the expensive tier once and publishes a separate `Full CI qualification` check for that exact commit. Converting an already-qualified draft to ready does not start another workflow. A later commit keeps `Verify` current but has no full qualification, so remove and reapply `full-ci` when the final SHA is ready. Documentation-only changes receive the qualification check automatically without running the reusable verification lanes.
+- `.github/workflows/reusable-verify.yml` runs the selected lanes in parallel. Vercel owns the deployable production build.
   - **Quality** — `pnpm lint`, `pnpm typecheck`.
-  - **Test and Fallow** — `pnpm coverage:ci`, `pnpm fallow:coverage:check`, `pnpm fallow:ci`.
+  - **Fast tests** — affected package tests for iterative draft pushes.
+  - **Test and Fallow** (full tier) — `pnpm coverage:ci`, `pnpm fallow:coverage:check`, `pnpm fallow:ci`.
+  - **Browser contract** (when web paths change) — Chromium contract tests.
+  - **Instant browser matrix** (full tier, when Instant paths change) — routine Chromium coverage plus the promotion browser matrix.
   - **Database** (only when database paths change) — `pnpm db:check` for drift, then `pnpm db:migrate` against a pgvector service container.
+- `.github/workflows/playwright-cache.yml` primes the shared Chromium cache from `main` whenever the lockfile changes.
 - `.github/workflows/eve-evals.yml` runs the deterministic Eve evals; it is `workflow_dispatch` only, so it never gates a PR.
-- The `main` ruleset requires the stable PR `Verify` check and Vercel deployment before merge. After merge, `.github/workflows/production-migrations.yml` waits only for a deployable staged production build, applies Drizzle migrations when database paths changed, and expects `PRODUCTION_DATABASE_DIRECT_URL` in the production GitHub environment. It always ends with the stable `Production Release Gate` job, which Vercel Deployment Checks should require before production domain aliasing. Documentation-only changes skip the staged deployment and migration lanes.
+- The `main` ruleset requires `Verify`, the exact-SHA `Full CI qualification`, and Vercel deployment before merge. After merge, Vercel sends `.github/workflows/production-migrations.yml` a `vercel.deployment.ready` repository dispatch for the staged production build. The workflow validates the project, environment, branch, and deployed SHA, then idempotently applies any pending Drizzle migrations using a database-only dependency install. Running the migration ledger on every ready deployment avoids missing schema work if Vercel coalesces multiple `main` builds. It reports the stable `Production Release Gate` commit status back to Vercel and expects `PRODUCTION_DATABASE_DIRECT_URL` in the production GitHub environment.
+- Configure the Vercel project to send repository dispatch events and require `Production Release Gate` as a Deployment Check. Vercel promotes the staged build only after that status succeeds; GitHub Actions no longer polls Vercel or invokes `vercel promote`.
 
 Production schema changes must stay compatible with the currently live Vercel deployment. Use expand/contract releases for destructive changes: add the new shape first, switch application reads/writes after both old and new deployments can tolerate it, and remove old columns or tables only in a later release.
