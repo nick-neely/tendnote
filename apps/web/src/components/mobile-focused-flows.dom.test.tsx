@@ -66,6 +66,43 @@ function SearchHarness({ search }: { search: ComponentProps<typeof SearchFlow>["
   );
 }
 
+function personResult() {
+  return {
+    family: "person" as const,
+    canonical: { kind: "person" as const, id: "person-jordan" },
+    label: "Jordan Rivera",
+    supportingText: "Friend from the climbing gym",
+    lifecycle: "active",
+    match: { kind: "exact" as const, reason: "Matched a name", excerpt: "Jordan" },
+    trust: "identity_reference" as const,
+    sensitivity: "normal" as const,
+    visibility: null,
+    grounding: [{ kind: "person" as const, id: "person-jordan" }],
+    href: "/people/person-jordan",
+    parent: null,
+    details: { displayName: "Jordan Rivera" },
+  };
+}
+
+function memoryResult({ id = "memory-1", text = "Prefers morning coffee chats" } = {}) {
+  return {
+    family: "relationship_context" as const,
+    canonical: { kind: "memory" as const, id },
+    // The shared normalizer heads a memory with the person it is about.
+    label: "Jordan Rivera",
+    supportingText: text,
+    lifecycle: "active",
+    match: { kind: "exact" as const, reason: "Matched wording", excerpt: text },
+    trust: "confirmed_fact" as const,
+    sensitivity: "normal" as const,
+    visibility: { choice: "only_me" as const, label: "Only me" },
+    grounding: [{ kind: "memory" as const, id }],
+    href: `/people/person-jordan#memory-${id}`,
+    parent: { kind: "person" as const, id: "person-jordan" },
+    details: { contextKind: "memory" as const, personDisplayName: "Jordan Rivera" },
+  };
+}
+
 describe("MenuFlow", () => {
   /**
    * The regression this locks down: the destination renders *under* the still
@@ -160,5 +197,42 @@ describe("SearchFlow", () => {
     expect(await screen.findByRole("combobox", { name: "Record type" })).toBeDefined();
     expect(screen.getByRole("combobox", { name: "Match" })).toBeDefined();
     expect(screen.getByRole("checkbox", { name: "Include archived" })).toBeDefined();
+  });
+
+  /**
+   * That the phone flow is wired to the shared row rule (`recallResultLines`,
+   * whose own suite states it for every family), seen through the DOM the owner
+   * reads: recall labels a memory with the person it is about, so this list
+   * showed "Jordan Rivera" three times over - the person, and each memory about
+   * them - with nothing to tell the rows apart.
+   */
+  it("leads a memory row with what was remembered, not with the person's name again", async () => {
+    const user = userEvent.setup();
+    const search = vi.fn().mockResolvedValue({
+      ok: true,
+      view: {
+        query: "jordan",
+        results: [
+          personResult(),
+          memoryResult({ id: "memory-1", text: "Prefers morning coffee chats" }),
+          memoryResult({ id: "memory-2", text: "Moving to Denver in the spring" }),
+        ],
+        limitations: [],
+        hasMore: false,
+      },
+    });
+    render(<SearchHarness search={search} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Search Tendnote" }), "jordan");
+
+    const exact = within(await screen.findByRole("region", { name: "Exact matches" }));
+    const rows = exact.getAllByRole("link");
+    expect(rows.map((row) => row.firstElementChild?.textContent)).toEqual([
+      "Jordan Rivera",
+      "Prefers morning coffee chats",
+      "Moving to Denver in the spring",
+    ]);
+    // The person is still on each memory row, as the context line under it.
+    expect(within(rows[1] as HTMLElement).getByText("Jordan Rivera")).toBeDefined();
   });
 });

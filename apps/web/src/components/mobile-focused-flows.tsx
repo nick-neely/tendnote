@@ -2,7 +2,6 @@
 
 import type {
   GlobalRecallFilter,
-  GlobalRecallInput,
   GlobalRecallMatchKind,
   GlobalRecallResponse,
 } from "@tendnote/domain/global-recall";
@@ -25,18 +24,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { recallResultLines } from "@/lib/recall-result-lines";
 import {
-  type OwnerActionResult,
-  ownerActionFailureMessage,
-  unwrapOwnerActionResult,
-} from "@/lib/owner-action-result";
+  type GlobalRecallFilters,
+  type GlobalRecallHandler,
+  useGlobalRecall,
+} from "@/lib/use-global-recall";
 
 export type FocusedFlow = "search" | "capture" | "menu";
 
 export type { CaptureHandlers } from "@/components/mobile-capture-flow";
-export type GlobalRecallHandler = (
-  input: GlobalRecallInput,
-) => Promise<OwnerActionResult<GlobalRecallResponse>>;
+export type { GlobalRecallHandler };
 
 function FullScreenFlow({
   children,
@@ -103,30 +101,18 @@ export function SearchFlow({
   const resultsRef = useRef<HTMLDivElement>(null);
   const restoredScrollRef = useRef<number | null>(null);
   const restoredFocusRef = useRef<string | null>(null);
-  const [family, setFamily] = useState<GlobalRecallFilter>("all");
-  const [matchKind, setMatchKind] = useState<GlobalRecallMatchKind | "all">("all");
-  const [includeArchived, setIncludeArchived] = useState(false);
-  const [includeRestricted, setIncludeRestricted] = useState(false);
   const [expanded, setExpanded] = useState<string[]>([]);
   const storageKey = `tendnote:global-recall:${ownerUserId}`;
+  const recall = useGlobalRecall({ query, search });
+  const { failed, failureMessage, loading, response } = recall;
+  const { family, includeArchived, includeRestricted, matchKind } = recall.filters;
   useRestoreRecallState({
+    restoreFilters: recall.restoreFilters,
     restoredFocusRef,
     restoredScrollRef,
     setExpanded,
-    setFamily,
-    setIncludeArchived,
-    setIncludeRestricted,
-    setMatchKind,
     setQuery,
     storageKey,
-  });
-  const { failed, failureMessage, loading, response } = useRecallRequest({
-    family,
-    includeArchived,
-    includeRestricted,
-    matchKind,
-    query,
-    search,
   });
   useRestoreRecallPosition({
     response,
@@ -170,7 +156,7 @@ export function SearchFlow({
     );
   }
 
-  const { exact, related } = partitionRecallResults(response);
+  const { exact, related } = recall;
   const navigateToResult = (key: string) => {
     rememberState(key);
     onNavigate();
@@ -193,10 +179,10 @@ export function SearchFlow({
           inputRef={inputRef}
           matchKind={matchKind}
           query={query}
-          setFamily={setFamily}
-          setIncludeArchived={setIncludeArchived}
-          setIncludeRestricted={setIncludeRestricted}
-          setMatchKind={setMatchKind}
+          setFamily={recall.setFamily}
+          setIncludeArchived={recall.setIncludeArchived}
+          setIncludeRestricted={recall.setIncludeRestricted}
+          setMatchKind={recall.setMatchKind}
           setQuery={setQuery}
         />
         <RecallSearchResults
@@ -218,12 +204,8 @@ export function SearchFlow({
   );
 }
 
-type StoredRecallState = {
+type StoredRecallState = Partial<GlobalRecallFilters> & {
   query?: string;
-  family?: GlobalRecallFilter;
-  matchKind?: GlobalRecallMatchKind | "all";
-  includeArchived?: boolean;
-  includeRestricted?: boolean;
   expanded?: string[];
   focusedKey?: string;
   restoreFocus?: boolean;
@@ -233,108 +215,27 @@ type StoredRecallState = {
 function useRestoreRecallState(input: {
   storageKey: string;
   setQuery: (value: string) => void;
-  setFamily: (value: GlobalRecallFilter) => void;
-  setMatchKind: (value: GlobalRecallMatchKind | "all") => void;
-  setIncludeArchived: (value: boolean) => void;
-  setIncludeRestricted: (value: boolean) => void;
+  restoreFilters: (saved: Partial<GlobalRecallFilters>) => void;
   setExpanded: (value: string[]) => void;
   restoredScrollRef: RefObject<number | null>;
   restoredFocusRef: RefObject<string | null>;
 }) {
-  const {
-    restoredFocusRef,
-    restoredScrollRef,
-    setExpanded,
-    setFamily,
-    setIncludeArchived,
-    setIncludeRestricted,
-    setMatchKind,
-    setQuery,
-    storageKey,
-  } = input;
+  const { restoreFilters, restoredFocusRef, restoredScrollRef, setExpanded, setQuery, storageKey } =
+    input;
   useEffect(() => {
     const raw = sessionStorage.getItem(storageKey);
     if (!raw) return;
     try {
       const saved = JSON.parse(raw) as StoredRecallState;
       if (saved.query) setQuery(saved.query);
-      if (saved.family) setFamily(saved.family);
-      if (saved.matchKind) setMatchKind(saved.matchKind);
-      setIncludeArchived(saved.includeArchived ?? false);
-      setIncludeRestricted(saved.family !== "all" && (saved.includeRestricted ?? false));
+      restoreFilters(saved);
       setExpanded(saved.expanded ?? []);
       restoredScrollRef.current = saved.scrollTop ?? 0;
       restoredFocusRef.current = saved.restoreFocus ? (saved.focusedKey ?? null) : null;
     } catch {
       sessionStorage.removeItem(storageKey);
     }
-  }, [
-    restoredFocusRef,
-    restoredScrollRef,
-    setExpanded,
-    setFamily,
-    setIncludeArchived,
-    setIncludeRestricted,
-    setMatchKind,
-    setQuery,
-    storageKey,
-  ]);
-}
-
-function useRecallRequest(input: {
-  family: GlobalRecallFilter;
-  includeArchived: boolean;
-  includeRestricted: boolean;
-  matchKind: GlobalRecallMatchKind | "all";
-  query: string;
-  search: GlobalRecallHandler;
-}) {
-  const { family, includeArchived, includeRestricted, matchKind, query, search } = input;
-  const [response, setResponse] = useState<GlobalRecallResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [failureMessage, setFailureMessage] = useState<string | null>(null);
-  useEffect(() => {
-    const meaningfulQuery = query.trim();
-    if (meaningfulQuery.length < 2) {
-      setResponse(null);
-      setFailed(false);
-      setFailureMessage(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setFailed(false);
-    setFailureMessage(null);
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      try {
-        const next = unwrapOwnerActionResult(
-          await search({
-            query: meaningfulQuery,
-            family,
-            includeArchived,
-            includeRestricted,
-            ...(matchKind === "all" ? {} : { matchKinds: [matchKind] }),
-          }),
-        );
-        if (!controller.signal.aborted) setResponse(next);
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          setFailed(true);
-          setFailureMessage(ownerActionFailureMessage(error));
-          setResponse(null);
-        }
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    }, 250);
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }, [family, includeArchived, includeRestricted, matchKind, query, search]);
-  return { failed, failureMessage, loading, response };
+  }, [restoreFilters, restoredFocusRef, restoredScrollRef, setExpanded, setQuery, storageKey]);
 }
 
 function useRestoreRecallPosition(input: {
@@ -367,14 +268,6 @@ function clearStoredFocus(storageKey: string) {
   sessionStorage.setItem(storageKey, JSON.stringify({ ...saved, restoreFocus: false }));
 }
 
-function partitionRecallResults(response: GlobalRecallResponse | null) {
-  const results = response?.results ?? [];
-  return {
-    exact: results.filter((result) => result.match.kind === "exact"),
-    related: results.filter((result) => result.match.kind === "related"),
-  };
-}
-
 function RecallSearchControls({
   family,
   includeArchived,
@@ -400,11 +293,8 @@ function RecallSearchControls({
   setMatchKind: (value: GlobalRecallMatchKind | "all") => void;
   setQuery: (value: string) => void;
 }) {
-  function selectFamily(value: GlobalRecallFilter) {
-    setFamily(value);
-    if (value === "all") setIncludeRestricted(false);
-  }
-
+  // The "restricted needs one named family" gate lives in `useGlobalRecall`, so
+  // `setFamily` already re-locks the checkbox when the owner widens back to all.
   const restrictedLocked = family === "all";
   return (
     <>
@@ -433,7 +323,7 @@ function RecallSearchControls({
           <div className="flex min-w-0 flex-1 basis-36 flex-col gap-1.5">
             <Label htmlFor="global-recall-family">Record type</Label>
             <Select
-              onValueChange={(value) => selectFamily(value as GlobalRecallFilter)}
+              onValueChange={(value) => setFamily(value as GlobalRecallFilter)}
               value={family}
             >
               <SelectTrigger className="min-h-11 w-full bg-background" id="global-recall-family">
@@ -624,6 +514,10 @@ export function RecallResultSection({
         {results.map((result) => {
           const key = `${result.canonical.kind}:${result.canonical.id}`;
           const isExpanded = expanded.includes(key);
+          // Both recall surfaces read the same presentation rule, so a memory row
+          // leads with what was remembered here exactly as it does in the desktop
+          // palette rather than repeating the person's name from the row above.
+          const { primary, secondary } = recallResultLines(result);
           return (
             <article className="py-3" key={key}>
               <Link
@@ -632,10 +526,12 @@ export function RecallResultSection({
                 id={resultElementId(key)}
                 onClick={() => onNavigate(key)}
               >
-                <span className="block font-medium text-sm">{result.label}</span>
-                <span className="mt-1 line-clamp-2 block text-muted-foreground text-sm">
-                  {result.supportingText}
-                </span>
+                <span className="block font-medium text-sm">{primary}</span>
+                {secondary ? (
+                  <span className="mt-1 line-clamp-2 block text-muted-foreground text-sm">
+                    {secondary}
+                  </span>
+                ) : null}
               </Link>
               <div className="mt-1 flex items-center gap-3 text-[length:var(--text-small)] text-muted-foreground">
                 <span>{result.visibility?.label ?? result.trust.replaceAll("_", " ")}</span>
