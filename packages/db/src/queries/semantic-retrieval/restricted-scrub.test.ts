@@ -239,24 +239,24 @@ describe("restricted records are scrubbed from the embedding index", () => {
  */
 describe("the Drizzle scrub deletes by record, not by model", () => {
   const drizzleStore = readFileSync(join(import.meta.dirname, "drizzle-store.ts"), "utf8");
-  const deleteMethod =
+  const deleteHelper =
     drizzleStore
-      .split("async deleteRelationshipContextEmbeddingsForRecord(input) {")[1]
-      ?.split("\n    },")[0] ?? "";
+      .split("async function deleteRecordEmbeddings(")[1]
+      ?.split("\n}\n\nexport function createDrizzleEmbeddingStore")[0] ?? "";
 
   it("scopes the delete to the owner and the record", () => {
-    expect(deleteMethod).toContain("delete(relationshipContextEmbeddings)");
-    expect(deleteMethod).toContain(
+    expect(deleteHelper).toContain("delete(relationshipContextEmbeddings)");
+    expect(deleteHelper).toContain(
       "eq(relationshipContextEmbeddings.ownerUserId, input.ownerUserId)",
     );
-    expect(deleteMethod).toContain(
+    expect(deleteHelper).toContain(
       "eq(relationshipContextEmbeddings.recordKind, input.recordKind)",
     );
-    expect(deleteMethod).toContain("eq(relationshipContextEmbeddings.recordId, input.recordId)");
+    expect(deleteHelper).toContain("eq(relationshipContextEmbeddings.recordId, input.recordId)");
   });
 
   it("never narrows the delete to one embedding model or version", () => {
-    expect(deleteMethod).not.toContain("embeddingModel");
-    expect(deleteMethod).not.toContain("embeddingVersion");
+    expect(deleteHelper).not.toContain("embeddingModel");
+    expect(deleteHelper).not.toContain("embeddingVersion");
   });
 });

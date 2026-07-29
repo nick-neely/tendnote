@@ -6,6 +6,9 @@ const EXTRACTION_BACKFILL_LIMIT = 5;
 const EMBEDDING_BACKFILL_LIMIT = 5;
 const ACTION_EXTRACTION_BACKFILL_LIMIT = 5;
 
+// Route segment config must remain a statically analyzable literal for Next.js.
+export const maxDuration = 300;
+
 function isAuthorized(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {

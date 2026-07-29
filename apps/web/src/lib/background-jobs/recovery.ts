@@ -4,11 +4,13 @@ import {
   createDrizzleBackgroundJobDeliveryStore,
 } from "@tendnote/db/queries/background-job-deliveries";
 import { BACKGROUND_JOB_FAMILIES } from "@tendnote/db/queries/background-jobs";
+import { recoverStaleSemanticEmbeddingJobs } from "@tendnote/db/queries/semantic-retrieval";
 import { classifyBackgroundJobFailure } from "./failure-observability";
 import {
   type BackgroundJobQueueLogger,
   type BackgroundJobQueueSendAdapter,
   createVercelBackgroundJobQueueAdapter,
+  EMBEDDING_JOB_LEASE_DURATION_MS,
   publishBackgroundJobDelivery,
 } from "./queue-runtime";
 
@@ -37,10 +39,14 @@ export type ProcessorBackfillResult = {
   failed: number;
 };
 
+export type EmbeddingBackfillResult = ProcessorBackfillResult & {
+  recovered: number;
+};
+
 export type BackgroundJobRecoveryRunResult = {
   deliveries: DeliveryRecoveryResult;
   extraction: ProcessorBackfillResult;
-  embedding: ProcessorBackfillResult;
+  embedding: EmbeddingBackfillResult;
   actionExtraction: ProcessorBackfillResult;
 };
 
@@ -140,6 +146,8 @@ type ProcessorBackfillInput = {
   logger?: BackgroundJobQueueLogger;
 };
 
+type RecoverStaleEmbeddingJobs = typeof recoverStaleSemanticEmbeddingJobs;
+
 /**
  * Bounded queue-less backfill for one job family, defaulting the claim-next/process seam
  * from the registry so each family's wrapper is a one-line binding rather than a copy of
@@ -168,10 +176,26 @@ export function runExtractionBackfill(
   return runFamilyBackfill("extraction", input);
 }
 
-export function runEmbeddingBackfill(
-  input: ProcessorBackfillInput,
-): Promise<ProcessorBackfillResult> {
-  return runFamilyBackfill("embedding", input);
+export async function runEmbeddingBackfill(
+  input: ProcessorBackfillInput & { recoverStaleJobs?: RecoverStaleEmbeddingJobs },
+): Promise<EmbeddingBackfillResult> {
+  const recoverStaleJobs = input.recoverStaleJobs ?? recoverStaleSemanticEmbeddingJobs;
+  const recovery = await recoverStaleJobs({
+    now: input.now,
+    limit: input.limit,
+    leaseDurationMs: EMBEDDING_JOB_LEASE_DURATION_MS,
+  });
+
+  for (const job of recovery.jobs) {
+    input.logger?.info?.("background_job_recovery.embedding_job_recovered", {
+      jobId: job.id,
+    });
+  }
+
+  return {
+    recovered: recovery.jobs.length,
+    ...(await runFamilyBackfill("embedding", input)),
+  };
 }
 
 function runActionExtractionBackfill(

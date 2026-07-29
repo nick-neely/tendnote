@@ -475,7 +475,7 @@ arbitrary update against whatever `DATABASE_URL` points at; it is scoped to one
 record rather than reseeding, because the matrix is fully parallel and a reseed
 would reach into a record another live worker is mid-mutation on.
 
-### Open: the local default worker count stalls a surface at admission
+### Resolved: local parallel workers no longer starve admission reveal (#334)
 
 Not #331, and recorded here because it was reproduced while verifying it. At the
 local default worker count (`workers` is only pinned to 1 under `CI`), the
@@ -494,13 +494,49 @@ The reproduction narrows it to concurrency alone rather than to any one spec:
 | `desktop-navigation` only | default (3) | 1 of 3 runs failed |
 | Whole matrix | 1 | 3 of 3 runs passed, 19/19 |
 
-So it is not the teardown added above and not the mutation scenario: three
-headless Chromiums and the measured `next start` on one workstation are enough.
-It is the same shape ADR 0210's `workers: 1` already answers on CI, which is why
-the gate does not see it, and every measurement in this record was taken at one
-worker for the same reason. Worth its own issue: an admission stream that holds
-for 54 s under load is a product question, not a harness one, and pinning the
-local worker count would hide it rather than answer it.
+So it is not the teardown added above and not the mutation scenario. A minimized
+three-route hard-load matrix reproduced the stall at six workers while the
+document completed in 339 ms, `/api/auth/get-session` completed in 146 ms, and
+all 43 subresources completed within 516 ms. The initial HTML contained both the
+admitted shell and its `data-admitted` completion segment. React had received
+the owner-neutral frame but still held it under its streamed-boundary
+`display: none !important` while the access fallback remained visible.
+
+The missing event was the reveal of a redundant outer streamed boundary.
+`app/loading.tsx` implicitly wrapped the entire route tree in an access-check
+boundary even though `(admitted)/layout.tsx` already owns the request-bound
+admission boundary and the same truthful fallback. The response completed both
+the outer route segment and the inner admission marker, but React's inline
+runtime deliberately applies the outer replacement from `requestAnimationFrame`.
+Under parallel render load that second reveal could remain staged, hiding the
+already-complete admitted layout.
+
+The root loading file is gone, so admitted routes now have one access boundary
+instead of two. The five public auth routes share an equivalent boundary through
+the URL-transparent `(public)` route group. A production build proves those
+public routes remain valid while the admitted frame no longer inherits their
+boundary.
+
+This classifies #334 as an application-layer boundary-composition defect
+reproducible against one production Next process under concurrent clients, not
+as mutation teardown, slow admission, or a Playwright scheduling artifact. A
+multi-instance deployed topology was not measured, so this evidence does not
+claim how often the defect occurred in production; removing the duplicate
+boundary fixes the unsafe composition in either topology.
+
+The trace also exposed a readiness mistake: `arriveAdmitted()` treated
+`[data-admitted]` being attached as admission completion, even though React
+first attaches that marker inside its hidden stream staging container. The
+fixture now waits for `.admitted-layout-content` to become visible and the
+access fallback to disappear before it starts a measured interaction. This
+readiness change does not bypass admission, pin workers, or relax a budget.
+
+The minimized regression asserts that Today, People, and Actions each reveal
+their admitted primary navigation within five seconds under independent
+parallel hard loads. Before the boundary change, 1 of 18 cases stalled there;
+afterward, 60 of 60 passed at six workers with no Chromium scheduling overrides.
+The original desktop-navigation reproduction is retained as the broader
+route-level check.
 
 ## Finding: Review has no reusable shell to commit from
 

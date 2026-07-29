@@ -92,6 +92,15 @@ export type ReopenEmbeddingJobInput = {
   runAfter: Date;
 };
 
+export type RecoverStaleEmbeddingJobsInput = {
+  now: Date;
+  staleBefore: Date;
+  limit: number;
+};
+
+export const STALE_EMBEDDING_JOB_RECOVERY_MESSAGE =
+  "Recovered after the embedding claim lease expired.";
+
 /** The statuses a finished pass can reach; `running` and `pending` are not verdicts. */
 export type SettledEmbeddingJobStatus = Extract<
   EmbeddingJobStatus,
@@ -107,10 +116,23 @@ export type SettleEmbeddingJobInput = {
   jobId: string;
   status: SettledEmbeddingJobStatus;
   now: Date;
+  /** The claim generation this verdict belongs to; stale workers may not settle a replacement. */
+  expectedClaimedAt: Date | null;
   lastError?: string | null;
   runAfter?: Date;
   claimedAt?: Date | null;
   completedAt?: Date | null;
+};
+
+export type SettleEmbeddingJobResult = {
+  job: EmbeddingJob;
+  settled: boolean;
+};
+
+/** Identifies the exact running pass that is allowed to mutate embedding data. */
+export type EmbeddingClaimFence = {
+  jobId: string;
+  expectedClaimedAt: Date | null;
 };
 
 export type EmbeddingJobLifecycleStore = {
@@ -119,6 +141,12 @@ export type EmbeddingJobLifecycleStore = {
   getEmbeddingJob: (jobId: string) => Promise<EmbeddingJob | null>;
   claimEmbeddingJob: (input: { jobId: string; now: Date }) => Promise<EmbeddingJob | null>;
   claimNextEmbeddingJob: (input: { now: Date }) => Promise<EmbeddingJob | null>;
+  /**
+   * Reopens a bounded oldest-first batch of `running` jobs whose claim lease expired.
+   * Selection and reset are one store operation so concurrent recovery passes cannot
+   * recover the same row.
+   */
+  recoverStaleEmbeddingJobs: (input: RecoverStaleEmbeddingJobsInput) => Promise<EmbeddingJob[]>;
   updateEmbeddingJob: (input: UpdateEmbeddingJobInput) => Promise<EmbeddingJob>;
   /**
    * Applies a repeat enqueue to a job that already exists, in one statement, and returns
@@ -149,7 +177,7 @@ export type EmbeddingJobLifecycleStore = {
    * durable: an enqueue either marks the row before it settles, and is honored here, or
    * finds a job that is no longer `running` and reopens it outright.
    */
-  settleEmbeddingJob: (input: SettleEmbeddingJobInput) => Promise<EmbeddingJob>;
+  settleEmbeddingJob: (input: SettleEmbeddingJobInput) => Promise<SettleEmbeddingJobResult>;
 };
 
 export type EmbeddingStore = MemoryReviewStore &
@@ -188,6 +216,14 @@ export type EmbeddingStore = MemoryReviewStore &
       embedding: CreateRelationshipContextEmbeddingInput,
     ) => Promise<RelationshipContextEmbedding>;
     /**
+     * Processor-only write seam. The claim check and embedding upsert are atomic, so an
+     * expired pass cannot overwrite data produced by the replacement that reclaimed it.
+     */
+    upsertRelationshipContextEmbeddingForClaim: (input: {
+      claim: EmbeddingClaimFence;
+      embedding: CreateRelationshipContextEmbeddingInput;
+    }) => Promise<RelationshipContextEmbedding | null>;
+    /**
      * Converges the columns a row denormalizes from its source record - person linkage,
      * trust register, sensitivity - leaving the vector, the embedded text, and the content
      * fingerprint alone. `reuseOrEmbed` calls this on a fingerprint match, the one case the
@@ -202,6 +238,14 @@ export type EmbeddingStore = MemoryReviewStore &
       trustLevel: SemanticTrustLevel;
       sensitivity: Sensitivity;
     }) => Promise<RelationshipContextEmbedding>;
+    refreshRelationshipContextEmbeddingMetadataForClaim: (input: {
+      claim: EmbeddingClaimFence;
+      ownerUserId: string;
+      embeddingId: string;
+      personId: string | null;
+      trustLevel: SemanticTrustLevel;
+      sensitivity: Sensitivity;
+    }) => Promise<RelationshipContextEmbedding | null>;
     findRelationshipContextEmbedding: (input: {
       ownerUserId: string;
       recordKind: SemanticRecordKind;
@@ -225,6 +269,12 @@ export type EmbeddingStore = MemoryReviewStore &
       recordKind: SemanticRecordKind;
       recordId: string;
     }) => Promise<number>;
+    deleteRelationshipContextEmbeddingsForRecordForClaim: (input: {
+      claim: EmbeddingClaimFence;
+      ownerUserId: string;
+      recordKind: SemanticRecordKind;
+      recordId: string;
+    }) => Promise<{ deleted: number } | null>;
     searchSemanticContext: (
       input: SearchSemanticContextQueryInput & {
         queryEmbedding: number[];

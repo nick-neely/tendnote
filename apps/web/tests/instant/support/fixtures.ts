@@ -211,6 +211,11 @@ export { expect } from "@playwright/test";
 export async function arriveAdmitted(page: Page, path: string) {
   await page.goto(path);
   await expect(page.locator("[data-admitted]")).toBeAttached({ timeout: 30_000 });
+  // React first inserts the marker into its hidden stream staging container.
+  // Attached therefore means "the server answered", not "the owner can see the
+  // frame"; do not measure until the streamed swap actually lands.
+  await expect(page.locator(".admitted-layout-content")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Checking access…")).toBeHidden();
   await settleSourceSurface(page);
 }
 

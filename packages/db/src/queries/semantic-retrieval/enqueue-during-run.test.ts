@@ -158,15 +158,17 @@ describe("an enqueue that lands while its embedding job is running", () => {
       jobId: job.id,
       status: "completed",
       now: new Date(),
+      expectedClaimedAt: null,
       completedAt: new Date(),
       lastError: null,
     });
 
     // The late verdict is dropped whole: the job is still the queued rerun, not a
     // completed one, and it carries none of the settling the duplicate tried to write.
-    expect(superseded.status).toBe("pending");
-    expect(superseded.completedAt).toBeNull();
-    expect(superseded.claimedAt).toBeNull();
+    expect(superseded.settled).toBe(false);
+    expect(superseded.job.status).toBe("pending");
+    expect(superseded.job.completedAt).toBeNull();
+    expect(superseded.job.claimedAt).toBeNull();
 
     const rerun = await harness.processor.processEmbeddingJob({ jobId: job.id });
 
@@ -436,6 +438,7 @@ describe("the Drizzle store decides both handoffs inside one statement", () => {
         jobId: "job-1",
         status: "completed",
         now: new Date(),
+        expectedClaimedAt: new Date(),
         completedAt: new Date(),
         lastError: null,
       }),
@@ -451,6 +454,7 @@ describe("the Drizzle store decides both handoffs inside one statement", () => {
         jobId: "job-1",
         status: "completed",
         now: new Date(),
+        expectedClaimedAt: new Date(),
         completedAt: new Date(),
         lastError: null,
       }),
@@ -483,6 +487,7 @@ describe("the Drizzle store decides both handoffs inside one statement", () => {
           jobId: "job-1",
           status: "completed",
           now: new Date(),
+          expectedClaimedAt: new Date(),
           completedAt: new Date(),
           lastError: null,
         }),
@@ -503,6 +508,7 @@ describe("the Drizzle store decides both handoffs inside one statement", () => {
         jobId: "job-1",
         status: "failed",
         now: new Date(),
+        expectedClaimedAt: new Date(),
         lastError: "provider unavailable",
         runAfter: new Date(),
         claimedAt: null,

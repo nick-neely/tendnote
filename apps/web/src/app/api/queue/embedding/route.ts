@@ -3,6 +3,9 @@ import { consumeEmbeddingQueueMessage } from "@/lib/background-jobs/embedding-qu
 import { BACKGROUND_JOB_QUEUE_CONFIG } from "@/lib/background-jobs/queue-runtime";
 import { getProductRateLimiter } from "@/lib/rate-limit";
 
+// Route segment config must remain a statically analyzable literal for Next.js.
+export const maxDuration = 300;
+
 const handleEmbeddingQueueCallback = handleCallback(
   async (message, metadata) => {
     const result = await consumeEmbeddingQueueMessage({

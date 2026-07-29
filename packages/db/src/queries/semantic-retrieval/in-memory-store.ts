@@ -34,7 +34,7 @@ import type { HouseholdRecordShare } from "../households/types";
 import { canViewerSeeSeededHouseholdRecord } from "../households/visibility-memory";
 import { createInMemoryMemoryStore } from "../memories/in-memory-store";
 import { createInMemorySavedItemRecordStore } from "../saved-items/in-memory-store";
-import type { InMemoryEmbeddingStore } from "./types";
+import { type InMemoryEmbeddingStore, STALE_EMBEDDING_JOB_RECOVERY_MESSAGE } from "./types";
 
 const CLAIMABLE_STATUSES = new Set<EmbeddingJob["status"]>(claimableEmbeddingJobStatuses);
 const REOPENABLE_STATUSES = new Set<EmbeddingJob["status"]>(reopenableEmbeddingJobStatuses);
@@ -132,6 +132,64 @@ export function createInMemoryEmbeddingStore(
     return claimed;
   }
 
+  function ownsClaim(input: { jobId: string; expectedClaimedAt: Date | null }) {
+    const job = jobs.get(input.jobId);
+    return (
+      job?.status === "running" &&
+      (job.claimedAt?.getTime() ?? null) === (input.expectedClaimedAt?.getTime() ?? null)
+    );
+  }
+
+  function upsertEmbedding(
+    values: Parameters<InMemoryEmbeddingStore["upsertRelationshipContextEmbedding"]>[0],
+  ) {
+    const parsed = createRelationshipContextEmbeddingSchema.parse(values);
+    const existing = embeddings.get(embeddingKey(parsed));
+    const now = new Date();
+    const embedding: RelationshipContextEmbedding = {
+      ...parsed,
+      id: existing?.id ?? randomUUID(),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    embeddings.set(embeddingKey(embedding), embedding);
+    return embedding;
+  }
+
+  function refreshEmbeddingMetadata(
+    input: Parameters<InMemoryEmbeddingStore["refreshRelationshipContextEmbeddingMetadata"]>[0],
+  ) {
+    const existing = [...embeddings.values()].find(
+      (embedding) =>
+        embedding.id === input.embeddingId && embedding.ownerUserId === input.ownerUserId,
+    );
+    if (!existing) throw new Error("Relationship-context embedding not found.");
+
+    const updated: RelationshipContextEmbedding = {
+      ...existing,
+      personId: input.personId,
+      trustLevel: input.trustLevel,
+      sensitivity: input.sensitivity,
+      updatedAt: new Date(),
+    };
+    embeddings.set(embeddingKey(updated), updated);
+    return updated;
+  }
+
+  function deleteRecordEmbeddings(
+    input: Parameters<InMemoryEmbeddingStore["deleteRelationshipContextEmbeddingsForRecord"]>[0],
+  ) {
+    const matches = [...embeddings.entries()].filter(
+      ([, embedding]) =>
+        embedding.ownerUserId === input.ownerUserId &&
+        embedding.recordKind === input.recordKind &&
+        embedding.recordId === input.recordId,
+    );
+    for (const [key] of matches) embeddings.delete(key);
+    return matches.length;
+  }
+
   return {
     ...base,
     async listSourceRecordPeople(input) {
@@ -187,6 +245,32 @@ export function createInMemoryEmbeddingStore(
 
       return next ? claim(next, input.now) : null;
     },
+    async recoverStaleEmbeddingJobs(input) {
+      if (input.limit <= 0) return [];
+
+      const stale = [...jobs.values()]
+        .filter(
+          (job) =>
+            job.status === "running" && job.claimedAt != null && job.claimedAt <= input.staleBefore,
+        )
+        .sort((a, b) => (a.claimedAt?.getTime() ?? 0) - (b.claimedAt?.getTime() ?? 0))
+        .slice(0, input.limit);
+
+      return stale.map((job) => {
+        const recovered: EmbeddingJob = {
+          ...job,
+          status: "pending",
+          runAfter: input.now,
+          lastError: STALE_EMBEDDING_JOB_RECOVERY_MESSAGE,
+          claimedAt: null,
+          completedAt: null,
+          rerunRequestedAt: null,
+          updatedAt: input.now,
+        };
+        jobs.set(recovered.id, recovered);
+        return recovered;
+      });
+    },
     async updateEmbeddingJob(input) {
       const updated = applyJobUpdateFields(requireJob(input.jobId), input);
 
@@ -209,8 +293,10 @@ export function createInMemoryEmbeddingStore(
       // `status = 'running'` predicate. A second pass over the same job arrives here with a
       // verdict that has already been superseded, and writing it would overwrite the
       // `pending` a rerun marker just produced - losing the edit that asked for it.
-      if (job.status !== "running") {
-        return job;
+      const expectedClaimedAt = input.expectedClaimedAt?.getTime() ?? null;
+      const currentClaimedAt = job.claimedAt?.getTime() ?? null;
+      if (job.status !== "running" || currentClaimedAt !== expectedClaimedAt) {
+        return { job, settled: false };
       }
 
       // The Postgres store reads the marker inside the statement that writes the status;
@@ -228,7 +314,7 @@ export function createInMemoryEmbeddingStore(
 
       jobs.set(updated.id, updated);
 
-      return updated;
+      return { job: updated, settled: true };
     },
     async createGeneralAction(values) {
       const parsed = createGeneralActionSchema.parse(values);
@@ -298,43 +384,20 @@ export function createInMemoryEmbeddingStore(
       return item?.ownerUserId === input.ownerUserId ? item : null;
     },
     async upsertRelationshipContextEmbedding(values) {
-      const parsed = createRelationshipContextEmbeddingSchema.parse(values);
-      const existing = embeddings.get(embeddingKey(parsed));
-      const now = new Date();
-      const embedding: RelationshipContextEmbedding = {
-        ...parsed,
-        id: existing?.id ?? randomUUID(),
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      };
-
-      embeddings.set(embeddingKey(embedding), embedding);
-
-      return embedding;
+      return upsertEmbedding(values);
+    },
+    async upsertRelationshipContextEmbeddingForClaim(input) {
+      if (!ownsClaim(input.claim)) return null;
+      return upsertEmbedding(input.embedding);
     },
     async refreshRelationshipContextEmbeddingMetadata(input) {
-      const existing = [...embeddings.values()].find(
-        (embedding) =>
-          embedding.id === input.embeddingId && embedding.ownerUserId === input.ownerUserId,
-      );
-
-      if (!existing) {
-        throw new Error("Relationship-context embedding not found.");
-      }
-
       // None of these columns take part in `embeddingKey`, so the row converges in place
       // under its existing key - exactly what the Drizzle `update ... where id` does.
-      const updated: RelationshipContextEmbedding = {
-        ...existing,
-        personId: input.personId,
-        trustLevel: input.trustLevel,
-        sensitivity: input.sensitivity,
-        updatedAt: new Date(),
-      };
-
-      embeddings.set(embeddingKey(updated), updated);
-
-      return updated;
+      return refreshEmbeddingMetadata(input);
+    },
+    async refreshRelationshipContextEmbeddingMetadataForClaim(input) {
+      if (!ownsClaim(input.claim)) return null;
+      return refreshEmbeddingMetadata(input);
     },
     async findRelationshipContextEmbedding(input) {
       return embeddings.get(embeddingKey(input)) ?? null;
@@ -343,18 +406,11 @@ export function createInMemoryEmbeddingStore(
       // The map key carries model and version, so matching on the record alone is what
       // sweeps the superseded-model rows out with the current one - the same reason the
       // Drizzle delete leaves those columns out of its predicate.
-      const matches = [...embeddings.entries()].filter(
-        ([, embedding]) =>
-          embedding.ownerUserId === input.ownerUserId &&
-          embedding.recordKind === input.recordKind &&
-          embedding.recordId === input.recordId,
-      );
-
-      for (const [key] of matches) {
-        embeddings.delete(key);
-      }
-
-      return matches.length;
+      return deleteRecordEmbeddings(input);
+    },
+    async deleteRelationshipContextEmbeddingsForRecordForClaim(input) {
+      if (!ownsClaim(input.claim)) return null;
+      return { deleted: deleteRecordEmbeddings(input) };
     },
     async searchSemanticContext(input) {
       const kinds = new Set(input.recordKinds ?? ["memory", "source_record", "general_action"]);
