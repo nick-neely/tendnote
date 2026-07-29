@@ -47,7 +47,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { recallResultLines } from "@/lib/recall-result-lines";
-import { type GlobalRecallHandler, useGlobalRecall } from "@/lib/use-global-recall";
+import {
+  GLOBAL_RECALL_FAMILY_OPTIONS,
+  GLOBAL_RECALL_MATCH_OPTIONS,
+  type GlobalRecallHandler,
+  useGlobalRecall,
+} from "@/lib/use-global-recall";
 import { useWideViewport } from "@/lib/use-wide-viewport";
 
 /**
@@ -401,13 +406,11 @@ function RecallFilterBar({ recall }: { recall: ReturnType<typeof useGlobalRecall
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All records</SelectItem>
-            <SelectItem value="people">People</SelectItem>
-            <SelectItem value="follow_ups">Follow-Ups</SelectItem>
-            <SelectItem value="actions">Actions</SelectItem>
-            <SelectItem value="assets">Assets</SelectItem>
-            <SelectItem value="saved_items">Saved Items</SelectItem>
-            <SelectItem value="calendar">Calendar</SelectItem>
+            {GLOBAL_RECALL_FAMILY_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -426,9 +429,11 @@ function RecallFilterBar({ recall }: { recall: ReturnType<typeof useGlobalRecall
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Exact + Related</SelectItem>
-            <SelectItem value="exact">Exact only</SelectItem>
-            <SelectItem value="related">Related only</SelectItem>
+            {GLOBAL_RECALL_MATCH_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

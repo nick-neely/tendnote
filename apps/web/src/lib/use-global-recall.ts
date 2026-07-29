@@ -40,12 +40,43 @@ export type GlobalRecallFilters = {
   includeRestricted: boolean;
 };
 
-export const DEFAULT_GLOBAL_RECALL_FILTERS: GlobalRecallFilters = {
+const DEFAULT_GLOBAL_RECALL_FILTERS: GlobalRecallFilters = {
   family: "all",
   matchKind: "all",
   includeArchived: false,
   includeRestricted: false,
 };
+
+/**
+ * What the two narrowing selects offer, shared for the same reason the search
+ * itself is: the phone flow and the desktop palette must not drift into naming
+ * different records or different match strengths.
+ *
+ * Only the options are shared. The two surfaces lay their controls out
+ * differently on purpose - thumb-sized rows in a panel against a compact bar
+ * under a command list - so the markup stays with each of them.
+ */
+export const GLOBAL_RECALL_FAMILY_OPTIONS: {
+  value: GlobalRecallFilter;
+  label: string;
+}[] = [
+  { value: "all", label: "All records" },
+  { value: "people", label: "People" },
+  { value: "follow_ups", label: "Follow-Ups" },
+  { value: "actions", label: "Actions" },
+  { value: "assets", label: "Assets" },
+  { value: "saved_items", label: "Saved Items" },
+  { value: "calendar", label: "Calendar" },
+];
+
+export const GLOBAL_RECALL_MATCH_OPTIONS: {
+  value: GlobalRecallMatchKind | "all";
+  label: string;
+}[] = [
+  { value: "all", label: "Exact + Related" },
+  { value: "exact", label: "Exact only" },
+  { value: "related", label: "Related only" },
+];
 
 /** Below this the query is noise, and the server would reject it anyway. */
 const MIN_QUERY_LENGTH = 2;
