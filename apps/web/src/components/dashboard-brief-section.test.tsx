@@ -96,6 +96,65 @@ describe("DashboardBriefSection", () => {
     expect(plain).not.toContain("Accept");
   });
 
+  /**
+   * A review item asks a question only the owner can answer, and the answer lives
+   * on the Review panel. Drafting a message about a name Tendnote could not place
+   * is nonsense, so that affordance is not offered here.
+   */
+  it("sends review items to Review and never offers a draft about them", () => {
+    const review = renderToStaticMarkup(
+      <DashboardBriefSection
+        brief={briefView({
+          items: [
+            itemView({
+              kind: "review_item",
+              title: "Who else is in this note?",
+              reason: "Mara and Kris are coming to dinner.",
+            }),
+          ],
+        })}
+        cadence="daily"
+      />,
+    );
+
+    expect(review).toContain("Review");
+    expect(review).toContain('href="/?tab=review"');
+    expect(review).not.toContain("Draft");
+    // Later and Dismiss stay available on every kind.
+    expect(review).toContain("Later");
+    expect(review).toContain("Dismiss");
+
+    const followup = renderToStaticMarkup(
+      <DashboardBriefSection brief={briefView()} cadence="daily" />,
+    );
+    expect(followup).toContain("Draft");
+  });
+
+  /**
+   * Titles are the record's own words now, so the row names the person itself.
+   * The tentative review kinds still snapshot a title that carries the name, and
+   * repeating it above would read as a stutter.
+   */
+  it("names the person above a title that does not already carry it", () => {
+    const ownWords = renderToStaticMarkup(
+      <DashboardBriefSection
+        brief={briefView({ items: [itemView({ title: "Reconnect about the move." })] })}
+        cadence="daily"
+      />,
+    );
+    expect(ownWords).toContain("Mark");
+    // Title and explanation are one sentence for a reminder; it is not printed twice.
+    expect(ownWords.match(/Reconnect about the move\./g)).toHaveLength(1);
+
+    const carriesName = renderToStaticMarkup(
+      <DashboardBriefSection
+        brief={briefView({ items: [itemView({ title: "Review suggested memory for Mark" })] })}
+        cadence="daily"
+      />,
+    );
+    expect(carriesName.match(/>Mark</g)).toBeNull();
+  });
+
   it("marks sensitive items so they read carefully", () => {
     const html = renderToStaticMarkup(
       <DashboardBriefSection

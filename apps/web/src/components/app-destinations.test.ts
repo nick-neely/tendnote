@@ -4,6 +4,7 @@ import {
   appDestination,
   appDestinations,
   destinationsInGroup,
+  explicitHomePanelForLocation,
   homePanelForLocation,
   isDestinationActive,
   isDestinationCurrentInGroup,
@@ -35,6 +36,19 @@ describe("app destinations", () => {
     for (const destination of appDestinations) {
       expect(destination.reserve.heading).toBe(destination.label);
     }
+  });
+
+  /**
+   * The narrow question the rail asks: only a URL carrying no panel falls
+   * through to the content-aware default, so a link naming Today is obeyed
+   * rather than silently treated as a bare `/`.
+   */
+  it("names the panel the URL asks for, and only then", () => {
+    expect(explicitHomePanelForLocation("/", new URLSearchParams("tab=today"))).toBe("today");
+    expect(explicitHomePanelForLocation("/", new URLSearchParams("tab=review"))).toBe("review");
+    expect(explicitHomePanelForLocation("/", new URLSearchParams())).toBeNull();
+    expect(explicitHomePanelForLocation("/", new URLSearchParams("tab=people"))).toBeNull();
+    expect(explicitHomePanelForLocation("/people", new URLSearchParams("tab=today"))).toBeNull();
   });
 
   it("derives Home panel and active destination from one location resolver", () => {

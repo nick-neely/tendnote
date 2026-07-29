@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ReviewQueue, ReviewQueueItem } from "@/lib/review-queue";
-import { fireEvent, render, screen, userEvent, waitFor, within } from "@/test/dom";
+import { render, screen, userEvent } from "@/test/dom";
 import { DashboardRail } from "./dashboard-rail";
 
 const replace = vi.fn();
@@ -14,25 +13,6 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => navigation.searchParams,
 }));
 
-type MockActionReview = { action: { id: string; title: string } };
-type MockActionCardProps = {
-  review: MockActionReview;
-  onResolve: (id: string) => void;
-  onUpdate: (review: MockActionReview) => void;
-};
-type MockAssetCardProps = {
-  review: { groupId: string; asset: { name: string } };
-  onResolve: (id: string) => void;
-  onUpdate: (review: MockAssetCardProps["review"]) => void;
-};
-
-vi.mock("@/app/actions/memory-review", () => ({
-  dismissSuggestedMemoryAction: vi.fn().mockResolvedValue({ ok: true, view: undefined }),
-  saveSuggestedMemoryAction: vi.fn().mockResolvedValue({ ok: true, view: undefined }),
-}));
-vi.mock("@/app/actions/conversational-capture", () => ({
-  addCapturePersonAction: vi.fn(),
-}));
 vi.mock("@/components/dashboard-brief-section", () => ({ DashboardBriefSection: () => null }));
 vi.mock("@/components/dashboard-calendar-suggestions-section", () => ({
   DashboardCalendarSuggestionsSection: () => null,
@@ -43,65 +23,14 @@ vi.mock("@/components/dashboard-followups-section", () => ({
 vi.mock("@/components/dashboard-suggested-followups-section", () => ({
   DashboardSuggestedFollowupsSection: () => null,
 }));
-vi.mock("@/components/suggested-general-action-review", () => ({
-  SuggestedGeneralActionReviewCard: ({ review, onResolve, onUpdate }: MockActionCardProps) => (
-    <article data-testid={`action-${review.action.id}`}>
-      {review.action.title}
-      <button
-        onClick={() => onUpdate({ ...review, action: { ...review.action, title: "Edited" } })}
-        type="button"
-      >
-        Edit action
-      </button>
-      <button onClick={() => onResolve(review.action.id)} type="button">
-        Resolve action
-      </button>
-    </article>
-  ),
-}));
-vi.mock("@/components/asset-review-group-card", () => ({
-  AssetReviewGroupCard: ({ review, onResolve, onUpdate }: MockAssetCardProps) => (
-    <article data-testid={`asset-${review.groupId}`}>
-      {review.asset.name}
-      <button
-        onClick={() => onUpdate({ ...review, asset: { name: "Existing boiler" } })}
-        type="button"
-      >
-        Link asset
-      </button>
-      <button onClick={() => onResolve(review.groupId)} type="button">
-        Resolve asset
-      </button>
-    </article>
-  ),
-}));
+type RailTabName = "today" | "review" | "followups" | "people";
 
-function queueItem(family: ReviewQueueItem["family"], id: string): ReviewQueueItem {
-  if (family === "suggested-memory") {
-    return {
-      family,
-      id,
-      review: {
-        memory: { id, personId: "person-1", content: "Memory content" },
-        personName: "Avery",
-      },
-    } as ReviewQueueItem;
-  }
-  if (family === "suggested-general-action") {
-    return {
-      family,
-      id,
-      review: { action: { id, title: "Action title" } },
-    } as ReviewQueueItem;
-  }
-  return {
-    family,
-    id,
-    review: { groupId: id, asset: { name: "Boiler" } },
-  } as ReviewQueueItem;
-}
-
-function rail(reviewQueue: ReviewQueue, initialTab: "today" | "review" = "review") {
+/**
+ * The Review panel is streamed in from the server, so the rail only ever sees a
+ * count and an opaque node - the queue's own rendering is covered by
+ * `review-queue-section.dom.test.tsx`.
+ */
+function rail(reviewCount: number, initialTab: RailTabName = "review") {
   return (
     <DashboardRail
       birthdays={[]}
@@ -111,16 +40,17 @@ function rail(reviewQueue: ReviewQueue, initialTab: "today" | "review" = "review
       followups={[]}
       initialTab={initialTab}
       people={[]}
-      reviewQueue={reviewQueue}
+      reviewContent={<p>Streamed review queue</p>}
+      reviewCount={reviewCount}
       weeklyBrief={null}
     />
   );
 }
 
 /** The rail always mounts on the panel the current URL names, as it does in the app. */
-function renderRail(reviewQueue: ReviewQueue, initialTab: "today" | "review" = "review") {
+function renderRail(reviewCount: number, initialTab: RailTabName = "review") {
   navigation.searchParams = new URLSearchParams(initialTab === "review" ? "tab=review" : "");
-  return render(rail(reviewQueue, initialTab));
+  return render(rail(reviewCount, initialTab));
 }
 
 /** The label of the one selected tab, so a failure names the tab instead of "false". */
@@ -147,7 +77,7 @@ describe("DashboardRail Review Queue", () => {
     const user = userEvent.setup();
     replace.mockReset();
     const replaceState = vi.spyOn(window.history, "replaceState");
-    renderRail({ count: 0, failures: [], items: [] });
+    renderRail(0);
 
     await user.click(screen.getByRole("tab", { name: "Today" }));
 
@@ -172,115 +102,126 @@ describe("DashboardRail Review Queue", () => {
    */
   it("stays on the owner's tab when a refresh re-renders the route", async () => {
     const user = userEvent.setup();
-    const view = renderRail({ count: 0, failures: [], items: [] });
+    const view = renderRail(0);
     await user.click(screen.getByRole("tab", { name: "Follow-ups" }));
     expect(selected()).toBe("Follow-ups");
 
     // A refresh: same URL, fresh data, and a server-computed tab that disagrees.
-    view.rerender(rail({ count: 1, failures: [], items: [queueItem("suggested-memory", "m-1")] }));
+    view.rerender(rail(1));
 
     expect(selected()).toBe("Follow-ups");
-    expect(screen.getByRole("tab", { name: "Review1" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Review, 1" })).toBeDefined();
   });
 
   /** A URL the owner navigated to — a nav link, Back, a shared link — still wins. */
   it("follows the URL when the destination itself changes", async () => {
     const user = userEvent.setup();
-    const view = renderRail({ count: 0, failures: [], items: [] });
+    const view = renderRail(0);
     await user.click(screen.getByRole("tab", { name: "People" }));
     expect(selected()).toBe("People");
 
     navigation.searchParams = new URLSearchParams();
-    view.rerender(rail({ count: 0, failures: [], items: [] }, "today"));
+    view.rerender(rail(0, "today"));
 
     expect(selected()).toBe("Today");
   });
 
-  it("renders one mixed queue in collection order and counts Asset groups once", () => {
-    renderRail({
-      items: [
-        queueItem("suggested-memory", "memory-1"),
-        queueItem("suggested-general-action", "action-1"),
-        queueItem("asset-review-group", "group-1"),
-      ],
-      count: 3,
-      failures: [],
-    });
+  /** The count is the rail's whole share of the queue: the panel itself streams in. */
+  it("shows the streamed panel and its count once something is waiting", () => {
+    renderRail(3);
 
-    expect(screen.getByRole("tab", { name: "Review3" })).toBeDefined();
-    const list = screen.getByRole("list", { name: "Review queue" });
-    expect(
-      within(list)
-        .getAllByRole("listitem")
-        .map((row) => row.dataset.queueFamily),
-    ).toEqual(["suggested-memory", "suggested-general-action", "asset-review-group"]);
-  });
-
-  it("updates and resolves only the action selected through its family callback", () => {
-    renderRail({
-      items: [
-        queueItem("suggested-memory", "shared-id"),
-        queueItem("suggested-general-action", "shared-id"),
-        queueItem("asset-review-group", "group-1"),
-      ],
-      count: 3,
-      failures: [],
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit action" }));
-    expect(screen.getByText("Edited")).toBeDefined();
-    expect(screen.getByText("Memory content")).toBeDefined();
-
-    fireEvent.click(screen.getByRole("button", { name: "Resolve action" }));
-    expect(screen.queryByTestId("action-shared-id")).toBeNull();
-    expect(screen.getByText("Memory content")).toBeDefined();
-    expect(screen.getByRole("tab", { name: "Review2" })).toBeDefined();
-  });
-
-  it("updates only the grouped Asset selected when family ids collide", () => {
-    renderRail({
-      items: [
-        queueItem("suggested-memory", "shared-id"),
-        queueItem("suggested-general-action", "shared-id"),
-        queueItem("asset-review-group", "shared-id"),
-      ],
-      count: 3,
-      failures: [],
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Link asset" }));
-
-    expect(screen.getByTestId("asset-shared-id").textContent).toContain("Existing boiler");
-    expect(screen.getByTestId("action-shared-id").textContent).toContain("Action title");
-    expect(screen.getByText("Memory content")).toBeDefined();
-    expect(screen.getByRole("tab", { name: "Review3" })).toBeDefined();
-  });
-
-  it("routes memory and grouped Asset resolution through their discriminated identities", async () => {
-    renderRail({
-      items: [
-        queueItem("suggested-memory", "shared-id"),
-        queueItem("suggested-general-action", "shared-id"),
-        queueItem("asset-review-group", "shared-id"),
-      ],
-      count: 3,
-      failures: [],
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Resolve asset" }));
-    expect(screen.queryByTestId("asset-shared-id")).toBeNull();
-    expect(screen.getByTestId("action-shared-id")).toBeDefined();
-    expect(screen.getByText("Memory content")).toBeDefined();
-
-    fireEvent.click(screen.getByRole("button", { name: "Save suggestion about Avery" }));
-    await waitFor(() => expect(screen.queryByText("Memory content")).toBeNull());
-    expect(screen.getByTestId("action-shared-id")).toBeDefined();
-    expect(screen.getByRole("tab", { name: "Review1" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Review, 3" })).toBeDefined();
+    expect(screen.getByText("Streamed review queue")).toBeDefined();
+    expect(screen.queryByText(/Nothing waiting to review/)).toBeNull();
   });
 
   it("preserves the calm empty state", () => {
-    renderRail({ items: [], count: 0, failures: ["suggested-memory"] });
+    renderRail(0);
     expect(screen.getByText(/Nothing waiting to review/)).toBeDefined();
+    // It teaches what lands here rather than reporting a bare nothing.
+    expect(screen.getByText(/Nothing is saved without your yes/)).toBeDefined();
     expect(screen.getByRole("tab", { name: "Review" })).toBeDefined();
+  });
+});
+
+describe("DashboardRail Follow-ups horizon", () => {
+  /**
+   * The tab is bounded to what is near, so an empty one has to answer "and after
+   * that?" without turning back into a list of things months away.
+   */
+  it("teaches the horizon and names the one reminder waiting past it", async () => {
+    const user = userEvent.setup();
+    navigation.searchParams = new URLSearchParams();
+    render(
+      <DashboardRail
+        birthdays={[]}
+        calendarSuggestions={[]}
+        dailyBrief={null}
+        followupReviews={[]}
+        followups={[]}
+        initialTab="followups"
+        nextFollowup={
+          {
+            id: "followup-1",
+            personId: "person-1",
+            personName: "Kris Moore",
+            reason: "Wish Kris a happy birthday",
+            dueLabel: "Dec 3",
+          } as never
+        }
+        people={[]}
+        reviewContent={<p>Streamed review queue</p>}
+        reviewCount={0}
+        weeklyBrief={null}
+      />,
+    );
+
+    expect(screen.getByText(/Nothing due in the next two weeks/)).toBeDefined();
+    expect(screen.getByText(/Next up/)).toBeDefined();
+    const link = screen.getByRole("link", { name: "Wish Kris a happy birthday" });
+    expect(link.getAttribute("href")).toBe("/people/person-1#followup-followup-1");
+    expect(screen.getByText("Dec 3")).toBeDefined();
+
+    // The count badge follows the horizon: an empty near-term tab carries none.
+    await user.click(screen.getByRole("tab", { name: "Follow-ups" }));
+    expect(screen.getByRole("tab", { name: "Follow-ups" })).toBeDefined();
+  });
+});
+
+describe("DashboardRail landing panel", () => {
+  /**
+   * A bare `/` names no panel, so the server's content-aware choice must survive
+   * mount. It used to be overwritten by the URL's implicit "today", which is how
+   * an owner with reminders and reviews waiting landed on an empty Today.
+   */
+  it("opens on the panel the server chose when the URL names none", () => {
+    navigation.searchParams = new URLSearchParams();
+    render(rail(0, "followups"));
+
+    expect(selected()).toBe("Follow-ups");
+  });
+
+  /** A Review deep link still wins over any server default. */
+  it("still opens on the panel the URL names", () => {
+    navigation.searchParams = new URLSearchParams("tab=review");
+    render(rail(0, "followups"));
+
+    expect(selected()).toBe("Review");
+  });
+
+  /**
+   * A refresh re-renders the same URL with fresh data, and the content-aware
+   * default can legitimately move between renders. It must not drag the owner out
+   * of the panel they chose.
+   */
+  it("stays put when a refresh changes the server default under the same URL", async () => {
+    const user = userEvent.setup();
+    navigation.searchParams = new URLSearchParams();
+    const view = render(rail(0, "today"));
+
+    await user.click(screen.getByRole("tab", { name: "People" }));
+    view.rerender(rail(0, "review"));
+
+    expect(selected()).toBe("People");
   });
 });

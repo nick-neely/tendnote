@@ -19,13 +19,13 @@ import {
   UserRoundIcon,
 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker, toDateTimeValue } from "@/components/ui/date-picker";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 import {
@@ -392,21 +392,23 @@ function TodayShortlistContent({
                       );
                     }}
                   >
-                    <label
-                      className="flex min-w-52 flex-1 flex-col gap-1 text-xs"
-                      htmlFor={`today-later-${item.identity}`}
-                    >
-                      Show again
-                      <Input
-                        className="min-h-11"
+                    {/* The label sits beside the control rather than around it:
+                        wrapping folds the time field's own name into the label,
+                        and the date trigger ends up called "Show again Time". */}
+                    <div className="flex min-w-52 flex-1 flex-col gap-1 text-[length:var(--text-small)]">
+                      <label htmlFor={`today-later-${item.identity}`}>Show again</label>
+                      <DateTimePicker
                         id={`today-later-${item.identity}`}
-                        min={toDatetimeLocal(new Date())}
-                        onChange={(event) => setLaterAt(event.target.value)}
+                        min={toDateTimeValue(new Date())}
+                        onChange={setLaterAt}
                         required
-                        type="datetime-local"
+                        // Today rows are thumb-first, so both halves keep the
+                        // 44px target the native field had.
+                        size="touch"
+                        timeLabel="Show again time"
                         value={laterAt}
                       />
-                    </label>
+                    </div>
                     <Button
                       className="min-h-11"
                       data-today-later-submit={item.identity}
@@ -497,7 +499,7 @@ function TodayShortlistContent({
 }
 
 function defaultLaterValue(): string {
-  return toDatetimeLocal(new Date(Date.now() + 60 * 60 * 1_000));
+  return toDateTimeValue(new Date(Date.now() + 60 * 60 * 1_000));
 }
 
 function focusAfterRowRemoval(identity: string): () => void {
@@ -543,9 +545,4 @@ function localDateInTimeZone(date: Date, timeZone: string): string {
   }).formatToParts(date);
   const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${value.year}-${value.month}-${value.day}`;
-}
-
-function toDatetimeLocal(date: Date): string {
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }

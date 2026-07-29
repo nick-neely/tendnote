@@ -3,27 +3,21 @@
 import type { Person } from "@tendnote/domain";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
-import { homePanelForLocation } from "@/components/app-destinations";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { explicitHomePanelForLocation } from "@/components/app-destinations";
 import { DashboardBriefSection } from "@/components/dashboard-brief-section";
 import { DashboardCalendarSuggestionsSection } from "@/components/dashboard-calendar-suggestions-section";
 import { DashboardFollowupsSection } from "@/components/dashboard-followups-section";
 import { DashboardSuggestedFollowupsSection } from "@/components/dashboard-suggested-followups-section";
 import { ArrowRightIcon, CakeIcon } from "@/components/icons";
-import { ReviewQueueSection } from "@/components/review-queue-section";
 import { TabCount } from "@/components/tab-count";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { BriefView } from "@/lib/brief-view";
 import type { CalendarSuggestionReviewView } from "@/lib/calendar-suggestion-review-view";
 import { initials, shortName, type UpcomingBirthday } from "@/lib/dashboard-brief";
+import { DASHBOARD_FOLLOWUP_HORIZON_LABEL } from "@/lib/followup-horizon";
 import type { DashboardFollowupView } from "@/lib/followup-view";
-import {
-  type ReviewQueue,
-  type ReviewQueueIdentity,
-  type ReviewQueueItem,
-  resolveReviewQueueItem,
-  updateReviewQueueItem,
-} from "@/lib/review-queue";
+import type { RailTab } from "@/lib/rail-tabs";
 import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 
 // Inactive panels stay mounted (forceMount) so a panel keeps its scroll position
@@ -32,9 +26,6 @@ import type { SuggestedFollowupReviewView } from "@/lib/suggested-followup-revie
 // is height-bounded) and flows normally on mobile.
 const PANEL =
   "data-[state=inactive]:hidden data-[state=active]:flex flex-col gap-6 min-h-0 pb-1 lg:overflow-y-auto lg:pr-2";
-
-/** The two panels a Home URL can name, and the full set the rail offers. */
-type RailTab = "today" | "review" | "followups" | "people";
 
 /**
  * The dashboard's right-hand context panel: a tabbed gutter beside the assistant
@@ -66,10 +57,11 @@ export function DashboardRail({
   followups: initialFollowups,
   followupReviews: initialFollowupReviews,
   calendarSuggestions: initialCalendarSuggestions,
-  reviewQueue: initialReviewQueue,
+  reviewCount,
   dailyBrief,
   weeklyBrief,
   reviewContent,
+  nextFollowup = null,
   initialTab = "today",
 }: {
   people: Person[];
@@ -77,22 +69,34 @@ export function DashboardRail({
   followups: DashboardFollowupView[];
   followupReviews: SuggestedFollowupReviewView[];
   calendarSuggestions: CalendarSuggestionReviewView[];
-  reviewQueue: ReviewQueue;
+  /** How many units are waiting in Review, for the tab count and the empty state. */
+  reviewCount: number;
   dailyBrief: BriefView | null;
   weeklyBrief: BriefView | null;
-  reviewContent?: ReactNode;
+  /**
+   * The Review panel itself. The queue streams in from the server family by
+   * family, and each family owns its own optimistic collection, so the rail
+   * carries the count and nothing else about what is in there.
+   */
+  reviewContent: ReactNode;
+  /** The soonest reminder past the Follow-ups horizon, named by an empty tab. */
+  nextFollowup?: DashboardFollowupView | null;
   initialTab?: RailTab;
 }) {
-  // The destination module resolves the two panels a URL can express:
-  // arriving from anywhere — a nav link, the narrow-viewport Review destination, a
-  // shared link — selects the panel that URL names. Follow-ups and People have no
-  // URL of their own, so picking one is purely local and leaves the URL alone.
-  const urlTab = homePanelForLocation("/", useSearchParams());
-  const [activeTab, setActiveTab] = useState<RailTab>(initialTab);
+  // The destination module resolves the one panel a URL can name: arriving from a
+  // nav link, the narrow-viewport Review destination, or a shared link selects
+  // that panel. A bare `/` names none, and the server has already chosen the panel
+  // that holds something, so the URL must not overrule it back to Today.
+  // Follow-ups and People have no URL of their own, so picking one is purely local
+  // and leaves the URL alone.
+  const urlPanel = explicitHomePanelForLocation("/", useSearchParams());
+  // A named panel outranks the server's default even at mount. In practice the two
+  // agree (the server reads the same URL), so this changes nothing on hydration;
+  // it just keeps the precedence in one expression instead of two places.
+  const [activeTab, setActiveTab] = useState<RailTab>(urlPanel ?? initialTab);
   const [followups, setFollowups] = useState(initialFollowups);
   const [suggestedFollowups, setSuggestedFollowups] = useState(initialFollowupReviews);
   const [calendarSuggestions, setCalendarSuggestions] = useState(initialCalendarSuggestions);
-  const [reviewQueue, setReviewQueue] = useState(initialReviewQueue);
 
   const resolveFollowup = (id: string) =>
     setFollowups((current) => current.filter((followup) => followup.id !== id));
@@ -100,10 +104,6 @@ export function DashboardRail({
     setSuggestedFollowups((current) => current.filter((review) => review.followup.id !== id));
   const resolveCalendarSuggestion = (id: string) =>
     setCalendarSuggestions((current) => current.filter((suggestion) => suggestion.id !== id));
-  const resolveReview = (identity: ReviewQueueIdentity) =>
-    setReviewQueue((current) => resolveReviewQueueItem(current, identity));
-  const updateReview = (item: ReviewQueueItem) =>
-    setReviewQueue((current) => updateReviewQueueItem(current, item));
 
   const followupCount = followups.length + suggestedFollowups.length + calendarSuggestions.length;
 
@@ -114,15 +114,18 @@ export function DashboardRail({
     setFollowups(initialFollowups);
     setSuggestedFollowups(initialFollowupReviews);
     setCalendarSuggestions(initialCalendarSuggestions);
-    setReviewQueue(initialReviewQueue);
-  }, [initialCalendarSuggestions, initialFollowupReviews, initialFollowups, initialReviewQueue]);
+  }, [initialCalendarSuggestions, initialFollowupReviews, initialFollowups]);
 
-  // A nav link back to Home, a Review deep link, or Back takes the rail with it.
-  // Local picks do not mutate the URL, so a data refresh cannot eject the owner
-  // from the panel they are using.
+  // A nav link back to Home, a Review deep link, or Back takes the rail with it,
+  // but only when the URL's panel actually changes. Local picks do not mutate the
+  // URL, so neither a data refresh nor a server default that shifts underneath a
+  // refresh can eject the owner from the panel they are using.
+  const lastUrlPanel = useRef(urlPanel);
   useEffect(() => {
-    setActiveTab(urlTab);
-  }, [urlTab]);
+    if (urlPanel === lastUrlPanel.current) return;
+    lastUrlPanel.current = urlPanel;
+    setActiveTab(urlPanel ?? initialTab);
+  }, [initialTab, urlPanel]);
 
   function selectTab(tab: RailTab) {
     setActiveTab(tab);
@@ -144,7 +147,7 @@ export function DashboardRail({
         </TabsTrigger>
         <TabsTrigger className="group/tab" value="review">
           Review
-          <TabCount count={reviewQueue.count} />
+          <TabCount count={reviewCount} />
         </TabsTrigger>
         <TabsTrigger className="group/tab" value="people">
           People
@@ -170,8 +173,11 @@ export function DashboardRail({
       {/* Follow-ups — active reminders, then suggestions awaiting a yes/no. */}
       <TabsContent className={PANEL} value="followups">
         {followupCount === 0 ? (
-          <RailEmpty>
-            No follow-ups right now. Reminders you set, and ones Eve suggests, show up here.
+          <RailEmpty
+            title={`Nothing due in ${DASHBOARD_FOLLOWUP_HORIZON_LABEL}.`}
+            footer={nextFollowup ? <NextFollowupLine followup={nextFollowup} /> : null}
+          >
+            Reminders you set, and the ones Eve suggests, appear here as their date comes near.
           </RailEmpty>
         ) : (
           <>
@@ -200,21 +206,17 @@ export function DashboardRail({
       </TabsContent>
 
       {/* Review — the shared Review Queue: suggested memories and Suggested actions,
-          each accepted or set aside in place (ADR 0152). */}
+          each accepted or set aside in place (ADR 0152). Its content streams in
+          when the owner has something waiting; an empty queue teaches what lands
+          here instead of leaving the panel bare. */}
       <TabsContent className={PANEL} value="review">
-        {reviewContent ? (
-          reviewContent
-        ) : reviewQueue.count === 0 ? (
-          <RailEmpty>
-            Nothing waiting to review. Eve's suggestions land here first: things to remember,
-            actions to take, and assets to track.
+        {reviewCount === 0 ? (
+          <RailEmpty title="Nothing waiting to review.">
+            Eve's suggestions land here first: a detail worth keeping, an action to take, a name it
+            couldn't place. Nothing is saved without your yes.
           </RailEmpty>
         ) : (
-          <ReviewQueueSection
-            items={reviewQueue.items}
-            onResolve={resolveReview}
-            onUpdate={updateReview}
-          />
+          reviewContent
         )}
       </TabsContent>
 
@@ -226,13 +228,49 @@ export function DashboardRail({
   );
 }
 
-function RailEmpty({ children }: { children: React.ReactNode }) {
+/**
+ * An empty panel, written to teach rather than to report (DESIGN.md §6). The
+ * title states plainly what is not there, the body says what will land here and
+ * how it gets here, and an optional footer carries the one concrete thing the
+ * owner can look at next. No counts, no backlog framing, nothing to clear.
+ */
+function RailEmpty({
+  title,
+  children,
+  footer,
+}: {
+  title: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
   return (
-    <div className="overflow-hidden rounded-xl border bg-surface">
-      <p className="text-pretty px-4 py-4 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+    <div className="flex flex-col gap-2 overflow-hidden rounded-xl border bg-surface px-4 py-4">
+      <p className="font-medium text-sm">{title}</p>
+      <p className="text-pretty text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
         {children}
       </p>
+      {footer}
     </div>
+  );
+}
+
+/**
+ * The one reminder waiting past the horizon, so a quiet tab still answers "and
+ * after that?". Deliberately a sentence and not a row: it carries no controls,
+ * because acting on something two months out is not what this panel is for.
+ */
+function NextFollowupLine({ followup }: { followup: DashboardFollowupView }) {
+  return (
+    <p className="border-t pt-2 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+      Next up:{" "}
+      <Link
+        className="text-foreground underline-offset-4 transition-colors hover:underline"
+        href={`/people/${followup.personId}#followup-${followup.id}`}
+      >
+        {followup.reason}
+      </Link>{" "}
+      <span className="font-mono text-[length:var(--text-caption)]">{followup.dueLabel}</span>
+    </p>
   );
 }
 
