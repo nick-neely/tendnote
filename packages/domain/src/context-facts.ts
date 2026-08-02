@@ -1,0 +1,237 @@
+import { z } from "zod";
+import { type Sensitivity, sensitivitySchema } from "./privacy";
+
+const nonEmptyIdentifier = z.string().trim().min(1);
+const contextFactSourceRecordIdSchema = nonEmptyIdentifier.max(128);
+const contextFactContentSchema = z.string().trim().min(1).max(500);
+
+export const contextFactSubjectSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("self"),
+      userId: nonEmptyIdentifier,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("household"),
+      householdId: nonEmptyIdentifier,
+    })
+    .strict(),
+]);
+
+export const contextFactCategorySchema = z.enum([
+  "background",
+  "work",
+  "location",
+  "interest",
+  "preference",
+  "constraint",
+  "composition",
+  "other",
+]);
+
+export const contextFactLifecycleSchema = z.enum(["suggested", "active", "archived"]);
+
+export const contextFactChannelSchema = z.enum([
+  "onboarding",
+  "account",
+  "eve",
+  "capture",
+  "review",
+  "ambient",
+  "import",
+]);
+
+export const contextFactOriginSchema = z.enum(["direct", "ambient", "import"]);
+
+export const contextFactVisibilitySchema = z.enum(["private", "household"]);
+
+/**
+ * Provenance is deliberately a small, review-safe record. Raw messages and
+ * provider payloads belong to their source domains, not inside Context Facts.
+ */
+export const contextFactProvenanceSchema = z
+  .object({
+    channel: contextFactChannelSchema,
+    origin: contextFactOriginSchema,
+    sourceRecordId: contextFactSourceRecordIdSchema.nullable(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const expectedChannel =
+      value.origin === "ambient" ? "ambient" : value.origin === "import" ? "import" : null;
+    if (expectedChannel && value.channel !== expectedChannel) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["channel"],
+        message: `${value.origin} provenance must use the ${expectedChannel} channel.`,
+      });
+    }
+
+    if (value.origin === "direct" && (value.channel === "ambient" || value.channel === "import")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["origin"],
+        message: "Ambient and imported channels require review-gated provenance.",
+      });
+    }
+  });
+
+export type ContextFactSubject = z.infer<typeof contextFactSubjectSchema>;
+export type ContextFactCategory = z.infer<typeof contextFactCategorySchema>;
+export type ContextFactLifecycle = z.infer<typeof contextFactLifecycleSchema>;
+export type ContextFactChannel = z.infer<typeof contextFactChannelSchema>;
+export type ContextFactOrigin = z.infer<typeof contextFactOriginSchema>;
+export type ContextFactVisibility = z.infer<typeof contextFactVisibilitySchema>;
+export type ContextFactProvenance = z.infer<typeof contextFactProvenanceSchema>;
+export type ContextFactSensitivity = Sensitivity;
+
+const contextFactFieldsSchema = z.object({
+  subject: contextFactSubjectSchema,
+  category: contextFactCategorySchema,
+  content: contextFactContentSchema,
+  lifecycle: contextFactLifecycleSchema,
+  sensitivity: sensitivitySchema,
+  provenance: contextFactProvenanceSchema,
+  suggestionEvidence: contextFactContentSchema.nullable(),
+  creatorUserId: nonEmptyIdentifier,
+  lastActorUserId: nonEmptyIdentifier,
+  reviewedAt: z.date().nullable(),
+  archivedAt: z.date().nullable(),
+});
+
+function addContextFactSubjectIssues(
+  value: Pick<ContextFact, "subject" | "category">,
+  ctx: z.RefinementCtx,
+) {
+  if (!isContextFactCategoryAllowedForSubject(value)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["category"],
+      message: "Composition is only valid for Household Context.",
+    });
+  }
+}
+
+export const contextFactSchema = contextFactFieldsSchema
+  .extend({
+    id: nonEmptyIdentifier,
+    createdAt: z.date(),
+    updatedAt: z.date(),
+  })
+  .superRefine(addContextFactSubjectIssues);
+
+export const persistContextFactSchema = contextFactFieldsSchema
+  .extend({ id: nonEmptyIdentifier.optional() })
+  .superRefine(addContextFactSubjectIssues);
+
+export const createContextFactInputSchema = z
+  .object({
+    callerUserId: nonEmptyIdentifier,
+    subject: contextFactSubjectSchema,
+    category: contextFactCategorySchema,
+    content: contextFactContentSchema,
+    sensitivity: sensitivitySchema.default("normal"),
+    provenance: contextFactProvenanceSchema.default({
+      channel: "account",
+      origin: "direct",
+      sourceRecordId: null,
+    }),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    addContextFactSubjectIssues(value, ctx);
+    if (value.provenance.origin !== "direct") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["provenance", "origin"],
+        message: "Direct Context Fact writes require direct provenance.",
+      });
+    }
+  });
+
+export const createSelfContextFactInputSchema = z
+  .object({
+    callerUserId: nonEmptyIdentifier,
+    category: contextFactCategorySchema,
+    content: contextFactContentSchema,
+    sensitivity: sensitivitySchema.default("normal"),
+    provenance: contextFactProvenanceSchema
+      .default({
+        channel: "account",
+        origin: "direct",
+        sourceRecordId: null,
+      })
+      .refine((value) => value.origin === "direct", {
+        message: "Self Context direct writes require direct provenance.",
+        path: ["origin"],
+      }),
+  })
+  .strict();
+
+export type ContextFact = z.infer<typeof contextFactSchema>;
+export type PersistContextFact = z.infer<typeof persistContextFactSchema>;
+export type CreateContextFactInput = z.input<typeof createContextFactInputSchema>;
+export type CreateSelfContextFactInput = z.input<typeof createSelfContextFactInputSchema>;
+
+/** Context Facts can inform an answer, but their stored text is never authority. */
+export const contextFactTrustSchema = z.literal("untrusted_data");
+export const contextFactAuthoritySchema = z.literal("none");
+
+export const contextFactViewSchema = contextFactSchema.extend({
+  trust: contextFactTrustSchema,
+  authority: contextFactAuthoritySchema,
+  visibility: contextFactVisibilitySchema,
+});
+export type ContextFactView = z.infer<typeof contextFactViewSchema>;
+
+export function toContextFactView(fact: ContextFact): ContextFactView {
+  return contextFactViewSchema.parse({
+    ...fact,
+    trust: "untrusted_data",
+    authority: "none",
+    visibility: contextFactVisibilityForSubject(fact.subject),
+  });
+}
+
+export function contextFactSubjectId(subject: ContextFactSubject): string {
+  return subject.kind === "self" ? subject.userId : subject.householdId;
+}
+
+export function contextFactVisibilityForSubject(
+  subject: ContextFactSubject,
+): ContextFactVisibility {
+  return subject.kind === "self" ? "private" : "household";
+}
+
+export function canViewContextFact(input: {
+  callerUserId: string;
+  fact: Pick<ContextFact, "subject">;
+  activeHouseholdIds?: readonly string[];
+}): boolean {
+  if (input.fact.subject.kind === "self") {
+    return input.fact.subject.userId === input.callerUserId;
+  }
+
+  return input.activeHouseholdIds?.includes(input.fact.subject.householdId) === true;
+}
+
+export function canUseContextFactForOrientation(input: {
+  callerUserId: string;
+  fact: Pick<ContextFact, "subject" | "lifecycle" | "sensitivity">;
+  activeHouseholdIds?: readonly string[];
+}): boolean {
+  return (
+    input.fact.lifecycle === "active" &&
+    input.fact.sensitivity !== "restricted" &&
+    canViewContextFact(input)
+  );
+}
+
+export function isContextFactCategoryAllowedForSubject(input: {
+  category: ContextFactCategory;
+  subject: ContextFactSubject;
+}): boolean {
+  return input.category !== "composition" || input.subject.kind === "household";
+}

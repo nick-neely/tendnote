@@ -26,6 +26,7 @@
     "./queries/contact-methods": "./src/queries/contact-methods.ts",
     "./queries/cleanup-preview": "./src/queries/cleanup-preview.ts",
     "./queries/context-snapshots": "./src/queries/context-snapshots.ts",
+    "./queries/context-facts": "./src/queries/context-facts.ts",
     "./queries/conversational-capture": "./src/queries/conversational-capture.ts",
     "./queries/discord-identities": "./src/queries/discord-identities.ts",
     "./queries/discord-installs": "./src/queries/discord-installs.ts",

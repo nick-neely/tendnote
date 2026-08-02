@@ -13,6 +13,7 @@
     "./people": "./src/people.ts",
     "./memories": "./src/memories.ts",
     "./context-snapshots": "./src/context-snapshots.ts",
+    "./context-facts": "./src/context-facts.ts",
     "./conversational-capture": "./src/conversational-capture.ts",
     "./followups": "./src/followups.ts",
     "./general-actions": "./src/general-actions.ts",

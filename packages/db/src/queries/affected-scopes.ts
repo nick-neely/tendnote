@@ -9,7 +9,17 @@
 export type AffectedScope =
   | {
       kind: "owner-collection";
-      collection: "account" | "assets" | "briefs" | "people" | "review" | "saved-items" | "today";
+      collection:
+        | "account"
+        | "assets"
+        | "briefs"
+        | "context-facts"
+        | "global-recall"
+        | "orientation"
+        | "people"
+        | "review"
+        | "saved-items"
+        | "today";
       ownerUserId: string;
     }
   | {
@@ -30,7 +40,7 @@ export type AffectedScope =
     }
   | {
       kind: "household-collection";
-      collection: "assets" | "saved-items";
+      collection: "assets" | "context-facts" | "saved-items";
       householdId: string;
     }
   | {
@@ -47,6 +57,42 @@ export type MutationOutcome<TResult> = {
 
 export function affectedScopesForAccount(ownerUserId: string): AffectedScope[] {
   return [{ kind: "owner-collection", collection: "account", ownerUserId }];
+}
+
+function contextFactOwnerScopes(ownerUserId: string): AffectedScope[] {
+  return [
+    { kind: "owner-collection", collection: "context-facts", ownerUserId },
+    { kind: "owner-collection", collection: "orientation", ownerUserId },
+    { kind: "owner-collection", collection: "review", ownerUserId },
+    { kind: "owner-collection", collection: "global-recall", ownerUserId },
+    { kind: "owner-collection", collection: "account", ownerUserId },
+  ];
+}
+
+export function affectedScopesForContextFact(input: {
+  ownerUserId: string;
+  householdId?: string | null;
+  householdMemberUserIds?: readonly string[];
+}): AffectedScope[] {
+  const ownerScopes = contextFactOwnerScopes(input.ownerUserId);
+
+  if (!input.householdId) {
+    return ownerScopes;
+  }
+
+  const otherHouseholdMemberScopes = [...new Set(input.householdMemberUserIds ?? [])]
+    .filter((userId) => userId !== input.ownerUserId)
+    .flatMap((ownerUserId) => contextFactOwnerScopes(ownerUserId));
+
+  return [
+    ...ownerScopes,
+    ...otherHouseholdMemberScopes,
+    {
+      kind: "household-collection",
+      collection: "context-facts",
+      householdId: input.householdId,
+    },
+  ];
 }
 
 export function affectedScopesForBriefs(ownerUserId: string): AffectedScope[] {

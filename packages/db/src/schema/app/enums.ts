@@ -42,6 +42,25 @@ export const memoryType = pgEnum("memory_type", [
 
 export const sensitivity = pgEnum("sensitivity", ["normal", "sensitive", "restricted"]);
 
+export const contextFactSubject = pgEnum("context_fact_subject", ["self", "household"]);
+
+export const contextFactCategory = pgEnum("context_fact_category", [
+  "background",
+  "work",
+  "location",
+  "interest",
+  "preference",
+  "constraint",
+  "composition",
+  "other",
+]);
+
+export const contextFactLifecycle = pgEnum("context_fact_lifecycle", [
+  "suggested",
+  "active",
+  "archived",
+]);
+
 export const confidence = pgEnum("confidence", ["low", "medium", "high"]);
 
 export const privacyScope = pgEnum("privacy_scope", ["private", "shared", "household"]);
