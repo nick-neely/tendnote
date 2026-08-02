@@ -4,6 +4,9 @@ import {
   contextFactSchema,
   contextFactSubjectSchema,
   createSelfContextFactInputSchema,
+  selfContextFactCategories,
+  selfContextFactCategorySchema,
+  updateSelfContextFactInputSchema,
 } from "./context-facts";
 
 describe("Context Fact domain contract", () => {
@@ -18,6 +21,16 @@ describe("Context Fact domain contract", () => {
       "composition",
       "other",
     ]);
+    expect(selfContextFactCategories).toEqual([
+      "background",
+      "work",
+      "location",
+      "interest",
+      "preference",
+      "constraint",
+      "other",
+    ]);
+    expect(selfContextFactCategorySchema.safeParse("composition").success).toBe(false);
     expect(contextFactSubjectSchema.safeParse({ kind: "self", userId: "user-1" }).success).toBe(
       true,
     );
@@ -67,6 +80,37 @@ describe("Context Fact domain contract", () => {
         category: "work",
         content: "I run a consultancy.",
         provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps Self updates limited to the editable fact fields", () => {
+    expect(
+      updateSelfContextFactInputSchema.safeParse({
+        callerUserId: "user-1",
+        contextFactId: "fact-1",
+        category: "preference",
+        content: "I prefer concise answers.",
+        sensitivity: "sensitive",
+      }).success,
+    ).toBe(true);
+    expect(
+      updateSelfContextFactInputSchema.safeParse({
+        callerUserId: "user-1",
+        contextFactId: "fact-1",
+        category: "composition",
+        content: "This is not a self fact.",
+        sensitivity: "normal",
+      }).success,
+    ).toBe(false);
+    expect(
+      updateSelfContextFactInputSchema.safeParse({
+        callerUserId: "user-1",
+        contextFactId: "fact-1",
+        category: "work",
+        content: "I run a consultancy.",
+        sensitivity: "normal",
+        subject: { kind: "self", userId: "user-1" },
       }).success,
     ).toBe(false);
   });

@@ -3,6 +3,7 @@ import "server-only";
 import type { AffectedScope } from "@tendnote/db/queries/general-actions";
 import {
   AssetValidationError,
+  ContextFactValidationError,
   GeneralActionValidationError,
   SavedItemValidationError,
 } from "@tendnote/domain";
@@ -52,6 +53,7 @@ function userSafeErrorMessage(error: unknown): string | null {
     error instanceof GeneralActionValidationError ||
     error instanceof AssetValidationError ||
     error instanceof SavedItemValidationError ||
+    error instanceof ContextFactValidationError ||
     error instanceof ProductRateLimitError
   ) {
     return error.message;

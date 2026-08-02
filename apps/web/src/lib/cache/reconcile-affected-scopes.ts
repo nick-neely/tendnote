@@ -27,4 +27,12 @@ export function reconcileAffectedScopes(
     revalidatePath("/account/contacts/import");
     revalidatePath("/account/discord");
   }
+
+  if (
+    scopes.some(
+      (scope) => scope.kind === "owner-collection" && scope.collection === "context-facts",
+    )
+  ) {
+    revalidatePath("/account/about-you");
+  }
 }

@@ -27,11 +27,12 @@ describe("semantic retrieval product-route boundaries", () => {
     // glance (#186), the Phase 6 Assets surface and Asset Profile (#197), and
     // Phase 7's source-grounded Saved Items surface (#265);
     // account/auth surfaces, Phase 2E's explicit Contacts import preview entry,
-    // and the owner-scoped Discord delivery settings (#173) are allowed alongside
-    // them but carry no semantic-search route.
+    // the owner-scoped Discord delivery settings (#173), and Account → About you
+    // are allowed alongside them but carry no semantic-search route.
     expect(pageRoutes).toEqual([
       "/",
       "account",
+      "account/about-you",
       "account/contacts/import",
       "account/discord",
       "actions",

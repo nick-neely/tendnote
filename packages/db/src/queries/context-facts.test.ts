@@ -77,6 +77,102 @@ describe("Context Fact product contract", () => {
     ]);
   });
 
+  it("updates an active Self Context fact through the caller-scoped product seam", async () => {
+    const store = createInMemoryContextFactStore();
+    const ownerQueries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+    const otherQueries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OTHER_OWNER),
+    });
+    const created = await ownerQueries.createSelfContextFact({
+      callerUserId: OWNER,
+      category: "work",
+      content: "I run a software consultancy.",
+    });
+
+    const updated = await ownerQueries.updateSelfContextFact({
+      callerUserId: OWNER,
+      contextFactId: created.result.id,
+      category: "preference",
+      content: "I prefer concise answers.",
+      sensitivity: "sensitive",
+    });
+
+    expect(updated.result).toMatchObject({
+      id: created.result.id,
+      subject: { kind: "self", userId: OWNER },
+      category: "preference",
+      content: "I prefer concise answers.",
+      sensitivity: "sensitive",
+      lifecycle: "active",
+      visibility: "private",
+      trust: "untrusted_data",
+    });
+    expect(updated.result.updatedAt.getTime()).toBeGreaterThanOrEqual(
+      created.result.updatedAt.getTime(),
+    );
+    expect(updated.affectedScopes).toContainEqual({
+      kind: "owner-collection",
+      collection: "orientation",
+      ownerUserId: OWNER,
+    });
+    await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "context_fact.update", entityId: created.result.id }),
+      ]),
+    );
+
+    await expect(
+      otherQueries.updateSelfContextFact({
+        callerUserId: OTHER_OWNER,
+        contextFactId: created.result.id,
+        category: "work",
+        content: "This must not be allowed.",
+        sensitivity: "normal",
+      }),
+    ).rejects.toThrow("That Self Context fact is no longer available.");
+    await expect(
+      otherQueries.updateSelfContextFact({
+        callerUserId: OTHER_OWNER,
+        contextFactId: "00000000-0000-4000-8000-000000000099",
+        category: "work",
+        content: "This must not reveal whether the id exists.",
+        sensitivity: "normal",
+      }),
+    ).rejects.toThrow("That Self Context fact is no longer available.");
+    await expect(
+      ownerQueries.getContextFact({ callerUserId: OWNER, contextFactId: created.result.id }),
+    ).resolves.toMatchObject({ content: "I prefer concise answers." });
+  });
+
+  it("does not update an archived fact when the mutation requires an active lifecycle", async () => {
+    const archivedId = "00000000-0000-4000-8000-000000000098";
+    const store = createInMemoryContextFactStore([
+      contextFactFixture({
+        id: archivedId,
+        lifecycle: "archived",
+        archivedAt: new Date("2026-08-02T12:01:00.000Z"),
+      }),
+    ]);
+
+    await expect(
+      store.updateContextFact({
+        contextFactId: archivedId,
+        subjectUserId: OWNER,
+        lifecycle: "active",
+        patch: {
+          category: "preference",
+          content: "This archived fact must not change.",
+          sensitivity: "normal",
+          lastActorUserId: OWNER,
+          updatedAt: new Date("2026-08-02T12:02:00.000Z"),
+        },
+      }),
+    ).resolves.toBeNull();
+    expect(store.records.get(archivedId)?.content).toBe("I prefer concise answers.");
+  });
+
   it("lists only active facts for the caller and never crosses Self Context owners", async () => {
     const store = createInMemoryContextFactStore();
     const ownerQueries = createContextFactQueries(store, {
@@ -247,6 +343,7 @@ describe("Context Fact product contract", () => {
 
     const ownerFacts = await ownerQueries.listContextFacts({ callerUserId: OWNER });
     const memberFacts = await memberQueries.listContextFacts({ callerUserId: OTHER_OWNER });
+    const ownerSelfFacts = await ownerQueries.listSelfContextFacts({ callerUserId: OWNER });
 
     expect(ownerFacts.map((fact) => fact.content)).toEqual(
       expect.arrayContaining([
@@ -254,6 +351,7 @@ describe("Context Fact product contract", () => {
         "I run a private consultancy.",
       ]),
     );
+    expect(ownerSelfFacts.map((fact) => fact.content)).toEqual(["I run a private consultancy."]);
     expect(memberFacts.map((fact) => fact.content)).toEqual(
       expect.arrayContaining([
         "The household keeps a shared calendar.",

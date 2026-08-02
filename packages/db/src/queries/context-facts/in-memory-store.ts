@@ -52,6 +52,24 @@ export function createInMemoryContextFactStore(seed: ContextFact[] = []): InMemo
       records.set(fact.id, fact);
       return fact;
     },
+    async updateContextFact(input) {
+      if (!isPersistedContextFactId(input.contextFactId)) return null;
+      if (input.subjectUserId === undefined && input.householdIds === undefined) return null;
+      const current = records.get(input.contextFactId);
+      if (
+        !current ||
+        !isAllowedByFilter(current, input) ||
+        (input.lifecycle !== undefined && current.lifecycle !== input.lifecycle)
+      ) {
+        return null;
+      }
+      const updated = contextFactSchema.parse({
+        ...current,
+        ...input.patch,
+      });
+      records.set(updated.id, updated);
+      return updated;
+    },
     async getContextFact(input) {
       const fact = records.get(input.contextFactId);
       if (!fact) return null;

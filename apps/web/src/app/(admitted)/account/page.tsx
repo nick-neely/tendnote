@@ -1,4 +1,5 @@
 import { listReminderInstallations } from "@tendnote/db/queries/reminders";
+import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -90,6 +91,28 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
             </span>
           ) : null}
         </div>
+      </section>
+
+      <section aria-labelledby="about-you-entry-heading" className="flex flex-col gap-2">
+        <Link
+          className="flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-lg border bg-surface px-3.5 py-3 text-left outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/35"
+          href={appDestination("account-about-you").route}
+        >
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span
+              className="text-[length:var(--text-body)] leading-[var(--text-body-line)] font-medium"
+              id="about-you-entry-heading"
+            >
+              About you
+            </span>
+            <span className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
+              Keep a few private facts that help Eve understand you.
+            </span>
+          </span>
+          <span aria-hidden className="shrink-0 text-muted-foreground">
+            →
+          </span>
+        </Link>
       </section>
 
       {/* Access status */}

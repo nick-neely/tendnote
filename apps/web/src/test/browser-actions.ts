@@ -61,7 +61,9 @@ export const captureExplicitOutcomeAction = unusedAction;
 export const changeExplicitCaptureOutcomeAction = unusedAction;
 export const changeExplicitCaptureReminderAction = unusedAction;
 export const undoExplicitCaptureOutcomeAction = unusedAction;
+export const createSelfContextFactAction = unusedAction;
 export const globalRecallAction = unusedAction;
+export const updateSelfContextFactAction = unusedAction;
 
 export const actOnTodayItemAction = unusedAction;
 export const refreshTodayAction = unusedAction;

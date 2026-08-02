@@ -86,6 +86,22 @@ describe("app destinations", () => {
     ]);
   });
 
+  it("keeps About you focused beneath Account without adding it to primary navigation", () => {
+    expect(appDestination("account-about-you")).toMatchObject({
+      route: "/account/about-you",
+      label: "About you",
+      groups: [],
+    });
+    expect(affectedScopesForDestination("account-about-you", "owner-1")).toEqual([
+      { kind: "owner-collection", collection: "account", ownerUserId: "owner-1" },
+      { kind: "owner-collection", collection: "context-facts", ownerUserId: "owner-1" },
+    ]);
+    expect(isDestinationActive("account", "/account/about-you", new URLSearchParams())).toBe(false);
+    expect(
+      isDestinationActive("account-about-you", "/account/about-you", new URLSearchParams()),
+    ).toBe(true);
+  });
+
   it("builds reminder record, notification and service-worker fallback links", () => {
     expect(
       reminderRecordDeepLink({

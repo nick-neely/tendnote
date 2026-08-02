@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
 
 const { getDb } = vi.hoisted(() => ({
@@ -68,6 +69,7 @@ describe("Context Fact Drizzle store guards", () => {
       metadataJson: { category: "work" },
       createdAt: now,
     };
+    let capturedUpdateWhere: unknown;
     const fakeDb = {
       insert: vi.fn(() => ({
         values: vi.fn((values: Record<string, unknown>) => {
@@ -84,6 +86,23 @@ describe("Context Fact Drizzle store guards", () => {
             limit: vi.fn(async () => [factRow]),
             orderBy: vi.fn(async () => [factRow]),
           })),
+        })),
+      })),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn((where: unknown) => {
+            capturedUpdateWhere = where;
+            return {
+              returning: vi.fn(async () => [
+                {
+                  ...factRow,
+                  category: "preference" as const,
+                  content: "I prefer concise answers.",
+                  sensitivity: "sensitive" as const,
+                },
+              ]),
+            };
+          }),
         })),
       })),
     };
@@ -109,6 +128,27 @@ describe("Context Fact Drizzle store guards", () => {
     await expect(
       store.listContextFacts({ subjectUserId: "owner-1", lifecycle: "active" }),
     ).resolves.toMatchObject([{ content: factRow.content, lifecycle: "active" }]);
+    await expect(
+      store.updateContextFact({
+        contextFactId: factRow.id,
+        subjectUserId: "owner-1",
+        lifecycle: "active",
+        patch: {
+          category: "preference",
+          content: "I prefer concise answers.",
+          sensitivity: "sensitive",
+          lastActorUserId: "owner-1",
+          updatedAt: now,
+        },
+      }),
+    ).resolves.toMatchObject({
+      category: "preference",
+      content: "I prefer concise answers.",
+      sensitivity: "sensitive",
+    });
+    const renderedWhere = new PgDialect().sqlToQuery(capturedUpdateWhere as never);
+    expect(renderedWhere.sql).toContain("subject_user_id");
+    expect(renderedWhere.params).toEqual(expect.arrayContaining([factRow.id, "owner-1", "active"]));
     await expect(
       store.createAuditLogEntry({
         ownerUserId: "owner-1",

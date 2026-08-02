@@ -91,6 +91,27 @@ export function createDrizzleContextFactStore(): ContextFactStore {
       }
       return fromRow(row);
     },
+    async updateContextFact(input) {
+      if (!isPersistedContextFactId(input.contextFactId)) return null;
+      const subject = subjectWhere(input);
+      if (!subject) return null;
+      const lifecycle = input.lifecycle ? eq(contextFacts.lifecycle, input.lifecycle) : undefined;
+      const where = lifecycle
+        ? and(eq(contextFacts.id, input.contextFactId), subject, lifecycle)
+        : and(eq(contextFacts.id, input.contextFactId), subject);
+      const [row] = await getDb()
+        .update(contextFacts)
+        .set({
+          category: input.patch.category,
+          content: input.patch.content,
+          sensitivity: input.patch.sensitivity,
+          lastActorUserId: input.patch.lastActorUserId,
+          updatedAt: input.patch.updatedAt,
+        })
+        .where(where)
+        .returning();
+      return row ? fromRow(row) : null;
+    },
     async getContextFact(input) {
       if (!isPersistedContextFactId(input.contextFactId)) return null;
       const subject = subjectWhere(input);

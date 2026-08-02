@@ -6,6 +6,7 @@ import type {
   CreateSelfContextFactMutationInput,
   GetContextFactInput,
   ListContextFactsInput,
+  UpdateSelfContextFactMutationInput,
 } from "./context-facts/types";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 
@@ -35,11 +36,25 @@ export function createSelfContextFact(
   return createVerifiedContextFactQueries(resolveVerifiedCaller).createSelfContextFact(input);
 }
 
+export function updateSelfContextFact(
+  input: UpdateSelfContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).updateSelfContextFact(input);
+}
+
 export function listContextFacts(
   input: ListContextFactsInput,
   resolveVerifiedCaller: ContextFactCallerVerification,
 ) {
   return createVerifiedContextFactQueries(resolveVerifiedCaller).listContextFacts(input);
+}
+
+export function listSelfContextFacts(
+  input: ListContextFactsInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).listSelfContextFacts(input);
 }
 
 export function listEligibleContextFacts(

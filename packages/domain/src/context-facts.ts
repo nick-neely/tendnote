@@ -1,9 +1,17 @@
 import { z } from "zod";
+import { selfContextFactCategories } from "./context-fact-categories";
 import { type Sensitivity, sensitivitySchema } from "./privacy";
+
+export { selfContextFactCategories } from "./context-fact-categories";
 
 const nonEmptyIdentifier = z.string().trim().min(1);
 const contextFactSourceRecordIdSchema = nonEmptyIdentifier.max(128);
 const contextFactContentSchema = z.string().trim().min(1).max(500);
+
+/** A user-actionable failure from a Self or Household Context Fact mutation. */
+export class ContextFactValidationError extends Error {
+  override name = "ContextFactValidationError";
+}
 
 export const contextFactSubjectSchema = z.discriminatedUnion("kind", [
   z
@@ -30,6 +38,9 @@ export const contextFactCategorySchema = z.enum([
   "composition",
   "other",
 ]);
+
+export const selfContextFactCategorySchema =
+  contextFactCategorySchema.extract(selfContextFactCategories);
 
 export const contextFactLifecycleSchema = z.enum(["suggested", "active", "archived"]);
 
@@ -168,12 +179,42 @@ export const createSelfContextFactInputSchema = z
         path: ["origin"],
       }),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.category === "composition") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["category"],
+        message: "Composition is only valid for Household Context.",
+      });
+    }
+  });
 
 export type ContextFact = z.infer<typeof contextFactSchema>;
 export type PersistContextFact = z.infer<typeof persistContextFactSchema>;
 export type CreateContextFactInput = z.input<typeof createContextFactInputSchema>;
 export type CreateSelfContextFactInput = z.input<typeof createSelfContextFactInputSchema>;
+
+export const updateSelfContextFactInputSchema = z
+  .object({
+    callerUserId: nonEmptyIdentifier,
+    contextFactId: nonEmptyIdentifier.max(128),
+    category: contextFactCategorySchema,
+    content: contextFactContentSchema,
+    sensitivity: sensitivitySchema,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.category === "composition") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["category"],
+        message: "Composition is only valid for Household Context.",
+      });
+    }
+  });
+
+export type UpdateSelfContextFactInput = z.input<typeof updateSelfContextFactInputSchema>;
 
 /** Context Facts can inform an answer, but their stored text is never authority. */
 export const contextFactTrustSchema = z.literal("untrusted_data");

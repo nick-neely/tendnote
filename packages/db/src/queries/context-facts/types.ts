@@ -5,6 +5,7 @@ import type {
   CreateContextFactInput,
   CreateSelfContextFactInput,
   PersistContextFact,
+  UpdateSelfContextFactInput,
 } from "@tendnote/domain";
 import type { MutationOutcome } from "../affected-scopes";
 import type { HouseholdStore } from "../households/types";
@@ -28,8 +29,20 @@ export type ContextFactSubjectFilter = {
   householdIds?: string[];
 };
 
+export type ContextFactUpdatePatch = Pick<
+  ContextFact,
+  "category" | "content" | "sensitivity" | "lastActorUserId" | "updatedAt"
+>;
+
 export type ContextFactStore = {
   createContextFact: (input: PersistContextFact) => Promise<ContextFact>;
+  updateContextFact: (
+    input: ContextFactSubjectFilter & {
+      contextFactId: string;
+      lifecycle?: ContextFactLifecycle;
+      patch: ContextFactUpdatePatch;
+    },
+  ) => Promise<ContextFact | null>;
   getContextFact: (
     input: { contextFactId: string } & ContextFactSubjectFilter,
   ) => Promise<ContextFact | null>;
@@ -55,6 +68,7 @@ export type ContextFactQueryDependencies = {
 
 export type CreateContextFactMutationInput = CreateContextFactInput;
 export type CreateSelfContextFactMutationInput = CreateSelfContextFactInput;
+export type UpdateSelfContextFactMutationInput = UpdateSelfContextFactInput;
 
 export type ListContextFactsInput = {
   callerUserId: string;

@@ -1,4 +1,5 @@
 import {
+  ContextFactValidationError,
   canUseContextFactForOrientation,
   canViewContextFact,
   contextFactSchema,
@@ -6,6 +7,7 @@ import {
   createContextFactInputSchema,
   createSelfContextFactInputSchema,
   toContextFactView,
+  updateSelfContextFactInputSchema,
 } from "@tendnote/domain";
 import { affectedScopesForContextFact } from "../affected-scopes";
 import type {
@@ -16,6 +18,7 @@ import type {
   CreateSelfContextFactMutationInput,
   GetContextFactInput,
   ListContextFactsInput,
+  UpdateSelfContextFactMutationInput,
 } from "./types";
 
 export function createContextFactQueries(
@@ -125,6 +128,82 @@ export function createContextFactQueries(
     };
   }
 
+  async function updateSelfContextFact(
+    input: UpdateSelfContextFactMutationInput,
+  ): Promise<ContextFactMutationOutcome> {
+    const parsed = updateSelfContextFactInputSchema.parse(input);
+    const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
+    const existing = await store.getContextFact({
+      contextFactId: parsed.contextFactId,
+      subjectUserId: callerUserId,
+    });
+    if (existing?.subject.kind !== "self" || existing?.lifecycle !== "active") {
+      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+    }
+
+    const fact = await store.updateContextFact({
+      contextFactId: parsed.contextFactId,
+      subjectUserId: callerUserId,
+      lifecycle: "active",
+      patch: {
+        category: parsed.category,
+        content: parsed.content,
+        sensitivity: parsed.sensitivity,
+        lastActorUserId: callerUserId,
+        updatedAt: new Date(),
+      },
+    });
+    if (!fact) {
+      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+    }
+    const canonicalFact = contextFactSchema.parse(fact);
+
+    try {
+      await store.createAuditLogEntry({
+        ownerUserId: callerUserId,
+        action: "context_fact.update",
+        entityType: "context_fact",
+        entityId: canonicalFact.id,
+        metadataJson: {
+          subjectKind: canonicalFact.subject.kind,
+          subjectId: contextFactSubjectId(canonicalFact.subject),
+          category: canonicalFact.category,
+          lifecycle: canonicalFact.lifecycle,
+          sensitivity: canonicalFact.sensitivity,
+          provenanceChannel: canonicalFact.provenance.channel,
+        },
+      });
+    } catch {
+      // The fact is already committed; audit failure must not lose user context.
+    }
+
+    return {
+      result: toContextFactView(canonicalFact),
+      affectedScopes: affectedScopesForContextFact({ ownerUserId: callerUserId }),
+    };
+  }
+
+  async function listSelfContextFacts(input: ListContextFactsInput) {
+    const callerUserId = await requireVerifiedCaller(input.callerUserId);
+    const facts = await store.listContextFacts({
+      subjectUserId: callerUserId,
+      lifecycle: "active",
+    });
+
+    return facts
+      .map((fact) => contextFactSchema.parse(fact))
+      .filter((fact) =>
+        input.includeRestricted === false
+          ? canUseContextFactForOrientation({ callerUserId, fact })
+          : canViewContextFact({ callerUserId, fact }) && fact.lifecycle === "active",
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.getTime() - left.updatedAt.getTime() || left.id.localeCompare(right.id),
+      )
+      .map(toContextFactView);
+  }
+
   async function listContextFacts(input: ListContextFactsInput) {
     const callerUserId = await requireVerifiedCaller(input.callerUserId);
 
@@ -188,6 +267,7 @@ export function createContextFactQueries(
 
   return {
     createContextFact,
+    updateSelfContextFact,
     async createSelfContextFact(input: CreateSelfContextFactMutationInput) {
       const parsed = createSelfContextFactInputSchema.parse(input);
       return createContextFact({
@@ -200,6 +280,7 @@ export function createContextFactQueries(
       });
     },
     listContextFacts,
+    listSelfContextFacts,
     listEligibleContextFacts(input: ListContextFactsInput) {
       return listContextFacts({ ...input, includeRestricted: false });
     },
