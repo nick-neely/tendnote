@@ -1689,12 +1689,292 @@ feedback and reconciliation contract; the browser matrix covers the shared
 behavioral seam; the agent-tool migration is reproducible; and rollout and
 rollback evidence can be collected without inventing new product policy.
 
+#### Phase 7.5: Self Context and Household Context Foundation
+
+Goal: Let Tendnote understand stable, broadly reusable facts about the current
+user from the start of an Eve turn, without overloading relationship Memories,
+Saved Items, account metadata, chat history, or static agent instructions.
+Build one durable Context Fact domain for both Self Context and future Household
+Context, ship the complete Self Context experience now, and preserve a narrow
+activation path for Phase 8 household setup and collaboration.
+
+Domain and routing contract:
+
+- A Context Fact is one small, independently correctable, categorized
+  natural-language statement whose subject is either one Tendnote user or one
+  Household Workspace. It is current orientation, not a biography, generated
+  persona, historical ledger, generic memory bucket, or executable instruction.
+- Self Context contains broadly reusable facts the user explicitly saved or
+  accepted about themselves. Household Context contains facts active Household
+  Members jointly maintain about the Household Workspace as a whole.
+- The initial fixed categories are `background`, `work`, `location`,
+  `interest`, `preference`, `constraint`, `composition`, and `other`.
+  `composition` is reserved for Household Context. Categories organize
+  onboarding, management, review, and context selection; they do not determine
+  visibility, sensitivity, authority, or model behavior.
+- A more specific Tendnote domain always wins. Relationship context remains a
+  Person-linked Memory or Source Record; time-bound work remains a Follow-Up or
+  General Action; owned things remain Assets; provider events remain Calendar
+  context; operational values remain typed settings; notes, links, plans, and
+  open questions remain Saved Items. `other` is not permission to bypass this
+  routing rule.
+- A durable preference may softly shape a relevant answer, but no Context Fact
+  can change product policy, grant authority, expose private data, trigger an
+  external action, or override the current turn. Text that resembles an
+  instruction remains untrusted data inside the Context Fact boundary.
+
+Subject, visibility, and household contract:
+
+- Self Context is private by default and remains about that user if deliberately
+  shared later. Sharing changes audience, not subject.
+- Household Context is whole-household-visible by definition. A private thought
+  about the household belongs in a private Saved Item, not Household Context.
+- Every active Household Member may add, edit, or archive Household Context.
+  Actor and time provenance remain visible, member removal revokes access, and
+  historical attribution remains. Household Owner status governs membership
+  and settings rather than making one member the arbiter of household truth.
+- Phase 7.5 implements the shared subject model, household membership checks,
+  whole-household visibility policy, collaborative mutation authority, and
+  two-member isolation tests. It does not expose Household Context in
+  onboarding, Account, Review, Search, Capture, or ordinary Eve use because
+  Tendnote does not yet have a user-facing household setup and invitation flow.
+- Phase 8 activates this foundation with household creation and naming,
+  non-enumerating email invitations, email-provider setup and delivery,
+  accept/decline, pending and active member management, member removal,
+  Household Context management, and eligible Eve orientation for active
+  members.
+
+Trust, provenance, sensitivity, and lifecycle:
+
+- Deliberate onboarding and About you edits create confirmed Self Context
+  directly. An explicit Eve instruction such as “Remember that I run a software
+  consultancy” and an explicit supported Capture outcome may also create an
+  active fact directly through the same product mutation.
+- Direct facts retain actor, channel, timestamps, and audit history but do not
+  manufacture a duplicate Source Record. An imported or provider-derived fact,
+  if supported later, remains review-gated and carries a real source reference.
+- A Suggested Context Fact is model-proposed, grounded in specific user-visible
+  evidence, and unavailable as trusted context until accepted. Acceptance, not
+  model confidence, establishes authority.
+- Context Facts follow `suggested`, `active`, and `archived` lifecycle states.
+  Editing replaces the current active statement, preserves audit history, and
+  offers Authoritative Undo. Only active facts enter normal recall or
+  Orientation Context. Ordinary removal archives first; the user can
+  deliberately delete their Self Context permanently, including retained
+  suggestion evidence, while a minimized non-content audit tombstone may
+  remain.
+- Corrections do not leave contradictory active versions. A likely conflict
+  becomes a focused edit or review candidate that names the existing fact; Eve
+  never silently chooses between contradictory records. Meaningful history is
+  stored only as an explicit current statement such as “I previously worked in
+  healthcare” or in a more suitable future domain.
+- Reuse the existing independent `normal`, `sensitive`, and `restricted`
+  sensitivity values. Normal facts may enter Orientation Context. Sensitive
+  facts may enter it but are used only when relevant and phrased carefully.
+  Restricted facts never enter automatic orientation and require direct,
+  relevant current-turn intent. Inference preserves or increases the
+  sensitivity of its evidence and can never downgrade it.
+
+Self Context onboarding and management:
+
+- After admission, offer one short, optional, fully skippable setup explaining
+  that a few facts help Eve be useful from the start. The setup is not part of
+  authentication or Private Beta Access admission and never blocks Today, Eve,
+  Capture, Search, or the rest of Tendnote.
+- Offer three or four optional prompts covering work or background, general
+  location, interests, and durable preferences or constraints. Precise home
+  addresses are not collected as Location context. Each non-empty answer creates
+  one independently editable categorized fact; no prompt or minimum fact count
+  is required.
+- A skipped setup may produce one quiet later invitation and then stays out of
+  the way. Completion, dismissal, and reminder state are account-level
+  onboarding metadata, not Context Facts.
+- Add an `About you` entry near Account identity that opens a focused
+  `/account/about-you` surface. Group active facts by category in a compact flat
+  list with add, edit, archive, sensitivity, provenance, correction, and undo.
+  Archived facts live behind progressive disclosure. The onboarding and Account
+  flows reuse one fact editor and mutation contract.
+- Show pending Suggested Context Facts in both the existing Review Queue and one
+  small Suggested section on About you. Support accept, edit-and-accept, and
+  dismiss through shared review mutations. Suggestions do not appear in Today,
+  Search, Orientation Context, or ordinary Eve answers before acceptance, and
+  Review adds no urgency language, backlog count, or notification badge.
+
+Orientation Context and Eve behavior:
+
+- Orientation Context is the bounded set of active, policy-eligible Self Context
+  for the authenticated caller and, after Phase 8 activation, Household Context
+  for their active Household Workspace. It is a read view over authoritative
+  Context Facts, never a generated source of truth.
+- Keep static Eve base instructions focused on product identity and policy.
+  Load Orientation Context through Eve runtime dynamic instructions on
+  `turn.started` so a fact created or corrected in one turn is available on the
+  next turn. Serialize records as clearly delimited untrusted data with
+  canonical references, category, trust, provenance, sensitivity, and subject;
+  never interpolate stored content into executable instruction prose.
+- Resolve the caller through authenticated Eve session context before every
+  orientation read. The caller receives their own Self Context, never another
+  member's private Self Context. A future deliberately shared member fact is
+  retrieved only when relevant rather than injected into every household turn.
+- Include all eligible facts while the serialized pack stays within a measured
+  budget. Beyond that budget, select deterministically with subject reserves,
+  category coverage, and recently confirmed facts; do not infer importance or a
+  personality score. Relevant exact retrieval may add omitted facts for the
+  current question. Lock the measured budget and deterministic ordering in
+  tests rather than imposing a hard storage-count limit.
+- Eve uses accepted context quietly when it materially improves an answer,
+  example, assumption, or level of explanation. It does not gratuitously repeat
+  personal facts, infer personality or emotional state, or produce a generated
+  profile. “What do you know about me?” returns the exact active facts grouped
+  by category with canonical correction destinations.
+- A current-turn statement wins over stale orientation for that answer. Eve
+  offers a focused correction or review candidate instead of silently rewriting
+  the durable fact. A material personalized claim may name and link the
+  supporting fact; ordinary stylistic adaptation does not require citation
+  clutter.
+- Provide shared typed Context Fact capabilities for list, exact lookup, direct
+  create, update, archive, restore/undo, permanent delete, and review. Eve and
+  web actions remain thin authenticated adapters over the same product
+  functions. Explicit self-directed commands may mutate; inferred behavior may
+  only propose.
+- Orientation follows authenticated owner identity across supported Eve
+  channels. It is never loaded for unauthenticated, unresolved, provider-only,
+  schedule, or subagent identities.
+
+Bounded ambient inference:
+
+- A human-authored inbound message from an authenticated, owner-resolved Eve
+  channel may enqueue best-effort Context Fact extraction after the message is
+  durably accepted. The conversation response never waits on extraction, and an
+  enqueue or model failure never fails the turn.
+- Extraction considers only the current inbound user message. It does not mine
+  prior chat history, provider data, relationship records, schedules, subagent
+  messages, tool results, generated assistant text, or shared-channel messages.
+- Candidates must be directly supported stable orienting statements, not
+  inferred personality, identity, intent, values, lifestyle, finances, or
+  emotional state. “I run a software consultancy” may qualify; “I am swamped
+  this week” cannot become a durable career characterization.
+- Persist candidate evidence in a bounded review-safe form, retain channel and
+  actor provenance, and apply idempotent enqueueing, exact and normalized
+  duplicate suppression, pending caps, per-message candidate caps, and
+  dismissal suppression. A likely correction references the active fact it may
+  replace.
+- Ambient extraction creates only Suggested Context Facts. It never interrupts
+  the originating chat with an unsolicited card. If the user explicitly asks
+  Eve to review what it has learned, Eve may list the pending suggestions using
+  tentative language and the normal review controls.
+
+Recall and search:
+
+- Add active Self Context as a typed Global Recall result family with canonical
+  record identity, exact content, category, sensitivity treatment, provenance,
+  and a deep link to the focused fact on About you.
+- The first slice supports exact matching only. The set is small, categorized,
+  and already available through Orientation Context; do not add embeddings or
+  semantic Context Fact search without measured need.
+- Archived and suggested facts stay out of normal results. Restricted matches
+  require a direct Self Context request and the existing deliberate reveal
+  contract. Search and Eve use the same owner-scoped result and destination
+  rather than maintaining separate profile-search behavior.
+
+Architecture and data contract:
+
+- Store both subjects in one dedicated `context_facts` domain table rather than
+  overloading relationship Memories, Saved Items, Better Auth users, Private
+  Beta Access profiles, household metadata, or Eve session state.
+- Represent subject as an explicit constrained union of Self user or Household
+  Workspace. Database constraints require exactly one valid subject reference.
+  Store category, concise content, lifecycle, sensitivity, bounded provenance,
+  optional suggestion evidence/source reference, creator, last actor, archive
+  and review times, and normal timestamps. Do not add a generic polymorphic
+  subject abstraction beyond these two earned subjects.
+- The primary behavioral and testing seam is one shared Context Fact
+  application/query layer. It resolves self ownership or active household
+  membership, lifecycle, visibility, sensitivity, review authority, conflict
+  and duplicate policy, mutation idempotency, audit, affected cache scopes, and
+  canonical returned views. Database stores, Next.js Server Actions, Review,
+  Search, Capture, and Eve are adapters around that seam.
+- Extend the shared Postgres-owned background-job mechanics with a focused
+  Context Fact extraction family rather than coupling extraction to the Eve
+  request or generalizing all domain processors into one monolith. Production
+  enqueue/publish, claim, retry, dead-letter, audit, and local inline behavior
+  follow the existing job-family contract.
+- Stable bounded Self Context and Account views may use owner-scoped reference
+  caching under the Next.js 16.3 cache contract. User mutations synchronously
+  invalidate returned Context Fact, Orientation Context, Review, Global Recall,
+  and Account scopes; accepted background suggestions use background
+  revalidation. Authentication, raw messages, suggestion evidence, and
+  restricted content never enter shared route caches.
+
+First implementation chain:
+
+1. Add Context Fact domain types, categories, lifecycle, sensitivity and subject
+   constraints; one table and migration; audit/affected-scope support; and
+   owner/household policy fixtures.
+2. Build the shared product layer for direct lifecycle, review, correction,
+   duplicate/conflict policy, permanent deletion, bounded Orientation Context,
+   and canonical About you views.
+3. Deliver optional onboarding and the Account → About you management surface,
+   then extend the shared Review Queue for Suggested Context Facts.
+4. Add Eve direct tools and the authenticated `turn.started` dynamic
+   Orientation Context resolver with static-instruction restraint and
+   channel-neutral owner isolation.
+5. Add the best-effort current-message extraction hook and focused
+   Postgres-owned extraction family, including evidence, caps, dedupe,
+   dismissal suppression, retry, and failure isolation.
+6. Add the exact Global Recall result family, canonical deep links, focused
+   correction navigation, and direct “what do you know about me?” behavior.
+7. Prove the dormant Household Context subject and collaborative permission
+   path end to end in shared product tests, then leave all household setup and
+   user-facing activation to the expanded Phase 8 contract.
+
+Acceptance and verification:
+
+- Shared product tests are the primary evidence. They prove self isolation,
+  active household membership, removed-member revocation, whole-household
+  visibility, collaborative household mutation authority, direct versus
+  suggested authority, sensitivity gating, lifecycle, correction, duplicate and
+  conflict handling, audit, undo, permanent deletion, deterministic orientation
+  bounds, and affected scopes through externally visible returned views.
+- Background-job tests prove authenticated current-message-only eligibility,
+  idempotent enqueue and claim, candidate and pending caps, evidence
+  minimization, exact/normalized dedupe, dismissal suppression, retry and
+  terminal behavior, and that job failure cannot fail the Eve turn.
+- Eve tests and evals prove dynamic caller isolation, untrusted-data
+  serialization, next-turn freshness, relevant quiet use, no persona inference,
+  exact self recall, current-turn correction restraint, restricted exclusion,
+  refusal to treat facts as policy, and refusal to learn from schedules,
+  subagents, tools, assistant output, provider data, or another member.
+- Browser and accessibility tests cover optional setup and skip, one quiet later
+  invitation, About you add/edit/archive/undo/delete, sensitivity controls,
+  pending review accept/edit/dismiss, focused canonical navigation from Search,
+  mobile keyboard/focus behavior, 200% text, and failure recovery without losing
+  editable input.
+- Two synthetic users plus one Household Workspace prove that no private Self
+  Context, restricted content, suggestion evidence, or removed-member data
+  crosses an owner or household boundary. Normal verification uses fixtures and
+  fake extraction adapters; credential-gated model quality checks remain
+  separate from deterministic CI.
+
+The implementation-ticket pass may begin when the shared Context Fact product
+contract, Context Fact extraction job contract, Orientation Context budget and
+serialization, user-facing lifecycle, exact Global Recall union member, and
+Phase 8 activation boundary are specific enough that no ticket must invent
+product policy.
+
 #### Phase 8: Rich Household and Multi-Domain Collaboration
 
 Goal: Build the richer household product workflows on top of the Phase 4 scope foundation and the first Personal OS vertical.
 
 Deliverables:
 
+- Household creation, naming, and account management surfaces
+- Non-enumerating email invitations, including email-provider setup and explicit
+  invitation delivery
+- Household invitation accept and decline flows
+- Pending and active member management plus member removal
+- Household Context management and activation in eligible Eve orientation,
+  Review, Capture, Search, and Account experiences
 - Shared household reminders and planning surfaces beyond the minimal foundation
 - Household gift ideas and birthday planning
 - Family and social event tracking
@@ -1703,6 +1983,10 @@ Deliverables:
 
 Vertical slice issue seeds:
 
+- Build the minimal household setup, email invitation, acceptance, and member
+  management flow that activates the Phase 7.5 Household Context foundation.
+- Add Household Context management and eligible Eve orientation for active
+  members.
 - Build shared household reminders page.
 - Add household gift ideas and birthday planning view.
 - Add family and social event tracking.
