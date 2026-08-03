@@ -284,9 +284,9 @@ function RecallSearchControls({
   const restrictedLocked = family === "all";
   return (
     <>
-      <label className="sr-only" htmlFor="mobile-global-search">
+      <Label className="sr-only" htmlFor="mobile-global-search">
         Search Tendnote
-      </label>
+      </Label>
       <div className="flex min-h-12 items-center gap-2 rounded-xl border px-3 focus-within:ring-3 focus-within:ring-ring/35">
         <SearchIcon aria-hidden className="size-4 text-muted-foreground" />
         <input

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { confirmPhraseMatches, generateConfirmPhrase } from "@/lib/confirm-phrase";
 
 /** A single thing attached to the person, previewed so the user sees what they'd lose. */
@@ -196,13 +197,16 @@ export function PersonRemove({ personId, personName }: { personId: string; perso
 
         {hasHistory ? (
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm text-muted-foreground" htmlFor="person-remove-confirm">
+            <Label
+              className="block text-sm font-normal text-muted-foreground"
+              htmlFor="person-remove-confirm"
+            >
               Type{" "}
               <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.8125rem] font-medium text-foreground select-none">
                 {phrase}
               </code>{" "}
               to confirm
-            </label>
+            </Label>
             <Input
               autoComplete="off"
               // Typing the phrase is the intended next action in this gated dialog.

@@ -7,6 +7,7 @@ import { appDestination } from "@/components/app-destinations";
 import { CornerDownLeftIcon } from "@/components/icons";
 import { TodayShortlist, type TodayShortlistHandlers } from "@/components/today-shortlist";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { requestLocalEveDraftSubmission, useLocalComposerDraft } from "@/lib/local-composer-draft";
 
@@ -147,9 +148,9 @@ function TodayEveComposer({
           onOpenEve(submitButton.current ?? event.currentTarget);
         }}
       >
-        <label className="sr-only" htmlFor="today-eve-composer">
+        <Label className="sr-only" htmlFor="today-eve-composer">
           Ask Eve anything
-        </label>
+        </Label>
         {/* The bordered form is the field; the control inside it stays chromeless
             so there is one box, not a box inside a box. It grows with the
             question up to a cap, then scrolls. */}

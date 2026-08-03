@@ -7,6 +7,7 @@ import type {
 import { useId, useState } from "react";
 import { TriangleAlertIcon, UsersRoundIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 type Candidate = ContactImportPreviewCandidate;
@@ -217,10 +218,10 @@ function RadioOption({ label, value }: { label: string; value: string }) {
   const id = useId();
 
   return (
-    <label className={RADIO_OPTION_CLASS} htmlFor={id}>
+    <Label className={RADIO_OPTION_CLASS} htmlFor={id}>
       <RadioGroupItem id={id} value={value} />
       <span>{label}</span>
-    </label>
+    </Label>
   );
 }
 
@@ -264,8 +265,7 @@ function SkipButton({ busy, onSkip }: { busy: boolean; onSkip: () => void }) {
 
 // The wrapping label forwards its click to the radio, so the whole row is the
 // target; it keeps a 44px reach on touch without loosening desktop density.
-const RADIO_OPTION_CLASS =
-  "flex items-center gap-2 text-[length:var(--text-small)] leading-[var(--text-small-line)] max-sm:min-h-11";
+const RADIO_OPTION_CLASS = "font-normal max-sm:min-h-11";
 
 // Above this many possible targets, scroll the radio list instead of growing
 // the row; keeps heavily-matched contacts calm.

@@ -40,6 +40,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -395,7 +396,7 @@ function CreateSavedItemFields({
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
-        <label className="flex flex-col gap-1.5 text-sm font-medium" htmlFor={kindId}>
+        <Label className="flex-col items-stretch gap-1.5 text-sm" htmlFor={kindId}>
           Kind
           <Select onValueChange={(value) => onKindChange(value as SavedItemKind)} value={kind}>
             {/* `w-full` because the trigger is `w-fit` by default and this one owns a grid
@@ -411,8 +412,8 @@ function CreateSavedItemFields({
               ))}
             </SelectContent>
           </Select>
-        </label>
-        <label className="flex flex-col gap-1.5 text-sm font-medium" htmlFor={titleId}>
+        </Label>
+        <Label className="flex-col items-stretch gap-1.5 text-sm" htmlFor={titleId}>
           Title
           <Input
             id={titleId}
@@ -420,10 +421,10 @@ function CreateSavedItemFields({
             placeholder={isQuestion ? "What do you want to answer?" : "What do you want to keep?"}
             value={title}
           />
-        </label>
+        </Label>
       </div>
       {kind === "link" ? (
-        <label className="flex flex-col gap-1.5 text-sm font-medium" htmlFor={urlId}>
+        <Label className="flex-col items-stretch gap-1.5 text-sm" htmlFor={urlId}>
           Link URL
           <Input
             id={urlId}
@@ -433,9 +434,9 @@ function CreateSavedItemFields({
             type="url"
             value={url}
           />
-        </label>
+        </Label>
       ) : null}
-      <label className="flex flex-col gap-1.5 text-sm font-medium" htmlFor={contentId}>
+      <Label className="flex-col items-stretch gap-1.5 text-sm" htmlFor={contentId}>
         {isQuestion ? "Context" : "Details"}
         <Textarea
           id={contentId}
@@ -444,7 +445,7 @@ function CreateSavedItemFields({
           rows={2}
           value={content}
         />
-      </label>
+      </Label>
     </>
   );
 }
@@ -466,9 +467,9 @@ function CreateSavedItemFooter({
       {/* The label sits beside the picker rather than wrapping it: a wrapping label
           folds the time input's own name into the date trigger's. */}
       <div className="flex max-w-xs flex-1 flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor={bringBackAtId}>
+        <Label className="text-sm" htmlFor={bringBackAtId}>
           Bring back
-        </label>
+        </Label>
         <DateTimePicker id={bringBackAtId} onChange={onBringBackAtChange} value={bringBackAt} />
       </div>
       <Button disabled={disabled} type="submit">
