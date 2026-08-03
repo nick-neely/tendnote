@@ -21,6 +21,24 @@ function onboardingStateFromProfile(profile: AccessProfile): SelfContextOnboardi
  * derive access from "oldest user" queries beyond the one-time bootstrap.
  */
 export function createAccessProfileQueries(store: AccessProfileStore) {
+  async function updateSelfContextOnboarding(input: {
+    userId: string;
+    status: "completed" | "dismissed";
+  }): Promise<SelfContextOnboardingState> {
+    const existing = await store.getByUserId(input.userId);
+    if (!existing) throw new Error("Failed to update Self Context setup.");
+    if (existing.selfContextOnboardingStatus === "completed") {
+      return onboardingStateFromProfile(existing);
+    }
+
+    const updated = await store.update({
+      userId: input.userId,
+      patch: { selfContextOnboardingStatus: input.status },
+    });
+    if (!updated) throw new Error("Failed to update Self Context setup.");
+    return onboardingStateFromProfile(updated);
+  }
+
   return {
     /**
      * Ensure a signed-up user has an access profile. The very first profile ever
@@ -85,35 +103,13 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
     async completeSelfContextOnboarding(input: {
       userId: string;
     }): Promise<SelfContextOnboardingState> {
-      const existing = await store.getByUserId(input.userId);
-      if (!existing) throw new Error("Failed to update Self Context setup.");
-      if (existing.selfContextOnboardingStatus === "completed") {
-        return onboardingStateFromProfile(existing);
-      }
-
-      const updated = await store.update({
-        userId: input.userId,
-        patch: { selfContextOnboardingStatus: "completed" },
-      });
-      if (!updated) throw new Error("Failed to update Self Context setup.");
-      return onboardingStateFromProfile(updated);
+      return updateSelfContextOnboarding({ ...input, status: "completed" });
     },
 
     async dismissSelfContextOnboarding(input: {
       userId: string;
     }): Promise<SelfContextOnboardingState> {
-      const existing = await store.getByUserId(input.userId);
-      if (!existing) throw new Error("Failed to update Self Context setup.");
-      if (existing.selfContextOnboardingStatus === "completed") {
-        return onboardingStateFromProfile(existing);
-      }
-
-      const updated = await store.update({
-        userId: input.userId,
-        patch: { selfContextOnboardingStatus: "dismissed" },
-      });
-      if (!updated) throw new Error("Failed to update Self Context setup.");
-      return onboardingStateFromProfile(updated);
+      return updateSelfContextOnboarding({ ...input, status: "dismissed" });
     },
 
     async claimSelfContextOnboardingReminder(input: {

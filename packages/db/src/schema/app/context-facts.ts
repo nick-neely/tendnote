@@ -58,11 +58,17 @@ export const contextFacts = pgTable(
       table.updatedAt,
     ),
     uniqueIndex("context_facts_active_self_identity_idx")
-      .on(table.subjectUserId, table.category, table.sensitivity, table.normalizedContent)
+      .on(table.subjectUserId, table.category, table.normalizedContent)
       .where(sql`${table.subjectKind} = 'self' AND ${table.lifecycle} = 'active'`),
     uniqueIndex("context_facts_active_household_identity_idx")
-      .on(table.subjectHouseholdId, table.category, table.sensitivity, table.normalizedContent)
+      .on(table.subjectHouseholdId, table.category, table.normalizedContent)
       .where(sql`${table.subjectKind} = 'household' AND ${table.lifecycle} = 'active'`),
+    uniqueIndex("context_facts_suggested_self_identity_idx")
+      .on(table.subjectUserId, table.category, table.normalizedContent, table.sensitivity)
+      .where(sql`${table.subjectKind} = 'self' AND ${table.lifecycle} = 'suggested'`),
+    uniqueIndex("context_facts_suggested_household_identity_idx")
+      .on(table.subjectHouseholdId, table.category, table.normalizedContent, table.sensitivity)
+      .where(sql`${table.subjectKind} = 'household' AND ${table.lifecycle} = 'suggested'`),
     uniqueIndex("context_facts_active_self_single_value_idx")
       .on(table.subjectUserId, table.category)
       .where(

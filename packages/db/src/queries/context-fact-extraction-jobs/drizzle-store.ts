@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   type ContextFactExtractionJob,
   type CreateContextFactExtractionJobInput,
@@ -6,28 +7,36 @@ import {
   createContextFactExtractionJobSchema,
   pendingContextFactExtractionJobStatuses,
 } from "@tendnote/domain";
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { getDb } from "../../client";
 import { contextFactExtractionJobs } from "../../schema";
 import { createDrizzleContextFactStore } from "../context-facts/drizzle-store";
-import type { ContextFactExtractionJobStore, UpdateContextFactExtractionJobInput } from "./types";
+import type { ContextFactExtractionJobStore } from "./types";
+import { contextFactExtractionJobUpdateValues } from "./update-values";
 
 const CLAIMABLE_STATUSES = [...claimableContextFactExtractionJobStatuses];
 const PENDING_STATUSES = [...pendingContextFactExtractionJobStatuses];
+const CONTEXT_FACT_EXTRACTION_JOB_LEASE_MS = 10 * 60 * 1000;
+
+function claimableWhere(now: Date) {
+  const staleBefore = new Date(now.getTime() - CONTEXT_FACT_EXTRACTION_JOB_LEASE_MS);
+  return and(
+    or(
+      inArray(contextFactExtractionJobs.status, CLAIMABLE_STATUSES),
+      and(
+        eq(contextFactExtractionJobs.status, "running"),
+        or(
+          isNull(contextFactExtractionJobs.claimedAt),
+          lt(contextFactExtractionJobs.claimedAt, staleBefore),
+        ),
+      ),
+    ),
+    lte(contextFactExtractionJobs.runAfter, now),
+  );
+}
 
 function fromRow(row: typeof contextFactExtractionJobs.$inferSelect): ContextFactExtractionJob {
   return contextFactExtractionJobSchema.parse(row);
-}
-
-function updateValues(input: UpdateContextFactExtractionJobInput) {
-  return {
-    ...(input.status !== undefined ? { status: input.status } : {}),
-    ...(input.lastError !== undefined ? { lastError: input.lastError } : {}),
-    ...(input.runAfter !== undefined ? { runAfter: input.runAfter } : {}),
-    ...(Object.hasOwn(input, "claimedAt") ? { claimedAt: input.claimedAt } : {}),
-    ...(Object.hasOwn(input, "completedAt") ? { completedAt: input.completedAt } : {}),
-    updatedAt: new Date(),
-  };
 }
 
 export function createDrizzleContextFactExtractionJobStore(): ContextFactExtractionJobStore {
@@ -71,16 +80,11 @@ export function createDrizzleContextFactExtractionJobStore(): ContextFactExtract
         .set({
           status: "running",
           claimedAt: input.now,
+          claimToken: randomUUID(),
           attempts: sql`${contextFactExtractionJobs.attempts} + 1`,
           updatedAt: input.now,
         })
-        .where(
-          and(
-            eq(contextFactExtractionJobs.id, input.jobId),
-            inArray(contextFactExtractionJobs.status, CLAIMABLE_STATUSES),
-            lte(contextFactExtractionJobs.runAfter, input.now),
-          ),
-        )
+        .where(and(eq(contextFactExtractionJobs.id, input.jobId), claimableWhere(input.now)))
         .returning();
       return row ? fromRow(row) : null;
     },
@@ -88,12 +92,7 @@ export function createDrizzleContextFactExtractionJobStore(): ContextFactExtract
       const nextJob = getDb()
         .select({ id: contextFactExtractionJobs.id })
         .from(contextFactExtractionJobs)
-        .where(
-          and(
-            inArray(contextFactExtractionJobs.status, CLAIMABLE_STATUSES),
-            lte(contextFactExtractionJobs.runAfter, input.now),
-          ),
-        )
+        .where(and(claimableWhere(input.now)))
         .orderBy(asc(contextFactExtractionJobs.runAfter))
         .limit(1)
         .for("update", { skipLocked: true });
@@ -102,6 +101,7 @@ export function createDrizzleContextFactExtractionJobStore(): ContextFactExtract
         .set({
           status: "running",
           claimedAt: input.now,
+          claimToken: randomUUID(),
           attempts: sql`${contextFactExtractionJobs.attempts} + 1`,
           updatedAt: input.now,
         })
@@ -112,11 +112,17 @@ export function createDrizzleContextFactExtractionJobStore(): ContextFactExtract
     async updateContextFactExtractionJob(input) {
       const [row] = await getDb()
         .update(contextFactExtractionJobs)
-        .set(updateValues(input))
-        .where(eq(contextFactExtractionJobs.id, input.jobId))
+        .set(contextFactExtractionJobUpdateValues(input))
+        .where(
+          and(
+            eq(contextFactExtractionJobs.id, input.jobId),
+            input.expectedClaimToken
+              ? eq(contextFactExtractionJobs.claimToken, input.expectedClaimToken)
+              : undefined,
+          ),
+        )
         .returning();
-      if (!row) throw new Error("Context Fact extraction job not found.");
-      return fromRow(row);
+      return row ? fromRow(row) : null;
     },
     async countPendingContextFactExtractionJobs(input) {
       const [row] = await getDb()

@@ -4,11 +4,15 @@ import type {
   ContextFactExtractionJobStatus,
   CreateContextFactExtractionJobInput,
 } from "@tendnote/domain";
+import type { AffectedScope } from "../affected-scopes";
 import type { ContextFactStore } from "../context-facts/types";
 
 export type UpdateContextFactExtractionJobInput = {
   jobId: string;
   status?: ContextFactExtractionJobStatus;
+  message?: string | null;
+  claimToken?: string | null;
+  expectedClaimToken?: string;
   lastError?: string | null;
   runAfter?: Date;
   claimedAt?: Date | null;
@@ -32,7 +36,7 @@ export type ContextFactExtractionJobLifecycleStore = {
   }) => Promise<ContextFactExtractionJob | null>;
   updateContextFactExtractionJob: (
     input: UpdateContextFactExtractionJobInput,
-  ) => Promise<ContextFactExtractionJob>;
+  ) => Promise<ContextFactExtractionJob | null>;
   countPendingContextFactExtractionJobs: (input: { ownerUserId: string }) => Promise<number>;
 };
 
@@ -60,6 +64,7 @@ export type ProcessContextFactExtractionJobInput = {
   jobId: string;
   now?: Date;
   claim?: boolean;
+  claimToken?: string;
   retryDelayMs?: number;
   maxAttempts?: number;
 };
@@ -78,6 +83,7 @@ export type ProcessContextFactExtractionJobResult = {
   existingSuggestionCount: number;
   invalidCandidateCount: number;
   suppressedCandidateCount: number;
+  affectedScopes: AffectedScope[];
   error?: string;
 };
 

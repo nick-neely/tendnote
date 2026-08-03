@@ -8,29 +8,23 @@ import { resolveOwnerUserId } from "../lib/owner";
 import { toSelfContextFactToolView } from "../lib/self-context-fact-view";
 
 const inputSchema = z.object({
-  includeRestricted: z
-    .boolean()
-    .optional()
-    .describe(
-      "Set true only when the user directly asks about a relevant delicate or restricted Self Context fact. Defaults to false.",
-    ),
   includeArchived: z
     .boolean()
     .optional()
     .describe("Set true only when the user explicitly asks to see archived Self Context facts."),
 });
 
-/** Exact, categorized Self Context recall; this never generates a profile. */
+/** Exact, categorized Self Context recall; this returns facts without synthesis. */
 export default defineTool({
   description:
-    "List the authenticated user's exact active Self Context facts, grouped by category, for questions such as 'what do you know about me?' or 'what have you saved about me?'. Use only for direct Self Context recall, not for a generated biography or personality profile. Sensitive facts may be used when relevant; restricted facts are omitted unless the user directly asks about a relevant restricted topic. Set includeArchived only for an explicit archived-fact request. The typed results include the canonical About you link and grounding citation for each fact. The returned ids are handles for later tool calls and must never appear in the reply.",
+    "List the authenticated user's exact active Self Context facts, grouped by category, for questions such as 'what do you know about me?' or 'what have you saved about me?'. Use only for direct Self Context recall, not for speculative biography or persona synthesis. Restricted facts are never returned by this tool; use the explicit Global Recall path for an owner-authorized restricted lookup. Set includeArchived only for an explicit archived-fact request. The typed results include the canonical About you link and grounding citation for each fact. The returned ids are handles for later tool calls and must never appear in the reply.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
     const facts = await listSelfContextFacts(
       {
         callerUserId: ownerUserId,
-        includeRestricted: input.includeRestricted ?? false,
+        includeRestricted: false,
         includeArchived: input.includeArchived ?? false,
       },
       async () => ownerUserId,
@@ -57,7 +51,7 @@ export default defineTool({
       factsByCategory,
       results,
       guidance:
-        "These are exact stored facts, not a generated profile. Keep categories and wording literal; do not infer personality, emotion, values, finances, capabilities, or importance. When a fact needs explanation, cite the matching canonical result and use its About you link for correction.",
+        "These are exact stored facts. Keep categories and wording literal; do not add interpretations about emotion, values, finances, capabilities, or importance. When a fact needs explanation, cite the matching canonical result and use its About you link for correction.",
     };
   },
 });

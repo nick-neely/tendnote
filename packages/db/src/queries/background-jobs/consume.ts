@@ -19,7 +19,7 @@ export type BackgroundJobQueueConsumerMetadata = {
  * replayed, missing, or terminal message) that the runtime records without processing.
  */
 export type BackgroundJobProcessorJobState =
-  | { status: "ready" }
+  | { status: "ready"; claimToken?: string }
   | {
       status: "not_found" | "terminal" | "retry_pending" | "not_claimable";
       reason?: string;
@@ -42,6 +42,7 @@ export type BackgroundJobQueueProcessor = {
     ownerUserId: string;
     deliveryId: string;
     jobId: string;
+    claimToken?: string;
     metadata?: BackgroundJobQueueConsumerMetadata;
   }) => Promise<void>;
 };
@@ -92,7 +93,10 @@ export function createBackgroundJobProcessor(
     async claimJob({ jobId }) {
       const claimed = await claimJob({ jobId, now: overrides.now });
       if (claimed) {
-        return { status: "ready" as const };
+        return {
+          status: "ready" as const,
+          ...(claimed.claimToken ? { claimToken: claimed.claimToken } : {}),
+        };
       }
 
       const job = await getJob(jobId);
@@ -112,8 +116,12 @@ export function createBackgroundJobProcessor(
 
       return { status: "not_claimable" as const, reason: `${family.noun} is ${job.status}.` };
     },
-    async processJob({ jobId }) {
-      const result = await processJob({ jobId, claim: false });
+    async processJob({ jobId, claimToken }) {
+      const result = await processJob({
+        jobId,
+        claim: false,
+        ...(claimToken ? { claimToken } : {}),
+      });
       if (result.outcome === "failed") {
         throw new Error(result.error ?? result.reason ?? `${family.noun} failed.`);
       }

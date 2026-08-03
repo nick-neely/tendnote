@@ -1,5 +1,5 @@
-import { type ContextFact, type ContextFactProvenance, contextFactSchema } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
+import { contextFactFixture } from "./context-fact-fixtures";
 import { createContextFactQueries, createInMemoryContextFactStore } from "./context-facts";
 import { createInMemoryHouseholdStore } from "./households/in-memory-store";
 import { createHouseholdLifecycle } from "./households/lifecycle";
@@ -10,30 +10,39 @@ const SECOND_HOUSEHOLD_OWNER = "user-second-household-owner";
 const OUTSIDER = "user-outsider";
 const verifiedCallerFor = (userId: string) => async () => userId;
 
-const directProvenance: ContextFactProvenance = {
-  channel: "account",
-  origin: "direct",
-  sourceRecordId: null,
-};
+async function createHouseholdContextFixture() {
+  const householdStore = createInMemoryHouseholdStore();
+  const householdLifecycle = createHouseholdLifecycle(householdStore);
+  const { household } = await householdLifecycle.createHousehold({
+    ownerUserId: OWNER,
+    name: "Home",
+  });
+  await householdLifecycle.inviteMember({
+    ownerUserId: OWNER,
+    householdId: household.id,
+    invitedUserId: OTHER_OWNER,
+  });
+  await householdLifecycle.acceptInvite({ householdId: household.id, userId: OTHER_OWNER });
 
-function contextFactFixture(overrides: Partial<ContextFact> = {}): ContextFact {
-  const now = new Date("2026-08-02T12:00:00.000Z");
-  return contextFactSchema.parse({
-    id: "fact-fixture",
-    subject: { kind: "self", userId: OWNER },
-    category: "background",
-    content: "I prefer concise answers.",
-    lifecycle: "active",
-    sensitivity: "normal",
-    provenance: directProvenance,
-    suggestionEvidence: null,
-    creatorUserId: OWNER,
-    lastActorUserId: OWNER,
-    reviewedAt: now,
-    archivedAt: null,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
+  const store = createInMemoryContextFactStore([], { householdAccess: householdStore });
+  const createQueriesFor = (userId: string) =>
+    createContextFactQueries(store, {
+      householdAccess: householdStore,
+      resolveVerifiedCaller: verifiedCallerFor(userId),
+    });
+  return { householdStore, household, store, createQueriesFor };
+}
+
+async function removeHouseholdMember(
+  householdStore: ReturnType<typeof createInMemoryHouseholdStore>,
+  householdId: string,
+  userId: string,
+) {
+  const membership = await householdStore.getHouseholdMembership({ householdId, userId });
+  if (!membership) throw new Error("Expected the active household membership fixture.");
+  await householdStore.updateHouseholdMembership({
+    membershipId: membership.id,
+    patch: { status: "removed", removedAt: new Date() },
   });
 }
 
@@ -508,25 +517,7 @@ describe("Context Fact product contract", () => {
   });
 
   it("supports whole-household Context Facts without exposing a member's private Self Context", async () => {
-    const householdStore = createInMemoryHouseholdStore();
-    const householdLifecycle = createHouseholdLifecycle(householdStore);
-    const { household } = await householdLifecycle.createHousehold({
-      ownerUserId: OWNER,
-      name: "Home",
-    });
-    await householdLifecycle.inviteMember({
-      ownerUserId: OWNER,
-      householdId: household.id,
-      invitedUserId: OTHER_OWNER,
-    });
-    await householdLifecycle.acceptInvite({ householdId: household.id, userId: OTHER_OWNER });
-
-    const store = createInMemoryContextFactStore([], { householdAccess: householdStore });
-    const createQueriesFor = (userId: string) =>
-      createContextFactQueries(store, {
-        householdAccess: householdStore,
-        resolveVerifiedCaller: verifiedCallerFor(userId),
-      });
+    const { householdStore, household, createQueriesFor } = await createHouseholdContextFixture();
     const ownerQueries = createQueriesFor(OWNER);
     const memberQueries = createQueriesFor(OTHER_OWNER);
     const outsiderQueries = createQueriesFor("user-outsider");
@@ -573,15 +564,7 @@ describe("Context Fact product contract", () => {
       visibility: "household",
     });
 
-    const membership = await householdStore.getHouseholdMembership({
-      householdId: household.id,
-      userId: OTHER_OWNER,
-    });
-    if (!membership) throw new Error("Expected the active household membership fixture.");
-    await householdStore.updateHouseholdMembership({
-      membershipId: membership.id,
-      patch: { status: "removed", removedAt: new Date() },
-    });
+    await removeHouseholdMember(householdStore, household.id, OTHER_OWNER);
 
     await expect(memberQueries.listContextFacts({ callerUserId: OTHER_OWNER })).resolves.toEqual([
       expect.objectContaining({ content: "I have private work context." }),
@@ -589,25 +572,11 @@ describe("Context Fact product contract", () => {
   });
 
   it("lets every active member edit and archive household Context through the shared seam", async () => {
-    const householdStore = createInMemoryHouseholdStore();
-    const householdLifecycle = createHouseholdLifecycle(householdStore);
-    const { household } = await householdLifecycle.createHousehold({
-      ownerUserId: OWNER,
-      name: "Home",
-    });
-    await householdLifecycle.inviteMember({
-      ownerUserId: OWNER,
-      householdId: household.id,
-      invitedUserId: OTHER_OWNER,
-    });
-    await householdLifecycle.acceptInvite({ householdId: household.id, userId: OTHER_OWNER });
-
-    const store = createInMemoryContextFactStore([], { householdAccess: householdStore });
-    const queriesFor = (userId: string) =>
-      createContextFactQueries(store, {
-        householdAccess: householdStore,
-        resolveVerifiedCaller: verifiedCallerFor(userId),
-      });
+    const {
+      household,
+      store,
+      createQueriesFor: queriesFor,
+    } = await createHouseholdContextFixture();
     const ownerQueries = queriesFor(OWNER);
     const memberQueries = queriesFor(OTHER_OWNER);
 
@@ -823,15 +792,7 @@ describe("Context Fact product contract", () => {
       "I keep private work context.",
     ]);
 
-    const membership = await householdStore.getHouseholdMembership({
-      householdId: first.household.id,
-      userId: OTHER_OWNER,
-    });
-    if (!membership) throw new Error("Expected the active household membership fixture.");
-    await householdStore.updateHouseholdMembership({
-      membershipId: membership.id,
-      patch: { status: "removed", removedAt: new Date() },
-    });
+    await removeHouseholdMember(householdStore, first.household.id, OTHER_OWNER);
 
     await expect(memberQueries.listContextFacts({ callerUserId: OTHER_OWNER })).resolves.toEqual([
       expect.objectContaining({ content: "I keep private work context." }),

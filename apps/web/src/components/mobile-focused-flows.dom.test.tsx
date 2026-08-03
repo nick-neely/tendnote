@@ -3,6 +3,7 @@ import { type ComponentProps, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, userEvent, waitFor, within } from "@/test/dom";
 import { expectRestrictedGateOpensOnRecordType } from "@/test/global-recall-filters";
+import { selfContextResult } from "@/test/global-recall-fixtures";
 import { ThemeProvider } from "./theme-provider";
 
 /**
@@ -101,29 +102,6 @@ function memoryResult({ id = "memory-1", text = "Prefers morning coffee chats" }
     href: `/people/person-jordan#memory-${id}`,
     parent: { kind: "person" as const, id: "person-jordan" },
     details: { contextKind: "memory" as const, personDisplayName: "Jordan Rivera" },
-  };
-}
-
-function selfContextResult() {
-  return {
-    family: "self_context" as const,
-    canonical: { kind: "context_fact" as const, id: "context-fact-1" },
-    label: "I run a software consultancy.",
-    supportingText: "Work",
-    lifecycle: "active",
-    match: { kind: "exact" as const, reason: "Matched Self Context content", excerpt: "software" },
-    trust: "self_context" as const,
-    sensitivity: "normal" as const,
-    visibility: { choice: "only_me" as const, label: "Only me" },
-    grounding: [{ kind: "context_fact" as const, id: "context-fact-1" }],
-    href: "/account/about-you#context-fact-context-fact-1",
-    parent: null,
-    details: {
-      content: "I run a software consultancy.",
-      category: "work" as const,
-      categoryLabel: "Work",
-      provenance: { channel: "account" as const, origin: "direct" as const },
-    },
   };
 }
 

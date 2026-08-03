@@ -23,7 +23,8 @@ export const contextFactExtractionJobs = pgTable(
     ownerUserId: text("owner_user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    message: text("message").notNull(),
+    message: text("message"),
+    claimToken: text("claim_token"),
     status: contextFactExtractionJobStatus("status").notNull().default("pending"),
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
@@ -41,7 +42,7 @@ export const contextFactExtractionJobs = pgTable(
     // This check deliberately does not persist a second copy in any Context Fact table.
     check(
       "context_fact_extraction_jobs_message_length_check",
-      sql`char_length(btrim(${table.message})) between 1 and 2000`,
+      sql`${table.message} IS NULL OR char_length(btrim(${table.message})) between 1 and 2000`,
     ),
   ],
 );

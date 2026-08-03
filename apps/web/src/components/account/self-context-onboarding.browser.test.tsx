@@ -3,7 +3,11 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { renderInBrowser } from "@/test/browser";
-import { SelfContextOnboarding } from "./self-context-onboarding";
+import {
+  clickBrowserControl,
+  resetBrowserContextFactDom,
+} from "@/test/browser-context-fact-helpers";
+import { SelfContextOnboarding, type SelfContextOnboardingProps } from "./self-context-onboarding";
 
 const cleanups: Array<() => Promise<void>> = [];
 const NOW = new Date("2026-08-02T12:00:00.000Z");
@@ -33,41 +37,42 @@ function fact(
   };
 }
 
-async function click(control: ReturnType<typeof page.getByRole>) {
-  await act(async () => {
-    await userEvent.click(control);
-  });
-}
-
 afterEach(async () => {
-  while (cleanups.length) await cleanups.pop()?.();
-  document.documentElement.removeAttribute("style");
-  document.body.removeAttribute("style");
+  await resetBrowserContextFactDom(cleanups);
   nextFactId = 1;
 });
 
+async function mountOnboarding(
+  props: Pick<
+    SelfContextOnboardingProps,
+    "createAction" | "completeAction" | "dismissAction" | "initialFacts"
+  >,
+) {
+  await page.viewport(390, 844);
+  const rendered = await renderInBrowser(<SelfContextOnboarding {...props} />);
+  cleanups.push(rendered.unmount);
+  return rendered;
+}
+
+function successfulOnboardingActions() {
+  const createAction = vi.fn(async ({ category, content, sensitivity }) => ({
+    ok: true as const,
+    view: {
+      fact: fact(category, content, { sensitivity }),
+      decision: "created" as const,
+    },
+  }));
+  const completeAction = vi.fn(async () => ({
+    ok: true as const,
+    view: { status: "completed" as const, reminderAt: null },
+  }));
+  return { createAction, completeAction };
+}
+
 describe("Self Context onboarding browser contract", () => {
   it("supports full completion across all four optional prompt groups", async () => {
-    await page.viewport(390, 844);
-    const createAction = vi.fn(async ({ category, content, sensitivity }) => ({
-      ok: true as const,
-      view: {
-        fact: fact(category, content, { sensitivity }),
-        decision: "created" as const,
-      },
-    }));
-    const completeAction = vi.fn(async () => ({
-      ok: true as const,
-      view: { status: "completed" as const, reminderAt: null },
-    }));
-    const rendered = await renderInBrowser(
-      <SelfContextOnboarding
-        createAction={createAction}
-        completeAction={completeAction}
-        initialFacts={[]}
-      />,
-    );
-    cleanups.push(rendered.unmount);
+    const { createAction, completeAction } = successfulOnboardingActions();
+    await mountOnboarding({ createAction, completeAction, initialFacts: [] });
 
     for (const [index, answer] of [
       "I run a software consultancy.",
@@ -78,48 +83,33 @@ describe("Self Context onboarding browser contract", () => {
       await act(async () => {
         await userEvent.fill(page.getByRole("textbox", { name: "Fact" }), answer);
       });
-      await click(page.getByRole("button", { name: "Save and continue" }));
+      await clickBrowserControl(page.getByRole("button", { name: "Save and continue" }));
       if (index < 3) {
         await expect.element(page.getByRole("textbox", { name: "Fact" })).toBeVisible();
       }
     }
 
     await expect.element(page.getByRole("heading", { name: "You’re in control" })).toBeVisible();
-    await click(page.getByRole("button", { name: "Finish setup" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Finish setup" }));
     expect(createAction).toHaveBeenCalledTimes(4);
     expect(completeAction).toHaveBeenCalledTimes(1);
     await expect.element(page.getByRole("status")).toHaveTextContent("complete");
   });
 
   it("allows individual skips and partial completion", async () => {
-    await page.viewport(390, 844);
-    const createAction = vi.fn(async ({ category, content, sensitivity }) => ({
-      ok: true as const,
-      view: { fact: fact(category, content, { sensitivity }), decision: "created" as const },
-    }));
-    const completeAction = vi.fn(async () => ({
-      ok: true as const,
-      view: { status: "completed" as const, reminderAt: null },
-    }));
-    const rendered = await renderInBrowser(
-      <SelfContextOnboarding
-        createAction={createAction}
-        completeAction={completeAction}
-        initialFacts={[]}
-      />,
-    );
-    cleanups.push(rendered.unmount);
+    const { createAction, completeAction } = successfulOnboardingActions();
+    await mountOnboarding({ createAction, completeAction, initialFacts: [] });
 
-    await click(page.getByRole("button", { name: "Skip this question" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Skip this question" }));
     await act(async () => {
       await userEvent.fill(page.getByRole("textbox", { name: "Fact" }), "I am based in Chicago.");
     });
-    await click(page.getByRole("button", { name: "Save and continue" }));
-    await click(page.getByRole("button", { name: "Skip this question" }));
-    await click(page.getByRole("button", { name: "Skip this question" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Save and continue" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Skip this question" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Skip this question" }));
     await expect.element(page.getByRole("heading", { name: "You’re in control" })).toBeVisible();
 
-    await click(page.getByRole("button", { name: "Finish setup" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Finish setup" }));
     expect(createAction).toHaveBeenCalledTimes(1);
     expect(completeAction).toHaveBeenCalledTimes(1);
   });
@@ -135,7 +125,7 @@ describe("Self Context onboarding browser contract", () => {
     );
     cleanups.push(rendered.unmount);
 
-    await click(page.getByRole("button", { name: "Finish setup" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Finish setup" }));
     expect(completeAction).toHaveBeenCalledTimes(1);
     expect(page.getByRole("heading", { name: "Help Eve understand you" }).query()).not.toBeNull();
   });
@@ -161,12 +151,12 @@ describe("Self Context onboarding browser contract", () => {
     await act(async () => {
       await userEvent.fill(page.getByRole("textbox", { name: "Fact" }), draft);
     });
-    await click(page.getByRole("button", { name: "Save and continue" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Save and continue" }));
     await expect.element(page.getByRole("alert")).toHaveTextContent("temporarily unavailable");
     await expect.element(page.getByRole("textbox", { name: "Fact" })).toHaveValue(draft);
     await expect.element(page.getByRole("textbox", { name: "Fact" })).toHaveFocus();
 
-    await click(page.getByRole("button", { name: "Try again" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Try again" }));
     await expect
       .element(page.getByRole("heading", { name: /Where are you generally based/ }))
       .toBeVisible();
@@ -191,7 +181,7 @@ describe("Self Context onboarding browser contract", () => {
       <SelfContextOnboarding dismissAction={dismissAction} initialFacts={[]} />,
     );
     cleanups.push(skipped.unmount);
-    await click(page.getByRole("button", { name: "Skip entire setup" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Skip entire setup" }));
     expect(dismissAction).toHaveBeenCalledTimes(1);
     await expect.element(page.getByRole("status")).toHaveTextContent("skipped");
   });
@@ -218,7 +208,7 @@ describe("Self Context onboarding browser contract", () => {
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);
     }
-    await click(page.getByRole("button", { name: "Skip this question" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Skip this question" }));
     expect(page.getByText(/street address/i).query()).not.toBeNull();
   });
 });

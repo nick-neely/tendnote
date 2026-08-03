@@ -6,6 +6,7 @@ import {
   MAX_PENDING_CONTEXT_FACT_SUGGESTIONS_PER_OWNER,
   validateContextFactExtractionCandidates,
 } from "@tendnote/domain";
+import type { AffectedScope } from "../affected-scopes";
 import { createContextFactQueries } from "../context-facts/queries";
 import type {
   ContextFactExtractionJobStore,
@@ -52,6 +53,7 @@ function emptyResult(
     existingSuggestionCount: 0,
     invalidCandidateCount: 0,
     suppressedCandidateCount: 0,
+    affectedScopes: [],
   };
 }
 
@@ -70,9 +72,15 @@ async function failJob(
     status: deadLettered ? "dead_lettered" : "failed",
     lastError: scrubFailureMessage(message),
     ...(deadLettered
-      ? { completedAt: now, claimedAt: null }
-      : { runAfter: new Date(now.getTime() + retryDelayMs), claimedAt: null }),
+      ? { completedAt: now, claimedAt: null, claimToken: null, message: null }
+      : { runAfter: new Date(now.getTime() + retryDelayMs), claimedAt: null, claimToken: null }),
+    expectedClaimToken: job.claimToken ?? undefined,
   });
+
+  if (!updated) {
+    const current = await ctx.store.getContextFactExtractionJob(job.id);
+    return emptyResult(current ?? job, current ? "not_claimable" : "not_found");
+  }
 
   await ctx.store.createAuditLogEntry({
     ownerUserId: job.ownerUserId,
@@ -82,7 +90,7 @@ async function failJob(
     entityType: "context_fact_extraction_job",
     entityId: job.id,
     metadataJson: {
-      messageLength: job.message.length,
+      messageLength: job.message?.length ?? 0,
       attempts: job.attempts,
       failureReason: "processor_error",
       failureMessage: scrubFailureMessage(message),
@@ -96,94 +104,149 @@ async function failJob(
   };
 }
 
-async function processContextFactExtractionJob(
+type PersistedCandidateCounts = {
+  createdSuggestionCount: number;
+  existingSuggestionCount: number;
+  suppressedCandidateCount: number;
+  affectedScopes: AffectedScope[];
+};
+
+async function persistValidCandidates(
+  ctx: ProcessorContext,
+  job: ContextFactExtractionJob,
+  validated: ReturnType<typeof validateContextFactExtractionCandidates>,
+): Promise<PersistedCandidateCounts> {
+  const contextFactQueries = createContextFactQueries(ctx.store, {
+    maxPendingSuggestedContextFacts: MAX_PENDING_CONTEXT_FACT_SUGGESTIONS_PER_OWNER,
+    resolveVerifiedCaller: async () => job.ownerUserId,
+  });
+  let createdSuggestionCount = 0;
+  let existingSuggestionCount = 0;
+  let suppressedCandidateCount = 0;
+  const affectedScopes = new Map<string, AffectedScope>();
+
+  for (const candidate of validated.validCandidates) {
+    try {
+      const result = await contextFactQueries.createSuggestedSelfContextFact({
+        callerUserId: job.ownerUserId,
+        category: candidate.category,
+        content: candidate.content,
+        sensitivity: candidate.sensitivity,
+        provenance: ambientProvenance(),
+        suggestionEvidence: candidate.evidence,
+      });
+      if (result.decision === "created") {
+        createdSuggestionCount += 1;
+        for (const scope of result.affectedScopes) {
+          affectedScopes.set(JSON.stringify(scope), scope);
+        }
+      } else {
+        existingSuggestionCount += 1;
+      }
+    } catch (error) {
+      // Dismissal suppression and the pending-owner cap are deterministic review policy, not
+      // queue failures. Other persistence errors must retry the whole job.
+      if (!(error instanceof ContextFactValidationError)) throw error;
+      suppressedCandidateCount += 1;
+    }
+  }
+
+  return {
+    createdSuggestionCount,
+    existingSuggestionCount,
+    suppressedCandidateCount,
+    affectedScopes: [...affectedScopes.values()],
+  };
+}
+
+type ClaimedContextFactExtractionJob = {
+  job: ContextFactExtractionJob;
+  claimToken?: string;
+};
+
+async function claimForProcessing(
   ctx: ProcessorContext,
   input: ProcessContextFactExtractionJobInput,
-): Promise<ProcessContextFactExtractionJobResult> {
+): Promise<ClaimedContextFactExtractionJob | ProcessContextFactExtractionJobResult> {
   const now = input.now ?? new Date();
   const existingJob = await ctx.store.getContextFactExtractionJob(input.jobId);
   if (!existingJob) throw new Error("Context Fact extraction job not found.");
 
   let job = existingJob;
+  let claimToken: string | undefined;
   if (job.status !== "running") {
     if (input.claim === false) return emptyResult(job, "not_claimable");
     const claimed = await ctx.store.claimContextFactExtractionJob({ jobId: job.id, now });
     if (!claimed) return emptyResult(job, "not_claimable");
     job = claimed;
-  }
-
-  let validated: ReturnType<typeof validateContextFactExtractionCandidates>;
-  let createdSuggestionCount = 0;
-  let existingSuggestionCount = 0;
-  let suppressedCandidateCount = 0;
-
-  try {
-    // The adapter receives only this job's bounded message. No owner history or other
-    // domain records are loaded here, so the current-message boundary is structural.
-    const adapterResult = await ctx.extractionAdapter.extractCandidates({ message: job.message });
-    validated = validateContextFactExtractionCandidates(adapterResult, {
-      message: job.message,
-    });
-    const contextFactQueries = createContextFactQueries(ctx.store, {
-      maxPendingSuggestedContextFacts: MAX_PENDING_CONTEXT_FACT_SUGGESTIONS_PER_OWNER,
-      resolveVerifiedCaller: async () => job.ownerUserId,
-    });
-
-    for (const candidate of validated.validCandidates) {
-      try {
-        const result = await contextFactQueries.createSuggestedSelfContextFact({
-          callerUserId: job.ownerUserId,
-          category: candidate.category,
-          content: candidate.content,
-          sensitivity: candidate.sensitivity,
-          provenance: ambientProvenance(),
-          suggestionEvidence: candidate.evidence,
-        });
-        if (result.decision === "created") {
-          createdSuggestionCount += 1;
-        } else {
-          existingSuggestionCount += 1;
-        }
-      } catch (error) {
-        // Dismissal suppression and the pending-owner cap are deterministic review policy, not
-        // queue failures. Other persistence errors must retry the whole job.
-        if (error instanceof ContextFactValidationError) {
-          suppressedCandidateCount += 1;
-          continue;
-        }
-        throw error;
-      }
+    claimToken = claimed.claimToken ?? undefined;
+  } else {
+    if (input.claim !== false || !input.claimToken || job.claimToken !== input.claimToken) {
+      return emptyResult(job, "not_claimable");
     }
-  } catch (error) {
-    return failJob(
-      ctx,
-      job,
-      error,
-      now,
-      input.retryDelayMs ?? DEFAULT_CONTEXT_FACT_EXTRACTION_RETRY_DELAY_MS,
-      input.maxAttempts ?? ctx.maxAttempts,
-    );
+    claimToken = input.claimToken;
   }
 
+  return { job, claimToken };
+}
+
+type PreparedContextFactExtraction = {
+  validated: ReturnType<typeof validateContextFactExtractionCandidates>;
+  counts: PersistedCandidateCounts;
+};
+
+async function prepareExtraction(
+  ctx: ProcessorContext,
+  job: ContextFactExtractionJob,
+): Promise<PreparedContextFactExtraction | ProcessContextFactExtractionJobResult> {
+  // The adapter receives only this job's bounded message. No owner history or other
+  // domain records are loaded here, so the current-message boundary is structural.
+  if (job.message === null) return emptyResult(job, "not_claimable");
+  const adapterResult = await ctx.extractionAdapter.extractCandidates({ message: job.message });
+  const validated = validateContextFactExtractionCandidates(adapterResult, {
+    message: job.message,
+  });
+  return {
+    validated,
+    counts: await persistValidCandidates(ctx, job, validated),
+  };
+}
+
+async function completeExtraction(
+  ctx: ProcessorContext,
+  input: {
+    job: ContextFactExtractionJob;
+    claimToken?: string;
+    validated: ReturnType<typeof validateContextFactExtractionCandidates>;
+    counts: PersistedCandidateCounts;
+    now: Date;
+  },
+): Promise<ProcessContextFactExtractionJobResult> {
+  const { job, claimToken, validated, counts, now } = input;
   const updated = await ctx.store.updateContextFactExtractionJob({
     jobId: job.id,
     status: "completed",
     completedAt: now,
     claimedAt: null,
+    claimToken: null,
     lastError: null,
+    message: null,
+    expectedClaimToken: claimToken,
   });
+  if (!updated) {
+    const current = await ctx.store.getContextFactExtractionJob(job.id);
+    return emptyResult(current ?? job, current ? "not_claimable" : "not_found");
+  }
   await ctx.store.createAuditLogEntry({
     ownerUserId: job.ownerUserId,
     action: "context_fact_extraction_job.completed",
     entityType: "context_fact_extraction_job",
     entityId: job.id,
     metadataJson: {
-      messageLength: job.message.length,
+      messageLength: job.message?.length ?? 0,
       candidateCount: validated.validCandidates.length,
       invalidCandidateCount: validated.invalidCandidateCount,
-      createdSuggestionCount,
-      existingSuggestionCount,
-      suppressedCandidateCount,
+      ...counts,
       ...adapterProvenance(ctx.extractionAdapter),
     },
   });
@@ -191,11 +254,43 @@ async function processContextFactExtractionJob(
   return {
     job: updated,
     outcome: "completed",
-    createdSuggestionCount,
-    existingSuggestionCount,
+    createdSuggestionCount: counts.createdSuggestionCount,
+    existingSuggestionCount: counts.existingSuggestionCount,
     invalidCandidateCount: validated.invalidCandidateCount,
-    suppressedCandidateCount,
+    suppressedCandidateCount: counts.suppressedCandidateCount,
+    affectedScopes: counts.affectedScopes,
   };
+}
+
+async function processContextFactExtractionJob(
+  ctx: ProcessorContext,
+  input: ProcessContextFactExtractionJobInput,
+): Promise<ProcessContextFactExtractionJobResult> {
+  const now = input.now ?? new Date();
+  const claimed = await claimForProcessing(ctx, input);
+  if ("outcome" in claimed) return claimed;
+
+  let prepared: PreparedContextFactExtraction | ProcessContextFactExtractionJobResult;
+  try {
+    prepared = await prepareExtraction(ctx, claimed.job);
+  } catch (error) {
+    return failJob(
+      ctx,
+      claimed.job,
+      error,
+      now,
+      input.retryDelayMs ?? DEFAULT_CONTEXT_FACT_EXTRACTION_RETRY_DELAY_MS,
+      input.maxAttempts ?? ctx.maxAttempts,
+    );
+  }
+  if ("outcome" in prepared) return prepared;
+  return completeExtraction(ctx, {
+    job: claimed.job,
+    claimToken: claimed.claimToken,
+    validated: prepared.validated,
+    counts: prepared.counts,
+    now,
+  });
 }
 
 async function enqueueContextFactExtractionJob(
@@ -229,6 +324,7 @@ async function enqueueContextFactExtractionJob(
       runAfter: input.runAfter ?? new Date(),
       claimedAt: null,
       completedAt: null,
+      claimToken: null,
     });
   } catch (error) {
     // Concurrent replay can race the pre-read; the unique idempotency key remains the source

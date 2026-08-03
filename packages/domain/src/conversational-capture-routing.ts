@@ -1,6 +1,10 @@
 import type { AssetKind } from "./assets";
 import { formatLocalDate, zonedWallTimeToUtc } from "./brief-schedules";
-import type { ContextFactCategory, ContextFactSensitivity } from "./context-facts";
+import {
+  type ContextFactCategory,
+  type ContextFactSensitivity,
+  isSensitiveContextFactContent,
+} from "./context-facts";
 import { type GeneralActionRecurrence, MAX_RECURRENCE_INTERVAL } from "./general-actions";
 import type { ReminderScheduleChoice } from "./reminders";
 import type { SavedItemKind } from "./saved-items";
@@ -240,7 +244,7 @@ function parseContextFactCapture(
 
   const interpreted = interpretContextFactContent(matched.content);
   if (!interpreted || !isSelfContextWording(interpreted.content)) return null;
-  if (isSensitiveContextWording(interpreted.content)) return null;
+  if (isSensitiveContextFactContent(interpreted.content)) return null;
   return { ...interpreted, explicit: matched.explicit };
 }
 
@@ -279,12 +283,6 @@ function interpretContextFactContent(
 
 function isSelfContextWording(content: string) {
   return /^(?:i\b|i['’]m\b|i\s+am\b|my\b)/i.test(content);
-}
-
-function isSensitiveContextWording(content: string) {
-  return /\b(?:address|street|mailing|social\s+security|ssn|password|credit\s+card)\b/i.test(
-    content,
-  );
 }
 
 function categorizeSelfContextFact(

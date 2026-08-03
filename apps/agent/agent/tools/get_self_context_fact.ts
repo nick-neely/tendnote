@@ -6,10 +6,6 @@ import { toSelfContextFactToolView } from "../lib/self-context-fact-view";
 
 const inputSchema = z.object({
   contextFactId: z.uuid().describe("The exact Self Context fact id returned by a prior tool call."),
-  includeRestricted: z
-    .boolean()
-    .optional()
-    .describe("Set true only for a direct relevant request about a restricted fact."),
   includeArchived: z
     .boolean()
     .optional()
@@ -26,7 +22,7 @@ export default defineTool({
       {
         callerUserId: ownerUserId,
         contextFactId: input.contextFactId,
-        includeRestricted: input.includeRestricted ?? false,
+        includeRestricted: false,
         includeArchived: input.includeArchived ?? false,
       },
       async () => ownerUserId,

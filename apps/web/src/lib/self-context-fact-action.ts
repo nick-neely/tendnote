@@ -13,7 +13,7 @@ const contentSchema = z
   .max(500, "Keep the fact to 500 characters or fewer.");
 const sensitivityInputSchema = sensitivitySchema.default("normal");
 
-export const selfContextFactActionSchema = z
+const selfContextFactActionSchema = z
   .object({
     category: selfContextFactCategorySchema,
     content: contentSchema,

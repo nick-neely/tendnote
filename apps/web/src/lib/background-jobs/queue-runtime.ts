@@ -200,7 +200,7 @@ export async function consumeBackgroundJobQueueMessage(input: {
     return handleUnreadyProcessorJob(input, delivery, jobState);
   }
 
-  await processClaimedJob(input, delivery, processor);
+  await processClaimedJob(input, delivery, processor, jobState);
   return { status: "processed" as const, delivery };
 }
 
@@ -283,12 +283,14 @@ async function processClaimedJob(
   input: Parameters<typeof consumeBackgroundJobQueueMessage>[0],
   delivery: BackgroundJobDelivery,
   processor: BackgroundJobQueueProcessor,
+  jobState: Extract<BackgroundJobProcessorJobState, { status: "ready" }>,
 ) {
   try {
     await processor.processJob({
       ownerUserId: delivery.ownerUserId,
       deliveryId: delivery.id,
       jobId: delivery.jobId,
+      ...(jobState.claimToken ? { claimToken: jobState.claimToken } : {}),
       metadata: input.metadata,
     });
   } catch (error) {

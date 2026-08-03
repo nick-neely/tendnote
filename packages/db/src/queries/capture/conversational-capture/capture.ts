@@ -189,8 +189,14 @@ function createCaptureSource(
 function captureSourceSensitivity(route: ConversationalCaptureRoute): SourceRecord["sensitivity"] {
   if (route.destination === "context_fact") return route.sensitivity;
   if (route.destination === "group") {
-    const contextFact = route.outcomes.find((outcome) => outcome.destination === "context_fact");
-    if (contextFact?.destination === "context_fact") return contextFact.sensitivity;
+    const contextFactSensitivities = route.outcomes
+      .filter((outcome) => outcome.destination === "context_fact")
+      .map((outcome) => (outcome.destination === "context_fact" ? outcome.sensitivity : null))
+      .filter(
+        (sensitivity): sensitivity is NonNullable<typeof sensitivity> => sensitivity !== null,
+      );
+    if (contextFactSensitivities.includes("restricted")) return "restricted";
+    if (contextFactSensitivities.includes("sensitive")) return "sensitive";
   }
   return "normal";
 }

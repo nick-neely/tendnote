@@ -49,6 +49,7 @@ describe("Context Fact extraction processor", () => {
       createdSuggestionCount: 1,
       invalidCandidateCount: 0,
     });
+    expect(result.job.message).toBeNull();
     const facts = await store.listContextFacts({ subjectUserId: OWNER, lifecycle: "suggested" });
     expect(facts).toHaveLength(1);
     expect(facts[0]).toMatchObject({
@@ -288,5 +289,103 @@ describe("Context Fact extraction processor", () => {
       now: new Date(NOW.getTime() - 1),
     });
     expect(result.outcome).toBe("not_claimable");
+  });
+
+  it("claims the oldest due job through the in-memory backfill seam", async () => {
+    const store = createInMemoryContextFactExtractionJobStore();
+    const processor = createContextFactExtractionProcessor(store);
+    const later = await enqueue(processor, OWNER, "eve:later");
+    const earlier = await enqueue(processor, OWNER, "eve:earlier");
+    await store.updateContextFactExtractionJob({
+      jobId: later.job.id,
+      runAfter: new Date(NOW.getTime() + 1),
+    });
+
+    const claimed = await processor.claimNextContextFactExtractionJob({ now: NOW });
+
+    expect(claimed).toMatchObject({ id: earlier.job.id, status: "running" });
+    expect(claimed?.claimToken).toEqual(expect.any(String));
+  });
+
+  it("reclaims an expired lease and fences the stale worker's terminal write", async () => {
+    const store = createInMemoryContextFactExtractionJobStore();
+    const processor = createContextFactExtractionProcessor(store, {
+      extractionAdapter: createFakeContextFactExtractionAdapter([candidate]),
+    });
+    const { job } = await enqueue(processor, OWNER, "eve:lease");
+    const firstClaim = await store.claimContextFactExtractionJob({ jobId: job.id, now: NOW });
+    if (!firstClaim?.claimToken) throw new Error("Expected the first worker claim token.");
+
+    const secondClaim = await store.claimContextFactExtractionJob({
+      jobId: job.id,
+      now: new Date(NOW.getTime() + 11 * 60 * 1000),
+    });
+    if (!secondClaim?.claimToken) throw new Error("Expected the expired lease to be reclaimed.");
+    expect(secondClaim.claimToken).not.toBe(firstClaim.claimToken);
+
+    const staleWorker = await processor.processContextFactExtractionJob({
+      jobId: job.id,
+      claim: false,
+      claimToken: firstClaim.claimToken,
+      now: new Date(NOW.getTime() + 11 * 60 * 1000),
+    });
+    expect(staleWorker.outcome).toBe("not_claimable");
+
+    const currentWorker = await processor.processContextFactExtractionJob({
+      jobId: job.id,
+      claim: false,
+      claimToken: secondClaim.claimToken,
+      now: new Date(NOW.getTime() + 11 * 60 * 1000),
+    });
+    expect(currentWorker.outcome).toBe("completed");
+  });
+
+  it("keeps the pending suggestion cap under concurrent extraction completions", async () => {
+    const store = createInMemoryContextFactExtractionJobStore();
+    const firstProcessor = createContextFactExtractionProcessor(store, {
+      extractionAdapter: createFakeContextFactExtractionAdapter([
+        { ...candidate, content: "Works as a product designer at Acme." },
+      ]),
+    });
+    const secondProcessor = createContextFactExtractionProcessor(store, {
+      extractionAdapter: createFakeContextFactExtractionAdapter([
+        { ...candidate, content: "Works as a product designer at Northstar." },
+      ]),
+    });
+    for (let index = 0; index < 19; index += 1) {
+      await createContextFactQueries(store, {
+        resolveVerifiedCaller: async () => OWNER,
+      }).createSuggestedSelfContextFact({
+        callerUserId: OWNER,
+        category: "interest",
+        content: `Enjoys hobby ${index}.`,
+        provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+        suggestionEvidence: `I enjoy hobby ${index}.`,
+      });
+    }
+    const first = await enqueue(
+      firstProcessor,
+      OWNER,
+      "eve:concurrent:first",
+      "I work as a product designer at Acme.",
+    );
+    const second = await enqueue(
+      secondProcessor,
+      OWNER,
+      "eve:concurrent:second",
+      "I work as a product designer at Northstar.",
+    );
+
+    await Promise.all([
+      firstProcessor.processContextFactExtractionJob({ jobId: first.job.id, now: NOW }),
+      secondProcessor.processContextFactExtractionJob({
+        jobId: second.job.id,
+        now: new Date(NOW.getTime() + 1),
+      }),
+    ]);
+
+    await expect(
+      store.listContextFacts({ subjectUserId: OWNER, lifecycle: "suggested" }),
+    ).resolves.toHaveLength(20);
   });
 });

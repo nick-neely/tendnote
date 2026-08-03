@@ -12,6 +12,7 @@ import {
   toContextFactView,
 } from "@tendnote/domain";
 import type { AffectedScope } from "../affected-scopes";
+import { callerScopedSubjectFilter, sameInstant } from "./shared";
 import type {
   AcceptSuggestedContextFactMutationInput,
   ContextFactAuditLogInput,
@@ -42,6 +43,8 @@ type AuditFact = Pick<
   "id" | "subject" | "category" | "lifecycle" | "sensitivity" | "provenance"
 >;
 
+type SuggestedFactCandidate = Pick<ContextFact, "subject" | "category" | "content" | "sensitivity">;
+
 export type ContextFactReviewQueryContext = {
   store: ContextFactStore;
   maxPendingSuggestedContextFacts?: number;
@@ -65,19 +68,6 @@ export type ContextFactReviewQueryContext = {
     metadataJson?: Record<string, unknown>;
   }) => ContextFactAuditLogInput;
 };
-
-function callerScopedSubjectFilter(subject: ContextFact["subject"], callerUserId: string) {
-  return subject.kind === "self"
-    ? { subjectUserId: subject.userId }
-    : {
-        householdIds: [subject.householdId],
-        activeHouseholdMemberUserId: callerUserId,
-      };
-}
-
-function sameInstant(left: Date | undefined, right: Date | null): boolean {
-  return left !== undefined && right !== null && left.getTime() === right.getTime();
-}
 
 function suggestionSuppressionKey(input: {
   subject: ContextFact["subject"];
@@ -143,6 +133,102 @@ async function findSuggestedFact(
           normalizeContextFactContent(fact.content) === normalizeContextFactContent(input.content),
       ) ?? null
   );
+}
+
+type ParsedSuggestedContextFactInput = Pick<
+  ContextFact,
+  "subject" | "category" | "content" | "sensitivity" | "provenance"
+> & {
+  suggestionEvidence: string;
+};
+
+type SuggestedFactCreationResult = {
+  fact: ContextFact;
+  decision: "created" | "existing";
+};
+
+async function assertPendingSuggestionCapacity(input: {
+  store: ContextFactStore;
+  subject: ContextFact["subject"];
+  callerUserId: string;
+  maxPendingSuggestedContextFacts?: number;
+}) {
+  if (input.maxPendingSuggestedContextFacts === undefined) return;
+  const pendingCount = await input.store.listContextFacts({
+    ...callerScopedSubjectFilter(input.subject, input.callerUserId),
+    lifecycle: "suggested",
+  });
+  if (pendingCount.length >= input.maxPendingSuggestedContextFacts) {
+    throw new ContextFactValidationError(
+      "The owner has reached the pending Suggested Context Fact limit.",
+    );
+  }
+}
+
+async function createOrReuseSuggestedFact(input: {
+  store: ContextFactStore;
+  callerUserId: string;
+  parsed: ParsedSuggestedContextFactInput;
+  maxPendingSuggestedContextFacts?: number;
+}): Promise<SuggestedFactCreationResult> {
+  const existingSuggested = await findSuggestedFact(input.store, {
+    callerUserId: input.callerUserId,
+    subject: input.parsed.subject,
+    category: input.parsed.category,
+    content: input.parsed.content,
+    sensitivity: input.parsed.sensitivity,
+  });
+  if (existingSuggested) return { fact: existingSuggested, decision: "existing" };
+
+  await assertPendingSuggestionCapacity({
+    store: input.store,
+    subject: input.parsed.subject,
+    callerUserId: input.callerUserId,
+    maxPendingSuggestedContextFacts: input.maxPendingSuggestedContextFacts,
+  });
+
+  try {
+    const created = contextFactSchema.parse(
+      await input.store.createContextFact({
+        subject: input.parsed.subject,
+        category: input.parsed.category,
+        content: input.parsed.content,
+        lifecycle: "suggested",
+        sensitivity: input.parsed.sensitivity,
+        provenance: input.parsed.provenance,
+        suggestionEvidence: input.parsed.suggestionEvidence,
+        creatorUserId: input.callerUserId,
+        lastActorUserId: input.callerUserId,
+        reviewedAt: null,
+        archivedAt: null,
+        activeHouseholdMemberUserId: input.callerUserId,
+        ...(input.maxPendingSuggestedContextFacts !== undefined
+          ? { pendingSuggestionLimit: input.maxPendingSuggestedContextFacts }
+          : {}),
+      }),
+    );
+    return { fact: created, decision: "created" };
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "Pending Context Fact suggestion limit reached."
+    ) {
+      throw new ContextFactValidationError(
+        "The owner has reached the pending Suggested Context Fact limit.",
+      );
+    }
+    if (error instanceof Error && error.message === "Context Fact already exists.") {
+      const pending = await findSuggestedFact(input.store, {
+        callerUserId: input.callerUserId,
+        subject: input.parsed.subject,
+        category: input.parsed.category,
+        content: input.parsed.content,
+        sensitivity: input.parsed.sensitivity,
+      });
+      if (pending) return { fact: pending, decision: "existing" };
+    }
+    throw error;
+  }
 }
 
 export function createContextFactReviewQueries(context: ContextFactReviewQueryContext) {
@@ -212,77 +298,22 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
       throw new ContextFactValidationError("That Context Fact suggestion was already dismissed.");
     }
 
-    const existingSuggested = await findSuggestedFact(store, {
+    const created = await createOrReuseSuggestedFact({
+      store,
       callerUserId,
-      subject: parsed.subject,
-      category: parsed.category,
-      content: parsed.content,
-      sensitivity: parsed.sensitivity,
+      parsed,
+      maxPendingSuggestedContextFacts,
     });
-    if (existingSuggested) {
-      return {
-        result: await requireSuggestedReview(existingSuggested, callerUserId),
-        decision: "existing",
-        affectedScopes: [],
-      };
-    }
+    const review = await requireSuggestedReview(created.fact, callerUserId);
 
-    if (maxPendingSuggestedContextFacts !== undefined) {
-      const pendingCount = await store.listContextFacts({
-        ...callerScopedSubjectFilter(parsed.subject, callerUserId),
-        lifecycle: "suggested",
-      });
-      if (pendingCount.length >= maxPendingSuggestedContextFacts) {
-        throw new ContextFactValidationError(
-          "The owner has reached the pending Suggested Context Fact limit.",
-        );
-      }
+    if (created.decision === "existing") {
+      return { result: review, decision: "existing", affectedScopes: [] };
     }
-
-    let created: ContextFact;
-    try {
-      created = contextFactSchema.parse(
-        await store.createContextFact({
-          subject: parsed.subject,
-          category: parsed.category,
-          content: parsed.content,
-          lifecycle: "suggested",
-          sensitivity: parsed.sensitivity,
-          provenance: parsed.provenance,
-          suggestionEvidence: parsed.suggestionEvidence,
-          creatorUserId: callerUserId,
-          lastActorUserId: callerUserId,
-          reviewedAt: null,
-          archivedAt: null,
-          activeHouseholdMemberUserId: callerUserId,
-        }),
-      );
-    } catch (error) {
-      if (error instanceof Error && error.message === "Context Fact already exists.") {
-        const pending = await findSuggestedFact(store, {
-          callerUserId,
-          subject: parsed.subject,
-          category: parsed.category,
-          content: parsed.content,
-          sensitivity: parsed.sensitivity,
-        });
-        if (pending) {
-          return {
-            result: await requireSuggestedReview(pending, callerUserId),
-            decision: "existing",
-            affectedScopes: [],
-          };
-        }
-      }
-      throw error;
-    }
-
-    const review = await requireSuggestedReview(created, callerUserId);
 
     await recordAudit({
       ownerUserId: callerUserId,
       action: "context_fact.suggest",
-      fact: created,
+      fact: created.fact,
       metadataJson: {
         suggestionEvidenceLength: parsed.suggestionEvidence.length,
         sourceRecordId: parsed.provenance.sourceRecordId,
@@ -294,7 +325,7 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     return {
       result: review,
       decision: "created",
-      affectedScopes: await affectedScopesForFact(created, callerUserId),
+      affectedScopes: await affectedScopesForFact(created.fact, callerUserId),
     };
   }
 
@@ -344,9 +375,7 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     return suggestedReviewForFact(contextFactSchema.parse(fact), callerUserId);
   }
 
-  async function acceptSuggestedContextFact(
-    input: AcceptSuggestedContextFactMutationInput,
-  ): Promise<ContextFactReviewMutationOutcome> {
+  async function loadSuggestedAcceptance(input: AcceptSuggestedContextFactMutationInput) {
     const parsed = acceptSuggestedContextFactInputSchema.parse(input);
     const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
     const existing = await store.getContextFact({
@@ -356,9 +385,85 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     if (existing?.subject.kind !== "self") {
       throw new ContextFactValidationError("That Suggested Context Fact is no longer available.");
     }
+    return { parsed, callerUserId, existing: contextFactSchema.parse(existing) };
+  }
+
+  async function activateSuggestedContextFact(input: {
+    existing: ContextFact;
+    callerUserId: string;
+    expectedUpdatedAt?: Date;
+    candidate: SuggestedFactCandidate;
+  }): Promise<ContextFact> {
+    const reviewedAt = new Date();
+    let updated: ContextFact | null;
+    try {
+      updated = await store.updateContextFact({
+        contextFactId: input.existing.id,
+        subjectUserId: input.callerUserId,
+        lifecycle: "suggested",
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        patch: {
+          category: input.candidate.category,
+          content: input.candidate.content,
+          sensitivity: input.candidate.sensitivity,
+          lifecycle: "active",
+          reviewedAt,
+          archivedAt: null,
+          lastActorUserId: input.callerUserId,
+          updatedAt: reviewedAt,
+        },
+      });
+    } catch (error) {
+      const concurrentMatch = await findActiveMatch({
+        ...input.candidate,
+        callerUserId: input.callerUserId,
+        excludingId: input.existing.id,
+      });
+      if (concurrentMatch) throw conflictError(concurrentMatch);
+      throw error;
+    }
+    if (updated) return contextFactSchema.parse(updated);
+
+    const concurrentMatch = await findActiveMatch({
+      ...input.candidate,
+      callerUserId: input.callerUserId,
+      excludingId: input.existing.id,
+    });
+    if (concurrentMatch) throw conflictError(concurrentMatch);
+    throw new ContextFactValidationError(
+      "That suggestion changed elsewhere. Refresh the review and try again.",
+    );
+  }
+
+  async function restoreSuggestedContextFact(fact: ContextFact, callerUserId: string) {
+    const restored = await store.updateContextFact({
+      contextFactId: fact.id,
+      subjectUserId: callerUserId,
+      lifecycle: "active",
+      expectedUpdatedAt: fact.updatedAt,
+      patch: {
+        lifecycle: "suggested",
+        reviewedAt: null,
+        archivedAt: null,
+        lastActorUserId: callerUserId,
+        updatedAt: new Date(),
+      },
+    });
+    if (!restored) {
+      throw new ContextFactValidationError(
+        "That accepted suggestion changed before the conflict could be restored.",
+      );
+    }
+    return contextFactSchema.parse(restored);
+  }
+
+  async function acceptSuggestedContextFact(
+    input: AcceptSuggestedContextFactMutationInput,
+  ): Promise<ContextFactReviewMutationOutcome> {
+    const { parsed, callerUserId, existing } = await loadSuggestedAcceptance(input);
     if (existing.lifecycle === "active") {
       return {
-        result: toContextFactView(contextFactSchema.parse(existing)),
+        result: toContextFactView(existing),
         decision: "existing",
         affectedScopes: [],
       };
@@ -398,65 +503,19 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
       throw conflictError(match);
     }
 
-    const reviewedAt = new Date();
-    let updated: ContextFact | null;
-    try {
-      updated = await store.updateContextFact({
-        contextFactId: existing.id,
-        subjectUserId: callerUserId,
-        lifecycle: "suggested",
-        expectedUpdatedAt: parsed.expectedUpdatedAt,
-        patch: {
-          category: candidate.category,
-          content: candidate.content,
-          sensitivity: candidate.sensitivity,
-          lifecycle: "active",
-          reviewedAt,
-          archivedAt: null,
-          lastActorUserId: callerUserId,
-          updatedAt: reviewedAt,
-        },
-      });
-    } catch (error) {
-      const concurrentMatch = await findActiveMatch({
-        ...candidate,
-        callerUserId,
-        excludingId: existing.id,
-      });
-      if (concurrentMatch) throw conflictError(concurrentMatch);
-      throw error;
-    }
-    if (!updated) {
-      const concurrentMatch = await findActiveMatch({
-        ...candidate,
-        callerUserId,
-        excludingId: existing.id,
-      });
-      if (concurrentMatch) throw conflictError(concurrentMatch);
-      throw new ContextFactValidationError(
-        "That suggestion changed elsewhere. Refresh the review and try again.",
-      );
-    }
-    const fact = contextFactSchema.parse(updated);
+    const fact = await activateSuggestedContextFact({
+      existing,
+      callerUserId,
+      expectedUpdatedAt: parsed.expectedUpdatedAt,
+      candidate,
+    });
     const concurrentMatch = await findActiveMatch({
       ...candidate,
       callerUserId,
       excludingId: fact.id,
     });
     if (concurrentMatch) {
-      await store.updateContextFact({
-        contextFactId: fact.id,
-        subjectUserId: callerUserId,
-        lifecycle: "active",
-        expectedUpdatedAt: fact.updatedAt,
-        patch: {
-          lifecycle: "suggested",
-          reviewedAt: null,
-          archivedAt: null,
-          lastActorUserId: callerUserId,
-          updatedAt: new Date(),
-        },
-      });
+      await restoreSuggestedContextFact(fact, callerUserId);
       throw conflictError(concurrentMatch);
     }
     await recordAudit({

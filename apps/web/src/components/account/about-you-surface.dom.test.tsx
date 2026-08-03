@@ -261,7 +261,7 @@ describe("AboutYouSurface", () => {
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect((content as HTMLTextAreaElement).value).toBe("Keep this draft while retrying.");
-    expect(document.activeElement).toBe(content);
+    await waitFor(() => expect(document.activeElement).toBe(content));
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 

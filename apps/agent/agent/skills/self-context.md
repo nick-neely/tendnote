@@ -5,14 +5,14 @@ description: Use when the user asks what Tendnote knows about them, asks to reme
 # Self Context
 
 Self Context is a small set of exact, current orienting facts about the authenticated
-user. It is not a biography, profile, journal, relationship memory, Saved Item, Action,
-Asset, Calendar event, typed setting, or generated personality.
+user. It is a bounded set of facts, not a journal, relationship memory, Saved Item,
+Action, Asset, Calendar event, typed setting, or broader narrative.
 
 ## Exact recall
 
 - Use `list_self_context` for “what do you know about me?” and similar direct recall.
-  Keep the returned categories and wording literal; do not generate a profile or infer
-  personality, emotions, values, finances, capabilities, importance, or lifestyle.
+  Keep the returned categories and wording literal; do not add a broader narrative or
+  infer personality, emotions, values, finances, capabilities, importance, or lifestyle.
 - Use `get_self_context_fact` only with an exact id returned by a prior Self Context
   tool call. Never guess an id. Archived facts require an explicit archived request.
 - Restricted facts require a direct relevant request and deliberate inclusion. Sensitive

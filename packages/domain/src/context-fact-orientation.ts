@@ -141,6 +141,67 @@ function serializeContext(input: {
   return { context, serialized, serializedBytes: utf8ByteLength(serialized) };
 }
 
+function eligibleOrientationFacts(input: {
+  callerUserId: string;
+  facts: readonly ContextFact[];
+  activeHouseholdIds?: readonly string[];
+}): ContextFact[] {
+  return [
+    ...new Map(
+      input.facts
+        .map((value) => contextFactSchema.parse(value))
+        .filter((fact) =>
+          canUseContextFactForOrientation({
+            callerUserId: input.callerUserId,
+            fact,
+            activeHouseholdIds: input.activeHouseholdIds,
+          }),
+        )
+        .map((fact) => [fact.id, fact] as const),
+    ).values(),
+  ].sort(compareRecentlyConfirmed);
+}
+
+function selectBoundedOrientationFacts(input: {
+  callerUserId: string;
+  eligibleFacts: readonly ContextFact[];
+  maxBytes: number;
+}): ContextFact[] {
+  const selected = new Map<string, ContextFact>();
+  const tryAdd = (candidate: ContextFact): boolean => {
+    if (selected.has(candidate.id)) return false;
+    const next = [...selected.values(), candidate].sort(compareRecentlyConfirmed);
+    const serialized = serializeContext({
+      callerUserId: input.callerUserId,
+      facts: next,
+      eligibleFactCount: input.eligibleFacts.length,
+      budgetBytes: input.maxBytes,
+    });
+    if (serialized.serializedBytes > input.maxBytes) return false;
+    selected.set(candidate.id, candidate);
+    return true;
+  };
+
+  // One deterministic reserve per subject keeps a future Self/Household pack
+  // from becoming all one subject when the bounded pack is under pressure.
+  for (const key of [...new Set(input.eligibleFacts.map(subjectKey))].sort()) {
+    for (const candidate of input.eligibleFacts.filter((fact) => subjectKey(fact) === key)) {
+      if (tryAdd(candidate)) break;
+    }
+  }
+
+  // Category coverage is a fixed policy order, not a learned importance score.
+  for (const category of contextFactCategorySchema.options) {
+    for (const candidate of input.eligibleFacts.filter((fact) => fact.category === category)) {
+      if (tryAdd(candidate)) break;
+    }
+  }
+
+  // Finally fill remaining space with recently confirmed facts.
+  for (const candidate of input.eligibleFacts) tryAdd(candidate);
+  return [...selected.values()].sort(compareRecentlyConfirmed);
+}
+
 /**
  * Builds the deterministic, policy-filtered Orientation Context payload.
  * Storage is never bounded by this function: facts omitted under pressure remain
@@ -157,20 +218,11 @@ export function buildOrientationContext(
     throw new Error("Orientation Context budget must be positive.");
   }
 
-  const eligibleFacts = [
-    ...new Map(
-      input.facts
-        .map((value) => contextFactSchema.parse(value))
-        .filter((fact) =>
-          canUseContextFactForOrientation({
-            callerUserId,
-            fact,
-            activeHouseholdIds: input.activeHouseholdIds,
-          }),
-        )
-        .map((fact) => [fact.id, fact] as const),
-    ).values(),
-  ].sort(compareRecentlyConfirmed);
+  const eligibleFacts = eligibleOrientationFacts({
+    callerUserId,
+    facts: input.facts,
+    activeHouseholdIds: input.activeHouseholdIds,
+  });
 
   const empty = serializeContext({
     callerUserId,
@@ -190,42 +242,9 @@ export function buildOrientationContext(
   });
   if (all.serializedBytes <= maxBytes) return all;
 
-  const selected = new Map<string, ContextFact>();
-  const tryAdd = (candidate: ContextFact): boolean => {
-    if (selected.has(candidate.id)) return false;
-    const next = [...selected.values(), candidate].sort(compareRecentlyConfirmed);
-    const serialized = serializeContext({
-      callerUserId,
-      facts: next,
-      eligibleFactCount: eligibleFacts.length,
-      budgetBytes: maxBytes,
-    });
-    if (serialized.serializedBytes > maxBytes) return false;
-    selected.set(candidate.id, candidate);
-    return true;
-  };
-
-  // One deterministic reserve per subject keeps a future Self/Household pack
-  // from becoming all one subject when the bounded pack is under pressure.
-  for (const key of [...new Set(eligibleFacts.map(subjectKey))].sort()) {
-    for (const candidate of eligibleFacts.filter((fact) => subjectKey(fact) === key)) {
-      if (tryAdd(candidate)) break;
-    }
-  }
-
-  // Category coverage is a fixed policy order, not a learned importance score.
-  for (const category of contextFactCategorySchema.options) {
-    for (const candidate of eligibleFacts.filter((fact) => fact.category === category)) {
-      if (tryAdd(candidate)) break;
-    }
-  }
-
-  // Finally fill remaining space with recently confirmed facts.
-  for (const candidate of eligibleFacts) tryAdd(candidate);
-
   return serializeContext({
     callerUserId,
-    facts: [...selected.values()].sort(compareRecentlyConfirmed),
+    facts: selectBoundedOrientationFacts({ callerUserId, eligibleFacts, maxBytes }),
     eligibleFactCount: eligibleFacts.length,
     budgetBytes: maxBytes,
   });

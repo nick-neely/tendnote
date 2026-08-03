@@ -25,6 +25,7 @@ import {
 } from "@tendnote/domain";
 import { affectedScopesForContextFact } from "../affected-scopes";
 import { createContextFactReviewQueries } from "./review-queries";
+import { callerScopedSubjectFilter, sameInstant } from "./shared";
 import type {
   ArchiveContextFactMutationInput,
   ContextFactAuditLogInput,
@@ -42,19 +43,6 @@ import type {
   UpdateContextFactMutationInput,
   UpdateSelfContextFactMutationInput,
 } from "./types";
-
-function callerScopedSubjectFilter(subject: ContextFact["subject"], callerUserId: string) {
-  return subject.kind === "self"
-    ? { subjectUserId: subject.userId }
-    : {
-        householdIds: [subject.householdId],
-        activeHouseholdMemberUserId: callerUserId,
-      };
-}
-
-function sameInstant(left: Date | undefined, right: Date | null): boolean {
-  return left !== undefined && right !== null && left.getTime() === right.getTime();
-}
 
 function canReadContextFact(input: {
   callerUserId: string;

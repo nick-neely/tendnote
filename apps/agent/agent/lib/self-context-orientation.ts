@@ -47,9 +47,9 @@ export function buildSelfContextInstructionsMarkdown(serializedContext: string):
     "The current user message is authoritative for the current answer. If it",
     "contradicts stored context, follow the current message for this answer but do",
     "not silently change durable context; ask for or follow an explicit correction.",
-    "For ‘what do you know about me?’ use exact active categorized facts, not a",
-    "generated personality profile. Never infer personality, emotion, values,",
-    "finances, capabilities, or importance from these records.",
+    "For ‘what do you know about me?’ use exact active categorized facts and do not",
+    "add a broader narrative. Never infer personality, emotion, values, finances,",
+    "capabilities, or importance from these records.",
   ].join("\n");
 }
 

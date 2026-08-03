@@ -163,4 +163,97 @@ describe("Context Fact Drizzle store guards", () => {
       }),
     ).resolves.toMatchObject({ ownerUserId: "owner-1", action: "context_fact.create" });
   });
+
+  it("enforces the suggested-fact cap inside the persistence transaction", async () => {
+    const now = new Date("2026-08-02T12:00:00.000Z");
+    const factRow = {
+      id: "00000000-0000-4000-8000-000000000003",
+      subjectKind: "self" as const,
+      subjectUserId: "owner-1",
+      subjectHouseholdId: null,
+      category: "work" as const,
+      content: "I run a software consultancy.",
+      lifecycle: "suggested" as const,
+      sensitivity: "normal" as const,
+      provenanceJson: {
+        channel: "ambient" as const,
+        origin: "ambient" as const,
+        sourceRecordId: null,
+      },
+      suggestionEvidence: "A recent conversation mentioned the consultancy.",
+      creatorUserId: "owner-1",
+      lastActorUserId: "owner-1",
+      reviewedAt: null,
+      archivedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const pending = vi.fn(async () => [{ count: "0" }]);
+    const transactionQuery = {
+      from: vi.fn(() => ({ where: pending })),
+    };
+    const tx = {
+      execute: vi.fn(async () => []),
+      select: vi.fn(() => transactionQuery),
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({
+          onConflictDoNothing: vi.fn(() => ({
+            returning: vi.fn(async () => [factRow]),
+          })),
+        })),
+      })),
+    };
+    getDb.mockImplementation(
+      () =>
+        ({
+          transaction: vi.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)),
+        }) as never,
+    );
+    const store = createDrizzleContextFactStore();
+
+    await expect(
+      store.createContextFact({
+        id: factRow.id,
+        subject: { kind: "self", userId: "owner-1" },
+        category: factRow.category,
+        content: factRow.content,
+        lifecycle: factRow.lifecycle,
+        sensitivity: factRow.sensitivity,
+        provenance: factRow.provenanceJson,
+        suggestionEvidence: factRow.suggestionEvidence,
+        creatorUserId: factRow.creatorUserId,
+        lastActorUserId: factRow.lastActorUserId,
+        reviewedAt: null,
+        archivedAt: null,
+        pendingSuggestionLimit: 2,
+      }),
+    ).resolves.toMatchObject({ id: factRow.id, lifecycle: "suggested" });
+    expect(tx.execute).toHaveBeenCalledOnce();
+    expect(pending).toHaveBeenCalledOnce();
+  });
+
+  it("deletes a caller-scoped persisted fact through the guarded mutation path", async () => {
+    const id = "00000000-0000-4000-8000-000000000001";
+    const deleteQuery = {
+      where: vi.fn(() => ({
+        returning: vi.fn(async () => [{ id }]),
+      })),
+    };
+    getDb.mockImplementation(
+      () =>
+        ({
+          delete: vi.fn(() => deleteQuery),
+        }) as never,
+    );
+    const store = createDrizzleContextFactStore();
+
+    await expect(
+      store.deleteContextFact({
+        contextFactId: id,
+        subjectUserId: "owner-1",
+        lifecycle: "active",
+      }),
+    ).resolves.toBe(true);
+    expect(deleteQuery.where).toHaveBeenCalled();
+  });
 });

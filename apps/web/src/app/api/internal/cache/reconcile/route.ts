@@ -1,27 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { affectedScopeSchema } from "@tendnote/db/queries/general-actions";
 import { z } from "zod";
 import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
-const affectedScopeSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("owner-collection"),
-    collection: z.enum(["review", "today"]),
-    ownerUserId: z.string().min(1).max(200),
-  }),
-  z.object({
-    kind: z.literal("viewer-collection"),
-    collection: z.literal("general-actions"),
-    viewerUserId: z.string().min(1).max(200),
-  }),
-  z.object({
-    kind: z.literal("viewer-entity"),
-    entity: z.literal("general-action"),
-    entityId: z.string().min(1).max(200),
-    viewerUserId: z.string().min(1).max(200),
-  }),
-]);
 const payloadSchema = z.object({ scopes: z.array(affectedScopeSchema).max(200) }).strict();
 
 export async function POST(request: Request) {

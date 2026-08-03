@@ -10,12 +10,15 @@ function readTool(name: string): string {
 
 describe("Self Context Eve tools", () => {
   it("exposes exact list and lookup through the shared product layer", () => {
-    expect(readTool("list_self_context")).toContain("listSelfContextFacts");
+    const listSource = readTool("list_self_context");
+
+    expect(listSource).toContain("listSelfContextFacts");
     expect(readTool("get_self_context_fact")).toContain("getSelfContextFact");
-    expect(readTool("list_self_context")).toContain("factsByCategory");
-    expect(readTool("list_self_context")).toContain("toSelfContextResult");
-    expect(readTool("list_self_context")).toContain("results");
-    expect(readTool("list_self_context")).toMatch(/exact|categorized/i);
+    expect(listSource).toContain("factsByCategory");
+    expect(listSource).toContain("toSelfContextResult");
+    expect(listSource).toContain("results");
+    expect(listSource).toMatch(/exact|categorized/i);
+    expect(listSource).not.toMatch(/personality profile|generated profile|you seem like/i);
   });
 
   it("reloads the owner-scoped orientation on every turn and has a fail-closed fallback", () => {

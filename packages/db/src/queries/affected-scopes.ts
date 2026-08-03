@@ -1,3 +1,6 @@
+import type { ReminderRecordKind } from "@tendnote/domain/reminders";
+import { z } from "zod";
+
 /**
  * Stable data scopes emitted by owner-scoped mutations.
  *
@@ -48,6 +51,66 @@ export type AffectedScope =
       entity: "asset";
       entityId: string;
     };
+
+const boundedScopeIdentifier = z.string().min(1).max(200);
+
+/** Wire-validation for signed background reconciliation requests. */
+export const affectedScopeSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("owner-collection"),
+      collection: z.enum([
+        "account",
+        "assets",
+        "briefs",
+        "context-facts",
+        "global-recall",
+        "orientation",
+        "people",
+        "review",
+        "saved-items",
+        "today",
+      ]),
+      ownerUserId: boundedScopeIdentifier,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("viewer-collection"),
+      collection: z.enum(["assets", "general-actions", "saved-items"]),
+      viewerUserId: boundedScopeIdentifier,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("viewer-entity"),
+      entity: z.enum(["asset", "general-action", "person", "saved-item"]),
+      entityId: boundedScopeIdentifier,
+      viewerUserId: boundedScopeIdentifier,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("visible-entity"),
+      entity: z.enum(["asset", "person", "saved-item"]),
+      entityId: boundedScopeIdentifier,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("household-collection"),
+      collection: z.enum(["assets", "context-facts", "saved-items"]),
+      householdId: boundedScopeIdentifier,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("linked-entity"),
+      entity: z.literal("asset"),
+      entityId: boundedScopeIdentifier,
+    })
+    .strict(),
+]);
 
 /** A committed domain result paired with the stable scopes changed by the write. */
 export type MutationOutcome<TResult> = {
@@ -132,5 +195,3 @@ export function affectedScopesForReminder(input: {
     ...affectedScopesForOwnerSurfaces(input.ownerUserId),
   ];
 }
-
-import type { ReminderRecordKind } from "@tendnote/domain/reminders";

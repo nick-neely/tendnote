@@ -65,6 +65,8 @@ export type ContextFactSubjectFilter =
 export type ContextFactCreateInput = PersistContextFact & {
   /** Household creates lock and re-check this member row in the persistence transaction. */
   activeHouseholdMemberUserId?: string;
+  /** Atomically enforce the owner/subject pending-suggestion cap at the persistence seam. */
+  pendingSuggestionLimit?: number;
 };
 
 export type ContextFactUpdatePatch = Pick<

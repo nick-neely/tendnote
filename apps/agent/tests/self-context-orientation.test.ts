@@ -66,4 +66,10 @@ describe("Self Context Eve orientation", () => {
     expect(markdown).toMatch(/do not interpret this as proof[\s\S]*no stored facts/i);
     expect(markdown).toMatch(/do not invent|do not summarize/i);
   });
+
+  it("does not seed forbidden profile wording into exact-recall replies", () => {
+    const markdown = buildSelfContextInstructionsMarkdown('{"facts":[]}');
+
+    expect(markdown).not.toMatch(/personality profile|generated profile|you seem like/i);
+  });
 });

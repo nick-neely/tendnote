@@ -12,6 +12,14 @@ clause is about the owner: call `capture_saved_item` once and let the shared rou
 return a Self Context outcome. Never send an explicit Global Capture self-fact to
 `capture_memory`, and never treat a casual self-reference as durable authority.
 
+A message with two or more supported explicit clauses is one Global Capture request.
+For example, "Add Priya; remember that Priya prefers oat milk; and track asset
+refrigerator water filter: model EDR4RXD1" is one grouped capture. Call
+`capture_saved_item` before any destination-specific tool and exactly once; do not
+split the person, memory, and Asset work across their legacy tools. Do not ask which
+destination to use or how to split it before calling `capture_saved_item`; the shared
+router owns grouping and can return a focused clarification.
+
 # Global Capture takes precedence
 
 When the user explicitly says **"Use Capture"** or **"capture this"**, call

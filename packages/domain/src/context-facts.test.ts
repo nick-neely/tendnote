@@ -4,6 +4,7 @@ import {
   contextFactSchema,
   contextFactSubjectSchema,
   createSelfContextFactInputSchema,
+  createSuggestedSelfContextFactInputSchema,
   isDuplicateContextFact,
   isLikelyConflictingContextFact,
   normalizeContextFactContent,
@@ -89,6 +90,32 @@ describe("Context Fact domain contract", () => {
     ).toBe(false);
   });
 
+  it("keeps precise addresses out of direct, suggested, and edited Context Facts", () => {
+    const direct = createSelfContextFactInputSchema.safeParse({
+      callerUserId: "user-1",
+      category: "location",
+      content: "I live at 1600 Pennsylvania Avenue, Washington, DC 20500.",
+    });
+    const suggested = createSuggestedSelfContextFactInputSchema.safeParse({
+      callerUserId: "user-1",
+      category: "location",
+      content: "I live at 1600 Pennsylvania Avenue, Washington, DC 20500.",
+      provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+      suggestionEvidence: "I live at 1600 Pennsylvania Avenue, Washington, DC 20500.",
+    });
+    const edited = updateSelfContextFactInputSchema.safeParse({
+      callerUserId: "user-1",
+      contextFactId: "fact-1",
+      category: "location",
+      content: "I live at 1600 Pennsylvania Avenue, Washington, DC 20500.",
+      sensitivity: "restricted",
+    });
+
+    expect(direct.success).toBe(false);
+    expect(suggested.success).toBe(false);
+    expect(edited.success).toBe(false);
+  });
+
   it("keeps Self updates limited to the editable fact fields", () => {
     expect(
       updateSelfContextFactInputSchema.safeParse({
@@ -120,6 +147,25 @@ describe("Context Fact domain contract", () => {
     ).toBe(false);
   });
 
+  it("allows explicitly saved sensitive or restricted facts without allowing raw secrets", () => {
+    expect(
+      createSelfContextFactInputSchema.safeParse({
+        callerUserId: "user-1",
+        category: "constraint",
+        content: "I have a medical diagnosis that matters for relevant answers.",
+        sensitivity: "restricted",
+      }).success,
+    ).toBe(true);
+    expect(
+      createSelfContextFactInputSchema.safeParse({
+        callerUserId: "user-1",
+        category: "other",
+        content: "My password is hunter2.",
+        sensitivity: "restricted",
+      }).success,
+    ).toBe(false);
+  });
+
   it("keeps provenance channel and origin aligned", () => {
     expect(
       contextFactSchema.shape.provenance.safeParse({
@@ -142,6 +188,20 @@ describe("Context Fact domain contract", () => {
         sourceRecordId: "message-1",
       }).success,
     ).toBe(true);
+    expect(
+      contextFactSchema.shape.provenance.safeParse({
+        channel: "review",
+        origin: "direct",
+        sourceRecordId: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      contextFactSchema.shape.provenance.safeParse({
+        channel: "import",
+        origin: "import",
+        sourceRecordId: null,
+      }).success,
+    ).toBe(false);
   });
 
   it("normalizes exact retries and distinguishes likely current-value conflicts", () => {
@@ -207,7 +267,7 @@ describe("Context Fact domain contract", () => {
     expect(() => resolveContextFactTransition("archived", "archive")).toThrow("Cannot archive");
   });
 
-  it("omits raw actor, source, and suggestion evidence fields from product views", () => {
+  it("keeps Self Context private while preserving household actor attribution", () => {
     const now = new Date("2026-08-02T12:00:00.000Z");
     const parsed = contextFactSchema.parse({
       id: "fact-1",
@@ -230,8 +290,7 @@ describe("Context Fact domain contract", () => {
       subject: { kind: "self" },
       provenance: { channel: "account", origin: "direct" },
     });
-    expect(view).not.toHaveProperty("creatorUserId");
-    expect(view).not.toHaveProperty("lastActorUserId");
+    expect(view.actorAttribution).toBeNull();
     expect(view.provenance).not.toHaveProperty("sourceRecordId");
     expect(view).not.toHaveProperty("suggestionEvidence");
 
@@ -243,5 +302,9 @@ describe("Context Fact domain contract", () => {
       }),
     );
     expect(householdView.subject).toEqual({ kind: "household", householdId: "household-1" });
+    expect(householdView.actorAttribution).toEqual({
+      creatorUserId: "user-1",
+      lastActorUserId: "user-2",
+    });
   });
 });

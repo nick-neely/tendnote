@@ -52,7 +52,7 @@ export function createInMemoryContextFactStore(
   return {
     records,
     async createContextFact(input) {
-      const { activeHouseholdMemberUserId, ...persistedInput } = input;
+      const { activeHouseholdMemberUserId, pendingSuggestionLimit, ...persistedInput } = input;
       const parsed = persistContextFactSchema.parse(persistedInput);
       if (parsed.subject.kind === "household") {
         if (activeHouseholdMemberUserId === undefined || !options.householdAccess) {
@@ -69,14 +69,26 @@ export function createInMemoryContextFactStore(
       if (parsed.id && !isPersistedContextFactId(parsed.id)) {
         throw new Error("Context Fact id must be a UUID.");
       }
+      if (
+        parsed.lifecycle === "suggested" &&
+        pendingSuggestionLimit !== undefined &&
+        [...records.values()].filter(
+          (current) =>
+            current.lifecycle === "suggested" &&
+            current.subject.kind === parsed.subject.kind &&
+            contextFactSubjectId(current.subject) === contextFactSubjectId(parsed.subject),
+        ).length >= pendingSuggestionLimit
+      ) {
+        throw new Error("Pending Context Fact suggestion limit reached.");
+      }
       const duplicate = [...records.values()].some(
         (current) =>
-          parsed.lifecycle === "active" &&
-          current.lifecycle === "active" &&
+          (parsed.lifecycle === "active" || parsed.lifecycle === "suggested") &&
+          current.lifecycle === parsed.lifecycle &&
           current.subject.kind === parsed.subject.kind &&
           contextFactSubjectId(current.subject) === contextFactSubjectId(parsed.subject) &&
           current.category === parsed.category &&
-          current.sensitivity === parsed.sensitivity &&
+          (parsed.lifecycle !== "suggested" || current.sensitivity === parsed.sensitivity) &&
           normalizeContextFactContent(current.content) ===
             normalizeContextFactContent(parsed.content),
       );

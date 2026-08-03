@@ -1,5 +1,5 @@
-import { type ContextFact, type ContextFactProvenance, contextFactSchema } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
+import { contextFactFixture } from "./context-fact-fixtures";
 import { createContextFactQueries, createInMemoryContextFactStore } from "./context-facts";
 import type { ContextFactStore } from "./context-facts/types";
 
@@ -7,34 +7,36 @@ const OWNER = "user-owner";
 const OTHER_OWNER = "user-other";
 const verifiedCallerFor = (userId: string) => async () => userId;
 
-const directProvenance: ContextFactProvenance = {
-  channel: "account",
-  origin: "direct",
-  sourceRecordId: null,
-};
-
-function contextFactFixture(overrides: Partial<ContextFact> = {}): ContextFact {
-  const now = new Date("2026-08-02T12:00:00.000Z");
-  return contextFactSchema.parse({
-    id: "fact-fixture",
-    subject: { kind: "self", userId: OWNER },
-    category: "background",
-    content: "I prefer concise answers.",
-    lifecycle: "active",
-    sensitivity: "normal",
-    provenance: directProvenance,
-    suggestionEvidence: null,
-    creatorUserId: OWNER,
-    lastActorUserId: OWNER,
-    reviewedAt: now,
-    archivedAt: null,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  });
-}
-
 describe("Suggested Context Fact review contract", () => {
+  it("returns one authoritative review row when identical suggestions race", async () => {
+    const store = createInMemoryContextFactStore();
+    const queries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+    const input = {
+      callerUserId: OWNER,
+      category: "work" as const,
+      content: "I run a software consultancy.",
+      sensitivity: "normal" as const,
+      provenance: {
+        channel: "ambient" as const,
+        origin: "ambient" as const,
+        sourceRecordId: "source-1",
+      },
+      suggestionEvidence: "I run a software consultancy.",
+    };
+
+    const results = await Promise.all([
+      queries.createSuggestedSelfContextFact(input),
+      queries.createSuggestedSelfContextFact(input),
+    ]);
+
+    expect(results.map((result) => result.decision).sort()).toEqual(["created", "existing"]);
+    expect(
+      [...store.records.values()].filter((fact) => fact.lifecycle === "suggested"),
+    ).toHaveLength(1);
+  });
+
   it("creates a bounded owner-scoped suggestion and accepts it as authoritative context", async () => {
     const store = createInMemoryContextFactStore();
     const queries = createContextFactQueries(store, {

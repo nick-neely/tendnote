@@ -373,6 +373,64 @@ function SearchPaletteDialog({
   const belowSearchFloor = query.trim().length > 0 && !showRecall && matchingGroups.length === 0;
 
   return (
+    <SearchPaletteDialogBody
+      belowSearchFloor={belowSearchFloor}
+      close={close}
+      matchingGroups={matchingGroups}
+      nothingToShow={nothingToShow}
+      onOpenChange={onOpenChange}
+      onRecallNavigate={(href, focusedKey) => {
+        rememberState(focusedKey);
+        close();
+        router.push(href);
+      }}
+      onRetry={() => setQuery(`${query} `)}
+      onSelectCommand={(command) => {
+        close();
+        command.run();
+      }}
+      open={open}
+      query={query}
+      recall={recall}
+      recallGroups={recallGroups}
+      setQuery={setQuery}
+      showRecall={showRecall}
+    />
+  );
+}
+
+function SearchPaletteDialogBody({
+  belowSearchFloor,
+  close,
+  matchingGroups,
+  nothingToShow,
+  onOpenChange,
+  onRecallNavigate,
+  onRetry,
+  onSelectCommand,
+  open,
+  query,
+  recall,
+  recallGroups,
+  setQuery,
+  showRecall,
+}: {
+  belowSearchFloor: boolean;
+  close: () => void;
+  matchingGroups: PaletteCommandGroup[];
+  nothingToShow: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRecallNavigate: (href: string, focusedKey: string) => void;
+  onRetry: () => void;
+  onSelectCommand: (command: PaletteCommand) => void;
+  open: boolean;
+  query: string;
+  recall: ReturnType<typeof useGlobalRecall>;
+  recallGroups: RecallGroup[];
+  setQuery: (query: string) => void;
+  showRecall: boolean;
+}) {
+  return (
     <Dialog onOpenChange={(next) => (next ? onOpenChange(true) : close())} open={open}>
       <DialogContent
         className="top-[14vh] w-[calc(100%-2rem)] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl"
@@ -389,71 +447,100 @@ function SearchPaletteDialog({
             placeholder="Search your notebook, or jump to a place"
             value={query}
           />
-          <CommandList className="max-h-[24rem]">
-            {showRecall ? (
-              <RecallSection
-                groups={recallGroups}
-                loading={recall.loading}
-                onNavigate={(href, focusedKey) => {
-                  rememberState(focusedKey);
-                  close();
-                  router.push(href);
-                }}
-              />
-            ) : null}
-            {matchingGroups.map((group) => (
-              <CommandGroup heading={group.heading} key={group.heading}>
-                {group.commands.map((command) => (
-                  <CommandItem
-                    data-checked={command.checked ? "true" : undefined}
-                    key={command.id}
-                    onSelect={() => {
-                      close();
-                      command.run();
-                    }}
-                    value={`command:${command.id}`}
-                  >
-                    <command.icon aria-hidden className="text-muted-foreground" />
-                    {command.label}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            ))}
-            {recall.failed ? (
-              <EmptyState
-                className="m-1"
-                description={recall.failureMessage ?? "Try that search again in a moment."}
-                size="compact"
-                title="Search did not run."
-                action={
-                  <Button onClick={() => setQuery(`${query} `)} size="sm" variant="outline">
-                    Try again
-                  </Button>
-                }
-              />
-            ) : null}
-            {nothingToShow ? (
-              <EmptyState
-                className="m-1"
-                description="Try different wording, or widen the filters below."
-                size="compact"
-                title="Nothing matched that search."
-              />
-            ) : null}
-            {belowSearchFloor ? (
-              <EmptyState
-                className="m-1"
-                description="Recall looks once there are a couple of letters to go on."
-                size="compact"
-                title="Keep typing to search."
-              />
-            ) : null}
-            <RecallFootnotes response={recall.response} showRecall={showRecall} />
-          </CommandList>
+          <SearchPaletteCommandList
+            belowSearchFloor={belowSearchFloor}
+            matchingGroups={matchingGroups}
+            nothingToShow={nothingToShow}
+            onRecallNavigate={onRecallNavigate}
+            onRetry={onRetry}
+            onSelectCommand={onSelectCommand}
+            recall={recall}
+            recallGroups={recallGroups}
+            showRecall={showRecall}
+          />
         </Command>
         {showRecall ? <RecallFilterBar recall={recall} /> : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SearchPaletteCommandList({
+  belowSearchFloor,
+  matchingGroups,
+  nothingToShow,
+  onRecallNavigate,
+  onRetry,
+  onSelectCommand,
+  recall,
+  recallGroups,
+  showRecall,
+}: {
+  belowSearchFloor: boolean;
+  matchingGroups: PaletteCommandGroup[];
+  nothingToShow: boolean;
+  onRecallNavigate: (href: string, focusedKey: string) => void;
+  onRetry: () => void;
+  onSelectCommand: (command: PaletteCommand) => void;
+  recall: ReturnType<typeof useGlobalRecall>;
+  recallGroups: RecallGroup[];
+  showRecall: boolean;
+}) {
+  return (
+    <CommandList className="max-h-[24rem]">
+      {showRecall ? (
+        <RecallSection
+          groups={recallGroups}
+          loading={recall.loading}
+          onNavigate={onRecallNavigate}
+        />
+      ) : null}
+      {matchingGroups.map((group) => (
+        <CommandGroup heading={group.heading} key={group.heading}>
+          {group.commands.map((command) => (
+            <CommandItem
+              data-checked={command.checked ? "true" : undefined}
+              key={command.id}
+              onSelect={() => onSelectCommand(command)}
+              value={`command:${command.id}`}
+            >
+              <command.icon aria-hidden className="text-muted-foreground" />
+              {command.label}
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      ))}
+      {recall.failed ? (
+        <EmptyState
+          className="m-1"
+          description={recall.failureMessage ?? "Try that search again in a moment."}
+          size="compact"
+          title="Search did not run."
+          action={
+            <Button onClick={onRetry} size="sm" variant="outline">
+              Try again
+            </Button>
+          }
+        />
+      ) : null}
+      {nothingToShow ? (
+        <EmptyState
+          className="m-1"
+          description="Try different wording, or widen the filters below."
+          size="compact"
+          title="Nothing matched that search."
+        />
+      ) : null}
+      {belowSearchFloor ? (
+        <EmptyState
+          className="m-1"
+          description="Recall looks once there are a couple of letters to go on."
+          size="compact"
+          title="Keep typing to search."
+        />
+      ) : null}
+      <RecallFootnotes response={recall.response} showRecall={showRecall} />
+    </CommandList>
   );
 }
 

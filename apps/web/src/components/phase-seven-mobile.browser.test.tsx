@@ -6,6 +6,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import type { ReviewQueueItem } from "@/lib/review-queue";
 import { renderInBrowser } from "@/test/browser";
+import {
+  expectFailedFocusedMutation,
+  expectTouchTargetButtons,
+  focusAndPressEnter,
+} from "@/test/browser-context-fact-helpers";
 import { AboutYouSurface } from "./account/about-you-surface";
 import { AppShell } from "./app-shell";
 import { AppShellEffects } from "./app-shell-effects";
@@ -41,6 +46,19 @@ async function mount(ui: React.ReactNode) {
   const rendered = await renderInBrowser(ui);
   cleanups.push(rendered.unmount);
   return rendered.container;
+}
+
+async function restoreSearchFromHistory(input: {
+  dialogName: string;
+  inputRole: "textbox" | "combobox";
+  inputName: string;
+  query: string;
+}) {
+  await act(async () => window.history.back());
+  await expect.element(page.getByRole("dialog", { name: input.dialogName })).toBeVisible();
+  const searchInput = page.getByRole(input.inputRole, { name: input.inputName });
+  await expect.element(searchInput).toHaveValue(input.query);
+  await expect.element(searchInput).toHaveFocus();
 }
 
 const today: TodayShortlistResponse = {
@@ -238,12 +256,12 @@ describe("Phase Seven phone browser proof", () => {
     await expect.element(page.getByRole("heading", { name: "About you" })).toBeVisible();
     await expect.element(page.getByRole("article")).toHaveFocus();
 
-    await act(async () => window.history.back());
-    await expect.element(page.getByRole("dialog", { name: "Search" })).toBeVisible();
-    await expect
-      .element(page.getByRole("textbox", { name: "Search Tendnote" }))
-      .toHaveValue("software");
-    await expect.element(page.getByRole("textbox", { name: "Search Tendnote" })).toHaveFocus();
+    await restoreSearchFromHistory({
+      dialogName: "Search",
+      inputRole: "textbox",
+      inputName: "Search Tendnote",
+      query: "software",
+    });
     sessionStorage.removeItem("tendnote:global-recall:owner-1");
   });
 
@@ -275,11 +293,12 @@ describe("Phase Seven phone browser proof", () => {
     await expect.element(page.getByRole("heading", { name: "About you" })).toBeVisible();
     await expect.element(page.getByRole("article")).toHaveFocus();
 
-    await act(async () => window.history.back());
-    await expect.element(page.getByRole("dialog", { name: "Search and commands" })).toBeVisible();
-    await expect
-      .element(page.getByRole("combobox", { name: "Search and commands" }))
-      .toHaveValue("software");
+    await restoreSearchFromHistory({
+      dialogName: "Search and commands",
+      inputRole: "combobox",
+      inputName: "Search and commands",
+      query: "software",
+    });
     await expect
       .element(page.getByRole("option", { name: /I run a software consultancy/ }))
       .toHaveFocus();
@@ -574,16 +593,8 @@ describe("Phase Seven phone browser proof", () => {
     await expect
       .element(page.getByText("The conversation included a Chicago work location."))
       .toBeVisible();
-    for (const name of ["Dismiss suggested fact", "Edit", "Accept"]) {
-      const box = (await page.getByRole("button", { name }).element()).getBoundingClientRect();
-      expect(box.width).toBeGreaterThanOrEqual(44);
-      expect(box.height).toBeGreaterThanOrEqual(44);
-    }
-
-    await act(async () => {
-      (await page.getByRole("button", { name: "Accept" }).element()).focus();
-      await userEvent.keyboard("{Enter}");
-    });
+    await expectTouchTargetButtons(["Dismiss suggested fact", "Edit", "Accept"]);
+    await focusAndPressEnter(page.getByRole("button", { name: "Accept" }));
     await expect.element(page.getByText("Review resolved.")).toBeVisible();
     expect(page.getByText("I work from Chicago.").query()).toBeNull();
     expect(acceptAction).toHaveBeenCalledWith({
@@ -621,22 +632,16 @@ describe("Phase Seven phone browser proof", () => {
       </AppShell>,
     );
 
-    const accept = page.getByRole("button", { name: "Accept" });
-    await act(async () => {
-      (await accept.element()).focus();
-      await userEvent.keyboard("{Enter}");
+    await expectFailedFocusedMutation({
+      buttonName: "Accept",
+      errorText: "changed elsewhere",
+      factText: "I work from Chicago.",
     });
-    await expect.element(page.getByRole("alert")).toHaveTextContent("changed elsewhere");
-    await expect.element(page.getByText("I work from Chicago.")).toBeVisible();
-    await expect.element(accept).toHaveFocus();
-
-    const dismiss = page.getByRole("button", { name: "Dismiss suggested fact" });
-    await act(async () => {
-      (await dismiss.element()).focus();
-      await userEvent.keyboard("{Enter}");
+    await expectFailedFocusedMutation({
+      buttonName: "Dismiss suggested fact",
+      errorText: "could not be dismissed",
+      factText: "I work from Chicago.",
     });
-    await expect.element(page.getByRole("alert")).toHaveTextContent("could not be dismissed");
-    await expect.element(dismiss).toHaveFocus();
     expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
   });
 

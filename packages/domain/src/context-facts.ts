@@ -14,6 +14,42 @@ const nonEmptyIdentifier = z.string().trim().min(1);
 const contextFactSourceRecordIdSchema = nonEmptyIdentifier.max(128);
 const contextFactContentSchema = z.string().trim().min(1).max(500);
 
+const restrictedContextFactContentPattern =
+  /\b(?:address|street|mailing|ssn|social security|password|passcode|bank account|credit card|salary|income|money|financial|debt|mortgage|diagnos(?:is|ed)|medication|medical|therapy|pregnan(?:t|cy)|sexual|sex life|legal case)\b/i;
+const preciseAddressPattern =
+  /\b\d{1,6}\s+(?:[\p{L}\d#.'’-]+\s+){0,6}(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|place|pl|parkway|pkwy|highway|hwy)\b(?:[^.!?\n]{0,100}\b\d{5}(?:-\d{4})?\b)?/iu;
+const restrictedContextFactDisclosurePattern =
+  /\b(?:ssn|social security(?: number)?|password|passcode|bank account(?: number)?|credit card(?: number)?)\s*(?:is|are|:|=)\s*\S+/i;
+
+export function isPreciseAddressContextFactContent(content: string): boolean {
+  return preciseAddressPattern.test(content);
+}
+
+/** High-signal private content that must not enter Context Fact storage. */
+export function isSensitiveContextFactContent(content: string): boolean {
+  return (
+    restrictedContextFactContentPattern.test(content) || isPreciseAddressContextFactContent(content)
+  );
+}
+
+export function isRestrictedContextFactDisclosure(content: string): boolean {
+  return restrictedContextFactDisclosurePattern.test(content);
+}
+
+function addContextFactStorageBoundaryIssue(
+  content: string,
+  ctx: z.RefinementCtx,
+  path = ["content"],
+) {
+  if (isPreciseAddressContextFactContent(content) || isRestrictedContextFactDisclosure(content)) {
+    ctx.addIssue({
+      code: "custom",
+      path,
+      message: "Precise addresses and raw secrets belong in Saved Items, not Context Facts.",
+    });
+  }
+}
+
 /** A user-actionable failure from a Self or Household Context Fact mutation. */
 export class ContextFactValidationError extends Error {
   override name = "ContextFactValidationError";
@@ -98,11 +134,19 @@ export const contextFactProvenanceSchema = z
       });
     }
 
-    if (value.origin === "direct" && (value.channel === "ambient" || value.channel === "import")) {
+    if (value.origin === "direct" && ["ambient", "import", "review"].includes(value.channel)) {
       ctx.addIssue({
         code: "custom",
         path: ["origin"],
-        message: "Ambient and imported channels require review-gated provenance.",
+        message: "Review, ambient, and imported channels require review-gated provenance.",
+      });
+    }
+
+    if (value.origin === "import" && value.sourceRecordId === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["sourceRecordId"],
+        message: "Imported provenance requires a source record id.",
       });
     }
   });
@@ -186,6 +230,7 @@ export const createContextFactInputSchema = z
   .strict()
   .superRefine((value, ctx) => {
     addContextFactSubjectIssues(value, ctx);
+    addContextFactStorageBoundaryIssue(value.content, ctx);
     if (value.provenance.origin !== "direct") {
       ctx.addIssue({
         code: "custom",
@@ -214,6 +259,7 @@ export const createSelfContextFactInputSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    addContextFactStorageBoundaryIssue(value.content, ctx);
     if (value.category === "composition") {
       ctx.addIssue({
         code: "custom",
@@ -241,6 +287,7 @@ export const contextFactReviewEditSchema = contextFactEditableFieldsSchema
   .partial()
   .strict()
   .superRefine((value, ctx) => {
+    if (value.content) addContextFactStorageBoundaryIssue(value.content, ctx);
     if (value.category === "composition") {
       ctx.addIssue({
         code: "custom",
@@ -266,6 +313,8 @@ export const createSuggestedContextFactInputSchema = z
   .strict()
   .superRefine((value, ctx) => {
     addContextFactSubjectIssues(value, ctx);
+    addContextFactStorageBoundaryIssue(value.content, ctx);
+    addContextFactStorageBoundaryIssue(value.suggestionEvidence, ctx, ["suggestionEvidence"]);
     if (value.provenance.origin === "direct") {
       ctx.addIssue({
         code: "custom",
@@ -288,6 +337,8 @@ export const createSuggestedSelfContextFactInputSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    addContextFactStorageBoundaryIssue(value.content, ctx);
+    addContextFactStorageBoundaryIssue(value.suggestionEvidence, ctx, ["suggestionEvidence"]);
     if (value.category === "composition") {
       ctx.addIssue({
         code: "custom",
@@ -346,7 +397,8 @@ const contextFactMutationTargetSchema = z
 /** Shared lifecycle input for an active Self or Household Context Fact. */
 export const updateContextFactInputSchema = contextFactMutationTargetSchema
   .merge(contextFactEditableFieldsSchema)
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => addContextFactStorageBoundaryIssue(value.content, ctx));
 
 export type UpdateContextFactInput = z.input<typeof updateContextFactInputSchema>;
 
@@ -410,9 +462,9 @@ const contextFactPublicProvenanceSchema = z
   .strict();
 
 /**
- * The product-facing view intentionally omits actor ids, source ids, and retained
- * suggestion evidence. Those values remain in the owner-scoped application record
- * and audit trail; About you only needs bounded provenance and dates.
+ * Self Context omits raw actor ids, source ids, and retained suggestion evidence. Household
+ * Context is collaborative, so its member-scoped view carries opaque actor ids alongside the
+ * already-visible timestamps; adapters may resolve those ids to member display names.
  */
 export const contextFactViewSchema = z
   .object({
@@ -430,6 +482,14 @@ export const contextFactViewSchema = z
     trust: contextFactTrustSchema,
     authority: contextFactAuthoritySchema,
     visibility: contextFactVisibilitySchema,
+    actorAttribution: z
+      .object({
+        creatorUserId: nonEmptyIdentifier,
+        lastActorUserId: nonEmptyIdentifier,
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict();
 export type ContextFactView = z.infer<typeof contextFactViewSchema>;
@@ -456,6 +516,10 @@ export function toContextFactView(fact: ContextFact): ContextFactView {
     trust: "untrusted_data",
     authority: "none",
     visibility: contextFactVisibilityForSubject(fact.subject),
+    actorAttribution:
+      fact.subject.kind === "household"
+        ? { creatorUserId: fact.creatorUserId, lastActorUserId: fact.lastActorUserId }
+        : null,
   });
 }
 

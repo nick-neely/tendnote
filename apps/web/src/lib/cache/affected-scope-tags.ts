@@ -105,6 +105,11 @@ function visibleEntityTag(scope: Extract<AffectedScope, { kind: "visible-entity"
 function householdCollectionTag(
   scope: Extract<AffectedScope, { kind: "household-collection" }>,
 ): string {
-  const family = scope.collection === "assets" ? "asset" : "saved-item";
+  const family =
+    scope.collection === "assets"
+      ? "asset"
+      : scope.collection === "context-facts"
+        ? "context-facts"
+        : "saved-item";
   return `${family}:household:${scope.householdId}:collection`;
 }

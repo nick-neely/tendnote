@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { selfContextFactCategorySchema } from "./context-facts";
+import {
+  isPreciseAddressContextFactContent,
+  isRestrictedContextFactDisclosure,
+  isSensitiveContextFactContent,
+  selfContextFactCategorySchema,
+} from "./context-facts";
 import { type Sensitivity, sensitivitySchema } from "./privacy";
 
 /** The extraction contract is intentionally small so the model never receives owner history. */
@@ -48,13 +53,17 @@ export type ValidateContextFactExtractionCandidatesResult = {
 };
 
 const restrictedEvidencePattern =
-  /\b(?:ssn|social security|password|passcode|bank account|credit card|salary|income|money|financial|debt|mortgage|diagnos(?:is|ed)|medication|medical|therapy|pregnan(?:t|cy)|sexual|sex life|legal case)\b|\b\d{1,5}\s+\S+(?:\s+\S+){0,3}\s+(?:street|st|avenue|ave|road|rd|boulevard|blvd)\b/i;
+  /\b(?:ssn|social security|password|passcode|bank account|credit card|salary|income|money|financial|debt|mortgage|diagnos(?:is|ed)|medication|medical|therapy|pregnan(?:t|cy)|sexual|sex life|legal case)\b/i;
+const restrictedDisclosurePattern = isRestrictedContextFactDisclosure;
 
 // These are intentionally conservative. A candidate can still be reviewed when a user
 // directly states a stable preference or background fact, but the model must not turn a
 // transient state or an inferred persona into durable context.
 const nonOrientingCandidatePattern =
   /\b(?:i feel|i'm feeling|i am feeling|feeling|today|tonight|this week|right now|currently|at the moment|lately|temporar(?:y|ily)|stressed|overwhelmed|exhausted|tired|sick|ill|anxious|sad|happy|angry|upset|excited|introvert|extrovert|personality|good person|bad person|i value|my values|i believe|i tend to|i can|i can't|i am able|i'm able|capable|my ability|good at|bad at|skilled|expert|wealthy|rich|poor|salary|income|money|financial|debt|mortgage|rent|afford|daily|weekly|every morning|every night|routine|habit|diet|exercise|workout|sleep schedule|runs every|running every|travels every)\b/i;
+
+const nonCurrentStatementPattern =
+  /\b(?:do\s+not|don't|did\s+not|didn't|no\s+longer|never|used\s+to|formerly|previously)\b/i;
 
 const stopWords = new Set([
   "a",
@@ -102,8 +111,11 @@ function contentIsSupportedByMessage(content: string, message: string) {
   return candidateTokens.every((token) => messageTokens.has(token));
 }
 
-function minimumSensitivityForEvidence(evidence: string): Sensitivity {
-  return restrictedEvidencePattern.test(evidence) ? "restricted" : "normal";
+function minimumSensitivityForEvidence(content: string, evidence: string): Sensitivity {
+  return isSensitiveContextFactContent(`${content}\n${evidence}`) ||
+    restrictedEvidencePattern.test(evidence)
+    ? "restricted"
+    : "normal";
 }
 
 function sensitivityRank(value: Sensitivity) {
@@ -118,8 +130,22 @@ function atLeastSensitivity(base: Sensitivity, candidate: Sensitivity | undefine
 function isCandidateAllowed(candidate: ContextFactExtractionCandidate, message: string) {
   if (!message.includes(candidate.evidence)) return false;
   if (!contentIsSupportedByMessage(candidate.content, message)) return false;
+  if (isPreciseAddressContextFactContent(candidate.content)) return false;
+  if (isPreciseAddressContextFactContent(candidate.evidence)) return false;
+  if (restrictedDisclosurePattern(candidate.content)) return false;
   if (nonOrientingCandidatePattern.test(candidate.content)) return false;
   if (nonOrientingCandidatePattern.test(candidate.evidence)) return false;
+  const evidenceStart = message.indexOf(candidate.evidence);
+  if (evidenceStart >= 0) {
+    const sentenceStart = Math.max(
+      message.lastIndexOf(".", evidenceStart),
+      message.lastIndexOf("!", evidenceStart),
+      message.lastIndexOf("?", evidenceStart),
+    );
+    if (nonCurrentStatementPattern.test(message.slice(sentenceStart + 1, evidenceStart))) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -160,7 +186,7 @@ export function validateContextFactExtractionCandidates(
     validCandidates.push({
       ...parsed.data,
       sensitivity: atLeastSensitivity(
-        minimumSensitivityForEvidence(parsed.data.evidence),
+        minimumSensitivityForEvidence(parsed.data.content, parsed.data.evidence),
         parsed.data.sensitivity,
       ),
     });

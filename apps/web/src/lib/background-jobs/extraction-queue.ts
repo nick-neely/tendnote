@@ -21,6 +21,7 @@ import type {
   EnqueueAndTriggerExtractionJobInput,
   EnqueueAndTriggerExtractionJobResult,
 } from "@tendnote/db/queries/extraction-jobs";
+import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 import type { ProductRateLimiter } from "@/lib/rate-limit";
 import {
   type BackgroundJobQueueConsumerMetadata,
@@ -143,6 +144,8 @@ export async function consumeExtractionQueueMessage(input: {
   processContextFactJob?: BackgroundJobProcessorOverrides["processJob"];
 }) {
   const deliveryStore = input.deliveryStore ?? createDrizzleBackgroundJobDeliveryStore();
+  const processContextFactJob =
+    input.processContextFactJob ?? BACKGROUND_JOB_FAMILIES.context_fact_extraction.processJob;
 
   return consumeBackgroundJobQueueMessage({
     store: deliveryStore,
@@ -170,7 +173,13 @@ export async function consumeExtractionQueueMessage(input: {
         now: input.now,
         claimJob: input.claimContextFactJob,
         getJob: input.getContextFactJob,
-        processJob: input.processContextFactJob,
+        processJob: async (jobInput) => {
+          const result = await processContextFactJob(jobInput);
+          if (result.affectedScopes?.length) {
+            reconcileAffectedScopes(result.affectedScopes, { origin: "background" });
+          }
+          return result;
+        },
       }),
     ],
   });

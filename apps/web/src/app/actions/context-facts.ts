@@ -16,10 +16,7 @@ import type {
   SelfContextFactMutationResult,
 } from "@/lib/context-fact-view";
 import { runOwnerAction } from "@/lib/owner-action";
-import type {
-  SelfContextFactActionChannel,
-  SelfContextFactActionInput,
-} from "@/lib/self-context-fact-action";
+import type { SelfContextFactActionInput } from "@/lib/self-context-fact-action";
 import { createSelfContextFactActionForChannel as createSelfContextFactActionForChannelShared } from "@/lib/self-context-fact-action";
 
 const contentSchema = z
@@ -64,7 +61,7 @@ const deleteSelfContextFactActionSchema = z
   .object({ contextFactId: z.uuid("Choose a Self Context fact.") })
   .strict();
 
-export type { SelfContextFactActionChannel, SelfContextFactActionInput };
+export type { SelfContextFactActionInput };
 
 export type UpdateSelfContextFactActionInput = {
   contextFactId: string;
@@ -88,17 +85,10 @@ export type DeleteSelfContextFactActionInput = {
   contextFactId: string;
 };
 
-export async function createSelfContextFactActionForChannel(
-  input: SelfContextFactActionInput,
-  channel: SelfContextFactActionChannel,
-): Promise<SelfContextFactMutationResult> {
-  return createSelfContextFactActionForChannelShared(input, channel);
-}
-
 export async function createSelfContextFactAction(
   input: SelfContextFactActionInput,
 ): Promise<SelfContextFactMutationResult> {
-  return createSelfContextFactActionForChannel(input, "account");
+  return createSelfContextFactActionForChannelShared(input, "account");
 }
 
 export async function updateSelfContextFactAction(

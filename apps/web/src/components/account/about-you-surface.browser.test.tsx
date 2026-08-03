@@ -4,6 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import type { SuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 import { renderInBrowser } from "@/test/browser";
+import {
+  clickBrowserControl,
+  expectFailedFocusedMutation,
+  expectTouchTargetButtons,
+  focusAndPressEnter,
+  resetBrowserContextFactDom,
+} from "@/test/browser-context-fact-helpers";
 import { AppShellEffects } from "../app-shell-effects";
 import { AboutYouSurface } from "./about-you-surface";
 
@@ -49,16 +56,8 @@ function suggestedReview(): SuggestedContextFactReviewView {
   };
 }
 
-async function click(control: ReturnType<typeof page.getByRole>) {
-  await act(async () => {
-    await userEvent.click(control);
-  });
-}
-
 afterEach(async () => {
-  while (cleanups.length) await cleanups.pop()?.();
-  document.documentElement.removeAttribute("style");
-  document.body.removeAttribute("style");
+  await resetBrowserContextFactDom(cleanups);
 });
 
 describe("About you browser contract", () => {
@@ -220,20 +219,8 @@ describe("About you browser contract", () => {
       .element(page.getByText("The conversation included a Chicago address."))
       .toBeVisible();
     expect(page.getByRole("heading", { name: "Work" }).query()).toBeNull();
-    for (const control of [
-      page.getByRole("button", { name: "Dismiss suggested fact" }),
-      page.getByRole("button", { name: "Edit" }),
-      page.getByRole("button", { name: "Accept" }),
-    ]) {
-      const box = (await control.element()).getBoundingClientRect();
-      expect(box.width).toBeGreaterThanOrEqual(44);
-      expect(box.height).toBeGreaterThanOrEqual(44);
-    }
-
-    await act(async () => {
-      (await page.getByRole("button", { name: "Accept" }).element()).focus();
-      await userEvent.keyboard("{Enter}");
-    });
+    await expectTouchTargetButtons(["Dismiss suggested fact", "Edit", "Accept"]);
+    await focusAndPressEnter(page.getByRole("button", { name: "Accept" }));
     await expect.element(page.getByText("The returned active fact.")).toBeVisible();
     await expect.element(page.getByRole("status")).toHaveTextContent("accepted into About you");
     expect(acceptAction).toHaveBeenCalledWith({
@@ -268,22 +255,16 @@ describe("About you browser contract", () => {
     );
     cleanups.push(rendered.unmount);
 
-    const accept = page.getByRole("button", { name: "Accept" });
-    await act(async () => {
-      (await accept.element()).focus();
-      await userEvent.keyboard("{Enter}");
+    await expectFailedFocusedMutation({
+      buttonName: "Accept",
+      errorText: "changed elsewhere",
+      factText: "I am based in Chicago.",
     });
-    await expect.element(page.getByRole("alert")).toHaveTextContent("changed elsewhere");
-    await expect.element(page.getByText("I am based in Chicago.")).toBeVisible();
-    await expect.element(accept).toHaveFocus();
-
-    const dismiss = page.getByRole("button", { name: "Dismiss suggested fact" });
-    await act(async () => {
-      (await dismiss.element()).focus();
-      await userEvent.keyboard("{Enter}");
+    await expectFailedFocusedMutation({
+      buttonName: "Dismiss suggested fact",
+      errorText: "could not be dismissed",
+      factText: "I am based in Chicago.",
     });
-    await expect.element(page.getByRole("alert")).toHaveTextContent("could not be dismissed");
-    await expect.element(dismiss).toHaveFocus();
   });
 
   it("edits the authoritative fact and keeps sensitivity independent from private visibility", async () => {
@@ -303,7 +284,7 @@ describe("About you browser contract", () => {
     );
     cleanups.push(rendered.unmount);
 
-    await click(page.getByRole("button", { name: "Edit Work fact" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Edit Work fact" }));
     await act(async () => {
       await userEvent.fill(page.getByRole("textbox", { name: "Fact" }), "A client draft");
       await userEvent.selectOptions(page.getByRole("combobox", { name: "Category" }), "preference");
@@ -312,7 +293,7 @@ describe("About you browser contract", () => {
         "restricted",
       );
     });
-    await click(page.getByRole("button", { name: "Save changes" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Save changes" }));
 
     await expect.element(page.getByText(returned.content)).toBeVisible();
     expect(updateAction).toHaveBeenCalledWith({
@@ -355,14 +336,14 @@ describe("About you browser contract", () => {
     );
     cleanups.push(rendered.unmount);
 
-    await click(page.getByRole("button", { name: "Archive" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Archive" }));
     await expect.element(page.getByRole("button", { name: "Undo archive" })).toBeVisible();
     expect(archiveAction).toHaveBeenCalledWith({
       contextFactId: FACT_ID,
       expectedUpdatedAt: NOW.toISOString(),
     });
 
-    await click(page.getByRole("button", { name: "Undo archive" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Undo archive" }));
     await expect.element(page.getByRole("button", { name: "Archive" })).toBeVisible();
     expect(restoreAction).toHaveBeenCalledWith({
       contextFactId: FACT_ID,
@@ -396,16 +377,16 @@ describe("About you browser contract", () => {
     cleanups.push(rendered.unmount);
 
     expect(page.getByText(archived.content).query()).toBeNull();
-    await click(page.getByRole("button", { name: "Show archived facts (1)" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Show archived facts (1)" }));
     await expect.element(page.getByText(archived.content)).toBeVisible();
-    await click(page.getByRole("button", { name: "Restore" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Restore" }));
     await expect.element(page.getByText(restored.content)).toBeVisible();
     expect(restoreAction).toHaveBeenCalledWith({
       contextFactId: FACT_ID,
       expectedArchivedAt: archived.archivedAt?.toISOString(),
     });
 
-    await click(page.getByRole("button", { name: "Delete permanently" }));
+    await clickBrowserControl(page.getByRole("button", { name: "Delete permanently" }));
     await expect.element(page.getByRole("alertdialog")).toBeVisible();
     await expect
       .element(
@@ -414,7 +395,9 @@ describe("About you browser contract", () => {
           .getByRole("heading", { name: "Delete this fact permanently?" }),
       )
       .toBeVisible();
-    await click(page.getByRole("alertdialog").getByRole("button", { name: "Delete permanently" }));
+    await clickBrowserControl(
+      page.getByRole("alertdialog").getByRole("button", { name: "Delete permanently" }),
+    );
     await expect.element(page.getByText("Nothing about you yet.")).toBeVisible();
     expect(deleteAction).toHaveBeenCalledWith({ contextFactId: FACT_ID });
   });
@@ -431,7 +414,7 @@ describe("About you browser contract", () => {
     cleanups.push(rendered.unmount);
 
     const archive = page.getByRole("button", { name: "Archive" });
-    await click(archive);
+    await clickBrowserControl(archive);
     await expect.element(page.getByRole("alert")).toHaveTextContent("changed elsewhere");
     await expect.element(page.getByRole("button", { name: "Archive" })).toBeVisible();
     await expect.element(page.getByRole("button", { name: "Archive" })).toHaveFocus();

@@ -12,6 +12,7 @@ import type {
   InMemoryContextFactExtractionJobStore,
   UpdateContextFactExtractionJobInput,
 } from "./types";
+import { contextFactExtractionJobUpdateValues } from "./update-values";
 
 const CLAIMABLE_STATUSES = new Set<ContextFactExtractionJob["status"]>(
   claimableContextFactExtractionJobStatuses,
@@ -19,16 +20,12 @@ const CLAIMABLE_STATUSES = new Set<ContextFactExtractionJob["status"]>(
 const PENDING_STATUSES = new Set<ContextFactExtractionJob["status"]>(
   pendingContextFactExtractionJobStatuses,
 );
+const CONTEXT_FACT_EXTRACTION_JOB_LEASE_MS = 10 * 60 * 1000;
 
 function applyJobUpdate(job: ContextFactExtractionJob, input: UpdateContextFactExtractionJobInput) {
   return contextFactExtractionJobSchema.parse({
     ...job,
-    ...(input.status !== undefined ? { status: input.status } : {}),
-    ...(input.lastError !== undefined ? { lastError: input.lastError } : {}),
-    ...(input.runAfter !== undefined ? { runAfter: input.runAfter } : {}),
-    ...(Object.hasOwn(input, "claimedAt") ? { claimedAt: input.claimedAt } : {}),
-    ...(Object.hasOwn(input, "completedAt") ? { completedAt: input.completedAt } : {}),
-    updatedAt: new Date(),
+    ...contextFactExtractionJobUpdateValues(input),
   });
 }
 
@@ -63,11 +60,17 @@ export function createInMemoryContextFactExtractionJobStore(
     },
     async claimContextFactExtractionJob(input) {
       const job = jobs.get(input.jobId);
-      if (!job || !CLAIMABLE_STATUSES.has(job.status) || job.runAfter > input.now) return null;
+      const staleRunning =
+        job?.status === "running" &&
+        (job.claimedAt == null ||
+          job.claimedAt.getTime() <= input.now.getTime() - CONTEXT_FACT_EXTRACTION_JOB_LEASE_MS);
+      if (!job || !(CLAIMABLE_STATUSES.has(job.status) || staleRunning) || job.runAfter > input.now)
+        return null;
       const claimed = contextFactExtractionJobSchema.parse({
         ...job,
         status: "running",
         claimedAt: input.now,
+        claimToken: randomUUID(),
         attempts: job.attempts + 1,
         updatedAt: input.now,
       });
@@ -76,14 +79,23 @@ export function createInMemoryContextFactExtractionJobStore(
     },
     async claimNextContextFactExtractionJob(input) {
       const next = [...jobs.values()]
-        .filter((job) => CLAIMABLE_STATUSES.has(job.status) && job.runAfter <= input.now)
+        .filter(
+          (job) =>
+            (CLAIMABLE_STATUSES.has(job.status) ||
+              (job.status === "running" &&
+                (job.claimedAt == null ||
+                  job.claimedAt.getTime() <=
+                    input.now.getTime() - CONTEXT_FACT_EXTRACTION_JOB_LEASE_MS))) &&
+            job.runAfter <= input.now,
+        )
         .sort((left, right) => left.runAfter.getTime() - right.runAfter.getTime())[0];
       if (!next) return null;
       return this.claimContextFactExtractionJob({ jobId: next.id, now: input.now });
     },
     async updateContextFactExtractionJob(input) {
       const job = jobs.get(input.jobId);
-      if (!job) throw new Error("Context Fact extraction job not found.");
+      if (!job) return null;
+      if (input.expectedClaimToken && job.claimToken !== input.expectedClaimToken) return null;
       const updated = applyJobUpdate(job, input);
       jobs.set(updated.id, updated);
       return updated;

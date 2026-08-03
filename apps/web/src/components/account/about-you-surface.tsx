@@ -96,8 +96,6 @@ type AboutYouSurfaceProps = {
 
 type EditorState = { mode: "create" } | { mode: "edit"; fact: ContextFactView };
 
-export type ContextFactEditorState = EditorState;
-
 export type ContextFactEditorCategoryOption = {
   value: SelfContextCategory;
   label: string;

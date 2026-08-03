@@ -20,6 +20,10 @@ const singleValueFenceMigration = readFileSync(
   join(import.meta.dirname, "../../../migrations/0056_context_fact_single_value_fences.sql"),
   "utf8",
 );
+const suggestedIdentityMigration = readFileSync(
+  join(import.meta.dirname, "../../../migrations/0060_context_fact_suggested_identity.sql"),
+  "utf8",
+);
 const journal = readFileSync(
   join(import.meta.dirname, "../../../migrations/meta/_journal.json"),
   "utf8",
@@ -74,5 +78,7 @@ describe("Context Fact persistence contract", () => {
     expect(idempotencyMigration).toContain("context_facts_active_household_identity_idx");
     expect(singleValueFenceMigration).toContain("context_facts_active_self_single_value_idx");
     expect(singleValueFenceMigration).toContain("context_facts_active_household_single_value_idx");
+    expect(suggestedIdentityMigration).toContain("context_facts_suggested_self_identity_idx");
+    expect(suggestedIdentityMigration).toContain("context_facts_suggested_household_identity_idx");
   });
 });

@@ -13,6 +13,7 @@ import {
   type ProcessActionExtractionJobOutcome,
   processActionExtractionJob,
 } from "../action-extraction-jobs";
+import type { AffectedScope } from "../affected-scopes";
 import type { BackgroundJobKind } from "../background-job-deliveries/topics";
 import {
   claimContextFactExtractionJob,
@@ -91,14 +92,16 @@ export type BackgroundJobFamilyMechanics = {
   claimJob: (input: {
     jobId: string;
     now?: Date;
-  }) => Promise<{ status: BackgroundJobStatus } | null>;
+  }) => Promise<{ status: BackgroundJobStatus; claimToken?: string | null } | null>;
   /** Reload the job to interpret a claim miss (missing / terminal / not-yet-claimable). */
   getJob: (jobId: string) => Promise<{ status: BackgroundJobStatus } | null>;
   /** Process an already-claimed job; the runtime rethrows a `failed` outcome. */
-  processJob: (input: {
-    jobId: string;
-    claim: false;
-  }) => Promise<{ outcome: BackgroundJobProcessOutcome; error?: string; reason?: string }>;
+  processJob: (input: { jobId: string; claim: false; claimToken?: string }) => Promise<{
+    outcome: BackgroundJobProcessOutcome;
+    error?: string;
+    reason?: string;
+    affectedScopes?: AffectedScope[];
+  }>;
   /** Claim the next due job (FIFO) for queue-less recovery backfill. */
   claimNextJob: (input: { now?: Date }) => Promise<{ id: string } | null>;
 };

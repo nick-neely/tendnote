@@ -211,5 +211,12 @@ describe("affected-scope tag coverage", () => {
         ownerUserId: "owner-1",
       }),
     ).toEqual(["global-recall:owner:owner-1"]);
+    expect(
+      tagsForAffectedScope({
+        kind: "household-collection",
+        collection: "context-facts",
+        householdId: "household-1",
+      }),
+    ).toEqual(["context-facts:household:household-1:collection"]);
   });
 });

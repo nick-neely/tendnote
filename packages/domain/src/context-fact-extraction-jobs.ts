@@ -10,10 +10,18 @@ export const contextFactExtractionJobStatusSchema = z.enum([
   "dead_lettered",
 ]);
 
+const contextFactExtractionMessageSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_CONTEXT_FACT_EXTRACTION_MESSAGE_LENGTH);
+
 export const contextFactExtractionJobSchema = z.object({
   id: z.string(),
   ownerUserId: z.string().trim().min(1),
-  message: z.string().trim().min(1).max(MAX_CONTEXT_FACT_EXTRACTION_MESSAGE_LENGTH),
+  /** Cleared after terminal processing; the current inbound message is queue input only. */
+  message: contextFactExtractionMessageSchema.nullable(),
+  claimToken: z.string().trim().min(1).nullable().optional(),
   status: contextFactExtractionJobStatusSchema.default("pending"),
   ...jobQueueMechanicsShape,
   createdAt: z.date(),
@@ -23,6 +31,7 @@ export const contextFactExtractionJobSchema = z.object({
 export const createContextFactExtractionJobSchema = contextFactExtractionJobSchema
   .omit(JOB_CREATE_OMIT)
   .extend({
+    message: contextFactExtractionMessageSchema,
     idempotencyKey: z.string().trim().min(1).max(256),
   });
 

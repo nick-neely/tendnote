@@ -13,6 +13,29 @@ import type { ContextFactAuditLogEntry, ContextFactStore, ContextFactSubjectFilt
 
 export { isPersistedContextFactId } from "./id";
 
+type ContextFactTransaction = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
+type HouseholdSubject = Extract<ContextFact["subject"], { kind: "household" }>;
+
+async function lockActiveHouseholdMembership(
+  tx: ContextFactTransaction,
+  subject: HouseholdSubject,
+  memberUserId: string,
+) {
+  const [membership] = await tx
+    .select({ id: householdMemberships.id })
+    .from(householdMemberships)
+    .where(
+      and(
+        eq(householdMemberships.householdId, subject.householdId),
+        eq(householdMemberships.userId, memberUserId),
+        eq(householdMemberships.status, "active"),
+      ),
+    )
+    .limit(1)
+    .for("update");
+  return Boolean(membership);
+}
+
 function toRowValues(input: PersistContextFact) {
   const parsed = persistContextFactSchema.parse(input);
   if (parsed.id && !isPersistedContextFactId(parsed.id)) {
@@ -89,41 +112,114 @@ function subjectWhere(input: ContextFactSubjectFilter) {
   return predicates.length > 0 ? or(...predicates) : undefined;
 }
 
+type ContextFactInsertResult =
+  | { kind: "created"; row: typeof contextFacts.$inferSelect }
+  | "duplicate"
+  | "limit"
+  | "membership-missing";
+
+function subjectPredicate(subject: ContextFact["subject"]) {
+  return subject.kind === "self"
+    ? and(eq(contextFacts.subjectKind, "self"), eq(contextFacts.subjectUserId, subject.userId))
+    : and(
+        eq(contextFacts.subjectKind, "household"),
+        eq(contextFacts.subjectHouseholdId, subject.householdId),
+      );
+}
+
+async function insertContextFactRow(
+  executor: Pick<ContextFactTransaction, "insert">,
+  values: ReturnType<typeof toRowValues>,
+): Promise<Exclude<ContextFactInsertResult, "limit" | "membership-missing">> {
+  const [created] = await executor
+    .insert(contextFacts)
+    .values(values)
+    .onConflictDoNothing()
+    .returning();
+  return created ? { kind: "created", row: created } : "duplicate";
+}
+
+async function insertSuggestedContextFactWithLimit(input: {
+  subject: ContextFact["subject"];
+  values: ReturnType<typeof toRowValues>;
+  activeHouseholdMemberUserId?: string;
+  pendingSuggestionLimit: number;
+}): Promise<ContextFactInsertResult> {
+  return getDb().transaction(async (tx) => {
+    const lockKey = `${input.subject.kind}:${
+      input.subject.kind === "self" ? input.subject.userId : input.subject.householdId
+    }`;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+    if (
+      input.subject.kind === "household" &&
+      !(await lockActiveHouseholdMembership(
+        tx,
+        input.subject,
+        input.activeHouseholdMemberUserId ?? "",
+      ))
+    )
+      return "membership-missing";
+
+    const [pending] = await tx
+      .select({ count: sql<number>`count(*)` })
+      .from(contextFacts)
+      .where(and(subjectPredicate(input.subject), eq(contextFacts.lifecycle, "suggested")));
+    if (Number(pending?.count ?? 0) >= input.pendingSuggestionLimit) return "limit";
+    return insertContextFactRow(tx, input.values);
+  });
+}
+
+async function insertHouseholdContextFact(input: {
+  subject: Extract<ContextFact["subject"], { kind: "household" }>;
+  values: ReturnType<typeof toRowValues>;
+  activeHouseholdMemberUserId?: string;
+}) {
+  return getDb().transaction(async (tx) => {
+    if (
+      !(await lockActiveHouseholdMembership(
+        tx,
+        input.subject,
+        input.activeHouseholdMemberUserId ?? "",
+      ))
+    )
+      return "membership-missing" as const;
+    return insertContextFactRow(tx, input.values);
+  });
+}
+
+function contextFactFromInsertResult(result: ContextFactInsertResult): ContextFact {
+  if (result === "limit") throw new Error("Pending Context Fact suggestion limit reached.");
+  if (result === "membership-missing") {
+    throw new Error("Active household membership is required for Household Context.");
+  }
+  if (result === "duplicate") throw new Error("Context Fact already exists.");
+  return fromRow(result.row);
+}
+
 export function createDrizzleContextFactStore(): ContextFactStore {
   return {
     async createContextFact(input) {
-      const { activeHouseholdMemberUserId, ...persistedInput } = input;
+      const { activeHouseholdMemberUserId, pendingSuggestionLimit, ...persistedInput } = input;
       const values = toRowValues(persistedInput);
       const subject = persistedInput.subject;
+      if (persistedInput.lifecycle === "suggested" && pendingSuggestionLimit !== undefined) {
+        return contextFactFromInsertResult(
+          await insertSuggestedContextFactWithLimit({
+            subject,
+            values,
+            activeHouseholdMemberUserId,
+            pendingSuggestionLimit,
+          }),
+        );
+      }
       if (subject.kind === "household") {
-        const result = await getDb().transaction(async (tx) => {
-          const [membership] = await tx
-            .select({ id: householdMemberships.id })
-            .from(householdMemberships)
-            .where(
-              and(
-                eq(householdMemberships.householdId, subject.householdId),
-                eq(householdMemberships.userId, activeHouseholdMemberUserId ?? ""),
-                eq(householdMemberships.status, "active"),
-              ),
-            )
-            .limit(1)
-            .for("update");
-          if (!membership) return "membership-missing" as const;
-          const [created] = await tx
-            .insert(contextFacts)
-            .values(values)
-            .onConflictDoNothing()
-            .returning();
-          return created ? { kind: "created" as const, row: created } : ("duplicate" as const);
-        });
-        if (result === "membership-missing") {
-          throw new Error("Active household membership is required for Household Context.");
-        }
-        if (result === "duplicate") {
-          throw new Error("Context Fact already exists.");
-        }
-        return fromRow(result.row);
+        return contextFactFromInsertResult(
+          await insertHouseholdContextFact({
+            subject,
+            values,
+            activeHouseholdMemberUserId,
+          }),
+        );
       }
 
       const [row] = await getDb()

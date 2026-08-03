@@ -144,6 +144,56 @@ describe("ambient Context Fact extraction candidate validation", () => {
     ]);
   });
 
+  it("rejects restricted text hidden in candidate content and precise addresses", () => {
+    const result = validateContextFactExtractionCandidates(
+      {
+        candidates: [
+          {
+            category: "other",
+            content: "My password is hunter2.",
+            evidence: "I prefer quiet coffee shops",
+            sensitivity: "normal",
+          },
+          {
+            category: "location",
+            content: "I live at 1600 Pennsylvania Avenue, Washington, DC 20500.",
+            evidence: "I live at 1600 Pennsylvania Avenue, Washington, DC 20500.",
+          },
+        ],
+      },
+      {
+        message:
+          "I prefer quiet coffee shops. My password is hunter2. I live at 1600 Pennsylvania Avenue, Washington, DC 20500.",
+      },
+    );
+
+    expect(result).toEqual({ validCandidates: [], invalidCandidateCount: 2 });
+  });
+
+  it("rejects candidates that negate or make the statement historical", () => {
+    const result = validateContextFactExtractionCandidates(
+      {
+        candidates: [
+          {
+            category: "location",
+            content: "I work in Chicago.",
+            evidence: "work in Chicago",
+          },
+          {
+            category: "work",
+            content: "I work as a designer.",
+            evidence: "work as a designer",
+          },
+        ],
+      },
+      {
+        message: "I do not work in Chicago anymore. I used to work as a designer.",
+      },
+    );
+
+    expect(result).toEqual({ validCandidates: [], invalidCandidateCount: 2 });
+  });
+
   it("caps candidates per inbound message", () => {
     const result = validateContextFactExtractionCandidates(
       {
