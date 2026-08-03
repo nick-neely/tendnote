@@ -24,8 +24,9 @@ import {
  * differs, so only the presentation lives in the components.
  *
  * What this hook deliberately does *not* own: where a result goes on activation
- * (each surface routes in its own idiom) and session restoration (the phone flow
- * reopens itself after a browser return; the palette closes and stays closed).
+ * (each surface routes in its own idiom) or how its presentation restores after a
+ * browser return. The phone flow and desktop palette each persist their own focus
+ * and filter shape around that shared response seam.
  */
 
 export type GlobalRecallHandler = (
@@ -68,6 +69,7 @@ export const GLOBAL_RECALL_FAMILY_OPTIONS: {
   { value: "assets", label: "Assets" },
   { value: "saved_items", label: "Saved Items" },
   { value: "calendar", label: "Calendar" },
+  { value: "self_context", label: "Self Context" },
 ];
 
 export const GLOBAL_RECALL_MATCH_OPTIONS: {

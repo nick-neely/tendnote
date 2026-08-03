@@ -4,11 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import type { SuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 import { renderInBrowser } from "@/test/browser";
+import { AppShellEffects } from "../app-shell-effects";
 import { AboutYouSurface } from "./about-you-surface";
 
 const cleanups: Array<() => Promise<void>> = [];
 
 const FACT_ID = "00000000-0000-4000-8000-000000000001";
+const ARCHIVED_FACT_ID = "00000000-0000-4000-8000-000000000002";
 const NOW = new Date("2026-08-02T12:00:00.000Z");
 const SUGGESTED_FACT_ID = "00000000-0000-4000-8000-000000000005";
 
@@ -60,6 +62,54 @@ afterEach(async () => {
 });
 
 describe("About you browser contract", () => {
+  it("lands a Global Recall correction link on the focused fact for keyboard and screen readers", async () => {
+    await page.viewport(390, 844);
+    window.history.replaceState({}, "", `/account/about-you#context-fact-${FACT_ID}`);
+    const rendered = await renderInBrowser(
+      <>
+        <AboutYouSurface initialFacts={[fact()]} />
+        <AppShellEffects />
+      </>,
+    );
+    cleanups.push(rendered.unmount);
+
+    const target = page.getByRole("article");
+    await expect.element(target).toBeVisible();
+    await expect.element(target).toHaveFocus();
+    expect((await target.element()).getAttribute("tabindex")).toBe("-1");
+    expect(window.location.hash).toBe(`#context-fact-${FACT_ID}`);
+    window.history.replaceState({}, "", "/account/about-you");
+  });
+
+  it("reveals and focuses an archived fact named by a Global Recall link", async () => {
+    await page.viewport(390, 844);
+    window.history.replaceState({}, "", `/account/about-you#context-fact-${ARCHIVED_FACT_ID}`);
+    const rendered = await renderInBrowser(
+      <>
+        <AboutYouSurface
+          initialFacts={[
+            fact({
+              id: ARCHIVED_FACT_ID,
+              content: "I previously ran a software consultancy.",
+              lifecycle: "archived",
+              archivedAt: NOW,
+            }),
+          ]}
+        />
+        <AppShellEffects />
+      </>,
+    );
+    cleanups.push(rendered.unmount);
+
+    await expect
+      .element(page.getByRole("button", { name: /archived facts/ }))
+      .toHaveAttribute("aria-expanded", "true");
+    const target = page.getByRole("article");
+    await expect.element(target).toBeVisible();
+    await expect.element(target).toHaveFocus();
+    window.history.replaceState({}, "", "/account/about-you");
+  });
+
   it("keeps the editor reachable, named, focus-safe, and scroll-safe at 200% text", async () => {
     await page.viewport(390, 844);
     document.documentElement.style.fontSize = "200%";

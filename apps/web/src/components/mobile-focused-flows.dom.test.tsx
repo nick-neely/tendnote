@@ -104,6 +104,29 @@ function memoryResult({ id = "memory-1", text = "Prefers morning coffee chats" }
   };
 }
 
+function selfContextResult() {
+  return {
+    family: "self_context" as const,
+    canonical: { kind: "context_fact" as const, id: "context-fact-1" },
+    label: "I run a software consultancy.",
+    supportingText: "Work",
+    lifecycle: "active",
+    match: { kind: "exact" as const, reason: "Matched Self Context content", excerpt: "software" },
+    trust: "self_context" as const,
+    sensitivity: "normal" as const,
+    visibility: { choice: "only_me" as const, label: "Only me" },
+    grounding: [{ kind: "context_fact" as const, id: "context-fact-1" }],
+    href: "/account/about-you#context-fact-context-fact-1",
+    parent: null,
+    details: {
+      content: "I run a software consultancy.",
+      category: "work" as const,
+      categoryLabel: "Work",
+      provenance: { channel: "account" as const, origin: "direct" as const },
+    },
+  };
+}
+
 describe("MenuFlow", () => {
   /**
    * The regression this locks down: the destination renders *under* the still
@@ -169,7 +192,9 @@ describe("SearchFlow", () => {
     render(<SearchHarness search={vi.fn()} />);
 
     expect(await screen.findByText("Search your notebook")).toBeDefined();
-    expect(screen.getByText(/people, memories, follow-ups, and assets/)).toBeDefined();
+    expect(
+      screen.getByText(/people, Self Context, memories, follow-ups, and assets/),
+    ).toBeDefined();
   });
 
   it("keeps the restricted label a label and moves the reason into helper text", async () => {
@@ -222,5 +247,25 @@ describe("SearchFlow", () => {
     ]);
     // The person is still on each memory row, as the context line under it.
     expect(within(rows[1] as HTMLElement).getByText("Jordan Rivera")).toBeDefined();
+  });
+
+  it("keeps Self Context exact, categorized, private, and correction-linked", async () => {
+    const user = userEvent.setup();
+    const search = vi.fn().mockResolvedValue({
+      ok: true,
+      view: {
+        query: "software",
+        results: [selfContextResult()],
+        limitations: [],
+        hasMore: false,
+      },
+    });
+    render(<SearchHarness search={search} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Search Tendnote" }), "software");
+    const exact = within(await screen.findByRole("region", { name: "Exact matches" }));
+    const link = exact.getByRole("link", { name: /I run a software consultancy\.Work/ });
+    expect(link.getAttribute("href")).toBe("/account/about-you#context-fact-context-fact-1");
+    expect(link.parentElement?.parentElement?.textContent).toContain("Only me");
   });
 });

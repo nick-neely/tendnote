@@ -8,12 +8,20 @@ import type {
 } from "@tendnote/domain";
 import type { AssetSearchOutcome } from "../asset-search/types";
 import type { OwnerCalendarReadOutcome } from "../calendar";
+import type { SelfContextExactResult } from "../context-facts/types";
 import type { ActiveFollowupSummary } from "../followups/types";
 import type { SavedItemWithContext } from "../saved-items/types";
 
 export type SearchGlobalRecallRequest = GlobalRecallInput & { ownerUserId: string };
 
 export type GlobalRecallDependencies = {
+  searchSelfContextExact: (input: {
+    callerUserId: string;
+    query: string;
+    directlyRequested: boolean;
+    includeArchived: boolean;
+    limit: number;
+  }) => Promise<SelfContextExactResult[]>;
   searchRelationshipExact: (input: {
     ownerUserId: string;
     query: string;

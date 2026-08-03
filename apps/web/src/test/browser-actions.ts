@@ -98,7 +98,13 @@ export const setReminderInstallationPreviewModeAction = unusedAction;
 export const setReminderOptInDecisionAction = unusedAction;
 
 export function useRouter() {
-  return { refresh: () => {}, push: () => {} };
+  return {
+    refresh: () => {},
+    push: (href: string) => {
+      window.history.pushState({}, "", href);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    },
+  };
 }
 
 export function usePathname() {

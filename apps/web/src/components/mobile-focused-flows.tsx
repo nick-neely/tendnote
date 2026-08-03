@@ -24,6 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  globalRecallStorageKey,
+  markGlobalRecallReturn,
+  readGlobalRecallState,
+} from "@/lib/global-recall-navigation";
 import { recallResultLines } from "@/lib/recall-result-lines";
 import {
   GLOBAL_RECALL_FAMILY_OPTIONS,
@@ -104,7 +109,7 @@ export function SearchFlow({
   const restoredScrollRef = useRef<number | null>(null);
   const restoredFocusRef = useRef<string | null>(null);
   const [expanded, setExpanded] = useState<string[]>([]);
-  const storageKey = `tendnote:global-recall:${ownerUserId}`;
+  const storageKey = globalRecallStorageKey(ownerUserId);
   const recall = useGlobalRecall({ query, search });
   const { failed, failureMessage, loading, response } = recall;
   const { family, includeArchived, includeRestricted, matchKind } = recall.filters;
@@ -140,15 +145,7 @@ export function SearchFlow({
       }),
     );
     if (focusedKey) {
-      window.history.replaceState(
-        {
-          ...window.history.state,
-          tendnoteGlobalRecallOwner: ownerUserId,
-          tendnoteGlobalRecallReturnUrl: window.location.href,
-        },
-        "",
-        window.location.href,
-      );
+      markGlobalRecallReturn(ownerUserId);
     }
   }
 
@@ -206,14 +203,6 @@ export function SearchFlow({
   );
 }
 
-type StoredRecallState = Partial<GlobalRecallFilters> & {
-  query?: string;
-  expanded?: string[];
-  focusedKey?: string;
-  restoreFocus?: boolean;
-  scrollTop?: number;
-};
-
 function useRestoreRecallState(input: {
   storageKey: string;
   setQuery: (value: string) => void;
@@ -225,18 +214,13 @@ function useRestoreRecallState(input: {
   const { restoreFilters, restoredFocusRef, restoredScrollRef, setExpanded, setQuery, storageKey } =
     input;
   useEffect(() => {
-    const raw = sessionStorage.getItem(storageKey);
-    if (!raw) return;
-    try {
-      const saved = JSON.parse(raw) as StoredRecallState;
-      if (saved.query) setQuery(saved.query);
-      restoreFilters(saved);
-      setExpanded(saved.expanded ?? []);
-      restoredScrollRef.current = saved.scrollTop ?? 0;
-      restoredFocusRef.current = saved.restoreFocus ? (saved.focusedKey ?? null) : null;
-    } catch {
-      sessionStorage.removeItem(storageKey);
-    }
+    const saved = readGlobalRecallState(storageKey);
+    if (!saved) return;
+    if (saved.query) setQuery(saved.query);
+    restoreFilters(saved);
+    setExpanded(saved.expanded ?? []);
+    restoredScrollRef.current = saved.scrollTop ?? 0;
+    restoredFocusRef.current = saved.restoreFocus ? (saved.focusedKey ?? null) : null;
   }, [restoreFilters, restoredFocusRef, restoredScrollRef, setExpanded, setQuery, storageKey]);
 }
 
@@ -309,7 +293,7 @@ function RecallSearchControls({
           className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
           id="mobile-global-search"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search people, actions, assets…"
+          placeholder="Search people, Self Context, actions…"
           ref={inputRef}
           value={query}
         />
@@ -442,7 +426,7 @@ function RecallSearchResults({
       {!loading && !failed && !response ? (
         <EmptyState
           className="mt-4"
-          description="Type a name or a few words. Tendnote looks across your people, memories, follow-ups, and assets."
+          description="Type a name or a few words. Tendnote looks across your people, Self Context, memories, follow-ups, and assets."
           title="Search your notebook"
         />
       ) : null}

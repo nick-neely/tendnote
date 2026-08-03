@@ -107,10 +107,33 @@ function memoryResult({ id = "memory-1", text = "Prefers morning coffee chats" }
   };
 }
 
+function selfContextResult() {
+  return {
+    family: "self_context" as const,
+    canonical: { kind: "context_fact" as const, id: "context-fact-1" },
+    label: "I run a software consultancy.",
+    supportingText: "Work",
+    lifecycle: "active",
+    match: { kind: "exact" as const, reason: "Matched Self Context content", excerpt: "software" },
+    trust: "self_context" as const,
+    sensitivity: "normal" as const,
+    visibility: { choice: "only_me" as const, label: "Only me" },
+    grounding: [{ kind: "context_fact" as const, id: "context-fact-1" }],
+    href: "/account/about-you#context-fact-context-fact-1",
+    parent: null,
+    details: {
+      content: "I run a software consultancy.",
+      category: "work" as const,
+      categoryLabel: "Work",
+      provenance: { channel: "account" as const, origin: "direct" as const },
+    },
+  };
+}
+
 function renderPalette(search = vi.fn().mockResolvedValue(success(emptyResponse()))) {
   render(
     <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange enableSystem>
-      <SearchPalette search={search} />
+      <SearchPalette ownerUserId="owner-search" search={search} />
     </ThemeProvider>,
   );
   return search;
@@ -127,6 +150,8 @@ async function openWithHotkey(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   routerState.push.mockReset();
+  sessionStorage.clear();
+  window.history.replaceState({}, "", "/");
   // Desktop width: the palette only mounts and only binds its key above `lg`.
   setMatchMedia(true);
 });
@@ -217,7 +242,7 @@ describe("SearchPalette", () => {
     const search = vi.fn().mockResolvedValue(
       success({
         query: "maya",
-        results: [personResult(), savedItemResult()],
+        results: [personResult(), savedItemResult(), selfContextResult()],
         limitations: [{ source: "calendar", message: "Calendar results are unavailable." }],
         hasMore: false,
       }),
@@ -234,6 +259,10 @@ describe("SearchPalette", () => {
     const savedRow = saved.getByRole("option", { name: /Climbing gym membership/ });
     // Match strength stays visible without splitting the list in two.
     expect(within(savedRow).getByText("Related")).toBeDefined();
+    const selfContext = within(screen.getByRole("group", { name: "Self Context" }));
+    expect(
+      selfContext.getByRole("option", { name: /I run a software consultancy\.Work/ }),
+    ).toBeDefined();
     expect(screen.getByText("Calendar results are unavailable.")).toBeDefined();
   });
 

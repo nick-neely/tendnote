@@ -34,6 +34,29 @@ function result(match: "exact" | "related"): GlobalRecallResponse["results"][num
   };
 }
 
+function selfContextResult(): GlobalRecallResponse["results"][number] {
+  return {
+    family: "self_context",
+    canonical: { kind: "context_fact", id: "context-fact-1" },
+    label: "I run a software consultancy.",
+    supportingText: "Work",
+    lifecycle: "active",
+    match: { kind: "exact", reason: "Matched Self Context content", excerpt: "software" },
+    trust: "self_context",
+    sensitivity: "normal",
+    visibility: { choice: "only_me", label: "Only me" },
+    grounding: [{ kind: "context_fact", id: "context-fact-1" }],
+    href: "/account/about-you#context-fact-context-fact-1",
+    parent: null,
+    details: {
+      content: "I run a software consultancy.",
+      category: "work",
+      categoryLabel: "Work",
+      provenance: { channel: "account", origin: "direct" },
+    },
+  };
+}
+
 describe("Global Recall mobile result rows", () => {
   it("renders a flat canonical link with progressive Why disclosure", () => {
     const html = renderToStaticMarkup(
@@ -67,5 +90,22 @@ describe("Global Recall mobile result rows", () => {
     expect(html).toContain('aria-label="Related matches"');
     expect(html).toContain("Related");
     expect(html).not.toContain("Related by meaning: filter");
+  });
+
+  it("renders the exact Self Context wording and canonical About you correction link", () => {
+    const html = renderToStaticMarkup(
+      <RecallResultSection
+        expanded={[]}
+        label="Exact"
+        onNavigate={vi.fn()}
+        onToggle={vi.fn()}
+        results={[selfContextResult()]}
+      />,
+    );
+
+    expect(html).toContain("I run a software consultancy.");
+    expect(html).toContain("Work");
+    expect(html).toContain("/account/about-you#context-fact-context-fact-1");
+    expect(html).toContain("Only me");
   });
 });

@@ -1,10 +1,14 @@
+import type { ContextFactView } from "@tendnote/domain";
+import type { GlobalRecallResponse } from "@tendnote/domain/global-recall";
 import type { TodayShortlistResponse } from "@tendnote/domain/today";
-import { act, useState } from "react";
+import { act, type ComponentProps, useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import type { ReviewQueueItem } from "@/lib/review-queue";
 import { renderInBrowser } from "@/test/browser";
+import { AboutYouSurface } from "./account/about-you-surface";
 import { AppShell } from "./app-shell";
+import { AppShellEffects } from "./app-shell-effects";
 import { MobileTodayDestination } from "./mobile-today-destination";
 import { ReminderOptInInvitation } from "./reminder-opt-in-invitation";
 import { ReviewQueueSection } from "./review-queue-section";
@@ -125,7 +129,164 @@ const suggestedContextFactReview: ReviewQueueItem = {
   },
 };
 
+const selfContextRecallResponse: GlobalRecallResponse = {
+  query: "software",
+  results: [
+    {
+      family: "self_context",
+      canonical: { kind: "context_fact", id: "context-fact-1" },
+      label: "I run a software consultancy.",
+      supportingText: "Work",
+      lifecycle: "active",
+      match: { kind: "exact", reason: "Matched Self Context content", excerpt: "software" },
+      trust: "self_context",
+      sensitivity: "normal",
+      visibility: { choice: "only_me", label: "Only me" },
+      grounding: [{ kind: "context_fact", id: "context-fact-1" }],
+      href: "/account/about-you#context-fact-context-fact-1",
+      parent: null,
+      details: {
+        content: "I run a software consultancy.",
+        category: "work",
+        categoryLabel: "Work",
+        provenance: { channel: "account", origin: "direct" },
+      },
+    },
+  ],
+  limitations: [],
+  hasMore: false,
+};
+
+const selfContextFact: ContextFactView = {
+  id: "context-fact-1",
+  subject: { kind: "self" },
+  category: "work",
+  content: "I run a software consultancy.",
+  lifecycle: "active",
+  sensitivity: "normal",
+  provenance: { channel: "account", origin: "direct" },
+  reviewedAt: new Date("2026-08-02T12:00:00.000Z"),
+  archivedAt: null,
+  createdAt: new Date("2026-08-02T12:00:00.000Z"),
+  updatedAt: new Date("2026-08-02T12:00:00.000Z"),
+  trust: "untrusted_data",
+  authority: "none",
+  visibility: "private",
+};
+
+function currentLocation() {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function RecallRouteHarness({
+  ownerUserId,
+  searchHandler,
+}: {
+  ownerUserId: string;
+  searchHandler: NonNullable<ComponentProps<typeof AppShell>["searchHandler"]>;
+}) {
+  const [location, setLocation] = useState(currentLocation);
+  useEffect(() => {
+    const update = () => setLocation(currentLocation());
+    window.addEventListener("popstate", update);
+    window.addEventListener("hashchange", update);
+    return () => {
+      window.removeEventListener("popstate", update);
+      window.removeEventListener("hashchange", update);
+    };
+  }, []);
+
+  return (
+    <>
+      <AppShell ownerUserId={ownerUserId} searchHandler={searchHandler}>
+        {location.startsWith("/account/about-you") ? (
+          <AboutYouSurface initialFacts={[selfContextFact]} />
+        ) : (
+          <div />
+        )}
+      </AppShell>
+      <AppShellEffects />
+    </>
+  );
+}
+
 describe("Phase Seven phone browser proof", () => {
+  it("takes mobile Search to an exact Self Context correction and preserves return state", async () => {
+    await page.viewport(390, 844);
+    window.history.replaceState({}, "", "/");
+    const searchHandler = vi.fn(async () => ({
+      ok: true as const,
+      view: selfContextRecallResponse,
+    }));
+    await mount(<RecallRouteHarness ownerUserId="owner-1" searchHandler={searchHandler} />);
+
+    await act(async () => userEvent.click(page.getByRole("button", { name: "Search" })));
+    await act(async () =>
+      userEvent.fill(page.getByRole("textbox", { name: "Search Tendnote" }), "software"),
+    );
+    const result = page.getByRole("link", {
+      name: /I run a software consultancy\. Work/,
+    });
+    await expect.element(result).toBeVisible();
+    await expect
+      .element(result)
+      .toHaveAttribute("href", "/account/about-you#context-fact-context-fact-1");
+    expect((await result.element()).getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+
+    await act(async () => userEvent.click(result));
+    expect(page.getByRole("dialog", { name: "Search" }).query()).toBeNull();
+    await expect.element(page.getByRole("heading", { name: "About you" })).toBeVisible();
+    await expect.element(page.getByRole("article")).toHaveFocus();
+
+    await act(async () => window.history.back());
+    await expect.element(page.getByRole("dialog", { name: "Search" })).toBeVisible();
+    await expect
+      .element(page.getByRole("textbox", { name: "Search Tendnote" }))
+      .toHaveValue("software");
+    await expect.element(page.getByRole("textbox", { name: "Search Tendnote" })).toHaveFocus();
+    sessionStorage.removeItem("tendnote:global-recall:owner-1");
+  });
+
+  it("takes desktop Search to the focused Self Context correction and restores the result on return", async () => {
+    await page.viewport(1280, 900);
+    window.history.replaceState({}, "", "/");
+    const searchHandler = vi.fn(async () => ({
+      ok: true as const,
+      view: selfContextRecallResponse,
+    }));
+    await mount(<RecallRouteHarness ownerUserId="owner-desktop" searchHandler={searchHandler} />);
+
+    await act(async () => userEvent.click(page.getByRole("button", { name: "Search Tendnote" })));
+    await act(async () =>
+      userEvent.fill(page.getByRole("combobox", { name: "Search and commands" }), "software"),
+    );
+    await expect.poll(() => searchHandler.mock.calls.length).toBeGreaterThan(0);
+    const result = page.getByRole("option", {
+      name: /I run a software consultancy/,
+    });
+    await expect.element(result).toBeVisible();
+    const input = page.getByRole("combobox", { name: "Search and commands" });
+    await expect.element(input).toHaveFocus();
+    await act(async () => userEvent.keyboard("{ArrowDown}"));
+    await expect.element(result).toHaveAttribute("aria-selected", "true");
+    await act(async () => userEvent.click(result));
+
+    expect(window.location.pathname).toBe("/account/about-you");
+    await expect.element(page.getByRole("heading", { name: "About you" })).toBeVisible();
+    await expect.element(page.getByRole("article")).toHaveFocus();
+
+    await act(async () => window.history.back());
+    await expect.element(page.getByRole("dialog", { name: "Search and commands" })).toBeVisible();
+    await expect
+      .element(page.getByRole("combobox", { name: "Search and commands" }))
+      .toHaveValue("software");
+    await expect
+      .element(page.getByRole("option", { name: /I run a software consultancy/ }))
+      .toHaveFocus();
+    sessionStorage.removeItem("tendnote:global-recall:owner-desktop");
+    window.history.replaceState({}, "", "/");
+  });
+
   it("keeps Today and every focused flow reachable, named, focus-safe, and usable at 200% text", async () => {
     await page.viewport(390, 844);
     document.documentElement.style.fontSize = "200%";

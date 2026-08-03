@@ -13,6 +13,8 @@ describe("Self Context Eve tools", () => {
     expect(readTool("list_self_context")).toContain("listSelfContextFacts");
     expect(readTool("get_self_context_fact")).toContain("getSelfContextFact");
     expect(readTool("list_self_context")).toContain("factsByCategory");
+    expect(readTool("list_self_context")).toContain("toSelfContextResult");
+    expect(readTool("list_self_context")).toContain("results");
     expect(readTool("list_self_context")).toMatch(/exact|categorized/i);
   });
 

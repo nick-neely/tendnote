@@ -6,6 +6,7 @@ import {
   ContextFactValidationError,
   canUseContextFactForOrientation,
   canViewContextFact,
+  contextFactCategoryLabel,
   contextFactSchema,
   contextFactSubjectId,
   createContextFactInputSchema,
@@ -16,6 +17,7 @@ import {
   normalizeContextFactContent,
   resolveContextFactTransition,
   restoreSelfContextFactInputSchema,
+  type SelfContextCategory,
   toContextFactView,
   updateSelfContextFactInputSchema,
 } from "@tendnote/domain";
@@ -32,6 +34,8 @@ import type {
   GetContextFactInput,
   GetOrientationContextInput,
   ListContextFactsInput,
+  SearchSelfContextFactsInput,
+  SelfContextExactResult,
   UpdateSelfContextFactMutationInput,
 } from "./types";
 
@@ -543,6 +547,16 @@ export function createContextFactQueries(
 
   async function listSelfContextFacts(input: ListContextFactsInput) {
     const callerUserId = await requireVerifiedCaller(input.callerUserId);
+    return (await readableSelfContextFacts(callerUserId, input)).map(toContextFactView);
+  }
+
+  async function readableSelfContextFacts(
+    callerUserId: string,
+    input: Pick<ListContextFactsInput, "includeRestricted" | "includeArchived">,
+  ) {
+    // The owner predicate is pushed into the store read before lifecycle,
+    // sensitivity, or lexical matching. No other owner's facts become a
+    // candidate whose score or count could be observed by this caller.
     const facts = await store.listContextFacts({
       subjectUserId: callerUserId,
       lifecycles: input.includeArchived ? ["active", "archived"] : ["active"],
@@ -550,6 +564,7 @@ export function createContextFactQueries(
 
     return facts
       .map((fact) => contextFactSchema.parse(fact))
+      .filter((fact) => fact.subject.kind === "self" && fact.subject.userId === callerUserId)
       .filter((fact) =>
         canReadContextFact({
           callerUserId,
@@ -561,8 +576,60 @@ export function createContextFactQueries(
       .sort(
         (left, right) =>
           right.updatedAt.getTime() - left.updatedAt.getTime() || left.id.localeCompare(right.id),
+      );
+  }
+
+  async function searchSelfContextFacts(
+    input: SearchSelfContextFactsInput,
+  ): Promise<SelfContextExactResult[]> {
+    const callerUserId = await requireVerifiedCaller(input.callerUserId);
+    const tokens = recallQueryTokens(input.query);
+    if (tokens.length === 0 || input.limit <= 0) return [];
+
+    const facts = (
+      await readableSelfContextFacts(callerUserId, {
+        includeArchived: input.includeArchived,
+        includeRestricted: input.directlyRequested,
+      })
+    ).filter(
+      (fact): fact is Omit<ContextFact, "category"> & { category: SelfContextCategory } =>
+        fact.category !== "composition",
+    );
+
+    return facts
+      .map((fact) => {
+        const fields = [
+          { name: "content" as const, value: fact.content },
+          { name: "category" as const, value: contextFactCategoryLabel(fact.category) },
+        ].map((field) => ({ ...field, value: field.value.toLocaleLowerCase() }));
+        const matchedFields = fields
+          .filter((field) => tokens.some((token) => field.value.includes(token)))
+          .map((field) => field.name);
+        const allTokensMatch = tokens.every((token) =>
+          fields.some((field) => field.value.includes(token)),
+        );
+        if (!allTokensMatch) return null;
+
+        const contentMatches = tokens.every((token) => fields[0]?.value.includes(token));
+        const categoryMatches = tokens.every((token) => fields[1]?.value.includes(token));
+        const rank = (contentMatches ? 4 : 0) + (categoryMatches ? 2 : 0) + matchedFields.length;
+        return { fact, matchedFields, rank } satisfies SelfContextExactResult;
+      })
+      .filter((result): result is SelfContextExactResult => result !== null)
+      .sort(
+        (left, right) =>
+          right.rank - left.rank ||
+          right.fact.updatedAt.getTime() - left.fact.updatedAt.getTime() ||
+          left.fact.id.localeCompare(right.fact.id),
       )
-      .map(toContextFactView);
+      .slice(0, input.limit);
+  }
+
+  function recallQueryTokens(query: string): string[] {
+    return query
+      .toLocaleLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((token) => token.length > 1);
   }
 
   async function listContextFacts(input: ListContextFactsInput) {
@@ -692,6 +759,7 @@ export function createContextFactQueries(
     },
     listContextFacts,
     listSelfContextFacts,
+    searchSelfContextFacts,
     listEligibleContextFacts(input: ListContextFactsInput) {
       return listContextFacts({ ...input, includeRestricted: false });
     },

@@ -18,6 +18,7 @@ import type {
   UpdateSelfContextFactInput,
 } from "@tendnote/domain";
 import type { OrientationContextBuildResult } from "@tendnote/domain/context-fact-orientation";
+import type { SelfContextCategory } from "@tendnote/domain/context-facts";
 import type { MutationOutcome } from "../affected-scopes";
 import type { HouseholdStore } from "../households/types";
 
@@ -113,6 +114,19 @@ export type ListContextFactsInput = {
   includeRestricted?: boolean;
   /** Management reads may progressively disclose archived facts. */
   includeArchived?: boolean;
+};
+
+export type SearchSelfContextFactsInput = ListContextFactsInput & {
+  query: string;
+  /** Restricted facts are eligible only after Global Recall authorizes a direct request. */
+  directlyRequested: boolean;
+  limit: number;
+};
+
+export type SelfContextExactResult = {
+  fact: Omit<ContextFact, "category"> & { category: SelfContextCategory };
+  matchedFields: Array<"content" | "category">;
+  rank: number;
 };
 
 export type GetOrientationContextInput = {

@@ -14,6 +14,7 @@ import {
   toFollowupResult,
   toRelatedRelationshipResult,
   toRelatedSavedItemResult,
+  toSelfContextResult,
 } from "./result-normalizers";
 import type { RecallSourceResults } from "./retrieval";
 
@@ -23,6 +24,7 @@ export function recallCandidates(
 ): GlobalRecallResponse["results"] {
   return [
     ...sources.exact.map(toExactRelationshipResult).filter(isResult),
+    ...sources.selfContext.map(toSelfContextResult),
     ...sources.related.map(toRelatedRelationshipResult).filter(isResult),
     ...sources.assets.results.map(toAssetResult),
     ...sources.savedItemsExact.map(toExactSavedItemResult),

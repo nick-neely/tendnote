@@ -2,7 +2,13 @@ import { z } from "zod";
 import { selfContextFactCategories } from "./context-fact-categories";
 import { type Sensitivity, sensitivitySchema } from "./privacy";
 
-export { selfContextFactCategories } from "./context-fact-categories";
+export {
+  contextFactCategoryLabel,
+  contextFactCategoryLabels,
+  selfContextFactCategories,
+} from "./context-fact-categories";
+
+export type SelfContextCategory = (typeof selfContextFactCategories)[number];
 
 const nonEmptyIdentifier = z.string().trim().min(1);
 const contextFactSourceRecordIdSchema = nonEmptyIdentifier.max(128);

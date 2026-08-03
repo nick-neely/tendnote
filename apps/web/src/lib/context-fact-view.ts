@@ -1,23 +1,16 @@
-import { selfContextFactCategories as selfContextCategoryValues } from "@tendnote/domain/context-fact-categories";
 import type { ContextFactMutationDecision, ContextFactView } from "@tendnote/domain/context-facts";
+import {
+  contextFactCategoryLabel as domainContextFactCategoryLabel,
+  selfContextFactCategories as selfContextCategoryValues,
+} from "@tendnote/domain/context-facts";
 import type { Sensitivity } from "@tendnote/domain/privacy";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 
 export type SelfContextCategory = (typeof selfContextCategoryValues)[number];
 
-const selfContextCategoryLabels: Record<SelfContextCategory, string> = {
-  background: "Background",
-  work: "Work",
-  location: "Location",
-  interest: "Interest",
-  preference: "Preference",
-  constraint: "Constraint",
-  other: "Other",
-};
-
 export const selfContextCategories = selfContextCategoryValues.map((value) => ({
   value,
-  label: selfContextCategoryLabels[value],
+  label: domainContextFactCategoryLabel(value),
 }));
 
 export type SelfContextFactMutationDecision = ContextFactMutationDecision;
@@ -37,12 +30,8 @@ export type SelfContextFactDraft = {
   sensitivity: Sensitivity;
 };
 
-const categoryLabelByValue = new Map(
-  selfContextCategories.map((category) => [category.value, category.label]),
-);
-
 export function contextFactCategoryLabel(category: SelfContextCategory): string {
-  return categoryLabelByValue.get(category) ?? "Other";
+  return domainContextFactCategoryLabel(category);
 }
 
 export function contextFactSensitivityLabel(sensitivity: Sensitivity): string {

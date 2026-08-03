@@ -60,6 +60,7 @@ import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 import { ReversibleMutationProvider, useReversibleMutation } from "@/lib/reversible-mutation";
 import type { SuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
+import { useDeepLinkReveal } from "@/lib/use-deep-link-highlight";
 
 type CreateAction = (input: SelfContextFactActionInput) => Promise<SelfContextFactMutationResult>;
 type UpdateAction = (
@@ -233,6 +234,13 @@ function AboutYouSurfaceContent({
 
   const activeFacts = facts.filter(isActiveSelfContextFact);
   const archivedFacts = facts.filter(isArchivedSelfContextFact);
+
+  useDeepLinkReveal((elementId) => {
+    const archivedElementIds = new Set(archivedFacts.map((fact) => `context-fact-${fact.id}`));
+    if (!archivedElementIds.has(elementId)) return false;
+    setShowArchived(true);
+    return true;
+  });
 
   return (
     <section
@@ -555,6 +563,7 @@ function ContextFactRow({
     <article
       className="flex min-w-0 flex-col gap-3 px-3.5 py-3 sm:flex-row sm:items-start sm:justify-between"
       id={`context-fact-${fact.id}`}
+      tabIndex={-1}
     >
       <div className="flex min-w-0 flex-col gap-1">
         <p className="min-w-0 break-words whitespace-pre-wrap text-[length:var(--text-body)] leading-[var(--text-body-line)]">

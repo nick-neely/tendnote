@@ -14,6 +14,7 @@ import type {
   GetOrientationContextInput,
   ListContextFactsInput,
   RestoreSelfContextFactMutationInput,
+  SearchSelfContextFactsInput,
   UpdateSelfContextFactMutationInput,
 } from "./context-facts/types";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
@@ -132,6 +133,13 @@ export function listSelfContextFacts(
   resolveVerifiedCaller: ContextFactCallerVerification,
 ) {
   return createVerifiedContextFactQueries(resolveVerifiedCaller).listSelfContextFacts(input);
+}
+
+export function searchSelfContextFacts(
+  input: SearchSelfContextFactsInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).searchSelfContextFacts(input);
 }
 
 export function listEligibleContextFacts(

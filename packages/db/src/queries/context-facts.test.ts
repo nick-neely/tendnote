@@ -228,6 +228,107 @@ describe("Context Fact product contract", () => {
     expect(otherFacts.map((fact) => fact.content)).toEqual(["I collect vinyl records."]);
   });
 
+  it("searches exact Self Context content and category labels after owner and lifecycle policy", async () => {
+    const now = new Date("2026-08-02T12:00:00.000Z");
+    const store = createInMemoryContextFactStore([
+      contextFactFixture({
+        id: "owner-work",
+        category: "work",
+        content: "I build calm software.",
+        updatedAt: new Date(now.getTime() + 3_000),
+      }),
+      contextFactFixture({
+        id: "owner-archived",
+        category: "work",
+        content: "I used to work in publishing.",
+        lifecycle: "archived",
+        archivedAt: now,
+        updatedAt: new Date(now.getTime() + 2_000),
+      }),
+      contextFactFixture({
+        id: "owner-suggested",
+        category: "work",
+        content: "I might work in education.",
+        lifecycle: "suggested",
+        sensitivity: "sensitive",
+        provenance: { channel: "ambient", origin: "ambient", sourceRecordId: "source-1" },
+        suggestionEvidence: "The owner mentioned education.",
+        reviewedAt: null,
+        updatedAt: new Date(now.getTime() + 1_000),
+      }),
+      contextFactFixture({
+        id: "owner-restricted",
+        category: "other",
+        content: "My restricted medical history is private.",
+        sensitivity: "restricted",
+      }),
+      contextFactFixture({
+        id: "other-work",
+        subject: { kind: "self", userId: OTHER_OWNER },
+        category: "work",
+        content: "I work in finance.",
+      }),
+    ]);
+    const queries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+
+    await expect(
+      queries.searchSelfContextFacts({
+        callerUserId: OWNER,
+        query: "work",
+        directlyRequested: false,
+        includeArchived: false,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject([{ fact: { id: "owner-work" }, matchedFields: ["category"] }]);
+    await expect(
+      queries.searchSelfContextFacts({
+        callerUserId: OWNER,
+        query: "work",
+        directlyRequested: false,
+        includeArchived: true,
+        limit: 20,
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fact: expect.objectContaining({ id: "owner-work" }) }),
+        expect.objectContaining({ fact: expect.objectContaining({ id: "owner-archived" }) }),
+      ]),
+    );
+    const ordinaryIds = (
+      await queries.searchSelfContextFacts({
+        callerUserId: OWNER,
+        query: "medical history",
+        directlyRequested: false,
+        includeArchived: true,
+        limit: 20,
+      })
+    ).map(({ fact }) => fact.id);
+    expect(ordinaryIds).toEqual([]);
+
+    await expect(
+      queries.searchSelfContextFacts({
+        callerUserId: OWNER,
+        query: "medical history",
+        directlyRequested: true,
+        includeArchived: false,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject([{ fact: { id: "owner-restricted" } }]);
+    expect(
+      (
+        await queries.searchSelfContextFacts({
+          callerUserId: OWNER,
+          query: "finance",
+          directlyRequested: true,
+          includeArchived: true,
+          limit: 20,
+        })
+      ).map(({ fact }) => fact.id),
+    ).toEqual([]);
+  });
+
   it("rejects an invalid Self subject and never treats stored content as authority", async () => {
     const store = createInMemoryContextFactStore();
     const queries = createContextFactQueries(store, {

@@ -2,6 +2,11 @@ import { z } from "zod";
 import { assetMemoryValueSchema } from "./asset-memories";
 import { assetKindSchema } from "./assets";
 import { calendarEventStatusSchema } from "./calendar";
+import {
+  contextFactChannelSchema,
+  contextFactOriginSchema,
+  selfContextFactCategorySchema,
+} from "./context-facts";
 import { sensitivitySchema, visibilityChoiceSchema } from "./privacy";
 import { savedItemKindSchema } from "./saved-items";
 
@@ -14,6 +19,7 @@ export const globalRecallFamilySchema = z.enum([
   "asset_memory",
   "saved_item",
   "calendar_event",
+  "self_context",
 ]);
 
 export const globalRecallFilterSchema = z.enum([
@@ -24,6 +30,7 @@ export const globalRecallFilterSchema = z.enum([
   "assets",
   "saved_items",
   "calendar",
+  "self_context",
 ]);
 
 export const globalRecallCanonicalKindSchema = z.enum([
@@ -35,6 +42,7 @@ export const globalRecallCanonicalKindSchema = z.enum([
   "asset_memory",
   "saved_item",
   "calendar_event",
+  "context_fact",
 ]);
 
 export const globalRecallGroundingKindSchema = z.enum([
@@ -53,6 +61,7 @@ export const globalRecallTrustSchema = z.enum([
   "asset_fact",
   "saved_context",
   "provider_context",
+  "self_context",
 ]);
 
 export const globalRecallMatchKindSchema = z.enum(["exact", "related"]);
@@ -206,10 +215,30 @@ export const globalRecallResultSchema = z.discriminatedUnion("family", [
       fetchedAt: z.iso.datetime(),
     }),
   }),
+  z.object({
+    ...globalRecallBaseShape,
+    family: z.literal("self_context"),
+    details: z.object({
+      content: z.string().min(1),
+      category: selfContextFactCategorySchema,
+      categoryLabel: z.string().min(1),
+      provenance: z.object({
+        channel: contextFactChannelSchema,
+        origin: contextFactOriginSchema,
+      }),
+    }),
+  }),
 ]);
 
 export const globalRecallLimitationSchema = z.object({
-  source: z.enum(["relationship", "assets", "saved_items", "follow_ups", "calendar"]),
+  source: z.enum([
+    "relationship",
+    "assets",
+    "saved_items",
+    "follow_ups",
+    "calendar",
+    "self_context",
+  ]),
   message: z.string().min(1),
 });
 

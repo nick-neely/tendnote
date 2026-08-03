@@ -8,7 +8,7 @@ import type {
 } from "@tendnote/domain/global-recall";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { type Dispatch, type SetStateAction, useEffect, useMemo, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { appDestination, destinationsInGroup } from "@/components/app-destinations";
 import {
   BellIcon,
@@ -17,6 +17,7 @@ import {
   BoxIcon,
   CalendarIcon,
   CircleDotIcon,
+  CircleUserRoundIcon,
   type Icon,
   MonitorIcon,
   MoonIcon,
@@ -46,6 +47,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useSession } from "@/lib/auth/client";
+import {
+  consumeGlobalRecallReturn,
+  type GlobalRecallStoredState,
+  globalRecallStorageKey,
+  markGlobalRecallReturn,
+  readGlobalRecallState,
+} from "@/lib/global-recall-navigation";
 import { recallResultLines } from "@/lib/recall-result-lines";
 import {
   GLOBAL_RECALL_FAMILY_OPTIONS,
@@ -79,11 +88,64 @@ import { useWideViewport } from "@/lib/use-wide-viewport";
  * recall, so the palette never mounts there and the hotkey never binds.
  */
 
-export function SearchPalette({ search }: { search: GlobalRecallHandler }) {
+type DesktopRecallRestoreState = GlobalRecallStoredState;
+
+export function SearchPalette({
+  ownerUserId,
+  search,
+}: {
+  ownerUserId?: string;
+  search: GlobalRecallHandler;
+}) {
+  if (ownerUserId) {
+    return <SearchPaletteContent ownerUserId={ownerUserId} search={search} />;
+  }
+  return <SessionOwnedSearchPalette search={search} />;
+}
+
+function SessionOwnedSearchPalette({ search }: { search: GlobalRecallHandler }) {
+  const session = useSession();
+  const ownerUserId =
+    session.data?.user.id ?? (process.env.NODE_ENV === "development" ? "demo-user" : "");
+  return (
+    <SearchPaletteContent
+      key={ownerUserId || "unresolved"}
+      ownerUserId={ownerUserId}
+      search={search}
+    />
+  );
+}
+
+function SearchPaletteContent({
+  ownerUserId,
+  search,
+}: {
+  ownerUserId: string;
+  search: GlobalRecallHandler;
+}) {
   const [open, setOpen] = useState(false);
   const [everOpened, setEverOpened] = useState(false);
+  const [query, setQuery] = useState("");
+  const [restoreState, setRestoreState] = useState<DesktopRecallRestoreState | null>(null);
   const wide = useWideViewport();
+  const storageKey = globalRecallStorageKey(ownerUserId);
   usePaletteHotkey({ enabled: wide, setOpen });
+
+  useEffect(() => {
+    function restoreSearchFromHistory() {
+      if (!wide) return;
+      if (!consumeGlobalRecallReturn(ownerUserId)) return;
+      const saved = readGlobalRecallState(storageKey);
+      if (!saved?.query) return;
+      setRestoreState(saved);
+      setQuery(saved.query);
+      setOpen(true);
+    }
+
+    restoreSearchFromHistory();
+    window.addEventListener("popstate", restoreSearchFromHistory);
+    return () => window.removeEventListener("popstate", restoreSearchFromHistory);
+  }, [ownerUserId, storageKey, wide]);
 
   /**
    * The palette's body is built the first time it is asked for, not on every
@@ -114,7 +176,19 @@ export function SearchPalette({ search }: { search: GlobalRecallHandler }) {
     <>
       <SearchPaletteTrigger onOpen={() => setOpen(true)} />
       {wide && everOpened ? (
-        <SearchPaletteDialog onOpenChange={setOpen} open={open} search={search} />
+        <SearchPaletteDialog
+          onOpenChange={(next) => {
+            if (!next) setRestoreState(null);
+            setOpen(next);
+          }}
+          onRestoreStateConsumed={() => setRestoreState(null)}
+          open={open}
+          ownerUserId={ownerUserId}
+          query={query}
+          restoreState={restoreState}
+          search={search}
+          setQuery={setQuery}
+        />
       ) : null}
     </>
   );
@@ -201,17 +275,48 @@ function usePlatformShortcutLabel() {
  */
 function SearchPaletteDialog({
   onOpenChange,
+  onRestoreStateConsumed,
   open,
+  ownerUserId,
+  query,
+  restoreState,
   search,
+  setQuery,
 }: {
   onOpenChange: (open: boolean) => void;
+  onRestoreStateConsumed: () => void;
   open: boolean;
+  ownerUserId: string;
+  query: string;
+  restoreState: DesktopRecallRestoreState | null;
   search: GlobalRecallHandler;
+  setQuery: (query: string) => void;
 }) {
   const router = useRouter();
   const { setTheme, theme } = useTheme();
-  const [query, setQuery] = useState("");
   const recall = useGlobalRecall({ query, search });
+  const restoredFocusRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!restoreState) return;
+    setQuery(restoreState.query ?? "");
+    recall.restoreFilters(restoreState);
+    restoredFocusRef.current = restoreState.restoreFocus ? (restoreState.focusedKey ?? null) : null;
+  }, [recall.restoreFilters, restoreState, setQuery]);
+
+  useEffect(() => {
+    const focusedKey = restoredFocusRef.current;
+    if (!recall.response || !focusedKey) return;
+    const raf = requestAnimationFrame(() => {
+      const result = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-global-recall-key]"),
+      ).find((element) => element.dataset.globalRecallKey === focusedKey);
+      result?.focus({ preventScroll: true });
+      restoredFocusRef.current = null;
+      onRestoreStateConsumed();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [onRestoreStateConsumed, recall.response]);
 
   function close() {
     // A closed palette is a fresh one: the command menu is the default view, and
@@ -219,6 +324,21 @@ function SearchPaletteDialog({
     // are a deliberate setting, so those survive.
     setQuery("");
     onOpenChange(false);
+  }
+
+  function rememberState(focusedKey?: string) {
+    sessionStorage.setItem(
+      globalRecallStorageKey(ownerUserId),
+      JSON.stringify({
+        ...recall.filters,
+        focusedKey: focusedKey ?? null,
+        query,
+        restoreFocus: Boolean(focusedKey),
+      }),
+    );
+    if (focusedKey) {
+      markGlobalRecallReturn(ownerUserId);
+    }
   }
 
   const commandGroups = useMemo(
@@ -274,7 +394,8 @@ function SearchPaletteDialog({
               <RecallSection
                 groups={recallGroups}
                 loading={recall.loading}
-                onNavigate={(href) => {
+                onNavigate={(href, focusedKey) => {
+                  rememberState(focusedKey);
                   close();
                   router.push(href);
                 }}
@@ -344,7 +465,7 @@ function RecallSection({
 }: {
   groups: RecallGroup[];
   loading: boolean;
-  onNavigate: (href: string) => void;
+  onNavigate: (href: string, focusedKey: string) => void;
 }) {
   return (
     <>
@@ -357,8 +478,10 @@ function RecallSection({
             const { primary, secondary } = recallResultLines(result);
             return (
               <CommandItem
+                data-global-recall-key={key}
                 key={key}
-                onSelect={() => onNavigate(result.href)}
+                onSelect={() => onNavigate(result.href, key)}
+                tabIndex={-1}
                 value={`recall:${key}`}
               >
                 <FamilyIcon aria-hidden className="text-muted-foreground" />
@@ -531,6 +654,7 @@ type RecallGroup = {
 
 const FAMILY_HEADINGS: Record<GlobalRecallFamily, string> = {
   person: "People",
+  self_context: "Self Context",
   relationship_context: "Memories",
   follow_up: "Follow-Ups",
   general_action: "Actions",
@@ -542,6 +666,7 @@ const FAMILY_HEADINGS: Record<GlobalRecallFamily, string> = {
 
 const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
   person: BookUserIcon,
+  self_context: CircleUserRoundIcon,
   relationship_context: StickyNoteIcon,
   follow_up: BellIcon,
   general_action: CircleDotIcon,
@@ -554,6 +679,7 @@ const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
 /** Families in reading order: who first, then what was said, then what is owed. */
 const FAMILY_ORDER: GlobalRecallFamily[] = [
   "person",
+  "self_context",
   "relationship_context",
   "follow_up",
   "general_action",
