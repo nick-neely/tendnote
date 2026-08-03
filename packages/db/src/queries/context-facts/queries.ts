@@ -663,6 +663,7 @@ export function createContextFactQueries(
 
   const reviewQueries = createContextFactReviewQueries({
     store,
+    maxPendingSuggestedContextFacts: dependencies.maxPendingSuggestedContextFacts,
     requireVerifiedCaller,
     assertSubjectBelongsToCaller,
     findActiveMatch,

@@ -5,6 +5,7 @@ const DELIVERY_LIMIT = 25;
 const EXTRACTION_BACKFILL_LIMIT = 5;
 const EMBEDDING_BACKFILL_LIMIT = 5;
 const ACTION_EXTRACTION_BACKFILL_LIMIT = 5;
+const CONTEXT_FACT_EXTRACTION_BACKFILL_LIMIT = 5;
 
 // Route segment config must remain a statically analyzable literal for Next.js.
 export const maxDuration = 300;
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
     extractionBackfillLimit: EXTRACTION_BACKFILL_LIMIT,
     embeddingBackfillLimit: EMBEDDING_BACKFILL_LIMIT,
     actionExtractionBackfillLimit: ACTION_EXTRACTION_BACKFILL_LIMIT,
+    contextFactExtractionBackfillLimit: CONTEXT_FACT_EXTRACTION_BACKFILL_LIMIT,
     logger: console,
   });
 

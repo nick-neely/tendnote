@@ -68,6 +68,16 @@ export const BACKGROUND_JOB_QUEUE_CONFIG = {
     rateLimitKey: "background-job:action-extraction",
     costCategory: "llm-extraction",
   },
+  context_fact_extraction: {
+    topic: BACKGROUND_JOB_TOPICS.context_fact_extraction,
+    consumerGroup: "tendnote-extraction-processor",
+    maxConcurrency: 2,
+    maxMessagesPerSecond: 2,
+    visibilityTimeoutSeconds: 600,
+    retryAfterSeconds: 60,
+    rateLimitKey: "background-job:context-fact-extraction",
+    costCategory: "llm-extraction",
+  },
   reminder_push: {
     topic: BACKGROUND_JOB_TOPICS.reminder_push,
     consumerGroup: "tendnote-reminder-push-processor",
@@ -355,6 +365,7 @@ function parseBackgroundJobQueuePayload(payload: unknown): BackgroundJobQueuePay
     (candidate.jobKind !== "extraction" &&
       candidate.jobKind !== "embedding" &&
       candidate.jobKind !== "action_extraction" &&
+      candidate.jobKind !== "context_fact_extraction" &&
       candidate.jobKind !== "reminder_push")
   ) {
     return null;

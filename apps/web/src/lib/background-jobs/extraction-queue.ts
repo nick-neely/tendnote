@@ -14,6 +14,10 @@ import {
   enqueueAndPublishBackgroundJob,
 } from "@tendnote/db/queries/background-jobs";
 import type {
+  EnqueueAndTriggerContextFactExtractionJobInput,
+  EnqueueAndTriggerContextFactExtractionJobResult,
+} from "@tendnote/db/queries/context-fact-extraction-jobs";
+import type {
   EnqueueAndTriggerExtractionJobInput,
   EnqueueAndTriggerExtractionJobResult,
 } from "@tendnote/db/queries/extraction-jobs";
@@ -87,6 +91,40 @@ export async function enqueueAndPublishActionExtractionJob(input: {
   });
 }
 
+export type EnqueueAndPublishContextFactExtractionJobResult =
+  EnqueueAndPublishBackgroundJobResult<EnqueueAndTriggerContextFactExtractionJobResult>;
+
+type EnqueueContextFactExtraction = (
+  input: EnqueueAndTriggerContextFactExtractionJobInput,
+) => Promise<EnqueueAndTriggerContextFactExtractionJobResult>;
+
+export async function enqueueAndPublishContextFactExtractionJob(input: {
+  ownerUserId: string;
+  message: string;
+  idempotencyKey: string;
+  runAfter?: Date;
+  runtimeMode?: EnqueueAndTriggerContextFactExtractionJobInput["runtimeMode"];
+  deliveryStore?: BackgroundJobDeliveryStore;
+  queue?: BackgroundJobQueueSendAdapter;
+  enqueueContextFactExtraction?: EnqueueContextFactExtraction;
+  logger?: BackgroundJobQueueLogger;
+}): Promise<EnqueueAndPublishContextFactExtractionJobResult> {
+  return enqueueAndPublishBackgroundJob(BACKGROUND_JOB_FAMILIES.context_fact_extraction, {
+    ownerUserId: input.ownerUserId,
+    enqueueInput: {
+      ownerUserId: input.ownerUserId,
+      message: input.message,
+      idempotencyKey: input.idempotencyKey,
+      runAfter: input.runAfter,
+    },
+    runtimeMode: input.runtimeMode,
+    deliveryStore: input.deliveryStore,
+    queue: input.queue ?? createVercelBackgroundJobQueueAdapter(),
+    enqueue: input.enqueueContextFactExtraction,
+    logger: input.logger,
+  });
+}
+
 export async function consumeExtractionQueueMessage(input: {
   payload: unknown;
   metadata?: BackgroundJobQueueConsumerMetadata;
@@ -100,6 +138,9 @@ export async function consumeExtractionQueueMessage(input: {
   claimActionJob?: BackgroundJobProcessorOverrides["claimJob"];
   getActionJob?: BackgroundJobProcessorOverrides["getJob"];
   processActionJob?: BackgroundJobProcessorOverrides["processJob"];
+  claimContextFactJob?: BackgroundJobProcessorOverrides["claimJob"];
+  getContextFactJob?: BackgroundJobProcessorOverrides["getJob"];
+  processContextFactJob?: BackgroundJobProcessorOverrides["processJob"];
 }) {
   const deliveryStore = input.deliveryStore ?? createDrizzleBackgroundJobDeliveryStore();
 
@@ -124,6 +165,12 @@ export async function consumeExtractionQueueMessage(input: {
         claimJob: input.claimActionJob,
         getJob: input.getActionJob,
         processJob: input.processActionJob,
+      }),
+      createBackgroundJobProcessor(BACKGROUND_JOB_FAMILIES.context_fact_extraction, {
+        now: input.now,
+        claimJob: input.claimContextFactJob,
+        getJob: input.getContextFactJob,
+        processJob: input.processContextFactJob,
       }),
     ],
   });

@@ -13,6 +13,7 @@ export * from "./app/briefs";
 export * from "./app/calendar-event-cache";
 export * from "./app/calendar-suggested-followups";
 export * from "./app/contact-import-provider-refs";
+export * from "./app/context-fact-extraction-jobs";
 export * from "./app/context-facts";
 export * from "./app/context-snapshots";
 export * from "./app/discord-identities";

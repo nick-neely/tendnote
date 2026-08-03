@@ -1,4 +1,9 @@
-import type { EmbeddingJobStatus, ExtractionJobStatus, SemanticRecordKind } from "@tendnote/domain";
+import type {
+  ContextFactExtractionJobStatus,
+  EmbeddingJobStatus,
+  ExtractionJobStatus,
+  SemanticRecordKind,
+} from "@tendnote/domain";
 import {
   claimActionExtractionJob,
   claimNextActionExtractionJob,
@@ -9,6 +14,16 @@ import {
   processActionExtractionJob,
 } from "../action-extraction-jobs";
 import type { BackgroundJobKind } from "../background-job-deliveries/topics";
+import {
+  claimContextFactExtractionJob,
+  claimNextContextFactExtractionJob,
+  type EnqueueAndTriggerContextFactExtractionJobResult,
+  enqueueAndTriggerContextFactExtractionJob,
+  getContextFactExtractionJob,
+  type ProcessContextFactExtractionJobOutcome,
+  processContextFactExtractionJob,
+  resolveContextFactExtractionRuntimeMode,
+} from "../context-fact-extraction-jobs";
 
 export type BackgroundProcessorJobKind = Exclude<BackgroundJobKind, "reminder_push">;
 
@@ -46,7 +61,10 @@ export type BackgroundJobRuntimeMode = "enqueue_only" | "inline";
  * of every family's own status enum. Kept a literal union (not `string`) so the runtime's
  * terminal-state branch (`completed` / `skipped`) stays type-checked across families.
  */
-export type BackgroundJobStatus = ExtractionJobStatus | EmbeddingJobStatus;
+export type BackgroundJobStatus =
+  | ExtractionJobStatus
+  | EmbeddingJobStatus
+  | ContextFactExtractionJobStatus;
 
 /**
  * The outcome a processor run reports to the shared runtime — the union of every family's
@@ -56,7 +74,8 @@ export type BackgroundJobStatus = ExtractionJobStatus | EmbeddingJobStatus;
 export type BackgroundJobProcessOutcome =
   | ProcessExtractionJobOutcome
   | ProcessActionExtractionJobOutcome
-  | ProcessEmbeddingJobOutcome;
+  | ProcessEmbeddingJobOutcome
+  | ProcessContextFactExtractionJobOutcome;
 
 /**
  * The consume/recovery mechanics every job family exposes, independent of what the family
@@ -173,6 +192,25 @@ export const embeddingJobFamily: BackgroundJobFamily<
   claimNextJob: claimNextSemanticEmbeddingJob,
 };
 
+export const contextFactExtractionJobFamily: BackgroundJobFamily<
+  { ownerUserId: string; message: string; idempotencyKey: string; runAfter?: Date },
+  EnqueueAndTriggerContextFactExtractionJobResult
+> = {
+  jobKind: "context_fact_extraction",
+  noun: "Context Fact extraction job",
+  resolveRuntimeMode: (mode) =>
+    mode ??
+    resolveContextFactExtractionRuntimeMode({
+      configured: process.env.TENDNOTE_CONTEXT_FACT_EXTRACTION_RUNTIME,
+      nodeEnv: process.env.NODE_ENV,
+    }),
+  enqueueAndTrigger: enqueueAndTriggerContextFactExtractionJob,
+  claimJob: claimContextFactExtractionJob,
+  getJob: getContextFactExtractionJob,
+  processJob: processContextFactExtractionJob,
+  claimNextJob: claimNextContextFactExtractionJob,
+};
+
 /**
  * The closed registry of Postgres-owned job families, keyed by job kind. Every
  * {@link BackgroundProcessorJobKind} must appear here — the `_exhaustive` guard below fails to
@@ -183,6 +221,7 @@ export const BACKGROUND_JOB_FAMILIES = {
   extraction: extractionJobFamily,
   action_extraction: actionExtractionJobFamily,
   embedding: embeddingJobFamily,
+  context_fact_extraction: contextFactExtractionJobFamily,
 } as const;
 
 // Compile-time completeness: every job kind is registered. Adding a BackgroundJobKind

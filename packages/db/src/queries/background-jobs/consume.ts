@@ -99,7 +99,11 @@ export function createBackgroundJobProcessor(
       if (!job) {
         return { status: "not_found" as const, reason: `${family.noun} not found.` };
       }
-      if (job.status === "completed" || job.status === "skipped") {
+      if (
+        job.status === "completed" ||
+        job.status === "skipped" ||
+        job.status === "dead_lettered"
+      ) {
         return { status: "terminal" as const, reason: `${family.noun} is ${job.status}.` };
       }
       if (job.status === "failed") {

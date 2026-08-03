@@ -96,6 +96,8 @@ export type ContextFactCallerVerification = () => Promise<string | null>;
 export type ContextFactQueryDependencies = {
   householdAccess?: ContextFactHouseholdAccess;
   resolveVerifiedCaller?: ContextFactCallerVerification;
+  /** Optional bounded queue policy used by ambient/background suggestion producers. */
+  maxPendingSuggestedContextFacts?: number;
 };
 
 export type CreateContextFactMutationInput = CreateContextFactInput;

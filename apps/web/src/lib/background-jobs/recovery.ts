@@ -48,11 +48,17 @@ export type BackgroundJobRecoveryRunResult = {
   extraction: ProcessorBackfillResult;
   embedding: EmbeddingBackfillResult;
   actionExtraction: ProcessorBackfillResult;
+  contextFactExtraction: ProcessorBackfillResult;
 };
 
-/** A backing job is obsolete once it is gone or already terminal (completed/skipped). */
+/** A backing job is obsolete once it is gone or already terminal. */
 function jobValidity(job: { status: string } | null): JobValidity {
-  return !job || job.status === "completed" || job.status === "skipped" ? "obsolete" : "active";
+  return !job ||
+    job.status === "completed" ||
+    job.status === "skipped" ||
+    job.status === "dead_lettered"
+    ? "obsolete"
+    : "active";
 }
 
 async function inspectDeliveryProcessorJob(delivery: BackgroundJobDelivery): Promise<JobValidity> {
@@ -204,23 +210,33 @@ function runActionExtractionBackfill(
   return runFamilyBackfill("action_extraction", input);
 }
 
+export function runContextFactExtractionBackfill(
+  input: ProcessorBackfillInput,
+): Promise<ProcessorBackfillResult> {
+  return runFamilyBackfill("context_fact_extraction", input);
+}
+
 export async function runBackgroundJobRecovery(input: {
   deliveryLimit: number;
   extractionBackfillLimit: number;
   embeddingBackfillLimit: number;
   actionExtractionBackfillLimit: number;
+  contextFactExtractionBackfillLimit?: number;
   now?: Date;
   logger?: BackgroundJobQueueLogger;
   recoverDeliveries?: typeof recoverBackgroundJobDeliveries;
   backfillExtraction?: typeof runExtractionBackfill;
   backfillEmbedding?: typeof runEmbeddingBackfill;
   backfillActionExtraction?: typeof runActionExtractionBackfill;
+  backfillContextFactExtraction?: typeof runContextFactExtractionBackfill;
 }): Promise<BackgroundJobRecoveryRunResult> {
   const now = input.now ?? new Date();
   const recoverDeliveries = input.recoverDeliveries ?? recoverBackgroundJobDeliveries;
   const backfillExtraction = input.backfillExtraction ?? runExtractionBackfill;
   const backfillEmbedding = input.backfillEmbedding ?? runEmbeddingBackfill;
   const backfillActionExtraction = input.backfillActionExtraction ?? runActionExtractionBackfill;
+  const backfillContextFactExtraction =
+    input.backfillContextFactExtraction ?? runContextFactExtractionBackfill;
 
   const deliveries = await recoverDeliveries({
     limit: input.deliveryLimit,
@@ -242,12 +258,17 @@ export async function runBackgroundJobRecovery(input: {
     now,
     logger: input.logger,
   });
+  const contextFactExtraction = await backfillContextFactExtraction({
+    limit: input.contextFactExtractionBackfillLimit ?? 0,
+    now,
+    logger: input.logger,
+  });
 
-  return { deliveries, extraction, embedding, actionExtraction };
+  return { deliveries, extraction, embedding, actionExtraction, contextFactExtraction };
 }
 
 async function runProcessorBackfill(input: {
-  jobKind: "extraction" | "embedding" | "action_extraction";
+  jobKind: "extraction" | "embedding" | "action_extraction" | "context_fact_extraction";
   limit: number;
   now?: Date;
   claimNextJob: BackfillClaimNextJob;

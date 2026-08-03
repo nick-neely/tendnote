@@ -296,6 +296,14 @@ export const extractionJobStatus = pgEnum("extraction_job_status", [
   "skipped",
 ]);
 
+export const contextFactExtractionJobStatus = pgEnum("context_fact_extraction_job_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "dead_lettered",
+]);
+
 export const semanticRecordKind = pgEnum("semantic_record_kind", [
   "memory",
   "source_record",
@@ -333,6 +341,7 @@ export const backgroundJobKind = pgEnum("background_job_kind", [
   "extraction",
   "embedding",
   "action_extraction",
+  "context_fact_extraction",
   "reminder_push",
 ]);
 

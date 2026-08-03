@@ -1,4 +1,5 @@
 import { createInMemoryBackgroundJobDeliveryStore } from "@tendnote/db/queries/background-job-deliveries";
+import type { EnqueueAndTriggerContextFactExtractionJobResult } from "@tendnote/db/queries/context-fact-extraction-jobs";
 import {
   createExtractionProcessor,
   createInMemoryExtractionJobStore,
@@ -13,6 +14,7 @@ import vercelConfig from "../../../vercel.json";
 import {
   consumeExtractionQueueMessage,
   enqueueAndPublishActionExtractionJob,
+  enqueueAndPublishContextFactExtractionJob,
   enqueueAndPublishExtractionJob,
 } from "./extraction-queue";
 import { BACKGROUND_JOB_QUEUE_CONFIG } from "./queue-runtime";
@@ -337,5 +339,101 @@ describe("action extraction queue delivery", () => {
     expect(consumed).toMatchObject({ status: "processed" });
     expect(processActionJob).toHaveBeenCalledWith({ jobId: actionJob.id, claim: false });
     expect(processJob).not.toHaveBeenCalled();
+  });
+});
+
+const contextFactJob = {
+  id: "00000000-0000-0000-0000-000000000401",
+  ownerUserId: "user-1",
+  message: "I work in Chicago.",
+  status: "pending" as const,
+  attempts: 0,
+  lastError: null,
+  idempotencyKey: "eve:session:turn",
+  runAfter: new Date("2026-06-29T12:00:00.000Z"),
+  claimedAt: null,
+  completedAt: null,
+  createdAt: new Date("2026-06-29T12:00:00.000Z"),
+  updatedAt: new Date("2026-06-29T12:00:00.000Z"),
+};
+
+describe("ambient Context Fact extraction queue delivery", () => {
+  it("publishes a distinct context-fact delivery on the shared extraction topic", async () => {
+    const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
+    const queue = { send: vi.fn().mockResolvedValue({ messageId: "msg-c1" }) };
+    const enqueueContextFactExtraction = vi
+      .fn()
+      .mockResolvedValue({ job: contextFactJob, created: true, processResult: null });
+
+    const result = await enqueueAndPublishContextFactExtractionJob({
+      ownerUserId: "user-1",
+      message: contextFactJob.message,
+      idempotencyKey: contextFactJob.idempotencyKey,
+      runtimeMode: "enqueue_only",
+      deliveryStore,
+      queue,
+      enqueueContextFactExtraction,
+    });
+
+    expect(result.deliveryId).toEqual(expect.any(String));
+    expect(queue.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: BACKGROUND_JOB_QUEUE_CONFIG.context_fact_extraction.topic,
+        payload: {
+          deliveryId: result.deliveryId,
+          jobKind: "context_fact_extraction",
+          jobId: contextFactJob.id,
+        },
+      }),
+    );
+    expect(enqueueContextFactExtraction).toHaveBeenCalledWith({
+      ownerUserId: "user-1",
+      message: contextFactJob.message,
+      idempotencyKey: contextFactJob.idempotencyKey,
+      runtimeMode: "enqueue_only",
+    });
+  });
+
+  it("dispatches the context-fact message only to its focused processor", async () => {
+    const deliveryStore = createInMemoryBackgroundJobDeliveryStore();
+    const queue = { send: vi.fn().mockResolvedValue({ messageId: "msg-c2" }) };
+    const result = await enqueueAndPublishContextFactExtractionJob({
+      ownerUserId: "user-1",
+      message: contextFactJob.message,
+      idempotencyKey: contextFactJob.idempotencyKey,
+      runtimeMode: "enqueue_only",
+      deliveryStore,
+      queue,
+      enqueueContextFactExtraction: vi.fn().mockResolvedValue({
+        job: contextFactJob,
+        created: true,
+        processResult: null,
+      } satisfies EnqueueAndTriggerContextFactExtractionJobResult),
+    });
+    const claimContextFactJob = vi.fn().mockResolvedValue({
+      ...contextFactJob,
+      status: "running" as const,
+    });
+    const processContextFactJob = vi.fn().mockResolvedValue({ outcome: "completed" });
+    const processActionJob = vi.fn();
+
+    const consumed = await consumeExtractionQueueMessage({
+      deliveryStore,
+      payload: {
+        deliveryId: result.deliveryId,
+        jobKind: "context_fact_extraction",
+        jobId: contextFactJob.id,
+      },
+      claimContextFactJob,
+      processContextFactJob,
+      processActionJob,
+    });
+
+    expect(consumed).toMatchObject({ status: "processed" });
+    expect(processContextFactJob).toHaveBeenCalledWith({
+      jobId: contextFactJob.id,
+      claim: false,
+    });
+    expect(processActionJob).not.toHaveBeenCalled();
   });
 });

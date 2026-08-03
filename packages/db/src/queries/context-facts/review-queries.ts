@@ -43,6 +43,7 @@ type AuditFact = Pick<
 
 export type ContextFactReviewQueryContext = {
   store: ContextFactStore;
+  maxPendingSuggestedContextFacts?: number;
   requireVerifiedCaller: (callerUserId: string) => Promise<string>;
   assertSubjectBelongsToCaller: (input: {
     callerUserId: string;
@@ -142,6 +143,7 @@ async function findSuggestedFact(
 export function createContextFactReviewQueries(context: ContextFactReviewQueryContext) {
   const {
     store,
+    maxPendingSuggestedContextFacts,
     requireVerifiedCaller,
     assertSubjectBelongsToCaller,
     findActiveMatch,
@@ -217,6 +219,18 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
       };
     }
 
+    if (maxPendingSuggestedContextFacts !== undefined) {
+      const pendingCount = await store.listContextFacts({
+        ...scopedSubjectFilter(parsed.subject),
+        lifecycle: "suggested",
+      });
+      if (pendingCount.length >= maxPendingSuggestedContextFacts) {
+        throw new ContextFactValidationError(
+          "The owner has reached the pending Suggested Context Fact limit.",
+        );
+      }
+    }
+
     let created: ContextFact;
     try {
       created = contextFactSchema.parse(
@@ -253,6 +267,8 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
       throw error;
     }
 
+    const review = await requireSuggestedReview(created);
+
     await recordAudit({
       ownerUserId: callerUserId,
       action: "context_fact.suggest",
@@ -260,11 +276,13 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
       metadataJson: {
         suggestionEvidenceLength: parsed.suggestionEvidence.length,
         sourceRecordId: parsed.provenance.sourceRecordId,
+        activeMatchId: review.activeMatch?.fact.id ?? null,
+        activeMatchKind: review.activeMatch?.kind ?? null,
       },
     });
 
     return {
-      result: await requireSuggestedReview(created),
+      result: review,
       decision: "created",
       affectedScopes: await affectedScopesForFact(created, callerUserId),
     };
