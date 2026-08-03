@@ -85,7 +85,7 @@ describe("owner Review Queue adapter", () => {
     expect(mocks.listSources).toHaveBeenCalledWith({ ownerUserId: "owner-1", limit: 6 });
     expect(mocks.listContextFacts).toHaveBeenCalledWith(
       { callerUserId: "owner-1" },
-      mocks.requireAdmittedOwner,
+      expect.any(Function),
     );
     expect(queue.items.map(({ family, id }) => `${family}:${id}`)).toEqual([
       "suggested-memory:memory-1",
@@ -94,6 +94,20 @@ describe("owner Review Queue adapter", () => {
       "source-record:source-1",
       "suggested-context-fact:context-1",
     ]);
+  });
+
+  it("names the Context Fact caller without reading the request", async () => {
+    mocks.listContextFacts.mockResolvedValue([{ fact: { id: "context-1" } }]);
+
+    // Family loads run inside a `"use cache"` body, where `headers()` throws.
+    // Re-deriving the caller from the session there does not tighten the gate -
+    // it makes every load fail closed and drops Self Context out of Review.
+    const result = await loadOwnerReviewQueueFamily("owner-1", "suggested-context-fact");
+
+    expect(result.unavailable).toBe(false);
+    expect(mocks.requireAdmittedOwner).not.toHaveBeenCalled();
+    const resolveVerifiedCaller = mocks.listContextFacts.mock.calls.at(0)?.at(1);
+    await expect(resolveVerifiedCaller()).resolves.toBe("owner-1");
   });
 
   it("preserves successful query families when another query rejects", async () => {
