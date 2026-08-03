@@ -25,6 +25,10 @@ vi.mock("@/app/actions/memory-review", () => ({
 vi.mock("@/app/actions/conversational-capture", () => ({
   addCapturePersonAction: vi.fn(),
 }));
+vi.mock("@/app/actions/context-fact-review", () => ({
+  acceptSuggestedContextFactAction: vi.fn(),
+  dismissSuggestedContextFactAction: vi.fn(),
+}));
 vi.mock("@/components/suggested-general-action-review", () => ({
   SuggestedGeneralActionReviewCard: ({ review, onResolve, onUpdate }: MockActionCardProps) => (
     <article data-testid={`action-${review.action.id}`}>
@@ -74,6 +78,32 @@ function queueItem(family: ReviewQueueItem["family"], id: string): ReviewQueueIt
       family,
       id,
       review: { action: { id, title: "Action title" } },
+    } as ReviewQueueItem;
+  }
+  if (family === "suggested-context-fact") {
+    return {
+      family,
+      id,
+      review: {
+        fact: {
+          id,
+          subject: { kind: "self" },
+          category: "work",
+          content: "Suggested context content",
+          lifecycle: "suggested",
+          sensitivity: "normal",
+          provenance: { channel: "ambient", origin: "ambient" },
+          reviewedAt: null,
+          archivedAt: null,
+          createdAt: new Date("2026-08-02T12:00:00.000Z"),
+          updatedAt: new Date("2026-08-02T12:00:00.000Z"),
+          trust: "untrusted_data",
+          authority: "none",
+          visibility: "private",
+        },
+        evidence: "The supporting statement",
+        activeMatch: null,
+      },
     } as ReviewQueueItem;
   }
   return {
@@ -138,6 +168,14 @@ describe("ReviewQueueFamilySection", () => {
     expect(screen.getByTestId("asset-shared-id").textContent).toContain("Existing boiler");
     expect(screen.getByTestId("action-shared-id").textContent).toContain("Action title");
     expect(screen.getByText("Memory content")).toBeDefined();
+  });
+
+  it("renders Suggested Context Facts in the existing queue family", () => {
+    renderSection([queueItem("suggested-context-fact", "context-1")]);
+
+    expect(screen.getByText("Suggested context content")).toBeDefined();
+    expect(screen.getByText("The supporting statement")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Accept" })).toBeDefined();
   });
 
   it("routes memory and grouped Asset resolution through their discriminated identities", async () => {

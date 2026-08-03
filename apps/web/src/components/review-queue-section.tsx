@@ -9,6 +9,11 @@ import {
 } from "@/app/actions/memory-review";
 import { AssetReviewGroupCard } from "@/components/asset-review-group-card";
 import { CheckIcon, XIcon } from "@/components/icons";
+import {
+  type SuggestedContextFactAcceptAction,
+  type SuggestedContextFactDismissAction,
+  SuggestedContextFactReviewCard,
+} from "@/components/suggested-context-fact-review";
 import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general-action-review";
 import { MutationFeedback, MutationUndo } from "@/components/suggestion-review-controls";
 import { Button } from "@/components/ui/button";
@@ -37,6 +42,8 @@ export function ReviewQueueSection({
   items: ReviewQueueItem[];
   onResolve: (identity: ReviewQueueIdentity) => void;
   onUpdate: (item: ReviewQueueItem) => void;
+  suggestedContextFactAcceptAction?: SuggestedContextFactAcceptAction;
+  suggestedContextFactDismissAction?: SuggestedContextFactDismissAction;
 }) {
   return (
     <ReversibleMutationProvider>
@@ -50,11 +57,15 @@ function ReviewQueueSectionContent({
   items,
   onResolve,
   onUpdate,
+  suggestedContextFactAcceptAction,
+  suggestedContextFactDismissAction,
 }: {
   heading?: string;
   items: ReviewQueueItem[];
   onResolve: (identity: ReviewQueueIdentity) => void;
   onUpdate: (item: ReviewQueueItem) => void;
+  suggestedContextFactAcceptAction?: SuggestedContextFactAcceptAction;
+  suggestedContextFactDismissAction?: SuggestedContextFactDismissAction;
 }) {
   return (
     <section className="flex flex-col gap-2.5">
@@ -81,6 +92,8 @@ function ReviewQueueSectionContent({
                 moveFocus();
               }}
               onUpdate={onUpdate}
+              suggestedContextFactAcceptAction={suggestedContextFactAcceptAction}
+              suggestedContextFactDismissAction={suggestedContextFactDismissAction}
             />
           </li>
         ))}
@@ -130,10 +143,14 @@ function ReviewQueueCard({
   item,
   onResolve,
   onUpdate,
+  suggestedContextFactAcceptAction,
+  suggestedContextFactDismissAction,
 }: {
   item: ReviewQueueItem;
   onResolve: (identity: ReviewQueueIdentity) => void;
   onUpdate: (item: ReviewQueueItem) => void;
+  suggestedContextFactAcceptAction?: SuggestedContextFactAcceptAction;
+  suggestedContextFactDismissAction?: SuggestedContextFactDismissAction;
 }) {
   if (item.family === "suggested-memory") {
     return (
@@ -158,6 +175,17 @@ function ReviewQueueCard({
   if (item.family === "source-record") {
     return (
       <SourceRecordQueueCard
+        onResolve={() => onResolve({ family: item.family, id: item.id })}
+        review={item.review}
+      />
+    );
+  }
+
+  if (item.family === "suggested-context-fact") {
+    return (
+      <SuggestedContextFactReviewCard
+        acceptAction={suggestedContextFactAcceptAction}
+        dismissAction={suggestedContextFactDismissAction}
         onResolve={() => onResolve({ family: item.family, id: item.id })}
         review={item.review}
       />

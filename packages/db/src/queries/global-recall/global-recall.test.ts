@@ -1,11 +1,16 @@
-import type { HouseholdMembership, Memory, Person, SourceRecord } from "@tendnote/domain";
 import {
+  contextFactSchema,
+  type HouseholdMembership,
+  type Memory,
+  type Person,
+  type SourceRecord,
   searchAssetsSchema,
   searchRelationshipContextSchema,
   searchSavedItemsSemanticSchema,
   searchSemanticContextSchema,
 } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
+import type { SelfContextExactResult } from "../context-facts/types";
 import { createInMemoryRelationshipContextSearchStore } from "../relationship-context-search/in-memory-store";
 import { createRelationshipContextSearchQueries } from "../relationship-context-search/queries";
 import { createGlobalRecall } from "./queries";
@@ -92,7 +97,39 @@ function exactPerson(recordId = "person-1", label = "Priya Shah") {
   };
 }
 
+function exactSelfContext(
+  id = "context-fact-1",
+  content = "I run a software consultancy.",
+  sensitivity: "normal" | "restricted" = "normal",
+): SelfContextExactResult {
+  const now = new Date("2026-08-02T12:00:00.000Z");
+  return {
+    fact: {
+      ...contextFactSchema.parse({
+        id,
+        subject: { kind: "self", userId: OWNER },
+        category: "work",
+        content,
+        lifecycle: "active",
+        sensitivity,
+        provenance: { channel: "account", origin: "direct", sourceRecordId: null },
+        suggestionEvidence: null,
+        creatorUserId: OWNER,
+        lastActorUserId: OWNER,
+        reviewedAt: now,
+        archivedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      }),
+      category: "work",
+    },
+    matchedFields: ["content"],
+    rank: 5,
+  };
+}
+
 const emptyDependencies = {
+  searchSelfContextExact: async () => [],
   searchRelationshipExact: async () => [],
   searchRelationshipRelated: async () => [],
   searchAssets: async () => assetOutcome([]),
@@ -103,6 +140,65 @@ const emptyDependencies = {
 } satisfies GlobalRecallDependencies;
 
 describe("Global Recall", () => {
+  it("returns exact Self Context with canonical correction metadata and no semantic retrieval", async () => {
+    const searchRelationshipRelated = vi.fn().mockResolvedValue([]);
+    const searchSelfContextExact = vi
+      .fn()
+      .mockImplementation(async (input) =>
+        input.callerUserId === OWNER ? [exactSelfContext()] : [],
+      );
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchRelationshipRelated,
+      searchSelfContextExact,
+    });
+
+    const result = await recall.search({
+      ownerUserId: OWNER,
+      query: "software consultancy",
+      family: "self_context",
+    });
+
+    expect(result).toMatchObject({
+      results: [
+        {
+          family: "self_context",
+          canonical: { kind: "context_fact", id: "context-fact-1" },
+          label: "I run a software consultancy.",
+          supportingText: "Work",
+          lifecycle: "active",
+          trust: "self_context",
+          sensitivity: "normal",
+          visibility: { choice: "only_me", label: "Only me" },
+          grounding: [{ kind: "context_fact", id: "context-fact-1" }],
+          href: "/account/about-you#context-fact-context-fact-1",
+          details: {
+            content: "I run a software consultancy.",
+            category: "work",
+            categoryLabel: "Work",
+            provenance: { channel: "account", origin: "direct" },
+          },
+        },
+      ],
+      limitations: [],
+    });
+    expect(searchSelfContextExact).toHaveBeenCalledWith({
+      callerUserId: OWNER,
+      query: "software consultancy",
+      directlyRequested: false,
+      includeArchived: false,
+      limit: 20,
+    });
+    await expect(
+      recall.search({
+        ownerUserId: "owner-2",
+        query: "software consultancy",
+        family: "self_context",
+      }),
+    ).resolves.toMatchObject({ results: [] });
+    expect(searchRelationshipRelated).not.toHaveBeenCalled();
+  });
+
   it("uses one candidate bound accepted by every typed retrieval dependency", async () => {
     const recall = createGlobalRecall({
       ...emptyDependencies,
@@ -205,6 +301,7 @@ describe("Global Recall", () => {
 
   it("keeps an exact canonical record ahead of Related results and removes its semantic duplicate", async () => {
     const recall = createGlobalRecall({
+      ...emptyDependencies,
       searchRelationshipExact: async () => [
         {
           recordKind: "general_action" as const,
@@ -790,6 +887,7 @@ describe("Global Recall", () => {
       throw new Error("unrequested source must not run");
     };
     const recall = createGlobalRecall({
+      searchSelfContextExact: forbidden,
       searchRelationshipExact: forbidden,
       searchRelationshipRelated: forbidden,
       searchAssets: async () =>

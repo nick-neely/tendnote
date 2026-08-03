@@ -73,4 +73,20 @@ describe("explicit person creation (issue #22)", () => {
       /Do not fan that request out to create_person, capture_memory, search_assets, or propose_asset_memories/,
     ]);
   });
+
+  it("makes the multi-clause precedence concrete for cross-domain captures", () => {
+    const captureSource = readTool("capture_saved_item");
+
+    expectMatches(instructions, [
+      /A message with two or more supported explicit clauses is one Global Capture request/i,
+      /Add Priya; remember that Priya prefers oat milk; and track asset refrigerator water filter/i,
+      /call `capture_saved_item` before any destination-specific tool/i,
+      /do not ask which destination.*before calling `capture_saved_item`/i,
+    ]);
+    expectMatches(captureSource, [
+      /If the user's message contains two or more supported explicit clauses/i,
+      /call capture_saved_item exactly once before any destination-specific tool/i,
+      /Do not ask which destination.*before calling capture_saved_item/i,
+    ]);
+  });
 });

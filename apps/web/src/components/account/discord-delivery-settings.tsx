@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { isDiscordChannelId } from "@/lib/integrations/discord-install";
 import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 
@@ -201,12 +202,12 @@ function ChannelIdForm({
         }}
       >
         <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <label
-            className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground"
+          <Label
+            className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] font-normal text-muted-foreground"
             htmlFor={channelInputId}
           >
             Delivery channel ID
-          </label>
+          </Label>
           <Input
             aria-describedby={formatInvalid ? `${hintId} ${helpId}` : helpId}
             aria-invalid={formatInvalid || undefined}

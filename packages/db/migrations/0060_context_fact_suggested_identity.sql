@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "context_facts_suggested_self_identity_idx" ON "context_facts" USING btree ("subject_user_id","category","normalized_content","sensitivity") WHERE "context_facts"."subject_kind" = 'self' AND "context_facts"."lifecycle" = 'suggested';--> statement-breakpoint
+CREATE UNIQUE INDEX "context_facts_suggested_household_identity_idx" ON "context_facts" USING btree ("subject_household_id","category","normalized_content","sensitivity") WHERE "context_facts"."subject_kind" = 'household' AND "context_facts"."lifecycle" = 'suggested';

@@ -181,19 +181,20 @@ describe("DateTimePicker", () => {
   it("snaps the default time up to the floor on the boundary day", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
+    const boundaryDate = dayThisMonth(15);
     render(
       <DateTimePicker
         aria-label="Bring back"
-        min="2026-07-15T15:00"
+        min={`${boundaryDate}T15:00`}
         onChange={onChange}
         value=""
       />,
     );
 
     await user.click(trigger("Bring back"));
-    await user.click(dayButton("2026-07-15"));
+    await user.click(dayButton(boundaryDate));
 
-    expect(onChange).toHaveBeenLastCalledWith("2026-07-15T15:00");
+    expect(onChange).toHaveBeenLastCalledWith(`${boundaryDate}T15:00`);
   });
 
   it("bounds the time field on the boundary day only", () => {
@@ -214,19 +215,21 @@ describe("DateTimePicker", () => {
   it("leaves a later day unconstrained", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
+    const boundaryDate = dayThisMonth(15);
+    const laterDate = dayThisMonth(16);
     render(
       <DateTimePicker
         aria-label="Bring back"
-        min="2026-07-15T15:00"
+        min={`${boundaryDate}T15:00`}
         onChange={onChange}
         value=""
       />,
     );
 
     await user.click(trigger("Bring back"));
-    await user.click(dayButton("2026-07-16"));
+    await user.click(dayButton(laterDate));
 
-    expect(onChange).toHaveBeenLastCalledWith("2026-07-16T09:00");
+    expect(onChange).toHaveBeenLastCalledWith(`${laterDate}T09:00`);
   });
 
   /** Both halves size together, or the field reads as one tall control beside a short one. */

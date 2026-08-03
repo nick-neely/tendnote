@@ -362,12 +362,12 @@ function RecipientOption({ children, value }: { children: ReactNode; value: stri
   const id = useId();
 
   return (
-    <label
-      className="flex items-center gap-2 text-[length:var(--text-body)] max-sm:min-h-11"
+    <Label
+      className="text-[length:var(--text-body)] leading-[var(--text-body-line)] font-normal max-sm:min-h-11"
       htmlFor={id}
     >
       <RadioGroupItem id={id} value={value} />
       {children}
-    </label>
+    </Label>
   );
 }

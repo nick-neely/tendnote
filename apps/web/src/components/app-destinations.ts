@@ -12,8 +12,10 @@ import {
 
 export type AppDestinationId =
   | "account"
+  | "account-about-you"
   | "account-contact-import"
   | "account-discord"
+  | "onboarding-self-context"
   | "action-today"
   | "actions"
   | "asset"
@@ -158,6 +160,15 @@ export const appDestinations = [
     scopes: [owner("account")],
   },
   {
+    id: "account-about-you",
+    route: "/account/about-you",
+    label: "About you",
+    icon: CircleUserRoundIcon,
+    groups: [],
+    reserve: { heading: "About you", shape: "ledger" },
+    scopes: [owner("account"), owner("context-facts")],
+  },
+  {
     id: "account-contact-import",
     route: "/account/contacts/import",
     label: "Contact import",
@@ -174,6 +185,15 @@ export const appDestinations = [
     groups: [],
     reserve: { heading: "Discord delivery", shape: "ledger" },
     scopes: [owner("account")],
+  },
+  {
+    id: "onboarding-self-context",
+    route: "/onboarding/self-context",
+    label: "Self Context setup",
+    icon: CircleUserRoundIcon,
+    groups: [],
+    reserve: { heading: "Self Context setup", shape: "detail" },
+    scopes: [owner("account"), owner("context-facts")],
   },
   {
     id: "reminder",

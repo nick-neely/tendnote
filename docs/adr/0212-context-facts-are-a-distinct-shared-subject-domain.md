@@ -1,0 +1,3 @@
+# Context Facts are a distinct shared-subject domain
+
+Tendnote will store current orienting facts in one dedicated Context Fact domain with explicit Self user and Household Workspace subjects, rather than overloading Person-linked Memories, Saved Items, auth profiles, or Eve instructions. Phase 7.5 ships the complete Self Context experience while implementing and testing the Household Context subject and permission foundation without user-facing activation; Phase 8 supplies household setup, email invitations, member management, and collaborative surfaces. This deliberate dormant path costs some near-term foundation work but avoids redefining storage, authority, retrieval, and Eve context when household collaboration becomes usable.

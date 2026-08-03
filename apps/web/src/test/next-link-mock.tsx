@@ -16,8 +16,22 @@ export default function NextLinkMock({
   children,
   ...rest
 }: { href: unknown; children: ReactNode } & AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const resolvedHref = typeof href === "string" ? href : "#";
   return (
-    <a href={typeof href === "string" ? href : "#"} {...rest}>
+    <a
+      href={resolvedHref}
+      {...rest}
+      onClick={(event) => {
+        rest.onClick?.(event);
+        // Model the same-document transition that Next Link supplies in the app. Browser
+        // component tests do not mount Next's router, but route-level contracts still need
+        // the destination to render and browser history to become observable.
+        if (event.defaultPrevented || !resolvedHref.startsWith("/")) return;
+        event.preventDefault();
+        window.history.pushState({}, "", resolvedHref);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }}
+    >
       {children}
     </a>
   );

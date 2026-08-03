@@ -1,5 +1,6 @@
 import type {
   AssetStatus,
+  ContextFactLifecycle,
   ConversationalCaptureChangeTarget,
   ConversationalCaptureUndoTarget,
   FollowupStatus,
@@ -11,7 +12,7 @@ import { hydrateSavedItem } from "../../saved-items/context";
 import { createSavedItemLifecycle } from "../../saved-items/lifecycle";
 import { createAffectedSavedItemLifecycle } from "../../saved-items/mutation-lifecycle";
 import type { SavedItemLifecycleStore } from "../../saved-items/types";
-import type { ConversationalCaptureDeps } from "./types";
+import type { CaptureContextFact, ConversationalCaptureDeps } from "./types";
 
 export type CaptureOutcomeKind =
   | "saved_item"
@@ -19,12 +20,19 @@ export type CaptureOutcomeKind =
   | "followup"
   | "person"
   | "memory"
-  | "asset_review";
+  | "asset_review"
+  | "context_fact";
 export type CaptureOutcomeReference = {
   kind: CaptureOutcomeKind;
   id: string;
   sourceRecordId?: string;
   createdByCapture?: boolean;
+  inverse?: {
+    category: Exclude<import("@tendnote/domain").ContextFactCategory, "composition">;
+    content: string;
+    sensitivity: import("@tendnote/domain").ContextFactSensitivity;
+  };
+  expectedUpdatedAt?: Date;
 };
 type CaptureOutcomeStatus =
   | SavedItemStatus
@@ -32,13 +40,25 @@ type CaptureOutcomeStatus =
   | FollowupStatus
   | MemoryStatus
   | AssetStatus
+  | ContextFactLifecycle
   | "active";
 type LoadedCaptureOutcome = {
   sourceRecordId: string;
   status: CaptureOutcomeStatus;
-  from: "Saved Items" | "Actions" | "Routines" | "Follow-Ups" | "People" | "Memories" | "Review";
+  from:
+    | "Saved Items"
+    | "Actions"
+    | "Routines"
+    | "Follow-Ups"
+    | "People"
+    | "Memories"
+    | "Review"
+    | "Self Context";
   personId?: string;
   content?: string;
+  category?: CaptureContextFact["category"];
+  sensitivity?: CaptureContextFact["sensitivity"];
+  updatedAt?: Date;
 };
 
 type CaptureOutcomeLifecycleOperation = {
@@ -49,7 +69,7 @@ type CaptureOutcomeLifecycleOperation = {
     status: CaptureOutcomeStatus,
     reference?: CaptureOutcomeReference,
   ) => Promise<unknown>;
-  undo: (actorUserId: string, id: string) => Promise<unknown>;
+  undo: (actorUserId: string, id: string, reference?: CaptureOutcomeReference) => Promise<unknown>;
 };
 
 export function changeTargetReference(
@@ -71,6 +91,16 @@ export function changeTargetReference(
   if (target.kind === "edit_memory") {
     return { kind: "memory", id: target.memoryId, sourceRecordId: target.sourceRecordId };
   }
+  if (target.kind === "edit_context_fact") {
+    return {
+      kind: "context_fact",
+      id: target.contextFactId,
+      sourceRecordId: target.sourceRecordId,
+      ...(target.expectedUpdatedAt
+        ? { expectedUpdatedAt: new Date(target.expectedUpdatedAt) }
+        : {}),
+    };
+  }
   return { kind: "asset_review", id: target.groupId, sourceRecordId: target.sourceRecordId };
 }
 
@@ -83,7 +113,109 @@ export function undoTargetReference(
   }
   if (target.kind === "archive_followup") return { kind: "followup", id: target.followupId };
   if (target.kind === "archive_memory") return { kind: "memory", id: target.memoryId };
+  if (target.kind === "archive_context_fact") {
+    return {
+      kind: "context_fact",
+      id: target.contextFactId,
+      sourceRecordId: target.sourceRecordId,
+      ...(target.expectedUpdatedAt
+        ? { expectedUpdatedAt: new Date(target.expectedUpdatedAt) }
+        : {}),
+    };
+  }
+  if (target.kind === "edit_context_fact") {
+    return {
+      kind: "context_fact",
+      id: target.contextFactId,
+      sourceRecordId: target.sourceRecordId,
+      inverse: {
+        category: target.category,
+        content: target.content,
+        sensitivity: target.sensitivity,
+      },
+      ...(target.expectedUpdatedAt
+        ? { expectedUpdatedAt: new Date(target.expectedUpdatedAt) }
+        : {}),
+    };
+  }
   return { kind: "asset_review", id: target.groupId };
+}
+
+function assertSelfContextFactSource(
+  current: CaptureContextFact,
+  sourceRecordId: string | undefined,
+) {
+  if (!sourceRecordId || current.provenance.sourceRecordId !== sourceRecordId) {
+    throw new Error("That Self Context fact has different source evidence.");
+  }
+}
+
+async function restoreSelfContextFactForCapture(input: {
+  deps: ConversationalCaptureDeps;
+  actorUserId: string;
+  contextFactId: string;
+  current: CaptureContextFact;
+  reference: CaptureOutcomeReference;
+}) {
+  if (!input.deps.updateSelfContextFact) {
+    throw new Error("Self Context Undo is unavailable.");
+  }
+  if (input.current.lifecycle !== "active") {
+    throw new Error("That Self Context fact is no longer active.");
+  }
+  const inverse = input.reference.inverse;
+  if (!inverse) throw new Error("Self Context Undo is unavailable.");
+  return input.deps.updateSelfContextFact({
+    actorUserId: input.actorUserId,
+    contextFactId: input.contextFactId,
+    category: inverse.category,
+    content: inverse.content,
+    sensitivity: inverse.sensitivity,
+    expectedUpdatedAt: input.reference.expectedUpdatedAt ?? input.current.updatedAt,
+  });
+}
+
+async function archiveSelfContextFactForCapture(input: {
+  deps: ConversationalCaptureDeps;
+  actorUserId: string;
+  contextFactId: string;
+  current: CaptureContextFact;
+  reference?: CaptureOutcomeReference;
+}) {
+  if (input.current.lifecycle === "archived") return input.current;
+  if (!input.deps.archiveSelfContextFact) {
+    throw new Error("Self Context Undo is unavailable.");
+  }
+  return input.deps.archiveSelfContextFact({
+    actorUserId: input.actorUserId,
+    contextFactId: input.contextFactId,
+    expectedUpdatedAt: input.reference?.expectedUpdatedAt ?? input.current.updatedAt,
+  });
+}
+
+async function undoSelfContextFactForCapture(input: {
+  deps: ConversationalCaptureDeps;
+  actorUserId: string;
+  contextFactId: string;
+  reference?: CaptureOutcomeReference;
+}) {
+  if (!input.deps.getSelfContextFact) {
+    throw new Error("Self Context Undo is unavailable.");
+  }
+  const current = await input.deps.getSelfContextFact({
+    ownerUserId: input.actorUserId,
+    contextFactId: input.contextFactId,
+  });
+  if (!current) throw new Error("That Self Context fact is no longer available.");
+  assertSelfContextFactSource(current, input.reference?.sourceRecordId);
+  if (input.reference?.inverse) {
+    return restoreSelfContextFactForCapture({
+      ...input,
+      current,
+      reference: input.reference,
+    });
+  }
+  return archiveSelfContextFactForCapture({ ...input, current });
 }
 
 export function createCaptureOutcomeLifecycleOperations(
@@ -253,6 +385,53 @@ export function createCaptureOutcomeLifecycleOperations(
         if (current.status === "archived") return current;
         if (!deps.archiveMemory) throw new Error("Memory Undo is unavailable.");
         return deps.archiveMemory({ ownerUserId: actorUserId, memoryId });
+      },
+    },
+    context_fact: {
+      async load(actorUserId, contextFactId, sourceRecordId) {
+        const current = await deps.getSelfContextFact?.({
+          ownerUserId: actorUserId,
+          contextFactId,
+        });
+        if (!current) throw new Error("That Self Context fact is no longer available.");
+        const groundedBy = current.provenance.sourceRecordId;
+        if (!groundedBy || !sourceRecordId || groundedBy !== sourceRecordId) {
+          throw new Error("That Self Context fact has different source evidence.");
+        }
+        return {
+          sourceRecordId: groundedBy,
+          status: current.lifecycle,
+          from: "Self Context" as const,
+          category: current.category,
+          content: current.content,
+          sensitivity: current.sensitivity,
+          updatedAt: current.updatedAt,
+        };
+      },
+      async archive(actorUserId, contextFactId, status, reference) {
+        if (!deps.getSelfContextFact || !deps.archiveSelfContextFact) {
+          throw new Error("Self Context correction is unavailable.");
+        }
+        const current = await deps.getSelfContextFact({
+          ownerUserId: actorUserId,
+          contextFactId,
+        });
+        if (!current) throw new Error("That Self Context fact is no longer available.");
+        assertSelfContextFactSource(current, reference?.sourceRecordId);
+        if (status === "archived" || current.lifecycle === "archived") return current;
+        return deps.archiveSelfContextFact({
+          actorUserId,
+          contextFactId,
+          expectedUpdatedAt: reference?.expectedUpdatedAt ?? current.updatedAt,
+        });
+      },
+      async undo(actorUserId, contextFactId, reference) {
+        return undoSelfContextFactForCapture({
+          deps,
+          actorUserId,
+          contextFactId,
+          reference,
+        });
       },
     },
     asset_review: {

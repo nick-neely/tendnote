@@ -2,11 +2,15 @@ import type {
   AssetSearchResult,
   CalendarEventSummary,
   CalendarReadResult,
+  ContextFact,
   ExactRecallResult,
   GlobalRecallResult,
   SavedItemSemanticResult,
+  SelfContextCategory,
   SemanticRetrievalResult,
 } from "@tendnote/domain";
+import { contextFactCategoryLabel } from "@tendnote/domain";
+import type { SelfContextExactResult } from "../context-facts/types";
 import type { ActiveFollowupSummary } from "../followups/types";
 import type { SavedItemWithContext } from "../saved-items/types";
 
@@ -124,6 +128,53 @@ export function toRelatedSavedItemResult(item: SavedItemSemanticResult): GlobalR
     href: `/saved-items#saved-item-${item.savedItemId}`,
     parent: null,
     details: { kind: null },
+  };
+}
+
+export type SelfContextResultSource = {
+  fact: Omit<
+    Pick<ContextFact, "id" | "category" | "content" | "lifecycle" | "sensitivity">,
+    "category"
+  > & {
+    category: SelfContextCategory;
+    provenance: Pick<ContextFact["provenance"], "channel" | "origin">;
+  };
+  matchedFields: readonly ("content" | "category")[];
+};
+
+export function toSelfContextResult(
+  source: SelfContextExactResult | SelfContextResultSource,
+): GlobalRecallResult {
+  const { fact, matchedFields } = source;
+  const categoryLabel = contextFactCategoryLabel(fact.category);
+  return {
+    family: "self_context",
+    canonical: { kind: "context_fact", id: fact.id },
+    label: fact.content,
+    supportingText: categoryLabel,
+    lifecycle: fact.lifecycle,
+    match: {
+      kind: "exact",
+      reason: matchedFields.length
+        ? `Matched Self Context ${matchedFields.join(" and ")}`
+        : "Matched Self Context",
+      excerpt: fact.content,
+    },
+    trust: "self_context",
+    sensitivity: fact.sensitivity,
+    visibility: { choice: "only_me", label: "Only me" },
+    grounding: [{ kind: "context_fact", id: fact.id }],
+    href: `/account/about-you#context-fact-${encodeURIComponent(fact.id)}`,
+    parent: null,
+    details: {
+      content: fact.content,
+      category: fact.category,
+      categoryLabel,
+      provenance: {
+        channel: fact.provenance.channel,
+        origin: fact.provenance.origin,
+      },
+    },
   };
 }
 

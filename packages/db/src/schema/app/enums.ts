@@ -4,6 +4,12 @@ export const accessStatus = pgEnum("access_status", ["pending", "granted", "deni
 
 export const accessSource = pgEnum("access_source", ["bootstrap", "manual_grant", "beta_flag"]);
 
+export const selfContextOnboardingStatus = pgEnum("self_context_onboarding_status", [
+  "not_started",
+  "dismissed",
+  "completed",
+]);
+
 export const relationshipType = pgEnum("relationship_type", [
   "friend",
   "family",
@@ -41,6 +47,25 @@ export const memoryType = pgEnum("memory_type", [
 ]);
 
 export const sensitivity = pgEnum("sensitivity", ["normal", "sensitive", "restricted"]);
+
+export const contextFactSubject = pgEnum("context_fact_subject", ["self", "household"]);
+
+export const contextFactCategory = pgEnum("context_fact_category", [
+  "background",
+  "work",
+  "location",
+  "interest",
+  "preference",
+  "constraint",
+  "composition",
+  "other",
+]);
+
+export const contextFactLifecycle = pgEnum("context_fact_lifecycle", [
+  "suggested",
+  "active",
+  "archived",
+]);
 
 export const confidence = pgEnum("confidence", ["low", "medium", "high"]);
 
@@ -271,6 +296,14 @@ export const extractionJobStatus = pgEnum("extraction_job_status", [
   "skipped",
 ]);
 
+export const contextFactExtractionJobStatus = pgEnum("context_fact_extraction_job_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "dead_lettered",
+]);
+
 export const semanticRecordKind = pgEnum("semantic_record_kind", [
   "memory",
   "source_record",
@@ -308,6 +341,7 @@ export const backgroundJobKind = pgEnum("background_job_kind", [
   "extraction",
   "embedding",
   "action_extraction",
+  "context_fact_extraction",
   "reminder_push",
 ]);
 

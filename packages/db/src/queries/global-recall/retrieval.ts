@@ -15,6 +15,7 @@ export type RecallSearchPlan = {
   savedItems: boolean;
   followups: boolean;
   calendar: boolean;
+  selfContext: boolean;
 };
 
 export function planRecallSearch(input: ParsedGlobalRecallInput): RecallSearchPlan {
@@ -26,6 +27,7 @@ export function planRecallSearch(input: ParsedGlobalRecallInput): RecallSearchPl
     savedItems: input.family === "all" || input.family === "saved_items",
     followups: input.family === "all" || input.family === "follow_ups",
     calendar: input.family === "all" || input.family === "calendar",
+    selfContext: input.family === "all" || input.family === "self_context",
   };
 }
 
@@ -91,14 +93,31 @@ export async function retrieveRecallSources(
     plan.calendar
       ? deps.readCalendar({ ownerUserId, query: input.query })
       : Promise.resolve({ connected: false, result: null }),
+    plan.selfContext && plan.exact
+      ? deps.searchSelfContextExact({
+          callerUserId: ownerUserId,
+          query: input.query,
+          directlyRequested: restricted.directlyRequested,
+          includeArchived: input.includeArchived,
+          limit: CANDIDATE_LIMIT,
+        })
+      : Promise.resolve([]),
   ] as const);
 }
 
 export type RecallRetrievalOutcomes = Awaited<ReturnType<typeof retrieveRecallSources>>;
 
 export function normalizeRecallSources(outcomes: RecallRetrievalOutcomes, plan: RecallSearchPlan) {
-  const [exact, related, assets, savedItemsExact, savedItemsRelated, followups, calendar] =
-    outcomes;
+  const [
+    exact,
+    related,
+    assets,
+    savedItemsExact,
+    savedItemsRelated,
+    followups,
+    calendar,
+    selfContext,
+  ] = outcomes;
   return {
     exact: exact.status === "fulfilled" ? exact.value : [],
     related:
@@ -115,6 +134,7 @@ export function normalizeRecallSources(outcomes: RecallRetrievalOutcomes, plan: 
         : [],
     followups: followups.status === "fulfilled" ? followups.value : [],
     calendar: calendar.status === "fulfilled" ? calendar.value : { connected: false, result: null },
+    selfContext: selfContext.status === "fulfilled" ? selfContext.value : [],
   };
 }
 

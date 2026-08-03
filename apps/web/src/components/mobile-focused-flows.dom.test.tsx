@@ -3,6 +3,7 @@ import { type ComponentProps, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, userEvent, waitFor, within } from "@/test/dom";
 import { expectRestrictedGateOpensOnRecordType } from "@/test/global-recall-filters";
+import { selfContextResult } from "@/test/global-recall-fixtures";
 import { ThemeProvider } from "./theme-provider";
 
 /**
@@ -169,7 +170,9 @@ describe("SearchFlow", () => {
     render(<SearchHarness search={vi.fn()} />);
 
     expect(await screen.findByText("Search your notebook")).toBeDefined();
-    expect(screen.getByText(/people, memories, follow-ups, and assets/)).toBeDefined();
+    expect(
+      screen.getByText(/people, Self Context, memories, follow-ups, and assets/),
+    ).toBeDefined();
   });
 
   it("keeps the restricted label a label and moves the reason into helper text", async () => {
@@ -222,5 +225,25 @@ describe("SearchFlow", () => {
     ]);
     // The person is still on each memory row, as the context line under it.
     expect(within(rows[1] as HTMLElement).getByText("Jordan Rivera")).toBeDefined();
+  });
+
+  it("keeps Self Context exact, categorized, private, and correction-linked", async () => {
+    const user = userEvent.setup();
+    const search = vi.fn().mockResolvedValue({
+      ok: true,
+      view: {
+        query: "software",
+        results: [selfContextResult()],
+        limitations: [],
+        hasMore: false,
+      },
+    });
+    render(<SearchHarness search={search} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Search Tendnote" }), "software");
+    const exact = within(await screen.findByRole("region", { name: "Exact matches" }));
+    const link = exact.getByRole("link", { name: /I run a software consultancy\.Work/ });
+    expect(link.getAttribute("href")).toBe("/account/about-you#context-fact-context-fact-1");
+    expect(link.parentElement?.parentElement?.textContent).toContain("Only me");
   });
 });

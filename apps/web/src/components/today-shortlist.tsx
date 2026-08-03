@@ -26,6 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
 import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 import {
@@ -396,7 +397,9 @@ function TodayShortlistContent({
                         wrapping folds the time field's own name into the label,
                         and the date trigger ends up called "Show again Time". */}
                     <div className="flex min-w-52 flex-1 flex-col gap-1 text-[length:var(--text-small)]">
-                      <label htmlFor={`today-later-${item.identity}`}>Show again</label>
+                      <Label className="font-normal" htmlFor={`today-later-${item.identity}`}>
+                        Show again
+                      </Label>
                       <DateTimePicker
                         // The form cannot be submitted without a date, so there
                         // is nothing for a clear button to mean here. Left

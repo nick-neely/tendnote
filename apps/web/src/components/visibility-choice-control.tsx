@@ -3,6 +3,7 @@
 import { VISIBILITY_CONTROL_OPTIONS, type VisibilityChoice } from "@tendnote/domain/privacy";
 import { useId } from "react";
 
+import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 export function VisibilityChoiceControl({
@@ -38,8 +39,8 @@ export function VisibilityChoiceControl({
         value={value}
       >
         {options.map((option) => (
-          <label
-            className="flex min-h-24 cursor-pointer flex-col gap-1 rounded-md border border-border bg-card p-3 text-sm transition-colors hover:border-primary/45 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-secondary"
+          <Label
+            className="min-h-24 cursor-pointer flex-col items-stretch gap-1 rounded-md border border-border bg-card p-3 text-sm font-normal transition-colors hover:border-primary/45 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-secondary"
             htmlFor={`${fieldId}-${option.choice}`}
             key={option.choice}
           >
@@ -48,7 +49,7 @@ export function VisibilityChoiceControl({
               {option.label}
             </span>
             <span className="text-muted-foreground text-xs leading-5">{option.description}</span>
-          </label>
+          </Label>
         ))}
       </RadioGroup>
     </fieldset>

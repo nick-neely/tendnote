@@ -16,6 +16,7 @@ import {
   useReminderInstallation,
 } from "@/components/reminder-installation-context";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { captureOutcomePresentation } from "@/lib/capture-outcome-presentation";
 import { useLocalComposerDraft } from "@/lib/local-composer-draft";
@@ -451,15 +452,20 @@ function CaptureCorrection({
   controller: ReturnType<typeof useCaptureController>;
 }) {
   const { change, state, update } = controller;
+  const correctionInputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    correctionInputRef.current?.focus();
+  }, []);
   return (
     <>
-      <label className="font-medium text-sm" htmlFor="mobile-capture-change">
+      <Label className="text-sm" htmlFor="mobile-capture-change">
         Rewrite what Tendnote saved
-      </label>
+      </Label>
       <Textarea
         className="min-h-40 resize-none rounded-xl p-4 leading-6 md:text-base"
         id="mobile-capture-change"
         onChange={(event) => update({ editText: event.target.value })}
+        ref={correctionInputRef}
         value={state.editText}
       />
       {state.failure === "change" ? (
@@ -614,8 +620,8 @@ function CaptureConfirmation({
       <h3 className="font-semibold text-xl">{state.undone ? "Capture undone" : "Capture saved"}</h3>
       {state.undone ? (
         <p className="text-muted-foreground text-sm">
-          Tendnote archived the {confirmation.destination} record. Your original capture is still
-          saved.
+          Tendnote applied the authoritative Undo to the {confirmation.destination} record. Your
+          original capture is still saved.
         </p>
       ) : state.editing ? (
         <CaptureCorrection controller={controller} />
@@ -646,9 +652,9 @@ function CaptureClarification({
   return (
     <div className="flex flex-1 flex-col gap-4">
       <p className="text-muted-foreground text-xs">Tendnote kept your original capture.</p>
-      <label className="font-medium text-sm" htmlFor="mobile-capture-clarification">
+      <Label className="text-sm" htmlFor="mobile-capture-clarification">
         {state.clarification.question}
-      </label>
+      </Label>
       <input
         className="min-h-11 rounded-xl border bg-background px-4 text-base outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
         id="mobile-capture-clarification"
@@ -720,9 +726,9 @@ function CaptureComposer({
           Unsaved draft restored on this device.
         </p>
       ) : null}
-      <label className="font-medium text-sm" htmlFor="mobile-capture-input">
+      <Label className="text-sm" htmlFor="mobile-capture-input">
         What should Tendnote keep?
-      </label>
+      </Label>
       {/* Capture is the point of this screen, so the writing surface takes the
           room instead of a fixed 150px box floating above ~400px of nothing.
           `field-sizing-fixed` hands sizing to the flex layout; the min-height is

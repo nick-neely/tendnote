@@ -61,7 +61,17 @@ export const captureExplicitOutcomeAction = unusedAction;
 export const changeExplicitCaptureOutcomeAction = unusedAction;
 export const changeExplicitCaptureReminderAction = unusedAction;
 export const undoExplicitCaptureOutcomeAction = unusedAction;
+export const createSelfContextFactAction = unusedAction;
+export const createOnboardingSelfContextFactAction = unusedAction;
+export const completeSelfContextOnboardingAction = unusedAction;
+export const dismissSelfContextOnboardingAction = unusedAction;
+export const archiveSelfContextFactAction = unusedAction;
+export const deleteSelfContextFactAction = unusedAction;
 export const globalRecallAction = unusedAction;
+export const restoreSelfContextFactAction = unusedAction;
+export const updateSelfContextFactAction = unusedAction;
+export const acceptSuggestedContextFactAction = unusedAction;
+export const dismissSuggestedContextFactAction = unusedAction;
 
 export const actOnTodayItemAction = unusedAction;
 export const refreshTodayAction = unusedAction;
@@ -88,7 +98,13 @@ export const setReminderInstallationPreviewModeAction = unusedAction;
 export const setReminderOptInDecisionAction = unusedAction;
 
 export function useRouter() {
-  return { refresh: () => {}, push: () => {} };
+  return {
+    refresh: () => {},
+    push: (href: string) => {
+      window.history.pushState({}, "", href);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    },
+  };
 }
 
 export function usePathname() {

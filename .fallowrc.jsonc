@@ -37,6 +37,8 @@
   "dynamicallyLoaded": [
     "apps/agent/agent/channels/**/*.ts",
     "apps/agent/agent/connections/**/*.ts",
+    "apps/agent/agent/hooks/**/*.ts",
+    "apps/agent/agent/instructions/**/*.ts",
     "apps/agent/agent/schedules/**/*.ts",
     "apps/agent/agent/sandbox/**/*.ts",
     "apps/agent/agent/subagents/**/agent.ts",

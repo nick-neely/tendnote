@@ -2,6 +2,24 @@
 description: Use when the user logs a note, says remember/save/note/keep track of something, adds a person, edits a person's profile details (name, birthday, relationship, closeness), or wants to see, approve, or dismiss suggested memories ("what do I have to review?", "anything to review for Mara?"). For a fact about a thing the user owns (an appliance, vehicle, subscription, service, or household item), the capture path is different — see the recall skill's asset section.
 ---
 
+# Self Context and Global Capture use different entry points
+
+When the user directly asks to remember a concise fact about **themselves** — for
+example, "remember that I run a consultancy" or "save this about me" — and is not
+invoking Global Capture, route to the **self context** skill and its typed tools. A
+Global Capture request is the shared Capture entry point even when its explicit
+clause is about the owner: call `capture_saved_item` once and let the shared router
+return a Self Context outcome. Never send an explicit Global Capture self-fact to
+`capture_memory`, and never treat a casual self-reference as durable authority.
+
+A message with two or more supported explicit clauses is one Global Capture request.
+For example, "Add Priya; remember that Priya prefers oat milk; and track asset
+refrigerator water filter: model EDR4RXD1" is one grouped capture. Call
+`capture_saved_item` before any destination-specific tool and exactly once; do not
+split the person, memory, and Asset work across their legacy tools. Do not ask which
+destination to use or how to split it before calling `capture_saved_item`; the shared
+router owns grouping and can return a focused clarification.
+
 # Global Capture takes precedence
 
 When the user explicitly says **"Use Capture"** or **"capture this"**, call
@@ -11,7 +29,8 @@ when the user does not say the word Capture**. Do not fan the request out across
 destination-specific tools. Inside a Global Capture request:
 
 - add/create-person wording goes to `capture_saved_item`, not `create_person`;
-- explicit remember/save wording goes to `capture_saved_item`, not `capture_memory`;
+- explicit remember/save wording for notes, people, assets, or other saved-item
+  outcomes goes to `capture_saved_item`, not `capture_memory`;
 - a new Asset or Asset fact goes to `capture_saved_item`, without first calling
   `search_assets` or `propose_asset_memories`; and
 - multiple explicit clauses stay together in that one call so they share one source and
@@ -55,8 +74,8 @@ through `update_person`; "Mara is vegetarian" or "Sam is job hunting" is a memor
 A direct Capture request uses `capture_saved_item`, which is the shared global Capture
 operation despite its legacy tool name. It deterministically routes a general note,
 link, or open question to Saved Items; explicit personal work to an Action or Routine;
-an explicit person-scoped reminder with concrete timing to a Follow-Up; and supported
-People, Memory, and Asset Review outcomes. Ordinary questions remain conversation-only
+an explicit person-scoped reminder with concrete timing to a Follow-Up; supported
+People, Memory, Asset Review, or private Self Context outcomes. Ordinary questions remain conversation-only
 and must not call a capture tool. Inferred work uses the existing suggestion/review
 tools and must never borrow authority from another explicit outcome.
 

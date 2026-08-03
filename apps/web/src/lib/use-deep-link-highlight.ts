@@ -49,7 +49,8 @@ export function useDeepLinkReveal(reveal: DeepLinkRevealer): void {
  * Scrolls to, focuses, and briefly highlights the element named by the current URL
  * hash — the landing half of a deep link (e.g. the Action Today surface links to
  * `/actions#action-<id>`, and this carries the arriving user to that exact row). Runs on
- * mount and on `hashchange`, so both a fresh navigation and an in-page hash change land.
+ * mount, `hashchange`, and same-document `popstate` navigation, so route transitions land
+ * after the destination has mounted as well as in-page hash changes.
  *
  * When the hash names nothing on the page it asks the registered surfaces
  * ({@link useDeepLinkReveal}) whether one of them can reveal it. A resolved Action lives in
@@ -66,6 +67,7 @@ export function useDeepLinkReveal(reveal: DeepLinkRevealer): void {
 export function useDeepLinkHighlight(): void {
   useEffect(() => {
     let stopWaiting: (() => void) | null = null;
+    let scheduledFrame: number | null = null;
 
     function landOn(target: HTMLElement) {
       // A target inside a collapsed native disclosure must be revealed before it can be
@@ -123,14 +125,24 @@ export function useDeepLinkHighlight(): void {
       }
     }
 
+    function scheduleHighlight() {
+      if (scheduledFrame !== null) cancelAnimationFrame(scheduledFrame);
+      scheduledFrame = requestAnimationFrame(() => {
+        scheduledFrame = null;
+        highlightFromHash();
+      });
+    }
+
     // A fresh navigation lands with the hash already set; wait a frame so the target
     // has mounted before scrolling.
-    const raf = requestAnimationFrame(highlightFromHash);
-    window.addEventListener("hashchange", highlightFromHash);
+    scheduleHighlight();
+    window.addEventListener("hashchange", scheduleHighlight);
+    window.addEventListener("popstate", scheduleHighlight);
     return () => {
-      cancelAnimationFrame(raf);
+      if (scheduledFrame !== null) cancelAnimationFrame(scheduledFrame);
       stopWaiting?.();
-      window.removeEventListener("hashchange", highlightFromHash);
+      window.removeEventListener("hashchange", scheduleHighlight);
+      window.removeEventListener("popstate", scheduleHighlight);
     };
   }, []);
 }

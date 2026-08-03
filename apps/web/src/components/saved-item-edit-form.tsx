@@ -7,6 +7,7 @@ import { pastReminderLeadTimeMessage } from "@/components/reminder-past-lead-rec
 import { Button } from "@/components/ui/button";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toReminderScheduleChoice } from "@/lib/reminder-schedule-view";
 import type { SavedItemView } from "@/lib/saved-item-view";
@@ -123,9 +124,9 @@ export function SavedItemEditForm({
           naming the single field had, so they stay distinct from the capture form's copy
           of this field sitting above the row. */}
       <div className="flex max-w-xs flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor={bringBackAtId}>
+        <Label className="text-sm" htmlFor={bringBackAtId}>
           Bring back
-        </label>
+        </Label>
         <DateTimePicker
           aria-label="Edit bring-back date"
           id={bringBackAtId}

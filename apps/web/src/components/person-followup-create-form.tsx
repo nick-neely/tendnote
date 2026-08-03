@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { VisibilityChoiceControl } from "@/components/visibility-choice-control";
 import type { FollowupView } from "@/lib/followup-view";
 import { useReminderSchedule } from "@/lib/use-reminder-schedule";
@@ -221,8 +222,8 @@ export function CreateFollowupForm({
                       // association the wrapped native input used to imply. Radix's
                       // checkbox is a button, so the checked card treatment keys off
                       // its `data-state` rather than `:checked`.
-                      <label
-                        className="flex min-h-16 cursor-pointer items-center gap-2 rounded-md border border-border bg-card p-3 text-sm transition-colors hover:border-primary/45 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-secondary"
+                      <Label
+                        className="min-h-16 cursor-pointer rounded-md border border-border bg-card p-3 text-sm font-normal transition-colors hover:border-primary/45 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-secondary"
                         htmlFor={checkboxId}
                         key={member.userId}
                       >
@@ -246,7 +247,7 @@ export function CreateFollowupForm({
                             {member.email}
                           </span>
                         </span>
-                      </label>
+                      </Label>
                     );
                   })}
                 </div>

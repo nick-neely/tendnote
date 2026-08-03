@@ -19,6 +19,8 @@ const admittedDecision: AccessDecision = {
     status: "granted",
     source: "bootstrap",
     grantedAt: new Date(),
+    selfContextOnboardingStatus: "not_started",
+    selfContextOnboardingReminderAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   },

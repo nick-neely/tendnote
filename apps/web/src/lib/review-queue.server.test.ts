@@ -5,10 +5,13 @@ const mocks = vi.hoisted(() => ({
   listActions: vi.fn(),
   listAssets: vi.fn(),
   listSources: vi.fn(),
+  listContextFacts: vi.fn(),
+  requireAdmittedOwner: vi.fn(),
   memoryView: vi.fn((result) => ({ memory: { id: result.memory.id } })),
   actionView: vi.fn((result) => ({ action: { id: result.action.id } })),
   assetView: vi.fn((result) => ({ groupId: result.group.id })),
   sourceView: vi.fn((result) => ({ sourceRecord: { id: result.sourceRecord.id } })),
+  contextFactView: vi.fn((result) => ({ fact: { id: result.fact.id } })),
 }));
 
 vi.mock("@tendnote/db/queries/memories", () => ({
@@ -20,6 +23,12 @@ vi.mock("@tendnote/db/queries/general-actions", () => ({
 vi.mock("@tendnote/db/queries/assets", () => ({ listAssetReviewGroups: mocks.listAssets }));
 vi.mock("@tendnote/db/queries/source-records", () => ({
   listSourceRecordReviews: mocks.listSources,
+}));
+vi.mock("@tendnote/db/queries/context-facts", () => ({
+  listSuggestedContextFactReviews: mocks.listContextFacts,
+}));
+vi.mock("@/lib/access/current-access", () => ({
+  requireAdmittedOwner: mocks.requireAdmittedOwner,
 }));
 vi.mock("@/lib/suggested-memory-review-view", () => ({
   toSuggestedMemoryReviewView: mocks.memoryView,
@@ -33,6 +42,9 @@ vi.mock("@/lib/asset-review-origin", () => ({
 vi.mock("@/lib/source-record-review-view", () => ({
   toSourceRecordReviewView: mocks.sourceView,
 }));
+vi.mock("@/lib/suggested-context-fact-review-view", () => ({
+  toSuggestedContextFactReviewView: mocks.contextFactView,
+}));
 
 import { loadOwnerReviewQueue, loadOwnerReviewQueueFamily } from "./review-queue.server";
 
@@ -42,6 +54,8 @@ beforeEach(() => {
   mocks.listActions.mockResolvedValue([]);
   mocks.listAssets.mockResolvedValue([]);
   mocks.listSources.mockResolvedValue([]);
+  mocks.listContextFacts.mockResolvedValue([]);
+  mocks.requireAdmittedOwner.mockResolvedValue("owner-1");
 });
 
 describe("owner Review Queue adapter", () => {
@@ -61,6 +75,7 @@ describe("owner Review Queue adapter", () => {
         unresolvedMentions: [{ id: "mention-1", mentionText: "Maya" }],
       },
     ]);
+    mocks.listContextFacts.mockResolvedValue([{ fact: { id: "context-1" } }]);
 
     const queue = await loadOwnerReviewQueue("owner-1");
 
@@ -68,12 +83,31 @@ describe("owner Review Queue adapter", () => {
     expect(mocks.listActions).toHaveBeenCalledWith({ ownerUserId: "owner-1", limit: 6 });
     expect(mocks.listAssets).toHaveBeenCalledWith({ ownerUserId: "owner-1", limit: 6 });
     expect(mocks.listSources).toHaveBeenCalledWith({ ownerUserId: "owner-1", limit: 6 });
+    expect(mocks.listContextFacts).toHaveBeenCalledWith(
+      { callerUserId: "owner-1" },
+      expect.any(Function),
+    );
     expect(queue.items.map(({ family, id }) => `${family}:${id}`)).toEqual([
       "suggested-memory:memory-1",
       "suggested-general-action:action-1",
       "asset-review-group:group-1",
       "source-record:source-1",
+      "suggested-context-fact:context-1",
     ]);
+  });
+
+  it("names the Context Fact caller without reading the request", async () => {
+    mocks.listContextFacts.mockResolvedValue([{ fact: { id: "context-1" } }]);
+
+    // Family loads run inside a `"use cache"` body, where `headers()` throws.
+    // Re-deriving the caller from the session there does not tighten the gate -
+    // it makes every load fail closed and drops Self Context out of Review.
+    const result = await loadOwnerReviewQueueFamily("owner-1", "suggested-context-fact");
+
+    expect(result.unavailable).toBe(false);
+    expect(mocks.requireAdmittedOwner).not.toHaveBeenCalled();
+    const resolveVerifiedCaller = mocks.listContextFacts.mock.calls.at(0)?.at(1);
+    await expect(resolveVerifiedCaller()).resolves.toBe("owner-1");
   });
 
   it("preserves successful query families when another query rejects", async () => {

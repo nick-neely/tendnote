@@ -3,6 +3,7 @@ import {
   type ConversationalCaptureChangeTarget,
   type ConversationalCaptureConfirmation,
   type ConversationalCaptureRoute,
+  type ConversationalCaptureUndoTarget,
   routeExplicitConversationalCapture,
   type SavedItemKind,
 } from "@tendnote/domain";
@@ -80,10 +81,12 @@ export async function resolveCompletedCaptureRoute(input: {
   ownerUserId: string;
   originalText: string;
   clarificationAnswer?: string;
+  allowSelfContext?: boolean;
 }) {
   const policyContext = await capturePolicyContext(input.deps, input.ownerUserId);
   const initialRoute = routeExplicitConversationalCapture({
     originalText: input.originalText,
+    allowSelfContext: input.allowSelfContext,
     ...policyContext,
   });
   const routingText = clarificationRoutingText({
@@ -93,6 +96,7 @@ export async function resolveCompletedCaptureRoute(input: {
   });
   const resolvedRoute = routeExplicitConversationalCapture({
     originalText: routingText,
+    allowSelfContext: input.allowSelfContext,
     ...policyContext,
   });
   return input.clarificationAnswer &&
@@ -163,6 +167,7 @@ export function routeDestinationLabel(route: ConversationalCaptureRoute) {
   }
   if (route.destination === "person") return "People" as const;
   if (route.destination === "memory") return "Memories" as const;
+  if (route.destination === "context_fact") return "Self Context" as const;
   if (route.destination === "asset_review") return "Review" as const;
   if (route.destination === "group") return "Grouped" as const;
   return null;
@@ -174,6 +179,7 @@ export function changeTargetKey(target: ConversationalCaptureChangeTarget) {
   if (target.kind === "edit_followup") return `${target.kind}:${target.followupId}`;
   if (target.kind === "edit_person") return `${target.kind}:${target.personId}`;
   if (target.kind === "edit_memory") return `${target.kind}:${target.memoryId}`;
+  if (target.kind === "edit_context_fact") return `${target.kind}:${target.contextFactId}`;
   return `${target.kind}:${target.groupId}`;
 }
 
@@ -232,5 +238,46 @@ export function followupConfirmation(input: {
     },
     change: { kind: "edit_followup", followupId: input.followupId },
     undo: { kind: "archive_followup", followupId: input.followupId },
+  };
+}
+
+export function contextFactConfirmation(input: {
+  sourceRecordId: string;
+  contextFactId: string;
+  route: Extract<ConversationalCaptureRoute, { destination: "context_fact" }>;
+  visibilityLabel?: string;
+  expectedUpdatedAt?: Date;
+  undo?: Extract<
+    ConversationalCaptureUndoTarget,
+    { kind: "archive_context_fact" | "edit_context_fact" }
+  >;
+}): ConversationalCaptureConfirmation {
+  return {
+    destination: "Self Context",
+    groundedBySourceRecordId: input.sourceRecordId,
+    interpreted: {
+      category: input.route.category,
+      content: input.route.content,
+      sensitivity: input.route.sensitivity,
+      scope: input.visibilityLabel ?? "Only me",
+    },
+    change: {
+      kind: "edit_context_fact",
+      contextFactId: input.contextFactId,
+      sourceRecordId: input.sourceRecordId,
+      ...(input.expectedUpdatedAt
+        ? { expectedUpdatedAt: input.expectedUpdatedAt.toISOString() }
+        : {}),
+    },
+    undo:
+      input.undo ??
+      ({
+        kind: "archive_context_fact",
+        contextFactId: input.contextFactId,
+        sourceRecordId: input.sourceRecordId,
+        ...(input.expectedUpdatedAt
+          ? { expectedUpdatedAt: input.expectedUpdatedAt.toISOString() }
+          : {}),
+      } as const),
   };
 }

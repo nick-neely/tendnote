@@ -1,5 +1,6 @@
 import { searchAssetsWithStatus } from "./asset-search";
 import { createDefaultGoogleCalendarReader, readConnectedOwnerCalendar } from "./calendar";
+import { searchSelfContextFacts } from "./context-facts";
 import { searchFollowups } from "./followups";
 import { createGlobalRecall } from "./global-recall/queries";
 import type { GlobalRecallDependencies, SearchGlobalRecallRequest } from "./global-recall/types";
@@ -8,12 +9,24 @@ import { searchSavedItems } from "./saved-items";
 import { searchSavedItemsSemantic, searchSemanticContext } from "./semantic-retrieval";
 
 export { createGlobalRecall } from "./global-recall/queries";
+export { toSelfContextResult } from "./global-recall/result-normalizers";
 export type * from "./global-recall/types";
 
 const calendarReader = createDefaultGoogleCalendarReader();
 
 export function createDefaultGlobalRecall(overrides: Partial<GlobalRecallDependencies> = {}) {
   return createGlobalRecall({
+    searchSelfContextExact: ({ callerUserId, query, directlyRequested, includeArchived, limit }) =>
+      searchSelfContextFacts(
+        {
+          callerUserId,
+          query,
+          directlyRequested,
+          includeArchived,
+          limit,
+        },
+        async () => callerUserId,
+      ),
     searchRelationshipExact: (input) =>
       searchRelationshipContext({ ...input, includeReviewGated: false }),
     searchRelationshipRelated: (input) =>

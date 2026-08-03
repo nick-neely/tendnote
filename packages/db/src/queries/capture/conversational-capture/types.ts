@@ -1,6 +1,10 @@
 import type {
   AssetKind,
   AssetStatus,
+  ContextFact,
+  ContextFactCategory,
+  ContextFactSensitivity,
+  ContextFactView,
   ConversationalCaptureClarification,
   ConversationalCaptureConfirmation,
   ConversationalCaptureRequest,
@@ -27,6 +31,7 @@ export type ConversationalCaptureResult = {
   person?: CapturePerson;
   memory?: CaptureMemory;
   assetReview?: CaptureAssetReview;
+  contextFact?: ContextFactView;
   outcomes?: CaptureOutcomeResult[];
   reminderSchedule?: ReminderScheduleChoice;
   affectedScopes?: AffectedScope[];
@@ -83,7 +88,20 @@ export type CaptureOutcomeResult =
       kind: "asset_review";
       assetReview: CaptureAssetReview;
       evidence?: CaptureAssetReview["evidence"];
-    });
+    })
+  | (CaptureOutcomeBase & { kind: "context_fact"; contextFact: ContextFactView });
+
+export type CaptureContextFact = Pick<
+  ContextFact,
+  | "id"
+  | "subject"
+  | "category"
+  | "content"
+  | "lifecycle"
+  | "sensitivity"
+  | "provenance"
+  | "updatedAt"
+>;
 
 export type CaptureVisibility = {
   scope: PrivacyScope;
@@ -251,6 +269,30 @@ export type ConversationalCaptureDeps = {
     actorUserId: string;
     followupId: string;
   }) => Promise<MutationOutcome<CaptureFollowup>>;
+  createSelfContextFact?: (input: {
+    ownerUserId: string;
+    category: Exclude<ContextFactCategory, "composition">;
+    content: string;
+    sensitivity: ContextFactSensitivity;
+    sourceRecordId: string;
+  }) => Promise<MutationOutcome<ContextFactView>>;
+  getSelfContextFact?: (input: {
+    ownerUserId: string;
+    contextFactId: string;
+  }) => Promise<CaptureContextFact | null>;
+  updateSelfContextFact?: (input: {
+    actorUserId: string;
+    contextFactId: string;
+    category: Exclude<ContextFactCategory, "composition">;
+    content: string;
+    sensitivity: ContextFactSensitivity;
+    expectedUpdatedAt?: Date;
+  }) => Promise<MutationOutcome<ContextFactView>>;
+  archiveSelfContextFact?: (input: {
+    actorUserId: string;
+    contextFactId: string;
+    expectedUpdatedAt?: Date;
+  }) => Promise<MutationOutcome<ContextFactView>>;
   searchPeople?: (input: {
     ownerUserId: string;
     query: string;

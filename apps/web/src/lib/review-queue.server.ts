@@ -1,4 +1,5 @@
 import { listAssetReviewGroups } from "@tendnote/db/queries/assets";
+import { listSuggestedContextFactReviews } from "@tendnote/db/queries/context-facts";
 import { listSuggestedGeneralActionReviews } from "@tendnote/db/queries/general-actions";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { listSourceRecordReviews } from "@tendnote/db/queries/source-records";
@@ -11,8 +12,26 @@ import {
   type ReviewQueueItem,
 } from "@/lib/review-queue";
 import { toSourceRecordReviewView } from "@/lib/source-record-review-view";
+import { toSuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 import { toSuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 import { toSuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
+
+/**
+ * Names the caller the Context Fact gate checks against.
+ *
+ * Every family here is handed an `ownerUserId` its caller already resolved
+ * through `requireAdmittedOwner`, and the four other loaders simply trust it.
+ * This one has to say so out loud because the Context Fact queries take a
+ * verifier rather than a bare id.
+ *
+ * It must not re-derive the caller from the request. Family loads run inside the
+ * `"use cache"` body in `lib/cache/today-review-views.ts`, where `headers()`
+ * throws — so reaching for the session here did not tighten the gate, it made
+ * every load throw and left Self Context permanently absent from Review.
+ */
+function reviewQueueCaller(ownerUserId: string) {
+  return async () => ownerUserId;
+}
 
 const dependencies: ReviewQueueDependencies = {
   async loadMemories({ ownerUserId, limit }) {
@@ -59,6 +78,19 @@ const dependencies: ReviewQueueDependencies = {
         }),
       );
   },
+  async loadContextFacts({ ownerUserId, limit }) {
+    const reviews = await listSuggestedContextFactReviews(
+      { callerUserId: ownerUserId },
+      reviewQueueCaller(ownerUserId),
+    );
+    return reviews.slice(0, limit).map(
+      (review): ReviewQueueItem => ({
+        family: "suggested-context-fact",
+        id: review.fact.id,
+        review: toSuggestedContextFactReviewView(review),
+      }),
+    );
+  },
 };
 
 /**
@@ -77,7 +109,9 @@ export async function loadOwnerReviewQueueFamily(
         ? dependencies.loadGeneralActions
         : family === "asset-review-group"
           ? dependencies.loadAssetGroups
-          : dependencies.loadSourceRecords;
+          : family === "source-record"
+            ? dependencies.loadSourceRecords
+            : dependencies.loadContextFacts;
   try {
     return { family, items: await loader({ ownerUserId, limit: 6 }), unavailable: false };
   } catch (error) {
