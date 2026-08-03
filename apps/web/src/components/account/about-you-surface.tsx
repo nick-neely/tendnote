@@ -25,6 +25,7 @@ import {
   restoreSelfContextFactAction,
   updateSelfContextFactAction,
 } from "@/app/actions/context-facts";
+import { ChevronDownIcon } from "@/components/icons";
 import { SuggestedContextFactReviewCard } from "@/components/suggested-context-fact-review";
 import {
   AlertDialog,
@@ -38,12 +39,21 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   contextFactCategoryLabel,
   contextFactProvenanceLabel,
+  contextFactSensitivityHint,
   contextFactSensitivityLabel,
   formatContextFactDate,
   isActiveSelfContextFact,
@@ -55,12 +65,14 @@ import {
   type SelfContextFactMutationResult,
   type SelfContextFactMutationView,
   selfContextCategories,
+  selfContextSensitivityOptions,
 } from "@/lib/context-fact-view";
 import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 import { ReversibleMutationProvider, useReversibleMutation } from "@/lib/reversible-mutation";
 import type { SuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 import { useDeepLinkReveal } from "@/lib/use-deep-link-highlight";
+import { cn } from "@/lib/utils";
 
 type CreateAction = (input: SelfContextFactActionInput) => Promise<SelfContextFactMutationResult>;
 type UpdateAction = (
@@ -388,40 +400,55 @@ function AboutYouSurfaceContent({
       ) : null}
 
       {archivedFacts.length > 0 ? (
-        <section aria-labelledby="about-you-archived-heading" className="flex flex-col gap-2">
-          <Button
-            aria-expanded={showArchived}
-            className="min-h-11 w-full justify-between px-3.5 sm:w-auto"
-            onClick={() => setShowArchived((current) => !current)}
-            type="button"
-            variant="outline"
+        <section aria-labelledby="about-you-archived-heading">
+          {/* Collapsible owns the trigger/panel wiring the hand-rolled `aria-expanded`
+              button did. It unmounts the closed panel, which is exactly what the
+              deep-link reveal contract expects of an archived row. */}
+          <Collapsible
+            className="flex min-w-0 flex-col gap-2"
+            onOpenChange={setShowArchived}
+            open={showArchived}
           >
-            <span id="about-you-archived-heading">
-              {showArchived
-                ? "Hide archived facts"
-                : `Show archived facts (${archivedFacts.length})`}
-            </span>
-            <span aria-hidden>{showArchived ? "↑" : "↓"}</span>
-          </Button>
-          {showArchived ? (
-            <div className="min-w-0 divide-y rounded-lg border border-dashed bg-surface">
-              {archivedFacts.map((fact) => (
-                <ContextFactRow
-                  archiveAction={archiveAction}
-                  deleteAction={deleteAction}
-                  fact={fact}
-                  key={fact.id}
-                  onDeleted={removeFact}
-                  onFactChanged={applyFact}
-                  onEdit={openEdit}
-                  onRevealArchived={() => setShowArchived(true)}
-                  onRestoreFocus={() => addButtonRef.current?.focus()}
-                  onStatus={setAnnouncement}
-                  restoreAction={restoreAction}
+            <CollapsibleTrigger asChild>
+              <Button
+                className="min-h-11 w-full justify-between px-3.5 sm:w-auto"
+                type="button"
+                variant="outline"
+              >
+                <span id="about-you-archived-heading">
+                  {showArchived
+                    ? "Hide archived facts"
+                    : `Show archived facts (${archivedFacts.length})`}
+                </span>
+                <ChevronDownIcon
+                  aria-hidden
+                  className={cn(
+                    "shrink-0 text-muted-foreground transition-transform duration-150 ease-(--motion-ease-out) motion-reduce:transition-none",
+                    showArchived && "rotate-180",
+                  )}
                 />
-              ))}
-            </div>
-          ) : null}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="min-w-0">
+              <div className="min-w-0 divide-y rounded-lg border border-dashed bg-surface">
+                {archivedFacts.map((fact) => (
+                  <ContextFactRow
+                    archiveAction={archiveAction}
+                    deleteAction={deleteAction}
+                    fact={fact}
+                    key={fact.id}
+                    onDeleted={removeFact}
+                    onFactChanged={applyFact}
+                    onEdit={openEdit}
+                    onRevealArchived={() => setShowArchived(true)}
+                    onRestoreFocus={() => addButtonRef.current?.focus()}
+                    onStatus={setAnnouncement}
+                    restoreAction={restoreAction}
+                  />
+                ))}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </section>
       ) : null}
     </section>
@@ -718,6 +745,7 @@ export function ContextFactEditor({
   const contentId = `${editorId}-content`;
   const categoryId = `${editorId}-category`;
   const sensitivityId = `${editorId}-sensitivity`;
+  const sensitivityHintId = `${editorId}-sensitivity-hint`;
   const helperId = `${editorId}-helper`;
   const errorId = `${editorId}-error`;
   const [draft, setDraft] = useState<SelfContextFactDraft>(() =>
@@ -824,44 +852,61 @@ export function ContextFactEditor({
         <div className="grid min-w-0 gap-4 sm:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-1.5">
             <Label htmlFor={categoryId}>Category</Label>
-            <select
-              className="min-h-11 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
+            <Select
               disabled={pending}
-              id={categoryId}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  category: event.target.value as SelfContextCategory,
-                }))
+              onValueChange={(value) =>
+                setDraft((current) => ({ ...current, category: value as SelfContextCategory }))
               }
               value={draft.category}
             >
-              {categoryOptions.map((category) => (
-                <option key={category.value} value={category.value}>
-                  {category.label}
-                </option>
-              ))}
-            </select>
+              {/* `w-full` because the trigger is `w-fit` by default and this one owns a
+                  form column; `min-h-11` because the shared `h-8` sizing is below the
+                  touch target every control on this surface holds to. */}
+              <SelectTrigger className="min-h-11 w-full" id={categoryId}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {categoryOptions.map((category) => (
+                  <SelectItem key={category.value} value={category.value}>
+                    {category.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex min-w-0 flex-col gap-1.5">
             <Label htmlFor={sensitivityId}>Sensitivity</Label>
-            <select
-              className="min-h-11 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
+            <Select
               disabled={pending}
-              id={sensitivityId}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  sensitivity: event.target.value as Sensitivity,
-                }))
+              onValueChange={(value) =>
+                setDraft((current) => ({ ...current, sensitivity: value as Sensitivity }))
               }
               value={draft.sensitivity}
             >
-              <option value="normal">Normal — may help with relevant orientation</option>
-              <option value="sensitive">Sensitive — use carefully when relevant</option>
-              <option value="restricted">Restricted — only for a direct relevant request</option>
-            </select>
+              <SelectTrigger
+                aria-describedby={sensitivityHintId}
+                className="min-h-11 w-full"
+                id={sensitivityId}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {selfContextSensitivityOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* The level's meaning lives beside the field rather than inside the option
+                labels, which a trigger would clip to one line. */}
+            <p
+              className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground"
+              id={sensitivityHintId}
+            >
+              {contextFactSensitivityHint(draft.sensitivity)}
+            </p>
           </div>
         </div>
 

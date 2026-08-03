@@ -33,7 +33,8 @@ vi.mock("@/components/account/about-you-surface", () => ({
 }));
 
 import { renderToStaticMarkup } from "react-dom/server";
-import { AboutYouContent, AboutYouLoading } from "./page";
+import { RouteReserve } from "@/components/route-reserve";
+import { AboutYouContent } from "./page";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -44,7 +45,11 @@ beforeEach(() => {
 
 describe("About you route", () => {
   it("has a truthful loading reserve for the focused destination", () => {
-    expect(renderToStaticMarkup(AboutYouLoading())).toContain("About you");
+    // The route streams behind `AdmittedRoute`'s reserve rather than a second
+    // hand-built skeleton, so the destination registration is what has to be true.
+    expect(renderToStaticMarkup(<RouteReserve destination="account-about-you" />)).toContain(
+      "About you",
+    );
   });
 
   it("re-resolves the admitted caller for the Self Context read", async () => {

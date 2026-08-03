@@ -9,7 +9,7 @@ import { ReminderSettings } from "@/components/account/reminder-settings";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { appDestination } from "@/components/app-destinations";
 import { SignOutButton } from "@/components/auth/sign-out-button";
-import { CheckIcon } from "@/components/icons";
+import { CheckIcon, ChevronRightIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { localFallbackOwnerUserId } from "@/lib/access/access-state";
 import { resolveAccountView } from "@/lib/access/account-summary";
@@ -109,9 +109,7 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
               Keep a few private facts that help Eve understand you.
             </span>
           </span>
-          <span aria-hidden className="shrink-0 text-muted-foreground">
-            →
-          </span>
+          <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground/60" />
         </Link>
       </section>
 

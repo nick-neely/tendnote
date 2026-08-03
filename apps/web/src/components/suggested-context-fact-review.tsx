@@ -17,12 +17,22 @@ import {
 } from "@/components/suggestion-review-controls";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   contextFactCategoryLabel,
   contextFactProvenanceLabel,
+  contextFactSensitivityHint,
   contextFactSensitivityLabel,
   type SelfContextCategory,
+  selfContextCategories,
+  selfContextSensitivityOptions,
 } from "@/lib/context-fact-view";
 import {
   REVERSIBLE_MUTATION_TRANSITION_MS,
@@ -45,7 +55,15 @@ const sensitivityRank: Record<Sensitivity, number> = {
   restricted: 2,
 };
 
-const sensitivityOptions: readonly Sensitivity[] = ["normal", "sensitive", "restricted"];
+/**
+ * Reviewing a suggestion may tighten how carefully a fact is used, never loosen
+ * it, so the offered levels start at whatever the suggestion already carries.
+ */
+function allowedSensitivityOptions(floor: Sensitivity) {
+  return selfContextSensitivityOptions.filter(
+    (option) => sensitivityRank[option.value] >= sensitivityRank[floor],
+  );
+}
 
 type SuggestedContextFactEditFormProps = {
   fact: ContextFactView;
@@ -80,41 +98,53 @@ function SuggestedContextFactEditForm({
     <form className="flex min-w-0 flex-col gap-3" onSubmit={onSubmit}>
       <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor={`${fact.id}-suggested-category`}>Category</Label>
-        <select
-          className="min-h-11 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
+        <Select
           disabled={pending}
-          id={`${fact.id}-suggested-category`}
-          onChange={(event) => onCategoryChange(event.target.value as SelfContextCategory)}
+          onValueChange={(value) => onCategoryChange(value as SelfContextCategory)}
           value={draftCategory}
         >
-          <option value="background">Background</option>
-          <option value="work">Work</option>
-          <option value="location">Location</option>
-          <option value="interest">Interest</option>
-          <option value="preference">Preference</option>
-          <option value="constraint">Constraint</option>
-          <option value="other">Other</option>
-        </select>
+          {/* `w-full` because the trigger is `w-fit` by default and this one owns a
+              form row; `min-h-11` restores the touch target the shared `h-8` drops. */}
+          <SelectTrigger className="min-h-11 w-full" id={`${fact.id}-suggested-category`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {selfContextCategories.map((category) => (
+              <SelectItem key={category.value} value={category.value}>
+                {category.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor={`${fact.id}-suggested-sensitivity`}>Sensitivity</Label>
-        <select
-          className="min-h-11 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
+        <Select
           disabled={pending}
-          id={`${fact.id}-suggested-sensitivity`}
-          onChange={(event) => onSensitivityChange(event.target.value as Sensitivity)}
+          onValueChange={(value) => onSensitivityChange(value as Sensitivity)}
           value={draftSensitivity}
         >
-          {sensitivityOptions
-            .filter(
-              (sensitivity) => sensitivityRank[sensitivity] >= sensitivityRank[fact.sensitivity],
-            )
-            .map((sensitivity) => (
-              <option key={sensitivity} value={sensitivity}>
-                {sensitivity[0]?.toUpperCase() + sensitivity.slice(1)}
-              </option>
+          <SelectTrigger
+            aria-describedby={`${fact.id}-suggested-sensitivity-hint`}
+            className="min-h-11 w-full"
+            id={`${fact.id}-suggested-sensitivity`}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {allowedSensitivityOptions(fact.sensitivity).map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
             ))}
-        </select>
+          </SelectContent>
+        </Select>
+        <p
+          className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground"
+          id={`${fact.id}-suggested-sensitivity-hint`}
+        >
+          {contextFactSensitivityHint(draftSensitivity)}
+        </p>
       </div>
       <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor={`${fact.id}-suggested-content`}>Suggested fact</Label>

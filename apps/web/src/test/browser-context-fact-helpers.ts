@@ -15,6 +15,16 @@ export async function focusAndPressEnter(control: ReturnType<typeof page.getByRo
   });
 }
 
+/**
+ * Drives a `Select`: open the trigger, then pick the item by its visible label.
+ * The listbox is portalled, so the option is queried from the page rather than
+ * from inside the field.
+ */
+export async function chooseBrowserSelectOption(field: string, option: string) {
+  await clickBrowserControl(page.getByRole("combobox", { name: field }));
+  await clickBrowserControl(page.getByRole("option", { name: option }));
+}
+
 export async function expectTouchTargetButtons(names: string[]) {
   for (const name of names) {
     const box = (await page.getByRole("button", { name }).element()).getBoundingClientRect();

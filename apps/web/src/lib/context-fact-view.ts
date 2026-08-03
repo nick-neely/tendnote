@@ -13,6 +13,26 @@ export const selfContextCategories = selfContextCategoryValues.map((value) => ({
   label: domainContextFactCategoryLabel(value),
 }));
 
+/**
+ * Sensitivity in the order it escalates, paired with what each level means for
+ * how Eve may use the fact. The label stays a single word because it is what a
+ * `Select` trigger has room to show; the meaning travels as a separate `hint`
+ * that a field can render beside the control instead of truncating inside it.
+ */
+export const selfContextSensitivityOptions: readonly {
+  value: Sensitivity;
+  label: string;
+  hint: string;
+}[] = [
+  { value: "normal", label: "Normal", hint: "May help with relevant orientation." },
+  { value: "sensitive", label: "Sensitive", hint: "Used carefully, only when relevant." },
+  { value: "restricted", label: "Restricted", hint: "Only for a direct, relevant request." },
+];
+
+export function contextFactSensitivityHint(sensitivity: Sensitivity): string {
+  return selfContextSensitivityOptions.find((option) => option.value === sensitivity)?.hint ?? "";
+}
+
 export type SelfContextFactMutationDecision = ContextFactMutationDecision;
 
 export type SelfContextFactMutationView = {
@@ -35,9 +55,7 @@ export function contextFactCategoryLabel(category: SelfContextCategory): string 
 }
 
 export function contextFactSensitivityLabel(sensitivity: Sensitivity): string {
-  if (sensitivity === "sensitive") return "Sensitive";
-  if (sensitivity === "restricted") return "Restricted";
-  return "Normal";
+  return selfContextSensitivityOptions.find((option) => option.value === sensitivity)?.label ?? "";
 }
 
 export function contextFactProvenanceLabel(fact: ContextFactView): string {

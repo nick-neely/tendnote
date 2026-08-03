@@ -5,7 +5,6 @@ import {
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
-import { Suspense } from "react";
 import { AboutYouSurface } from "@/components/account/about-you-surface";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { appDestination } from "@/components/app-destinations";
@@ -16,9 +15,7 @@ import { toSuggestedContextFactReviewView } from "@/lib/suggested-context-fact-r
 export default function AboutYouPage() {
   return (
     <AdmittedRoute destination="account-about-you">
-      <Suspense fallback={<AboutYouLoading />}>
-        <AboutYouContent />
-      </Suspense>
+      <AboutYouContent />
     </AdmittedRoute>
   );
 }
@@ -46,27 +43,6 @@ export async function AboutYouContent() {
     unstable_rethrow(error);
     return <AboutYouUnavailable />;
   }
-}
-
-export function AboutYouLoading() {
-  return (
-    <section
-      aria-busy="true"
-      aria-label="About you loading"
-      className="mx-auto flex min-w-0 w-full max-w-2xl flex-col gap-6"
-    >
-      <header className="flex flex-col gap-2">
-        <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold">
-          About you
-        </h1>
-        <div className="h-4 w-2/3 max-w-full animate-pulse rounded bg-muted" />
-      </header>
-      <div className="grid gap-3">
-        <div className="h-24 rounded-xl border bg-muted/40" />
-        <div className="h-24 rounded-xl border bg-muted/40" />
-      </div>
-    </section>
-  );
 }
 
 function AboutYouUnavailable() {

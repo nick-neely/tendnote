@@ -28,6 +28,12 @@ vi.mock("@/app/actions/context-fact-review", () => ({
     dismissSuggestedContextFactAction(...args),
 }));
 
+// The category and sensitivity fields are Radix `Select`s, which reach for pointer
+// capture and scroll positioning that jsdom does not implement.
+HTMLElement.prototype.scrollIntoView ??= vi.fn();
+HTMLElement.prototype.hasPointerCapture ??= vi.fn();
+HTMLElement.prototype.releasePointerCapture ??= vi.fn();
+
 import { AboutYouSurface } from "./about-you-surface";
 
 const FACT_ID = "00000000-0000-4000-8000-000000000001";
@@ -71,6 +77,16 @@ function suggestedReview(
     activeMatch: null,
     ...overrides,
   };
+}
+
+/** Drives a `Select`: open the trigger, then pick the item by its visible label. */
+async function chooseOption(
+  user: ReturnType<typeof userEvent.setup>,
+  field: string,
+  option: string,
+) {
+  await user.click(screen.getByRole("combobox", { name: field }));
+  await user.click(await screen.findByRole("option", { name: option }));
 }
 
 beforeEach(() => {
@@ -195,12 +211,12 @@ describe("AboutYouSurface", () => {
     expect(screen.getByText(/private to you/i)).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Add a fact" }));
-    await user.selectOptions(screen.getByRole("combobox", { name: "Category" }), "interest");
+    await chooseOption(user, "Category", "Interest");
     await user.type(
       screen.getByRole("textbox", { name: "Fact" }),
       "Client draft that the server will canonicalize.",
     );
-    await user.selectOptions(screen.getByRole("combobox", { name: "Sensitivity" }), "sensitive");
+    await chooseOption(user, "Sensitivity", "Sensitive");
     await user.click(screen.getByRole("button", { name: "Save fact" }));
 
     await waitFor(() =>
@@ -231,8 +247,8 @@ describe("AboutYouSurface", () => {
     await user.click(screen.getByRole("button", { name: "Edit Work fact" }));
     await user.clear(screen.getByRole("textbox", { name: "Fact" }));
     await user.type(screen.getByRole("textbox", { name: "Fact" }), "A client draft");
-    await user.selectOptions(screen.getByRole("combobox", { name: "Category" }), "preference");
-    await user.selectOptions(screen.getByRole("combobox", { name: "Sensitivity" }), "restricted");
+    await chooseOption(user, "Category", "Preference");
+    await chooseOption(user, "Sensitivity", "Restricted");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() =>

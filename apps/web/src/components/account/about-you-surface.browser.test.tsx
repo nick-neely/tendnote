@@ -5,6 +5,7 @@ import { page, userEvent } from "vitest/browser";
 import type { SuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 import { renderInBrowser } from "@/test/browser";
 import {
+  chooseBrowserSelectOption,
   clickBrowserControl,
   expectFailedFocusedMutation,
   expectTouchTargetButtons,
@@ -144,14 +145,11 @@ describe("About you browser contract", () => {
       expect(box.height).toBeGreaterThanOrEqual(44);
     }
 
+    await chooseBrowserSelectOption("Sensitivity", "Sensitive");
     await act(async () => {
       await userEvent.fill(
         page.getByRole("textbox", { name: "Fact" }),
         "Keep this editable draft while the service recovers.",
-      );
-      await userEvent.selectOptions(
-        page.getByRole("combobox", { name: "Sensitivity" }),
-        "sensitive",
       );
       await userEvent.keyboard("{Tab}");
     });
@@ -287,12 +285,9 @@ describe("About you browser contract", () => {
     await clickBrowserControl(page.getByRole("button", { name: "Edit Work fact" }));
     await act(async () => {
       await userEvent.fill(page.getByRole("textbox", { name: "Fact" }), "A client draft");
-      await userEvent.selectOptions(page.getByRole("combobox", { name: "Category" }), "preference");
-      await userEvent.selectOptions(
-        page.getByRole("combobox", { name: "Sensitivity" }),
-        "restricted",
-      );
     });
+    await chooseBrowserSelectOption("Category", "Preference");
+    await chooseBrowserSelectOption("Sensitivity", "Restricted");
     await clickBrowserControl(page.getByRole("button", { name: "Save changes" }));
 
     await expect.element(page.getByText(returned.content)).toBeVisible();
