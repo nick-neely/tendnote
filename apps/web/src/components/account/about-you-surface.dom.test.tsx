@@ -180,7 +180,7 @@ describe("AboutYouSurface", () => {
           }),
           fact({
             id: "00000000-0000-4000-8000-000000000004",
-            subject: { kind: "household" },
+            subject: { kind: "household", householdId: "household-1" },
             category: "other",
             content: "This must stay off About you.",
           }),

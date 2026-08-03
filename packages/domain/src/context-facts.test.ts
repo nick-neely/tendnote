@@ -234,5 +234,14 @@ describe("Context Fact domain contract", () => {
     expect(view).not.toHaveProperty("lastActorUserId");
     expect(view.provenance).not.toHaveProperty("sourceRecordId");
     expect(view).not.toHaveProperty("suggestionEvidence");
+
+    const householdView = toContextFactView(
+      contextFactSchema.parse({
+        ...parsed,
+        id: "household-fact-1",
+        subject: { kind: "household", householdId: "household-1" },
+      }),
+    );
+    expect(householdView.subject).toEqual({ kind: "household", householdId: "household-1" });
   });
 });

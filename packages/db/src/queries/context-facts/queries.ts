@@ -1,10 +1,10 @@
 import {
+  archiveContextFactInputSchema,
   archiveSelfContextFactInputSchema,
   buildOrientationContext,
   type ContextFact,
   ContextFactConflictError,
   ContextFactValidationError,
-  canUseContextFactForOrientation,
   canViewContextFact,
   contextFactCategoryLabel,
   contextFactSchema,
@@ -12,6 +12,7 @@ import {
   createContextFactInputSchema,
   createSelfContextFactInputSchema,
   deleteSelfContextFactInputSchema,
+  isContextFactCategoryAllowedForSubject,
   isDuplicateContextFact,
   isLikelyConflictingContextFact,
   normalizeContextFactContent,
@@ -19,11 +20,13 @@ import {
   restoreSelfContextFactInputSchema,
   type SelfContextCategory,
   toContextFactView,
+  updateContextFactInputSchema,
   updateSelfContextFactInputSchema,
 } from "@tendnote/domain";
 import { affectedScopesForContextFact } from "../affected-scopes";
 import { createContextFactReviewQueries } from "./review-queries";
 import type {
+  ArchiveContextFactMutationInput,
   ContextFactAuditLogInput,
   ContextFactDeleteMutationOutcome,
   ContextFactMutationOutcome,
@@ -36,13 +39,17 @@ import type {
   ListContextFactsInput,
   SearchSelfContextFactsInput,
   SelfContextExactResult,
+  UpdateContextFactMutationInput,
   UpdateSelfContextFactMutationInput,
 } from "./types";
 
-function scopedSubjectFilter(subject: ContextFact["subject"]) {
+function callerScopedSubjectFilter(subject: ContextFact["subject"], callerUserId: string) {
   return subject.kind === "self"
     ? { subjectUserId: subject.userId }
-    : { householdIds: [subject.householdId] };
+    : {
+        householdIds: [subject.householdId],
+        activeHouseholdMemberUserId: callerUserId,
+      };
 }
 
 function sameInstant(left: Date | undefined, right: Date | null): boolean {
@@ -116,13 +123,14 @@ export function createContextFactQueries(
 
   async function findActiveMatch(input: {
     subject: ContextFact["subject"];
+    callerUserId: string;
     category: ContextFact["category"];
     content: string;
     sensitivity: ContextFact["sensitivity"];
     excludingId?: string;
   }) {
     const activeFacts = await store.listContextFacts({
-      ...scopedSubjectFilter(input.subject),
+      ...callerScopedSubjectFilter(input.subject, input.callerUserId),
       lifecycle: "active",
     });
     const candidate = {
@@ -191,6 +199,7 @@ export function createContextFactQueries(
       entityType: "context_fact",
       entityId: input.fact.id,
       metadataJson: {
+        actorUserId: input.ownerUserId,
         subjectKind: input.fact.subject.kind,
         subjectId: contextFactSubjectId(input.fact.subject),
         category: input.fact.category,
@@ -245,6 +254,7 @@ export function createContextFactQueries(
 
     const match = await findActiveMatch({
       subject: parsed.subject,
+      callerUserId,
       category: parsed.category,
       content: parsed.content,
       sensitivity: parsed.sensitivity,
@@ -272,6 +282,7 @@ export function createContextFactQueries(
           lastActorUserId: callerUserId,
           reviewedAt: now,
           archivedAt: null,
+          activeHouseholdMemberUserId: callerUserId,
         }),
       );
     } catch (error) {
@@ -280,6 +291,7 @@ export function createContextFactQueries(
       if (error instanceof Error && error.message === "Context Fact already exists.") {
         const winner = await findActiveMatch({
           subject: parsed.subject,
+          callerUserId,
           category: parsed.category,
           content: parsed.content,
           sensitivity: parsed.sensitivity,
@@ -303,17 +315,48 @@ export function createContextFactQueries(
     return mutationOutcome(callerUserId, created, "created");
   }
 
-  async function updateSelfContextFact(
-    input: UpdateSelfContextFactMutationInput,
-  ): Promise<ContextFactMutationOutcome> {
-    const parsed = updateSelfContextFactInputSchema.parse(input);
-    const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
-    const existing = await store.getContextFact({
-      contextFactId: parsed.contextFactId,
-      subjectUserId: callerUserId,
+  type ContextFactMutationSubjectKind = "self" | "household";
+
+  async function accessibleContextFact(input: { callerUserId: string; contextFactId: string }) {
+    const activeHouseholdIds = await activeHouseholdIdsForCaller(input.callerUserId);
+    const fact = await store.getContextFact({
+      contextFactId: input.contextFactId,
+      subjectUserId: input.callerUserId,
+      householdIds: activeHouseholdIds,
+      activeHouseholdMemberUserId: input.callerUserId,
     });
-    if (existing?.subject.kind !== "self" || existing.lifecycle !== "active") {
-      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+    return fact ? contextFactSchema.parse(fact) : null;
+  }
+
+  function mutationUnavailableMessage(expectedSubjectKind?: ContextFactMutationSubjectKind) {
+    return expectedSubjectKind === "self"
+      ? "That Self Context fact is no longer available."
+      : "That Context Fact is no longer available.";
+  }
+
+  async function updateContextFactForCaller(
+    input: UpdateContextFactMutationInput,
+    expectedSubjectKind?: ContextFactMutationSubjectKind,
+  ): Promise<ContextFactMutationOutcome> {
+    const parsed = updateContextFactInputSchema.parse(input);
+    const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
+    const existing = await accessibleContextFact({
+      callerUserId,
+      contextFactId: parsed.contextFactId,
+    });
+    if (
+      existing?.lifecycle !== "active" ||
+      (expectedSubjectKind !== undefined && existing.subject.kind !== expectedSubjectKind)
+    ) {
+      throw new ContextFactValidationError(mutationUnavailableMessage(expectedSubjectKind));
+    }
+    if (
+      !isContextFactCategoryAllowedForSubject({
+        subject: existing.subject,
+        category: parsed.category,
+      })
+    ) {
+      throw new ContextFactValidationError("Composition is only valid for Household Context.");
     }
     if (parsed.expectedUpdatedAt && !sameInstant(parsed.expectedUpdatedAt, existing.updatedAt)) {
       throw new ContextFactValidationError(
@@ -332,6 +375,7 @@ export function createContextFactQueries(
 
     const match = await findActiveMatch({
       subject: existing.subject,
+      callerUserId,
       category: parsed.category,
       content: parsed.content,
       sensitivity: parsed.sensitivity,
@@ -345,8 +389,8 @@ export function createContextFactQueries(
     }
 
     const fact = await store.updateContextFact({
+      ...callerScopedSubjectFilter(existing.subject, callerUserId),
       contextFactId: parsed.contextFactId,
-      subjectUserId: callerUserId,
       lifecycle: "active",
       expectedUpdatedAt: parsed.expectedUpdatedAt,
       patch: {
@@ -358,7 +402,7 @@ export function createContextFactQueries(
       },
     });
     if (!fact) {
-      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+      throw new ContextFactValidationError(mutationUnavailableMessage(expectedSubjectKind));
     }
     const canonicalFact = contextFactSchema.parse(fact);
 
@@ -374,19 +418,37 @@ export function createContextFactQueries(
     return mutationOutcome(callerUserId, canonicalFact, "updated");
   }
 
-  async function archiveSelfContextFact(input: {
-    callerUserId: string;
-    contextFactId: string;
-    expectedUpdatedAt?: Date;
-  }): Promise<ContextFactMutationOutcome> {
-    const parsed = archiveSelfContextFactInputSchema.parse(input);
+  async function updateContextFact(input: UpdateContextFactMutationInput) {
+    return updateContextFactForCaller(input);
+  }
+
+  async function updateHouseholdContextFact(input: UpdateContextFactMutationInput) {
+    return updateContextFactForCaller(input, "household");
+  }
+
+  async function updateSelfContextFact(
+    input: UpdateSelfContextFactMutationInput,
+  ): Promise<ContextFactMutationOutcome> {
+    const parsed = updateSelfContextFactInputSchema.parse(input);
+    return updateContextFactForCaller(parsed, "self");
+  }
+
+  async function archiveContextFactForCaller(
+    input: ArchiveContextFactMutationInput,
+    expectedSubjectKind?: ContextFactMutationSubjectKind,
+  ): Promise<ContextFactMutationOutcome> {
+    const parsed = archiveContextFactInputSchema.parse(input);
     const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
-    const existing = await store.getContextFact({
+    const existing = await accessibleContextFact({
+      callerUserId,
       contextFactId: parsed.contextFactId,
-      subjectUserId: callerUserId,
     });
-    if (existing?.subject.kind !== "self" || existing.lifecycle === "suggested") {
-      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+    if (
+      !existing ||
+      existing.lifecycle === "suggested" ||
+      (expectedSubjectKind !== undefined && existing.subject.kind !== expectedSubjectKind)
+    ) {
+      throw new ContextFactValidationError(mutationUnavailableMessage(expectedSubjectKind));
     }
     if (existing.lifecycle === "archived") {
       return mutationOutcome(callerUserId, existing, "archived", []);
@@ -399,8 +461,8 @@ export function createContextFactQueries(
 
     const archivedAt = new Date();
     const updated = await store.updateContextFact({
+      ...callerScopedSubjectFilter(existing.subject, callerUserId),
       contextFactId: existing.id,
-      subjectUserId: callerUserId,
       lifecycle: "active",
       expectedUpdatedAt: parsed.expectedUpdatedAt,
       patch: {
@@ -411,7 +473,7 @@ export function createContextFactQueries(
       },
     });
     if (!updated) {
-      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+      throw new ContextFactValidationError(mutationUnavailableMessage(expectedSubjectKind));
     }
     const fact = contextFactSchema.parse(updated);
     await recordAudit({
@@ -421,6 +483,23 @@ export function createContextFactQueries(
       metadataJson: { previousLifecycle: "active" },
     });
     return mutationOutcome(callerUserId, fact, "archived");
+  }
+
+  async function archiveContextFact(input: ArchiveContextFactMutationInput) {
+    return archiveContextFactForCaller(input);
+  }
+
+  async function archiveHouseholdContextFact(input: ArchiveContextFactMutationInput) {
+    return archiveContextFactForCaller(input, "household");
+  }
+
+  async function archiveSelfContextFact(input: {
+    callerUserId: string;
+    contextFactId: string;
+    expectedUpdatedAt?: Date;
+  }): Promise<ContextFactMutationOutcome> {
+    const parsed = archiveSelfContextFactInputSchema.parse(input);
+    return archiveContextFactForCaller(parsed, "self");
   }
 
   async function restoreSelfContextFact(input: {
@@ -453,6 +532,7 @@ export function createContextFactQueries(
 
     const match = await findActiveMatch({
       subject: existing.subject,
+      callerUserId,
       category: existing.category,
       content: existing.content,
       sensitivity: existing.sensitivity,
@@ -636,27 +716,30 @@ export function createContextFactQueries(
     const callerUserId = await requireVerifiedCaller(input.callerUserId);
 
     const activeHouseholdIds = await activeHouseholdIdsForCaller(callerUserId);
+    const lifecycles = input.includeArchived
+      ? (["active", "archived"] as const)
+      : (["active"] as const);
     const [selfFacts, householdFacts] = await Promise.all([
-      store.listContextFacts({ subjectUserId: callerUserId, lifecycle: "active" }),
+      store.listContextFacts({ subjectUserId: callerUserId, lifecycles }),
       activeHouseholdIds.length > 0
-        ? store.listContextFacts({ householdIds: activeHouseholdIds, lifecycle: "active" })
+        ? store.listContextFacts({
+            householdIds: activeHouseholdIds,
+            activeHouseholdMemberUserId: callerUserId,
+            lifecycles,
+          })
         : Promise.resolve([]),
     ]);
 
     const facts = [...selfFacts, ...householdFacts]
       .map((fact) => contextFactSchema.parse(fact))
       .filter((fact) =>
-        input.includeRestricted === false
-          ? canUseContextFactForOrientation({
-              callerUserId,
-              fact,
-              activeHouseholdIds,
-            })
-          : canViewContextFact({
-              callerUserId,
-              fact,
-              activeHouseholdIds,
-            }) && fact.lifecycle === "active",
+        canReadContextFact({
+          callerUserId,
+          fact,
+          activeHouseholdIds,
+          includeRestricted: input.includeRestricted,
+          includeArchived: input.includeArchived,
+        }),
       )
       .sort(
         (left, right) =>
@@ -679,6 +762,7 @@ export function createContextFactQueries(
       contextFactId: input.contextFactId,
       subjectUserId: callerUserId,
       householdIds: activeHouseholdIds,
+      activeHouseholdMemberUserId: callerUserId,
     });
     if (!fact) return null;
     const parsed = contextFactSchema.parse(fact);
@@ -742,7 +826,11 @@ export function createContextFactQueries(
   return {
     createContextFact,
     ...reviewQueries,
+    updateContextFact,
+    updateHouseholdContextFact,
     updateSelfContextFact,
+    archiveContextFact,
+    archiveHouseholdContextFact,
     archiveSelfContextFact,
     restoreSelfContextFact,
     deleteSelfContextFact,

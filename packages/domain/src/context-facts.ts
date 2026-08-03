@@ -228,13 +228,16 @@ export type PersistContextFact = z.infer<typeof persistContextFactSchema>;
 export type CreateContextFactInput = z.input<typeof createContextFactInputSchema>;
 export type CreateSelfContextFactInput = z.input<typeof createSelfContextFactInputSchema>;
 
-/** The only fields an owner may correct before accepting a suggestion. */
-export const contextFactReviewEditSchema = z
+const contextFactEditableFieldsSchema = z
   .object({
     category: contextFactCategorySchema,
     content: contextFactContentSchema,
     sensitivity: sensitivitySchema,
   })
+  .strict();
+
+/** The only fields an owner may correct before accepting a suggestion. */
+export const contextFactReviewEditSchema = contextFactEditableFieldsSchema
   .partial()
   .strict()
   .superRefine((value, ctx) => {
@@ -332,17 +335,23 @@ export type ContextFactReviewDismissResult = {
   dismissedContextFactId: string;
 };
 
-export const updateSelfContextFactInputSchema = z
+const contextFactMutationTargetSchema = z
   .object({
     callerUserId: nonEmptyIdentifier,
     contextFactId: nonEmptyIdentifier.max(128),
     expectedUpdatedAt: z.date().optional(),
-    category: contextFactCategorySchema,
-    content: contextFactContentSchema,
-    sensitivity: sensitivitySchema,
   })
-  .strict()
-  .superRefine((value, ctx) => {
+  .strict();
+
+/** Shared lifecycle input for an active Self or Household Context Fact. */
+export const updateContextFactInputSchema = contextFactMutationTargetSchema
+  .merge(contextFactEditableFieldsSchema)
+  .strict();
+
+export type UpdateContextFactInput = z.input<typeof updateContextFactInputSchema>;
+
+export const updateSelfContextFactInputSchema = updateContextFactInputSchema.superRefine(
+  (value, ctx) => {
     if (value.category === "composition") {
       ctx.addIssue({
         code: "custom",
@@ -350,17 +359,17 @@ export const updateSelfContextFactInputSchema = z
         message: "Composition is only valid for Household Context.",
       });
     }
-  });
+  },
+);
 
 export type UpdateSelfContextFactInput = z.input<typeof updateSelfContextFactInputSchema>;
 
-export const archiveSelfContextFactInputSchema = z
-  .object({
-    callerUserId: nonEmptyIdentifier,
-    contextFactId: nonEmptyIdentifier.max(128),
-    expectedUpdatedAt: z.date().optional(),
-  })
-  .strict();
+/** Shared archive input for an active Self or Household Context Fact. */
+export const archiveContextFactInputSchema = contextFactMutationTargetSchema;
+
+export type ArchiveContextFactInput = z.input<typeof archiveContextFactInputSchema>;
+
+export const archiveSelfContextFactInputSchema = archiveContextFactInputSchema;
 
 export type ArchiveSelfContextFactInput = z.input<typeof archiveSelfContextFactInputSchema>;
 
@@ -390,7 +399,7 @@ export const contextFactAuthoritySchema = z.literal("none");
 
 const contextFactPublicSubjectSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("self") }).strict(),
-  z.object({ kind: z.literal("household") }).strict(),
+  z.object({ kind: z.literal("household"), householdId: nonEmptyIdentifier }).strict(),
 ]);
 
 const contextFactPublicProvenanceSchema = z
@@ -428,7 +437,10 @@ export type ContextFactView = z.infer<typeof contextFactViewSchema>;
 export function toContextFactView(fact: ContextFact): ContextFactView {
   return contextFactViewSchema.parse({
     id: fact.id,
-    subject: { kind: fact.subject.kind },
+    subject:
+      fact.subject.kind === "self"
+        ? { kind: "self" }
+        : { kind: "household", householdId: fact.subject.householdId },
     category: fact.category,
     content: fact.content,
     lifecycle: fact.lifecycle,

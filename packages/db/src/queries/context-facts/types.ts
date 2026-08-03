@@ -1,5 +1,6 @@
 import type {
   AcceptSuggestedContextFactInput,
+  ArchiveContextFactInput,
   ArchiveSelfContextFactInput,
   ContextFact,
   ContextFactDeleteResult,
@@ -15,6 +16,7 @@ import type {
   DismissSuggestedContextFactInput,
   PersistContextFact,
   RestoreSelfContextFactInput,
+  UpdateContextFactInput,
   UpdateSelfContextFactInput,
 } from "@tendnote/domain";
 import type { OrientationContextBuildResult } from "@tendnote/domain/context-fact-orientation";
@@ -36,9 +38,33 @@ export type ContextFactAuditLogEntry = {
 
 export type ContextFactAuditLogInput = Omit<ContextFactAuditLogEntry, "id" | "createdAt">;
 
-export type ContextFactSubjectFilter = {
+type UnscopedContextFactFilter = {
+  subjectUserId?: never;
+  householdIds?: never;
+  activeHouseholdMemberUserId?: never;
+};
+
+type SelfContextFactFilter = {
+  subjectUserId: string;
+  householdIds?: never;
+  activeHouseholdMemberUserId?: never;
+};
+
+type HouseholdContextFactFilter = {
   subjectUserId?: string;
-  householdIds?: string[];
+  householdIds: string[];
+  /** Household rows always require a caller whose active membership is checked. */
+  activeHouseholdMemberUserId: string;
+};
+
+export type ContextFactSubjectFilter =
+  | UnscopedContextFactFilter
+  | SelfContextFactFilter
+  | HouseholdContextFactFilter;
+
+export type ContextFactCreateInput = PersistContextFact & {
+  /** Household creates lock and re-check this member row in the persistence transaction. */
+  activeHouseholdMemberUserId?: string;
 };
 
 export type ContextFactUpdatePatch = Pick<
@@ -55,7 +81,7 @@ export type ContextFactUpdatePatch = Pick<
 >;
 
 export type ContextFactStore = {
-  createContextFact: (input: PersistContextFact) => Promise<ContextFact>;
+  createContextFact: (input: ContextFactCreateInput) => Promise<ContextFact>;
   updateContextFact: (
     input: ContextFactSubjectFilter & {
       contextFactId: string;
@@ -107,6 +133,8 @@ export type UpdateSelfContextFactMutationInput = UpdateSelfContextFactInput;
 export type ArchiveSelfContextFactMutationInput = ArchiveSelfContextFactInput;
 export type RestoreSelfContextFactMutationInput = RestoreSelfContextFactInput;
 export type DeleteSelfContextFactMutationInput = DeleteSelfContextFactInput;
+export type UpdateContextFactMutationInput = UpdateContextFactInput;
+export type ArchiveContextFactMutationInput = ArchiveContextFactInput;
 
 export type ListContextFactsInput = {
   callerUserId: string;

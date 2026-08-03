@@ -5,9 +5,9 @@ import {
   type PersistContextFact,
   persistContextFactSchema,
 } from "@tendnote/domain";
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "../../client";
-import { auditLog, contextFacts } from "../../schema";
+import { auditLog, contextFacts, householdMemberships } from "../../schema";
 import { isPersistedContextFactId } from "./id";
 import type { ContextFactAuditLogEntry, ContextFactStore, ContextFactSubjectFilter } from "./types";
 
@@ -70,10 +70,19 @@ function subjectWhere(input: ContextFactSubjectFilter) {
     );
   }
   if (input.householdIds?.length) {
+    if (input.activeHouseholdMemberUserId === undefined) return undefined;
+    const activeMembership = sql`exists (
+      select 1
+      from "household_memberships" as hm
+      where hm.household_id = ${contextFacts.subjectHouseholdId}
+        and hm.user_id = ${input.activeHouseholdMemberUserId}
+        and hm.status = 'active'
+    )`;
     predicates.push(
       and(
         eq(contextFacts.subjectKind, "household"),
         inArray(contextFacts.subjectHouseholdId, input.householdIds),
+        activeMembership,
       ),
     );
   }
@@ -83,9 +92,43 @@ function subjectWhere(input: ContextFactSubjectFilter) {
 export function createDrizzleContextFactStore(): ContextFactStore {
   return {
     async createContextFact(input) {
+      const { activeHouseholdMemberUserId, ...persistedInput } = input;
+      const values = toRowValues(persistedInput);
+      const subject = persistedInput.subject;
+      if (subject.kind === "household") {
+        const result = await getDb().transaction(async (tx) => {
+          const [membership] = await tx
+            .select({ id: householdMemberships.id })
+            .from(householdMemberships)
+            .where(
+              and(
+                eq(householdMemberships.householdId, subject.householdId),
+                eq(householdMemberships.userId, activeHouseholdMemberUserId ?? ""),
+                eq(householdMemberships.status, "active"),
+              ),
+            )
+            .limit(1)
+            .for("update");
+          if (!membership) return "membership-missing" as const;
+          const [created] = await tx
+            .insert(contextFacts)
+            .values(values)
+            .onConflictDoNothing()
+            .returning();
+          return created ? { kind: "created" as const, row: created } : ("duplicate" as const);
+        });
+        if (result === "membership-missing") {
+          throw new Error("Active household membership is required for Household Context.");
+        }
+        if (result === "duplicate") {
+          throw new Error("Context Fact already exists.");
+        }
+        return fromRow(result.row);
+      }
+
       const [row] = await getDb()
         .insert(contextFacts)
-        .values(toRowValues(input))
+        .values(values)
         .onConflictDoNothing()
         .returning();
       if (!row) {

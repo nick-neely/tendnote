@@ -4,22 +4,35 @@ import {
   contextFactSchema,
   contextFactSubjectId,
   normalizeContextFactContent,
-  type PersistContextFact,
   persistContextFactSchema,
 } from "@tendnote/domain";
 import { isPersistedContextFactId } from "./id";
-import type { ContextFactAuditLogEntry, ContextFactAuditLogInput, ContextFactStore } from "./types";
+import type {
+  ContextFactAuditLogEntry,
+  ContextFactAuditLogInput,
+  ContextFactHouseholdAccess,
+  ContextFactStore,
+} from "./types";
 
-function isAllowedByFilter(
+async function isAllowedByFilter(
   fact: ContextFact,
   input: Parameters<ContextFactStore["listContextFacts"]>[0],
-) {
+  householdAccess?: ContextFactHouseholdAccess,
+): Promise<boolean> {
   if (input.subjectUserId && fact.subject.kind === "self") {
     return fact.subject.userId === input.subjectUserId;
   }
 
   if (input.householdIds && fact.subject.kind === "household") {
-    return input.householdIds.includes(fact.subject.householdId);
+    if (!input.householdIds.includes(fact.subject.householdId)) return false;
+    if (input.activeHouseholdMemberUserId === undefined || !householdAccess) return false;
+    const memberships = await householdAccess.listHouseholdMemberships({
+      householdId: fact.subject.householdId,
+      status: "active",
+    });
+    return memberships.some(
+      (membership) => membership.userId === input.activeHouseholdMemberUserId,
+    );
   }
 
   return false;
@@ -29,14 +42,30 @@ export type InMemoryContextFactStore = ContextFactStore & {
   records: Map<string, ContextFact>;
 };
 
-export function createInMemoryContextFactStore(seed: ContextFact[] = []): InMemoryContextFactStore {
+export function createInMemoryContextFactStore(
+  seed: ContextFact[] = [],
+  options: { householdAccess?: ContextFactHouseholdAccess } = {},
+): InMemoryContextFactStore {
   const records = new Map(seed.map((fact) => [fact.id, contextFactSchema.parse(fact)]));
   const auditLogEntries: ContextFactAuditLogEntry[] = [];
 
   return {
     records,
-    async createContextFact(input: PersistContextFact) {
-      const parsed = persistContextFactSchema.parse(input);
+    async createContextFact(input) {
+      const { activeHouseholdMemberUserId, ...persistedInput } = input;
+      const parsed = persistContextFactSchema.parse(persistedInput);
+      if (parsed.subject.kind === "household") {
+        if (activeHouseholdMemberUserId === undefined || !options.householdAccess) {
+          throw new Error("Active household membership is required for Household Context.");
+        }
+        const memberships = await options.householdAccess.listHouseholdMemberships({
+          householdId: parsed.subject.householdId,
+          status: "active",
+        });
+        if (!memberships.some((membership) => membership.userId === activeHouseholdMemberUserId)) {
+          throw new Error("Active household membership is required for Household Context.");
+        }
+      }
       if (parsed.id && !isPersistedContextFactId(parsed.id)) {
         throw new Error("Context Fact id must be a UUID.");
       }
@@ -74,7 +103,7 @@ export function createInMemoryContextFactStore(seed: ContextFact[] = []): InMemo
       const current = records.get(input.contextFactId);
       if (
         !current ||
-        !isAllowedByFilter(current, input) ||
+        !(await isAllowedByFilter(current, input, options.householdAccess)) ||
         (input.lifecycle !== undefined && current.lifecycle !== input.lifecycle) ||
         (input.expectedUpdatedAt !== undefined &&
           current.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) ||
@@ -97,7 +126,7 @@ export function createInMemoryContextFactStore(seed: ContextFact[] = []): InMemo
       const current = records.get(input.contextFactId);
       if (
         !current ||
-        !isAllowedByFilter(current, input) ||
+        !(await isAllowedByFilter(current, input, options.householdAccess)) ||
         (input.lifecycle !== undefined && current.lifecycle !== input.lifecycle) ||
         (input.expectedUpdatedAt !== undefined &&
           current.updatedAt.getTime() !== input.expectedUpdatedAt.getTime())
@@ -120,19 +149,24 @@ export function createInMemoryContextFactStore(seed: ContextFact[] = []): InMemo
       if (input.subjectUserId === undefined && input.householdIds === undefined) {
         return null;
       }
-      return isAllowedByFilter(fact, input) ? fact : null;
+      return (await isAllowedByFilter(fact, input, options.householdAccess)) ? fact : null;
     },
     async listContextFacts(input) {
       if (input.subjectUserId === undefined && input.householdIds === undefined) {
         return [];
       }
-      return [...records.values()]
-        .filter((fact) =>
-          input.lifecycles
-            ? input.lifecycles.includes(fact.lifecycle)
-            : input.lifecycle === undefined || fact.lifecycle === input.lifecycle,
-        )
-        .filter((fact) => isAllowedByFilter(fact, input))
+      const candidates = [...records.values()].filter((fact) =>
+        input.lifecycles
+          ? input.lifecycles.includes(fact.lifecycle)
+          : input.lifecycle === undefined || fact.lifecycle === input.lifecycle,
+      );
+      const allowed = await Promise.all(
+        candidates.map(async (fact) =>
+          (await isAllowedByFilter(fact, input, options.householdAccess)) ? fact : null,
+        ),
+      );
+      return allowed
+        .filter((fact): fact is ContextFact => fact !== null)
         .sort(
           (left, right) =>
             right.updatedAt.getTime() - left.updatedAt.getTime() || left.id.localeCompare(right.id),

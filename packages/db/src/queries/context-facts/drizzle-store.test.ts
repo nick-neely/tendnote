@@ -33,6 +33,10 @@ describe("Context Fact Drizzle store guards", () => {
     expect(source).toContain('eq(contextFacts.subjectKind, "self")');
     expect(source).toContain('eq(contextFacts.subjectKind, "household")');
     expect(source).toContain("inArray(contextFacts.subjectHouseholdId, input.householdIds)");
+    expect(source).toContain('from "household_memberships" as hm');
+    expect(source).toContain("hm.status = 'active'");
+    expect(source).toContain("getDb().transaction");
+    expect(source).toContain('.for("update")');
     expect(source).toContain("eq(contextFacts.id, input.contextFactId)");
   });
 

@@ -30,6 +30,7 @@ import type {
 
 type ReviewFactMatchInput = {
   subject: ContextFact["subject"];
+  callerUserId: string;
   category: ContextFact["category"];
   content: string;
   sensitivity: ContextFact["sensitivity"];
@@ -65,10 +66,13 @@ export type ContextFactReviewQueryContext = {
   }) => ContextFactAuditLogInput;
 };
 
-function scopedSubjectFilter(subject: ContextFact["subject"]) {
+function callerScopedSubjectFilter(subject: ContextFact["subject"], callerUserId: string) {
   return subject.kind === "self"
     ? { subjectUserId: subject.userId }
-    : { householdIds: [subject.householdId] };
+    : {
+        householdIds: [subject.householdId],
+        activeHouseholdMemberUserId: callerUserId,
+      };
 }
 
 function sameInstant(left: Date | undefined, right: Date | null): boolean {
@@ -117,6 +121,7 @@ function conflictError(match: ContextFactReviewMatch): ContextFactConflictError 
 async function findSuggestedFact(
   store: ContextFactStore,
   input: {
+    callerUserId: string;
     subject: ContextFact["subject"];
     category: ContextFact["category"];
     content: string;
@@ -124,7 +129,7 @@ async function findSuggestedFact(
   },
 ): Promise<ContextFact | null> {
   const facts = await store.listContextFacts({
-    ...scopedSubjectFilter(input.subject),
+    ...callerScopedSubjectFilter(input.subject, input.callerUserId),
     lifecycle: "suggested",
   });
   return (
@@ -154,12 +159,14 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
 
   async function suggestedReviewForFact(
     fact: ContextFact,
+    callerUserId: string,
   ): Promise<SuggestedContextFactReviewResult | null> {
     const parsed = contextFactSchema.parse(fact);
     const evidence = parsed.suggestionEvidence;
     if (!evidence?.trim()) return null;
     const activeMatch = await findActiveMatch({
       subject: parsed.subject,
+      callerUserId,
       category: parsed.category,
       content: parsed.content,
       sensitivity: parsed.sensitivity,
@@ -172,8 +179,8 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     };
   }
 
-  async function requireSuggestedReview(fact: ContextFact) {
-    const review = await suggestedReviewForFact(fact);
+  async function requireSuggestedReview(fact: ContextFact, callerUserId: string) {
+    const review = await suggestedReviewForFact(fact, callerUserId);
     if (!review) {
       throw new ContextFactValidationError(
         "That Suggested Context Fact has no grounded evidence and cannot be reviewed.",
@@ -206,6 +213,7 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     }
 
     const existingSuggested = await findSuggestedFact(store, {
+      callerUserId,
       subject: parsed.subject,
       category: parsed.category,
       content: parsed.content,
@@ -213,7 +221,7 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     });
     if (existingSuggested) {
       return {
-        result: await requireSuggestedReview(existingSuggested),
+        result: await requireSuggestedReview(existingSuggested, callerUserId),
         decision: "existing",
         affectedScopes: [],
       };
@@ -221,7 +229,7 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
 
     if (maxPendingSuggestedContextFacts !== undefined) {
       const pendingCount = await store.listContextFacts({
-        ...scopedSubjectFilter(parsed.subject),
+        ...callerScopedSubjectFilter(parsed.subject, callerUserId),
         lifecycle: "suggested",
       });
       if (pendingCount.length >= maxPendingSuggestedContextFacts) {
@@ -246,11 +254,13 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
           lastActorUserId: callerUserId,
           reviewedAt: null,
           archivedAt: null,
+          activeHouseholdMemberUserId: callerUserId,
         }),
       );
     } catch (error) {
       if (error instanceof Error && error.message === "Context Fact already exists.") {
         const pending = await findSuggestedFact(store, {
+          callerUserId,
           subject: parsed.subject,
           category: parsed.category,
           content: parsed.content,
@@ -258,7 +268,7 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
         });
         if (pending) {
           return {
-            result: await requireSuggestedReview(pending),
+            result: await requireSuggestedReview(pending, callerUserId),
             decision: "existing",
             affectedScopes: [],
           };
@@ -267,7 +277,7 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
       throw error;
     }
 
-    const review = await requireSuggestedReview(created);
+    const review = await requireSuggestedReview(created, callerUserId);
 
     await recordAudit({
       ownerUserId: callerUserId,
@@ -318,7 +328,7 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
           right.updatedAt.getTime() - left.updatedAt.getTime() || left.id.localeCompare(right.id),
       )
       .slice(0, 6);
-    return Promise.all(facts.map((fact) => requireSuggestedReview(fact)));
+    return Promise.all(facts.map((fact) => requireSuggestedReview(fact, callerUserId)));
   }
 
   async function getSuggestedContextFactReview(input: {
@@ -331,7 +341,7 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
       subjectUserId: callerUserId,
     });
     if (fact?.subject.kind !== "self" || fact.lifecycle !== "suggested") return null;
-    return suggestedReviewForFact(contextFactSchema.parse(fact));
+    return suggestedReviewForFact(contextFactSchema.parse(fact), callerUserId);
   }
 
   async function acceptSuggestedContextFact(
@@ -379,7 +389,11 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
         "Reviewed sensitivity cannot be downgraded. Keep the current sensitivity or increase it.",
       );
     }
-    const match = await findActiveMatch({ ...candidate, excludingId: existing.id });
+    const match = await findActiveMatch({
+      ...candidate,
+      callerUserId,
+      excludingId: existing.id,
+    });
     if (match) {
       throw conflictError(match);
     }
@@ -404,19 +418,31 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
         },
       });
     } catch (error) {
-      const concurrentMatch = await findActiveMatch({ ...candidate, excludingId: existing.id });
+      const concurrentMatch = await findActiveMatch({
+        ...candidate,
+        callerUserId,
+        excludingId: existing.id,
+      });
       if (concurrentMatch) throw conflictError(concurrentMatch);
       throw error;
     }
     if (!updated) {
-      const concurrentMatch = await findActiveMatch({ ...candidate, excludingId: existing.id });
+      const concurrentMatch = await findActiveMatch({
+        ...candidate,
+        callerUserId,
+        excludingId: existing.id,
+      });
       if (concurrentMatch) throw conflictError(concurrentMatch);
       throw new ContextFactValidationError(
         "That suggestion changed elsewhere. Refresh the review and try again.",
       );
     }
     const fact = contextFactSchema.parse(updated);
-    const concurrentMatch = await findActiveMatch({ ...candidate, excludingId: fact.id });
+    const concurrentMatch = await findActiveMatch({
+      ...candidate,
+      callerUserId,
+      excludingId: fact.id,
+    });
     if (concurrentMatch) {
       await store.updateContextFact({
         contextFactId: fact.id,

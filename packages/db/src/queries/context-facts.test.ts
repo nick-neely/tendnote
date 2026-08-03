@@ -6,6 +6,8 @@ import { createHouseholdLifecycle } from "./households/lifecycle";
 
 const OWNER = "user-owner";
 const OTHER_OWNER = "user-other";
+const SECOND_HOUSEHOLD_OWNER = "user-second-household-owner";
+const OUTSIDER = "user-outsider";
 const verifiedCallerFor = (userId: string) => async () => userId;
 
 const directProvenance: ContextFactProvenance = {
@@ -519,7 +521,7 @@ describe("Context Fact product contract", () => {
     });
     await householdLifecycle.acceptInvite({ householdId: household.id, userId: OTHER_OWNER });
 
-    const store = createInMemoryContextFactStore();
+    const store = createInMemoryContextFactStore([], { householdAccess: householdStore });
     const createQueriesFor = (userId: string) =>
       createContextFactQueries(store, {
         householdAccess: householdStore,
@@ -586,6 +588,308 @@ describe("Context Fact product contract", () => {
     ]);
   });
 
+  it("lets every active member edit and archive household Context through the shared seam", async () => {
+    const householdStore = createInMemoryHouseholdStore();
+    const householdLifecycle = createHouseholdLifecycle(householdStore);
+    const { household } = await householdLifecycle.createHousehold({
+      ownerUserId: OWNER,
+      name: "Home",
+    });
+    await householdLifecycle.inviteMember({
+      ownerUserId: OWNER,
+      householdId: household.id,
+      invitedUserId: OTHER_OWNER,
+    });
+    await householdLifecycle.acceptInvite({ householdId: household.id, userId: OTHER_OWNER });
+
+    const store = createInMemoryContextFactStore([], { householdAccess: householdStore });
+    const queriesFor = (userId: string) =>
+      createContextFactQueries(store, {
+        householdAccess: householdStore,
+        resolveVerifiedCaller: verifiedCallerFor(userId),
+      });
+    const ownerQueries = queriesFor(OWNER);
+    const memberQueries = queriesFor(OTHER_OWNER);
+
+    const created = await ownerQueries.createContextFact({
+      callerUserId: OWNER,
+      subject: { kind: "household", householdId: household.id },
+      category: "composition",
+      content: "The household keeps a shared calendar.",
+    });
+    expect(created.result).toMatchObject({
+      subject: { kind: "household", householdId: household.id },
+      category: "composition",
+      visibility: "household",
+    });
+    expect(created.affectedScopes).toEqual([
+      { kind: "owner-collection", collection: "context-facts", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "orientation", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "review", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "global-recall", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "account", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "context-facts", ownerUserId: OTHER_OWNER },
+      { kind: "owner-collection", collection: "orientation", ownerUserId: OTHER_OWNER },
+      { kind: "owner-collection", collection: "review", ownerUserId: OTHER_OWNER },
+      { kind: "owner-collection", collection: "global-recall", ownerUserId: OTHER_OWNER },
+      { kind: "owner-collection", collection: "account", ownerUserId: OTHER_OWNER },
+      { kind: "household-collection", collection: "context-facts", householdId: household.id },
+    ]);
+
+    const memberCreated = await memberQueries.createContextFact({
+      callerUserId: OTHER_OWNER,
+      subject: { kind: "household", householdId: household.id },
+      category: "interest",
+      content: "The household enjoys trail running.",
+    });
+    expect(memberCreated.result).toMatchObject({
+      subject: { kind: "household", householdId: household.id },
+      category: "interest",
+      content: "The household enjoys trail running.",
+      visibility: "household",
+    });
+    await expect(ownerQueries.listContextFacts({ callerUserId: OWNER })).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: created.result.id }),
+        expect.objectContaining({ id: memberCreated.result.id }),
+      ]),
+    );
+
+    const updated = await memberQueries.updateContextFact({
+      callerUserId: OTHER_OWNER,
+      contextFactId: created.result.id,
+      category: "composition",
+      content: "The household uses one shared calendar.",
+      sensitivity: "sensitive",
+      expectedUpdatedAt: created.result.updatedAt,
+    });
+    expect(updated.result).toMatchObject({
+      id: created.result.id,
+      subject: { kind: "household", householdId: household.id },
+      category: "composition",
+      content: "The household uses one shared calendar.",
+      sensitivity: "sensitive",
+      lifecycle: "active",
+      visibility: "household",
+    });
+    expect(store.records.get(created.result.id)).toMatchObject({
+      creatorUserId: OWNER,
+      lastActorUserId: OTHER_OWNER,
+      category: "composition",
+      content: "The household uses one shared calendar.",
+      sensitivity: "sensitive",
+    });
+    expect(updated.affectedScopes).toEqual([
+      { kind: "owner-collection", collection: "context-facts", ownerUserId: OTHER_OWNER },
+      { kind: "owner-collection", collection: "orientation", ownerUserId: OTHER_OWNER },
+      { kind: "owner-collection", collection: "review", ownerUserId: OTHER_OWNER },
+      { kind: "owner-collection", collection: "global-recall", ownerUserId: OTHER_OWNER },
+      { kind: "owner-collection", collection: "account", ownerUserId: OTHER_OWNER },
+      { kind: "owner-collection", collection: "context-facts", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "orientation", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "review", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "global-recall", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "account", ownerUserId: OWNER },
+      { kind: "household-collection", collection: "context-facts", householdId: household.id },
+    ]);
+
+    await expect(
+      ownerQueries.getContextFact({ callerUserId: OWNER, contextFactId: created.result.id }),
+    ).resolves.toMatchObject({
+      content: "The household uses one shared calendar.",
+      sensitivity: "sensitive",
+    });
+
+    const archived = await memberQueries.archiveContextFact({
+      callerUserId: OTHER_OWNER,
+      contextFactId: created.result.id,
+      expectedUpdatedAt: updated.result.updatedAt,
+    });
+    expect(archived.result).toMatchObject({
+      id: created.result.id,
+      lifecycle: "archived",
+      subject: { kind: "household", householdId: household.id },
+      visibility: "household",
+    });
+    await expect(ownerQueries.listContextFacts({ callerUserId: OWNER })).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: created.result.id })]),
+    );
+    await expect(
+      ownerQueries.listContextFacts({ callerUserId: OWNER, includeArchived: true }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: created.result.id, lifecycle: "archived" }),
+        expect.objectContaining({ id: memberCreated.result.id, lifecycle: "active" }),
+      ]),
+    );
+
+    await expect(store.listAuditLogEntries({ ownerUserId: OTHER_OWNER })).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "context_fact.update",
+          entityId: created.result.id,
+          metadataJson: expect.objectContaining({ actorUserId: OTHER_OWNER }),
+        }),
+        expect.objectContaining({
+          action: "context_fact.archive",
+          entityId: created.result.id,
+          metadataJson: expect.objectContaining({ actorUserId: OTHER_OWNER }),
+        }),
+      ]),
+    );
+  });
+
+  it("revokes household reads and mutations across outsiders, another household, and removed members", async () => {
+    const householdStore = createInMemoryHouseholdStore();
+    const householdLifecycle = createHouseholdLifecycle(householdStore);
+    const first = await householdLifecycle.createHousehold({ ownerUserId: OWNER, name: "Home" });
+    await householdLifecycle.inviteMember({
+      ownerUserId: OWNER,
+      householdId: first.household.id,
+      invitedUserId: OTHER_OWNER,
+    });
+    await householdLifecycle.acceptInvite({
+      householdId: first.household.id,
+      userId: OTHER_OWNER,
+    });
+    const second = await householdLifecycle.createHousehold({
+      ownerUserId: SECOND_HOUSEHOLD_OWNER,
+      name: "Second home",
+    });
+
+    const store = createInMemoryContextFactStore([], { householdAccess: householdStore });
+    const queriesFor = (userId: string) =>
+      createContextFactQueries(store, {
+        householdAccess: householdStore,
+        resolveVerifiedCaller: verifiedCallerFor(userId),
+      });
+    const ownerQueries = queriesFor(OWNER);
+    const memberQueries = queriesFor(OTHER_OWNER);
+    const secondOwnerQueries = queriesFor(SECOND_HOUSEHOLD_OWNER);
+    const outsiderQueries = queriesFor(OUTSIDER);
+
+    const firstFact = await ownerQueries.createContextFact({
+      callerUserId: OWNER,
+      subject: { kind: "household", householdId: first.household.id },
+      category: "composition",
+      content: "The household has two adults.",
+    });
+    const secondFact = await secondOwnerQueries.createContextFact({
+      callerUserId: SECOND_HOUSEHOLD_OWNER,
+      subject: { kind: "household", householdId: second.household.id },
+      category: "composition",
+      content: "The second household has a shared garden.",
+    });
+    await memberQueries.createSelfContextFact({
+      callerUserId: OTHER_OWNER,
+      category: "work",
+      content: "I keep private work context.",
+    });
+    const householdSuggestion = await memberQueries.createSuggestedContextFact({
+      callerUserId: OTHER_OWNER,
+      subject: { kind: "household", householdId: first.household.id },
+      category: "composition",
+      content: "The household may add a shared garden next year.",
+      provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+      suggestionEvidence: "The household discussed adding a shared garden next year.",
+    });
+    expect(householdSuggestion.result.fact).toMatchObject({
+      subject: { kind: "household", householdId: first.household.id },
+      lifecycle: "suggested",
+    });
+
+    await expect(
+      memberQueries.getContextFact({
+        callerUserId: OTHER_OWNER,
+        contextFactId: secondFact.result.id,
+      }),
+    ).resolves.toBeNull();
+    await expect(outsiderQueries.listContextFacts({ callerUserId: OUTSIDER })).resolves.toEqual([]);
+    await expect(
+      outsiderQueries.updateContextFact({
+        callerUserId: OUTSIDER,
+        contextFactId: firstFact.result.id,
+        category: "composition",
+        content: "An outsider must not mutate this household.",
+        sensitivity: "normal",
+      }),
+    ).rejects.toThrow("no longer available");
+
+    const memberOrientation = await memberQueries.getOrientationContext({
+      callerUserId: OTHER_OWNER,
+    });
+    expect(memberOrientation.context.facts.map((fact) => fact.subject.kind)).toEqual(["self"]);
+    expect(memberOrientation.context.facts.map((fact) => fact.content)).toEqual([
+      "I keep private work context.",
+    ]);
+
+    const membership = await householdStore.getHouseholdMembership({
+      householdId: first.household.id,
+      userId: OTHER_OWNER,
+    });
+    if (!membership) throw new Error("Expected the active household membership fixture.");
+    await householdStore.updateHouseholdMembership({
+      membershipId: membership.id,
+      patch: { status: "removed", removedAt: new Date() },
+    });
+
+    await expect(memberQueries.listContextFacts({ callerUserId: OTHER_OWNER })).resolves.toEqual([
+      expect.objectContaining({ content: "I keep private work context." }),
+    ]);
+    const removedMemberOrientation = await memberQueries.getOrientationContext({
+      callerUserId: OTHER_OWNER,
+    });
+    expect(removedMemberOrientation.context.facts.map((fact) => fact.subject.kind)).toEqual([
+      "self",
+    ]);
+    await expect(
+      memberQueries.getContextFact({
+        callerUserId: OTHER_OWNER,
+        contextFactId: firstFact.result.id,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      memberQueries.updateContextFact({
+        callerUserId: OTHER_OWNER,
+        contextFactId: firstFact.result.id,
+        category: "composition",
+        content: "A removed member must not mutate this household.",
+        sensitivity: "normal",
+      }),
+    ).rejects.toThrow("no longer available");
+    await expect(
+      memberQueries.archiveContextFact({
+        callerUserId: OTHER_OWNER,
+        contextFactId: firstFact.result.id,
+      }),
+    ).rejects.toThrow("no longer available");
+    await expect(
+      memberQueries.createContextFact({
+        callerUserId: OTHER_OWNER,
+        subject: { kind: "household", householdId: first.household.id },
+        category: "other",
+        content: "A removed member must not create this household fact.",
+      }),
+    ).rejects.toThrow("Active household membership is required for Household Context.");
+    await expect(
+      memberQueries.createSuggestedContextFact({
+        callerUserId: OTHER_OWNER,
+        subject: { kind: "household", householdId: first.household.id },
+        category: "composition",
+        content: "A removed member must not suggest this household fact.",
+        provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+        suggestionEvidence: "A removed member must not suggest this household fact.",
+      }),
+    ).rejects.toThrow("Active household membership is required for Household Context.");
+
+    await expect(
+      ownerQueries.getContextFact({ callerUserId: OWNER, contextFactId: firstFact.result.id }),
+    ).resolves.toMatchObject({ content: "The household has two adults." });
+    await expect(
+      secondOwnerQueries.listContextFacts({ callerUserId: SECOND_HOUSEHOLD_OWNER }),
+    ).resolves.toEqual([expect.objectContaining({ id: secondFact.result.id })]);
+  });
+
   it("fails closed when a caller tries to create Household Context without active membership", async () => {
     const store = createInMemoryContextFactStore();
     const queries = createContextFactQueries(store, {
@@ -614,6 +918,29 @@ describe("Context Fact product contract", () => {
         content: "This must not be accepted without verification.",
       }),
     ).rejects.toThrow("A verified caller is required.");
+  });
+
+  it("fails closed when a household store scope has no active-membership adapter", async () => {
+    const householdFact = contextFactFixture({
+      subject: { kind: "household", householdId: "household-1" },
+    });
+    const store = createInMemoryContextFactStore([householdFact]);
+    const scope = {
+      householdIds: ["household-1"],
+      activeHouseholdMemberUserId: OWNER,
+    };
+
+    await expect(
+      store.getContextFact({ contextFactId: householdFact.id, ...scope }),
+    ).resolves.toBeNull();
+    await expect(store.listContextFacts(scope)).resolves.toEqual([]);
+    await expect(
+      store.createContextFact({
+        ...householdFact,
+        id: "00000000-0000-4000-8000-000000000002",
+        activeHouseholdMemberUserId: OWNER,
+      }),
+    ).rejects.toThrow("Active household membership is required for Household Context.");
   });
 
   it("uses the same UUID and duplicate-write policy for in-memory persistence", async () => {

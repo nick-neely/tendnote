@@ -2,6 +2,7 @@ import { createDrizzleContextFactStore } from "./context-facts/drizzle-store";
 import { createContextFactQueries } from "./context-facts/queries";
 import type {
   AcceptSuggestedContextFactMutationInput,
+  ArchiveContextFactMutationInput,
   ArchiveSelfContextFactMutationInput,
   ContextFactCallerVerification,
   CreateContextFactMutationInput,
@@ -15,6 +16,7 @@ import type {
   ListContextFactsInput,
   RestoreSelfContextFactMutationInput,
   SearchSelfContextFactsInput,
+  UpdateContextFactMutationInput,
   UpdateSelfContextFactMutationInput,
 } from "./context-facts/types";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
@@ -100,11 +102,39 @@ export function updateSelfContextFact(
   return createVerifiedContextFactQueries(resolveVerifiedCaller).updateSelfContextFact(input);
 }
 
+export function updateContextFact(
+  input: UpdateContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).updateContextFact(input);
+}
+
+export function updateHouseholdContextFact(
+  input: UpdateContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).updateHouseholdContextFact(input);
+}
+
 export function archiveSelfContextFact(
   input: ArchiveSelfContextFactMutationInput,
   resolveVerifiedCaller: ContextFactCallerVerification,
 ) {
   return createVerifiedContextFactQueries(resolveVerifiedCaller).archiveSelfContextFact(input);
+}
+
+export function archiveContextFact(
+  input: ArchiveContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).archiveContextFact(input);
+}
+
+export function archiveHouseholdContextFact(
+  input: ArchiveContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).archiveHouseholdContextFact(input);
 }
 
 export function restoreSelfContextFact(
