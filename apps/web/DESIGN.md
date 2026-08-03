@@ -189,6 +189,17 @@ product patterns over invented affordances.
 Spacing should feel quiet but not airy. Default rhythm is `4, 6, 8, 12, 16, 24,
 32`; use `48` only for major page separation.
 
+**Phone gutter.** The one exception to that rhythm, and the only one: every
+narrow-viewport surface is inset from the screen edge by **20px**, declared as
+`px-gutter` (`--tn-gutter` in `globals.css`) and cancelled - for a bar that must
+reach the screen edges, like the person and asset ledger toolbars - by
+`mx-bleed`. It sits between the rhythm's 16 and 24 deliberately: 16 read cramped
+against a full-width card on a 390px phone, and 24 spent too much of that width
+on nothing. It is a layout constant, not a rhythm step, so it is never a
+substitute for `p-4` / `gap-6` inside a surface. A mobile surface must not
+hand-pick its own edge inset; that drift is what produced screens sitting at 12,
+16, 20, and 32 at the same time. Wider viewports step up to `sm:px-6`.
+
 ## 6. Components
 
 ### Buttons

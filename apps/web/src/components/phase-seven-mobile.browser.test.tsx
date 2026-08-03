@@ -645,6 +645,52 @@ describe("Phase Seven phone browser proof", () => {
     expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
   });
 
+  /**
+   * The phone gutter, asserted against real computed style rather than class names.
+   *
+   * `px-gutter` and `mx-bleed` are custom `@utility` rules over `--tn-gutter`, and
+   * both ways of getting that wrong fail silently: a `--spacing-gutter` theme key
+   * generates no utility at all, and a variable named `--gutter` is dropped from
+   * the output by something upstream in the registry CSS. In either case the class
+   * still lands on the element and the padding is quietly zero - every mobile
+   * screen goes edge-to-edge and nothing throws. So this measures the pixels.
+   */
+  it("gives the phone shell one gutter that a full-bleed bar cancels exactly", async () => {
+    await page.viewport(390, 844);
+    const container = await mount(
+      <AppShell ownerUserId="owner-1">
+        <div className="mx-bleed" data-testid="bleed-bar">
+          Sticky bar
+        </div>
+        <p>Padded content</p>
+      </AppShell>,
+    );
+
+    const main = container.querySelector("main") as HTMLElement;
+    const gutter = Number.parseFloat(getComputedStyle(main).paddingLeft);
+    expect(gutter).toBeGreaterThan(0);
+    expect(Number.parseFloat(getComputedStyle(main).paddingRight)).toBe(gutter);
+
+    // A bar marked `mx-bleed` reaches both screen edges - no wider, no narrower -
+    // which is the whole contract the person and asset ledger toolbars rely on.
+    const bar = container.querySelector('[data-testid="bleed-bar"]') as HTMLElement;
+    const barBox = bar.getBoundingClientRect();
+    const mainBox = main.getBoundingClientRect();
+    expect(barBox.left).toBeCloseTo(mainBox.left, 1);
+    expect(barBox.right).toBeCloseTo(mainBox.right, 1);
+    expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
+
+    // Past `sm` the call sites hand over to `sm:px-6`, which only wins because a
+    // variant utility sorts after a plain one. That ordering is Tailwind's to keep,
+    // not ours, so the widening is measured rather than assumed - otherwise a
+    // custom `@utility` that started winning would pin every desktop surface to the
+    // phone gutter with nothing failing.
+    await page.viewport(900, 844);
+    await expect
+      .poll(() => Number.parseFloat(getComputedStyle(main).paddingLeft))
+      .toBeGreaterThan(gutter);
+  });
+
   it("shows iOS installation guidance without exposing platform permission early", async () => {
     await page.viewport(390, 844);
     Object.defineProperty(navigator, "userAgent", {

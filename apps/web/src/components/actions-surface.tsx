@@ -21,7 +21,8 @@ import { SuggestedGeneralActionReviewCard } from "@/components/suggested-general
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { FilterChip } from "@/components/ui/filter-chip";
+import { ToggleGroup } from "@/components/ui/toggle-group";
 import {
   filterActionsByArea,
   pickVisibleAreaChips,
@@ -37,6 +38,7 @@ import {
 import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 import { useDeepLinkReveal } from "@/lib/use-deep-link-highlight";
 import { reconcileRevisionedItems, useServerSyncedList } from "@/lib/use-server-synced-list";
+import { cn } from "@/lib/utils";
 
 /** The Area filter's "everything" option; `null` selection in toggle-group terms. */
 const ALL_AREAS = "all";
@@ -447,15 +449,16 @@ function ActionsSurfaceContent({
         shareableMembers={secondaryMembers}
       />
 
-      <div
-        className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"
-        data-slot="action-filter-bar"
-      >
+      {/* One row, always. Six wrapping chips plus a "+N more" plus a labelled
+          Manage control used to stack into three rows of chrome between capture
+          and the ledger on a phone; the chips now take their overflow sideways,
+          inside their own scroller, so a long list of Areas never pushes the
+          ledger down. */}
+      <div className="flex items-center gap-1" data-slot="action-filter-bar">
         {activeAreas.length ? (
-          <div className="flex flex-wrap items-center gap-1.5 sm:flex-1">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
             <ToggleGroup
               aria-label="Filter by area"
-              className="flex-wrap"
               onValueChange={(value) =>
                 setSelectedAreaId(value && value !== ALL_AREAS ? value : null)
               }
@@ -463,18 +466,20 @@ function ActionsSurfaceContent({
               value={effectiveAreaId ?? ALL_AREAS}
               variant="outline"
             >
-              <AreaChip value={ALL_AREAS}>All</AreaChip>
+              <FilterChip value={ALL_AREAS}>All</FilterChip>
               {visibleChips.map((area) => (
-                <AreaChip key={area.id} value={area.id}>
+                <FilterChip key={area.id} value={area.id}>
                   {area.name}
-                </AreaChip>
+                </FilterChip>
               ))}
             </ToggleGroup>
             {chipOverflow > 0 ? (
               // Not a filter value, so it stays outside the group rather than posing as a
-              // fourth option; it borrows the chip's shape and height to keep one vocabulary.
+              // further option - inside it, it would be a plain button in a radiogroup,
+              // skipped by the roving focus that moves between the chips. It scrolls with
+              // them and borrows their shape to keep one vocabulary.
               <Button
-                className="h-8 rounded-full border-dashed px-3 text-[length:var(--text-small)] text-muted-foreground max-sm:min-h-11"
+                className="h-8 shrink-0 rounded-full border-dashed px-3 text-[length:var(--text-small)] text-muted-foreground max-sm:min-h-11"
                 onClick={() => {
                   setManagerOpen(true);
                 }}
@@ -486,12 +491,15 @@ function ActionsSurfaceContent({
             ) : null}
           </div>
         ) : (
-          <span className="text-[length:var(--text-small)] text-muted-foreground sm:flex-1">
-            No areas yet. Areas group related actions.
-          </span>
+          <span className="min-w-0 flex-1" />
         )}
+        {/* The label goes screen-reader-only on a phone only when the chips beside
+            it already say what this manages. With no Areas yet there is nothing to
+            read it against, so a lone sliders glyph on an otherwise empty row would
+            be the one thing on screen and would explain nothing. */}
         <Button
-          className="self-start text-muted-foreground sm:shrink-0 sm:self-auto"
+          aria-label={activeAreas.length ? "Manage areas" : "Add areas"}
+          className={cn("shrink-0 text-muted-foreground", activeAreas.length && "max-sm:size-11")}
           onClick={() => {
             setManagerOpen(true);
           }}
@@ -500,7 +508,9 @@ function ActionsSurfaceContent({
           variant="ghost"
         >
           <SlidersHorizontalIcon />
-          {activeAreas.length ? "Manage areas" : "Add areas"}
+          <span className={cn(activeAreas.length && "max-sm:sr-only")}>
+            {activeAreas.length ? "Manage areas" : "Add areas"}
+          </span>
         </Button>
       </div>
 
@@ -645,27 +655,6 @@ function ActionsSurfaceContent({
         open={managerOpen}
       />
     </div>
-  );
-}
-
-/**
- * A quiet Area filter pill, one option of the single-select filter group.
- *
- * Built on the shared `ToggleGroupItem` rather than a hand-rolled `aria-pressed`
- * button: the Areas are mutually exclusive, so Radix's single-select group is the
- * honest semantic (a radio group, arrow-key traversable, one tab stop for the whole
- * row) and the toggle variants carry the resting outline treatment. Selection is
- * carried by fill *and* `aria-checked` - never color alone (DESIGN.md §8) - and the
- * current selection takes sage, which §3 reserves for exactly this.
- */
-function AreaChip({ children, value }: { children: React.ReactNode; value: string }) {
-  return (
-    <ToggleGroupItem
-      className="rounded-full px-3 text-[length:var(--text-small)] max-sm:min-h-11 data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:font-medium data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground"
-      value={value}
-    >
-      {children}
-    </ToggleGroupItem>
   );
 }
 

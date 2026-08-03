@@ -705,30 +705,25 @@ function RecallFilterBar({ recall }: { recall: ReturnType<typeof useGlobalRecall
           Include archived
         </Label>
       </div>
-      <div className="flex items-center gap-2">
-        <Checkbox
-          aria-describedby={recall.restrictedLocked ? "search-palette-restricted-hint" : undefined}
-          checked={includeRestricted}
-          disabled={recall.restrictedLocked}
-          id="search-palette-restricted"
-          onCheckedChange={(checked) => recall.setIncludeRestricted(checked === true)}
-        />
-        {/* The label names the control; what stands in the way is helper text. */}
-        <Label
-          className="font-normal text-[length:var(--text-caption)] text-muted-foreground"
-          htmlFor="search-palette-restricted"
-        >
-          Reveal restricted matches
-        </Label>
-      </div>
-      {recall.restrictedLocked ? (
-        <p
-          className="basis-full text-[length:var(--text-caption)] text-muted-foreground"
-          id="search-palette-restricted-hint"
-        >
-          Pick a record type first.
-        </p>
-      ) : null}
+      {/* Restricted matches need one named record type to reveal. The control used
+          to sit here permanently disabled with "Pick a record type first."
+          beneath it; naming a record type now simply offers it, which is the same
+          rule shown rather than written. Same treatment on the phone flow. */}
+      {recall.restrictedLocked ? null : (
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={includeRestricted}
+            id="search-palette-restricted"
+            onCheckedChange={(checked) => recall.setIncludeRestricted(checked === true)}
+          />
+          <Label
+            className="font-normal text-[length:var(--text-caption)] text-muted-foreground"
+            htmlFor="search-palette-restricted"
+          >
+            Reveal restricted matches
+          </Label>
+        </div>
+      )}
     </div>
   );
 }

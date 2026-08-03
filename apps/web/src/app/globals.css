@@ -31,6 +31,44 @@
   }
 }
 
+/*
+ * The phone gutter, as one number.
+ *
+ * Every narrow-viewport surface used to pick its own edge inset - the shell's
+ * `<main>` sat at 16, Today's orientation band and the focused flows at 20, an
+ * overlay header at 12, and the reminder fallback at 32 because it nested a
+ * second padded `<main>` inside the first. Moving between Today and People
+ * therefore shifted the whole page sideways, and a back arrow never lined up
+ * with the field beneath it.
+ *
+ * `px-gutter` is now the only way a mobile surface states that inset, and
+ * `mx-bleed` is the only way one cancels it - which is what the full-bleed
+ * sticky bars on the person and asset ledgers do to reach the screen edges.
+ * Wider viewports still step up to `sm:px-6` at their call sites, which wins
+ * because a variant utility sorts after a plain one; this is the phone number.
+ *
+ * Two things here are load-bearing and both fail *silently* - the utility still
+ * emits, the class still lands on the element, and the padding is simply zero:
+ *
+ *   - These are `@utility` rules rather than a `--spacing-*` theme key. In v4 the
+ *     spacing scale is one `--spacing` multiplier, so a named spacing key
+ *     generates no utility at all.
+ *   - The variable is `--tn-gutter`, not `--gutter`. A bare `--gutter` declared
+ *     here never reaches the output: something upstream in the imported registry
+ *     CSS claims that name, and the declaration is dropped while every other
+ *     custom property in this block survives.
+ *
+ * Both were caught by measuring a rendered phone viewport, not by review. If this
+ * moves, measure it again.
+ */
+@utility px-gutter {
+  padding-inline: var(--tn-gutter);
+}
+
+@utility mx-bleed {
+  margin-inline: calc(var(--tn-gutter) * -1);
+}
+
 /* Class-based dark variant (next-themes attribute="class" toggles `.dark` on
    <html>). `.dark, .dark *` so `dark:` utilities apply to the `.dark` element
    itself as well as its descendants — matching the shadcn Next.js recipe. */
@@ -103,6 +141,8 @@
      also writes `color-scheme` inline on <html> at runtime; these keep native
      scrollbars and form controls correct even before/without that script. */
   color-scheme: light;
+  /* Consumed by the `px-gutter` / `mx-bleed` utilities above. */
+  --tn-gutter: 1.25rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.18 0.018 145);
   --surface: oklch(0.975 0 0);

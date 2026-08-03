@@ -352,7 +352,7 @@ async function HomeMobileDestination({ searchParams }: HomeProps) {
 
   if (tab === "review") {
     return (
-      <div className="flex flex-col gap-6 px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6">
+      <div className="flex flex-col gap-6 px-gutter pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6">
         <header className="flex flex-col gap-1">
           <h1 className="font-semibold text-[length:var(--text-h1)] leading-[var(--text-h1-line)]">
             {appDestination("review").label}

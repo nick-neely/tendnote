@@ -249,7 +249,7 @@ function TodayShortlistContent({
   }
 
   return (
-    <section aria-busy={pending} aria-label="Today shortlist" className="px-5 pt-6">
+    <section aria-busy={pending} aria-label="Today shortlist" className="px-gutter pt-6">
       <div className="mb-2 flex items-start justify-between gap-4">
         <h2 className="font-semibold text-sm">Worth your attention</h2>
         {showRefresh ? (

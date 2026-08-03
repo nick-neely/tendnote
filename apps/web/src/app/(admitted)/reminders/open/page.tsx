@@ -64,15 +64,19 @@ export async function ReminderOpenContent({ searchParams }: ReminderOpenPageProp
   const deepLink = destination ? reminderRecordDeepLink(destination) : null;
   if (deepLink) redirect(deepLink);
 
+  // A destination renders *inside* the shell's one `<main>`, so this is a plain
+  // section: a second `<main>` nested in the first is two "main" landmarks in one
+  // document, and its own `px-4` stacked on the shell's gutter, leaving this the
+  // only screen in the app indented twice as far as every other.
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 py-8 sm:px-6">
-      <h1 className="text-[length:var(--text-h1)] leading-[var(--text-h1-line)] font-semibold tracking-[var(--tracking-heading)]">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
+      <h1 className="text-[length:var(--text-h1)] font-semibold leading-[var(--text-h1-line)] tracking-normal">
         Reminder unavailable
       </h1>
       <p className="max-w-[65ch] text-muted-foreground">
         This reminder may have been completed, removed, or is no longer available to this account.
         Nothing was changed.
       </p>
-    </main>
+    </div>
   );
 }
