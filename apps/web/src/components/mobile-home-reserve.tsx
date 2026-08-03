@@ -44,7 +44,7 @@ function TodayBandReserve({ title }: { title?: string }) {
       // destination does.
       className="min-h-dvh pb-[calc(6.5rem+env(safe-area-inset-bottom))]"
     >
-      <div className="bg-panel px-5 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-6">
+      <div className="bg-panel px-gutter pt-[calc(1.25rem+env(safe-area-inset-top))] pb-6">
         {/* Before the client URL resolves there is no destination name to claim, and a
             heading with no accessible name is worse than none — so the placeholder is
             not a heading. Same type styles, same line box. */}
@@ -60,7 +60,7 @@ function TodayBandReserve({ title }: { title?: string }) {
         </p>
         <div aria-hidden className="mt-6 min-h-28 w-full rounded-xl border bg-background" />
       </div>
-      <div className="flex flex-col gap-3 px-5 pt-6">
+      <div className="flex flex-col gap-3 px-gutter pt-6">
         <RowReserve />
         <RowReserve />
       </div>
@@ -73,7 +73,7 @@ function ReviewListReserve() {
     <section
       aria-busy="true"
       aria-label={`Loading ${appDestination("review").label}`}
-      className="flex flex-col gap-6 px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6"
+      className="flex flex-col gap-6 px-gutter pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6"
     >
       {/* Header shape matches the resolved destination: a bare title. The line
           that used to sit here was filler while loading and wrong once loaded -

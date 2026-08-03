@@ -313,7 +313,10 @@ describe("SearchPalette", () => {
 
     await user.type(screen.getByRole("combobox", { name: "Search and commands" }), "maya");
 
-    await expectRestrictedGateOpensOnRecordType(user);
+    await expectRestrictedGateOpensOnRecordType(async () => {
+      await user.click(screen.getByRole("combobox", { name: "Record type" }));
+      await user.click(await screen.findByRole("option", { name: "People" }));
+    });
 
     await waitFor(() =>
       expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ family: "people" })),

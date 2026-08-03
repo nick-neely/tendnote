@@ -79,11 +79,16 @@ describe("ActionsSurface area filter", () => {
     expect(html).toContain("Manage areas");
   });
 
+  /**
+   * With no Areas there is nothing to filter, so the row is the one control that
+   * makes some. "No areas yet. Areas group related actions." used to sit beside
+   * it - a caption explaining a filter row that was not there.
+   */
   it("shows the Add areas affordance and no chips when there are no active areas", () => {
     const html = render([actionView()], []);
 
     expect(html).toContain("Add areas");
-    expect(html).toContain("No areas yet");
+    expect(html).not.toContain("No areas yet");
     expect(html).not.toContain(">All<");
   });
 

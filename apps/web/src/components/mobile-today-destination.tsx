@@ -121,7 +121,7 @@ function TodayEveComposer({
   }).format(new Date());
   return (
     <div
-      className="bg-panel px-5 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-6"
+      className="bg-panel px-gutter pt-[calc(1.25rem+env(safe-area-inset-top))] pb-6"
       data-testid="today-orientation-band"
     >
       <header className="flex items-start justify-between gap-4">

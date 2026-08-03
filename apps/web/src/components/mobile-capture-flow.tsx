@@ -797,7 +797,7 @@ function CaptureComposer({
 export function MobileCaptureFlow(props: CaptureFlowProps) {
   const controller = useCaptureController(props);
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-gutter py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       {controller.state.clarification ? (
         <CaptureClarification controller={controller} />
       ) : controller.state.confirmation ? (

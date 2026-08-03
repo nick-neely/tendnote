@@ -435,11 +435,12 @@ describe("ActionsSurface narrow viewport (mobile-first base layer)", () => {
     expect(screen.getByRole("radio", { name: "Home" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Manage areas" })).toBeTruthy();
 
-    // The filter reflow container is authored mobile-first: it stacks (`flex-col`) at the
-    // base width and only becomes a row at `sm:` — the layer jsdom cannot compute.
-    const reflow = document.querySelector("[data-slot=action-filter-bar]");
-    expect(reflow?.className).toContain("flex-col");
-    expect(reflow?.className).toContain("sm:flex-row");
+    // The filter bar is one row at every width: the chips scroll sideways rather
+    // than wrapping into extra rows of chrome above the ledger, and the manage
+    // control keeps its icon while its label goes screen-reader-only on a phone.
+    const filterBar = document.querySelector("[data-slot=action-filter-bar]");
+    expect(filterBar?.className).not.toContain("flex-col");
+    expect(filterBar?.querySelector(".overflow-x-auto")).toBeTruthy();
 
     // Controls stay operable (not just present) at this width — the filter still works.
     await user.click(screen.getByRole("radio", { name: "Health", checked: false }));
