@@ -272,6 +272,7 @@ const REVIEW_FAMILIES: { family: ReviewQueueFamily; heading: string }[] = [
   { family: "suggested-general-action", heading: "Actions" },
   { family: "asset-review-group", heading: "Assets" },
   { family: "source-record", heading: "Source details" },
+  { family: "suggested-context-fact", heading: "Self Context" },
 ];
 
 function ReviewQueueStreams({ ownerUserId }: { ownerUserId: string }) {
@@ -299,7 +300,7 @@ async function ReviewQueueEmpty({ ownerUserId }: { ownerUserId: string }) {
 
   return (
     <EmptyState
-      description="Eve's suggestions land here first: a detail worth keeping, an action to take, a name it couldn't place. Nothing is saved without your yes."
+      description="Eve's suggestions land here first: a detail worth keeping, an action to take, a name it couldn't place, or a fact about you to review. Nothing is saved without your yes."
       size="compact"
       title="Nothing waiting to review."
     />

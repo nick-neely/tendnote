@@ -19,6 +19,7 @@ import {
   updateSelfContextFactInputSchema,
 } from "@tendnote/domain";
 import { affectedScopesForContextFact } from "../affected-scopes";
+import { createContextFactReviewQueries } from "./review-queries";
 import type {
   ContextFactAuditLogInput,
   ContextFactDeleteMutationOutcome,
@@ -595,8 +596,19 @@ export function createContextFactQueries(
     return toContextFactView(parsed);
   }
 
+  const reviewQueries = createContextFactReviewQueries({
+    store,
+    requireVerifiedCaller,
+    assertSubjectBelongsToCaller,
+    findActiveMatch,
+    affectedScopesForFact,
+    recordAudit,
+    auditLogInput,
+  });
+
   return {
     createContextFact,
+    ...reviewQueries,
     updateSelfContextFact,
     archiveSelfContextFact,
     restoreSelfContextFact,

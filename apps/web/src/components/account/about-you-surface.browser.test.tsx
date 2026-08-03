@@ -2,6 +2,7 @@ import type { ContextFactView } from "@tendnote/domain";
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
+import type { SuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 import { renderInBrowser } from "@/test/browser";
 import { AboutYouSurface } from "./about-you-surface";
 
@@ -9,6 +10,7 @@ const cleanups: Array<() => Promise<void>> = [];
 
 const FACT_ID = "00000000-0000-4000-8000-000000000001";
 const NOW = new Date("2026-08-02T12:00:00.000Z");
+const SUGGESTED_FACT_ID = "00000000-0000-4000-8000-000000000005";
 
 function fact(overrides: Partial<ContextFactView> = {}): ContextFactView {
   return {
@@ -27,6 +29,21 @@ function fact(overrides: Partial<ContextFactView> = {}): ContextFactView {
     authority: "none",
     visibility: "private",
     ...overrides,
+  };
+}
+
+function suggestedReview(): SuggestedContextFactReviewView {
+  return {
+    fact: fact({
+      id: SUGGESTED_FACT_ID,
+      content: "I am based in Chicago.",
+      lifecycle: "suggested",
+      sensitivity: "sensitive",
+      provenance: { channel: "ambient", origin: "ambient" },
+      reviewedAt: null,
+    }),
+    evidence: "The conversation included a Chicago address.",
+    activeMatch: null,
   };
 }
 
@@ -122,6 +139,101 @@ describe("About you browser contract", () => {
       document.documentElement.clientWidth,
     );
     expect(rendered.container.scrollWidth).toBeLessThanOrEqual(rendered.container.clientWidth);
+  });
+
+  it("reviews a suggested fact in place and adds only the returned active fact", async () => {
+    await page.viewport(390, 844);
+    document.documentElement.style.fontSize = "200%";
+    const accepted = fact({
+      id: SUGGESTED_FACT_ID,
+      content: "The returned active fact.",
+      lifecycle: "active",
+      sensitivity: "sensitive",
+      provenance: { channel: "ambient", origin: "ambient" },
+      reviewedAt: NOW,
+    });
+    const acceptAction = vi.fn(async () => ({
+      ok: true as const,
+      view: { fact: accepted, decision: "accepted" as const },
+    }));
+    const rendered = await renderInBrowser(
+      <AboutYouSurface
+        acceptSuggestedContextFactAction={acceptAction}
+        initialFacts={[]}
+        initialSuggestedReviews={[suggestedReview()]}
+      />,
+    );
+    cleanups.push(rendered.unmount);
+
+    await expect.element(page.getByRole("heading", { name: "Suggested" })).toBeVisible();
+    await expect
+      .element(page.getByText("The conversation included a Chicago address."))
+      .toBeVisible();
+    expect(page.getByRole("heading", { name: "Work" }).query()).toBeNull();
+    for (const control of [
+      page.getByRole("button", { name: "Dismiss suggested fact" }),
+      page.getByRole("button", { name: "Edit" }),
+      page.getByRole("button", { name: "Accept" }),
+    ]) {
+      const box = (await control.element()).getBoundingClientRect();
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+
+    await act(async () => {
+      (await page.getByRole("button", { name: "Accept" }).element()).focus();
+      await userEvent.keyboard("{Enter}");
+    });
+    await expect.element(page.getByText("The returned active fact.")).toBeVisible();
+    await expect.element(page.getByRole("status")).toHaveTextContent("accepted into About you");
+    expect(acceptAction).toHaveBeenCalledWith({
+      contextFactId: SUGGESTED_FACT_ID,
+      expectedUpdatedAt: NOW.toISOString(),
+    });
+    expect(page.getByText("The conversation included a Chicago address.").query()).toBeNull();
+    await expect.element(page.getByRole("button", { name: "Add a fact" })).toHaveFocus();
+    expect(rendered.container.scrollWidth).toBeLessThanOrEqual(rendered.container.clientWidth);
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
+      document.documentElement.clientWidth,
+    );
+  });
+
+  it("keeps Review actions recoverable and restores focus after failed suggestion mutations", async () => {
+    await page.viewport(390, 844);
+    const acceptAction = vi.fn(async () => ({
+      ok: false as const,
+      error: "That suggestion changed elsewhere. Refresh the review and try again.",
+    }));
+    const dismissAction = vi.fn(async () => ({
+      ok: false as const,
+      error: "The suggestion could not be dismissed. Try again.",
+    }));
+    const rendered = await renderInBrowser(
+      <AboutYouSurface
+        acceptSuggestedContextFactAction={acceptAction}
+        dismissSuggestedContextFactAction={dismissAction}
+        initialFacts={[]}
+        initialSuggestedReviews={[suggestedReview()]}
+      />,
+    );
+    cleanups.push(rendered.unmount);
+
+    const accept = page.getByRole("button", { name: "Accept" });
+    await act(async () => {
+      (await accept.element()).focus();
+      await userEvent.keyboard("{Enter}");
+    });
+    await expect.element(page.getByRole("alert")).toHaveTextContent("changed elsewhere");
+    await expect.element(page.getByText("I am based in Chicago.")).toBeVisible();
+    await expect.element(accept).toHaveFocus();
+
+    const dismiss = page.getByRole("button", { name: "Dismiss suggested fact" });
+    await act(async () => {
+      (await dismiss.element()).focus();
+      await userEvent.keyboard("{Enter}");
+    });
+    await expect.element(page.getByRole("alert")).toHaveTextContent("could not be dismissed");
+    await expect.element(dismiss).toHaveFocus();
   });
 
   it("edits the authoritative fact and keeps sensitivity independent from private visibility", async () => {

@@ -16,6 +16,9 @@ function item(family: ReviewQueueItem["family"], id: string): ReviewQueueItem {
   if (family === "source-record") {
     return { family, id, review: { sourceRecord: { id } } } as ReviewQueueItem;
   }
+  if (family === "suggested-context-fact") {
+    return { family, id, review: { fact: { id } } } as ReviewQueueItem;
+  }
   return { family, id, review: { groupId: id } } as ReviewQueueItem;
 }
 
@@ -38,7 +41,13 @@ describe("Review Queue", () => {
 
     const queue = await loadReviewQueue(
       { ownerUserId: "owner-1", limit: 4 },
-      { loadMemories, loadGeneralActions, loadAssetGroups, loadSourceRecords },
+      {
+        loadMemories,
+        loadGeneralActions,
+        loadAssetGroups,
+        loadSourceRecords,
+        loadContextFacts: vi.fn().mockResolvedValue([]),
+      },
     );
 
     expect(loadMemories).toHaveBeenCalledWith({ ownerUserId: "owner-1", limit: 4 });
@@ -70,6 +79,7 @@ describe("Review Queue", () => {
           .mockResolvedValue([item("suggested-general-action", "action-1")]),
         loadAssetGroups: vi.fn().mockResolvedValue([item("asset-review-group", "asset-1")]),
         loadSourceRecords: vi.fn().mockResolvedValue([]),
+        loadContextFacts: vi.fn().mockResolvedValue([]),
       },
     );
 
@@ -84,6 +94,23 @@ describe("Review Queue", () => {
     expect(queue.count).toBe(6);
   });
 
+  it("treats Suggested Context Facts as one ordinary typed review family", async () => {
+    const queue = await loadReviewQueue(
+      { ownerUserId: "owner-1", limit: 4 },
+      {
+        loadMemories: vi.fn().mockResolvedValue([]),
+        loadGeneralActions: vi.fn().mockResolvedValue([]),
+        loadAssetGroups: vi.fn().mockResolvedValue([]),
+        loadSourceRecords: vi.fn().mockResolvedValue([]),
+        loadContextFacts: vi.fn().mockResolvedValue([item("suggested-context-fact", "context-1")]),
+      },
+    );
+
+    expect(queue.items).toEqual([item("suggested-context-fact", "context-1")]);
+    expect(queue.count).toBe(1);
+    expect(queue.failures).toEqual([]);
+  });
+
   it("keeps successful families when one family fails", async () => {
     const queue = await loadReviewQueue(
       { ownerUserId: "owner-1", limit: 6 },
@@ -94,6 +121,7 @@ describe("Review Queue", () => {
           .mockResolvedValue([item("suggested-general-action", "action-1")]),
         loadAssetGroups: vi.fn().mockResolvedValue([item("asset-review-group", "group-1")]),
         loadSourceRecords: vi.fn().mockResolvedValue([]),
+        loadContextFacts: vi.fn().mockResolvedValue([]),
       },
     );
 
@@ -108,6 +136,7 @@ describe("Review Queue", () => {
       loadGeneralActions: vi.fn().mockResolvedValue([]),
       loadAssetGroups: vi.fn().mockResolvedValue([]),
       loadSourceRecords: vi.fn().mockResolvedValue([]),
+      loadContextFacts: vi.fn().mockResolvedValue([]),
     };
     const empty = await loadReviewQueue({ ownerUserId: "owner-1", limit: 6 }, dependencies);
     expect(empty).toEqual({ items: [], count: 0, failures: [] });

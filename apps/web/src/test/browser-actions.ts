@@ -70,6 +70,8 @@ export const deleteSelfContextFactAction = unusedAction;
 export const globalRecallAction = unusedAction;
 export const restoreSelfContextFactAction = unusedAction;
 export const updateSelfContextFactAction = unusedAction;
+export const acceptSuggestedContextFactAction = unusedAction;
+export const dismissSuggestedContextFactAction = unusedAction;
 
 export const actOnTodayItemAction = unusedAction;
 export const refreshTodayAction = unusedAction;

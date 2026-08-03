@@ -1,17 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listSelfContextFacts, requireAdmittedOwner, unstable_rethrow } = vi.hoisted(() => ({
+const {
+  listSelfContextFacts,
+  listSuggestedContextFactReviews,
+  requireAdmittedOwner,
+  unstable_rethrow,
+} = vi.hoisted(() => ({
   listSelfContextFacts: vi.fn(),
+  listSuggestedContextFactReviews: vi.fn(),
   requireAdmittedOwner: vi.fn(),
   unstable_rethrow: vi.fn(),
 }));
 
-vi.mock("@tendnote/db/queries/context-facts", () => ({ listSelfContextFacts }));
+vi.mock("@tendnote/db/queries/context-facts", () => ({
+  listSelfContextFacts,
+  listSuggestedContextFactReviews,
+}));
 vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwner }));
 vi.mock("next/navigation", () => ({ unstable_rethrow }));
 vi.mock("@/components/account/about-you-surface", () => ({
-  AboutYouSurface: ({ initialFacts }: { initialFacts: unknown[] }) => (
-    <div data-testid="about-you-surface">{initialFacts.length} facts</div>
+  AboutYouSurface: ({
+    initialFacts,
+    initialSuggestedReviews,
+  }: {
+    initialFacts: unknown[];
+    initialSuggestedReviews: unknown[];
+  }) => (
+    <div data-testid="about-you-surface">
+      {initialFacts.length} facts, {initialSuggestedReviews.length} suggestions
+    </div>
   ),
 }));
 
@@ -22,6 +39,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   requireAdmittedOwner.mockResolvedValue("owner-1");
   listSelfContextFacts.mockResolvedValue([]);
+  listSuggestedContextFactReviews.mockResolvedValue([]);
 });
 
 describe("About you route", () => {
@@ -38,6 +56,10 @@ describe("About you route", () => {
     expect(markup).toContain("1 facts");
     expect(listSelfContextFacts).toHaveBeenCalledWith(
       { callerUserId: "owner-1", includeArchived: true },
+      requireAdmittedOwner,
+    );
+    expect(listSuggestedContextFactReviews).toHaveBeenCalledWith(
+      { callerUserId: "owner-1" },
       requireAdmittedOwner,
     );
     expect(requireAdmittedOwner).toHaveBeenCalledWith({ returnTo: "/account/about-you" });
@@ -58,6 +80,10 @@ describe("About you route", () => {
     expect(ownerTwoMarkup).not.toContain(privateFact.content);
     expect(listSelfContextFacts).toHaveBeenLastCalledWith(
       { callerUserId: "owner-2", includeArchived: true },
+      requireAdmittedOwner,
+    );
+    expect(listSuggestedContextFactReviews).toHaveBeenLastCalledWith(
+      { callerUserId: "owner-2" },
       requireAdmittedOwner,
     );
   });

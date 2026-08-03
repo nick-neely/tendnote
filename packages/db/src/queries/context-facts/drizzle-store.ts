@@ -134,12 +134,22 @@ export function createDrizzleContextFactStore(): ContextFactStore {
       if (!isPersistedContextFactId(input.contextFactId)) return false;
       const subject = subjectWhere(input);
       if (!subject) return false;
+      const lifecycle = input.lifecycle ? eq(contextFacts.lifecycle, input.lifecycle) : undefined;
+      const expectedUpdatedAt = input.expectedUpdatedAt
+        ? eq(contextFacts.updatedAt, input.expectedUpdatedAt)
+        : undefined;
+      const where = and(
+        eq(contextFacts.id, input.contextFactId),
+        subject,
+        lifecycle,
+        expectedUpdatedAt,
+      );
       const auditLogEntry = input.auditLogEntry;
       if (auditLogEntry) {
         return getDb().transaction(async (tx) => {
           const [row] = await tx
             .delete(contextFacts)
-            .where(and(eq(contextFacts.id, input.contextFactId), subject))
+            .where(where)
             .returning({ id: contextFacts.id });
           if (!row) return false;
           await tx.insert(auditLog).values(auditLogEntry);
@@ -148,7 +158,7 @@ export function createDrizzleContextFactStore(): ContextFactStore {
       }
       const [row] = await getDb()
         .delete(contextFacts)
-        .where(and(eq(contextFacts.id, input.contextFactId), subject))
+        .where(where)
         .returning({ id: contextFacts.id });
       return Boolean(row);
     },

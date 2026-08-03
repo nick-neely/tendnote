@@ -1,5 +1,5 @@
 import type { TodayShortlistResponse } from "@tendnote/domain/today";
-import { act } from "react";
+import { act, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import type { ReviewQueueItem } from "@/lib/review-queue";
@@ -97,6 +97,31 @@ const sourceReview: ReviewQueueItem = {
     },
     linkedPeople: [],
     unresolvedMentions: [{ id: "mention-maya", mentionText: "Maya", candidatePersonIds: [] }],
+  },
+};
+
+const suggestedContextFactReview: ReviewQueueItem = {
+  family: "suggested-context-fact",
+  id: "suggested-context-fact-review",
+  review: {
+    fact: {
+      id: "00000000-0000-4000-8000-000000000006",
+      subject: { kind: "self" },
+      category: "work",
+      content: "I work from Chicago.",
+      lifecycle: "suggested",
+      sensitivity: "normal",
+      provenance: { channel: "ambient", origin: "ambient" },
+      reviewedAt: null,
+      archivedAt: null,
+      createdAt: new Date("2026-07-21T15:00:00.000Z"),
+      updatedAt: new Date("2026-07-21T15:00:00.000Z"),
+      trust: "untrusted_data",
+      authority: "none",
+      visibility: "private",
+    },
+    evidence: "The conversation included a Chicago work location.",
+    activeMatch: null,
   },
 };
 
@@ -245,6 +270,112 @@ describe("Phase Seven phone browser proof", () => {
       await userEvent.keyboard("{Tab}");
     });
     await expect.element(addPerson).toHaveFocus();
+    expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
+  });
+
+  it("keeps Suggested Self Context review actionable from the real Review entry point", async () => {
+    await page.viewport(390, 844);
+    document.documentElement.style.fontSize = "200%";
+    const accepted = {
+      ...suggestedContextFactReview.review.fact,
+      content: "The reviewed work location.",
+      lifecycle: "active" as const,
+      reviewedAt: new Date("2026-08-02T12:01:00.000Z"),
+    };
+    const acceptAction = vi.fn(async () => ({
+      ok: true as const,
+      view: { fact: accepted, decision: "accepted" as const },
+    }));
+
+    function ReviewHarness() {
+      const [items, setItems] = useState([suggestedContextFactReview]);
+      return (
+        <>
+          <ReviewQueueSection
+            items={items}
+            onResolve={() => setItems([])}
+            onUpdate={vi.fn()}
+            suggestedContextFactAcceptAction={acceptAction}
+          />
+          {items.length === 0 ? <p>Review resolved.</p> : null}
+        </>
+      );
+    }
+
+    const container = await mount(
+      <AppShell ownerUserId="owner-1">
+        <ReviewHarness />
+      </AppShell>,
+    );
+
+    await expect.element(page.getByRole("list", { name: "Review queue" })).toBeVisible();
+    await expect.element(page.getByText("I work from Chicago.")).toBeVisible();
+    await expect
+      .element(page.getByText("The conversation included a Chicago work location."))
+      .toBeVisible();
+    for (const name of ["Dismiss suggested fact", "Edit", "Accept"]) {
+      const box = (await page.getByRole("button", { name }).element()).getBoundingClientRect();
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+
+    await act(async () => {
+      (await page.getByRole("button", { name: "Accept" }).element()).focus();
+      await userEvent.keyboard("{Enter}");
+    });
+    await expect.element(page.getByText("Review resolved.")).toBeVisible();
+    expect(page.getByText("I work from Chicago.").query()).toBeNull();
+    expect(acceptAction).toHaveBeenCalledWith({
+      contextFactId: "00000000-0000-4000-8000-000000000006",
+      expectedUpdatedAt: "2026-07-21T15:00:00.000Z",
+    });
+    await expect.element(page.getByRole("heading", { name: "Needs review" })).toHaveFocus();
+    expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
+      document.documentElement.clientWidth,
+    );
+  });
+
+  it("keeps Review suggestion actions recoverable after failed accept and dismiss", async () => {
+    await page.viewport(390, 844);
+    document.documentElement.style.fontSize = "200%";
+    const acceptAction = vi.fn(async () => ({
+      ok: false as const,
+      error: "That suggestion changed elsewhere. Refresh the review and try again.",
+    }));
+    const dismissAction = vi.fn(async () => ({
+      ok: false as const,
+      error: "The suggestion could not be dismissed. Try again.",
+    }));
+
+    const container = await mount(
+      <AppShell ownerUserId="owner-1">
+        <ReviewQueueSection
+          items={[suggestedContextFactReview]}
+          onResolve={vi.fn()}
+          onUpdate={vi.fn()}
+          suggestedContextFactAcceptAction={acceptAction}
+          suggestedContextFactDismissAction={dismissAction}
+        />
+      </AppShell>,
+    );
+
+    const accept = page.getByRole("button", { name: "Accept" });
+    await act(async () => {
+      (await accept.element()).focus();
+      await userEvent.keyboard("{Enter}");
+    });
+    await expect.element(page.getByRole("alert")).toHaveTextContent("changed elsewhere");
+    await expect.element(page.getByText("I work from Chicago.")).toBeVisible();
+    await expect.element(accept).toHaveFocus();
+
+    const dismiss = page.getByRole("button", { name: "Dismiss suggested fact" });
+    await act(async () => {
+      (await dismiss.element()).focus();
+      await userEvent.keyboard("{Enter}");
+    });
+    await expect.element(page.getByRole("alert")).toHaveTextContent("could not be dismissed");
+    await expect.element(dismiss).toHaveFocus();
     expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
   });
 

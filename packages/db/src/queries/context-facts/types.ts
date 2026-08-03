@@ -1,13 +1,18 @@
 import type {
+  AcceptSuggestedContextFactInput,
   ArchiveSelfContextFactInput,
   ContextFact,
   ContextFactDeleteResult,
   ContextFactLifecycle,
   ContextFactMutationDecision,
+  ContextFactReviewDismissResult,
   ContextFactView,
   CreateContextFactInput,
   CreateSelfContextFactInput,
+  CreateSuggestedContextFactInput,
+  CreateSuggestedSelfContextFactInput,
   DeleteSelfContextFactInput,
+  DismissSuggestedContextFactInput,
   PersistContextFact,
   RestoreSelfContextFactInput,
   UpdateSelfContextFactInput,
@@ -61,6 +66,8 @@ export type ContextFactStore = {
   deleteContextFact: (
     input: {
       contextFactId: string;
+      lifecycle?: ContextFactLifecycle;
+      expectedUpdatedAt?: Date;
       auditLogEntry?: ContextFactAuditLogInput;
     } & ContextFactSubjectFilter,
   ) => Promise<boolean>;
@@ -112,3 +119,31 @@ export type ContextFactMutationOutcome = MutationOutcome<ContextFactView> & {
 };
 
 export type ContextFactDeleteMutationOutcome = MutationOutcome<ContextFactDeleteResult>;
+
+export type ContextFactReviewMatch = {
+  kind: "duplicate" | "conflict";
+  fact: ContextFact;
+};
+
+export type SuggestedContextFactReviewResult = {
+  fact: ContextFact;
+  evidence: string;
+  activeMatch: ContextFactReviewMatch | null;
+};
+
+export type SuggestedContextFactMutationOutcome =
+  MutationOutcome<SuggestedContextFactReviewResult> & {
+    decision: "created" | "existing";
+  };
+
+export type ContextFactReviewMutationOutcome = MutationOutcome<ContextFactView> & {
+  decision: "accepted" | "existing";
+};
+
+export type ContextFactReviewDismissMutationOutcome =
+  MutationOutcome<ContextFactReviewDismissResult>;
+
+export type CreateSuggestedContextFactMutationInput = CreateSuggestedContextFactInput;
+export type CreateSuggestedSelfContextFactMutationInput = CreateSuggestedSelfContextFactInput;
+export type AcceptSuggestedContextFactMutationInput = AcceptSuggestedContextFactInput;
+export type DismissSuggestedContextFactMutationInput = DismissSuggestedContextFactInput;

@@ -37,15 +37,14 @@ const PANEL =
  * no single area bloats. Today (the morning glance: today's signals plus the
  * daily and weekly briefs, which have no tab of their own), Follow-ups (active
  * reminders + suggested follow-ups), Review (the shared Review Queue: suggested
- * memories, Suggested actions, and grouped Asset review, ADRs 0152/0191), and
- * People (fast recall). The rail owns the mutable collections so a calm, neutral count on the
- * Follow-ups and Review tabs stays in sync as items resolve — nothing is hidden
- * behind a click without a count, and the inline approve/dismiss is preserved so
- * no one has to open a person page just to clear a suggestion. Counts are never
- * red and never framed as a backlog; an empty tab teaches the next step instead
- * of nagging.
+ * memories, Suggested actions, Self Context, and grouped Asset review, ADRs 0152/0191), and
+ * People (fast recall). The rail owns the mutable collections so the Follow-ups
+ * count stays in sync as reminders resolve; Review stays quiet and teaches the
+ * next step when it is empty. Counts are never red or framed as a backlog, and
+ * inline approve/dismiss is preserved so no one has to open a person page just
+ * to clear a suggestion.
  */
-// The cohesive tab shell that owns the follow-up lists, unified Review Queue, and live counts; the
+// The cohesive tab shell that owns the follow-up lists, unified Review Queue, and live follow-up count; the
 // per-section markup is already extracted into child sections. Its score is JSX/tab
 // composition depth plus that list-state hook set, not branching logic (cyclomatic and
 // cognitive are both within threshold); splitting the shell further would scatter the
@@ -69,14 +68,14 @@ export function DashboardRail({
   followups: DashboardFollowupView[];
   followupReviews: SuggestedFollowupReviewView[];
   calendarSuggestions: CalendarSuggestionReviewView[];
-  /** How many units are waiting in Review, for the tab count and the empty state. */
+  /** How many units are waiting in Review, for the empty state only. */
   reviewCount: number;
   dailyBrief: BriefView | null;
   weeklyBrief: BriefView | null;
   /**
    * The Review panel itself. The queue streams in from the server family by
    * family, and each family owns its own optimistic collection, so the rail
-   * carries the count and nothing else about what is in there.
+   * carries no user-visible count and nothing else about what is in there.
    */
   reviewContent: ReactNode;
   /** The soonest reminder past the Follow-ups horizon, named by an empty tab. */
@@ -147,7 +146,6 @@ export function DashboardRail({
         </TabsTrigger>
         <TabsTrigger className="group/tab" value="review">
           Review
-          <TabCount count={reviewCount} />
         </TabsTrigger>
         <TabsTrigger className="group/tab" value="people">
           People
@@ -213,7 +211,7 @@ export function DashboardRail({
         {reviewCount === 0 ? (
           <RailEmpty title="Nothing waiting to review.">
             Eve's suggestions land here first: a detail worth keeping, an action to take, a name it
-            couldn't place. Nothing is saved without your yes.
+            couldn't place, or a fact about you to review. Nothing is saved without your yes.
           </RailEmpty>
         ) : (
           reviewContent

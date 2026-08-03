@@ -1,4 +1,5 @@
 import { listAssetReviewGroups } from "@tendnote/db/queries/assets";
+import { listSuggestedContextFactReviews } from "@tendnote/db/queries/context-facts";
 import { listSuggestedGeneralActionReviews } from "@tendnote/db/queries/general-actions";
 import { listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import { listSourceRecordReviews } from "@tendnote/db/queries/source-records";
@@ -11,6 +12,7 @@ import {
   type ReviewQueueItem,
 } from "@/lib/review-queue";
 import { toSourceRecordReviewView } from "@/lib/source-record-review-view";
+import { toSuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 import { toSuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 import { toSuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 
@@ -59,6 +61,20 @@ const dependencies: ReviewQueueDependencies = {
         }),
       );
   },
+  async loadContextFacts({ ownerUserId, limit }) {
+    const { requireAdmittedOwner } = await import("@/lib/access/current-access");
+    const reviews = await listSuggestedContextFactReviews(
+      { callerUserId: ownerUserId },
+      requireAdmittedOwner,
+    );
+    return reviews.slice(0, limit).map(
+      (review): ReviewQueueItem => ({
+        family: "suggested-context-fact",
+        id: review.fact.id,
+        review: toSuggestedContextFactReviewView(review),
+      }),
+    );
+  },
 };
 
 /**
@@ -77,7 +93,9 @@ export async function loadOwnerReviewQueueFamily(
         ? dependencies.loadGeneralActions
         : family === "asset-review-group"
           ? dependencies.loadAssetGroups
-          : dependencies.loadSourceRecords;
+          : family === "source-record"
+            ? dependencies.loadSourceRecords
+            : dependencies.loadContextFacts;
   try {
     return { family, items: await loader({ ownerUserId, limit: 6 }), unavailable: false };
   } catch (error) {

@@ -42,6 +42,7 @@ export function createInMemoryContextFactStore(seed: ContextFact[] = []): InMemo
       }
       const duplicate = [...records.values()].some(
         (current) =>
+          parsed.lifecycle === "active" &&
           current.lifecycle === "active" &&
           current.subject.kind === parsed.subject.kind &&
           contextFactSubjectId(current.subject) === contextFactSubjectId(parsed.subject) &&
@@ -94,7 +95,15 @@ export function createInMemoryContextFactStore(seed: ContextFact[] = []): InMemo
       if (!isPersistedContextFactId(input.contextFactId)) return false;
       if (input.subjectUserId === undefined && input.householdIds === undefined) return false;
       const current = records.get(input.contextFactId);
-      if (!current || !isAllowedByFilter(current, input)) return false;
+      if (
+        !current ||
+        !isAllowedByFilter(current, input) ||
+        (input.lifecycle !== undefined && current.lifecycle !== input.lifecycle) ||
+        (input.expectedUpdatedAt !== undefined &&
+          current.updatedAt.getTime() !== input.expectedUpdatedAt.getTime())
+      ) {
+        return false;
+      }
       records.delete(input.contextFactId);
       if (input.auditLogEntry) {
         auditLogEntries.push({

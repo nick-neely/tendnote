@@ -117,6 +117,7 @@ export type ContextFactMutationDecision =
   | "created"
   | "updated"
   | "existing"
+  | "accepted"
   | "archived"
   | "restored";
 
@@ -220,6 +221,110 @@ export type ContextFact = z.infer<typeof contextFactSchema>;
 export type PersistContextFact = z.infer<typeof persistContextFactSchema>;
 export type CreateContextFactInput = z.input<typeof createContextFactInputSchema>;
 export type CreateSelfContextFactInput = z.input<typeof createSelfContextFactInputSchema>;
+
+/** The only fields an owner may correct before accepting a suggestion. */
+export const contextFactReviewEditSchema = z
+  .object({
+    category: contextFactCategorySchema,
+    content: contextFactContentSchema,
+    sensitivity: sensitivitySchema,
+  })
+  .partial()
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.category === "composition") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["category"],
+        message: "Composition is only valid for Household Context.",
+      });
+    }
+  });
+
+export type ContextFactReviewEdit = z.input<typeof contextFactReviewEditSchema>;
+
+export const createSuggestedContextFactInputSchema = z
+  .object({
+    callerUserId: nonEmptyIdentifier,
+    subject: contextFactSubjectSchema,
+    category: contextFactCategorySchema,
+    content: contextFactContentSchema,
+    sensitivity: sensitivitySchema.default("normal"),
+    provenance: contextFactProvenanceSchema,
+    /** Bounded evidence shown to the owner during review. */
+    suggestionEvidence: contextFactContentSchema,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    addContextFactSubjectIssues(value, ctx);
+    if (value.provenance.origin === "direct") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["provenance", "origin"],
+        message: "Suggested Context Facts require review-gated provenance.",
+      });
+    }
+  });
+
+export type CreateSuggestedContextFactInput = z.input<typeof createSuggestedContextFactInputSchema>;
+
+export const createSuggestedSelfContextFactInputSchema = z
+  .object({
+    callerUserId: nonEmptyIdentifier,
+    category: contextFactCategorySchema,
+    content: contextFactContentSchema,
+    sensitivity: sensitivitySchema.default("normal"),
+    provenance: contextFactProvenanceSchema,
+    suggestionEvidence: contextFactContentSchema,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.category === "composition") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["category"],
+        message: "Composition is only valid for Household Context.",
+      });
+    }
+    if (value.provenance.origin === "direct") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["provenance", "origin"],
+        message: "Suggested Context Facts require review-gated provenance.",
+      });
+    }
+  });
+
+export type CreateSuggestedSelfContextFactInput = z.input<
+  typeof createSuggestedSelfContextFactInputSchema
+>;
+
+export const acceptSuggestedContextFactInputSchema = z
+  .object({
+    callerUserId: nonEmptyIdentifier,
+    contextFactId: nonEmptyIdentifier.max(128),
+    expectedUpdatedAt: z.date().optional(),
+    edit: contextFactReviewEditSchema.optional(),
+  })
+  .strict();
+
+export type AcceptSuggestedContextFactInput = z.input<typeof acceptSuggestedContextFactInputSchema>;
+
+export const dismissSuggestedContextFactInputSchema = z
+  .object({
+    callerUserId: nonEmptyIdentifier,
+    contextFactId: nonEmptyIdentifier.max(128),
+    expectedUpdatedAt: z.date().optional(),
+  })
+  .strict();
+
+export type DismissSuggestedContextFactInput = z.input<
+  typeof dismissSuggestedContextFactInputSchema
+>;
+
+export type ContextFactReviewDismissResult = {
+  dismissedContextFactId: string;
+};
 
 export const updateSelfContextFactInputSchema = z
   .object({

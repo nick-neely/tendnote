@@ -3,6 +3,14 @@
 import type { ContextFactView, Sensitivity } from "@tendnote/domain";
 import type { FormEvent } from "react";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
+import {
+  type AcceptSuggestedContextFactActionInput,
+  type DismissSuggestedContextFactActionInput,
+  acceptSuggestedContextFactAction as defaultAcceptSuggestedContextFactAction,
+  dismissSuggestedContextFactAction as defaultDismissSuggestedContextFactAction,
+  type SuggestedContextFactDismissResult,
+  type SuggestedContextFactMutationResult,
+} from "@/app/actions/context-fact-review";
 import type {
   ArchiveSelfContextFactActionInput,
   DeleteSelfContextFactActionInput,
@@ -17,6 +25,7 @@ import {
   restoreSelfContextFactAction,
   updateSelfContextFactAction,
 } from "@/app/actions/context-facts";
+import { SuggestedContextFactReviewCard } from "@/components/suggested-context-fact-review";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,8 +56,10 @@ import {
   type SelfContextFactMutationView,
   selfContextCategories,
 } from "@/lib/context-fact-view";
+import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 import { ReversibleMutationProvider, useReversibleMutation } from "@/lib/reversible-mutation";
+import type { SuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 
 type CreateAction = (input: SelfContextFactActionInput) => Promise<SelfContextFactMutationResult>;
 type UpdateAction = (
@@ -63,14 +74,23 @@ type RestoreAction = (
 type DeleteAction = (
   input: DeleteSelfContextFactActionInput,
 ) => Promise<SelfContextFactDeleteResult>;
+type AcceptSuggestedContextFactAction = (
+  input: AcceptSuggestedContextFactActionInput,
+) => Promise<SuggestedContextFactMutationResult>;
+type DismissSuggestedContextFactAction = (
+  input: DismissSuggestedContextFactActionInput,
+) => Promise<SuggestedContextFactDismissResult>;
 
 type AboutYouSurfaceProps = {
   initialFacts: ContextFactView[];
+  initialSuggestedReviews?: SuggestedContextFactReviewView[];
   createAction?: CreateAction;
   updateAction?: UpdateAction;
   archiveAction?: ArchiveAction;
   restoreAction?: RestoreAction;
   deleteAction?: DeleteAction;
+  acceptSuggestedContextFactAction?: AcceptSuggestedContextFactAction;
+  dismissSuggestedContextFactAction?: DismissSuggestedContextFactAction;
 };
 
 type EditorState = { mode: "create" } | { mode: "edit"; fact: ContextFactView };
@@ -105,13 +125,26 @@ export function AboutYouSurface(props: AboutYouSurfaceProps) {
 // fallow-ignore-next-line complexity -- About you coordinates one bounded owner surface: archived disclosure, editor focus, and lifecycle reconciliation share one authoritative list.
 function AboutYouSurfaceContent({
   initialFacts,
+  initialSuggestedReviews = [],
   createAction = createSelfContextFactAction,
   updateAction = updateSelfContextFactAction,
   archiveAction = archiveSelfContextFactAction,
   restoreAction = restoreSelfContextFactAction,
   deleteAction = deleteSelfContextFactAction,
+  acceptSuggestedContextFactAction:
+    acceptSuggestedFactAction = defaultAcceptSuggestedContextFactAction,
+  dismissSuggestedContextFactAction:
+    dismissSuggestedFactAction = defaultDismissSuggestedContextFactAction,
 }: AboutYouSurfaceProps) {
   const [facts, setFacts] = useState(() => initialFacts.filter(isSelfContextFact));
+  const [suggestedReviews, setSuggestedReviews] = useState(() =>
+    initialSuggestedReviews.filter(
+      ({ fact }) =>
+        fact.subject.kind === "self" &&
+        fact.lifecycle === "suggested" &&
+        fact.category !== "composition",
+    ),
+  );
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -159,6 +192,20 @@ function AboutYouSurfaceContent({
   function removeFact(contextFactId: string) {
     setFacts((current) => current.filter((fact) => fact.id !== contextFactId));
     setAnnouncement("The fact was permanently deleted.");
+  }
+
+  function removeSuggestedReview(contextFactId: string) {
+    const row = document
+      .querySelector<HTMLElement>(`[data-context-fact-suggestion-id="${contextFactId}"]`)
+      ?.closest<HTMLElement>("li");
+    const moveFocus = captureFocusAfterRemoval(row, "h2", () => addButtonRef.current);
+    setSuggestedReviews((current) => current.filter((review) => review.fact.id !== contextFactId));
+    moveFocus();
+  }
+
+  function handleSuggestedFactAccepted(view: ContextFactView) {
+    applyFact(view);
+    setAnnouncement("Fact accepted into About you.");
   }
 
   function handleSaved(mutation: SelfContextFactMutationView) {
@@ -249,7 +296,39 @@ function AboutYouSurfaceContent({
         />
       ) : null}
 
-      {activeFacts.length === 0 && archivedFacts.length === 0 ? (
+      {suggestedReviews.length > 0 ? (
+        <section
+          aria-labelledby="about-you-suggested-heading"
+          className="flex min-w-0 flex-col gap-2"
+        >
+          <div className="flex min-w-0 flex-col gap-1">
+            <h2
+              className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground"
+              id="about-you-suggested-heading"
+            >
+              Suggested
+            </h2>
+            <p className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
+              Review these facts before they become part of About you.
+            </p>
+          </div>
+          <ul className="flex min-w-0 flex-col gap-2" data-about-you-suggested>
+            {suggestedReviews.map((review) => (
+              <li key={review.fact.id}>
+                <SuggestedContextFactReviewCard
+                  acceptAction={acceptSuggestedFactAction}
+                  dismissAction={dismissSuggestedFactAction}
+                  onAccepted={handleSuggestedFactAccepted}
+                  onResolve={removeSuggestedReview}
+                  review={review}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {activeFacts.length === 0 && archivedFacts.length === 0 && suggestedReviews.length === 0 ? (
         <EmptyState
           description="Add one concise fact about your work, interests, location, preferences, or constraints."
           title="Nothing about you yet."
@@ -473,7 +552,10 @@ function ContextFactRow({
   }
 
   return (
-    <article className="flex min-w-0 flex-col gap-3 px-3.5 py-3 sm:flex-row sm:items-start sm:justify-between">
+    <article
+      className="flex min-w-0 flex-col gap-3 px-3.5 py-3 sm:flex-row sm:items-start sm:justify-between"
+      id={`context-fact-${fact.id}`}
+    >
       <div className="flex min-w-0 flex-col gap-1">
         <p className="min-w-0 break-words whitespace-pre-wrap text-[length:var(--text-body)] leading-[var(--text-body-line)]">
           {fact.content}

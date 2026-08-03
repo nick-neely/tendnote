@@ -2,6 +2,7 @@
 
 import type { ContextFactView } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 import { render, screen, userEvent, waitFor } from "@/test/dom";
 
 const createSelfContextFactAction = vi.fn();
@@ -9,6 +10,8 @@ const updateSelfContextFactAction = vi.fn();
 const archiveSelfContextFactAction = vi.fn();
 const restoreSelfContextFactAction = vi.fn();
 const deleteSelfContextFactAction = vi.fn();
+const acceptSuggestedContextFactAction = vi.fn();
+const dismissSuggestedContextFactAction = vi.fn();
 
 vi.mock("@/app/actions/context-facts", () => ({
   createSelfContextFactAction: (...args: unknown[]) => createSelfContextFactAction(...args),
@@ -18,10 +21,18 @@ vi.mock("@/app/actions/context-facts", () => ({
   deleteSelfContextFactAction: (...args: unknown[]) => deleteSelfContextFactAction(...args),
 }));
 
+vi.mock("@/app/actions/context-fact-review", () => ({
+  acceptSuggestedContextFactAction: (...args: unknown[]) =>
+    acceptSuggestedContextFactAction(...args),
+  dismissSuggestedContextFactAction: (...args: unknown[]) =>
+    dismissSuggestedContextFactAction(...args),
+}));
+
 import { AboutYouSurface } from "./about-you-surface";
 
 const FACT_ID = "00000000-0000-4000-8000-000000000001";
 const UPDATED_FACT_ID = "00000000-0000-4000-8000-000000000002";
+const SUGGESTED_FACT_ID = "00000000-0000-4000-8000-000000000005";
 const NOW = new Date("2026-08-02T12:00:00.000Z");
 
 function fact(overrides: Partial<ContextFactView> = {}): ContextFactView {
@@ -44,6 +55,24 @@ function fact(overrides: Partial<ContextFactView> = {}): ContextFactView {
   };
 }
 
+function suggestedReview(
+  overrides: Partial<SuggestedContextFactReviewView> = {},
+): SuggestedContextFactReviewView {
+  return {
+    fact: fact({
+      id: SUGGESTED_FACT_ID,
+      content: "I am based in Chicago.",
+      lifecycle: "suggested",
+      sensitivity: "sensitive",
+      provenance: { channel: "ambient", origin: "ambient" },
+      reviewedAt: null,
+    }),
+    evidence: "The conversation included a Chicago address.",
+    activeMatch: null,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   createSelfContextFactAction.mockReset();
@@ -51,9 +80,82 @@ beforeEach(() => {
   archiveSelfContextFactAction.mockReset();
   restoreSelfContextFactAction.mockReset();
   deleteSelfContextFactAction.mockReset();
+  acceptSuggestedContextFactAction.mockReset();
+  dismissSuggestedContextFactAction.mockReset();
 });
 
 describe("AboutYouSurface", () => {
+  it("keeps suggested facts separate until the authoritative accept result becomes active", async () => {
+    const user = userEvent.setup();
+    const accepted = fact({
+      id: SUGGESTED_FACT_ID,
+      content: "The returned active fact.",
+      lifecycle: "active",
+      sensitivity: "sensitive",
+      provenance: { channel: "ambient", origin: "ambient" },
+      reviewedAt: NOW,
+    });
+    acceptSuggestedContextFactAction.mockResolvedValue({
+      ok: true,
+      view: { fact: accepted, decision: "accepted" },
+    });
+
+    render(
+      <AboutYouSurface
+        acceptSuggestedContextFactAction={acceptSuggestedContextFactAction}
+        initialFacts={[]}
+        initialSuggestedReviews={[suggestedReview()]}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Suggested" })).toBeTruthy();
+    expect(screen.getByText("I am based in Chicago.")).toBeTruthy();
+    expect(screen.getByText("The conversation included a Chicago address.")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Location" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+
+    await waitFor(() =>
+      expect(acceptSuggestedContextFactAction).toHaveBeenCalledWith({
+        contextFactId: SUGGESTED_FACT_ID,
+        expectedUpdatedAt: NOW.toISOString(),
+      }),
+    );
+    expect(await screen.findByText("The returned active fact.")).toBeTruthy();
+    expect(screen.queryByText("The conversation included a Chicago address.")).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain("accepted into About you");
+  });
+
+  it("dismisses a suggestion and restores focus to the account action", async () => {
+    const user = userEvent.setup();
+    dismissSuggestedContextFactAction.mockResolvedValue({
+      ok: true,
+      view: { dismissedContextFactId: SUGGESTED_FACT_ID },
+    });
+    render(
+      <AboutYouSurface
+        dismissSuggestedContextFactAction={dismissSuggestedContextFactAction}
+        initialFacts={[]}
+        initialSuggestedReviews={[suggestedReview()]}
+      />,
+    );
+
+    const dismiss = screen.getByRole("button", { name: "Dismiss suggested fact" });
+    await user.click(dismiss);
+
+    await waitFor(() =>
+      expect(dismissSuggestedContextFactAction).toHaveBeenCalledWith({
+        contextFactId: SUGGESTED_FACT_ID,
+        expectedUpdatedAt: NOW.toISOString(),
+      }),
+    );
+    await waitFor(() => expect(screen.queryByText("I am based in Chicago.")).toBeNull());
+    expect(screen.getByText("Nothing about you yet.")).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Add a fact" })),
+    );
+  });
+
   it("groups private active facts and adds only the authoritative returned view", async () => {
     const user = userEvent.setup();
     const returned = fact({

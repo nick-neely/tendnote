@@ -1,11 +1,15 @@
 import { createDrizzleContextFactStore } from "./context-facts/drizzle-store";
 import { createContextFactQueries } from "./context-facts/queries";
 import type {
+  AcceptSuggestedContextFactMutationInput,
   ArchiveSelfContextFactMutationInput,
   ContextFactCallerVerification,
   CreateContextFactMutationInput,
   CreateSelfContextFactMutationInput,
+  CreateSuggestedContextFactMutationInput,
+  CreateSuggestedSelfContextFactMutationInput,
   DeleteSelfContextFactMutationInput,
+  DismissSuggestedContextFactMutationInput,
   GetContextFactInput,
   ListContextFactsInput,
   RestoreSelfContextFactMutationInput,
@@ -30,6 +34,54 @@ export function createContextFact(
   resolveVerifiedCaller: ContextFactCallerVerification,
 ) {
   return createVerifiedContextFactQueries(resolveVerifiedCaller).createContextFact(input);
+}
+
+export function createSuggestedContextFact(
+  input: CreateSuggestedContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).createSuggestedContextFact(input);
+}
+
+export function createSuggestedSelfContextFact(
+  input: CreateSuggestedSelfContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).createSuggestedSelfContextFact(
+    input,
+  );
+}
+
+export function listSuggestedContextFactReviews(
+  input: ListContextFactsInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).listSuggestedContextFactReviews(
+    input,
+  );
+}
+
+export function getSuggestedContextFactReview(
+  input: GetContextFactInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).getSuggestedContextFactReview(
+    input,
+  );
+}
+
+export function acceptSuggestedContextFact(
+  input: AcceptSuggestedContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).acceptSuggestedContextFact(input);
+}
+
+export function dismissSuggestedContextFact(
+  input: DismissSuggestedContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).dismissSuggestedContextFact(input);
 }
 
 export function createSelfContextFact(

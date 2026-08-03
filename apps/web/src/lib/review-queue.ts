@@ -1,5 +1,6 @@
 import type { AssetReviewGroupView } from "@/lib/asset-review-view";
 import type { SourceRecordReviewView } from "@/lib/source-record-review-view";
+import type { SuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 import type { SuggestedGeneralActionReviewView } from "@/lib/suggested-general-action-review-view";
 import type { SuggestedMemoryReviewView } from "@/lib/suggested-memory-review-view";
 
@@ -9,7 +10,8 @@ export type ReviewQueueFamily =
   | "suggested-memory"
   | "suggested-general-action"
   | "asset-review-group"
-  | "source-record";
+  | "source-record"
+  | "suggested-context-fact";
 
 export type ReviewQueueIdentity = { family: ReviewQueueFamily; id: string };
 
@@ -33,6 +35,11 @@ export type ReviewQueueItem =
       family: "source-record";
       id: string;
       review: SourceRecordReviewView;
+    }
+  | {
+      family: "suggested-context-fact";
+      id: string;
+      review: SuggestedContextFactReviewView;
     };
 
 export type ReviewQueue = {
@@ -50,6 +57,7 @@ export type ReviewQueueDependencies = {
   loadGeneralActions: (input: LoadFamilyInput) => Promise<ReviewQueueItem[]>;
   loadAssetGroups: (input: LoadFamilyInput) => Promise<ReviewQueueItem[]>;
   loadSourceRecords: (input: LoadFamilyInput) => Promise<ReviewQueueItem[]>;
+  loadContextFacts: (input: LoadFamilyInput) => Promise<ReviewQueueItem[]>;
 };
 
 function interleaveFamilies(
@@ -102,12 +110,14 @@ export async function loadReviewQueue(
     dependencies.loadGeneralActions(familyInput),
     dependencies.loadAssetGroups(familyInput),
     dependencies.loadSourceRecords(familyInput),
+    dependencies.loadContextFacts(familyInput),
   ]);
   const names: ReviewQueueFamily[] = [
     "suggested-memory",
     "suggested-general-action",
     "asset-review-group",
     "source-record",
+    "suggested-context-fact",
   ];
   // Stable round-robin keeps each loader's trust-aware ordering while ensuring a
   // saturated family cannot consume the calm global bound by itself.

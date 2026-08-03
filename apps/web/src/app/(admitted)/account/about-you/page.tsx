@@ -1,4 +1,7 @@
-import { listSelfContextFacts } from "@tendnote/db/queries/context-facts";
+import {
+  listSelfContextFacts,
+  listSuggestedContextFactReviews,
+} from "@tendnote/db/queries/context-facts";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
@@ -8,6 +11,7 @@ import { AdmittedRoute } from "@/components/admitted-route";
 import { appDestination } from "@/components/app-destinations";
 import { Button } from "@/components/ui/button";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { toSuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 
 export default function AboutYouPage() {
   return (
@@ -25,11 +29,19 @@ export async function AboutYouContent() {
   const ownerUserId = await requireAdmittedOwner({ returnTo: destination.route });
 
   try {
-    const facts = await listSelfContextFacts(
-      { callerUserId: ownerUserId, includeArchived: true },
-      requireAdmittedOwner,
+    const [facts, suggestedReviews] = await Promise.all([
+      listSelfContextFacts(
+        { callerUserId: ownerUserId, includeArchived: true },
+        requireAdmittedOwner,
+      ),
+      listSuggestedContextFactReviews({ callerUserId: ownerUserId }, requireAdmittedOwner),
+    ]);
+    return (
+      <AboutYouSurface
+        initialFacts={facts}
+        initialSuggestedReviews={suggestedReviews.map(toSuggestedContextFactReviewView)}
+      />
     );
-    return <AboutYouSurface initialFacts={facts} />;
   } catch (error) {
     unstable_rethrow(error);
     return <AboutYouUnavailable />;
