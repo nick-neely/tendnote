@@ -14,6 +14,7 @@
     "./memories": "./src/memories.ts",
     "./context-snapshots": "./src/context-snapshots.ts",
     "./context-facts": "./src/context-facts.ts",
+    "./context-fact-orientation": "./src/context-fact-orientation.ts",
     "./context-fact-categories": "./src/context-fact-categories.ts",
     "./conversational-capture": "./src/conversational-capture.ts",
     "./followups": "./src/followups.ts",

@@ -17,6 +17,7 @@ import type {
   RestoreSelfContextFactInput,
   UpdateSelfContextFactInput,
 } from "@tendnote/domain";
+import type { OrientationContextBuildResult } from "@tendnote/domain/context-fact-orientation";
 import type { MutationOutcome } from "../affected-scopes";
 import type { HouseholdStore } from "../households/types";
 
@@ -111,6 +112,14 @@ export type ListContextFactsInput = {
   /** Management reads may progressively disclose archived facts. */
   includeArchived?: boolean;
 };
+
+export type GetOrientationContextInput = {
+  callerUserId: string;
+  /** Testable override; production uses the shared measured default. */
+  maxBytes?: number;
+};
+
+export type OrientationContextResult = OrientationContextBuildResult;
 
 export type GetContextFactInput = ListContextFactsInput & { contextFactId: string };
 

@@ -2,6 +2,15 @@
 description: Use when the user logs a note, says remember/save/note/keep track of something, adds a person, edits a person's profile details (name, birthday, relationship, closeness), or wants to see, approve, or dismiss suggested memories ("what do I have to review?", "anything to review for Mara?"). For a fact about a thing the user owns (an appliance, vehicle, subscription, service, or household item), the capture path is different — see the recall skill's asset section.
 ---
 
+# Self Context has a narrower explicit route
+
+When the user is talking about **themselves** — for example, "remember that I run a
+consultancy" or "save this about me" — route to the **self context** skill and its
+typed tools. This narrower route takes precedence over Global Capture and keeps the
+fact in the authenticated user's direct Self Context lifecycle. Do not send a
+self-directed fact through `capture_saved_item` or `capture_memory`. Global Capture
+still applies to notes, people, assets, and other supported saved-item requests.
+
 # Global Capture takes precedence
 
 When the user explicitly says **"Use Capture"** or **"capture this"**, call
@@ -11,7 +20,8 @@ when the user does not say the word Capture**. Do not fan the request out across
 destination-specific tools. Inside a Global Capture request:
 
 - add/create-person wording goes to `capture_saved_item`, not `create_person`;
-- explicit remember/save wording goes to `capture_saved_item`, not `capture_memory`;
+- explicit remember/save wording for notes, people, assets, or other saved-item
+  outcomes goes to `capture_saved_item`, not `capture_memory`;
 - a new Asset or Asset fact goes to `capture_saved_item`, without first calling
   `search_assets` or `propose_asset_memories`; and
 - multiple explicit clauses stay together in that one call so they share one source and

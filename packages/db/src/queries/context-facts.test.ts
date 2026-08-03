@@ -323,6 +323,87 @@ describe("Context Fact product contract", () => {
     ]);
   });
 
+  it("builds owner-scoped Orientation Context and refreshes after a direct mutation", async () => {
+    const store = createInMemoryContextFactStore([
+      contextFactFixture({
+        id: "normal-fact",
+        category: "work",
+        content: "I run a software consultancy.",
+      }),
+      contextFactFixture({
+        id: "sensitive-fact",
+        category: "constraint",
+        sensitivity: "sensitive",
+        content: "I need quiet mornings.",
+        updatedAt: new Date("2026-08-03T12:00:00.000Z"),
+      }),
+      contextFactFixture({
+        id: "restricted-fact",
+        sensitivity: "restricted",
+        content: "A restricted detail.",
+      }),
+      contextFactFixture({
+        id: "suggested-fact",
+        lifecycle: "suggested",
+        content: "A tentative detail.",
+      }),
+      contextFactFixture({
+        id: "other-owner-fact",
+        subject: { kind: "self", userId: OTHER_OWNER },
+        content: "Another user's private detail.",
+      }),
+    ]);
+    const ownerQueries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+    const otherQueries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OTHER_OWNER),
+    });
+
+    const before = await ownerQueries.getOrientationContext({ callerUserId: OWNER });
+    expect(before.context.facts.map((item) => item.canonical.id)).toEqual([
+      "sensitive-fact",
+      "normal-fact",
+    ]);
+    expect(before.context.facts).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ canonical: { type: "context_fact", id: "restricted-fact" } }),
+        expect.objectContaining({ canonical: { type: "context_fact", id: "suggested-fact" } }),
+        expect.objectContaining({ canonical: { type: "context_fact", id: "other-owner-fact" } }),
+      ]),
+    );
+
+    const created = await ownerQueries.createSelfContextFact({
+      callerUserId: OWNER,
+      category: "interest",
+      content: "I like trail running.",
+    });
+    const after = await ownerQueries.getOrientationContext({ callerUserId: OWNER });
+    expect(after.context.facts.map((item) => item.canonical.id)).toContain(created.result.id);
+
+    await ownerQueries.updateSelfContextFact({
+      callerUserId: OWNER,
+      contextFactId: created.result.id,
+      category: "preference",
+      content: "I prefer short trail runs.",
+      sensitivity: "normal",
+      expectedUpdatedAt: created.result.updatedAt,
+    });
+    const corrected = await ownerQueries.getOrientationContext({ callerUserId: OWNER });
+    expect(corrected.context.facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          canonical: { type: "context_fact", id: created.result.id },
+          category: "preference",
+          content: "I prefer short trail runs.",
+        }),
+      ]),
+    );
+
+    const other = await otherQueries.getOrientationContext({ callerUserId: OTHER_OWNER });
+    expect(other.context.facts.map((item) => item.canonical.id)).toEqual(["other-owner-fact"]);
+  });
+
   it("supports whole-household Context Facts without exposing a member's private Self Context", async () => {
     const householdStore = createInMemoryHouseholdStore();
     const householdLifecycle = createHouseholdLifecycle(householdStore);

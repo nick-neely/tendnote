@@ -1,5 +1,6 @@
 import {
   archiveSelfContextFactInputSchema,
+  buildOrientationContext,
   type ContextFact,
   ContextFactConflictError,
   ContextFactValidationError,
@@ -29,6 +30,7 @@ import type {
   CreateContextFactMutationInput,
   CreateSelfContextFactMutationInput,
   GetContextFactInput,
+  GetOrientationContextInput,
   ListContextFactsInput,
   UpdateSelfContextFactMutationInput,
 } from "./types";
@@ -41,6 +43,19 @@ function scopedSubjectFilter(subject: ContextFact["subject"]) {
 
 function sameInstant(left: Date | undefined, right: Date | null): boolean {
   return left !== undefined && right !== null && left.getTime() === right.getTime();
+}
+
+function canReadContextFact(input: {
+  callerUserId: string;
+  fact: ContextFact;
+  activeHouseholdIds?: readonly string[];
+  includeRestricted?: boolean;
+  includeArchived?: boolean;
+}) {
+  if (!canViewContextFact(input)) return false;
+  if (input.fact.lifecycle === "suggested") return false;
+  if (input.fact.lifecycle === "archived" && input.includeArchived !== true) return false;
+  return input.includeRestricted !== false || input.fact.sensitivity !== "restricted";
 }
 
 export function createContextFactQueries(
@@ -522,10 +537,12 @@ export function createContextFactQueries(
     return facts
       .map((fact) => contextFactSchema.parse(fact))
       .filter((fact) =>
-        input.includeRestricted === false
-          ? canUseContextFactForOrientation({ callerUserId, fact })
-          : canViewContextFact({ callerUserId, fact }) &&
-            (fact.lifecycle === "active" || input.includeArchived === true),
+        canReadContextFact({
+          callerUserId,
+          fact,
+          includeRestricted: input.includeRestricted,
+          includeArchived: input.includeArchived,
+        }),
       )
       .sort(
         (left, right) =>
@@ -587,13 +604,29 @@ export function createContextFactQueries(
     if (parsed.lifecycle === "suggested") return null;
     if (!input.includeArchived && parsed.lifecycle !== "active") return null;
     if (!canViewContextFact({ callerUserId, fact: parsed, activeHouseholdIds })) return null;
-    if (
-      input.includeRestricted === false &&
-      !canUseContextFactForOrientation({ callerUserId, fact: parsed, activeHouseholdIds })
-    ) {
+    if (input.includeRestricted === false && parsed.sensitivity === "restricted") {
       return null;
     }
     return toContextFactView(parsed);
+  }
+
+  async function getSelfContextFact(input: GetContextFactInput) {
+    const fact = await getContextFact(input);
+    return fact?.subject.kind === "self" ? fact : null;
+  }
+
+  async function getOrientationContext(input: GetOrientationContextInput) {
+    const callerUserId = await requireVerifiedCaller(input.callerUserId);
+    const facts = await store.listContextFacts({
+      subjectUserId: callerUserId,
+      lifecycle: "active",
+    });
+
+    return buildOrientationContext({
+      callerUserId,
+      facts: facts.map((fact) => contextFactSchema.parse(fact)),
+      maxBytes: input.maxBytes,
+    });
   }
 
   const reviewQueries = createContextFactReviewQueries({
@@ -630,5 +663,7 @@ export function createContextFactQueries(
       return listContextFacts({ ...input, includeRestricted: false });
     },
     getContextFact,
+    getSelfContextFact,
+    getOrientationContext,
   };
 }

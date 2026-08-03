@@ -11,6 +11,7 @@ import type {
   DeleteSelfContextFactMutationInput,
   DismissSuggestedContextFactMutationInput,
   GetContextFactInput,
+  GetOrientationContextInput,
   ListContextFactsInput,
   RestoreSelfContextFactMutationInput,
   UpdateSelfContextFactMutationInput,
@@ -145,4 +146,18 @@ export function getContextFact(
   resolveVerifiedCaller: ContextFactCallerVerification,
 ) {
   return createVerifiedContextFactQueries(resolveVerifiedCaller).getContextFact(input);
+}
+
+export function getSelfContextFact(
+  input: GetContextFactInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).getSelfContextFact(input);
+}
+
+export function getOrientationContext(
+  input: GetOrientationContextInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).getOrientationContext(input);
 }

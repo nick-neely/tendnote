@@ -16,6 +16,7 @@ export * from "./brief-summary";
 export * from "./briefs";
 export * from "./calendar";
 export * from "./calendar-followups";
+export * from "./context-fact-orientation";
 export * from "./context-facts";
 export * from "./context-snapshots";
 export * from "./conversational-capture";
