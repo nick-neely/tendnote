@@ -1,6 +1,7 @@
 import {
   type ContextFact,
   contextFactSchema,
+  normalizeContextFactContent,
   type PersistContextFact,
   persistContextFactSchema,
 } from "@tendnote/domain";
@@ -24,6 +25,7 @@ function toRowValues(input: PersistContextFact) {
     subjectHouseholdId: parsed.subject.kind === "household" ? parsed.subject.householdId : null,
     category: parsed.category,
     content: parsed.content,
+    normalizedContent: normalizeContextFactContent(parsed.content),
     lifecycle: parsed.lifecycle,
     sensitivity: parsed.sensitivity,
     provenanceJson: parsed.provenance,
@@ -84,33 +86,71 @@ export function createDrizzleContextFactStore(): ContextFactStore {
       const [row] = await getDb()
         .insert(contextFacts)
         .values(toRowValues(input))
-        .onConflictDoNothing({ target: contextFacts.id })
+        .onConflictDoNothing()
         .returning();
       if (!row) {
         throw new Error("Context Fact already exists.");
       }
       return fromRow(row);
     },
+    // fallow-ignore-next-line complexity -- The persisted partial update maps one owner-scoped lifecycle patch to a single atomic SQL write.
     async updateContextFact(input) {
       if (!isPersistedContextFactId(input.contextFactId)) return null;
       const subject = subjectWhere(input);
       if (!subject) return null;
       const lifecycle = input.lifecycle ? eq(contextFacts.lifecycle, input.lifecycle) : undefined;
-      const where = lifecycle
-        ? and(eq(contextFacts.id, input.contextFactId), subject, lifecycle)
-        : and(eq(contextFacts.id, input.contextFactId), subject);
-      const [row] = await getDb()
-        .update(contextFacts)
-        .set({
-          category: input.patch.category,
-          content: input.patch.content,
-          sensitivity: input.patch.sensitivity,
-          lastActorUserId: input.patch.lastActorUserId,
-          updatedAt: input.patch.updatedAt,
-        })
-        .where(where)
-        .returning();
+      const expectedUpdatedAt = input.expectedUpdatedAt
+        ? eq(contextFacts.updatedAt, input.expectedUpdatedAt)
+        : undefined;
+      const expectedArchivedAt = input.expectedArchivedAt
+        ? eq(contextFacts.archivedAt, input.expectedArchivedAt)
+        : undefined;
+      const where = and(
+        eq(contextFacts.id, input.contextFactId),
+        subject,
+        lifecycle,
+        expectedUpdatedAt,
+        expectedArchivedAt,
+      );
+      const patch = {
+        category: input.patch.category,
+        content: input.patch.content,
+        normalizedContent:
+          input.patch.content === undefined
+            ? undefined
+            : normalizeContextFactContent(input.patch.content),
+        sensitivity: input.patch.sensitivity,
+        lifecycle: input.patch.lifecycle,
+        archivedAt: input.patch.archivedAt,
+        reviewedAt: input.patch.reviewedAt,
+        suggestionEvidence: input.patch.suggestionEvidence,
+        lastActorUserId: input.patch.lastActorUserId,
+        updatedAt: input.patch.updatedAt,
+      };
+      const [row] = await getDb().update(contextFacts).set(patch).where(where).returning();
       return row ? fromRow(row) : null;
+    },
+    async deleteContextFact(input) {
+      if (!isPersistedContextFactId(input.contextFactId)) return false;
+      const subject = subjectWhere(input);
+      if (!subject) return false;
+      const auditLogEntry = input.auditLogEntry;
+      if (auditLogEntry) {
+        return getDb().transaction(async (tx) => {
+          const [row] = await tx
+            .delete(contextFacts)
+            .where(and(eq(contextFacts.id, input.contextFactId), subject))
+            .returning({ id: contextFacts.id });
+          if (!row) return false;
+          await tx.insert(auditLog).values(auditLogEntry);
+          return true;
+        });
+      }
+      const [row] = await getDb()
+        .delete(contextFacts)
+        .where(and(eq(contextFacts.id, input.contextFactId), subject))
+        .returning({ id: contextFacts.id });
+      return Boolean(row);
     },
     async getContextFact(input) {
       if (!isPersistedContextFactId(input.contextFactId)) return null;
@@ -126,9 +166,12 @@ export function createDrizzleContextFactStore(): ContextFactStore {
     async listContextFacts(input) {
       const subject = subjectWhere(input);
       if (!subject) return [];
-      const where = input.lifecycle
-        ? and(subject, eq(contextFacts.lifecycle, input.lifecycle))
-        : subject;
+      const lifecycle = input.lifecycle
+        ? eq(contextFacts.lifecycle, input.lifecycle)
+        : input.lifecycles?.length
+          ? inArray(contextFacts.lifecycle, input.lifecycles)
+          : undefined;
+      const where = lifecycle ? and(subject, lifecycle) : subject;
       const rows = await getDb()
         .select()
         .from(contextFacts)

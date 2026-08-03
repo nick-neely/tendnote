@@ -4,13 +4,30 @@ import type { ContextFactView, Sensitivity } from "@tendnote/domain";
 import type { FormEvent } from "react";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import type {
+  ArchiveSelfContextFactActionInput,
+  DeleteSelfContextFactActionInput,
+  RestoreSelfContextFactActionInput,
   SelfContextFactActionInput,
   UpdateSelfContextFactActionInput,
 } from "@/app/actions/context-facts";
 import {
+  archiveSelfContextFactAction,
   createSelfContextFactAction,
+  deleteSelfContextFactAction,
+  restoreSelfContextFactAction,
   updateSelfContextFactAction,
 } from "@/app/actions/context-facts";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
@@ -21,21 +38,39 @@ import {
   contextFactSensitivityLabel,
   formatContextFactDate,
   isActiveSelfContextFact,
+  isArchivedSelfContextFact,
+  isSelfContextFact,
   type SelfContextCategory,
+  type SelfContextFactDeleteResult,
   type SelfContextFactDraft,
   type SelfContextFactMutationResult,
+  type SelfContextFactMutationView,
   selfContextCategories,
 } from "@/lib/context-fact-view";
+import type { OwnerActionResult } from "@/lib/owner-action-result";
+import { ReversibleMutationProvider, useReversibleMutation } from "@/lib/reversible-mutation";
 
 type CreateAction = (input: SelfContextFactActionInput) => Promise<SelfContextFactMutationResult>;
 type UpdateAction = (
   input: UpdateSelfContextFactActionInput,
 ) => Promise<SelfContextFactMutationResult>;
+type ArchiveAction = (
+  input: ArchiveSelfContextFactActionInput,
+) => Promise<SelfContextFactMutationResult>;
+type RestoreAction = (
+  input: RestoreSelfContextFactActionInput,
+) => Promise<SelfContextFactMutationResult>;
+type DeleteAction = (
+  input: DeleteSelfContextFactActionInput,
+) => Promise<SelfContextFactDeleteResult>;
 
 type AboutYouSurfaceProps = {
   initialFacts: ContextFactView[];
   createAction?: CreateAction;
   updateAction?: UpdateAction;
+  archiveAction?: ArchiveAction;
+  restoreAction?: RestoreAction;
+  deleteAction?: DeleteAction;
 };
 
 type EditorState = { mode: "create" } | { mode: "edit"; fact: ContextFactView };
@@ -46,13 +81,32 @@ const DEFAULT_DRAFT: SelfContextFactDraft = {
   sensitivity: "normal",
 };
 
-export function AboutYouSurface({
+function factMutationView(
+  result: SelfContextFactMutationResult,
+): OwnerActionResult<ContextFactView> {
+  return result.ok ? { ok: true, view: result.view.fact } : result;
+}
+
+export function AboutYouSurface(props: AboutYouSurfaceProps) {
+  return (
+    <ReversibleMutationProvider>
+      <AboutYouSurfaceContent {...props} />
+    </ReversibleMutationProvider>
+  );
+}
+
+// fallow-ignore-next-line complexity -- About you coordinates one bounded owner surface: archived disclosure, editor focus, and lifecycle reconciliation share one authoritative list.
+function AboutYouSurfaceContent({
   initialFacts,
   createAction = createSelfContextFactAction,
   updateAction = updateSelfContextFactAction,
+  archiveAction = archiveSelfContextFactAction,
+  restoreAction = restoreSelfContextFactAction,
+  deleteAction = deleteSelfContextFactAction,
 }: AboutYouSurfaceProps) {
-  const [facts, setFacts] = useState(() => initialFacts.filter(isActiveSelfContextFact));
+  const [facts, setFacts] = useState(() => initialFacts.filter(isSelfContextFact));
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLButtonElement | null>(null);
@@ -85,17 +139,46 @@ export function AboutYouSurface({
     restoreFocus();
   }
 
-  function handleSaved(view: ContextFactView) {
-    const mode = editor?.mode;
-    setFacts((current) =>
-      mode === "edit"
-        ? current.map((fact) => (fact.id === view.id ? view : fact))
-        : [view, ...current],
+  function applyFact(view: ContextFactView) {
+    setFacts((current) => {
+      const index = current.findIndex((fact) => fact.id === view.id);
+      if (index === -1) return [view, ...current];
+      const next = [...current];
+      next[index] = view;
+      return next;
+    });
+  }
+
+  function removeFact(contextFactId: string) {
+    setFacts((current) => current.filter((fact) => fact.id !== contextFactId));
+    setAnnouncement("The fact was permanently deleted.");
+  }
+
+  function handleSaved(mutation: SelfContextFactMutationView) {
+    applyFact(mutation.fact);
+    setAnnouncement(
+      mutation.decision === "existing"
+        ? "That fact is already in About you."
+        : mutation.decision === "updated"
+          ? "About you was updated."
+          : "Fact added to About you.",
     );
-    setAnnouncement(mode === "edit" ? "About you was updated." : "Fact added to About you.");
     setEditor(null);
     restoreFocus();
   }
+
+  function focusExistingFact(contextFactId: string) {
+    setEditor(null);
+    setAnnouncement("Edit the existing fact to correct this statement.");
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLButtonElement>(`[data-context-fact-edit="${contextFactId}"]`)
+        ?.focus();
+    });
+  }
+
+  const activeFacts = facts.filter(isActiveSelfContextFact);
+  const archivedFacts = facts.filter(isArchivedSelfContextFact);
 
   return (
     <section
@@ -122,7 +205,8 @@ export function AboutYouSurface({
             Private Self Context
           </span>
           <span className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-            These facts are private to you. This screen does not offer sharing controls.
+            These facts are private to you. Sensitivity controls how carefully they may be used;
+            this screen does not offer sharing controls.
           </span>
         </div>
         <Button
@@ -152,20 +236,23 @@ export function AboutYouSurface({
           editor={editor}
           key={editor.mode === "edit" ? editor.fact.id : "create"}
           onCancel={closeEditor}
+          onFocusExisting={focusExistingFact}
           onSaved={handleSaved}
           updateAction={updateAction}
         />
       ) : null}
 
-      {facts.length === 0 ? (
+      {activeFacts.length === 0 && archivedFacts.length === 0 ? (
         <EmptyState
           description="Add one concise fact about your work, interests, location, preferences, or constraints."
           title="Nothing about you yet."
         />
-      ) : (
+      ) : null}
+
+      {activeFacts.length > 0 ? (
         <div className="flex min-w-0 flex-col gap-6">
           {selfContextCategories.map((category) => {
-            const categoryFacts = facts.filter((fact) => fact.category === category.value);
+            const categoryFacts = activeFacts.filter((fact) => fact.category === category.value);
             if (categoryFacts.length === 0) return null;
             return (
               <section
@@ -182,62 +269,337 @@ export function AboutYouSurface({
                 </h2>
                 <div className="min-w-0 divide-y rounded-lg border bg-surface">
                   {categoryFacts.map((fact) => (
-                    <ContextFactRow fact={fact} key={fact.id} onEdit={openEdit} />
+                    <ContextFactRow
+                      archiveAction={archiveAction}
+                      deleteAction={deleteAction}
+                      fact={fact}
+                      key={fact.id}
+                      onDeleted={removeFact}
+                      onFactChanged={applyFact}
+                      onEdit={openEdit}
+                      onRevealArchived={() => setShowArchived(true)}
+                      onRestoreFocus={() => addButtonRef.current?.focus()}
+                      onStatus={setAnnouncement}
+                      restoreAction={restoreAction}
+                    />
                   ))}
                 </div>
               </section>
             );
           })}
         </div>
-      )}
+      ) : archivedFacts.length > 0 ? (
+        <p className="rounded-lg border border-dashed px-3.5 py-3 text-[length:var(--text-small)] text-muted-foreground">
+          No active facts. Archived facts stay out of Eve&rsquo;s normal orientation until you
+          restore them.
+        </p>
+      ) : null}
+
+      {archivedFacts.length > 0 ? (
+        <section aria-labelledby="about-you-archived-heading" className="flex flex-col gap-2">
+          <Button
+            aria-expanded={showArchived}
+            className="min-h-11 w-full justify-between px-3.5 sm:w-auto"
+            onClick={() => setShowArchived((current) => !current)}
+            type="button"
+            variant="outline"
+          >
+            <span id="about-you-archived-heading">
+              {showArchived
+                ? "Hide archived facts"
+                : `Show archived facts (${archivedFacts.length})`}
+            </span>
+            <span aria-hidden>{showArchived ? "↑" : "↓"}</span>
+          </Button>
+          {showArchived ? (
+            <div className="min-w-0 divide-y rounded-lg border border-dashed bg-surface">
+              {archivedFacts.map((fact) => (
+                <ContextFactRow
+                  archiveAction={archiveAction}
+                  deleteAction={deleteAction}
+                  fact={fact}
+                  key={fact.id}
+                  onDeleted={removeFact}
+                  onFactChanged={applyFact}
+                  onEdit={openEdit}
+                  onRevealArchived={() => setShowArchived(true)}
+                  onRestoreFocus={() => addButtonRef.current?.focus()}
+                  onStatus={setAnnouncement}
+                  restoreAction={restoreAction}
+                />
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </section>
   );
 }
 
+// fallow-ignore-next-line complexity -- A fact row deliberately serializes edit, archive/Undo, restore, and permanent-delete intents around one owner-scoped record.
 function ContextFactRow({
+  archiveAction,
+  deleteAction,
   fact,
+  onDeleted,
+  onFactChanged,
   onEdit,
+  onRevealArchived,
+  onRestoreFocus,
+  onStatus,
+  restoreAction,
 }: {
+  archiveAction: ArchiveAction;
+  deleteAction: DeleteAction;
   fact: ContextFactView;
+  onDeleted: (contextFactId: string) => void;
+  onFactChanged: (view: ContextFactView) => void;
   onEdit: (fact: ContextFactView, trigger: HTMLButtonElement) => void;
+  onRevealArchived: () => void;
+  onRestoreFocus: () => void;
+  onStatus: (message: string) => void;
+  restoreAction: RestoreAction;
 }) {
+  const archiveMutation = useReversibleMutation(fact.id, "archive");
+  const restoreMutation = useReversibleMutation(fact.id, "restore");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletePending, startDelete] = useTransition();
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
+  const archived = fact.lifecycle === "archived";
+  const pending = archiveMutation.state.pending || restoreMutation.state.pending || deletePending;
+
+  function runArchive() {
+    onRevealArchived();
+    archiveMutation.run({
+      kind: "optimistic",
+      prior: fact,
+      adapter: {
+        project: (prior) => ({
+          ...prior,
+          lifecycle: "archived" as const,
+          archivedAt: new Date(),
+          updatedAt: new Date(),
+        }),
+        inverse: async (_prior, authoritative) =>
+          factMutationView(
+            await restoreAction({
+              contextFactId: authoritative.id,
+              expectedArchivedAt: authoritative.archivedAt?.toISOString(),
+            }),
+          ),
+      },
+      apply: (view) => {
+        onFactChanged(view);
+        return true;
+      },
+      command: async () =>
+        factMutationView(
+          await archiveAction({
+            contextFactId: fact.id,
+            expectedUpdatedAt: fact.updatedAt.toISOString(),
+          }),
+        ),
+      focusTarget: () =>
+        document.querySelector<HTMLButtonElement>(
+          `[data-context-fact-archive="${fact.id}"], [data-context-fact-restore="${fact.id}"]`,
+        ),
+      labels: {
+        pending: "Archiving this fact…",
+        rollback: "The fact was kept active after the archive failed.",
+        success: "Fact archived. Undo available.",
+        undo: "Undo archive",
+        undone: "Fact restored.",
+      },
+    });
+  }
+
+  function runRestore(trigger: HTMLButtonElement) {
+    restoreMutation.run({
+      kind: "pending",
+      command: async () =>
+        factMutationView(
+          await restoreAction({
+            contextFactId: fact.id,
+            expectedArchivedAt: fact.archivedAt?.toISOString(),
+          }),
+        ),
+      apply: (view) => {
+        onFactChanged(view);
+        onStatus("Fact restored to active About you.");
+        return true;
+      },
+      focusTarget: () =>
+        document.querySelector<HTMLButtonElement>(
+          `[data-context-fact-edit="${fact.id}"], [data-context-fact-archive="${fact.id}"], [data-context-fact-restore="${fact.id}"]`,
+        ) ?? (trigger.isConnected ? trigger : null),
+      labels: {
+        pending: "Restoring this fact…",
+        rollback: "The fact stayed archived.",
+        success: "Fact restored to active About you.",
+        undo: "",
+        undone: "",
+      },
+    });
+  }
+
+  function remove() {
+    if (deletePending) return;
+    setDeleteError(null);
+    startDelete(async () => {
+      try {
+        const result = await deleteAction({ contextFactId: fact.id });
+        if (!result.ok) {
+          setDeleteError(result.error);
+          return;
+        }
+        setDeleteOpen(false);
+        onDeleted(result.view.deletedContextFactId);
+        window.requestAnimationFrame(() => {
+          if (deleteTriggerRef.current?.isConnected) deleteTriggerRef.current.focus();
+          else onRestoreFocus();
+        });
+      } catch {
+        setDeleteError("We couldn't delete this fact. Try again.");
+      }
+    });
+  }
+
   return (
-    <article className="flex min-w-0 items-start justify-between gap-3 px-3.5 py-3">
+    <article className="flex min-w-0 flex-col gap-3 px-3.5 py-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex min-w-0 flex-col gap-1">
         <p className="min-w-0 break-words whitespace-pre-wrap text-[length:var(--text-body)] leading-[var(--text-body-line)]">
           {fact.content}
         </p>
         <p className="min-w-0 break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-          {contextFactSensitivityLabel(fact.sensitivity)} · {contextFactProvenanceLabel(fact)} ·{" "}
-          Updated {formatContextFactDate(fact.updatedAt)}
+          {contextFactSensitivityLabel(fact.sensitivity)} · {contextFactProvenanceLabel(fact)} ·
+          Last changed {formatContextFactDate(fact.updatedAt)}
         </p>
+        {archiveMutation.state.error || restoreMutation.state.error ? (
+          <p className="break-words text-[length:var(--text-small)] text-destructive" role="alert">
+            {archiveMutation.state.error ?? restoreMutation.state.error}
+          </p>
+        ) : null}
       </div>
-      <Button
-        aria-label={`Edit ${contextFactCategoryLabel(fact.category as SelfContextCategory)} fact`}
-        className="min-h-11 min-w-11 shrink-0"
-        data-context-fact-edit={fact.id}
-        onClick={(event) => onEdit(fact, event.currentTarget)}
-        size="sm"
-        type="button"
-        variant="outline"
-      >
-        Edit
-      </Button>
+      <div className="flex shrink-0 flex-wrap items-center justify-start gap-2 sm:justify-end">
+        {archived ? (
+          archiveMutation.state.undoAvailable ? (
+            <Button
+              className="min-h-11 min-w-11"
+              data-context-fact-restore={fact.id}
+              disabled={pending}
+              onClick={archiveMutation.requestUndo}
+              type="button"
+              variant="outline"
+            >
+              {archiveMutation.state.undoRequested ? "Undoing…" : "Undo archive"}
+            </Button>
+          ) : (
+            <Button
+              className="min-h-11 min-w-11"
+              data-context-fact-restore={fact.id}
+              disabled={pending}
+              onClick={(event) => runRestore(event.currentTarget)}
+              type="button"
+              variant="outline"
+            >
+              {restoreMutation.state.pending ? "Restoring…" : "Restore"}
+            </Button>
+          )
+        ) : (
+          <>
+            <Button
+              aria-label={`Edit ${contextFactCategoryLabel(fact.category as SelfContextCategory)} fact`}
+              className="min-h-11 min-w-11"
+              data-context-fact-edit={fact.id}
+              disabled={pending}
+              onClick={(event) => onEdit(fact, event.currentTarget)}
+              type="button"
+              variant="outline"
+            >
+              Edit
+            </Button>
+            <Button
+              className="min-h-11"
+              data-context-fact-archive={fact.id}
+              disabled={pending}
+              onClick={runArchive}
+              type="button"
+              variant="outline"
+            >
+              {archiveMutation.state.pending ? "Archiving…" : "Archive"}
+            </Button>
+          </>
+        )}
+        <AlertDialog
+          onOpenChange={(next) => {
+            if (pending) return;
+            setDeleteOpen(next);
+            if (next) setDeleteError(null);
+          }}
+          open={deleteOpen}
+        >
+          <AlertDialogTrigger asChild>
+            <Button
+              className="min-h-11 text-muted-foreground hover:text-destructive"
+              disabled={pending}
+              onClick={(event) => {
+                deleteTriggerRef.current = event.currentTarget;
+              }}
+              ref={deleteTriggerRef}
+              type="button"
+              variant="ghost"
+            >
+              Delete permanently
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this fact permanently?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This removes the retained Self Context statement and any suggestion evidence tied to
+                it. It cannot be undone. Archive is safer when you may want the fact later.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {deleteError ? (
+              <p className="text-[length:var(--text-small)] text-destructive" role="alert">
+                {deleteError}
+              </p>
+            ) : null}
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deletePending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={deletePending}
+                onClick={(event) => {
+                  event.preventDefault();
+                  remove();
+                }}
+                variant="destructive"
+              >
+                {deletePending ? "Deleting…" : "Delete permanently"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </article>
   );
 }
 
+// fallow-ignore-next-line complexity -- The editor keeps draft, validation, stale-intent, conflict focus, and authoritative save state together for one concise form.
 function ContextFactEditor({
   createAction,
   editor,
   onCancel,
+  onFocusExisting,
   onSaved,
   updateAction,
 }: {
   createAction: CreateAction;
   editor: EditorState;
   onCancel: () => void;
-  onSaved: (view: ContextFactView) => void;
+  onFocusExisting: (contextFactId: string) => void;
+  onSaved: (view: SelfContextFactMutationView) => void;
   updateAction: UpdateAction;
 }) {
   const editorId = useId();
@@ -256,6 +618,7 @@ function ContextFactEditor({
       : DEFAULT_DRAFT,
   );
   const [error, setError] = useState<string | null>(null);
+  const [conflictFactId, setConflictFactId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
@@ -289,12 +652,14 @@ function ContextFactEditor({
     }
 
     setError(null);
+    setConflictFactId(null);
     startTransition(async () => {
       try {
         const result =
           editor.mode === "edit"
             ? await updateAction({
                 contextFactId: editor.fact.id,
+                expectedUpdatedAt: editor.fact.updatedAt.toISOString(),
                 category: draft.category,
                 content,
                 sensitivity: draft.sensitivity,
@@ -306,6 +671,7 @@ function ContextFactEditor({
               });
         if (!result.ok) {
           setError(result.error);
+          setConflictFactId(result.focusContextFactId ?? null);
           focusContent();
           return;
         }
@@ -334,7 +700,8 @@ function ContextFactEditor({
           {heading}
         </h2>
         <p className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-          Use one concise statement. Self Context is always private here.
+          Use one concise statement. Self Context is private here; sensitivity is separate from
+          visibility.
         </p>
       </div>
 
@@ -419,6 +786,16 @@ function ContextFactEditor({
             >
               {error}
             </p>
+          ) : null}
+          {conflictFactId ? (
+            <Button
+              className="min-h-11 w-full sm:w-auto"
+              onClick={() => onFocusExisting(conflictFactId)}
+              type="button"
+              variant="outline"
+            >
+              Edit existing fact
+            </Button>
           ) : null}
         </div>
 

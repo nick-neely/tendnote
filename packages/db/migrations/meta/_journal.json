@@ -386,6 +386,20 @@
       "when": 1785707166461,
       "tag": "0054_context_facts",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1785715425539,
+      "tag": "0055_context_fact_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1785716557970,
+      "tag": "0056_context_fact_single_value_fences",
+      "breakpoints": true
     }
   ]
 }

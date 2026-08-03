@@ -12,6 +12,14 @@ const migration = readFileSync(
   join(import.meta.dirname, "../../../migrations/0054_context_facts.sql"),
   "utf8",
 );
+const idempotencyMigration = readFileSync(
+  join(import.meta.dirname, "../../../migrations/0055_context_fact_idempotency.sql"),
+  "utf8",
+);
+const singleValueFenceMigration = readFileSync(
+  join(import.meta.dirname, "../../../migrations/0056_context_fact_single_value_fences.sql"),
+  "utf8",
+);
 const journal = readFileSync(
   join(import.meta.dirname, "../../../migrations/meta/_journal.json"),
   "utf8",
@@ -56,5 +64,15 @@ describe("Context Fact persistence contract", () => {
     expect(drizzleStore).toContain("eq(auditLog.ownerUserId, input.ownerUserId)");
     expect(drizzleStore).toContain("contextFactSchema.parse");
     expect(drizzleStore).toContain("persistContextFactSchema.parse");
+  });
+
+  it("fences normalized retries and single-value conflicts without losing older facts", () => {
+    expect(idempotencyMigration).toContain('ADD COLUMN "normalized_content" text');
+    expect(idempotencyMigration).toContain("row_number() OVER");
+    expect(idempotencyMigration).toContain("SET \"lifecycle\" = 'archived'");
+    expect(idempotencyMigration).toContain("context_facts_active_self_identity_idx");
+    expect(idempotencyMigration).toContain("context_facts_active_household_identity_idx");
+    expect(singleValueFenceMigration).toContain("context_facts_active_self_single_value_idx");
+    expect(singleValueFenceMigration).toContain("context_facts_active_household_single_value_idx");
   });
 });

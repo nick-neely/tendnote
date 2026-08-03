@@ -1,4 +1,7 @@
 import {
+  archiveSelfContextFactInputSchema,
+  type ContextFact,
+  ContextFactConflictError,
   ContextFactValidationError,
   canUseContextFactForOrientation,
   canViewContextFact,
@@ -6,11 +9,19 @@ import {
   contextFactSubjectId,
   createContextFactInputSchema,
   createSelfContextFactInputSchema,
+  deleteSelfContextFactInputSchema,
+  isDuplicateContextFact,
+  isLikelyConflictingContextFact,
+  normalizeContextFactContent,
+  resolveContextFactTransition,
+  restoreSelfContextFactInputSchema,
   toContextFactView,
   updateSelfContextFactInputSchema,
 } from "@tendnote/domain";
 import { affectedScopesForContextFact } from "../affected-scopes";
 import type {
+  ContextFactAuditLogInput,
+  ContextFactDeleteMutationOutcome,
   ContextFactMutationOutcome,
   ContextFactQueryDependencies,
   ContextFactStore,
@@ -20,6 +31,16 @@ import type {
   ListContextFactsInput,
   UpdateSelfContextFactMutationInput,
 } from "./types";
+
+function scopedSubjectFilter(subject: ContextFact["subject"]) {
+  return subject.kind === "self"
+    ? { subjectUserId: subject.userId }
+    : { householdIds: [subject.householdId] };
+}
+
+function sameInstant(left: Date | undefined, right: Date | null): boolean {
+  return left !== undefined && right !== null && left.getTime() === right.getTime();
+}
 
 export function createContextFactQueries(
   store: ContextFactStore,
@@ -73,59 +94,179 @@ export function createContextFactQueries(
     }
   }
 
+  async function findActiveMatch(input: {
+    subject: ContextFact["subject"];
+    category: ContextFact["category"];
+    content: string;
+    sensitivity: ContextFact["sensitivity"];
+    excludingId?: string;
+  }) {
+    const activeFacts = await store.listContextFacts({
+      ...scopedSubjectFilter(input.subject),
+      lifecycle: "active",
+    });
+    const candidate = {
+      subject: input.subject,
+      category: input.category,
+      content: input.content,
+      sensitivity: input.sensitivity,
+    } as const;
+
+    for (const fact of activeFacts.map((value) => contextFactSchema.parse(value))) {
+      if (fact.id === input.excludingId) continue;
+      if (isDuplicateContextFact({ candidate, existing: fact })) {
+        return { kind: "duplicate" as const, fact };
+      }
+    }
+
+    for (const fact of activeFacts.map((value) => contextFactSchema.parse(value))) {
+      if (fact.id === input.excludingId) continue;
+      if (isLikelyConflictingContextFact({ candidate, existing: fact })) {
+        return { kind: "conflict" as const, fact };
+      }
+    }
+
+    return null;
+  }
+
+  async function affectedScopesForFact(fact: ContextFact, callerUserId: string) {
+    return affectedScopesForContextFact({
+      ownerUserId: callerUserId,
+      householdId: fact.subject.kind === "household" ? fact.subject.householdId : null,
+      householdMemberUserIds:
+        fact.subject.kind === "household"
+          ? await activeHouseholdMemberUserIds(fact.subject.householdId)
+          : undefined,
+    });
+  }
+
+  async function recordAudit(input: {
+    ownerUserId: string;
+    action: string;
+    fact: Pick<
+      ContextFact,
+      "id" | "subject" | "category" | "lifecycle" | "sensitivity" | "provenance"
+    >;
+    metadataJson?: Record<string, unknown>;
+  }) {
+    try {
+      await store.createAuditLogEntry(auditLogInput(input));
+    } catch {
+      // The durable write is authoritative; an audit outage must not lose context.
+    }
+  }
+
+  function auditLogInput(input: {
+    ownerUserId: string;
+    action: string;
+    fact: Pick<
+      ContextFact,
+      "id" | "subject" | "category" | "lifecycle" | "sensitivity" | "provenance"
+    >;
+    metadataJson?: Record<string, unknown>;
+  }): ContextFactAuditLogInput {
+    return {
+      ownerUserId: input.ownerUserId,
+      action: input.action,
+      entityType: "context_fact",
+      entityId: input.fact.id,
+      metadataJson: {
+        subjectKind: input.fact.subject.kind,
+        subjectId: contextFactSubjectId(input.fact.subject),
+        category: input.fact.category,
+        lifecycle: input.fact.lifecycle,
+        sensitivity: input.fact.sensitivity,
+        provenanceChannel: input.fact.provenance.channel,
+        ...input.metadataJson,
+      },
+    };
+  }
+
+  async function mutationOutcome(
+    callerUserId: string,
+    fact: ContextFact,
+    decision: ContextFactMutationOutcome["decision"],
+    affectedScopes?: ContextFactMutationOutcome["affectedScopes"],
+  ): Promise<ContextFactMutationOutcome> {
+    return {
+      result: toContextFactView(fact),
+      decision,
+      affectedScopes: affectedScopes ?? (await affectedScopesForFact(fact, callerUserId)),
+    };
+  }
+
   async function createContextFact(
     input: CreateContextFactMutationInput,
   ): Promise<ContextFactMutationOutcome> {
     const parsed = createContextFactInputSchema.parse(input);
     const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
     await assertSubjectBelongsToCaller({ callerUserId, subject: parsed.subject });
-    const now = new Date();
-    const fact = contextFactSchema.parse(
-      await store.createContextFact({
-        subject: parsed.subject,
-        category: parsed.category,
-        content: parsed.content,
-        lifecycle: "active",
-        sensitivity: parsed.sensitivity,
-        provenance: parsed.provenance,
-        suggestionEvidence: null,
-        creatorUserId: parsed.callerUserId,
-        lastActorUserId: parsed.callerUserId,
-        reviewedAt: now,
-        archivedAt: null,
-      }),
-    );
 
-    try {
-      await store.createAuditLogEntry({
-        ownerUserId: callerUserId,
-        action: "context_fact.create",
-        entityType: "context_fact",
-        entityId: fact.id,
-        metadataJson: {
-          subjectKind: fact.subject.kind,
-          subjectId: contextFactSubjectId(fact.subject),
-          category: fact.category,
-          lifecycle: fact.lifecycle,
-          sensitivity: fact.sensitivity,
-          provenanceChannel: fact.provenance.channel,
-        },
-      });
-    } catch {
-      // The fact is already committed; audit failure must not lose user context.
+    const match = await findActiveMatch({
+      subject: parsed.subject,
+      category: parsed.category,
+      content: parsed.content,
+      sensitivity: parsed.sensitivity,
+    });
+    if (match?.kind === "duplicate") {
+      // Exact retries are idempotent and return the authoritative existing view.
+      return mutationOutcome(callerUserId, match.fact, "existing", []);
+    }
+    if (match?.kind === "conflict") {
+      throw new ContextFactConflictError(
+        "A similar active fact already exists. Edit the existing fact instead of creating a conflicting fact.",
+        match.fact.id,
+      );
     }
 
-    return {
-      result: toContextFactView(fact),
-      affectedScopes: affectedScopesForContextFact({
-        ownerUserId: callerUserId,
-        householdId: fact.subject.kind === "household" ? fact.subject.householdId : null,
-        householdMemberUserIds:
-          fact.subject.kind === "household"
-            ? await activeHouseholdMemberUserIds(fact.subject.householdId)
-            : undefined,
-      }),
-    };
+    const now = new Date();
+    let created: ContextFact;
+    try {
+      created = contextFactSchema.parse(
+        await store.createContextFact({
+          subject: parsed.subject,
+          category: parsed.category,
+          content: parsed.content,
+          lifecycle: "active",
+          sensitivity: parsed.sensitivity,
+          provenance: parsed.provenance,
+          suggestionEvidence: null,
+          creatorUserId: callerUserId,
+          lastActorUserId: callerUserId,
+          reviewedAt: now,
+          archivedAt: null,
+        }),
+      );
+    } catch (error) {
+      // The database identity index closes the concurrent read-then-create race.
+      // Re-read the winner so a concurrent retry remains idempotent and authoritative.
+      if (error instanceof Error && error.message === "Context Fact already exists.") {
+        const winner = await findActiveMatch({
+          subject: parsed.subject,
+          category: parsed.category,
+          content: parsed.content,
+          sensitivity: parsed.sensitivity,
+        });
+        if (winner?.kind === "duplicate") {
+          return mutationOutcome(callerUserId, winner.fact, "existing", []);
+        }
+        if (winner?.kind === "conflict") {
+          throw new ContextFactConflictError(
+            "A similar active fact already exists. Edit the existing fact instead of creating a conflicting fact.",
+            winner.fact.id,
+          );
+        }
+      }
+      throw error;
+    }
+
+    await recordAudit({
+      ownerUserId: callerUserId,
+      action: "context_fact.create",
+      fact: created,
+    });
+
+    return mutationOutcome(callerUserId, created, "created");
   }
 
   async function updateSelfContextFact(
@@ -137,14 +278,43 @@ export function createContextFactQueries(
       contextFactId: parsed.contextFactId,
       subjectUserId: callerUserId,
     });
-    if (existing?.subject.kind !== "self" || existing?.lifecycle !== "active") {
+    if (existing?.subject.kind !== "self" || existing.lifecycle !== "active") {
       throw new ContextFactValidationError("That Self Context fact is no longer available.");
+    }
+    if (parsed.expectedUpdatedAt && !sameInstant(parsed.expectedUpdatedAt, existing.updatedAt)) {
+      throw new ContextFactValidationError(
+        "That fact changed elsewhere. Refresh the page and try again.",
+      );
+    }
+
+    if (
+      existing.category === parsed.category &&
+      normalizeContextFactContent(existing.content) ===
+        normalizeContextFactContent(parsed.content) &&
+      existing.sensitivity === parsed.sensitivity
+    ) {
+      return mutationOutcome(callerUserId, existing, "existing", []);
+    }
+
+    const match = await findActiveMatch({
+      subject: existing.subject,
+      category: parsed.category,
+      content: parsed.content,
+      sensitivity: parsed.sensitivity,
+      excludingId: existing.id,
+    });
+    if (match) {
+      throw new ContextFactConflictError(
+        "That correction matches or conflicts with another active fact. Edit the existing fact instead.",
+        match.fact.id,
+      );
     }
 
     const fact = await store.updateContextFact({
       contextFactId: parsed.contextFactId,
       subjectUserId: callerUserId,
       lifecycle: "active",
+      expectedUpdatedAt: parsed.expectedUpdatedAt,
       patch: {
         category: parsed.category,
         content: parsed.content,
@@ -158,28 +328,186 @@ export function createContextFactQueries(
     }
     const canonicalFact = contextFactSchema.parse(fact);
 
-    try {
-      await store.createAuditLogEntry({
+    await recordAudit({
+      ownerUserId: callerUserId,
+      action: "context_fact.update",
+      fact: canonicalFact,
+      metadataJson: {
+        changedFields: ["category", "content", "sensitivity"],
+      },
+    });
+
+    return mutationOutcome(callerUserId, canonicalFact, "updated");
+  }
+
+  async function archiveSelfContextFact(input: {
+    callerUserId: string;
+    contextFactId: string;
+    expectedUpdatedAt?: Date;
+  }): Promise<ContextFactMutationOutcome> {
+    const parsed = archiveSelfContextFactInputSchema.parse(input);
+    const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
+    const existing = await store.getContextFact({
+      contextFactId: parsed.contextFactId,
+      subjectUserId: callerUserId,
+    });
+    if (existing?.subject.kind !== "self" || existing.lifecycle === "suggested") {
+      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+    }
+    if (existing.lifecycle === "archived") {
+      return mutationOutcome(callerUserId, existing, "archived", []);
+    }
+    if (parsed.expectedUpdatedAt && !sameInstant(parsed.expectedUpdatedAt, existing.updatedAt)) {
+      throw new ContextFactValidationError(
+        "That fact changed elsewhere. Refresh the page and try again.",
+      );
+    }
+
+    const archivedAt = new Date();
+    const updated = await store.updateContextFact({
+      contextFactId: existing.id,
+      subjectUserId: callerUserId,
+      lifecycle: "active",
+      expectedUpdatedAt: parsed.expectedUpdatedAt,
+      patch: {
+        lifecycle: resolveContextFactTransition(existing.lifecycle, "archive"),
+        archivedAt,
+        lastActorUserId: callerUserId,
+        updatedAt: archivedAt,
+      },
+    });
+    if (!updated) {
+      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+    }
+    const fact = contextFactSchema.parse(updated);
+    await recordAudit({
+      ownerUserId: callerUserId,
+      action: "context_fact.archive",
+      fact,
+      metadataJson: { previousLifecycle: "active" },
+    });
+    return mutationOutcome(callerUserId, fact, "archived");
+  }
+
+  async function restoreSelfContextFact(input: {
+    callerUserId: string;
+    contextFactId: string;
+    expectedArchivedAt?: Date;
+  }): Promise<ContextFactMutationOutcome> {
+    const parsed = restoreSelfContextFactInputSchema.parse(input);
+    const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
+    const existing = await store.getContextFact({
+      contextFactId: parsed.contextFactId,
+      subjectUserId: callerUserId,
+    });
+    if (existing?.subject.kind !== "self" || existing.lifecycle === "suggested") {
+      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+    }
+    if (parsed.expectedArchivedAt) {
+      if (
+        existing.lifecycle !== "archived" ||
+        !sameInstant(parsed.expectedArchivedAt, existing.archivedAt)
+      ) {
+        throw new ContextFactValidationError(
+          "That archive changed elsewhere. Refresh the page and try again.",
+        );
+      }
+    }
+    if (existing.lifecycle === "active") {
+      return mutationOutcome(callerUserId, existing, "restored", []);
+    }
+
+    const match = await findActiveMatch({
+      subject: existing.subject,
+      category: existing.category,
+      content: existing.content,
+      sensitivity: existing.sensitivity,
+      excludingId: existing.id,
+    });
+    if (match?.kind === "duplicate") {
+      return mutationOutcome(callerUserId, match.fact, "existing", []);
+    }
+    if (match?.kind === "conflict") {
+      throw new ContextFactConflictError(
+        "That fact conflicts with another active fact. Edit the existing fact instead.",
+        match.fact.id,
+      );
+    }
+
+    const updatedAt = new Date();
+    const updated = await store.updateContextFact({
+      contextFactId: existing.id,
+      subjectUserId: callerUserId,
+      lifecycle: "archived",
+      expectedUpdatedAt: existing.updatedAt,
+      expectedArchivedAt: parsed.expectedArchivedAt,
+      patch: {
+        lifecycle: resolveContextFactTransition(existing.lifecycle, "restore"),
+        archivedAt: null,
+        lastActorUserId: callerUserId,
+        updatedAt,
+      },
+    });
+    if (!updated) {
+      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+    }
+    const fact = contextFactSchema.parse(updated);
+    await recordAudit({
+      ownerUserId: callerUserId,
+      action: "context_fact.restore",
+      fact,
+      metadataJson: { previousLifecycle: "archived" },
+    });
+    return mutationOutcome(callerUserId, fact, "restored");
+  }
+
+  async function deleteSelfContextFact(input: {
+    callerUserId: string;
+    contextFactId: string;
+  }): Promise<ContextFactDeleteMutationOutcome> {
+    const parsed = deleteSelfContextFactInputSchema.parse(input);
+    const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
+    const existing = await store.getContextFact({
+      contextFactId: parsed.contextFactId,
+      subjectUserId: callerUserId,
+    });
+    if (!existing) {
+      const wasDeleted = (await store.listAuditLogEntries({ ownerUserId: callerUserId })).some(
+        (entry) =>
+          entry.action === "context_fact.delete" && entry.entityId === parsed.contextFactId,
+      );
+      if (wasDeleted) {
+        return {
+          result: { deletedContextFactId: parsed.contextFactId },
+          affectedScopes: [],
+        };
+      }
+      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+    }
+    if (existing.subject.kind !== "self") {
+      throw new ContextFactValidationError("That Self Context fact is no longer available.");
+    }
+
+    const deleted = await store.deleteContextFact({
+      contextFactId: existing.id,
+      subjectUserId: callerUserId,
+      auditLogEntry: auditLogInput({
         ownerUserId: callerUserId,
-        action: "context_fact.update",
-        entityType: "context_fact",
-        entityId: canonicalFact.id,
+        action: "context_fact.delete",
+        fact: existing,
         metadataJson: {
-          subjectKind: canonicalFact.subject.kind,
-          subjectId: contextFactSubjectId(canonicalFact.subject),
-          category: canonicalFact.category,
-          lifecycle: canonicalFact.lifecycle,
-          sensitivity: canonicalFact.sensitivity,
-          provenanceChannel: canonicalFact.provenance.channel,
+          previousLifecycle: existing.lifecycle,
+          suggestionEvidenceRemoved: existing.suggestionEvidence !== null,
         },
-      });
-    } catch {
-      // The fact is already committed; audit failure must not lose user context.
+      }),
+    });
+    if (!deleted) {
+      throw new ContextFactValidationError("That Self Context fact is no longer available.");
     }
 
     return {
-      result: toContextFactView(canonicalFact),
-      affectedScopes: affectedScopesForContextFact({ ownerUserId: callerUserId }),
+      result: { deletedContextFactId: existing.id },
+      affectedScopes: await affectedScopesForFact(existing, callerUserId),
     };
   }
 
@@ -187,7 +515,7 @@ export function createContextFactQueries(
     const callerUserId = await requireVerifiedCaller(input.callerUserId);
     const facts = await store.listContextFacts({
       subjectUserId: callerUserId,
-      lifecycle: "active",
+      lifecycles: input.includeArchived ? ["active", "archived"] : ["active"],
     });
 
     return facts
@@ -195,7 +523,8 @@ export function createContextFactQueries(
       .filter((fact) =>
         input.includeRestricted === false
           ? canUseContextFactForOrientation({ callerUserId, fact })
-          : canViewContextFact({ callerUserId, fact }) && fact.lifecycle === "active",
+          : canViewContextFact({ callerUserId, fact }) &&
+            (fact.lifecycle === "active" || input.includeArchived === true),
       )
       .sort(
         (left, right) =>
@@ -254,7 +583,8 @@ export function createContextFactQueries(
     });
     if (!fact) return null;
     const parsed = contextFactSchema.parse(fact);
-    if (parsed.lifecycle !== "active") return null;
+    if (parsed.lifecycle === "suggested") return null;
+    if (!input.includeArchived && parsed.lifecycle !== "active") return null;
     if (!canViewContextFact({ callerUserId, fact: parsed, activeHouseholdIds })) return null;
     if (
       input.includeRestricted === false &&
@@ -268,6 +598,9 @@ export function createContextFactQueries(
   return {
     createContextFact,
     updateSelfContextFact,
+    archiveSelfContextFact,
+    restoreSelfContextFact,
+    deleteSelfContextFact,
     async createSelfContextFact(input: CreateSelfContextFactMutationInput) {
       const parsed = createSelfContextFactInputSchema.parse(input);
       return createContextFact({

@@ -49,7 +49,7 @@ describe("Context Fact product contract", () => {
     });
 
     expect(outcome.result).toMatchObject({
-      subject: { kind: "self", userId: OWNER },
+      subject: { kind: "self" },
       category: "work",
       content: "I run a software consultancy.",
       lifecycle: "active",
@@ -101,7 +101,7 @@ describe("Context Fact product contract", () => {
 
     expect(updated.result).toMatchObject({
       id: created.result.id,
-      subject: { kind: "self", userId: OWNER },
+      subject: { kind: "self" },
       category: "preference",
       content: "I prefer concise answers.",
       sensitivity: "sensitive",
@@ -117,6 +117,25 @@ describe("Context Fact product contract", () => {
       collection: "orientation",
       ownerUserId: OWNER,
     });
+    await expect(
+      ownerQueries.updateSelfContextFact({
+        callerUserId: OWNER,
+        contextFactId: created.result.id,
+        expectedUpdatedAt: new Date("2026-08-02T11:59:00.000Z"),
+        category: "preference",
+        content: "This stale editor must not overwrite the current fact.",
+        sensitivity: "sensitive",
+      }),
+    ).rejects.toThrow("changed elsewhere");
+    await expect(
+      ownerQueries.updateSelfContextFact({
+        callerUserId: OWNER,
+        contextFactId: created.result.id,
+        category: "preference",
+        content: "  I PREFER concise answers! ",
+        sensitivity: "sensitive",
+      }),
+    ).resolves.toMatchObject({ decision: "existing", affectedScopes: [] });
     await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ action: "context_fact.update", entityId: created.result.id }),
@@ -161,6 +180,7 @@ describe("Context Fact product contract", () => {
         contextFactId: archivedId,
         subjectUserId: OWNER,
         lifecycle: "active",
+        expectedUpdatedAt: new Date("2026-08-02T12:00:00.000Z"),
         patch: {
           category: "preference",
           content: "This archived fact must not change.",
@@ -363,7 +383,7 @@ describe("Context Fact product contract", () => {
     const outsiderFacts = await outsiderQueries.listContextFacts({ callerUserId: "user-outsider" });
     expect(outsiderFacts).toEqual([]);
     expect(householdFact.result).toMatchObject({
-      subject: { kind: "household", householdId: household.id },
+      subject: { kind: "household" },
       visibility: "household",
     });
 
@@ -422,5 +442,209 @@ describe("Context Fact product contract", () => {
     await expect(store.createContextFact({ ...fact, id: "not-a-uuid" })).rejects.toThrow(
       "Context Fact id must be a UUID.",
     );
+  });
+
+  it("treats normalized exact retries as idempotent and blocks likely current-value conflicts", async () => {
+    const store = createInMemoryContextFactStore();
+    const queries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+
+    const created = await queries.createSelfContextFact({
+      callerUserId: OWNER,
+      category: "work",
+      content: "I work at Acme.",
+    });
+    const duplicate = await queries.createSelfContextFact({
+      callerUserId: OWNER,
+      category: "work",
+      content: "  I WORK at Acme! ",
+    });
+
+    expect(duplicate).toMatchObject({
+      decision: "existing",
+      result: { id: created.result.id, content: "I work at Acme." },
+      affectedScopes: [],
+    });
+    expect(store.records.size).toBe(1);
+
+    await expect(
+      queries.createSelfContextFact({
+        callerUserId: OWNER,
+        category: "work",
+        content: "I work at Northstar.",
+      }),
+    ).rejects.toThrow("Edit the existing fact instead");
+    expect(store.records.size).toBe(1);
+  });
+
+  it("archives out of active reads, restores through an expected inverse, and rejects stale undo", async () => {
+    const store = createInMemoryContextFactStore();
+    const queries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+    const created = await queries.createSelfContextFact({
+      callerUserId: OWNER,
+      category: "interest",
+      content: "I like trail running.",
+    });
+
+    const archived = await queries.archiveSelfContextFact({
+      callerUserId: OWNER,
+      contextFactId: created.result.id,
+      expectedUpdatedAt: created.result.updatedAt,
+    });
+    expect(archived).toMatchObject({ decision: "archived", result: { lifecycle: "archived" } });
+    expect(archived.result.archivedAt).toBeInstanceOf(Date);
+    expect(archived.affectedScopes).toEqual([
+      { kind: "owner-collection", collection: "context-facts", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "orientation", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "review", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "global-recall", ownerUserId: OWNER },
+      { kind: "owner-collection", collection: "account", ownerUserId: OWNER },
+    ]);
+    await expect(
+      queries.archiveSelfContextFact({
+        callerUserId: OWNER,
+        contextFactId: created.result.id,
+        expectedUpdatedAt: created.result.updatedAt,
+      }),
+    ).resolves.toMatchObject({ decision: "archived", result: { lifecycle: "archived" } });
+    await expect(queries.listContextFacts({ callerUserId: OWNER })).resolves.toEqual([]);
+    await expect(
+      queries.listSelfContextFacts({ callerUserId: OWNER, includeArchived: true }),
+    ).resolves.toEqual([expect.objectContaining({ lifecycle: "archived" })]);
+
+    const restored = await queries.restoreSelfContextFact({
+      callerUserId: OWNER,
+      contextFactId: created.result.id,
+      expectedArchivedAt: archived.result.archivedAt as Date,
+    });
+    expect(restored).toMatchObject({ decision: "restored", result: { lifecycle: "active" } });
+    expect(restored.affectedScopes).toEqual(archived.affectedScopes);
+    await expect(queries.listContextFacts({ callerUserId: OWNER })).resolves.toEqual([
+      expect.objectContaining({ id: created.result.id }),
+    ]);
+
+    await expect(
+      queries.restoreSelfContextFact({
+        callerUserId: OWNER,
+        contextFactId: created.result.id,
+        expectedArchivedAt: archived.result.archivedAt as Date,
+      }),
+    ).rejects.toThrow("archive changed elsewhere");
+    await expect(store.listAuditLogEntries({ ownerUserId: OWNER })).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "context_fact.archive" }),
+        expect.objectContaining({ action: "context_fact.restore" }),
+      ]),
+    );
+
+    const otherQueries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OTHER_OWNER),
+    });
+    await expect(
+      otherQueries.archiveSelfContextFact({
+        callerUserId: OTHER_OWNER,
+        contextFactId: created.result.id,
+        expectedUpdatedAt: restored.result.updatedAt,
+      }),
+    ).rejects.toThrow("no longer available");
+    await expect(
+      otherQueries.restoreSelfContextFact({
+        callerUserId: OTHER_OWNER,
+        contextFactId: created.result.id,
+      }),
+    ).rejects.toThrow("no longer available");
+  });
+
+  it("does not restore an archived fact into a duplicate or conflicting active slot", async () => {
+    const archivedId = "00000000-0000-4000-8000-000000000081";
+    const activeId = "00000000-0000-4000-8000-000000000082";
+    const store = createInMemoryContextFactStore([
+      contextFactFixture({
+        id: archivedId,
+        lifecycle: "archived",
+        archivedAt: new Date("2026-08-02T12:01:00.000Z"),
+        content: "I work at Acme.",
+      }),
+      contextFactFixture({
+        id: activeId,
+        content: "I work at Acme.",
+      }),
+    ]);
+    const queries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+
+    await expect(
+      queries.restoreSelfContextFact({ callerUserId: OWNER, contextFactId: archivedId }),
+    ).resolves.toMatchObject({
+      decision: "existing",
+      result: { id: activeId, lifecycle: "active" },
+      affectedScopes: [],
+    });
+
+    const conflictStore = createInMemoryContextFactStore([
+      contextFactFixture({
+        id: archivedId,
+        lifecycle: "archived",
+        archivedAt: new Date("2026-08-02T12:01:00.000Z"),
+        content: "I work at Acme.",
+      }),
+      contextFactFixture({ id: activeId, content: "I work at Northstar." }),
+    ]);
+    const conflictQueries = createContextFactQueries(conflictStore, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+    await expect(
+      conflictQueries.restoreSelfContextFact({ callerUserId: OWNER, contextFactId: archivedId }),
+    ).rejects.toThrow("conflicts with another active fact");
+  });
+
+  it("permanently deletes Self Context content and keeps only a non-content tombstone", async () => {
+    const suggestedId = "00000000-0000-4000-8000-000000000077";
+    const store = createInMemoryContextFactStore([
+      contextFactFixture({
+        id: suggestedId,
+        lifecycle: "suggested",
+        suggestionEvidence: "The user's private evidence must be removed.",
+      }),
+    ]);
+    const queries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+
+    const deleted = await queries.deleteSelfContextFact({
+      callerUserId: OWNER,
+      contextFactId: suggestedId,
+    });
+    expect(deleted.result).toEqual({ deletedContextFactId: suggestedId });
+    expect(store.records.has(suggestedId)).toBe(false);
+    const tombstone = (await store.listAuditLogEntries({ ownerUserId: OWNER })).at(-1);
+    expect(tombstone).toMatchObject({ action: "context_fact.delete", entityId: suggestedId });
+    expect(tombstone?.metadataJson).toMatchObject({
+      previousLifecycle: "suggested",
+      suggestionEvidenceRemoved: true,
+    });
+    expect(tombstone?.metadataJson).not.toHaveProperty("content");
+    expect(tombstone?.metadataJson).not.toHaveProperty("suggestionEvidence");
+
+    await expect(
+      queries.deleteSelfContextFact({ callerUserId: OWNER, contextFactId: suggestedId }),
+    ).resolves.toMatchObject({
+      result: { deletedContextFactId: suggestedId },
+      affectedScopes: [],
+    });
+
+    const otherQueries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OTHER_OWNER),
+    });
+    await expect(
+      otherQueries.deleteSelfContextFact({
+        callerUserId: OTHER_OWNER,
+        contextFactId: suggestedId,
+      }),
+    ).rejects.toThrow("no longer available");
   });
 });

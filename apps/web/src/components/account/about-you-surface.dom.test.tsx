@@ -6,15 +6,20 @@ import { render, screen, userEvent, waitFor } from "@/test/dom";
 
 const createSelfContextFactAction = vi.fn();
 const updateSelfContextFactAction = vi.fn();
+const archiveSelfContextFactAction = vi.fn();
+const restoreSelfContextFactAction = vi.fn();
+const deleteSelfContextFactAction = vi.fn();
 
 vi.mock("@/app/actions/context-facts", () => ({
   createSelfContextFactAction: (...args: unknown[]) => createSelfContextFactAction(...args),
   updateSelfContextFactAction: (...args: unknown[]) => updateSelfContextFactAction(...args),
+  archiveSelfContextFactAction: (...args: unknown[]) => archiveSelfContextFactAction(...args),
+  restoreSelfContextFactAction: (...args: unknown[]) => restoreSelfContextFactAction(...args),
+  deleteSelfContextFactAction: (...args: unknown[]) => deleteSelfContextFactAction(...args),
 }));
 
 import { AboutYouSurface } from "./about-you-surface";
 
-const OWNER = "owner-1";
 const FACT_ID = "00000000-0000-4000-8000-000000000001";
 const UPDATED_FACT_ID = "00000000-0000-4000-8000-000000000002";
 const NOW = new Date("2026-08-02T12:00:00.000Z");
@@ -22,15 +27,12 @@ const NOW = new Date("2026-08-02T12:00:00.000Z");
 function fact(overrides: Partial<ContextFactView> = {}): ContextFactView {
   return {
     id: FACT_ID,
-    subject: { kind: "self", userId: OWNER },
+    subject: { kind: "self" },
     category: "work",
     content: "I run a software consultancy.",
     lifecycle: "active",
     sensitivity: "normal",
-    provenance: { channel: "account", origin: "direct", sourceRecordId: null },
-    suggestionEvidence: null,
-    creatorUserId: OWNER,
-    lastActorUserId: OWNER,
+    provenance: { channel: "account", origin: "direct" },
     reviewedAt: NOW,
     archivedAt: null,
     createdAt: NOW,
@@ -44,6 +46,11 @@ function fact(overrides: Partial<ContextFactView> = {}): ContextFactView {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  createSelfContextFactAction.mockReset();
+  updateSelfContextFactAction.mockReset();
+  archiveSelfContextFactAction.mockReset();
+  restoreSelfContextFactAction.mockReset();
+  deleteSelfContextFactAction.mockReset();
 });
 
 describe("AboutYouSurface", () => {
@@ -55,7 +62,10 @@ describe("AboutYouSurface", () => {
       content: "Returned from the server, not a client projection.",
       updatedAt: new Date("2026-08-02T12:01:00.000Z"),
     });
-    createSelfContextFactAction.mockResolvedValue({ ok: true, view: returned });
+    createSelfContextFactAction.mockResolvedValue({
+      ok: true,
+      view: { fact: returned, decision: "created" },
+    });
 
     render(
       <AboutYouSurface
@@ -68,7 +78,7 @@ describe("AboutYouSurface", () => {
           }),
           fact({
             id: "00000000-0000-4000-8000-000000000004",
-            subject: { kind: "household", householdId: "household-1" },
+            subject: { kind: "household" },
             category: "other",
             content: "This must stay off About you.",
           }),
@@ -110,7 +120,10 @@ describe("AboutYouSurface", () => {
       sensitivity: "restricted",
       updatedAt: new Date("2026-08-02T12:02:00.000Z"),
     });
-    updateSelfContextFactAction.mockResolvedValue({ ok: true, view: returned });
+    updateSelfContextFactAction.mockResolvedValue({
+      ok: true,
+      view: { fact: returned, decision: "updated" },
+    });
     render(<AboutYouSurface initialFacts={[fact()]} />);
 
     await user.click(screen.getByRole("button", { name: "Edit Work fact" }));
@@ -123,6 +136,7 @@ describe("AboutYouSurface", () => {
     await waitFor(() =>
       expect(updateSelfContextFactAction).toHaveBeenCalledWith({
         contextFactId: FACT_ID,
+        expectedUpdatedAt: NOW.toISOString(),
         category: "preference",
         content: "A client draft",
         sensitivity: "restricted",
@@ -147,5 +161,27 @@ describe("AboutYouSurface", () => {
     expect((content as HTMLTextAreaElement).value).toBe("Keep this draft while retrying.");
     expect(document.activeElement).toBe(content);
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  it("offers the existing fact as a focused correction path after a conflict", async () => {
+    const user = userEvent.setup();
+    createSelfContextFactAction.mockResolvedValue({
+      ok: false,
+      error: "Edit the existing fact instead.",
+      focusContextFactId: FACT_ID,
+    });
+    render(<AboutYouSurface initialFacts={[fact()]} />);
+
+    await user.click(screen.getByRole("button", { name: "Add a fact" }));
+    await user.type(screen.getByRole("textbox", { name: "Fact" }), "A conflicting statement.");
+    await user.click(screen.getByRole("button", { name: "Save fact" }));
+
+    expect(await screen.findByRole("button", { name: "Edit existing fact" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Edit existing fact" }));
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit Work fact" })),
+    );
+    expect(screen.queryByRole("heading", { name: "Add a fact" })).toBeNull();
   });
 });

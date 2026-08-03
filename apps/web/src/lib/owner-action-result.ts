@@ -1,4 +1,6 @@
-export type OwnerActionResult<TView> = { ok: true; view: TView } | { ok: false; error: string };
+export type OwnerActionResult<TView> =
+  | { ok: true; view: TView }
+  | { ok: false; error: string; focusContextFactId?: string };
 
 /** A curated owner-facing failure returned as data by the Server Action protocol. */
 export class OwnerActionFailure extends Error {

@@ -1,6 +1,15 @@
 import type { ContextFactProvenance } from "@tendnote/domain";
 import { sql } from "drizzle-orm";
-import { check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
 import {
@@ -22,6 +31,7 @@ export const contextFacts = pgTable(
     }),
     category: contextFactCategory("category").notNull(),
     content: text("content").notNull(),
+    normalizedContent: text("normalized_content").notNull(),
     lifecycle: contextFactLifecycle("lifecycle").notNull().default("suggested"),
     sensitivity: sensitivity("sensitivity").notNull().default("normal"),
     provenanceJson: jsonb("provenance_json").$type<ContextFactProvenance>().notNull(),
@@ -47,6 +57,22 @@ export const contextFacts = pgTable(
       table.lifecycle,
       table.updatedAt,
     ),
+    uniqueIndex("context_facts_active_self_identity_idx")
+      .on(table.subjectUserId, table.category, table.sensitivity, table.normalizedContent)
+      .where(sql`${table.subjectKind} = 'self' AND ${table.lifecycle} = 'active'`),
+    uniqueIndex("context_facts_active_household_identity_idx")
+      .on(table.subjectHouseholdId, table.category, table.sensitivity, table.normalizedContent)
+      .where(sql`${table.subjectKind} = 'household' AND ${table.lifecycle} = 'active'`),
+    uniqueIndex("context_facts_active_self_single_value_idx")
+      .on(table.subjectUserId, table.category)
+      .where(
+        sql`${table.subjectKind} = 'self' AND ${table.lifecycle} = 'active' AND ${table.category} IN ('background', 'work', 'location')`,
+      ),
+    uniqueIndex("context_facts_active_household_single_value_idx")
+      .on(table.subjectHouseholdId, table.category)
+      .where(
+        sql`${table.subjectKind} = 'household' AND ${table.lifecycle} = 'active' AND ${table.category} IN ('background', 'work', 'location')`,
+      ),
     check(
       "context_facts_exactly_one_subject_check",
       sql`(

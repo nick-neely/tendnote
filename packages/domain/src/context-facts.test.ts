@@ -4,8 +4,13 @@ import {
   contextFactSchema,
   contextFactSubjectSchema,
   createSelfContextFactInputSchema,
+  isDuplicateContextFact,
+  isLikelyConflictingContextFact,
+  normalizeContextFactContent,
+  resolveContextFactTransition,
   selfContextFactCategories,
   selfContextFactCategorySchema,
+  toContextFactView,
   updateSelfContextFactInputSchema,
 } from "./context-facts";
 
@@ -137,5 +142,97 @@ describe("Context Fact domain contract", () => {
         sourceRecordId: "message-1",
       }).success,
     ).toBe(true);
+  });
+
+  it("normalizes exact retries and distinguishes likely current-value conflicts", () => {
+    expect(normalizeContextFactContent("  I WORK at Acme! ")).toBe("i work at acme");
+    const subject = { kind: "self" as const, userId: "user-1" };
+    const existing = {
+      subject,
+      category: "work" as const,
+      content: "I work at Acme.",
+      sensitivity: "normal" as const,
+    };
+    expect(
+      isDuplicateContextFact({
+        candidate: { ...existing, content: "i work at acme" },
+        existing,
+      }),
+    ).toBe(true);
+    expect(
+      isLikelyConflictingContextFact({
+        candidate: { ...existing, content: "I work at Northstar." },
+        existing,
+      }),
+    ).toBe(true);
+    expect(
+      isLikelyConflictingContextFact({
+        candidate: {
+          subject,
+          category: "interest",
+          content: "I like hiking.",
+          sensitivity: "normal",
+        },
+        existing: {
+          subject,
+          category: "interest",
+          content: "I like running.",
+          sensitivity: "normal",
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isDuplicateContextFact({
+        candidate: { ...existing, category: "preference" },
+        existing,
+      }),
+    ).toBe(false);
+    expect(
+      isDuplicateContextFact({
+        candidate: { ...existing, sensitivity: "sensitive" },
+        existing,
+      }),
+    ).toBe(false);
+    expect(
+      isLikelyConflictingContextFact({
+        candidate: { ...existing, sensitivity: "sensitive" },
+        existing,
+      }),
+    ).toBe(true);
+  });
+
+  it("has explicit archive and restore transitions", () => {
+    expect(resolveContextFactTransition("active", "archive")).toBe("archived");
+    expect(resolveContextFactTransition("archived", "restore")).toBe("active");
+    expect(() => resolveContextFactTransition("archived", "archive")).toThrow("Cannot archive");
+  });
+
+  it("omits raw actor, source, and suggestion evidence fields from product views", () => {
+    const now = new Date("2026-08-02T12:00:00.000Z");
+    const parsed = contextFactSchema.parse({
+      id: "fact-1",
+      subject: { kind: "self", userId: "user-1" },
+      category: "work",
+      content: "I run a consultancy.",
+      lifecycle: "active",
+      sensitivity: "normal",
+      provenance: { channel: "account", origin: "direct", sourceRecordId: "source-1" },
+      suggestionEvidence: "private evidence",
+      creatorUserId: "user-1",
+      lastActorUserId: "user-2",
+      reviewedAt: now,
+      archivedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const view = toContextFactView(parsed);
+    expect(view).toMatchObject({
+      subject: { kind: "self" },
+      provenance: { channel: "account", origin: "direct" },
+    });
+    expect(view).not.toHaveProperty("creatorUserId");
+    expect(view).not.toHaveProperty("lastActorUserId");
+    expect(view.provenance).not.toHaveProperty("sourceRecordId");
+    expect(view).not.toHaveProperty("suggestionEvidence");
   });
 });

@@ -1,5 +1,5 @@
 import { selfContextFactCategories as selfContextCategoryValues } from "@tendnote/domain/context-fact-categories";
-import type { ContextFactView } from "@tendnote/domain/context-facts";
+import type { ContextFactMutationDecision, ContextFactView } from "@tendnote/domain/context-facts";
 import type { Sensitivity } from "@tendnote/domain/privacy";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 
@@ -19,7 +19,18 @@ export const selfContextCategories = selfContextCategoryValues.map((value) => ({
   value,
   label: selfContextCategoryLabels[value],
 }));
-export type SelfContextFactMutationResult = OwnerActionResult<ContextFactView>;
+
+export type SelfContextFactMutationDecision = ContextFactMutationDecision;
+
+export type SelfContextFactMutationView = {
+  fact: ContextFactView;
+  decision: SelfContextFactMutationDecision;
+};
+
+export type SelfContextFactMutationResult = OwnerActionResult<SelfContextFactMutationView>;
+export type SelfContextFactDeleteResult = OwnerActionResult<{
+  deletedContextFactId: string;
+}>;
 export type SelfContextFactDraft = {
   category: SelfContextCategory;
   content: string;
@@ -63,4 +74,14 @@ export function isActiveSelfContextFact(fact: ContextFactView): boolean {
   return (
     fact.subject.kind === "self" && fact.lifecycle === "active" && fact.category !== "composition"
   );
+}
+
+export function isArchivedSelfContextFact(fact: ContextFactView): boolean {
+  return (
+    fact.subject.kind === "self" && fact.lifecycle === "archived" && fact.category !== "composition"
+  );
+}
+
+export function isSelfContextFact(fact: ContextFactView): boolean {
+  return isActiveSelfContextFact(fact) || isArchivedSelfContextFact(fact);
 }

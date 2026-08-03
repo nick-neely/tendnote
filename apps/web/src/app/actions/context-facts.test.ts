@@ -1,31 +1,46 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePathSpy, updateTagSpy } from "@/test/action-adapter-mocks";
 
-const { createSelfContextFact, updateSelfContextFact } = vi.hoisted(() => ({
+const {
+  archiveSelfContextFact,
+  createSelfContextFact,
+  deleteSelfContextFact,
+  restoreSelfContextFact,
+  updateSelfContextFact,
+} = vi.hoisted(() => ({
+  archiveSelfContextFact: vi.fn(),
   createSelfContextFact: vi.fn(),
+  deleteSelfContextFact: vi.fn(),
+  restoreSelfContextFact: vi.fn(),
   updateSelfContextFact: vi.fn(),
 }));
 
 vi.mock("@tendnote/db/queries/context-facts", () => ({
+  archiveSelfContextFact,
   createSelfContextFact,
+  deleteSelfContextFact,
+  restoreSelfContextFact,
   updateSelfContextFact,
 }));
 
-import { createSelfContextFactAction, updateSelfContextFactAction } from "./context-facts";
+import {
+  archiveSelfContextFactAction,
+  createSelfContextFactAction,
+  deleteSelfContextFactAction,
+  restoreSelfContextFactAction,
+  updateSelfContextFactAction,
+} from "./context-facts";
 
 const FACT_ID = "00000000-0000-4000-8000-000000000001";
 const NOW = new Date("2026-08-02T12:00:00.000Z");
 const FACT_VIEW = {
   id: FACT_ID,
-  subject: { kind: "self", userId: "owner-1" },
+  subject: { kind: "self" },
   category: "work",
   content: "I run a software consultancy.",
   lifecycle: "active",
   sensitivity: "normal",
-  provenance: { channel: "account", origin: "direct", sourceRecordId: null },
-  suggestionEvidence: null,
-  creatorUserId: "owner-1",
-  lastActorUserId: "owner-1",
+  provenance: { channel: "account", origin: "direct" },
   reviewedAt: NOW,
   archivedAt: null,
   createdAt: NOW,
@@ -33,6 +48,12 @@ const FACT_VIEW = {
   trust: "untrusted_data",
   authority: "none",
   visibility: "private",
+} as const;
+const ARCHIVED_FACT_VIEW = {
+  ...FACT_VIEW,
+  lifecycle: "archived",
+  archivedAt: new Date("2026-08-02T12:01:00.000Z"),
+  updatedAt: new Date("2026-08-02T12:01:00.000Z"),
 } as const;
 const AFFECTED_SCOPES = [
   { kind: "owner-collection", collection: "context-facts", ownerUserId: "owner-1" },
@@ -44,8 +65,30 @@ const AFFECTED_SCOPES = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  createSelfContextFact.mockResolvedValue({ result: FACT_VIEW, affectedScopes: AFFECTED_SCOPES });
-  updateSelfContextFact.mockResolvedValue({ result: FACT_VIEW, affectedScopes: AFFECTED_SCOPES });
+  createSelfContextFact.mockResolvedValue({
+    result: FACT_VIEW,
+    decision: "created",
+    affectedScopes: AFFECTED_SCOPES,
+  });
+  updateSelfContextFact.mockResolvedValue({
+    result: FACT_VIEW,
+    decision: "updated",
+    affectedScopes: AFFECTED_SCOPES,
+  });
+  archiveSelfContextFact.mockResolvedValue({
+    result: ARCHIVED_FACT_VIEW,
+    decision: "archived",
+    affectedScopes: AFFECTED_SCOPES,
+  });
+  restoreSelfContextFact.mockResolvedValue({
+    result: FACT_VIEW,
+    decision: "restored",
+    affectedScopes: AFFECTED_SCOPES,
+  });
+  deleteSelfContextFact.mockResolvedValue({
+    result: { deletedContextFactId: FACT_ID },
+    affectedScopes: AFFECTED_SCOPES,
+  });
 });
 
 describe("Self Context server actions", () => {
@@ -56,7 +99,10 @@ describe("Self Context server actions", () => {
         content: " I run a software consultancy. ",
         sensitivity: "normal",
       }),
-    ).resolves.toEqual({ ok: true, view: FACT_VIEW });
+    ).resolves.toEqual({
+      ok: true,
+      view: { fact: FACT_VIEW, decision: "created" },
+    });
 
     expect(createSelfContextFact).toHaveBeenCalledWith(
       {
@@ -79,16 +125,21 @@ describe("Self Context server actions", () => {
     await expect(
       updateSelfContextFactAction({
         contextFactId: FACT_ID,
+        expectedUpdatedAt: NOW.toISOString(),
         category: "preference",
         content: "I prefer concise answers.",
         sensitivity: "sensitive",
       }),
-    ).resolves.toEqual({ ok: true, view: FACT_VIEW });
+    ).resolves.toEqual({
+      ok: true,
+      view: { fact: FACT_VIEW, decision: "updated" },
+    });
 
     expect(updateSelfContextFact).toHaveBeenCalledWith(
       {
         callerUserId: "owner-1",
         contextFactId: FACT_ID,
+        expectedUpdatedAt: NOW,
         category: "preference",
         content: "I prefer concise answers.",
         sensitivity: "sensitive",
@@ -111,5 +162,54 @@ describe("Self Context server actions", () => {
       createSelfContextFactAction({ category: "work", content: " " }),
     ).resolves.toMatchObject({ ok: false, error: expect.any(String) });
     expect(createSelfContextFact).not.toHaveBeenCalled();
+  });
+
+  it("keeps lifecycle actions owner-scoped, timestamp-guarded, and cache-reconciled", async () => {
+    await expect(
+      archiveSelfContextFactAction({
+        contextFactId: FACT_ID,
+        expectedUpdatedAt: NOW.toISOString(),
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      view: { fact: ARCHIVED_FACT_VIEW, decision: "archived" },
+    });
+    expect(archiveSelfContextFact).toHaveBeenCalledWith(
+      {
+        callerUserId: "owner-1",
+        contextFactId: FACT_ID,
+        expectedUpdatedAt: NOW,
+      },
+      expect.any(Function),
+    );
+
+    await expect(
+      restoreSelfContextFactAction({
+        contextFactId: FACT_ID,
+        expectedArchivedAt: ARCHIVED_FACT_VIEW.archivedAt.toISOString(),
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      view: { fact: FACT_VIEW, decision: "restored" },
+    });
+    expect(restoreSelfContextFact).toHaveBeenCalledWith(
+      {
+        callerUserId: "owner-1",
+        contextFactId: FACT_ID,
+        expectedArchivedAt: ARCHIVED_FACT_VIEW.archivedAt,
+      },
+      expect.any(Function),
+    );
+
+    await expect(deleteSelfContextFactAction({ contextFactId: FACT_ID })).resolves.toEqual({
+      ok: true,
+      view: { deletedContextFactId: FACT_ID },
+    });
+    expect(deleteSelfContextFact).toHaveBeenCalledWith(
+      { callerUserId: "owner-1", contextFactId: FACT_ID },
+      expect.any(Function),
+    );
+    expect(updateTagSpy).toHaveBeenCalledWith("global-recall:owner:owner-1");
+    expect(revalidatePathSpy).toHaveBeenCalledWith("/account/about-you");
   });
 });

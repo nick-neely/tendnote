@@ -3,6 +3,7 @@ import "server-only";
 import type { AffectedScope } from "@tendnote/db/queries/general-actions";
 import {
   AssetValidationError,
+  ContextFactConflictError,
   ContextFactValidationError,
   GeneralActionValidationError,
   SavedItemValidationError,
@@ -88,6 +89,13 @@ export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
       dependencies.reconcile(action.affectedScopes?.(entity, ownerUserId) ?? []);
       return { ok: true, view: await action.result(entity, ownerUserId) };
     } catch (error) {
+      if (error instanceof ContextFactConflictError) {
+        return {
+          ok: false,
+          error: error.message,
+          focusContextFactId: error.existingFactId,
+        };
+      }
       const message = userSafeErrorMessage(error);
       if (message) {
         return { ok: false, error: message };

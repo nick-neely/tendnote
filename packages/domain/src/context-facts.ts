@@ -13,6 +13,18 @@ export class ContextFactValidationError extends Error {
   override name = "ContextFactValidationError";
 }
 
+/** A likely correction must name the existing path instead of creating a contradiction. */
+export class ContextFactConflictError extends ContextFactValidationError {
+  override name = "ContextFactConflictError";
+
+  constructor(
+    message: string,
+    readonly existingFactId: string,
+  ) {
+    super(message);
+  }
+}
+
 export const contextFactSubjectSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -97,6 +109,20 @@ export type ContextFactOrigin = z.infer<typeof contextFactOriginSchema>;
 export type ContextFactVisibility = z.infer<typeof contextFactVisibilitySchema>;
 export type ContextFactProvenance = z.infer<typeof contextFactProvenanceSchema>;
 export type ContextFactSensitivity = Sensitivity;
+
+export const contextFactLifecycleActionSchema = z.enum(["archive", "restore"]);
+export type ContextFactLifecycleAction = z.infer<typeof contextFactLifecycleActionSchema>;
+
+export type ContextFactMutationDecision =
+  | "created"
+  | "updated"
+  | "existing"
+  | "archived"
+  | "restored";
+
+export type ContextFactDeleteResult = {
+  deletedContextFactId: string;
+};
 
 const contextFactFieldsSchema = z.object({
   subject: contextFactSubjectSchema,
@@ -199,6 +225,7 @@ export const updateSelfContextFactInputSchema = z
   .object({
     callerUserId: nonEmptyIdentifier,
     contextFactId: nonEmptyIdentifier.max(128),
+    expectedUpdatedAt: z.date().optional(),
     category: contextFactCategorySchema,
     content: contextFactContentSchema,
     sensitivity: sensitivitySchema,
@@ -216,20 +243,93 @@ export const updateSelfContextFactInputSchema = z
 
 export type UpdateSelfContextFactInput = z.input<typeof updateSelfContextFactInputSchema>;
 
+export const archiveSelfContextFactInputSchema = z
+  .object({
+    callerUserId: nonEmptyIdentifier,
+    contextFactId: nonEmptyIdentifier.max(128),
+    expectedUpdatedAt: z.date().optional(),
+  })
+  .strict();
+
+export type ArchiveSelfContextFactInput = z.input<typeof archiveSelfContextFactInputSchema>;
+
+export const restoreSelfContextFactInputSchema = z
+  .object({
+    callerUserId: nonEmptyIdentifier,
+    contextFactId: nonEmptyIdentifier.max(128),
+    /** Present for an authoritative Undo; absent for an explicit restore. */
+    expectedArchivedAt: z.date().optional(),
+  })
+  .strict();
+
+export type RestoreSelfContextFactInput = z.input<typeof restoreSelfContextFactInputSchema>;
+
+export const deleteSelfContextFactInputSchema = z
+  .object({
+    callerUserId: nonEmptyIdentifier,
+    contextFactId: nonEmptyIdentifier.max(128),
+  })
+  .strict();
+
+export type DeleteSelfContextFactInput = z.input<typeof deleteSelfContextFactInputSchema>;
+
 /** Context Facts can inform an answer, but their stored text is never authority. */
 export const contextFactTrustSchema = z.literal("untrusted_data");
 export const contextFactAuthoritySchema = z.literal("none");
 
-export const contextFactViewSchema = contextFactSchema.extend({
-  trust: contextFactTrustSchema,
-  authority: contextFactAuthoritySchema,
-  visibility: contextFactVisibilitySchema,
-});
+const contextFactPublicSubjectSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("self") }).strict(),
+  z.object({ kind: z.literal("household") }).strict(),
+]);
+
+const contextFactPublicProvenanceSchema = z
+  .object({
+    channel: contextFactChannelSchema,
+    origin: contextFactOriginSchema,
+  })
+  .strict();
+
+/**
+ * The product-facing view intentionally omits actor ids, source ids, and retained
+ * suggestion evidence. Those values remain in the owner-scoped application record
+ * and audit trail; About you only needs bounded provenance and dates.
+ */
+export const contextFactViewSchema = z
+  .object({
+    id: nonEmptyIdentifier,
+    subject: contextFactPublicSubjectSchema,
+    category: contextFactCategorySchema,
+    content: contextFactContentSchema,
+    lifecycle: contextFactLifecycleSchema,
+    sensitivity: sensitivitySchema,
+    provenance: contextFactPublicProvenanceSchema,
+    reviewedAt: z.date().nullable(),
+    archivedAt: z.date().nullable(),
+    createdAt: z.date(),
+    updatedAt: z.date(),
+    trust: contextFactTrustSchema,
+    authority: contextFactAuthoritySchema,
+    visibility: contextFactVisibilitySchema,
+  })
+  .strict();
 export type ContextFactView = z.infer<typeof contextFactViewSchema>;
 
 export function toContextFactView(fact: ContextFact): ContextFactView {
   return contextFactViewSchema.parse({
-    ...fact,
+    id: fact.id,
+    subject: { kind: fact.subject.kind },
+    category: fact.category,
+    content: fact.content,
+    lifecycle: fact.lifecycle,
+    sensitivity: fact.sensitivity,
+    provenance: {
+      channel: fact.provenance.channel,
+      origin: fact.provenance.origin,
+    },
+    reviewedAt: fact.reviewedAt,
+    archivedAt: fact.archivedAt,
+    createdAt: fact.createdAt,
+    updatedAt: fact.updatedAt,
     trust: "untrusted_data",
     authority: "none",
     visibility: contextFactVisibilityForSubject(fact.subject),
@@ -275,4 +375,71 @@ export function isContextFactCategoryAllowedForSubject(input: {
   subject: ContextFactSubject;
 }): boolean {
   return input.category !== "composition" || input.subject.kind === "household";
+}
+
+/** Normalize only for duplicate/correction comparison; the retained statement is unchanged. */
+export function normalizeContextFactContent(content: string): string {
+  return content
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+const likelySingleValueCategories = new Set<ContextFactCategory>([
+  "background",
+  "work",
+  "location",
+]);
+
+type ContextFactComparison = Pick<ContextFact, "subject" | "category" | "content" | "sensitivity">;
+
+function hasSameContextFactSubjectAndCategory(
+  candidate: ContextFactComparison,
+  existing: ContextFactComparison,
+): boolean {
+  return (
+    contextFactSubjectId(candidate.subject) === contextFactSubjectId(existing.subject) &&
+    candidate.subject.kind === existing.subject.kind &&
+    candidate.category === existing.category
+  );
+}
+
+export function isDuplicateContextFact(input: {
+  candidate: ContextFactComparison;
+  existing: ContextFactComparison;
+}): boolean {
+  return (
+    hasSameContextFactSubjectAndCategory(input.candidate, input.existing) &&
+    input.candidate.sensitivity === input.existing.sensitivity &&
+    normalizeContextFactContent(input.candidate.content) ===
+      normalizeContextFactContent(input.existing.content)
+  );
+}
+
+/**
+ * Detect only deterministic, high-signal contradictions. Multiple interests,
+ * preferences, and constraints are valid; current work/location/background values
+ * are the bounded categories where a second active statement is likely a correction.
+ */
+export function isLikelyConflictingContextFact(input: {
+  candidate: ContextFactComparison;
+  existing: ContextFactComparison;
+}): boolean {
+  return (
+    hasSameContextFactSubjectAndCategory(input.candidate, input.existing) &&
+    !isDuplicateContextFact(input) &&
+    (likelySingleValueCategories.has(input.candidate.category) ||
+      normalizeContextFactContent(input.candidate.content) ===
+        normalizeContextFactContent(input.existing.content))
+  );
+}
+
+export function resolveContextFactTransition(
+  current: ContextFactLifecycle,
+  action: ContextFactLifecycleAction,
+): ContextFactLifecycle {
+  if (action === "archive" && current === "active") return "archived";
+  if (action === "restore" && current === "archived") return "active";
+  throw new ContextFactValidationError(`Cannot ${action} a Context Fact that is ${current}.`);
 }

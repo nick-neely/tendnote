@@ -1,11 +1,14 @@
 import { createDrizzleContextFactStore } from "./context-facts/drizzle-store";
 import { createContextFactQueries } from "./context-facts/queries";
 import type {
+  ArchiveSelfContextFactMutationInput,
   ContextFactCallerVerification,
   CreateContextFactMutationInput,
   CreateSelfContextFactMutationInput,
+  DeleteSelfContextFactMutationInput,
   GetContextFactInput,
   ListContextFactsInput,
+  RestoreSelfContextFactMutationInput,
   UpdateSelfContextFactMutationInput,
 } from "./context-facts/types";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
@@ -41,6 +44,27 @@ export function updateSelfContextFact(
   resolveVerifiedCaller: ContextFactCallerVerification,
 ) {
   return createVerifiedContextFactQueries(resolveVerifiedCaller).updateSelfContextFact(input);
+}
+
+export function archiveSelfContextFact(
+  input: ArchiveSelfContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).archiveSelfContextFact(input);
+}
+
+export function restoreSelfContextFact(
+  input: RestoreSelfContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).restoreSelfContextFact(input);
+}
+
+export function deleteSelfContextFact(
+  input: DeleteSelfContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).deleteSelfContextFact(input);
 }
 
 export function listContextFacts(

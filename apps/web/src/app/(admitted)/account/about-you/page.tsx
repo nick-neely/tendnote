@@ -25,7 +25,10 @@ export async function AboutYouContent() {
   const ownerUserId = await requireAdmittedOwner({ returnTo: destination.route });
 
   try {
-    const facts = await listSelfContextFacts({ callerUserId: ownerUserId }, requireAdmittedOwner);
+    const facts = await listSelfContextFacts(
+      { callerUserId: ownerUserId, includeArchived: true },
+      requireAdmittedOwner,
+    );
     return <AboutYouSurface initialFacts={facts} />;
   } catch (error) {
     unstable_rethrow(error);
@@ -54,7 +57,7 @@ export function AboutYouLoading() {
   );
 }
 
-export function AboutYouUnavailable() {
+function AboutYouUnavailable() {
   return (
     <section
       aria-labelledby="about-you-unavailable-heading"

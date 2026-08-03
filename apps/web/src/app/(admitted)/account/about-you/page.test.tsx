@@ -37,7 +37,7 @@ describe("About you route", () => {
 
     expect(markup).toContain("1 facts");
     expect(listSelfContextFacts).toHaveBeenCalledWith(
-      { callerUserId: "owner-1" },
+      { callerUserId: "owner-1", includeArchived: true },
       requireAdmittedOwner,
     );
     expect(requireAdmittedOwner).toHaveBeenCalledWith({ returnTo: "/account/about-you" });
@@ -57,7 +57,7 @@ describe("About you route", () => {
     expect(ownerTwoMarkup).toContain("0 facts");
     expect(ownerTwoMarkup).not.toContain(privateFact.content);
     expect(listSelfContextFacts).toHaveBeenLastCalledWith(
-      { callerUserId: "owner-2" },
+      { callerUserId: "owner-2", includeArchived: true },
       requireAdmittedOwner,
     );
   });

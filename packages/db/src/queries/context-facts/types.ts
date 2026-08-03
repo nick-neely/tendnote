@@ -1,10 +1,15 @@
 import type {
+  ArchiveSelfContextFactInput,
   ContextFact,
+  ContextFactDeleteResult,
   ContextFactLifecycle,
+  ContextFactMutationDecision,
   ContextFactView,
   CreateContextFactInput,
   CreateSelfContextFactInput,
+  DeleteSelfContextFactInput,
   PersistContextFact,
+  RestoreSelfContextFactInput,
   UpdateSelfContextFactInput,
 } from "@tendnote/domain";
 import type { MutationOutcome } from "../affected-scopes";
@@ -31,7 +36,15 @@ export type ContextFactSubjectFilter = {
 
 export type ContextFactUpdatePatch = Pick<
   ContextFact,
-  "category" | "content" | "sensitivity" | "lastActorUserId" | "updatedAt"
+  | "category"
+  | "content"
+  | "sensitivity"
+  | "lastActorUserId"
+  | "updatedAt"
+  | "lifecycle"
+  | "archivedAt"
+  | "reviewedAt"
+  | "suggestionEvidence"
 >;
 
 export type ContextFactStore = {
@@ -40,14 +53,25 @@ export type ContextFactStore = {
     input: ContextFactSubjectFilter & {
       contextFactId: string;
       lifecycle?: ContextFactLifecycle;
-      patch: ContextFactUpdatePatch;
+      expectedUpdatedAt?: Date;
+      expectedArchivedAt?: Date;
+      patch: Partial<ContextFactUpdatePatch>;
     },
   ) => Promise<ContextFact | null>;
+  deleteContextFact: (
+    input: {
+      contextFactId: string;
+      auditLogEntry?: ContextFactAuditLogInput;
+    } & ContextFactSubjectFilter,
+  ) => Promise<boolean>;
   getContextFact: (
     input: { contextFactId: string } & ContextFactSubjectFilter,
   ) => Promise<ContextFact | null>;
   listContextFacts: (
-    input: ContextFactSubjectFilter & { lifecycle?: ContextFactLifecycle },
+    input: ContextFactSubjectFilter & {
+      lifecycle?: ContextFactLifecycle;
+      lifecycles?: readonly ContextFactLifecycle[];
+    },
   ) => Promise<ContextFact[]>;
   createAuditLogEntry: (input: ContextFactAuditLogInput) => Promise<ContextFactAuditLogEntry>;
   listAuditLogEntries: (input: { ownerUserId: string }) => Promise<ContextFactAuditLogEntry[]>;
@@ -69,13 +93,22 @@ export type ContextFactQueryDependencies = {
 export type CreateContextFactMutationInput = CreateContextFactInput;
 export type CreateSelfContextFactMutationInput = CreateSelfContextFactInput;
 export type UpdateSelfContextFactMutationInput = UpdateSelfContextFactInput;
+export type ArchiveSelfContextFactMutationInput = ArchiveSelfContextFactInput;
+export type RestoreSelfContextFactMutationInput = RestoreSelfContextFactInput;
+export type DeleteSelfContextFactMutationInput = DeleteSelfContextFactInput;
 
 export type ListContextFactsInput = {
   callerUserId: string;
   /** Management reads include the caller's restricted facts; orientation reads do not. */
   includeRestricted?: boolean;
+  /** Management reads may progressively disclose archived facts. */
+  includeArchived?: boolean;
 };
 
 export type GetContextFactInput = ListContextFactsInput & { contextFactId: string };
 
-export type ContextFactMutationOutcome = MutationOutcome<ContextFactView>;
+export type ContextFactMutationOutcome = MutationOutcome<ContextFactView> & {
+  decision: ContextFactMutationDecision;
+};
+
+export type ContextFactDeleteMutationOutcome = MutationOutcome<ContextFactDeleteResult>;

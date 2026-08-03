@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import {
   type ContextFact,
   contextFactSchema,
+  contextFactSubjectId,
+  normalizeContextFactContent,
   type PersistContextFact,
   persistContextFactSchema,
 } from "@tendnote/domain";
@@ -38,6 +40,19 @@ export function createInMemoryContextFactStore(seed: ContextFact[] = []): InMemo
       if (parsed.id && !isPersistedContextFactId(parsed.id)) {
         throw new Error("Context Fact id must be a UUID.");
       }
+      const duplicate = [...records.values()].some(
+        (current) =>
+          current.lifecycle === "active" &&
+          current.subject.kind === parsed.subject.kind &&
+          contextFactSubjectId(current.subject) === contextFactSubjectId(parsed.subject) &&
+          current.category === parsed.category &&
+          current.sensitivity === parsed.sensitivity &&
+          normalizeContextFactContent(current.content) ===
+            normalizeContextFactContent(parsed.content),
+      );
+      if (duplicate) {
+        throw new Error("Context Fact already exists.");
+      }
       const now = new Date();
       const fact = contextFactSchema.parse({
         ...parsed,
@@ -59,7 +74,12 @@ export function createInMemoryContextFactStore(seed: ContextFact[] = []): InMemo
       if (
         !current ||
         !isAllowedByFilter(current, input) ||
-        (input.lifecycle !== undefined && current.lifecycle !== input.lifecycle)
+        (input.lifecycle !== undefined && current.lifecycle !== input.lifecycle) ||
+        (input.expectedUpdatedAt !== undefined &&
+          current.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) ||
+        (input.expectedArchivedAt !== undefined &&
+          (current.archivedAt === null ||
+            current.archivedAt.getTime() !== input.expectedArchivedAt.getTime()))
       ) {
         return null;
       }
@@ -69,6 +89,21 @@ export function createInMemoryContextFactStore(seed: ContextFact[] = []): InMemo
       });
       records.set(updated.id, updated);
       return updated;
+    },
+    async deleteContextFact(input) {
+      if (!isPersistedContextFactId(input.contextFactId)) return false;
+      if (input.subjectUserId === undefined && input.householdIds === undefined) return false;
+      const current = records.get(input.contextFactId);
+      if (!current || !isAllowedByFilter(current, input)) return false;
+      records.delete(input.contextFactId);
+      if (input.auditLogEntry) {
+        auditLogEntries.push({
+          ...input.auditLogEntry,
+          id: randomUUID(),
+          createdAt: new Date(),
+        });
+      }
+      return true;
     },
     async getContextFact(input) {
       const fact = records.get(input.contextFactId);
@@ -83,7 +118,11 @@ export function createInMemoryContextFactStore(seed: ContextFact[] = []): InMemo
         return [];
       }
       return [...records.values()]
-        .filter((fact) => input.lifecycle === undefined || fact.lifecycle === input.lifecycle)
+        .filter((fact) =>
+          input.lifecycles
+            ? input.lifecycles.includes(fact.lifecycle)
+            : input.lifecycle === undefined || fact.lifecycle === input.lifecycle,
+        )
         .filter((fact) => isAllowedByFilter(fact, input))
         .sort(
           (left, right) =>
