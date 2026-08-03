@@ -1,5 +1,18 @@
-import type { AccessDecision, AccessProfile, AccessSource } from "@tendnote/domain";
+import {
+  type AccessDecision,
+  type AccessProfile,
+  type AccessSource,
+  type SelfContextOnboardingState,
+  selfContextOnboardingStateSchema,
+} from "@tendnote/domain";
 import type { AccessProfileStore } from "./types";
+
+function onboardingStateFromProfile(profile: AccessProfile): SelfContextOnboardingState {
+  return selfContextOnboardingStateSchema.parse({
+    status: profile.selfContextOnboardingStatus,
+    reminderAt: profile.selfContextOnboardingReminderAt,
+  });
+}
 
 /**
  * Shared Private Beta Access logic. This module owns the bootstrap and admission
@@ -60,6 +73,65 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
 
     async getAccessProfile(input: { userId: string }): Promise<AccessProfile | null> {
       return store.getByUserId(input.userId);
+    },
+
+    async getSelfContextOnboardingState(input: {
+      userId: string;
+    }): Promise<SelfContextOnboardingState | null> {
+      const profile = await store.getByUserId(input.userId);
+      return profile ? onboardingStateFromProfile(profile) : null;
+    },
+
+    async completeSelfContextOnboarding(input: {
+      userId: string;
+    }): Promise<SelfContextOnboardingState> {
+      const existing = await store.getByUserId(input.userId);
+      if (!existing) throw new Error("Failed to update Self Context setup.");
+      if (existing.selfContextOnboardingStatus === "completed") {
+        return onboardingStateFromProfile(existing);
+      }
+
+      const updated = await store.update({
+        userId: input.userId,
+        patch: { selfContextOnboardingStatus: "completed" },
+      });
+      if (!updated) throw new Error("Failed to update Self Context setup.");
+      return onboardingStateFromProfile(updated);
+    },
+
+    async dismissSelfContextOnboarding(input: {
+      userId: string;
+    }): Promise<SelfContextOnboardingState> {
+      const existing = await store.getByUserId(input.userId);
+      if (!existing) throw new Error("Failed to update Self Context setup.");
+      if (existing.selfContextOnboardingStatus === "completed") {
+        return onboardingStateFromProfile(existing);
+      }
+
+      const updated = await store.update({
+        userId: input.userId,
+        patch: { selfContextOnboardingStatus: "dismissed" },
+      });
+      if (!updated) throw new Error("Failed to update Self Context setup.");
+      return onboardingStateFromProfile(updated);
+    },
+
+    async claimSelfContextOnboardingReminder(input: {
+      userId: string;
+    }): Promise<{ claimed: boolean; state: SelfContextOnboardingState | null }> {
+      const claimed = await store.claimSelfContextOnboardingReminder({
+        userId: input.userId,
+        reminderAt: new Date(),
+      });
+      if (claimed) {
+        return { claimed: true, state: onboardingStateFromProfile(claimed) };
+      }
+
+      const current = await store.getByUserId(input.userId);
+      return {
+        claimed: false,
+        state: current ? onboardingStateFromProfile(current) : null,
+      };
     },
 
     /**

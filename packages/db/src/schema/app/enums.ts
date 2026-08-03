@@ -4,6 +4,12 @@ export const accessStatus = pgEnum("access_status", ["pending", "granted", "deni
 
 export const accessSource = pgEnum("access_source", ["bootstrap", "manual_grant", "beta_flag"]);
 
+export const selfContextOnboardingStatus = pgEnum("self_context_onboarding_status", [
+  "not_started",
+  "dismissed",
+  "completed",
+]);
+
 export const relationshipType = pgEnum("relationship_type", [
   "friend",
   "family",

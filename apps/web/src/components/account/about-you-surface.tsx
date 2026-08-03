@@ -75,6 +75,13 @@ type AboutYouSurfaceProps = {
 
 type EditorState = { mode: "create" } | { mode: "edit"; fact: ContextFactView };
 
+export type ContextFactEditorState = EditorState;
+
+export type ContextFactEditorCategoryOption = {
+  value: SelfContextCategory;
+  label: string;
+};
+
 const DEFAULT_DRAFT: SelfContextFactDraft = {
   category: "background",
   content: "",
@@ -587,20 +594,36 @@ function ContextFactRow({
 }
 
 // fallow-ignore-next-line complexity -- The editor keeps draft, validation, stale-intent, conflict focus, and authoritative save state together for one concise form.
-function ContextFactEditor({
+export function ContextFactEditor({
   createAction,
   editor,
   onCancel,
-  onFocusExisting,
+  onFocusExisting = () => {},
   onSaved,
   updateAction,
+  categoryOptions = selfContextCategories,
+  description = "Use one concise statement. Self Context is private here; sensitivity is separate from visibility.",
+  heading,
+  helperText = "Private to you",
+  initialCategory = DEFAULT_DRAFT.category,
+  placeholder = "For example: I run a software consultancy.",
+  submitLabel,
+  cancelLabel = "Cancel",
 }: {
   createAction: CreateAction;
   editor: EditorState;
   onCancel: () => void;
-  onFocusExisting: (contextFactId: string) => void;
+  onFocusExisting?: (contextFactId: string) => void;
   onSaved: (view: SelfContextFactMutationView) => void;
-  updateAction: UpdateAction;
+  updateAction?: UpdateAction;
+  categoryOptions?: readonly ContextFactEditorCategoryOption[];
+  description?: string;
+  heading?: string;
+  helperText?: string;
+  initialCategory?: SelfContextCategory;
+  placeholder?: string;
+  submitLabel?: string;
+  cancelLabel?: string;
 }) {
   const editorId = useId();
   const contentId = `${editorId}-content`;
@@ -615,7 +638,7 @@ function ContextFactEditor({
           content: editor.fact.content,
           sensitivity: editor.fact.sensitivity,
         }
-      : DEFAULT_DRAFT,
+      : { ...DEFAULT_DRAFT, category: initialCategory },
   );
   const [error, setError] = useState<string | null>(null);
   const [conflictFactId, setConflictFactId] = useState<string | null>(null);
@@ -656,7 +679,7 @@ function ContextFactEditor({
     startTransition(async () => {
       try {
         const result =
-          editor.mode === "edit"
+          editor.mode === "edit" && updateAction
             ? await updateAction({
                 contextFactId: editor.fact.id,
                 expectedUpdatedAt: editor.fact.updatedAt.toISOString(),
@@ -683,7 +706,7 @@ function ContextFactEditor({
     });
   }
 
-  const heading = editor.mode === "edit" ? "Edit fact" : "Add a fact";
+  const title = heading ?? (editor.mode === "edit" ? "Edit fact" : "Add a fact");
   const describedBy = error ? `${helperId} ${errorId}` : helperId;
 
   return (
@@ -697,11 +720,10 @@ function ContextFactEditor({
           className="text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium"
           id={`${editorId}-heading`}
         >
-          {heading}
+          {title}
         </h2>
         <p className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-          Use one concise statement. Self Context is private here; sensitivity is separate from
-          visibility.
+          {description}
         </p>
       </div>
 
@@ -725,7 +747,7 @@ function ContextFactEditor({
               }
               value={draft.category}
             >
-              {selfContextCategories.map((category) => (
+              {categoryOptions.map((category) => (
                 <option key={category.value} value={category.value}>
                   {category.label}
                 </option>
@@ -767,7 +789,7 @@ function ContextFactEditor({
             onChange={(event) =>
               setDraft((current) => ({ ...current, content: event.target.value }))
             }
-            placeholder="For example: I run a software consultancy."
+            placeholder={placeholder}
             ref={contentRef}
             required
             value={draft.content}
@@ -776,7 +798,7 @@ function ContextFactEditor({
             className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground"
             id={helperId}
           >
-            Private to you · {draft.content.length}/500 characters
+            {helperText} · {draft.content.length}/500 characters
           </p>
           {error ? (
             <p
@@ -805,9 +827,7 @@ function ContextFactEditor({
               ? "Saving…"
               : error
                 ? "Try again"
-                : editor.mode === "edit"
-                  ? "Save changes"
-                  : "Save fact"}
+                : (submitLabel ?? (editor.mode === "edit" ? "Save changes" : "Save fact"))}
           </Button>
           <Button
             className="min-h-11 w-full sm:w-auto"
@@ -816,7 +836,7 @@ function ContextFactEditor({
             type="button"
             variant="ghost"
           >
-            Cancel
+            {cancelLabel}
           </Button>
           {pending ? (
             <span

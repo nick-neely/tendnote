@@ -1,6 +1,12 @@
-import type { AccessProfile, AccessSource } from "@tendnote/domain";
+import type { AccessProfile, AccessSource, SelfContextOnboardingStatus } from "@tendnote/domain";
 
-export type { AccessDecision, AccessProfile, AccessSource } from "@tendnote/domain";
+export type {
+  AccessDecision,
+  AccessProfile,
+  AccessSource,
+  SelfContextOnboardingState,
+  SelfContextOnboardingStatus,
+} from "@tendnote/domain";
 
 /** Values handed to the store to insert a new access profile. */
 export type PersistAccessProfileInput = {
@@ -8,10 +14,21 @@ export type PersistAccessProfileInput = {
   status: AccessProfile["status"];
   source: AccessSource | null;
   grantedAt: Date | null;
+  selfContextOnboardingStatus?: SelfContextOnboardingStatus;
+  selfContextOnboardingReminderAt?: Date | null;
 };
 
 /** Defined-only fields the store may overwrite when updating a profile. */
-export type AccessProfilePatch = Partial<Pick<AccessProfile, "status" | "source" | "grantedAt">>;
+export type AccessProfilePatch = Partial<
+  Pick<
+    AccessProfile,
+    | "status"
+    | "source"
+    | "grantedAt"
+    | "selfContextOnboardingStatus"
+    | "selfContextOnboardingReminderAt"
+  >
+>;
 
 /**
  * Storage seam for Tendnote-owned access profiles. The query layer owns the
@@ -31,4 +48,9 @@ export type AccessProfileStore = {
    */
   insertIfAbsent: (input: PersistAccessProfileInput) => Promise<AccessProfile | null>;
   update: (input: { userId: string; patch: AccessProfilePatch }) => Promise<AccessProfile | null>;
+  /** Atomically claims the one quiet later invitation for a dismissed owner. */
+  claimSelfContextOnboardingReminder: (input: {
+    userId: string;
+    reminderAt: Date;
+  }) => Promise<AccessProfile | null>;
 };

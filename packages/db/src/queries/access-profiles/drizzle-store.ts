@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../client";
 import { accessProfiles } from "../../schema";
 import type { AccessProfileStore } from "./types";
@@ -51,6 +51,22 @@ export function createDrizzleAccessProfileStore(): AccessProfileStore {
         .update(accessProfiles)
         .set({ ...patch, updatedAt: new Date() })
         .where(eq(accessProfiles.userId, userId))
+        .returning();
+
+      return profile ?? null;
+    },
+
+    async claimSelfContextOnboardingReminder({ userId, reminderAt }) {
+      const [profile] = await getDb()
+        .update(accessProfiles)
+        .set({ selfContextOnboardingReminderAt: reminderAt, updatedAt: new Date() })
+        .where(
+          and(
+            eq(accessProfiles.userId, userId),
+            eq(accessProfiles.selfContextOnboardingStatus, "dismissed"),
+            isNull(accessProfiles.selfContextOnboardingReminderAt),
+          ),
+        )
         .returning();
 
       return profile ?? null;

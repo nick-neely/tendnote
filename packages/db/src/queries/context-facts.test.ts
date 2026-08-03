@@ -193,7 +193,7 @@ describe("Context Fact product contract", () => {
     expect(store.records.get(archivedId)?.content).toBe("I prefer concise answers.");
   });
 
-  it("lists only active facts for the caller and never crosses Self Context owners", async () => {
+  it("lists onboarding facts only for their caller and never crosses Self Context owners", async () => {
     const store = createInMemoryContextFactStore();
     const ownerQueries = createContextFactQueries(store, {
       resolveVerifiedCaller: verifiedCallerFor(OWNER),
@@ -206,11 +206,13 @@ describe("Context Fact product contract", () => {
       callerUserId: OWNER,
       category: "interest",
       content: "I like trail running.",
+      provenance: { channel: "onboarding", origin: "direct", sourceRecordId: null },
     });
     await otherQueries.createSelfContextFact({
       callerUserId: OTHER_OWNER,
       category: "interest",
       content: "I collect vinyl records.",
+      provenance: { channel: "onboarding", origin: "direct", sourceRecordId: null },
     });
 
     const ownerFact = (await ownerQueries.listContextFacts({ callerUserId: OWNER }))[0];

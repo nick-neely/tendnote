@@ -17,6 +17,22 @@ export async function getAccessProfile(input: { userId: string }) {
   return defaultAccessProfileQueries.getAccessProfile(input);
 }
 
+export async function getSelfContextOnboardingState(input: { userId: string }) {
+  return defaultAccessProfileQueries.getSelfContextOnboardingState(input);
+}
+
+export async function completeSelfContextOnboarding(input: { userId: string }) {
+  return defaultAccessProfileQueries.completeSelfContextOnboarding(input);
+}
+
+export async function dismissSelfContextOnboarding(input: { userId: string }) {
+  return defaultAccessProfileQueries.dismissSelfContextOnboarding(input);
+}
+
+export async function claimSelfContextOnboardingReminder(input: { userId: string }) {
+  return defaultAccessProfileQueries.claimSelfContextOnboardingReminder(input);
+}
+
 export async function checkAccess(input: { userId: string }) {
   return defaultAccessProfileQueries.checkAccess(input);
 }

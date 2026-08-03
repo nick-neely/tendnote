@@ -2,7 +2,6 @@
 
 import {
   archiveSelfContextFact,
-  createSelfContextFact,
   deleteSelfContextFact,
   restoreSelfContextFact,
   updateSelfContextFact,
@@ -17,22 +16,17 @@ import type {
   SelfContextFactMutationResult,
 } from "@/lib/context-fact-view";
 import { runOwnerAction } from "@/lib/owner-action";
+import type {
+  SelfContextFactActionChannel,
+  SelfContextFactActionInput,
+} from "@/lib/self-context-fact-action";
+import { createSelfContextFactActionForChannel as createSelfContextFactActionForChannelShared } from "@/lib/self-context-fact-action";
 
 const contentSchema = z
   .string()
   .trim()
   .min(1, "Add a concise fact.")
   .max(500, "Keep the fact to 500 characters or fewer.");
-const sensitivityInputSchema = sensitivitySchema.default("normal");
-
-const createSelfContextFactActionSchema = z
-  .object({
-    category: selfContextFactCategorySchema,
-    content: contentSchema,
-    sensitivity: sensitivityInputSchema,
-  })
-  .strict();
-
 const updateSelfContextFactActionSchema = z
   .object({
     contextFactId: z.uuid("Choose an active fact."),
@@ -70,11 +64,7 @@ const deleteSelfContextFactActionSchema = z
   .object({ contextFactId: z.uuid("Choose a Self Context fact.") })
   .strict();
 
-export type SelfContextFactActionInput = {
-  category: SelfContextCategory;
-  content: string;
-  sensitivity?: z.input<typeof sensitivityInputSchema>;
-};
+export type { SelfContextFactActionChannel, SelfContextFactActionInput };
 
 export type UpdateSelfContextFactActionInput = {
   contextFactId: string;
@@ -98,25 +88,17 @@ export type DeleteSelfContextFactActionInput = {
   contextFactId: string;
 };
 
+export async function createSelfContextFactActionForChannel(
+  input: SelfContextFactActionInput,
+  channel: SelfContextFactActionChannel,
+): Promise<SelfContextFactMutationResult> {
+  return createSelfContextFactActionForChannelShared(input, channel);
+}
+
 export async function createSelfContextFactAction(
   input: SelfContextFactActionInput,
 ): Promise<SelfContextFactMutationResult> {
-  return runOwnerAction({
-    schema: createSelfContextFactActionSchema,
-    input,
-    body: ({ ownerUserId, input: parsed }) =>
-      createSelfContextFact(
-        {
-          callerUserId: ownerUserId,
-          category: parsed.category,
-          content: parsed.content,
-          sensitivity: parsed.sensitivity,
-        },
-        requireAdmittedOwnerForAction,
-      ),
-    affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => ({ fact: outcome.result, decision: outcome.decision }),
-  });
+  return createSelfContextFactActionForChannel(input, "account");
 }
 
 export async function updateSelfContextFactAction(
