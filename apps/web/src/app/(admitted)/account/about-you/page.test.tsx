@@ -1,17 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  getSelfContextOnboardingState,
   listSelfContextFacts,
   listSuggestedContextFactReviews,
   requireAdmittedOwner,
   unstable_rethrow,
 } = vi.hoisted(() => ({
+  getSelfContextOnboardingState: vi.fn(),
   listSelfContextFacts: vi.fn(),
   listSuggestedContextFactReviews: vi.fn(),
   requireAdmittedOwner: vi.fn(),
   unstable_rethrow: vi.fn(),
 }));
 
+vi.mock("@tendnote/db/queries/access-profiles", () => ({ getSelfContextOnboardingState }));
 vi.mock("@tendnote/db/queries/context-facts", () => ({
   listSelfContextFacts,
   listSuggestedContextFactReviews,
@@ -22,12 +25,15 @@ vi.mock("@/components/account/about-you-surface", () => ({
   AboutYouSurface: ({
     initialFacts,
     initialSuggestedReviews,
+    offerGuidedSetup,
   }: {
     initialFacts: unknown[];
     initialSuggestedReviews: unknown[];
+    offerGuidedSetup: boolean;
   }) => (
     <div data-testid="about-you-surface">
       {initialFacts.length} facts, {initialSuggestedReviews.length} suggestions
+      {offerGuidedSetup ? ", guided setup offered" : ", guided setup retired"}
     </div>
   ),
 }));
@@ -41,6 +47,7 @@ beforeEach(() => {
   requireAdmittedOwner.mockResolvedValue("owner-1");
   listSelfContextFacts.mockResolvedValue([]);
   listSuggestedContextFactReviews.mockResolvedValue([]);
+  getSelfContextOnboardingState.mockResolvedValue({ status: "not_started", reminderAt: null });
 });
 
 describe("About you route", () => {
@@ -68,6 +75,26 @@ describe("About you route", () => {
       requireAdmittedOwner,
     );
     expect(requireAdmittedOwner).toHaveBeenCalledWith({ returnTo: "/account/about-you" });
+  });
+
+  it("keeps a durable way back into setup for an owner who skipped it", async () => {
+    getSelfContextOnboardingState.mockResolvedValue({
+      status: "dismissed",
+      reminderAt: new Date("2026-08-02T12:00:00.000Z"),
+    });
+
+    const markup = renderToStaticMarkup(await AboutYouContent());
+
+    expect(markup).toContain("guided setup offered");
+    expect(getSelfContextOnboardingState).toHaveBeenCalledWith({ userId: "owner-1" });
+  });
+
+  it("retires the setup offer once the owner has finished it", async () => {
+    getSelfContextOnboardingState.mockResolvedValue({ status: "completed", reminderAt: null });
+
+    const markup = renderToStaticMarkup(await AboutYouContent());
+
+    expect(markup).toContain("guided setup retired");
   });
 
   it("keeps another owner's private facts out of the focused route", async () => {

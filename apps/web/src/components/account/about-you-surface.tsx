@@ -25,6 +25,7 @@ import {
   restoreSelfContextFactAction,
   updateSelfContextFactAction,
 } from "@/app/actions/context-facts";
+import { SelfContextSetupInvitation } from "@/components/account/self-context-setup-invitation";
 import { ChevronDownIcon } from "@/components/icons";
 import { SuggestedContextFactReviewCard } from "@/components/suggested-context-fact-review";
 import {
@@ -97,6 +98,12 @@ type DismissSuggestedContextFactAction = (
 type AboutYouSurfaceProps = {
   initialFacts: ContextFactView[];
   initialSuggestedReviews?: SuggestedContextFactReviewView[];
+  /**
+   * Whether the guided setup still has something to offer. The prompts are
+   * otherwise unreachable once Home has spent its one post-dismissal nudge, so
+   * About you carries the durable way in until setup is finished.
+   */
+  offerGuidedSetup?: boolean;
   createAction?: CreateAction;
   updateAction?: UpdateAction;
   archiveAction?: ArchiveAction;
@@ -137,6 +144,7 @@ export function AboutYouSurface(props: AboutYouSurfaceProps) {
 function AboutYouSurfaceContent({
   initialFacts,
   initialSuggestedReviews = [],
+  offerGuidedSetup = false,
   createAction = createSelfContextFactAction,
   updateAction = updateSelfContextFactAction,
   archiveAction = archiveSelfContextFactAction,
@@ -450,6 +458,15 @@ function AboutYouSurfaceContent({
             </CollapsibleContent>
           </Collapsible>
         </section>
+      ) : null}
+
+      {offerGuidedSetup ? (
+        <SelfContextSetupInvitation
+          actionLabel="Walk through setup"
+          description="Answer a few short prompts instead of adding facts one at a time. Every question is optional, and nothing is shared."
+          heading="Prefer a guided setup?"
+          id="about-you-guided-setup"
+        />
       ) : null}
     </section>
   );

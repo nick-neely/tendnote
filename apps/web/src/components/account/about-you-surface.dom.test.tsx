@@ -142,6 +142,23 @@ describe("AboutYouSurface", () => {
     expect(screen.getByRole("status").textContent).toContain("accepted into About you");
   });
 
+  it("offers the guided prompts as a durable, quiet way back into setup", () => {
+    render(<AboutYouSurface initialFacts={[fact()]} offerGuidedSetup />);
+
+    const openSetup = screen.getByRole("link", { name: "Walk through setup" });
+    expect(openSetup.getAttribute("href")).toBe("/onboarding/self-context");
+    expect(screen.getByRole("heading", { name: "Prefer a guided setup?" })).toBeTruthy();
+    // Quiet means an offer on a page the owner chose to open - never a badge,
+    // an alert, or anything that reads as unfinished work.
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("leaves the setup offer off once setup is finished", () => {
+    render(<AboutYouSurface initialFacts={[fact()]} />);
+
+    expect(screen.queryByRole("link", { name: "Walk through setup" })).toBeNull();
+  });
+
   it("dismisses a suggestion and restores focus to the account action", async () => {
     const user = userEvent.setup();
     dismissSuggestedContextFactAction.mockResolvedValue({

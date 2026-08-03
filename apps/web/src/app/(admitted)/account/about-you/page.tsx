@@ -1,3 +1,4 @@
+import { getSelfContextOnboardingState } from "@tendnote/db/queries/access-profiles";
 import {
   listSelfContextFacts,
   listSuggestedContextFactReviews,
@@ -26,17 +27,22 @@ export async function AboutYouContent() {
   const ownerUserId = await requireAdmittedOwner({ returnTo: destination.route });
 
   try {
-    const [facts, suggestedReviews] = await Promise.all([
+    const [facts, suggestedReviews, onboarding] = await Promise.all([
       listSelfContextFacts(
         { callerUserId: ownerUserId, includeArchived: true },
         requireAdmittedOwner,
       ),
       listSuggestedContextFactReviews({ callerUserId: ownerUserId }, requireAdmittedOwner),
+      getSelfContextOnboardingState({ userId: ownerUserId }),
     ]);
     return (
       <AboutYouSurface
         initialFacts={facts}
         initialSuggestedReviews={suggestedReviews.map(toSuggestedContextFactReviewView)}
+        // Home's post-dismissal nudge fires at most once, and nothing else links
+        // to the guided prompts, so a user who skipped would have no way back.
+        // Finishing setup is what retires the offer, not visiting this page.
+        offerGuidedSetup={onboarding?.status !== "completed"}
       />
     );
   } catch (error) {
