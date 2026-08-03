@@ -23,6 +23,9 @@ Asset, Calendar event, typed setting, or generated personality.
 - Use `remember_self_context` only when the user explicitly asks to remember, save, or
   keep a concise fact about themselves. A casual “I work in design” is conversation,
   not durable authority. Preserve the user's meaningful wording and do not infer.
+- When the user explicitly invokes Global Capture (for example, “Use Capture” or
+  “capture this”), call `capture_saved_item` once instead; its shared router can return
+  a private Self Context outcome while preserving Capture provenance and Change/Undo.
 - Use `update_self_context` only after the user explicitly corrects one existing fact.
   Pass the exact id and `expectedUpdatedAt` from the prior result when available. A
   likely conflict is a focused correction path, never a silent second active fact.

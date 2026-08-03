@@ -27,6 +27,7 @@ import {
 import {
   actionConfirmation,
   changeTargetKey,
+  contextFactConfirmation,
   followupConfirmation,
   resolveCompletedCaptureRoute,
   resolveExactCapturePerson,
@@ -94,23 +95,32 @@ export function createCorrectionOperations(
     originalText: string;
   }) {
     const parsed = conversationalCaptureDestinationChangeRequestSchema.parse(input);
-    const route = await resolveCompletedCaptureRoute({
-      deps,
-      ownerUserId: parsed.actorUserId,
-      originalText: parsed.originalText,
-      ...(parsed.clarificationAnswer ? { clarificationAnswer: parsed.clarificationAnswer } : {}),
-    });
     const target = changeTargetReference(parsed.target);
     const current = await outcomeLifecycle[target.kind].load(
       parsed.actorUserId,
       target.id,
       target.sourceRecordId,
     );
+    if (
+      target.kind === "context_fact" &&
+      target.expectedUpdatedAt &&
+      current.updatedAt &&
+      current.updatedAt.getTime() !== target.expectedUpdatedAt.getTime()
+    ) {
+      throw new Error("That Self Context capture changed elsewhere. Refresh and try again.");
+    }
     const sourceRecord = await store.getSourceRecord({
       ownerUserId: parsed.actorUserId,
       sourceRecordId: current.sourceRecordId,
     });
     if (!sourceRecord) throw new Error("The original capture evidence is no longer available.");
+    const route = await resolveCompletedCaptureRoute({
+      deps,
+      ownerUserId: parsed.actorUserId,
+      originalText: parsed.originalText,
+      allowSelfContext: sourceRecord.scope === "private",
+      ...(parsed.clarificationAnswer ? { clarificationAnswer: parsed.clarificationAnswer } : {}),
+    });
     const visibility = await correctionVisibility(store, sourceRecord, parsed.originalText);
     if (route.destination === "clarification") {
       return {
@@ -144,6 +154,9 @@ export function createCorrectionOperations(
       sourceRecordId: sourceRecord.id,
       currentPersonId: current.personId,
       currentContent: current.content,
+      currentCategory: current.category,
+      currentSensitivity: current.sensitivity,
+      currentUpdatedAt: current.updatedAt,
       route,
       resolvedPerson,
       visibilityLabel: visibility.label,
@@ -182,7 +195,7 @@ export function createCorrectionOperations(
   }) {
     const parsed = conversationalCaptureDestinationUndoRequestSchema.parse(input);
     const target = undoTargetReference(parsed.target);
-    return outcomeLifecycle[target.kind].undo(parsed.actorUserId, target.id);
+    return outcomeLifecycle[target.kind].undo(parsed.actorUserId, target.id, target);
   }
 
   return { changeSavedItem, changeOutcome, undoSavedItem, undoOutcome };
@@ -403,12 +416,17 @@ type EditSameDestinationInput = {
   sourceRecordId: string;
   currentPersonId?: string;
   currentContent?: string;
+  currentCategory?: LoadedCaptureOutcome["category"];
+  currentSensitivity?: LoadedCaptureOutcome["sensitivity"];
+  currentUpdatedAt?: LoadedCaptureOutcome["updatedAt"];
   route: ResolvedRoute;
   resolvedPerson: ResolvedCapturePerson | null;
   visibilityLabel: string;
 };
 
 async function editSameDestination(input: EditSameDestinationInput) {
+  const contextFact = await editContextFactDestination(input);
+  if (contextFact) return contextFact;
   const person = await editPersonDestination(input);
   if (person) return person;
   const memory = await keepUnchangedMemoryDestination(input);
@@ -420,6 +438,78 @@ async function editSameDestination(input: EditSameDestinationInput) {
   const followup = await editFollowupDestination(input);
   if (followup) return followup;
   return null;
+}
+
+async function editContextFactDestination(input: EditSameDestinationInput) {
+  if (input.target.kind !== "context_fact" || input.route.destination !== "context_fact")
+    return null;
+  if (
+    input.currentCategory === input.route.category &&
+    input.currentContent === input.route.content &&
+    input.currentSensitivity === input.route.sensitivity
+  ) {
+    if (!input.deps.createSelfContextFact) {
+      throw new Error("Self Context correction is unavailable.");
+    }
+    const outcome = await input.deps.createSelfContextFact({
+      ownerUserId: input.actorUserId,
+      category: input.route.category,
+      content: input.route.content,
+      sensitivity: input.route.sensitivity,
+      sourceRecordId: input.sourceRecordId,
+    });
+    return {
+      contextFact: outcome.result,
+      affectedScopes: outcome.affectedScopes,
+      confirmation: conversationalCaptureConfirmationSchema.parse(
+        contextFactConfirmation({
+          sourceRecordId: input.sourceRecordId,
+          contextFactId: input.target.id,
+          route: input.route,
+          visibilityLabel: input.visibilityLabel,
+          expectedUpdatedAt: outcome.result.updatedAt,
+        }),
+      ),
+    };
+  }
+  if (
+    !input.deps.updateSelfContextFact ||
+    !input.currentContent ||
+    !input.currentCategory ||
+    input.currentCategory === "composition"
+  ) {
+    throw new Error("Self Context correction is unavailable.");
+  }
+  const outcome = await input.deps.updateSelfContextFact({
+    actorUserId: input.actorUserId,
+    contextFactId: input.target.id,
+    category: input.route.category,
+    content: input.route.content,
+    sensitivity: input.route.sensitivity,
+    ...(input.currentUpdatedAt ? { expectedUpdatedAt: input.currentUpdatedAt } : {}),
+  });
+  return {
+    contextFact: outcome.result,
+    affectedScopes: outcome.affectedScopes,
+    confirmation: conversationalCaptureConfirmationSchema.parse(
+      contextFactConfirmation({
+        sourceRecordId: input.sourceRecordId,
+        contextFactId: input.target.id,
+        route: input.route,
+        visibilityLabel: input.visibilityLabel,
+        expectedUpdatedAt: outcome.result.updatedAt,
+        undo: {
+          kind: "edit_context_fact",
+          contextFactId: input.target.id,
+          sourceRecordId: input.sourceRecordId,
+          category: input.currentCategory,
+          content: input.currentContent,
+          sensitivity: input.currentSensitivity ?? "normal",
+          expectedUpdatedAt: outcome.result.updatedAt.toISOString(),
+        },
+      }),
+    ),
+  };
 }
 
 async function editPersonDestination(input: EditSameDestinationInput) {

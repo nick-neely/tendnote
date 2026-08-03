@@ -7,7 +7,7 @@ import { requestBackgroundAffectedScopeReconciliation } from "../lib/request-aff
 
 export default defineTool({
   description:
-    "Safely Undo a just-completed capture_saved_item operation when the user explicitly asks. Archives its real destination record while preserving source evidence. Use the exact undoTarget returned by Capture.",
+    "Safely Undo a just-completed capture_saved_item operation when the user explicitly asks. Applies the returned authoritative inverse (archiving a new record or restoring the prior Context Fact value) while preserving source evidence. Use the exact undoTarget returned by Capture.",
   inputSchema: z.object({
     target: conversationalCaptureUndoTargetSchema.describe(
       "The exact undoTarget returned by capture_saved_item.",
@@ -30,7 +30,8 @@ export default defineTool({
       value: {
         target: output.target,
         undone: true,
-        guidance: "Confirm briefly that the captured destination record was archived.",
+        guidance:
+          "Confirm briefly that the captured destination record was authoritatively undone.",
       },
     };
   },

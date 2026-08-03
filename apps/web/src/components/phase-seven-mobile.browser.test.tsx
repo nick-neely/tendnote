@@ -247,6 +247,106 @@ describe("Phase Seven phone browser proof", () => {
     await closeFocusedFlow();
   });
 
+  it("confirms Self Context on mobile and keeps Change and authoritative Undo reachable", async () => {
+    await page.viewport(390, 844);
+    const confirmation = {
+      destination: "Self Context" as const,
+      groundedBySourceRecordId: "source-self-context-1",
+      interpreted: {
+        category: "work" as const,
+        content: "I run a small software consultancy",
+        sensitivity: "normal" as const,
+        scope: "Only me",
+      },
+      change: {
+        kind: "edit_context_fact" as const,
+        contextFactId: "context-fact-1",
+        sourceRecordId: "source-self-context-1",
+        expectedUpdatedAt: "2026-08-02T04:30:00.000Z",
+      },
+      undo: {
+        kind: "archive_context_fact" as const,
+        contextFactId: "context-fact-1",
+        sourceRecordId: "source-self-context-1",
+        expectedUpdatedAt: "2026-08-02T04:30:00.000Z",
+      },
+    };
+    const changedConfirmation = {
+      ...confirmation,
+      interpreted: {
+        ...confirmation.interpreted,
+        category: "preference" as const,
+        content: "I prefer concise answers",
+      },
+      change: {
+        ...confirmation.change,
+        expectedUpdatedAt: "2026-08-02T04:31:00.000Z",
+      },
+      undo: {
+        kind: "edit_context_fact" as const,
+        contextFactId: "context-fact-1",
+        sourceRecordId: "source-self-context-1",
+        category: "work" as const,
+        content: "I run a small software consultancy",
+        sensitivity: "normal" as const,
+        expectedUpdatedAt: "2026-08-02T04:31:00.000Z",
+      },
+    };
+    const submit = vi.fn(async () => ({ ok: true as const, view: { confirmation } }));
+    const change = vi.fn(async () => ({
+      ok: true as const,
+      view: { confirmation: changedConfirmation },
+    }));
+    const undo = vi.fn(async () => ({ ok: true as const, view: {} }));
+    await mount(
+      <AppShell
+        captureHandlers={{ addPerson: vi.fn(), change, submit, undo }}
+        ownerUserId="owner-1"
+        searchHandler={vi.fn()}
+      >
+        <div />
+      </AppShell>,
+    );
+
+    await act(async () => userEvent.click(page.getByRole("button", { name: "Capture" })));
+    await act(async () =>
+      userEvent.fill(
+        page.getByRole("textbox", { name: "What should Tendnote keep?" }),
+        "Remember that I run a small software consultancy",
+      ),
+    );
+    await act(async () => userEvent.click(page.getByRole("button", { name: "Save capture" })));
+    await expect.element(page.getByRole("heading", { name: "Capture saved" })).toBeVisible();
+    await expect.element(page.getByText("Self Context")).toBeVisible();
+    await expect.element(page.getByText("I run a small software consultancy")).toBeVisible();
+
+    await act(async () => {
+      (await page.getByRole("button", { name: "Change" }).element()).focus();
+      await userEvent.keyboard("{Enter}");
+    });
+    await expect
+      .element(page.getByRole("textbox", { name: "Rewrite what Tendnote saved" }))
+      .toHaveFocus();
+    await act(async () =>
+      userEvent.fill(
+        page.getByRole("textbox", { name: "Rewrite what Tendnote saved" }),
+        "Remember that I prefer concise answers",
+      ),
+    );
+    await act(async () => userEvent.click(page.getByRole("button", { name: "Save change" })));
+    await expect.element(page.getByText("I prefer concise answers")).toBeVisible();
+    expect(change).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: confirmation.change,
+        originalText: "Remember that I prefer concise answers",
+      }),
+    );
+
+    await act(async () => userEvent.click(page.getByRole("button", { name: "Undo" })));
+    await expect.element(page.getByRole("heading", { name: "Capture undone" })).toBeVisible();
+    expect(undo).toHaveBeenCalledWith({ target: changedConfirmation.undo });
+  });
+
   it("keeps the real Review queue operable and non-color-dependent on a phone", async () => {
     await page.viewport(390, 844);
     document.documentElement.style.fontSize = "200%";

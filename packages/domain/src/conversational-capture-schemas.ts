@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { selfContextFactCategorySchema } from "./context-facts";
+import { sensitivitySchema } from "./privacy";
 export const conversationalCaptureInputModeSchema = z.enum(["typed", "dictated"]);
 export const conversationalCaptureSurfaceSchema = z.enum(["global_capture", "eve"]);
 export const conversationalCaptureVisibilitySchema = z.discriminatedUnion("scope", [
@@ -90,6 +92,14 @@ export const conversationalCaptureChangeTargetSchema = z.discriminatedUnion("kin
       sourceRecordId: z.string().min(1),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("edit_context_fact"),
+      contextFactId: z.string().min(1),
+      sourceRecordId: z.string().min(1),
+      expectedUpdatedAt: z.iso.datetime().optional(),
+    })
+    .strict(),
 ]);
 
 export const conversationalCaptureUndoTargetSchema = z.discriminatedUnion("kind", [
@@ -98,6 +108,25 @@ export const conversationalCaptureUndoTargetSchema = z.discriminatedUnion("kind"
   z.object({ kind: z.literal("archive_followup"), followupId: z.uuid() }).strict(),
   z.object({ kind: z.literal("archive_memory"), memoryId: z.string().min(1) }).strict(),
   z.object({ kind: z.literal("dismiss_asset_review"), groupId: z.string().min(1) }).strict(),
+  z
+    .object({
+      kind: z.literal("archive_context_fact"),
+      contextFactId: z.string().min(1),
+      sourceRecordId: z.string().min(1),
+      expectedUpdatedAt: z.iso.datetime().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("edit_context_fact"),
+      contextFactId: z.string().min(1),
+      sourceRecordId: z.string().min(1),
+      category: selfContextFactCategorySchema,
+      content: z.string().trim().min(1).max(500),
+      sensitivity: sensitivitySchema,
+      expectedUpdatedAt: z.iso.datetime().optional(),
+    })
+    .strict(),
 ]);
 
 export const conversationalCaptureDestinationChangeRequestSchema = z
@@ -240,6 +269,46 @@ export const conversationalAssetReviewCaptureConfirmationSchema = z
   })
   .strict();
 
+export const conversationalContextFactCaptureConfirmationSchema = z
+  .object({
+    destination: z.literal("Self Context"),
+    groundedBySourceRecordId: z.string().min(1),
+    interpreted: z.object({
+      category: selfContextFactCategorySchema,
+      content: z.string().trim().min(1).max(500),
+      sensitivity: sensitivitySchema,
+      scope: z.string().min(1),
+    }),
+    change: z.object({
+      kind: z.literal("edit_context_fact"),
+      contextFactId: z.string().min(1),
+      sourceRecordId: z.string().min(1),
+      expectedUpdatedAt: z.iso.datetime().optional(),
+    }),
+    undo: z.union([
+      z
+        .object({
+          kind: z.literal("archive_context_fact"),
+          contextFactId: z.string().min(1),
+          sourceRecordId: z.string().min(1),
+          expectedUpdatedAt: z.iso.datetime().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("edit_context_fact"),
+          contextFactId: z.string().min(1),
+          sourceRecordId: z.string().min(1),
+          category: selfContextFactCategorySchema,
+          content: z.string().trim().min(1).max(500),
+          sensitivity: sensitivitySchema,
+          expectedUpdatedAt: z.iso.datetime().optional(),
+        })
+        .strict(),
+    ]),
+  })
+  .strict();
+
 export const conversationalCaptureOutcomeConfirmationSchema = z.discriminatedUnion("destination", [
   conversationalSavedItemCaptureConfirmationSchema,
   conversationalActionCaptureConfirmationSchema,
@@ -247,6 +316,7 @@ export const conversationalCaptureOutcomeConfirmationSchema = z.discriminatedUni
   conversationalPersonCaptureConfirmationSchema,
   conversationalMemoryCaptureConfirmationSchema,
   conversationalAssetReviewCaptureConfirmationSchema,
+  conversationalContextFactCaptureConfirmationSchema,
 ]);
 
 export const conversationalGroupedCaptureConfirmationSchema = z

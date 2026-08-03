@@ -1,5 +1,6 @@
 import type { AssetKind } from "./assets";
 import { formatLocalDate, zonedWallTimeToUtc } from "./brief-schedules";
+import type { ContextFactCategory, ContextFactSensitivity } from "./context-facts";
 import { type GeneralActionRecurrence, MAX_RECURRENCE_INTERVAL } from "./general-actions";
 import type { ReminderScheduleChoice } from "./reminders";
 import type { SavedItemKind } from "./saved-items";
@@ -16,6 +17,12 @@ type SavedItemCaptureRoute =
 
 export type ConversationalCaptureSingleRoute =
   | SavedItemCaptureRoute
+  | {
+      destination: "context_fact";
+      category: Exclude<ContextFactCategory, "composition">;
+      content: string;
+      sensitivity: ContextFactSensitivity;
+    }
   | { destination: "person"; displayName: string }
   | {
       destination: "memory";
@@ -192,9 +199,12 @@ function routeSingleExplicitCapture(input: {
   originalText: string;
   timeZone: string;
   now: Date;
+  allowSelfContext?: boolean;
 }): ConversationalCaptureSingleRoute {
   const person = routeExplicitPerson(input.originalText);
   if (person) return person;
+  const contextFact = routeExplicitContextFact(input.originalText, input.allowSelfContext);
+  if (contextFact) return contextFact;
   const savedItem = routeExplicitSavedItem(input);
   if (savedItem) return savedItem;
   const memory = routeExplicitMemory(input.originalText);
@@ -202,6 +212,131 @@ function routeSingleExplicitCapture(input: {
   const asset = routeExplicitAsset(input.originalText);
   if (asset) return asset;
   return routeExplicitAction(input);
+}
+
+function routeExplicitContextFact(
+  originalText: string,
+  allowSelfContext: boolean | undefined,
+): Extract<ConversationalCaptureSingleRoute, { destination: "context_fact" }> | null {
+  const parsed = parseContextFactCapture(originalText, allowSelfContext);
+  if (!parsed || isBetterSupportedDestination(parsed.content)) return null;
+  const category = categorizeSelfContextFact(parsed.content, parsed.explicit);
+  if (!category) return null;
+  return {
+    destination: "context_fact",
+    category,
+    content: parsed.content,
+    sensitivity: parsed.sensitivity,
+  };
+}
+
+function parseContextFactCapture(
+  originalText: string,
+  allowSelfContext: boolean | undefined,
+): { content: string; explicit: boolean; sensitivity: ContextFactSensitivity } | null {
+  if (allowSelfContext === false) return null;
+  const matched = matchContextFactCaptureText(originalText, allowSelfContext);
+  if (!matched || (!matched.explicit && !allowSelfContext)) return null;
+
+  const interpreted = interpretContextFactContent(matched.content);
+  if (!interpreted || !isSelfContextWording(interpreted.content)) return null;
+  if (isSensitiveContextWording(interpreted.content)) return null;
+  return { ...interpreted, explicit: matched.explicit };
+}
+
+function matchContextFactCaptureText(
+  originalText: string,
+  allowSelfContext: boolean | undefined,
+): { content: string; explicit: boolean } | null {
+  const explicitMatch = originalText.match(
+    /^\s*(?:remember|save|note|keep\s+track\s+of)\s+(?:(?:that|this)\s+)?(?:(?:about\s+me)\s*:\s*)?(.+?)\s*[.!]?\s*$/i,
+  );
+  const aboutMeMatch = originalText.match(
+    /^\s*save\s+(?:this|that)\s+about\s+me\s*(?::|-)\s*(.+?)\s*[.!]?\s*$/i,
+  );
+  const match =
+    aboutMeMatch?.[1] ?? explicitMatch?.[1] ?? (allowSelfContext ? originalText : undefined);
+  if (!match) return null;
+  return { content: match, explicit: Boolean(explicitMatch || aboutMeMatch) };
+}
+
+function interpretContextFactContent(
+  matchedContent: string,
+): { content: string; sensitivity: ContextFactSensitivity } | null {
+  let content = matchedContent.trim().replace(/[.]$/, "");
+  if (/^(?:to|me\s+to)\b/i.test(content) || /^i\s+(?:need|have)\s+to\b/i.test(content)) {
+    return null;
+  }
+
+  let sensitivity: ContextFactSensitivity = "normal";
+  const sensitivityMatch = content.match(/^(?:as\s+)?(normal|sensitive|restricted)\s*:\s*(.+)$/i);
+  if (sensitivityMatch?.[1] && sensitivityMatch[2]) {
+    sensitivity = sensitivityMatch[1].toLowerCase() as ContextFactSensitivity;
+    content = sensitivityMatch[2].trim().replace(/[.]$/, "");
+  }
+  return { content, sensitivity };
+}
+
+function isSelfContextWording(content: string) {
+  return /^(?:i\b|i['’]m\b|i\s+am\b|my\b)/i.test(content);
+}
+
+function isSensitiveContextWording(content: string) {
+  return /\b(?:address|street|mailing|social\s+security|ssn|password|credit\s+card)\b/i.test(
+    content,
+  );
+}
+
+function categorizeSelfContextFact(
+  content: string,
+  explicit: boolean,
+): Exclude<ContextFactCategory, "composition"> | null {
+  const lower = content.toLocaleLowerCase();
+  if (
+    /^(?:i\s+(?:live|am\s+based|['’]?m\s+based|am\s+from)|my\s+(?:home|location)\b)/i.test(content)
+  ) {
+    return "location";
+  } else if (
+    /^(?:i\s+(?:run|work|own|manage|lead|founded)\b|i\s+am\s+(?:an?\s+)?[^.]+\b(?:consultant|developer|designer|engineer|teacher|manager|founder|business\b)|my\s+(?:work|job|career|profession|business|company|role)\b)/i.test(
+      content,
+    )
+  ) {
+    return "work";
+  } else if (
+    /^(?:i\s+(?:like|love|enjoy|collect)\b|i\s+(?:am|['’]?m)\s+interested\s+in\b|my\s+interests?\b)/i.test(
+      content,
+    )
+  ) {
+    return "interest";
+  } else if (
+    /^(?:i\s+(?:prefer|usually)\b|i\s+don['’]?t\s+like\b|my\s+preferences?\b)/i.test(content)
+  ) {
+    return "preference";
+  } else if (/^(?:i\s+(?:avoid|can['’]?t|cannot|require)\b|my\s+constraints?\b)/i.test(content)) {
+    return "constraint";
+  } else if (
+    /^(?:my\s+background\b|i\s+(?:grew\s+up|studied|was\s+born)\b|i\s+have\s+.+\bexperience\b)/i.test(
+      content,
+    )
+  ) {
+    return "background";
+  }
+  return explicit && lower.startsWith("i ") ? "other" : null;
+}
+
+function isBetterSupportedDestination(content: string) {
+  return [
+    /^(?:my|the)\s+(?:(?:next|upcoming|work|home|personal|preferred|usual|kitchen)\s+)*(?:plan|plans|note|notes|link|links|open\s+questions?)\b/i,
+    /^i\s+(?:have|made|wrote|saved)\s+(?:an?\s+)?(?:plan|note|link|open\s+question)\b/i,
+    /^(?:my|the)\s+(?:(?:next|upcoming|work|home|personal|preferred|usual)\s+)*(?:calendar|schedule|meeting|event|appointment)\b/i,
+    /^i\s+(?:have|am\s+attending|attended)\s+(?:an?\s+)?(?:meeting|event|appointment)\b/i,
+    /^(?:my|the)\s+(?:(?:preferred|usual|work|home|personal)\s+)*(?:time\s*zone|timezone|locale|language|date\s+format|week\s+start|measurement\s+units)\b/i,
+    /^i\s+(?:use|set)\s+(?:an?\s+)?(?:time\s*zone|timezone|locale|language|date\s+format)\b/i,
+    /^(?:my|the)\s+(?:(?:new|old|kitchen|home|work)\s+)*(?:car|vehicle|refrigerator|dishwasher|washer|dryer|filter|subscription|service)\b/i,
+    /^i\s+(?:own|bought|drive)\s+(?:an?\s+)?(?:car|vehicle|refrigerator|dishwasher|washer|dryer|filter|subscription|service)\b/i,
+    /^(?:my|the)\s+(?:relationship|friendship|friend|contact|follow[- ]?up|task|todo|to-do|reminder)\b/i,
+    /^i\s+(?:should|must|want\s+to|plan\s+to|intend\s+to|am\s+going\s+to|will)\b/i,
+  ].some((pattern) => pattern.test(content));
 }
 
 function routeExplicitSavedItem(input: {
@@ -250,6 +385,7 @@ function routeExplicitMemory(originalText: string): ConversationalCaptureSingleR
   );
   if (!match?.[1] || /^to\b/i.test(match[1])) return null;
   const content = match[1].trim().replace(/[.]$/, "");
+  if (/^(?:i\b|i['’]m\b|i\s+am\b|my\b)/i.test(content)) return null;
   const subject = content.match(/^([A-Z][\p{L}'-]*(?:\s+[A-Z][\p{L}'-]*)?)(?=\s)/u)?.[1];
   if (!subject) return null;
   return { destination: "memory", personQuery: subject, content };
@@ -394,6 +530,7 @@ export function routeExplicitConversationalCapture(input: {
   originalText: string;
   timeZone: string;
   now: Date;
+  allowSelfContext?: boolean;
 }): ConversationalCaptureRoute {
   const clauses = input.originalText
     .split(/\s*;\s*(?:and\s+also\s+)?/i)

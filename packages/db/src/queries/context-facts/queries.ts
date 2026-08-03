@@ -211,6 +211,27 @@ export function createContextFactQueries(
     };
   }
 
+  async function existingCreateMatchOutcome(input: {
+    callerUserId: string;
+    match: Awaited<ReturnType<typeof findActiveMatch>>;
+    sourceRecordId: string | null;
+  }) {
+    if (!input.match) return null;
+    if (input.match.kind === "conflict") {
+      throw new ContextFactConflictError(
+        "A similar active fact already exists. Edit the existing fact instead of creating a conflicting fact.",
+        input.match.fact.id,
+      );
+    }
+    if (input.match.fact.provenance.sourceRecordId !== input.sourceRecordId) {
+      throw new ContextFactConflictError(
+        "An equivalent active fact already has different source evidence. Edit the existing fact instead.",
+        input.match.fact.id,
+      );
+    }
+    return mutationOutcome(input.callerUserId, input.match.fact, "existing", []);
+  }
+
   async function createContextFact(
     input: CreateContextFactMutationInput,
   ): Promise<ContextFactMutationOutcome> {
@@ -224,16 +245,12 @@ export function createContextFactQueries(
       content: parsed.content,
       sensitivity: parsed.sensitivity,
     });
-    if (match?.kind === "duplicate") {
-      // Exact retries are idempotent and return the authoritative existing view.
-      return mutationOutcome(callerUserId, match.fact, "existing", []);
-    }
-    if (match?.kind === "conflict") {
-      throw new ContextFactConflictError(
-        "A similar active fact already exists. Edit the existing fact instead of creating a conflicting fact.",
-        match.fact.id,
-      );
-    }
+    const existingMatch = await existingCreateMatchOutcome({
+      callerUserId,
+      match,
+      sourceRecordId: parsed.provenance.sourceRecordId,
+    });
+    if (existingMatch) return existingMatch;
 
     const now = new Date();
     let created: ContextFact;
@@ -263,15 +280,12 @@ export function createContextFactQueries(
           content: parsed.content,
           sensitivity: parsed.sensitivity,
         });
-        if (winner?.kind === "duplicate") {
-          return mutationOutcome(callerUserId, winner.fact, "existing", []);
-        }
-        if (winner?.kind === "conflict") {
-          throw new ContextFactConflictError(
-            "A similar active fact already exists. Edit the existing fact instead of creating a conflicting fact.",
-            winner.fact.id,
-          );
-        }
+        const winnerOutcome = await existingCreateMatchOutcome({
+          callerUserId,
+          match: winner,
+          sourceRecordId: parsed.provenance.sourceRecordId,
+        });
+        if (winnerOutcome) return winnerOutcome;
       }
       throw error;
     }
@@ -615,6 +629,24 @@ export function createContextFactQueries(
     return fact?.subject.kind === "self" ? fact : null;
   }
 
+  /** Internal owner-scoped read for Capture Change/Undo; never used as a public view. */
+  async function getSelfContextFactForCapture(input: GetContextFactInput) {
+    if (!input.contextFactId.trim()) return null;
+    let callerUserId: string;
+    try {
+      callerUserId = await requireVerifiedCaller(input.callerUserId);
+    } catch {
+      return null;
+    }
+    const fact = await store.getContextFact({
+      contextFactId: input.contextFactId,
+      subjectUserId: callerUserId,
+    });
+    if (!fact) return null;
+    const parsed = contextFactSchema.parse(fact);
+    return parsed.subject.kind === "self" && parsed.lifecycle !== "suggested" ? parsed : null;
+  }
+
   async function getOrientationContext(input: GetOrientationContextInput) {
     const callerUserId = await requireVerifiedCaller(input.callerUserId);
     const facts = await store.listContextFacts({
@@ -664,6 +696,7 @@ export function createContextFactQueries(
     },
     getContextFact,
     getSelfContextFact,
+    getSelfContextFactForCapture,
     getOrientationContext,
   };
 }

@@ -8,6 +8,12 @@ import {
 import { createDrizzleBriefScheduleStore } from "./brief-schedules/drizzle-store";
 import { createConversationalCapture } from "./capture/conversational-capture";
 import { createCaptureVisibilityResolver } from "./capture/conversational-capture/visibility";
+import {
+  archiveSelfContextFact,
+  createSelfContextFact,
+  getSelfContextFactForCapture,
+  updateSelfContextFact,
+} from "./context-facts";
 import { archiveFollowup, createFollowup, editFollowup, getFollowup } from "./followups";
 import {
   archiveGeneralAction,
@@ -83,6 +89,47 @@ const defaultConversationalCapture = createConversationalCapture(
     archiveFollowup,
     archiveSavedItem,
     editSavedItem,
+    createSelfContextFact: async (input) =>
+      createSelfContextFact(
+        {
+          callerUserId: input.ownerUserId,
+          category: input.category,
+          content: input.content,
+          sensitivity: input.sensitivity,
+          provenance: {
+            channel: "capture",
+            origin: "direct",
+            sourceRecordId: input.sourceRecordId,
+          },
+        },
+        async () => input.ownerUserId,
+      ),
+    getSelfContextFact: async (input) =>
+      getSelfContextFactForCapture(
+        { callerUserId: input.ownerUserId, contextFactId: input.contextFactId },
+        async () => input.ownerUserId,
+      ),
+    updateSelfContextFact: async (input) =>
+      updateSelfContextFact(
+        {
+          callerUserId: input.actorUserId,
+          contextFactId: input.contextFactId,
+          category: input.category,
+          content: input.content,
+          sensitivity: input.sensitivity,
+          ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}),
+        },
+        async () => input.actorUserId,
+      ),
+    archiveSelfContextFact: async (input) =>
+      archiveSelfContextFact(
+        {
+          callerUserId: input.actorUserId,
+          contextFactId: input.contextFactId,
+          ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}),
+        },
+        async () => input.actorUserId,
+      ),
     getGeneralAction: ({ ownerUserId, generalActionId }) =>
       getGeneralAction({ actorUserId: ownerUserId, generalActionId }).catch(() => null),
     getFollowup: ({ ownerUserId, followupId }) =>

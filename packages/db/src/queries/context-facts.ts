@@ -155,6 +155,16 @@ export function getSelfContextFact(
   return createVerifiedContextFactQueries(resolveVerifiedCaller).getSelfContextFact(input);
 }
 
+/** Internal Capture lifecycle read; unlike the public view it preserves provenance and versioning. */
+export function getSelfContextFactForCapture(
+  input: GetContextFactInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).getSelfContextFactForCapture(
+    input,
+  );
+}
+
 export function getOrientationContext(
   input: GetOrientationContextInput,
   resolveVerifiedCaller: ContextFactCallerVerification,

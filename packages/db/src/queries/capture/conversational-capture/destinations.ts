@@ -10,6 +10,7 @@ import { createMemoryDestination, createSuggestedMemoryReview } from "./destinat
 import { createPersonDestination } from "./destinations/people";
 import {
   actionConfirmation,
+  contextFactConfirmation,
   fallbackKind,
   followupConfirmation,
   savedItemConfirmation,
@@ -56,6 +57,9 @@ export async function createCaptureDestination(input: CaptureDestinationInput) {
   }
   if (input.route.destination === "asset_review") {
     return createAssetReviewDestination({ ...input, route: input.route });
+  }
+  if (input.route.destination === "context_fact") {
+    return createContextFactDestination({ ...input, route: input.route });
   }
   return createSavedItemDestination({ ...input, route: input.route });
 }
@@ -251,5 +255,39 @@ async function createSavedItemDestination(
     affectedScopes: created ? affectedScopesForSavedItem(savedItem) : [],
     confirmation,
     id: savedItem.id,
+  };
+}
+
+async function createContextFactDestination(
+  input: CaptureDestinationInput<Extract<ResolvedCaptureRoute, { destination: "context_fact" }>>,
+) {
+  if (input.visibility.scope !== "private") {
+    throw new Error("Self Context capture must remain private.");
+  }
+  if (!input.deps.createSelfContextFact) {
+    throw new Error("Self Context capture is unavailable.");
+  }
+  const outcome = await input.deps.createSelfContextFact({
+    ownerUserId: input.ownerUserId,
+    category: input.route.category,
+    content: input.route.content,
+    sensitivity: input.route.sensitivity,
+    sourceRecordId: input.sourceRecordId,
+  });
+  const confirmation = parseOutcomeConfirmation(
+    contextFactConfirmation({
+      sourceRecordId: input.sourceRecordId,
+      contextFactId: outcome.result.id,
+      route: input.route,
+      visibilityLabel: input.visibility.label,
+      expectedUpdatedAt: outcome.result.updatedAt,
+    }),
+  );
+  return {
+    kind: "context_fact" as const,
+    contextFact: outcome.result,
+    affectedScopes: outcome.affectedScopes,
+    confirmation,
+    id: outcome.result.id,
   };
 }

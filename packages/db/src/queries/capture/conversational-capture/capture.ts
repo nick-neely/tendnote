@@ -46,6 +46,7 @@ export function createCaptureOperation(
       deps,
       ownerUserId: parsedInput.ownerUserId,
       originalText: visibility.captureText,
+      allowSelfContext: visibility.scope === "private",
       ...(parsedInput.clarificationAnswer
         ? { clarificationAnswer: parsedInput.clarificationAnswer }
         : {}),
@@ -169,7 +170,7 @@ function createCaptureSource(
       retentionPolicy: "retain",
       status: routeMayNeedResolution(input.route) ? "pending_resolution" : "active",
       confidence: "high",
-      sensitivity: "normal",
+      sensitivity: captureSourceSensitivity(input.route),
       scope: input.visibility.scope,
       householdId: input.visibility.householdId,
       importance: 3,
@@ -183,6 +184,15 @@ function createCaptureSource(
       },
     }),
   );
+}
+
+function captureSourceSensitivity(route: ConversationalCaptureRoute): SourceRecord["sensitivity"] {
+  if (route.destination === "context_fact") return route.sensitivity;
+  if (route.destination === "group") {
+    const contextFact = route.outcomes.find((outcome) => outcome.destination === "context_fact");
+    if (contextFact?.destination === "context_fact") return contextFact.sensitivity;
+  }
+  return "normal";
 }
 
 async function shareCaptureSource(

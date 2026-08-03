@@ -451,6 +451,10 @@ function CaptureCorrection({
   controller: ReturnType<typeof useCaptureController>;
 }) {
   const { change, state, update } = controller;
+  const correctionInputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    correctionInputRef.current?.focus();
+  }, []);
   return (
     <>
       <label className="font-medium text-sm" htmlFor="mobile-capture-change">
@@ -460,6 +464,7 @@ function CaptureCorrection({
         className="min-h-40 resize-none rounded-xl p-4 leading-6 md:text-base"
         id="mobile-capture-change"
         onChange={(event) => update({ editText: event.target.value })}
+        ref={correctionInputRef}
         value={state.editText}
       />
       {state.failure === "change" ? (
@@ -614,8 +619,8 @@ function CaptureConfirmation({
       <h3 className="font-semibold text-xl">{state.undone ? "Capture undone" : "Capture saved"}</h3>
       {state.undone ? (
         <p className="text-muted-foreground text-sm">
-          Tendnote archived the {confirmation.destination} record. Your original capture is still
-          saved.
+          Tendnote applied the authoritative Undo to the {confirmation.destination} record. Your
+          original capture is still saved.
         </p>
       ) : state.editing ? (
         <CaptureCorrection controller={controller} />
