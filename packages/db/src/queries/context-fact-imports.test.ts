@@ -121,8 +121,75 @@ describe("importSelfContextFacts", () => {
       text: "From what I remember, you run a small software consultancy.",
     });
 
-    expect(result.summary.source).toBe("extraction");
-    expect(result.summary.suggestedCount).toBe(1);
+    expect(result.summary).toMatchObject({
+      source: "extraction",
+      suggestedCount: 1,
+      readByModel: false,
+    });
+  });
+
+  it("reports a real model read when one is configured", async () => {
+    const { queries } = setup({
+      extractionAdapter: {
+        kind: "llm",
+        model: "test/model",
+        async extractCandidates() {
+          return { candidates: [] };
+        },
+      },
+    });
+
+    const result = await queries.importSelfContextFacts({
+      callerUserId: OWNER,
+      provider: "chatgpt",
+      text: "Loose prose with nothing durable in it.",
+    });
+
+    expect(result.summary.readByModel).toBe(true);
+  });
+
+  it("never claims a model read a paste that a local block answered", async () => {
+    const { queries } = setup({
+      extractionAdapter: {
+        kind: "llm",
+        model: "test/model",
+        async extractCandidates() {
+          throw new Error("The block path must not reach a model.");
+        },
+      },
+    });
+
+    const result = await queries.importSelfContextFacts({
+      callerUserId: OWNER,
+      provider: "chatgpt",
+      text: PASTE,
+    });
+
+    expect(result.summary.readByModel).toBe(false);
+  });
+
+  it("falls back to extraction when a block came through but held nothing readable", async () => {
+    const { queries } = setup({
+      extractionAdapter: createFakeContextFactImportExtractionAdapter([
+        {
+          category: "work",
+          content: "I run a software consultancy.",
+          evidence: "I run a software consultancy",
+          sensitivity: "normal",
+        },
+      ]),
+    });
+
+    const result = await queries.importSelfContextFacts({
+      callerUserId: OWNER,
+      provider: "chatgpt",
+      text: block("I run a software consultancy.", "based in Chicago"),
+    });
+
+    // A fence full of malformed lines is no more readable than no fence, so the
+    // owner still gets the second chance rather than an empty result.
+    expect(result.summary).toMatchObject({ source: "extraction", suggestedCount: 1 });
+    expect(result.summary.unreadableCount).toBe(2);
   });
 
   it("proposes nothing from loose prose when no extraction adapter is configured", async () => {
@@ -134,7 +201,12 @@ describe("importSelfContextFacts", () => {
       text: "From what I remember, you run a small software consultancy.",
     });
 
-    expect(result.summary).toMatchObject({ source: "extraction", suggestedCount: 0 });
+    expect(result.summary).toMatchObject({
+      source: "extraction",
+      suggestedCount: 0,
+      // No adapter ran, so the surface must not claim a model read the paste.
+      readByModel: false,
+    });
     expect(result.reviews).toHaveLength(0);
   });
 
@@ -259,26 +331,5 @@ describe("importSelfContextFacts", () => {
       entityId: result.summary.importId,
       metadataJson: { provider: "chatgpt", source: "block", suggestedCount: 3 },
     });
-  });
-
-  it("lists an owner's imports without leaking another owner's", async () => {
-    const { queries, store } = setup();
-    await queries.importSelfContextFacts({
-      callerUserId: OWNER,
-      provider: "chatgpt",
-      text: PASTE,
-    });
-    await store.createContextFactImport({
-      ownerUserId: "user-other",
-      provider: "gemini",
-      source: "block",
-      textLength: 10,
-      candidateCount: 0,
-    });
-
-    const imports = await queries.listContextFactImports(OWNER);
-
-    expect(imports).toHaveLength(1);
-    expect(imports[0]?.ownerUserId).toBe(OWNER);
   });
 });

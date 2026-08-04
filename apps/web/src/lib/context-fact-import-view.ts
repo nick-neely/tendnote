@@ -1,8 +1,5 @@
 import type { ContextFactImportSummary } from "@tendnote/db/queries/context-fact-imports";
-import type {
-  ContextFactImportProviderId,
-  ContextFactImportSource,
-} from "@tendnote/domain/context-fact-import";
+import type { ContextFactImportProviderId } from "@tendnote/domain/context-fact-import";
 import { contextFactImportProvider } from "@tendnote/domain/context-fact-import";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 import type { SuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
@@ -68,16 +65,23 @@ export function contextFactImportNotes(summary: ContextFactImportSummary): strin
   return notes;
 }
 
-/** Where the reading happened. A paste that never reached a model should say so. */
-export function contextFactImportSourceNote(source: ContextFactImportSource): string {
-  return source === "block"
-    ? "Read inside Tendnote. Your paste never left your notebook."
-    : "The paste had no Tendnote block, so Tendnote read it with its extraction model.";
+/**
+ * Where the reading happened. A paste that never reached a model should say so,
+ * and so should one that reached no reader at all.
+ */
+export function contextFactImportSourceNote(summary: ContextFactImportSummary): string {
+  if (summary.source === "block") {
+    return "Read inside Tendnote. Your paste never left your notebook.";
+  }
+  return summary.readByModel
+    ? "The paste had no Tendnote block, so Tendnote read it with its extraction model."
+    : "The paste had no Tendnote block, and reading loose writing is unavailable here.";
 }
 
 /** What the owner does next when an import finds nothing at all. */
-export function contextFactImportEmptyHint(source: ContextFactImportSource): string {
-  return source === "block"
-    ? "The block came through, but none of its lines described a durable fact. You can still add one yourself."
-    : "Ask the assistant again and hold it to the code block the prompt asks for, or add a fact yourself.";
+export function contextFactImportEmptyHint(summary: ContextFactImportSummary): string {
+  if (summary.source === "block") {
+    return "The block came through, but none of its lines described a durable fact. You can still add one yourself.";
+  }
+  return "Ask the assistant again and hold it to the code block the prompt asks for, or add a fact yourself.";
 }

@@ -6,6 +6,7 @@ import {
   contextFactExtractionPromptVersion,
 } from "@tendnote/domain";
 import { gateway, generateText, Output } from "ai";
+import { hasAiGatewayCredentials, requireAiGatewayCredentials } from "../ai-gateway-credentials";
 import { resolveExtractionModel } from "../extraction-model";
 
 type ContextFactExtractionEnv = Record<string, string | undefined>;
@@ -17,7 +18,7 @@ export type AiSdkContextFactExtractionAdapterOptions = {
 };
 
 export function hasContextFactExtractionCredentials(env: ContextFactExtractionEnv = process.env) {
-  return Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
+  return hasAiGatewayCredentials(env);
 }
 
 /** Live model evaluation is opt-in and separate from deterministic CI. */
@@ -27,14 +28,6 @@ export function shouldRunLiveContextFactExtractionQualityEval(
   return (
     env.TENDNOTE_RUN_LIVE_CONTEXT_FACT_EVAL === "1" && hasContextFactExtractionCredentials(env)
   );
-}
-
-function requireExtractionCredentials(env: ContextFactExtractionEnv) {
-  if (!hasContextFactExtractionCredentials(env)) {
-    throw new Error(
-      "Missing AI Gateway credentials for Context Fact extraction. Set AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN.",
-    );
-  }
 }
 
 function buildPrompt(input: ContextFactExtractionInput) {
@@ -64,7 +57,7 @@ export function createAiSdkContextFactExtractionAdapter(
     model,
     promptVersion,
     async extractCandidates(input): Promise<ContextFactExtractionAdapterResult> {
-      requireExtractionCredentials(env);
+      requireAiGatewayCredentials("Context Fact extraction", env);
 
       const result = await generateText({
         model: gateway(model),

@@ -5,7 +5,11 @@ import type {
 } from "@tendnote/domain";
 import type { AffectedScope } from "../affected-scopes";
 import type { InMemoryContextFactStore } from "../context-facts/in-memory-store";
-import type { ContextFactStore, SuggestedContextFactReviewResult } from "../context-facts/types";
+import type {
+  ContextFactCallerVerification,
+  ContextFactStore,
+  SuggestedContextFactReviewResult,
+} from "../context-facts/types";
 
 /** One recorded Self Context import session. Never holds a copy of the paste. */
 export type ContextFactImport = {
@@ -30,7 +34,6 @@ export type CreateContextFactImportInput = {
 export type ContextFactImportLifecycleStore = {
   createContextFactImport: (input: CreateContextFactImportInput) => Promise<ContextFactImport>;
   getContextFactImport: (importId: string) => Promise<ContextFactImport | null>;
-  listContextFactImports: (input: { ownerUserId: string }) => Promise<ContextFactImport[]>;
 };
 
 /** One shared owner-scoped Context Fact store plus this family's own import records. */
@@ -61,6 +64,12 @@ export type ContextFactImportSummary = {
   skippedCount: number;
   /** Lines and candidates Tendnote could not turn into a reviewable fact. */
   unreadableCount: number;
+  /**
+   * Whether a model actually read the paste. `source: "extraction"` only says the
+   * paste held no readable block; without gateway credentials no model runs at
+   * all, and the surface must not claim one did.
+   */
+  readByModel: boolean;
 };
 
 export type ImportSelfContextFactsResult = {
@@ -71,7 +80,7 @@ export type ImportSelfContextFactsResult = {
 
 export type CreateContextFactImportQueriesOptions = {
   /** Resolves the authenticated caller independently of request payload fields. */
-  resolveVerifiedCaller?: () => Promise<string | null>;
+  resolveVerifiedCaller?: ContextFactCallerVerification;
   /** Used only when a paste carries no readable Tendnote block. */
   extractionAdapter?: ContextFactImportExtractionAdapter;
 };

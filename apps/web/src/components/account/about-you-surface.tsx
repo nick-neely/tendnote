@@ -255,6 +255,8 @@ function AboutYouSurfaceContent({
 
   const activeFacts = facts.filter(isActiveSelfContextFact);
   const archivedFacts = facts.filter(isArchivedSelfContextFact);
+  const hasAnything =
+    activeFacts.length > 0 || archivedFacts.length > 0 || suggestedReviews.length > 0;
 
   useDeepLinkReveal((elementId) => {
     const archivedElementIds = new Set(archivedFacts.map((fact) => `context-fact-${fact.id}`));
@@ -357,7 +359,7 @@ function AboutYouSurfaceContent({
         </section>
       ) : null}
 
-      {activeFacts.length === 0 && archivedFacts.length === 0 && suggestedReviews.length === 0 ? (
+      {!hasAnything ? (
         <EmptyState
           action={
             <Button asChild variant="outline">
@@ -470,7 +472,10 @@ function AboutYouSurfaceContent({
         </section>
       ) : null}
 
-      <ContextFactImportInvitation id="about-you-import" />
+      {/* The empty state already carries this offer as its next step, so the
+          durable aside only appears once About you has something in it. Two
+          buttons to the same place is not two offers. */}
+      {hasAnything ? <ContextFactImportInvitation id="about-you-import" /> : null}
 
       {offerGuidedSetup ? (
         <SelfContextSetupInvitation

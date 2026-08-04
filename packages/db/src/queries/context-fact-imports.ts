@@ -27,12 +27,3 @@ export function importSelfContextFacts(
     input,
   );
 }
-
-export function listContextFactImports(
-  callerUserId: string,
-  resolveVerifiedCaller: ContextFactCallerVerification,
-) {
-  return createVerifiedContextFactImportQueries(resolveVerifiedCaller).listContextFactImports(
-    callerUserId,
-  );
-}

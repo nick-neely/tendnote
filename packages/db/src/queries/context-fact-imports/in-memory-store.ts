@@ -26,10 +26,5 @@ export function createInMemoryContextFactImportStore(): InMemoryContextFactImpor
     async getContextFactImport(importId: string) {
       return imports.get(importId) ?? null;
     },
-    async listContextFactImports({ ownerUserId }: { ownerUserId: string }) {
-      return [...imports.values()]
-        .filter((record) => record.ownerUserId === ownerUserId)
-        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
-    },
   };
 }

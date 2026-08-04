@@ -16,6 +16,7 @@ function summary(overrides: Partial<ContextFactImportSummary> = {}): ContextFact
     alreadyPendingCount: 0,
     skippedCount: 0,
     unreadableCount: 0,
+    readByModel: false,
     ...overrides,
   };
 }
@@ -76,20 +77,31 @@ describe("contextFactImportNotes", () => {
 
 describe("contextFactImportSourceNote", () => {
   it("tells the owner when a paste never left the app", () => {
-    expect(contextFactImportSourceNote("block")).toContain("never left your notebook");
+    expect(contextFactImportSourceNote(summary({ source: "block" }))).toContain(
+      "never left your notebook",
+    );
   });
 
   it("tells the owner when a paste reached the extraction model", () => {
-    expect(contextFactImportSourceNote("extraction")).toContain("extraction model");
+    expect(
+      contextFactImportSourceNote(summary({ source: "extraction", readByModel: true })),
+    ).toContain("extraction model");
+  });
+
+  it("never claims a model read a paste when none ran", () => {
+    const note = contextFactImportSourceNote(summary({ source: "extraction" }));
+
+    expect(note).toContain("unavailable here");
+    expect(note).not.toContain("extraction model");
   });
 });
 
 describe("contextFactImportEmptyHint", () => {
   it("points a blocked paste back at the code block", () => {
-    expect(contextFactImportEmptyHint("extraction")).toContain("code block");
+    expect(contextFactImportEmptyHint(summary({ source: "extraction" }))).toContain("code block");
   });
 
   it("offers the manual path when the block itself held nothing durable", () => {
-    expect(contextFactImportEmptyHint("block")).toContain("add one yourself");
+    expect(contextFactImportEmptyHint(summary({ source: "block" }))).toContain("add one yourself");
   });
 });

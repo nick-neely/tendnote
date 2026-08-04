@@ -7,7 +7,7 @@ import {
   normalizeContextFactContent,
   selfContextFactCategorySchema,
 } from "./context-facts";
-import { type Sensitivity, sensitivitySchema } from "./privacy";
+import { atLeastSensitivity, type Sensitivity, sensitivitySchema } from "./privacy";
 
 /**
  * Importing Self Context from another assistant is one deliberate, bounded session:
@@ -143,6 +143,20 @@ export function buildContextFactImportProviderLink(
     : { href, prefilled: true };
 }
 
+/**
+ * One paste, bounded. Both the server action and the query layer validate against
+ * this same schema so the owner cannot be told two different things about the
+ * same paste depending on which boundary rejected it first.
+ */
+export const contextFactImportTextSchema = z
+  .string()
+  .trim()
+  .min(1, "Paste what the assistant gave you.")
+  .max(
+    MAX_CONTEXT_FACT_IMPORT_TEXT_LENGTH,
+    "That paste is too long. Bring over the list of facts rather than the whole conversation.",
+  );
+
 export const contextFactImportCandidateSchema = z
   .object({
     category: selfContextFactCategorySchema,
@@ -187,9 +201,15 @@ const nonDurableImportPattern =
 const inferredPersonaImportPattern =
   /\b(?:seems to|appears to|apparently|presumably|probably|likely|may be|might be|personality|introvert|extrovert|good person|bad person)\b/i;
 
-function sensitivityRank(value: Sensitivity) {
-  return value === "restricted" ? 3 : value === "sensitive" ? 2 : 1;
-}
+/**
+ * Self-assessment stays out for the same reason ambient extraction bans it: a
+ * Context Fact is current orientation, not a generated persona, and a claim about
+ * how capable or principled someone is orients nothing. This is deliberately
+ * narrower than ambient's version, which also refuses the habits, routines, and
+ * stated preferences an import exists to carry.
+ */
+const selfAssessmentImportPattern =
+  /\b(?:good at|bad at|great at|skilled|expert|proficient|talented|capable|my abilit(?:y|ies)|i value|my values|i believe in)\b/i;
 
 /**
  * Inference preserves or increases the sensitivity of its evidence and can never
@@ -201,8 +221,7 @@ function resolvedImportSensitivity(candidate: ContextFactImportCandidate): Sensi
   )
     ? "restricted"
     : "normal";
-  const claimed = candidate.sensitivity;
-  return !claimed || sensitivityRank(claimed) < sensitivityRank(floor) ? floor : claimed;
+  return atLeastSensitivity(floor, candidate.sensitivity);
 }
 
 function isImportCandidateAllowed(candidate: ContextFactImportCandidate): boolean {
@@ -211,6 +230,7 @@ function isImportCandidateAllowed(candidate: ContextFactImportCandidate): boolea
     if (isRestrictedContextFactDisclosure(value)) return false;
     if (nonDurableImportPattern.test(value)) return false;
     if (inferredPersonaImportPattern.test(value)) return false;
+    if (selfAssessmentImportPattern.test(value)) return false;
   }
   return true;
 }

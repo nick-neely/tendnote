@@ -66,15 +66,15 @@ type Handoff = {
 };
 
 /**
- * The step marker. A numeral is the one thing on this page that is genuinely an
- * index rather than language, so it is set in mono at caption size and stays
- * quiet: the heading beside it carries the meaning, and nothing here is a score.
+ * The step marker. Caption size in a hairline square, and deliberately quiet:
+ * the heading beside it carries the meaning, and nothing here is a score. Not
+ * mono, which DESIGN.md keeps for machine facts rather than for looking precise.
  */
 function StepMarker({ children }: { children: ReactNode }) {
   return (
     <span
       aria-hidden
-      className="inline-flex size-5 shrink-0 items-center justify-center rounded-md border font-mono text-[length:var(--text-caption)] leading-none text-muted-foreground"
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded-md border text-[length:var(--text-caption)] leading-none text-muted-foreground"
     >
       {children}
     </span>
@@ -121,7 +121,7 @@ function handoffLabel(handoff: Handoff): string {
   const { provider, copied, opened } = handoff;
   if (!opened) {
     return copied
-      ? `The prompt is on your clipboard. ${provider.name} did not open — your browser may have blocked the new tab.`
+      ? `The prompt is on your clipboard. ${provider.name} did not open, so your browser may have blocked the new tab.`
       : `${provider.name} did not open, and the prompt could not be copied. Copy it from below instead.`;
   }
   if (provider.prefilled) {
@@ -131,7 +131,7 @@ function handoffLabel(handoff: Handoff): string {
   }
   return copied
     ? `The prompt is on your clipboard. Paste it into ${provider.name} and send it.`
-    : `${provider.name} opened. The prompt could not be copied automatically — copy it from below.`;
+    : `${provider.name} opened. The prompt could not be copied automatically, so copy it from below.`;
 }
 
 export function ContextFactImportSurface({
@@ -169,6 +169,9 @@ export function ContextFactImportSurface({
 
   const trimmed = text.trim();
   const looksStructured = text.includes(blockMarker);
+  // Over-long is shown, never trimmed away. Silently dropping the tail of a memory
+  // export would leave the owner reviewing a partial import that looked complete.
+  const overLength = trimmed.length > maxTextLength;
   const acceptable = reviews.filter((review) => review.activeMatch === null);
 
   function openAssistant(provider: AssistantHandoffOption) {
@@ -212,7 +215,7 @@ export function ContextFactImportSurface({
         setClipboardNote("Your clipboard is empty. Copy the assistant's answer first.");
         return;
       }
-      setText(clipboardText.slice(0, maxTextLength));
+      setText(clipboardText);
       setError(null);
       pasteRef.current?.focus();
       setAnnouncement("Pasted from your clipboard.");
@@ -252,7 +255,7 @@ export function ContextFactImportSurface({
         // the live region.
         window.requestAnimationFrame(() => resultsRef.current?.focus());
       } catch {
-        setError("We couldn't read that paste. It is still here — try again.");
+        setError("We couldn't read that paste. It is still here, so you can try again.");
         pasteRef.current?.focus();
       }
     });
@@ -297,7 +300,7 @@ export function ContextFactImportSurface({
         : `Kept ${kept} ${kept === 1 ? "fact" : "facts"}. ${unresolved.length} still needs you.`,
     );
     if (unresolved.length > 0) {
-      setError("Some facts could not be kept. They are still below — try them one at a time.");
+      setError("Some facts could not be kept. They are still below, so try them one at a time.");
     }
     router.refresh();
   }
@@ -407,7 +410,7 @@ export function ContextFactImportSurface({
             </Button>
           </div>
           <CollapsibleContent className="min-w-0">
-            <pre className="max-h-72 min-w-0 overflow-auto rounded-lg border bg-panel px-3.5 py-3 font-mono text-[length:var(--text-caption)] leading-[1.6] whitespace-pre-wrap text-muted-foreground">
+            <pre className="max-h-72 min-w-0 overflow-auto rounded-lg border bg-panel px-3.5 py-3 font-mono text-[length:var(--text-caption)] leading-[var(--text-caption-line)] whitespace-pre-wrap text-muted-foreground">
               {prompt}
             </pre>
           </CollapsibleContent>
@@ -434,35 +437,42 @@ export function ContextFactImportSurface({
               Paste from clipboard
             </Button>
           </div>
+          {/* No `maxLength`: the browser would truncate a long paste on the way in
+              and the owner would review a partial import that looked whole. The
+              count below turns to a limit the owner can act on instead. */}
           <Textarea
             aria-describedby={error ? `${pasteHelperId} ${pasteErrorId}` : pasteHelperId}
-            aria-invalid={error ? true : undefined}
+            aria-invalid={error || overLength ? true : undefined}
             autoComplete="off"
             className="min-h-40 min-w-0 resize-y"
             disabled={reading}
             id={pasteId}
-            maxLength={maxTextLength}
             onChange={(event) => setText(event.target.value)}
             placeholder="Paste the assistant's answer here."
             ref={pasteRef}
             value={text}
           />
           <p
-            className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground"
+            className={cn(
+              "break-words text-[length:var(--text-small)] leading-[var(--text-small-line)]",
+              overLength ? "text-destructive" : "text-muted-foreground",
+            )}
             id={pasteHelperId}
           >
-            {trimmed
-              ? looksStructured
-                ? "Tendnote knows this format and will read it here, so your paste never leaves the app."
-                : "No Tendnote block found, so Tendnote will read this with its extraction model."
-              : "Private to you. Nothing is saved until you review it."}{" "}
-            · {text.length.toLocaleString("en-US")}/{maxTextLength.toLocaleString("en-US")}{" "}
+            {overLength
+              ? "That is more than one import can carry. Bring over the list of facts rather than the whole conversation."
+              : trimmed
+                ? looksStructured
+                  ? "Tendnote knows this format and will read it here, so your paste never leaves the app."
+                  : "No Tendnote block found, so Tendnote will read this with its extraction model."
+                : "Private to you. Nothing is saved until you review it."}{" "}
+            · {trimmed.length.toLocaleString("en-US")}/{maxTextLength.toLocaleString("en-US")}{" "}
             characters
           </p>
           {clipboardNote ? (
             <p
               aria-live="polite"
-              className="break-words text-[length:var(--text-small)] text-muted-foreground"
+              className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground"
               role="status"
             >
               {clipboardNote}
@@ -470,7 +480,7 @@ export function ContextFactImportSurface({
           ) : null}
           {error ? (
             <p
-              className="break-words text-[length:var(--text-small)] text-destructive"
+              className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-destructive"
               id={pasteErrorId}
               role="alert"
             >
@@ -511,14 +521,14 @@ export function ContextFactImportSurface({
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
           <Button
             className="min-h-11 w-full sm:w-auto"
-            disabled={reading || !trimmed || !selected}
+            disabled={reading || !trimmed || !selected || overLength}
             onClick={read}
             type="button"
           >
             {reading ? "Reading…" : "Read this paste"}
           </Button>
           {reading ? (
-            <span className="text-[length:var(--text-small)] text-muted-foreground">
+            <span className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
               Reading what you pasted…
             </span>
           ) : null}
@@ -537,7 +547,7 @@ export function ContextFactImportSurface({
               {contextFactImportHeadline(imported.summary)}
             </p>
             <p className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-              {contextFactImportSourceNote(imported.summary.source)}
+              {contextFactImportSourceNote(imported.summary)}
             </p>
             {contextFactImportNotes(imported.summary).map((note) => (
               <p
@@ -559,7 +569,7 @@ export function ContextFactImportSurface({
               description={
                 imported.summary.suggestedCount > 0 || imported.summary.alreadyPendingCount > 0
                   ? "You have reviewed everything this import brought over."
-                  : contextFactImportEmptyHint(imported.summary.source)
+                  : contextFactImportEmptyHint(imported.summary)
               }
               title={
                 imported.summary.suggestedCount > 0 || imported.summary.alreadyPendingCount > 0

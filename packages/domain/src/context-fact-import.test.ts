@@ -214,6 +214,26 @@ describe("validateContextFactImportCandidates", () => {
     expect(result.validCandidates).toHaveLength(0);
   });
 
+  it("rejects a self-assessment, which orients nothing", () => {
+    const result = validateContextFactImportCandidates({
+      candidates: [
+        candidate({
+          category: "other",
+          content: "I am good at negotiation.",
+          evidence: 'From your ChatGPT memory: "I am good at negotiation."',
+        }),
+        candidate({
+          category: "other",
+          content: "I value directness above all else.",
+          evidence: 'From your ChatGPT memory: "I value directness."',
+        }),
+      ],
+    });
+
+    expect(result.validCandidates).toHaveLength(0);
+    expect(result.rejectedCandidateCount).toBe(2);
+  });
+
   it("keeps a durable habit that ambient extraction would have refused", () => {
     const result = validateContextFactImportCandidates({
       candidates: [

@@ -3,8 +3,8 @@ import {
   ContextFactValidationError,
   contextFactImportProvider,
   contextFactImportProviderSchema,
+  contextFactImportTextSchema,
   createDeterministicContextFactImportExtractionAdapter,
-  MAX_CONTEXT_FACT_IMPORT_TEXT_LENGTH,
   parseContextFactImportBlock,
   validateContextFactImportCandidates,
 } from "@tendnote/domain";
@@ -24,14 +24,7 @@ const importSelfContextFactsInputSchema = z
   .object({
     callerUserId: z.string().trim().min(1),
     provider: contextFactImportProviderSchema,
-    text: z
-      .string()
-      .trim()
-      .min(1, "Paste what the assistant gave you.")
-      .max(
-        MAX_CONTEXT_FACT_IMPORT_TEXT_LENGTH,
-        "That paste is too long. Bring over the list of facts rather than the whole conversation.",
-      ),
+    text: contextFactImportTextSchema,
   })
   .strict();
 
@@ -111,7 +104,7 @@ export function createContextFactImportQueries(
    * Read one paste from another assistant into review-gated Self Context.
    *
    * The fenced Tendnote block is the fast path and never leaves the app. Loose prose
-   * falls back to one bounded extraction call over exactly this paste — no owner
+   * falls back to one bounded extraction call over exactly this paste, and no owner
    * history travels with it. Either way the result is `suggested` facts the owner
    * still has to accept, because a third-party assistant's output is not authority.
    */
@@ -128,10 +121,14 @@ export function createContextFactImportQueries(
     const callerUserId = verifiedCallerUserId;
 
     const provider = contextFactImportProvider(parsed.provider);
+    // A fence the assistant filled with malformed lines is no more readable than
+    // no fence at all, so an empty block falls through to extraction rather than
+    // reporting nothing found. `unreadableLineCount` still travels with it.
     const block = parseContextFactImportBlock(parsed.text, provider);
-    const source = block ? "block" : "extraction";
-    const rawCandidates = block
-      ? block.candidates
+    const readableBlock = block && block.candidates.length > 0 ? block : null;
+    const source = readableBlock ? "block" : "extraction";
+    const rawCandidates = readableBlock
+      ? readableBlock.candidates
       : ((await extractionAdapter.extractCandidates({ text: parsed.text })).candidates ?? []);
 
     const validated = validateContextFactImportCandidates({ candidates: rawCandidates });
@@ -182,15 +179,12 @@ export function createContextFactImportQueries(
         alreadyPendingCount: persisted.alreadyPendingCount,
         skippedCount: persisted.skippedCount,
         unreadableCount,
+        readByModel: source === "extraction" && extractionAdapter.kind === "llm",
       },
       reviews: persisted.reviews,
       affectedScopes: persisted.affectedScopes,
     };
   }
 
-  return {
-    importSelfContextFacts,
-    listContextFactImports: (callerUserId: string) =>
-      store.listContextFactImports({ ownerUserId: callerUserId }),
-  };
+  return { importSelfContextFacts };
 }

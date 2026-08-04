@@ -87,6 +87,7 @@ function importedView(
       alreadyPendingCount: 0,
       skippedCount: 0,
       unreadableCount: 0,
+      readByModel: false,
       ...overrides,
     },
     reviews: [review()],
@@ -269,6 +270,7 @@ describe("ContextFactImportSurface", () => {
             alreadyPendingCount: 0,
             skippedCount: 0,
             unreadableCount: 0,
+            readByModel: true,
           },
           reviews: [],
         },
@@ -335,6 +337,22 @@ describe("ContextFactImportSurface", () => {
       expect(acceptSuggestedContextFactAction).toHaveBeenCalledTimes(2);
     });
     expect(screen.queryByRole("button", { name: /Keep the/ })).toBeNull();
+  });
+
+  it("shows an over-long paste rather than truncating it away", async () => {
+    const user = userEvent.setup();
+    renderSurface();
+
+    await user.click(screen.getByRole("button", { name: /ChatGPT/ }));
+    await paste(user, "x".repeat(16_050));
+
+    // The whole paste is still in the box: a silently trimmed tail would leave the
+    // owner reviewing a partial import that looked complete.
+    expect(pasteBox().value).toHaveLength(16_050);
+    expect(screen.getByText(/more than one import can carry/)).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Read this paste" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it("returns the owner to where they came from", () => {

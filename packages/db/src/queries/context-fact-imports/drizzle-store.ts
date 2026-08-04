@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "../../client";
 import { contextFactImports } from "../../schema";
 import { createDrizzleContextFactStore } from "../context-facts/drizzle-store";
@@ -38,14 +38,6 @@ export function createDrizzleContextFactImportStore(): ContextFactImportStore {
         .where(eq(contextFactImports.id, importId))
         .limit(1);
       return row ? fromRow(row) : null;
-    },
-    async listContextFactImports({ ownerUserId }) {
-      const rows = await getDb()
-        .select()
-        .from(contextFactImports)
-        .where(and(eq(contextFactImports.ownerUserId, ownerUserId)))
-        .orderBy(desc(contextFactImports.createdAt));
-      return rows.map(fromRow);
     },
   };
 }

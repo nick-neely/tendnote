@@ -3,7 +3,7 @@
 import { importSelfContextFacts } from "@tendnote/db/queries/context-fact-imports";
 import {
   contextFactImportProviderSchema,
-  MAX_CONTEXT_FACT_IMPORT_TEXT_LENGTH,
+  contextFactImportTextSchema,
 } from "@tendnote/domain/context-fact-import";
 import { z } from "zod";
 import { requireAdmittedOwnerForAction } from "@/lib/access/current-access";
@@ -15,17 +15,7 @@ import { runOwnerAction } from "@/lib/owner-action";
 import { toSuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 
 const importSelfContextFactsActionSchema = z
-  .object({
-    provider: contextFactImportProviderSchema,
-    text: z
-      .string()
-      .trim()
-      .min(1, "Paste what the assistant gave you.")
-      .max(
-        MAX_CONTEXT_FACT_IMPORT_TEXT_LENGTH,
-        "That paste is too long. Bring over the list of facts rather than the whole conversation.",
-      ),
-  })
+  .object({ provider: contextFactImportProviderSchema, text: contextFactImportTextSchema })
   .strict();
 
 export type { ImportSelfContextFactsActionInput };

@@ -9,27 +9,18 @@ import {
   MAX_CONTEXT_FACT_IMPORT_EVIDENCE_LENGTH,
 } from "@tendnote/domain";
 import { gateway, generateText, Output } from "ai";
+import {
+  type AiGatewayEnv,
+  hasAiGatewayCredentials,
+  requireAiGatewayCredentials,
+} from "../ai-gateway-credentials";
 import { resolveExtractionModel } from "../extraction-model";
-
-type ContextFactImportEnv = Record<string, string | undefined>;
 
 export type AiSdkContextFactImportAdapterOptions = {
   model?: string;
   promptVersion?: string;
-  env?: ContextFactImportEnv;
+  env?: AiGatewayEnv;
 };
-
-export function hasContextFactImportCredentials(env: ContextFactImportEnv = process.env) {
-  return Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
-}
-
-function requireImportCredentials(env: ContextFactImportEnv) {
-  if (!hasContextFactImportCredentials(env)) {
-    throw new Error(
-      "Missing AI Gateway credentials for Self Context import. Set AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN.",
-    );
-  }
-}
 
 /**
  * This adapter only runs when the assistant ignored the requested block, so its job
@@ -67,7 +58,7 @@ export function createAiSdkContextFactImportAdapter(
     model,
     promptVersion,
     async extractCandidates(input): Promise<ContextFactImportAdapterResult> {
-      requireImportCredentials(env);
+      requireAiGatewayCredentials("Self Context import", env);
 
       const result = await generateText({
         model: gateway(model),
@@ -92,8 +83,8 @@ export function createAiSdkContextFactImportAdapter(
  * rather than inventing facts, and the surface says so.
  */
 export function createDefaultContextFactImportAdapter(
-  env: ContextFactImportEnv = process.env,
+  env: AiGatewayEnv = process.env,
 ): ContextFactImportExtractionAdapter | undefined {
-  if (!hasContextFactImportCredentials(env)) return undefined;
+  if (!hasAiGatewayCredentials(env)) return undefined;
   return createAiSdkContextFactImportAdapter({ env, model: env.TENDNOTE_EXTRACTION_MODEL });
 }
