@@ -14,6 +14,7 @@ import {
   ContextFactEditor,
   type ContextFactEditorCategoryOption,
 } from "@/components/account/about-you-surface";
+import { ContextFactImportInvitation } from "@/components/account/context-fact-import-invitation";
 import { appDestination } from "@/components/app-destinations";
 import { Button } from "@/components/ui/button";
 import {
@@ -193,6 +194,12 @@ export function SelfContextOnboarding({
           finish with no answers.
         </p>
       </header>
+
+      {/* Offered before the prompts, not after: an owner who already keeps this
+          context in another assistant should not have to type it out first. It
+          stays an alternative, never a step, so setup is still four optional
+          questions and nothing more. */}
+      <ContextFactImportInvitation from="onboarding" id="onboarding-import" />
 
       {announcement ? (
         <p

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { contextFactFixture } from "./context-fact-fixtures";
 import { createContextFactQueries, createInMemoryContextFactStore } from "./context-facts";
@@ -206,6 +207,79 @@ describe("Suggested Context Fact review contract", () => {
     });
     expect(dismissal?.metadataJson).not.toHaveProperty("content");
     expect(dismissal?.metadataJson).not.toHaveProperty("suggestionEvidence");
+  });
+
+  it("keeps a dismissal binding when the same statement arrives from a later session", async () => {
+    const store = createInMemoryContextFactStore();
+    const queries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+    const suggestion = (sourceRecordId: string) => ({
+      callerUserId: OWNER,
+      category: "interest" as const,
+      content: "I follow trail running.",
+      sensitivity: "normal" as const,
+      provenance: { channel: "import" as const, origin: "import" as const, sourceRecordId },
+      suggestionEvidence: 'From your ChatGPT memory: "I follow trail running."',
+    });
+
+    const suggested = await queries.createSuggestedSelfContextFact(suggestion("import-1"));
+    await queries.dismissSuggestedContextFact({
+      callerUserId: OWNER,
+      contextFactId: suggested.result.fact.id,
+    });
+
+    // A second import is a new session with a new source reference. The owner already
+    // judged this statement, so the dismissal has to outlive the session that raised it.
+    await expect(queries.createSuggestedSelfContextFact(suggestion("import-2"))).rejects.toThrow(
+      "already dismissed",
+    );
+  });
+
+  it("still honours a dismissal recorded under the pre-#352 key shape", async () => {
+    const store = createInMemoryContextFactStore();
+    const queries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+    const provenance = {
+      channel: "ambient" as const,
+      origin: "ambient" as const,
+      sourceRecordId: null,
+    };
+    const suggestion = {
+      callerUserId: OWNER,
+      category: "interest" as const,
+      content: "I follow trail running.",
+      sensitivity: "normal" as const,
+      provenance,
+      suggestionEvidence: "I follow trail running.",
+    };
+    // The shape the key had before `sourceRecordId` was dropped from the hash. A
+    // stored dismissal must keep binding, or deploying the fix would resurrect
+    // every suggestion an owner had already turned down.
+    await store.createAuditLogEntry({
+      ownerUserId: OWNER,
+      action: "context_fact.review.dismiss",
+      entityType: "context_fact",
+      entityId: "00000000-0000-4000-8000-0000000000aa",
+      metadataJson: {
+        suppressionKey: createHash("sha256")
+          .update(
+            JSON.stringify({
+              subject: { kind: "self", userId: OWNER },
+              category: "interest",
+              content: "i follow trail running",
+              sensitivity: "normal",
+              provenance,
+            }),
+          )
+          .digest("hex"),
+      },
+    });
+
+    await expect(queries.createSuggestedSelfContextFact(suggestion)).rejects.toThrow(
+      "already dismissed",
+    );
   });
 
   it("never lets a concurrent dismissal delete an accepted active truth", async () => {

@@ -5,7 +5,7 @@ import {
   isSensitiveContextFactContent,
   selfContextFactCategorySchema,
 } from "./context-facts";
-import { type Sensitivity, sensitivitySchema } from "./privacy";
+import { atLeastSensitivity, type Sensitivity, sensitivitySchema } from "./privacy";
 
 /** The extraction contract is intentionally small so the model never receives owner history. */
 export const contextFactExtractionPromptVersion = "context-fact-extraction.v1";
@@ -116,15 +116,6 @@ function minimumSensitivityForEvidence(content: string, evidence: string): Sensi
     restrictedEvidencePattern.test(evidence)
     ? "restricted"
     : "normal";
-}
-
-function sensitivityRank(value: Sensitivity) {
-  return value === "restricted" ? 3 : value === "sensitive" ? 2 : 1;
-}
-
-function atLeastSensitivity(base: Sensitivity, candidate: Sensitivity | undefined): Sensitivity {
-  if (!candidate || sensitivityRank(candidate) < sensitivityRank(base)) return base;
-  return candidate;
 }
 
 function isCandidateAllowed(candidate: ContextFactExtractionCandidate, message: string) {

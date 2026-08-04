@@ -1,6 +1,7 @@
 "use client";
 
 import type { ContextFactView, Sensitivity } from "@tendnote/domain";
+import Link from "next/link";
 import type { FormEvent } from "react";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import {
@@ -25,7 +26,9 @@ import {
   restoreSelfContextFactAction,
   updateSelfContextFactAction,
 } from "@/app/actions/context-facts";
+import { ContextFactImportInvitation } from "@/components/account/context-fact-import-invitation";
 import { SelfContextSetupInvitation } from "@/components/account/self-context-setup-invitation";
+import { appDestination } from "@/components/app-destinations";
 import { ChevronDownIcon } from "@/components/icons";
 import { SuggestedContextFactReviewCard } from "@/components/suggested-context-fact-review";
 import {
@@ -252,6 +255,8 @@ function AboutYouSurfaceContent({
 
   const activeFacts = facts.filter(isActiveSelfContextFact);
   const archivedFacts = facts.filter(isArchivedSelfContextFact);
+  const hasAnything =
+    activeFacts.length > 0 || archivedFacts.length > 0 || suggestedReviews.length > 0;
 
   useDeepLinkReveal((elementId) => {
     const archivedElementIds = new Set(archivedFacts.map((fact) => `context-fact-${fact.id}`));
@@ -299,6 +304,12 @@ function AboutYouSurfaceContent({
           Add a fact
         </Button>
       </div>
+
+      {/* The other way in, next to the first. At the bottom it sat below every
+          fact the owner already had, so the moment it answers - "do I have to
+          type all of this?" - had already passed. The empty state carries the
+          same offer as its next step, so this waits until there is a list. */}
+      {hasAnything ? <ContextFactImportInvitation id="about-you-import" /> : null}
 
       {announcement ? (
         <p
@@ -354,9 +365,16 @@ function AboutYouSurfaceContent({
         </section>
       ) : null}
 
-      {activeFacts.length === 0 && archivedFacts.length === 0 && suggestedReviews.length === 0 ? (
+      {!hasAnything ? (
         <EmptyState
-          description="Add one concise fact about your work, interests, location, preferences, or constraints."
+          action={
+            <Button asChild variant="outline">
+              <Link href={appDestination("account-about-you-import").route}>
+                Import from an assistant
+              </Link>
+            </Button>
+          }
+          description="Add one concise fact about your work, interests, location, preferences, or constraints — or bring over what an assistant you already use remembers."
           title="Nothing about you yet."
         />
       ) : null}

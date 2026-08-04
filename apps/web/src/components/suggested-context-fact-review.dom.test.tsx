@@ -74,6 +74,14 @@ function renderCard(
 beforeEach(() => vi.clearAllMocks());
 
 describe("SuggestedContextFactReviewCard", () => {
+  it("closes its controls when something outside the card holds it inert", () => {
+    renderCard({ disabled: true });
+
+    for (const name of ["Accept", "Edit", "Dismiss suggested fact"]) {
+      expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
   it("shows the tentative statement, bounded evidence, sensitivity, and no model confidence", () => {
     renderCard();
 

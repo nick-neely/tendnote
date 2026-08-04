@@ -69,13 +69,18 @@ export type ContextFactReviewQueryContext = {
   }) => ContextFactAuditLogInput;
 };
 
-function suggestionSuppressionKey(input: {
+type SuggestionSuppressionInput = {
   subject: ContextFact["subject"];
   category: ContextFact["category"];
   content: string;
   sensitivity: ContextFact["sensitivity"];
   provenance: ContextFact["provenance"];
-}): string {
+};
+
+function hashSuggestionSuppression(
+  input: SuggestionSuppressionInput,
+  provenance: Record<string, unknown>,
+): string {
   return createHash("sha256")
     .update(
       JSON.stringify({
@@ -83,10 +88,40 @@ function suggestionSuppressionKey(input: {
         category: input.category,
         content: normalizeContextFactContent(input.content),
         sensitivity: input.sensitivity,
-        provenance: input.provenance,
+        provenance,
       }),
     )
     .digest("hex");
+}
+
+/**
+ * Identifies the suggestion an owner rejected, so the same one is not proposed again.
+ *
+ * Provenance contributes only `channel` and `origin`. `sourceRecordId` names the
+ * session that happened to raise the suggestion, which is different on every import
+ * and would therefore make a dismissal expire the moment the owner imported again.
+ * What the owner rejected is the statement, not the sitting it came from.
+ */
+function suggestionSuppressionKey(input: SuggestionSuppressionInput): string {
+  return hashSuggestionSuppression(input, {
+    channel: input.provenance.channel,
+    origin: input.provenance.origin,
+  });
+}
+
+/**
+ * The keys a stored dismissal may be recorded under: the current one, plus the
+ * pre-#352 shape that hashed the whole provenance object.
+ *
+ * Dropping `sourceRecordId` changed the hash input for every suggestion, not just
+ * the imports it was fixing - even an ambient one, whose source id was already
+ * null, serializes differently now. Without this, deploying the fix would quietly
+ * resurrect every suggestion an owner had already dismissed. Writes only ever use
+ * the current key, so this can go once no `context_fact.review.dismiss` entry
+ * predating #352 is still within retention.
+ */
+function suggestionSuppressionKeys(input: SuggestionSuppressionInput): readonly string[] {
+  return [suggestionSuppressionKey(input), hashSuggestionSuppression(input, input.provenance)];
 }
 
 function hasGroundedEvidence(fact: ContextFact): boolean {
@@ -282,7 +317,7 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
     await assertSubjectBelongsToCaller({ callerUserId, subject: parsed.subject });
 
-    const suppressionKey = suggestionSuppressionKey({
+    const suppressionKeys = suggestionSuppressionKeys({
       subject: parsed.subject,
       category: parsed.category,
       content: parsed.content,
@@ -292,7 +327,8 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     const dismissedBefore = (await store.listAuditLogEntries({ ownerUserId: callerUserId })).some(
       (entry) =>
         entry.action === "context_fact.review.dismiss" &&
-        entry.metadataJson.suppressionKey === suppressionKey,
+        typeof entry.metadataJson.suppressionKey === "string" &&
+        suppressionKeys.includes(entry.metadataJson.suppressionKey),
     );
     if (dismissedBefore) {
       throw new ContextFactValidationError("That Context Fact suggestion was already dismissed.");
