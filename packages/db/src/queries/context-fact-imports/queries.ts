@@ -1,5 +1,6 @@
 import {
   type ContextFactImportCandidate,
+  type ContextFactImportProviderId,
   ContextFactValidationError,
   contextFactImportProvider,
   contextFactImportProviderSchema,
@@ -101,12 +102,52 @@ export function createContextFactImportQueries(
   }
 
   /**
+   * Turn one paste into candidates.
+   *
+   * The fenced Tendnote block is the fast path and never leaves the app. A fence
+   * the assistant filled with malformed lines is no more readable than no fence at
+   * all, so an empty block falls through to extraction rather than reporting
+   * nothing found, and its unreadable line count still travels with the result.
+   */
+  async function readPaste(input: { text: string; provider: ContextFactImportProviderId }) {
+    const block = parseContextFactImportBlock(
+      input.text,
+      contextFactImportProvider(input.provider),
+    );
+    const readableBlock = block && block.candidates.length > 0 ? block : null;
+    const candidates = readableBlock
+      ? readableBlock.candidates
+      : ((await extractionAdapter.extractCandidates({ text: input.text })).candidates ?? []);
+    const validated = validateContextFactImportCandidates({ candidates });
+
+    return {
+      source: readableBlock ? ("block" as const) : ("extraction" as const),
+      validCandidates: validated.validCandidates,
+      unreadableCount: (block?.unreadableLineCount ?? 0) + validated.rejectedCandidateCount,
+      // `source: "extraction"` only says the paste held no readable block. Without
+      // gateway credentials the deterministic adapter runs and nothing reads it, and
+      // the surface must not claim a model did.
+      readByModel: !readableBlock && extractionAdapter.kind === "llm",
+    };
+  }
+
+  function adapterProvenance() {
+    return {
+      adapterKind: extractionAdapter.kind,
+      ...(extractionAdapter.model ? { extractionModel: extractionAdapter.model } : {}),
+      ...(extractionAdapter.promptVersion
+        ? { promptVersion: extractionAdapter.promptVersion }
+        : {}),
+    };
+  }
+
+  /**
    * Read one paste from another assistant into review-gated Self Context.
    *
-   * The fenced Tendnote block is the fast path and never leaves the app. Loose prose
-   * falls back to one bounded extraction call over exactly this paste, and no owner
-   * history travels with it. Either way the result is `suggested` facts the owner
-   * still has to accept, because a third-party assistant's output is not authority.
+   * Loose prose costs one bounded extraction call over exactly this paste, and no
+   * owner history travels with it. Either way the result is `suggested` facts the
+   * owner still has to accept, because a third-party assistant's output is not
+   * authority.
    */
   async function importSelfContextFacts(
     input: ImportSelfContextFactsInput,
@@ -120,33 +161,29 @@ export function createContextFactImportQueries(
     }
     const callerUserId = verifiedCallerUserId;
 
-    const provider = contextFactImportProvider(parsed.provider);
-    // A fence the assistant filled with malformed lines is no more readable than
-    // no fence at all, so an empty block falls through to extraction rather than
-    // reporting nothing found. `unreadableLineCount` still travels with it.
-    const block = parseContextFactImportBlock(parsed.text, provider);
-    const readableBlock = block && block.candidates.length > 0 ? block : null;
-    const source = readableBlock ? "block" : "extraction";
-    const rawCandidates = readableBlock
-      ? readableBlock.candidates
-      : ((await extractionAdapter.extractCandidates({ text: parsed.text })).candidates ?? []);
-
-    const validated = validateContextFactImportCandidates({ candidates: rawCandidates });
-    const unreadableCount = (block?.unreadableLineCount ?? 0) + validated.rejectedCandidateCount;
-
+    const read = await readPaste({ text: parsed.text, provider: parsed.provider });
     const importRecord = await store.createContextFactImport({
       ownerUserId: callerUserId,
       provider: parsed.provider,
-      source,
+      source: read.source,
       textLength: parsed.text.length,
-      candidateCount: validated.validCandidates.length,
+      candidateCount: read.validCandidates.length,
     });
-
     const persisted = await persistCandidates({
       callerUserId,
-      candidates: validated.validCandidates,
+      candidates: read.validCandidates,
       importRecord,
     });
+    const summary = {
+      importId: importRecord.id,
+      provider: parsed.provider,
+      source: read.source,
+      suggestedCount: persisted.suggestedCount,
+      alreadyPendingCount: persisted.alreadyPendingCount,
+      skippedCount: persisted.skippedCount,
+      unreadableCount: read.unreadableCount,
+      readByModel: read.readByModel,
+    };
 
     await store.createAuditLogEntry({
       ownerUserId: callerUserId,
@@ -154,36 +191,14 @@ export function createContextFactImportQueries(
       entityType: "context_fact_import",
       entityId: importRecord.id,
       metadataJson: {
-        provider: parsed.provider,
-        source,
+        ...summary,
         textLength: parsed.text.length,
-        candidateCount: validated.validCandidates.length,
-        suggestedCount: persisted.suggestedCount,
-        alreadyPendingCount: persisted.alreadyPendingCount,
-        skippedCount: persisted.skippedCount,
-        unreadableCount,
-        adapterKind: extractionAdapter.kind,
-        ...(extractionAdapter.model ? { extractionModel: extractionAdapter.model } : {}),
-        ...(extractionAdapter.promptVersion
-          ? { promptVersion: extractionAdapter.promptVersion }
-          : {}),
+        candidateCount: read.validCandidates.length,
+        ...adapterProvenance(),
       },
     });
 
-    return {
-      summary: {
-        importId: importRecord.id,
-        provider: parsed.provider,
-        source,
-        suggestedCount: persisted.suggestedCount,
-        alreadyPendingCount: persisted.alreadyPendingCount,
-        skippedCount: persisted.skippedCount,
-        unreadableCount,
-        readByModel: source === "extraction" && extractionAdapter.kind === "llm",
-      },
-      reviews: persisted.reviews,
-      affectedScopes: persisted.affectedScopes,
-    };
+    return { summary, reviews: persisted.reviews, affectedScopes: persisted.affectedScopes };
   }
 
   return { importSelfContextFacts };
