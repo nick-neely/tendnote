@@ -67,6 +67,8 @@ function allowedSensitivityOptions(floor: Sensitivity) {
 
 type SuggestedContextFactEditFormProps = {
   fact: ContextFactView;
+  /** Closed by something outside this card, such as a bulk pass over the same list. */
+  disabled: boolean;
   draftContent: string;
   draftCategory: SelfContextCategory;
   draftSensitivity: Sensitivity;
@@ -82,6 +84,7 @@ type SuggestedContextFactEditFormProps = {
 
 function SuggestedContextFactEditForm({
   fact,
+  disabled,
   draftContent,
   draftCategory,
   draftSensitivity,
@@ -94,12 +97,16 @@ function SuggestedContextFactEditForm({
   onSensitivityChange,
   onCancel,
 }: SuggestedContextFactEditFormProps) {
+  // Busy and closed are different facts: the form obeys either, but only speaks
+  // for its own mutation.
+  const locked = pending || disabled;
+
   return (
     <form className="flex min-w-0 flex-col gap-3" onSubmit={onSubmit}>
       <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor={`${fact.id}-suggested-category`}>Category</Label>
         <Select
-          disabled={pending}
+          disabled={locked}
           onValueChange={(value) => onCategoryChange(value as SelfContextCategory)}
           value={draftCategory}
         >
@@ -120,7 +127,7 @@ function SuggestedContextFactEditForm({
       <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor={`${fact.id}-suggested-sensitivity`}>Sensitivity</Label>
         <Select
-          disabled={pending}
+          disabled={locked}
           onValueChange={(value) => onSensitivityChange(value as Sensitivity)}
           value={draftSensitivity}
         >
@@ -152,7 +159,7 @@ function SuggestedContextFactEditForm({
           aria-describedby={`${fact.id}-suggested-helper`}
           aria-invalid={validationError ? true : undefined}
           className="min-h-24 min-w-0 resize-y"
-          disabled={pending}
+          disabled={locked}
           id={`${fact.id}-suggested-content`}
           maxLength={500}
           onChange={(event) => onContentChange(event.target.value)}
@@ -167,12 +174,12 @@ function SuggestedContextFactEditForm({
         </p>
       </div>
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
-        <Button className="min-h-11 w-full sm:w-auto" disabled={pending} type="submit">
+        <Button className="min-h-11 w-full sm:w-auto" disabled={locked} type="submit">
           {pending ? "Accepting…" : "Accept edited fact"}
         </Button>
         <Button
           className="min-h-11 w-full sm:w-auto"
-          disabled={pending}
+          disabled={locked}
           onClick={onCancel}
           type="button"
           variant="ghost"
@@ -461,6 +468,7 @@ function SuggestedContextFactReviewCardContent({
 
   function submitEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (disabled) return;
     mutations.runAccept(
       event.currentTarget.querySelector<HTMLButtonElement>("[type=submit]") ??
         mutations.dismissButtonRef.current ??
@@ -475,6 +483,10 @@ function SuggestedContextFactReviewCardContent({
 
   const match = activeMatch;
   const focusedMatchId = match?.fact.id ?? mutations.conflictFactId;
+  // Everything the owner could act on is gated on this one value. Wiring the two
+  // control groups separately is what let the edit form stay live under a bulk
+  // pass that had already closed the read-only buttons.
+  const locked = pending || disabled;
 
   return (
     <div className="contents" data-suggestion-review-row>
@@ -504,6 +516,7 @@ function SuggestedContextFactReviewCardContent({
             onCategoryChange={setDraftCategory}
             onContentChange={setDraftContent}
             onSensitivityChange={setDraftSensitivity}
+            disabled={disabled}
             onSubmit={submitEdit}
             pending={pending}
             validationError={validationError}
@@ -530,7 +543,7 @@ function SuggestedContextFactReviewCardContent({
               onAccept={runAccept}
               onDismiss={runDismiss}
               onEdit={startEditing}
-              pending={pending || disabled}
+              pending={locked}
             />
           </div>
         ) : null}

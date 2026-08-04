@@ -139,6 +139,19 @@ async function bulkKeepReady(
   return screen.findByRole("button", { name: "Keep the 2 without conflicts" });
 }
 
+/** Holds the first accept open so assertions can land while the pass is still running. */
+function deferFirstAccept() {
+  let release: (() => void) | undefined;
+  acceptSuggestedContextFactAction.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = () => resolve({ ok: true, view: { fact: fact() } });
+      }),
+  );
+  acceptSuggestedContextFactAction.mockResolvedValue({ ok: true, view: { fact: fact() } });
+  return () => release?.();
+}
+
 describe("ContextFactImportSurface", () => {
   // Stands in for the real WindowProxy: `opener` has to be settable, because that
   // is how the handoff severs it without giving up the did-it-open answer.
@@ -408,15 +421,7 @@ describe("ContextFactImportSurface", () => {
 
   it("holds the cards inert while a bulk keep works through them", async () => {
     const user = userEvent.setup();
-    // The first accept is held open so the assertions land mid-pass.
-    let releaseFirst: (() => void) | undefined;
-    acceptSuggestedContextFactAction.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          releaseFirst = () => resolve({ ok: true, view: { fact: fact() } });
-        }),
-    );
-    acceptSuggestedContextFactAction.mockResolvedValue({ ok: true, view: { fact: fact() } });
+    const releaseFirst = deferFirstAccept();
 
     await user.click(await bulkKeepReady(user));
 
@@ -427,12 +432,38 @@ describe("ContextFactImportSurface", () => {
         (screen.getAllByRole("button", { name: "Accept" })[0] as HTMLButtonElement).disabled,
       ).toBe(true);
     });
-    releaseFirst?.();
+    releaseFirst();
 
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /Keep the/ })).toBeNull();
     });
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("closes a card that was mid-edit when the bulk keep started", async () => {
+    const user = userEvent.setup();
+    const releaseFirst = deferFirstAccept();
+    const keepAll = await bulkKeepReady(user);
+
+    await user.click(screen.getAllByRole("button", { name: "Edit" })[0] as HTMLElement);
+    await user.click(keepAll);
+
+    // The edit form is a separate control group from the read-only buttons, so a
+    // pass that closed only those would leave it able to launch a second accept on
+    // the same stale timestamp.
+    // Closed, but still labelled for its own state: this card is not accepting,
+    // it is only being held while the pass works through the list.
+    const submit = (await screen.findByRole("button", {
+      name: "Accept edited fact",
+    })) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    await user.click(submit);
+    expect(acceptSuggestedContextFactAction).toHaveBeenCalledTimes(1);
+
+    releaseFirst();
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /Keep the/ })).toBeNull();
+    });
   });
 
   it("returns the owner to where they came from", () => {
