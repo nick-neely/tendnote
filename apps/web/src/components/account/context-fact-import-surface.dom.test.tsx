@@ -99,7 +99,6 @@ function renderSurface(importAction = vi.fn()) {
     <ContextFactImportSurface
       backHref="/account/about-you"
       backLabel="Back to About you"
-      blockMarker={BLOCK_MARKER}
       importAction={importAction}
       maxTextLength={16_000}
       options={OPTIONS}
@@ -191,6 +190,18 @@ describe("ContextFactImportSurface", () => {
 
     await paste(user, "You run a software consultancy.");
 
+    expect(screen.getByText(/read this with its extraction model/)).toBeTruthy();
+  });
+
+  it("does not promise local reading for a block the import would not read", async () => {
+    const user = userEvent.setup();
+    renderSurface();
+
+    // The fence is there but no line parses, so the import falls through to the
+    // model. Promising otherwise would be a lie about where this paste is going.
+    await paste(user, [BLOCK_MARKER, "I run a software consultancy.", "```"].join("\n"));
+
+    expect(screen.queryByText(/your paste never leaves the app/)).toBeNull();
     expect(screen.getByText(/read this with its extraction model/)).toBeTruthy();
   });
 

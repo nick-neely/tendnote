@@ -85,6 +85,14 @@ describe("Self Context import route", () => {
     expect(markup).toContain("Back to setup");
   });
 
+  it("keeps the onboarding return on the link the assistant echoes back", async () => {
+    // The owner may follow that link hours later. Dropping `from` would land them
+    // on the import page with the wrong way out of it.
+    const markup = await renderRoute({ from: "onboarding" });
+
+    expect(markup).toContain("https://tendnote.test/account/about-you/import?from=onboarding");
+  });
+
   it("ignores a return target it does not own", async () => {
     // `from` is a closed enum, so a crafted value cannot turn this page — which
     // opens external tabs — into an open redirect.

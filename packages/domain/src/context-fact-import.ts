@@ -301,6 +301,22 @@ const blockPattern = new RegExp(
 );
 
 /**
+ * Whether this paste holds a block Tendnote can actually read.
+ *
+ * The surface promises an owner that a recognised paste never leaves the app, so
+ * it has to ask exactly the question the import will ask. Merely spotting the
+ * fence is not that question: a fence whose lines are all malformed falls through
+ * to extraction, and a promise made on the weaker test would be a lie about where
+ * the owner's memory is about to go.
+ */
+export function hasReadableContextFactImportBlock(text: string): boolean {
+  // The provider only shapes the evidence wording, which this predicate discards,
+  // so the answer is the same whichever assistant the paste turns out to be from.
+  const parsed = parseContextFactImportBlock(text, contextFactImportProvider("chatgpt"));
+  return (parsed?.candidates.length ?? 0) > 0;
+}
+
+/**
  * The fast path. When the assistant honored the requested block, Tendnote reads it
  * here and no part of the paste reaches a model, which is both instant and the more
  * private of the two routes. Returns null when there is no block to read, which is

@@ -1,6 +1,9 @@
 "use client";
 
-import type { ContextFactImportProviderId } from "@tendnote/domain/context-fact-import";
+import {
+  type ContextFactImportProviderId,
+  hasReadableContextFactImportBlock,
+} from "@tendnote/domain/context-fact-import";
 import Link from "next/link";
 import { useId, useRef, useState, useTransition } from "react";
 import { importSelfContextFactsAction as defaultImportAction } from "@/app/actions/context-fact-import";
@@ -38,8 +41,6 @@ export type ContextFactImportSurfaceProps = {
   options: readonly AssistantHandoffOption[];
   /** The instruction the owner hands to an assistant, built on the server. */
   prompt: string;
-  /** The fence the prompt asks for, used to tell the owner which path a paste will take. */
-  blockMarker: string;
   maxTextLength: number;
   backHref: string;
   backLabel: string;
@@ -58,7 +59,6 @@ export type ContextFactImportSurfaceProps = {
 export function ContextFactImportSurface({
   options,
   prompt,
-  blockMarker,
   maxTextLength,
   backHref,
   backLabel,
@@ -80,7 +80,10 @@ export function ContextFactImportSurface({
   const pasteRef = useRef<HTMLTextAreaElement>(null);
 
   const trimmed = text.trim();
-  const looksStructured = text.includes(blockMarker);
+  // The same question the import will ask, not the weaker "does it mention the
+  // fence" test: the helper below promises the owner where their memory is about
+  // to go, and a fence whose lines are all malformed goes to the model.
+  const readableHere = hasReadableContextFactImportBlock(text);
   // Over-long is shown, never trimmed away. Silently dropping the tail of a memory
   // export would leave the owner reviewing a partial import that looked complete.
   const overLength = trimmed.length > maxTextLength;
@@ -137,7 +140,7 @@ export function ContextFactImportSurface({
       return "That is more than one import can carry. Bring over the list of facts rather than the whole conversation.";
     }
     if (!trimmed) return "Private to you. Nothing is saved until you review it.";
-    return looksStructured
+    return readableHere
       ? "Tendnote knows this format and will read it here, so your paste never leaves the app."
       : "No Tendnote block found, so Tendnote will read this with its extraction model.";
   }

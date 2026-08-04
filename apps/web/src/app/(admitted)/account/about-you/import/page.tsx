@@ -2,7 +2,6 @@ import { resolveBetterAuthBaseUrl } from "@tendnote/auth";
 import {
   buildContextFactImportPrompt,
   buildContextFactImportProviderLink,
-  CONTEXT_FACT_IMPORT_BLOCK_LANGUAGE,
   contextFactImportProviders,
   MAX_CONTEXT_FACT_IMPORT_TEXT_LENGTH,
 } from "@tendnote/domain/context-fact-import";
@@ -58,10 +57,15 @@ export async function ContextFactImportContent({
 
   try {
     const { from } = await searchParams;
-    const back = from === "onboarding" ? ONBOARDING_RETURN : ABOUT_YOU_RETURN;
+    const fromOnboarding = from === "onboarding";
+    const back = fromOnboarding ? ONBOARDING_RETURN : ABOUT_YOU_RETURN;
     // The assistant is told where to send the owner back to, so the round trip ends
-    // on this page rather than wherever they happen to navigate next.
-    const returnUrl = `${resolveBetterAuthBaseUrl()}${destination.route}`;
+    // on this page rather than wherever they happen to navigate next. It carries
+    // `from` too: an owner who started in setup follows that link back hours later,
+    // and dropping the parameter would strand them on the wrong way out.
+    const returnUrl = `${resolveBetterAuthBaseUrl()}${destination.route}${
+      fromOnboarding ? "?from=onboarding" : ""
+    }`;
     const prompt = buildContextFactImportPrompt({ returnUrl });
     const options: AssistantHandoffOption[] = contextFactImportProviders.map((provider) => {
       const link = buildContextFactImportProviderLink(provider, prompt);
@@ -72,7 +76,6 @@ export async function ContextFactImportContent({
       <ContextFactImportSurface
         backHref={back.href}
         backLabel={back.label}
-        blockMarker={"```" + CONTEXT_FACT_IMPORT_BLOCK_LANGUAGE}
         maxTextLength={MAX_CONTEXT_FACT_IMPORT_TEXT_LENGTH}
         options={options}
         prompt={prompt}

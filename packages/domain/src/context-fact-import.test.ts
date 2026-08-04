@@ -6,6 +6,7 @@ import {
   contextFactImportEvidence,
   contextFactImportProvider,
   contextFactImportProviders,
+  hasReadableContextFactImportBlock,
   MAX_CONTEXT_FACT_IMPORT_CANDIDATES,
   MAX_CONTEXT_FACT_IMPORT_EVIDENCE_LENGTH,
   parseContextFactImportBlock,
@@ -137,6 +138,21 @@ describe("parseContextFactImportBlock", () => {
     );
 
     expect(parsed?.candidates).toHaveLength(1);
+  });
+
+  it("only calls a block readable when it yields a fact the import can use", () => {
+    // The surface promises "your paste never leaves the app" on this answer, so it
+    // has to match what the import does rather than merely spotting the fence.
+    expect(hasReadableContextFactImportBlock(block("work | normal | I run a consultancy."))).toBe(
+      true,
+    );
+    expect(
+      hasReadableContextFactImportBlock(block("I run a consultancy.", "based in Chicago")),
+    ).toBe(false);
+    expect(hasReadableContextFactImportBlock("I mention ```tendnote-context in passing.")).toBe(
+      false,
+    );
+    expect(hasReadableContextFactImportBlock("You run a consultancy.")).toBe(false);
   });
 
   it("keeps a pipe inside the statement out of the field split", () => {
