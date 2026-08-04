@@ -101,6 +101,22 @@ beforeEach(() => {
 });
 
 describe("AboutYouSurface", () => {
+  it("makes the assistant import path clear in the empty state", () => {
+    render(<AboutYouSurface initialFacts={[]} />);
+
+    expect(screen.getByText("Nothing about you yet.")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Already told another assistant?" })).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Ask ChatGPT, Claude, or Gemini what it remembers about you, paste the answer back, and keep only the parts you want.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Bring it over" }).getAttribute("href")).toBe(
+      "/account/about-you/import",
+    );
+    expect(screen.queryByRole("link", { name: "Import from an assistant" })).toBeNull();
+  });
+
   it("keeps suggested facts separate until the authoritative accept result becomes active", async () => {
     const user = userEvent.setup();
     const accepted = fact({

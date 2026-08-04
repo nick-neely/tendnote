@@ -148,7 +148,7 @@ function useFocusedFlow(ownerUserId: string) {
 
 function MobileRouteMain({ children }: { children: ReactNode }) {
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-gutter pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:py-8">
+    <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-[var(--tn-gutter)] pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:py-8">
       {children}
     </main>
   );
