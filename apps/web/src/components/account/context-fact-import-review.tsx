@@ -97,6 +97,8 @@ export function ContextFactImportReview({
   const [keepingRest, setKeepingRest] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
+  /** Every review already settled, so a bulk pass never resubmits one. */
+  const resolved = useRef(new Set<string>());
 
   // Reading is the moment the page changes shape, so the reader is moved to what
   // arrived rather than left at the button they pressed. Moving focus onto the
@@ -111,6 +113,7 @@ export function ContextFactImportReview({
   const keepable = reviews.filter((review) => review.activeMatch === null);
 
   function removeReview(contextFactId: string) {
+    resolved.current.add(contextFactId);
     setReviews((current) => current.filter((review) => review.fact.id !== contextFactId));
   }
 
@@ -122,6 +125,10 @@ export function ContextFactImportReview({
     let kept = 0;
     let unresolved = 0;
     for (const review of keepable) {
+      // A card whose own accept or dismiss landed while this loop was working is
+      // already settled. Submitting for it would fail on a stale timestamp and be
+      // counted as a failure the owner has to chase, when they had in fact handled it.
+      if (resolved.current.has(review.fact.id)) continue;
       try {
         const result = await acceptAction({
           contextFactId: review.fact.id,
@@ -172,6 +179,7 @@ export function ContextFactImportReview({
               <li key={review.fact.id}>
                 <SuggestedContextFactReviewCard
                   acceptAction={acceptAction}
+                  disabled={keepingRest}
                   onAccepted={(fact: ContextFactView) => onAnnounce(`Kept: ${fact.content}`)}
                   onResolve={removeReview}
                   review={review}

@@ -153,7 +153,7 @@ function usePasteImport({
   onImported: (view: SelfContextImportView) => void;
   selected: ContextFactImportProviderId | null;
 }) {
-  const [text, setText] = useState("");
+  const [text, setTextValue] = useState("");
   const [clipboardNote, setClipboardNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reading, startReading] = useTransition();
@@ -161,6 +161,17 @@ function usePasteImport({
 
   const trimmed = text.trim();
   const overLength = trimmed.length > maxTextLength;
+
+  /**
+   * Editing retracts whatever the last attempt said. A failure message and its
+   * `aria-invalid` left standing over replaced text describes content the owner
+   * can no longer see.
+   */
+  function setText(next: string) {
+    setTextValue(next);
+    setError(null);
+    setClipboardNote(null);
+  }
 
   async function pasteFromClipboard() {
     setClipboardNote(null);

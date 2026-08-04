@@ -123,6 +123,22 @@ async function readPaste(user: ReturnType<typeof userEvent.setup>, provider: Reg
   await user.click(screen.getByRole("button", { name: "Read this paste" }));
 }
 
+/** An import with two keepable rows reviewed and its bulk keep button in reach. */
+async function bulkKeepReady(
+  user: ReturnType<typeof userEvent.setup>,
+  extraReviews: SuggestedContextFactReviewView[] = [],
+) {
+  const view = importedView({ suggestedCount: 2 + extraReviews.length });
+  view.reviews = [
+    review(),
+    review({ id: "00000000-0000-4000-8000-000000000003", content: "I am based in Chicago." }),
+    ...extraReviews,
+  ];
+  renderSurface(vi.fn().mockResolvedValue({ ok: true, view }));
+  await readPaste(user, /ChatGPT/);
+  return screen.findByRole("button", { name: "Keep the 2 without conflicts" });
+}
+
 describe("ContextFactImportSurface", () => {
   // Stands in for the real WindowProxy: `opener` has to be settable, because that
   // is how the handoff severs it without giving up the did-it-open answer.
@@ -350,17 +366,9 @@ describe("ContextFactImportSurface", () => {
     const user = userEvent.setup();
     const conflicting = review({ id: "00000000-0000-4000-8000-000000000002" });
     conflicting.activeMatch = { kind: "conflict", fact: fact({ lifecycle: "active" }) };
-    const view = importedView({ suggestedCount: 3 });
-    view.reviews = [
-      review(),
-      review({ id: "00000000-0000-4000-8000-000000000003", content: "I am based in Chicago." }),
-      conflicting,
-    ];
     acceptSuggestedContextFactAction.mockResolvedValue({ ok: true, view: { fact: fact() } });
-    renderSurface(vi.fn().mockResolvedValue({ ok: true, view }));
 
-    await readPaste(user, /ChatGPT/);
-    await user.click(await screen.findByRole("button", { name: "Keep the 2 without conflicts" }));
+    await user.click(await bulkKeepReady(user, [conflicting]));
 
     await waitFor(() => {
       expect(acceptSuggestedContextFactAction).toHaveBeenCalledTimes(2);
@@ -382,6 +390,49 @@ describe("ContextFactImportSurface", () => {
     expect(
       (screen.getByRole("button", { name: "Read this paste" }) as HTMLButtonElement).disabled,
     ).toBe(true);
+  });
+
+  it("retracts a failed read once the owner edits the paste", async () => {
+    const user = userEvent.setup();
+    renderSurface(vi.fn().mockResolvedValue({ ok: false, error: "Budget exhausted." }));
+
+    await readPaste(user, /ChatGPT/);
+    expect((await screen.findByRole("alert")).textContent).toBe("Budget exhausted.");
+
+    await user.type(pasteBox(), " more");
+
+    // The message described content the owner has now replaced, so it goes with it.
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(pasteBox().getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("holds the cards inert while a bulk keep works through them", async () => {
+    const user = userEvent.setup();
+    // The first accept is held open so the assertions land mid-pass.
+    let releaseFirst: (() => void) | undefined;
+    acceptSuggestedContextFactAction.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseFirst = () => resolve({ ok: true, view: { fact: fact() } });
+        }),
+    );
+    acceptSuggestedContextFactAction.mockResolvedValue({ ok: true, view: { fact: fact() } });
+
+    await user.click(await bulkKeepReady(user));
+
+    // Mid-pass: the owner must not be able to start a second decision on a row the
+    // loop is about to take, which would fail on a stale timestamp.
+    await waitFor(() => {
+      expect(
+        (screen.getAllByRole("button", { name: "Accept" })[0] as HTMLButtonElement).disabled,
+      ).toBe(true);
+    });
+    releaseFirst?.();
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /Keep the/ })).toBeNull();
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("returns the owner to where they came from", () => {

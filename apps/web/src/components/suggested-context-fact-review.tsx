@@ -389,6 +389,12 @@ export function SuggestedContextFactReviewCard(props: {
   onAccepted?: (fact: ContextFactView) => void;
   acceptAction?: SuggestedContextFactAcceptAction;
   dismissAction?: SuggestedContextFactDismissAction;
+  /**
+   * Held inert by something outside the card, such as a bulk keep working through
+   * the same list. The card still shows its own pending wording for its own
+   * mutation; this only closes the controls.
+   */
+  disabled?: boolean;
 }) {
   return (
     <ReversibleMutationProvider>
@@ -403,12 +409,19 @@ function SuggestedContextFactReviewCardContent({
   onAccepted,
   acceptAction = acceptSuggestedContextFactAction,
   dismissAction = dismissSuggestedContextFactAction,
+  disabled = false,
 }: {
   review: SuggestedContextFactReviewView;
   onResolve: (contextFactId: string) => void;
   onAccepted?: (fact: ContextFactView) => void;
   acceptAction?: SuggestedContextFactAcceptAction;
   dismissAction?: SuggestedContextFactDismissAction;
+  /**
+   * Held inert by something outside the card, such as a bulk keep working through
+   * the same list. The card still shows its own pending wording for its own
+   * mutation; this only closes the controls.
+   */
+  disabled?: boolean;
 }) {
   const { fact, evidence, activeMatch } = review;
   const draft = useSuggestedContextFactDraft(fact);
@@ -517,7 +530,7 @@ function SuggestedContextFactReviewCardContent({
               onAccept={runAccept}
               onDismiss={runDismiss}
               onEdit={startEditing}
-              pending={pending}
+              pending={pending || disabled}
             />
           </div>
         ) : null}
