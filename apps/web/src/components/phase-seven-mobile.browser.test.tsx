@@ -12,9 +12,11 @@ import {
   focusAndPressEnter,
 } from "@/test/browser-context-fact-helpers";
 import { AboutYouSurface } from "./account/about-you-surface";
+import { ActionsSurface } from "./actions-surface";
 import { AppShell } from "./app-shell";
 import { AppShellEffects } from "./app-shell-effects";
 import { MobileTodayDestination } from "./mobile-today-destination";
+import { PeopleList } from "./people-list";
 import { ReminderOptInInvitation } from "./reminder-opt-in-invitation";
 import { ReviewQueueSection } from "./review-queue-section";
 
@@ -648,12 +650,10 @@ describe("Phase Seven phone browser proof", () => {
   /**
    * The phone gutter, asserted against real computed style rather than class names.
    *
-   * `px-gutter` and `mx-bleed` are custom `@utility` rules over `--tn-gutter`, and
-   * both ways of getting that wrong fail silently: a `--spacing-gutter` theme key
-   * generates no utility at all, and a variable named `--gutter` is dropped from
-   * the output by something upstream in the registry CSS. In either case the class
-   * still lands on the element and the padding is quietly zero - every mobile
-   * screen goes edge-to-edge and nothing throws. So this measures the pixels.
+   * The route frame uses the built-in token-backed utility over `--tn-gutter`, while
+   * `px-gutter` and `mx-bleed` remain custom utilities for other mobile surfaces.
+   * A missing token or utility leaves every mobile screen edge-to-edge without
+   * throwing, so this measures the pixels.
    */
   it("gives the phone shell one gutter that a full-bleed bar cancels exactly", async () => {
     await page.viewport(390, 844);
@@ -662,7 +662,7 @@ describe("Phase Seven phone browser proof", () => {
         <div className="mx-bleed" data-testid="bleed-bar">
           Sticky bar
         </div>
-        <p>Padded content</p>
+        <p data-testid="padded-content">Padded content</p>
       </AppShell>,
     );
 
@@ -671,11 +671,19 @@ describe("Phase Seven phone browser proof", () => {
     expect(gutter).toBeGreaterThan(0);
     expect(Number.parseFloat(getComputedStyle(main).paddingRight)).toBe(gutter);
 
+    // Destination pages sit directly inside this main. Their headings, copy, and
+    // framed controls must share the same inset; the border itself cannot touch
+    // the viewport edge on a phone.
+    const content = container.querySelector('[data-testid="padded-content"]') as HTMLElement;
+    const contentBox = content.getBoundingClientRect();
+    const mainBox = main.getBoundingClientRect();
+    expect(contentBox.left).toBeCloseTo(mainBox.left + gutter, 1);
+    expect(contentBox.right).toBeCloseTo(mainBox.right - gutter, 1);
+
     // A bar marked `mx-bleed` reaches both screen edges - no wider, no narrower -
     // which is the whole contract the person and asset ledger toolbars rely on.
     const bar = container.querySelector('[data-testid="bleed-bar"]') as HTMLElement;
     const barBox = bar.getBoundingClientRect();
-    const mainBox = main.getBoundingClientRect();
     expect(barBox.left).toBeCloseTo(mainBox.left, 1);
     expect(barBox.right).toBeCloseTo(mainBox.right, 1);
     expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
@@ -689,6 +697,33 @@ describe("Phase Seven phone browser proof", () => {
     await expect
       .poll(() => Number.parseFloat(getComputedStyle(main).paddingLeft))
       .toBeGreaterThan(gutter);
+  });
+
+  it.each([
+    "actions",
+    "people",
+  ] as const)("keeps the %s destination content inside the phone gutter", async (destination) => {
+    await page.viewport(390, 844);
+    const container = await mount(
+      <AppShell ownerUserId="owner-1">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6" data-testid="route-surface">
+          <header>
+            <h1>{destination === "actions" ? "Actions" : "People"}</h1>
+          </header>
+          {destination === "actions" ? (
+            <ActionsSurface active={[]} areas={[]} />
+          ) : (
+            <PeopleList people={[]} />
+          )}
+        </div>
+      </AppShell>,
+    );
+
+    const surface = container.querySelector('[data-testid="route-surface"]') as HTMLElement;
+    const surfaceBox = surface.getBoundingClientRect();
+    expect(surfaceBox.left).toBeGreaterThan(0);
+    expect(surfaceBox.right).toBeLessThan(window.innerWidth);
+    expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
   });
 
   it("shows iOS installation guidance without exposing platform permission early", async () => {
