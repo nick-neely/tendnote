@@ -6,6 +6,7 @@ import {
   persistContextFactSchema,
 } from "@tendnote/domain";
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import { auditLog, contextFacts, householdMemberships } from "../../schema";
 import { isPersistedContextFactId } from "./id";
@@ -196,6 +197,26 @@ function contextFactFromInsertResult(result: ContextFactInsertResult): ContextFa
   return fromRow(result.row);
 }
 
+/**
+ * Match an optimistic-concurrency timestamp at the resolution the caller can see.
+ *
+ * `timestamptz` keeps microseconds and `now()` fills them in, but the driver hands
+ * JavaScript a `Date`, which cannot hold them. So a client that reads `updated_at`
+ * and sends it back is necessarily sending a millisecond truncation of the stored
+ * value, and an exact comparison rejects every row Postgres timestamped itself -
+ * which is every freshly created fact. The token is the instant as the caller
+ * observed it, so that is the precision the comparison uses.
+ *
+ * The in-memory store cannot reproduce this: both sides are `Date` there, so the
+ * mismatch only exists against real Postgres.
+ */
+function matchesObservedInstant(column: AnyPgColumn, expected: Date) {
+  // Bound as an ISO string with an explicit cast: a raw `sql` template does not
+  // route the value through the column's serializer, so handing it a `Date`
+  // reaches the driver as a `Date` and the query throws.
+  return sql`date_trunc('milliseconds', ${column}) = ${expected.toISOString()}::timestamptz`;
+}
+
 export function createDrizzleContextFactStore(): ContextFactStore {
   return {
     async createContextFact(input) {
@@ -239,10 +260,10 @@ export function createDrizzleContextFactStore(): ContextFactStore {
       if (!subject) return null;
       const lifecycle = input.lifecycle ? eq(contextFacts.lifecycle, input.lifecycle) : undefined;
       const expectedUpdatedAt = input.expectedUpdatedAt
-        ? eq(contextFacts.updatedAt, input.expectedUpdatedAt)
+        ? matchesObservedInstant(contextFacts.updatedAt, input.expectedUpdatedAt)
         : undefined;
       const expectedArchivedAt = input.expectedArchivedAt
-        ? eq(contextFacts.archivedAt, input.expectedArchivedAt)
+        ? matchesObservedInstant(contextFacts.archivedAt, input.expectedArchivedAt)
         : undefined;
       const where = and(
         eq(contextFacts.id, input.contextFactId),
@@ -275,7 +296,7 @@ export function createDrizzleContextFactStore(): ContextFactStore {
       if (!subject) return false;
       const lifecycle = input.lifecycle ? eq(contextFacts.lifecycle, input.lifecycle) : undefined;
       const expectedUpdatedAt = input.expectedUpdatedAt
-        ? eq(contextFacts.updatedAt, input.expectedUpdatedAt)
+        ? matchesObservedInstant(contextFacts.updatedAt, input.expectedUpdatedAt)
         : undefined;
       const where = and(
         eq(contextFacts.id, input.contextFactId),

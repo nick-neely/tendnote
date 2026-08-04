@@ -155,6 +155,57 @@ describe("parseContextFactImportBlock", () => {
     expect(hasReadableContextFactImportBlock("You run a consultancy.")).toBe(false);
   });
 
+  it("reads the rows an assistant's own copy button hands over", () => {
+    // Every provider renders the block with its own copy button, and that button
+    // copies the block's contents - so the paste an owner actually makes has no
+    // fence around it. This is the common case, not the exception.
+    const copied = [
+      "work | normal | I work remotely as a software consultant.",
+      "location | normal | I'm based in Dubuque, Iowa.",
+      "other | normal | I have three cats.",
+    ].join("\n");
+
+    const parsed = parseContextFactImportBlock(copied, chatgpt);
+
+    expect(parsed?.candidates).toHaveLength(3);
+    expect(parsed?.unreadableLineCount).toBe(0);
+    expect(hasReadableContextFactImportBlock(copied)).toBe(true);
+  });
+
+  it("ignores the prose an assistant wraps around unfenced rows", () => {
+    const parsed = parseContextFactImportBlock(
+      [
+        "Here's what I remember about you:",
+        "work | normal | I run a software consultancy.",
+        "",
+        "Copy the block above, then open http://localhost:3000/account/about-you/import and paste it in.",
+      ].join("\n"),
+      chatgpt,
+    );
+
+    // Only a line carrying a pipe was trying to be a row, so the surrounding
+    // sentences are not reported back as lines Tendnote could not read.
+    expect(parsed?.candidates).toHaveLength(1);
+    expect(parsed?.unreadableLineCount).toBe(0);
+  });
+
+  it("still counts a malformed row when it was unfenced", () => {
+    const parsed = parseContextFactImportBlock(
+      ["work | normal | I run a consultancy.", "nonsense | normal | I like trail running."].join(
+        "\n",
+      ),
+      chatgpt,
+    );
+
+    expect(parsed?.candidates).toHaveLength(1);
+    expect(parsed?.unreadableLineCount).toBe(1);
+  });
+
+  it("returns null for prose that holds no rows at all", () => {
+    expect(parseContextFactImportBlock("I think you like trail running.", chatgpt)).toBeNull();
+    expect(parseContextFactImportBlock("Sorry, I don't remember anything.", chatgpt)).toBeNull();
+  });
+
   it("keeps a pipe inside the statement out of the field split", () => {
     const parsed = parseContextFactImportBlock(
       block("preference | normal | I prefer concise answers | short ones."),

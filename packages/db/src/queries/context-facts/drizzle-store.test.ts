@@ -153,6 +153,9 @@ describe("Context Fact Drizzle store guards", () => {
     const renderedWhere = new PgDialect().sqlToQuery(capturedUpdateWhere as never);
     expect(renderedWhere.sql).toContain("subject_user_id");
     expect(renderedWhere.params).toEqual(expect.arrayContaining([factRow.id, "owner-1", "active"]));
+    // Nothing reaches the driver as a `Date`: pg needs strings for these, and a
+    // `Date` here is the failure that only shows up against real Postgres.
+    expect(renderedWhere.params.some((param) => param instanceof Date)).toBe(false);
     await expect(
       store.createAuditLogEntry({
         ownerUserId: "owner-1",
@@ -162,6 +165,25 @@ describe("Context Fact Drizzle store guards", () => {
         metadataJson: auditRow.metadataJson,
       }),
     ).resolves.toMatchObject({ ownerUserId: "owner-1", action: "context_fact.create" });
+  });
+
+  it("compares an optimistic timestamp at the precision a caller can observe", () => {
+    // `timestamptz` keeps microseconds and `now()` fills them in, but the driver
+    // hands JavaScript a `Date`, which truncates to milliseconds. An exact
+    // comparison therefore rejects every row Postgres timestamped itself, which is
+    // every freshly created fact - accept, edit, archive and delete all fail with
+    // "That suggestion changed elsewhere" on their first attempt.
+    //
+    // This lives on the generated SQL because the in-memory store compares two
+    // `Date`s and cannot express the mismatch at all.
+    expect(source).toContain("date_trunc('milliseconds'");
+    expect(source).not.toContain("eq(contextFacts.updatedAt, input.expectedUpdatedAt)");
+    expect(source).not.toContain("eq(contextFacts.archivedAt, input.expectedArchivedAt)");
+    // A raw `sql` template does not route its values through the column
+    // serializer, so the instant has to be bound as a cast string. Handing it a
+    // `Date` renders identical SQL and then throws in the driver.
+    expect(source).toContain("expected.toISOString()");
+    expect(source).toContain("::timestamptz");
   });
 
   it("enforces the suggested-fact cap inside the persistence transaction", async () => {

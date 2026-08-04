@@ -316,19 +316,47 @@ export function hasReadableContextFactImportBlock(text: string): boolean {
   return (parsed?.candidates.length ?? 0) > 0;
 }
 
+type ImportBlockLine = { candidate?: ContextFactImportCandidate; unreadable: boolean };
+
+function readBlockLine(line: string, provider: ContextFactImportProvider): ImportBlockLine {
+  const [category, sensitivity, content, ...extra] = line.split("|").map((field) => field.trim());
+  if (extra.length > 0 || category === undefined || sensitivity === undefined || !content) {
+    return { unreadable: true };
+  }
+
+  const parsed = contextFactImportCandidateSchema.safeParse({
+    category: category.toLowerCase(),
+    content,
+    evidence: contextFactImportEvidence(provider.name, content),
+    sensitivity: sensitivity.toLowerCase(),
+  });
+  return parsed.success ? { candidate: parsed.data, unreadable: false } : { unreadable: true };
+}
+
 /**
- * The fast path. When the assistant honored the requested block, Tendnote reads it
- * here and no part of the paste reaches a model, which is both instant and the more
- * private of the two routes. Returns null when there is no block to read, which is
- * the caller's signal to fall back to extraction.
+ * The fast path. When the assistant produced the requested rows, Tendnote reads
+ * them here and no part of the paste reaches a model, which is both instant and
+ * the more private of the two routes. Returns null when there is nothing to read,
+ * which is the caller's signal to fall back to extraction.
+ *
+ * The fence is optional, because in practice it is usually gone. Every assistant
+ * renders a fenced block with its own copy button, and that button copies the
+ * block's *contents* - so the paste an owner actually makes is bare rows with no
+ * fence around them. Requiring the fence would send the common case to the model.
+ *
+ * A row is self-identifying enough to read without one: three pipe-delimited
+ * fields whose first is a known category and whose second is a known sensitivity.
+ * Ordinary prose does not collide with that, so unfenced text is read row by row
+ * and everything else in it is simply not a row. Inside a fence every non-empty
+ * line was meant to be one, so anything unparsed there is still counted as
+ * unreadable; outside one, only a line carrying a `|` was making the attempt.
  */
 export function parseContextFactImportBlock(
   text: string,
   provider: ContextFactImportProvider,
 ): ParsedContextFactImportBlock | null {
-  const block = blockPattern.exec(text);
-  const body = block?.[1];
-  if (body === undefined) return null;
+  const fenced = blockPattern.exec(text)?.[1];
+  const body = fenced ?? text;
 
   const candidates: ContextFactImportCandidate[] = [];
   let unreadableLineCount = 0;
@@ -336,27 +364,16 @@ export function parseContextFactImportBlock(
   for (const rawLine of body.split("\n")) {
     const line = rawLine.trim();
     if (!line) continue;
+    if (fenced === undefined && !line.includes("|")) continue;
 
-    const [category, sensitivity, content, ...extra] = line.split("|").map((field) => field.trim());
-    if (extra.length > 0 || category === undefined || sensitivity === undefined || !content) {
-      unreadableLineCount += 1;
-      continue;
-    }
-
-    const parsed = contextFactImportCandidateSchema.safeParse({
-      category: category.toLowerCase(),
-      content,
-      evidence: contextFactImportEvidence(provider.name, content),
-      sensitivity: sensitivity.toLowerCase(),
-    });
-    if (!parsed.success) {
-      unreadableLineCount += 1;
-      continue;
-    }
-
-    candidates.push(parsed.data);
+    const read = readBlockLine(line, provider);
+    if (read.candidate) candidates.push(read.candidate);
+    else unreadableLineCount += 1;
   }
 
+  // Unfenced, the rows are the only evidence this was a Tendnote paste at all, so
+  // finding none means there is nothing here to read rather than a broken block.
+  if (fenced === undefined && candidates.length === 0) return null;
   return { candidates, unreadableLineCount };
 }
 

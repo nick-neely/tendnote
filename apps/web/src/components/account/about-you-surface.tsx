@@ -305,6 +305,12 @@ function AboutYouSurfaceContent({
         </Button>
       </div>
 
+      {/* The other way in, next to the first. At the bottom it sat below every
+          fact the owner already had, so the moment it answers - "do I have to
+          type all of this?" - had already passed. The empty state carries the
+          same offer as its next step, so this waits until there is a list. */}
+      {hasAnything ? <ContextFactImportInvitation id="about-you-import" /> : null}
+
       {announcement ? (
         <p
           aria-live="polite"
@@ -471,11 +477,6 @@ function AboutYouSurfaceContent({
           </Collapsible>
         </section>
       ) : null}
-
-      {/* The empty state already carries this offer as its next step, so the
-          durable aside only appears once About you has something in it. Two
-          buttons to the same place is not two offers. */}
-      {hasAnything ? <ContextFactImportInvitation id="about-you-import" /> : null}
 
       {offerGuidedSetup ? (
         <SelfContextSetupInvitation
