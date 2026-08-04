@@ -1,7 +1,7 @@
 "use client";
 
 import type { ContextFactImportProviderId } from "@tendnote/domain/context-fact-import";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ContextFactImportStep } from "@/components/account/context-fact-import-step";
 import { AssistantProviderMark } from "@/components/assistant-provider-marks";
 import { CheckIcon, CopyIcon } from "@/components/icons";
@@ -62,9 +62,13 @@ export function ContextFactImportHandoff({
 }) {
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [promptCopied, setPromptCopied] = useState(false);
+  /** The most recently pressed provider, so a slower click cannot describe a newer one. */
+  const latestRequest = useRef<ContextFactImportProviderId | null>(null);
 
   function openAssistant(provider: AssistantHandoffOption) {
     onSelect(provider.id);
+    latestRequest.current = provider.id;
+
     // Both calls have to start inside this click. Awaiting the clipboard write
     // first would detach `window.open` from the gesture and get the tab blocked,
     // so the copy is kicked off and settled afterwards.
@@ -78,11 +82,20 @@ export function ContextFactImportHandoff({
         copied = false;
       });
 
-    const opened = window.open(provider.href, "_blank", "noopener,noreferrer") !== null;
+    // `noopener` in the feature string makes `window.open` return null even on
+    // success, which would report every working handoff as a blocked popup. The
+    // opener is severed on the handle instead, which keeps reverse tabnabbing shut
+    // and still leaves a truthful answer about whether the tab actually opened.
+    const opened = window.open(provider.href, "_blank");
+    if (opened) opened.opener = null;
 
-    // The outcome is announced by the visible line below, not repeated into the
-    // page's live region: one sentence in two places is read to a screen reader twice.
-    void Promise.resolve(copying).then(() => setHandoff({ provider, copied, opened }));
+    void Promise.resolve(copying).then(() => {
+      // A second click while this one was settling owns the message now.
+      if (latestRequest.current !== provider.id) return;
+      // The outcome is announced by the visible line below, not repeated into the
+      // page's live region: one sentence in two places is read to a screen reader twice.
+      setHandoff({ provider, copied, opened: opened !== null });
+    });
   }
 
   async function copyPrompt() {

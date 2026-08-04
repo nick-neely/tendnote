@@ -124,9 +124,14 @@ async function readPaste(user: ReturnType<typeof userEvent.setup>, provider: Reg
 }
 
 describe("ContextFactImportSurface", () => {
+  // Stands in for the real WindowProxy: `opener` has to be settable, because that
+  // is how the handoff severs it without giving up the did-it-open answer.
+  let opened: { opener: Window | null };
+
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(window, "open").mockReturnValue({} as Window);
+    opened = { opener: window };
+    vi.spyOn(window, "open").mockReturnValue(opened as unknown as Window);
   });
 
   it("offers all three assistants and says what each button will do", () => {
@@ -148,12 +153,25 @@ describe("ContextFactImportSurface", () => {
     await user.click(screen.getByRole("button", { name: /Claude/ }));
 
     expect(await navigator.clipboard.readText()).toBe(PROMPT);
-    expect(window.open).toHaveBeenCalledWith(
-      "https://claude.ai/new",
-      "_blank",
-      "noopener,noreferrer",
-    );
+    // No `noopener` in the feature string: it forces a null return even on success,
+    // which would report every working handoff as a blocked popup. The opener is
+    // severed on the handle instead.
+    expect(window.open).toHaveBeenCalledWith("https://claude.ai/new", "_blank");
+    expect(opened.opener).toBeNull();
     expect((await screen.findByText(/Paste it into Claude and send it/)).textContent).toBeTruthy();
+  });
+
+  it("does not describe a click the owner has already moved on from", async () => {
+    const user = userEvent.setup();
+    renderSurface();
+
+    await user.click(screen.getByRole("button", { name: /ChatGPT/ }));
+    await user.click(screen.getByRole("button", { name: /Claude/ }));
+
+    // Whichever clipboard write settles last, the visible line has to describe the
+    // provider that is actually selected.
+    expect(await screen.findByText(/Paste it into Claude and send it/)).toBeTruthy();
+    expect(screen.queryByText(/ChatGPT opened/)).toBeNull();
   });
 
   it("says the prompt is still on the clipboard when the tab is blocked", async () => {
