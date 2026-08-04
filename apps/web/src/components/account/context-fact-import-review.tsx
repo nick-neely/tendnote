@@ -8,6 +8,7 @@ import type {
   AcceptSuggestedContextFactActionInput,
   SuggestedContextFactMutationResult,
 } from "@/app/actions/context-fact-review";
+import { acceptSuggestedContextFactAction as defaultAcceptSuggestedContextFactAction } from "@/app/actions/context-fact-review";
 import { ContextFactImportStep } from "@/components/account/context-fact-import-step";
 import { SuggestedContextFactReviewCard } from "@/components/suggested-context-fact-review";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,52 @@ type AcceptAction = (
 ) => Promise<SuggestedContextFactMutationResult>;
 
 /**
+ * What the import did, in the owner's terms. Focus lands here when results arrive,
+ * which is also what announces it, so none of this is repeated into a live region.
+ */
+function ImportSummary({
+  ref,
+  summary,
+}: {
+  ref: React.Ref<HTMLDivElement>;
+  summary: SelfContextImportView["summary"];
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1 outline-none" ref={ref} tabIndex={-1}>
+      <p className="break-words text-[length:var(--text-body)] leading-[var(--text-body-line)] font-medium">
+        {contextFactImportHeadline(summary)}
+      </p>
+      <p className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
+        {contextFactImportSourceNote(summary)}
+      </p>
+      {contextFactImportNotes(summary).map((note) => (
+        <p
+          className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground"
+          key={note}
+        >
+          {note}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** Nothing left to review reads differently from nothing arrived, so they are named apart. */
+function emptyReviewCopy(imported: SelfContextImportView) {
+  const broughtSomething =
+    imported.summary.suggestedCount > 0 || imported.summary.alreadyPendingCount > 0;
+  return broughtSomething
+    ? {
+        title: "Nothing left to review.",
+        description: "You have reviewed everything this import brought over.",
+      }
+    : {
+        title: "No facts came through.",
+        description: contextFactImportEmptyHint(imported.summary),
+      };
+}
+
+/**
  * What one import brought over, and the decisions still open on it.
  *
  * Nothing here is context yet. Every row is a `suggested` fact that stays out of
@@ -33,13 +80,13 @@ type AcceptAction = (
  * Phase 7.5 contract requires of imported facts, not a confirmation screen.
  */
 export function ContextFactImportReview({
-  acceptAction,
+  acceptAction = defaultAcceptSuggestedContextFactAction,
   backHref,
   backLabel,
   imported,
   onAnnounce,
 }: {
-  acceptAction: AcceptAction;
+  acceptAction?: AcceptAction;
   backHref: string;
   backLabel: string;
   imported: SelfContextImportView;
@@ -62,8 +109,6 @@ export function ContextFactImportReview({
   }, [imported]);
 
   const keepable = reviews.filter((review) => review.activeMatch === null);
-  const broughtSomething =
-    imported.summary.suggestedCount > 0 || imported.summary.alreadyPendingCount > 0;
 
   function removeReview(contextFactId: string) {
     setReviews((current) => current.filter((review) => review.fact.id !== contextFactId));
@@ -109,22 +154,7 @@ export function ContextFactImportReview({
       step={3}
       title="Keep what fits"
     >
-      <div className="flex min-w-0 flex-col gap-1 outline-none" ref={summaryRef} tabIndex={-1}>
-        <p className="break-words text-[length:var(--text-body)] leading-[var(--text-body-line)] font-medium">
-          {contextFactImportHeadline(imported.summary)}
-        </p>
-        <p className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-          {contextFactImportSourceNote(imported.summary)}
-        </p>
-        {contextFactImportNotes(imported.summary).map((note) => (
-          <p
-            className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground"
-            key={note}
-          >
-            {note}
-          </p>
-        ))}
-      </div>
+      <ImportSummary ref={summaryRef} summary={imported.summary} />
 
       {reviews.length === 0 ? (
         <EmptyState
@@ -133,12 +163,7 @@ export function ContextFactImportReview({
               <Link href={backHref}>{backLabel}</Link>
             </Button>
           }
-          description={
-            broughtSomething
-              ? "You have reviewed everything this import brought over."
-              : contextFactImportEmptyHint(imported.summary)
-          }
-          title={broughtSomething ? "Nothing left to review." : "No facts came through."}
+          {...emptyReviewCopy(imported)}
         />
       ) : (
         <>

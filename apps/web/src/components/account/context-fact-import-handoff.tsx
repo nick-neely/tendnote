@@ -30,7 +30,7 @@ type Handoff = {
  * other two, and a popup blocker can take the tab either way, so the copy has to
  * cover all four outcomes rather than promise one.
  */
-export function handoffLabel(handoff: Handoff): string {
+function handoffLabel(handoff: Handoff): string {
   const { provider, copied, opened } = handoff;
   if (!opened) {
     return copied
