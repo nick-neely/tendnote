@@ -13,6 +13,7 @@ import {
 export type AppDestinationId =
   | "account"
   | "account-about-you"
+  | "account-about-you-import"
   | "account-contact-import"
   | "account-discord"
   | "onboarding-self-context"
@@ -166,6 +167,15 @@ export const appDestinations = [
     icon: CircleUserRoundIcon,
     groups: [],
     reserve: { heading: "About you", shape: "ledger" },
+    scopes: [owner("account"), owner("context-facts")],
+  },
+  {
+    id: "account-about-you-import",
+    route: "/account/about-you/import",
+    label: "Import from an assistant",
+    icon: CircleUserRoundIcon,
+    groups: [],
+    reserve: { heading: "Import from an assistant", shape: "ledger" },
     scopes: [owner("account"), owner("context-facts")],
   },
   {

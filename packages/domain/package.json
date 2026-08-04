@@ -16,6 +16,7 @@
     "./context-facts": "./src/context-facts.ts",
     "./context-fact-extraction": "./src/context-fact-extraction.ts",
     "./context-fact-extraction-jobs": "./src/context-fact-extraction-jobs.ts",
+    "./context-fact-import": "./src/context-fact-import.ts",
     "./context-fact-orientation": "./src/context-fact-orientation.ts",
     "./context-fact-categories": "./src/context-fact-categories.ts",
     "./conversational-capture": "./src/conversational-capture.ts",

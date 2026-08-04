@@ -69,6 +69,14 @@ export type ContextFactReviewQueryContext = {
   }) => ContextFactAuditLogInput;
 };
 
+/**
+ * Identifies the suggestion an owner rejected, so the same one is not proposed again.
+ *
+ * Provenance contributes only `channel` and `origin`. `sourceRecordId` names the
+ * session that happened to raise the suggestion, which is different on every import
+ * and would therefore make a dismissal expire the moment the owner imported again.
+ * What the owner rejected is the statement, not the sitting it came from.
+ */
 function suggestionSuppressionKey(input: {
   subject: ContextFact["subject"];
   category: ContextFact["category"];
@@ -83,7 +91,10 @@ function suggestionSuppressionKey(input: {
         category: input.category,
         content: normalizeContextFactContent(input.content),
         sensitivity: input.sensitivity,
-        provenance: input.provenance,
+        provenance: {
+          channel: input.provenance.channel,
+          origin: input.provenance.origin,
+        },
       }),
     )
     .digest("hex");

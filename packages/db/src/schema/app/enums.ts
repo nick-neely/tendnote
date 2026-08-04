@@ -304,6 +304,23 @@ export const contextFactExtractionJobStatus = pgEnum("context_fact_extraction_jo
   "dead_lettered",
 ]);
 
+// The assistants an owner can carry Self Context over from. This is a closed set
+// because each entry is a hand-checked chat URL and prefill behavior, not a
+// user-managed provider list.
+export const contextFactImportProvider = pgEnum("context_fact_import_provider", [
+  "chatgpt",
+  "claude",
+  "gemini",
+]);
+
+// How Tendnote read one paste: `block` parsed the requested fenced format locally
+// and no part of the paste reached a model; `extraction` fell back to one bounded
+// model call over loose prose.
+export const contextFactImportSource = pgEnum("context_fact_import_source", [
+  "block",
+  "extraction",
+]);
+
 export const semanticRecordKind = pgEnum("semantic_record_kind", [
   "memory",
   "source_record",

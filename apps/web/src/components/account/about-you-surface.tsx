@@ -1,6 +1,7 @@
 "use client";
 
 import type { ContextFactView, Sensitivity } from "@tendnote/domain";
+import Link from "next/link";
 import type { FormEvent } from "react";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import {
@@ -25,7 +26,9 @@ import {
   restoreSelfContextFactAction,
   updateSelfContextFactAction,
 } from "@/app/actions/context-facts";
+import { ContextFactImportInvitation } from "@/components/account/context-fact-import-invitation";
 import { SelfContextSetupInvitation } from "@/components/account/self-context-setup-invitation";
+import { appDestination } from "@/components/app-destinations";
 import { ChevronDownIcon } from "@/components/icons";
 import { SuggestedContextFactReviewCard } from "@/components/suggested-context-fact-review";
 import {
@@ -356,7 +359,14 @@ function AboutYouSurfaceContent({
 
       {activeFacts.length === 0 && archivedFacts.length === 0 && suggestedReviews.length === 0 ? (
         <EmptyState
-          description="Add one concise fact about your work, interests, location, preferences, or constraints."
+          action={
+            <Button asChild variant="outline">
+              <Link href={appDestination("account-about-you-import").route}>
+                Import from an assistant
+              </Link>
+            </Button>
+          }
+          description="Add one concise fact about your work, interests, location, preferences, or constraints — or bring over what an assistant you already use remembers."
           title="Nothing about you yet."
         />
       ) : null}
@@ -459,6 +469,8 @@ function AboutYouSurfaceContent({
           </Collapsible>
         </section>
       ) : null}
+
+      <ContextFactImportInvitation id="about-you-import" />
 
       {offerGuidedSetup ? (
         <SelfContextSetupInvitation

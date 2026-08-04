@@ -208,6 +208,33 @@ describe("Suggested Context Fact review contract", () => {
     expect(dismissal?.metadataJson).not.toHaveProperty("suggestionEvidence");
   });
 
+  it("keeps a dismissal binding when the same statement arrives from a later session", async () => {
+    const store = createInMemoryContextFactStore();
+    const queries = createContextFactQueries(store, {
+      resolveVerifiedCaller: verifiedCallerFor(OWNER),
+    });
+    const suggestion = (sourceRecordId: string) => ({
+      callerUserId: OWNER,
+      category: "interest" as const,
+      content: "I follow trail running.",
+      sensitivity: "normal" as const,
+      provenance: { channel: "import" as const, origin: "import" as const, sourceRecordId },
+      suggestionEvidence: 'From your ChatGPT memory: "I follow trail running."',
+    });
+
+    const suggested = await queries.createSuggestedSelfContextFact(suggestion("import-1"));
+    await queries.dismissSuggestedContextFact({
+      callerUserId: OWNER,
+      contextFactId: suggested.result.fact.id,
+    });
+
+    // A second import is a new session with a new source reference. The owner already
+    // judged this statement, so the dismissal has to outlive the session that raised it.
+    await expect(queries.createSuggestedSelfContextFact(suggestion("import-2"))).rejects.toThrow(
+      "already dismissed",
+    );
+  });
+
   it("never lets a concurrent dismissal delete an accepted active truth", async () => {
     const baseStore = createInMemoryContextFactStore();
     let queries: ReturnType<typeof createContextFactQueries>;
