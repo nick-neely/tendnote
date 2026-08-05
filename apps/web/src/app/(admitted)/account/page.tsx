@@ -4,6 +4,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { CalendarPreviewSection } from "@/components/account/calendar-preview-section";
+import { HouseholdSetupPrototype } from "@/components/account/household-setup-prototype";
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
 import { ReminderSettings } from "@/components/account/reminder-settings";
 import { AdmittedRoute } from "@/components/admitted-route";
@@ -40,7 +41,8 @@ export default function AccountPage(props: AccountPageProps = {}) {
 
 export async function AccountContent({ searchParams }: AccountPageProps = {}) {
   if (process.env.NODE_ENV !== "test") await connection();
-  const calendarTarget = parseCalendarPreviewTarget((await searchParams) ?? {});
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const calendarTarget = parseCalendarPreviewTarget(resolvedSearchParams);
   const access = await getCurrentAccess();
   const fallbackOwnerUserId = localFallbackOwnerUserId({
     nodeEnv: process.env.NODE_ENV,
@@ -54,6 +56,10 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
   const ownerUserId = access.state === "admitted" ? access.user.id : fallbackOwnerUserId;
   if (!ownerUserId) redirect(signInPathFor("/account"));
   const usingLocalFallback = access.state === "unauthenticated";
+
+  if (process.env.NODE_ENV !== "production" && resolvedSearchParams.prototype === "household") {
+    return <HouseholdSetupPrototype />;
+  }
 
   // Google Calendar (Phase 2C, ADR-0071) and Gmail (Phase 2D, ADR-0090) can each be
   // connected only when the server has Google credentials configured; otherwise the
