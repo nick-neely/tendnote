@@ -4,6 +4,10 @@ The canonical decision map is [Wayfinder: Phase Eight Rich Household and Multi-D
 
 This directory holds durable research, prototype handoffs, and other supporting artifacts produced while that map is worked. Product decisions live in their resolution tickets and are synthesized into [`docs/prd.md`](../prd.md), [`CONTEXT.md`](../../CONTEXT.md), and only the ADRs that earn their place.
 
+- [Household activation journey](household-activation-journey.md) — Account
+  entry, immediate solo activation, verified-address invitation acceptance, and
+  the deliberately limited Household Overview return point.
+
 ## Working agreement
 
 - Accumulate every Phase Eight planning artifact on `docs/phase-8-spec` and its persistent draft pull request.

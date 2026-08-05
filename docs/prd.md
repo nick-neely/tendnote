@@ -1969,9 +1969,17 @@ Goal: Build the richer household product workflows on top of the Phase 4 scope f
 Deliverables:
 
 - Household creation, naming, and account management surfaces
+- Account-owned Household activation: a user may create and name an immediately
+  active solo Household Workspace, optionally invite another adult, and return to
+  an authorized Household Overview without waiting for another member.
 - Non-enumerating email invitations, including email-provider setup and explicit
   invitation delivery
 - Household invitation accept and decline flows
+- Invitation acceptance begins on a secure capability-specific route, requires
+  authentication with the invited verified email address and explicit Join
+  confirmation, and handles address mismatch, existing-workspace conflict, and
+  terminal invitation states without an automatic household switch or account
+  enumeration.
 - Pending and active member management plus member removal
 - One-active-workspace lifecycle and co-owner governance: a creator begins as the
   sole Owner; accepting an invitation or creating another workspace fails safely
@@ -1997,6 +2005,11 @@ Deliverables:
   URLs, message bodies, and raw provider payloads.
 - Household Context management and activation in eligible Eve orientation,
   Review, Capture, Search, and Account experiences
+- A calm Account Household Overview after creation or acceptance: authorized
+  membership state and role-appropriate management actions plus an optional,
+  skippable Household Context prompt. It is an activation and return surface,
+  not a decision to add a persistent top-level household destination or the
+  eventual shared planning surface.
 - Shared household reminders and planning surfaces beyond the minimal foundation
 - Household gift ideas and birthday planning
 - Family and social event tracking
