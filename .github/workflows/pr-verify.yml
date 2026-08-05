@@ -17,14 +17,14 @@ permissions:
 concurrency:
   group: >-
     ${{
-      (github.event.action == 'labeled' &&
-      github.event.label.name == 'full-ci') &&
-      format('pr-full-ci-{0}', github.event.pull_request.number) ||
       github.event.action == 'labeled' &&
+      github.event.label.name != 'full-ci' &&
       format('pr-verify-{0}-ignored-{1}', github.event.pull_request.number, github.run_id) ||
-      format('pr-verify-{0}', github.event.pull_request.number)
+      format('pr-verify-{0}-{1}', github.event.pull_request.number, github.event.pull_request.head.sha)
     }}
-  cancel-in-progress: true
+  # A full-ci request supersedes ordinary work for the same PR head. Ordinary
+  # events cannot cancel an explicit qualification, even if they arrive later.
+  cancel-in-progress: ${{ github.event.action == 'labeled' && github.event.label.name == 'full-ci' }}
 
 jobs:
   changes:

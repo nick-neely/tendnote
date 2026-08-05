@@ -94,7 +94,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter @tendnote/db...
 
       - name: Check migration drift
         run: pnpm db:check
@@ -158,6 +158,10 @@ jobs:
 
       - name: Run affected package tests
         if: ${{ inputs.run_fast_packages }}
+        # Turbo's documented SCM override keeps --affected on the fetched
+        # default-branch range instead of falling back to an unavailable `main` ref.
+        env:
+          TURBO_SCM_BASE: origin/main
         run: pnpm turbo test --affected
 
   test_fallow:
