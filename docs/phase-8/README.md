@@ -7,6 +7,9 @@ This directory holds durable research, prototype handoffs, and other supporting 
 - [Household activation journey](household-activation-journey.md) — Account
   entry, immediate solo activation, verified-address invitation acceptance, and
   the deliberately limited Household Overview return point.
+- [Household setup and member management UX](household-setup-and-member-management.md)
+  — the selected people-first Household composition, durable local navigation,
+  invitation and role management, and focused departure and recovery flows.
 
 ## Working agreement
 

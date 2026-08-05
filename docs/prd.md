@@ -2010,6 +2010,26 @@ Deliverables:
   skippable Household Context prompt. It is an activation and return surface,
   not a decision to add a persistent top-level household destination or the
   eventual shared planning surface.
+- Household management uses three durable Account-local destinations:
+  **Overview**, **People & invitations**, and **Settings**. Desktop may expose a
+  quiet local navigation rail while narrow screens use a labelled section
+  selector. Creation and invitation acceptance remain transient entry flows,
+  not navigation items, and this local structure does not add Household to the
+  global app shell.
+- The Household Overview is people-first: the household name, authorized member
+  and pending-invitation state, occupied capacity, and one primary invitation
+  action lead. The optional first Household Context prompt may sit in a quiet
+  contextual rail on wide screens and follows the people summary on narrow
+  screens; the rail is not a container for every management action.
+- **People & invitations** owns complete member, role, capacity, invitation, and
+  row-contextual management behavior. **Settings** owns naming, role and access
+  boundaries, departure, recovery, and dissolution. Consequential lifecycle
+  flows use the main content area with a clear return to Settings rather than a
+  cramped overview sidebar.
+- User-facing copy calls the Account section **Household**, leads with the chosen
+  household name, and uses **Owner** and **Member** where authority matters;
+  "Household Workspace" remains the precise domain term rather than routine UI
+  wording.
 - Shared household reminders and planning surfaces beyond the minimal foundation
 - Household gift ideas and birthday planning
 - Family and social event tracking
