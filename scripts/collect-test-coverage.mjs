@@ -16,6 +16,11 @@ const workspaces = [
   { directory: "apps/agent", include: ["agent/**/*.ts", "scripts/**/*.mjs"] },
   { directory: "apps/web", include: ["src/**/*.{ts,tsx}"] },
 ];
+// The full-coverage job runs on a two-vCPU runner. Two child Vitest processes
+// with 50% of the available workers each use both cores without turning the
+// collector into a process multiplier. The report paths and merge order remain
+// deterministic.
+const maxConcurrentWorkspaces = 2;
 
 function runPnpm(args, label) {
   return new Promise((resolveRun, rejectRun) => {
@@ -48,12 +53,49 @@ async function collectWorkspace({ directory, include }) {
       "--coverage.enabled",
       "--coverage.provider=v8",
       "--coverage.reporter=json",
+      "--maxWorkers=50%",
       `--coverage.reportsDirectory=${reportDirectory}`,
       ...include.map((pattern) => `--coverage.include=${pattern}`),
     ],
     `${directory} coverage`,
   );
   return join(reportDirectory, "coverage-final.json");
+}
+
+async function collectWorkspaces() {
+  const reports = new Array(workspaces.length);
+  let nextIndex = 0;
+  let failed = false;
+
+  function nextWorkspaceIndex() {
+    if (nextIndex >= workspaces.length) return undefined;
+    const index = nextIndex;
+    nextIndex += 1;
+    return index;
+  }
+
+  async function collectFromQueue() {
+    while (!failed) {
+      const index = nextWorkspaceIndex();
+      if (index === undefined) return;
+
+      try {
+        reports[index] = await collectWorkspace(workspaces[index]);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(maxConcurrentWorkspaces, workspaces.length) }, () =>
+    collectFromQueue(),
+  );
+  const results = await Promise.allSettled(workers);
+  const failure = results.find((result) => result.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
+
+  return reports;
 }
 
 await rm(coverageRoot, { recursive: true, force: true });
@@ -64,10 +106,7 @@ await mkdir(coverageRoot, { recursive: true });
 // rather than product functions scored by Fallow.
 await runPnpm(["exec", "vitest", "run", "scripts"], "root script tests");
 
-const reports = [];
-for (const workspace of workspaces) {
-  reports.push(await collectWorkspace(workspace));
-}
+const reports = await collectWorkspaces();
 const merged = createCoverageMap({});
 for (const report of reports) {
   merged.merge(JSON.parse(await readFile(report, "utf8")));
