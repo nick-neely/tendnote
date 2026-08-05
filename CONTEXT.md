@@ -249,16 +249,24 @@ A bounded assistant capability profile that narrows Eve's tools, skills, and beh
 _Avoid_: Persona, workspace, unrestricted mode
 
 **Household Workspace**:
-A lightweight shared permission anchor for a small private household or trusted circle. A household workspace can have multiple invited members with roles and visibility controls, and later Personal OS domains can feed into it as a household operating layer, but it is not an organization, team workspace, CRM account, or admin console.
+A small, durable shared operating layer for one private household or trusted circle of adult Tendnote users. A user has at most one active Household Workspace; it supports active members, invitations, co-owners, and visibility controls without becoming an organization, team workspace, CRM account, or admin console.
 _Avoid_: Organization, team, account, CRM workspace
 
+**Household Invitation**:
+A time-limited, email-address-bound capability created by a Household Owner that may become one active Household Membership when the recipient accepts it. An invitation reserves capacity but is not a membership, a user role, or evidence that its recipient has joined.
+_Avoid_: Pending member, provisional user, membership row
+
 **Household Member**:
-A Tendnote user who has accepted or been invited into a Household Workspace and can see or act on records according to their membership role and each record's scope. A household member is not automatically allowed to see another member's private records.
+A Tendnote user with an active accepted Household Membership who can see or act on records according to their role and each record's scope. A Household Member is not automatically allowed to see another member's private records.
 _Avoid_: Admin user, teammate, shared owner
 
 **Household Owner**:
-A Household Member who can manage the Household Workspace, including invitations, membership, settings, and visibility defaults. A household owner role is not a broad product administrator or permission to read another member's private records.
+A Household Member who jointly governs the Household Workspace, including invitations, membership, settings, and visibility defaults. Owners cannot unilaterally demote or remove another Owner, and the role never grants access to another member's private records.
 _Avoid_: Admin, superuser, organization owner
+
+**Household Dissolution**:
+The unanimous active-Owner decision to end a Household Workspace, cancel its invitations, end its memberships, and begin the retained household-native-record closure lifecycle. It is not a member departure, a record transfer, or a unilateral owner action.
+_Avoid_: Delete household, owner exit, account deletion
 
 **Shared Scope**:
 A visibility scope for records explicitly shared with selected Household Members. Shared scope is narrower than household scope and does not imply visibility to every member.

@@ -1973,6 +1973,28 @@ Deliverables:
   invitation delivery
 - Household invitation accept and decline flows
 - Pending and active member management plus member removal
+- One-active-workspace lifecycle and co-owner governance: a creator begins as the
+  sole Owner; accepting an invitation or creating another workspace fails safely
+  while the user has an active workspace; promotion to Owner requires the
+  recipient's acceptance; no Owner may unilaterally demote or remove another
+  Owner; and an Owner may step down only when another active Owner remains.
+- A separate, email-address-bound 14-day Household Invitation capability rather
+  than a pending membership. Invitations reserve one of the changeable
+  eight-seat policy slots until accepted, declined, canceled, or expired;
+  resend rotates the capability; capacity is checked atomically; and every
+  external send or resend remains an explicit Owner action.
+- Immediate voluntary departure and Owner removal for Members, with fresh
+  invitation required to return. Departure revokes household access and
+  member-owned sharing while preserving private/member-owned records for the
+  departing user and household-native records plus historical attribution for
+  the workspace.
+- Unanimous active-Owner Household Dissolution, which cancels invitations, ends
+  memberships, and archives household-native records for a 30-day recovery
+  window before permanent deletion. Inaccessible-owner recovery is a
+  support-only, evidence-based path; no self-service promotion bypasses
+  co-owner safety.
+- Minimal two-year lifecycle/audit retention that excludes invitation secrets,
+  URLs, message bodies, and raw provider payloads.
 - Household Context management and activation in eligible Eve orientation,
   Review, Capture, Search, and Account experiences
 - Shared household reminders and planning surfaces beyond the minimal foundation
