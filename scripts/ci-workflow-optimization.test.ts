@@ -110,17 +110,17 @@ describe("CI workflow optimization contract", () => {
     expect(databaseJob).not.toMatch(/run: pnpm install --frozen-lockfile\s*$/m);
   });
 
-  it("lets full-ci cancel same-SHA ordinary work without allowing ordinary events to cancel it", () => {
+  it("keeps full-ci qualification in a separate concurrency group", () => {
     const workflow = read(".github/workflows/pr-verify.yml");
 
-    expect(workflow).toContain(
+    expect(workflow).toContain("format('pr-full-ci-{0}', github.event.pull_request.number)");
+    expect(workflow).toContain("format('pr-verify-{0}', github.event.pull_request.number)");
+    expect(workflow).toContain("format('pr-verify-{0}-ignored-{1}'");
+    expect(workflow).toContain("cancel-in-progress: true");
+    expect(workflow).not.toContain(
       "format('pr-verify-{0}-{1}', github.event.pull_request.number, github.event.pull_request.head.sha)",
     );
-    expect(workflow).toContain(
-      "cancel-in-progress: $" +
-        "{{ github.event.action == 'labeled' && github.event.label.name == 'full-ci' }}",
-    );
-    expect(workflow).not.toContain("format('pr-full-ci-{0}'");
+    expect(workflow).not.toContain("cancel-in-progress: $" + "{");
   });
 
   it("does not rerun PR verification when an already-qualified draft becomes ready", () => {

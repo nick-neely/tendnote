@@ -16,10 +16,10 @@ const workspaces = [
   { directory: "apps/agent", include: ["agent/**/*.ts", "scripts/**/*.mjs"] },
   { directory: "apps/web", include: ["src/**/*.{ts,tsx}"] },
 ];
-// The full-coverage job runs on a two-vCPU runner. Two child Vitest processes
-// with 50% of the available workers each use both cores without turning the
-// collector into a process multiplier. The report paths and merge order remain
-// deterministic.
+// Run at most two workspace coverage processes at once. Each child Vitest
+// process receives its own --maxWorkers=50% setting, so this bounds
+// process-level concurrency without claiming a strict two-core total budget.
+// The report paths and merge order remain deterministic.
 const maxConcurrentWorkspaces = 2;
 
 function runPnpm(args, label) {
@@ -91,6 +91,8 @@ async function collectWorkspaces() {
   const workers = Array.from({ length: Math.min(maxConcurrentWorkspaces, workspaces.length) }, () =>
     collectFromQueue(),
   );
+  // A failure stops new queue assignments, while allSettled drains processes
+  // that were already running before the error is surfaced.
   const results = await Promise.allSettled(workers);
   const failure = results.find((result) => result.status === "rejected");
   if (failure?.status === "rejected") throw failure.reason;

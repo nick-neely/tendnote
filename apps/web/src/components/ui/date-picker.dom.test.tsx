@@ -215,8 +215,9 @@ describe("DateTimePicker", () => {
   it("leaves a later day unconstrained", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    const boundaryDate = dayThisMonth(15);
-    const laterDate = dayThisMonth(16);
+    const baseDate = new Date();
+    const boundaryDate = dayThisMonth(15, baseDate);
+    const laterDate = dayThisMonth(16, baseDate);
     render(
       <DateTimePicker
         aria-label="Bring back"
