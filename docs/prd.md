@@ -2104,7 +2104,75 @@ Deliverables:
   reconciliation, and 200% text support are required; dashboard grids,
   carousels, drag-only ranking, swipe-only actions, hover-only provenance, and
   auto-advancing content are excluded.
-- Shared household reminders and planning surfaces beyond the minimal foundation
+- Actions and Routines are the first Personal OS domain with a full collaboration
+  contract. Phase Eight separates ownership from visibility with two forms: a
+  household-native record owned by the Household Workspace, and a member-owned
+  record deliberately shared at `shared` or `household` scope. Choosing **Our
+  household** at creation produces a household-native record; widening an
+  existing record's visibility never transfers ownership, and handing one over is
+  an explicit, confirmed, owner-only conversion with no claim-back path.
+- Every active member has symmetric authority over a household-native Action or
+  Routine — create, edit, complete, reopen, skip, defer, pause, resume, archive,
+  and set the rota — with no Household Owner or creator privilege, and archive
+  rather than one member's permanent deletion as the removal path. A member-owned
+  shared Action keeps its owner as sole author; other authorized members may only
+  complete and reopen it, which narrows the current seam that lets any viewer
+  dismiss or archive another member's record.
+- A household-native Routine has one authoritative current occurrence for the
+  whole household. Completion or skip by any authorized member advances it once,
+  fenced on the occurrence acted against so a concurrent advance reconciles and
+  explains rather than rolling forward twice. Pausing suppresses the occurrence,
+  the Household home entry, every member's Today entry, and every pending
+  reminder intent; resuming materializes the next valid future occurrence without
+  a catch-up alert.
+- An optional **Routine Rota** orders active members through successive
+  occurrences of a household-native Routine, and a household-native one-time
+  Action may name one Turn Holder. The rota is explicit and never inferred, never
+  gates authority, advances to the next member regardless of who actually acted,
+  and stores no turn counts, streaks, missed-turn state, or fairness score. It
+  creates no per-member backlog, assignment inbox, or default my-turns filter,
+  and a departing member leaves every rota with the turn passing deterministically.
+- A Reminder Schedule remains one member's own choice about their own devices.
+  Each member may hold their own schedule for any record they can currently see,
+  so both partners can be reminded about one shared Routine, and no member action
+  ever enrolls another member's device. Being named on a rota offers that member —
+  once, in product and never as a push — their own turn-scoped schedule that
+  materializes only for their turns; declining is remembered.
+- Any authorized member's completion, skip, pause, archive, recurrence change, or
+  rota change invalidates every subscribed member's pending intent for that
+  occurrence and regenerates the replacement where warranted. The dispatcher
+  revalidates current membership and visibility before every send, so a departed
+  member never receives an alert about a household record. Stale suppression
+  stays delivery state and never advances an occurrence or touches a rota.
+- Household-native writes use optimistic concurrency with the member's draft
+  preserved on a stale write; progress actions reconcile instead, reporting who
+  already handled the occurrence and when. Attribution stays quiet and factual —
+  **Household**, **Shared by Mara**, **Ana's turn**, **Completed by Ben** — and
+  never becomes an activity feed, mentions, or comments. Historical attribution
+  survives departure.
+- A Suggested General Action may propose a household-native record only from
+  evidence already visible to the whole household, then appears as one shared
+  Review item any active member may accept, edit-and-accept, or dismiss for the
+  household. Private-channel ambient extraction stays member-owned and private
+  even when its content describes the household.
+- Household-visible Actions and Routines compose into the capped **Needs
+  attention** and **Coming up** sections with completion and reopening as the only
+  inline actions. Private Today narrows Phase Seven eligibility: a household
+  record reaches a member's Today only when it is due, overdue, or deliberately
+  resurfaced **and** they own it, hold its turn, or hold their own Reminder
+  Schedule for it, so a rota-less shared chore sits on the Household home and
+  nags nobody privately.
+- Departure or removal immediately ends household-native access, reverts the
+  member's own shared records to `private`, revokes their household Reminder
+  Schedules and pending intents, and removes them from every rota, while
+  household-native records, occurrences, rotas, and history stay with the
+  workspace. Dissolution carries them into the 30-day recovery set and cancels
+  every member's schedules for them immediately.
+- Excluded rather than deferred: subtasks, projects, dependencies, checklists,
+  comments, mentions, activity feeds, workload balancing, fairness scores,
+  streaks, completion counts, approval or verification of another member's
+  completion, per-member due dates or occurrences, priority and effort
+  classification, and autonomous rota changes, completion, or reminder enrollment.
 - Household gift ideas and birthday planning
 - Family and social event tracking
 - Household-aware strategist behavior
@@ -2116,7 +2184,10 @@ Vertical slice issue seeds:
   management flow that activates the Phase 7.5 Household Context foundation.
 - Add Household Context management and eligible Eve orientation for active
   members.
-- Build shared household reminders page.
+- Add household-native ownership for General Actions plus the per-form authority,
+  shared-occurrence, and conflict contract for Actions and Routines.
+- Add the Routine Rota, the per-member Reminder Schedule on shared records, and
+  the turn-scoped reminder offer.
 - Add household gift ideas and birthday planning view.
 - Add family and social event tracking.
 - Add household-aware strategist behavior.
