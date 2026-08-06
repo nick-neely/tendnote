@@ -2068,6 +2068,42 @@ Deliverables:
   household name, and uses **Owner** and **Member** where authority matters;
   "Household Workspace" remains the precise domain term rather than routine UI
   wording.
+- A durable global **Household** destination launches with the first supported
+  shared coordination domain. It answers **What are we jointly coordinating?**
+  while private **Today** continues to answer **What is relevant to me now?**
+  and **Account > Household** retains membership, Household Context, and
+  governance. Membership alone does not ship a prominent empty destination
+  before any shared coordination capability exists.
+- The Household home is a deterministic, shared, read-first composition with
+  capped **Needs attention** and **Coming up** sections. Each normally shows
+  three authoritative household-visible records and never more than five, with
+  domain links for overflow. Suggestions remain in Review and Household Context
+  remains orientation and Account-managed context rather than feed content.
+- Members with the same record access see the same Household composition.
+  Selected-member visibility may produce legitimate differences, while a
+  member's **Not today** action affects only private Today and never hides or
+  reorders the shared home. Household visibility alone does not make a record
+  personally eligible for Today.
+- Household-native and member-owned shared records retain their domain-specific
+  ownership, provenance, authority, conflicts, responsibility, notifications,
+  privacy, departure, and dissolution behavior. The home may expose only small,
+  reversible actions already authorized by the canonical domain product
+  function; it does not invent universal assignment or collaboration controls.
+- Eve, Capture, Review, and Search reach the same typed, permission-filtered
+  records and canonical links. Generated summaries remain ephemeral and never
+  replace the authoritative shared records. Bounded agent ranking requires a
+  later domain contract and always remains inside deterministic eligibility,
+  caps, explanation, and stable fallback.
+- The Household home streams independent domain families inside a currently
+  admitted Household frame, fails closed on membership uncertainty, and never
+  substitutes stale shared data. Departure or removal immediately removes the
+  destination; dissolution routes eligible Owners to recovery.
+- Mobile preserves a single-column **Needs attention**, **Coming up**, and
+  domain-link hierarchy. Semantic headings and lists, textual type/scope/state,
+  canonical links, keyboard and focus behavior, reduced-motion-safe
+  reconciliation, and 200% text support are required; dashboard grids,
+  carousels, drag-only ranking, swipe-only actions, hover-only provenance, and
+  auto-advancing content are excluded.
 - Shared household reminders and planning surfaces beyond the minimal foundation
 - Household gift ideas and birthday planning
 - Family and social event tracking

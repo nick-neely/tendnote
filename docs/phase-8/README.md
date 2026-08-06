@@ -14,10 +14,16 @@ This directory holds durable research, prototype handoffs, and other supporting 
   — shared member authority, conflict-safe correction, evidence privacy,
   sensitivity, lifecycle, and activation across Account, Eve, Review, Capture,
   and Search.
+- [Shared Household home and Today relationship](shared-household-home-and-today.md)
+  — the durable global Household coordination surface, its boundary from each
+  member's private Today and Account management, and its composition, trust,
+  responsive, and domain-authority contracts.
 
 ## Working agreement
 
-- Accumulate every Phase Eight planning artifact on `docs/phase-8-spec` and its persistent draft pull request.
+- Accumulate the remaining Phase Eight planning artifacts on
+  `docs/phase-8-wayfinder` and its persistent draft pull request. The merged
+  `docs/phase-8-spec` branch and PR #361 remain the specification baseline.
 - Do not create per-ticket planning branches or pull requests.
 - Keep the map as the decision index; do not duplicate full resolutions here.
 - Resolve exactly one non-research ticket per session.
