@@ -56,6 +56,22 @@ function visibilityOptionForScope(scope: PrivacyScope) {
 export const sensitivitySchema = z.enum(["normal", "sensitive", "restricted"]);
 export type Sensitivity = z.infer<typeof sensitivitySchema>;
 
+const SENSITIVITY_RANK: Record<Sensitivity, number> = { normal: 1, sensitive: 2, restricted: 3 };
+
+/**
+ * How far up the escalation the level sits. Every producer that derives a
+ * sensitivity has to be able to raise one and never lower it, so the ordering
+ * lives here rather than being restated beside each of them.
+ */
+export function sensitivityRank(value: Sensitivity): number {
+  return SENSITIVITY_RANK[value];
+}
+
+/** The stricter of the two, so inference can preserve or raise but never downgrade. */
+export function atLeastSensitivity(floor: Sensitivity, candidate: Sensitivity | undefined) {
+  return !candidate || sensitivityRank(candidate) < sensitivityRank(floor) ? floor : candidate;
+}
+
 export const confidenceSchema = z.enum(["low", "medium", "high"]);
 export type Confidence = z.infer<typeof confidenceSchema>;
 

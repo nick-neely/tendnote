@@ -184,7 +184,7 @@ export function PersonDetailTabs({
       {/* `top-0` on mobile, `lg:top-14` on desktop: the desktop top bar is what
           the 56px offset clears, and mobile has no top bar - a flat `top-14`
           left the header floating below a dead band on a phone. */}
-      <div className="-mx-4 sticky top-0 z-10 flex flex-col gap-4 border-b bg-background/90 px-4 pt-1 pb-3 backdrop-blur sm:-mx-6 sm:px-6 lg:top-14">
+      <div className="mx-bleed sticky top-0 z-10 flex flex-col gap-4 border-b bg-background/90 px-gutter pt-1 pb-3 backdrop-blur sm:-mx-6 sm:px-6 lg:top-14">
         {header}
         {/* `justify-start` matters on narrow screens: five labelled tabs with
             counts overflow a phone, and a centered flex row spills off both

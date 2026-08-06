@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { confirmPhraseMatches, generateConfirmPhrase } from "@/lib/confirm-phrase";
 
 export type AssetRemovalSummary = {
@@ -141,13 +142,16 @@ export function AssetRemove({
 
           {hasSavedContext ? (
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm text-muted-foreground" htmlFor="asset-delete-confirm">
+              <Label
+                className="block text-sm font-normal text-muted-foreground"
+                htmlFor="asset-delete-confirm"
+              >
                 Type{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
                   {phrase}
                 </code>{" "}
                 to confirm
-              </label>
+              </Label>
               <Input
                 autoComplete="off"
                 autoFocus

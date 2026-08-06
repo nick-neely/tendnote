@@ -12,6 +12,26 @@ _Avoid_: Automatic memory, inferred fact
 User-approved or strongly user-confirmed durable relationship context about a person. A memory can be used later for recall, follow-up suggestions, and message drafting according to its sensitivity and scope.
 _Avoid_: Observation, raw note, profile fact
 
+**Context Fact**:
+A concise, categorized natural-language orienting statement whose subject is either a Tendnote user or a Household Workspace. A context fact is independently correctable and does not replace a typed operational setting or a more specific domain record.
+_Avoid_: Profile field, instruction, biography entry, generic memory
+
+**Self Context**:
+Small, independently correctable, broadly reusable orienting facts a Tendnote user explicitly saved or accepted about themselves, such as their work, background, interests, or durable preferences. Self context is private by default and remains about that user when deliberately shared; it does not replace a more specific Tendnote domain and is not relationship memory, a biography, or an inferred persona.
+_Avoid_: Self memory, user profile, persona, account metadata
+
+**Household Context**:
+Small, independently correctable, broadly reusable orienting facts active Household Members jointly maintain about the Household Workspace as a whole, such as where the household lives or a durable shared preference. Household context is visible to every active Household Member; it does not replace a more specific Tendnote domain and is not a member's self context, a private note about the household, a household biography, or a collection of members' private facts.
+_Avoid_: Household memory, shared self context, household profile
+
+**Suggested Context Fact**:
+An agent-proposed Self Context or Household Context fact grounded in specific user-visible evidence and requiring review before it becomes trusted durable context. A suggested context fact is not available to Eve as established context until a user accepts it.
+_Avoid_: Inferred profile, automatic context, observation
+
+**Orientation Context**:
+The bounded set of active, policy-eligible Self Context for the current user and Household Context for their Household Workspace that helps Eve understand who it is assisting from the start of a turn. Restricted facts require direct relevant intent instead of automatic inclusion, and orientation context may softly inform an answer but cannot change product policy or authority; it is a read of authoritative Context Facts, not personalized base instructions, another member's private context, or a generated source of truth.
+_Avoid_: User prompt, profile snapshot, inferred persona, chat memory
+
 **Source Record**:
 The canonical evidence record for logged context, such as a manual note, interaction summary, import preview, calendar event summary, or future email summary. Source records can ground suggestions when phrased as "you noted", "you logged", or "you mentioned", but they are not the same as durable memories.
 _Avoid_: Memory, confirmed fact, inferred fact

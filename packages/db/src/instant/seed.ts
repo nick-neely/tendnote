@@ -57,6 +57,8 @@ function ownerRows(owner: FixtureOwner) {
       status: "granted" as const,
       source: "manual_grant" as const,
       grantedAt: FIXTURE_NOW,
+      selfContextOnboardingStatus: "completed" as const,
+      selfContextOnboardingReminderAt: null,
       createdAt: FIXTURE_NOW,
       updatedAt: FIXTURE_NOW,
     },

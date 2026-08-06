@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { type ComponentProps, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { GLOBAL_RECALL_FAMILY_OPTIONS } from "@/lib/use-global-recall";
 import { render, screen, userEvent, waitFor, within } from "@/test/dom";
 import { expectRestrictedGateOpensOnRecordType } from "@/test/global-recall-filters";
+import { selfContextResult } from "@/test/global-recall-fixtures";
 import { ThemeProvider } from "./theme-provider";
 
 /**
@@ -165,26 +167,55 @@ describe("MenuFlow", () => {
 });
 
 describe("SearchFlow", () => {
-  it("teaches what is searchable instead of leaving the surface blank", async () => {
+  /**
+   * The record-type strip *is* the answer to "what can this find?", so the line
+   * under it no longer recites the families in prose - it only has to say what
+   * the strip cannot, which is what to do next.
+   */
+  it("shows what is searchable rather than listing it in prose", async () => {
     render(<SearchHarness search={vi.fn()} />);
 
-    expect(await screen.findByText("Search your notebook")).toBeDefined();
-    expect(screen.getByText(/people, memories, follow-ups, and assets/)).toBeDefined();
+    // Every family the seam can answer for, Self Context included - so adding one
+    // shows up here rather than needing a sentence rewritten to mention it.
+    const recordTypes = await screen.findByRole("radiogroup", { name: "Record type" });
+    expect(
+      within(recordTypes)
+        .getAllByRole("radio")
+        .map((chip) => chip.textContent),
+    ).toEqual(GLOBAL_RECALL_FAMILY_OPTIONS.map((option) => option.label));
+    expect(screen.getByText("Type a name or a few words.")).toBeDefined();
+    expect(screen.queryByText(/Self Context, memories, follow-ups, and assets/)).toBeNull();
   });
 
-  it("keeps the restricted label a label and moves the reason into helper text", async () => {
+  it("offers restricted matches only once a record type is chosen", async () => {
     const user = userEvent.setup();
     render(<SearchHarness search={vi.fn()} />);
 
-    await expectRestrictedGateOpensOnRecordType(user);
+    await user.click(await screen.findByRole("button", { name: "More filters" }));
+
+    await expectRestrictedGateOpensOnRecordType(async () => {
+      await user.click(screen.getByRole("radio", { name: "People" }));
+    });
   });
 
-  it("names both filters and the archived switch", async () => {
+  /**
+   * Record type stays on screen because it is the narrowing people reach for;
+   * the rarer three fold behind one control, which reports how many of them are
+   * on so a narrowed search never looks like an un-narrowed one.
+   */
+  it("keeps record type in reach and folds the rarer narrowings behind a counted control", async () => {
+    const user = userEvent.setup();
     render(<SearchHarness search={vi.fn()} />);
 
-    expect(await screen.findByRole("combobox", { name: "Record type" })).toBeDefined();
+    const moreFilters = await screen.findByRole("button", { name: "More filters" });
+    expect(screen.queryByRole("combobox", { name: "Match" })).toBeNull();
+    expect(moreFilters.textContent).toBe("");
+
+    await user.click(moreFilters);
     expect(screen.getByRole("combobox", { name: "Match" })).toBeDefined();
-    expect(screen.getByRole("checkbox", { name: "Include archived" })).toBeDefined();
+
+    await user.click(screen.getByRole("checkbox", { name: "Include archived" }));
+    await waitFor(() => expect(moreFilters.textContent).toBe("1"));
   });
 
   /**
@@ -222,5 +253,25 @@ describe("SearchFlow", () => {
     ]);
     // The person is still on each memory row, as the context line under it.
     expect(within(rows[1] as HTMLElement).getByText("Jordan Rivera")).toBeDefined();
+  });
+
+  it("keeps Self Context exact, categorized, private, and correction-linked", async () => {
+    const user = userEvent.setup();
+    const search = vi.fn().mockResolvedValue({
+      ok: true,
+      view: {
+        query: "software",
+        results: [selfContextResult()],
+        limitations: [],
+        hasMore: false,
+      },
+    });
+    render(<SearchHarness search={search} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Search Tendnote" }), "software");
+    const exact = within(await screen.findByRole("region", { name: "Exact matches" }));
+    const link = exact.getByRole("link", { name: /I run a software consultancy\.Work/ });
+    expect(link.getAttribute("href")).toBe("/account/about-you#context-fact-context-fact-1");
+    expect(link.parentElement?.parentElement?.textContent).toContain("Only me");
   });
 });

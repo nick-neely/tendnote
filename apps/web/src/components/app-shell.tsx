@@ -58,7 +58,7 @@ export function AppShell({
                 a seventh item in Primary. The palette registers Cmd+K here, once
                 for every admitted route, and stays inert below `lg` where the
                 phone shell's Search flow owns recall. */}
-            <SearchPalette search={searchHandler} />
+            <SearchPalette ownerUserId={ownerUserId} search={searchHandler} />
             <ThemeToggle />
           </div>
         </div>

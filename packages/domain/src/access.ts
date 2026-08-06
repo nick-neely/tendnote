@@ -13,11 +13,25 @@ export const accessSourceSchema = z.enum(["bootstrap", "manual_grant", "beta_fla
 
 export type AccessSource = z.infer<typeof accessSourceSchema>;
 
+/** Account-level state for the optional Self Context setup, not a Context Fact. */
+export const selfContextOnboardingStatusSchema = z.enum(["not_started", "dismissed", "completed"]);
+
+export type SelfContextOnboardingStatus = z.infer<typeof selfContextOnboardingStatusSchema>;
+
+export const selfContextOnboardingStateSchema = z.object({
+  status: selfContextOnboardingStatusSchema,
+  reminderAt: z.date().nullable(),
+});
+
+export type SelfContextOnboardingState = z.infer<typeof selfContextOnboardingStateSchema>;
+
 export const accessProfileSchema = z.object({
   userId: z.string(),
   status: accessStatusSchema,
   source: accessSourceSchema.nullable(),
   grantedAt: z.date().nullable(),
+  selfContextOnboardingStatus: selfContextOnboardingStatusSchema,
+  selfContextOnboardingReminderAt: z.date().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

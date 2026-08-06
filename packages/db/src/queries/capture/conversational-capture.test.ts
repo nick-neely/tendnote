@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createContextFactQueries, createInMemoryContextFactStore } from "../context-facts";
 import { createInMemorySavedItemLifecycleStore, createSavedItemLifecycle } from "../saved-items";
 import { createAffectedSavedItemLifecycle } from "../saved-items/mutation-lifecycle";
 import { createConversationalCapture } from "./conversational-capture";
@@ -61,6 +62,441 @@ function actionCaptureHarness() {
 }
 
 describe("conversational Capture", () => {
+  it("writes an explicit self-orienting Capture outcome through the shared Self Context mutation", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const createSelfContextFact = vi.fn().mockImplementation(async (input) => ({
+      result: {
+        id: "context-fact-1",
+        subject: { kind: "self", userId: input.ownerUserId },
+        category: input.category,
+        content: input.content,
+        lifecycle: "active",
+        sensitivity: input.sensitivity,
+        provenance: {
+          channel: "capture",
+          origin: "direct",
+          sourceRecordId: input.sourceRecordId,
+        },
+        reviewedAt: new Date("2026-07-21T04:30:00.000Z"),
+        archivedAt: null,
+        createdAt: new Date("2026-07-21T04:30:00.000Z"),
+        updatedAt: new Date("2026-07-21T04:30:00.000Z"),
+        trust: "untrusted_data",
+        authority: "none",
+        visibility: "private",
+      },
+      affectedScopes: [
+        { kind: "owner-collection", collection: "context-facts", ownerUserId: input.ownerUserId },
+      ],
+    }));
+    const capture = createConversationalCapture(store, { createSelfContextFact });
+
+    const result = await capture.capture({
+      authority: "explicit",
+      interactionId: "self-context-capture-1",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "Remember that I run a small software consultancy",
+      surface: "global_capture",
+    });
+
+    expect(createSelfContextFact).toHaveBeenCalledWith({
+      ownerUserId: "owner-1",
+      category: "work",
+      content: "I run a small software consultancy",
+      sensitivity: "normal",
+      sourceRecordId: result.sourceRecord.id,
+    });
+    expect(result).toMatchObject({
+      contextFact: { id: "context-fact-1", category: "work" },
+      confirmation: {
+        destination: "Self Context",
+        groundedBySourceRecordId: result.sourceRecord.id,
+        interpreted: {
+          category: "work",
+          content: "I run a small software consultancy",
+          scope: "Only me",
+        },
+      },
+    });
+    expect(result.savedItem).toBeUndefined();
+  });
+
+  it("uses authoritative Self Context Change and inverse Undo operations", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    let version = 0;
+    let current:
+      | {
+          id: string;
+          subject: { kind: "self"; userId: string };
+          category: "work" | "preference";
+          content: string;
+          lifecycle: "active" | "archived";
+          sensitivity: "normal";
+          provenance: { channel: "capture"; origin: "direct"; sourceRecordId: string };
+          updatedAt: Date;
+        }
+      | undefined;
+    const view = () => ({
+      ...current,
+      trust: "untrusted_data" as const,
+      authority: "none" as const,
+      visibility: "private" as const,
+      reviewedAt: new Date("2026-07-21T04:30:00.000Z"),
+      archivedAt: current?.lifecycle === "archived" ? new Date("2026-07-21T04:31:00.000Z") : null,
+      createdAt: new Date("2026-07-21T04:30:00.000Z"),
+    });
+    const createSelfContextFact = vi.fn().mockImplementation(async (input) => {
+      current = {
+        id: "context-fact-lifecycle-1",
+        subject: { kind: "self", userId: input.ownerUserId },
+        category: input.category,
+        content: input.content,
+        lifecycle: "active",
+        sensitivity: input.sensitivity,
+        provenance: { channel: "capture", origin: "direct", sourceRecordId: input.sourceRecordId },
+        updatedAt: new Date("2026-07-21T04:30:00.000Z"),
+      };
+      return { result: view(), affectedScopes: [ACTION_SCOPE] };
+    });
+    const getSelfContextFact = vi
+      .fn()
+      .mockImplementation(async ({ ownerUserId }) =>
+        current?.subject.userId === ownerUserId ? current : null,
+      );
+    const updateSelfContextFact = vi.fn().mockImplementation(async (input) => {
+      if (!current || current.subject.userId !== input.actorUserId) {
+        throw new Error("That Self Context fact is no longer available.");
+      }
+      current = {
+        ...current,
+        category: input.category,
+        content: input.content,
+        sensitivity: input.sensitivity,
+        updatedAt: new Date(`2026-07-21T04:3${++version}:00.000Z`),
+      };
+      return { result: view(), affectedScopes: [ACTION_SCOPE] };
+    });
+    const archiveSelfContextFact = vi.fn().mockImplementation(async (input) => {
+      if (!current || current.subject.userId !== input.actorUserId) {
+        throw new Error("That Self Context fact is no longer available.");
+      }
+      current = { ...current, lifecycle: "archived" };
+      return { result: view(), affectedScopes: [ACTION_SCOPE] };
+    });
+    const capture = createConversationalCapture(store, {
+      createSelfContextFact,
+      getSelfContextFact,
+      updateSelfContextFact,
+      archiveSelfContextFact,
+    });
+
+    const created = await capture.capture({
+      authority: "explicit",
+      interactionId: "self-context-lifecycle-1",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "Remember that I run a small software consultancy",
+      surface: "global_capture",
+    });
+    if (created.confirmation?.destination !== "Self Context") {
+      throw new Error("Expected an initial Self Context confirmation.");
+    }
+    expect(created.confirmation.undo).toMatchObject({
+      kind: "archive_context_fact",
+      contextFactId: "context-fact-lifecycle-1",
+      sourceRecordId: created.sourceRecord.id,
+      expectedUpdatedAt: "2026-07-21T04:30:00.000Z",
+    });
+    const changed = await capture.changeOutcome({
+      actorUserId: "owner-1",
+      target: {
+        kind: "edit_context_fact",
+        contextFactId: "context-fact-lifecycle-1",
+        sourceRecordId: created.sourceRecord.id,
+        expectedUpdatedAt: "2026-07-21T04:30:00.000Z",
+      },
+      originalText: "Remember that I prefer concise answers",
+    });
+
+    expect(updateSelfContextFact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: "owner-1",
+        contextFactId: "context-fact-lifecycle-1",
+        category: "preference",
+        content: "I prefer concise answers",
+        expectedUpdatedAt: new Date("2026-07-21T04:30:00.000Z"),
+      }),
+    );
+    expect(changed).toMatchObject({
+      contextFact: { category: "preference", content: "I prefer concise answers" },
+      confirmation: {
+        destination: "Self Context",
+        undo: {
+          kind: "edit_context_fact",
+          category: "work",
+          content: "I run a small software consultancy",
+          sourceRecordId: created.sourceRecord.id,
+        },
+      },
+    });
+
+    if (!("confirmation" in changed) || changed.confirmation.destination !== "Self Context") {
+      throw new Error("Expected a Self Context confirmation.");
+    }
+    const changedConfirmation = changed.confirmation;
+    if (changedConfirmation.undo.kind !== "edit_context_fact") {
+      throw new Error("Expected an inverse Self Context Undo.");
+    }
+    await capture.undoOutcome({
+      actorUserId: "owner-1",
+      target: changedConfirmation.undo,
+    });
+
+    expect(updateSelfContextFact).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        actorUserId: "owner-1",
+        category: "work",
+        content: "I run a small software consultancy",
+        expectedUpdatedAt: new Date("2026-07-21T04:31:00.000Z"),
+      }),
+    );
+    expect(archiveSelfContextFact).not.toHaveBeenCalled();
+  });
+
+  it("keeps Capture Context Facts owner-scoped and idempotent across two owners", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const contextStore = createInMemoryContextFactStore();
+    const queriesFor = (ownerUserId: string) =>
+      createContextFactQueries(contextStore, { resolveVerifiedCaller: async () => ownerUserId });
+    const capture = createConversationalCapture(store, {
+      createSelfContextFact: async (input) =>
+        queriesFor(input.ownerUserId).createSelfContextFact({
+          callerUserId: input.ownerUserId,
+          category: input.category,
+          content: input.content,
+          sensitivity: input.sensitivity,
+          provenance: {
+            channel: "capture",
+            origin: "direct",
+            sourceRecordId: input.sourceRecordId,
+          },
+        }),
+      getSelfContextFact: async (input) =>
+        queriesFor(input.ownerUserId).getSelfContextFactForCapture({
+          callerUserId: input.ownerUserId,
+          contextFactId: input.contextFactId,
+        }),
+    });
+
+    const ownerOne = await capture.capture({
+      authority: "explicit",
+      interactionId: "owner-one-self-context",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "Remember that I prefer concise answers",
+      surface: "global_capture",
+    });
+    const ownerOneRetry = await capture.capture({
+      authority: "explicit",
+      interactionId: "owner-one-self-context",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "Remember that I prefer concise answers",
+      surface: "global_capture",
+    });
+    const ownerTwo = await capture.capture({
+      authority: "explicit",
+      interactionId: "owner-two-self-context",
+      inputMode: "typed",
+      ownerUserId: "owner-2",
+      originalText: "Remember that I prefer concise answers",
+      surface: "global_capture",
+    });
+
+    const ownerOneFacts = await queriesFor("owner-1").listSelfContextFacts({
+      callerUserId: "owner-1",
+    });
+    const ownerTwoFacts = await queriesFor("owner-2").listSelfContextFacts({
+      callerUserId: "owner-2",
+    });
+    expect(ownerOneFacts).toHaveLength(1);
+    expect(ownerTwoFacts).toHaveLength(1);
+    expect(ownerOneRetry.contextFact?.id).toBe(ownerOne.contextFact?.id);
+    expect(ownerTwo.contextFact?.id).not.toBe(ownerOne.contextFact?.id);
+    expect(ownerOne.contextFact?.provenance).toEqual(
+      expect.objectContaining({ channel: "capture", origin: "direct" }),
+    );
+    expect(ownerOne.affectedScopes).toEqual(
+      expect.arrayContaining([
+        { kind: "owner-collection", collection: "context-facts", ownerUserId: "owner-1" },
+        { kind: "owner-collection", collection: "orientation", ownerUserId: "owner-1" },
+      ]),
+    );
+  });
+
+  it("does not claim a pre-existing equivalent fact with different source evidence", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const contextStore = createInMemoryContextFactStore();
+    const queries = createContextFactQueries(contextStore, {
+      resolveVerifiedCaller: async () => "owner-1",
+    });
+    await queries.createSelfContextFact({
+      callerUserId: "owner-1",
+      category: "preference",
+      content: "I prefer concise answers",
+      provenance: { channel: "onboarding", origin: "direct", sourceRecordId: null },
+    });
+    const capture = createConversationalCapture(store, {
+      createSelfContextFact: (input) =>
+        queries.createSelfContextFact({
+          callerUserId: input.ownerUserId,
+          category: input.category,
+          content: input.content,
+          sensitivity: input.sensitivity,
+          provenance: {
+            channel: "capture",
+            origin: "direct",
+            sourceRecordId: input.sourceRecordId,
+          },
+        }),
+    });
+
+    await expect(
+      capture.capture({
+        authority: "explicit",
+        interactionId: "pre-existing-self-context",
+        inputMode: "typed",
+        ownerUserId: "owner-1",
+        originalText: "Remember that I prefer concise answers",
+        surface: "global_capture",
+      }),
+    ).rejects.toThrow("different source evidence");
+    await expect(queries.listSelfContextFacts({ callerUserId: "owner-1" })).resolves.toHaveLength(
+      1,
+    );
+  });
+
+  it("fences stale Context Fact Change and Undo and rejects onboarding evidence claims", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const contextStore = createInMemoryContextFactStore();
+    const queries = createContextFactQueries(contextStore, {
+      resolveVerifiedCaller: async () => "owner-1",
+    });
+    const capture = createConversationalCapture(store, {
+      createSelfContextFact: async (input) =>
+        queries.createSelfContextFact({
+          callerUserId: input.ownerUserId,
+          category: input.category,
+          content: input.content,
+          sensitivity: input.sensitivity,
+          provenance: {
+            channel: "capture",
+            origin: "direct",
+            sourceRecordId: input.sourceRecordId,
+          },
+        }),
+      getSelfContextFact: async (input) =>
+        queries.getSelfContextFactForCapture({
+          callerUserId: input.ownerUserId,
+          contextFactId: input.contextFactId,
+        }),
+      updateSelfContextFact: async (input) =>
+        queries.updateSelfContextFact({
+          callerUserId: input.actorUserId,
+          contextFactId: input.contextFactId,
+          category: input.category,
+          content: input.content,
+          sensitivity: input.sensitivity,
+          ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}),
+        }),
+      archiveSelfContextFact: async (input) =>
+        queries.archiveSelfContextFact({
+          callerUserId: input.actorUserId,
+          contextFactId: input.contextFactId,
+          ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}),
+        }),
+    });
+
+    const created = await capture.capture({
+      authority: "explicit",
+      interactionId: "stale-self-context",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "Remember that I prefer concise answers",
+      surface: "global_capture",
+    });
+    if (!created.contextFact || created.confirmation?.destination !== "Self Context") {
+      throw new Error("Expected a Self Context capture.");
+    }
+    const originalUpdatedAt = created.contextFact.updatedAt;
+    expect(created.confirmation.change).toMatchObject({
+      kind: "edit_context_fact",
+      expectedUpdatedAt: originalUpdatedAt.toISOString(),
+    });
+    expect(created.confirmation.undo).toMatchObject({
+      kind: "archive_context_fact",
+      sourceRecordId: created.sourceRecord.id,
+      expectedUpdatedAt: originalUpdatedAt.toISOString(),
+    });
+    vi.useFakeTimers({ now: new Date(originalUpdatedAt.getTime() + 1_000) });
+    try {
+      await queries.updateSelfContextFact({
+        callerUserId: "owner-1",
+        contextFactId: created.contextFact.id,
+        category: "preference",
+        content: "I prefer very concise answers",
+        sensitivity: "normal",
+        expectedUpdatedAt: originalUpdatedAt,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await expect(
+      capture.changeOutcome({
+        actorUserId: "owner-1",
+        target: created.confirmation.change,
+        originalText: "Save a note: the correction should not create a parallel item",
+      }),
+    ).rejects.toThrow("changed elsewhere");
+    await expect(
+      capture.undoOutcome({
+        actorUserId: "owner-1",
+        target: created.confirmation.undo,
+      }),
+    ).rejects.toThrow("changed elsewhere");
+    await expect(store.listVisibleSavedItems({ callerUserId: "owner-1" })).resolves.toHaveLength(0);
+
+    const onboarding = await queries.createSelfContextFact({
+      callerUserId: "owner-1",
+      category: "work",
+      content: "I work in education",
+      provenance: { channel: "onboarding", origin: "direct", sourceRecordId: null },
+    });
+    await expect(
+      capture.changeOutcome({
+        actorUserId: "owner-1",
+        target: {
+          kind: "edit_context_fact",
+          contextFactId: onboarding.result.id,
+          sourceRecordId: "not-onboarding-evidence",
+        },
+        originalText: "Remember that I run a consultancy",
+      }),
+    ).rejects.toThrow("different source evidence");
+    await expect(
+      capture.undoOutcome({
+        actorUserId: "owner-1",
+        target: {
+          kind: "archive_context_fact",
+          contextFactId: onboarding.result.id,
+          sourceRecordId: "not-onboarding-evidence",
+        },
+      }),
+    ).rejects.toThrow("different source evidence");
+  });
+
   it("routes explicit one-time work to a private source-grounded unscheduled Action", async () => {
     const store = createInMemorySavedItemLifecycleStore();
     const createGeneralAction = vi.fn().mockImplementation(async (input) =>

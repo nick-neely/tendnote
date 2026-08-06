@@ -12,7 +12,8 @@ export function matchesFamilyFilter(
   if (filter === "actions") return result.family === "general_action";
   if (filter === "assets") return result.family === "asset" || result.family === "asset_memory";
   if (filter === "saved_items") return result.family === "saved_item";
-  return result.family === "calendar_event";
+  if (filter === "calendar") return result.family === "calendar_event";
+  return result.family === "self_context";
 }
 
 export function mergeGlobalRecallResults(results: GlobalRecallResult[]): GlobalRecallResult[] {

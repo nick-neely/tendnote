@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -613,15 +614,21 @@ function EvidenceMetadataDisclosure() {
           />
         </div>
         <div className="flex flex-1 items-center gap-2 text-[length:var(--text-small)] text-muted-foreground">
-          <label className="whitespace-nowrap" htmlFor={`${detailsId}-bought`}>
+          <Label
+            className="font-normal whitespace-nowrap text-muted-foreground"
+            htmlFor={`${detailsId}-bought`}
+          >
             Bought
-          </label>
+          </Label>
           <DatePicker id={`${detailsId}-bought`} name="purchasedOn" placeholder="Add a date" />
         </div>
         <div className="flex flex-1 items-center gap-2 text-[length:var(--text-small)] text-muted-foreground">
-          <label className="whitespace-nowrap" htmlFor={`${detailsId}-renews`}>
+          <Label
+            className="font-normal whitespace-nowrap text-muted-foreground"
+            htmlFor={`${detailsId}-renews`}
+          >
             Renews
-          </label>
+          </Label>
           <DatePicker id={`${detailsId}-renews`} name="renewsOn" placeholder="Add a date" />
         </div>
       </CollapsibleContent>

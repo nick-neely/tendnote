@@ -41,7 +41,9 @@ export function createTendnoteSessionAuth(deps: SessionAuthDependencies): AuthFn
     }
 
     return {
-      attributes: {},
+      // Trusted route marker used by ambient post-accept hooks. Other channels and
+      // subagents must not become eligible merely because they carry a user principal.
+      attributes: { channel: "eve" },
       authenticator: "better-auth",
       principalId: userId,
       principalType: "user",
@@ -61,7 +63,7 @@ export function createLocalOwnerAuth(
     if (!local) return null;
 
     return {
-      attributes: {},
+      attributes: { channel: "eve" },
       authenticator: "tendnote-local-dev",
       principalId: env.TENDNOTE_DEV_OWNER_USER_ID?.trim() || "demo-user",
       principalType: "user",

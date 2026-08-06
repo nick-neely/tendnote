@@ -2,11 +2,44 @@ import { describe, expect, it } from "vitest";
 import {
   affectedScopesForAccount,
   affectedScopesForBriefs,
+  affectedScopesForContextFact,
   affectedScopesForOwnerSurfaces,
   affectedScopesForReminder,
 } from "./affected-scopes";
 
 describe("remaining affected-scope contracts", () => {
+  it("names the Context Fact projections that a mutation invalidates", () => {
+    expect(affectedScopesForContextFact({ ownerUserId: "owner-1" })).toEqual([
+      { kind: "owner-collection", collection: "context-facts", ownerUserId: "owner-1" },
+      { kind: "owner-collection", collection: "orientation", ownerUserId: "owner-1" },
+      { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
+      { kind: "owner-collection", collection: "global-recall", ownerUserId: "owner-1" },
+      { kind: "owner-collection", collection: "account", ownerUserId: "owner-1" },
+    ]);
+  });
+
+  it("fans household Context Fact invalidation out to every other active member", () => {
+    expect(
+      affectedScopesForContextFact({
+        ownerUserId: "owner-1",
+        householdId: "home-1",
+        householdMemberUserIds: ["owner-1", "member-1"],
+      }),
+    ).toEqual([
+      { kind: "owner-collection", collection: "context-facts", ownerUserId: "owner-1" },
+      { kind: "owner-collection", collection: "orientation", ownerUserId: "owner-1" },
+      { kind: "owner-collection", collection: "review", ownerUserId: "owner-1" },
+      { kind: "owner-collection", collection: "global-recall", ownerUserId: "owner-1" },
+      { kind: "owner-collection", collection: "account", ownerUserId: "owner-1" },
+      { kind: "owner-collection", collection: "context-facts", ownerUserId: "member-1" },
+      { kind: "owner-collection", collection: "orientation", ownerUserId: "member-1" },
+      { kind: "owner-collection", collection: "review", ownerUserId: "member-1" },
+      { kind: "owner-collection", collection: "global-recall", ownerUserId: "member-1" },
+      { kind: "owner-collection", collection: "account", ownerUserId: "member-1" },
+      { kind: "household-collection", collection: "context-facts", householdId: "home-1" },
+    ]);
+  });
+
   it("names Account, Briefs, Today, and Review as data rather than routes", () => {
     expect(affectedScopesForAccount("owner-1")).toEqual([
       { kind: "owner-collection", collection: "account", ownerUserId: "owner-1" },

@@ -10,6 +10,7 @@ import {
   within,
 } from "@/test/dom";
 import { expectRestrictedGateOpensOnRecordType } from "@/test/global-recall-filters";
+import { selfContextResult } from "@/test/global-recall-fixtures";
 import { ThemeProvider } from "./theme-provider";
 
 /**
@@ -110,7 +111,7 @@ function memoryResult({ id = "memory-1", text = "Prefers morning coffee chats" }
 function renderPalette(search = vi.fn().mockResolvedValue(success(emptyResponse()))) {
   render(
     <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange enableSystem>
-      <SearchPalette search={search} />
+      <SearchPalette ownerUserId="owner-search" search={search} />
     </ThemeProvider>,
   );
   return search;
@@ -127,6 +128,8 @@ async function openWithHotkey(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   routerState.push.mockReset();
+  sessionStorage.clear();
+  window.history.replaceState({}, "", "/");
   // Desktop width: the palette only mounts and only binds its key above `lg`.
   setMatchMedia(true);
 });
@@ -217,7 +220,7 @@ describe("SearchPalette", () => {
     const search = vi.fn().mockResolvedValue(
       success({
         query: "maya",
-        results: [personResult(), savedItemResult()],
+        results: [personResult(), savedItemResult(), selfContextResult()],
         limitations: [{ source: "calendar", message: "Calendar results are unavailable." }],
         hasMore: false,
       }),
@@ -234,6 +237,10 @@ describe("SearchPalette", () => {
     const savedRow = saved.getByRole("option", { name: /Climbing gym membership/ });
     // Match strength stays visible without splitting the list in two.
     expect(within(savedRow).getByText("Related")).toBeDefined();
+    const selfContext = within(screen.getByRole("group", { name: "Self Context" }));
+    expect(
+      selfContext.getByRole("option", { name: /I run a software consultancy\.Work/ }),
+    ).toBeDefined();
     expect(screen.getByText("Calendar results are unavailable.")).toBeDefined();
   });
 
@@ -306,7 +313,10 @@ describe("SearchPalette", () => {
 
     await user.type(screen.getByRole("combobox", { name: "Search and commands" }), "maya");
 
-    await expectRestrictedGateOpensOnRecordType(user);
+    await expectRestrictedGateOpensOnRecordType(async () => {
+      await user.click(screen.getByRole("combobox", { name: "Record type" }));
+      await user.click(await screen.findByRole("option", { name: "People" }));
+    });
 
     await waitFor(() =>
       expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ family: "people" })),

@@ -97,6 +97,23 @@ describe("Global Recall contract", () => {
           fetchedAt: "2026-07-21T12:00:00.000Z",
         },
       },
+      {
+        ...base,
+        label: "I run a software consultancy.",
+        supportingText: "Work",
+        family: "self_context",
+        canonical: { kind: "context_fact", id: "context-fact-1" },
+        grounding: [{ kind: "context_fact", id: "context-fact-1" }],
+        trust: "self_context",
+        visibility: { choice: "only_me", label: "Only me" },
+        href: "/account/about-you#context-fact-context-fact-1",
+        details: {
+          content: "I run a software consultancy.",
+          category: "work",
+          categoryLabel: "Work",
+          provenance: { channel: "account", origin: "direct" },
+        },
+      },
     ];
 
     expect(
@@ -106,7 +123,7 @@ describe("Global Recall contract", () => {
         limitations: [],
         hasMore: false,
       }).results,
-    ).toHaveLength(8);
+    ).toHaveLength(9);
   });
 
   it("never permits grounding-only records as canonical results", () => {

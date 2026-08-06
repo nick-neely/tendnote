@@ -4,6 +4,7 @@ import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import { useId } from "react";
 import { EyeIcon } from "@/components/icons";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { VisibilityChoiceControl } from "@/components/visibility-choice-control";
 
 /** A household member an Action can be shared with. */
@@ -106,8 +107,8 @@ export function ActionVisibilityField({
               // `has-checked:`: the registry control is a button, so there is no `:checked`
               // in the row to match. Association is spelled out with htmlFor/id - the whole
               // row stays clickable, and a nested component is not a control lint can see.
-              <label
-                className="flex min-h-16 cursor-pointer items-center gap-2 rounded-md border border-border bg-card p-3 text-sm transition-colors hover:border-primary/45 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-secondary"
+              <Label
+                className="min-h-16 cursor-pointer rounded-md border border-border bg-card p-3 text-sm font-normal transition-colors hover:border-primary/45 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-secondary"
                 htmlFor={`${memberFieldId}-${member.userId}`}
                 key={member.userId}
               >
@@ -129,7 +130,7 @@ export function ActionVisibilityField({
                     {member.email}
                   </span>
                 </span>
-              </label>
+              </Label>
             ))}
           </div>
         </fieldset>

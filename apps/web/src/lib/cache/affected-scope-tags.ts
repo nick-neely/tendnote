@@ -50,6 +50,15 @@ function tagsForOwnerCollection(
   if (scope.collection === "review") {
     return [`review:owner:${ownerUserId}`, `review:owner:${ownerUserId}:queue`];
   }
+  if (scope.collection === "context-facts") {
+    return [`context-facts:owner:${ownerUserId}`];
+  }
+  if (scope.collection === "orientation") {
+    return [`orientation:owner:${ownerUserId}`];
+  }
+  if (scope.collection === "global-recall") {
+    return [`global-recall:owner:${ownerUserId}`];
+  }
   if (scope.collection === "saved-items") {
     return [
       `saved-item:viewer:${ownerUserId}`,
@@ -96,6 +105,11 @@ function visibleEntityTag(scope: Extract<AffectedScope, { kind: "visible-entity"
 function householdCollectionTag(
   scope: Extract<AffectedScope, { kind: "household-collection" }>,
 ): string {
-  const family = scope.collection === "assets" ? "asset" : "saved-item";
+  const family =
+    scope.collection === "assets"
+      ? "asset"
+      : scope.collection === "context-facts"
+        ? "context-facts"
+        : "saved-item";
   return `${family}:household:${scope.householdId}:collection`;
 }

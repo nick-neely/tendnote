@@ -43,7 +43,7 @@
     "flags": "^4.2.0",
     "ioredis": "^5.8.2",
     "nanoid": "^5.1.16",
-    "next": "16.3.0-preview.9",
+    "next": "16.3.0",
     "next-themes": "^0.4.6",
     "radix-ui": "^1.6.0",
     "react": "19.2.8",
@@ -60,7 +60,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@next/playwright": "16.3.0-preview.9",
+    "@next/playwright": "16.3.0",
     "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4",
     "@tendnote/config": "workspace:*",

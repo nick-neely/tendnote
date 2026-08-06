@@ -88,16 +88,6 @@ beforeEach(() => {
   sessionStorage.clear();
 });
 
-/** Opens a Search filter select and picks one of its options. */
-async function chooseFilter(
-  user: ReturnType<typeof userEvent.setup>,
-  filter: string,
-  option: string,
-) {
-  await user.click(screen.getByRole("combobox", { name: filter }));
-  await user.click(await screen.findByRole("option", { name: option }));
-}
-
 function mobileTodayDestination() {
   const view = {
     items: [],
@@ -386,7 +376,9 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await user.click(screen.getAllByRole("button", { name: "Why this result?" })[0] as HTMLElement);
     expect(screen.getByText(/Matched an exact Asset value/)).toBeDefined();
 
-    await chooseFilter(user, "Record type", "Assets");
+    // Record type is one tap on the phone: a chip in the strip under the field,
+    // not a select inside a panel.
+    await user.click(screen.getByRole("radio", { name: "Assets" }));
     await waitFor(() =>
       expect(searchHandler).toHaveBeenLastCalledWith(expect.objectContaining({ family: "assets" })),
     );
@@ -451,8 +443,8 @@ describe("AppShell Phase Seven mobile navigation", () => {
     await waitFor(() => expect(searchHandler).toHaveBeenCalled());
     const resultLink = await screen.findByRole("link", { name: /Filter note/ });
     await waitFor(() => expect(document.activeElement).toBe(resultLink));
-    expect(screen.getByRole("combobox", { name: "Record type" }).textContent).toContain(
-      "Saved Items",
+    expect(screen.getByRole("radio", { name: "Saved Items" }).getAttribute("aria-checked")).toBe(
+      "true",
     );
     expect(screen.getByText(/Matched wording: filter/)).toBeDefined();
 

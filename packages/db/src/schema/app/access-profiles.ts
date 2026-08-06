@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
-import { accessSource, accessStatus } from "./enums";
+import { accessSource, accessStatus, selfContextOnboardingStatus } from "./enums";
 
 /**
  * Tendnote-owned account/access profile. Records durable Private Beta Access for
@@ -20,6 +20,12 @@ export const accessProfiles = pgTable(
     // first-user bootstrap, a manual grant, or a beta flag rollout.
     source: accessSource("source"),
     grantedAt: timestamp("granted_at", { withTimezone: true }),
+    selfContextOnboardingStatus: selfContextOnboardingStatus("self_context_onboarding_status")
+      .notNull()
+      .default("not_started"),
+    selfContextOnboardingReminderAt: timestamp("self_context_onboarding_reminder_at", {
+      withTimezone: true,
+    }),
     ...timestamps,
   },
   (table) => [

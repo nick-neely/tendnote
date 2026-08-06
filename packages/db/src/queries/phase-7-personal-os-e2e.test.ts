@@ -397,6 +397,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       { model: "phase-seven-test", version: "v1" },
     );
     const recall = createGlobalRecall({
+      searchSelfContextExact: async () => [],
       searchRelationshipExact: async (input) => exactAction(input.ownerUserId),
       searchRelationshipRelated: async (input) => relatedContext(input.ownerUserId),
       searchAssets: async (input) => ({

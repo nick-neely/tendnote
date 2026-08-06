@@ -8,14 +8,16 @@ import type {
 import Link from "next/link";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { destinationsInGroup } from "@/components/app-destinations";
-import { ArrowLeftIcon, SearchIcon } from "@/components/icons";
+import { ArrowLeftIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from "@/components/icons";
 import { type CaptureHandlers, MobileCaptureFlow } from "@/components/mobile-capture-flow";
 import { MobileFailureState } from "@/components/mobile-failure-state";
 import { ThemeSegmentedControl } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -24,12 +26,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ToggleGroup } from "@/components/ui/toggle-group";
+import {
+  globalRecallStorageKey,
+  markGlobalRecallReturn,
+  readGlobalRecallState,
+} from "@/lib/global-recall-navigation";
 import { recallResultLines } from "@/lib/recall-result-lines";
 import {
   GLOBAL_RECALL_FAMILY_OPTIONS,
   GLOBAL_RECALL_MATCH_OPTIONS,
   type GlobalRecallFilters,
   type GlobalRecallHandler,
+  type GlobalRecallSearch,
   useGlobalRecall,
 } from "@/lib/use-global-recall";
 
@@ -66,10 +75,14 @@ function FullScreenFlow({
             accessible name, rather than a screen-reader-only copy of it sitting
             above a second, identical <h2>. */}
         <DialogDescription className="sr-only">{description}</DialogDescription>
-        <header className="flex min-h-14 items-center gap-2 border-b px-3 pt-[env(safe-area-inset-top)]">
+        {/* The bar is inset by the gutter like everything under it, and the back
+            control is pulled back out by its own inner padding so the *glyph* -
+            not the invisible 44px touch target around it - lands on the same
+            line as the field and the results below. */}
+        <header className="flex min-h-14 items-center gap-2 border-b px-gutter pt-[env(safe-area-inset-top)]">
           <Button
             aria-label="Close"
-            className="size-11"
+            className="-ml-3.5 size-11"
             onClick={onClose}
             size="icon-lg"
             variant="ghost"
@@ -104,7 +117,11 @@ export function SearchFlow({
   const restoredScrollRef = useRef<number | null>(null);
   const restoredFocusRef = useRef<string | null>(null);
   const [expanded, setExpanded] = useState<string[]>([]);
-  const storageKey = `tendnote:global-recall:${ownerUserId}`;
+  // The folded narrowings start folded on every open, including a restored one:
+  // the trigger's count already reports that a search is narrowed, so unfolding
+  // the panel would spend the top of the screen re-stating it.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const storageKey = globalRecallStorageKey(ownerUserId);
   const recall = useGlobalRecall({ query, search });
   const { failed, failureMessage, loading, response } = recall;
   const { family, includeArchived, includeRestricted, matchKind } = recall.filters;
@@ -140,15 +157,7 @@ export function SearchFlow({
       }),
     );
     if (focusedKey) {
-      window.history.replaceState(
-        {
-          ...window.history.state,
-          tendnoteGlobalRecallOwner: ownerUserId,
-          tendnoteGlobalRecallReturnUrl: window.location.href,
-        },
-        "",
-        window.location.href,
-      );
+      markGlobalRecallReturn(ownerUserId);
     }
   }
 
@@ -173,18 +182,13 @@ export function SearchFlow({
       }}
       title="Search"
     >
-      <div className="flex min-h-0 flex-1 flex-col px-5 py-5">
+      <div className="flex min-h-0 flex-1 flex-col px-gutter py-5">
         <RecallSearchControls
-          family={family}
-          includeArchived={includeArchived}
-          includeRestricted={includeRestricted}
+          filtersOpen={filtersOpen}
           inputRef={inputRef}
-          matchKind={matchKind}
           query={query}
-          setFamily={recall.setFamily}
-          setIncludeArchived={recall.setIncludeArchived}
-          setIncludeRestricted={recall.setIncludeRestricted}
-          setMatchKind={recall.setMatchKind}
+          recall={recall}
+          setFiltersOpen={setFiltersOpen}
           setQuery={setQuery}
         />
         <RecallSearchResults
@@ -206,14 +210,6 @@ export function SearchFlow({
   );
 }
 
-type StoredRecallState = Partial<GlobalRecallFilters> & {
-  query?: string;
-  expanded?: string[];
-  focusedKey?: string;
-  restoreFocus?: boolean;
-  scrollTop?: number;
-};
-
 function useRestoreRecallState(input: {
   storageKey: string;
   setQuery: (value: string) => void;
@@ -225,18 +221,13 @@ function useRestoreRecallState(input: {
   const { restoreFilters, restoredFocusRef, restoredScrollRef, setExpanded, setQuery, storageKey } =
     input;
   useEffect(() => {
-    const raw = sessionStorage.getItem(storageKey);
-    if (!raw) return;
-    try {
-      const saved = JSON.parse(raw) as StoredRecallState;
-      if (saved.query) setQuery(saved.query);
-      restoreFilters(saved);
-      setExpanded(saved.expanded ?? []);
-      restoredScrollRef.current = saved.scrollTop ?? 0;
-      restoredFocusRef.current = saved.restoreFocus ? (saved.focusedKey ?? null) : null;
-    } catch {
-      sessionStorage.removeItem(storageKey);
-    }
+    const saved = readGlobalRecallState(storageKey);
+    if (!saved) return;
+    if (saved.query) setQuery(saved.query);
+    restoreFilters(saved);
+    setExpanded(saved.expanded ?? []);
+    restoredScrollRef.current = saved.scrollTop ?? 0;
+    restoredFocusRef.current = saved.restoreFocus ? (saved.focusedKey ?? null) : null;
   }, [restoreFilters, restoredFocusRef, restoredScrollRef, setExpanded, setQuery, storageKey]);
 }
 
@@ -270,80 +261,128 @@ function clearStoredFocus(storageKey: string) {
   sessionStorage.setItem(storageKey, JSON.stringify({ ...saved, restoreFocus: false }));
 }
 
+/**
+ * The field, then the one narrowing worth a tap, then everything else folded away.
+ *
+ * This surface used to open onto a 215px panel of chrome - two labelled selects,
+ * two checkboxes, and a line of helper text - sitting between the search field
+ * and the results on a screen whose entire job is "type a name". Nothing in it
+ * was wrong; all of it was asking to be read before the owner had typed a
+ * character, and it pushed the first result below the fold.
+ *
+ * So the panel is now a row. Record type is the narrowing people actually reach
+ * for, so it becomes a scrollable strip of chips: one tap instead of opening a
+ * select, and the strip doubles as the honest answer to "what can this find?" -
+ * which is why the empty state below it no longer has to list the families in
+ * prose. Match, archived, and restricted are rarer, so they fold behind one
+ * control that says how many of them are currently on.
+ */
 function RecallSearchControls({
-  family,
-  includeArchived,
-  includeRestricted,
+  filtersOpen,
   inputRef,
-  matchKind,
   query,
-  setFamily,
-  setIncludeArchived,
-  setIncludeRestricted,
-  setMatchKind,
+  recall,
+  setFiltersOpen,
   setQuery,
 }: {
-  family: GlobalRecallFilter;
-  includeArchived: boolean;
-  includeRestricted: boolean;
+  filtersOpen: boolean;
   inputRef: RefObject<HTMLInputElement | null>;
-  matchKind: GlobalRecallMatchKind | "all";
   query: string;
-  setFamily: (value: GlobalRecallFilter) => void;
-  setIncludeArchived: (value: boolean) => void;
-  setIncludeRestricted: (value: boolean) => void;
-  setMatchKind: (value: GlobalRecallMatchKind | "all") => void;
+  /** The whole search, as the palette's own filter bar takes it. */
+  recall: GlobalRecallSearch;
+  setFiltersOpen: (value: boolean) => void;
   setQuery: (value: string) => void;
 }) {
+  const { family, includeArchived, includeRestricted, matchKind } = recall.filters;
   // The "restricted needs one named family" gate lives in `useGlobalRecall`, so
-  // `setFamily` already re-locks the checkbox when the owner widens back to all.
-  const restrictedLocked = family === "all";
+  // `setFamily` already turns the control off when the owner widens back to all.
+  const { restrictedLocked } = recall;
+  const foldedCount = countFoldedNarrowings({ includeArchived, includeRestricted, matchKind });
   return (
     <>
-      <label className="sr-only" htmlFor="mobile-global-search">
+      <Label className="sr-only" htmlFor="mobile-global-search">
         Search Tendnote
-      </label>
+      </Label>
       <div className="flex min-h-12 items-center gap-2 rounded-xl border px-3 focus-within:ring-3 focus-within:ring-ring/35">
         <SearchIcon aria-hidden className="size-4 text-muted-foreground" />
         <input
           className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
           id="mobile-global-search"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search people, actions, assets…"
+          placeholder="Search people, Self Context, actions…"
           ref={inputRef}
           value={query}
         />
+        {/* Starting over is one tap, not a held backspace. It leaves focus in the
+            field so the next word can just be typed. */}
+        {query ? (
+          <Button
+            aria-label="Clear search"
+            className="-mr-2 size-9 text-muted-foreground"
+            onClick={() => {
+              setQuery("");
+              inputRef.current?.focus();
+            }}
+            size="icon"
+            variant="ghost"
+          >
+            <XIcon aria-hidden className="size-4" />
+          </Button>
+        ) : null}
       </div>
-      {/* The four narrowing controls read as one quiet panel under the field
-          rather than four loose controls scattered across the canvas: labelled
-          selects on top, the two switches beneath them, all inside one block. */}
-      <div className="mt-3 flex flex-col gap-3 rounded-xl border bg-panel p-3">
-        {/* `basis-36` is rem-based, so the pair sits side by side at normal text
-            and folds to one per row once the owner turns the type up - the point
-            where two columns start truncating their own values. */}
-        <div className="flex flex-wrap gap-3">
-          <div className="flex min-w-0 flex-1 basis-36 flex-col gap-1.5">
-            <Label htmlFor="global-recall-family">Record type</Label>
-            <Select
-              onValueChange={(value) => setFamily(value as GlobalRecallFilter)}
+
+      <Collapsible onOpenChange={setFiltersOpen} open={filtersOpen}>
+        <div className="mt-3 flex items-center gap-1">
+          {/* The strip scrolls rather than wraps: seven families wrapped onto two
+              rows moved the first result down by a row's worth of chrome every
+              time, and a half-shown chip at the edge says "there is more here"
+              more plainly than a second row does. */}
+          <div className="min-w-0 flex-1 overflow-x-auto">
+            <ToggleGroup
+              aria-label="Record type"
+              onValueChange={(value) => value && recall.setFamily(value as GlobalRecallFilter)}
+              type="single"
               value={family}
+              variant="outline"
             >
-              <SelectTrigger className="min-h-11 w-full bg-background" id="global-recall-family">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {GLOBAL_RECALL_FAMILY_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              {GLOBAL_RECALL_FAMILY_OPTIONS.map((option) => (
+                <FilterChip key={option.value} value={option.value}>
+                  {option.label}
+                </FilterChip>
+              ))}
+            </ToggleGroup>
           </div>
-          <div className="flex min-w-0 flex-1 basis-36 flex-col gap-1.5">
+          <CollapsibleTrigger asChild>
+            <Button
+              // The count has to be in the *name*, not only in the badge: a name
+              // set here replaces the button's contents for anyone listening, so
+              // a bare "More filters" would report an un-narrowed search to the
+              // one person who cannot see the badge saying otherwise.
+              aria-label={foldedCount > 0 ? `More filters, ${foldedCount} on` : "More filters"}
+              className="size-11 shrink-0 text-muted-foreground"
+              size="icon-lg"
+              variant="ghost"
+            >
+              <SlidersHorizontalIcon aria-hidden />
+              {/* The count is the whole reason folding these away is honest: a
+                  narrowed search never looks like an un-narrowed one. */}
+              {foldedCount > 0 ? (
+                <span
+                  aria-hidden
+                  className="-mt-2 -mr-1 rounded-full bg-primary px-1 font-medium text-[length:var(--text-caption)] text-primary-foreground leading-[var(--text-caption-line)]"
+                >
+                  {foldedCount}
+                </span>
+              ) : null}
+            </Button>
+          </CollapsibleTrigger>
+        </div>
+
+        <CollapsibleContent className="mt-3 flex flex-col gap-3 rounded-xl border bg-panel p-3">
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="global-recall-match">Match</Label>
             <Select
-              onValueChange={(value) => setMatchKind(value as GlobalRecallMatchKind | "all")}
+              onValueChange={(value) => recall.setMatchKind(value as GlobalRecallMatchKind | "all")}
               value={matchKind}
             >
               <SelectTrigger className="min-h-11 w-full bg-background" id="global-recall-match">
@@ -358,45 +397,53 @@ function RecallSearchControls({
               </SelectContent>
             </Select>
           </div>
-        </div>
-        <div className="flex flex-col">
           <div className="flex min-h-11 items-center gap-3">
             <Checkbox
               checked={includeArchived}
               id="global-recall-archived"
-              onCheckedChange={(checked) => setIncludeArchived(checked === true)}
+              onCheckedChange={(checked) => recall.setIncludeArchived(checked === true)}
             />
             <Label className="min-h-11 flex-1 font-normal" htmlFor="global-recall-archived">
               Include archived
             </Label>
           </div>
-          <div className="flex min-h-11 items-center gap-3">
-            <Checkbox
-              aria-describedby={restrictedLocked ? "global-recall-restricted-hint" : undefined}
-              checked={includeRestricted}
-              disabled={restrictedLocked}
-              id="global-recall-restricted"
-              onCheckedChange={(checked) => setIncludeRestricted(checked === true)}
-            />
-            {/* The label stays the name of the control. What is standing in the
-                way belongs in helper text, not in the label - a label that
-                changes into an instruction reads as a broken control. */}
-            <Label className="min-h-11 flex-1 font-normal" htmlFor="global-recall-restricted">
-              Reveal restricted matches
-            </Label>
-          </div>
-          {restrictedLocked ? (
-            <p
-              className="pl-7 text-[length:var(--text-small)] text-muted-foreground"
-              id="global-recall-restricted-hint"
-            >
-              Pick a record type first.
-            </p>
-          ) : null}
-        </div>
-      </div>
+          {/* Restricted matches need one named family to reveal. That used to be a
+              permanently disabled checkbox with "Pick a record type first."
+              underneath it - a control and a line of copy spent saying what
+              picking a chip above now demonstrates. */}
+          {restrictedLocked ? null : (
+            <div className="flex min-h-11 items-center gap-3">
+              <Checkbox
+                checked={includeRestricted}
+                id="global-recall-restricted"
+                onCheckedChange={(checked) => recall.setIncludeRestricted(checked === true)}
+              />
+              <Label className="min-h-11 flex-1 font-normal" htmlFor="global-recall-restricted">
+                Reveal restricted matches
+              </Label>
+            </div>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
     </>
   );
+}
+
+/**
+ * How many of the folded narrowings are currently on. Record type is excluded on
+ * purpose: its chip is on screen, so counting it here would report a narrowing
+ * the owner can already see as hidden.
+ */
+function countFoldedNarrowings({
+  includeArchived,
+  includeRestricted,
+  matchKind,
+}: {
+  includeArchived: boolean;
+  includeRestricted: boolean;
+  matchKind: GlobalRecallMatchKind | "all";
+}): number {
+  return [matchKind !== "all", includeArchived, includeRestricted].filter(Boolean).length;
 }
 
 function RecallSearchResults({
@@ -437,19 +484,21 @@ function RecallSearchResults({
           {limitation.message}
         </p>
       ))}
-      {/* The surface below the filters used to be ~640px of nothing until the
-          second keystroke. It now says what is searchable, then what came back. */}
+      {/* The surface below the field would otherwise be several hundred pixels of
+          nothing until the second keystroke. The record-type strip above already
+          names everything this can reach, so the line here is the one thing the
+          strip cannot say: what to do. */}
       {!loading && !failed && !response ? (
-        <EmptyState
-          className="mt-4"
-          description="Type a name or a few words. Tendnote looks across your people, memories, follow-ups, and assets."
-          title="Search your notebook"
-        />
+        <EmptyState className="mt-4" size="compact" title="Type a name or a few words." />
       ) : null}
+      {/* "Widen the filters above" would now point partly at controls that are
+          folded away. The record-type strip is the one narrowing still on screen,
+          so that is the one this can honestly send anyone back to. */}
       {!loading && response && response.results.length === 0 ? (
         <EmptyState
           className="mt-4"
-          description="Try different wording, or widen the filters above."
+          description="Try different wording, or widen the record type above."
+          size="compact"
           title="Nothing matched that search."
         />
       ) : null}
@@ -586,7 +635,7 @@ export function CaptureFlow({
 export function EveFlow({ children, onClose }: { children?: ReactNode; onClose: () => void }) {
   return (
     <FullScreenFlow description="Focused Eve conversation." onClose={onClose} title="Eve">
-      <div className="min-h-0 flex-1 overflow-hidden p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+      <div className="min-h-0 flex-1 overflow-hidden px-gutter py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
         {children ?? <MobileFailureState kind="eve" />}
       </div>
     </FullScreenFlow>
@@ -596,7 +645,7 @@ export function EveFlow({ children, onClose }: { children?: ReactNode; onClose: 
 export function MenuFlow({ onClose, onNavigate }: { onClose: () => void; onNavigate: () => void }) {
   return (
     <FullScreenFlow description="Go to another part of Tendnote." onClose={onClose} title="Menu">
-      <nav aria-label="Menu destinations" className="flex flex-col divide-y px-5 py-4">
+      <nav aria-label="Menu destinations" className="flex flex-col divide-y px-gutter py-4">
         {destinationsInGroup("menu").map((item) => {
           const Icon = item.icon;
           return (
@@ -616,7 +665,7 @@ export function MenuFlow({ onClose, onNavigate }: { onClose: () => void; onNavig
           );
         })}
       </nav>
-      <div className="mt-2 flex flex-col gap-2 border-t px-5 py-4">
+      <div className="mt-2 flex flex-col gap-2 border-t px-gutter py-4">
         <p className="text-base" id="mobile-appearance-label">
           Appearance
         </p>

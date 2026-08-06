@@ -10,6 +10,7 @@ import { CheckIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { deriveMemoryDraft, valueDraftFor } from "@/lib/asset-memory-value";
 import type { AssetReviewMemoryView } from "@/lib/asset-review-view";
@@ -51,12 +52,12 @@ export function MemoryEditForm({
   return (
     <li className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0">
       <div className="flex flex-col gap-1">
-        <label
-          className="text-[length:var(--text-caption)] text-muted-foreground"
+        <Label
+          className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] font-normal text-muted-foreground"
           htmlFor={labelId}
         >
           Label
-        </label>
+        </Label>
         <Input
           id={labelId}
           onChange={(event) => setLabel(event.target.value)}
@@ -66,12 +67,12 @@ export function MemoryEditForm({
       </div>
       {memory.value ? (
         <div className="flex flex-col gap-1">
-          <label
-            className="text-[length:var(--text-caption)] text-muted-foreground"
+          <Label
+            className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] font-normal text-muted-foreground"
             htmlFor={valueId}
           >
             {valueCaptionFor(memory.value)}
-          </label>
+          </Label>
           <MemoryValueInput
             currency={memory.value.type === "amount" ? memory.value.currency : null}
             id={valueId}

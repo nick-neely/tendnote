@@ -198,6 +198,7 @@ describe("background job recovery", () => {
       extraction: { scanned: 1, processed: 1, failed: 0 },
       embedding: { recovered: 1, scanned: 1, processed: 0, failed: 1 },
       actionExtraction: { scanned: 1, processed: 1, failed: 0 },
+      contextFactExtraction: { scanned: 0, processed: 0, failed: 0 },
     });
   });
 

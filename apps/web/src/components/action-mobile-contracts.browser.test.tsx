@@ -33,12 +33,16 @@ describe("Action mobile browser contracts", () => {
       />,
     );
 
-    // The Area chips are a single-select ToggleGroup (a radio group); the reflow
-    // container is named so this asserts on it directly rather than on a parent chain.
+    // The Area chips are a single-select ToggleGroup (a radio group); the filter
+    // bar is named so this asserts on it directly rather than on a parent chain.
     await page.getByRole("radiogroup", { name: "Filter by area" }).element();
-    const reflowContainer = container.querySelector("[data-slot=action-filter-bar]");
+    const filterBar = container.querySelector("[data-slot=action-filter-bar]") as HTMLElement;
 
-    expect(getComputedStyle(reflowContainer as Element).flexDirection).toBe("column");
+    // One row at every width - the chips take their overflow horizontally, inside
+    // their own scroller, so a long list of Areas never pushes the ledger down and
+    // never widens the page.
+    expect(getComputedStyle(filterBar).flexDirection).toBe("row");
+    expect(filterBar.scrollWidth).toBeLessThanOrEqual(filterBar.clientWidth);
     expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
   });
 

@@ -46,6 +46,9 @@ const scopes: AffectedScope[] = [
   { kind: "linked-entity", entity: "asset", entityId: "asset-1" },
   { kind: "owner-collection", collection: "saved-items", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "account", ownerUserId: "owner-1" },
+  { kind: "owner-collection", collection: "context-facts", ownerUserId: "owner-1" },
+  { kind: "owner-collection", collection: "orientation", ownerUserId: "owner-1" },
+  { kind: "owner-collection", collection: "global-recall", ownerUserId: "owner-1" },
   { kind: "owner-collection", collection: "briefs", ownerUserId: "owner-1" },
   { kind: "viewer-collection", collection: "saved-items", viewerUserId: "member-1" },
   {
@@ -88,7 +91,8 @@ describe("affected-scope reconciliation", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/account");
     expect(revalidatePath).toHaveBeenCalledWith("/account/contacts/import");
     expect(revalidatePath).toHaveBeenCalledWith("/account/discord");
-    expect(revalidatePath).toHaveBeenCalledTimes(3);
+    expect(revalidatePath).toHaveBeenCalledWith("/account/about-you");
+    expect(revalidatePath).toHaveBeenCalledTimes(4);
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
@@ -104,6 +108,7 @@ describe("affected-scope reconciliation", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/account");
     expect(revalidatePath).toHaveBeenCalledWith("/account/contacts/import");
     expect(revalidatePath).toHaveBeenCalledWith("/account/discord");
-    expect(revalidatePath).toHaveBeenCalledTimes(3);
+    expect(revalidatePath).toHaveBeenCalledWith("/account/about-you");
+    expect(revalidatePath).toHaveBeenCalledTimes(4);
   });
 });

@@ -110,7 +110,7 @@ describe("DashboardRail Review Queue", () => {
     view.rerender(rail(1));
 
     expect(selected()).toBe("Follow-ups");
-    expect(screen.getByRole("tab", { name: "Review, 1" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Review" })).toBeDefined();
   });
 
   /** A URL the owner navigated to — a nav link, Back, a shared link — still wins. */
@@ -127,10 +127,10 @@ describe("DashboardRail Review Queue", () => {
   });
 
   /** The count is the rail's whole share of the queue: the panel itself streams in. */
-  it("shows the streamed panel and its count once something is waiting", () => {
+  it("shows the streamed panel without a count badge once something is waiting", () => {
     renderRail(3);
 
-    expect(screen.getByRole("tab", { name: "Review, 3" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Review" })).toBeDefined();
     expect(screen.getByText("Streamed review queue")).toBeDefined();
     expect(screen.queryByText(/Nothing waiting to review/)).toBeNull();
   });

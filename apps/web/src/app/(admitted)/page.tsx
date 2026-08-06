@@ -9,6 +9,10 @@ import {
   suppressTodayItemAction,
 } from "@/app/actions/today";
 import {
+  SelfContextHomeInvitation,
+  type SelfContextHomeInvitationProps,
+} from "@/components/account/self-context-home-invitation";
+import {
   appDestination,
   explicitHomePanelForLocation,
   type HomePanel,
@@ -50,7 +54,7 @@ import { defaultRailTab } from "@/lib/rail-tabs";
 import type { ReviewQueueFamily } from "@/lib/review-queue";
 import { toSuggestedFollowupReviewView } from "@/lib/suggested-followup-review-view";
 
-type HomeProps = { searchParams?: Promise<{ tab?: string }> };
+type HomeProps = SelfContextHomeInvitationProps;
 
 async function homeSearchParams(searchParams: HomeProps["searchParams"]): Promise<URLSearchParams> {
   const params = new URLSearchParams();
@@ -83,6 +87,9 @@ function admittedHomeOwner(tab: HomePanel): Promise<string> {
 export default function Home(props: HomeProps) {
   return (
     <>
+      <Suspense fallback={null}>
+        <SelfContextHomeInvitation searchParams={props.searchParams} />
+      </Suspense>
       {/* Narrow viewports get the focused Today (or Review) destination, which
           owns its own canvas — `data-mobile-bleed` tells the shell not to pad it. */}
       <div className="lg:hidden" data-mobile-bleed>
@@ -265,6 +272,7 @@ const REVIEW_FAMILIES: { family: ReviewQueueFamily; heading: string }[] = [
   { family: "suggested-general-action", heading: "Actions" },
   { family: "asset-review-group", heading: "Assets" },
   { family: "source-record", heading: "Source details" },
+  { family: "suggested-context-fact", heading: "Self Context" },
 ];
 
 function ReviewQueueStreams({ ownerUserId }: { ownerUserId: string }) {
@@ -292,7 +300,7 @@ async function ReviewQueueEmpty({ ownerUserId }: { ownerUserId: string }) {
 
   return (
     <EmptyState
-      description="Eve's suggestions land here first: a detail worth keeping, an action to take, a name it couldn't place. Nothing is saved without your yes."
+      description="Eve's suggestions land here first: a detail worth keeping, an action to take, a name it couldn't place, or a fact about you to review. Nothing is saved without your yes."
       size="compact"
       title="Nothing waiting to review."
     />
@@ -344,7 +352,7 @@ async function HomeMobileDestination({ searchParams }: HomeProps) {
 
   if (tab === "review") {
     return (
-      <div className="flex flex-col gap-6 px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6">
+      <div className="flex flex-col gap-6 px-gutter pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6">
         <header className="flex flex-col gap-1">
           <h1 className="font-semibold text-[length:var(--text-h1)] leading-[var(--text-h1-line)]">
             {appDestination("review").label}

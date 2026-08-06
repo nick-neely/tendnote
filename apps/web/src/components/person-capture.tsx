@@ -71,16 +71,23 @@ export function PersonCapture({
         </span>
       </div>
 
+      {/* What is left of a three-part paragraph. "Jot something about {firstName}"
+          was the placeholder said twice, and "Saved privately" was the badge above
+          said twice; what only copy can carry is that a note is not yet a memory. */}
       <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-        Jot something about {firstName}. Saved privately, and reviewed before it becomes a memory.
+        Reviewed before it becomes a memory.
       </p>
 
+      {/* The accessible name carries the full name, because a screen reader may
+          meet this field with no profile above it. The visible placeholder uses
+          the short name: on a phone a long full name wraps the placeholder onto
+          a second line or clips it mid-word. */}
       <Textarea
         aria-label={`Add a note about ${personName}`}
         className="min-h-24 resize-none bg-card"
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={`Note something about ${personName}…`}
+        placeholder={`Note something about ${firstName}…`}
         value={value}
       />
 
@@ -95,7 +102,10 @@ export function PersonCapture({
               Saved to logged context
             </span>
           ) : (
-            "Enter to save · Shift + Enter for a new line"
+            // A keyboard shortcut is worth a line only where there is a keyboard.
+            // On a phone the Save note button beside it is the whole story, and
+            // "Shift + Enter" describes keys the owner does not have.
+            <span className="hidden lg:inline">Enter to save · Shift + Enter for a new line</span>
           )}
         </span>
         <Button disabled={pending || value.trim().length === 0} onClick={save} size="sm">

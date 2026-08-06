@@ -4,7 +4,9 @@ import {
   createDrizzleBackgroundJobDeliveryStore,
 } from "@tendnote/db/queries/background-job-deliveries";
 import { BACKGROUND_JOB_FAMILIES } from "@tendnote/db/queries/background-jobs";
+import type { AffectedScope } from "@tendnote/db/queries/general-actions";
 import { recoverStaleSemanticEmbeddingJobs } from "@tendnote/db/queries/semantic-retrieval";
+import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 import { classifyBackgroundJobFailure } from "./failure-observability";
 import {
   type BackgroundJobQueueLogger,
@@ -19,11 +21,14 @@ type JobValidity = "active" | "obsolete";
 type DeliveryJobInspector = (delivery: BackgroundJobDelivery) => Promise<JobValidity>;
 
 /** The claim-next + process seam a bounded backfill drives, shared across families. */
-type BackfillClaimNextJob = (input: { now?: Date }) => Promise<{ id: string } | null>;
-type BackfillProcessJob = (input: { jobId: string; claim: false }) => Promise<{
+type BackfillClaimNextJob = (input: {
+  now?: Date;
+}) => Promise<{ id: string; claimToken?: string } | null>;
+type BackfillProcessJob = (input: { jobId: string; claim: false; claimToken?: string }) => Promise<{
   outcome: string;
   error?: string;
   reason?: string;
+  affectedScopes?: AffectedScope[];
 }>;
 
 export type DeliveryRecoveryResult = {
@@ -48,11 +53,14 @@ export type BackgroundJobRecoveryRunResult = {
   extraction: ProcessorBackfillResult;
   embedding: EmbeddingBackfillResult;
   actionExtraction: ProcessorBackfillResult;
+  contextFactExtraction: ProcessorBackfillResult;
 };
 
-/** A backing job is obsolete once it is gone or already terminal (completed/skipped). */
+/** A backing job is obsolete once it is gone or already terminal. */
+const TERMINAL_JOB_STATUSES = new Set(["completed", "skipped", "dead_lettered"]);
+
 function jobValidity(job: { status: string } | null): JobValidity {
-  return !job || job.status === "completed" || job.status === "skipped" ? "obsolete" : "active";
+  return job && !TERMINAL_JOB_STATUSES.has(job.status) ? "active" : "obsolete";
 }
 
 async function inspectDeliveryProcessorJob(delivery: BackgroundJobDelivery): Promise<JobValidity> {
@@ -144,6 +152,7 @@ type ProcessorBackfillInput = {
   claimNextJob?: BackfillClaimNextJob;
   processJob?: BackfillProcessJob;
   logger?: BackgroundJobQueueLogger;
+  onProcessed?: (result: { affectedScopes?: AffectedScope[] }) => void | Promise<void>;
 };
 
 type RecoverStaleEmbeddingJobs = typeof recoverStaleSemanticEmbeddingJobs;
@@ -165,6 +174,7 @@ function runFamilyBackfill(
     claimNextJob: input.claimNextJob ?? family.claimNextJob,
     processJob: input.processJob ?? family.processJob,
     logger: input.logger,
+    onProcessed: input.onProcessed,
   });
 }
 
@@ -204,23 +214,41 @@ function runActionExtractionBackfill(
   return runFamilyBackfill("action_extraction", input);
 }
 
+function runContextFactExtractionBackfill(
+  input: ProcessorBackfillInput,
+): Promise<ProcessorBackfillResult> {
+  return runFamilyBackfill("context_fact_extraction", {
+    ...input,
+    onProcessed: async (result) => {
+      if (result.affectedScopes?.length) {
+        reconcileAffectedScopes(result.affectedScopes, { origin: "background" });
+      }
+      await input.onProcessed?.(result);
+    },
+  });
+}
+
 export async function runBackgroundJobRecovery(input: {
   deliveryLimit: number;
   extractionBackfillLimit: number;
   embeddingBackfillLimit: number;
   actionExtractionBackfillLimit: number;
+  contextFactExtractionBackfillLimit?: number;
   now?: Date;
   logger?: BackgroundJobQueueLogger;
   recoverDeliveries?: typeof recoverBackgroundJobDeliveries;
   backfillExtraction?: typeof runExtractionBackfill;
   backfillEmbedding?: typeof runEmbeddingBackfill;
   backfillActionExtraction?: typeof runActionExtractionBackfill;
+  backfillContextFactExtraction?: typeof runContextFactExtractionBackfill;
 }): Promise<BackgroundJobRecoveryRunResult> {
   const now = input.now ?? new Date();
   const recoverDeliveries = input.recoverDeliveries ?? recoverBackgroundJobDeliveries;
   const backfillExtraction = input.backfillExtraction ?? runExtractionBackfill;
   const backfillEmbedding = input.backfillEmbedding ?? runEmbeddingBackfill;
   const backfillActionExtraction = input.backfillActionExtraction ?? runActionExtractionBackfill;
+  const backfillContextFactExtraction =
+    input.backfillContextFactExtraction ?? runContextFactExtractionBackfill;
 
   const deliveries = await recoverDeliveries({
     limit: input.deliveryLimit,
@@ -242,17 +270,23 @@ export async function runBackgroundJobRecovery(input: {
     now,
     logger: input.logger,
   });
+  const contextFactExtraction = await backfillContextFactExtraction({
+    limit: input.contextFactExtractionBackfillLimit ?? 0,
+    now,
+    logger: input.logger,
+  });
 
-  return { deliveries, extraction, embedding, actionExtraction };
+  return { deliveries, extraction, embedding, actionExtraction, contextFactExtraction };
 }
 
 async function runProcessorBackfill(input: {
-  jobKind: "extraction" | "embedding" | "action_extraction";
+  jobKind: "extraction" | "embedding" | "action_extraction" | "context_fact_extraction";
   limit: number;
   now?: Date;
   claimNextJob: BackfillClaimNextJob;
   processJob: BackfillProcessJob;
   logger?: BackgroundJobQueueLogger;
+  onProcessed?: (result: { affectedScopes?: AffectedScope[] }) => void | Promise<void>;
 }): Promise<ProcessorBackfillResult> {
   const result: ProcessorBackfillResult = { scanned: 0, processed: 0, failed: 0 };
 
@@ -263,7 +297,12 @@ async function runProcessorBackfill(input: {
     }
 
     result.scanned += 1;
-    const processResult = await input.processJob({ jobId: job.id, claim: false });
+    const processResult = await input.processJob({
+      jobId: job.id,
+      claim: false,
+      ...(job.claimToken ? { claimToken: job.claimToken } : {}),
+    });
+    await input.onProcessed?.(processResult);
 
     if (processResult.outcome === "failed") {
       result.failed += 1;

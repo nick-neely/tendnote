@@ -11,6 +11,7 @@ import {
 } from "@/components/reminder-installation-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -49,7 +50,10 @@ export function BirthdayFollowupOffer({
       <div className="flex flex-wrap items-end gap-2">
         {/* The trigger is a button, which `htmlFor` still names and activates, so
             the whole label stays the way into the chooser. */}
-        <label className="flex flex-col gap-1 text-sm" htmlFor={scheduleFieldId}>
+        <Label
+          className="flex-col items-stretch gap-1 text-sm font-normal"
+          htmlFor={scheduleFieldId}
+        >
           Reminder schedule
           <Select onValueChange={(next) => setChoice(next as typeof choice)} value={choice}>
             <SelectTrigger className="min-w-44" id={scheduleFieldId}>
@@ -61,7 +65,7 @@ export function BirthdayFollowupOffer({
               <SelectItem value="custom">Custom</SelectItem>
             </SelectContent>
           </Select>
-        </label>
+        </Label>
         {choice === "custom" ? (
           <div className="flex flex-col gap-1 text-sm">
             <span>Days before</span>

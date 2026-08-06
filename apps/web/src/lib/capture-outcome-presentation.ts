@@ -55,6 +55,15 @@ export function captureOutcomePresentation(outcome: ConversationalCaptureOutcome
         cadence: null,
         reminderSchedule: null,
       };
+    case "Self Context":
+      return {
+        key: `${outcome.change.kind}:${outcome.change.contextFactId}`,
+        description: outcome.interpreted.content,
+        visibility: outcome.interpreted.scope,
+        dueAt: null,
+        cadence: null,
+        reminderSchedule: null,
+      };
     case "Review": {
       const key =
         outcome.change.kind === "edit_memory"

@@ -26,6 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
 import { captureFocusAfterRemoval } from "@/lib/focus-after-removal";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 import {
@@ -248,7 +249,7 @@ function TodayShortlistContent({
   }
 
   return (
-    <section aria-busy={pending} aria-label="Today shortlist" className="px-5 pt-6">
+    <section aria-busy={pending} aria-label="Today shortlist" className="px-gutter pt-6">
       <div className="mb-2 flex items-start justify-between gap-4">
         <h2 className="font-semibold text-sm">Worth your attention</h2>
         {showRefresh ? (
@@ -396,7 +397,9 @@ function TodayShortlistContent({
                         wrapping folds the time field's own name into the label,
                         and the date trigger ends up called "Show again Time". */}
                     <div className="flex min-w-52 flex-1 flex-col gap-1 text-[length:var(--text-small)]">
-                      <label htmlFor={`today-later-${item.identity}`}>Show again</label>
+                      <Label className="font-normal" htmlFor={`today-later-${item.identity}`}>
+                        Show again
+                      </Label>
                       <DateTimePicker
                         // The form cannot be submitted without a date, so there
                         // is nothing for a clear button to mean here. Left

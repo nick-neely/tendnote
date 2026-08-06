@@ -11,6 +11,8 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       status: input.status,
       source: input.source,
       grantedAt: input.grantedAt,
+      selfContextOnboardingStatus: input.selfContextOnboardingStatus ?? "not_started",
+      selfContextOnboardingReminderAt: input.selfContextOnboardingReminderAt ?? null,
       createdAt: now,
       updatedAt: now,
     };
@@ -67,6 +69,26 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       }
 
       const updated: AccessProfile = { ...existing, ...patch, updatedAt: new Date() };
+      profiles.set(userId, updated);
+
+      return updated;
+    },
+
+    async claimSelfContextOnboardingReminder({ userId, reminderAt }) {
+      const existing = profiles.get(userId);
+
+      if (
+        existing?.selfContextOnboardingStatus !== "dismissed" ||
+        existing.selfContextOnboardingReminderAt !== null
+      ) {
+        return null;
+      }
+
+      const updated: AccessProfile = {
+        ...existing,
+        selfContextOnboardingReminderAt: reminderAt,
+        updatedAt: new Date(),
+      };
       profiles.set(userId, updated);
 
       return updated;

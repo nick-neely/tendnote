@@ -188,4 +188,35 @@ describe("affected-scope tag coverage", () => {
       }
     }
   });
+
+  it("keeps the Context Fact projection tags distinct and owner-scoped", () => {
+    expect(
+      tagsForAffectedScope({
+        kind: "owner-collection",
+        collection: "context-facts",
+        ownerUserId: "owner-1",
+      }),
+    ).toEqual(["context-facts:owner:owner-1"]);
+    expect(
+      tagsForAffectedScope({
+        kind: "owner-collection",
+        collection: "orientation",
+        ownerUserId: "owner-1",
+      }),
+    ).toEqual(["orientation:owner:owner-1"]);
+    expect(
+      tagsForAffectedScope({
+        kind: "owner-collection",
+        collection: "global-recall",
+        ownerUserId: "owner-1",
+      }),
+    ).toEqual(["global-recall:owner:owner-1"]);
+    expect(
+      tagsForAffectedScope({
+        kind: "household-collection",
+        collection: "context-facts",
+        householdId: "household-1",
+      }),
+    ).toEqual(["context-facts:household:household-1:collection"]);
+  });
 });

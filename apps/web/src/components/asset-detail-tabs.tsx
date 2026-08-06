@@ -132,7 +132,7 @@ export function AssetDetailTabs({
       {/* Where to go stays pinned while a long ledger scrolls beneath. Full-bleed
           on narrow screens, then exactly the reading column once the column is
           narrower than the viewport, so the rule reads as this page's toolbar. */}
-      <div className="-mx-4 sticky top-0 z-10 border-b bg-background/90 px-4 pt-1 pb-3 backdrop-blur sm:-mx-6 sm:px-6 lg:top-14 lg:mx-0 lg:px-0">
+      <div className="mx-bleed sticky top-0 z-10 border-b bg-background/90 px-gutter pt-1 pb-3 backdrop-blur sm:-mx-6 sm:px-6 lg:top-14 lg:mx-0 lg:px-0">
         {/* `justify-start` matters once the strip overflows: the shared TabsList
             centers its children, and centered content inside a scroll container
             spills off *both* edges with scrollLeft pinned at 0 - which on a phone

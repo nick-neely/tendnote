@@ -15,6 +15,8 @@ function grantedProfileFixture(userId: string): AccessProfile {
     status: "granted",
     source: "bootstrap",
     grantedAt: now,
+    selfContextOnboardingStatus: "not_started",
+    selfContextOnboardingReminderAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -131,5 +133,56 @@ describe("access profile queries", () => {
 
     const decision = await queries.checkAccess({ userId: SECOND_USER });
     expect(decision.admitted).toBe(true);
+  });
+
+  it("stores Self Context setup state as account metadata and claims one later invitation", async () => {
+    const queries = createAccessProfileQueries(createInMemoryAccessProfileStore());
+    await queries.ensureAccessProfile({ userId: FIRST_USER });
+
+    await expect(queries.getSelfContextOnboardingState({ userId: FIRST_USER })).resolves.toEqual({
+      status: "not_started",
+      reminderAt: null,
+    });
+    await expect(queries.dismissSelfContextOnboarding({ userId: FIRST_USER })).resolves.toEqual({
+      status: "dismissed",
+      reminderAt: null,
+    });
+
+    const [firstClaim, secondClaim] = await Promise.all([
+      queries.claimSelfContextOnboardingReminder({ userId: FIRST_USER }),
+      queries.claimSelfContextOnboardingReminder({ userId: FIRST_USER }),
+    ]);
+    expect([firstClaim.claimed, secondClaim.claimed].sort()).toEqual([false, true]);
+    expect(firstClaim.state?.reminderAt ?? secondClaim.state?.reminderAt).toBeInstanceOf(Date);
+
+    await expect(
+      queries.completeSelfContextOnboarding({ userId: FIRST_USER }),
+    ).resolves.toMatchObject({
+      status: "completed",
+    });
+    await expect(
+      queries.claimSelfContextOnboardingReminder({ userId: FIRST_USER }),
+    ).resolves.toMatchObject({ claimed: false, state: { status: "completed" } });
+  });
+
+  it("keeps onboarding metadata isolated between admitted owners", async () => {
+    const store = createInMemoryAccessProfileStore();
+    const queries = createAccessProfileQueries(store);
+    await queries.ensureAccessProfile({ userId: FIRST_USER });
+    await queries.ensureAccessProfile({ userId: SECOND_USER });
+    await queries.grantAccess({ userId: SECOND_USER, source: "manual_grant" });
+
+    await queries.dismissSelfContextOnboarding({ userId: FIRST_USER });
+
+    await expect(
+      queries.getSelfContextOnboardingState({ userId: FIRST_USER }),
+    ).resolves.toMatchObject({
+      status: "dismissed",
+    });
+    await expect(
+      queries.getSelfContextOnboardingState({ userId: SECOND_USER }),
+    ).resolves.toMatchObject({
+      status: "not_started",
+    });
   });
 });

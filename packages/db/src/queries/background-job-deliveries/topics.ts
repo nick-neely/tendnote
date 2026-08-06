@@ -6,6 +6,7 @@ export const BACKGROUND_JOB_TOPICS = {
   // extraction without a second Vercel queue. They stay distinct delivery rows (jobKind
   // differs) and carry their own per-kind rate-limit budget.
   action_extraction: "tendnote-extraction-v1",
+  context_fact_extraction: "tendnote-extraction-v1",
   reminder_push: "tendnote-reminder-push-v1",
 } as const;
 

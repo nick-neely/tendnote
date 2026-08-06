@@ -4,6 +4,89 @@ import { routeExplicitConversationalCapture } from "./conversational-capture";
 describe("explicit conversational Capture routing", () => {
   const now = new Date("2026-07-21T04:30:00.000Z");
 
+  it("routes an explicit supported self-orienting statement into private Self Context", () => {
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "Remember that I run a small software consultancy",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "context_fact",
+      category: "work",
+      content: "I run a small software consultancy",
+      sensitivity: "normal",
+    });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "Save this about me: I live in Chicago",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "context_fact",
+      category: "location",
+      content: "I live in Chicago",
+      sensitivity: "normal",
+    });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "I prefer concise answers",
+        allowSelfContext: true,
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({
+      destination: "context_fact",
+      category: "preference",
+      content: "I prefer concise answers",
+      sensitivity: "normal",
+    });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "I prefer concise answers",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({ destination: "saved_item" });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "I need to replace the filter tomorrow",
+        allowSelfContext: true,
+        timeZone: "America/Chicago",
+      }),
+    ).toMatchObject({ destination: "action" });
+
+    expect(
+      routeExplicitConversationalCapture({
+        now,
+        originalText: "Remember that I live at 123 Main Street",
+        timeZone: "America/Chicago",
+      }),
+    ).toEqual({ destination: "saved_item" });
+
+    for (const originalText of [
+      "Remember that my plan is to replace the filter",
+      "Remember that my calendar has a meeting Friday",
+      "Remember that my timezone is America/Chicago",
+      "Remember that my car needs an oil change",
+      "Remember that my work calendar has a meeting Friday",
+      "Remember that my preferred timezone is America/Chicago",
+      "Remember that my kitchen refrigerator filter needs replacing",
+      "Remember that my follow-up with Priya is Friday",
+      "Remember that I should replace the filter",
+    ]) {
+      expect(
+        routeExplicitConversationalCapture({ now, originalText, timeZone: "America/Chicago" }),
+      ).toEqual({ destination: "saved_item" });
+    }
+  });
+
   it("routes explicit Person, Memory, and Asset-review requests without promoting inferred facts", () => {
     expect(
       routeExplicitConversationalCapture({
