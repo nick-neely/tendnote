@@ -10,6 +10,10 @@ This directory holds durable research, prototype handoffs, and other supporting 
 - [Household setup and member management UX](household-setup-and-member-management.md)
   — the selected people-first Household composition, durable local navigation,
   invitation and role management, and focused departure and recovery flows.
+- [Household Context management and correction](household-context-management-and-correction.md)
+  — shared member authority, conflict-safe correction, evidence privacy,
+  sensitivity, lifecycle, and activation across Account, Eve, Review, Capture,
+  and Search.
 
 ## Working agreement
 
