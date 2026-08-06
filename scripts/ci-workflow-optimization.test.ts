@@ -73,8 +73,8 @@ describe("CI workflow optimization contract", () => {
     expect(modeScript).toBeDefined();
     expect(fastPackageFilter).not.toContain(".github/workflows");
     expect(fastPackageFilter).not.toContain("scripts/");
-    expect(pullRequest).toContain("fast_packages: ${{ steps.mode.outputs.fast_packages }}");
-    expect(pullRequest).toContain("database: ${{ steps.mode.outputs.database }}");
+    expect(pullRequest).toContain("fast_packages: $" + "{{ steps.mode.outputs.fast_packages }}");
+    expect(pullRequest).toContain("database: $" + "{{ steps.mode.outputs.database }}");
     expect(pullRequest).toContain("github.event.before");
     expect(modeScript).toContain("'tsconfig*.json'");
     expect(pullRequest).toContain(
@@ -88,6 +88,39 @@ describe("CI workflow optimization contract", () => {
     expect(reusable).toMatch(
       /name: Run affected package tests\s+if: \$\{\{ inputs\.run_fast_packages \}\}/,
     );
+  });
+
+  it("anchors affected package tests to the fetched origin/main baseline", () => {
+    const reusable = read(".github/workflows/reusable-verify.yml");
+    const affectedStep = reusable.match(
+      /- name: Run affected package tests[\s\S]*?run: pnpm turbo test --affected/,
+    )?.[0];
+
+    expect(affectedStep).toBeDefined();
+    expect(affectedStep).toContain("TURBO_SCM_BASE: origin/main");
+    expect(reusable).toMatch(/fast_tests:[\s\S]*?fetch-depth: 0/);
+  });
+
+  it("uses the database dependency closure instead of installing the whole workspace", () => {
+    const reusable = read(".github/workflows/reusable-verify.yml");
+    const databaseJob = reusable.match(/ {2}database:\n([\s\S]*?)\n {2}quality:/)?.[1];
+
+    expect(databaseJob).toBeDefined();
+    expect(databaseJob).toContain("run: pnpm install --frozen-lockfile --filter @tendnote/db...");
+    expect(databaseJob).not.toMatch(/run: pnpm install --frozen-lockfile\s*$/m);
+  });
+
+  it("keeps full-ci qualification in a separate concurrency group", () => {
+    const workflow = read(".github/workflows/pr-verify.yml");
+
+    expect(workflow).toContain("format('pr-full-ci-{0}', github.event.pull_request.number)");
+    expect(workflow).toContain("format('pr-verify-{0}', github.event.pull_request.number)");
+    expect(workflow).toContain("format('pr-verify-{0}-ignored-{1}'");
+    expect(workflow).toContain("cancel-in-progress: true");
+    expect(workflow).not.toContain(
+      "format('pr-verify-{0}-{1}', github.event.pull_request.number, github.event.pull_request.head.sha)",
+    );
+    expect(workflow).not.toContain("cancel-in-progress: $" + "{");
   });
 
   it("does not rerun PR verification when an already-qualified draft becomes ready", () => {

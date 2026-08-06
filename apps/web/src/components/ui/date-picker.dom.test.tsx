@@ -20,9 +20,8 @@ function dayButton(date: string): HTMLButtonElement {
 }
 
 /** The same day-of-month in whichever month the calendar opens on by default. */
-function dayThisMonth(day: number): string {
-  const now = new Date();
-  return toDateValue(new Date(now.getFullYear(), now.getMonth(), day));
+function dayThisMonth(day: number, base = new Date()): string {
+  return toDateValue(new Date(base.getFullYear(), base.getMonth(), day));
 }
 
 function trigger(name: string): HTMLElement {
@@ -152,12 +151,13 @@ describe("DateTimePicker", () => {
   it("fills a calm default time when only a date is picked", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
+    const chosenDate = dayThisMonth(20);
     render(<DateTimePicker aria-label="Bring back" onChange={onChange} value="" />);
 
     await user.click(trigger("Bring back"));
-    await user.click(dayButton(dayThisMonth(20)));
+    await user.click(dayButton(chosenDate));
 
-    expect(onChange).toHaveBeenCalledWith(`${dayThisMonth(20)}T09:00`);
+    expect(onChange).toHaveBeenCalledWith(`${chosenDate}T09:00`);
   });
 
   it("recombines an edited time with the held date", () => {
@@ -215,8 +215,9 @@ describe("DateTimePicker", () => {
   it("leaves a later day unconstrained", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    const boundaryDate = dayThisMonth(15);
-    const laterDate = dayThisMonth(16);
+    const baseDate = new Date();
+    const boundaryDate = dayThisMonth(15, baseDate);
+    const laterDate = dayThisMonth(16, baseDate);
     render(
       <DateTimePicker
         aria-label="Bring back"
