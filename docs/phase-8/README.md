@@ -20,8 +20,8 @@ This directory holds durable research, prototype handoffs, and other supporting 
   responsive, and domain-authority contracts.
 - [Shared Household Actions, Routines, and reminder coordination](shared-household-actions-and-reminders.md)
   — household-native versus member-owned ownership, per-form authority, shared
-  occurrences, the Routine Rota, per-member reminders and the turn offer, and
-  composition into Household and Today.
+  occurrences, the Responsibility Holder and its completion hand-off, per-member
+  reminders, and composition into Household and Today.
 
 ## Working agreement
 

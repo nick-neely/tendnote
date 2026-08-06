@@ -2113,7 +2113,8 @@ Deliverables:
   an explicit, confirmed, owner-only conversion with no claim-back path.
 - Every active member has symmetric authority over a household-native Action or
   Routine — create, edit, complete, reopen, skip, defer, pause, resume, archive,
-  and set the rota — with no Household Owner or creator privilege, and archive
+  and name its Responsibility Holder — with no Household Owner or creator
+  privilege, and archive
   rather than one member's permanent deletion as the removal path. A member-owned
   shared Action keeps its owner as sole author; other authorized members may only
   complete and reopen it, which narrows the current seam that lets any viewer
@@ -2125,29 +2126,35 @@ Deliverables:
   the Household home entry, every member's Today entry, and every pending
   reminder intent; resuming materializes the next valid future occurrence without
   a catch-up alert.
-- An optional **Routine Rota** orders active members through successive
-  occurrences of a household-native Routine, and a household-native one-time
-  Action may name one Turn Holder. The rota is explicit and never inferred, never
-  gates authority, advances to the next member regardless of who actually acted,
-  and stores no turn counts, streaks, missed-turn state, or fairness score. It
-  creates no per-member backlog, assignment inbox, or default my-turns filter,
-  and a departing member leaves every rota with the turn passing deterministically.
+- A household-native Action or Routine may name at most one active member as its
+  **Responsibility Holder** — a member's explicit statement about who is looking
+  after it, never inferred and never advanced by Tendnote on completion or skip.
+  Tendnote stores no turn order, because an automatic rotation would assert whose
+  turn it is, a fact about the past the product cannot observe and one whose
+  timestamped record becomes evidence in a disagreement. Alternation stays
+  seamless through a one-tap hand-off offered at completion; a settled chore is
+  named once and never touched again. The holder never gates authority, creates no
+  per-member backlog or default filter, and accumulates no completion tallies,
+  streaks, missed-turn state, or fairness score. A departing member's name is
+  cleared with no replacement chosen.
 - A Reminder Schedule remains one member's own choice about their own devices.
   Each member may hold their own schedule for any record they can currently see,
   so both partners can be reminded about one shared Routine, and no member action
-  ever enrolls another member's device. Being named on a rota offers that member —
-  once, in product and never as a push — their own turn-scoped schedule that
-  materializes only for their turns; declining is remembered.
-- Any authorized member's completion, skip, pause, archive, recurrence change, or
-  rota change invalidates every subscribed member's pending intent for that
-  occurrence and regenerates the replacement where warranted. The dispatcher
+  ever enrolls another member's device. Being named as Responsibility Holder
+  offers that member — once, in product and never as a push — their own ordinary
+  schedule; declining is remembered, and handing the record on offers to remove
+  their own reminder rather than silently mutating it.
+- Any authorized member's completion, skip, pause, archive, or recurrence change
+  invalidates every subscribed member's pending intent for that occurrence and
+  regenerates the replacement where warranted. The dispatcher
   revalidates current membership and visibility before every send, so a departed
   member never receives an alert about a household record. Stale suppression
-  stays delivery state and never advances an occurrence or touches a rota.
+  stays delivery state and never advances an occurrence or changes a holder.
 - Household-native writes use optimistic concurrency with the member's draft
   preserved on a stale write; progress actions reconcile instead, reporting who
   already handled the occurrence and when. Attribution stays quiet and factual —
-  **Household**, **Shared by Mara**, **Ana's turn**, **Completed by Ben** — and
+  **Household**, **Shared by Mara**, **Ana is looking after this**, **Completed by
+  Ben** — and
   never becomes an activity feed, mentions, or comments. Historical attribution
   survives departure.
 - A Suggested General Action may propose a household-native record only from
@@ -2159,20 +2166,21 @@ Deliverables:
   attention** and **Coming up** sections with completion and reopening as the only
   inline actions. Private Today narrows Phase Seven eligibility: a household
   record reaches a member's Today only when it is due, overdue, or deliberately
-  resurfaced **and** they own it, hold its turn, or hold their own Reminder
-  Schedule for it, so a rota-less shared chore sits on the Household home and
-  nags nobody privately.
+  resurfaced **and** they own it, are its named Responsibility Holder, or hold
+  their own Reminder Schedule for it, so an unheld shared chore sits on the
+  Household home and nags nobody privately.
 - Departure or removal immediately ends household-native access, reverts the
   member's own shared records to `private`, revokes their household Reminder
-  Schedules and pending intents, and removes them from every rota, while
-  household-native records, occurrences, rotas, and history stay with the
+  Schedules and pending intents, and clears their name from any record they held,
+  while household-native records, occurrences, and history stay with the
   workspace. Dissolution carries them into the 30-day recovery set and cancels
   every member's schedules for them immediately.
-- Excluded rather than deferred: subtasks, projects, dependencies, checklists,
-  comments, mentions, activity feeds, workload balancing, fairness scores,
-  streaks, completion counts, approval or verification of another member's
-  completion, per-member due dates or occurrences, priority and effort
-  classification, and autonomous rota changes, completion, or reminder enrollment.
+- Excluded rather than deferred: a stored turn order or automatic rotation,
+  subtasks, projects, dependencies, checklists, comments, mentions, activity
+  feeds, workload balancing, fairness scores, streaks, completion counts,
+  approval or verification of another member's completion, per-member due dates
+  or occurrences, priority and effort classification, and autonomous completion
+  or reminder enrollment.
 - Household gift ideas and birthday planning
 - Family and social event tracking
 - Household-aware strategist behavior
@@ -2186,8 +2194,8 @@ Vertical slice issue seeds:
   members.
 - Add household-native ownership for General Actions plus the per-form authority,
   shared-occurrence, and conflict contract for Actions and Routines.
-- Add the Routine Rota, the per-member Reminder Schedule on shared records, and
-  the turn-scoped reminder offer.
+- Add the Responsibility Holder with its completion hand-off, the per-member
+  Reminder Schedule on shared records, and the holder reminder offer.
 - Add household gift ideas and birthday planning view.
 - Add family and social event tracking.
 - Add household-aware strategist behavior.

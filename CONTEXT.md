@@ -272,9 +272,9 @@ _Avoid_: Delete household, owner exit, account deletion
 A Personal OS record owned by the Household Workspace itself rather than by a member, such as a shared chore or a joint recurring obligation. It is visible to every active Household Member by definition, grants every active member symmetric authority without Household Owner or creator privilege, preserves creator and actor provenance, is removed by archive rather than by one member's permanent deletion, and remains with the household — with historical attribution — when a member leaves. Visibility alone never makes a member-owned record household-native; conversion is an explicit owner action.
 _Avoid_: Household-scoped record, shared record, team record, ownerless record
 
-**Routine Rota**:
-The optional ordered list of active Household Members who take successive occurrences of a household-native Routine, with the currently named member as its Turn Holder; a household-native one-time Action may name a Turn Holder without a sequence. A rota answers whose turn it is, advances on completion or skip regardless of who acted, never gates authority, and is always explicit. It is not an assignment, workload split, task-routing rule, or a record of turn counts, streaks, or fairness between members.
-_Avoid_: Assignment, assignee, chore split, workload balance, task queue
+**Responsibility Holder**:
+The at most one active Household Member a household-native Action or Routine names as looking after it. A responsibility holder is a member's explicit statement, never inferred and never advanced by Tendnote on completion or skip; it answers who has this without asserting whose turn it is. It does not gate authority, order successive occurrences, or record turn counts, streaks, missed turns, or fairness between members, and handing off is an explicit member act rather than a stored rotation.
+_Avoid_: Assignee, assignment, turn order, rota, chore split, workload balance
 
 **Shared Scope**:
 A visibility scope for records explicitly shared with selected Household Members. Shared scope is narrower than household scope and does not imply visibility to every member.

@@ -6,7 +6,7 @@ first Personal OS domain to earn a full Phase Eight collaboration contract, and
 so it is also the first concrete instance of the map's household-native versus
 member-owned distinction.
 
-It specifies ownership, authority, lifecycle, recurrence, turn order, ambient
+It specifies ownership, authority, lifecycle, recurrence, responsibility, ambient
 reminders, conflict, provenance, composition, and end-of-life for household
 Actions and Routines. It does not implement Phase Eight and does not generalize
 its answers to gifts, events, assets, or any other domain, each of which owes its
@@ -74,7 +74,7 @@ over Household Context.
 | Skip an occurrence | any active member | owner only |
 | Defer or resurface | any active member | owner only |
 | Archive, dismiss | any active member | owner only |
-| Set or clear the rota | any active member | not available |
+| Set or clear the Responsibility Holder | any active member | not available |
 | Change visibility or audience | not applicable | owner only |
 | Permanently delete | nobody | owner only |
 
@@ -110,46 +110,67 @@ dates on one occurrence, and no per-member completion state.
   catch-up alert for a moment that has passed.
 - Archiving a household-native Routine ends its occurrences for the household.
 
-Skipping means "not this time." It advances the occurrence and the rota and
-records a `skipped` history event with its actor. It is not a completion and is
-never presented as one.
+Skipping means "not this time." It advances the occurrence and records a
+`skipped` history event with its actor. It is not a completion and is never
+presented as one.
 
-## The Routine Rota
+## The Responsibility Holder
 
-A **Routine Rota** is the ordered list of active Household Members who take
-successive occurrences of a household-native Routine, and a one-time
-household-native Action may name at most one **Turn Holder**. It answers "whose
-turn is it?" for a couple or a small trusted circle. It is deliberately not an
-assignment, workload, or task-routing model.
+A household-native Action or Routine may name at most one active Household Member
+as its **Responsibility Holder** — the member who is looking after it. It answers
+"who's got this?" for a couple or a small trusted circle, and it is deliberately
+a member's statement rather than the product's claim.
 
-The following constraints are what keep it on the right side of that line, and
-they are part of the decision rather than implementation detail:
+That distinction carries the whole design. When a member names the holder,
+Tendnote is reporting what that member said. If Tendnote instead advanced a turn
+order by itself, it would be asserting whose turn it is — a claim about the past
+that it cannot actually know, because it cannot see a partner quietly covering,
+work done outside Tendnote, or a swap the members agreed between themselves. A
+wrong assertion of that kind becomes durable, timestamped evidence in a
+disagreement, and manufacturing that is precisely what a private household
+notebook must not do.
 
-- **Only household-native records carry a rota.** Member-owned records and
-  one-time Actions with no named holder simply have none.
-- **A rota is optional and may be empty.** An empty rota means the Routine is
-  simply the household's, which is a legitimate and common answer.
-- **Advancement ignores who actually acted.** Completing or skipping advances to
-  the next member in order even when someone other than the holder did the work.
-  Covering for a partner is a kindness, not a claim on their next turn. History
-  records the real actor separately from the named holder.
-- **The rota never gates authority.** Any active member may complete, skip, edit,
-  pause, or defer a household-native Routine regardless of whose turn it is.
-- **No ledger of any kind.** Tendnote stores no turn counts, streaks, missed-turn
-  state, completion tallies, fairness score, or balance between members. ADR 0165
-  stands: history without productivity analytics.
-- **Never inferred.** Tendnote does not populate or reorder a rota from who
-  usually completes the Routine. Rotas are explicit member edits.
-- **No personal backlog.** The rota produces no "my chores" queue, no per-member
-  filter by default on the Household home, and no assignment inbox.
+The following constraints are part of the decision rather than implementation
+detail:
 
-Rota edits are ordinary collaborative writes under the same optimistic
-concurrency fence as any other household-native change.
+- **Only household-native records carry a holder.** A member-owned record already
+  has an owner, and ownership is not a statement about who does the work.
+- **A holder is optional, and no holder is the ordinary case.** An unnamed record
+  is simply the household's, which is a legitimate and common answer.
+- **There is no turn order and no automatic advancement.** Completing or skipping
+  an occurrence leaves the holder exactly as it stands. Tendnote never moves a
+  name on its own initiative.
+- **The holder never gates authority.** Any active member may complete, skip,
+  edit, pause, or defer a household-native record regardless of who is named, and
+  history records the real actor independently of the holder.
+- **No ledger of any kind.** Tendnote stores no completion tallies, streaks,
+  missed-turn state, fairness score, or balance between members. ADR 0165 stands:
+  history without productivity analytics.
+- **Never inferred.** Tendnote does not name, change, or suggest a holder from who
+  usually completes the record. A holder is an explicit member edit.
+- **No personal backlog.** The holder produces no "my chores" queue, no per-member
+  default filter on the Household home, and no assignment inbox.
 
-When a member departs or is removed they leave every rota immediately. If they
-held the current turn, it passes deterministically to the next active member. A
-rota that would fall below one active member becomes empty rather than
-degenerate.
+### Handing off
+
+Completing or skipping an occurrence of a household-native record offers a
+one-tap hand-off to another active member, in place, at the moment the question
+naturally arises. It is an explicit act by the acting member, recorded with its
+actor like any other change, and declining leaves the holder as it stands.
+
+This is what keeps an alternating chore seamless without storing a sequence. The
+settled chore — the common case, where one member simply always does it — is
+named once and never touched again, which a turn order could only have expressed
+as a sequence of one.
+
+Tendnote accepts the consequence that a household which forgets to hand off will
+leave one name in place while both members drift into sharing the work
+informally. The alternative is a product that asserts an alternation it never
+observed.
+
+Holder changes are ordinary collaborative writes under the same optimistic
+concurrency fence as any other household-native change. When the named member
+departs or is removed, the holder is cleared and Tendnote chooses no replacement.
 
 ## Ambient reminders
 
@@ -165,26 +186,24 @@ preserved and is the reason the reminder contract looks the way it does.
 - The schedule's user is the **subscribing member**, not the record's owner. The
   current owner-equality check becomes a current-visibility and authority check.
 - **No member action ever creates an alert on another member's device.** Nobody is
-  auto-enrolled by being added to a rota, by a record being shared with them, or
-  by a household-native record being created.
+  auto-enrolled by being named as Responsibility Holder, by a record being shared
+  with them, or by a household-native record being created.
 
-### The turn offer
+### The holder offer
 
-When a household-native Routine's rota names a member who has no schedule for it,
-Tendnote offers that member — once — to add their own Reminder Schedule for the
-occurrences where they are the holder.
+When a household-native record names a Responsibility Holder who has no schedule
+for it, Tendnote offers that member — once — to add their own Reminder Schedule.
 
 - The offer appears in that member's own product surfaces. It is never itself a
   push notification, because an unconsented alert is exactly what this contract
   refuses.
-- Accepting stores that member's own **turn-scoped** schedule: it materializes an
-  occurrence intent only for occurrences where they are the named holder, and
-  falls silent on the others.
-- Declining is remembered for that Routine and is not re-offered.
-- A member may convert a turn-scoped schedule to an every-occurrence schedule, or
-  remove it, at any time from the record.
-- Leaving the rota stops a turn-scoped schedule from materializing; departure or
-  removal revokes it entirely.
+- Accepting stores that member's ordinary Reminder Schedule for the record. Because
+  the holder does not rotate, no occurrence-conditional schedule rule is needed.
+- Declining is remembered for that record and is not re-offered.
+- The schedule remains that member's own to keep or remove. Handing the record to
+  another member offers, in the same confirmation, to remove the outgoing member's
+  reminder — an explicit choice about their own device, never a silent mutation.
+- Departure or removal revokes the schedule entirely.
 
 ### Delivery, freshness, and invalidation
 
@@ -194,17 +213,17 @@ from the intended time, and no catch-up alert for a lead time that has already
 passed.
 
 One behavior is genuinely new: **another member may now be the cause of an
-invalidation.** A completion, skip, pause, archive, recurrence change, or rota
-change by any authorized member invalidates every subscribed member's pending
-intent for the affected occurrence and deterministically regenerates the
-replacement where one is still warranted. The dispatcher already reloads
+invalidation.** A completion, skip, pause, archive, or recurrence change by any
+authorized member invalidates every subscribed member's pending intent for the
+affected occurrence and deterministically regenerates the replacement where one is
+still warranted. The dispatcher already reloads
 authoritative owner-visible state immediately before every send; the new
 requirement is that it must also revalidate current membership and current
 visibility, so a member who left never receives an alert about a household record
 they can no longer see.
 
 Stale suppression remains delivery state only. It never mutates the backing
-record, never advances an occurrence, and never touches a rota.
+record, never advances an occurrence, and never changes a Responsibility Holder.
 
 ## Conflict, provenance, and attribution
 
@@ -223,9 +242,9 @@ carries its last actor. Because a household-native record has no member owner,
 every surface that attributes authorship must read creator provenance rather than
 ownership.
 
-Attribution stays quiet and factual — **Household**, **Shared by Mara**, **Ana's
-turn**, **Completed by Ben** — and never becomes an avatar-heavy activity feed,
-a mentions system, or a comment thread.
+Attribution stays quiet and factual — **Household**, **Shared by Mara**, **Ana is
+looking after this**, **Completed by Ben** — and never becomes an avatar-heavy
+activity feed, a mentions system, or a comment thread.
 
 Historical attribution survives departure, removal, and dissolution-recovery.
 
@@ -251,22 +270,22 @@ Review, out of the Household home, out of Today, and out of ordinary Eve answers
 both compose into the existing capped **Needs attention** and **Coming up**
 sections under the already-decided deterministic eligibility, ordering, and caps.
 Scope and holder appear as quiet text labels. The home applies no default filter
-to the current member's turns. Its inline actions are limited to completion and
+to the current member's records. Its inline actions are limited to completion and
 reopening, which are reversible and already authorized; skipping, deferring,
-pausing, archiving, and rota changes link to the record.
+pausing, archiving, and holder changes link to the record.
 
 **Private Today.** Household visibility alone does not make a record personally
 relevant. A household-visible Action or Routine becomes Today-eligible for a
 member only when it is due, overdue, or deliberately resurfaced **and** at least
-one positive signal ties it to that member: they own it, they are the named Turn
-Holder, or they hold their own Reminder Schedule for it.
+one positive signal ties it to that member: they own it, they are its named
+Responsibility Holder, or they hold their own Reminder Schedule for it.
 
 This deliberately narrows Phase Seven's Today eligibility, which considered any
 visible General Action. Without the narrowing, every household chore would land
 in both partners' private shortlists and Today would stop answering what is
-relevant to *me*. A household-native Routine with an empty rota and no
-subscribers is the intended calm case: it sits on the shared Household home,
-where the household can see it, and nags nobody privately.
+relevant to *me*. A household-native Routine with no holder and no subscribers is
+the intended calm case: it sits on the shared Household home, where the household
+can see it, and nags nobody privately.
 
 A member's **Not today** choice suppresses only their own Today for the rest of
 their local day. It never hides, reorders, or defers the record on the Household
@@ -282,8 +301,8 @@ the conversation topic, or active membership.
 
 Eve may complete, skip, or edit only on the caller's explicit instruction and
 only where the caller is authorized. It never acts on behalf of another member,
-never sets or advances a rota on its own initiative, and never creates a Reminder
-Schedule for anyone but the caller.
+never names or changes a Responsibility Holder on its own initiative, and never
+creates a Reminder Schedule for anyone but the caller.
 
 Global Recall returns household-visible Actions and Routines through the existing
 **Actions and Routines** result family, permission-filtered, carrying scope,
@@ -299,13 +318,14 @@ link.
   to `private` and stay with them.
 - Their Reminder Schedules for household records are revoked and pending intents
   cancelled, so no alert can arrive about a record they can no longer see.
-- They leave every rota; a held turn passes to the next active member.
+- Any record naming them as Responsibility Holder has that name cleared, and
+  Tendnote chooses no replacement.
 - Household-native records remain with the household in full, including
-  occurrences, rotas, history, and the departed member's historical attribution.
+  occurrences and history, and the departed member's historical attribution.
   Nothing is transferred, orphaned, or rewritten.
 
 **Household Dissolution** carries household-native Actions, Routines,
-occurrences, rotas, and history into the household-native 30-day recovery set
+occurrences, and history into the household-native 30-day recovery set
 with the rest of the workspace, and immediately cancels every member's Reminder
 Schedules and pending intents for them. Recovery restores the authoritative
 household state as a whole. After the window, content is permanently deleted and
@@ -319,6 +339,8 @@ Explicitly excluded from Phase Eight, and not deferred pending evidence:
 
 - Subtasks, projects, dependencies, checklists, comments, mentions, or an
   activity feed.
+- A stored turn order, automatic rotation, or any Tendnote-initiated change of who
+  is looking after a record.
 - Workload balancing, fairness scores, streaks, completion counts, leaderboards,
   or any productivity analytics.
 - Approval, verification, or rejection of another member's completion.
@@ -326,10 +348,9 @@ Explicitly excluded from Phase Eight, and not deferred pending evidence:
   one shared Routine.
 - Priority and effort classification, which remain deferred by the existing
   General Action model.
-- A per-member assignment inbox, a "my chores" backlog, or a default my-turns
-  filter.
-- Autonomous rota changes, autonomous completion, or agent-initiated reminder
-  enrollment.
+- A per-member assignment inbox, a "my chores" backlog, or a default filter to the
+  current member's records.
+- Autonomous completion or agent-initiated reminder enrollment.
 
 ## Implementation boundary
 
@@ -344,7 +365,7 @@ the following sharp for implementation-ticket slicing:
 - **The reminder owner check must be relaxed precisely.** `saveReminder` today
   rejects any caller who is not the record's owner. It becomes a current
   visibility and authority check, keeping the per-member schedule key and adding
-  the turn-scoped rule and the declined-offer state.
+  only the declined-offer state.
 - **The lifecycle seam must be tightened, not loosened.** `requireAction`'s
   fallback currently grants every visible member every lifecycle action; it needs
   the per-form authority table above.
@@ -353,24 +374,24 @@ the following sharp for implementation-ticket slicing:
 - **Routine roll-forward drift becomes visible.** Advancement currently computes
   the next due date from the completion moment rather than from the prior due
   date, so a shared Tuesday chore drifts when completed late. This artifact does
-  not redecide Phase Five recurrence, but a rota makes the drift conspicuous and
-  it is worth an explicit implementation decision.
+  not redecide Phase Five recurrence, but a chore two people watch makes the drift
+  conspicuous and it is worth an explicit implementation decision.
 
 ## Domain and decision records
 
 Two glossary entries are added to [`CONTEXT.md`](../../CONTEXT.md):
-**Household-Native Record** and **Routine Rota**.
+**Household-Native Record** and **Responsibility Holder**.
 
 Two decisions are hard to reverse and earn ADRs:
 
 - [Household-native records are owned by the workspace](../adr/0214-household-native-records-are-owned-by-the-workspace.md)
   — the cross-domain ownership form this domain instantiates first.
-- [Routine Rota is turn order, not assignment](../adr/0215-routine-rota-is-turn-order-not-assignment.md)
-  — which supersedes the Phase Five deferral of responsibility in
+- [Household responsibility is a named holder, not an assignment](../adr/0215-household-responsibility-is-a-named-holder-not-an-assignment.md)
+  — which narrowly supersedes the Phase Five deferral of responsibility in
   [ADR 0154](../adr/0154-general-actions-preserve-creator-and-actor-provenance.md)
-  and fixes the constraints that keep turn order from becoming task routing.
+  and fixes the constraints that keep a named holder from becoming task routing.
 
-The per-member Reminder Schedule and turn-offer behavior extend
+The per-member Reminder Schedule and holder-offer behavior extend
 [ADR 0203](../adr/0203-reminder-schedules-separate-alert-time-from-domain-time.md)
 without contradicting it: no member action enrolls another member, so no new
 reminder ADR is warranted.
