@@ -1969,12 +1969,67 @@ Goal: Build the richer household product workflows on top of the Phase 4 scope f
 Deliverables:
 
 - Household creation, naming, and account management surfaces
+- Account-owned Household activation: a user may create and name an immediately
+  active solo Household Workspace, optionally invite another adult, and return to
+  an authorized Household Overview without waiting for another member.
 - Non-enumerating email invitations, including email-provider setup and explicit
   invitation delivery
 - Household invitation accept and decline flows
+- Invitation acceptance begins on a secure capability-specific route, requires
+  authentication with the invited verified email address and explicit Join
+  confirmation, and handles address mismatch, existing-workspace conflict, and
+  terminal invitation states without an automatic household switch or account
+  enumeration.
 - Pending and active member management plus member removal
+- One-active-workspace lifecycle and co-owner governance: a creator begins as the
+  sole Owner; accepting an invitation or creating another workspace fails safely
+  while the user has an active workspace; promotion to Owner requires the
+  recipient's acceptance; no Owner may unilaterally demote or remove another
+  Owner; and an Owner may step down only when another active Owner remains.
+- A separate, email-address-bound 14-day Household Invitation capability rather
+  than a pending membership. Invitations reserve one of the changeable
+  eight-seat policy slots until accepted, declined, canceled, or expired;
+  resend rotates the capability; capacity is checked atomically; and every
+  external send or resend remains an explicit Owner action.
+- Immediate voluntary departure and Owner removal for Members, with fresh
+  invitation required to return. Departure revokes household access and
+  member-owned sharing while preserving private/member-owned records for the
+  departing user and household-native records plus historical attribution for
+  the workspace.
+- Unanimous active-Owner Household Dissolution, which cancels invitations, ends
+  memberships, and archives household-native records for a 30-day recovery
+  window before permanent deletion. Inaccessible-owner recovery is a
+  support-only, evidence-based path; no self-service promotion bypasses
+  co-owner safety.
+- Minimal two-year lifecycle/audit retention that excludes invitation secrets,
+  URLs, message bodies, and raw provider payloads.
 - Household Context management and activation in eligible Eve orientation,
   Review, Capture, Search, and Account experiences
+- A calm Account Household Overview after creation or acceptance: authorized
+  membership state and role-appropriate management actions plus an optional,
+  skippable Household Context prompt. It is an activation and return surface,
+  not a decision to add a persistent top-level household destination or the
+  eventual shared planning surface.
+- Household management uses three durable Account-local destinations:
+  **Overview**, **People & invitations**, and **Settings**. Desktop may expose a
+  quiet local navigation rail while narrow screens use a labelled section
+  selector. Creation and invitation acceptance remain transient entry flows,
+  not navigation items, and this local structure does not add Household to the
+  global app shell.
+- The Household Overview is people-first: the household name, authorized member
+  and pending-invitation state, occupied capacity, and one primary invitation
+  action lead. The optional first Household Context prompt may sit in a quiet
+  contextual rail on wide screens and follows the people summary on narrow
+  screens; the rail is not a container for every management action.
+- **People & invitations** owns complete member, role, capacity, invitation, and
+  row-contextual management behavior. **Settings** owns naming, role and access
+  boundaries, departure, recovery, and dissolution. Consequential lifecycle
+  flows use the main content area with a clear return to Settings rather than a
+  cramped overview sidebar.
+- User-facing copy calls the Account section **Household**, leads with the chosen
+  household name, and uses **Owner** and **Member** where authority matters;
+  "Household Workspace" remains the precise domain term rather than routine UI
+  wording.
 - Shared household reminders and planning surfaces beyond the minimal foundation
 - Household gift ideas and birthday planning
 - Family and social event tracking
