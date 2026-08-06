@@ -2005,6 +2005,44 @@ Deliverables:
   URLs, message bodies, and raw provider payloads.
 - Household Context management and activation in eligible Eve orientation,
   Review, Capture, Search, and Account experiences
+- Household Context remains under **Overview**: a compact **What everyone should
+  know** section links to a focused management subpage rather than adding a
+  fourth Household destination. The focused page groups active facts by the
+  existing categories, keeps archived facts behind progressive disclosure, and
+  invites one useful shared fact without biography, completeness, or progress
+  framing.
+- Every active Household Member may directly add, edit, archive, restore,
+  accept, edit-and-accept, or dismiss Household Context. Explicit writes take
+  effect immediately with actor and time provenance; Owner status does not
+  arbitrate shared truth. Archive is the ordinary removal path, and no one
+  member may permanently delete household-owned Context Facts.
+- Collaborative writes use optimistic concurrency rather than silent
+  last-write-wins. A stale write preserves the member's draft, shows the current
+  statement and last actor, and requires the member to keep, revise, or
+  explicitly replace it. Duplicate, contradictory, restore, and Authoritative
+  Undo paths always reconcile against the current active version.
+- Suggested Household Context is one globally shared review item. Any active
+  member may accept, edit-and-accept, or dismiss it for the household, with
+  attribution and immediate reconciliation for other members. Suggestion
+  evidence must already be visible to the whole household: private-channel
+  ambient extraction remains Self-only and may never expose a member's private
+  evidence merely because it describes the household.
+- Explicit household intent may create or correct active Household Context from
+  Eve or Capture. Clear save intent with an ambiguous subject asks **About you**
+  or **Household** rather than inferring from `we`, conversation topic, or active
+  membership. Inference may only propose from household-visible evidence.
+- Active Household Context participates in eligible member Orientation Context
+  and exact Global Recall with its Household subject and canonical correction
+  link. Suggested and archived facts remain excluded. Restricted facts require
+  direct intent and deliberate reveal and never enter automatic orientation;
+  sensitive or restricted shared writes repeat that every active member can see
+  the content.
+- Ordinary Household Context changes create no push alert, unread badge, or
+  activity feed. Open surfaces reconcile authoritative state and explain a
+  concurrent change. Departure revokes access without altering household-owned
+  facts or historical attribution; dissolution cancels suggestions and carries
+  active and archived facts through the household-native 30-day recovery and
+  deletion lifecycle.
 - A calm Account Household Overview after creation or acceptance: authorized
   membership state and role-appropriate management actions plus an optional,
   skippable Household Context prompt. It is an activation and return surface,
