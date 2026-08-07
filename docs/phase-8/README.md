@@ -22,6 +22,10 @@ This directory holds durable research, prototype handoffs, and other supporting 
   — household-native versus member-owned ownership, per-form authority, shared
   occurrences, the Responsibility Holder and its completion hand-off, per-member
   reminders, and composition into Household and Today.
+- [Household gift ideas and birthday planning with surprise privacy](household-gift-ideas-and-birthday-planning.md)
+  — member-owned, selected-co-planner Gift Plans; recipient-exclusion surprise
+  privacy; grounded review-first creation; lightweight self-claims; and
+  fail-closed collaboration, reminder, and lifecycle behavior.
 
 ## Working agreement
 

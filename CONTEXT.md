@@ -284,6 +284,18 @@ _Avoid_: Household scope, public, team-wide
 A visibility scope for records available to all current Household Members. Household scope is broader than shared scope but still private to the Household Workspace.
 _Avoid_: Public, shared with selected members, organization-wide
 
+**Gift Plan**:
+A member-owned, finite planning record for one person's explicitly named celebration. A Gift Plan may be private or shared with selected Household Members, but it is never household-native, a whole-household registry, a shopping list, or a task board.
+_Avoid_: Gift registry, wishlist, household chore, cart
+
+**Gift Idea**:
+A contributor-attributed entry inside a Gift Plan. A Gift Idea helps the selected co-planners decide and avoid duplicate gifts through a reversible self-claim; it is not an independently owned wishlist item, purchase record, assignment, or inventory item.
+_Avoid_: Wishlist item, purchase, assigned task, inventory
+
+**Surprise Subject**:
+The active Household Member who is the person a Gift Plan celebrates and is authoritatively excluded from that plan's audience and every derived Tendnote surface. A Surprise Subject is a narrow Gift Plan privacy rule, not a general record deny-list.
+_Avoid_: Blocked user, generic audience exclusion, hidden member
+
 **Job Family**:
 A category of Postgres-owned background job that shares Tendnote's job execution mechanics — runtime mode, outbox delivery, queue publication, claim interpretation, terminal behavior, rate-limit deferral, and recovery — while keeping its own domain processor. The current job families are Suggested Memory extraction, Suggested General Action extraction, and semantic embedding, enumerated in a closed registry. A job family is not a generic event type, message topic, or queue.
 _Avoid_: Event type, message topic, queue, generic worker

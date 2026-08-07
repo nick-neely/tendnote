@@ -2181,7 +2181,40 @@ Deliverables:
   approval or verification of another member's completion, per-member due dates
   or occurrences, priority and effort classification, and autonomous completion
   or reminder enrollment.
-- Household gift ideas and birthday planning
+- A **Gift Plan** is a member-owned plan for one person and one explicitly named
+  occasion, which stays private or is deliberately shared with selected active
+  Household Members. It is never household-native or whole-household-visible;
+  Gift Ideas are contributor-attributed entries inside it rather than a registry,
+  wishlist, cart, purchase record, or task list. The owner alone changes the
+  subject, occasion, audience, surprise protection, or lifecycle. Co-planners
+  add and manage only their own ideas and notes, and may make or release only
+  their own reversible self-claim on an idea to prevent duplicate gifts.
+- When the plan's subject is an active Household Member, a **Surprise Subject**
+  rule authoritatively excludes them from every plan and derived surface. The
+  member cannot be added as a co-planner, and Household, Today, Eve, Capture,
+  Review, Search, deep links, reminders, notifications, counts, summaries, and
+  history fail closed for them. This narrow Gift Plan rule is not a generic
+  visibility deny-list (ADR 0216).
+- The existing birthday workflow stays private, grounded, and review-only. It
+  may offer an immediate prefilled **Start a gift plan** action, but never
+  creates or shares the plan, selects co-planners, chooses surprise protection,
+  claims an idea, drafts externally, or sends. Explicit authorized Eve or
+  Capture intent may create or update a plan; grounded idea suggestions remain
+  private Review material until a co-planner explicitly adds them. The plan
+  shares only deliberate plan-facing subject and occasion data, never access to
+  the underlying Person, birthday, Memories, Assets, Source Records, or
+  Follow-Ups.
+- Authorized active plans may appear as compact upcoming references in Household
+  and, when individually relevant under normal deterministic policy, private
+  Today. Each authorized co-planner may opt into one of their own Reminder
+  Schedules; no member action enrolls another device, and the Surprise Subject
+  can never receive one. Writes reconcile with draft preservation and actor
+  explanation; self-claims are atomic. On owner departure, removal, or
+  dissolution, the plan becomes private to its owner and every collaborator's
+  access, claim, reminder, and pending intent ends. A departing co-planner loses
+  access while their existing contributions remain attributed unless removed
+  before departure. Plan-local history is quiet and authorized-only, never a
+  Household activity feed or participation ledger.
 - Family and social event tracking
 - Household-aware strategist behavior
 - Shared views over supported Personal OS domains where permissions allow
