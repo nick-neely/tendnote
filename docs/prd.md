@@ -2368,6 +2368,21 @@ Deliverables:
   Household recovery. Household-native coordination records retain their
   minimal Person References and normal workspace attribution through the
   established recovery lifecycle without reconstructing a private People graph.
+- Every Household-capable route, capability, query, mutation, provider read,
+  deep link, cache revalidation, and background delivery must obtain a current
+  **Household Authorization Proof** from its domain boundary. It checks the
+  caller, active membership, operation, ownership form, audience, lifecycle,
+  sensitivity, and domain-specific exclusions such as Surprise Subject status;
+  UI state, model instructions, cached data, and prior access never substitute.
+  Unauthorized or uncertain access fails closed without content, count,
+  explanation, or existence signal. Membership, audience, exclusion, provider,
+  and lifecycle changes immediately revoke affected cache, queue, deep-link,
+  reminder, and provider-cache access; each deferred operation proves authority
+  again immediately before use or delivery. The two-year audit keeps only
+  minimized non-content evidence for consequential household actions, while
+  short-lived scrubbed security telemetry supports abuse controls. Every
+  implementation slice supplies an authorization matrix and multi-member
+  isolation tests across direct and derived surfaces (ADR 0219).
 - Household-aware strategist behavior
 - Shared views over supported Personal OS domains where permissions allow
 

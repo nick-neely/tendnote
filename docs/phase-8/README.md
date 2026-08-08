@@ -34,6 +34,10 @@ This directory holds durable research, prototype handoffs, and other supporting 
   — member-owned People and relationship records, explicit read-only
   Relationship Shares, record-local Person References, evidence and sensitivity
   isolation, and lifecycle behavior without shared contacts or a CRM.
+- [Household privacy, recovery, and isolation evidence](household-privacy-recovery-and-isolation.md)
+  — the authorization proof every surface must obtain, opaque failure behavior,
+  revocation and cache/queue fences, minimized audit and retention, abuse
+  safeguards, and the implementation-slicing evidence required across domains.
 
 ## Working agreement
 
