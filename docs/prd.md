@@ -2215,7 +2215,33 @@ Deliverables:
   access while their existing contributions remain attributed unless removed
   before departure. Plan-local history is quiet and authorized-only, never a
   Household activity feed or participation ledger.
-- Family and social event tracking
+- A **Household Calendar Connection** is an explicit Household Owner-governed
+  designation of one Google Calendar whose events are appropriate for every
+  current and future Household Member. The credential-holding Google account is
+  only a technical connector; personal Calendar connections remain owner-scoped
+  and are never implicitly shared. Google Calendar stays the event source of
+  truth: Tendnote reads minimized bounded summaries but never mirrors, syncs,
+  writes, RSVPs to, or schedules provider events (ADR 0217).
+- A **Household Event Plan** is a household-native Tendnote companion for the
+  coordination around a shared occasion. It may explicitly reference a Household
+  Calendar event and link existing People, birthday occasions, Actions,
+  Follow-Ups, and Household Context without replacing any of their authority.
+  It has no RSVP, availability, guest-list, attendance, turn-order, or scheduling
+  model. Every active member has symmetric Plan authority with optimistic
+  stale-write reconciliation, while only Owners govern Calendar connections.
+- Household reads are labeled as Calendar-derived and live or stale; provider
+  failure or disconnection is explicit and cannot fall back to a member's private
+  Calendar, create a Plan or reminder, or hide other successful families. The
+  Household home provides a bounded chronological shared view; Today may surface
+  deterministic individually relevant events. Google owns Calendar alerts, and
+  Tendnote reminders remain explicit member-owned schedules on linked Actions or
+  Follow-Ups only.
+- Eve, Capture, Review, and Search preserve the same boundary: explicit shared
+  intent may create an Event Plan, inference only proposes one for Review, and
+  private/provider-raw/inaccessible data neither crosses the Household boundary
+  nor signals that it exists. Connector departure, removal, and dissolution clear
+  provider caches and access immediately; Event Plans follow the household-native
+  recovery lifecycle.
 - Household-aware strategist behavior
 - Shared views over supported Personal OS domains where permissions allow
 
@@ -2230,7 +2256,8 @@ Vertical slice issue seeds:
 - Add the Responsibility Holder with its completion hand-off, the per-member
   Reminder Schedule on shared records, and the holder reminder offer.
 - Add household gift ideas and birthday planning view.
-- Add family and social event tracking.
+- Add owner-governed shared Google Calendar connections and household-native
+  Event Plans without provider writes or sync.
 - Add household-aware strategist behavior.
 - Add shared views across supported non-people domains where scope rules allow.
 

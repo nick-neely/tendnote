@@ -284,6 +284,18 @@ _Avoid_: Household scope, public, team-wide
 A visibility scope for records available to all current Household Members. Household scope is broader than shared scope but still private to the Household Workspace.
 _Avoid_: Public, shared with selected members, organization-wide
 
+**Household Calendar Connection**:
+An explicit Household Owner-governed designation of one Google Calendar whose events are suitable for every current and future Household Member to read in Tendnote. The Google account that supplies the credential is a technical connector, not a content authority; a Household Calendar Connection is separate from every member's private Calendar connection and permits no Tendnote write, sync, RSVP, or scheduling behavior.
+_Avoid_: Shared login, team calendar client, member-owned calendar, Calendar mirror
+
+**Household Calendar Event**:
+A minimized, read-through view of an event from a current Household Calendar Connection. Google Calendar remains its source of truth; it is neither a Tendnote-owned record nor durable Household memory, and it carries explicit provider and freshness treatment.
+_Avoid_: Household event record, synced event, confirmed attendance, durable calendar cache
+
+**Household Event Plan**:
+A household-native Tendnote planning record for a shared occasion. It may reference a Household Calendar Event and link existing People, birthday occasions, Actions, Follow-Ups, and Household Context, but it never mirrors, changes, or authoritatively restates the provider event, and it does not create RSVP, availability, guest-list, or scheduling state.
+_Avoid_: Calendar event, event sync, invitation, RSVP, shared schedule
+
 **Gift Plan**:
 A member-owned, finite planning record for one person's explicitly named celebration. A Gift Plan may be private or shared with selected Household Members, but it is never household-native, a whole-household registry, a shopping list, or a task board.
 _Avoid_: Gift registry, wishlist, household chore, cart
