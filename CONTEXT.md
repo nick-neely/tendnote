@@ -300,6 +300,10 @@ _Avoid_: Public, shared with selected members, organization-wide
 The current, domain-owned decision that a caller may perform one specific Household operation on one record or bounded composition. It checks active membership, ownership form, audience, lifecycle, sensitivity, domain-specific exclusions, and the operation itself at the point of use; a cache, prompt, UI state, deep link, or prior result is not a proof.
 _Avoid_: Role check, cached permission, UI hiding, model instruction, membership lookup
 
+**Household Check-in**:
+An optional member-owned, in-app private briefing view of up to three currently authorized Household coordination records. It is a caller-specific read of canonical records, not a shared digest, activity feed, assignment, notification channel, or generated Household truth.
+_Avoid_: Household brief, shared daily digest, household notification, team stand-up
+
 **Household Calendar Connection**:
 An explicit Household Owner-governed designation of one Google Calendar whose events are suitable for every current and future Household Member to read in Tendnote. The Google account that supplies the credential is a technical connector, not a content authority; a Household Calendar Connection is separate from every member's private Calendar connection and permits no Tendnote write, sync, RSVP, or scheduling behavior.
 _Avoid_: Shared login, team calendar client, member-owned calendar, Calendar mirror

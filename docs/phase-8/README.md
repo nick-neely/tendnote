@@ -38,6 +38,11 @@ This directory holds durable research, prototype handoffs, and other supporting 
   — the authorization proof every surface must obtain, opaque failure behavior,
   revocation and cache/queue fences, minimized audit and retention, abuse
   safeguards, and the implementation-slicing evidence required across domains.
+- [Household-aware Eve and proactive behavior](household-aware-eve-and-proactive-behavior.md)
+  — caller-scoped Household Eve, strategist, Capture, and Review boundaries;
+  bounded, member-owned in-app Household Check-ins; source, freshness, and
+  provenance treatment; and seamless desktop/mobile interaction without shared
+  delivery or a generic household agent.
 
 ## Working agreement
 

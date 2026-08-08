@@ -2383,8 +2383,27 @@ Deliverables:
   short-lived scrubbed security telemetry supports abuse controls. Every
   implementation slice supplies an authorization matrix and multi-member
   isolation tests across direct and derived surfaces (ADR 0219).
-- Household-aware strategist behavior
-- Shared views over supported Personal OS domains where permissions allow
+- **Household-aware assistance** keeps Eve, strategist, Capture, Review, and
+  scheduled workflows private by default. An active member may deliberately
+  enter a clearly labelled Household context that reads only the caller's
+  currently authorized household-native coordination records, eligible shared
+  records, and current Household Calendar summaries; it never infers sharing
+  from language, exposes another member's private context, or becomes a generic
+  household agent. Canonical domain commands retain write authority, while
+  inferred durable changes remain review-gated (ADR 0220).
+- A member may opt into an in-app **Household Check-in** in their own daily or
+  weekly briefing. Deterministic policy chooses at most three timely, authorized
+  candidates before any generated explanation; each output links to canonical
+  records and states factual scope, provenance, timing, and Calendar freshness.
+  The Check-in is not a shared digest, activity feed, personal obligation, or
+  stored generated truth. It adds no Household email, shared channel,
+  cross-member push, or general proactive notification; existing per-record
+  Reminder Schedules remain the opting member's installation-scoped choice.
+- The calm Household home stays a read-first two-section coordination surface.
+  The Check-in is a compact, explicit entry available from Household and the
+  member's private briefing/Today context, with the same focused one-to-three
+  record view on desktop and mobile; it does not introduce a third dashboard
+  feed, carousel, hover-only control, or hidden mobile gesture.
 
 Vertical slice issue seeds:
 
