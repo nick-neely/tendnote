@@ -30,6 +30,10 @@ This directory holds durable research, prototype handoffs, and other supporting 
   — member-owned, selected-co-planner Gift Plans; recipient-exclusion surprise
   privacy; grounded review-first creation; lightweight self-claims; and
   fail-closed collaboration, reminder, and lifecycle behavior.
+- [Household relationship records and privacy](household-relationship-records-and-privacy.md)
+  — member-owned People and relationship records, explicit read-only
+  Relationship Shares, record-local Person References, evidence and sensitivity
+  isolation, and lifecycle behavior without shared contacts or a CRM.
 
 ## Working agreement
 

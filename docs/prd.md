@@ -2327,6 +2327,47 @@ Deliverables:
   nor signals that it exists. Connector departure, removal, and dissolution clear
   provider caches and access immediately; Event Plans follow the household-native
   recovery lifecycle.
+- **People, Memories, Source Records, and Follow-Ups remain member-owned.**
+  Phase Eight does not create Household People, shared contacts, a merged People
+  graph, or household-native relationship records. A member may deliberately
+  grant selected active Household Members or the whole Household read access to
+  one Memory, Source Record, or Follow-Up through a **Relationship Share**; the
+  owner alone edits, archives, changes audience, sensitivity, evidence, Person
+  links, review state, lifecycle, timing, and reminders (ADR 0218).
+- A household-native coordination record names an external person only through a
+  minimal, record-local **Person Reference** deliberately supplied by an
+  authorized member. It is not a contact, profile, identity match, or
+  permission-bearing link into any member's private Person. Members may keep
+  separate private People for the same external person without cross-member
+  matching, merging, duplicate review, or existence leakage.
+- Relationship records and evidence are shared independently. A shared Memory
+  never reveals its Source Record by implication, and a shared Source Record
+  reveals no linked private Memory or Person. Restricted sharing requires a
+  second audience confirmation and remains excluded from orientation,
+  Household composition, proactive behavior, ambient retrieval, reminder
+  previews, and notifications; authorized direct targeted recall remains
+  available.
+- Private Eve and Capture remain private even when language sounds shared.
+  Relationship sharing always requires an explicit record and audience choice.
+  Review remains owner-controlled; Search, Exact Recall, Semantic Retrieval,
+  Relationship Agenda, and Eve enforce identical caller, membership, audience,
+  sensitivity, lifecycle, and evidence boundaries without joining a visible
+  foreign-member record to either member's private Person.
+- Memories and Source Records never become Household cards or a shared people
+  feed. A shared active Follow-Up may appear in the capped Household home only
+  when ordinarily time-eligible, with **Shared by <member>** provenance and no
+  audience mutation. It enters private Today and reminder delivery only for its
+  owner; visibility never creates another member's personal work, alert, or
+  device enrollment.
+- A Household Calendar event may prefill a Person Reference only during an
+  explicit, confirmed Event Plan action. Provider attendees never create or
+  widen People or relationship records, and personal Calendar connections never
+  supply Household context.
+- Departure or removal immediately revokes Relationship Shares and returns the
+  owner's records to private scope; no member-owned relationship data enters
+  Household recovery. Household-native coordination records retain their
+  minimal Person References and normal workspace attribution through the
+  established recovery lifecycle without reconstructing a private People graph.
 - Household-aware strategist behavior
 - Shared views over supported Personal OS domains where permissions allow
 

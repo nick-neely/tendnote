@@ -48,6 +48,14 @@ _Avoid_: Orphan memory, unresolved fact
 A temporary pending source record with no linked person yet, such as a quick note about someone not worth a profile until the user decides. Personless source records should be reviewed, linked, converted into a new person, or archived.
 _Avoid_: General note, memory, profile
 
+**Person Reference**:
+A minimal, record-local label for an external person in an authorized Household coordination record. A Person Reference is deliberately supplied by a member; it is not a Household Person, contact, profile, relationship-history record, or link that reveals or merges any member's private Person record.
+_Avoid_: Shared contact, household profile, person merge
+
+**Relationship Share**:
+An explicit audience grant over one member-owned Memory, Source Record, or Follow-Up. A Relationship Share grants the selected active Household Members read access only; it preserves the record owner's mutation, review, evidence, person-link, sensitivity, and reminder authority, and it never transfers ownership or reveals separately unshared records. A shared Memory never exposes its source evidence by implication, and restricted content requires an explicit audience confirmation and remains excluded from proactive and orientation use.
+_Avoid_: Co-ownership, shared editing, implicit evidence sharing, shared reminder, shared feed
+
 **Logged Context**:
 A user-entered or imported source record that records what the user said happened or what an approved source provided. Logged context can ground suggestions when phrased as "you noted", "you logged", or "you mentioned", but it is not the same as a durable memory.
 _Avoid_: Memory, confirmed fact, inferred fact
