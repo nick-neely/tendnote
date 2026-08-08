@@ -2,6 +2,8 @@
 
 The canonical decision map is [Wayfinder: Phase Eight Rich Household and Multi-Domain Collaboration](https://github.com/nick-neely/tendnote/issues/355).
 
+The completed decision map is synthesized as [Specification: Phase Eight Rich Household and Multi-Domain Collaboration](https://github.com/nick-neely/tendnote/issues/376). A separate approved `to-tickets` pass will derive the implementation backlog from that specification.
+
 This directory holds durable research, prototype handoffs, and other supporting artifacts produced while that map is worked. Product decisions live in their resolution tickets and are synthesized into [`docs/prd.md`](../prd.md), [`CONTEXT.md`](../../CONTEXT.md), and only the ADRs that earn their place.
 
 - [Household activation journey](household-activation-journey.md) — Account
