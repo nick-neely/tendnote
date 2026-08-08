@@ -113,7 +113,7 @@ A review-gated proposal for a non-person General Action, grounded in a source re
 _Avoid_: Automatic task, inferred todo, suggested follow-up
 
 **Saved Item**:
-An owner- or household-scoped, source-grounded note, link, or open question that Eve keeps when an explicit capture has no better supported destination. A saved item is private by default, may have a date to bring it back, follows an active/archive lifecycle, and may resolve into linked domain records, but it is not a task, project, tag, document inbox, or replacement for a person, General Action, or Asset.
+A member-owned or household-native, source-grounded note, link, or open question that Eve keeps when an explicit capture has no better supported destination. A Saved Item is private by default, may be deliberately shared or created in an authorized Household context, may have a date to bring it back, follows an active/archive lifecycle, and may resolve into linked domain records, but it is not a task, project, tag, document inbox, or replacement for a Person, General Action, or Asset.
 _Avoid_: Inbox item, generic record, task, bookmark collection
 
 **Capture Outcome**:

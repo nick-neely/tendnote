@@ -1348,7 +1348,7 @@ Saved Item lifecycle and trust contract:
 - A Saved Item is the first-class fallback only for an explicit note, link, or open question that has no better supported destination. The fixed starting kinds are `note`, `link`, and `open_question`; Phase Seven does not turn Saved Items into generic attachments, a document inbox, a tag system, or a catch-all record model.
 - Explicit capture intent may create a Saved Item directly. A Saved Item inferred from existing context remains review-gated. The editable Saved Item is a durable product record linked to the immutable Source Record that preserves the owner's minimized original wording; editing the item never rewrites its evidence.
 - A Saved Item is `active` or `archived`. It may carry one optional `bringBackAt`, but it has no completion, priority, recurrence, or deferred status. Resolving an open question archives it with a resolution reason and optional links to the records that hold the outcome.
-- Saved Items are private by default. Eve may create selected-member or household visibility only when the owner explicitly names that audience, and confirmation states the chosen scope; content, links, and plural wording never imply sharing.
+- Saved Items are private by default. Eve may create selected-member or household visibility only when the owner deliberately selects an audience or uses an authorized Household-scoped capture context, and confirmation states the chosen scope; content, links, plural wording, or a private conversation topic never imply sharing.
 - An active dated Saved Item becomes eligible when its bring-back time arrives. An undated active item may become only a low-weight Today candidate after deterministic age and cooldown gates, subject to the Today cap and a factual explanation. Retrieval relevance alone never authorizes resurfacing or mutation.
 - Active Saved Items participate in exact recall, semantic retrieval, structured search, and grounded Eve answers after deterministic scope filtering. Archived items require an explicit archived-record request. Raw Source Records remain evidence rather than an independent result family.
 - Explicit promotion creates the supported destination record, links it to the Saved Item and shared evidence, and archives the item as resolved. Inferred promotion remains review-gated, retries are idempotent, and a correction preserves the original evidence rather than silently replacing it.
@@ -2181,6 +2181,52 @@ Deliverables:
   approval or verification of another member's completion, per-member due dates
   or occurrences, priority and effort classification, and autonomous completion
   or reminder enrollment.
+- **Saved Items** retain their narrow `note`, `link`, and `open_question`
+  fallback role in Phase Eight; they do not become a shared inbox, document
+  system, checklist, task list, tag collection, comment thread, or generic
+  collaboration record. A member-owned Saved Item may be deliberately shared at
+  selected-member or household scope without transferring ownership: its owner
+  alone edits, changes audience, archives, restores, resolves, promotes, or
+  deletes uniquely owned private evidence. A **household-native Saved Item** is
+  explicitly created for the Household Workspace, is whole-household-visible,
+  and belongs to the workspace rather than its creator; every active member may
+  create, edit, archive, restore, resolve an open question, or promote it, while
+  no member may permanently delete it.
+- Private Capture and Eve remain private by default even when a member talks
+  about the home or another member. Within an authorized Household-scoped
+  conversation or Capture flow, Eve may interpret ordinary language as a
+  household-native Saved Item without requiring a magic keyword; its
+  confirmation plainly says **Saved for Household** and offers Change and Undo.
+  An inferred item may become a shared Review proposal only when its evidence is
+  already visible to the whole household. Private-channel inference never
+  creates, proposes, or leaks a household item merely because its content sounds
+  shared.
+- Each Saved Item preserves immutable source grounding. A household-native item
+  uses household-visible evidence; member-owned sharing exposes evidence only to
+  the deliberately chosen audience. Editing never rewrites evidence, and no
+  member may expose, rewrite, or delete another member's evidence. Shared or
+  reused evidence requires its existing impact disclosure; household-native
+  evidence follows workspace retention rather than one member's deletion choice.
+  Promotion is explicit and preserves ownership: an owner promotes a
+  member-owned item into their member-owned Action, or explicitly confirms a
+  household-native Action; an active member promotes a household-native item
+  only into a household-native Action. Promotion preserves links and evidence,
+  archives the Saved Item as resolved, and never silently transfers ownership.
+- Authorized active Saved Items compose into the capped, read-first Household
+  home when their bring-back timing makes them relevant, with factual
+  **Household** or **Shared by <member>** attribution. Private Today includes one
+  only when its normal due or resurfacing rule applies and the member owns it or
+  has chosen their own Reminder Schedule; visibility alone never makes it a
+  personal backlog. Each visible active member may choose their own Reminder
+  Schedule, and no member can enroll another member's device.
+- Household-native Saved Item writes use optimistic concurrency: a stale member
+  keeps their draft, sees the current value and last actor, and chooses to keep,
+  revise, or explicitly replace it. Attribution stays quiet and factual rather
+  than becoming an activity feed. Departure or removal immediately revokes
+  access and a member's schedules; member-owned shared items return to their
+  owner's private space, while household-native items and their attribution stay
+  with the workspace. Dissolution cancels schedules and places household-native
+  items in the established 30-day recovery set.
 - A **Gift Plan** is a member-owned plan for one person and one explicitly named
   occasion, which stays private or is deliberately shared with selected active
   Household Members. It is never household-native or whole-household-visible;
