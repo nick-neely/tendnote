@@ -48,6 +48,14 @@ _Avoid_: Orphan memory, unresolved fact
 A temporary pending source record with no linked person yet, such as a quick note about someone not worth a profile until the user decides. Personless source records should be reviewed, linked, converted into a new person, or archived.
 _Avoid_: General note, memory, profile
 
+**Person Reference**:
+A minimal, record-local label for an external person in an authorized Household coordination record. A Person Reference is deliberately supplied by a member; it is not a Household Person, contact, profile, relationship-history record, or link that reveals or merges any member's private Person record.
+_Avoid_: Shared contact, household profile, person merge
+
+**Relationship Share**:
+An explicit audience grant over one member-owned Memory, Source Record, or Follow-Up. A Relationship Share grants the selected active Household Members read access only; it preserves the record owner's mutation, review, evidence, person-link, sensitivity, and reminder authority, and it never transfers ownership or reveals separately unshared records. A shared Memory never exposes its source evidence by implication, and restricted content requires an explicit audience confirmation and remains excluded from proactive and orientation use.
+_Avoid_: Co-ownership, shared editing, implicit evidence sharing, shared reminder, shared feed
+
 **Logged Context**:
 A user-entered or imported source record that records what the user said happened or what an approved source provided. Logged context can ground suggestions when phrased as "you noted", "you logged", or "you mentioned", but it is not the same as a durable memory.
 _Avoid_: Memory, confirmed fact, inferred fact
@@ -113,7 +121,7 @@ A review-gated proposal for a non-person General Action, grounded in a source re
 _Avoid_: Automatic task, inferred todo, suggested follow-up
 
 **Saved Item**:
-An owner- or household-scoped, source-grounded note, link, or open question that Eve keeps when an explicit capture has no better supported destination. A saved item is private by default, may have a date to bring it back, follows an active/archive lifecycle, and may resolve into linked domain records, but it is not a task, project, tag, document inbox, or replacement for a person, General Action, or Asset.
+A member-owned or household-native, source-grounded note, link, or open question that Eve keeps when an explicit capture has no better supported destination. A Saved Item is private by default, may be deliberately shared or created in an authorized Household context, may have a date to bring it back, follows an active/archive lifecycle, and may resolve into linked domain records, but it is not a task, project, tag, document inbox, or replacement for a Person, General Action, or Asset.
 _Avoid_: Inbox item, generic record, task, bookmark collection
 
 **Capture Outcome**:
@@ -121,8 +129,12 @@ A domain record or review artifact produced from one explicit typed or dictated 
 _Avoid_: Parsed intent, agent action, capture result
 
 **Asset**:
-A practical owner- or household-scoped thing Tendnote tracks over time — an appliance, vehicle, subscription, service, property, or kept item — with a fixed kind, visibility scope, active/archive lifecycle, and internal audit trail; Asset Memories, evidence, and links attach to it in later Phase 6 slices. An asset is never a person, project, document library, or generic object.
+A practical thing Tendnote tracks over time — an appliance, vehicle, subscription, service, property, or kept item — with a fixed kind, visibility scope, active/archive lifecycle, and internal audit trail. An Asset is member-owned unless deliberately made household-native; sharing visibility alone never transfers ownership. Asset Memories, evidence, and links attach to it as independently authorized child records. An Asset is never a person, project, document library, inventory system, or generic object.
 _Avoid_: Person, project, document, inventory item, financial asset
+
+**Asset Memory**:
+A reviewed, source-grounded, typed fact or note attached to an Asset, such as a filter model, serial number, warranty date, maintenance detail, or relevant amount. An Asset Memory follows its own ownership, scope, sensitivity, lifecycle, and evidence checks under its Asset's visibility ceiling; it is not a generic document, an inventory field, or automatically shared because the Asset is visible.
+_Avoid_: Asset metadata, document, shared note, inventory field
 
 **Area**:
 A broad life category used to organize General Actions, such as Home, Health, Finance, Travel, Admin, or Career. An area is not a project, tag, folder tree, permission scope, or household workspace.
@@ -268,6 +280,14 @@ _Avoid_: Admin, superuser, organization owner
 The unanimous active-Owner decision to end a Household Workspace, cancel its invitations, end its memberships, and begin the retained household-native-record closure lifecycle. It is not a member departure, a record transfer, or a unilateral owner action.
 _Avoid_: Delete household, owner exit, account deletion
 
+**Household-Native Record**:
+A Personal OS record owned by the Household Workspace itself rather than by a member, such as a shared chore or a joint recurring obligation. It is visible to every active Household Member by definition, grants every active member symmetric authority without Household Owner or creator privilege, preserves creator and actor provenance, is removed by archive rather than by one member's permanent deletion, and remains with the household — with historical attribution — when a member leaves. Visibility alone never makes a member-owned record household-native; conversion is an explicit owner action.
+_Avoid_: Household-scoped record, shared record, team record, ownerless record
+
+**Responsibility Holder**:
+The at most one active Household Member a household-native Action or Routine names as looking after it. A responsibility holder is a member's explicit statement, never inferred and never advanced by Tendnote on completion or skip; it answers who has this without asserting whose turn it is. It does not gate authority, order successive occurrences, or record turn counts, streaks, missed turns, or fairness between members, and handing off is an explicit member act rather than a stored rotation.
+_Avoid_: Assignee, assignment, turn order, rota, chore split, workload balance
+
 **Shared Scope**:
 A visibility scope for records explicitly shared with selected Household Members. Shared scope is narrower than household scope and does not imply visibility to every member.
 _Avoid_: Household scope, public, team-wide
@@ -275,6 +295,38 @@ _Avoid_: Household scope, public, team-wide
 **Household Scope**:
 A visibility scope for records available to all current Household Members. Household scope is broader than shared scope but still private to the Household Workspace.
 _Avoid_: Public, shared with selected members, organization-wide
+
+**Household Authorization Proof**:
+The current, domain-owned decision that a caller may perform one specific Household operation on one record or bounded composition. It checks active membership, ownership form, audience, lifecycle, sensitivity, domain-specific exclusions, and the operation itself at the point of use; a cache, prompt, UI state, deep link, or prior result is not a proof.
+_Avoid_: Role check, cached permission, UI hiding, model instruction, membership lookup
+
+**Household Check-in**:
+An optional member-owned, in-app private briefing view of up to three currently authorized Household coordination records. It is a caller-specific read of canonical records, not a shared digest, activity feed, assignment, notification channel, or generated Household truth.
+_Avoid_: Household brief, shared daily digest, household notification, team stand-up
+
+**Household Calendar Connection**:
+An explicit Household Owner-governed designation of one Google Calendar whose events are suitable for every current and future Household Member to read in Tendnote. The Google account that supplies the credential is a technical connector, not a content authority; a Household Calendar Connection is separate from every member's private Calendar connection and permits no Tendnote write, sync, RSVP, or scheduling behavior.
+_Avoid_: Shared login, team calendar client, member-owned calendar, Calendar mirror
+
+**Household Calendar Event**:
+A minimized, read-through view of an event from a current Household Calendar Connection. Google Calendar remains its source of truth; it is neither a Tendnote-owned record nor durable Household memory, and it carries explicit provider and freshness treatment.
+_Avoid_: Household event record, synced event, confirmed attendance, durable calendar cache
+
+**Household Event Plan**:
+A household-native Tendnote planning record for a shared occasion. It may reference a Household Calendar Event and link existing People, birthday occasions, Actions, Follow-Ups, and Household Context, but it never mirrors, changes, or authoritatively restates the provider event, and it does not create RSVP, availability, guest-list, or scheduling state.
+_Avoid_: Calendar event, event sync, invitation, RSVP, shared schedule
+
+**Gift Plan**:
+A member-owned, finite planning record for one person's explicitly named celebration. A Gift Plan may be private or shared with selected Household Members, but it is never household-native, a whole-household registry, a shopping list, or a task board.
+_Avoid_: Gift registry, wishlist, household chore, cart
+
+**Gift Idea**:
+A contributor-attributed entry inside a Gift Plan. A Gift Idea helps the selected co-planners decide and avoid duplicate gifts through a reversible self-claim; it is not an independently owned wishlist item, purchase record, assignment, or inventory item.
+_Avoid_: Wishlist item, purchase, assigned task, inventory
+
+**Surprise Subject**:
+The active Household Member who is the person a Gift Plan celebrates and is authoritatively excluded from that plan's audience and every derived Tendnote surface. A Surprise Subject is a narrow Gift Plan privacy rule, not a general record deny-list.
+_Avoid_: Blocked user, generic audience exclusion, hidden member
 
 **Job Family**:
 A category of Postgres-owned background job that shares Tendnote's job execution mechanics — runtime mode, outbox delivery, queue publication, claim interpretation, terminal behavior, rate-limit deferral, and recovery — while keeping its own domain processor. The current job families are Suggested Memory extraction, Suggested General Action extraction, and semantic embedding, enumerated in a closed registry. A job family is not a generic event type, message topic, or queue.

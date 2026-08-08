@@ -2,6 +2,8 @@
 
 The canonical decision map is [Wayfinder: Phase Eight Rich Household and Multi-Domain Collaboration](https://github.com/nick-neely/tendnote/issues/355).
 
+The completed decision map is synthesized as [Specification: Phase Eight Rich Household and Multi-Domain Collaboration](https://github.com/nick-neely/tendnote/issues/376). A separate approved `to-tickets` pass will derive the implementation backlog from that specification.
+
 This directory holds durable research, prototype handoffs, and other supporting artifacts produced while that map is worked. Product decisions live in their resolution tickets and are synthesized into [`docs/prd.md`](../prd.md), [`CONTEXT.md`](../../CONTEXT.md), and only the ADRs that earn their place.
 
 - [Household activation journey](household-activation-journey.md) — Account
@@ -14,10 +16,41 @@ This directory holds durable research, prototype handoffs, and other supporting 
   — shared member authority, conflict-safe correction, evidence privacy,
   sensitivity, lifecycle, and activation across Account, Eve, Review, Capture,
   and Search.
+- [Shared Household home and Today relationship](shared-household-home-and-today.md)
+  — the durable global Household coordination surface, its boundary from each
+  member's private Today and Account management, and its composition, trust,
+  responsive, and domain-authority contracts.
+- [Shared Household Actions, Routines, and reminder coordination](shared-household-actions-and-reminders.md)
+  — household-native versus member-owned ownership, per-form authority, shared
+  occurrences, the Responsibility Holder and its completion hand-off, per-member
+  reminders, and composition into Household and Today.
+- [Household Assets and Asset Memories](household-assets-and-asset-memories.md)
+  — household-native versus member-owned Assets, narrow child-record privacy,
+  source-grounded shared review, Asset-to-Action composition, and lifecycle
+  boundaries without an inventory or document system.
+- [Household gift ideas and birthday planning with surprise privacy](household-gift-ideas-and-birthday-planning.md)
+  — member-owned, selected-co-planner Gift Plans; recipient-exclusion surprise
+  privacy; grounded review-first creation; lightweight self-claims; and
+  fail-closed collaboration, reminder, and lifecycle behavior.
+- [Household relationship records and privacy](household-relationship-records-and-privacy.md)
+  — member-owned People and relationship records, explicit read-only
+  Relationship Shares, record-local Person References, evidence and sensitivity
+  isolation, and lifecycle behavior without shared contacts or a CRM.
+- [Household privacy, recovery, and isolation evidence](household-privacy-recovery-and-isolation.md)
+  — the authorization proof every surface must obtain, opaque failure behavior,
+  revocation and cache/queue fences, minimized audit and retention, abuse
+  safeguards, and the implementation-slicing evidence required across domains.
+- [Household-aware Eve and proactive behavior](household-aware-eve-and-proactive-behavior.md)
+  — caller-scoped Household Eve, strategist, Capture, and Review boundaries;
+  bounded, member-owned in-app Household Check-ins; source, freshness, and
+  provenance treatment; and seamless desktop/mobile interaction without shared
+  delivery or a generic household agent.
 
 ## Working agreement
 
-- Accumulate every Phase Eight planning artifact on `docs/phase-8-spec` and its persistent draft pull request.
+- Accumulate the remaining Phase Eight planning artifacts on
+  `docs/phase-8-wayfinder` and its persistent draft pull request. The merged
+  `docs/phase-8-spec` branch and PR #361 remain the specification baseline.
 - Do not create per-ticket planning branches or pull requests.
 - Keep the map as the decision index; do not duplicate full resolutions here.
 - Resolve exactly one non-research ticket per session.

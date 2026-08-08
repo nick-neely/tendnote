@@ -1348,7 +1348,7 @@ Saved Item lifecycle and trust contract:
 - A Saved Item is the first-class fallback only for an explicit note, link, or open question that has no better supported destination. The fixed starting kinds are `note`, `link`, and `open_question`; Phase Seven does not turn Saved Items into generic attachments, a document inbox, a tag system, or a catch-all record model.
 - Explicit capture intent may create a Saved Item directly. A Saved Item inferred from existing context remains review-gated. The editable Saved Item is a durable product record linked to the immutable Source Record that preserves the owner's minimized original wording; editing the item never rewrites its evidence.
 - A Saved Item is `active` or `archived`. It may carry one optional `bringBackAt`, but it has no completion, priority, recurrence, or deferred status. Resolving an open question archives it with a resolution reason and optional links to the records that hold the outcome.
-- Saved Items are private by default. Eve may create selected-member or household visibility only when the owner explicitly names that audience, and confirmation states the chosen scope; content, links, and plural wording never imply sharing.
+- Saved Items are private by default. Eve may create selected-member or household visibility only when the owner deliberately selects an audience or uses an authorized Household-scoped capture context, and confirmation states the chosen scope; content, links, plural wording, or a private conversation topic never imply sharing.
 - An active dated Saved Item becomes eligible when its bring-back time arrives. An undated active item may become only a low-weight Today candidate after deterministic age and cooldown gates, subject to the Today cap and a factual explanation. Retrieval relevance alone never authorizes resurfacing or mutation.
 - Active Saved Items participate in exact recall, semantic retrieval, structured search, and grounded Eve answers after deterministic scope filtering. Archived items require an explicit archived-record request. Raw Source Records remain evidence rather than an independent result family.
 - Explicit promotion creates the supported destination record, links it to the Saved Item and shared evidence, and archives the item as resolved. Inferred promotion remains review-gated, retries are idempotent, and a correction preserves the original evidence rather than silently replacing it.
@@ -2068,11 +2068,342 @@ Deliverables:
   household name, and uses **Owner** and **Member** where authority matters;
   "Household Workspace" remains the precise domain term rather than routine UI
   wording.
-- Shared household reminders and planning surfaces beyond the minimal foundation
-- Household gift ideas and birthday planning
-- Family and social event tracking
-- Household-aware strategist behavior
-- Shared views over supported Personal OS domains where permissions allow
+- A durable global **Household** destination launches with the first supported
+  shared coordination domain. It answers **What are we jointly coordinating?**
+  while private **Today** continues to answer **What is relevant to me now?**
+  and **Account > Household** retains membership, Household Context, and
+  governance. Membership alone does not ship a prominent empty destination
+  before any shared coordination capability exists.
+- The Household home is a deterministic, shared, read-first composition with
+  capped **Needs attention** and **Coming up** sections. Each normally shows
+  three authoritative household-visible records and never more than five, with
+  domain links for overflow. Suggestions remain in Review and Household Context
+  remains orientation and Account-managed context rather than feed content.
+- Members with the same record access see the same Household composition.
+  Selected-member visibility may produce legitimate differences, while a
+  member's **Not today** action affects only private Today and never hides or
+  reorders the shared home. Household visibility alone does not make a record
+  personally eligible for Today.
+- Household-native and member-owned shared records retain their domain-specific
+  ownership, provenance, authority, conflicts, responsibility, notifications,
+  privacy, departure, and dissolution behavior. The home may expose only small,
+  reversible actions already authorized by the canonical domain product
+  function; it does not invent universal assignment or collaboration controls.
+- Eve, Capture, Review, and Search reach the same typed, permission-filtered
+  records and canonical links. Generated summaries remain ephemeral and never
+  replace the authoritative shared records. Bounded agent ranking requires a
+  later domain contract and always remains inside deterministic eligibility,
+  caps, explanation, and stable fallback.
+- The Household home streams independent domain families inside a currently
+  admitted Household frame, fails closed on membership uncertainty, and never
+  substitutes stale shared data. Departure or removal immediately removes the
+  destination; dissolution routes eligible Owners to recovery.
+- Mobile preserves a single-column **Needs attention**, **Coming up**, and
+  domain-link hierarchy. Semantic headings and lists, textual type/scope/state,
+  canonical links, keyboard and focus behavior, reduced-motion-safe
+  reconciliation, and 200% text support are required; dashboard grids,
+  carousels, drag-only ranking, swipe-only actions, hover-only provenance, and
+  auto-advancing content are excluded.
+- Actions and Routines are the first Personal OS domain with a full collaboration
+  contract. Phase Eight separates ownership from visibility with two forms: a
+  household-native record owned by the Household Workspace, and a member-owned
+  record deliberately shared at `shared` or `household` scope. Choosing **Our
+  household** at creation produces a household-native record; widening an
+  existing record's visibility never transfers ownership, and handing one over is
+  an explicit, confirmed, owner-only conversion with no claim-back path.
+- Every active member has symmetric authority over a household-native Action or
+  Routine — create, edit, complete, reopen, skip, defer, pause, resume, archive,
+  and name its Responsibility Holder — with no Household Owner or creator
+  privilege, and archive
+  rather than one member's permanent deletion as the removal path. A member-owned
+  shared Action keeps its owner as sole author; other authorized members may only
+  complete and reopen it, which narrows the current seam that lets any viewer
+  dismiss or archive another member's record.
+- A household-native Routine has one authoritative current occurrence for the
+  whole household. Completion or skip by any authorized member advances it once,
+  fenced on the occurrence acted against so a concurrent advance reconciles and
+  explains rather than rolling forward twice. Pausing suppresses the occurrence,
+  the Household home entry, every member's Today entry, and every pending
+  reminder intent; resuming materializes the next valid future occurrence without
+  a catch-up alert.
+- A household-native Action or Routine may name at most one active member as its
+  **Responsibility Holder** — a member's explicit statement about who is looking
+  after it, never inferred and never advanced by Tendnote on completion or skip.
+  Tendnote stores no turn order, because an automatic rotation would assert whose
+  turn it is, a fact about the past the product cannot observe and one whose
+  timestamped record becomes evidence in a disagreement. Alternation stays
+  seamless through a one-tap hand-off offered at completion; a settled chore is
+  named once and never touched again. The holder never gates authority, creates no
+  per-member backlog or default filter, and accumulates no completion tallies,
+  streaks, missed-turn state, or fairness score. A departing member's name is
+  cleared with no replacement chosen.
+- A Reminder Schedule remains one member's own choice about their own devices.
+  Each member may hold their own schedule for any record they can currently see,
+  so both partners can be reminded about one shared Routine, and no member action
+  ever enrolls another member's device. Being named as Responsibility Holder
+  offers that member — once, in product and never as a push — their own ordinary
+  schedule; declining is remembered, and handing the record on offers to remove
+  their own reminder rather than silently mutating it.
+- Any authorized member's completion, skip, pause, archive, or recurrence change
+  invalidates every subscribed member's pending intent for that occurrence and
+  regenerates the replacement where warranted. The dispatcher
+  revalidates current membership and visibility before every send, so a departed
+  member never receives an alert about a household record. Stale suppression
+  stays delivery state and never advances an occurrence or changes a holder.
+- Household-native writes use optimistic concurrency with the member's draft
+  preserved on a stale write; progress actions reconcile instead, reporting who
+  already handled the occurrence and when. Attribution stays quiet and factual —
+  **Household**, **Shared by Mara**, **Ana is looking after this**, **Completed by
+  Ben** — and
+  never becomes an activity feed, mentions, or comments. Historical attribution
+  survives departure.
+- A Suggested General Action may propose a household-native record only from
+  evidence already visible to the whole household, then appears as one shared
+  Review item any active member may accept, edit-and-accept, or dismiss for the
+  household. Private-channel ambient extraction stays member-owned and private
+  even when its content describes the household.
+- Household-visible Actions and Routines compose into the capped **Needs
+  attention** and **Coming up** sections with completion and reopening as the only
+  inline actions. Private Today narrows Phase Seven eligibility: a household
+  record reaches a member's Today only when it is due, overdue, or deliberately
+  resurfaced **and** they own it, are its named Responsibility Holder, or hold
+  their own Reminder Schedule for it, so an unheld shared chore sits on the
+  Household home and nags nobody privately.
+- Departure or removal immediately ends household-native access, reverts the
+  member's own shared records to `private`, revokes their household Reminder
+  Schedules and pending intents, and clears their name from any record they held,
+  while household-native records, occurrences, and history stay with the
+  workspace. Dissolution carries them into the 30-day recovery set and cancels
+  every member's schedules for them immediately.
+- Excluded rather than deferred: a stored turn order or automatic rotation,
+  subtasks, projects, dependencies, checklists, comments, mentions, activity
+  feeds, workload balancing, fairness scores, streaks, completion counts,
+  approval or verification of another member's completion, per-member due dates
+  or occurrences, priority and effort classification, and autonomous completion
+  or reminder enrollment.
+- **Saved Items** retain their narrow `note`, `link`, and `open_question`
+  fallback role in Phase Eight; they do not become a shared inbox, document
+  system, checklist, task list, tag collection, comment thread, or generic
+  collaboration record. A member-owned Saved Item may be deliberately shared at
+  selected-member or household scope without transferring ownership: its owner
+  alone edits, changes audience, archives, restores, resolves, promotes, or
+  deletes uniquely owned private evidence. A **household-native Saved Item** is
+  explicitly created for the Household Workspace, is whole-household-visible,
+  and belongs to the workspace rather than its creator; every active member may
+  create, edit, archive, restore, resolve an open question, or promote it, while
+  no member may permanently delete it.
+- Private Capture and Eve remain private by default even when a member talks
+  about the home or another member. Within an authorized Household-scoped
+  conversation or Capture flow, Eve may interpret ordinary language as a
+  household-native Saved Item without requiring a magic keyword; its
+  confirmation plainly says **Saved for Household** and offers Change and Undo.
+  An inferred item may become a shared Review proposal only when its evidence is
+  already visible to the whole household. Private-channel inference never
+  creates, proposes, or leaks a household item merely because its content sounds
+  shared.
+- Each Saved Item preserves immutable source grounding. A household-native item
+  uses household-visible evidence; member-owned sharing exposes evidence only to
+  the deliberately chosen audience. Editing never rewrites evidence, and no
+  member may expose, rewrite, or delete another member's evidence. Shared or
+  reused evidence requires its existing impact disclosure; household-native
+  evidence follows workspace retention rather than one member's deletion choice.
+  Promotion is explicit and preserves ownership: an owner promotes a
+  member-owned item into their member-owned Action, or explicitly confirms a
+  household-native Action; an active member promotes a household-native item
+  only into a household-native Action. Promotion preserves links and evidence,
+  archives the Saved Item as resolved, and never silently transfers ownership.
+- Authorized active Saved Items compose into the capped, read-first Household
+  home when their bring-back timing makes them relevant, with factual
+  **Household** or **Shared by <member>** attribution. Private Today includes one
+  only when its normal due or resurfacing rule applies and the member owns it or
+  has chosen their own Reminder Schedule; visibility alone never makes it a
+  personal backlog. Each visible active member may choose their own Reminder
+  Schedule, and no member can enroll another member's device.
+- Household-native Saved Item writes use optimistic concurrency: a stale member
+  keeps their draft, sees the current value and last actor, and chooses to keep,
+  revise, or explicitly replace it. Attribution stays quiet and factual rather
+  than becoming an activity feed. Departure or removal immediately revokes
+  access and a member's schedules; member-owned shared items return to their
+  owner's private space, while household-native items and their attribution stay
+  with the workspace. Dissolution cancels schedules and places household-native
+  items in the established 30-day recovery set.
+- **Assets and Asset Memories** remain a focused practical-record domain rather
+  than a household inventory, document manager, maintenance dashboard, or team
+  asset system. A member-owned Asset may be deliberately shared without
+  transferring ownership; only its owner changes the Asset, its audience,
+  lifecycle, and member-owned children. A household-native Asset belongs to the
+  workspace, is whole-household-visible, and grants every active member
+  symmetric create, edit, archive, restore, and maintenance authority, without
+  extra Owner or creator privilege. Archive is the removal path; no individual
+  permanently deletes a workspace-owned Asset.
+- Asset scope remains a ceiling: Asset Memories, evidence, and Related Asset
+  Links may be narrower and every read checks the child independently. A
+  household-native child is jointly maintained and workspace-retained; a
+  member-owned child remains private or deliberately shared by its creator even
+  when attached to a visible Asset. Immutable evidence, links, and parent
+  context never broaden a child or reveal an inaccessible record's content,
+  count, explanation, or existence. Restricted content remains out of automatic
+  orientation and proactive surfaces.
+- Private Eve and Capture never create, propose, or signal a Household Asset
+  from ambient shared-sounding content. An authorized Household-scoped flow may
+  directly create a clearly intended household-native Asset and routes facts,
+  inferred details, evidence, duplicate candidates, and inferred links through
+  the existing review-first, source-grounded Asset seam. A household-visible
+  proposal is one shared Review item that any active member may accept,
+  edit-and-accept, or dismiss; it requires evidence already visible to the
+  whole household.
+- The dedicated Asset Profile remains authoritative. Household and private Today
+  may show only an otherwise eligible linked Action with factual Asset
+  provenance; bare Assets and Asset Memories never create a coordination item,
+  personal backlog, Responsibility Holder, maintenance occurrence, or reminder.
+  Reminders remain member-owned schedules on linked Actions or Routines, and no
+  Asset change enrolls another member's device.
+- Household-native Asset writes preserve stale drafts and require explicit
+  reconciliation rather than silent last-write-wins. Attribution is quiet and
+  factual, not an activity feed, comment thread, or maintenance ledger.
+  Departure or removal restores a member's shared Assets and children to their
+  private space while household-native Assets and historical attribution remain
+  with the workspace. Dissolution immediately ends access and schedules, then
+  places household-native Assets and workspace-owned children in the established
+  30-day recovery set; private member-owned children do not enter it.
+- A **Gift Plan** is a member-owned plan for one person and one explicitly named
+  occasion, which stays private or is deliberately shared with selected active
+  Household Members. It is never household-native or whole-household-visible;
+  Gift Ideas are contributor-attributed entries inside it rather than a registry,
+  wishlist, cart, purchase record, or task list. The owner alone changes the
+  subject, occasion, audience, surprise protection, or lifecycle. Co-planners
+  add and manage only their own ideas and notes, and may make or release only
+  their own reversible self-claim on an idea to prevent duplicate gifts.
+- When the plan's subject is an active Household Member, a **Surprise Subject**
+  rule authoritatively excludes them from every plan and derived surface. The
+  member cannot be added as a co-planner, and Household, Today, Eve, Capture,
+  Review, Search, deep links, reminders, notifications, counts, summaries, and
+  history fail closed for them. This narrow Gift Plan rule is not a generic
+  visibility deny-list (ADR 0216).
+- The existing birthday workflow stays private, grounded, and review-only. It
+  may offer an immediate prefilled **Start a gift plan** action, but never
+  creates or shares the plan, selects co-planners, chooses surprise protection,
+  claims an idea, drafts externally, or sends. Explicit authorized Eve or
+  Capture intent may create or update a plan; grounded idea suggestions remain
+  private Review material until a co-planner explicitly adds them. The plan
+  shares only deliberate plan-facing subject and occasion data, never access to
+  the underlying Person, birthday, Memories, Assets, Source Records, or
+  Follow-Ups.
+- Authorized active plans may appear as compact upcoming references in Household
+  and, when individually relevant under normal deterministic policy, private
+  Today. Each authorized co-planner may opt into one of their own Reminder
+  Schedules; no member action enrolls another device, and the Surprise Subject
+  can never receive one. Writes reconcile with draft preservation and actor
+  explanation; self-claims are atomic. On owner departure, removal, or
+  dissolution, the plan becomes private to its owner and every collaborator's
+  access, claim, reminder, and pending intent ends. A departing co-planner loses
+  access while their existing contributions remain attributed unless removed
+  before departure. Plan-local history is quiet and authorized-only, never a
+  Household activity feed or participation ledger.
+- A **Household Calendar Connection** is an explicit Household Owner-governed
+  designation of one Google Calendar whose events are appropriate for every
+  current and future Household Member. The credential-holding Google account is
+  only a technical connector; personal Calendar connections remain owner-scoped
+  and are never implicitly shared. Google Calendar stays the event source of
+  truth: Tendnote reads minimized bounded summaries but never mirrors, syncs,
+  writes, RSVPs to, or schedules provider events (ADR 0217).
+- A **Household Event Plan** is a household-native Tendnote companion for the
+  coordination around a shared occasion. It may explicitly reference a Household
+  Calendar event and link existing People, birthday occasions, Actions,
+  Follow-Ups, and Household Context without replacing any of their authority.
+  It has no RSVP, availability, guest-list, attendance, turn-order, or scheduling
+  model. Every active member has symmetric Plan authority with optimistic
+  stale-write reconciliation, while only Owners govern Calendar connections.
+- Household reads are labeled as Calendar-derived and live or stale; provider
+  failure or disconnection is explicit and cannot fall back to a member's private
+  Calendar, create a Plan or reminder, or hide other successful families. The
+  Household home provides a bounded chronological shared view; Today may surface
+  deterministic individually relevant events. Google owns Calendar alerts, and
+  Tendnote reminders remain explicit member-owned schedules on linked Actions or
+  Follow-Ups only.
+- Eve, Capture, Review, and Search preserve the same boundary: explicit shared
+  intent may create an Event Plan, inference only proposes one for Review, and
+  private/provider-raw/inaccessible data neither crosses the Household boundary
+  nor signals that it exists. Connector departure, removal, and dissolution clear
+  provider caches and access immediately; Event Plans follow the household-native
+  recovery lifecycle.
+- **People, Memories, Source Records, and Follow-Ups remain member-owned.**
+  Phase Eight does not create Household People, shared contacts, a merged People
+  graph, or household-native relationship records. A member may deliberately
+  grant selected active Household Members or the whole Household read access to
+  one Memory, Source Record, or Follow-Up through a **Relationship Share**; the
+  owner alone edits, archives, changes audience, sensitivity, evidence, Person
+  links, review state, lifecycle, timing, and reminders (ADR 0218).
+- A household-native coordination record names an external person only through a
+  minimal, record-local **Person Reference** deliberately supplied by an
+  authorized member. It is not a contact, profile, identity match, or
+  permission-bearing link into any member's private Person. Members may keep
+  separate private People for the same external person without cross-member
+  matching, merging, duplicate review, or existence leakage.
+- Relationship records and evidence are shared independently. A shared Memory
+  never reveals its Source Record by implication, and a shared Source Record
+  reveals no linked private Memory or Person. Restricted sharing requires a
+  second audience confirmation and remains excluded from orientation,
+  Household composition, proactive behavior, ambient retrieval, reminder
+  previews, and notifications; authorized direct targeted recall remains
+  available.
+- Private Eve and Capture remain private even when language sounds shared.
+  Relationship sharing always requires an explicit record and audience choice.
+  Review remains owner-controlled; Search, Exact Recall, Semantic Retrieval,
+  Relationship Agenda, and Eve enforce identical caller, membership, audience,
+  sensitivity, lifecycle, and evidence boundaries without joining a visible
+  foreign-member record to either member's private Person.
+- Memories and Source Records never become Household cards or a shared people
+  feed. A shared active Follow-Up may appear in the capped Household home only
+  when ordinarily time-eligible, with **Shared by <member>** provenance and no
+  audience mutation. It enters private Today and reminder delivery only for its
+  owner; visibility never creates another member's personal work, alert, or
+  device enrollment.
+- A Household Calendar event may prefill a Person Reference only during an
+  explicit, confirmed Event Plan action. Provider attendees never create or
+  widen People or relationship records, and personal Calendar connections never
+  supply Household context.
+- Departure or removal immediately revokes Relationship Shares and returns the
+  owner's records to private scope; no member-owned relationship data enters
+  Household recovery. Household-native coordination records retain their
+  minimal Person References and normal workspace attribution through the
+  established recovery lifecycle without reconstructing a private People graph.
+- Every Household-capable route, capability, query, mutation, provider read,
+  deep link, cache revalidation, and background delivery must obtain a current
+  **Household Authorization Proof** from its domain boundary. It checks the
+  caller, active membership, operation, ownership form, audience, lifecycle,
+  sensitivity, and domain-specific exclusions such as Surprise Subject status;
+  UI state, model instructions, cached data, and prior access never substitute.
+  Unauthorized or uncertain access fails closed without content, count,
+  explanation, or existence signal. Membership, audience, exclusion, provider,
+  and lifecycle changes immediately revoke affected cache, queue, deep-link,
+  reminder, and provider-cache access; each deferred operation proves authority
+  again immediately before use or delivery. The two-year audit keeps only
+  minimized non-content evidence for consequential household actions, while
+  short-lived scrubbed security telemetry supports abuse controls. Every
+  implementation slice supplies an authorization matrix and multi-member
+  isolation tests across direct and derived surfaces (ADR 0219).
+- **Household-aware assistance** keeps Eve, strategist, Capture, Review, and
+  scheduled workflows private by default. An active member may deliberately
+  enter a clearly labelled Household context that reads only the caller's
+  currently authorized household-native coordination records, eligible shared
+  records, and current Household Calendar summaries; it never infers sharing
+  from language, exposes another member's private context, or becomes a generic
+  household agent. Canonical domain commands retain write authority, while
+  inferred durable changes remain review-gated (ADR 0220).
+- A member may opt into an in-app **Household Check-in** in their own daily or
+  weekly briefing. Deterministic policy chooses at most three timely, authorized
+  candidates before any generated explanation; each output links to canonical
+  records and states factual scope, provenance, timing, and Calendar freshness.
+  The Check-in is not a shared digest, activity feed, personal obligation, or
+  stored generated truth. It adds no Household email, shared channel,
+  cross-member push, or general proactive notification; existing per-record
+  Reminder Schedules remain the opting member's installation-scoped choice.
+- The calm Household home stays a read-first two-section coordination surface.
+  The Check-in is a compact, explicit entry available from Household and the
+  member's private briefing/Today context, with the same focused one-to-three
+  record view on desktop and mobile; it does not introduce a third dashboard
+  feed, carousel, hover-only control, or hidden mobile gesture.
 
 Vertical slice issue seeds:
 
@@ -2080,9 +2411,13 @@ Vertical slice issue seeds:
   management flow that activates the Phase 7.5 Household Context foundation.
 - Add Household Context management and eligible Eve orientation for active
   members.
-- Build shared household reminders page.
+- Add household-native ownership for General Actions plus the per-form authority,
+  shared-occurrence, and conflict contract for Actions and Routines.
+- Add the Responsibility Holder with its completion hand-off, the per-member
+  Reminder Schedule on shared records, and the holder reminder offer.
 - Add household gift ideas and birthday planning view.
-- Add family and social event tracking.
+- Add owner-governed shared Google Calendar connections and household-native
+  Event Plans without provider writes or sync.
 - Add household-aware strategist behavior.
 - Add shared views across supported non-people domains where scope rules allow.
 
