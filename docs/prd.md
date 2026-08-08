@@ -2227,6 +2227,45 @@ Deliverables:
   owner's private space, while household-native items and their attribution stay
   with the workspace. Dissolution cancels schedules and places household-native
   items in the established 30-day recovery set.
+- **Assets and Asset Memories** remain a focused practical-record domain rather
+  than a household inventory, document manager, maintenance dashboard, or team
+  asset system. A member-owned Asset may be deliberately shared without
+  transferring ownership; only its owner changes the Asset, its audience,
+  lifecycle, and member-owned children. A household-native Asset belongs to the
+  workspace, is whole-household-visible, and grants every active member
+  symmetric create, edit, archive, restore, and maintenance authority, without
+  extra Owner or creator privilege. Archive is the removal path; no individual
+  permanently deletes a workspace-owned Asset.
+- Asset scope remains a ceiling: Asset Memories, evidence, and Related Asset
+  Links may be narrower and every read checks the child independently. A
+  household-native child is jointly maintained and workspace-retained; a
+  member-owned child remains private or deliberately shared by its creator even
+  when attached to a visible Asset. Immutable evidence, links, and parent
+  context never broaden a child or reveal an inaccessible record's content,
+  count, explanation, or existence. Restricted content remains out of automatic
+  orientation and proactive surfaces.
+- Private Eve and Capture never create, propose, or signal a Household Asset
+  from ambient shared-sounding content. An authorized Household-scoped flow may
+  directly create a clearly intended household-native Asset and routes facts,
+  inferred details, evidence, duplicate candidates, and inferred links through
+  the existing review-first, source-grounded Asset seam. A household-visible
+  proposal is one shared Review item that any active member may accept,
+  edit-and-accept, or dismiss; it requires evidence already visible to the
+  whole household.
+- The dedicated Asset Profile remains authoritative. Household and private Today
+  may show only an otherwise eligible linked Action with factual Asset
+  provenance; bare Assets and Asset Memories never create a coordination item,
+  personal backlog, Responsibility Holder, maintenance occurrence, or reminder.
+  Reminders remain member-owned schedules on linked Actions or Routines, and no
+  Asset change enrolls another member's device.
+- Household-native Asset writes preserve stale drafts and require explicit
+  reconciliation rather than silent last-write-wins. Attribution is quiet and
+  factual, not an activity feed, comment thread, or maintenance ledger.
+  Departure or removal restores a member's shared Assets and children to their
+  private space while household-native Assets and historical attribution remain
+  with the workspace. Dissolution immediately ends access and schedules, then
+  places household-native Assets and workspace-owned children in the established
+  30-day recovery set; private member-owned children do not enter it.
 - A **Gift Plan** is a member-owned plan for one person and one explicitly named
   occasion, which stays private or is deliberately shared with selected active
   Household Members. It is never household-native or whole-household-visible;

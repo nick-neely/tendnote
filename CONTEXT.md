@@ -121,8 +121,12 @@ A domain record or review artifact produced from one explicit typed or dictated 
 _Avoid_: Parsed intent, agent action, capture result
 
 **Asset**:
-A practical owner- or household-scoped thing Tendnote tracks over time — an appliance, vehicle, subscription, service, property, or kept item — with a fixed kind, visibility scope, active/archive lifecycle, and internal audit trail; Asset Memories, evidence, and links attach to it in later Phase 6 slices. An asset is never a person, project, document library, or generic object.
+A practical thing Tendnote tracks over time — an appliance, vehicle, subscription, service, property, or kept item — with a fixed kind, visibility scope, active/archive lifecycle, and internal audit trail. An Asset is member-owned unless deliberately made household-native; sharing visibility alone never transfers ownership. Asset Memories, evidence, and links attach to it as independently authorized child records. An Asset is never a person, project, document library, inventory system, or generic object.
 _Avoid_: Person, project, document, inventory item, financial asset
+
+**Asset Memory**:
+A reviewed, source-grounded, typed fact or note attached to an Asset, such as a filter model, serial number, warranty date, maintenance detail, or relevant amount. An Asset Memory follows its own ownership, scope, sensitivity, lifecycle, and evidence checks under its Asset's visibility ceiling; it is not a generic document, an inventory field, or automatically shared because the Asset is visible.
+_Avoid_: Asset metadata, document, shared note, inventory field
 
 **Area**:
 A broad life category used to organize General Actions, such as Home, Health, Finance, Travel, Admin, or Career. An area is not a project, tag, folder tree, permission scope, or household workspace.
