@@ -31,9 +31,10 @@ const ROLE_SENTENCE = {
  * and out of it.
  *
  * The reading order is the argument. A question waiting on the reader comes
- * first, then the people, then the invitations an Owner can send, and only then
- * the exits — leaving and ending are real and reachable, but they are the last
- * thing a household is about, not the first. Capacity is stated as a fact, never
+ * first, then the people, then what those people hold in common, then the
+ * invitations an Owner can send, and only then the exits — leaving and ending
+ * are real and reachable, but they are the last thing a household is about, not
+ * the first. Capacity is stated as a fact, never
  * as a progress goal to fill; the seat line counts live invitations too, so it
  * never promises room that an outstanding invitation has already claimed.
  *
@@ -49,6 +50,7 @@ export function HouseholdOverviewPanel({
   memberActions,
   onOverviewChange,
   onAnnounce,
+  contextSection,
 }: {
   focusOnMount?: boolean;
   overview: HouseholdOverview;
@@ -57,6 +59,8 @@ export function HouseholdOverviewPanel({
   memberActions?: HouseholdMemberGovernanceActions;
   onOverviewChange: HouseholdOverviewChange;
   onAnnounce: (message: string) => void;
+  /** Household Context, composed on the server. See {@link HouseholdSurface}. */
+  contextSection?: React.ReactNode;
 }) {
   const identityHeadingRef = useRef<HTMLHeadingElement>(null);
 
@@ -149,6 +153,13 @@ export function HouseholdOverviewPanel({
           ))}
         </ul>
       </section>
+
+      {/*
+        What the household holds in common sits with its people, before the
+        administrative sections. It is part of what the household *is*; the
+        invitations and the exits are things one does to it.
+      */}
+      {contextSection}
 
       <HouseholdInvitationsPanel
         actions={invitationActions}

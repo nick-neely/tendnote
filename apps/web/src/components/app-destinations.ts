@@ -18,6 +18,7 @@ export type AppDestinationId =
   | "account-contact-import"
   | "account-discord"
   | "account-household"
+  | "account-household-context"
   | "onboarding-self-context"
   | "action-today"
   | "actions"
@@ -199,6 +200,17 @@ export const appDestinations = [
     groups: [],
     reserve: { heading: "Household", shape: "ledger" },
     scopes: [owner("account")],
+  },
+  {
+    // Household Context lives beneath Overview rather than becoming a fourth
+    // durable Household destination, so it stays out of every group too.
+    id: "account-household-context",
+    route: "/account/household/context",
+    label: "Household context",
+    icon: UsersRoundIcon,
+    groups: [],
+    reserve: { heading: "Household context", shape: "ledger" },
+    scopes: [owner("account"), owner("context-facts")],
   },
   {
     id: "account-discord",

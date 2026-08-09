@@ -10,6 +10,7 @@
     "./brief-schedules": "./src/brief-schedules.ts",
     "./brief-summary": "./src/brief-summary.ts",
     "./briefs": "./src/briefs.ts",
+    "./household-context": "./src/household-context.ts",
     "./household-governance": "./src/household-governance.ts",
     "./household-invitations": "./src/household-invitations.ts",
     "./household-overview": "./src/household-overview.ts",

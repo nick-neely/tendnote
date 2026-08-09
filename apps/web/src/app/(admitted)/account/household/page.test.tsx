@@ -1,12 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getHouseholdOverviewForUser, requireAdmittedOwner, unstable_rethrow } = vi.hoisted(() => ({
+const {
+  getHouseholdOverviewForUser,
+  listHouseholdContextActors,
+  listHouseholdContextFacts,
+  requireAdmittedOwner,
+  unstable_rethrow,
+} = vi.hoisted(() => ({
   getHouseholdOverviewForUser: vi.fn(),
+  listHouseholdContextActors: vi.fn(),
+  listHouseholdContextFacts: vi.fn(),
   requireAdmittedOwner: vi.fn(),
   unstable_rethrow: vi.fn(),
 }));
 
-vi.mock("@tendnote/db/queries/households", () => ({ getHouseholdOverviewForUser }));
+vi.mock("@tendnote/db/queries/households", () => ({
+  getHouseholdOverviewForUser,
+  listHouseholdContextActors,
+}));
+vi.mock("@tendnote/db/queries/context-facts", () => ({ listHouseholdContextFacts }));
 vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwner }));
 vi.mock("next/navigation", () => ({ unstable_rethrow }));
 vi.mock("@/components/account/household-surface", () => ({
@@ -34,6 +46,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   requireAdmittedOwner.mockResolvedValue("owner-1");
   getHouseholdOverviewForUser.mockResolvedValue(null);
+  listHouseholdContextFacts.mockResolvedValue([]);
+  listHouseholdContextActors.mockResolvedValue([]);
 });
 
 describe("Household route", () => {
@@ -86,6 +100,26 @@ describe("Household route", () => {
     expect(ownerMarkup).toContain("active: The Neely house");
     expect(otherMarkup).toContain("no active household");
     expect(otherMarkup).not.toContain("The Neely house");
+  });
+
+  /**
+   * Household Context rides under Overview, so it is read only for a caller who
+   * has a household — a caller with none must not cause a shared-context read at
+   * all (#382).
+   */
+  it("reads shared context only once there is a household to read it for", async () => {
+    const markup = renderToStaticMarkup(await HouseholdContent());
+    expect(markup).toContain("no active household");
+    expect(listHouseholdContextFacts).not.toHaveBeenCalled();
+
+    getHouseholdOverviewForUser.mockResolvedValue(OVERVIEW);
+    renderToStaticMarkup(await HouseholdContent());
+
+    expect(listHouseholdContextFacts).toHaveBeenCalledWith(
+      { callerUserId: "owner-1" },
+      expect.any(Function),
+    );
+    expect(listHouseholdContextActors).toHaveBeenCalledWith({ userId: "owner-1" });
   });
 
   it("keeps the destination truthful when the household read is unavailable", async () => {

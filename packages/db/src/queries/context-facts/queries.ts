@@ -24,6 +24,7 @@ import {
   updateSelfContextFactInputSchema,
 } from "@tendnote/domain";
 import { affectedScopesForContextFact } from "../affected-scopes";
+import { createHouseholdContextQueries } from "./household-queries";
 import { createContextFactReviewQueries } from "./review-queries";
 import { callerScopedSubjectFilter, sameInstant } from "./shared";
 import type {
@@ -410,10 +411,6 @@ export function createContextFactQueries(
     return updateContextFactForCaller(input);
   }
 
-  async function updateHouseholdContextFact(input: UpdateContextFactMutationInput) {
-    return updateContextFactForCaller(input, "household");
-  }
-
   async function updateSelfContextFact(
     input: UpdateSelfContextFactMutationInput,
   ): Promise<ContextFactMutationOutcome> {
@@ -475,10 +472,6 @@ export function createContextFactQueries(
 
   async function archiveContextFact(input: ArchiveContextFactMutationInput) {
     return archiveContextFactForCaller(input);
-  }
-
-  async function archiveHouseholdContextFact(input: ArchiveContextFactMutationInput) {
-    return archiveContextFactForCaller(input, "household");
   }
 
   async function archiveSelfContextFact(input: {
@@ -786,19 +779,40 @@ export function createContextFactQueries(
     return parsed.subject.kind === "self" && parsed.lifecycle !== "suggested" ? parsed : null;
   }
 
+  /**
+   * The caller's own Self Context plus the Household Context they may currently
+   * see, and never another member's private Self Context.
+   *
+   * The household half arrives already proved with `ambient` purpose, so a
+   * restricted household fact is absent rather than filtered later — orientation
+   * is handed a set that was authorized for exactly this use.
+   */
   async function getOrientationContext(input: GetOrientationContextInput) {
     const callerUserId = await requireVerifiedCaller(input.callerUserId);
-    const facts = await store.listContextFacts({
-      subjectUserId: callerUserId,
-      lifecycle: "active",
-    });
+    const [selfFacts, householdFacts, activeHouseholdIds] = await Promise.all([
+      store.listContextFacts({ subjectUserId: callerUserId, lifecycle: "active" }),
+      householdContextQueries.orientationEligibleHouseholdFacts(callerUserId),
+      activeHouseholdIdsForCaller(callerUserId),
+    ]);
 
     return buildOrientationContext({
       callerUserId,
-      facts: facts.map((fact) => contextFactSchema.parse(fact)),
+      facts: [...selfFacts.map((fact) => contextFactSchema.parse(fact)), ...householdFacts],
+      activeHouseholdIds,
       maxBytes: input.maxBytes,
     });
   }
+
+  const householdContextQueries = createHouseholdContextQueries({
+    store,
+    householdAccess: dependencies.householdAccess,
+    requireVerifiedCaller,
+    activeHouseholdIdsForCaller,
+    findActiveMatch,
+    affectedScopesForFact,
+    recordAudit,
+    auditLogInput,
+  });
 
   const reviewQueries = createContextFactReviewQueries({
     store,
@@ -814,11 +828,10 @@ export function createContextFactQueries(
   return {
     createContextFact,
     ...reviewQueries,
+    ...householdContextQueries,
     updateContextFact,
-    updateHouseholdContextFact,
     updateSelfContextFact,
     archiveContextFact,
-    archiveHouseholdContextFact,
     archiveSelfContextFact,
     restoreSelfContextFact,
     deleteSelfContextFact,

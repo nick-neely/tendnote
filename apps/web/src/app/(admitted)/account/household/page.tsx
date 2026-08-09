@@ -1,7 +1,12 @@
-import { getHouseholdOverviewForUser } from "@tendnote/db/queries/households";
+import { listHouseholdContextFacts } from "@tendnote/db/queries/context-facts";
+import {
+  getHouseholdOverviewForUser,
+  listHouseholdContextActors,
+} from "@tendnote/db/queries/households";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
+import { HouseholdContextSummary } from "@/components/account/household-context-summary";
 import { HouseholdSurface } from "@/components/account/household-surface";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { appDestination } from "@/components/app-destinations";
@@ -23,9 +28,30 @@ export async function HouseholdContent() {
 
   try {
     const overview = await getHouseholdOverviewForUser({ userId: ownerUserId });
+    // Read only for a caller who has a household to read one for. Both reads are
+    // authorized on their own — neither trusts the Overview having succeeded.
+    const [facts, identities] = overview
+      ? await Promise.all([
+          listHouseholdContextFacts({ callerUserId: ownerUserId }, async () => ownerUserId),
+          listHouseholdContextActors({ userId: ownerUserId }),
+        ])
+      : [[], []];
+
     return (
       <HouseholdShell>
-        <HouseholdSurface initialOverview={overview} />
+        <HouseholdSurface
+          contextSection={
+            overview ? (
+              <HouseholdContextSummary
+                facts={facts}
+                identities={identities}
+                now={new Date()}
+                viewerUserId={ownerUserId}
+              />
+            ) : null
+          }
+          initialOverview={overview}
+        />
       </HouseholdShell>
     );
   } catch (error) {
