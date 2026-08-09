@@ -48,6 +48,7 @@ vi.mock("@/components/ui/badge", () => ({
   Badge: ({ children }: { children: unknown }) => children,
 }));
 
+import { renderToStaticMarkup } from "react-dom/server";
 import { AccountContent, CalendarPreviewStream, ProviderConnectionsStream } from "./page";
 
 beforeEach(() => {
@@ -91,6 +92,22 @@ describe("AccountPage access gating", () => {
 
     expect(getOwnerProviderConnections).toHaveBeenCalledTimes(1);
     expect(redirect).not.toHaveBeenCalled();
+  });
+
+  /** Account owns the durable Household entry point; there is no global one. */
+  it("offers the admitted owner a way into Household", async () => {
+    getCurrentAccess.mockResolvedValue({ state: "admitted", user: { id: "owner-1" } });
+    resolveAccountView.mockReturnValue({
+      type: "render",
+      name: "Nick",
+      email: "nick@example.com",
+      sourceLabel: "Initial owner",
+    });
+
+    const markup = renderToStaticMarkup(await AccountContent());
+
+    expect(markup).toContain('href="/account/household"');
+    expect(markup).toContain("Household");
   });
 
   it("passes a canonical Calendar result target into the bounded preview read", async () => {

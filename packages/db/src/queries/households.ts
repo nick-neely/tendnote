@@ -3,6 +3,10 @@ import { getDb } from "../client";
 import { householdMemberships, user } from "../schema";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createHouseholdLifecycle } from "./households/lifecycle";
+import {
+  createDrizzleHouseholdIdentityStore,
+  createHouseholdOverviewReader,
+} from "./households/overview";
 import type {
   AcceptHouseholdInviteInput,
   CanViewHouseholdRecordInput,
@@ -15,10 +19,24 @@ import type {
 export { createDrizzleHouseholdStore } from "./households/drizzle-store";
 export { createInMemoryHouseholdStore } from "./households/in-memory-store";
 export { createHouseholdLifecycle } from "./households/lifecycle";
+export {
+  createDrizzleHouseholdIdentityStore,
+  createHouseholdOverviewReader,
+  type HouseholdIdentityStore,
+} from "./households/overview";
 export type * from "./households/types";
 
 const defaultHouseholdStore = createDrizzleHouseholdStore();
 const defaultHouseholdLifecycle = createHouseholdLifecycle(defaultHouseholdStore);
+const defaultHouseholdOverviewReader = createHouseholdOverviewReader(
+  defaultHouseholdStore,
+  createDrizzleHouseholdIdentityStore(),
+);
+
+/** The caller's own Household Overview, or `null` when they have no active household. */
+export function getHouseholdOverviewForUser(input: { userId: string }) {
+  return defaultHouseholdOverviewReader(input);
+}
 
 export function createHousehold(input: CreateHouseholdInput) {
   return defaultHouseholdLifecycle.createHousehold(input);

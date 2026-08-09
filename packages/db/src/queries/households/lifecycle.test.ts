@@ -35,14 +35,63 @@ describe("household membership lifecycle", () => {
     ).toEqual(["household.create"]);
   });
 
-  it("does not allow multiple household workspaces for one owner in Phase 4", async () => {
+  it("records the creator's starting role as household provenance", async () => {
+    const { lifecycle, store } = setup();
+
+    const { household, ownerMembership } = await lifecycle.createHousehold({
+      ownerUserId: OWNER,
+      name: "  Home  ",
+    });
+
+    expect(household.name).toBe("Home");
+    const [entry] = await store.listAuditLogEntries({ ownerUserId: OWNER });
+    expect(entry).toMatchObject({
+      action: "household.create",
+      entityType: "household",
+      entityId: household.id,
+      metadataJson: {
+        ownerMembershipId: ownerMembership.id,
+        name: "Home",
+        role: "owner",
+        status: "active",
+      },
+    });
+  });
+
+  it("asks for a household name instead of creating an unnamed workspace", async () => {
     const { lifecycle } = setup();
 
-    await lifecycle.createHousehold({ ownerUserId: OWNER, name: "Home" });
+    await expect(lifecycle.createHousehold({ ownerUserId: OWNER, name: "   " })).rejects.toThrow(
+      "Give the household a name.",
+    );
+    expect(await lifecycle.listActiveMembershipsForUser({ userId: OWNER })).toEqual([]);
+  });
 
-    await expect(
-      lifecycle.createHousehold({ ownerUserId: OWNER, name: "Second home" }),
-    ).rejects.toThrow("A household workspace already exists for this owner.");
+  /**
+   * Admission is decided by the creator's own active memberships, not by the
+   * creator index: a user who joined someone else's household owns no workspace
+   * row, and must still be refused a second active one.
+   */
+  it("refuses a second active workspace and explains the conflict privately", async () => {
+    const { lifecycle } = setup();
+    const { household } = await lifecycle.createHousehold({ ownerUserId: OWNER, name: "Home" });
+    await lifecycle.inviteMember({
+      ownerUserId: OWNER,
+      householdId: household.id,
+      invitedUserId: MEMBER,
+    });
+    await lifecycle.acceptInvite({ householdId: household.id, userId: MEMBER });
+
+    for (const userId of [OWNER, MEMBER]) {
+      const rejection = lifecycle.createHousehold({ ownerUserId: userId, name: "Second home" });
+      await expect(rejection).rejects.toThrow(
+        "You're already in a household. Tendnote keeps you in one household at a time, so nothing here has changed.",
+      );
+      await expect(rejection).rejects.not.toThrow(household.id);
+      expect(await lifecycle.listActiveMembershipsForUser({ userId })).toEqual([
+        expect.objectContaining({ householdId: household.id }),
+      ]);
+    }
   });
 
   it("requires invite acceptance before a member becomes active", async () => {

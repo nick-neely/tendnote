@@ -1,6 +1,8 @@
 import {
+  assertHouseholdAdmissionAvailable,
   assertHouseholdOwner,
   canViewScopedRecord,
+  parseHouseholdName,
   scopedRecordVisibility,
 } from "@tendnote/domain";
 import type {
@@ -38,10 +40,21 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
   }
 
   return {
+    /**
+     * Creates one immediately active workspace whose creator is its sole active
+     * Owner. Admission is checked against the creator's own active memberships
+     * first, so the one-active-workspace promise is decided here rather than by
+     * whichever row a later reader happens to pick.
+     */
     async createHousehold(input: CreateHouseholdInput) {
+      const name = parseHouseholdName(input.name);
+      assertHouseholdAdmissionAvailable(
+        await store.listActiveHouseholdMembershipsForUser({ userId: input.ownerUserId }),
+      );
+
       const household = await store.createHouseholdWorkspace({
         ownerUserId: input.ownerUserId,
-        name: input.name,
+        name,
         defaultScope: input.defaultScope ?? "private",
       });
       const ownerMembership = await store.createHouseholdMembership({
@@ -60,7 +73,12 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
         action: "household.create",
         entityType: "household",
         entityId: household.id,
-        metadataJson: { ownerMembershipId: ownerMembership.id },
+        metadataJson: {
+          ownerMembershipId: ownerMembership.id,
+          name: household.name,
+          role: ownerMembership.role,
+          status: ownerMembership.status,
+        },
       });
 
       return { household, ownerMembership };

@@ -6,6 +6,7 @@ import {
   ContextFactConflictError,
   ContextFactValidationError,
   GeneralActionValidationError,
+  HouseholdValidationError,
   SavedItemValidationError,
 } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
@@ -55,6 +56,7 @@ function userSafeErrorMessage(error: unknown): string | null {
     error instanceof AssetValidationError ||
     error instanceof SavedItemValidationError ||
     error instanceof ContextFactValidationError ||
+    error instanceof HouseholdValidationError ||
     error instanceof ProductRateLimitError
   ) {
     return error.message;

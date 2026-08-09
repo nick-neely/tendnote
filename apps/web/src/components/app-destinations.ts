@@ -8,6 +8,7 @@ import {
   CircleUserRoundIcon,
   HomeIcon,
   ListChecksIcon,
+  UsersRoundIcon,
 } from "@/components/icons";
 
 export type AppDestinationId =
@@ -16,6 +17,7 @@ export type AppDestinationId =
   | "account-about-you-import"
   | "account-contact-import"
   | "account-discord"
+  | "account-household"
   | "onboarding-self-context"
   | "action-today"
   | "actions"
@@ -186,6 +188,17 @@ export const appDestinations = [
     groups: [],
     reserve: { heading: "Contact import", shape: "ledger" },
     scopes: [owner("account"), owner("people")],
+  },
+  {
+    // Account owns the durable Household entry and return point; there is no
+    // top-level Household destination, so this row stays out of every group.
+    id: "account-household",
+    route: "/account/household",
+    label: "Household",
+    icon: UsersRoundIcon,
+    groups: [],
+    reserve: { heading: "Household", shape: "ledger" },
+    scopes: [owner("account")],
   },
   {
     id: "account-discord",

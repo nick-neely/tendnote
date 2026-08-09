@@ -7,7 +7,7 @@ import { CalendarPreviewSection } from "@/components/account/calendar-preview-se
 import { ProviderConnectionsSection } from "@/components/account/provider-connections-section";
 import { ReminderSettings } from "@/components/account/reminder-settings";
 import { AdmittedRoute } from "@/components/admitted-route";
-import { appDestination } from "@/components/app-destinations";
+import { type AppDestinationId, appDestination } from "@/components/app-destinations";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { CheckIcon, ChevronRightIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
@@ -93,25 +93,22 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
         </div>
       </section>
 
-      <section aria-labelledby="about-you-entry-heading" className="flex flex-col gap-2">
-        <Link
-          className="flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-lg border bg-surface px-3.5 py-3 text-left outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/35"
-          href={appDestination("account-about-you").route}
-        >
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span
-              className="text-[length:var(--text-body)] leading-[var(--text-body-line)] font-medium"
-              id="about-you-entry-heading"
-            >
-              About you
-            </span>
-            <span className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
-              Keep a few private facts that help Eve understand you.
-            </span>
-          </span>
-          <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground/60" />
-        </Link>
-      </section>
+      {/* Account's durable sub-destinations. Household lives here because Account
+          owns its entry and return point; there is no top-level Household. */}
+      <nav aria-label="Account areas" className="flex flex-col gap-2">
+        <AccountEntryLink
+          description="Keep a few private facts that help Eve understand you."
+          destination="account-about-you"
+          headingId="about-you-entry-heading"
+          label="About you"
+        />
+        <AccountEntryLink
+          description="A small shared layer for the people you live with."
+          destination="account-household"
+          headingId="household-entry-heading"
+          label="Household"
+        />
+      </nav>
 
       {/* Access status */}
       <section className="flex flex-col gap-3">
@@ -162,6 +159,39 @@ export async function AccountContent({ searchParams }: AccountPageProps = {}) {
         <SignOutButton className="w-full sm:w-auto sm:self-start" />
       </section>
     </div>
+  );
+}
+
+/** One row shape for Account's durable sub-destinations, so they stay identical. */
+function AccountEntryLink({
+  description,
+  destination,
+  headingId,
+  label,
+}: {
+  description: string;
+  destination: AppDestinationId;
+  headingId: string;
+  label: string;
+}) {
+  return (
+    <Link
+      className="flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-lg border bg-surface px-3.5 py-3 text-left outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/35"
+      href={appDestination(destination).route}
+    >
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span
+          className="text-[length:var(--text-body)] leading-[var(--text-body-line)] font-medium"
+          id={headingId}
+        >
+          {label}
+        </span>
+        <span className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
+          {description}
+        </span>
+      </span>
+      <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground/60" />
+    </Link>
   );
 }
 
