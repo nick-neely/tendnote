@@ -3,10 +3,11 @@ import {
   createHouseholdWorkspaceSchema,
   householdMembershipSchema,
 } from "@tendnote/domain";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { type DatabaseExecutor, getDb } from "../../client";
 import {
   auditLog,
+  householdDissolutionConfirmations,
   householdMemberships,
   householdRecordShares,
   householdWorkspaces,
@@ -47,6 +48,17 @@ export function createDrizzleHouseholdStore(
         .select()
         .from(householdWorkspaces)
         .where(inArray(householdWorkspaces.id, input.householdIds));
+    },
+    async updateHouseholdWorkspace(input) {
+      const [household] = await resolveDb()
+        .update(householdWorkspaces)
+        .set({ ...input.patch, updatedAt: new Date() })
+        .where(eq(householdWorkspaces.id, input.householdId))
+        .returning();
+      if (!household) {
+        throw new Error("Household workspace not found.");
+      }
+      return household;
     },
     async createHouseholdMembership(input) {
       const [membership] = await resolveDb()
@@ -173,6 +185,66 @@ export function createDrizzleHouseholdStore(
             eq(householdRecordShares.householdId, input.householdId),
             eq(householdRecordShares.recordKind, input.recordKind),
             eq(householdRecordShares.recordId, input.recordId),
+          ),
+        );
+    },
+    async deleteHouseholdRecordSharesForMember(input) {
+      await resolveDb()
+        .delete(householdRecordShares)
+        .where(
+          and(
+            eq(householdRecordShares.householdId, input.householdId),
+            ...(input.userId
+              ? [
+                  or(
+                    eq(householdRecordShares.sharedWithUserId, input.userId),
+                    eq(householdRecordShares.sharedByUserId, input.userId),
+                  ),
+                ]
+              : []),
+          ),
+        );
+    },
+    async listHouseholdDissolutionConfirmations(input) {
+      return resolveDb()
+        .select({
+          householdId: householdDissolutionConfirmations.householdId,
+          userId: householdDissolutionConfirmations.userId,
+          confirmedAt: householdDissolutionConfirmations.confirmedAt,
+        })
+        .from(householdDissolutionConfirmations)
+        .where(eq(householdDissolutionConfirmations.householdId, input.householdId));
+    },
+    async confirmHouseholdDissolution(input) {
+      const [confirmation] = await resolveDb()
+        .insert(householdDissolutionConfirmations)
+        .values({ householdId: input.householdId, userId: input.userId })
+        .onConflictDoUpdate({
+          target: [
+            householdDissolutionConfirmations.householdId,
+            householdDissolutionConfirmations.userId,
+          ],
+          // Re-confirming refreshes the moment rather than adding a second vote;
+          // unanimity counts distinct owners, never presses.
+          set: { confirmedAt: new Date() },
+        })
+        .returning({
+          householdId: householdDissolutionConfirmations.householdId,
+          userId: householdDissolutionConfirmations.userId,
+          confirmedAt: householdDissolutionConfirmations.confirmedAt,
+        });
+      if (!confirmation) {
+        throw new Error("Failed to record household dissolution confirmation.");
+      }
+      return confirmation;
+    },
+    async clearHouseholdDissolutionConfirmations(input) {
+      await resolveDb()
+        .delete(householdDissolutionConfirmations)
+        .where(
+          and(
+            eq(householdDissolutionConfirmations.householdId, input.householdId),
+            ...(input.userId ? [eq(householdDissolutionConfirmations.userId, input.userId)] : []),
           ),
         );
     },

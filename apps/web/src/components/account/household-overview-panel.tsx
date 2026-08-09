@@ -3,9 +3,19 @@
 import type { HouseholdOverview } from "@tendnote/domain/household-overview";
 import { useEffect, useRef } from "react";
 import {
+  HouseholdEndingsPanel,
+  type HouseholdGovernanceActions,
+  type HouseholdOverviewChange,
+  HouseholdOwnerOffer,
+} from "@/components/account/household-governance-panel";
+import {
   type HouseholdInvitationActions,
   HouseholdInvitationsPanel,
 } from "@/components/account/household-invitations-panel";
+import {
+  HouseholdMemberActions,
+  type HouseholdMemberGovernanceActions,
+} from "@/components/account/household-member-actions";
 import { Badge } from "@/components/ui/badge";
 
 const ROLE_LABEL = { owner: "Owner", member: "Member" } as const;
@@ -17,13 +27,15 @@ const ROLE_SENTENCE = {
 
 /**
  * The calm activation and return surface for one active household: who is in it,
- * the reader's own role, and how much of its capacity is spoken for.
+ * the reader's own role, how much of its capacity is spoken for, and the ways in
+ * and out of it.
  *
- * People lead and controls follow: this is deliberately not the future shared
- * household home, and it renders no settings or lifecycle affordance it cannot
- * honor. Capacity is stated as a fact, never as a progress goal to fill — the
- * seat line counts live invitations too, so it never promises room that an
- * outstanding invitation has already claimed.
+ * The reading order is the argument. A question waiting on the reader comes
+ * first, then the people, then the invitations an Owner can send, and only then
+ * the exits — leaving and ending are real and reachable, but they are the last
+ * thing a household is about, not the first. Capacity is stated as a fact, never
+ * as a progress goal to fill; the seat line counts live invitations too, so it
+ * never promises room that an outstanding invitation has already claimed.
  *
  * `focusOnMount` is for the one case where this panel replaces the control that
  * summoned it, so keyboard focus would otherwise land on the document body at
@@ -33,13 +45,17 @@ export function HouseholdOverviewPanel({
   focusOnMount = false,
   overview,
   invitationActions,
+  governanceActions,
+  memberActions,
   onOverviewChange,
   onAnnounce,
 }: {
   focusOnMount?: boolean;
   overview: HouseholdOverview;
   invitationActions?: HouseholdInvitationActions;
-  onOverviewChange: (overview: HouseholdOverview) => void;
+  governanceActions?: HouseholdGovernanceActions;
+  memberActions?: HouseholdMemberGovernanceActions;
+  onOverviewChange: HouseholdOverviewChange;
   onAnnounce: (message: string) => void;
 }) {
   const identityHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -71,6 +87,13 @@ export function HouseholdOverviewPanel({
         </p>
       </section>
 
+      <HouseholdOwnerOffer
+        actions={governanceActions}
+        onAnnounce={onAnnounce}
+        onOverviewChange={onOverviewChange}
+        overview={overview}
+      />
+
       <section aria-labelledby="household-people-heading" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h2
@@ -91,7 +114,14 @@ export function HouseholdOverviewPanel({
               key={member.userId}
             >
               <span className="flex min-w-0 flex-col">
-                <span className="flex min-w-0 items-baseline gap-1.5">
+                {/*
+                  Role sits with the person rather than at the row's right edge.
+                  It is a fact about them, and once some rows carry governance
+                  controls and others do not, a right-aligned badge stops lining
+                  up down the list — leaving the right edge for actions alone is
+                  what keeps the column readable.
+                */}
+                <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
                   <span className="truncate text-[length:var(--text-title)] leading-[var(--text-title-line)] font-medium">
                     {member.name}
                   </span>
@@ -100,15 +130,21 @@ export function HouseholdOverviewPanel({
                       You
                     </span>
                   ) : null}
+                  {/* Role is text, never a color-only cue (DESIGN.md §6, §8). */}
+                  <Badge variant={member.role === "owner" ? "secondary" : "outline"}>
+                    {ROLE_LABEL[member.role]}
+                  </Badge>
                 </span>
                 <span className="truncate text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
                   {member.email}
                 </span>
               </span>
-              {/* Role is text, never a color-only cue (DESIGN.md §6, §8). */}
-              <Badge variant={member.role === "owner" ? "secondary" : "outline"}>
-                {ROLE_LABEL[member.role]}
-              </Badge>
+              <HouseholdMemberActions
+                actions={memberActions}
+                member={member}
+                onAnnounce={onAnnounce}
+                onOverviewChange={onOverviewChange}
+              />
             </li>
           ))}
         </ul>
@@ -116,6 +152,13 @@ export function HouseholdOverviewPanel({
 
       <HouseholdInvitationsPanel
         actions={invitationActions}
+        onAnnounce={onAnnounce}
+        onOverviewChange={onOverviewChange}
+        overview={overview}
+      />
+
+      <HouseholdEndingsPanel
+        actions={governanceActions}
         onAnnounce={onAnnounce}
         onOverviewChange={onOverviewChange}
         overview={overview}

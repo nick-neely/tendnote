@@ -79,6 +79,12 @@ export const householdMemberStatus = pgEnum("household_member_status", [
   "removed",
 ]);
 
+// Whether a Household Workspace still exists for its members. `dissolved` is the
+// unanimous active-Owner ending (ADR 0213): the row outlives the household so its
+// household-native records can sit in the recovery window before permanent
+// deletion, and so the ending itself stays auditable.
+export const householdStatus = pgEnum("household_status", ["active", "dissolved"]);
+
 // A Household Invitation's whole lifecycle (ADR 0213): one live state, four
 // terminal ones. `expired` is written when a path observes the lapsed window;
 // every read derives it from `expires_at` so a link is never usable past it.

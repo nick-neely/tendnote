@@ -5,6 +5,7 @@ import { householdMemberships, user } from "../schema";
 import { createHouseholdAuthorizationProver } from "./households/authorization";
 import { createDrizzleHouseholdInvitationStore } from "./households/drizzle-invitation-store";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
+import { createHouseholdGovernanceLifecycle } from "./households/governance";
 import { createHouseholdInvitationLifecycle } from "./households/invitations";
 import { createHouseholdLifecycle } from "./households/lifecycle";
 import {
@@ -14,7 +15,6 @@ import {
 import type {
   CanViewHouseholdRecordInput,
   CreateHouseholdInput,
-  RemoveHouseholdMemberInput,
   ShareHouseholdRecordInput,
 } from "./households/types";
 
@@ -24,6 +24,11 @@ export {
 } from "./households/authorization";
 export { createDrizzleHouseholdInvitationStore } from "./households/drizzle-invitation-store";
 export { createDrizzleHouseholdStore } from "./households/drizzle-store";
+export {
+  createHouseholdGovernanceLifecycle,
+  type HouseholdDissolutionResult,
+  type HouseholdDissolutionState,
+} from "./households/governance";
 export { createInMemoryHouseholdInvitationStore } from "./households/in-memory-invitation-store";
 export { createInMemoryHouseholdStore } from "./households/in-memory-store";
 export {
@@ -46,6 +51,9 @@ export type * from "./households/types";
 const defaultHouseholdStore = createDrizzleHouseholdStore();
 const defaultHouseholdLifecycle = createHouseholdLifecycle(defaultHouseholdStore);
 const defaultHouseholdInvitations = createHouseholdInvitationLifecycle(
+  createDrizzleHouseholdInvitationStore(),
+);
+const defaultHouseholdGovernance = createHouseholdGovernanceLifecycle(
   createDrizzleHouseholdInvitationStore(),
 );
 const defaultHouseholdOverviewReader = createHouseholdOverviewReader(
@@ -168,8 +176,50 @@ export function createHousehold(input: CreateHouseholdInput) {
   return defaultHouseholdLifecycle.createHousehold(input);
 }
 
-export function removeHouseholdMember(input: RemoveHouseholdMemberInput) {
-  return defaultHouseholdLifecycle.removeMember(input);
+/**
+ * The co-owner governance entry points.
+ *
+ * Like the invitation entries, none of them takes a household id: each resolves
+ * the household through the caller's own active membership, so there is no shape
+ * of argument that names someone else's workspace. The rules they enforce —
+ * promotion needs the recipient's yes, no Owner may demote or remove another,
+ * the last Owner cannot leave, ending is unanimous — are re-decided inside each
+ * call against a roster read at that moment (ADR 0213).
+ */
+export function offerHouseholdOwnerRole(input: { actorUserId: string; memberUserId: string }) {
+  return defaultHouseholdGovernance.offerOwnerRole(input);
+}
+
+export function withdrawHouseholdOwnerOffer(input: { actorUserId: string; memberUserId: string }) {
+  return defaultHouseholdGovernance.withdrawOwnerOffer(input);
+}
+
+export function acceptHouseholdOwnerRole(input: { userId: string }) {
+  return defaultHouseholdGovernance.acceptOwnerRole(input);
+}
+
+export function declineHouseholdOwnerRole(input: { userId: string }) {
+  return defaultHouseholdGovernance.declineOwnerRole(input);
+}
+
+export function stepDownFromHouseholdOwner(input: { userId: string }) {
+  return defaultHouseholdGovernance.stepDownFromOwner(input);
+}
+
+export function removeHouseholdMember(input: { actorUserId: string; memberUserId: string }) {
+  return defaultHouseholdGovernance.removeMember(input);
+}
+
+export function leaveHousehold(input: { userId: string }) {
+  return defaultHouseholdGovernance.leaveHousehold(input);
+}
+
+export function confirmHouseholdDissolution(input: { ownerUserId: string }) {
+  return defaultHouseholdGovernance.confirmDissolution(input);
+}
+
+export function cancelHouseholdDissolution(input: { ownerUserId: string }) {
+  return defaultHouseholdGovernance.cancelDissolution(input);
 }
 
 export function shareHouseholdRecordWithSelectedMembers(input: ShareHouseholdRecordInput) {

@@ -62,13 +62,17 @@ export function createHouseholdOverviewReader(
     const household = await store.getHouseholdWorkspace({ householdId });
     if (!household) return null;
 
-    const activeMemberships = await store.listHouseholdMemberships({
-      householdId,
-      status: "active",
-    });
+    // The whole roster, ended rows included: the governance rules filter to
+    // active themselves, and a pre-filtered list would mean two places deciding
+    // who counts. Only active members get an identity read — a departed member
+    // is not a person this surface describes.
+    const memberRoster = await store.listHouseholdMemberships({ householdId });
     const identities = await identityStore.listUserIdentities({
-      userIds: activeMemberships.map((membership) => membership.userId),
+      userIds: memberRoster
+        .filter((membership) => membership.status === "active")
+        .map((membership) => membership.userId),
     });
+    const confirmations = await store.listHouseholdDissolutionConfirmations({ householdId });
 
     // The seat count comes from the household's own live invitations, while the
     // rows come from the caller's role-filtered view: a Member must see how full
@@ -83,10 +87,11 @@ export function createHouseholdOverviewReader(
     return buildHouseholdOverview({
       viewerUserId: input.userId,
       household,
-      memberships: activeMemberships,
+      memberships: memberRoster,
       identities,
       liveInvitations,
       invitations,
+      dissolutionConfirmations: confirmations.map((confirmation) => confirmation.userId),
     });
   };
 }

@@ -6,7 +6,12 @@ import {
   type HouseholdWorkspace,
   householdMembershipSchema,
 } from "@tendnote/domain";
-import type { HouseholdAuditLogEntry, HouseholdRecordShare, HouseholdStore } from "./types";
+import type {
+  HouseholdAuditLogEntry,
+  HouseholdDissolutionConfirmation,
+  HouseholdRecordShare,
+  HouseholdStore,
+} from "./types";
 
 export function createInMemoryHouseholdStore(): HouseholdStore & {
   listAuditLogEntries: (input: { ownerUserId: string }) => Promise<HouseholdAuditLogEntry[]>;
@@ -14,22 +19,22 @@ export function createInMemoryHouseholdStore(): HouseholdStore & {
   const households = new Map<string, HouseholdWorkspace>();
   const memberships = new Map<string, HouseholdMembership>();
   const recordShares = new Map<string, HouseholdRecordShare>();
+  const dissolutionConfirmations = new Map<string, HouseholdDissolutionConfirmation>();
   const auditLogEntries: HouseholdAuditLogEntry[] = [];
 
   return {
     async createHouseholdWorkspace(input) {
+      // No one-workspace-per-creator guard: `owner_user_id` is history, and the
+      // one-active-household rule is a membership rule enforced by
+      // `assertHouseholdAdmissionAvailable`. Refusing here would mean someone
+      // whose household was dissolved could never start another.
       const parsed = createHouseholdWorkspaceSchema.parse(input);
-      const existing = [...households.values()].find(
-        (household) => household.ownerUserId === parsed.ownerUserId,
-      );
-      if (existing) {
-        throw new Error("A household workspace already exists for this owner.");
-      }
-
       const now = new Date();
       const household: HouseholdWorkspace = {
         ...parsed,
         id: randomUUID(),
+        status: "active",
+        dissolvedAt: null,
         createdAt: now,
         updatedAt: now,
       };
@@ -42,6 +47,15 @@ export function createInMemoryHouseholdStore(): HouseholdStore & {
     async getHouseholdWorkspaces(input) {
       const householdIds = new Set(input.householdIds);
       return [...households.values()].filter((household) => householdIds.has(household.id));
+    },
+    async updateHouseholdWorkspace(input) {
+      const household = households.get(input.householdId);
+      if (!household) {
+        throw new Error("Household workspace not found.");
+      }
+      const updated = { ...household, ...input.patch, updatedAt: new Date() };
+      households.set(updated.id, updated);
+      return updated;
     },
     async createHouseholdMembership(input) {
       const parsed = createHouseholdMembershipSchema.parse(input);
@@ -57,6 +71,9 @@ export function createInMemoryHouseholdStore(): HouseholdStore & {
       const membership: HouseholdMembership = {
         ...parsed,
         id: randomUUID(),
+        pendingRole: null,
+        pendingRoleOfferedByUserId: null,
+        pendingRoleOfferedAt: null,
         createdAt: now,
         updatedAt: now,
       };
@@ -141,6 +158,40 @@ export function createInMemoryHouseholdStore(): HouseholdStore & {
           share.recordId === input.recordId
         ) {
           recordShares.delete(id);
+        }
+      }
+    },
+    async deleteHouseholdRecordSharesForMember(input) {
+      for (const [id, share] of recordShares) {
+        if (share.householdId !== input.householdId) continue;
+        if (
+          !input.userId ||
+          share.sharedWithUserId === input.userId ||
+          share.sharedByUserId === input.userId
+        ) {
+          recordShares.delete(id);
+        }
+      }
+    },
+    async listHouseholdDissolutionConfirmations(input) {
+      return [...dissolutionConfirmations.values()].filter(
+        (confirmation) => confirmation.householdId === input.householdId,
+      );
+    },
+    async confirmHouseholdDissolution(input) {
+      const confirmation = {
+        householdId: input.householdId,
+        userId: input.userId,
+        confirmedAt: new Date(),
+      };
+      dissolutionConfirmations.set(`${input.householdId}:${input.userId}`, confirmation);
+      return confirmation;
+    },
+    async clearHouseholdDissolutionConfirmations(input) {
+      for (const [key, confirmation] of dissolutionConfirmations) {
+        if (confirmation.householdId !== input.householdId) continue;
+        if (!input.userId || confirmation.userId === input.userId) {
+          dissolutionConfirmations.delete(key);
         }
       }
     },

@@ -33,10 +33,20 @@ export type HouseholdRecordShare = {
   createdAt: Date;
 };
 
+export type HouseholdDissolutionConfirmation = {
+  householdId: string;
+  userId: string;
+  confirmedAt: Date;
+};
+
 export type HouseholdStore = {
   createHouseholdWorkspace: (input: CreateHouseholdWorkspaceInput) => Promise<HouseholdWorkspace>;
   getHouseholdWorkspace: (input: { householdId: string }) => Promise<HouseholdWorkspace | null>;
   getHouseholdWorkspaces: (input: { householdIds: string[] }) => Promise<HouseholdWorkspace[]>;
+  updateHouseholdWorkspace: (input: {
+    householdId: string;
+    patch: Partial<Pick<HouseholdWorkspace, "name" | "status" | "dissolvedAt">>;
+  }) => Promise<HouseholdWorkspace>;
   createHouseholdMembership: (
     input: CreateHouseholdMembershipInput,
   ) => Promise<HouseholdMembership>;
@@ -49,7 +59,18 @@ export type HouseholdStore = {
   }) => Promise<HouseholdMembership | null>;
   updateHouseholdMembership: (input: {
     membershipId: string;
-    patch: Partial<Pick<HouseholdMembership, "role" | "status" | "acceptedAt" | "removedAt">>;
+    patch: Partial<
+      Pick<
+        HouseholdMembership,
+        | "role"
+        | "status"
+        | "acceptedAt"
+        | "removedAt"
+        | "pendingRole"
+        | "pendingRoleOfferedByUserId"
+        | "pendingRoleOfferedAt"
+      >
+    >;
   }) => Promise<HouseholdMembership>;
   listHouseholdMemberships: (input: {
     householdId: string;
@@ -84,6 +105,34 @@ export type HouseholdStore = {
     householdId: string;
     recordKind: VisibilityRecordKind;
     recordId: string;
+  }) => Promise<void>;
+  /**
+   * Clears every share in this household that involves one person, in either
+   * direction — what was shared with them, and what they shared with others.
+   *
+   * Both directions, because a departure ends both halves of member-owned
+   * sharing: the leaver loses what the household showed them, and the household
+   * loses what the leaver was showing it. Anything less would leave a departed
+   * member's records readable by people they no longer live with. `userId`
+   * omitted clears the household's sharing entirely, which is what dissolution
+   * needs.
+   */
+  deleteHouseholdRecordSharesForMember: (input: {
+    householdId: string;
+    userId?: string;
+  }) => Promise<void>;
+  listHouseholdDissolutionConfirmations: (input: {
+    householdId: string;
+  }) => Promise<HouseholdDissolutionConfirmation[]>;
+  /** Idempotent: pressing confirm twice is one confirmation, not two. */
+  confirmHouseholdDissolution: (input: {
+    householdId: string;
+    userId: string;
+  }) => Promise<HouseholdDissolutionConfirmation>;
+  /** `userId` omitted calls the whole decision off. */
+  clearHouseholdDissolutionConfirmations: (input: {
+    householdId: string;
+    userId?: string;
   }) => Promise<void>;
   createAuditLogEntry: (
     auditLogEntry: Omit<HouseholdAuditLogEntry, "id" | "createdAt">,

@@ -112,6 +112,9 @@ function activeMembership(userId: string): HouseholdMembership {
     invitedAt: NOW,
     acceptedAt: NOW,
     removedAt: null,
+    pendingRole: null,
+    pendingRoleOfferedByUserId: null,
+    pendingRoleOfferedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };

@@ -56,8 +56,33 @@ describe("household overview read", () => {
           email: "alex@example.com",
           role: "owner",
           isViewer: true,
+          awaitingOwnerReply: false,
+          // Nobody is handed a governance control pointed at themselves.
+          promote: { available: false, blockedReason: null },
+          remove: { available: false, blockedReason: null },
         },
       ],
+      ownerOffer: null,
+      // A household of one has only one exit, and it is not the door marked leave.
+      departure: {
+        available: false,
+        blockedReason:
+          "You're the only person here, so there's nobody to hand the household to. Ending it is how you close it.",
+      },
+      stepDown: {
+        available: false,
+        blockedReason:
+          "You're the only owner. Someone else here needs to accept co-ownership first.",
+      },
+      dissolution: {
+        available: true,
+        blockedReason: null,
+        required: 1,
+        confirmed: 0,
+        awaitingUserIds: ["owner-user"],
+        unanimous: false,
+        viewerHasConfirmed: false,
+      },
     });
   });
 

@@ -14,8 +14,20 @@ vi.mock("@/app/actions/household-invitations", () => ({
   resendHouseholdInvitationAction: vi.fn(),
   cancelHouseholdInvitationAction: vi.fn(),
 }));
+vi.mock("@/app/actions/household-governance", () => ({
+  offerHouseholdOwnerRoleAction: vi.fn(),
+  withdrawHouseholdOwnerOfferAction: vi.fn(),
+  acceptHouseholdOwnerRoleAction: vi.fn(),
+  declineHouseholdOwnerRoleAction: vi.fn(),
+  stepDownFromHouseholdOwnerAction: vi.fn(),
+  removeHouseholdMemberAction: vi.fn(),
+  leaveHouseholdAction: vi.fn(),
+  confirmHouseholdDissolutionAction: vi.fn(),
+  cancelHouseholdDissolutionAction: vi.fn(),
+}));
 
 import { HouseholdSurface } from "./household-surface";
+import { governanceDefaults, member } from "./household-test-overview";
 
 const OVERVIEW: HouseholdOverview = {
   householdId: "household-1",
@@ -24,15 +36,8 @@ const OVERVIEW: HouseholdOverview = {
   isSoleMember: true,
   invitations: [],
   seats: { limit: 8, occupied: 1, remaining: 7, isFull: false },
-  members: [
-    {
-      userId: "owner-1",
-      name: "Alex",
-      email: "alex@example.com",
-      role: "owner",
-      isViewer: true,
-    },
-  ],
+  members: [member({ userId: "owner-1", name: "Alex", email: "alex@example.com", role: "owner" })],
+  ...governanceDefaults({ viewerRole: "owner", soleMember: true }),
 };
 
 beforeEach(() => {
@@ -86,10 +91,17 @@ describe("household activation", () => {
     expect(heading.getAttribute("tabindex")).toBe("-1");
   });
 
-  it("says plainly that a household cannot be renamed or removed here", () => {
+  /**
+   * Activation is where someone commits, so this line has to keep matching what
+   * the product can actually do. It used to promise a one-way door; leaving and
+   * ending exist now, and renaming still does not.
+   */
+  it("names both the exits that exist and the rename that does not", () => {
     render(<HouseholdSurface initialOverview={null} />);
 
-    const durability = screen.getByText(/nothing here renames or removes one/i);
+    const durability = screen.getByText(/nothing here\s+renames one/i);
+    expect(durability.textContent).toMatch(/you can leave a household later/i);
+    expect(durability.textContent).toMatch(/owners can end it together/i);
     expect(durability).toBeTruthy();
     expect(screen.getByLabelText("Household name").getAttribute("aria-describedby")).toContain(
       durability.id,
@@ -207,9 +219,16 @@ const MEMBER_OVERVIEW: HouseholdOverview = {
   invitations: [],
   seats: { limit: 8, occupied: 3, remaining: 5, isFull: false },
   members: [
-    { userId: "member-1", name: "Sam", email: "sam@example.com", role: "member", isViewer: true },
-    { userId: "owner-1", name: "Alex", email: "alex@example.com", role: "owner", isViewer: false },
+    member({ userId: "member-1", name: "Sam", email: "sam@example.com" }),
+    member({
+      userId: "owner-1",
+      name: "Alex",
+      email: "alex@example.com",
+      role: "owner",
+      isViewer: false,
+    }),
   ],
+  ...governanceDefaults({ viewerRole: "member" }),
 };
 
 describe("household invitations", () => {
@@ -357,6 +376,10 @@ describe("household invitations", () => {
     expect(screen.getByText("3 of 8 places taken")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Invitations" })).toBeNull();
     expect(screen.queryByLabelText("Email address")).toBeNull();
-    expect(screen.queryAllByRole("button")).toEqual([]);
+    // The one control a member does hold is their own way out - never anything
+    // pointed at another person, and nothing about ending the household.
+    expect(screen.queryAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Leave household",
+    ]);
   });
 });
