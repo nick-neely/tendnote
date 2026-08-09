@@ -6,6 +6,9 @@ import {
   ContextFactConflictError,
   ContextFactValidationError,
   GeneralActionValidationError,
+  GiftPlanConflictError,
+  GiftPlanValidationError,
+  HouseholdRecordUnavailableError,
   HouseholdValidationError,
   SavedItemValidationError,
 } from "@tendnote/domain";
@@ -56,9 +59,17 @@ function userSafeErrorMessage(error: unknown): string | null {
     error instanceof AssetValidationError ||
     error instanceof SavedItemValidationError ||
     error instanceof ContextFactValidationError ||
+    error instanceof GiftPlanValidationError ||
     error instanceof HouseholdValidationError ||
     error instanceof ProductRateLimitError
   ) {
+    return error.message;
+  }
+  // The one sentence a refused Household read or write is ever given. It is
+  // rendered rather than rethrown so the surface can settle quietly instead of
+  // erroring — and it is the *same* sentence whether the record is gone, was
+  // never shared, or is a surprise for the person asking (ADR 0219).
+  if (error instanceof HouseholdRecordUnavailableError) {
     return error.message;
   }
   return null;
@@ -96,6 +107,20 @@ export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
           ok: false,
           error: error.message,
           focusContextFactId: error.existingFactId,
+        };
+      }
+      if (error instanceof GiftPlanConflictError) {
+        // The actor travels as an id here and is turned into a name by the
+        // surface, which already holds the co-planner roster. Resolving it here
+        // would mean a name lookup inside a failure path.
+        return {
+          ok: false,
+          error: error.message,
+          conflict: {
+            currentValue: error.conflict.currentValue,
+            actorLabel: error.conflict.actorUserId,
+            revision: error.conflict.revision,
+          },
         };
       }
       const message = userSafeErrorMessage(error);

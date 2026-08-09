@@ -2,6 +2,7 @@ import type { RecipientProof } from "@tendnote/domain";
 import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "../client";
 import { householdMemberships, user } from "../schema";
+import { privatizeGiftPlansForHouseholdAccessEnded } from "./gift-plans";
 import { createHouseholdAuthorizationProver } from "./households/authorization";
 import { createDrizzleHouseholdInvitationStore } from "./households/drizzle-invitation-store";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
@@ -55,6 +56,22 @@ const defaultHouseholdInvitations = createHouseholdInvitationLifecycle(
 );
 const defaultHouseholdGovernance = createHouseholdGovernanceLifecycle(
   createDrizzleHouseholdInvitationStore(),
+  {
+    /**
+     * Gift Plans are the first record family that has to *do* something when
+     * access ends rather than only lose its shares: a `shared` plan needs its
+     * owner's own active membership before ownership is consulted, so a departed
+     * owner would be refused their own plan. The plan stays with them and goes
+     * private (#389).
+     *
+     * Wired here, at the composition root, rather than by governance importing
+     * the family — which would also be a cycle, since the Gift Plan seam reads
+     * this module's authorization prover.
+     */
+    onHouseholdAccessEnded: async (input) => {
+      await privatizeGiftPlansForHouseholdAccessEnded(input);
+    },
+  },
 );
 const defaultHouseholdOverviewReader = createHouseholdOverviewReader(
   defaultHouseholdStore,

@@ -38,6 +38,7 @@
     "./queries/followups": "./src/queries/followups.ts",
     "./queries/general-action-areas": "./src/queries/general-action-areas.ts",
     "./queries/general-actions": "./src/queries/general-actions.ts",
+    "./queries/gift-plans": "./src/queries/gift-plans.ts",
     "./queries/global-recall": "./src/queries/global-recall.ts",
     "./queries/gmail-drafts": "./src/queries/gmail-drafts.ts",
     "./queries/households": "./src/queries/households.ts",

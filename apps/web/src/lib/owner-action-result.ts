@@ -1,6 +1,25 @@
+/**
+ * What the writer needs to resolve a lost race without losing their draft.
+ *
+ * The rule is "preserve what they typed, show what is there now, make them
+ * choose" — so the current value, who wrote it, and the revision a deliberate
+ * replace would carry all travel back with the failure. Re-reading afterwards
+ * would just be a second race.
+ */
+export type OwnerActionConflict = {
+  currentValue: string | null;
+  actorLabel: string | null;
+  revision: number;
+};
+
 export type OwnerActionResult<TView> =
   | { ok: true; view: TView }
-  | { ok: false; error: string; focusContextFactId?: string };
+  | {
+      ok: false;
+      error: string;
+      focusContextFactId?: string;
+      conflict?: OwnerActionConflict;
+    };
 
 /** A curated owner-facing failure returned as data by the Server Action protocol. */
 export class OwnerActionFailure extends Error {

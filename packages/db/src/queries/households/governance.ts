@@ -15,7 +15,28 @@ import {
 } from "@tendnote/domain";
 import type { HouseholdInvitationStore } from "./invitation-types";
 
-export type HouseholdGovernanceOptions = { now?: () => Date };
+export type HouseholdGovernanceOptions = {
+  now?: () => Date;
+  /**
+   * Told when access to a household ends — `userId` for one departure or
+   * removal, absent for dissolution.
+   *
+   * This exists because revoking shares is not always the whole of "your access
+   * stops now". A member-owned record whose scope is `shared` requires its
+   * *owner's* own active membership before ownership is consulted, so a
+   * departing owner is refused their own record until something rewrites its
+   * scope. Gift Plans are the first family with that shape (#389): the plan
+   * stays with the member who made it and goes private here.
+   *
+   * It is a hook rather than a call into another query module because
+   * governance must not learn which record families exist. It runs after the
+   * membership rows have moved and outside their transaction, which is the
+   * honest limitation: a failure in between leaves those records unreadable by
+   * everyone, their owner included. That is the safe direction to fail and a
+   * recoverable one — never a disclosure.
+   */
+  onHouseholdAccessEnded?: (input: { householdId: string; userId?: string }) => Promise<void>;
+};
 
 /**
  * What ending a household leaves behind, answered at the moment it ends.
@@ -70,6 +91,20 @@ export function createHouseholdGovernanceLifecycle(
   options: HouseholdGovernanceOptions = {},
 ) {
   const now = options.now ?? (() => new Date());
+
+  /**
+   * Tells the record families that access has ended, once the rows have
+   * actually moved.
+   *
+   * After the transaction commits rather than inside it: the hook writes through
+   * its own connection, and running it in the middle would have it acting on a
+   * membership change that might still roll back. The ordering it does guarantee
+   * is the one that matters — nothing is re-privatized on the strength of a
+   * departure that did not happen.
+   */
+  async function announceAccessEnded(input: { householdId: string; userId?: string }) {
+    await options.onHouseholdAccessEnded?.(input);
+  }
 
   /**
    * The caller's own active membership, and the whole roster it sits in, read
@@ -395,7 +430,7 @@ export function createHouseholdGovernanceLifecycle(
      */
     async removeMember(input: { actorUserId: string; memberUserId: string }) {
       const at = now();
-      return store.withTransaction(async (tx) => {
+      const removed = await store.withTransaction(async (tx) => {
         const { householdId, roster } = await requireOwnerStanding(tx, input.actorUserId);
         assertMemberRemovalAllowed({
           roster,
@@ -423,6 +458,12 @@ export function createHouseholdGovernanceLifecycle(
         });
         return ended.membership;
       });
+
+      await announceAccessEnded({
+        householdId: removed.householdId,
+        userId: removed.userId,
+      });
+      return removed;
     },
 
     /**
@@ -432,7 +473,7 @@ export function createHouseholdGovernanceLifecycle(
      */
     async leaveHousehold(input: { userId: string }) {
       const at = now();
-      return store.withTransaction(async (tx) => {
+      const departed = await store.withTransaction(async (tx) => {
         const { householdId, membership, roster } = await requireStanding(tx, input.userId);
         assertDepartureAllowed({ roster, userId: input.userId });
 
@@ -450,6 +491,12 @@ export function createHouseholdGovernanceLifecycle(
         });
         return ended.membership;
       });
+
+      await announceAccessEnded({
+        householdId: departed.householdId,
+        userId: departed.userId,
+      });
+      return departed;
     },
 
     /**
@@ -464,7 +511,8 @@ export function createHouseholdGovernanceLifecycle(
      */
     async confirmDissolution(input: { ownerUserId: string }): Promise<HouseholdDissolutionState> {
       const at = now();
-      return store.withTransaction(async (tx) => {
+      let endedHouseholdId: string | null = null;
+      const state = await store.withTransaction(async (tx) => {
         const { householdId, roster } = await requireOwnerStanding(tx, input.ownerUserId);
         assertDissolutionAllowed({ roster, userId: input.ownerUserId });
 
@@ -492,6 +540,7 @@ export function createHouseholdGovernanceLifecycle(
         if (!progress.unanimous) {
           return { ...progress, dissolved: null };
         }
+        endedHouseholdId = householdId;
         return {
           ...progress,
           dissolved: await dissolve(tx, {
@@ -503,6 +552,11 @@ export function createHouseholdGovernanceLifecycle(
           }),
         };
       });
+
+      // No `userId`: this is the whole household's sharing ending at once, not
+      // several departures, and every plan in it goes private.
+      if (endedHouseholdId) await announceAccessEnded({ householdId: endedHouseholdId });
+      return state;
     },
 
     /**

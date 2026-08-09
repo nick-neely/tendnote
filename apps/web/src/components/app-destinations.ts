@@ -6,6 +6,7 @@ import {
   BoxIcon,
   CircleDotIcon,
   CircleUserRoundIcon,
+  GiftIcon,
   HomeIcon,
   ListChecksIcon,
   UsersRoundIcon,
@@ -23,6 +24,8 @@ export type AppDestinationId =
   | "actions"
   | "asset"
   | "assets"
+  | "gift-plan"
+  | "gift-plans"
   | "people"
   | "person"
   | "reminder"
@@ -143,6 +146,29 @@ export const appDestinations = [
     groups: [],
     reserve: { heading: "Asset", shape: "detail" },
     scopes: [owner("assets")],
+  },
+  {
+    id: "gift-plans",
+    route: "/gift-plans",
+    label: "Gift plans",
+    icon: GiftIcon,
+    /**
+     * Menu only. Gift planning is occasional and deliberate — a few times a
+     * year, not several times a day — so it does not earn a place in the
+     * always-visible rail beside People, Today, and capture.
+     */
+    groups: ["menu"],
+    reserve: { heading: "Gift plans", shape: "ledger" },
+    scopes: [owner("gift-plans"), viewer("gift-plans")],
+  },
+  {
+    id: "gift-plan",
+    route: "/gift-plans/[giftPlanId]",
+    label: "Gift plan",
+    icon: GiftIcon,
+    groups: [],
+    reserve: { heading: "Gift plan", shape: "detail" },
+    scopes: [owner("gift-plans"), viewer("gift-plans")],
   },
   {
     id: "saved-items",
