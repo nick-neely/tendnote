@@ -12,7 +12,12 @@ export type RecordSurfacingState =
   | "paused";
 
 export type RecordSurfacingContextInput = {
-  ownerUserId: string;
+  /**
+   * Null when the Household Workspace owns the record (ADR 0214), which makes
+   * `owned` false for every viewer — nobody reads a household-native item as
+   * "mine", and no member's controls are widened by having created it.
+   */
+  ownerUserId: string | null;
   viewerUserId: string;
   scope: PrivacyScope;
   sharedWithCount: number;

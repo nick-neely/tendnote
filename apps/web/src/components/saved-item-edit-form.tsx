@@ -1,7 +1,11 @@
 "use client";
 
 import { useId, useState } from "react";
-import { editSavedItemAction } from "@/app/actions/saved-items";
+import {
+  editHouseholdSavedItemAction,
+  editSavedItemAction,
+  getHouseholdSavedItemViewAction,
+} from "@/app/actions/saved-items";
 import { GeneralActionReminderField } from "@/components/general-action-reminder";
 import { pastReminderLeadTimeMessage } from "@/components/reminder-past-lead-recovery";
 import { Button } from "@/components/ui/button";
@@ -10,8 +14,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toReminderScheduleChoice } from "@/lib/reminder-schedule-view";
-import type { SavedItemView } from "@/lib/saved-item-view";
+import type { ReversibleMutationLabels } from "@/lib/reversible-mutation";
+import type { SavedItemConflictView } from "@/lib/saved-item-conflict";
+import {
+  type SavedItemMemberNames,
+  type SavedItemMutationResult,
+  type SavedItemView,
+  savedItemMemberLabel,
+} from "@/lib/saved-item-view";
 import { useReminderSchedule } from "@/lib/use-reminder-schedule";
+
+export type SavedItemEditSave = (
+  run: () => Promise<SavedItemMutationResult>,
+  focusTarget: HTMLElement | null,
+  labels?: Partial<ReversibleMutationLabels>,
+) => void;
 
 function toDateTimeLocalValue(value: string | null): string {
   if (!value) return "";
@@ -22,20 +39,19 @@ function toDateTimeLocalValue(value: string | null): string {
 
 // This focused editor intentionally keeps its controlled field and Reminder branches together;
 // splitting them would duplicate one atomic submit transaction across components. DOM coverage
-// exercises details-only, Reminder, and clear paths.
+// exercises details-only, Reminder, clear, and household conflict paths.
 // fallow-ignore-next-line complexity
 export function SavedItemEditForm({
   item,
+  memberNames,
   onCancel,
   onSave,
   pending,
 }: {
   item: SavedItemView;
+  memberNames: SavedItemMemberNames;
   onCancel: () => void;
-  onSave: (
-    run: () => ReturnType<typeof editSavedItemAction>,
-    focusTarget: HTMLElement | null,
-  ) => void;
+  onSave: SavedItemEditSave;
   pending: boolean;
 }) {
   const bringBackAtId = useId();
@@ -43,6 +59,7 @@ export function SavedItemEditForm({
   const [content, setContent] = useState(item.content ?? "");
   const [url, setUrl] = useState(item.url ?? "");
   const [bringBackAt, setBringBackAt] = useState(toDateTimeLocalValue(item.bringBackAt));
+  const [conflict, setConflict] = useState<SavedItemConflictView | null>(null);
   const {
     choice: reminderChoice,
     clear: clearSchedule,
@@ -51,6 +68,7 @@ export function SavedItemEditForm({
     setChoice: setReminderChoice,
     setEnabled: setReminderEnabled,
   } = useReminderSchedule(item.reminderSchedule);
+  const householdNative = item.ownership === "household_native";
   const detailsChanged =
     title.trim() !== item.title ||
     (content.trim() || null) !== item.content ||
@@ -63,48 +81,91 @@ export function SavedItemEditForm({
     reminderEnabled !== Boolean(item.reminderSchedule) ||
     JSON.stringify(reminderChoice) !== JSON.stringify(currentReminderChoice);
   const hasChange = detailsChanged || reminderChanged;
+
+  function saveDetails(replace: boolean) {
+    const edit = {
+      savedItemId: item.id,
+      title: title.trim(),
+      content: content.trim() || null,
+      bringBackAt: bringBackAt || null,
+      ...(item.kind === "link" ? { url: url.trim() || null } : {}),
+    };
+    if (!householdNative) return editSavedItemAction(edit);
+    return editHouseholdSavedItemAction({
+      ...edit,
+      // Sent on an ordinary save so a stale write is refused rather than merged
+      // or silently won; omitted only once the member has read the current value
+      // and chosen to replace it (ADR 0209).
+      ...(replace ? {} : { expectedVersion: item.version }),
+    });
+  }
+
+  function submitEdit(replace: boolean, focusTarget: HTMLElement | null) {
+    onSave(async () => {
+      const result = detailsChanged
+        ? await saveDetails(replace)
+        : { ok: true as const, view: item };
+      if (!result.ok) {
+        if (!result.savedItemConflict) return result;
+        // The draft stays in the fields; the panel above them takes the message,
+        // the value that actually landed, and the two answers to it. The row's
+        // generic error line is left empty rather than repeating that sentence
+        // somewhere it cannot be acted on.
+        setConflict(result.savedItemConflict);
+        return { ok: false as const, error: "" };
+      }
+      setConflict(null);
+      let view = result.view;
+      if (reminderEnabled && bringBackAt) {
+        const reminder = await saveSchedule("saved_item", item.id);
+        if (reminder.nextValidChoice) {
+          setReminderChoice({
+            kind: "relative",
+            leadMinutes: reminder.nextValidChoice.leadMinutes,
+          });
+          return {
+            ok: false as const,
+            error: pastReminderLeadTimeMessage(reminder.nextValidChoice.label),
+          };
+        }
+        view = { ...view, reminderSchedule: reminder.scheduleView };
+      } else if (item.reminderSchedule) {
+        await clearSchedule("saved_item", item.id);
+        view = { ...view, reminderSchedule: null };
+      }
+      return { ok: true as const, view };
+    }, focusTarget);
+  }
+
+  /** Discard the draft and adopt what is stored, read back from the server rather than assembled here. */
+  function takeTheirs(focusTarget: HTMLElement | null) {
+    onSave(() => getHouseholdSavedItemViewAction({ savedItemId: item.id }), focusTarget, {
+      pending: "Loading the current version…",
+      success: "Showing the current version.",
+    });
+  }
+
   return (
     <form
       className="ml-7 flex flex-col gap-2 border-t pt-3"
       onSubmit={(event) => {
         event.preventDefault();
         if (!title.trim() || !hasChange) return;
-        onSave(
-          async () => {
-            const result = detailsChanged
-              ? await editSavedItemAction({
-                  savedItemId: item.id,
-                  title: title.trim(),
-                  content: content.trim() || null,
-                  bringBackAt: bringBackAt || null,
-                  ...(item.kind === "link" ? { url: url.trim() || null } : {}),
-                })
-              : { ok: true as const, view: item };
-            if (!result.ok) return result;
-            let view = result.view;
-            if (reminderEnabled && bringBackAt) {
-              const reminder = await saveSchedule("saved_item", item.id);
-              if (reminder.nextValidChoice) {
-                setReminderChoice({
-                  kind: "relative",
-                  leadMinutes: reminder.nextValidChoice.leadMinutes,
-                });
-                return {
-                  ok: false as const,
-                  error: pastReminderLeadTimeMessage(reminder.nextValidChoice.label),
-                };
-              }
-              view = { ...view, reminderSchedule: reminder.scheduleView };
-            } else if (item.reminderSchedule) {
-              await clearSchedule("saved_item", item.id);
-              view = { ...view, reminderSchedule: null };
-            }
-            return { ok: true as const, view };
-          },
+        submitEdit(
+          false,
           event.nativeEvent.submitter instanceof HTMLElement ? event.nativeEvent.submitter : null,
         );
       }}
     >
+      {conflict ? (
+        <SavedItemConflictNotice
+          conflict={conflict}
+          memberNames={memberNames}
+          onKeepMine={(focusTarget) => submitEdit(true, focusTarget)}
+          onTakeTheirs={takeTheirs}
+          pending={pending}
+        />
+      ) : null}
       <Input
         aria-label="Edit title"
         onChange={(event) => setTitle(event.target.value)}
@@ -148,13 +209,87 @@ export function SavedItemEditForm({
         />
       ) : null}
       <div className="flex gap-2">
-        <Button disabled={pending || !title.trim() || !hasChange} size="sm" type="submit">
-          {pending ? "Saving…" : "Save changes"}
-        </Button>
+        {/* While a conflict is open the two explicit answers replace Save: an
+            ordinary save would resubmit the same stale version and refuse again. */}
+        {conflict ? null : (
+          <Button disabled={pending || !title.trim() || !hasChange} size="sm" type="submit">
+            {pending ? "Saving…" : "Save changes"}
+          </Button>
+        )}
         <Button onClick={onCancel} size="sm" type="button" variant="ghost">
           Cancel
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * What a member sees when someone else saved first.
+ *
+ * Their draft is untouched in the fields below; this sits above it holding the
+ * value that actually landed and the two answers to it. No merge, no
+ * last-write-wins, and no fault - writing at the same time as a housemate is an
+ * ordinary thing to do, so the panel is a quiet panel and not a warning
+ * (DESIGN.md §2, ADR 0209).
+ */
+function SavedItemConflictNotice({
+  conflict,
+  memberNames,
+  onKeepMine,
+  onTakeTheirs,
+  pending,
+}: {
+  conflict: SavedItemConflictView;
+  memberNames: SavedItemMemberNames;
+  onKeepMine: (focusTarget: HTMLElement | null) => void;
+  onTakeTheirs: (focusTarget: HTMLElement | null) => void;
+  pending: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-md border bg-panel px-3 py-2.5" role="status">
+      <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)]">
+        Someone else changed this while you were writing. Your draft is kept below.
+      </p>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[length:var(--text-caption)] text-muted-foreground">
+          Saved on this item now
+        </span>
+        <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)]">
+          {conflict.title}
+        </p>
+        {conflict.content ? (
+          <p className="max-w-[68ch] text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
+            {conflict.content}
+          </p>
+        ) : null}
+        {conflict.lastActorUserId ? (
+          <span className="text-[length:var(--text-caption)] text-muted-foreground">
+            Last changed by {savedItemMemberLabel(conflict.lastActorUserId, memberNames)}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          aria-busy={pending}
+          disabled={pending}
+          onClick={(event) => onKeepMine(event.currentTarget)}
+          size="sm"
+          type="button"
+        >
+          {pending ? "Saving…" : "Keep mine"}
+        </Button>
+        <Button
+          aria-busy={pending}
+          disabled={pending}
+          onClick={(event) => onTakeTheirs(event.currentTarget)}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Take theirs
+        </Button>
+      </div>
+    </div>
   );
 }

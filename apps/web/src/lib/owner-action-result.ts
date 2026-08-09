@@ -1,6 +1,18 @@
+import type { SavedItemConflictView } from "@/lib/saved-item-conflict";
+
 export type OwnerActionResult<TView> =
   | { ok: true; view: TView }
-  | { ok: false; error: string; focusContextFactId?: string };
+  | {
+      ok: false;
+      error: string;
+      focusContextFactId?: string;
+      /**
+       * The authoritative current value behind a household-native optimistic
+       * concurrency refusal, so the form can put it beside the kept draft
+       * instead of only saying the write did not land (ADR 0209).
+       */
+      savedItemConflict?: SavedItemConflictView;
+    };
 
 /** A curated owner-facing failure returned as data by the Server Action protocol. */
 export class OwnerActionFailure extends Error {

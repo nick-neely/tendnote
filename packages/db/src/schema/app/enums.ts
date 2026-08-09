@@ -79,6 +79,14 @@ export const householdMemberStatus = pgEnum("household_member_status", [
   "removed",
 ]);
 
+// Who a scoped record belongs to, which is a different question from who may see
+// it (ADR 0214). Shared across record families so a household-native Saved Item
+// and a household-native Action cannot come to mean different things by it.
+export const householdRecordOwnership = pgEnum("household_record_ownership", [
+  "member_owned",
+  "household_native",
+]);
+
 // Whether a Household Workspace still exists for its members. `dissolved` is the
 // unanimous active-Owner ending (ADR 0213): the row outlives the household so its
 // household-native records can sit in the recovery window before permanent

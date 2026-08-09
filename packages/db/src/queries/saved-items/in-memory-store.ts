@@ -35,14 +35,40 @@ export function createInMemorySavedItemRecordStore() {
     },
     async getSavedItem(input: { ownerUserId: string; savedItemId: string }) {
       const item = records.get(input.savedItemId);
-      return item?.ownerUserId === input.ownerUserId ? item : null;
+      return item?.ownerUserId === input.ownerUserId
+        ? { ...item, ownerUserId: input.ownerUserId }
+        : null;
+    },
+    async getSavedItemById(input: { savedItemId: string }) {
+      return records.get(input.savedItemId) ?? null;
     },
     async updateSavedItem(input: Parameters<SavedItemLifecycleStore["updateSavedItem"]>[0]) {
       const current = records.get(input.savedItemId);
       if (!current || current.ownerUserId !== input.ownerUserId) {
         throw new Error("Saved Item not found.");
       }
-      const updated = savedItemSchema.parse({ ...current, ...input.patch, updatedAt: new Date() });
+      const updated = savedItemSchema.parse({
+        ...current,
+        ...input.patch,
+        version: current.version + 1,
+        updatedAt: new Date(),
+      });
+      records.set(updated.id, updated);
+      return { ...updated, ownerUserId: input.ownerUserId };
+    },
+    async updateHouseholdNativeSavedItem(
+      input: Parameters<SavedItemLifecycleStore["updateHouseholdNativeSavedItem"]>[0],
+    ) {
+      const current = records.get(input.savedItemId);
+      if (current?.ownership !== "household_native" || current.version !== input.expectedVersion) {
+        return null;
+      }
+      const updated = savedItemSchema.parse({
+        ...current,
+        ...input.patch,
+        version: current.version + 1,
+        updatedAt: new Date(),
+      });
       records.set(updated.id, updated);
       return updated;
     },

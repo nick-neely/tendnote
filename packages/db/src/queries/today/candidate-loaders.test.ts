@@ -140,6 +140,23 @@ describe("Today cross-domain candidate loaders", () => {
           createdAt: new Date("2026-07-20T00:00:00.000Z"),
           updatedAt: NOW,
         },
+        {
+          // Due, visible to this member, and owned by the workspace rather than
+          // by them. Private Today is not a second Household queue, so it stays
+          // out until they choose a Reminder Schedule for it themselves.
+          id: "saved-household-native",
+          ownerUserId: null,
+          ownership: "household_native",
+          kind: "note",
+          title: "Boiler engineer",
+          content: null,
+          url: null,
+          status: "active",
+          bringBackAt: new Date("2026-07-21T09:00:00.000Z"),
+          sourceRecordId: "source-household",
+          createdAt: new Date("2026-07-01T00:00:00.000Z"),
+          updatedAt: NOW,
+        },
       ]) as never,
       getSourceRecord: vi.fn(async () => ({ sensitivity: "normal" })) as never,
       readCalendar: vi.fn(async () => ({
@@ -249,15 +266,21 @@ describe("Today cross-domain candidate loaders", () => {
         "relationship_context",
       ]),
     );
-    expect(candidates.map((item) => item.record.id)).not.toEqual(
-      expect.arrayContaining([
-        "action-future",
-        "saved-too-new",
-        "calendar-cancelled",
-        "restricted-context",
-        "primary:calendar-recent-solo",
-      ]),
-    );
+    // Each id asserted on its own. `not.toEqual(arrayContaining([...]))` only
+    // fails when *every* listed id is present, so one excluded record used to be
+    // enough to make the whole assertion pass vacuously.
+    for (const excludedRecordId of [
+      "action-future",
+      "saved-too-new",
+      // Due and visible to this member, and owned by the workspace rather than
+      // by them: it belongs on Household, not in anyone's private Today.
+      "saved-household-native",
+      "calendar-cancelled",
+      "restricted-context",
+      "primary:calendar-recent-solo",
+    ]) {
+      expect(candidates.map((item) => item.record.id)).not.toContain(excludedRecordId);
+    }
     expect(candidates).toContainEqual(
       expect.objectContaining({
         identity: "recent_calendar:primary:calendar-recent-with-person",

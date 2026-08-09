@@ -2,6 +2,7 @@ import type {
   HouseholdMembership,
   HouseholdOperation,
   HouseholdRecordLifecycle,
+  HouseholdRecordOwnership,
   HouseholdRequestPurpose,
   PrivacyScope,
   Sensitivity,
@@ -26,10 +27,12 @@ export function canViewerSeeSeededHouseholdRecord(input: {
   callerUserId: string;
   record: {
     id: string;
-    ownerUserId: string;
+    /** Null when the workspace owns the record rather than a member (ADR 0214). */
+    ownerUserId: string | null;
     householdId?: string | null;
     scope: PrivacyScope;
     lifecycle?: HouseholdRecordLifecycle;
+    ownership?: HouseholdRecordOwnership;
     sensitivity?: Sensitivity;
     excludedUserIds?: readonly string[];
   };
@@ -55,6 +58,7 @@ export function canViewerSeeSeededHouseholdRecord(input: {
       householdId: input.record.householdId ?? null,
       audienceUserIds,
       lifecycle: input.record.lifecycle,
+      ownership: input.record.ownership,
       sensitivity: input.record.sensitivity,
       excludedUserIds: input.record.excludedUserIds,
     },

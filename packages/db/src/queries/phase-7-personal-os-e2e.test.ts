@@ -184,7 +184,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
             callerUserId: input.ownerUserId,
             savedItemId: input.recordId,
           });
-          return item
+          return item?.ownerUserId
             ? {
                 id: item.id,
                 kind: "saved_item" as const,

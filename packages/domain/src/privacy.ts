@@ -103,7 +103,13 @@ export function canUseMemoryInBrief(input: {
 }
 
 export type ScopedRecordVisibility = {
-  ownerUserId: string;
+  /**
+   * Null when the Household Workspace owns the record rather than a member
+   * (ADR 0214). Nothing equals null here, so a workspace-owned record can never
+   * qualify a caller as its owner: it reaches its audience through the household
+   * branch or not at all, and a `private` one reaches nobody.
+   */
+  ownerUserId: string | null;
   scope: PrivacyScope;
   householdId: string | null;
   sharedWithUserIds?: readonly string[];
@@ -119,7 +125,7 @@ export type ActiveHouseholdAccess = {
 };
 
 export function scopedRecordVisibility(input: {
-  ownerUserId: string;
+  ownerUserId: string | null;
   scope: PrivacyScope;
   householdId: string | null;
   shares?: readonly ScopedRecordShare[];

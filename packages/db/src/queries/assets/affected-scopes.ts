@@ -96,15 +96,42 @@ export function affectedScopesForGeneralActionIds(input: {
   ];
 }
 
+/**
+ * What a Saved Item write invalidates.
+ *
+ * A household-native item has no owner, so it emits no owner-scoped anything:
+ * no owner collection, no owner surfaces, no per-viewer entity keyed to a member
+ * who does not own it. It reaches its readers through the household collection
+ * and the visible-entity scope instead — which is the correct shape anyway, since
+ * its audience is "every active member, including future ones" rather than a
+ * list this function could enumerate.
+ */
 export function affectedScopesForSavedItem(item: {
   id: string;
-  ownerUserId: string;
+  ownerUserId: string | null;
   householdId?: string | null;
   sharedWithUserIds?: readonly string[];
 }): AffectedScope[] {
-  const viewers = new Set([item.ownerUserId, ...(item.sharedWithUserIds ?? [])]);
+  const householdScopes = item.householdId
+    ? ([
+        {
+          kind: "household-collection",
+          collection: "saved-items",
+          householdId: item.householdId,
+        },
+      ] satisfies AffectedScope[])
+    : [];
+  if (!item.ownerUserId) {
+    return [
+      { kind: "visible-entity", entity: "saved-item", entityId: item.id },
+      ...householdScopes,
+    ];
+  }
+
+  const ownerUserId = item.ownerUserId;
+  const viewers = new Set([ownerUserId, ...(item.sharedWithUserIds ?? [])]);
   return [
-    { kind: "owner-collection", collection: "saved-items", ownerUserId: item.ownerUserId },
+    { kind: "owner-collection", collection: "saved-items", ownerUserId },
     ...[...viewers].map(
       (viewerUserId): AffectedScope => ({
         kind: "viewer-collection",
@@ -116,18 +143,10 @@ export function affectedScopesForSavedItem(item: {
       kind: "viewer-entity",
       entity: "saved-item",
       entityId: item.id,
-      viewerUserId: item.ownerUserId,
+      viewerUserId: ownerUserId,
     },
     { kind: "visible-entity", entity: "saved-item", entityId: item.id },
-    ...(item.householdId
-      ? ([
-          {
-            kind: "household-collection",
-            collection: "saved-items",
-            householdId: item.householdId,
-          },
-        ] satisfies AffectedScope[])
-      : []),
-    ...ownerSurfaceScopes(item.ownerUserId),
+    ...householdScopes,
+    ...ownerSurfaceScopes(ownerUserId),
   ];
 }

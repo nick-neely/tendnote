@@ -38,7 +38,8 @@ type HouseholdAuthorizationStore = Pick<
 export type HouseholdRecordFacts = {
   kind: VisibilityRecordKind;
   id: string;
-  ownerUserId: string;
+  /** Null when the workspace owns the record rather than a member (ADR 0214). */
+  ownerUserId: string | null;
   scope: PrivacyScope;
   householdId: string | null;
   ownership?: HouseholdRecordOwnership;

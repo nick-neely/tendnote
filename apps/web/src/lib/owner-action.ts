@@ -7,6 +7,7 @@ import {
   ContextFactValidationError,
   GeneralActionValidationError,
   HouseholdValidationError,
+  SavedItemConflictError,
   SavedItemValidationError,
 } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
@@ -17,6 +18,7 @@ import type { OwnerActionResult } from "@/lib/owner-action-result";
 import { enforceProductBudget, ProductRateLimitError } from "@/lib/rate-limit/guards";
 import type { RateLimitRequest } from "@/lib/rate-limit/types";
 import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
+import { toSavedItemConflictView } from "@/lib/saved-item-conflict";
 
 export type { OwnerActionResult } from "@/lib/owner-action-result";
 
@@ -96,6 +98,16 @@ export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
           ok: false,
           error: error.message,
           focusContextFactId: error.existingFactId,
+        };
+      }
+      // Ahead of the curated-message branch below, which would otherwise catch
+      // this through its `SavedItemValidationError` base and drop the current
+      // value the surface needs to show beside the member's kept draft.
+      if (error instanceof SavedItemConflictError) {
+        return {
+          ok: false,
+          error: error.message,
+          savedItemConflict: toSavedItemConflictView(error.current),
         };
       }
       const message = userSafeErrorMessage(error);

@@ -76,7 +76,7 @@ export function createSavedItemLifecycle(
     async createSavedItem(input: CreateSavedItemInput): Promise<SavedItemWithContext> {
       const item = await createGroundedSavedItem(store, input);
       await scheduleEmbeddingBestEffort({
-        ownerUserId: item.ownerUserId,
+        ownerUserId: input.ownerUserId,
         recordKind: "saved_item",
         recordId: item.id,
       });

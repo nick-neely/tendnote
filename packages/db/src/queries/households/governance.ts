@@ -545,17 +545,26 @@ export function createHouseholdGovernanceLifecycle(
    * because a household that ended must stay auditable.
    *
    * What is deliberately not here is a sweep over household-native scheduled
-   * work. At this commit nothing produces a household-native Action, Routine, or
-   * reminder — `household_native` ownership has no writer yet, and the schedule
-   * tables are owner-scoped — so there is no such row to cancel. When #383/#385
-   * add them, they cancel here, beside the invitations, inside this transaction.
+   * work, and #385 is the first chance to test that claim rather than assume it.
+   * Household-native Saved Items exist now, and they still leave nothing to
+   * cancel: a workspace-owned record has no `owner_user_id`, the reminder and
+   * schedule tables are owner-scoped, and `queries/saved-items.ts` skips
+   * reminder reconciliation for precisely that reason — a Reminder Schedule
+   * belongs to the member who chose it, so the household writing a note never
+   * enrols anybody. Access ends for everyone through the membership rows below,
+   * which is what both the visibility predicate and the proof read.
+   *
+   * The hook therefore stays open but narrower: #383's household-native Actions
+   * and Routines, and per-member Saved Item subscriptions when they arrive,
+   * cancel here — beside the invitations, inside this transaction. A family that
+   * stores only content, as Saved Items do, has nothing to add.
    *
    * Nor is there a purge. `dissolvedAt` opens the recovery window and nothing
    * closes it: no job deletes a dissolved household's records once the deadline
-   * passes. That sweep is the second prerequisite for #391, alongside the
-   * schedules hook above, and it is deliberately not built here — its record set
-   * is empty until #383/#385 give household-native ownership a writer. Until it
-   * exists, no surface may promise that anything is deleted; what passing the
+   * passes. That sweep is the second prerequisite for #391, and #385 is what
+   * makes its record set non-empty — a dissolved household now genuinely holds
+   * household-native Saved Items and their household-scoped evidence. Until the
+   * sweep exists, no surface may promise anything is deleted; what passing the
    * deadline changes is that recovery stops being offered.
    */
   async function dissolve(

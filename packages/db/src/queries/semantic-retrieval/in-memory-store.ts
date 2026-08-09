@@ -381,7 +381,9 @@ export function createInMemoryEmbeddingStore(
     createSavedItem: savedItemStore.createSavedItem,
     async getSavedItemForEmbedding(input) {
       const item = savedItemRecords.get(input.savedItemId);
-      return item?.ownerUserId === input.ownerUserId ? item : null;
+      return item?.ownerUserId === input.ownerUserId
+        ? { ...item, ownerUserId: input.ownerUserId }
+        : null;
     },
     async upsertRelationshipContextEmbedding(values) {
       return upsertEmbedding(values);
@@ -744,7 +746,7 @@ export function createInMemoryEmbeddingStore(
     callerUserId: string,
     record: {
       id: string;
-      ownerUserId: string;
+      ownerUserId: string | null;
       householdId?: string | null;
       scope: "private" | "shared" | "household";
     },
