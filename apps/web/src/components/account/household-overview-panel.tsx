@@ -2,6 +2,10 @@
 
 import type { HouseholdOverview } from "@tendnote/domain/household-overview";
 import { useEffect, useRef } from "react";
+import {
+  type HouseholdInvitationActions,
+  HouseholdInvitationsPanel,
+} from "@/components/account/household-invitations-panel";
 import { Badge } from "@/components/ui/badge";
 
 const ROLE_LABEL = { owner: "Owner", member: "Member" } as const;
@@ -15,10 +19,11 @@ const ROLE_SENTENCE = {
  * The calm activation and return surface for one active household: who is in it,
  * the reader's own role, and how much of its capacity is spoken for.
  *
- * People lead and controls do not follow: this is deliberately not the future
- * shared household home, and it renders no invitation, settings, or lifecycle
- * affordance it cannot honor. Capacity is stated as a fact, never as a progress
- * goal to fill.
+ * People lead and controls follow: this is deliberately not the future shared
+ * household home, and it renders no settings or lifecycle affordance it cannot
+ * honor. Capacity is stated as a fact, never as a progress goal to fill — the
+ * seat line counts live invitations too, so it never promises room that an
+ * outstanding invitation has already claimed.
  *
  * `focusOnMount` is for the one case where this panel replaces the control that
  * summoned it, so keyboard focus would otherwise land on the document body at
@@ -27,9 +32,15 @@ const ROLE_SENTENCE = {
 export function HouseholdOverviewPanel({
   focusOnMount = false,
   overview,
+  invitationActions,
+  onOverviewChange,
+  onAnnounce,
 }: {
   focusOnMount?: boolean;
   overview: HouseholdOverview;
+  invitationActions?: HouseholdInvitationActions;
+  onOverviewChange: (overview: HouseholdOverview) => void;
+  onAnnounce: (message: string) => void;
 }) {
   const identityHeadingRef = useRef<HTMLHeadingElement>(null);
 
@@ -102,6 +113,13 @@ export function HouseholdOverviewPanel({
           ))}
         </ul>
       </section>
+
+      <HouseholdInvitationsPanel
+        actions={invitationActions}
+        onAnnounce={onAnnounce}
+        onOverviewChange={onOverviewChange}
+        overview={overview}
+      />
     </div>
   );
 }

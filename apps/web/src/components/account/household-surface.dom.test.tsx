@@ -7,6 +7,13 @@ const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 vi.mock("@/app/actions/households", () => ({ createHouseholdAction: vi.fn() }));
+// The panels import their server actions as defaults; every test here injects
+// its own, so the real (server-only) module must never be pulled in.
+vi.mock("@/app/actions/household-invitations", () => ({
+  sendHouseholdInvitationAction: vi.fn(),
+  resendHouseholdInvitationAction: vi.fn(),
+  cancelHouseholdInvitationAction: vi.fn(),
+}));
 
 import { HouseholdSurface } from "./household-surface";
 
@@ -15,6 +22,7 @@ const OVERVIEW: HouseholdOverview = {
   name: "The Neely house",
   viewerRole: "owner",
   isSoleMember: true,
+  invitations: [],
   seats: { limit: 8, occupied: 1, remaining: 7, isFull: false },
   members: [
     {
@@ -168,32 +176,187 @@ describe("household overview", () => {
     expect(screen.queryByLabelText("Household name")).toBeNull();
   });
 
-  it("renders no invitation or external-send affordance", () => {
+  it("counts a live invitation as an occupied place", () => {
     render(
       <HouseholdSurface
         initialOverview={{
           ...OVERVIEW,
-          isSoleMember: false,
+          invitations: [PENDING_INVITATION],
           seats: { limit: 8, occupied: 2, remaining: 6, isFull: false },
-          members: [
-            ...OVERVIEW.members,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("2 of 8 places taken")).toBeTruthy();
+  });
+});
+
+const PENDING_INVITATION = {
+  id: "11111111-1111-4111-8111-111111111111",
+  email: "sam@example.com",
+  state: "pending" as const,
+  expiresAt: new Date("2026-08-15T09:00:00Z"),
+  canResend: true,
+  canCancel: true,
+};
+
+const MEMBER_OVERVIEW: HouseholdOverview = {
+  ...OVERVIEW,
+  viewerRole: "member",
+  isSoleMember: false,
+  invitations: [],
+  seats: { limit: 8, occupied: 3, remaining: 5, isFull: false },
+  members: [
+    { userId: "member-1", name: "Sam", email: "sam@example.com", role: "member", isViewer: true },
+    { userId: "owner-1", name: "Alex", email: "alex@example.com", role: "owner", isViewer: false },
+  ],
+};
+
+describe("household invitations", () => {
+  it("tells an owner what sending actually does before they press it", () => {
+    render(<HouseholdSurface initialOverview={OVERVIEW} />);
+
+    const hint = screen.getByText(/Sending emails them a private link/i);
+    expect(hint.textContent).toMatch(/only someone signed in with this exact address/i);
+    expect(hint.textContent).toMatch(/14 days/);
+    expect(hint.textContent).toMatch(/holds a place/i);
+    expect(screen.getByLabelText("Email address").getAttribute("aria-describedby")).toBe(hint.id);
+  });
+
+  it("sends the invitation and shows the new place it is holding", async () => {
+    const sent: HouseholdOverview = {
+      ...OVERVIEW,
+      invitations: [PENDING_INVITATION],
+      seats: { limit: 8, occupied: 2, remaining: 6, isFull: false },
+    };
+    const send = vi.fn().mockResolvedValue({ ok: true, view: sent });
+    render(<HouseholdSurface initialOverview={OVERVIEW} invitationActions={{ send }} />);
+
+    await userEvent.type(screen.getByLabelText("Email address"), "  sam@example.com  ");
+    await userEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("2 of 8 places taken")).toBeTruthy();
+    });
+    expect(send).toHaveBeenCalledWith({ email: "sam@example.com" });
+    expect(screen.getByText("sam@example.com")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("Invitation sent to sam@example.com.");
+    expect((screen.getByLabelText("Email address") as HTMLInputElement).value).toBe("");
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("explains a refused send in place without clearing what was typed", async () => {
+    const refusal = "There's already a live invitation to that address. Resend or cancel it first.";
+    const send = vi.fn().mockResolvedValue({ ok: false, error: refusal });
+    render(<HouseholdSurface initialOverview={OVERVIEW} invitationActions={{ send }} />);
+
+    await userEvent.type(screen.getByLabelText("Email address"), "sam@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toBe(refusal);
+    });
+    expect((screen.getByLabelText("Email address") as HTMLInputElement).value).toBe(
+      "sam@example.com",
+    );
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("cancels an invitation and gives the place back", async () => {
+    const cancel = vi.fn().mockResolvedValue({ ok: true, view: OVERVIEW });
+    render(
+      <HouseholdSurface
+        initialOverview={{
+          ...OVERVIEW,
+          invitations: [PENDING_INVITATION],
+          seats: { limit: 8, occupied: 2, remaining: 6, isFull: false },
+        }}
+        invitationActions={{ cancel }}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("1 of 8 places taken")).toBeTruthy();
+    });
+    expect(cancel).toHaveBeenCalledWith({ invitationId: PENDING_INVITATION.id });
+    expect(screen.queryByText("sam@example.com")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Invitation to sam@example.com cancelled.");
+  });
+
+  /** A disabled control with no reason reads as a bug, not as a cooldown. */
+  it("says why resend is unavailable rather than only disabling it", () => {
+    render(
+      <HouseholdSurface
+        initialOverview={{
+          ...OVERVIEW,
+          invitations: [{ ...PENDING_INVITATION, canResend: false }],
+          seats: { limit: 8, occupied: 2, remaining: 6, isFull: false },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Resend" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(/send it again in a couple of minutes/i)).toBeTruthy();
+  });
+
+  it("replaces the form with an explanation when every place is taken", () => {
+    render(
+      <HouseholdSurface
+        initialOverview={{
+          ...OVERVIEW,
+          invitations: [PENDING_INVITATION],
+          seats: { limit: 8, occupied: 8, remaining: 0, isFull: true },
+        }}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Email address")).toBeNull();
+    expect(screen.getByText(/Every place in this household is taken/i)).toBeTruthy();
+    // Cancelling is still the way out, so it stays available.
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+  });
+
+  /**
+   * A row that simply disappears leaves the Owner unable to tell a decline from
+   * a link nobody opened — which is the one question they have.
+   */
+  it("says how an invitation ended instead of letting the row vanish", () => {
+    render(
+      <HouseholdSurface
+        initialOverview={{
+          ...OVERVIEW,
+          invitations: [
+            { ...PENDING_INVITATION, state: "declined", canResend: false, canCancel: false },
             {
-              userId: "member-1",
-              name: "Sam",
-              email: "sam@example.com",
-              role: "member",
-              isViewer: false,
+              ...PENDING_INVITATION,
+              id: "22222222-2222-4222-8222-222222222222",
+              email: "jules@example.com",
+              state: "expired",
+              canResend: false,
+              canCancel: false,
             },
           ],
         }}
       />,
     );
 
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText("Declined")).toBeTruthy();
+    expect(screen.getByText("Ran out")).toBeTruthy();
+    // An ended invitation holds no seat and offers nothing to press.
+    expect(screen.getByText("1 of 8 places taken")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Resend" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  /** Sending is an Owner capability, so the addresses an Owner typed are not household-wide. */
+  it("shows a member the occupied places but no invitation state or controls", () => {
+    render(<HouseholdSurface initialOverview={MEMBER_OVERVIEW} />);
+
+    expect(screen.getByText("3 of 8 places taken")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Invitations" })).toBeNull();
+    expect(screen.queryByLabelText("Email address")).toBeNull();
     expect(screen.queryAllByRole("button")).toEqual([]);
-    expect(screen.queryAllByRole("link")).toEqual([]);
-    for (const label of [/invite/i, /send/i, /email/i]) {
-      expect(screen.queryByRole("button", { name: label })).toBeNull();
-    }
   });
 });

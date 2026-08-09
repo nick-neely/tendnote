@@ -9,6 +9,7 @@ import {
   createHouseholdAction as defaultCreateHouseholdAction,
   type HouseholdOverviewResult,
 } from "@/app/actions/households";
+import type { HouseholdInvitationActions } from "@/components/account/household-invitations-panel";
 import { HouseholdOverviewPanel } from "@/components/account/household-overview-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,10 +33,13 @@ export type CreateHouseholdAction = (
 export function HouseholdSurface({
   initialOverview,
   createHouseholdAction = defaultCreateHouseholdAction,
+  invitationActions,
 }: {
   initialOverview: HouseholdOverview | null;
   createHouseholdAction?: CreateHouseholdAction;
+  invitationActions?: HouseholdInvitationActions;
 }) {
+  const router = useRouter();
   const [overview, setOverview] = useState(initialOverview);
   const [createdHere, setCreatedHere] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -54,7 +58,19 @@ export function HouseholdSurface({
       {overview ? (
         // Creation destroys the control that was focused, which would otherwise
         // drop focus to the document body at the moment the task completes.
-        <HouseholdOverviewPanel focusOnMount={createdHere} overview={overview} />
+        <HouseholdOverviewPanel
+          focusOnMount={createdHere}
+          invitationActions={invitationActions}
+          onAnnounce={setAnnouncement}
+          // The action's own answer is the new Overview, so the seat count and
+          // invitation rows change on the press; the server tree catches up
+          // underneath rather than being what the reader waits for.
+          onOverviewChange={(next) => {
+            setOverview(next);
+            router.refresh();
+          }}
+          overview={overview}
+        />
       ) : (
         <HouseholdActivation
           createHouseholdAction={createHouseholdAction}

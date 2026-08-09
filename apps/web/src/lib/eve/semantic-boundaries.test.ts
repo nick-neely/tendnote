@@ -44,6 +44,10 @@ describe("semantic retrieval product-route boundaries", () => {
       "assets",
       "assets/[assetId]",
       "forgot-password",
+      // The Household Invitation acceptance capability (#379). Reachable only
+      // from an emailed link, never from navigation, and it carries no
+      // relationship or semantic-search surface.
+      "join/[token]",
       "onboarding/self-context",
       "pending",
       "people",

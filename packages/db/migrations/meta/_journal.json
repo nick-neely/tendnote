@@ -435,6 +435,13 @@
       "when": 1785801146994,
       "tag": "0061_context_fact_imports",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1786243592565,
+      "tag": "0062_household_invitations",
+      "breakpoints": true
     }
   ]
 }

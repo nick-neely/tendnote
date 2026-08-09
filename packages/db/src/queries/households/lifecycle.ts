@@ -84,6 +84,18 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
       return { household, ownerMembership };
     },
 
+    /**
+     * The pre-Phase-Eight direct-membership path: it takes an existing Tendnote
+     * user id, writes an `invited` membership row, sends nothing, and consumes
+     * no seat.
+     *
+     * It is **not** the Household Invitation model (ADR 0213), and nothing a
+     * user can reach calls it — the shipped path is
+     * `createHouseholdInvitationLifecycle`, whose capability is bound to an
+     * email address, expires, and creates a membership only at acceptance. This
+     * pair survives as fast test seeding for suites that need a two-member
+     * household without an invitation round trip.
+     */
     async inviteMember(input: InviteHouseholdMemberInput) {
       await requireOwner(input);
 

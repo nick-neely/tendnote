@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { createInMemoryHouseholdInvitationStore } from "./in-memory-invitation-store";
 import { createInMemoryHouseholdStore } from "./in-memory-store";
+import { createHouseholdInvitationLifecycle } from "./invitations";
 import { createHouseholdLifecycle } from "./lifecycle";
 import { createHouseholdOverviewReader, type HouseholdIdentityStore } from "./overview";
 
@@ -44,6 +46,8 @@ describe("household overview read", () => {
       name: "The Neely house",
       viewerRole: "owner",
       isSoleMember: true,
+      // No invitation reader is wired here, so the overview describes people only.
+      invitations: [],
       seats: { limit: 8, occupied: 1, remaining: 7, isFull: false },
       members: [
         {
@@ -104,5 +108,49 @@ describe("household overview read", () => {
     await lifecycle.createHousehold({ ownerUserId: "owner-user", name: "The Neely house" });
 
     expect(await getHouseholdOverviewForUser({ userId: "outsider-user" })).toBeNull();
+  });
+
+  /**
+   * A live invitation holds a seat without being a membership (ADR 0213), so the
+   * two halves of the overview must disagree by design: everyone sees the seat
+   * it occupies, only the Owner sees the address it went to.
+   */
+  it("charges a live invitation a seat for everyone but shows the address only to the owner", async () => {
+    const store = createInMemoryHouseholdStore();
+    const lifecycle = createHouseholdLifecycle(store);
+    const invitationStore = createInMemoryHouseholdInvitationStore({
+      households: store,
+      identities: IDENTITIES,
+    });
+    const invitations = createHouseholdInvitationLifecycle(invitationStore);
+    const getHouseholdOverviewForUser = createHouseholdOverviewReader(
+      store,
+      identityStore(),
+      invitations,
+    );
+
+    const { household } = await lifecycle.createHousehold({
+      ownerUserId: "owner-user",
+      name: "The Neely house",
+    });
+    await lifecycle.inviteMember({
+      ownerUserId: "owner-user",
+      householdId: household.id,
+      invitedUserId: "member-user",
+    });
+    await lifecycle.acceptInvite({ householdId: household.id, userId: "member-user" });
+    await invitations.sendInvitation({ ownerUserId: "owner-user", email: "jo@example.com" });
+
+    const ownerView = await getHouseholdOverviewForUser({ userId: "owner-user" });
+    const memberView = await getHouseholdOverviewForUser({ userId: "member-user" });
+
+    expect(ownerView?.seats.occupied).toBe(3);
+    expect(ownerView?.invitations.map((invitation) => invitation.email)).toEqual([
+      "jo@example.com",
+    ]);
+
+    expect(memberView?.seats.occupied).toBe(3);
+    expect(memberView?.invitations).toEqual([]);
+    expect(memberView?.members.map((member) => member.name)).toEqual(["Sam", "Alex"]);
   });
 });

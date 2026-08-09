@@ -9,6 +9,17 @@ const nextConfig: NextConfig = {
   cacheLife: cacheProfiles,
   partialPrefetching: true,
   reactCompiler: true,
+  async headers() {
+    return [
+      {
+        // A Household Invitation link carries its capability in the URL, so the
+        // acceptance page must never hand that URL to anything it links or
+        // navigates to (OWASP Forgot Password Cheat Sheet, URL tokens).
+        source: "/join/:token*",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
+    ];
+  },
   async rewrites() {
     return {
       beforeFiles: segmentPrefetchRewrites(),

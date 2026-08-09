@@ -17,6 +17,11 @@ function limiterWithLimit(limit: number) {
       embedding: { limit, windowSeconds: 60 },
       "provider-call": { limit, windowSeconds: 60 },
       "push-delivery": { limit, windowSeconds: 60 },
+      "household-invitation-inviter": { limit, windowSeconds: 60 },
+      "household-invitation-household": { limit, windowSeconds: 60 },
+      "household-invitation-recipient": { limit, windowSeconds: 60 },
+      "household-invitation-source": { limit, windowSeconds: 60 },
+      "household-invitation-delivery": { limit, windowSeconds: 60 },
     },
   });
 }

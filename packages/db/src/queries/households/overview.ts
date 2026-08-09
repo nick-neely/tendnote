@@ -1,10 +1,11 @@
 import {
   buildHouseholdOverview,
+  type HouseholdInvitationSummary,
   type HouseholdMemberIdentity,
   type HouseholdOverview,
 } from "@tendnote/domain";
 import { inArray } from "drizzle-orm";
-import { getDb } from "../../client";
+import { type DatabaseExecutor, getDb } from "../../client";
 import { user } from "../../schema";
 import type { HouseholdStore } from "./types";
 
@@ -13,11 +14,13 @@ export type HouseholdIdentityStore = {
   listUserIdentities: (input: { userIds: string[] }) => Promise<HouseholdMemberIdentity[]>;
 };
 
-export function createDrizzleHouseholdIdentityStore(): HouseholdIdentityStore {
+export function createDrizzleHouseholdIdentityStore(
+  resolveDb: () => DatabaseExecutor = getDb,
+): HouseholdIdentityStore {
   return {
     async listUserIdentities(input) {
       if (input.userIds.length === 0) return [];
-      return getDb()
+      return resolveDb()
         .select({ id: user.id, name: user.name, email: user.email })
         .from(user)
         .where(inArray(user.id, input.userIds));
@@ -33,9 +36,21 @@ export function createDrizzleHouseholdIdentityStore(): HouseholdIdentityStore {
  * there is no household parameter to point at someone else's workspace, so the
  * read can only ever describe a household the caller is currently in.
  */
+/**
+ * The invitation state the Overview is allowed to see. A narrow port rather than
+ * the whole lifecycle: the Overview reads, it never sends, cancels, or accepts.
+ */
+export type HouseholdOverviewInvitationReader = {
+  listInvitationsForOwner: (input: {
+    ownerUserId: string;
+  }) => Promise<HouseholdInvitationSummary[]>;
+  countLiveInvitations: (input: { householdId: string }) => Promise<number>;
+};
+
 export function createHouseholdOverviewReader(
   store: HouseholdStore,
   identityStore: HouseholdIdentityStore,
+  invitationReader?: HouseholdOverviewInvitationReader,
 ) {
   return async function getHouseholdOverviewForUser(input: {
     userId: string;
@@ -55,11 +70,23 @@ export function createHouseholdOverviewReader(
       userIds: activeMemberships.map((membership) => membership.userId),
     });
 
+    // The seat count comes from the household's own live invitations, while the
+    // rows come from the caller's role-filtered view: a Member must see how full
+    // the household is without seeing the addresses an Owner typed.
+    const [liveInvitations, invitations] = invitationReader
+      ? await Promise.all([
+          invitationReader.countLiveInvitations({ householdId }),
+          invitationReader.listInvitationsForOwner({ ownerUserId: input.userId }),
+        ])
+      : [0, []];
+
     return buildHouseholdOverview({
       viewerUserId: input.userId,
       household,
       memberships: activeMemberships,
       identities,
+      liveInvitations,
+      invitations,
     });
   };
 }

@@ -79,6 +79,28 @@ export const householdMemberStatus = pgEnum("household_member_status", [
   "removed",
 ]);
 
+// A Household Invitation's whole lifecycle (ADR 0213): one live state, four
+// terminal ones. `expired` is written when a path observes the lapsed window;
+// every read derives it from `expires_at` so a link is never usable past it.
+export const householdInvitationState = pgEnum("household_invitation_state", [
+  "pending",
+  "accepted",
+  "declined",
+  "canceled",
+  "expired",
+]);
+
+// The life of one durable send attempt. Deliberately only the states Tendnote
+// itself produces: provider-reported outcomes (delivered, bounced, complained,
+// suppressed) arrive through a webhook consumer that does not exist yet, and an
+// enum value with no producer would read as supported behavior.
+export const householdInvitationDeliveryStatus = pgEnum("household_invitation_delivery_status", [
+  "queued",
+  "sending",
+  "sent",
+  "failed",
+]);
+
 export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "memory",
   "source_record",
