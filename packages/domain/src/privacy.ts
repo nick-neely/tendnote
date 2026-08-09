@@ -132,17 +132,43 @@ export function scopedRecordVisibility(input: {
   };
 }
 
-export function canViewScopedRecord(input: {
+/**
+ * Which form of standing let the caller through, or why nothing did.
+ *
+ * `via` is the ownership/audience form the Household Authorization Proof records
+ * as its evidence; `reason` is audit-side only. Neither is a message: every
+ * denial has to look identical to a caller, so surfaces branch on `visible`
+ * alone (ADR 0219).
+ */
+export type ScopedRecordAudience =
+  | { visible: true; via: "owner" | "household_audience" | "selected_audience" }
+  | {
+      visible: false;
+      reason: "not_owner" | "no_household" | "not_active_member" | "not_in_audience";
+    };
+
+/**
+ * The one audience rule: private is owner-only, a non-private scope needs the
+ * caller's own current active membership in exactly the record's household, and
+ * `shared` additionally needs the caller to be the owner or explicitly selected.
+ *
+ * It answers *how* the caller qualified rather than just whether, because the
+ * proof above it has to record the ownership form it relied on — and because a
+ * second copy of this rule written to produce that detail would be a second
+ * chance to get household privacy wrong.
+ */
+export function scopedRecordAudience(input: {
   callerUserId: string;
   record: ScopedRecordVisibility;
   activeMemberships: readonly ActiveHouseholdAccess[];
-}): boolean {
+}): ScopedRecordAudience {
+  const isOwner = input.callerUserId === input.record.ownerUserId;
   if (input.record.scope === "private") {
-    return input.callerUserId === input.record.ownerUserId;
+    return isOwner ? { visible: true, via: "owner" } : { visible: false, reason: "not_owner" };
   }
 
   if (!input.record.householdId) {
-    return false;
+    return { visible: false, reason: "no_household" };
   }
 
   const activeInHousehold = input.activeMemberships.some(
@@ -151,15 +177,26 @@ export function canViewScopedRecord(input: {
       membership.userId === input.callerUserId,
   );
   if (!activeInHousehold) {
-    return false;
+    return { visible: false, reason: "not_active_member" };
+  }
+
+  if (isOwner) {
+    return { visible: true, via: "owner" };
   }
 
   if (input.record.scope === "household") {
-    return true;
+    return { visible: true, via: "household_audience" };
   }
 
-  return (
-    input.callerUserId === input.record.ownerUserId ||
-    input.record.sharedWithUserIds?.includes(input.callerUserId) === true
-  );
+  return input.record.sharedWithUserIds?.includes(input.callerUserId)
+    ? { visible: true, via: "selected_audience" }
+    : { visible: false, reason: "not_in_audience" };
+}
+
+export function canViewScopedRecord(input: {
+  callerUserId: string;
+  record: ScopedRecordVisibility;
+  activeMemberships: readonly ActiveHouseholdAccess[];
+}): boolean {
+  return scopedRecordAudience(input).visible;
 }

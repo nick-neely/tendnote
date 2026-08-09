@@ -16,6 +16,7 @@ import {
   householdRecordShares,
 } from "../../schema";
 import { createDrizzleGeneralActionAreaStore } from "../general-action-areas/drizzle-store";
+import { provenVisibleRecord } from "../households/authorization";
 import { createDrizzleHouseholdStore } from "../households/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
@@ -177,7 +178,23 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
         )
         .limit(1);
 
-      return action ? generalActionSchema.parse(action) : null;
+      // The predicate above narrowed the candidate; this is what authorizes the
+      // read. It re-decides against memberships and shares read now, so a member
+      // who left between the page render and this call is refused here — and it
+      // returns null on refusal, which is the same answer as "no such action".
+      const proven = await provenVisibleRecord({
+        callerUserId: input.callerUserId,
+        row: action,
+        facts: (row) => ({
+          kind: "general_action",
+          id: row.id,
+          ownerUserId: row.ownerUserId,
+          scope: row.scope,
+          householdId: row.householdId,
+        }),
+      });
+
+      return proven ? generalActionSchema.parse(proven) : null;
     },
     async updateGeneralAction(input) {
       // Validate the patched fields so constraints hold for direct store callers.

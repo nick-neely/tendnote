@@ -2,6 +2,7 @@ import type { RecipientProof } from "@tendnote/domain";
 import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "../client";
 import { householdMemberships, user } from "../schema";
+import { createHouseholdAuthorizationProver } from "./households/authorization";
 import { createDrizzleHouseholdInvitationStore } from "./households/drizzle-invitation-store";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createHouseholdInvitationLifecycle } from "./households/invitations";
@@ -17,6 +18,10 @@ import type {
   ShareHouseholdRecordInput,
 } from "./households/types";
 
+export {
+  createHouseholdAuthorizationProver,
+  type HouseholdRecordFacts,
+} from "./households/authorization";
 export { createDrizzleHouseholdInvitationStore } from "./households/drizzle-invitation-store";
 export { createDrizzleHouseholdStore } from "./households/drizzle-store";
 export { createInMemoryHouseholdInvitationStore } from "./households/in-memory-invitation-store";
@@ -48,6 +53,39 @@ const defaultHouseholdOverviewReader = createHouseholdOverviewReader(
   createDrizzleHouseholdIdentityStore(),
   defaultHouseholdInvitations,
 );
+
+const defaultHouseholdAuthorizationProver =
+  createHouseholdAuthorizationProver(defaultHouseholdStore);
+
+/**
+ * The Household Authorization Proof entry points.
+ *
+ * Every Household-capable operation asks one of these immediately before it
+ * reads, reveals, changes, queues, or delivers anything — including deferred and
+ * derived work, which proves again at its last safe point rather than trusting
+ * the proof that queued it (ADR 0219). They take the caller's id from the
+ * session and the record's own stored facts; no argument here can assert
+ * membership, audience, or standing.
+ */
+export function proveHouseholdRecordAccess(
+  input: Parameters<typeof defaultHouseholdAuthorizationProver.proveRecordAccess>[0],
+) {
+  return defaultHouseholdAuthorizationProver.proveRecordAccess(input);
+}
+
+/** The proof-or-nothing form: one opaque refusal for every way access can fail. */
+export function requireHouseholdRecordAccess(
+  input: Parameters<typeof defaultHouseholdAuthorizationProver.requireRecordAccess>[0],
+) {
+  return defaultHouseholdAuthorizationProver.requireRecordAccess(input);
+}
+
+/** Proves a bounded composition and keeps only the records that hold. */
+export function proveVisibleHouseholdRecords(
+  input: Parameters<typeof defaultHouseholdAuthorizationProver.proveVisibleRecords>[0],
+) {
+  return defaultHouseholdAuthorizationProver.proveVisibleRecords(input);
+}
 
 /** The caller's own Household Overview, or `null` when they have no active household. */
 export function getHouseholdOverviewForUser(input: { userId: string }) {

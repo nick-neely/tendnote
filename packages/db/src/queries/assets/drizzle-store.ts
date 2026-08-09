@@ -18,6 +18,7 @@ import {
   relationshipContextEmbeddingJobs,
   relationshipContextEmbeddings,
 } from "../../schema";
+import { provenVisibleRecord } from "../households/authorization";
 import { createDrizzleHouseholdStore } from "../households/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
@@ -123,7 +124,22 @@ export function createDrizzleAssetStore(): AssetStore {
           ),
         )
         .limit(1);
-      return asset ? assetSchema.parse(asset) : null;
+
+      // As with General Actions: the predicate narrows, the proof authorizes, and
+      // a refusal is indistinguishable from an asset that is not there.
+      const proven = await provenVisibleRecord({
+        callerUserId: input.callerUserId,
+        row: asset,
+        facts: (row) => ({
+          kind: "asset",
+          id: row.id,
+          ownerUserId: row.ownerUserId,
+          scope: row.scope,
+          householdId: row.householdId,
+        }),
+      });
+
+      return proven ? assetSchema.parse(proven) : null;
     },
     async updateAsset(input) {
       // Validate the patched fields so constraints hold for direct store callers.

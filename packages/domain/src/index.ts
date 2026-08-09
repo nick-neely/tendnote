@@ -34,6 +34,7 @@ export * from "./general-action-asset-links";
 export * from "./general-actions";
 export * from "./global-recall";
 export * from "./gmail-drafts";
+export * from "./household-authorization";
 export * from "./household-invitations";
 export * from "./household-overview";
 export * from "./household-policy";

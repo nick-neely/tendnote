@@ -38,6 +38,17 @@ describe("general actions drizzle store guards", () => {
     expect(source).toContain("visibleHouseholdRecordSql");
     expect(source).toContain('recordKind: "general_action"');
     expect(source).toContain('tableAlias: "ga"');
+  });
+
+  it("proves the single-record visible read before returning the row", () => {
+    // The predicate narrows; the proof authorizes. Without this call a row that
+    // passed a stale-by-a-request SQL filter would be returned unchecked, and the
+    // record's lifecycle, sensitivity, and exclusion facts — which SQL cannot see —
+    // would never be consulted at all (ADR 0219).
+    expect(source).toContain("provenVisibleRecord");
+    expect(source).toContain('kind: "general_action"');
+    // Null on refusal, so it is indistinguishable from an action that is not there.
+    expect(source).toContain("proven ? generalActionSchema.parse(proven) : null");
     expect(source).toContain('alias(generalActions, "ga")');
   });
 

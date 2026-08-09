@@ -75,6 +75,17 @@ describe("assets drizzle store guards", () => {
     expect(source).toContain('alias(assets, "a")');
   });
 
+  it("proves the single-record visible read before returning the row", () => {
+    // The predicate narrows; the proof authorizes. Without this call a row that
+    // passed a stale-by-a-request SQL filter would be returned unchecked, and the
+    // record's lifecycle, sensitivity, and exclusion facts — which SQL cannot see —
+    // would never be consulted at all (ADR 0219).
+    expect(source).toContain("provenVisibleRecord");
+    expect(source).toContain('kind: "asset"');
+    // Null on refusal, so it is indistinguishable from an asset that is not there.
+    expect(source).toContain("proven ? assetSchema.parse(proven) : null");
+  });
+
   it("orders listings by case-insensitive name with newest-first ties", () => {
     // Must match the in-memory store's `byNameThenCreated` so both back the
     // surface identically (see the store contract).

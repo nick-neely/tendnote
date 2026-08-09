@@ -1,10 +1,9 @@
 import {
   assertHouseholdAdmissionAvailable,
   assertHouseholdOwner,
-  canViewScopedRecord,
   parseHouseholdName,
-  scopedRecordVisibility,
 } from "@tendnote/domain";
+import { createHouseholdAuthorizationProver } from "./authorization";
 import type {
   AcceptHouseholdInviteInput,
   CanViewHouseholdRecordInput,
@@ -16,6 +15,8 @@ import type {
 } from "./types";
 
 export function createHouseholdLifecycle(store: HouseholdStore) {
+  const prover = createHouseholdAuthorizationProver(store);
+
   async function requireOwner(input: { ownerUserId: string; householdId: string }) {
     const membership = await store.getHouseholdMembership({
       householdId: input.householdId,
@@ -236,32 +237,26 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
       return shares;
     },
 
+    /**
+     * The read predicate, now answered by the same Household Authorization Proof
+     * every other access decision uses. It stays a boolean because its callers
+     * are seeding and fixture code that only ask whether a record would be
+     * visible; anything acting on a record calls the prover directly so it gets
+     * the operation, the grant, and the opaque refusal.
+     */
     async canViewHouseholdRecord(input: CanViewHouseholdRecordInput) {
-      const activeMemberships = input.householdId
-        ? await store.listHouseholdMemberships({
-            householdId: input.householdId,
-            status: "active",
-          })
-        : [];
-      const shares =
-        input.scope === "shared" && input.householdId
-          ? await store.listHouseholdRecordShares({
-              householdId: input.householdId,
-              recordKind: input.recordKind,
-              recordId: input.recordId,
-            })
-          : [];
-
-      return canViewScopedRecord({
+      const proof = await prover.proveRecordAccess({
         callerUserId: input.callerUserId,
-        record: scopedRecordVisibility({
+        operation: "view",
+        record: {
+          kind: input.recordKind,
+          id: input.recordId,
           ownerUserId: input.ownerUserId,
           scope: input.scope,
           householdId: input.householdId,
-          shares,
-        }),
-        activeMemberships,
+        },
       });
+      return proof.authorized;
     },
   };
 }
