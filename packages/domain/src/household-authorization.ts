@@ -46,10 +46,22 @@ export type HouseholdAuthorizationSubject = {
   kind: string;
   id: string;
   /**
-   * Null when the Household Workspace owns the record rather than a member
-   * (ADR 0214). A `household_native` subject must supply null: a member id left
-   * here would make that member the record's owner in the audience rule, which
-   * is the asymmetry household-native ownership exists to remove.
+   * Who owns the record, or null when the Household Workspace does (ADR 0214).
+   *
+   * A `household_native` subject may legitimately carry an id here, and several
+   * do: `general_actions`, `asset_memories`, and `asset_evidence` all keep their
+   * capturing member in a `NOT NULL owner_user_id` because every owner-keyed
+   * write and history row hangs off it, while `saved_items` stores null because
+   * its column is nullable. Both are storage and provenance, never authority.
+   *
+   * What makes that safe is not this field but the two gates around it. The
+   * audience rule reaches its owner branch only after current active membership
+   * has been checked, so a creator who has left is refused exactly like anyone
+   * else; and the mutation gate below is skipped entirely for `household_native`,
+   * so passing that branch buys no authority a plain member does not already
+   * have. The grant then records `via: "household_authority"` regardless — a
+   * household-native creator is never reported as an owner who might later be
+   * read as holding more.
    */
   ownerUserId: string | null;
   scope: PrivacyScope;

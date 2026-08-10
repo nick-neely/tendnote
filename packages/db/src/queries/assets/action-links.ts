@@ -32,7 +32,27 @@ import {
  * of the review seam.
  */
 
-/** Loads the promotable action, owner-only, and rejects review-state proposals. */
+/**
+ * Loads the promotable action, owner-only, and rejects review-state proposals.
+ *
+ * Owner-keyed deliberately, and it is a live tension rather than a settled rule.
+ * ADR 0214 says every active member holds symmetric authority over a
+ * household-native Action, so on that reading any of them should be able to turn
+ * its asset hint into a proposal — and this read refuses all but the creator,
+ * whose `owner_user_id` on such a row is only a storage key.
+ *
+ * It is left owner-keyed on purpose, because the thing on the other side of the
+ * promotion is not the Action. Promotion opens an Asset Review Group, and Asset
+ * Review is an owner-private queue: the proposal, its duplicate candidates, and
+ * its grounding are all read back through owner-keyed seams. Widening the
+ * entrance without widening the queue would let one member put a proposal into
+ * another member's private review list, which is a worse answer than a refusal.
+ *
+ * Widening both is a product call about whether household-native Assets get a
+ * shared review queue at all, not a bug fix, so it is surfaced rather than
+ * decided here. Until it is made, a household-native Action's hint is promotable
+ * by whoever captured it.
+ */
 async function requirePromotableAction(
   store: AssetActionLinkStore,
   input: PromoteGeneralActionAssetHintInput,
