@@ -6,7 +6,10 @@ import {
   ContextFactConflictError,
   ContextFactValidationError,
   GeneralActionValidationError,
+  HouseholdRecordUnavailableError,
   HouseholdValidationError,
+  PersonReferenceValidationError,
+  RelationshipShareValidationError,
   SavedItemValidationError,
 } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
@@ -57,8 +60,19 @@ function userSafeErrorMessage(error: unknown): string | null {
     error instanceof SavedItemValidationError ||
     error instanceof ContextFactValidationError ||
     error instanceof HouseholdValidationError ||
+    error instanceof RelationshipShareValidationError ||
+    error instanceof PersonReferenceValidationError ||
     error instanceof ProductRateLimitError
   ) {
+    return error.message;
+  }
+  /**
+   * The one opaque household refusal. Its message is deliberately the same
+   * sentence for "you may not", "it was deleted", and "no such record", so
+   * rendering it verbatim discloses nothing while still telling the owner that
+   * their press landed somewhere and changed nothing (ADR 0219).
+   */
+  if (error instanceof HouseholdRecordUnavailableError) {
     return error.message;
   }
   return null;

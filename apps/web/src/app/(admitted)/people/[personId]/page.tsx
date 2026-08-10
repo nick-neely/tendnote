@@ -14,6 +14,7 @@ import {
   type PersonDetailCoreView,
 } from "@tendnote/db/queries/people";
 import { isProviderCapabilityConnected } from "@tendnote/db/queries/provider-connections";
+import { listRelationshipShareAudiences } from "@tendnote/db/queries/relationship-shares";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { listSourceRecordsForPersonContext } from "@tendnote/db/queries/source-records";
 import {
@@ -32,12 +33,8 @@ import { PersonDetailTabs, type PersonTab } from "@/components/person-detail-tab
 import { type GmailDraftContext, PersonDrafts } from "@/components/person-drafts";
 import { PersonFollowups } from "@/components/person-followups";
 import { PersonHeader } from "@/components/person-header";
-import {
-  LedgerEmpty,
-  LoggedContextSection,
-  MemoriesSection,
-  PersonDetailsCard,
-} from "@/components/person-ledger";
+import { LedgerEmpty, PersonDetailsCard } from "@/components/person-ledger";
+import { LoggedContextSection, MemoriesSection } from "@/components/person-ledger-records";
 import { PersonRemove } from "@/components/person-remove";
 import { RelationshipSnapshotCard } from "@/components/relationship-snapshot-card";
 import { SuggestedFollowupReviewSection } from "@/components/suggested-followup-review";
@@ -276,7 +273,7 @@ async function PersonDetailEnrichment({
     selectedTab === "review" ? loadSuggestedReviews(ownerUserId, personId) : [],
     selectedTab === "followups" ? loadSuggestedFollowupReviews(ownerUserId, personId) : [],
     selectedTab === "drafts" ? loadDrafts(ownerUserId, personId) : [],
-    selectedTab === "followups"
+    selectedTab === "followups" || selectedTab === "memory"
       ? listShareableHouseholdMembersForUser({ userId: ownerUserId })
       : [],
     selectedTab === "followups" ? listReminderSchedulesForOwner({ ownerUserId }) : [],
@@ -291,6 +288,37 @@ async function PersonDetailEnrichment({
   const trustedSourceRecords = sourceRecords.filter((sourceRecord) =>
     canUseSourceRecordProactively(sourceRecord),
   );
+
+  /**
+   * Who each already-shared record on this ledger is shared with.
+   *
+   * Two reads for the whole tab rather than one per row, and only when the owner
+   * actually has someone to share with — a solo ledger asks nothing. The reads
+   * are owner-scoped: they return the audiences this owner chose, never anyone
+   * else's sharing.
+   */
+  const [memoryAudiences, sourceRecordAudiences] = await Promise.all([
+    shareableMembers.length && approvedMemories.length + restrictedMemories.length
+      ? listRelationshipShareAudiences({
+          ownerUserId,
+          recordKind: "memory",
+          recordIds: [...approvedMemories, ...restrictedMemories].map((memory) => memory.id),
+        })
+      : {},
+    shareableMembers.length && trustedSourceRecords.length
+      ? listRelationshipShareAudiences({
+          ownerUserId,
+          recordKind: "source_record",
+          recordIds: trustedSourceRecords.map((sourceRecord) => sourceRecord.id),
+        })
+      : {},
+  ]);
+  const memorySharing = shareableMembers.length
+    ? { members: shareableMembers, audiences: memoryAudiences, householdName: null }
+    : undefined;
+  const sourceRecordSharing = shareableMembers.length
+    ? { members: shareableMembers, audiences: sourceRecordAudiences, householdName: null }
+    : undefined;
   const firstName = shortName(person);
   // Active reminders (open/snoozed) lead the section; recently resolved ones stay
   // reachable for reopen. Suggested follow-ups are never shown as active here —
@@ -375,8 +403,15 @@ async function PersonDetailEnrichment({
       memoryPanel={
         selectedTab === "memory" ? (
           <div className="flex flex-col gap-8">
-            <MemoriesSection memories={approvedMemories} restrictedMemories={restrictedMemories} />
-            <LoggedContextSection sourceRecords={trustedSourceRecords} />
+            <MemoriesSection
+              memories={approvedMemories}
+              restrictedMemories={restrictedMemories}
+              sharing={memorySharing}
+            />
+            <LoggedContextSection
+              sharing={sourceRecordSharing}
+              sourceRecords={trustedSourceRecords}
+            />
           </div>
         ) : null
       }
