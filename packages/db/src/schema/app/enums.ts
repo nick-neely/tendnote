@@ -297,6 +297,40 @@ export const generalActionEventKind = pgEnum("general_action_event_kind", [
   "suggested",
   "promoted",
   "ignored",
+  // Phase 8 household collaboration (#383): who is looking after a
+  // household-native record changed, and a member-owned record was handed over
+  // to the household (ADRs 0214, 0215).
+  "responsibility_changed",
+  "handed_to_household",
+]);
+
+/**
+ * Whether a scoped record belongs to a member or to the Household Workspace.
+ *
+ * Deliberately separate from `privacy_scope`: scope says who may see a record,
+ * ownership says whose it is, and Phase Eight's whole distinction — "my errand
+ * you can see" versus "the household's chore" — is invisible without both, since
+ * the two look identical to the audience rule (ADR 0214). General Actions are
+ * the first family to carry it.
+ */
+export const generalActionOwnership = pgEnum("general_action_ownership", [
+  "member_owned",
+  "household_native",
+]);
+
+/**
+ * The questions a household record may put to one of its members, and which
+ * therefore have to remember a "no".
+ *
+ * Both are invitations rather than actions: naming a Responsibility Holder
+ * offers *that* member their own reminder, and settling an occurrence offers the
+ * acting member a hand-off. Neither may be repeated after it is declined, and
+ * an enum rather than two tables keeps "what has this member already answered"
+ * one question with one answer (#383, ADRs 0203, 0215).
+ */
+export const generalActionOfferKind = pgEnum("general_action_offer_kind", [
+  "holder_reminder",
+  "responsibility_handoff",
 ]);
 
 export const savedItemKind = pgEnum("saved_item_kind", ["note", "link", "open_question"]);

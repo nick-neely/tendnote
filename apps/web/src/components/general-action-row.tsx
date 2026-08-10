@@ -1,5 +1,6 @@
 "use client";
 
+import { describeProgressReconciliation } from "@tendnote/domain";
 import type { GeneralActionLink, GeneralActionRecurrence } from "@tendnote/domain/general-actions";
 import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
 import { formatSurfacingDay } from "@tendnote/domain/record-surfacing";
@@ -8,6 +9,7 @@ import {
   completeGeneralActionAction,
   deferGeneralActionAction,
   editGeneralActionAction,
+  getResponsibilityHandoffOfferAction,
   setGeneralActionPeopleAction,
   setGeneralActionVisibilityAction,
   skipGeneralActionOccurrenceAction,
@@ -21,6 +23,13 @@ import {
 } from "@/components/general-action-asset-hints-field";
 import { ActionContextStrip } from "@/components/general-action-context-strip";
 import { ActionHistoryDialog } from "@/components/general-action-history-dialog";
+import {
+  ActionAttributionLine,
+  HandToHouseholdDialog,
+  HolderReminderOffer,
+  ResponsibilityHandoffOffer,
+  ResponsibilityHolderForm,
+} from "@/components/general-action-household";
 import {
   ActionLinksField,
   cleanLinks,
@@ -49,11 +58,13 @@ import {
   ClockIcon,
   ExternalLinkIcon,
   HistoryIcon,
+  HomeIcon,
   MoonIcon,
   MoreHorizontalIcon,
   PauseIcon,
   PencilIcon,
   SkipForwardIcon,
+  UserIcon,
   UsersIcon,
   XIcon,
 } from "@/components/icons";
@@ -80,7 +91,11 @@ import {
   generalActionMutationLabels,
   routineOccurrenceInverse,
 } from "@/lib/general-action-reversible-mutation";
-import type { GeneralActionMutationResult, GeneralActionView } from "@/lib/general-action-view";
+import type {
+  GeneralActionMutationResult,
+  GeneralActionProgressView,
+  GeneralActionView,
+} from "@/lib/general-action-view";
 import { unwrapOwnerActionResult } from "@/lib/owner-action-result";
 import { toReminderScheduleChoice, toReminderScheduleView } from "@/lib/reminder-schedule-view";
 import {
@@ -593,7 +608,21 @@ function ActionDeferForm({
   );
 }
 
-/** The overflow menu: set aside, pause (Routines), owner-only edit/visibility, history, dismiss, archive. */
+/**
+ * The overflow menu, narrowed to what this member may actually do.
+ *
+ * Every entry is gated on the record's `authority`, which the projection derived
+ * once from its ownership form. That tightens what shipped before Phase Eight:
+ * any member who could see a shared Action could dismiss or archive it. Now
+ * "I picked up the milk" — complete and reopen, reversible and truthful about
+ * someone else's errand — stays available to the whole audience, while deferring,
+ * skipping, dismissing, archiving, and re-authoring return to the owner. A
+ * household-native record grants all of it to every active member, and adds the
+ * only control it alone has: who is looking after it (ADRs 0214, 0215).
+ *
+ * Controls the server would refuse are not rendered disabled, they are absent —
+ * a greyed control is a promise the record does not keep.
+ */
 function ActionOverflowMenu({
   action,
   shareableMembers,
@@ -604,6 +633,8 @@ function ActionOverflowMenu({
   onSkip,
   onEdit,
   onShare,
+  onResponsibility,
+  onHandToHousehold,
   onHistory,
   onDismiss,
   onArchive,
@@ -617,11 +648,17 @@ function ActionOverflowMenu({
   onSkip: (focusTarget: HTMLElement | null) => void;
   onEdit: () => void;
   onShare: () => void;
+  onResponsibility: () => void;
+  onHandToHousehold: () => void;
   onHistory: () => void;
   onDismiss: (focusTarget: HTMLElement | null) => void;
   onArchive: (focusTarget: HTMLElement | null) => void;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const { authority } = action;
+  // Handing a record over needs somewhere to hand it to, so a member with no
+  // household never sees the offer at all.
+  const inHousehold = shareableMembers.length > 0;
 
   return (
     <DropdownMenu>
@@ -644,63 +681,82 @@ function ActionOverflowMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onSetAside}>
-          <ClockIcon />
-          Set aside
-        </DropdownMenuItem>
+        {authority.defer ? (
+          <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onSetAside}>
+            <ClockIcon />
+            Set aside
+          </DropdownMenuItem>
+        ) : null}
         {/* Pausing suspends a Routine's recurrence until resumed — a one-time
             Action has nothing to pause, so this only shows for Routines (ADR 0148). */}
-        {action.isRoutine ? (
-          <>
-            <DropdownMenuItem
-              className={ACTION_CONTROL_TOUCH_TARGET}
-              onSelect={() => onSkip(triggerRef.current)}
-            >
-              <SkipForwardIcon />
-              Skip this occurrence
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={ACTION_CONTROL_TOUCH_TARGET}
-              onSelect={() => onPause(triggerRef.current)}
-            >
-              <PauseIcon />
-              Pause routine
-            </DropdownMenuItem>
-          </>
+        {action.isRoutine && authority.skip ? (
+          <DropdownMenuItem
+            className={ACTION_CONTROL_TOUCH_TARGET}
+            onSelect={() => onSkip(triggerRef.current)}
+          >
+            <SkipForwardIcon />
+            Skip this occurrence
+          </DropdownMenuItem>
         ) : null}
-        {/* Content, people, and visibility belong to the owner; a viewing member
-            can still act on the Action above, but not re-author it (ADR 0153). */}
-        {action.owned ? (
+        {action.isRoutine && authority.edit ? (
+          <DropdownMenuItem
+            className={ACTION_CONTROL_TOUCH_TARGET}
+            onSelect={() => onPause(triggerRef.current)}
+          >
+            <PauseIcon />
+            Pause routine
+          </DropdownMenuItem>
+        ) : null}
+        {authority.edit ? (
           <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onEdit}>
             <PencilIcon />
             Edit
           </DropdownMenuItem>
         ) : null}
-        {action.owned && shareableMembers.length ? (
+        {/* Only a household-native record names who is looking after it: a
+            member-owned one already has an owner, and ownership is not a statement
+            about who does the work (ADR 0215). */}
+        {authority.responsibility ? (
+          <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onResponsibility}>
+            <UserIcon />
+            Who's looking after this
+          </DropdownMenuItem>
+        ) : null}
+        {authority.audience && inHousehold ? (
           <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onShare}>
             <UsersIcon />
             Visibility
+          </DropdownMenuItem>
+        ) : null}
+        {authority.handToHousehold && inHousehold ? (
+          <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onHandToHousehold}>
+            <HomeIcon />
+            Hand to the household
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem className={ACTION_CONTROL_TOUCH_TARGET} onSelect={onHistory}>
           <HistoryIcon />
           History
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className={ACTION_CONTROL_TOUCH_TARGET}
-          onSelect={() => onDismiss(triggerRef.current)}
-        >
-          <XIcon />
-          Dismiss
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className={ACTION_CONTROL_TOUCH_TARGET}
-          onSelect={() => onArchive(triggerRef.current)}
-        >
-          <ArchiveIcon />
-          Archive
-        </DropdownMenuItem>
+        {authority.archive ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className={ACTION_CONTROL_TOUCH_TARGET}
+              onSelect={() => onDismiss(triggerRef.current)}
+            >
+              <XIcon />
+              Dismiss
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={ACTION_CONTROL_TOUCH_TARGET}
+              onSelect={() => onArchive(triggerRef.current)}
+            >
+              <ArchiveIcon />
+              Archive
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -749,9 +805,15 @@ export function ActionRow({
     phase?: ReversibleMutationApplyPhase,
   ) => ReversibleMutationApplyResult;
 }) {
-  const [mode, setMode] = useState<"view" | "edit" | "defer" | "share">("view");
+  const [mode, setMode] = useState<"view" | "edit" | "defer" | "share" | "responsibility">("view");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [handToHouseholdOpen, setHandToHouseholdOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // What to say when this member's progress arrived second. Kept beside the notice
+  // rather than in it: it is an account of what happened, not a confirmation.
+  const [reconciled, setReconciled] = useState<string | null>(null);
+  // The hand-off asked in place, once an occurrence has been settled.
+  const [handoffOpen, setHandoffOpen] = useState(false);
   const completeMutation = useReversibleMutation(action.id, "complete");
   const dismissMutation = useReversibleMutation(action.id, "dismiss");
   const archiveMutation = useReversibleMutation(action.id, "archive");
@@ -791,6 +853,62 @@ export function ActionRow({
     return accepted;
   }
 
+  /**
+   * Settles the account of a progress action that arrived second.
+   *
+   * Never an error and never a rollback: the member's tap was a truthful report,
+   * it simply landed after someone else's, so the row takes the authoritative
+   * state and says plainly what became of it (ADR 0214).
+   */
+  function applyProgressReconciliation(view: GeneralActionProgressView) {
+    const reconciliation = view.reconciliation ?? null;
+    if (!reconciliation) {
+      setReconciled(null);
+      return false;
+    }
+    setReconciled(
+      describeProgressReconciliation(
+        {
+          handledAs: reconciliation.handledAs,
+          handledByName: reconciliation.handledByName,
+          handledAt: new Date(reconciliation.handledAtISO),
+        },
+        (date) => shortDay(date.toISOString()),
+      ),
+    );
+    return true;
+  }
+
+  /**
+   * Whether settling this occurrence is a moment to ask who has it next.
+   *
+   * The server holds the rule, because the part that matters is durable: a
+   * member who has said "no, this one's settled" is never asked again, on this
+   * device or any other. Asking the row alone would re-offer the hand-off every
+   * single week to the household where one person simply always does it, which
+   * is a recurring interruption the product manufactured rather than a question
+   * anyone asked for (ADR 0215).
+   *
+   * A refused or failed check is simply no offer. Nobody asked for this
+   * question, so failing to pose it is not a problem the member has.
+   */
+  async function offerHandoffIfUseful(view: GeneralActionView) {
+    if (view.ownership !== "household_native" || !view.isRoutine) return;
+    const candidateCount = shareableMembers.filter(
+      (member) => member.userId !== view.responsibilityHolderUserId,
+    ).length;
+    if (candidateCount === 0) return;
+    try {
+      const result = await getResponsibilityHandoffOfferAction({
+        generalActionId: view.id,
+        candidateCount,
+      });
+      if (result.ok && result.view.offer) setHandoffOpen(true);
+    } catch {
+      // No offer. See above.
+    }
+  }
+
   function runLifecycle(
     intent: "complete" | "dismiss" | "archive" | "pause",
     focusTarget: HTMLElement | null,
@@ -800,6 +918,7 @@ export function ActionRow({
       return;
     }
     setNotice(null);
+    setReconciled(null);
     const mutation =
       intent === "complete"
         ? completeMutation
@@ -811,8 +930,18 @@ export function ActionRow({
     mutation.run({
       kind: "optimistic",
       adapter: generalActionLifecycleAdapter(intent),
-      apply: onUpdate,
-      command: () => generalActionLifecycleCommand(intent, action.id),
+      apply: (view, phase) => {
+        if (intent === "complete" && phase === "authoritative") {
+          applyProgressReconciliation(view);
+        }
+        return onUpdate(view, phase);
+      },
+      command: () =>
+        generalActionLifecycleCommand(
+          intent,
+          action.id,
+          intent === "complete" ? action.occurrenceVersion : undefined,
+        ),
       focusTarget,
       labels: generalActionMutationLabels(intent),
       leave: { apply: reconcileResolvedView },
@@ -823,22 +952,33 @@ export function ActionRow({
 
   function runRoutineOccurrence(kind: "complete" | "skip", focusTarget: HTMLElement | null) {
     setNotice(null);
+    setReconciled(null);
     const prior = action;
     const mutation = kind === "complete" ? routineCompleteMutation : routineSkipMutation;
     mutation.run({
       kind: "pending",
       apply: (view) => {
         onUpdate(view);
-        if (view.dueAtISO) {
+        const raced = applyProgressReconciliation(view);
+        // A race already said what happened to this occurrence; adding "Done ·
+        // next Tue" beside it would report an advance this member did not make.
+        if (!raced && view.dueAtISO) {
           setNotice(
             `${kind === "complete" ? "Done" : "Skipped"} · next ${shortDay(view.dueAtISO)}`,
           );
         }
+        void offerHandoffIfUseful(view);
       },
       command: () =>
         kind === "complete"
-          ? completeGeneralActionAction({ generalActionId: action.id })
-          : skipGeneralActionOccurrenceAction({ generalActionId: action.id }),
+          ? completeGeneralActionAction({
+              generalActionId: action.id,
+              expectedOccurrenceVersion: action.occurrenceVersion,
+            })
+          : skipGeneralActionOccurrenceAction({
+              generalActionId: action.id,
+              expectedOccurrenceVersion: action.occurrenceVersion,
+            }),
       focusTarget,
       inverse: prior.dueAtISO ? routineOccurrenceInverse(prior) : undefined,
       labels: generalActionMutationLabels(
@@ -875,17 +1015,27 @@ export function ActionRow({
     return <ActionDeferForm action={action} onCancel={returnToView} onUpdate={onUpdate} />;
   }
 
+  if (mode === "responsibility") {
+    return (
+      <ResponsibilityHolderForm
+        action={action}
+        members={shareableMembers}
+        onCancel={returnToView}
+        onUpdate={onUpdate}
+      />
+    );
+  }
+
+  const householdNative = action.ownership === "household_native";
+  // A household-native record's scope chip would name the household as an audience
+  // this member chose to share with, which is the wrong sentence: nobody shared it,
+  // it is the household's. The attribution line says that instead (ADR 0214).
   const hasContext =
     action.isRoutine ||
-    action.scope !== "private" ||
+    (action.scope !== "private" && !householdNative) ||
     action.linkedPeople.length > 0 ||
     action.assetHints.length > 0 ||
     action.linkedAssets.length > 0;
-  // On a row the viewer doesn't own, name who shared it so the absent Edit/Visibility
-  // controls read as "not yours to re-author", not a missing feature (ADR 0153).
-  const ownerName = action.owned
-    ? null
-    : (shareableMembers.find((member) => member.userId === action.ownerUserId)?.name ?? null);
 
   return (
     <article
@@ -910,11 +1060,11 @@ export function ActionRow({
           ) : null}
           <ActionLinks links={action.links} />
           {hasContext ? <ActionContextStrip action={action} onUpdate={onUpdate} /> : null}
-          {ownerName || !action.owned ? (
-            <span className="text-[length:var(--text-caption)] text-muted-foreground">
-              Shared by {ownerName ?? "a household member"}
-            </span>
-          ) : null}
+          {/* One quiet line of attribution, never an avatar stack and never a
+              feed: whose record this is and — where someone has said so — who is
+              looking after it, joined rather than stacked so a household row is
+              no taller than a private one. Nothing renders when neither applies. */}
+          <ActionAttributionLine action={action} members={shareableMembers} />
           {areaName ? (
             <span className="inline-flex w-fit items-center rounded-full bg-secondary px-2 py-0.5 text-[length:var(--text-caption)] text-secondary-foreground">
               {areaName}
@@ -961,8 +1111,10 @@ export function ActionRow({
           onArchive={(focusTarget) => runLifecycle("archive", focusTarget)}
           onDismiss={(focusTarget) => runLifecycle("dismiss", focusTarget)}
           onEdit={() => setMode("edit")}
+          onHandToHousehold={() => setHandToHouseholdOpen(true)}
           onHistory={() => setHistoryOpen(true)}
           onPause={(focusTarget) => runLifecycle("pause", focusTarget)}
+          onResponsibility={() => setMode("responsibility")}
           onSkip={(focusTarget) => runRoutineOccurrence("skip", focusTarget)}
           onSetAside={() => setMode("defer")}
           onShare={() => setMode("share")}
@@ -985,11 +1137,46 @@ export function ActionRow({
           {notice}
         </p>
       ) : null}
+      {/* Someone else had already settled this occurrence. A plain statement in the
+          row's own quiet register — not an error, not a warning, and not a colour:
+          the member did nothing wrong, and the record is now what it says it is. */}
+      {reconciled ? (
+        <p className="text-[length:var(--text-caption)] text-muted-foreground" role="status">
+          {reconciled}
+        </p>
+      ) : null}
+      {/* Both offers arrive unbidden, so both announce themselves. The regions
+          are mounted permanently and filled conditionally — a live region added
+          to the DOM at the same moment as its content is not announced. */}
+      <div aria-live="polite">
+        {handoffOpen ? (
+          <ResponsibilityHandoffOffer
+            action={action}
+            members={shareableMembers}
+            onDismiss={() => setHandoffOpen(false)}
+            onUpdate={onUpdate}
+          />
+        ) : null}
+      </div>
+      {/* One question at a time. The member who just handed a chore on is
+          usually also its outgoing holder, so both offers qualify at once — and
+          two stacked yes/no asks in one breath is the wall of asks this domain
+          otherwise refuses. The reminder waits; it is not urgent, and it will
+          still be there next time. */}
+      <div aria-live="polite">
+        <HolderReminderOffer action={action} onUpdate={onUpdate} suppressed={handoffOpen} />
+      </div>
       <ActionHistoryDialog
         generalActionId={action.id}
         onOpenChange={setHistoryOpen}
         open={historyOpen}
         title={action.title}
+      />
+      <HandToHouseholdDialog
+        action={action}
+        onOpenChange={setHandToHouseholdOpen}
+        onUpdate={onUpdate}
+        open={handToHouseholdOpen}
       />
     </article>
   );

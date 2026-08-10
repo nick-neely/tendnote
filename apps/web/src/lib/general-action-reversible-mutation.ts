@@ -115,10 +115,24 @@ export function generalActionLifecycleAdapter(
   };
 }
 
-export function generalActionLifecycleCommand(intent: LifecycleIntent, generalActionId: string) {
+/**
+ * `expectedOccurrenceVersion` fences the one intent that advances an occurrence.
+ * A collaborative row always sends the occurrence it was rendered against, so a
+ * second member completing the same thing is reconciled instead of advancing it
+ * twice; a caller with no rendered occurrence to name simply omits it and acts on
+ * current state, which is what a private Action has always done.
+ */
+export function generalActionLifecycleCommand(
+  intent: LifecycleIntent,
+  generalActionId: string,
+  expectedOccurrenceVersion?: number,
+) {
   switch (intent) {
     case "complete":
-      return completeGeneralActionAction({ generalActionId });
+      return completeGeneralActionAction({
+        generalActionId,
+        ...(expectedOccurrenceVersion !== undefined ? { expectedOccurrenceVersion } : {}),
+      });
     case "dismiss":
       return dismissGeneralActionAction({ generalActionId });
     case "archive":

@@ -34,6 +34,9 @@ export function createInMemoryGeneralActionStore(
   const events: GeneralActionEvent[] = [];
   // Person links as (generalActionId -> ordered set of personIds).
   const peopleLinks = new Map<string, string[]>();
+  // The offers each member has already answered no to, keyed by record and offer
+  // kind, so a question is asked once and never again (ADRs 0203, 0215).
+  const offerDeclines = new Map<string, Set<string>>();
 
   function persistAction(values: Parameters<GeneralActionStore["createGeneralAction"]>[0]) {
     const parsed = createGeneralActionSchema.parse(values);
@@ -178,6 +181,25 @@ export function createInMemoryGeneralActionStore(
 
       return updated;
     },
+    async advanceGeneralActionOccurrence(input) {
+      const action = actions.get(input.generalActionId);
+      if (!action || action.ownerUserId !== input.ownerUserId) {
+        throw new Error("Action not found.");
+      }
+      // The fence, mirroring the drizzle store's conditional `where`: a caller
+      // whose expectation has been overtaken gets `null` and never a write.
+      if (action.occurrenceVersion !== input.expectedOccurrenceVersion) {
+        return null;
+      }
+      const updated = generalActionSchema.parse({
+        ...action,
+        ...input.patch,
+        occurrenceVersion: action.occurrenceVersion + 1,
+        updatedAt: new Date(),
+      });
+      actions.set(updated.id, updated);
+      return updated;
+    },
     async listGeneralActionsForOwner(input) {
       const filtered = [...actions.values()]
         .filter(
@@ -188,6 +210,66 @@ export function createInMemoryGeneralActionStore(
         .sort(byActiveDueThenCreated);
 
       return input.limit === undefined ? filtered : filtered.slice(0, input.limit);
+    },
+    async listGeneralActionsForHousehold(input) {
+      return [...actions.values()]
+        .filter(
+          (action) =>
+            action.householdId === input.householdId &&
+            (input.ownership === undefined || action.ownership === input.ownership) &&
+            (input.statuses === undefined || input.statuses.includes(action.status)),
+        )
+        .sort(byActiveDueThenCreated);
+    },
+    async clearResponsibilityHolderForMember(input) {
+      const cleared: GeneralAction[] = [];
+      for (const action of actions.values()) {
+        if (
+          action.householdId !== input.householdId ||
+          action.responsibilityHolderUserId !== input.userId
+        ) {
+          continue;
+        }
+        const updated = generalActionSchema.parse({
+          ...action,
+          responsibilityHolderUserId: null,
+          updatedAt: new Date(),
+        });
+        actions.set(updated.id, updated);
+        cleared.push(updated);
+      }
+      return cleared;
+    },
+    async revertMemberOwnedGeneralActionsToPrivate(input) {
+      const reverted: GeneralAction[] = [];
+      for (const action of actions.values()) {
+        if (
+          action.householdId !== input.householdId ||
+          action.ownerUserId !== input.ownerUserId ||
+          action.ownership !== "member_owned" ||
+          action.scope === "private"
+        ) {
+          continue;
+        }
+        const updated = generalActionSchema.parse({
+          ...action,
+          scope: "private",
+          householdId: null,
+          updatedAt: new Date(),
+        });
+        actions.set(updated.id, updated);
+        reverted.push(updated);
+      }
+      return reverted;
+    },
+    async listGeneralActionOfferDeclines(input) {
+      return [...(offerDeclines.get(`${input.generalActionId}:${input.offerKind}`) ?? [])];
+    },
+    async declineGeneralActionOffer(input) {
+      const key = `${input.generalActionId}:${input.offerKind}`;
+      const declined = offerDeclines.get(key) ?? new Set<string>();
+      declined.add(input.userId);
+      offerDeclines.set(key, declined);
     },
     async listVisibleGeneralActionsForCaller(input) {
       const visible: GeneralAction[] = [];

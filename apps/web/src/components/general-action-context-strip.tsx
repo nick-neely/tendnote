@@ -120,7 +120,13 @@ export function ActionContextStrip({
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-1.5">
         {action.recurrenceLabel ? <ActionRoutineChip label={action.recurrenceLabel} /> : null}
-        <ActionScopeChip label={action.visibilityLabel} scope={action.scope} />
+        {/* A household-native record has no audience anyone chose. Its scope chip
+            would name the household as people this member shared with, when the
+            truth is simply that the record is the household's — which the row's
+            attribution line says instead (ADR 0214). */}
+        {action.ownership === "household_native" ? null : (
+          <ActionScopeChip label={action.visibilityLabel} scope={action.scope} />
+        )}
         {action.linkedPeople.map((person) => (
           <ActionContextChip key={person.id} kind="person">
             {person.displayName}

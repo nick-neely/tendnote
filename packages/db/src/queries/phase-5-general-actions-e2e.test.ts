@@ -50,7 +50,7 @@ async function expectSuggestedActionInvisibleToMember(
   expect(await lifecycle.listActiveGeneralActions({ ownerUserId: memberUserId })).toHaveLength(0);
   await expect(
     lifecycle.getGeneralAction({ actorUserId: memberUserId, generalActionId: actionId }),
-  ).rejects.toThrow(/not found/i);
+  ).rejects.toThrow(/no longer available/i);
   expect(
     await lifecycle.listGeneralActionHistory({
       actorUserId: memberUserId,

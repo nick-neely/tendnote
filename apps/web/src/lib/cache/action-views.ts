@@ -6,6 +6,7 @@ import {
   listPausedGeneralActions,
   listResolvedGeneralActions,
 } from "@tendnote/db/queries/general-actions";
+import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
 import { cacheLife, cacheTag } from "next/cache";
 import { toGeneralActionAreaView } from "@/lib/general-action-area-view";
@@ -81,6 +82,26 @@ type LinkedAssetsByAction = Awaited<ReturnType<typeof listLinkedAssetsForGeneral
 type ActionViewOptions = Parameters<typeof toGeneralActionView>[1];
 
 /**
+ * Display names for the co-members a projection actually has to name.
+ *
+ * Only a household-native record with a named Responsibility Holder needs a
+ * roster, so a member with no household — or a household with no chore anyone
+ * has claimed, which is the ordinary case — pays nothing for this (ADR 0215).
+ */
+async function memberNamesForHolders(
+  ownerUserId: string,
+  actions: readonly { ownership: string; responsibilityHolderUserId: string | null }[],
+): Promise<ReadonlyMap<string, string> | undefined> {
+  const named = actions.some(
+    (action) =>
+      action.ownership === "household_native" && action.responsibilityHolderUserId !== null,
+  );
+  if (!named) return undefined;
+  const members = await listShareableHouseholdMembersForUser({ userId: ownerUserId });
+  return new Map(members.map((member) => [member.userId, member.name]));
+}
+
+/**
  * Maps one Action to its view and emits that Action's invalidation tags on the way.
  *
  * This must only be called from inside a `"use cache"` body: `cacheTag` registers
@@ -94,6 +115,7 @@ function toTaggedActionView(
     ownerUserId: string;
     now: Date;
     linkedAssetsByAction: LinkedAssetsByAction;
+    memberNames?: ReadonlyMap<string, string>;
     reminderSchedule?: ActionViewOptions["reminderSchedule"];
   },
 ) {
@@ -106,6 +128,7 @@ function toTaggedActionView(
     now: context.now,
     callerUserId: context.ownerUserId,
     linkedAssets: linkedAssets.map(toGeneralActionLinkedAssetView),
+    memberNames: context.memberNames,
     reminderSchedule: context.reminderSchedule,
   });
 }
@@ -119,14 +142,17 @@ function toTaggedActionView(
  */
 async function taggedActiveActionViews(ownerUserId: string, refreshedAt: number) {
   const active = await listActiveGeneralActions({ ownerUserId });
-  const linkedAssetsByAction = await listLinkedAssetsForGeneralActions({
-    callerUserId: ownerUserId,
-    generalActionIds: active.map((action) => action.id),
-  });
+  const [linkedAssetsByAction, memberNames] = await Promise.all([
+    listLinkedAssetsForGeneralActions({
+      callerUserId: ownerUserId,
+      generalActionIds: active.map((action) => action.id),
+    }),
+    memberNamesForHolders(ownerUserId, active),
+  ]);
   const now = new Date(refreshedAt);
   return active.map((action) => ({
     action,
-    view: toTaggedActionView(action, { ownerUserId, now, linkedAssetsByAction }),
+    view: toTaggedActionView(action, { ownerUserId, now, linkedAssetsByAction, memberNames }),
   }));
 }
 
@@ -181,10 +207,13 @@ async function cachedActionLedgerViews(
     listReminderSchedulesForOwner({ ownerUserId }),
   ]);
   const all = [...active, ...paused, ...resolved];
-  const linkedAssetsByAction = await listLinkedAssetsForGeneralActions({
-    callerUserId: ownerUserId,
-    generalActionIds: all.map((action) => action.id),
-  });
+  const [linkedAssetsByAction, memberNames] = await Promise.all([
+    listLinkedAssetsForGeneralActions({
+      callerUserId: ownerUserId,
+      generalActionIds: all.map((action) => action.id),
+    }),
+    memberNamesForHolders(ownerUserId, all),
+  ]);
   const now = new Date(refreshedAt);
   const reminderScheduleByActionId = new Map(
     reminderSchedules.map((schedule) => [schedule.generalActionId, schedule]),
@@ -194,6 +223,7 @@ async function cachedActionLedgerViews(
       ownerUserId,
       now,
       linkedAssetsByAction,
+      memberNames,
       reminderSchedule: reminderScheduleByActionId.get(action.id) ?? null,
     });
   return { active: active.map(toView), paused: paused.map(toView), resolved: resolved.map(toView) };

@@ -14,9 +14,27 @@ import {
  * record's audience is not the same authority as editing its content, and the
  * proof is asked for the exact thing about to happen (ADR 0219).
  */
-export const householdOperationSchema = z.enum(["view", "update", "change_audience", "archive"]);
+export const householdOperationSchema = z.enum([
+  "view",
+  "progress",
+  "update",
+  "change_audience",
+  "archive",
+]);
 export type HouseholdOperation = z.infer<typeof householdOperationSchema>;
 
+/**
+ * The operations that need authority over the record, not merely a place in its
+ * audience.
+ *
+ * `progress` is deliberately absent, and that absence is the rule rather than an
+ * oversight. Reporting that a shared thing was done or undone is a truthful,
+ * reversible statement about the world that anyone who can see the record is in
+ * a position to make — "I picked up the milk" — whereas re-authoring, re-addressing,
+ * or archiving someone's record is a decision that was never the audience's to
+ * take (#383). So `progress` passes the audience gate and stops there, while
+ * every other mutation falls to the owner unless the workspace owns the record.
+ */
 const MUTATIONS: ReadonlySet<HouseholdOperation> = new Set<HouseholdOperation>([
   "update",
   "change_audience",
@@ -56,10 +74,11 @@ export type HouseholdAuthorizationSubject = {
  * every active member holds symmetric authority over it and no creator or
  * Household Owner privilege applies (see CONTEXT.md, Household-Native Record).
  *
- * `household_native` has no producer at this commit. It is here rather than
- * later because the distinction is the reason this module exists — an adapter
- * that cannot name ownership form will infer authority from scope instead — and
- * because #383 (household-native Actions and Routines) is the first consumer.
+ * `household_native` is written by General Actions and Routines (#383), the
+ * first domain to earn the full Phase Eight collaboration contract. Ownership
+ * form is a stored fact on the record, never derived from scope: a member-owned
+ * Action at `household` scope and a household-native one look identical to the
+ * audience rule and could not be told apart without it.
  */
 export type HouseholdRecordOwnership = "member_owned" | "household_native";
 

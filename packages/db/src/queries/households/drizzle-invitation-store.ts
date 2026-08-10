@@ -8,6 +8,7 @@ import {
 import { createDrizzleHouseholdStore } from "./drizzle-store";
 import type { HouseholdInvitationStore } from "./invitation-types";
 import { createDrizzleHouseholdIdentityStore } from "./overview";
+import { createDrizzleHouseholdScheduledWorkStore } from "./scheduled-work";
 
 export function createDrizzleHouseholdInvitationStore(
   resolveDb: () => DatabaseExecutor = getDb,
@@ -15,6 +16,7 @@ export function createDrizzleHouseholdInvitationStore(
   return {
     households: createDrizzleHouseholdStore(resolveDb),
     identities: createDrizzleHouseholdIdentityStore(resolveDb),
+    scheduledWork: createDrizzleHouseholdScheduledWorkStore(resolveDb),
 
     async withTransaction(fn) {
       return resolveDb().transaction(async (tx) =>

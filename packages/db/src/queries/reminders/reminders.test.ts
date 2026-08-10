@@ -355,7 +355,7 @@ describe("Reminder product function", () => {
         ownerUserId: "collaborator-1",
         schedule: { kind: "relative", leadMinutes: 1_440 },
       }),
-    ).rejects.toThrow("owner's eligible explicit time-bound record");
+    ).rejects.toThrow("eligible explicit time-bound record");
   });
 
   it("keeps inferred, lifecycle-ineligible, ambient, and Today-only families silent", async () => {

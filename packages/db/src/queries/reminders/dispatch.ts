@@ -34,6 +34,20 @@ type ReminderDispatcherDependencies = {
     jobId: string;
     nextAttemptAt: Date;
   }) => Promise<void>;
+  /**
+   * Re-decides, immediately before sending, whether this subscriber may still
+   * be reminded about this record.
+   *
+   * The dispatcher already reloads authoritative record state before every send;
+   * Phase Eight adds that it must reload *standing* too, because another member
+   * can now be the reason a subscriber lost it. Someone who left the household
+   * this morning must not get tonight's bin-day alert about a record they can no
+   * longer see (ADR 0203).
+   */
+  authorizeSubscription?: (input: {
+    subscriberUserId: string;
+    record: ReminderRecord;
+  }) => Promise<boolean>;
 };
 
 type DispatchValues = {
@@ -45,6 +59,8 @@ type DispatchValues = {
 
 type DispatchContext = {
   record: ReminderRecord | null;
+  /** Whether this subscriber still has standing to be reminded about it. */
+  subscriptionAuthorized: boolean;
   schedule: ReminderSchedule | null;
   installation: ReminderInstallation | null;
   optIn: ReminderOptInState | null;
@@ -92,7 +108,15 @@ async function loadDispatchContext(
         clientInstallationId: installation.clientInstallationId,
       })
     : null;
-  return { record, schedule, installation, optIn };
+  const subscriptionAuthorized = record
+    ? input.authorizeSubscription
+      ? await input.authorizeSubscription({
+          subscriberUserId: claimed.ownerUserId,
+          record,
+        })
+      : record.ownerUserId === claimed.ownerUserId
+    : false;
+  return { record, schedule, installation, optIn, subscriptionAuthorized };
 }
 
 function suppressionReason(
@@ -109,7 +133,7 @@ function suppressionReason(
     : null;
   if (
     !context.record ||
-    context.record.ownerUserId !== claimed.ownerUserId ||
+    !context.subscriptionAuthorized ||
     context.record.kind !== claimed.recordKind ||
     context.record.id !== claimed.recordId ||
     !isEligibleReminderRecord(context.record) ||

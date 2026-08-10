@@ -6,11 +6,12 @@ import {
   generalActionUpdateSchema,
   REVIEW_GENERAL_ACTION_STATUSES,
 } from "@tendnote/domain";
-import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import {
   generalActionEvents,
+  generalActionOfferDeclines,
   generalActionPeople,
   generalActions,
   householdRecordShares,
@@ -191,6 +192,7 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
           ownerUserId: row.ownerUserId,
           scope: row.scope,
           householdId: row.householdId,
+          ownership: row.ownership,
         }),
       });
 
@@ -218,6 +220,91 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
       }
 
       return generalActionSchema.parse(action);
+    },
+    async advanceGeneralActionOccurrence(input) {
+      const patch = generalActionUpdateSchema.parse(input.patch);
+      // One conditional statement, so nothing can slip between the fence check
+      // and the write. The increment is expressed in SQL rather than computed
+      // here for the same reason: the row decides its own next version.
+      const [action] = await getDb()
+        .update(generalActions)
+        .set({
+          ...patch,
+          occurrenceVersion: sql`${generalActions.occurrenceVersion} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(generalActions.id, input.generalActionId),
+            eq(generalActions.ownerUserId, input.ownerUserId),
+            eq(generalActions.occurrenceVersion, input.expectedOccurrenceVersion),
+          ),
+        )
+        .returning();
+
+      // No row matched: either the record is gone, or another member advanced
+      // this occurrence first. The lifecycle re-reads and reconciles, so both
+      // settle on authoritative state rather than raising.
+      return action ? generalActionSchema.parse(action) : null;
+    },
+    async listGeneralActionsForHousehold(input) {
+      const rows = await getDb()
+        .select()
+        .from(generalActions)
+        .where(
+          and(
+            eq(generalActions.householdId, input.householdId),
+            ...(input.ownership ? [eq(generalActions.ownership, input.ownership)] : []),
+            ...(input.statuses && input.statuses.length > 0
+              ? [inArray(generalActions.status, input.statuses)]
+              : []),
+          ),
+        )
+        .orderBy(...surfacingOrder);
+      return rows.map((row) => generalActionSchema.parse(row));
+    },
+    async clearResponsibilityHolderForMember(input) {
+      const rows = await getDb()
+        .update(generalActions)
+        .set({ responsibilityHolderUserId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(generalActions.householdId, input.householdId),
+            eq(generalActions.responsibilityHolderUserId, input.userId),
+          ),
+        )
+        .returning();
+      return rows.map((row) => generalActionSchema.parse(row));
+    },
+    async revertMemberOwnedGeneralActionsToPrivate(input) {
+      const rows = await getDb()
+        .update(generalActions)
+        .set({ scope: "private", householdId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(generalActions.householdId, input.householdId),
+            eq(generalActions.ownerUserId, input.ownerUserId),
+            eq(generalActions.ownership, "member_owned"),
+            ne(generalActions.scope, "private"),
+          ),
+        )
+        .returning();
+      return rows.map((row) => generalActionSchema.parse(row));
+    },
+    async listGeneralActionOfferDeclines(input) {
+      const rows = await getDb()
+        .select({ userId: generalActionOfferDeclines.userId })
+        .from(generalActionOfferDeclines)
+        .where(
+          and(
+            eq(generalActionOfferDeclines.generalActionId, input.generalActionId),
+            eq(generalActionOfferDeclines.offerKind, input.offerKind),
+          ),
+        );
+      return rows.map((row) => row.userId);
+    },
+    async declineGeneralActionOffer(input) {
+      await getDb().insert(generalActionOfferDeclines).values(input).onConflictDoNothing();
     },
     async listGeneralActionsForOwner(input) {
       const query = getDb()

@@ -6,6 +6,9 @@ import type {
   GeneralActionEdit,
   GeneralActionEvent,
   GeneralActionLink,
+  GeneralActionOfferKind,
+  GeneralActionOwnership,
+  GeneralActionProgressReconciliation,
   GeneralActionRecurrence,
   GeneralActionStatus,
   Person,
@@ -36,6 +39,8 @@ export type GeneralActionPatch = Partial<
     | "householdId"
     | "completedAt"
     | "lastActorUserId"
+    | "ownership"
+    | "responsibilityHolderUserId"
   >
 >;
 
@@ -140,11 +145,70 @@ export type GeneralActionStore = {
     ownerUserId: string;
     generalActionId: string;
   }) => Promise<string[]>;
+  /**
+   * Applies a patch **only if** the record's occurrence fence still reads
+   * `expectedOccurrenceVersion`, bumping it in the same statement, and returns
+   * `null` when it does not.
+   *
+   * A separate method rather than a flag on `updateGeneralAction` because the
+   * conditional write is the whole contract: two members completing the same bin
+   * day must produce one roll-forward, and a read-then-write pair cannot promise
+   * that however carefully it is ordered. `null` means "someone else got there
+   * first" — never an error, because arriving second is not a failure — and the
+   * lifecycle reconciles against authoritative state from there.
+   */
+  advanceGeneralActionOccurrence: (input: {
+    ownerUserId: string;
+    generalActionId: string;
+    expectedOccurrenceVersion: number;
+    patch: GeneralActionPatch;
+  }) => Promise<GeneralAction | null>;
   createGeneralActionEvent: (input: CreateGeneralActionEventInput) => Promise<GeneralActionEvent>;
   listGeneralActionEvents: (input: {
     ownerUserId: string;
     generalActionId: string;
   }) => Promise<GeneralActionEvent[]>;
+  /**
+   * The household's own Actions and Routines, by ownership form. The access path
+   * for the Household home (#384) and for the departure and dissolution sweeps,
+   * which have a household id and no member to key on.
+   */
+  listGeneralActionsForHousehold: (input: {
+    householdId: string;
+    ownership?: GeneralActionOwnership;
+    statuses?: GeneralActionStatus[];
+  }) => Promise<GeneralAction[]>;
+  /**
+   * Clears every household-native record naming this member as its
+   * Responsibility Holder, and names no replacement. Returns the records it
+   * touched so the caller can invalidate their reminders in the same
+   * transaction (ADR 0215).
+   */
+  clearResponsibilityHolderForMember: (input: {
+    householdId: string;
+    userId: string;
+  }) => Promise<GeneralAction[]>;
+  /**
+   * Returns a departing member's own shared/household-scope Actions to
+   * `private`, so what they wrote leaves with them rather than staying visible
+   * to a household they are no longer in. Ownership is untouched — this is
+   * access ending, not a transfer.
+   */
+  revertMemberOwnedGeneralActionsToPrivate: (input: {
+    householdId: string;
+    ownerUserId: string;
+  }) => Promise<GeneralAction[]>;
+  /** The members who have already answered no to one of a record's offers. */
+  listGeneralActionOfferDeclines: (input: {
+    generalActionId: string;
+    offerKind: GeneralActionOfferKind;
+  }) => Promise<string[]>;
+  /** Remembers one member's "no thanks", so that offer is never made again. */
+  declineGeneralActionOffer: (input: {
+    generalActionId: string;
+    userId: string;
+    offerKind: GeneralActionOfferKind;
+  }) => Promise<void>;
 };
 
 /**
@@ -156,6 +220,7 @@ export type GeneralActionStore = {
  * Follow-Up lifecycle-store composition so surfaces share one owner-scoped seam.
  */
 export type GeneralActionLifecycleStore = GeneralActionStore &
+  GeneralActionAuthorityStore &
   Pick<SourceRecordResolutionStore, "getSourceRecord" | "getPerson"> &
   Pick<GeneralActionAreaStore, "getArea"> &
   Pick<
@@ -167,6 +232,16 @@ export type GeneralActionLifecycleStore = GeneralActionStore &
     | "listHouseholdRecordShares"
     | "deleteHouseholdRecordShares"
   >;
+
+/**
+ * The two reads the Household Authorization Proof is built from. Named here so
+ * the lifecycle store's dependency on the proof is visible in its type rather
+ * than buried in a constructor (ADR 0219).
+ */
+export type GeneralActionAuthorityStore = Pick<
+  HouseholdStore,
+  "listActiveHouseholdMembershipsForUser" | "listHouseholdRecordSharesForRecords"
+>;
 
 export type InMemoryGeneralActionLifecycleStore = InMemorySourceRecordStore &
   GeneralActionStore &
@@ -182,10 +257,39 @@ export type GeneralActionActionInput = {
   generalActionId: string;
 };
 
+/**
+ * A progress action's outcome: authoritative state, plus an account of what
+ * happened when it was not what the caller asked for.
+ *
+ * Progress is reconciled rather than refused, so a stale tap is never an error —
+ * it produced no second advance, and the member is handed the settled record
+ * along with who settled it and when. Deliberately the action view *widened*
+ * rather than a wrapper around it: `reconciliation` is null on every ordinary
+ * completion, so a caller that ignores the field behaves exactly as it did
+ * before household sharing existed, and only the surfaces that can say something
+ * useful about a race have to know a race is possible.
+ */
+export type GeneralActionProgressOutcome = GeneralActionWithContext & {
+  reconciliation: (GeneralActionProgressReconciliation & { handledByUserId: string | null }) | null;
+};
+
 export type CreateActiveGeneralActionInput = {
   /** Optional stable id for an idempotent cross-domain promotion. */
   id?: string;
+  /**
+   * The creating member. For a household-native record this becomes the row's
+   * storage key and its creator provenance, and confers no authority (ADR 0214).
+   */
   ownerUserId: string;
+  /**
+   * Whose record this is. `household_native` requires `scope: "household"` and
+   * the creator's active membership, and is the answer to the creation question
+   * "who is this for" when the member chooses **Our household** — because that
+   * is what a shared chore almost always means.
+   */
+  ownership?: GeneralActionOwnership;
+  /** The active member named as looking after a household-native record. */
+  responsibilityHolderUserId?: string | null;
   title: string;
   notes?: string | null;
   dueAt?: Date | null;
@@ -210,6 +314,52 @@ export type CreateActiveGeneralActionInput = {
 
 export type EditGeneralActionInput = GeneralActionActionInput & {
   edit: GeneralActionEdit;
+};
+
+/**
+ * A progress action, optionally fenced on the occurrence the member actually saw.
+ *
+ * The fence is optional rather than required because a private Action has
+ * nobody to race with, and because a programmatic caller acting on the current
+ * state has no rendered occurrence to name. Every collaborative surface passes
+ * it: it is what turns "someone else already did this" from a silent double
+ * advance into a sentence.
+ */
+export type GeneralActionProgressInput = GeneralActionActionInput & {
+  expectedOccurrenceVersion?: number;
+};
+
+/**
+ * Names, changes, or clears who is looking after a household-native record.
+ *
+ * `handedOff` marks the one-tap hand-off offered at completion, which is the
+ * same write with a different story in history. There is no "advance to the next
+ * member" input and never will be: a stored turn order is exactly the fairness
+ * claim Tendnote refuses to manufacture (ADR 0215).
+ */
+export type SetResponsibilityHolderInput = GeneralActionActionInput & {
+  holderUserId: string | null;
+  handedOff?: boolean;
+  /**
+   * Whether the outgoing holder's own Reminder Schedule for this record should
+   * go with the hand-off. Honoured only when the acting member *is* the outgoing
+   * holder, because removing an alert from another member's device is that
+   * member's choice to make, not a side effect of someone else's edit (ADR 0203).
+   */
+  removeOutgoingReminder?: boolean;
+};
+
+/**
+ * Hands a member-owned record over to the household, in place and one-way.
+ *
+ * Deliberately separate from re-scoping: widening an Action to household
+ * visibility says "you can see this", and this says "this is ours now, it stays
+ * here if I leave, and you can edit it". There is no inverse, because reversing
+ * it would mean deciding which member wins a record the workspace owns
+ * (ADR 0214).
+ */
+export type HandGeneralActionToHouseholdInput = GeneralActionActionInput & {
+  responsibilityHolderUserId?: string | null;
 };
 
 export type DeferGeneralActionInput = GeneralActionActionInput & {

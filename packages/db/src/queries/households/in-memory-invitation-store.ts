@@ -7,6 +7,10 @@ import type {
   HouseholdInvitationStore,
 } from "./invitation-types";
 import type { HouseholdIdentityStore } from "./overview";
+import {
+  createNoopHouseholdScheduledWorkStore,
+  type HouseholdScheduledWorkStore,
+} from "./scheduled-work";
 
 /**
  * The invitation store the lifecycle suite runs against.
@@ -19,6 +23,8 @@ import type { HouseholdIdentityStore } from "./overview";
 export function createInMemoryHouseholdInvitationStore(options?: {
   households?: ReturnType<typeof createInMemoryHouseholdStore>;
   identities?: HouseholdMemberIdentity[];
+  /** Injectable so a test can watch what a departure ends, not only what it moves. */
+  scheduledWork?: HouseholdScheduledWorkStore;
 }): HouseholdInvitationStore & {
   households: ReturnType<typeof createInMemoryHouseholdStore>;
   listDeliveries: () => HouseholdInvitationDelivery[];
@@ -35,12 +41,15 @@ export function createInMemoryHouseholdInvitationStore(options?: {
     },
   };
 
+  const scheduledWork = options?.scheduledWork ?? createNoopHouseholdScheduledWorkStore();
+
   const store: HouseholdInvitationStore & {
     households: ReturnType<typeof createInMemoryHouseholdStore>;
     listDeliveries: () => HouseholdInvitationDelivery[];
   } = {
     households,
     identities,
+    scheduledWork,
     async withTransaction(fn) {
       return fn(store);
     },

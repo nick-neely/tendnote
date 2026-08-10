@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ActionTodaySurface } from "@/components/action-today-surface";
+import { generalActionViewFixture } from "@/components/general-action-fixtures";
 import {
   actionTodayAssets,
   actionTodayCaption,
@@ -13,32 +14,7 @@ import type { GeneralActionLinkedAssetView, GeneralActionView } from "@/lib/gene
 const NOW = new Date(2026, 6, 6, 9, 0, 0);
 
 function view(overrides: Partial<GeneralActionView> = {}): GeneralActionView {
-  return {
-    id: "a1",
-    revision: "2026-07-24T00:00:00.000Z",
-    title: "Replace the water filter",
-    notes: null,
-    links: [],
-    assetHints: [],
-    linkedAssets: [],
-    linkedPeople: [],
-    status: "open",
-    recurrence: null,
-    isRoutine: false,
-    recurrenceLabel: null,
-    scope: "private",
-    visibilityLabel: "Only me",
-    owned: true,
-    ownerUserId: "owner-1",
-    areaId: null,
-    dueAtISO: null,
-    dueAtDate: "",
-    deferUntilISO: null,
-    deferUntilDate: "",
-    surfaceState: "unscheduled",
-    surfaceLabel: "No date",
-    ...overrides,
-  };
+  return generalActionViewFixture({ id: "a1", ...overrides });
 }
 
 function entry(

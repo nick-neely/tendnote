@@ -5,6 +5,7 @@ import { createDefaultGoogleCalendarReader, readConnectedOwnerCalendar } from ".
 import { listCalendarSuggestedFollowups } from "./calendar-followups";
 import { listActiveGeneralActions, listSuggestedGeneralActionReviews } from "./general-actions";
 import { getRelationshipAgenda } from "./relationship-agenda";
+import { listReminderSchedulesForOwner } from "./reminders";
 import { listSavedItems } from "./saved-items";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 import { createTodayCandidateLoaders } from "./today/candidate-loaders";
@@ -24,6 +25,8 @@ const briefScheduleStore = createDrizzleBriefScheduleStore();
 const candidateLoaders = createTodayCandidateLoaders({
   loadRelationshipAgenda: getRelationshipAgenda,
   listActions: (input) => listActiveGeneralActions(input),
+  listOwnReminderRecordIds: async (input) =>
+    (await listReminderSchedulesForOwner(input)).map((schedule) => schedule.recordId),
   listSavedItems: (input) => listSavedItems(input),
   getSourceRecord: (input) => sourceRecords.getSourceRecord(input),
   async readCalendar(input) {

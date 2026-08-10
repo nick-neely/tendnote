@@ -213,6 +213,31 @@ export function createHouseholdGovernanceLifecycle(
       householdId: input.householdId,
       userId: input.membership.userId,
     });
+
+    // What someone wrote is still theirs, so their own shared and household
+    // Actions come back to `private` and go with them. Nothing is transferred
+    // and nothing is deleted.
+    const revertedActions = await tx.scheduledWork.revertMemberOwnedActionsToPrivate({
+      householdId: input.householdId,
+      ownerUserId: input.membership.userId,
+    });
+    // A name is a statement about a current member, so it is cleared — and
+    // Tendnote picks nobody to replace them (ADR 0215).
+    const clearedResponsibilities = await tx.scheduledWork.clearResponsibilityHolderForMember({
+      householdId: input.householdId,
+      userId: input.membership.userId,
+    });
+    // Their reminders for the household's records end with their access, so no
+    // alert can arrive about a record they can no longer see (ADR 0203). Read
+    // after the revert above, so their own records — now private again and back
+    // with them — keep the reminders they set on them.
+    const canceledReminders = await tx.scheduledWork.cancelRemindersForRecords({
+      recordIds: await tx.scheduledWork.listHouseholdActionIds({
+        householdId: input.householdId,
+      }),
+      userIds: [input.membership.userId],
+      at: input.at,
+    });
     // An invitation is an exercise of household authority. Someone who has left
     // no longer holds it, so the links they sent stop working with them.
     const canceledInvitations = await cancelLiveInvitations(tx, {
@@ -221,7 +246,13 @@ export function createHouseholdGovernanceLifecycle(
       sentBy: input.membership.userId,
     });
 
-    return { membership: updated, canceledInvitations };
+    return {
+      membership: updated,
+      canceledInvitations,
+      revertedActions: revertedActions.length,
+      clearedResponsibilities: clearedResponsibilities.length,
+      canceledReminders,
+    };
   }
 
   return {
@@ -419,6 +450,9 @@ export function createHouseholdGovernanceLifecycle(
             memberUserId: input.memberUserId,
             previousRole: target.role,
             canceledInvitations: ended.canceledInvitations,
+            revertedActions: ended.revertedActions,
+            clearedResponsibilities: ended.clearedResponsibilities,
+            canceledReminders: ended.canceledReminders,
           },
         });
         return ended.membership;
@@ -446,6 +480,9 @@ export function createHouseholdGovernanceLifecycle(
           metadata: {
             previousRole: membership.role,
             canceledInvitations: ended.canceledInvitations,
+            revertedActions: ended.revertedActions,
+            clearedResponsibilities: ended.clearedResponsibilities,
+            canceledReminders: ended.canceledReminders,
           },
         });
         return ended.membership;
@@ -544,19 +581,24 @@ export function createHouseholdGovernanceLifecycle(
    * records enter a recovery window rather than being deleted at the press — and
    * because a household that ended must stay auditable.
    *
-   * What is deliberately not here is a sweep over household-native scheduled
-   * work. At this commit nothing produces a household-native Action, Routine, or
-   * reminder — `household_native` ownership has no writer yet, and the schedule
-   * tables are owner-scoped — so there is no such row to cancel. When #383/#385
-   * add them, they cancel here, beside the invitations, inside this transaction.
+   * Household-native scheduled work is cancelled here, beside the invitations
+   * and inside this transaction, now that #383 gives `household_native`
+   * ownership a writer. Every member's Reminder Schedules and pending intents
+   * for the household's own records go at once — an alert about a household
+   * that has ended is the clearest possible way to be wrong — while the records
+   * themselves stay, marked by the workspace's `dissolved` status, because they
+   * enter the recovery window rather than being deleted at the press. Members'
+   * own records revert to `private` in the roster loop below and survive with
+   * them, exactly as they would on an individual departure.
    *
-   * Nor is there a purge. `dissolvedAt` opens the recovery window and nothing
+   * There is still no purge. `dissolvedAt` opens the recovery window and nothing
    * closes it: no job deletes a dissolved household's records once the deadline
-   * passes. That sweep is the second prerequisite for #391, alongside the
-   * schedules hook above, and it is deliberately not built here — its record set
-   * is empty until #383/#385 give household-native ownership a writer. Until it
-   * exists, no surface may promise that anything is deleted; what passing the
-   * deadline changes is that recovery stops being offered.
+   * passes. That sweep remains the prerequisite for #391 and is deliberately not
+   * built here — it is a deletion policy over a record set this issue has only
+   * just created, and it needs its own decision about what the minimized audit
+   * tombstone keeps. Until it exists, no surface may promise that anything is
+   * deleted; what passing the deadline changes is that recovery stops being
+   * offered.
    */
   async function dissolve(
     tx: HouseholdInvitationStore,
@@ -586,8 +628,25 @@ export function createHouseholdGovernanceLifecycle(
           pendingRoleOfferedAt: null,
         },
       });
+      // Their own shared records come home with them, exactly as they would on
+      // an individual departure. This is every member departing at once.
+      await tx.scheduledWork.revertMemberOwnedActionsToPrivate({
+        householdId: input.householdId,
+        ownerUserId: member.userId,
+      });
       endedMemberships += 1;
     }
+
+    // Every member's reminders for the household's own records, in one sweep
+    // rather than per departing member: this is the whole household's scheduled
+    // work ending, not several departures. No `userIds`, so nobody is left
+    // holding a queued alert about a household that no longer exists.
+    const canceledReminders = await tx.scheduledWork.cancelRemindersForRecords({
+      recordIds: await tx.scheduledWork.listHouseholdActionIds({
+        householdId: input.householdId,
+      }),
+      at: input.at,
+    });
 
     // Every share at once rather than per departing member: this is the whole
     // household's member-owned sharing ending, not several departures.
@@ -610,6 +669,7 @@ export function createHouseholdGovernanceLifecycle(
         confirmedOwnerUserIds: [...input.confirmedOwnerUserIds],
         canceledInvitations,
         endedMemberships,
+        canceledReminders,
         recoveryDeadlineAt: recoveryDeadlineAt.toISOString(),
         // Stated in the trail as well as the UI: there is no path from here back
         // in without support, by design (ADR 0213).

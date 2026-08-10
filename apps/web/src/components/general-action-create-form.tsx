@@ -60,6 +60,12 @@ function buildCreateActionInput(fields: {
   visibilityChoice: VisibilityChoice;
   selectedUserIds: string[];
 }): Parameters<typeof createGeneralActionAction>[0] {
+  // "Our household" creates a record the household owns, and an Area and people
+  // links are one member's own records — so the composer hides both fields for
+  // that choice and this drops whatever they were carrying, rather than sending
+  // a pre-filled Area (the active filter pre-fills one) into a refusal the member
+  // never asked for (ADR 0214).
+  const householdNative = fields.visibilityChoice === "whole_household";
   return {
     title: fields.title,
     ...(fields.notes ? { notes: fields.notes } : {}),
@@ -67,8 +73,8 @@ function buildCreateActionInput(fields: {
     ...(fields.recurrence ? { recurrence: fields.recurrence } : {}),
     ...(fields.links.length ? { links: fields.links } : {}),
     ...(fields.assetHints.length ? { assetHints: fields.assetHints } : {}),
-    ...(fields.personIds.length ? { personIds: fields.personIds } : {}),
-    ...(fields.areaId ? { areaId: fields.areaId } : {}),
+    ...(fields.personIds.length && !householdNative ? { personIds: fields.personIds } : {}),
+    ...(fields.areaId && !householdNative ? { areaId: fields.areaId } : {}),
     visibilityChoice: fields.visibilityChoice,
     ...(fields.selectedUserIds.length ? { selectedUserIds: fields.selectedUserIds } : {}),
   };
@@ -384,6 +390,8 @@ function CreateActionDetails({
   onVisibilityChange: (value: VisibilityChoice) => void;
   onSelectedUserIdsChange: (value: string[]) => void;
 }) {
+  const householdNative = visibilityChoice === "whole_household";
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3">
@@ -419,7 +427,7 @@ function CreateActionDetails({
             value={notes}
           />
         </div>
-        {areas.length ? (
+        {areas.length && !householdNative ? (
           <div className="flex flex-col gap-1.5">
             <span className="text-[length:var(--text-small)] text-muted-foreground">Area</span>
             <AreaSelect
@@ -432,7 +440,12 @@ function CreateActionDetails({
           </div>
         ) : null}
         <ActionLinksField links={links} onChange={onLinksChange} />
-        <ActionPeopleField onChange={onPersonIdsChange} people={people} selectedIds={personIds} />
+        {/* An Area and a person link are one member's own records, resolved against
+            that member and invisible to everyone else — so a household action
+            carries neither, and the fields go rather than sit there refusing. */}
+        {householdNative ? null : (
+          <ActionPeopleField onChange={onPersonIdsChange} people={people} selectedIds={personIds} />
+        )}
         <ActionAssetHintsField labels={hintLabels} onChange={onHintLabelsChange} />
       </div>
       {shareableMembers.length ? (
@@ -448,6 +461,16 @@ function CreateActionDetails({
             selectedUserIds={selectedUserIds}
             value={visibilityChoice}
           />
+          {/* One line, stated once, because the difference is real and not
+              recoverable later: choosing the household makes the record theirs
+              rather than yours. Said plainly and left alone — not a warning, not a
+              callout, and never repeated on the row afterwards (ADR 0214). */}
+          {householdNative ? (
+            <p className="text-[length:var(--text-small)] text-muted-foreground">
+              This becomes the household's, not yours: everyone can edit it, and it stays if you
+              leave.
+            </p>
+          ) : null}
           {visibilityChoice !== "only_me" ? (
             <AudiencePreview
               choice={visibilityChoice}
