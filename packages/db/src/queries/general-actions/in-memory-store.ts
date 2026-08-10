@@ -359,6 +359,14 @@ function surfacingTime(action: GeneralAction): number {
  * bundled household store) plus a source-record base for grounding and owner-scoped
  * person resolution, and an Area base for Area-assignment verification. Mirrors how
  * the Follow-Up lifecycle store is built.
+ *
+ * One seam it deliberately does not close: `getVisibleSourceRecord` comes from
+ * the seeded source store, which is owner-only because it holds no memberships
+ * and a test double that over-admits hides the bug the proof exists to catch. So
+ * grounding a *household-native* Action on a co-member's evidence refuses here
+ * while it succeeds in production. A test that needs the real rule composes this
+ * store over one that holds memberships - see
+ * `saved-items/household-promotion-wiring.test.ts`.
  */
 export function createInMemoryGeneralActionLifecycleStore(): InMemoryGeneralActionLifecycleStore {
   return {

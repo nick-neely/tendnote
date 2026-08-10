@@ -243,10 +243,11 @@ export type SavedItemLifecycleDeps = {
    * chose between them by flag is exactly the implicit transfer this domain
    * refuses.
    *
-   * Optional because household-native General Actions arrive with #383. Until
-   * one is supplied the promotion boundary refuses the destination outright
-   * rather than quietly landing a workspace-owned Saved Item in a member's own
-   * Action, which would hand the household's record to whoever pressed promote.
+   * Production supplies it (see `queries/saved-items.ts`). It stays optional so
+   * the fail-closed direction is the default one: a boundary composed without it
+   * refuses the destination outright rather than quietly landing a
+   * workspace-owned Saved Item in a member's own Action, which would hand the
+   * household's record to whoever pressed promote.
    */
   createHouseholdNativeGeneralAction?: (input: {
     id: string;

@@ -5,6 +5,7 @@ import {
   type GeneralActionEdit,
   type GeneralActionOwnership,
   GeneralActionValidationError,
+  HouseholdRecordUnavailableError,
   type PrivacyScope,
 } from "@tendnote/domain";
 import { resolveRecordVisibility } from "../households/record-visibility";
@@ -194,20 +195,61 @@ export async function buildGeneralActionEditPatch(
 }
 
 /**
- * Resolves optional source grounding, owner-scoped. A present `sourceRecordId` must name a
- * record the owner can see; absent grounding is `null`. Extracted so the create path stays
- * a flat orchestration.
+ * Resolves optional source grounding. Absent grounding is `null`; a present
+ * `sourceRecordId` must name a record the acting member may stand this Action on
+ * - and *which read answers that* is decided by the record being created, not by
+ * the caller.
+ *
+ * A **member-owned** Action stays owner-keyed, exactly as it always was. Being
+ * able to *see* a co-member's evidence is not permission to file your own
+ * private record on it: that would let a household's shared note quietly become
+ * the provenance of a record the household never gets to see, and the record
+ * would keep pointing at it after the sharing stopped.
+ *
+ * A **household-native** Action resolves by household visibility instead,
+ * because its grounding is the household's and the member promoting it is
+ * usually not the member who captured it. Keying that read on the actor would
+ * mean only the capturer could ever hand their own note to the household's
+ * Actions - the common collaboration case, refused. The visible read is the
+ * proof-gated one (ADR 0219): it still admits the actor's own evidence, so
+ * nothing that worked before stops working, and it requires current active
+ * membership, so a member who has left the household reads nothing.
+ *
+ * The refusals differ for the same reason the reads do. The owner-scoped miss
+ * keeps its long-standing internal message: it names a record the caller owns,
+ * so there is nothing to protect. The household-native miss is the one opaque
+ * refusal - "no such evidence", "not shared with you", and "you were removed
+ * from that household" have to be one sentence, because the difference between
+ * them is exactly the protected fact.
  */
 export async function resolveSourceRecordId(
-  store: Pick<GeneralActionLifecycleStore, "getSourceRecord">,
-  ownerUserId: string,
-  sourceRecordId: string | null | undefined,
+  store: Pick<GeneralActionLifecycleStore, "getSourceRecord" | "getVisibleSourceRecord">,
+  input: {
+    ownership: GeneralActionOwnership;
+    /** The member creating the record. On the create path they are also its `ownerUserId`. */
+    actorUserId: string;
+    sourceRecordId: string | null | undefined;
+  },
 ): Promise<string | null> {
-  if (!sourceRecordId) {
+  if (!input.sourceRecordId) {
     return null;
   }
 
-  const sourceRecord = await store.getSourceRecord({ ownerUserId, sourceRecordId });
+  if (input.ownership === "household_native") {
+    const visible = await store.getVisibleSourceRecord({
+      callerUserId: input.actorUserId,
+      sourceRecordId: input.sourceRecordId,
+    });
+    if (!visible) {
+      throw new HouseholdRecordUnavailableError();
+    }
+    return visible.id;
+  }
+
+  const sourceRecord = await store.getSourceRecord({
+    ownerUserId: input.actorUserId,
+    sourceRecordId: input.sourceRecordId,
+  });
   if (!sourceRecord) {
     throw new Error("Source record not found.");
   }

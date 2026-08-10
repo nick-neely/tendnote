@@ -536,9 +536,10 @@ describe("promoting a household-native Saved Item", () => {
   it("declines the destination rather than inventing a member-owned one", async () => {
     const item = await seedItem(harness);
 
-    // No household-native Action writer is wired yet (#383). Refusing is the
-    // safe direction: the alternative is quietly handing the household's record
-    // to whoever pressed promote.
+    // This collaboration is composed without a household-native Action writer.
+    // Production supplies one, but refusing is the direction the boundary falls
+    // back to on its own: the alternative is quietly handing the household's
+    // record to whoever pressed promote.
     await expect(
       collaborationFor(harness).promoteHouseholdSavedItem({
         actorUserId: BEN,

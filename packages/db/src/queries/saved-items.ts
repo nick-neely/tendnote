@@ -1,6 +1,7 @@
 import { createGeneralAction } from "./general-actions";
 import { reconcileReminderRecord, revalidateSavedItemReminderSubscribers } from "./reminders";
 import { createDrizzleSavedItemLifecycleStore } from "./saved-items/drizzle-store";
+import { householdNativeGeneralActionDestination } from "./saved-items/household-destination";
 import { createHouseholdSavedItemCollaboration } from "./saved-items/household-native";
 import { createSavedItemLifecycle } from "./saved-items/lifecycle";
 import {
@@ -30,20 +31,38 @@ export {
 export { createSavedItemLifecycle } from "./saved-items/lifecycle";
 export type * from "./saved-items/types";
 
+/**
+ * The workspace-owned destination, now that #383 gives General Actions a
+ * household-native form.
+ *
+ * Supplying this is the whole of what turns the household destinations on: both
+ * boundaries refuse it outright while it is absent rather than landing the
+ * household's record in the promoting member's own Action, which is the implicit
+ * transfer the two ownership forms exist to prevent. The refusal stays reachable
+ * on purpose - it is the safe direction any future build of this seam falls back
+ * to - and simply never fires for the ordinary case now.
+ */
+const createHouseholdNativeGeneralAction = householdNativeGeneralActionDestination((input) =>
+  createGeneralAction(input),
+);
+
 const defaultSavedItemLifecycle = createAffectedSavedItemLifecycle(
   createSavedItemLifecycle(createDrizzleSavedItemLifecycleStore(), {
     scheduleEmbedding: enqueueAndTriggerSemanticEmbeddingJob,
     createGeneralAction: (input) => createGeneralAction(input),
-    // `createHouseholdNativeGeneralAction` is deliberately absent until #383
-    // gives General Actions a workspace-owned form. Promotion refuses that
-    // destination rather than landing the household's record in the promoting
-    // member's own Action - the implicit transfer both ownership forms exist to
-    // prevent. Supplying it here is the whole of what turns that path on.
+    // The member-owned **Give to the household** hand-off. The Saved Item is
+    // still archived as resolved and never becomes household-native; what the
+    // owner is agreeing to is that the new *Action* is the household's.
+    createHouseholdNativeGeneralAction,
   }),
 );
 
 const defaultHouseholdSavedItems = createAffectedHouseholdSavedItemCollaboration(
-  createHouseholdSavedItemCollaboration(createDrizzleSavedItemLifecycleStore()),
+  createHouseholdSavedItemCollaboration(createDrizzleSavedItemLifecycleStore(), {
+    // A workspace-owned Saved Item has only ever had one possible destination,
+    // so this boundary takes no `createGeneralAction` beside it.
+    createHouseholdNativeGeneralAction,
+  }),
 );
 
 /**

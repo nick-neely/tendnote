@@ -221,7 +221,11 @@ export type GeneralActionStore = {
  */
 export type GeneralActionLifecycleStore = GeneralActionStore &
   GeneralActionAuthorityStore &
-  Pick<SourceRecordResolutionStore, "getSourceRecord" | "getPerson"> &
+  // Both grounding reads, because which one applies is decided by the record's
+  // ownership form rather than by the store: a member-owned Action's grounding
+  // is owner-keyed, a household-native one's is read by household visibility
+  // (see {@link resolveSourceRecordId}).
+  Pick<SourceRecordResolutionStore, "getSourceRecord" | "getVisibleSourceRecord" | "getPerson"> &
   Pick<GeneralActionAreaStore, "getArea"> &
   Pick<
     HouseholdStore,

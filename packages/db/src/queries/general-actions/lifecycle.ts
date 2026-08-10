@@ -362,11 +362,15 @@ export function createGeneralActionLifecycle(
     async createGeneralAction(input: CreateActiveGeneralActionInput) {
       const ownership = input.ownership ?? "member_owned";
       assertHouseholdNativeFilingAllowed({ ownership, areaId: input.areaId });
-      const sourceRecordId = await resolveSourceRecordId(
-        store,
-        input.ownerUserId,
-        input.sourceRecordId,
-      );
+      // Resolved against the ownership form the record is taking, because that
+      // is what decides whose evidence it is allowed to stand on: the creator's
+      // own for a member-owned Action, the household's for a workspace-owned one
+      // (see {@link resolveSourceRecordId}).
+      const sourceRecordId = await resolveSourceRecordId(store, {
+        ownership,
+        actorUserId: input.ownerUserId,
+        sourceRecordId: input.sourceRecordId,
+      });
       const areaId = await resolveAreaId(store, input.ownerUserId, input.areaId ?? null);
       // A household-native record is visible to every active member by
       // definition, so its scope is not a choice the caller gets to make
