@@ -2,7 +2,7 @@ import { z } from "zod";
 import { assetMemoryValueSchema } from "./asset-memories";
 import { normalizeAssetNameTokens } from "./asset-review";
 import { assetKindSchema, assetOwnershipSchema, assetStatusSchema } from "./assets";
-import { visibilityChoiceSchema } from "./privacy";
+import { privacyScopeSchema, visibilityChoiceSchema } from "./privacy";
 
 /**
  * Unified Asset Search (#196, #204). One search experience over three distinct
@@ -82,14 +82,44 @@ const assetSearchRecordShape = {
 };
 
 /**
+ * The facts the Household Authorization Proof decides one search row on.
+ *
+ * They are the *record's own*, and that is the whole point of carrying them
+ * separately from the display fields above. `ownership` on the record shape is
+ * deliberately the anchor Asset's, because a memory under a household-native
+ * Asset is the household's and a surface has to say so; but a private receipt
+ * hanging off that same household refrigerator is nobody's to see but its
+ * owner's, and it has to answer for itself every time it is listed (ADR 0179).
+ * One field cannot honestly be both, so there are two.
+ *
+ * Deliberately absent from {@link assetSearchResultSchema}: policy facts are what
+ * a proof is asked, not what a row renders. Nothing downstream of the proof needs
+ * them, and a display contract that carried an owner id would be a new place for
+ * one to leak.
+ */
+export const assetSearchAuthorizationFactsSchema = z.object({
+  ownerUserId: z.string().min(1),
+  scope: privacyScopeSchema,
+  householdId: z.string().nullable(),
+  ownership: assetOwnershipSchema,
+});
+export type AssetSearchAuthorizationFacts = z.infer<typeof assetSearchAuthorizationFactsSchema>;
+
+/**
  * One candidate as a single signal found it, before fusion. Stores emit these; the
  * pure merge below turns them into results. `sourceScore` is normalized within its
  * own signal (0..1) so the three signals can be compared on one scale.
+ *
+ * A candidate is not yet an answer. It carries {@link assetSearchAuthorizationFactsSchema}
+ * so the seam can obtain a Household Authorization Proof for every row before any
+ * of it is ranked, cited, or shown — the SQL predicate that selected it is a
+ * pre-filter and never the decision (ADR 0219).
  */
 export const assetSearchCandidateSchema = z.object({
   ...assetSearchRecordShape,
   matchKind: assetSearchMatchKindSchema,
   sourceScore: z.number(),
+  authorization: assetSearchAuthorizationFactsSchema,
 });
 export type AssetSearchCandidate = z.infer<typeof assetSearchCandidateSchema>;
 

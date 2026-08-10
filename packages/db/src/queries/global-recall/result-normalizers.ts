@@ -231,6 +231,14 @@ export function toAssetResult(result: AssetSearchResult): GlobalRecallResult {
   const matchKind = result.matchKinds.some((kind) => kind === "exact" || kind === "structured")
     ? "exact"
     : "related";
+  /**
+   * A household-native Asset has no audience anyone chose, so a recall row states
+   * none. `null` is already the shape this field takes for a record with no
+   * visibility to report, so the row loses a chip rather than gaining a special
+   * case — the same suppression the ledger, the profile, the search panel, and the
+   * chat card make (ADR 0214).
+   */
+  const visibility = result.ownership === "household_native" ? null : visibilityFor(result);
   if (result.recordKind === "asset_memory") {
     return {
       family: "asset_memory",
@@ -241,7 +249,7 @@ export function toAssetResult(result: AssetSearchResult): GlobalRecallResult {
       match: { kind: matchKind, reason: assetMatchReason(result), excerpt: result.snippet },
       trust: "asset_fact",
       sensitivity: "normal",
-      visibility: visibilityFor(result),
+      visibility,
       grounding: result.citations,
       href: `/assets/${result.assetId}#asset-memory-${result.recordId}`,
       parent: { kind: "asset", id: result.assetId },
@@ -262,7 +270,7 @@ export function toAssetResult(result: AssetSearchResult): GlobalRecallResult {
     match: { kind: matchKind, reason: assetMatchReason(result), excerpt: result.snippet },
     trust: "asset_anchor",
     sensitivity: "normal",
-    visibility: visibilityFor(result),
+    visibility,
     grounding: result.citations,
     href: `/assets/${result.assetId}`,
     parent: null,

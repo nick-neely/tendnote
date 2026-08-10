@@ -1,19 +1,25 @@
 import { createDrizzleAssetSearchStore } from "./asset-search/drizzle-store";
 import { createAssetSearch } from "./asset-search/queries";
 import type { SearchAssetsRequest } from "./asset-search/types";
+import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import {
   createDefaultSemanticEmbeddingAdapter,
   createDefaultSemanticEmbeddingConfig,
 } from "./semantic-retrieval";
 
+export { createAssetSearchAuthority } from "./asset-search/authority";
 export { createDrizzleAssetSearchStore } from "./asset-search/drizzle-store";
 export type { AssetSearchSeed, SeededAssetEmbedding } from "./asset-search/in-memory-store";
-export { createInMemoryAssetSearchStore } from "./asset-search/in-memory-store";
+export {
+  createInMemoryAssetSearchAuthorityStore,
+  createInMemoryAssetSearchStore,
+} from "./asset-search/in-memory-store";
 export { createAssetSearch } from "./asset-search/queries";
 export type * from "./asset-search/types";
 
 const defaultAssetSearch = createAssetSearch(
   createDrizzleAssetSearchStore(),
+  createDrizzleHouseholdStore(),
   createDefaultSemanticEmbeddingAdapter(),
   createDefaultSemanticEmbeddingConfig(),
 );

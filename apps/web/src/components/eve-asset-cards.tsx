@@ -59,8 +59,17 @@ export function AssetSearchResultRow({ result }: { result: AssetSearchResultView
           </span>
           {" · "}
           {result.matchKinds.map((kind) => MATCH_KIND_LABEL[kind]).join(" + ")}
-          {" · "}
-          {result.visibilityLabel}
+          {/* The trust register and how it was found, always; the audience only when
+              someone chose one. A household-native record is simply the household's,
+              and naming an audience for it would report a sharing decision nobody
+              made — so the separator goes with the label rather than dangling
+              (ADR 0214, and the same suppression every other Asset surface makes). */}
+          {result.ownership === "household_native" ? null : (
+            <>
+              {" · "}
+              {result.visibilityLabel}
+            </>
+          )}
         </Caption>
       </div>
     </div>
@@ -73,7 +82,8 @@ export function AssetFactRow({ fact }: { fact: AssetFactView }) {
     <div className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
         <span className="text-muted-foreground text-xs">{fact.label}</span>
-        <Caption>{fact.visibilityLabel}</Caption>
+        {/* As above: the household's own fact has no audience to name. */}
+        {fact.ownership === "household_native" ? null : <Caption>{fact.visibilityLabel}</Caption>}
       </div>
       {fact.value ? <p className="font-mono text-sm tabular-nums">{fact.value}</p> : null}
       {fact.notes ? <Body>{fact.notes}</Body> : null}

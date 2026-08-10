@@ -142,6 +142,7 @@ export const assetSearchModule = defineModule<"asset_search">({
           matchKinds: result.matchKinds,
           trustLevel: result.trustLevel,
           visibilityLabel: result.visibilityLabel,
+          ownership: result.ownership,
         })),
       };
     },

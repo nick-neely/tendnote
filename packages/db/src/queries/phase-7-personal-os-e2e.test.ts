@@ -1,6 +1,9 @@
 import type { ExactRecallResult, SemanticRetrievalResult } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
-import { createInMemoryAssetSearchStore } from "./asset-search/in-memory-store";
+import {
+  createInMemoryAssetSearchAuthorityStore,
+  createInMemoryAssetSearchStore,
+} from "./asset-search/in-memory-store";
 import { createAssetSearch } from "./asset-search/queries";
 import { createAssetActionLinks } from "./assets/action-links";
 import { createInMemoryAssetActionLinkStore } from "./assets/in-memory-action-link-store";
@@ -389,6 +392,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
         : [];
     const assetSearch = createAssetSearch(
       createInMemoryAssetSearchStore({ assets: [asset], memories }),
+      createInMemoryAssetSearchAuthorityStore({}),
       {
         async embedText(input) {
           return { vector: themedVector(input.text), model: input.model, version: input.version };

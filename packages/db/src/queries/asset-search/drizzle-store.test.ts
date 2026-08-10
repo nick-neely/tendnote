@@ -166,13 +166,39 @@ describe("asset search drizzle store guards (#204)", () => {
     expect(anchorGates).toBeGreaterThanOrEqual(5); // 3 record branches + 2 embedding branches
   });
 
-  it("reads ownership off the anchor asset in every branch, never off the child row", () => {
+  it("reads the displayed ownership off the anchor asset in every branch, never off the child row", () => {
     // A memory or a receipt under a household-native Asset is the household's, so the
     // column that decides whether a surface names an audience must come from `a`, not
     // from `am`/`ae` (ADR 0214). One `a.ownership` per select, and no other alias.
-    expect(source).not.toMatch(/(am|ae)\.ownership/);
-    const ownershipSelects = source.split("a.ownership::text as ownership").length - 1;
+    expect(source).not.toMatch(/(am|ae)\.ownership::text as ownership\b/);
+    const ownershipSelects = source.split("a.ownership::text as ownership,").length - 1;
     expect(ownershipSelects).toBe(5); // 3 record branches + 2 embedding branches
+  });
+
+  it("reads the proof's facts off the record's own row in every branch", () => {
+    // The opposite rule to the one above, and the reason the two are separate
+    // columns. What a row *displays* about its anchor is not what it must *answer
+    // for*: the household's refrigerator being open to everyone says nothing about
+    // the private receipt hanging off it, so each branch proves on its own alias
+    // (ADR 0179, ADR 0219). Reading these off `a` would hand a child the parent's
+    // audience, which is the exact leak the child proof exists to stop.
+    for (const [alias, branches] of [
+      ["a", 2], // the two asset branches: record and anchor are the same row
+      ["am", 2], // memory, in both tiers
+      ["ae", 1], // evidence, records tier only
+    ] as const) {
+      const owners =
+        source.split(`${alias}.owner_user_id::text as record_owner_user_id`).length - 1;
+      const households =
+        source.split(`${alias}.household_id::text as record_household_id`).length - 1;
+      const ownerships = source.split(`${alias}.ownership::text as record_ownership`).length - 1;
+      expect({ alias, owners, households, ownerships }).toEqual({
+        alias,
+        owners: branches,
+        households: branches,
+        ownerships: branches,
+      });
+    }
   });
 
   it("keeps the review gate owner-only in both tiers", () => {

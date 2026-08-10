@@ -5,7 +5,10 @@ import {
   MAX_ASSET_ACTION_PROPOSALS,
 } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { createInMemoryAssetSearchStore } from "../asset-search/in-memory-store";
+import {
+  createInMemoryAssetSearchAuthorityStore,
+  createInMemoryAssetSearchStore,
+} from "../asset-search/in-memory-store";
 import { createAssetSearch } from "../asset-search/queries";
 import { createAssetSnapshot } from "../asset-snapshots/builder";
 import { createInMemoryAssetSnapshotStore } from "../asset-snapshots/in-memory-store";
@@ -154,6 +157,9 @@ async function setupWorld() {
         assets: [fridge, notebook],
         memories: [filterSize, memberQuote, suggestedMemory],
         evidence: [householdReceipt, memberReceipt],
+        householdMemberships: seed.memberships ?? memberships,
+      }),
+      createInMemoryAssetSearchAuthorityStore({
         householdMemberships: seed.memberships ?? memberships,
       }),
       coldIndex,

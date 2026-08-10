@@ -5,6 +5,7 @@ import type {
   ParsedSearchAssetsInput,
   SearchAssetsInput,
 } from "@tendnote/domain";
+import type { HouseholdStore } from "../households/types";
 
 export type AssetSearchOutcome = {
   results: AssetSearchResult[];
@@ -38,36 +39,32 @@ export type SearchAssetEmbeddingsInput = AssetSearchQueryInput & {
 };
 
 /**
+ * The two household reads the Asset Search proof is built from. Both are keyed by
+ * facts the caller cannot assert: their own memberships, and the record's stored
+ * audience.
+ */
+export type AssetSearchAuthorityStore = Pick<
+  HouseholdStore,
+  "listActiveHouseholdMembershipsForUser" | "listHouseholdRecordSharesForRecords"
+>;
+
+/**
  * The Asset Search persistence surface, split by *signal* rather than by table. Both
  * methods return candidates on one comparable scale so the pure fusion in the domain
  * can merge them without knowing where they came from.
  *
- * Both are responsible for visibility: every candidate a store returns must already
- * be one the caller may see. Scope filtering is deterministic and happens *inside*
- * the query — never as a post-filter — so a hidden child record can never reach the
- * fusion step at all.
+ * Both are responsible for narrowing: every candidate a store returns must already
+ * be one the caller could plausibly see. Scope filtering is deterministic and happens
+ * *inside* the query — never as a post-filter — so a hidden child record does not
+ * leave the database at all.
  *
- * ## Residual: Asset Search is pre-filtered, not proved (#386 → #390)
- *
- * That filtering is `visibleHouseholdRecordSql`, which is a *pre-filter* and not
- * a Household Authorization Proof (ADR 0219). #386 ceilinged every other Asset
- * read with the proof — the ledger, the profile's memories and evidence, the
- * gated bytes route — and deliberately stopped here. Two reasons, both cost
- * rather than principle:
- *
- * - The proof needs a record's `ownerUserId`, `scope`, `householdId`, and
- *   `ownership`, and `AssetSearchCandidate` carries none of them. Adding them
- *   widens a shape that reaches the drizzle store, its in-memory twin, Eve, and
- *   Global Recall — a blast radius well outside #386's acceptance criteria.
- * - Search is a live per-request query, so the predicate is evaluated *now*. The
- *   staleness window the proof closes elsewhere — a cached ledger page, a
- *   deep-linked url, a queued job — does not exist on this path. That makes the
- *   gap narrower here than anywhere else, not absent: sensitivity, domain
- *   exclusions, and record lifecycle are facts SQL still cannot see.
- *
- * #390 owns closing it. This note exists because the defect was the silence, not
- * the deferral: a seam pre-filtered where its siblings are proved has to say so
- * where whoever extends it will read it.
+ * That narrowing is `visibleHouseholdRecordSql`, and it is a pre-filter rather than
+ * the decision. The decision is the Household Authorization Proof the seam obtains
+ * for every surviving candidate before fusion (see `authority.ts`), which is why
+ * each candidate carries its own `authorization` facts alongside what it displays.
+ * The two gates answer the same question in the two languages it has to hold in,
+ * and the proof is the ceiling: a row SQL admitted and the proof refuses is dropped
+ * and leaves nothing behind (ADR 0219). #386 deferred this to #390, which closed it.
  */
 export type AssetSearchStore = {
   /**

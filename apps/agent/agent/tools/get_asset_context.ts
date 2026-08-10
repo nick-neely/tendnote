@@ -44,6 +44,11 @@ export default defineTool({
       assetKind: asset.kind,
       assetStatus: asset.status,
       visibilityLabel: visibilityLabelForScope(asset.scope),
+      // The anchor's ownership form, carried so every surface reading this result
+      // can suppress an audience nobody chose on the household's own record
+      // (ADR 0214). Reported once, on the Asset, and reused for its facts below —
+      // a memory under a household-native Asset is the household's too.
+      ownership: asset.ownership,
       snapshotStatus: status,
       // Generated prose. Deliberately a separate field from `facts` so it can never be
       // mistaken for the records — and null when there is no usable snapshot at all.
@@ -54,6 +59,7 @@ export default defineTool({
         value: describeAssetMemoryValue(memory.value) || null,
         notes: memory.notes,
         visibilityLabel: visibilityLabelForScope(memory.scope),
+        ownership: asset.ownership,
       })),
       evidence: context.evidence.map((item) => ({
         evidenceId: item.id,
@@ -90,7 +96,9 @@ export default defineTool({
         asset: output.assetName,
         kind: output.assetKind,
         status: output.assetStatus,
-        visibility: output.visibilityLabel,
+        // Nothing to state an audience from when the household owns the record.
+        visibility: output.ownership === "household_native" ? null : output.visibilityLabel,
+        ownership: output.ownership,
         // The trust boundary, restated where the model actually reads it: the summary
         // is a cache, the facts are the records.
         snapshot:
@@ -107,7 +115,7 @@ export default defineTool({
           label: fact.label,
           value: fact.value,
           notes: fact.notes,
-          visibility: fact.visibilityLabel,
+          visibility: fact.ownership === "household_native" ? null : fact.visibilityLabel,
         })),
         evidenceOnFile: output.evidence.map((item) => `${item.label} (${item.kind})`),
         relatedAssets: output.relatedAssets.map(

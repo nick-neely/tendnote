@@ -660,6 +660,43 @@ describe("Global Recall", () => {
     });
   });
 
+  it("names no audience on a household-native Asset", async () => {
+    // A recall row reports the audience someone chose. Nobody chose to share the
+    // household's own refrigerator with the household, so there is none to report
+    // and the field takes its absent shape rather than a "Whole household" chip
+    // the record never earned (ADR 0214).
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchAssets: async () =>
+        assetOutcome([
+          {
+            recordKind: "asset" as const,
+            recordId: "asset-1",
+            assetId: "asset-1",
+            assetName: "Kitchen refrigerator",
+            assetKind: "appliance" as const,
+            assetStatus: "active" as const,
+            ownership: "household_native" as const,
+            label: "Kitchen refrigerator",
+            snippet: "Kitchen refrigerator",
+            matchedFields: ["name"],
+            value: null,
+            trustLevel: "asset_anchor" as const,
+            visibilityChoice: "whole_household" as const,
+            visibilityLabel: "Whole household",
+            citations: [{ kind: "asset" as const, id: "asset-1" }],
+            matchKinds: ["exact" as const],
+            score: 0.9,
+          },
+        ]),
+    });
+
+    const { results } = await recall.search({ ownerUserId: OWNER, query: "refrigerator" });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.visibility).toBeNull();
+  });
+
   it("returns Asset Memories canonically while evidence only grounds its parent Asset", async () => {
     const recall = createGlobalRecall({
       ...emptyDependencies,

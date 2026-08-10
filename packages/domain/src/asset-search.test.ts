@@ -92,6 +92,12 @@ function candidate(overrides: Partial<AssetSearchCandidate> = {}): AssetSearchCa
     assetKind: "appliance",
     assetStatus: "active",
     ownership: "member_owned",
+    authorization: {
+      ownerUserId: "user-1",
+      scope: "private",
+      householdId: null,
+      ownership: "member_owned",
+    },
     label: "Filter size",
     snippet: "RPWFE",
     matchedFields: ["label"],

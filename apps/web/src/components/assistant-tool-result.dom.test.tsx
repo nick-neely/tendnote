@@ -667,6 +667,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
           matchKinds: ["structured", "exact"],
           trustLevel: "asset_fact",
           visibilityLabel: "Only me",
+          ownership: "member_owned",
         },
       ],
     });
@@ -680,6 +681,36 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).not.toContain("memory-1");
     expect(html).toContain('href="/assets/asset-1"');
     expect(html.split("asset-1")).toHaveLength(2);
+  });
+
+  it("states the trust register but no audience on a household-native search row", () => {
+    // Nobody chose to share the household's own refrigerator with the household, so
+    // the row must not say so — and it must not leave the separator dangling either
+    // (ADR 0214). The chat card was the last Asset Search surface still naming one.
+    const html = render({
+      kind: "asset_search",
+      query: "fridge",
+      results: [
+        {
+          recordKind: "asset",
+          recordId: "asset-1",
+          assetId: "asset-1",
+          assetName: "Kitchen refrigerator",
+          label: "Kitchen refrigerator",
+          snippet: "Kitchen refrigerator",
+          value: null,
+          matchKinds: ["exact"],
+          trustLevel: "asset_anchor",
+          visibilityLabel: "Whole household",
+          ownership: "household_native",
+        },
+      ],
+    });
+
+    expect(html).toContain("Asset");
+    expect(html).toContain("Exact text");
+    expect(html).not.toContain("Whole household");
+    expect(html).not.toMatch(/Exact text\s*(·|&middot;|\u00b7)\s*</);
   });
 
   it("renders an empty search_assets result as a quiet line", () => {
@@ -703,6 +734,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
           value: "EDR1RXD1",
           notes: null,
           visibilityLabel: "Only me",
+          ownership: "member_owned",
         },
       ],
       evidence: [{ evidenceId: "e1", kind: "photo", label: "Filter photo" }],
@@ -736,6 +768,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
           value: "EDR1RXD1",
           notes: null,
           visibilityLabel: "Only me",
+          ownership: "member_owned",
         },
       ],
       evidence: [],
@@ -746,6 +779,32 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("EDR1RXD1");
     expect(html).not.toContain("not a source of truth");
     expect(html).toContain("summary unavailable");
+  });
+
+  it("names no audience on a household-native asset's own fact", () => {
+    const html = render({
+      kind: "asset_context",
+      found: true,
+      assetName: "Kitchen refrigerator",
+      snapshotStatus: "fresh",
+      summary: null,
+      facts: [
+        {
+          memoryId: "m1",
+          label: "Filter model",
+          value: "EDR1RXD1",
+          notes: null,
+          visibilityLabel: "Whole household",
+          ownership: "household_native",
+        },
+      ],
+      evidence: [],
+      actions: [],
+    });
+
+    expect(html).toContain("Filter model");
+    expect(html).toContain("EDR1RXD1");
+    expect(html).not.toContain("Whole household");
   });
 
   it("renders a not-found asset context as a quiet line", () => {

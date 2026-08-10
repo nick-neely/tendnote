@@ -148,6 +148,12 @@ export type AssetSearchResultView = {
   matchKinds: ("structured" | "exact" | "semantic")[];
   trustLevel: "asset_anchor" | "asset_fact" | "suggested_asset_fact" | "asset_evidence";
   visibilityLabel: string;
+  /**
+   * The anchor's ownership form. The card reads it to decide whether an audience is
+   * a thing anyone chose: on a household-native record there is none to name, and
+   * stating one would invent a sharing decision (ADR 0214).
+   */
+  ownership: "member_owned" | "household_native";
 };
 
 /** One reviewed fact about an Asset — a confirmed record, never snapshot prose. */
@@ -157,6 +163,8 @@ export type AssetFactView = {
   value: string | null;
   notes: string | null;
   visibilityLabel: string;
+  /** The anchor's form, for the same audience rule as the search row above. */
+  ownership: "member_owned" | "household_native";
 };
 
 /** One tentative suggestion the user can approve or dismiss inline. */

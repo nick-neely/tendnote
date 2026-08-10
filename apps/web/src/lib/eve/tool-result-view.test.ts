@@ -1202,6 +1202,10 @@ describe("toAssistantToolView (asset search and context)", () => {
           matchKinds: ["structured", "exact"],
           trustLevel: "asset_fact",
           visibilityLabel: "Only me",
+          // Absent from the tool output above, and defaulted rather than dropped: a
+          // result persisted before the field existed reads as the conservative
+          // form, so the card keeps naming the audience someone did choose.
+          ownership: "member_owned",
         },
       ],
     });
@@ -1258,6 +1262,7 @@ describe("toAssistantToolView (asset search and context)", () => {
           value: "EDR1RXD1",
           notes: null,
           visibilityLabel: "Only me",
+          ownership: "member_owned",
         },
       ],
       evidence: [{ evidenceId: "e1", kind: "photo", label: "Filter photo" }],

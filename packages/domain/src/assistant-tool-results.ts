@@ -332,6 +332,16 @@ export const assetSearchToolResult = z.object({
       trustLevel: z.enum(["asset_anchor", "asset_fact", "suggested_asset_fact", "asset_evidence"]),
       visibilityChoice: z.enum(["only_me", "selected_members", "whole_household"]),
       visibilityLabel: z.string(),
+      /**
+       * The anchor's ownership form, so the chat card can tell "shared with the
+       * household" apart from "is the household's" and stop naming an audience
+       * nobody chose (ADR 0214). The last Asset Search surface to get it: the web
+       * panel, the ledger, the profile, and the review card all suppress the label
+       * on a household-native record, and a chat card that still stated one would
+       * be the same record described two ways in one product. Defaulted, because a
+       * tool result persisted before this field existed must still parse.
+       */
+      ownership: assetOwnershipSchema.default("member_owned"),
     }),
   ),
 });
@@ -348,6 +358,8 @@ export const assetContextToolResult = z.object({
   assetKind: z.string(),
   assetStatus: z.string(),
   visibilityLabel: z.string(),
+  /** The Asset's own ownership form, for the same audience rule (ADR 0214). */
+  ownership: assetOwnershipSchema.default("member_owned"),
   snapshotStatus: z.enum(["fresh", "rebuilt", "fallback"]),
   summary: z.string().nullable(),
   facts: z.array(
@@ -357,6 +369,12 @@ export const assetContextToolResult = z.object({
       value: z.string().nullable(),
       notes: z.string().nullable(),
       visibilityLabel: z.string(),
+      /**
+       * The *anchor's* form again, not the memory row's — the same rule Asset
+       * Search reports by, so one fact does not describe itself differently
+       * depending on which surface asked for it.
+       */
+      ownership: assetOwnershipSchema.default("member_owned"),
     }),
   ),
   evidence: z.array(z.object({ evidenceId: z.string(), kind: z.string(), label: z.string() })),
