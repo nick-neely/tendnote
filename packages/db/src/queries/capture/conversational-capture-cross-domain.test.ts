@@ -465,6 +465,61 @@ describe("cross-domain conversational Capture", () => {
     );
   });
 
+  it("keeps an inference private even when the explicit clause was chosen for the household", async () => {
+    // Review owns durable creation, and a shared durable record may never come
+    // from inference alone. Choosing the household scope widens the thing the
+    // member actually asked to save and nothing else: the secondary reading
+    // stays a private review artifact for them to accept or drop.
+    const store = createInMemorySavedItemLifecycleStore();
+    await seedHouseholdWithMembers(store, {
+      ownerUserId: "owner-1",
+      members: [["owner-1", "owner"]],
+    });
+    const createSuggestedMemory = vi.fn().mockImplementation(async (input) =>
+      actionMutationOutcome({
+        id: "suggested-memory-priya",
+        personId: input.personId,
+        sourceRecordId: input.sourceRecordId,
+        status: "suggested",
+      }),
+    );
+    const capture = createConversationalCapture(store, {
+      createSuggestedMemory,
+      resolveVisibility: createCaptureVisibilityResolver({
+        listMemberships: store.listActiveHouseholdMembershipsForUser,
+        listMembers: vi.fn().mockResolvedValue([]),
+      }),
+    });
+
+    const result = await capture.capture({
+      authority: "explicit",
+      interactionId: "household-explicit-private-inference",
+      inferredSuggestions: [
+        {
+          kind: "memory",
+          personId: "person-priya",
+          personName: "Priya",
+          content: "Priya might prefer oat milk",
+        },
+      ],
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "Buy oat milk",
+      requestedScope: "household",
+      surface: "eve",
+    });
+
+    // The explicit clause and its grounding evidence went to the household...
+    expect(result.sourceRecord.scope).toBe("household");
+    // ...and the inference is still a private suggestion nobody else can see.
+    expect(createSuggestedMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerUserId: "owner-1", personId: "person-priya" }),
+    );
+    const suggestedCall = createSuggestedMemory.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(suggestedCall.scope).toBeUndefined();
+    expect(suggestedCall.householdId).toBeUndefined();
+  });
+
   it("keeps inferred secondary outcomes typed, private, review-gated, and source-grounded", async () => {
     const store = createInMemorySavedItemLifecycleStore();
     const createGeneralAction = vi

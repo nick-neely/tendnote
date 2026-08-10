@@ -27,6 +27,30 @@ describe("no-send-without-approval", () => {
     }
   });
 
+  it("the household tools add no channel, no delivery, and no external reach", () => {
+    // Phase Eight's whole delivery contract in one assertion: a Household surface
+    // is in-app and caller-scoped, so the tools that read or write one may not
+    // import a provider, a mailer, a push sender, or the Discord channel. Household
+    // email, a shared channel, cross-member push, and autonomous sends are all
+    // absent because there is nothing here that could perform one (ADR 0220).
+    const householdTools = ["household_check_in.ts", "search_gift_plans.ts", "add_gift_idea.ts"];
+
+    for (const fileName of householdTools) {
+      const source = readFileSync(join(process.cwd(), "agent/tools", fileName), "utf8");
+      const importSources = [...source.matchAll(/from\s+"([^"]+)"/g)].map(
+        (match) => match[1] ?? "",
+      );
+      for (const moduleId of importSources) {
+        expect(moduleId).not.toMatch(
+          /gmail|mail|discord|push|notification|provider|sendgrid|twilio|slack|resend|channel/i,
+        );
+      }
+      // And nothing reaches another member: no tool takes a user id, a household
+      // id, or a recipient. The caller's own session is the only identity here.
+      expect(source).not.toMatch(/\b(recipientUserId|memberUserId|householdId:\s*z\.)/);
+    }
+  });
+
   it("the draft tool stays Tendnote-only: it persists a draft and never sends or drafts externally", () => {
     // Phase 1G adds a drafting tool; the no-send guarantee now covers it explicitly.
     const draftTool = readFileSync(
