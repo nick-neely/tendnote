@@ -29,21 +29,6 @@ export function ensureDefaultBriefSchedulesForOwner(input: EnsureDefaultBriefSch
   return ensureDefaultBriefSchedules(defaultBriefScheduleStore, input);
 }
 
-/** One owner's briefing schedules. Owner-scoped: there is no other-user form. */
-export function listBriefSchedulesForOwner(input: { ownerUserId: string }) {
-  return defaultBriefScheduleStore.listBriefSchedulesForOwner(input);
-}
-
-/**
- * Turns this member's Household Check-in on or off (#390).
- *
- * The caller is the subject — there is deliberately no argument for whose
- * Check-in this is, because a member may only ever opt themselves in (ADR 0220).
- */
-export function setHouseholdCheckinEnabled(input: { ownerUserId: string; enabled: boolean }) {
-  return defaultBriefScheduleStore.setHouseholdCheckinEnabled(input);
-}
-
 // The dispatcher generates by calling the shared brief generator directly — the
 // same default the manual web action uses — and never starts an Eve chat session
 // or proactive channel delivery for in-app brief persistence (ADR-0066).

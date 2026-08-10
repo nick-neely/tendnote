@@ -1,5 +1,5 @@
 {
-  "id": "76399907-ab31-4dbb-9cd6-d40c512e62d8",
+  "id": "6fd2e551-e8d0-46f1-9976-200799027348",
   "prevId": "74ec7ed8-03a1-4696-be5b-5dc0df172263",
   "version": "7",
   "dialect": "postgresql",
@@ -48,6 +48,13 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "household_checkin_enabled": {
+          "name": "household_checkin_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "created_at": {
           "name": "created_at",
@@ -2493,13 +2500,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
-        },
-        "household_checkin_enabled": {
-          "name": "household_checkin_enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "lease_expires_at": {
           "name": "lease_expires_at",

@@ -32,6 +32,18 @@ export const accessProfileSchema = z.object({
   grantedAt: z.date().nullable(),
   selfContextOnboardingStatus: selfContextOnboardingStatusSchema,
   selfContextOnboardingReminderAt: z.date().nullable(),
+  /**
+   * Whether this member has asked for a Household Check-in in their own briefing
+   * (#390).
+   *
+   * It lives on the access profile rather than beside the brief schedules it
+   * shows up in, because a member always has an access profile and may not yet
+   * have a briefing row — and a preference stored on a row that might not exist
+   * is a control that reports success while doing nothing. Default `false`: a
+   * Check-in is offered, never assumed, and no member may enable one for another
+   * (ADR 0220).
+   */
+  householdCheckinEnabled: z.boolean().default(false),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

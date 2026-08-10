@@ -13,6 +13,7 @@ export function createInMemoryAccessProfileStore(seed: AccessProfile[] = []): Ac
       grantedAt: input.grantedAt,
       selfContextOnboardingStatus: input.selfContextOnboardingStatus ?? "not_started",
       selfContextOnboardingReminderAt: input.selfContextOnboardingReminderAt ?? null,
+      householdCheckinEnabled: false,
       createdAt: now,
       updatedAt: now,
     };

@@ -71,18 +71,6 @@ export function createDrizzleBriefScheduleStore(): BriefScheduleStore {
 
       return toSchedule(schedule);
     },
-    async setHouseholdCheckinEnabled(input) {
-      const rows = await getDb()
-        .update(briefSchedules)
-        .set({ householdCheckinEnabled: input.enabled, updatedAt: new Date() })
-        .where(eq(briefSchedules.ownerUserId, input.ownerUserId))
-        .returning();
-
-      // No rows is not an error: a member who has never had a briefing generated
-      // has nothing to flip, and their answer to "is the Check-in on?" stays the
-      // correct `false`.
-      return rows.map(toSchedule);
-    },
     async claimDueBriefSchedules(input) {
       // Lock due, enabled, lease-free rows and skip ones another dispatcher holds.
       const dueRows = getDb()

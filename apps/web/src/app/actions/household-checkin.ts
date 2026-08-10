@@ -1,6 +1,6 @@
 "use server";
 
-import { setHouseholdCheckinEnabled } from "@tendnote/db/queries/brief-schedules";
+import { setHouseholdCheckinEnabled } from "@tendnote/db/queries/access-profiles";
 import { z } from "zod";
 import { runOwnerAction } from "@/lib/owner-action";
 
@@ -24,8 +24,11 @@ export async function setHouseholdCheckinAction(input: { enabled: boolean }) {
     schema: setCheckinSchema,
     input,
     body: async ({ ownerUserId, input: parsed }) => {
-      await setHouseholdCheckinEnabled({ ownerUserId, enabled: parsed.enabled });
-      return { enabled: parsed.enabled };
+      const enabled = await setHouseholdCheckinEnabled({
+        userId: ownerUserId,
+        enabled: parsed.enabled,
+      });
+      return { enabled };
     },
     affectedScopes: (_outcome, ownerUserId) => [
       { kind: "owner-collection", collection: "today", ownerUserId },

@@ -27,6 +27,7 @@ export type AccessProfilePatch = Partial<
     | "grantedAt"
     | "selfContextOnboardingStatus"
     | "selfContextOnboardingReminderAt"
+    | "householdCheckinEnabled"
   >
 >;
 

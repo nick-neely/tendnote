@@ -64,20 +64,6 @@ export function createInMemoryBriefScheduleStore(): BriefScheduleStore {
       schedules.set(updated.id, updated);
       return updated;
     },
-    async setHouseholdCheckinEnabled(input) {
-      const owned = [...schedules.values()].filter(
-        (schedule) => schedule.ownerUserId === input.ownerUserId,
-      );
-      return owned.map((schedule) => {
-        const updated = {
-          ...schedule,
-          householdCheckinEnabled: input.enabled,
-          updatedAt: new Date(),
-        };
-        schedules.set(updated.id, updated);
-        return updated;
-      });
-    },
     async claimDueBriefSchedules(input) {
       const due = [...schedules.values()]
         .filter(

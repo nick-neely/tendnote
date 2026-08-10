@@ -1,1 +1,1 @@
-ALTER TABLE "brief_schedules" ADD COLUMN "household_checkin_enabled" boolean DEFAULT false NOT NULL;
+ALTER TABLE "access_profiles" ADD COLUMN "household_checkin_enabled" boolean DEFAULT false NOT NULL;

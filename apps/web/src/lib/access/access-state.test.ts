@@ -21,6 +21,7 @@ const admittedDecision: AccessDecision = {
     grantedAt: new Date(),
     selfContextOnboardingStatus: "not_started",
     selfContextOnboardingReminderAt: null,
+    householdCheckinEnabled: false,
     createdAt: new Date(),
     updatedAt: new Date(),
   },

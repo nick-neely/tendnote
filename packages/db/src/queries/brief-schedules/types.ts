@@ -20,20 +20,6 @@ export type BriefScheduleStore = {
     cadence: BriefCadence;
     enabled: boolean;
   }) => Promise<BriefSchedule>;
-  /**
-   * Turns this member's Household Check-in on or off across their own briefing
-   * schedules (#390).
-   *
-   * Owner-scoped and every-cadence at once, because the member is opting into a
-   * Check-in rather than into a particular cadence's version of one — leaving
-   * daily on and weekly off would give them two different answers to the same
-   * question. It takes no household and no other member: nobody can enable a
-   * Check-in for anyone but themselves (ADR 0220).
-   */
-  setHouseholdCheckinEnabled: (input: {
-    ownerUserId: string;
-    enabled: boolean;
-  }) => Promise<BriefSchedule[]>;
   // Atomically claims up to `limit` due rows: enabled, nextRunAt <= now, and lease
   // absent or expired. Sets a fresh lease and increments attempts, so overlapping
   // dispatcher runs never claim the same row (at-least-once without duplication).

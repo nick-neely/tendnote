@@ -148,8 +148,11 @@ export async function HouseholdCheckinStream({
       now,
     });
 
+    // No rule of its own: the section above already closes on a hairline, and a
+    // second one just below it reads as a seam rather than a separation. The
+    // page's own rhythm is the boundary here.
     return (
-      <div className="flex flex-col gap-4 border-t pt-6">
+      <div className="flex flex-col gap-4">
         {householdCheckinIsWorthShowing(checkin) ? (
           <HouseholdCheckinSection
             headingId="household-checkin"

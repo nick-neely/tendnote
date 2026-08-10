@@ -1,4 +1,4 @@
-import { listBriefSchedulesForOwner } from "./brief-schedules";
+import { getAccessProfile } from "./access-profiles";
 import { listActiveGeneralActions } from "./general-actions";
 import { loadHouseholdActionCandidates } from "./household-home/candidate-loaders/actions";
 import { createHouseholdHomeService } from "./household-home/service";
@@ -50,15 +50,12 @@ const defaultHouseholdHomeService = createHouseholdHomeService({
   /**
    * The member's own opt-in, read fresh on every composition.
    *
-   * Any enabled briefing carrying the flag counts, because the member opted into
-   * a Check-in rather than into one cadence's version of one. A member with no
-   * briefing schedules at all has never opted in, and reads as `false` without a
-   * special case.
+   * From the access profile, which every admitted member has, rather than from a
+   * briefing row that may not exist yet — a member who has never had a brief
+   * generated must still be able to ask for a Check-in and get one.
    */
-  readCheckinOptIn: async ({ callerUserId }) => {
-    const schedules = await listBriefSchedulesForOwner({ ownerUserId: callerUserId });
-    return schedules.some((schedule) => schedule.householdCheckinEnabled);
-  },
+  readCheckinOptIn: async ({ callerUserId }) =>
+    (await getAccessProfile({ userId: callerUserId }))?.householdCheckinEnabled ?? false,
 });
 
 export function getHouseholdHome(input: {
