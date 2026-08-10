@@ -290,6 +290,33 @@ export function assertGiftPlanOpen(plan: Pick<GiftPlan, "status">): void {
   }
 }
 
+/**
+ * Whether the plan is still taking commitments about something yet to happen.
+ *
+ * Adding an idea and claiming one are both statements about a celebration in the
+ * future — "I'll handle this" means nothing once it has happened — so they need
+ * an `active` plan. Tidying up afterwards needs only that the plan is not
+ * archived: fixing your own wording, removing your own idea, or withdrawing a
+ * claim you can no longer keep all stay available on a celebrated plan.
+ *
+ * The rule lives here rather than in the surface so the control and the write
+ * agree. A page that merely hid the button would still accept the request from a
+ * stale tab, and a celebration already past would quietly collect a claim nobody
+ * can act on.
+ */
+export function giftPlanAcceptsCommitments(plan: Pick<GiftPlan, "status">): boolean {
+  return plan.status === "active";
+}
+
+export function assertGiftPlanAcceptsCommitments(plan: Pick<GiftPlan, "status">): void {
+  assertGiftPlanOpen(plan);
+  if (!giftPlanAcceptsCommitments(plan)) {
+    throw new GiftPlanValidationError(
+      "This plan is marked celebrated. Reopen it to add or claim ideas.",
+    );
+  }
+}
+
 const GIFT_PLAN_TRANSITIONS: Record<GiftPlanStatus, readonly GiftPlanStatus[]> = {
   active: ["celebrated", "archived"],
   celebrated: ["active", "archived"],

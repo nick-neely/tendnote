@@ -1,5 +1,6 @@
 import type { GiftPlanDetail, GiftPlanWithContext } from "@tendnote/db/queries/gift-plans";
 import type { GiftIdea, GiftPlanEvent, GiftPlanStatus, PrivacyScope } from "@tendnote/domain";
+import { giftPlanAcceptsCommitments } from "@tendnote/domain";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
 import type { OwnerActionResult } from "@/lib/owner-action";
 
@@ -12,6 +13,15 @@ export type GiftPlanView = {
   /** "In 3 weeks", "Today", "Passed" — a quiet reference, never a countdown. */
   timingLabel: string | null;
   status: GiftPlanStatus;
+  /** "Celebrated" / "Archived", or `null` while the plan is simply under way. */
+  statusLabel: string | null;
+  /**
+   * Whether the plan still takes new ideas and claims. Read from the domain, so
+   * a control that appears and a write that succeeds cannot disagree.
+   */
+  acceptsCommitments: boolean;
+  /** The plain-language reason contributions are closed, when they are. */
+  closedReason: string | null;
   scope: PrivacyScope;
   visibilityLabel: string;
   householdName: string | null;
@@ -57,6 +67,27 @@ export type GiftPlanPeopleLabels = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * `null` for `active`, because a plan under way is the ordinary case and a chip
+ * saying so on every row would be noise. The two states that change what the
+ * page can do are the two that get named.
+ */
+const GIFT_PLAN_STATUS_LABELS: Record<GiftPlanStatus, string | null> = {
+  active: null,
+  celebrated: "Celebrated",
+  archived: "Archived",
+};
+
+/**
+ * Why contributions are closed, in the words the reader needs: what happened,
+ * and the one move that reopens it. Never a bare disabled control.
+ */
+const GIFT_PLAN_CLOSED_REASONS: Record<GiftPlanStatus, string | null> = {
+  active: null,
+  celebrated: "This plan is marked celebrated. Reopen it to add or claim ideas.",
+  archived: "This plan is archived. Reopen it to make changes.",
+};
+
+/**
  * How near the occasion is, said plainly.
  *
  * No red, no "overdue", no count of days left once it has passed. A gift plan
@@ -91,6 +122,9 @@ export function toGiftPlanView(
     occasionOn: plan.occasionOn?.toISOString() ?? null,
     timingLabel: timingLabel(plan.occasionOn, now),
     status: plan.status,
+    statusLabel: GIFT_PLAN_STATUS_LABELS[plan.status],
+    acceptsCommitments: giftPlanAcceptsCommitments(plan),
+    closedReason: GIFT_PLAN_CLOSED_REASONS[plan.status],
     scope: plan.scope,
     visibilityLabel:
       plan.scope === "shared" && plan.sharedWithUserIds.length > 0

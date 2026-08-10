@@ -1,4 +1,11 @@
-import { CalendarIcon, EyeSlashIcon, HomeIcon, LockIcon, UsersIcon } from "@/components/icons";
+import {
+  CalendarIcon,
+  CircleCheckIcon,
+  EyeSlashIcon,
+  HomeIcon,
+  LockIcon,
+  UsersIcon,
+} from "@/components/icons";
 import type { GiftPlanView } from "@/lib/gift-plan-view";
 
 /** Fallback when a Gift Plan mutation fails for an unknown reason. */
@@ -34,14 +41,50 @@ export function GiftPlanAudienceChip({ plan }: { plan: GiftPlanView }) {
  * a responsibility the reader is holding, not a party the interface is throwing.
  */
 export function GiftPlanSurpriseChip() {
+  // No `title`. The word and the glyph already say it, and a tooltip is the one
+  // place the detail would have been mouse-only — unreachable by keyboard and by
+  // touch. The detail page states the promise in visible text instead.
   return (
-    <span
-      className={`${CHIP} border-transparent bg-accent-soft text-accent-soft-foreground`}
-      title="Hidden from the person this is for"
-    >
+    <span className={`${CHIP} border-transparent bg-accent-soft text-accent-soft-foreground`}>
       <EyeSlashIcon aria-hidden className="size-3 shrink-0" />
       Surprise
     </span>
+  );
+}
+
+/**
+ * Where the plan is in its life, for every viewer rather than only its owner.
+ *
+ * Before this, a co-planner could not see that a plan was celebrated — so they
+ * had no way to understand why the claim control had gone, and, worse, no way to
+ * notice they were claiming a gift for a party that had already happened. A word
+ * and a glyph, never colour alone.
+ *
+ * Nothing renders while the plan is under way: that is the ordinary case, and a
+ * chip on every row would be noise rather than information.
+ */
+export function GiftPlanStatusChip({ label }: { label: string | null }) {
+  if (!label) return null;
+  return (
+    <span className={CHIP}>
+      <CircleCheckIcon aria-hidden className="size-3 shrink-0" />
+      {label}
+    </span>
+  );
+}
+
+/**
+ * The calm line that stands where a control used to be.
+ *
+ * A disabled button explains nothing and reads as a small alarm; this says what
+ * happened and the one move that undoes it. Deliberately not `role="alert"` —
+ * nothing has gone wrong here.
+ */
+export function GiftPlanClosedNote({ reason }: { reason: string }) {
+  return (
+    <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
+      {reason}
+    </p>
   );
 }
 

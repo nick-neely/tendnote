@@ -8,6 +8,7 @@ import type {
 import {
   assertAudienceExcludesSurpriseSubject,
   assertGiftIdeaContributor,
+  assertGiftPlanAcceptsCommitments,
   assertGiftPlanOpen,
   assertGiftRecordFresh,
   assertSurpriseSubjectEligible,
@@ -195,13 +196,23 @@ export function createGiftPlanLifecycle(
   async function requireContributablePlan(input: {
     actorUserId: string;
     giftPlanId: string;
+    /**
+     * `commitment` for the acts that speak about a celebration still to come —
+     * adding an idea, claiming one — which need an `active` plan. Tidying is the
+     * default and only needs the plan not to be archived.
+     */
+    intent?: "commitment" | "tidy";
   }): Promise<GiftPlan> {
     const plan = await requirePlan({
       callerUserId: input.actorUserId,
       giftPlanId: input.giftPlanId,
       operation: "view",
     });
-    assertGiftPlanOpen(plan);
+    if (input.intent === "commitment") {
+      assertGiftPlanAcceptsCommitments(plan);
+    } else {
+      assertGiftPlanOpen(plan);
+    }
     return plan;
   }
 
@@ -694,7 +705,7 @@ export function createGiftPlanLifecycle(
       note?: string | null;
       url?: string | null;
     }): Promise<MutationOutcome<GiftIdea>> {
-      const plan = await requireContributablePlan(input);
+      const plan = await requireContributablePlan({ ...input, intent: "commitment" });
       const idea = await store.plans.createGiftIdea(
         createGiftIdeaSchema.parse({
           giftPlanId: plan.id,
@@ -750,7 +761,7 @@ export function createGiftPlanLifecycle(
       actorUserId: string;
       giftIdeaId: string;
     }): Promise<MutationOutcome<GiftIdea>> {
-      const { plan, idea } = await requireContributableIdea(input);
+      const { plan, idea } = await requireContributableIdea({ ...input, intent: "commitment" });
       resolveGiftIdeaClaim({ idea, actorUserId: input.actorUserId, intent: "claim" });
       if (idea.claimedByUserId === input.actorUserId) {
         return { result: idea, affectedScopes: await ideaScopes(plan) };
@@ -802,12 +813,17 @@ export function createGiftPlanLifecycle(
   }
 
   /** An idea inside a plan the caller may see, with the plan still open. */
-  async function requireContributableIdea(input: { actorUserId: string; giftIdeaId: string }) {
+  async function requireContributableIdea(input: {
+    actorUserId: string;
+    giftIdeaId: string;
+    intent?: "commitment" | "tidy";
+  }) {
     const idea = await store.plans.getGiftIdeaById({ giftIdeaId: input.giftIdeaId });
     if (!idea) throw new HouseholdRecordUnavailableError();
     const plan = await requireContributablePlan({
       actorUserId: input.actorUserId,
       giftPlanId: idea.giftPlanId,
+      intent: input.intent,
     });
     return { plan, idea };
   }

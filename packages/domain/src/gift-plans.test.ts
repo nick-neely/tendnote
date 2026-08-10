@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   assertAudienceExcludesSurpriseSubject,
   assertGiftIdeaContributor,
+  assertGiftPlanAcceptsCommitments,
   assertGiftPlanOpen,
   assertGiftRecordFresh,
   assertSurpriseSubjectEligible,
   audienceWithoutSurpriseSubject,
   GiftPlanConflictError,
   GiftPlanValidationError,
+  giftPlanAcceptsCommitments,
   giftPlanExclusions,
   resolveGiftIdeaClaim,
   resolveGiftPlanTransition,
@@ -100,6 +102,22 @@ describe("gift plan lifecycle", () => {
   it("holds edits off an archived plan", () => {
     expect(() => assertGiftPlanOpen({ status: "archived" })).toThrow(/archived/i);
     expect(() => assertGiftPlanOpen({ status: "celebrated" })).not.toThrow();
+  });
+
+  it("stops taking commitments once the occasion has been marked celebrated", () => {
+    expect(giftPlanAcceptsCommitments({ status: "active" })).toBe(true);
+    expect(giftPlanAcceptsCommitments({ status: "celebrated" })).toBe(false);
+    expect(giftPlanAcceptsCommitments({ status: "archived" })).toBe(false);
+  });
+
+  it("names what happened and the move that reopens it", () => {
+    expect(() => assertGiftPlanAcceptsCommitments({ status: "celebrated" })).toThrow(
+      /marked celebrated\. Reopen it/,
+    );
+    // Archived is still reported as archived rather than collapsed into one
+    // message: the two states are undone by different moves.
+    expect(() => assertGiftPlanAcceptsCommitments({ status: "archived" })).toThrow(/archived/i);
+    expect(() => assertGiftPlanAcceptsCommitments({ status: "active" })).not.toThrow();
   });
 });
 

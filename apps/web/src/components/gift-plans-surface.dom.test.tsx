@@ -22,6 +22,8 @@ const actions = vi.hoisted(() => ({
   createGiftPlanAction: vi.fn(),
   addGiftIdeaAction: vi.fn(),
   claimGiftIdeaAction: vi.fn(),
+  editGiftIdeaAction: vi.fn(),
+  editGiftPlanAction: vi.fn(),
   releaseGiftIdeaAction: vi.fn(),
   removeGiftIdeaAction: vi.fn(),
   setGiftPlanAudienceAction: vi.fn(),
@@ -44,6 +46,9 @@ function plan(overrides: Partial<GiftPlanView> = {}): GiftPlanView {
     occasionOn: null,
     timingLabel: "In 3 weeks",
     status: "active",
+    statusLabel: null,
+    acceptsCommitments: true,
+    closedReason: null,
     scope: "shared",
     visibilityLabel: "1 co-planner",
     householdName: "The Neely house",
@@ -80,6 +85,13 @@ function detail(overrides: Partial<GiftPlanDetailView> = {}): GiftPlanDetailView
     ...overrides,
   };
 }
+
+const CELEBRATED = {
+  status: "celebrated",
+  statusLabel: "Celebrated",
+  acceptsCommitments: false,
+  closedReason: "This plan is marked celebrated. Reopen it to add or claim ideas.",
+} as const;
 
 const MEMBERS = [
   { userId: "user-mara", name: "Mara", email: "mara@example.com" },
@@ -247,5 +259,220 @@ describe("the gift plan detail", () => {
     expect(screen.getByText("Mara added an idea")).toBeTruthy();
     expect(screen.getByText("You started this plan")).toBeTruthy();
     expect(screen.queryByText(/idea_added/)).toBeNull();
+  });
+});
+
+describe("a plan that is no longer taking commitments", () => {
+  it("says so in the header, to every viewer and not only the owner", () => {
+    render(
+      <GiftPlanDetailSurface detail={detail({ plan: plan({ ...CELEBRATED, owned: false }) })} />,
+    );
+    expect(screen.getByText("Celebrated")).toBeTruthy();
+  });
+
+  it("carries the same word on the list row", () => {
+    render(<GiftPlansSurface plans={[plan({ ...CELEBRATED })]} />);
+    expect(screen.getByText("Celebrated")).toBeTruthy();
+  });
+
+  it("replaces the add control with the reason and the way back", () => {
+    render(<GiftPlanDetailSurface detail={detail({ plan: plan({ ...CELEBRATED }) })} />);
+    expect(screen.queryByRole("button", { name: /Add an idea/ })).toBeNull();
+    expect(screen.getByText(/marked celebrated\. Reopen it to add or claim ideas/)).toBeTruthy();
+  });
+
+  it("stops a co-planner claiming a gift for a party that already happened", () => {
+    render(
+      <GiftPlanDetailSurface detail={detail({ plan: plan({ ...CELEBRATED }), ideas: [idea()] })} />,
+    );
+    expect(screen.queryByRole("button", { name: /I'll handle this/ })).toBeNull();
+  });
+
+  it("still lets the holder of a claim let it go", () => {
+    render(
+      <GiftPlanDetailSurface
+        detail={detail({
+          plan: plan({ ...CELEBRATED }),
+          ideas: [idea({ claimedByLabel: "You", claimedByMe: true })],
+        })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Let it go/ })).toBeTruthy();
+  });
+});
+
+describe("losing a claim race", () => {
+  it("corrects the row in place and says who has it, beside the idea", async () => {
+    const user = userEvent.setup();
+    actions.claimGiftIdeaAction.mockResolvedValue({
+      ok: false,
+      error: "Someone else already said they'd handle this one.",
+      conflict: { currentValue: "Wool blanket", actorLabel: "Sam", revision: 2 },
+    });
+    render(<GiftPlanDetailSurface detail={detail({ ideas: [idea()] })} />);
+
+    await user.click(screen.getByRole("button", { name: /I'll handle this/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sam is handling this/)).toBeTruthy();
+    });
+    // The stale control is gone, so there is nothing left to press again.
+    expect(screen.queryByRole("button", { name: /I'll handle this/ })).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("already said they'd handle");
+  });
+
+  it("announces a claim that did land, politely", async () => {
+    const user = userEvent.setup();
+    actions.claimGiftIdeaAction.mockResolvedValue({
+      ok: true,
+      view: idea({ claimedByLabel: "You", claimedByMe: true }),
+    });
+    render(<GiftPlanDetailSurface detail={detail({ ideas: [idea()] })} />);
+
+    await user.click(screen.getByRole("button", { name: /I'll handle this/ }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toBe("You're handling Wool blanket.");
+    });
+  });
+
+  it("moves focus onto the control that replaced the one it pressed", async () => {
+    const user = userEvent.setup();
+    actions.claimGiftIdeaAction.mockResolvedValue({
+      ok: true,
+      view: idea({ claimedByLabel: "You", claimedByMe: true }),
+    });
+    render(<GiftPlanDetailSurface detail={detail({ ideas: [idea()] })} />);
+
+    await user.click(screen.getByRole("button", { name: /I'll handle this/ }));
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: /Let it go/ }));
+    });
+  });
+});
+
+describe("correcting what is already written", () => {
+  it("lets the owner fix the subject without recreating the plan", async () => {
+    const user = userEvent.setup();
+    actions.editGiftPlanAction.mockResolvedValue({
+      ok: true,
+      view: plan({ subjectName: "Riley" }),
+    });
+    render(
+      <GiftPlanDetailSurface
+        detail={detail({ plan: plan({ subjectPersonId: null }) })}
+        shareableMembers={MEMBERS}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Edit details/ }));
+    const field = screen.getByLabelText("Who is it for?");
+    await user.clear(field);
+    await user.type(field, "Riley");
+    await user.click(screen.getByRole("button", { name: "Save details" }));
+
+    await waitFor(() => {
+      expect(actions.editGiftPlanAction).toHaveBeenCalledWith(
+        expect.objectContaining({ subjectName: "Riley", expectedRevision: 0 }),
+      );
+    });
+  });
+
+  it("offers an explicit replace when the record moved underneath the draft", async () => {
+    const user = userEvent.setup();
+    actions.editGiftIdeaAction.mockResolvedValue({
+      ok: false,
+      error: "This idea changed while you were editing.",
+      conflict: { currentValue: "Wool blanket, grey", actorLabel: "Sam", revision: 3 },
+    });
+    render(
+      <GiftPlanDetailSurface
+        detail={detail({ ideas: [idea({ mine: true, contributorLabel: "You" })] })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByRole("button", { name: "Save idea" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sam changed this to/)).toBeTruthy();
+    });
+    // The draft survives the conflict, and the form stays open to hold it.
+    expect(screen.getByLabelText("Idea")).toBeTruthy();
+
+    actions.editGiftIdeaAction.mockResolvedValue({ ok: true, view: idea({ mine: true }) });
+    await user.click(screen.getByRole("button", { name: "Save idea" }));
+    await waitFor(() => {
+      // The second submit is the deliberate replace: no revision to lose against.
+      expect(actions.editGiftIdeaAction).toHaveBeenLastCalledWith(
+        expect.not.objectContaining({ expectedRevision: expect.anything() }),
+      );
+    });
+  });
+
+  it("offers editing only to the contributor", () => {
+    const { unmount } = render(
+      <GiftPlanDetailSurface detail={detail({ ideas: [idea({ mine: false })] })} />,
+    );
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    unmount();
+
+    render(
+      <GiftPlanDetailSurface
+        detail={detail({ ideas: [idea({ mine: true, contributorLabel: "You" })] })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+  });
+});
+
+describe("focus after a form closes", () => {
+  it("returns to the control that opened it", async () => {
+    const user = userEvent.setup();
+    actions.addGiftIdeaAction.mockResolvedValue({ ok: true, view: idea() });
+    render(<GiftPlanDetailSurface detail={detail()} />);
+
+    const trigger = screen.getByRole("button", { name: /Add an idea/ });
+    await user.click(trigger);
+    await user.type(screen.getByLabelText("Idea"), "Wool blanket");
+    await user.click(screen.getByRole("button", { name: "Add idea" }));
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: /Add an idea/ }));
+    });
+  });
+
+  it("returns there on cancel too", async () => {
+    const user = userEvent.setup();
+    render(<GiftPlanDetailSurface detail={detail()} />);
+
+    await user.click(screen.getByRole("button", { name: /Add an idea/ }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Add an idea/ }));
+  });
+});
+
+describe("the way back to the person", () => {
+  it("links the subject for the owner who kept them", () => {
+    render(
+      <GiftPlanDetailSurface
+        detail={detail({ plan: plan({ subjectPersonId: "person-1", owned: true }) })}
+      />,
+    );
+    expect(screen.getByRole("link", { name: "Rowan" }).getAttribute("href")).toBe(
+      "/people/person-1",
+    );
+  });
+
+  it("does not offer a co-planner a person they may not be allowed to open", () => {
+    render(
+      <GiftPlanDetailSurface
+        detail={detail({ plan: plan({ subjectPersonId: "person-1", owned: false }) })}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: "Rowan" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Rowan" })).toBeTruthy();
   });
 });

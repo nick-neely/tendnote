@@ -139,6 +139,59 @@ describe("Gift Plan lifecycle", () => {
       expect(await store.plans.listGiftIdeas({ giftPlanId: planId })).toEqual([]);
     });
 
+    it("stops taking new ideas and claims once the plan is celebrated", async () => {
+      const idea = await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: planId,
+        title: "Wool blanket",
+      });
+      await plans.setGiftPlanStatus({
+        actorUserId: OWNER,
+        giftPlanId: planId,
+        status: "celebrated",
+      });
+
+      // Statements about a celebration still to come are refused ...
+      await expect(
+        plans.addGiftIdea({ actorUserId: CO_PLANNER, giftPlanId: planId, title: "Too late" }),
+      ).rejects.toThrow(/marked celebrated/);
+      await expect(
+        plans.claimGiftIdea({ actorUserId: OTHER_CO_PLANNER, giftIdeaId: idea.result.id }),
+      ).rejects.toThrow(/marked celebrated/);
+
+      // ... while tidying up afterwards is not.
+      await expect(
+        plans.editGiftIdea({
+          actorUserId: CO_PLANNER,
+          giftIdeaId: idea.result.id,
+          edit: { note: "For the record" },
+        }),
+      ).resolves.toBeDefined();
+      await expect(
+        plans.removeGiftIdea({ actorUserId: CO_PLANNER, giftIdeaId: idea.result.id }),
+      ).resolves.toBeDefined();
+    });
+
+    it("lets a claim be withdrawn after the plan is celebrated", async () => {
+      const idea = await plans.addGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftPlanId: planId,
+        title: "Wool blanket",
+      });
+      await plans.claimGiftIdea({ actorUserId: CO_PLANNER, giftIdeaId: idea.result.id });
+      await plans.setGiftPlanStatus({
+        actorUserId: OWNER,
+        giftPlanId: planId,
+        status: "celebrated",
+      });
+
+      const released = await plans.releaseGiftIdea({
+        actorUserId: CO_PLANNER,
+        giftIdeaId: idea.result.id,
+      });
+      expect(released.result.claimedByUserId).toBeNull();
+    });
+
     it("holds contributions off an archived plan", async () => {
       await plans.setGiftPlanStatus({ actorUserId: OWNER, giftPlanId: planId, status: "archived" });
       await expect(

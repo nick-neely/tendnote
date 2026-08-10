@@ -2,7 +2,7 @@
 
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { createGiftPlanAction } from "@/app/actions/gift-plans";
 import { ErrorText } from "@/components/general-action-shared";
 import {
@@ -10,16 +10,16 @@ import {
   AudiencePreview,
   type ShareableActionMember,
 } from "@/components/general-action-visibility-field";
+import { GiftPlanInlineForm } from "@/components/gift-plan-inline-form";
 import {
   GIFT_PLAN_GENERIC_ERROR,
   GiftPlanAudienceChip,
+  GiftPlanStatusChip,
   GiftPlanSurpriseChip,
   GiftPlanSurpriseNote,
   GiftPlanTimingChip,
 } from "@/components/gift-plan-shared";
-import { ChevronRightIcon, PlusIcon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronRightIcon } from "@/components/icons";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,18 +52,12 @@ export function GiftPlansSurface({
   shareableMembers?: ShareableActionMember[];
 }) {
   const [list, setList] = useServerSyncedList(plans, (plan) => plan.id);
-  const [open, setOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-6">
       <GiftPlanCreateForm
         members={shareableMembers}
-        onCreated={(plan) => {
-          setList((current) => [plan, ...current]);
-          setOpen(false);
-        }}
-        open={open}
-        onOpenChange={setOpen}
+        onCreated={(plan) => setList((current) => [plan, ...current])}
       />
 
       {list.length === 0 ? (
@@ -108,13 +102,9 @@ function GiftPlanRow({ plan }: { plan: GiftPlanView }) {
           </span>
           <span className="flex flex-wrap items-center gap-1.5">
             {plan.timingLabel ? <GiftPlanTimingChip label={plan.timingLabel} /> : null}
+            <GiftPlanStatusChip label={plan.statusLabel} />
             <GiftPlanAudienceChip plan={plan} />
             {plan.surprise ? <GiftPlanSurpriseChip /> : null}
-            {plan.status === "celebrated" ? (
-              <span className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
-                Celebrated
-              </span>
-            ) : null}
             <span className="text-[length:var(--text-caption)] leading-[var(--text-caption-line)] text-muted-foreground">
               {plan.ideaCount === 0
                 ? "No ideas yet"
@@ -133,17 +123,12 @@ function GiftPlanRow({ plan }: { plan: GiftPlanView }) {
 function GiftPlanCreateForm({
   members,
   onCreated,
-  open,
-  onOpenChange,
 }: {
   members: ShareableActionMember[];
   onCreated: (plan: GiftPlanView) => void;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
 }) {
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
 
   /**
    * Surprise protection is offered only for "specific people": the subject would
@@ -158,155 +143,136 @@ function GiftPlanCreateForm({
   const surpriseName =
     members.find((member) => member.userId === draft.surpriseSubjectUserId)?.name ?? null;
 
-  function submit() {
+  async function submit() {
     setError(null);
-    startTransition(async () => {
-      const result = await createGiftPlanAction({
-        subjectName: draft.subjectName,
-        occasion: draft.occasion,
-        occasionOn: draft.occasionOn || undefined,
-        surpriseSubjectUserId:
-          canProtect && draft.surpriseSubjectUserId !== NO_SURPRISE
-            ? draft.surpriseSubjectUserId
-            : undefined,
-        visibilityChoice: draft.visibilityChoice,
-        selectedUserIds: draft.selectedUserIds,
-      });
-      if (!result.ok) {
-        setError(result.error || GIFT_PLAN_GENERIC_ERROR);
-        return;
-      }
-      setDraft(EMPTY_DRAFT);
-      onCreated(result.view);
+    const result = await createGiftPlanAction({
+      subjectName: draft.subjectName,
+      occasion: draft.occasion,
+      occasionOn: draft.occasionOn || undefined,
+      surpriseSubjectUserId:
+        canProtect && draft.surpriseSubjectUserId !== NO_SURPRISE
+          ? draft.surpriseSubjectUserId
+          : undefined,
+      visibilityChoice: draft.visibilityChoice,
+      selectedUserIds: draft.selectedUserIds,
     });
+    if (!result.ok) {
+      setError(result.error || GIFT_PLAN_GENERIC_ERROR);
+      return false;
+    }
+    setDraft(EMPTY_DRAFT);
+    onCreated(result.view);
+    return true;
   }
 
   return (
-    <Collapsible onOpenChange={onOpenChange} open={open}>
-      <CollapsibleTrigger asChild>
-        <Button className="w-fit" variant="outline">
-          <PlusIcon aria-hidden className="size-4" />
-          Start a plan
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <form
-          className="mt-3 flex flex-col gap-4 rounded-md border border-border bg-card p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="gift-plan-subject">Who is it for?</Label>
-              <Input
-                autoComplete="off"
-                id="gift-plan-subject"
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, subjectName: event.target.value }))
-                }
-                placeholder="Rowan"
-                value={draft.subjectName}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="gift-plan-occasion">What's the occasion?</Label>
-              <Input
-                autoComplete="off"
-                id="gift-plan-occasion"
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, occasion: event.target.value }))
-                }
-                placeholder="Fortieth birthday"
-                value={draft.occasion}
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5 sm:max-w-56">
-            <Label htmlFor="gift-plan-date">When is it? (optional)</Label>
+    <GiftPlanInlineForm
+      onSubmit={submit}
+      pendingLabel="Starting…"
+      submitLabel="Start plan"
+      triggerLabel="Start a plan"
+    >
+      <>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="gift-plan-subject">Who is it for?</Label>
             <Input
-              id="gift-plan-date"
+              autoComplete="off"
+              id="gift-plan-subject"
               onChange={(event) =>
-                setDraft((current) => ({ ...current, occasionOn: event.target.value }))
+                setDraft((current) => ({ ...current, subjectName: event.target.value }))
               }
-              type="date"
-              value={draft.occasionOn}
+              placeholder="Rowan"
+              value={draft.subjectName}
             />
           </div>
-
-          <ActionVisibilityField
-            members={members}
-            name="gift-plan-visibility"
-            onChoiceChange={(choice) =>
-              setDraft((current) => ({
-                ...current,
-                visibilityChoice: choice,
-                // Protection only exists for a selected audience, so leaving that
-                // choice must not leave a stale subject behind to be submitted.
-                surpriseSubjectUserId:
-                  choice === "selected_members" ? current.surpriseSubjectUserId : NO_SURPRISE,
-              }))
-            }
-            onSelectedChange={(userIds) =>
-              setDraft((current) => ({
-                ...current,
-                selectedUserIds: userIds,
-                surpriseSubjectUserId: userIds.includes(current.surpriseSubjectUserId)
-                  ? NO_SURPRISE
-                  : current.surpriseSubjectUserId,
-              }))
-            }
-            selectedUserIds={draft.selectedUserIds}
-            value={draft.visibilityChoice}
-          />
-
-          {canProtect ? (
-            <div className="flex flex-col gap-2 border-t border-border pt-4">
-              <Label htmlFor="gift-plan-surprise">Is this a surprise for someone here?</Label>
-              <Select
-                onValueChange={(value) =>
-                  setDraft((current) => ({ ...current, surpriseSubjectUserId: value }))
-                }
-                value={draft.surpriseSubjectUserId}
-              >
-                <SelectTrigger className="sm:max-w-72" id="gift-plan-surprise">
-                  <SelectValue placeholder="No one" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_SURPRISE}>No one</SelectItem>
-                  {eligibleSubjects.map((member) => (
-                    <SelectItem key={member.userId} value={member.userId}>
-                      {member.name || member.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {draft.surpriseSubjectUserId !== NO_SURPRISE ? (
-                <GiftPlanSurpriseNote name={surpriseName} />
-              ) : null}
-            </div>
-          ) : null}
-
-          <AudiencePreview
-            choice={draft.visibilityChoice}
-            householdSize={members.length + 1}
-            selectedCount={draft.selectedUserIds.length}
-          />
-
-          {error ? <ErrorText message={error} /> : null}
-
-          <div className="flex items-center gap-2">
-            <Button disabled={pending} type="submit">
-              {pending ? "Starting…" : "Start plan"}
-            </Button>
-            <Button onClick={() => onOpenChange(false)} type="button" variant="ghost">
-              Cancel
-            </Button>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="gift-plan-occasion">What's the occasion?</Label>
+            <Input
+              autoComplete="off"
+              id="gift-plan-occasion"
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, occasion: event.target.value }))
+              }
+              placeholder="Fortieth birthday"
+              value={draft.occasion}
+            />
           </div>
-        </form>
-      </CollapsibleContent>
-    </Collapsible>
+        </div>
+
+        <div className="flex flex-col gap-1.5 sm:max-w-56">
+          <Label htmlFor="gift-plan-date">When is it? (optional)</Label>
+          <Input
+            id="gift-plan-date"
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, occasionOn: event.target.value }))
+            }
+            type="date"
+            value={draft.occasionOn}
+          />
+        </div>
+
+        <ActionVisibilityField
+          members={members}
+          name="gift-plan-visibility"
+          onChoiceChange={(choice) =>
+            setDraft((current) => ({
+              ...current,
+              visibilityChoice: choice,
+              // Protection only exists for a selected audience, so leaving that
+              // choice must not leave a stale subject behind to be submitted.
+              surpriseSubjectUserId:
+                choice === "selected_members" ? current.surpriseSubjectUserId : NO_SURPRISE,
+            }))
+          }
+          onSelectedChange={(userIds) =>
+            setDraft((current) => ({
+              ...current,
+              selectedUserIds: userIds,
+              surpriseSubjectUserId: userIds.includes(current.surpriseSubjectUserId)
+                ? NO_SURPRISE
+                : current.surpriseSubjectUserId,
+            }))
+          }
+          selectedUserIds={draft.selectedUserIds}
+          value={draft.visibilityChoice}
+        />
+
+        {canProtect ? (
+          <div className="flex flex-col gap-2 border-t border-border pt-4">
+            <Label htmlFor="gift-plan-surprise">Is this a surprise for someone here?</Label>
+            <Select
+              onValueChange={(value) =>
+                setDraft((current) => ({ ...current, surpriseSubjectUserId: value }))
+              }
+              value={draft.surpriseSubjectUserId}
+            >
+              <SelectTrigger className="sm:max-w-72" id="gift-plan-surprise">
+                <SelectValue placeholder="No one" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_SURPRISE}>No one</SelectItem>
+                {eligibleSubjects.map((member) => (
+                  <SelectItem key={member.userId} value={member.userId}>
+                    {member.name || member.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {draft.surpriseSubjectUserId !== NO_SURPRISE ? (
+              <GiftPlanSurpriseNote name={surpriseName} />
+            ) : null}
+          </div>
+        ) : null}
+
+        <AudiencePreview
+          choice={draft.visibilityChoice}
+          householdSize={members.length + 1}
+          selectedCount={draft.selectedUserIds.length}
+        />
+
+        {error ? <ErrorText message={error} /> : null}
+      </>
+    </GiftPlanInlineForm>
   );
 }
