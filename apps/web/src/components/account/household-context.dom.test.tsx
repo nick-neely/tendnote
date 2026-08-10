@@ -12,6 +12,10 @@ const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 // The surface imports its server actions as defaults; every test injects its
 // own, so the real (server-only) module must never be pulled in.
+vi.mock("@/app/actions/context-fact-review", () => ({
+  acceptSuggestedContextFactAction: vi.fn(),
+  dismissSuggestedContextFactAction: vi.fn(),
+}));
 vi.mock("@/app/actions/household-context", () => ({
   createHouseholdContextFactAction: vi.fn(),
   updateHouseholdContextFactAction: vi.fn(),
@@ -176,6 +180,23 @@ describe("household context management", () => {
     });
   });
 
+  it("switches the counter to what is left only when the ceiling is close", async () => {
+    const user = userEvent.setup();
+    renderSurface({ initialFacts: [] });
+
+    await user.click(screen.getByRole("button", { name: "Add a fact" }));
+    const textarea = screen.getByRole("textbox", { name: "Fact" });
+    await user.type(textarea, "Short.");
+    expect(screen.getByText(/6\/500 characters/)).toBeTruthy();
+
+    await user.clear(textarea);
+    // fireEvent-style bulk set: typing 460 characters one keypress at a time is
+    // seconds of test time for a boundary that only cares about the length.
+    await user.click(textarea);
+    await user.paste("x".repeat(460));
+    expect(screen.getByText(/40 characters left/)).toBeTruthy();
+  });
+
   it("carries the version the reader saw on every write", async () => {
     const user = userEvent.setup();
     const updateAction = vi.fn().mockResolvedValue({
@@ -239,6 +260,51 @@ describe("household context audience disclosure", () => {
     renderSurface({ initialFacts: [] });
     await user.click(screen.getByRole("button", { name: "Add a fact" }));
     expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  /**
+   * Correcting a fact the household can already read is not a new disclosure
+   * decision, so it must not be tolled like one.
+   */
+  it("does not re-ask when an already-sensitive fact is edited at the same level", async () => {
+    const user = userEvent.setup();
+    renderSurface({ initialFacts: [fact({ sensitivity: "sensitive" })] });
+
+    await user.click(screen.getByRole("button", { name: /Edit the Location fact/ }));
+
+    // The audience is still stated; it is the toll that is gone.
+    expect(screen.getByText(/Everyone in the household will be able to read this/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Save correction" }).hasAttribute("disabled")).toBe(
+      false,
+    );
+  });
+
+  it("still asks when an edit escalates a sensitive fact to restricted", async () => {
+    const user = userEvent.setup();
+    renderSurface({ initialFacts: [fact({ sensitivity: "sensitive" })] });
+
+    await user.click(screen.getByRole("button", { name: /Edit the Location fact/ }));
+    await chooseOption(user, "Sensitivity", "Restricted");
+
+    expect(screen.getByRole("button", { name: "Save correction" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    await user.click(screen.getByRole("checkbox"));
+    expect(screen.getByRole("button", { name: "Save correction" }).hasAttribute("disabled")).toBe(
+      false,
+    );
+  });
+
+  it("does not toll a de-escalation from restricted back to sensitive", async () => {
+    const user = userEvent.setup();
+    renderSurface({ initialFacts: [fact({ sensitivity: "restricted" })] });
+
+    await user.click(screen.getByRole("button", { name: /Edit the Location fact/ }));
+    await chooseOption(user, "Sensitivity", "Sensitive");
+
+    expect(screen.getByRole("button", { name: "Save correction" }).hasAttribute("disabled")).toBe(
+      false,
+    );
   });
 });
 
@@ -388,6 +454,10 @@ describe("household context reconciliation", () => {
       ).toBeNull();
     });
     expect(textarea.value).toBe("We're moving to Sellwood in the spring.");
+    // The hint promised the current statement stays in view. It has to be true.
+    const reference = document.querySelector("[data-household-context-current-reference]");
+    expect(reference?.textContent).toContain("We moved over to Sellwood.");
+    expect(reference?.textContent).toContain("Ben");
 
     await user.clear(textarea);
     await user.type(textarea, "Sellwood, spring.");
@@ -454,6 +524,77 @@ describe("household context lifecycle", () => {
     });
   });
 
+  /**
+   * Archiving moves the row across the page's disclosure and destroys the
+   * control that was pressed. Dropping focus to the top would lose a keyboard
+   * reader's place in a list they were working down.
+   */
+  it("hands focus to where the row went, not to the top of the page", async () => {
+    const user = userEvent.setup();
+    const archived = fact({ lifecycle: "archived", archivedAt: NOW, updatedAt: NOW });
+    const archiveAction = vi.fn().mockResolvedValue({
+      ok: true,
+      view: { outcome: "saved", decision: "archived", fact: archived },
+    });
+    renderSurface({ archiveAction });
+
+    await user.click(screen.getByRole("button", { name: "Archive" }));
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Archive" }),
+    );
+
+    await waitFor(() => expect(archiveAction).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(document.activeElement?.id).toBe("household-context-fact-fact-1");
+    });
+  });
+
+  it("hands focus to the restored row so the reader keeps their place", async () => {
+    const user = userEvent.setup();
+    const restoreAction = vi.fn().mockResolvedValue({
+      ok: true,
+      view: { outcome: "saved", decision: "restored", fact: fact({ updatedAt: NOW }) },
+    });
+    renderSurface({
+      initialFacts: [fact({ lifecycle: "archived", archivedAt: NOW })],
+      restoreAction,
+    });
+
+    await user.click(screen.getByRole("button", { name: /Show archived facts \(1\)/ }));
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+
+    await waitFor(() => expect(restoreAction).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(document.activeElement?.id).toBe("household-context-fact-fact-1");
+    });
+  });
+
+  /**
+   * A refused archive tells the reader to look again, so looking again has to
+   * show them something different. The server tree is the authority; the local
+   * copy must yield to a newer revision of the same fact.
+   */
+  it("resyncs to the server's newer copy after a stale lifecycle press", async () => {
+    const stale = fact({ content: "We're in the Lents neighbourhood." });
+    const { rerender } = renderSurface({ initialFacts: [stale] });
+    expect(screen.getByText("We're in the Lents neighbourhood.")).toBeTruthy();
+
+    const newer = fact({ content: "We moved over to Sellwood.", updatedAt: NOW });
+    rerender(
+      <HouseholdContextSurface
+        identities={IDENTITIES}
+        initialFacts={[newer]}
+        renderedAt={NOW}
+        viewerUserId={ANA}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("We moved over to Sellwood.")).toBeTruthy();
+    });
+    expect(screen.queryByText("We're in the Lents neighbourhood.")).toBeNull();
+  });
+
   it("keeps archived facts behind disclosure and lets anyone here restore one", async () => {
     const user = userEvent.setup();
     const restoreAction = vi.fn().mockResolvedValue({
@@ -508,5 +649,63 @@ describe("household context lifecycle", () => {
       );
     });
     expect(refresh).toHaveBeenCalled();
+  });
+});
+
+describe("household context shared review", () => {
+  function suggestion(overrides: Partial<ContextFactView> = {}) {
+    return {
+      fact: fact({
+        id: "suggested-1",
+        lifecycle: "suggested" as const,
+        category: "other" as const,
+        content: "The household is going away in July.",
+        reviewedAt: null,
+        ...overrides,
+      }),
+      evidence: "Everyone was talking about being away in July.",
+      activeMatch: null,
+    };
+  }
+
+  it("shows pending household suggestions apart from what the household knows", () => {
+    renderSurface({ initialSuggestions: [suggestion()] });
+
+    expect(screen.getByRole("heading", { name: "Suggested" })).toBeTruthy();
+    expect(screen.getByText("The household is going away in July.")).toBeTruthy();
+    // It is not yet part of the household's current facts.
+    expect(screen.queryByRole("heading", { name: "Other" })).toBeNull();
+  });
+
+  /**
+   * Resolution is global. A member must not be able to read the controls as
+   * clearing their own copy of a shared decision.
+   */
+  it("says plainly that resolving one settles it for everyone", () => {
+    renderSurface({ initialSuggestions: [suggestion()] });
+    expect(screen.getByText(/settles them for everyone/)).toBeTruthy();
+  });
+
+  it("labels the suggestion by its audience rather than as private context", () => {
+    renderSurface({ initialSuggestions: [suggestion()] });
+    expect(screen.getByText("Suggested for the household")).toBeTruthy();
+    expect(screen.queryByText("Suggested context")).toBeNull();
+  });
+
+  it("does not count a pending suggestion as something the household knows", () => {
+    renderSurface({ initialFacts: [], initialSuggestions: [suggestion()] });
+    // The empty state is for a household with nothing at all, and a pending
+    // suggestion is not nothing — but it is also not a current fact.
+    expect(screen.queryByText("Nothing here yet.")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Show archived facts/ })).toBeNull();
+  });
+
+  it("ignores a private suggestion that reached this surface by mistake", () => {
+    renderSurface({
+      initialSuggestions: [
+        { ...suggestion(), fact: { ...suggestion().fact, subject: { kind: "self" as const } } },
+      ],
+    });
+    expect(screen.queryByRole("heading", { name: "Suggested" })).toBeNull();
   });
 });

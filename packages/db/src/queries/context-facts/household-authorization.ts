@@ -1,17 +1,11 @@
-import type {
-  ContextFact,
-  HouseholdAuthorizationGrant,
-  HouseholdAuthorizationProof,
-  HouseholdOperation,
-  HouseholdRequestPurpose,
-} from "@tendnote/domain";
-import { evaluateHouseholdAuthorization, HouseholdRecordUnavailableError } from "@tendnote/domain";
+import type { ContextFact, HouseholdOperation, HouseholdRequestPurpose } from "@tendnote/domain";
+import { createHouseholdProofSeam } from "../households/authorization";
 import type { ContextFactHouseholdAccess } from "./types";
 
 /**
  * The record family this seam proves. A proof for a Household Context Fact can
  * never be spent on a General Action or an Asset, because the family is part of
- * what {@link proofCovers} compares (ADR 0219).
+ * what `proofCovers` compares (ADR 0219).
  */
 export const HOUSEHOLD_CONTEXT_RECORD_KIND = "household_context_fact";
 
@@ -40,83 +34,67 @@ export function householdContextRecordFacts(fact: ContextFact): HouseholdContext
   };
 }
 
-function authorizationSubject(record: HouseholdContextRecordFacts) {
-  return {
-    kind: HOUSEHOLD_CONTEXT_RECORD_KIND,
-    id: record.id,
-    ownerUserId: record.creatorUserId,
-    scope: "household",
-    householdId: record.householdId,
-    ownership: "household_native",
-    sensitivity: record.sensitivity,
-  } as const;
-}
-
-type HouseholdContextProofRequest = {
-  callerUserId: string;
-  operation: HouseholdOperation;
-  record: HouseholdContextRecordFacts;
-  purpose?: HouseholdRequestPurpose;
-};
-
 /**
  * The Household Authorization Proof, bound to Household Context storage.
  *
- * Every call re-reads the caller's own active memberships, so a departure, a
- * removal, or a dissolution takes effect on the very next read rather than
- * whenever some cache expires — dissolution ends every membership, so a
- * dissolved household's facts stop being reachable through exactly the same gate
- * as a removed member's (ADR 0219).
+ * The seam's machinery — reading the caller's memberships at the moment of the
+ * call, the single opaque refusal, dropping rather than marking an unproven
+ * record — comes from `createHouseholdProofSeam`, so an ADR 0219 contract change
+ * reaches this family without anyone remembering it exists. All this file
+ * supplies is what is genuinely its own: where the memberships come from, and
+ * how a stored Context Fact is described to policy.
  *
- * This family has no share registry and no `shared` scope: a household-owned
- * fact is visible to the whole household or it does not exist, so there is no
- * per-record audience to read and nothing a caller passes in can widen one.
- * `suggested` is not a lifecycle question here — whether a suggestion may be
- * seen is the review contract's rule, not a Household privacy one, and this
- * module deliberately does not answer for domains it knows nothing about.
+ * That description has no audience read, and that is the substantive difference
+ * from the scoped-record family. A household-owned fact is visible to the whole
+ * household or it does not exist, so there is no `shared` scope, no share
+ * registry row, and nothing a caller passes in that could widen one. Membership
+ * is the entire audience question, and dissolution ends every membership — so a
+ * dissolved household's facts stop being reachable through exactly the same gate
+ * as a removed member's.
+ *
+ * `suggested` is deliberately not treated as a lifecycle refusal here: whether a
+ * suggestion may be seen is the review contract's rule, not a Household privacy
+ * one, and this module does not answer for domains it knows nothing about.
  */
 export function createHouseholdContextAuthorization(householdAccess?: ContextFactHouseholdAccess) {
-  async function callerMemberships(callerUserId: string) {
-    if (!householdAccess || !callerUserId) return [];
-    const memberships = await householdAccess.listActiveHouseholdMembershipsForUser({
-      userId: callerUserId,
-    });
-    return memberships.map((membership) => ({
-      householdId: membership.householdId,
-      userId: membership.userId,
-    }));
-  }
-
-  async function proveHouseholdContextAccess(
-    input: HouseholdContextProofRequest,
-  ): Promise<HouseholdAuthorizationProof> {
-    return evaluateHouseholdAuthorization({
-      callerUserId: input.callerUserId,
-      operation: input.operation,
-      purpose: input.purpose,
-      subject: authorizationSubject(input.record),
-      callerActiveMemberships: await callerMemberships(input.callerUserId),
-    });
-  }
+  const seam = createHouseholdProofSeam<HouseholdContextRecordFacts, void>({
+    readCallerMemberships: async (callerUserId) => {
+      // No skip: every fact in this family is household-scoped, so the
+      // membership read is never avoidable and pretending otherwise would only
+      // add a branch that can never be taken.
+      if (!householdAccess || !callerUserId) return [];
+      const memberships = await householdAccess.listActiveHouseholdMembershipsForUser({
+        userId: callerUserId,
+      });
+      return memberships.map((membership) => ({
+        householdId: membership.householdId,
+        userId: membership.userId,
+      }));
+    },
+    readSubjectContext: async () => undefined,
+    toSubject: (record) => ({
+      kind: HOUSEHOLD_CONTEXT_RECORD_KIND,
+      id: record.id,
+      ownerUserId: record.creatorUserId,
+      scope: "household",
+      householdId: record.householdId,
+      ownership: "household_native",
+      sensitivity: record.sensitivity,
+    }),
+  });
 
   return {
-    proveHouseholdContextAccess,
-
-    /** The proof-or-nothing form: one opaque refusal for every way this can fail. */
-    async requireHouseholdContextAccess(
-      input: HouseholdContextProofRequest,
-    ): Promise<HouseholdAuthorizationGrant> {
-      const proof = await proveHouseholdContextAccess(input);
-      if (!proof.authorized) throw new HouseholdRecordUnavailableError();
-      return proof;
-    },
+    proveHouseholdContextAccess: seam.proveRecord,
+    requireHouseholdContextAccess: seam.requireRecord,
 
     /**
-     * Proves a listing one fact at a time and keeps only what holds.
+     * Proves a listing and keeps only the facts that hold.
      *
-     * An unproven fact leaves nothing behind — no row, no count, no gap — so a
-     * restricted fact excluded from an ambient read is indistinguishable from a
-     * household that never had one.
+     * The grants come back keyed by subject id, which is the fact id, so this
+     * maps them back to the records the caller asked about. A refused fact
+     * leaves nothing behind — no row, no count, no gap — so a restricted fact
+     * excluded from an ambient read is indistinguishable from a household that
+     * never had one.
      */
     async proveHouseholdContextFacts(input: {
       callerUserId: string;
@@ -124,17 +102,25 @@ export function createHouseholdContextAuthorization(householdAccess?: ContextFac
       facts: readonly ContextFact[];
       purpose?: HouseholdRequestPurpose;
     }): Promise<ContextFact[]> {
-      const memberships = await callerMemberships(input.callerUserId);
-      return input.facts.filter((fact) => {
+      const byId = new Map<string, ContextFact>();
+      const records: HouseholdContextRecordFacts[] = [];
+      for (const fact of input.facts) {
         const record = householdContextRecordFacts(fact);
-        if (!record) return false;
-        return evaluateHouseholdAuthorization({
-          callerUserId: input.callerUserId,
-          operation: input.operation,
-          purpose: input.purpose,
-          subject: authorizationSubject(record),
-          callerActiveMemberships: memberships,
-        }).authorized;
+        if (!record) continue;
+        byId.set(fact.id, fact);
+        records.push(record);
+      }
+
+      const grants = await seam.proveRecords({
+        callerUserId: input.callerUserId,
+        operation: input.operation,
+        purpose: input.purpose,
+        records,
+      });
+
+      return grants.flatMap((grant) => {
+        const fact = byId.get(grant.subjectId);
+        return fact ? [fact] : [];
       });
     },
   };

@@ -75,6 +75,17 @@ export function HouseholdContextSummary({
           {HOUSEHOLD_CONTEXT_SECTION_DESCRIPTION}
         </p>
       )}
+
+      {/*
+        Said in words rather than as "3 of 8", because a count here would read as
+        a set to finish. The reader only needs to know the list is a sample, so
+        they do not take three lines for everything the household holds.
+      */}
+      {board.activeCount > board.summary.length ? (
+        <p className="max-w-[65ch] text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
+          A few of them. The rest are on the household context page.
+        </p>
+      ) : null}
     </section>
   );
 }

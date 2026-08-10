@@ -10,7 +10,10 @@ import {
 } from "@tendnote/domain/household-context";
 import type { Sensitivity } from "@tendnote/domain/privacy";
 import { type FormEvent, useEffect, useId, useRef, useState, useTransition } from "react";
-import { HouseholdContextReconcilePanel } from "@/components/account/household-context-reconcile";
+import {
+  HouseholdContextCurrentReference,
+  HouseholdContextReconcilePanel,
+} from "@/components/account/household-context-reconcile";
 import type {
   CreateHouseholdContextAction,
   UpdateHouseholdContextAction,
@@ -42,6 +45,11 @@ const DEFAULT_DRAFT: HouseholdContextDraftView = {
   content: "",
   sensitivity: "normal",
 };
+
+/** How far a statement is from ordinary, so escalation can be told from a change. */
+function sensitivityRank(sensitivity: Sensitivity): number {
+  return sensitivity === "restricted" ? 2 : sensitivity === "sensitive" ? 1 : 0;
+}
 
 /**
  * Writing or correcting one shared fact.
@@ -103,15 +111,41 @@ export function HouseholdContextEditor({
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState<Date | null>(
     editor.mode === "edit" ? editor.fact.updatedAt : null,
   );
+  /** What the household could already see before this edit began. */
+  const baselineSensitivity: Sensitivity =
+    editor.mode === "edit" ? editor.fact.sensitivity : "normal";
   const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conflictFactId, setConflictFactId] = useState<string | null>(null);
   const [reconciliation, setReconciliation] = useState<HouseholdContextReconciliation | null>(null);
+  /**
+   * The statement this draft is being written against, once the reader has
+   * chosen to revise rather than take it.
+   *
+   * It outlives the reconcile panel deliberately: "Revise mine" promises the
+   * current wording stays in view, and a promise the next render breaks is worse
+   * than not making it. The full comparison collapses to a reference line; the
+   * decision has been made, so the choices go and the evidence stays.
+   */
+  const [revisingAgainst, setRevisingAgainst] = useState<
+    HouseholdContextReconciliation["current"] | null
+  >(null);
   const [pending, startTransition] = useTransition();
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
   const audienceWarning = householdContextAudienceWarning(draft.sensitivity);
-  const needsAcknowledgement = audienceWarning !== null && !acknowledged;
+  /**
+   * Acknowledgement is asked for on the way *up* only.
+   *
+   * Opening an already-sensitive fact to fix a typo is not a new disclosure
+   * decision — the household can already read it — so demanding the checkbox
+   * again would be a toll on correcting exactly the facts most worth correcting.
+   * The warning itself still shows, because the audience is still worth stating.
+   */
+  const needsAcknowledgement =
+    audienceWarning !== null &&
+    !acknowledged &&
+    sensitivityRank(draft.sensitivity) > sensitivityRank(baselineSensitivity);
 
   useEffect(() => {
     contentRef.current?.focus();
@@ -195,11 +229,16 @@ export function HouseholdContextEditor({
       // the reader has actually seen rather than against a stale render.
       setExpectedUpdatedAt(current.updatedAt);
       setReconciliation(null);
+      // The panel goes; the statement it was about does not. "Revise mine" says
+      // the current wording stays in view, and revising against something you
+      // can no longer read is the problem this whole flow exists to avoid.
+      setRevisingAgainst(current);
       focusContent();
       return;
     }
     setExpectedUpdatedAt(current.updatedAt);
     setReconciliation(null);
+    setRevisingAgainst(null);
     save(current.updatedAt);
   }
 
@@ -220,6 +259,13 @@ export function HouseholdContextEditor({
           onChoose={chooseReconciliation}
           pending={pending}
           reconciliation={reconciliation}
+          viewerUserId={viewerUserId}
+        />
+      ) : revisingAgainst ? (
+        <HouseholdContextCurrentReference
+          current={revisingAgainst}
+          identities={identities}
+          now={now}
           viewerUserId={viewerUserId}
         />
       ) : null}
@@ -326,7 +372,17 @@ export function HouseholdContextEditor({
               className="break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground"
               id={helperId}
             >
-              Everyone here can read it · {draft.content.length}/500 characters
+              {/*
+                The count flips to what is left only when running out is close.
+                A running "12/500" is noise on a one-sentence field; the same
+                number as "488 left" three characters from the ceiling is the
+                one moment it is worth reading — and hitting a silent maxLength
+                mid-word is how a draft gets quietly truncated.
+              */}
+              Everyone here can read it ·{" "}
+              {500 - draft.content.length <= 50
+                ? `${500 - draft.content.length} characters left`
+                : `${draft.content.length}/500 characters`}
             </p>
             {error ? (
               <p

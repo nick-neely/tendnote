@@ -535,3 +535,167 @@ describe("Household Context disclosure", () => {
     expect(HOUSEHOLD_RECORD_UNAVAILABLE_MESSAGE).toBe("That's no longer available.");
   });
 });
+
+describe("Household Context shared Review", () => {
+  let fixture: Fixture;
+
+  beforeEach(async () => {
+    fixture = await householdFixture();
+  });
+
+  async function suggest(callerUserId = ANA, content = "The household is going away in July.") {
+    const outcome = await fixture.queriesFor(callerUserId).createSuggestedContextFact({
+      callerUserId,
+      subject: { kind: "household", householdId: fixture.household.id },
+      category: "other",
+      content,
+      provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+      suggestionEvidence: "Everyone was talking about being away in July.",
+    });
+    return outcome.result.fact;
+  }
+
+  it("puts one household suggestion in every active member's review queue", async () => {
+    const suggested = await suggest();
+
+    for (const member of [ANA, BEN]) {
+      const reviews = await fixture
+        .queriesFor(member)
+        .listSuggestedContextFactReviews({ callerUserId: member });
+      expect(reviews.map((review) => review.fact.id)).toContain(suggested.id);
+    }
+  });
+
+  it("keeps a household suggestion out of an outsider's queue entirely", async () => {
+    await suggest();
+    await expect(
+      fixture.queriesFor(NEIGHBOUR).listSuggestedContextFactReviews({ callerUserId: NEIGHBOUR }),
+    ).resolves.toEqual([]);
+  });
+
+  /**
+   * Resolution is the household's, not the proposer's: whoever gets there first
+   * answers for everyone, and Owner status buys nothing here either.
+   */
+  it("lets a member who did not propose it accept it for the household", async () => {
+    const suggested = await suggest(ANA);
+
+    const accepted = await fixture.queriesFor(BEN).acceptSuggestedContextFact({
+      callerUserId: BEN,
+      contextFactId: suggested.id,
+    });
+    expect(accepted.decision).toBe("accepted");
+    expect(accepted.result).toMatchObject({
+      lifecycle: "active",
+      subject: { kind: "household", householdId: fixture.household.id },
+    });
+
+    // Immediately reconciled for the other member: it is current, not pending.
+    const anaFacts = await fixture.queriesFor(ANA).listHouseholdContextFacts({ callerUserId: ANA });
+    expect(anaFacts.map((fact) => fact.id)).toContain(suggested.id);
+    await expect(
+      fixture.queriesFor(ANA).listSuggestedContextFactReviews({ callerUserId: ANA }),
+    ).resolves.toEqual([]);
+  });
+
+  it("records the resolver as the actor while keeping the proposer as creator", async () => {
+    const suggested = await suggest(ANA);
+    const accepted = await fixture.queriesFor(BEN).acceptSuggestedContextFact({
+      callerUserId: BEN,
+      contextFactId: suggested.id,
+    });
+    expect(accepted.result.actorAttribution).toEqual({
+      creatorUserId: ANA,
+      lastActorUserId: BEN,
+    });
+  });
+
+  it("supports edit-and-accept from any active member", async () => {
+    const suggested = await suggest(ANA);
+    const accepted = await fixture.queriesFor(BEN).acceptSuggestedContextFact({
+      callerUserId: BEN,
+      contextFactId: suggested.id,
+      edit: { content: "We're away for the first half of July." },
+    });
+    expect(accepted.result.content).toBe("We're away for the first half of July.");
+  });
+
+  it("dismisses for the whole household rather than one member's queue", async () => {
+    const suggested = await suggest(ANA);
+
+    await fixture.queriesFor(BEN).dismissSuggestedContextFact({
+      callerUserId: BEN,
+      contextFactId: suggested.id,
+    });
+
+    for (const member of [ANA, BEN]) {
+      await expect(
+        fixture.queriesFor(member).listSuggestedContextFactReviews({ callerUserId: member }),
+      ).resolves.toEqual([]);
+    }
+  });
+
+  /**
+   * A dismissal is the household's answer to a statement. Re-proposing it to a
+   * different member would make "we decided no" depend on who was asked.
+   */
+  it("suppresses the same suggestion for every member after one dismissal", async () => {
+    const suggested = await suggest(ANA);
+    await fixture.queriesFor(BEN).dismissSuggestedContextFact({
+      callerUserId: BEN,
+      contextFactId: suggested.id,
+    });
+
+    await expect(suggest(ANA)).rejects.toThrow(/already dismissed/i);
+    await expect(suggest(BEN)).rejects.toThrow(/already dismissed/i);
+  });
+
+  it("refuses an outsider and a departed member every resolution", async () => {
+    const suggested = await suggest(ANA);
+    await fixture.removeMember(BEN);
+
+    for (const caller of [NEIGHBOUR, OUTSIDER, BEN]) {
+      await expect(
+        fixture.queriesFor(caller).acceptSuggestedContextFact({
+          callerUserId: caller,
+          contextFactId: suggested.id,
+        }),
+      ).rejects.toThrow();
+      await expect(
+        fixture.queriesFor(caller).dismissSuggestedContextFact({
+          callerUserId: caller,
+          contextFactId: suggested.id,
+        }),
+      ).rejects.toThrow();
+    }
+
+    // And the suggestion itself is untouched by the refused presses.
+    const reviews = await fixture
+      .queriesFor(ANA)
+      .listSuggestedContextFactReviews({ callerUserId: ANA });
+    expect(reviews.map((review) => review.fact.id)).toEqual([suggested.id]);
+  });
+
+  it("never lets an inferred suggestion become current without a member's press", async () => {
+    const suggested = await suggest();
+    expect(suggested.lifecycle).toBe("suggested");
+    await expect(
+      fixture.queriesFor(ANA).listHouseholdContextFacts({ callerUserId: ANA }),
+    ).resolves.toEqual([]);
+  });
+
+  it("keeps a pending suggestion out of orientation and exact recall", async () => {
+    await suggest(ANA, "The household is going away in July.");
+
+    const orientation = await fixture.queriesFor(BEN).getOrientationContext({ callerUserId: BEN });
+    expect(orientation.context.facts).toEqual([]);
+    await expect(
+      fixture.queriesFor(BEN).searchHouseholdContextFacts({
+        callerUserId: BEN,
+        query: "July",
+        directlyRequested: true,
+        limit: 5,
+      }),
+    ).resolves.toEqual([]);
+  });
+});

@@ -615,6 +615,8 @@ export function createHouseholdContextQueries(context: HouseholdContextQueryCont
   }
 
   return {
+    /** Exposed so Review resolves a shared suggestion through this same proof. */
+    proveHouseholdContextFacts: authorization.proveHouseholdContextFacts,
     listHouseholdContextFacts,
     orientationEligibleHouseholdFacts,
     searchHouseholdContextFacts,

@@ -4,12 +4,14 @@ const {
   getHouseholdOverviewForUser,
   listHouseholdContextActors,
   listHouseholdContextFacts,
+  listSuggestedContextFactReviews,
   requireAdmittedOwner,
   unstable_rethrow,
 } = vi.hoisted(() => ({
   getHouseholdOverviewForUser: vi.fn(),
   listHouseholdContextActors: vi.fn(),
   listHouseholdContextFacts: vi.fn(),
+  listSuggestedContextFactReviews: vi.fn(),
   requireAdmittedOwner: vi.fn(),
   unstable_rethrow: vi.fn(),
 }));
@@ -18,12 +20,23 @@ vi.mock("@tendnote/db/queries/households", () => ({
   getHouseholdOverviewForUser,
   listHouseholdContextActors,
 }));
-vi.mock("@tendnote/db/queries/context-facts", () => ({ listHouseholdContextFacts }));
+vi.mock("@tendnote/db/queries/context-facts", () => ({
+  listHouseholdContextFacts,
+  listSuggestedContextFactReviews,
+}));
 vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwner }));
 vi.mock("next/navigation", () => ({ unstable_rethrow }));
 vi.mock("@/components/account/household-context-surface", () => ({
-  HouseholdContextSurface: ({ initialFacts }: { initialFacts: { id: string }[] }) => (
-    <div data-testid="household-context-surface">{`facts: ${initialFacts.length}`}</div>
+  HouseholdContextSurface: ({
+    initialFacts,
+    initialSuggestions,
+  }: {
+    initialFacts: { id: string }[];
+    initialSuggestions: unknown[];
+  }) => (
+    <div data-testid="household-context-surface">
+      {`facts: ${initialFacts.length} suggestions: ${initialSuggestions.length}`}
+    </div>
   ),
 }));
 
@@ -39,6 +52,7 @@ beforeEach(() => {
   getHouseholdOverviewForUser.mockResolvedValue(OVERVIEW);
   listHouseholdContextFacts.mockResolvedValue([{ id: "fact-1" }]);
   listHouseholdContextActors.mockResolvedValue([]);
+  listSuggestedContextFactReviews.mockResolvedValue([]);
 });
 
 describe("Household context route", () => {
@@ -86,6 +100,58 @@ describe("Household context route", () => {
 
     expect(markup).toContain("There’s nothing to show here.");
     expect(listHouseholdContextFacts).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The shared queue carries both subjects. Only the household's own belong on
+   * this page; the caller's private suggestions stay in About you.
+   */
+  it("shows only the household's share of the review queue", async () => {
+    listSuggestedContextFactReviews.mockResolvedValue([
+      {
+        fact: {
+          id: "shared-1",
+          subject: { kind: "household", householdId: "household-1" },
+          category: "other",
+          content: "Away in July.",
+          lifecycle: "suggested",
+          sensitivity: "normal",
+          provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+          creatorUserId: "owner-1",
+          lastActorUserId: "owner-1",
+          suggestionEvidence: "They discussed being away in July.",
+          reviewedAt: null,
+          archivedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        evidence: "They discussed being away in July.",
+        activeMatch: null,
+      },
+      {
+        fact: {
+          id: "private-1",
+          subject: { kind: "self", userId: "owner-1" },
+          category: "work",
+          content: "Private.",
+          lifecycle: "suggested",
+          sensitivity: "normal",
+          provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+          creatorUserId: "owner-1",
+          lastActorUserId: "owner-1",
+          suggestionEvidence: "Private evidence.",
+          reviewedAt: null,
+          archivedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        evidence: "Private evidence.",
+        activeMatch: null,
+      },
+    ]);
+
+    const markup = renderToStaticMarkup(await HouseholdContextContent());
+    expect(markup).toContain("suggestions: 1");
   });
 
   it("keeps the destination truthful when the read is unavailable", async () => {

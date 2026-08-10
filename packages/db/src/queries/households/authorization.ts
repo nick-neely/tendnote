@@ -1,6 +1,8 @@
 import type {
+  ActiveHouseholdAccess,
   HouseholdAuthorizationGrant,
   HouseholdAuthorizationProof,
+  HouseholdAuthorizationSubject,
   HouseholdOperation,
   HouseholdRecordLifecycle,
   HouseholdRecordOwnership,
@@ -110,56 +112,77 @@ function subjectFor(record: HouseholdRecordFacts, audiences: Map<string, string[
 }
 
 /**
+ * What one record family has to supply to get a proof seam.
+ *
+ * Two functions, because those are the only two things that genuinely differ
+ * between families: where the caller's standing is read from, and how a stored
+ * record is described to policy. Everything the ADR actually mandates — reading
+ * memberships at the moment of the call, one opaque refusal, dropping rather
+ * than marking an unproven record — is the skeleton's, so it cannot fork.
+ *
+ * `TContext` is whatever per-batch read a family's subjects need beyond the
+ * record itself. Scoped records read the share registry; a family with no
+ * audience registry uses `void` and pays nothing for the seam.
+ */
+export type HouseholdProofFamily<TRecord, TContext> = {
+  /**
+   * Reads the caller's own active memberships for this batch.
+   *
+   * Supplied rather than fixed so a family can skip the read when its own
+   * stored facts prove it cannot matter — the scoped-record skip below is that,
+   * and it belongs with the family that can justify it, not in the skeleton.
+   */
+  readCallerMemberships: (
+    callerUserId: string,
+    records: readonly TRecord[],
+  ) => Promise<readonly ActiveHouseholdAccess[]>;
+  /** Per-batch facts the subjects need. One read per batch, never one per record. */
+  readSubjectContext: (records: readonly TRecord[]) => Promise<TContext>;
+  toSubject: (record: TRecord, context: TContext) => HouseholdAuthorizationSubject;
+};
+
+/**
  * The Household Authorization Proof, bound to storage.
  *
- * Every entry point re-reads the caller's active memberships and the record's
- * audience before deciding. That is the whole reason this seam exists rather
- * than each adapter calling the domain evaluator with facts it happened to have:
- * a membership read a request ago, a share list from a cached page, or an
- * audience carried on a queued job are all stale by the time they are used, and
- * a proof built from them is not a proof (ADR 0219).
+ * Every entry point re-reads the caller's active memberships and whatever the
+ * family's subjects are built from before deciding. That is the whole reason
+ * this seam exists rather than each adapter calling the domain evaluator with
+ * facts it happened to have: a membership read a request ago, a share list from
+ * a cached page, or an audience carried on a queued job are all stale by the
+ * time they are used, and a proof built from them is not a proof (ADR 0219).
+ *
+ * It is generic over the record family so that a change to the ADR's contract —
+ * a new gate, a different refusal, a different listing semantic — lands in one
+ * file rather than in each family's hand-rolled copy.
  */
-export function createHouseholdAuthorizationProver(store: HouseholdAuthorizationStore) {
-  /**
-   * Reads the caller's own active memberships, and skips the read entirely when
-   * no record in the request is scoped beyond its owner.
-   *
-   * The skip is driven by the records' stored scope, never by the caller, and a
-   * private record's decision provably does not consult memberships — so proving
-   * one costs nothing over the read it accompanies. That matters because this now
-   * runs on the single-record read path, where the common case is a caller
-   * opening their own private record.
-   */
-  async function callerMemberships(callerUserId: string, records: readonly HouseholdRecordFacts[]) {
-    if (!callerUserId || !records.some((record) => record.scope !== "private")) return [];
-    return store.listActiveHouseholdMembershipsForUser({ userId: callerUserId });
-  }
-
-  async function proveRecordAccess(
-    input: ProofRequest & { record: HouseholdRecordFacts },
+export function createHouseholdProofSeam<TRecord, TContext>(
+  family: HouseholdProofFamily<TRecord, TContext>,
+) {
+  async function proveRecord(
+    input: ProofRequest & { record: TRecord },
   ): Promise<HouseholdAuthorizationProof> {
-    const [memberships, audiences] = await Promise.all([
-      callerMemberships(input.callerUserId, [input.record]),
-      readAudiences(store, [input.record]),
+    const [memberships, context] = await Promise.all([
+      family.readCallerMemberships(input.callerUserId, [input.record]),
+      family.readSubjectContext([input.record]),
     ]);
 
     return evaluateHouseholdAuthorization({
       callerUserId: input.callerUserId,
       operation: input.operation,
       purpose: input.purpose,
-      subject: subjectFor(input.record, audiences),
+      subject: family.toSubject(input.record, context),
       callerActiveMemberships: memberships,
     });
   }
 
   return {
-    proveRecordAccess,
+    proveRecord,
 
     /** The proof-or-nothing form: one opaque refusal for every way this can fail. */
-    async requireRecordAccess(
-      input: ProofRequest & { record: HouseholdRecordFacts },
+    async requireRecord(
+      input: ProofRequest & { record: TRecord },
     ): Promise<HouseholdAuthorizationGrant> {
-      const proof = await proveRecordAccess(input);
+      const proof = await proveRecord(input);
       if (!proof.authorized) {
         throw new HouseholdRecordUnavailableError();
       }
@@ -171,22 +194,56 @@ export function createHouseholdAuthorizationProver(store: HouseholdAuthorization
      * the order they were given. An unproven record leaves nothing behind — no
      * entry, no count, no gap the caller could measure.
      */
-    async proveVisibleRecords(
-      input: ProofRequest & { records: readonly HouseholdRecordFacts[] },
+    async proveRecords(
+      input: ProofRequest & { records: readonly TRecord[] },
     ): Promise<HouseholdAuthorizationGrant[]> {
-      const [memberships, audiences] = await Promise.all([
-        callerMemberships(input.callerUserId, input.records),
-        readAudiences(store, input.records),
+      const [memberships, context] = await Promise.all([
+        family.readCallerMemberships(input.callerUserId, input.records),
+        family.readSubjectContext(input.records),
       ]);
 
       return proveHouseholdComposition({
         callerUserId: input.callerUserId,
         operation: input.operation,
         purpose: input.purpose,
-        subjects: input.records.map((record) => subjectFor(record, audiences)),
+        subjects: input.records.map((record) => family.toSubject(record, context)),
         callerActiveMemberships: memberships,
       });
     },
+  };
+}
+
+/**
+ * The scoped-record family: everything that lives in the share registry.
+ *
+ * The names stay `*RecordAccess` / `proveVisibleRecords` because a dozen call
+ * sites and ADR 0219's own language use them; only the machinery underneath is
+ * now shared.
+ */
+export function createHouseholdAuthorizationProver(store: HouseholdAuthorizationStore) {
+  const seam = createHouseholdProofSeam<HouseholdRecordFacts, Map<string, string[]>>({
+    /**
+     * Skips the membership read entirely when no record in the request is
+     * scoped beyond its owner.
+     *
+     * The skip is driven by the records' stored scope, never by the caller, and
+     * a private record's decision provably does not consult memberships — so
+     * proving one costs nothing over the read it accompanies. That matters
+     * because this runs on the single-record read path, where the common case
+     * is a caller opening their own private record.
+     */
+    readCallerMemberships: async (callerUserId, records) => {
+      if (!callerUserId || !records.some((record) => record.scope !== "private")) return [];
+      return store.listActiveHouseholdMembershipsForUser({ userId: callerUserId });
+    },
+    readSubjectContext: (records) => readAudiences(store, records),
+    toSubject: subjectFor,
+  });
+
+  return {
+    proveRecordAccess: seam.proveRecord,
+    requireRecordAccess: seam.requireRecord,
+    proveVisibleRecords: seam.proveRecords,
   };
 }
 

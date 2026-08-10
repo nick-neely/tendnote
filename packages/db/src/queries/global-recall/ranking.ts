@@ -1,19 +1,35 @@
-import type { GlobalRecallFilter, GlobalRecallResult } from "@tendnote/domain";
+import type { GlobalRecallFamily, GlobalRecallFilter, GlobalRecallResult } from "@tendnote/domain";
+
+/**
+ * Which record families each narrowing control actually names.
+ *
+ * A table rather than the if-chain this used to be. The chain ended in a bare
+ * `return result.family === "self_context"`, which was only correct while
+ * Self Context was the last filter in the enum: adding Household Context beside
+ * it would have made a Household-only search answer with the member's private
+ * statements about themselves, conflating the two subjects the household domain
+ * exists to keep apart. A `Record` keyed on the filter enum turns the next
+ * family added into a compile error instead of a silent mis-filter.
+ */
+const FAMILIES_BY_FILTER: Record<
+  Exclude<GlobalRecallFilter, "all">,
+  readonly GlobalRecallFamily[]
+> = {
+  people: ["person", "relationship_context"],
+  follow_ups: ["follow_up"],
+  actions: ["general_action"],
+  assets: ["asset", "asset_memory"],
+  saved_items: ["saved_item"],
+  calendar: ["calendar_event"],
+  self_context: ["self_context"],
+  household_context: ["household_context"],
+};
 
 export function matchesFamilyFilter(
   result: GlobalRecallResult,
   filter: GlobalRecallFilter,
 ): boolean {
-  if (filter === "all") return true;
-  if (filter === "people") {
-    return result.family === "person" || result.family === "relationship_context";
-  }
-  if (filter === "follow_ups") return result.family === "follow_up";
-  if (filter === "actions") return result.family === "general_action";
-  if (filter === "assets") return result.family === "asset" || result.family === "asset_memory";
-  if (filter === "saved_items") return result.family === "saved_item";
-  if (filter === "calendar") return result.family === "calendar_event";
-  return result.family === "self_context";
+  return filter === "all" || FAMILIES_BY_FILTER[filter].includes(result.family);
 }
 
 export function mergeGlobalRecallResults(results: GlobalRecallResult[]): GlobalRecallResult[] {

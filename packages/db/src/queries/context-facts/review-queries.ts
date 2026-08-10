@@ -45,8 +45,28 @@ type AuditFact = Pick<
 
 type SuggestedFactCandidate = Pick<ContextFact, "subject" | "category" | "content" | "sensitivity">;
 
+/**
+ * What Review needs to handle a household-owned suggestion.
+ *
+ * Injected rather than reconstructed here, so this file never grows a second
+ * opinion about who may resolve a shared suggestion. `proveFacts` is the #380
+ * proof seam; `activeMemberUserIds` exists only for dismissal suppression, which
+ * is a household-wide fact and therefore cannot be read from one actor's audit
+ * trail alone.
+ */
+export type ContextFactHouseholdReview = {
+  callerHouseholdId: (callerUserId: string) => Promise<string | null>;
+  proveFacts: (input: {
+    callerUserId: string;
+    operation: "view" | "update" | "archive";
+    facts: readonly ContextFact[];
+  }) => Promise<ContextFact[]>;
+  activeMemberUserIds: (householdId: string) => Promise<string[]>;
+};
+
 export type ContextFactReviewQueryContext = {
   store: ContextFactStore;
+  householdReview?: ContextFactHouseholdReview;
   maxPendingSuggestedContextFacts?: number;
   requireVerifiedCaller: (callerUserId: string) => Promise<string>;
   assertSubjectBelongsToCaller: (input: {
@@ -269,6 +289,7 @@ async function createOrReuseSuggestedFact(input: {
 export function createContextFactReviewQueries(context: ContextFactReviewQueryContext) {
   const {
     store,
+    householdReview,
     maxPendingSuggestedContextFacts,
     requireVerifiedCaller,
     assertSubjectBelongsToCaller,
@@ -277,6 +298,92 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     recordAudit,
     auditLogInput,
   } = context;
+
+  /**
+   * Reads one suggestion the caller may resolve, whichever subject owns it.
+   *
+   * A Self suggestion is found by owner. A household one is found by the
+   * caller's own active membership and then re-proved, so a member who left
+   * between the render and the press gets the same nothing as a stranger.
+   */
+  async function readResolvableSuggestion(
+    callerUserId: string,
+    contextFactId: string,
+  ): Promise<ContextFact | null> {
+    const own = await store.getContextFact({ contextFactId, subjectUserId: callerUserId });
+    if (own?.subject.kind === "self") return contextFactSchema.parse(own);
+    if (!householdReview) return null;
+
+    const householdId = await householdReview.callerHouseholdId(callerUserId);
+    if (!householdId) return null;
+    const row = await store.getContextFact({
+      contextFactId,
+      householdIds: [householdId],
+      activeHouseholdMemberUserId: callerUserId,
+    });
+    if (!row) return null;
+    const [proven] = await householdReview.proveFacts({
+      callerUserId,
+      operation: "update",
+      facts: [contextFactSchema.parse(row)],
+    });
+    return proven ?? null;
+  }
+
+  /** Pending household suggestions the caller may currently see, proof-gated. */
+  async function householdSuggestions(callerUserId: string): Promise<ContextFact[]> {
+    if (!householdReview) return [];
+    const householdId = await householdReview.callerHouseholdId(callerUserId);
+    if (!householdId) return [];
+    const rows = await store.listContextFacts({
+      householdIds: [householdId],
+      activeHouseholdMemberUserId: callerUserId,
+      lifecycle: "suggested",
+    });
+    return householdReview.proveFacts({
+      callerUserId,
+      operation: "view",
+      facts: rows.map((row) => contextFactSchema.parse(row)),
+    });
+  }
+
+  /**
+   * Every audit trail a dismissal of this subject could have been recorded in.
+   *
+   * A household dismissal is the household's, not the dismisser's: "suppress
+   * this suggestion for everyone" is the whole contract, and reading only the
+   * current caller's trail would let the same rejected statement come back the
+   * moment a different member was the one it was proposed to. Bounded by the
+   * seat limit, so this is a handful of reads, not a scan.
+   */
+  async function suppressionTrails(
+    callerUserId: string,
+    subject: ContextFact["subject"],
+  ): Promise<string[]> {
+    if (subject.kind === "self" || !householdReview) return [callerUserId];
+    const members = await householdReview.activeMemberUserIds(subject.householdId);
+    return members.includes(callerUserId) ? members : [...members, callerUserId];
+  }
+
+  async function anyTrailRecords(
+    ownerUserIds: readonly string[],
+    matches: (
+      entry: Awaited<ReturnType<ContextFactStore["listAuditLogEntries"]>>[number],
+    ) => boolean,
+  ): Promise<boolean> {
+    for (const ownerUserId of new Set(ownerUserIds)) {
+      const entries = await store.listAuditLogEntries({ ownerUserId });
+      if (entries.some(matches)) return true;
+    }
+    return false;
+  }
+
+  /** The household's members, when the suggestion itself is already gone. */
+  async function householdTrailsForMissingSuggestion(callerUserId: string): Promise<string[]> {
+    if (!householdReview) return [];
+    const householdId = await householdReview.callerHouseholdId(callerUserId);
+    return householdId ? householdReview.activeMemberUserIds(householdId) : [];
+  }
 
   async function suggestedReviewForFact(
     fact: ContextFact,
@@ -324,7 +431,8 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
       sensitivity: parsed.sensitivity,
       provenance: parsed.provenance,
     });
-    const dismissedBefore = (await store.listAuditLogEntries({ ownerUserId: callerUserId })).some(
+    const dismissedBefore = await anyTrailRecords(
+      await suppressionTrails(callerUserId, parsed.subject),
       (entry) =>
         entry.action === "context_fact.review.dismiss" &&
         typeof entry.metadataJson.suppressionKey === "string" &&
@@ -380,15 +488,21 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     });
   }
 
+  /**
+   * The caller's pending suggestions, private and household alike.
+   *
+   * One queue rather than two, because the reviewer's question is the same
+   * either way — is this worth keeping? — and a household suggestion that lived
+   * somewhere else would be a second inbox for the same job. The subject travels
+   * on each item, so a surface that only wants one kind filters for it.
+   */
   async function listSuggestedContextFactReviews(input: ListContextFactsInput) {
     const callerUserId = await requireVerifiedCaller(input.callerUserId);
-    const facts = (
-      await store.listContextFacts({
-        subjectUserId: callerUserId,
-        lifecycle: "suggested",
-      })
-    )
-      .map((fact) => contextFactSchema.parse(fact))
+    const [own, shared] = await Promise.all([
+      store.listContextFacts({ subjectUserId: callerUserId, lifecycle: "suggested" }),
+      householdSuggestions(callerUserId),
+    ]);
+    const facts = [...own.map((fact) => contextFactSchema.parse(fact)), ...shared]
       .filter(hasGroundedEvidence)
       .sort(
         (left, right) =>
@@ -403,25 +517,19 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     contextFactId: string;
   }) {
     const callerUserId = await requireVerifiedCaller(input.callerUserId);
-    const fact = await store.getContextFact({
-      contextFactId: input.contextFactId,
-      subjectUserId: callerUserId,
-    });
-    if (fact?.subject.kind !== "self" || fact.lifecycle !== "suggested") return null;
-    return suggestedReviewForFact(contextFactSchema.parse(fact), callerUserId);
+    const fact = await readResolvableSuggestion(callerUserId, input.contextFactId);
+    if (!fact || fact.lifecycle !== "suggested") return null;
+    return suggestedReviewForFact(fact, callerUserId);
   }
 
   async function loadSuggestedAcceptance(input: AcceptSuggestedContextFactMutationInput) {
     const parsed = acceptSuggestedContextFactInputSchema.parse(input);
     const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
-    const existing = await store.getContextFact({
-      contextFactId: parsed.contextFactId,
-      subjectUserId: callerUserId,
-    });
-    if (existing?.subject.kind !== "self") {
+    const existing = await readResolvableSuggestion(callerUserId, parsed.contextFactId);
+    if (!existing) {
       throw new ContextFactValidationError("That Suggested Context Fact is no longer available.");
     }
-    return { parsed, callerUserId, existing: contextFactSchema.parse(existing) };
+    return { parsed, callerUserId, existing };
   }
 
   async function activateSuggestedContextFact(input: {
@@ -434,8 +542,8 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     let updated: ContextFact | null;
     try {
       updated = await store.updateContextFact({
+        ...callerScopedSubjectFilter(input.existing.subject, input.callerUserId),
         contextFactId: input.existing.id,
-        subjectUserId: input.callerUserId,
         lifecycle: "suggested",
         expectedUpdatedAt: input.expectedUpdatedAt,
         patch: {
@@ -473,8 +581,8 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
 
   async function restoreSuggestedContextFact(fact: ContextFact, callerUserId: string) {
     const restored = await store.updateContextFact({
+      ...callerScopedSubjectFilter(fact.subject, callerUserId),
       contextFactId: fact.id,
-      subjectUserId: callerUserId,
       lifecycle: "active",
       expectedUpdatedAt: fact.updatedAt,
       patch: {
@@ -576,12 +684,15 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
   ): Promise<ContextFactReviewDismissMutationOutcome> {
     const parsed = dismissSuggestedContextFactInputSchema.parse(input);
     const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
-    const existing = await store.getContextFact({
-      contextFactId: parsed.contextFactId,
-      subjectUserId: callerUserId,
-    });
+    const existing = await readResolvableSuggestion(callerUserId, parsed.contextFactId);
     if (!existing) {
-      const dismissedBefore = (await store.listAuditLogEntries({ ownerUserId: callerUserId })).some(
+      // Already gone. If this caller's household resolved it a moment ago, the
+      // second press is the state they wanted, not an error to explain.
+      const trails = householdReview
+        ? [callerUserId, ...(await householdTrailsForMissingSuggestion(callerUserId))]
+        : [callerUserId];
+      const dismissedBefore = await anyTrailRecords(
+        trails,
         (entry) =>
           entry.action === "context_fact.review.dismiss" && entry.entityId === parsed.contextFactId,
       );
@@ -593,7 +704,7 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
       }
       throw new ContextFactValidationError("That Suggested Context Fact is no longer available.");
     }
-    if (existing.subject.kind !== "self" || existing.lifecycle !== "suggested") {
+    if (existing.lifecycle !== "suggested") {
       throw new ContextFactValidationError("That Suggested Context Fact is no longer available.");
     }
     if (parsed.expectedUpdatedAt && !sameInstant(parsed.expectedUpdatedAt, existing.updatedAt)) {
@@ -604,8 +715,8 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
 
     const fact = contextFactSchema.parse(existing);
     const deleted = await store.deleteContextFact({
+      ...callerScopedSubjectFilter(fact.subject, callerUserId),
       contextFactId: fact.id,
-      subjectUserId: callerUserId,
       lifecycle: "suggested",
       expectedUpdatedAt: fact.updatedAt,
       auditLogEntry: auditLogInput({

@@ -1,4 +1,7 @@
-import { listHouseholdContextFacts } from "@tendnote/db/queries/context-facts";
+import {
+  listHouseholdContextFacts,
+  listSuggestedContextFactReviews,
+} from "@tendnote/db/queries/context-facts";
 import {
   getHouseholdOverviewForUser,
   listHouseholdContextActors,
@@ -11,6 +14,7 @@ import { AdmittedRoute } from "@/components/admitted-route";
 import { appDestination } from "@/components/app-destinations";
 import { Button } from "@/components/ui/button";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { toSuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 
 export default function HouseholdContextPage() {
   return (
@@ -33,19 +37,26 @@ export async function HouseholdContextContent() {
     const overview = await getHouseholdOverviewForUser({ userId: ownerUserId });
     if (!overview) return <HouseholdContextUnavailable />;
 
-    const [facts, identities] = await Promise.all([
+    const [facts, identities, reviews] = await Promise.all([
       listHouseholdContextFacts(
         { callerUserId: ownerUserId, includeArchived: true },
         async () => ownerUserId,
       ),
       listHouseholdContextActors({ userId: ownerUserId }),
+      listSuggestedContextFactReviews({ callerUserId: ownerUserId }, async () => ownerUserId),
     ]);
+    // The shared queue carries both subjects; this page shows only the ones the
+    // household owns. The caller's private suggestions belong to About you.
+    const suggestions = reviews
+      .filter((review) => review.fact.subject.kind === "household")
+      .map(toSuggestedContextFactReviewView);
 
     return (
       <HouseholdContextShell householdName={overview.name}>
         <HouseholdContextSurface
           identities={identities}
           initialFacts={facts}
+          initialSuggestions={suggestions}
           renderedAt={new Date()}
           viewerUserId={ownerUserId}
         />

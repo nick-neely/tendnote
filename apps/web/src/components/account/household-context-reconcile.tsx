@@ -140,6 +140,52 @@ export function HouseholdContextReconcilePanel({
   );
 }
 
+/**
+ * What the reconcile panel collapses to once the reader chooses to revise.
+ *
+ * The decision is made, so the three choices go; the statement being revised
+ * against does not, because that is precisely what "Revise mine" promised would
+ * stay in view. It is quieter than the panel — one line of ink on `panel`, no
+ * heading weight, no controls — so it reads as a reference the reader glances
+ * back at rather than a second thing waiting on them.
+ */
+export function HouseholdContextCurrentReference({
+  current,
+  identities,
+  now,
+  viewerUserId,
+}: {
+  current: HouseholdContextReconciliation["current"];
+  identities: readonly HouseholdContextActorIdentity[];
+  now: Date;
+  viewerUserId: string;
+}) {
+  const actor = householdContextActorLabel({
+    userId: current.lastActorUserId,
+    viewerUserId,
+    identities,
+  });
+
+  return (
+    <aside
+      className="flex min-w-0 flex-col gap-1 rounded-lg border bg-panel px-3.5 py-3"
+      data-household-context-current-reference
+    >
+      <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground">
+        You&rsquo;re revising this
+      </p>
+      <p className="min-w-0 break-words whitespace-pre-wrap text-[length:var(--text-body)] leading-[var(--text-body-line)]">
+        {current.content}
+      </p>
+      <p className="min-w-0 break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-muted-foreground">
+        {contextFactCategoryLabel(current.category)} ·{" "}
+        {householdContextSensitivityLabel(current.sensitivity)} · {actor} ·{" "}
+        {householdContextRelativeTime(current.updatedAt, now)}
+      </p>
+    </aside>
+  );
+}
+
 function ReconcileColumn({
   content,
   heading,

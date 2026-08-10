@@ -16,6 +16,7 @@ export type RecallSearchPlan = {
   followups: boolean;
   calendar: boolean;
   selfContext: boolean;
+  householdContext: boolean;
 };
 
 export function planRecallSearch(input: ParsedGlobalRecallInput): RecallSearchPlan {
@@ -28,6 +29,7 @@ export function planRecallSearch(input: ParsedGlobalRecallInput): RecallSearchPl
     followups: input.family === "all" || input.family === "follow_ups",
     calendar: input.family === "all" || input.family === "calendar",
     selfContext: input.family === "all" || input.family === "self_context",
+    householdContext: input.family === "all" || input.family === "household_context",
   };
 }
 
@@ -102,6 +104,18 @@ export async function retrieveRecallSources(
           limit: CANDIDATE_LIMIT,
         })
       : Promise.resolve([]),
+    plan.householdContext && plan.exact
+      ? deps.searchHouseholdContextExact({
+          callerUserId: ownerUserId,
+          query: input.query,
+          // Handed through unchanged. A restricted household fact reaches recall
+          // only behind this flag, and the rule that reads it lives at the
+          // Household Authorization Proof - restating it here would be a second
+          // place for household privacy to drift.
+          directlyRequested: restricted.directlyRequested,
+          limit: CANDIDATE_LIMIT,
+        })
+      : Promise.resolve([]),
   ] as const);
 }
 
@@ -117,6 +131,7 @@ export function normalizeRecallSources(outcomes: RecallRetrievalOutcomes, plan: 
     followups,
     calendar,
     selfContext,
+    householdContext,
   ] = outcomes;
   return {
     exact: exact.status === "fulfilled" ? exact.value : [],
@@ -135,6 +150,7 @@ export function normalizeRecallSources(outcomes: RecallRetrievalOutcomes, plan: 
     followups: followups.status === "fulfilled" ? followups.value : [],
     calendar: calendar.status === "fulfilled" ? calendar.value : { connected: false, result: null },
     selfContext: selfContext.status === "fulfilled" ? selfContext.value : [],
+    householdContext: householdContext.status === "fulfilled" ? householdContext.value : [],
   };
 }
 

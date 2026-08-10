@@ -816,6 +816,15 @@ export function createContextFactQueries(
 
   const reviewQueries = createContextFactReviewQueries({
     store,
+    // Review resolves a household suggestion through the same proof the
+    // management page uses, so "any active member may accept, edit-and-accept,
+    // or dismiss for the household" stays one rule with one implementation.
+    householdReview: {
+      callerHouseholdId: async (callerUserId) =>
+        (await activeHouseholdIdsForCaller(callerUserId))[0] ?? null,
+      proveFacts: (input) => householdContextQueries.proveHouseholdContextFacts(input),
+      activeMemberUserIds: activeHouseholdMemberUserIds,
+    },
     maxPendingSuggestedContextFacts: dependencies.maxPendingSuggestedContextFacts,
     requireVerifiedCaller,
     assertSubjectBelongsToCaller,

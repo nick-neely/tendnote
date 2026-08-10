@@ -26,6 +26,7 @@ import {
   SearchIcon,
   StickyNoteIcon,
   SunIcon,
+  UsersRoundIcon,
 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -737,6 +738,11 @@ type RecallGroup = {
 const FAMILY_HEADINGS: Record<GlobalRecallFamily, string> = {
   person: "People",
   self_context: "Self Context",
+  // Named in full beside "Self Context" rather than shortened to "Household":
+  // the two headings sit one above the other whenever a search touches both,
+  // and a member reading a shared statement has to be able to tell at a glance
+  // that it is not something they wrote about themselves.
+  household_context: "Household Context",
   relationship_context: "Memories",
   follow_up: "Follow-Ups",
   general_action: "Actions",
@@ -749,6 +755,9 @@ const FAMILY_HEADINGS: Record<GlobalRecallFamily, string> = {
 const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
   person: BookUserIcon,
   self_context: CircleUserRoundIcon,
+  // One person against several: the glyphs carry the same distinction the
+  // headings do, for a row read at a glance rather than word by word.
+  household_context: UsersRoundIcon,
   relationship_context: StickyNoteIcon,
   follow_up: BellIcon,
   general_action: CircleDotIcon,
@@ -762,6 +771,7 @@ const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
 const FAMILY_ORDER: GlobalRecallFamily[] = [
   "person",
   "self_context",
+  "household_context",
   "relationship_context",
   "follow_up",
   "general_action",

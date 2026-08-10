@@ -12,7 +12,7 @@ import {
   householdContextAttributionLine,
 } from "@tendnote/domain/household-context";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import {
   type CreateHouseholdContextFactActionInput,
   archiveHouseholdContextFactAction as defaultArchiveAction,
@@ -27,6 +27,7 @@ import {
   type HouseholdContextEditorState,
 } from "@/components/account/household-context-editor";
 import { ChevronDownIcon } from "@/components/icons";
+import { SuggestedContextFactReviewCard } from "@/components/suggested-context-fact-review";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,7 +48,9 @@ import {
   householdContextSensitivityLabel,
   isHouseholdContextFact,
 } from "@/lib/household-context-view";
+import type { SuggestedContextFactReviewView } from "@/lib/suggested-context-fact-review-view";
 import { useDeepLinkReveal } from "@/lib/use-deep-link-highlight";
+import { useServerSyncedList } from "@/lib/use-server-synced-list";
 import { cn } from "@/lib/utils";
 
 const GENERIC_ERROR = "That didn't go through. Nothing changed, so you can try again.";
@@ -92,6 +95,7 @@ type EditorState = HouseholdContextEditorState;
 export function HouseholdContextSurface({
   viewerUserId,
   initialFacts,
+  initialSuggestions = [],
   identities,
   renderedAt,
   createAction = defaultCreateAction,
@@ -101,6 +105,11 @@ export function HouseholdContextSurface({
 }: {
   viewerUserId: string;
   initialFacts: readonly ContextFactView[];
+  /**
+   * Pending household suggestions, which are one shared review item rather than
+   * a per-member queue: whoever resolves one resolves it for everybody.
+   */
+  initialSuggestions?: readonly SuggestedContextFactReviewView[];
   identities: readonly HouseholdContextActorIdentity[];
   /**
    * The instant the server rendered, which every relative time is measured
@@ -114,7 +123,28 @@ export function HouseholdContextSurface({
   renderedAt: Date;
 } & HouseholdContextActions) {
   const router = useRouter();
-  const [facts, setFacts] = useState(() => initialFacts.filter(isHouseholdContextFact));
+  const serverFacts = useMemo(() => initialFacts.filter(isHouseholdContextFact), [initialFacts]);
+  /**
+   * The household's facts, kept in step with the server tree rather than frozen
+   * at first render.
+   *
+   * This page is the one surface where the authoritative state can change
+   * without this reader doing anything, because somebody else lives here. A
+   * plain `useState(initial)` would ignore every later server render — so a
+   * refused archive would say "have another look" while showing the very row it
+   * just failed to read. `updatedAt` is the revision, which is the same token
+   * the write fence uses: a newer server copy wins, and the reader's own
+   * just-saved edit is newer still, so it is never clobbered by a refresh.
+   */
+  const [facts, setFacts] = useServerSyncedList(
+    serverFacts,
+    (fact) => fact.id,
+    undefined,
+    (fact) => fact.updatedAt.toISOString(),
+  );
+  const [suggestions, setSuggestions] = useState(() =>
+    initialSuggestions.filter((review) => review.fact.subject.kind === "household"),
+  );
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -159,12 +189,24 @@ export function HouseholdContextSurface({
    * A write landed. The authoritative record replaces the local one immediately
    * so every member's next read is the same, and the server tree catches up
    * underneath rather than being what the reader waits for.
+   *
+   * `focusFactId` is what an archive or restore passes: those presses destroy
+   * the control that was focused *and* move the row to another part of the page,
+   * so returning focus to the top of the screen would lose a keyboard reader's
+   * place entirely. The row itself is the landing — it is `tabIndex={-1}` for
+   * exactly this. An editor save has a trigger to go back to instead.
    */
-  function handleSaved(view: ContextFactView, message: string) {
+  function handleSaved(view: ContextFactView, message: string, focusFactId?: string) {
     applyFact(view);
     setAnnouncement(message);
     setEditor(null);
-    restoreFocus();
+    if (focusFactId) {
+      window.requestAnimationFrame(() =>
+        document.getElementById(`household-context-fact-${focusFactId}`)?.focus(),
+      );
+    } else {
+      restoreFocus();
+    }
     router.refresh();
   }
 
@@ -236,15 +278,23 @@ export function HouseholdContextSurface({
         </Button>
       </div>
 
-      {announcement ? (
-        <p
-          aria-live="polite"
-          className="text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground"
-          role="status"
-        >
-          {announcement}
-        </p>
-      ) : null}
+      {/*
+        Mounted always, empty until something happens. A live region inserted in
+        the same render as its text is unreliably announced, which is the whole
+        reason the Household surface one file over keeps a permanent region too.
+        `sr-only` takes it out of layout while it has nothing to say, so the
+        page's rhythm does not shift when it does.
+      */}
+      <p
+        aria-live="polite"
+        className={cn(
+          "text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground",
+          !announcement && "sr-only",
+        )}
+        role="status"
+      >
+        {announcement}
+      </p>
 
       {editor ? (
         <HouseholdContextEditor
@@ -270,7 +320,50 @@ export function HouseholdContextSurface({
         />
       ) : null}
 
-      {hasAnything ? null : (
+      {suggestions.length > 0 ? (
+        <section
+          aria-labelledby="household-context-suggested-heading"
+          className="flex min-w-0 flex-col gap-2"
+        >
+          <div className="flex min-w-0 flex-col gap-1">
+            <h2
+              className="text-[length:var(--text-small)] leading-[var(--text-small-line)] font-medium text-muted-foreground"
+              id="household-context-suggested-heading"
+            >
+              Suggested
+            </h2>
+            {/*
+              One item, not one each. Saying so here is what stops a member
+              dismissing something believing they are only clearing their own
+              view of it.
+            */}
+            <p className="max-w-[65ch] break-words text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
+              Anyone here can accept or dismiss these, and it settles them for everyone. Nothing
+              below is part of what the household knows until someone says so.
+            </p>
+          </div>
+          <ul className="flex min-w-0 flex-col gap-2" data-household-context-suggested>
+            {suggestions.map((review) => (
+              <li key={review.fact.id}>
+                <SuggestedContextFactReviewCard
+                  onAccepted={(view) => {
+                    applyFact(view);
+                    setAnnouncement("Accepted for everyone here.");
+                  }}
+                  onResolve={(contextFactId) =>
+                    setSuggestions((current) =>
+                      current.filter((item) => item.fact.id !== contextFactId),
+                    )
+                  }
+                  review={review}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {hasAnything || suggestions.length > 0 ? null : (
         <EmptyState
           description={HOUSEHOLD_CONTEXT_EMPTY_DESCRIPTION}
           title={HOUSEHOLD_CONTEXT_EMPTY_TITLE}
@@ -404,7 +497,7 @@ function HouseholdContextRow({
   now: Date;
   onEdit: (fact: ContextFactView, trigger: HTMLButtonElement) => void;
   onRevealArchived: () => void;
-  onSaved: (view: ContextFactView, message: string) => void;
+  onSaved: (view: ContextFactView, message: string, focusFactId?: string) => void;
   onStale: () => void;
   restoreAction: HouseholdContextLifecycleAction;
   viewerUserId: string;
@@ -437,7 +530,9 @@ function HouseholdContextRow({
           onDone?.();
           return;
         }
-        onSaved(result.view.fact, messages.saved);
+        // Archive and restore both move this row to the other side of the
+        // page's disclosure. Hand focus to where it went, not to the top.
+        onSaved(result.view.fact, messages.saved, fact.id);
         onDone?.();
       } catch {
         setError(messages.failed);

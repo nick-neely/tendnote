@@ -1,6 +1,6 @@
 import { searchAssetsWithStatus } from "./asset-search";
 import { createDefaultGoogleCalendarReader, readConnectedOwnerCalendar } from "./calendar";
-import { searchSelfContextFacts } from "./context-facts";
+import { searchHouseholdContextFacts, searchSelfContextFacts } from "./context-facts";
 import { searchFollowups } from "./followups";
 import { createGlobalRecall } from "./global-recall/queries";
 import type { GlobalRecallDependencies, SearchGlobalRecallRequest } from "./global-recall/types";
@@ -25,6 +25,11 @@ export function createDefaultGlobalRecall(overrides: Partial<GlobalRecallDepende
           includeArchived,
           limit,
         },
+        async () => callerUserId,
+      ),
+    searchHouseholdContextExact: ({ callerUserId, query, directlyRequested, limit }) =>
+      searchHouseholdContextFacts(
+        { callerUserId, query, directlyRequested, limit },
         async () => callerUserId,
       ),
     searchRelationshipExact: (input) =>

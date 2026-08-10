@@ -10,7 +10,7 @@ import type {
   SemanticRetrievalResult,
 } from "@tendnote/domain";
 import { contextFactCategoryLabel } from "@tendnote/domain";
-import type { SelfContextExactResult } from "../context-facts/types";
+import type { HouseholdContextExactResult, SelfContextExactResult } from "../context-facts/types";
 import type { ActiveFollowupSummary } from "../followups/types";
 import type { SavedItemWithContext } from "../saved-items/types";
 
@@ -165,6 +165,55 @@ export function toSelfContextResult(
     visibility: { choice: "only_me", label: "Only me" },
     grounding: [{ kind: "context_fact", id: fact.id }],
     href: `/account/about-you#context-fact-${encodeURIComponent(fact.id)}`,
+    parent: null,
+    details: {
+      content: fact.content,
+      category: fact.category,
+      categoryLabel,
+      provenance: {
+        channel: fact.provenance.channel,
+        origin: fact.provenance.origin,
+      },
+    },
+  };
+}
+
+/**
+ * Household Context as an exact recall result.
+ *
+ * Deliberately not folded into `toSelfContextResult` despite the two carrying
+ * the same fields. The subject is the whole difference: a household statement
+ * belongs to everyone active in the workspace, so it says "Whole household"
+ * where a self statement says "Only me", it names Household Context in its
+ * match reason, and it links to the household management page rather than
+ * About you. Two members can hold the same words about themselves and about
+ * the household, and a reader has to be able to tell which one they are
+ * reading without opening it.
+ */
+export function toHouseholdContextResult(source: HouseholdContextExactResult): GlobalRecallResult {
+  const { fact, matchedFields } = source;
+  const categoryLabel = contextFactCategoryLabel(fact.category);
+  return {
+    family: "household_context",
+    canonical: { kind: "context_fact", id: fact.id },
+    label: fact.content,
+    supportingText: categoryLabel,
+    lifecycle: fact.lifecycle,
+    match: {
+      kind: "exact",
+      reason: matchedFields.length
+        ? `Matched Household Context ${matchedFields.join(" and ")}`
+        : "Matched Household Context",
+      excerpt: fact.content,
+    },
+    trust: "household_context",
+    sensitivity: fact.sensitivity,
+    // Household Context has one audience by construction - every active member,
+    // including whoever joins next - so it takes the household scope's own
+    // visibility rather than restating a choice the fact never made.
+    visibility: visibilityForScope("household"),
+    grounding: [{ kind: "context_fact", id: fact.id }],
+    href: `/account/household/context#household-context-fact-${encodeURIComponent(fact.id)}`,
     parent: null,
     details: {
       content: fact.content,
