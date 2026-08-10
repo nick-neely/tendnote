@@ -36,6 +36,11 @@ import {
  * moments, and how much of each family moved is written in the same transaction
  * as the deletes, with a scrubbed system actor: no person decided this, the
  * deadline did.
+ *
+ * The decisions above are tested here; the delete *order* they end in is only
+ * really provable against Postgres, so `purge-live-check.ts` beside this file
+ * seeds a dissolved household across every family and runs the sweep against a
+ * real database by hand. Run it after changing any of the disposal steps.
  */
 
 /** A dissolved household the sweep may consider. Ids and a moment; no content. */

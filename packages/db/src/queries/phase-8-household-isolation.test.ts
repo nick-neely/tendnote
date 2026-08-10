@@ -169,7 +169,6 @@ function seedStack() {
       linkTargets: eventPlanLinkTargets,
       prover,
     }),
-    eventPlanLinkTargets,
     // `resolveVerifiedCaller` takes no arguments, so the seam is built per caller.
     contextFactsFor: (userId: string) =>
       createContextFactQueries(contextFactStore, {
