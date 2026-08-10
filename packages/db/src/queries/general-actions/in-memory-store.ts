@@ -34,9 +34,9 @@ export function createInMemoryGeneralActionStore(
   const events: GeneralActionEvent[] = [];
   // Person links as (generalActionId -> ordered set of personIds).
   const peopleLinks = new Map<string, string[]>();
-  // Members who have answered "no thanks" to the holder reminder offer, so it is
-  // asked once and never again (ADR 0203).
-  const reminderOfferDeclines = new Map<string, Set<string>>();
+  // The offers each member has already answered no to, keyed by record and offer
+  // kind, so a question is asked once and never again (ADRs 0203, 0215).
+  const offerDeclines = new Map<string, Set<string>>();
 
   function persistAction(values: Parameters<GeneralActionStore["createGeneralAction"]>[0]) {
     const parsed = createGeneralActionSchema.parse(values);
@@ -262,13 +262,14 @@ export function createInMemoryGeneralActionStore(
       }
       return reverted;
     },
-    async listGeneralActionReminderOfferDeclines(input) {
-      return [...(reminderOfferDeclines.get(input.generalActionId) ?? [])];
+    async listGeneralActionOfferDeclines(input) {
+      return [...(offerDeclines.get(`${input.generalActionId}:${input.offerKind}`) ?? [])];
     },
-    async declineGeneralActionReminderOffer(input) {
-      const declined = reminderOfferDeclines.get(input.generalActionId) ?? new Set<string>();
+    async declineGeneralActionOffer(input) {
+      const key = `${input.generalActionId}:${input.offerKind}`;
+      const declined = offerDeclines.get(key) ?? new Set<string>();
       declined.add(input.userId);
-      reminderOfferDeclines.set(input.generalActionId, declined);
+      offerDeclines.set(key, declined);
     },
     async listVisibleGeneralActionsForCaller(input) {
       const visible: GeneralAction[] = [];

@@ -24,7 +24,8 @@ vi.stubGlobal(
 vi.mock("@/app/actions/general-actions", () => ({
   archiveGeneralActionAction: vi.fn(),
   completeGeneralActionAction: vi.fn(),
-  declineResponsibilityHolderReminderAction: vi.fn(),
+  declineGeneralActionOfferAction: vi.fn(),
+  getResponsibilityHandoffOfferAction: vi.fn(),
   deferGeneralActionAction: vi.fn(),
   dismissGeneralActionAction: vi.fn(),
   editGeneralActionAction: vi.fn(),
@@ -56,7 +57,8 @@ vi.mock("next/link", () => import("@/test/next-link-mock"));
 
 import {
   completeGeneralActionAction,
-  declineResponsibilityHolderReminderAction,
+  declineGeneralActionOfferAction,
+  getResponsibilityHandoffOfferAction,
   getResponsibilityHolderReminderOfferAction,
   setResponsibilityHolderAction,
 } from "@/app/actions/general-actions";
@@ -103,6 +105,11 @@ function completeControl() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The hand-off is offered by default; the tests that care about the cap say so.
+  vi.mocked(getResponsibilityHandoffOfferAction).mockResolvedValue({
+    ok: true,
+    view: { offer: true },
+  } as never);
 });
 
 describe("what the row says about whose record this is", () => {
@@ -252,10 +259,16 @@ describe("the hand-off, and the rotation that never happens", () => {
     expect(screen.getByRole("button", { name: "Ana" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /next|rotate|swap turn/i })).toBeNull();
 
-    await userEvent.click(screen.getByRole("button", { name: /not now/i }));
+    await userEvent.click(screen.getByRole("button", { name: /this one's settled/i }));
     await waitFor(() => expect(screen.queryByText("Who's looking after this next?")).toBeNull());
-    // Declining leaves the holder exactly as it stands.
+    // Declining leaves the holder exactly as it stands...
     expect(setResponsibilityHolderAction).not.toHaveBeenCalled();
+    // ...and is remembered, so the settled chore is never asked again.
+    await waitFor(() =>
+      expect(declineGeneralActionOfferAction).toHaveBeenCalledWith(
+        expect.objectContaining({ offerKind: "responsibility_handoff" }),
+      ),
+    );
   });
 
   it("takes the outgoing member's own reminder only when they choose it themselves", async () => {
@@ -297,6 +310,77 @@ describe("the hand-off, and the rotation that never happens", () => {
   });
 });
 
+describe("asking a settled chore's household to stop being asked", () => {
+  it("does not put the hand-off question again to a member who said it was settled", async () => {
+    vi.mocked(getResponsibilityHandoffOfferAction).mockResolvedValue({
+      ok: true,
+      view: { offer: false },
+    } as never);
+    const settled = householdChore({
+      isRoutine: true,
+      recurrenceLabel: "Every week",
+      responsibilityHolderUserId: VIEWER,
+      responsibilityHolderLabel: "You're looking after this",
+    });
+    vi.mocked(completeGeneralActionAction).mockResolvedValue({ ok: true, view: settled } as never);
+
+    renderRow(settled);
+    await userEvent.click(completeControl());
+
+    // "Mom waters the plants" completes every week and is never interrupted.
+    await waitFor(() => expect(getResponsibilityHandoffOfferAction).toHaveBeenCalled());
+    expect(screen.queryByText("Who's looking after this next?")).toBeNull();
+  });
+
+  it("asks one question at a time when the hand-off and the reminder both qualify", async () => {
+    vi.mocked(getResponsibilityHolderReminderOfferAction).mockResolvedValue({
+      ok: true,
+      view: { offer: true },
+    } as never);
+    const settled = householdChore({
+      isRoutine: true,
+      recurrenceLabel: "Every week",
+      dueAtISO: "2026-08-11T00:00:00.000Z",
+      dueAtDate: "2026-08-11",
+      responsibilityHolderUserId: VIEWER,
+      responsibilityHolderLabel: "You're looking after this",
+    });
+    vi.mocked(completeGeneralActionAction).mockResolvedValue({ ok: true, view: settled } as never);
+
+    renderRow(settled);
+    await userEvent.click(completeControl());
+
+    // Both are eligible; only the one that cannot wait is shown.
+    expect(await screen.findByText("Who's looking after this next?")).toBeTruthy();
+    expect(screen.queryByText(/Want a reminder on your own devices\?/)).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: /this one's settled/i }));
+    // The reminder was not cancelled, only queued behind the first question.
+    expect(await screen.findByText(/Want a reminder on your own devices\?/)).toBeTruthy();
+  });
+
+  it("announces an offer it raised without being asked", async () => {
+    vi.mocked(getResponsibilityHolderReminderOfferAction).mockResolvedValue({
+      ok: true,
+      view: { offer: true },
+    } as never);
+
+    renderRow(
+      householdChore({
+        dueAtISO: "2026-08-11T00:00:00.000Z",
+        dueAtDate: "2026-08-11",
+        responsibilityHolderUserId: VIEWER,
+        responsibilityHolderLabel: "You're looking after this",
+      }),
+    );
+
+    const offer = await screen.findByText(/Want a reminder on your own devices\?/);
+    // The region is mounted before its content, so a screen reader hears the
+    // offer arrive rather than finding it silently already there.
+    expect(offer.closest("[aria-live='polite']")).toBeTruthy();
+  });
+});
+
 describe("the holder reminder offer", () => {
   it("asks the named member once, in their own surface, and never enrolls them", async () => {
     vi.mocked(getResponsibilityHolderReminderOfferAction).mockResolvedValue({
@@ -318,8 +402,8 @@ describe("the holder reminder offer", () => {
     await userEvent.click(screen.getByRole("button", { name: /no thanks/i }));
 
     await waitFor(() =>
-      expect(declineResponsibilityHolderReminderAction).toHaveBeenCalledWith(
-        expect.objectContaining({ generalActionId: expect.any(String) }),
+      expect(declineGeneralActionOfferAction).toHaveBeenCalledWith(
+        expect.objectContaining({ offerKind: "holder_reminder" }),
       ),
     );
     expect(screen.queryByText(/Want a reminder on your own devices\?/)).toBeNull();

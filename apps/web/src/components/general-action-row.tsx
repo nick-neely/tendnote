@@ -9,6 +9,7 @@ import {
   completeGeneralActionAction,
   deferGeneralActionAction,
   editGeneralActionAction,
+  getResponsibilityHandoffOfferAction,
   setGeneralActionPeopleAction,
   setGeneralActionVisibilityAction,
   skipGeneralActionOccurrenceAction,
@@ -23,12 +24,11 @@ import {
 import { ActionContextStrip } from "@/components/general-action-context-strip";
 import { ActionHistoryDialog } from "@/components/general-action-history-dialog";
 import {
-  ActionAttribution,
+  ActionAttributionLine,
   HandToHouseholdDialog,
   HolderReminderOffer,
   ResponsibilityHandoffOffer,
   ResponsibilityHolderForm,
-  ResponsibilityHolderLine,
 } from "@/components/general-action-household";
 import {
   ActionLinksField,
@@ -882,12 +882,31 @@ export function ActionRow({
   /**
    * Whether settling this occurrence is a moment to ask who has it next.
    *
-   * Only a household-native Routine: the question presumes a next time, and a
-   * one-time Action that is done has none. Tendnote never moves the name itself,
-   * so if it is not asked here it is simply not asked (ADR 0215).
+   * The server holds the rule, because the part that matters is durable: a
+   * member who has said "no, this one's settled" is never asked again, on this
+   * device or any other. Asking the row alone would re-offer the hand-off every
+   * single week to the household where one person simply always does it, which
+   * is a recurring interruption the product manufactured rather than a question
+   * anyone asked for (ADR 0215).
+   *
+   * A refused or failed check is simply no offer. Nobody asked for this
+   * question, so failing to pose it is not a problem the member has.
    */
-  function offerHandoffIfUseful(view: GeneralActionView) {
-    setHandoffOpen(view.ownership === "household_native" && view.isRoutine);
+  async function offerHandoffIfUseful(view: GeneralActionView) {
+    if (view.ownership !== "household_native" || !view.isRoutine) return;
+    const candidateCount = shareableMembers.filter(
+      (member) => member.userId !== view.responsibilityHolderUserId,
+    ).length;
+    if (candidateCount === 0) return;
+    try {
+      const result = await getResponsibilityHandoffOfferAction({
+        generalActionId: view.id,
+        candidateCount,
+      });
+      if (result.ok && result.view.offer) setHandoffOpen(true);
+    } catch {
+      // No offer. See above.
+    }
   }
 
   function runLifecycle(
@@ -948,7 +967,7 @@ export function ActionRow({
             `${kind === "complete" ? "Done" : "Skipped"} · next ${shortDay(view.dueAtISO)}`,
           );
         }
-        offerHandoffIfUseful(view);
+        void offerHandoffIfUseful(view);
       },
       command: () =>
         kind === "complete"
@@ -1041,11 +1060,11 @@ export function ActionRow({
           ) : null}
           <ActionLinks links={action.links} />
           {hasContext ? <ActionContextStrip action={action} onUpdate={onUpdate} /> : null}
-          {/* Two quiet lines of attribution, never an avatar stack and never a
-              feed: whose record this is, and who — if anyone has said so — is
-              looking after it. Nothing renders when nobody is named. */}
-          <ActionAttribution action={action} members={shareableMembers} />
-          <ResponsibilityHolderLine action={action} />
+          {/* One quiet line of attribution, never an avatar stack and never a
+              feed: whose record this is and — where someone has said so — who is
+              looking after it, joined rather than stacked so a household row is
+              no taller than a private one. Nothing renders when neither applies. */}
+          <ActionAttributionLine action={action} members={shareableMembers} />
           {areaName ? (
             <span className="inline-flex w-fit items-center rounded-full bg-secondary px-2 py-0.5 text-[length:var(--text-caption)] text-secondary-foreground">
               {areaName}
@@ -1126,15 +1145,27 @@ export function ActionRow({
           {reconciled}
         </p>
       ) : null}
-      {handoffOpen ? (
-        <ResponsibilityHandoffOffer
-          action={action}
-          members={shareableMembers}
-          onDismiss={() => setHandoffOpen(false)}
-          onUpdate={onUpdate}
-        />
-      ) : null}
-      <HolderReminderOffer action={action} onUpdate={onUpdate} />
+      {/* Both offers arrive unbidden, so both announce themselves. The regions
+          are mounted permanently and filled conditionally — a live region added
+          to the DOM at the same moment as its content is not announced. */}
+      <div aria-live="polite">
+        {handoffOpen ? (
+          <ResponsibilityHandoffOffer
+            action={action}
+            members={shareableMembers}
+            onDismiss={() => setHandoffOpen(false)}
+            onUpdate={onUpdate}
+          />
+        ) : null}
+      </div>
+      {/* One question at a time. The member who just handed a chore on is
+          usually also its outgoing holder, so both offers qualify at once — and
+          two stacked yes/no asks in one breath is the wall of asks this domain
+          otherwise refuses. The reminder waits; it is not urgent, and it will
+          still be there next time. */}
+      <div aria-live="polite">
+        <HolderReminderOffer action={action} onUpdate={onUpdate} suppressed={handoffOpen} />
+      </div>
       <ActionHistoryDialog
         generalActionId={action.id}
         onOpenChange={setHistoryOpen}

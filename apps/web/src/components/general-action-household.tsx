@@ -3,7 +3,7 @@
 import { NO_RESPONSIBILITY_HOLDER_LABEL, RESPONSIBILITY_HANDOFF_PROMPT } from "@tendnote/domain";
 import { useEffect, useState, useTransition } from "react";
 import {
-  declineResponsibilityHolderReminderAction,
+  declineGeneralActionOfferAction,
   getResponsibilityHolderReminderOfferAction,
   handGeneralActionToHouseholdAction,
   setResponsibilityHolderAction,
@@ -12,7 +12,11 @@ import {
   type GeneralActionReminderChoice,
   ReminderAlertTimeField,
 } from "@/components/general-action-reminder";
-import { ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
+import {
+  ACTION_CONTROL_TOUCH_TARGET,
+  ErrorText,
+  GENERIC_ERROR,
+} from "@/components/general-action-shared";
 import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { CheckIcon, HomeIcon } from "@/components/icons";
 import {
@@ -49,7 +53,7 @@ const NOBODY = "__nobody__";
  * Deliberately text with one glyph rather than a pill: a badge would read as a
  * status the row is reporting, and this is only attribution.
  */
-export function ActionAttribution({
+function ActionAttribution({
   action,
   members,
 }: {
@@ -82,14 +86,49 @@ export function ActionAttribution({
  * household chore and the calmest one it has, so a placeholder here — "nobody has
  * taken this on" — would turn the quietest case into a reproach (ADR 0215). The
  * label itself is the domain's, so every surface phrases it identically.
+ *
+ * A member learns they have been named by *seeing this line*, the next time they
+ * open the record — never by being told. That is a chosen trade-off, not an
+ * oversight: the alternative is a notification, and no member's action may put
+ * one on another member's device (ADR 0203). Discovering it late is the price of
+ * that rule, and it is the right price. Do not "fix" this with a push.
  */
-export function ResponsibilityHolderLine({ action }: { action: GeneralActionView }) {
+function ResponsibilityHolderLine({ action }: { action: GeneralActionView }) {
   if (!action.responsibilityHolderLabel) {
     return null;
   }
   return (
     <span className="text-[length:var(--text-caption)] text-muted-foreground">
       {action.responsibilityHolderLabel}
+    </span>
+  );
+}
+
+/**
+ * Whose record this is and who is looking after it, on one line.
+ *
+ * Joined with a separator rather than stacked, because a household row otherwise
+ * grows a line taller than a private one for what is two fragments of the same
+ * quiet fact. Either half may be absent — an unnamed chore, or your own record —
+ * and when both are, the line does not render at all.
+ */
+export function ActionAttributionLine({
+  action,
+  members,
+}: {
+  action: GeneralActionView;
+  members: ShareableActionMember[];
+}) {
+  const attribution = ActionAttribution({ action, members });
+  const holder = ResponsibilityHolderLine({ action });
+  if (!attribution && !holder) {
+    return null;
+  }
+  return (
+    <span className="inline-flex w-fit flex-wrap items-center gap-1.5 text-[length:var(--text-caption)] text-muted-foreground">
+      {attribution}
+      {attribution && holder ? <span aria-hidden>·</span> : null}
+      {holder}
     </span>
   );
 }
@@ -175,10 +214,21 @@ export function ResponsibilityHolderForm({
         </RadioGroup>
       </fieldset>
       <div className="flex items-center justify-end gap-1.5">
-        <Button onClick={onCancel} size="sm" type="button" variant="ghost">
+        <Button
+          className={ACTION_CONTROL_TOUCH_TARGET}
+          onClick={onCancel}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
           Cancel
         </Button>
-        <Button disabled={pending || !changed} size="sm" type="submit">
+        <Button
+          className={ACTION_CONTROL_TOUCH_TARGET}
+          disabled={pending || !changed}
+          size="sm"
+          type="submit"
+        >
           {pending ? <Spinner /> : <CheckIcon />}
           Save
         </Button>
@@ -250,6 +300,28 @@ export function ResponsibilityHandoffOffer({
     });
   }
 
+  /**
+   * "This one's settled" is the member's statement that this chore does not
+   * alternate, and it is remembered for good — the question is never put to them
+   * for this record again. It changes nothing about the record itself: the holder
+   * stays exactly where it stands, which is the whole point of a settled chore
+   * (ADR 0215).
+   */
+  function decline() {
+    onDismiss();
+    startTransition(async () => {
+      try {
+        await declineGeneralActionOfferAction({
+          generalActionId: action.id,
+          offerKind: "responsibility_handoff",
+        });
+      } catch {
+        // The offer may come back once. Saying so would turn a non-event into a
+        // problem the member has to think about.
+      }
+    });
+  }
+
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border/70 bg-muted/25 px-3 py-2.5">
       <p className="text-[length:var(--text-small)] text-foreground">
@@ -258,6 +330,7 @@ export function ResponsibilityHandoffOffer({
       <div className="flex flex-wrap items-center gap-1.5">
         {candidates.map((member) => (
           <Button
+            className={ACTION_CONTROL_TOUCH_TARGET}
             disabled={busyUserId !== null}
             key={member.userId}
             onClick={() => handOff(member.userId)}
@@ -270,14 +343,14 @@ export function ResponsibilityHandoffOffer({
           </Button>
         ))}
         <Button
-          className="text-muted-foreground"
+          className={`${ACTION_CONTROL_TOUCH_TARGET} text-muted-foreground`}
           disabled={busyUserId !== null}
-          onClick={onDismiss}
+          onClick={decline}
           size="sm"
           type="button"
           variant="ghost"
         >
-          Not now
+          This one's settled
         </Button>
       </div>
       {outgoingIsViewer && action.reminderSchedule ? (
@@ -388,15 +461,24 @@ export function HandToHouseholdDialog({
  * this component's guess: it holds the whole rule, including that a member who
  * said no is never asked again (ADR 0203).
  *
- * A record with no due date is not offered one, because a reminder has nothing to
- * be early relative to.
+ * A record with no due date is not offered one, and that is intended rather than
+ * an oversight: a Reminder Schedule is a lead time measured against a domain date
+ * (ADR 0203), so an undated Routine has nothing for an alert to be early relative
+ * to. Giving it a date makes the offer available at the next naming.
  */
 export function HolderReminderOffer({
   action,
   onUpdate,
+  suppressed = false,
 }: {
   action: GeneralActionView;
   onUpdate: (view: GeneralActionView) => void;
+  /**
+   * Held back while another question is already on screen. The member who just
+   * settled an occurrence is usually also its outgoing holder, so both offers
+   * qualify at the same moment — and this is the one that can wait.
+   */
+  suppressed?: boolean;
 }) {
   const reminderWriter = useReminderScheduleWriter();
   const eligible =
@@ -432,7 +514,7 @@ export function HolderReminderOffer({
     };
   }, [action.id, eligible]);
 
-  if (!eligible || !offered || dismissed) {
+  if (!eligible || !offered || dismissed || suppressed) {
     return null;
   }
 
@@ -462,7 +544,10 @@ export function HolderReminderOffer({
     setDismissed(true);
     startTransition(async () => {
       try {
-        await declineResponsibilityHolderReminderAction({ generalActionId: action.id });
+        await declineGeneralActionOfferAction({
+          generalActionId: action.id,
+          offerKind: "holder_reminder",
+        });
       } catch {
         // Declining is remembered server-side so the offer never returns. If that
         // write fails the offer may come back once; saying so would make a
@@ -483,7 +568,7 @@ export function HolderReminderOffer({
       />
       <div className="flex items-center justify-end gap-1.5">
         <Button
-          className="text-muted-foreground"
+          className={`${ACTION_CONTROL_TOUCH_TARGET} text-muted-foreground`}
           disabled={pending}
           onClick={decline}
           size="sm"
@@ -492,7 +577,14 @@ export function HolderReminderOffer({
         >
           No thanks
         </Button>
-        <Button disabled={pending} onClick={accept} size="sm" type="button" variant="outline">
+        <Button
+          className={ACTION_CONTROL_TOUCH_TARGET}
+          disabled={pending}
+          onClick={accept}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
           {pending ? <Spinner /> : <CheckIcon />}
           Remind me
         </Button>

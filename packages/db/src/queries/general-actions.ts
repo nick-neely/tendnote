@@ -1,3 +1,5 @@
+import type { GeneralActionOfferKind } from "@tendnote/domain";
+import { shouldOfferResponsibilityHandoff } from "@tendnote/domain";
 import { createDrizzleGeneralActionLifecycleStore } from "./general-actions/drizzle-store";
 import {
   createAffectedGeneralActionLifecycle,
@@ -164,11 +166,6 @@ export async function listGeneralActionsForHousehold(
   return defaultGeneralActionLifecycle.listGeneralActionsForHousehold(input);
 }
 
-/** The members who have already declined a record's holder reminder offer. */
-export async function listGeneralActionReminderOfferDeclines(input: { generalActionId: string }) {
-  return defaultGeneralActionStore.listGeneralActionReminderOfferDeclines(input);
-}
-
 /**
  * Whether to offer this member their own Reminder Schedule for this record.
  *
@@ -178,6 +175,8 @@ export async function listGeneralActionReminderOfferDeclines(input: { generalAct
  * - only a household-native record, because only those name a holder;
  * - only the named member, asked in their *own* surfaces — a member cannot be
  *   offered, let alone enrolled, by anyone else's action (ADR 0203);
+ * - only when the record has a due date, since a reminder has nothing to be
+ *   early relative to without one;
  * - only when they hold no schedule for it already, so it is an offer rather
  *   than a nag;
  * - and only once, because declining is remembered.
@@ -193,26 +192,57 @@ export async function shouldOfferResponsibilityHolderReminder(input: {
   const action = await defaultGeneralActionLifecycle.getGeneralAction(input);
   if (
     action.ownership !== "household_native" ||
-    action.responsibilityHolderUserId !== input.actorUserId
+    action.responsibilityHolderUserId !== input.actorUserId ||
+    action.dueAt === null
   ) {
     return false;
   }
   const [schedules, declined] = await Promise.all([
     listReminderSchedulesForOwner({ ownerUserId: input.actorUserId }),
-    defaultGeneralActionStore.listGeneralActionReminderOfferDeclines({
+    defaultGeneralActionStore.listGeneralActionOfferDeclines({
       generalActionId: action.id,
+      offerKind: "holder_reminder",
     }),
   ]);
   if (declined.includes(input.actorUserId)) return false;
   return !schedules.some((schedule) => schedule.recordId === action.id);
 }
 
-/** Remembers one member's "no thanks", so the offer is never made again. */
-export async function declineGeneralActionReminderOffer(input: {
+/**
+ * Whether to offer this member the in-place hand-off after they settle an
+ * occurrence.
+ *
+ * The rule itself is the domain's ({@link shouldOfferResponsibilityHandoff});
+ * what this adds is the one stored fact it needs — whether this member has
+ * already said no for this record. A settled chore therefore asks once and then
+ * goes quiet for good, while a household that keeps handing off keeps the
+ * shortcut (ADR 0215).
+ */
+export async function shouldOfferResponsibilityHandoffTo(input: {
+  actorUserId: string;
+  generalActionId: string;
+  candidateCount: number;
+}): Promise<boolean> {
+  const action = await defaultGeneralActionLifecycle.getGeneralAction(input);
+  const declined = await defaultGeneralActionStore.listGeneralActionOfferDeclines({
+    generalActionId: action.id,
+    offerKind: "responsibility_handoff",
+  });
+  return shouldOfferResponsibilityHandoff({
+    ownership: action.ownership,
+    isRoutine: action.recurrence !== null,
+    actorHasDeclinedHandoff: declined.includes(input.actorUserId),
+    candidateCount: input.candidateCount,
+  });
+}
+
+/** Remembers one member's "no thanks", so that offer is never made again. */
+export async function declineGeneralActionOffer(input: {
   generalActionId: string;
   userId: string;
+  offerKind: GeneralActionOfferKind;
 }) {
-  return defaultGeneralActionStore.declineGeneralActionReminderOffer(input);
+  return defaultGeneralActionStore.declineGeneralActionOffer(input);
 }
 
 export async function dismissGeneralAction(input: GeneralActionActionInput) {

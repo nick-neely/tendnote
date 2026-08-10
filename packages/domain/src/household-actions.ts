@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { GeneralActionValidationError } from "./general-actions";
 import type { HouseholdOperation, HouseholdRecordOwnership } from "./household-authorization";
 
@@ -158,6 +159,50 @@ export function responsibilityHolderLabel(input: {
 }): string | null {
   if (input.isSelf) return "You're looking after this";
   return input.holderName ? `${input.holderName} is looking after this` : null;
+}
+
+/**
+ * The questions a household record may put to a member unprompted.
+ *
+ * Both are invitations rather than actions, and both owe the same promise:
+ * asked once, then never again once answered. `holder_reminder` asks a named
+ * member whether they want their own alert; `responsibility_handoff` asks the
+ * member who just settled an occurrence whether someone else has it next.
+ */
+export const generalActionOfferKindSchema = z.enum(["holder_reminder", "responsibility_handoff"]);
+export type GeneralActionOfferKind = z.infer<typeof generalActionOfferKindSchema>;
+
+/**
+ * Whether to offer the in-place hand-off after this member settles an occurrence.
+ *
+ * The hand-off exists to keep an *alternating* chore seamless without Tendnote
+ * storing a turn order. The settled chore — where one member simply always does
+ * it — is the other common case, and for that one the same question every single
+ * week is a recurring interruption the product manufactured, which is exactly
+ * what Tendnote must not do.
+ *
+ * So the household's own answer decides how long it keeps being asked. Tendnote
+ * asks, and stops asking a member the moment they say no; declining is that
+ * member's statement that this chore is settled and it is remembered for good.
+ * A member who keeps handing off never declines, so they keep being offered the
+ * shortcut. Neither branch is Tendnote inferring a rotation — it is a member's
+ * answer to a question, held to, which is the whole of ADR 0215.
+ *
+ * A one-time Action is never asked, because "who is looking after this next?"
+ * presumes a next time it does not have.
+ */
+export function shouldOfferResponsibilityHandoff(input: {
+  ownership: HouseholdRecordOwnership;
+  isRoutine: boolean;
+  actorHasDeclinedHandoff: boolean;
+  candidateCount: number;
+}): boolean {
+  return (
+    input.ownership === "household_native" &&
+    input.isRoutine &&
+    !input.actorHasDeclinedHandoff &&
+    input.candidateCount > 0
+  );
 }
 
 /** The unnamed option in a holder picker. Stated as a choice, never as a gap. */

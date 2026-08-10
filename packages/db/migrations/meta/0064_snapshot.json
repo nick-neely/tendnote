@@ -1,5 +1,5 @@
 {
-  "id": "db97f5ea-1432-4b40-8b57-59a1cbb5649f",
+  "id": "714b3931-6747-4bd0-ba09-da6c6ff7d879",
   "prevId": "7170b9a0-45ce-4674-9142-41425d8ba693",
   "version": "7",
   "dialect": "postgresql",
@@ -5547,6 +5547,107 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.general_action_offer_declines": {
+      "name": "general_action_offer_declines",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "general_action_id": {
+          "name": "general_action_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "offer_kind": {
+          "name": "offer_kind",
+          "type": "general_action_offer_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "declined_at": {
+          "name": "declined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "general_action_offer_declines_action_user_kind_idx": {
+          "name": "general_action_offer_declines_action_user_kind_idx",
+          "columns": [
+            {
+              "expression": "general_action_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "offer_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "general_action_offer_declines_general_action_id_general_actions_id_fk": {
+          "name": "general_action_offer_declines_general_action_id_general_actions_id_fk",
+          "tableFrom": "general_action_offer_declines",
+          "tableTo": "general_actions",
+          "columnsFrom": [
+            "general_action_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "general_action_offer_declines_user_id_user_id_fk": {
+          "name": "general_action_offer_declines_user_id_user_id_fk",
+          "tableFrom": "general_action_offer_declines",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.general_action_people": {
       "name": "general_action_people",
       "schema": "",
@@ -5636,94 +5737,6 @@
           "tableTo": "people",
           "columnsFrom": [
             "person_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.general_action_reminder_offer_declines": {
-      "name": "general_action_reminder_offer_declines",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "general_action_id": {
-          "name": "general_action_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "declined_at": {
-          "name": "declined_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "general_action_reminder_offer_declines_action_user_idx": {
-          "name": "general_action_reminder_offer_declines_action_user_idx",
-          "columns": [
-            {
-              "expression": "general_action_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "general_action_reminder_offer_declines_general_action_id_general_actions_id_fk": {
-          "name": "general_action_reminder_offer_declines_general_action_id_general_actions_id_fk",
-          "tableFrom": "general_action_reminder_offer_declines",
-          "tableTo": "general_actions",
-          "columnsFrom": [
-            "general_action_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "general_action_reminder_offer_declines_user_id_user_id_fk": {
-          "name": "general_action_reminder_offer_declines_user_id_user_id_fk",
-          "tableFrom": "general_action_reminder_offer_declines",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -11864,6 +11877,14 @@
         "ignored",
         "responsibility_changed",
         "handed_to_household"
+      ]
+    },
+    "public.general_action_offer_kind": {
+      "name": "general_action_offer_kind",
+      "schema": "public",
+      "values": [
+        "holder_reminder",
+        "responsibility_handoff"
       ]
     },
     "public.general_action_ownership": {

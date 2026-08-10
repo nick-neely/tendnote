@@ -11,8 +11,8 @@ import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import {
   generalActionEvents,
+  generalActionOfferDeclines,
   generalActionPeople,
-  generalActionReminderOfferDeclines,
   generalActions,
   householdRecordShares,
 } from "../../schema";
@@ -291,18 +291,20 @@ export function createDrizzleGeneralActionStore(): GeneralActionStore {
         .returning();
       return rows.map((row) => generalActionSchema.parse(row));
     },
-    async listGeneralActionReminderOfferDeclines(input) {
+    async listGeneralActionOfferDeclines(input) {
       const rows = await getDb()
-        .select({ userId: generalActionReminderOfferDeclines.userId })
-        .from(generalActionReminderOfferDeclines)
-        .where(eq(generalActionReminderOfferDeclines.generalActionId, input.generalActionId));
+        .select({ userId: generalActionOfferDeclines.userId })
+        .from(generalActionOfferDeclines)
+        .where(
+          and(
+            eq(generalActionOfferDeclines.generalActionId, input.generalActionId),
+            eq(generalActionOfferDeclines.offerKind, input.offerKind),
+          ),
+        );
       return rows.map((row) => row.userId);
     },
-    async declineGeneralActionReminderOffer(input) {
-      await getDb()
-        .insert(generalActionReminderOfferDeclines)
-        .values({ generalActionId: input.generalActionId, userId: input.userId })
-        .onConflictDoNothing();
+    async declineGeneralActionOffer(input) {
+      await getDb().insert(generalActionOfferDeclines).values(input).onConflictDoNothing();
     },
     async listGeneralActionsForOwner(input) {
       const query = getDb()

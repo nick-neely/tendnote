@@ -19,6 +19,7 @@ import { user } from "../auth";
 import { timestamps } from "./common";
 import {
   generalActionEventKind,
+  generalActionOfferKind,
   generalActionOwnership,
   generalActionStatus,
   privacyScope,
@@ -160,22 +161,26 @@ export const generalActions = pgTable(
 );
 
 /**
- * One member's answer to the Responsibility Holder reminder offer, stored only
- * when the answer was no.
+ * One member's "no thanks" to an offer this record made them, stored only when
+ * the answer was no.
  *
- * Being named as the holder offers that member — once — to add their own
- * Reminder Schedule, because no member's action may ever put an alert on
- * another member's device (ADR 0203). Accepting leaves an ordinary
- * `reminder_schedules` row and needs nothing here; declining leaves no other
- * trace, so without this table the offer would come back every time the member
- * looked at the record, which is the nagging the offer exists to avoid.
+ * Both Phase Eight offers ask a question the member did not go looking for, so
+ * both owe the same promise: asked once, and never again once answered. A yes
+ * leaves its own durable trace — a `reminder_schedules` row, or a changed
+ * Responsibility Holder — and needs nothing here. A no leaves none, so without
+ * this table the question would come back every single time the member opened
+ * the record, which is precisely the nagging the offers exist to avoid.
  *
- * Keyed on the member and the record rather than on the naming, so re-naming the
- * same member later does not re-ask a question they already answered. Rows
- * cascade with the record and with the member.
+ * One table with an `offer_kind` rather than one per offer, because "which
+ * questions has this member already answered about this record" is a single
+ * concept, and a second table would be a second place to forget to check.
+ *
+ * Keyed on the member and the record rather than on the occasion, so re-naming
+ * the same member, or another occurrence coming round, never re-asks a question
+ * they have already answered. Rows cascade with the record and with the member.
  */
-export const generalActionReminderOfferDeclines = pgTable(
-  "general_action_reminder_offer_declines",
+export const generalActionOfferDeclines = pgTable(
+  "general_action_offer_declines",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     generalActionId: uuid("general_action_id")
@@ -184,12 +189,14 @@ export const generalActionReminderOfferDeclines = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    offerKind: generalActionOfferKind("offer_kind").notNull(),
     declinedAt: timestamp("declined_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("general_action_reminder_offer_declines_action_user_idx").on(
+    uniqueIndex("general_action_offer_declines_action_user_kind_idx").on(
       table.generalActionId,
       table.userId,
+      table.offerKind,
     ),
   ],
 );

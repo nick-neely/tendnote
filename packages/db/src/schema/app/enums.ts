@@ -318,6 +318,21 @@ export const generalActionOwnership = pgEnum("general_action_ownership", [
   "household_native",
 ]);
 
+/**
+ * The questions a household record may put to one of its members, and which
+ * therefore have to remember a "no".
+ *
+ * Both are invitations rather than actions: naming a Responsibility Holder
+ * offers *that* member their own reminder, and settling an occurrence offers the
+ * acting member a hand-off. Neither may be repeated after it is declined, and
+ * an enum rather than two tables keeps "what has this member already answered"
+ * one question with one answer (#383, ADRs 0203, 0215).
+ */
+export const generalActionOfferKind = pgEnum("general_action_offer_kind", [
+  "holder_reminder",
+  "responsibility_handoff",
+]);
+
 export const savedItemKind = pgEnum("saved_item_kind", ["note", "link", "open_question"]);
 
 export const savedItemStatus = pgEnum("saved_item_status", ["active", "archived"]);

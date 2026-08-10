@@ -13,7 +13,7 @@ import {
   archiveGeneralAction,
   completeGeneralAction,
   createGeneralAction,
-  declineGeneralActionReminderOffer,
+  declineGeneralActionOffer,
   deferGeneralAction,
   dismissGeneralAction,
   editGeneralAction,
@@ -28,6 +28,7 @@ import {
   setGeneralActionPeople,
   setGeneralActionVisibility,
   setResponsibilityHolder,
+  shouldOfferResponsibilityHandoffTo,
   shouldOfferResponsibilityHolderReminder,
   skipGeneralActionOccurrence,
   undeferGeneralAction,
@@ -36,7 +37,11 @@ import {
 import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
 import { searchPeople } from "@tendnote/db/queries/people";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
-import { generalActionLinkSchema, generalActionRecurrenceSchema } from "@tendnote/domain";
+import {
+  generalActionLinkSchema,
+  generalActionOfferKindSchema,
+  generalActionRecurrenceSchema,
+} from "@tendnote/domain";
 import { visibilityChoiceSchema } from "@tendnote/domain/privacy";
 import { z } from "zod";
 import { getCachedActionLedgerViews } from "@/lib/cache/action-views";
@@ -556,17 +561,51 @@ export async function getResponsibilityHolderReminderOfferAction(input: {
   });
 }
 
-/** Remembers this member's "no thanks", so the offer is never made again. */
-export async function declineResponsibilityHolderReminderAction(input: {
+/**
+ * Whether to offer this member the hand-off after they settled an occurrence.
+ *
+ * Asked of the server rather than decided on the row, because the answer turns
+ * on a stored fact — whether this member has already said no for this record —
+ * and because "a settled chore is named once and never touched again" has to
+ * hold across reloads and devices, not just for the life of one component
+ * (ADR 0215).
+ */
+export async function getResponsibilityHandoffOfferAction(input: {
   generalActionId: string;
+  candidateCount: number;
 }) {
   return runOwnerAction({
-    schema: actionIdSchema,
+    schema: z.object({
+      generalActionId: z.uuid(),
+      candidateCount: z.number().int().min(0).max(50),
+    }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      shouldOfferResponsibilityHandoffTo({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+        candidateCount: parsed.candidateCount,
+      }),
+    result: (offer) => ({ offer }),
+  });
+}
+
+/** Remembers this member's "no thanks", so that offer is never made again. */
+export async function declineGeneralActionOfferAction(input: {
+  generalActionId: string;
+  offerKind: "holder_reminder" | "responsibility_handoff";
+}) {
+  return runOwnerAction({
+    schema: z.object({
+      generalActionId: z.uuid(),
+      offerKind: generalActionOfferKindSchema,
+    }),
     input,
     body: async ({ ownerUserId, input: parsed }) => {
-      await declineGeneralActionReminderOffer({
+      await declineGeneralActionOffer({
         generalActionId: parsed.generalActionId,
         userId: ownerUserId,
+        offerKind: parsed.offerKind,
       });
       return null;
     },

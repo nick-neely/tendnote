@@ -8,6 +8,7 @@ import {
   householdOperationForGeneralAction,
   isPersonallyRelevantHouseholdRecord,
   responsibilityHolderLabel,
+  shouldOfferResponsibilityHandoff,
 } from "./household-actions";
 import { evaluateHouseholdAuthorization } from "./household-authorization";
 
@@ -240,5 +241,34 @@ describe("what makes a household record personally relevant", () => {
         ownerUserId: MEMBER,
       }),
     ).toBe(true);
+  });
+});
+
+describe("how long the hand-off keeps being offered", () => {
+  const base = {
+    ownership: "household_native" as const,
+    isRoutine: true,
+    actorHasDeclinedHandoff: false,
+    candidateCount: 1,
+  };
+
+  it("offers it while the member has never said the chore is settled", () => {
+    expect(shouldOfferResponsibilityHandoff(base)).toBe(true);
+  });
+
+  it("stops for good once that member says it is settled", () => {
+    // "Mom waters the plants" completes every week. Asking who has it next,
+    // every week, forever, is an interruption the product manufactured.
+    expect(shouldOfferResponsibilityHandoff({ ...base, actorHasDeclinedHandoff: true })).toBe(
+      false,
+    );
+  });
+
+  it("never asks where the question has no answer", () => {
+    // A one-time Action has no next time, a member-owned record has no holder,
+    // and a household of one has nobody to hand to.
+    expect(shouldOfferResponsibilityHandoff({ ...base, isRoutine: false })).toBe(false);
+    expect(shouldOfferResponsibilityHandoff({ ...base, ownership: "member_owned" })).toBe(false);
+    expect(shouldOfferResponsibilityHandoff({ ...base, candidateCount: 0 })).toBe(false);
   });
 });

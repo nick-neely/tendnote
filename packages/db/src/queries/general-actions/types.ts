@@ -6,6 +6,7 @@ import type {
   GeneralActionEdit,
   GeneralActionEvent,
   GeneralActionLink,
+  GeneralActionOfferKind,
   GeneralActionOwnership,
   GeneralActionProgressReconciliation,
   GeneralActionRecurrence,
@@ -197,12 +198,16 @@ export type GeneralActionStore = {
     householdId: string;
     ownerUserId: string;
   }) => Promise<GeneralAction[]>;
-  /** The members who have already declined the holder reminder offer for a record. */
-  listGeneralActionReminderOfferDeclines: (input: { generalActionId: string }) => Promise<string[]>;
-  /** Remembers one member's "no thanks", so the offer is never made again. */
-  declineGeneralActionReminderOffer: (input: {
+  /** The members who have already answered no to one of a record's offers. */
+  listGeneralActionOfferDeclines: (input: {
+    generalActionId: string;
+    offerKind: GeneralActionOfferKind;
+  }) => Promise<string[]>;
+  /** Remembers one member's "no thanks", so that offer is never made again. */
+  declineGeneralActionOffer: (input: {
     generalActionId: string;
     userId: string;
+    offerKind: GeneralActionOfferKind;
   }) => Promise<void>;
 };
 
