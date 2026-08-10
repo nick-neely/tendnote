@@ -60,6 +60,7 @@ export function HouseholdSurface({
   governanceActions,
   memberActions,
   contextSection,
+  sharedSections,
 }: {
   initialOverview: HouseholdOverview | null;
   createHouseholdAction?: CreateHouseholdAction;
@@ -76,6 +77,13 @@ export function HouseholdSurface({
    * being the reader's to see.
    */
   contextSection?: React.ReactNode;
+  /**
+   * The household's shared content - its calendars and Event Plans - read on
+   * the server and handed in. It appears only alongside an Overview: the same
+   * active membership that makes one readable is what makes the other readable,
+   * and a household that has just been left or ended has neither.
+   */
+  sharedSections?: React.ReactNode;
 }) {
   const router = useRouter();
   const [overview, setOverview] = useState(initialOverview);
@@ -117,6 +125,7 @@ export function HouseholdSurface({
             router.refresh();
           }}
           overview={overview}
+          sharedSections={sharedSections}
         />
       ) : ending ? (
         <HouseholdEnded

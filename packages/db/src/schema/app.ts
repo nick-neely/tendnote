@@ -26,6 +26,8 @@ export * from "./app/general-action-assets";
 export * from "./app/general-actions";
 export * from "./app/gift-plans";
 export * from "./app/gmail-draft-actions";
+export * from "./app/household-calendar";
+export * from "./app/household-event-plans";
 export * from "./app/household-invitations";
 export * from "./app/households";
 export * from "./app/memories";

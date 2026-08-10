@@ -477,6 +477,13 @@
       "when": 1786325207526,
       "tag": "0067_household_native_saved_items",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1786326154790,
+      "tag": "0068_household_calendar_and_event_plans",
+      "breakpoints": true
     }
   ]
 }

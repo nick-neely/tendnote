@@ -3,15 +3,19 @@ import {
   getHouseholdOverviewForUser,
   listHouseholdContextActors,
 } from "@tendnote/db/queries/households";
+import type { HouseholdOverview } from "@tendnote/domain/household-overview";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { connection } from "next/server";
+import { Suspense } from "react";
 import { HouseholdContextSummary } from "@/components/account/household-context-summary";
+import { HouseholdSharedSections } from "@/components/account/household-shared-sections";
 import { HouseholdSurface } from "@/components/account/household-surface";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { appDestination } from "@/components/app-destinations";
 import { Button } from "@/components/ui/button";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
+import { getHouseholdSharedContext } from "@/lib/household/household-shared-data";
 
 export default function HouseholdPage() {
   return (
@@ -51,6 +55,21 @@ export async function HouseholdContent() {
             ) : null
           }
           initialOverview={overview}
+          sharedSections={
+            overview ? (
+              /*
+               * Its own boundary, because these two sections are the only part
+               * of this page that waits on a provider. Without it the roster,
+               * the invitations, and the governance controls - all of which are
+               * already in hand - would sit behind a Google round trip. The
+               * Account page suspends its own Calendar preview for the same
+               * reason.
+               */
+              <Suspense fallback={<SharedSectionsReserve />}>
+                <SharedSections overview={overview} userId={ownerUserId} />
+              </Suspense>
+            ) : undefined
+          }
         />
       </HouseholdShell>
     );
@@ -58,6 +77,55 @@ export async function HouseholdContent() {
     unstable_rethrow(error);
     return <HouseholdUnavailable />;
   }
+}
+
+/**
+ * The household's shared Calendar and Event Plan sections (issue #387).
+ *
+ * Read here rather than inside the surface because both reads are server-side
+ * and authorized in their own domain seams, and read only when there is an
+ * active household to read them for - the same membership that produced the
+ * Overview is the one those seams prove again for themselves.
+ *
+ * These two bring Account > Household to seven stacked sections, and the Plans
+ * list is uncapped. That is deliberate for now: spec #376 says not to create a
+ * global Household destination until a supported coordination domain exists,
+ * and this is the first one. It is also the point at which the question becomes
+ * real - #384's Household home is the intended answer, and when it lands, the
+ * shared sections belong there with Account keeping governance. Until then,
+ * whoever adds the eighth section should treat this comment as the marker that
+ * the page has run out of room rather than as permission to keep stacking.
+ */
+async function SharedSections({
+  overview,
+  userId,
+}: {
+  overview: HouseholdOverview;
+  userId: string;
+}) {
+  const shared = await getHouseholdSharedContext(userId);
+  return (
+    <HouseholdSharedSections
+      calendars={shared.calendars}
+      linkCandidates={shared.linkCandidates}
+      members={overview.members}
+      now={shared.now}
+      plans={shared.plans}
+      viewerHasCalendarAccess={shared.viewerHasCalendarAccess}
+      viewerRole={overview.viewerRole}
+      viewerUserId={userId}
+    />
+  );
+}
+
+function SharedSectionsReserve() {
+  return (
+    <section
+      aria-busy="true"
+      aria-label="Shared calendars and event plans"
+      className="h-24 animate-pulse rounded-lg border bg-muted/40"
+    />
+  );
 }
 
 /**

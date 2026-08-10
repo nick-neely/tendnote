@@ -6,6 +6,7 @@ import {
   assertOwnerPromotionAllowed,
   assertOwnerStepDownAllowed,
   HOUSEHOLD_STANDING_ENDED,
+  type HouseholdCalendarDisconnectReason,
   type HouseholdDissolutionProgress,
   type HouseholdMembership,
   HouseholdValidationError,
@@ -71,6 +72,8 @@ export type HouseholdDissolutionResult = {
   recoveryDeadlineAt: Date;
   canceledInvitations: number;
   endedMemberships: number;
+  /** Designations ended and provider caches cleared, whoever connected them. */
+  disconnectedCalendars: number;
 };
 
 /** How far a household is from the unanimous decision, plus whether it has ended. */
@@ -237,6 +240,56 @@ export function createHouseholdGovernanceLifecycle(
   }
 
   /**
+   * Ends the Household Calendar Connections riding one member's provider grant,
+   * or every one of them when no connector is named.
+   *
+   * A designation is not a second authorization: it reads through the
+   * connector's own Google grant, so when that person stops being a member the
+   * household's access to their calendar ends at the same instant, and its
+   * cached provider data goes with it (ADR 0217).
+   *
+   * The Event Plans that referenced those calendars are left entirely alone.
+   * They are household-native records, so losing a calendar must not touch the
+   * household's planning - and their reference is deliberately *not* emptied:
+   * the contract is that such a Plan "shows an unavailable provider reference",
+   * which a Plan holding no reference at all cannot do. Keeping the address
+   * lets the Plan still say it was about a calendar event, lets the surface
+   * render that honestly as unavailable, and lets the reference come back if
+   * the same calendar is ever designated again. What must not survive is
+   * provider *content*, and that is the cache, which does not.
+   *
+   * Both effects run inside the caller's transaction, so there is no window in
+   * which someone has been removed and the calendar they were carrying is still
+   * readable.
+   */
+  async function endConnectorCalendars(
+    tx: HouseholdInvitationStore,
+    input: {
+      householdId: string;
+      connectorUserId?: string;
+      reason: HouseholdCalendarDisconnectReason;
+      at: Date;
+    },
+  ): Promise<number> {
+    const connections = input.connectorUserId
+      ? await tx.calendars.listConnectionsForConnector({
+          householdId: input.householdId,
+          connectorUserId: input.connectorUserId,
+        })
+      : await tx.calendars.listConnections({
+          householdId: input.householdId,
+          status: "connected",
+        });
+    if (connections.length === 0) return 0;
+
+    return tx.calendars.disconnectConnections({
+      connectionIds: connections.map((connection) => connection.id),
+      reason: input.reason,
+      at: input.at,
+    });
+  }
+
+  /**
    * Ends one membership and everything it was carrying.
    *
    * The order matters only in that all of it happens inside one transaction: a
@@ -301,6 +354,12 @@ export function createHouseholdGovernanceLifecycle(
       at: input.at,
       sentBy: input.membership.userId,
     });
+    const disconnectedCalendars = await endConnectorCalendars(tx, {
+      householdId: input.householdId,
+      connectorUserId: input.membership.userId,
+      reason: "connector_departed",
+      at: input.at,
+    });
 
     return {
       membership: updated,
@@ -308,6 +367,7 @@ export function createHouseholdGovernanceLifecycle(
       revertedActions: revertedActions.length,
       clearedResponsibilities: clearedResponsibilities.length,
       canceledReminders,
+      disconnectedCalendars,
     };
   }
 
@@ -769,6 +829,13 @@ export function createHouseholdGovernanceLifecycle(
     // Every share at once rather than per departing member: this is the whole
     // household's member-owned sharing ending, not several departures.
     await tx.households.deleteHouseholdRecordSharesForMember({ householdId: input.householdId });
+    // Likewise every designated calendar at once, whoever connected it. Nothing
+    // provider-derived survives a dissolution, including the caches (ADR 0217).
+    const disconnectedCalendars = await endConnectorCalendars(tx, {
+      householdId: input.householdId,
+      reason: "household_dissolved",
+      at: input.at,
+    });
     await tx.households.clearHouseholdDissolutionConfirmations({ householdId: input.householdId });
 
     await tx.households.updateHouseholdWorkspace({
@@ -788,6 +855,7 @@ export function createHouseholdGovernanceLifecycle(
         canceledInvitations,
         endedMemberships,
         canceledReminders,
+        disconnectedCalendars,
         recoveryDeadlineAt: recoveryDeadlineAt.toISOString(),
         // Stated in the trail as well as the UI: there is no path from here back
         // in without support, by design (ADR 0213).
@@ -800,6 +868,7 @@ export function createHouseholdGovernanceLifecycle(
       recoveryDeadlineAt,
       canceledInvitations,
       endedMemberships,
+      disconnectedCalendars,
     };
   }
 }

@@ -1,4 +1,5 @@
 import type { HouseholdInvitationState, HouseholdRole, HouseholdWorkspace } from "@tendnote/domain";
+import type { HouseholdCalendarStore } from "./calendar-types";
 import type { HouseholdIdentityStore } from "./overview";
 import type { HouseholdScheduledWorkStore } from "./scheduled-work";
 import type { HouseholdStore } from "./types";
@@ -66,6 +67,16 @@ export type HouseholdInvitationStore = {
    * reminders that were queued around it commit together or not at all.
    */
   scheduledWork: HouseholdScheduledWorkStore;
+  /**
+   * The household's designated calendars, bound to the same connection.
+   *
+   * It hangs off this store for the same reason the household store does: a
+   * departure or a dissolution has to end memberships and end the calendar
+   * access those memberships were carrying inside one transaction. A window in
+   * which someone has been removed but the calendar riding their grant is still
+   * readable by the household is exactly the fail-open ADR 0219 rules out.
+   */
+  calendars: HouseholdCalendarStore;
   /**
    * Runs `fn` inside one transaction, handing it a store bound to that
    * transaction. Concurrency is serialized by {@link lockHousehold}, not by this
