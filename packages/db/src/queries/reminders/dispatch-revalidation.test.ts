@@ -345,6 +345,46 @@ describe("dispatch re-proves standing for every reminder-capable kind", () => {
   });
 });
 
+describe("a schedule left standing on a reverted record is inert", () => {
+  it("suppresses a remaining member's alert about a record that went home with its owner", async () => {
+    // The documented tolerance, made verifiable. A departure cancels the leaving
+    // member's own schedules; it does not walk every *other* member's schedules
+    // looking for records that have just gone private. It does not need to,
+    // because the reverted record stops loading for anyone but its owner and the
+    // send is refused - the leftover row is a row, not an alert.
+    const stack = await seedStack();
+    const item = await stack.savedItemLifecycle.createSavedItem({
+      ownerUserId: BEN,
+      kind: "note",
+      title: "Pick the paint up",
+      bringBackAt: DUE_AT,
+      scope: "household",
+      householdId: stack.householdId,
+    });
+    const anasJob = await queueAlert(stack, {
+      subscriberUserId: ANA,
+      recordKind: "saved_item",
+      recordId: item.id,
+    });
+
+    await removeHouseholdMember(stack.savedItems, { householdId: stack.householdId, userId: BEN });
+    // What the departure sweep writes for Ben's own record. Ana's schedule for
+    // it is deliberately left where it is.
+    await stack.savedItems.updateSavedItem({
+      ownerUserId: BEN,
+      savedItemId: item.id,
+      patch: { scope: "private", householdId: null },
+    });
+
+    const stale = await stack.reminders.listSchedulesForOwner({ ownerUserId: ANA });
+    expect(stale, "the stale schedule is expected to still be there").toHaveLength(1);
+
+    const { result, sends } = await dispatch(stack, anasJob);
+    expect(result).toEqual({ status: "suppressed", reason: "suppressed_ineligible" });
+    expect(sends).toEqual([]);
+  });
+});
+
 describe("a member-owned reminder leaves with its owner rather than being revoked", () => {
   it("keeps delivering a Follow-Up alert to the member who owns it after they leave", async () => {
     // The mirror case, and the one that makes the rest meaningful: departure ends

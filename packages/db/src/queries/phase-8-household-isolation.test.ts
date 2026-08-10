@@ -24,6 +24,7 @@ import {
   createInMemoryHouseholdEventPlanStore,
 } from "./households/in-memory-event-plan-store";
 import { createHouseholdLifecycle } from "./households/lifecycle";
+import { createHouseholdOverviewReader } from "./households/overview";
 import { createInMemoryPersonReferenceStore } from "./person-references/in-memory-store";
 import { createPersonReferences } from "./person-references/references";
 import type { PersonReferenceHost } from "./person-references/types";
@@ -855,6 +856,58 @@ describe("shared relationship records answer the same events", () => {
     expect(await reach(family, ANA)).toEqual(there(family));
     for (const caller of [BEN, OUTSIDER]) {
       expect(await reach(family, caller)).toEqual(gone(family));
+    }
+  });
+});
+
+/**
+ * The recovery boundary, stated as an absence.
+ *
+ * "Support can put it back for thirty days" is a promise about a human process,
+ * not about a product path, and the difference matters: if any surface could
+ * still reach a dissolved household's content, the recovery window would be a
+ * month in which everyone who had just been told their access ended could go on
+ * reading. So the household is reachable only through a current active
+ * membership, dissolution ends every one of them, and that leaves no argument
+ * any caller can supply that names the workspace.
+ */
+describe("a dissolved household is readable by nobody through any product path", () => {
+  it("leaves its former members with no overview and no records", async () => {
+    const stack = seedStack();
+    const workspace = await seedHouseholdWithMembers(stack.shared, {
+      ownerUserId: ANA,
+      name: "Home",
+      members: [
+        [ANA, "owner"],
+        [BEN, "member"],
+      ],
+    });
+    const families = await householdNativeFamilies(stack, workspace.id);
+    const overviewFor = createHouseholdOverviewReader(stack.shared, {
+      listUserIdentities: async ({ userIds }) =>
+        userIds.map((id) => ({ id, name: id, email: `${id}@example.test` })),
+    });
+
+    await expect(overviewFor({ userId: ANA })).resolves.toMatchObject({
+      householdId: workspace.id,
+    });
+
+    for (const userId of [ANA, BEN]) {
+      await removeHouseholdMember(stack.shared, { householdId: workspace.id, userId });
+    }
+    await stack.shared.updateHouseholdWorkspace({
+      householdId: workspace.id,
+      patch: { status: "dissolved", dissolvedAt: new Date("2026-08-01T00:00:00.000Z") },
+    });
+
+    for (const userId of [ANA, BEN, OUTSIDER]) {
+      // Null, not a tombstone view. A dissolved household that still rendered a
+      // name, a member count, or a "recover" affordance would be the recovery
+      // window handing back exactly what dissolution took away.
+      await expect(overviewFor({ userId }), `overview for ${userId}`).resolves.toBeNull();
+      for (const family of families) {
+        expect(await reach(family, userId), `${family.name} for ${userId}`).toEqual(gone(family));
+      }
     }
   });
 });
