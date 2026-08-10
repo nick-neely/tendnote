@@ -3,6 +3,7 @@ import {
   ASSET_SEMANTIC_TIER_LIMIT,
   type AssetKind,
   type AssetMemoryValue,
+  type AssetOwnership,
   type AssetSearchCandidate,
   type AssetSearchRecordKind,
   type AssetSearchTrustLevel,
@@ -30,6 +31,9 @@ type SearchRow = {
   label: string;
   snippet: string;
   scope: PrivacyScope;
+  // Always the *anchor asset's* ownership, never the child record's: a memory under a
+  // household-native Asset is the household's, whatever row it lives in (ADR 0214).
+  ownership: AssetOwnership;
   value_json: AssetMemoryValue | null;
   trust_level: AssetSearchTrustLevel;
   source_record_id: string | null;
@@ -136,6 +140,7 @@ export function buildAssetSearchRecordsQuery(input: SearchAssetRecordsInput): SQ
             a.name as label,
             a.name as snippet,
             a.scope::text as scope,
+            a.ownership::text as ownership,
             null::jsonb as value_json,
             'asset_anchor'::text as trust_level,
             null::text as source_record_id,
@@ -170,6 +175,7 @@ export function buildAssetSearchRecordsQuery(input: SearchAssetRecordsInput): SQ
               else am.label
             end as snippet,
             am.scope::text as scope,
+            a.ownership::text as ownership,
             am.value_json as value_json,
             case when am.status = 'suggested' then 'suggested_asset_fact' else 'asset_fact' end as trust_level,
             am.source_record_id::text as source_record_id,
@@ -222,6 +228,7 @@ export function buildAssetSearchRecordsQuery(input: SearchAssetRecordsInput): SQ
             ae.label as label,
             coalesce(nullif(ae.captured_text, ''), ae.label) as snippet,
             ae.scope::text as scope,
+            a.ownership::text as ownership,
             null::jsonb as value_json,
             'asset_evidence'::text as trust_level,
             ae.source_record_id::text as source_record_id,
@@ -280,6 +287,7 @@ export function buildAssetSearchEmbeddingsQuery(input: SearchAssetEmbeddingsInpu
             a.name as label,
             a.name as snippet,
             a.scope::text as scope,
+            a.ownership::text as ownership,
             null::jsonb as value_json,
             'asset_anchor'::text as trust_level,
             null::text as source_record_id,
@@ -321,6 +329,7 @@ export function buildAssetSearchEmbeddingsQuery(input: SearchAssetEmbeddingsInpu
               else am.label
             end as snippet,
             am.scope::text as scope,
+            a.ownership::text as ownership,
             am.value_json as value_json,
             case when am.status = 'suggested' then 'suggested_asset_fact' else 'asset_fact' end as trust_level,
             am.source_record_id::text as source_record_id,
@@ -480,6 +489,7 @@ function baseCandidate(row: SearchRow) {
     assetName: row.asset_name,
     assetKind: row.asset_kind,
     assetStatus: row.asset_status,
+    ownership: row.ownership,
     label: row.label,
     snippet: row.snippet,
     value: row.value_json,

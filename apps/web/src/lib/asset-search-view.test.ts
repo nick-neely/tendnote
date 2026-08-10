@@ -23,6 +23,7 @@ function result(overrides: Partial<AssetSearchResult> = {}): AssetSearchResult {
     assetName: "Refrigerator",
     assetKind: "appliance",
     assetStatus: "active",
+    ownership: "member_owned",
     label: "Filter size",
     snippet: "Filter size: RPWFE",
     matchedFields: ["value"],
@@ -55,6 +56,15 @@ describe("toAssetSearchResultView", () => {
     expect(
       toAssetSearchResultView(result({ value: { type: "date", date: "2027-01-04" } }))?.value,
     ).toBe("Jan 4, 2027");
+  });
+
+  it("carries the anchor's ownership, so the row knows whether an audience was chosen", () => {
+    // A household-native record has no audience anyone chose; without this the row would
+    // state one, and "Whole household" would read as a sharing decision (ADR 0214).
+    expect(toAssetSearchResultView(result({ ownership: "household_native" }))?.ownership).toBe(
+      "household_native",
+    );
+    expect(toAssetSearchResultView(result())?.ownership).toBe("member_owned");
   });
 
   it("separates exact and structured hits from meaning-only ones", () => {

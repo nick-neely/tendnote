@@ -202,6 +202,9 @@ function baseCandidate(
     assetName: asset.name,
     assetKind: asset.kind,
     assetStatus: asset.status,
+    // The anchor's ownership, for every record kind — mirroring the SQL, which reads
+    // `a.ownership` in each branch rather than the child row's (ADR 0214).
+    ownership: asset.ownership,
     label: fields.label,
     snippet: fields.snippet,
     value: fields.value ?? null,

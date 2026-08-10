@@ -91,6 +91,7 @@ function candidate(overrides: Partial<AssetSearchCandidate> = {}): AssetSearchCa
     assetName: "Refrigerator",
     assetKind: "appliance",
     assetStatus: "active",
+    ownership: "member_owned",
     label: "Filter size",
     snippet: "RPWFE",
     matchedFields: ["label"],

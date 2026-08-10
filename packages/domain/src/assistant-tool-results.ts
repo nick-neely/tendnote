@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { assetMemoryValueSchema } from "./asset-memories";
-import { assetKindSchema } from "./assets";
+import { assetKindSchema, assetOwnershipSchema } from "./assets";
 import { draftProposalResultSchema } from "./draft-proposals";
 import { memoryCuratorProposalResultSchema } from "./memory-curator";
 import { privacyScopeSchema } from "./privacy";
@@ -260,6 +260,12 @@ export const assetMemoryProposalToolResult = z.object({
     kindLabel: z.string(),
     scope: privacyScopeSchema,
     visibilityLabel: z.string(),
+    /**
+     * The anchor's ownership form, so the review card can tell "shared with the
+     * household" apart from "is the household's" (ADR 0214). Defaulted, because a
+     * tool result persisted before this field existed must still parse.
+     */
+    ownership: assetOwnershipSchema.default("member_owned"),
     /** True while the anchor itself is a pending Suggested Asset (nothing matched). */
     pending: z.boolean(),
   }),

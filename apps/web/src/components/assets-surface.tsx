@@ -257,7 +257,11 @@ function AssetRow({ asset, members }: { asset: AssetView; members: ShareableActi
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <AssetKindBadge kind={asset.kind} label={asset.kindLabel} />
-          <ActionScopeChip label={asset.visibilityLabel} scope={asset.scope} />
+          {/* A household-native Asset has no audience anyone chose, so a scope chip
+              would name the household as people this member shared with (ADR 0214). */}
+          {asset.ownership === "household_native" ? null : (
+            <ActionScopeChip label={asset.visibilityLabel} scope={asset.scope} />
+          )}
           {/* Whose it is, in the metadata line rather than beside the name: it
               is context for the row, not part of what the thing is called. */}
           <AssetAttributionLine asset={asset} members={members} />

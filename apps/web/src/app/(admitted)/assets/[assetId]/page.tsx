@@ -725,7 +725,11 @@ function AssetProfileHeader({
         </p>
         {view.scope !== "private" || view.archived ? (
           <div className="flex flex-wrap items-center gap-2">
-            <ActionScopeChip label={view.visibilityLabel} scope={view.scope} />
+            {/* A household-native Asset has no audience anyone chose; the attribution
+                line beside this says whose it is instead (ADR 0214). */}
+            {view.ownership === "household_native" ? null : (
+              <ActionScopeChip label={view.visibilityLabel} scope={view.scope} />
+            )}
             {view.archived ? <AssetArchivedBadge /> : null}
             <AssetAttributionLine asset={view} members={members} />
           </div>

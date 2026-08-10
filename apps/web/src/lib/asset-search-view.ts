@@ -35,6 +35,12 @@ export type AssetSearchResultView = {
   matchKinds: AssetSearchResult["matchKinds"];
   trustLevel: BrowsableAssetTrustLevel;
   visibilityLabel: string;
+  /**
+   * The anchor Asset's ownership form. A household-native record has no audience
+   * anyone chose, so the row states its trust register without a visibility label
+   * that would read as a sharing decision (ADR 0214).
+   */
+  ownership: AssetSearchResult["ownership"];
 };
 
 /**
@@ -69,6 +75,7 @@ export function toAssetSearchResultView(result: AssetSearchResult): AssetSearchR
     matchKinds: result.matchKinds,
     trustLevel: result.trustLevel,
     visibilityLabel: result.visibilityLabel,
+    ownership: result.ownership,
   };
 }
 

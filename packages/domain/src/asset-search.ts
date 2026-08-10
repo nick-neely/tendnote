@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { assetMemoryValueSchema } from "./asset-memories";
 import { normalizeAssetNameTokens } from "./asset-review";
-import { assetKindSchema, assetStatusSchema } from "./assets";
+import { assetKindSchema, assetOwnershipSchema, assetStatusSchema } from "./assets";
 import { visibilityChoiceSchema } from "./privacy";
 
 /**
@@ -63,6 +63,11 @@ const assetSearchRecordShape = {
   assetName: z.string(),
   assetKind: assetKindSchema,
   assetStatus: assetStatusSchema,
+  // The *anchor's* ownership form, on every record kind: a memory or a receipt under a
+  // household-native Asset is the household's too. It is what lets a surface tell
+  // "shared with the household" apart from "is the household's" and stop naming an
+  // audience nobody chose (ADR 0214). Defaulted so an older producer stays valid.
+  ownership: assetOwnershipSchema.default("member_owned"),
   label: z.string(),
   snippet: z.string(),
   matchedFields: z.array(z.string()).min(1),
@@ -412,6 +417,7 @@ export function mergeAssetSearchResults(input: {
       assetName: best.assetName,
       assetKind: best.assetKind,
       assetStatus: best.assetStatus,
+      ownership: best.ownership,
       label: best.label,
       snippet: best.snippet,
       matchedFields: [...fields].sort(),

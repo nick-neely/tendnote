@@ -166,6 +166,15 @@ describe("asset search drizzle store guards (#204)", () => {
     expect(anchorGates).toBeGreaterThanOrEqual(5); // 3 record branches + 2 embedding branches
   });
 
+  it("reads ownership off the anchor asset in every branch, never off the child row", () => {
+    // A memory or a receipt under a household-native Asset is the household's, so the
+    // column that decides whether a surface names an audience must come from `a`, not
+    // from `am`/`ae` (ADR 0214). One `a.ownership` per select, and no other alias.
+    expect(source).not.toMatch(/(am|ae)\.ownership/);
+    const ownershipSelects = source.split("a.ownership::text as ownership").length - 1;
+    expect(ownershipSelects).toBe(5); // 3 record branches + 2 embedding branches
+  });
+
   it("keeps the review gate owner-only in both tiers", () => {
     // A `suggested` memory is a proposal: it participates only in explicit review
     // context, and only for its own owner — the embedding index is not a back door

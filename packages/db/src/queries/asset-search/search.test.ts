@@ -461,6 +461,27 @@ describe("Asset Search — visibility boundaries", () => {
     expect(results.map((result) => result.recordId)).not.toContain("evidence-receipt");
   });
 
+  it("reports the anchor's ownership on every record under it, not the child row's", async () => {
+    // A memory and a receipt under a household-native Asset are the household's too, so
+    // a surface reading a result can tell "shared with the household" apart from "is the
+    // household's" and stop naming an audience nobody chose (ADR 0214).
+    const results = await search({
+      assets: [
+        asset({ scope: "household", ownership: "household_native", householdId: HOUSEHOLD }),
+      ],
+      memories: [memory({ scope: "household", ownership: "member_owned", householdId: HOUSEHOLD })],
+      evidence: [
+        evidence({ scope: "household", ownership: "member_owned", householdId: HOUSEHOLD }),
+      ],
+      householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)],
+    }).searchAssets({ ownerUserId: MEMBER, query: "refrigerator filter receipt" });
+
+    expect(results.length).toBeGreaterThan(0);
+    for (const result of results) {
+      expect(result.ownership).toBe("household_native");
+    }
+  });
+
   it("hides the whole asset — and everything under it — when the asset itself is not visible", async () => {
     const results = await search({
       assets: [asset({ scope: "private" })],
