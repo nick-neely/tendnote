@@ -105,7 +105,16 @@ export function HouseholdHomeSection({
       const settled = outcome.view[sectionKey].records;
       setRecords(settled);
       setStatus(outcome.view.reconciliation ?? `${record.title} is done.`);
-      if (!settled.some((entry) => entry.identity === record.identity)) moveFocus();
+      if (settled.some((entry) => entry.identity === record.identity)) {
+        // The row that stays needs this as much as the row that leaves. A
+        // Routine rolls forward and keeps its place, but the control was
+        // `disabled` for the length of the write, and disabling the focused
+        // element blurs it — so settling bin day from the keyboard dropped the
+        // member on `body` beside a row that was still sitting there.
+        restoreRowFocus(record.identity);
+      } else {
+        moveFocus();
+      }
       router.refresh();
     });
   }
@@ -267,6 +276,24 @@ function focusAfterRowRemoval(identity: string): () => void {
     (candidate) => candidate.dataset.householdRow === identity,
   );
   return captureFocusAfterRemoval(row, "h2");
+}
+
+/**
+ * Puts focus back on the control the member pressed, for the row that survived.
+ *
+ * Re-queried after the commit rather than captured before it, so it finds the
+ * control the render actually left in place. It gives up unless focus is on
+ * `body`: `body` is the signature of the blur that disabling the button caused,
+ * and anywhere else is somewhere the member chose to be since.
+ */
+function restoreRowFocus(identity: string): void {
+  requestAnimationFrame(() => {
+    if (document.activeElement !== document.body) return;
+    const row = Array.from(document.querySelectorAll<HTMLElement>("[data-household-row]")).find(
+      (candidate) => candidate.dataset.householdRow === identity,
+    );
+    row?.querySelector<HTMLButtonElement>("button")?.focus();
+  });
 }
 
 /** A section-shaped reserve: the heading it will have, and rows the size of rows. */
