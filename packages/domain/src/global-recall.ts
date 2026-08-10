@@ -22,6 +22,13 @@ export const globalRecallFamilySchema = z.enum([
   "calendar_event",
   "self_context",
   "household_context",
+  /**
+   * Gift Plans (#389, #390). A member-owned planning record that reaches recall
+   * through the Gift Plan seam's own proved search rather than through the shared
+   * embedding index — a Gift Plan is deliberately not an embedded record kind, so
+   * a Surprise Subject cannot meet one in ranked retrieval.
+   */
+  "gift_plan",
 ]);
 
 /**
@@ -42,6 +49,7 @@ export const globalRecallFilterSchema = z.enum([
   "calendar",
   "self_context",
   "household_context",
+  "gift_plans",
 ]);
 
 export const globalRecallCanonicalKindSchema = z.enum([
@@ -54,6 +62,7 @@ export const globalRecallCanonicalKindSchema = z.enum([
   "saved_item",
   "calendar_event",
   "context_fact",
+  "gift_plan",
 ]);
 
 export const globalRecallGroundingKindSchema = z.enum([
@@ -74,6 +83,8 @@ export const globalRecallTrustSchema = z.enum([
   "provider_context",
   "self_context",
   "household_context",
+  /** A plan for one person and occasion — an intention, not a confirmed fact. */
+  "gift_plan",
 ]);
 
 export const globalRecallMatchKindSchema = z.enum(["exact", "related"]);
@@ -240,6 +251,27 @@ export const globalRecallResultSchema = z.discriminatedUnion("family", [
       }),
     }),
   }),
+  /**
+   * A Gift Plan the caller is currently authorized to see.
+   *
+   * The details are the plan's own facts and nothing about who else is on it: no
+   * co-planner list, no contributor names, no subject Person id. The counts come
+   * from the same proved read as the plan, so there is no path by which a number
+   * can describe a record its reader was refused — which is the whole of the
+   * Surprise Subject rule as a recall row experiences it (ADR 0216).
+   */
+  z.object({
+    ...globalRecallBaseShape,
+    family: z.literal("gift_plan"),
+    details: z.object({
+      subjectName: z.string().min(1),
+      occasion: z.string().min(1),
+      occasionOn: z.iso.datetime().nullable(),
+      status: z.string().min(1),
+      ideaCount: z.number().int().min(0),
+      claimedIdeaCount: z.number().int().min(0),
+    }),
+  }),
   z.object({
     ...globalRecallBaseShape,
     family: z.literal("household_context"),
@@ -267,6 +299,7 @@ export const globalRecallLimitationSchema = z.object({
     "calendar",
     "self_context",
     "household_context",
+    "gift_plans",
   ]),
   message: z.string().min(1),
 });

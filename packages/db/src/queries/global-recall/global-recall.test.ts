@@ -178,6 +178,7 @@ const emptyDependencies = {
   searchAssets: async () => assetOutcome([]),
   searchSavedItemsExact: async () => [],
   searchSavedItemsRelated: async () => [],
+  searchGiftPlans: async () => [],
   listFollowups: async () => [],
   readCalendar: async () => ({ connected: false, result: null }),
 } satisfies GlobalRecallDependencies;
@@ -1143,6 +1144,7 @@ describe("Global Recall", () => {
       searchHouseholdContextExact: forbidden,
       searchRelationshipExact: forbidden,
       searchRelationshipRelated: forbidden,
+      searchGiftPlans: forbidden,
       searchAssets: async () =>
         assetOutcome([
           {

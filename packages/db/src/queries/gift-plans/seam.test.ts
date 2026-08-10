@@ -123,19 +123,34 @@ describe("the Gift Plan tables are reachable only through the seam", () => {
 });
 
 /**
- * The derived surfaces a Gift Plan is deliberately not on yet.
+ * The derived surfaces a Gift Plan is still deliberately not on.
  *
  * ADR 0216 lists Search, Eve, Household, Today, reminders, and notifications
- * among the places the Surprise Subject must not meet the plan. This slice
- * satisfies that by not registering the family in any of those pipelines: the
- * seam's own search is proved, and nothing else can produce a Gift Plan at all.
+ * among the places the Surprise Subject must not meet the plan. #389 satisfied
+ * that by registering the family nowhere at all; #390 registered it in Search and
+ * Eve through the seam's own proved read, which is the shape the ADR asks for —
+ * an adapter over the one query layer, not a second answer to who may see a plan.
  *
- * The assertion is here rather than left implicit because "safe because it does
- * not exist" stops being true the moment someone widens one of these unions. A
- * future adapter is expected to delete the line it breaks *and* route through
+ * The three below stay empty, and each for its own reason rather than by inertia:
+ *
+ * - **Semantic retrieval.** A shared embedding index is a similarity space; it
+ *   structurally cannot carry a domain exclusion, and a vector that answers "what
+ *   was I planning for Ana's birthday" would answer it for Ana. A Gift Plan is
+ *   deliberately not an embedded record kind, which is also why it reaches recall
+ *   as an exact family with no related tier
+ *   (`apps/web/src/lib/eve/semantic-boundaries.test.ts` pins the same rule from
+ *   the route side).
+ * - **Reminder schedules.** The reminder subscription proof does not yet thread
+ *   `excludedUserIds`, so registering the kind would put a protected plan one
+ *   missing field away from a notification to its own subject.
+ * - **Today.** A Gift Plan's own decision doc admits it to Today only under the
+ *   ordinary deterministic relevance rule, which is a Today-side contract that
+ *   does not exist yet.
+ *
+ * A future adapter is expected to delete the line it breaks *and* route through
  * `queries/gift-plans`, and this is where that conversation starts.
  */
-describe("no derived surface can produce a Gift Plan yet", () => {
+describe("no unproved derived surface can produce a Gift Plan", () => {
   const registries: Array<{ what: string; file: string[]; symbol: string }> = [
     {
       what: "semantic retrieval",
@@ -152,11 +167,6 @@ describe("no derived surface can produce a Gift Plan yet", () => {
       file: [REPO_ROOT, "packages", "domain", "src", "today.ts"],
       symbol: "todayRecordKindSchema",
     },
-    {
-      what: "global recall",
-      file: [REPO_ROOT, "packages", "domain", "src", "global-recall.ts"],
-      symbol: "globalRecallFamilySchema",
-    },
   ];
 
   for (const registry of registries) {
@@ -166,6 +176,40 @@ describe("no derived surface can produce a Gift Plan yet", () => {
       const block = declaration.slice(0, declaration.indexOf("]);"));
       expect(block).not.toContain("gift_plan");
       expect(block).not.toContain("gift-plan");
+    });
+  }
+});
+
+/**
+ * Search and Eve reach a Gift Plan only through the seam.
+ *
+ * Global Recall gained a `gift_plan` family and Eve gained tools in #390. Both are
+ * thin adapters by construction: they call `searchGiftPlans`, which narrows in SQL
+ * with the exclusion clause and then proves every surviving row. This pins that
+ * they never grew a query of their own — a recall normalizer or a tool that read
+ * the tables would compile, pass its own tests, and quietly answer a Surprise
+ * Subject.
+ */
+describe("Search and Eve reach a Gift Plan only through the seam", () => {
+  const adapters: Array<{ what: string; file: string[] }> = [
+    { what: "Global Recall", file: [PACKAGE_ROOT, "src", "queries", "global-recall.ts"] },
+    {
+      what: "the Eve search tool",
+      file: [REPO_ROOT, "apps", "agent", "agent", "tools", "search_gift_plans.ts"],
+    },
+    {
+      what: "the Eve contribution tool",
+      file: [REPO_ROOT, "apps", "agent", "agent", "tools", "add_gift_idea.ts"],
+    },
+  ];
+
+  for (const adapter of adapters) {
+    it(`has ${adapter.what} import the seam and nothing beneath it`, () => {
+      const source = read(...adapter.file);
+      expect(source).toMatch(/from "(@tendnote\/db\/queries\/gift-plans|\.\/gift-plans)"/);
+      // No store, no lifecycle factory, no table: the free functions only.
+      expect(source).not.toContain("createGiftPlanLifecycle");
+      expect(source).not.toContain("gift-plans/drizzle-store");
     });
   }
 });

@@ -10,6 +10,7 @@ import type { AssetSearchOutcome } from "../asset-search/types";
 import type { OwnerCalendarReadOutcome } from "../calendar";
 import type { HouseholdContextExactResult, SelfContextExactResult } from "../context-facts/types";
 import type { ActiveFollowupSummary } from "../followups/types";
+import type { GiftPlanWithContext } from "../gift-plans/types";
 import type { SavedItemWithContext } from "../saved-items/types";
 
 export type SearchGlobalRecallRequest = GlobalRecallInput & { ownerUserId: string };
@@ -69,6 +70,24 @@ export type GlobalRecallDependencies = {
     minimumSimilarity: number;
     limit: number;
   }) => Promise<SavedItemSemanticResult[]>;
+  /**
+   * The Gift Plans this caller may see, from the Gift Plan seam's own proved
+   * search.
+   *
+   * Deliberately the seam's function rather than a query of its own: the seam
+   * narrows in SQL, proves every surviving row, and refuses the Surprise Subject
+   * at both gates. A second query here would be a second answer to who may see a
+   * plan, and the one that eventually disagrees is the leak (ADR 0216).
+   *
+   * No `includeArchived`, like Household Context above and for a related reason:
+   * recall is a live question about what is being planned, and an archived plan is
+   * one the owner has put away. It stays reachable from its own surface.
+   */
+  searchGiftPlans: (input: {
+    callerUserId: string;
+    query: string;
+    limit: number;
+  }) => Promise<GiftPlanWithContext[]>;
   listFollowups: (input: {
     ownerUserId: string;
     includeArchived: boolean;

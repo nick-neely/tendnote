@@ -2,6 +2,7 @@ import { searchAssetsWithStatus } from "./asset-search";
 import { createDefaultGoogleCalendarReader, readConnectedOwnerCalendar } from "./calendar";
 import { searchHouseholdContextFacts, searchSelfContextFacts } from "./context-facts";
 import { searchFollowups } from "./followups";
+import { searchGiftPlans } from "./gift-plans";
 import { createGlobalRecall } from "./global-recall/queries";
 import type { GlobalRecallDependencies, SearchGlobalRecallRequest } from "./global-recall/types";
 import { searchRelationshipContext } from "./relationship-context-search";
@@ -37,6 +38,11 @@ export function createDefaultGlobalRecall(overrides: Partial<GlobalRecallDepende
     searchRelationshipRelated: (input) =>
       searchSemanticContext({ ...input, includeReviewGated: false }),
     searchAssets: (input) => searchAssetsWithStatus({ ...input, includeReviewGated: false }),
+    // The Gift Plan seam's own proved search, unchanged. Recall narrows nothing
+    // further and adds no visibility rule of its own — the seam refuses the
+    // Surprise Subject in SQL and again at the proof, and this is one of its thin
+    // adapters (docs/phase-8/household-gift-ideas-and-birthday-planning.md).
+    searchGiftPlans,
     searchSavedItemsExact: searchSavedItems,
     searchSavedItemsRelated: searchSavedItemsSemantic,
     listFollowups: searchFollowups,

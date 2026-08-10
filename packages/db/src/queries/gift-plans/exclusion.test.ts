@@ -1,5 +1,6 @@
 import { HouseholdRecordUnavailableError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it } from "vitest";
+import { createGlobalRecall } from "../global-recall/queries";
 import { removeHouseholdMember, seedHouseholdWithMembers } from "../households/household-fixtures";
 import { createInMemoryGiftPlanLifecycleStore } from "./in-memory-store";
 import { createGiftPlanLifecycle } from "./lifecycle";
@@ -81,6 +82,28 @@ describe("Surprise Subject exclusion", () => {
   });
 
   /**
+   * Global Recall over this world, wired the way production wires it.
+   *
+   * Every other source is empty so the assertion is about Gift Plans alone, and
+   * `searchGiftPlans` is the seam's own function rather than a stub — a stub would
+   * make this a test of the test.
+   */
+  function recallFor(callerUserId: string) {
+    return createGlobalRecall({
+      searchSelfContextExact: async () => [],
+      searchHouseholdContextExact: async () => [],
+      searchRelationshipExact: async () => [],
+      searchRelationshipRelated: async () => [],
+      searchAssets: async () => ({ results: [], semanticAvailable: true }),
+      searchSavedItemsExact: async () => [],
+      searchSavedItemsRelated: async () => [],
+      searchGiftPlans: (input) => plans.searchGiftPlans({ ...input, callerUserId }),
+      listFollowups: async () => [],
+      readCalendar: async () => ({ connected: false, result: null }),
+    });
+  }
+
+  /**
    * Everyone who could ask, and what each of them is entitled to. `sees` is not
    * a permission label — it is the expected answer from every read surface at
    * once, which is what makes a divergence between two surfaces a failure.
@@ -148,6 +171,26 @@ describe("Surprise Subject exclusion", () => {
           query: "Rowan",
         });
         expect(found).toHaveLength((caller.seesShared ? 1 : 0) + (caller.seesHousehold ? 1 : 0));
+      });
+
+      it("recalls in Search exactly what it may see, and nothing that says more exists", async () => {
+        // Global Recall is the surface #390 added, and it is an adapter rather
+        // than a query: it calls the same proved search the list and the count
+        // do, so it cannot come to a different answer about who may see a plan.
+        // A Surprise Subject searching their own surprise gets an empty result
+        // set and no limitation, hint, or "some results hidden" line to read.
+        const { results, limitations } = await recallFor(caller.userId()).search({
+          ownerUserId: caller.userId(),
+          query: "Rowan",
+          family: "gift_plans",
+        });
+
+        expect(results).toHaveLength((caller.seesShared ? 1 : 0) + (caller.seesHousehold ? 1 : 0));
+        for (const result of results) {
+          expect(result.family).toBe("gift_plan");
+          expect(result.href).toContain("/gift-plans/");
+        }
+        expect(limitations).toEqual([]);
       });
 
       it("counts only what it may see", async () => {

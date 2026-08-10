@@ -12,6 +12,7 @@ import type {
 import { contextFactCategoryLabel } from "@tendnote/domain";
 import type { HouseholdContextExactResult, SelfContextExactResult } from "../context-facts/types";
 import type { ActiveFollowupSummary } from "../followups/types";
+import type { GiftPlanWithContext } from "../gift-plans/types";
 import type { SavedItemWithContext } from "../saved-items/types";
 
 export const RELATED_MINIMUM_SIMILARITY = 0.55;
@@ -223,6 +224,52 @@ export function toHouseholdContextResult(source: HouseholdContextExactResult): G
         channel: fact.provenance.channel,
         origin: fact.provenance.origin,
       },
+    },
+  };
+}
+
+/**
+ * One authorized Gift Plan as a recall row.
+ *
+ * Everything here is the plan's own: who it is for, what it is for, when, and how
+ * much has been thought of. Nothing describes the audience except the audience
+ * *shape* the owner chose, and nothing names another member — a co-planner list on
+ * a search result would turn a private plan into a small roster.
+ *
+ * The row exists at all only because the seam proved it. There is no second
+ * visibility rule here and deliberately no way to write one: this function takes an
+ * already-proved plan and formats it, so a Surprise Subject cannot be refused by
+ * the seam and re-admitted by a normalizer (ADR 0216).
+ */
+export function toGiftPlanResult(plan: GiftPlanWithContext, query: string): GlobalRecallResult {
+  const matchedSubject = plan.subjectName.toLowerCase().includes(query.trim().toLowerCase());
+  return {
+    family: "gift_plan",
+    canonical: { kind: "gift_plan", id: plan.id },
+    label: `${plan.subjectName} · ${plan.occasion}`,
+    supportingText: plan.occasion,
+    lifecycle: plan.status,
+    match: {
+      kind: "exact",
+      reason: matchedSubject ? "Matched the person this plan is for" : "Matched the occasion",
+      excerpt: plan.subjectName,
+    },
+    trust: "gift_plan",
+    // A Gift Plan has no sensitivity of its own: its protection is an audience plus
+    // an exclusion, not a content grade, and grading it would invent a second rule
+    // that could disagree with the first.
+    sensitivity: "normal",
+    visibility: visibilityForScope(plan.scope),
+    grounding: [{ kind: "gift_plan", id: plan.id }],
+    href: `/gift-plans/${encodeURIComponent(plan.id)}`,
+    parent: null,
+    details: {
+      subjectName: plan.subjectName,
+      occasion: plan.occasion,
+      occasionOn: plan.occasionOn ? plan.occasionOn.toISOString() : null,
+      status: plan.status,
+      ideaCount: plan.ideaCount,
+      claimedIdeaCount: plan.claimedIdeaCount,
     },
   };
 }

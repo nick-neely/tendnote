@@ -411,6 +411,7 @@ describe("Phase Seven proof — refrigerator filter across the Personal OS", () 
       }),
       searchSavedItemsExact: (input) => savedItems.searchSavedItems(input),
       searchSavedItemsRelated: async () => [],
+      searchGiftPlans: async () => [],
       listFollowups: async () => [],
       readCalendar: async () => ({ connected: false, result: null }),
     });

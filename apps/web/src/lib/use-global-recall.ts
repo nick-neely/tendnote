@@ -75,6 +75,10 @@ export const GLOBAL_RECALL_FAMILY_OPTIONS: {
   // household has agreed together. A single option would make "Context" mean
   // "mine and everyone's" and give a member no way to ask for only one.
   { value: "household_context", label: "Household Context" },
+  // Present for everyone, because a filter that appeared only for members with a
+  // plan would itself report that a plan exists. Choosing it simply returns
+  // whatever the caller may see, which for most people is nothing.
+  { value: "gift_plans", label: "Gift plans" },
 ];
 
 export const GLOBAL_RECALL_MATCH_OPTIONS: {

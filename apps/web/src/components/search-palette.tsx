@@ -18,6 +18,7 @@ import {
   CalendarIcon,
   CircleDotIcon,
   CircleUserRoundIcon,
+  GiftIcon,
   type Icon,
   MonitorIcon,
   MoonIcon,
@@ -750,6 +751,7 @@ const FAMILY_HEADINGS: Record<GlobalRecallFamily, string> = {
   asset_memory: "Asset details",
   saved_item: "Saved Items",
   calendar_event: "Calendar",
+  gift_plan: "Gift plans",
 };
 
 const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
@@ -765,6 +767,7 @@ const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
   asset_memory: BoxIcon,
   saved_item: BookmarkIcon,
   calendar_event: CalendarIcon,
+  gift_plan: GiftIcon,
 };
 
 /** Families in reading order: who first, then what was said, then what is owed. */
@@ -779,6 +782,10 @@ const FAMILY_ORDER: GlobalRecallFamily[] = [
   "asset_memory",
   "saved_item",
   "calendar_event",
+  // Last: a plan is the least likely thing a search was reaching for, and it is
+  // the one family whose heading appearing at all is a small disclosure. Keeping
+  // it below the everyday families means an ordinary search never leads with it.
+  "gift_plan",
 ];
 
 /**

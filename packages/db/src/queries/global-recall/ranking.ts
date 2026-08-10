@@ -23,6 +23,7 @@ const FAMILIES_BY_FILTER: Record<
   calendar: ["calendar_event"],
   self_context: ["self_context"],
   household_context: ["household_context"],
+  gift_plans: ["gift_plan"],
 };
 
 export function matchesFamilyFilter(
