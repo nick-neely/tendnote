@@ -636,6 +636,91 @@ describe("cross-domain conversational Capture", () => {
     expect(deleteCapturedPerson).not.toHaveBeenCalled();
   });
 
+  it("shares a capture only when the caller deliberately chose the household scope", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const household = await seedHouseholdWithMembers(store, {
+      ownerUserId: "owner-1",
+      members: [
+        ["owner-1", "owner"],
+        ["member-1", "member"],
+      ],
+    });
+    const capture = createConversationalCapture(store, {
+      resolveVisibility: createCaptureVisibilityResolver({
+        listMemberships: store.listActiveHouseholdMembershipsForUser,
+        listMembers: vi.fn().mockResolvedValue([]),
+      }),
+    });
+
+    const result = await capture.capture({
+      authority: "explicit",
+      interactionId: "explicit-household-scope",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      // No audience suffix, no plural pronoun: the scope is the caller's control.
+      originalText: "Replace the refrigerator water filter",
+      requestedScope: "household",
+      surface: "eve",
+    });
+
+    // The household comes from the caller's own membership rows, never from the
+    // request: the tool passed a word, and the seam resolved a workspace.
+    expect(result.savedItem).toMatchObject({ scope: "household", householdId: household.id });
+    expect(result.sourceRecord.scope).toBe("household");
+    expect(result.confirmation).toMatchObject({ interpreted: { visibility: "Household" } });
+  });
+
+  it("keeps a capture private when the caller chose private, whatever the words say", async () => {
+    // A deliberate choice outranks the sentence. Re-parsing the text after the
+    // member has already answered the question is a second answer waiting to
+    // disagree with the first.
+    const store = createInMemorySavedItemLifecycleStore();
+    await seedHouseholdWithMembers(store, {
+      ownerUserId: "owner-1",
+      members: [["owner-1", "owner"]],
+    });
+    const capture = createConversationalCapture(store, {
+      resolveVisibility: createCaptureVisibilityResolver({
+        listMemberships: store.listActiveHouseholdMembershipsForUser,
+        listMembers: vi.fn().mockResolvedValue([]),
+      }),
+    });
+
+    const result = await capture.capture({
+      authority: "explicit",
+      interactionId: "explicit-private-scope",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "Order a new filter and share this with my household",
+      requestedScope: "private",
+      surface: "eve",
+    });
+
+    expect(result.savedItem).toMatchObject({ scope: "private", householdId: null });
+  });
+
+  it("refuses a household capture from someone with no household rather than quietly going private", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const capture = createConversationalCapture(store, {
+      resolveVisibility: createCaptureVisibilityResolver({
+        listMemberships: store.listActiveHouseholdMembershipsForUser,
+        listMembers: vi.fn().mockResolvedValue([]),
+      }),
+    });
+
+    await expect(
+      capture.capture({
+        authority: "explicit",
+        interactionId: "household-scope-without-household",
+        inputMode: "typed",
+        ownerUserId: "owner-1",
+        originalText: "Replace the refrigerator water filter",
+        requestedScope: "household",
+        surface: "eve",
+      }),
+    ).rejects.toThrow(/household/i);
+  });
+
   it("never widens capture visibility from plural wording", async () => {
     const store = createInMemorySavedItemLifecycleStore();
     const capture = createConversationalCapture(store);

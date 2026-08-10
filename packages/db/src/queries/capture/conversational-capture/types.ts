@@ -304,5 +304,6 @@ export type ConversationalCaptureDeps = {
     ownerUserId: string;
     originalText: string;
     contextVisibility?: ConversationalCaptureInput["contextVisibility"];
+    requestedScope?: ConversationalCaptureInput["requestedScope"];
   }) => Promise<CaptureVisibility>;
 };

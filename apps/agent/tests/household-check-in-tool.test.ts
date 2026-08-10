@@ -103,9 +103,7 @@ describe("household_check_in", () => {
   });
 
   it("gives a member who has left no household and no records", async () => {
-    getHouseholdCheckin.mockResolvedValue(
-      view({ household: null, records: [], optedIn: true }),
-    );
+    getHouseholdCheckin.mockResolvedValue(view({ household: null, records: [], optedIn: true }));
 
     const output = await tool.execute({}, ctx);
     const model = tool.toModelOutput?.(output) as { value: Record<string, unknown> };

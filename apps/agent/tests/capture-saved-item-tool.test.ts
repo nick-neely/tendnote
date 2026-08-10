@@ -68,6 +68,58 @@ describe("capture_saved_item", () => {
     expect(requestBackgroundAffectedScopeReconciliation).toHaveBeenCalledWith([]);
   });
 
+  it("passes a deliberate household scope through as a word, never as a workspace", async () => {
+    captureExplicitOutcome.mockResolvedValue({
+      confirmation: {
+        destination: "Saved Items",
+        groundedBySourceRecordId: "source-1",
+        interpreted: { kind: "Note", visibility: "Household" },
+        change: { kind: "edit_saved_item", savedItemId: "saved-1" },
+      },
+    });
+
+    await tool.execute(
+      {
+        interactionId: "eve-turn-household",
+        inputMode: "typed",
+        originalText: "Replace the refrigerator water filter",
+        requestedScope: "household",
+      },
+      ctx,
+    );
+
+    const [request] = captureExplicitOutcome.mock.calls[0] as [Record<string, unknown>];
+    expect(request.requestedScope).toBe("household");
+    // The whole point of the word: no household id, no member list, no audience.
+    // The seam reads the caller's own membership rows, so a model turn cannot
+    // name a workspace or widen what it reaches (ADR 0219).
+    expect(Object.keys(request)).not.toContain("householdId");
+    expect(Object.keys(request)).not.toContain("contextVisibility");
+  });
+
+  it("stays private when no scope was chosen, however the sentence reads", async () => {
+    captureExplicitOutcome.mockResolvedValue({
+      confirmation: {
+        destination: "Saved Items",
+        groundedBySourceRecordId: "source-1",
+        interpreted: { kind: "Note", visibility: "Only me" },
+        change: { kind: "edit_saved_item", savedItemId: "saved-1" },
+      },
+    });
+
+    await tool.execute(
+      {
+        interactionId: "eve-turn-plural",
+        inputMode: "typed",
+        originalText: "We need a new refrigerator water filter",
+      },
+      ctx,
+    );
+
+    const [request] = captureExplicitOutcome.mock.calls[0] as [Record<string, unknown>];
+    expect(Object.keys(request)).not.toContain("requestedScope");
+  });
+
   it("returns the one source-first clarification and reuses the operation to complete it", async () => {
     captureExplicitOutcome.mockResolvedValue({
       clarification: {

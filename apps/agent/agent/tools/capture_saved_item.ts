@@ -2,6 +2,7 @@ import { captureExplicitOutcome } from "@tendnote/db/queries/conversational-capt
 import {
   conversationalCaptureInferredSuggestionSchema,
   conversationalCaptureInputModeSchema,
+  conversationalCaptureRequestedScopeSchema,
 } from "@tendnote/domain/conversational-capture";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -38,11 +39,21 @@ const inputSchema = z.object({
     .min(1)
     .max(20_000)
     .describe("The user's meaningful original wording to retain as source evidence."),
+  requestedScope: conversationalCaptureRequestedScopeSchema
+    .optional()
+    .describe(
+      "Set to 'household' ONLY when the user has deliberately said this capture is for the " +
+        "household in this same turn — 'save this for our household', 'this one is shared'. " +
+        "Never set it because they said 'we', named a housemate, mentioned something domestic, " +
+        "or shared something earlier in the conversation. If save intent is clear but the " +
+        "subject is genuinely ambiguous, ask whether it is about them or the household rather " +
+        "than choosing. Omitting it keeps the capture private, which is the correct default.",
+    ),
 });
 
 export default defineTool({
   description:
-    "GLOBAL CAPTURE PRECEDENCE: when the user explicitly says 'Use Capture' or 'capture this', call this tool exactly once with their meaningful original wording. If the user's message contains two or more supported explicit clauses, call capture_saved_item exactly once before any destination-specific tool, even when the word Capture never appears. Do not ask which destination to use before calling capture_saved_item; the shared router owns grouping and can return a focused clarification. Do not fan that request out to create_person, capture_memory, search_assets, or propose_asset_memories. Route it into supported Saved Item, Action, Routine, Follow-Up, Person, approved Memory, Asset Review, or private Self Context outcomes. Capture is private by default; preserve an explicit 'share with household/member' suffix for server-side audience resolution. Multiple clauses are grouped only when the user explicitly requests each one. Reuse the interaction id and original text when answering its focused clarification. Never call this for ordinary questions or inferred outcomes.",
+    "GLOBAL CAPTURE PRECEDENCE: when the user explicitly says 'Use Capture' or 'capture this', call this tool exactly once with their meaningful original wording. If the user's message contains two or more supported explicit clauses, call capture_saved_item exactly once before any destination-specific tool, even when the word Capture never appears. Do not ask which destination to use before calling capture_saved_item; the shared router owns grouping and can return a focused clarification. Do not fan that request out to create_person, capture_memory, search_assets, or propose_asset_memories. Route it into supported Saved Item, Action, Routine, Follow-Up, Person, approved Memory, Asset Review, or private Self Context outcomes. Capture is private by default. Pass requestedScope: 'household' only when the user deliberately says this one is for the household in the same turn — never from 'we', a housemate's name, a domestic topic, or something they shared earlier. Otherwise preserve an explicit 'share with household/member' suffix verbatim for server-side audience resolution. Multiple clauses are grouped only when the user explicitly requests each one. Reuse the interaction id and original text when answering its focused clarification. Never call this for ordinary questions or inferred outcomes.",
   inputSchema,
   async execute(input, ctx) {
     const ownerUserId = resolveOwnerUserId(ctx);
@@ -53,6 +64,10 @@ export default defineTool({
       inputMode: input.inputMode,
       ...(input.inferredSuggestions ? { inferredSuggestions: input.inferredSuggestions } : {}),
       originalText: input.originalText,
+      // The word only. The household it resolves to is read from this caller's
+      // own active memberships inside the seam, so no model turn can name a
+      // workspace or widen an audience (ADR 0219).
+      ...(input.requestedScope ? { requestedScope: input.requestedScope } : {}),
       ownerUserId,
       surface: "eve",
     });

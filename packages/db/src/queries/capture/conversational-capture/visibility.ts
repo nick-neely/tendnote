@@ -1,4 +1,7 @@
-import type { ConversationalCaptureVisibility } from "@tendnote/domain";
+import type {
+  ConversationalCaptureRequestedScope,
+  ConversationalCaptureVisibility,
+} from "@tendnote/domain";
 import type { CaptureVisibility } from "./types";
 
 type HouseholdMembership = { householdId: string };
@@ -20,7 +23,45 @@ export function createCaptureVisibilityResolver(deps: {
     ownerUserId: string;
     originalText: string;
     contextVisibility?: ConversationalCaptureVisibility;
+    requestedScope?: ConversationalCaptureRequestedScope;
   }): Promise<CaptureVisibility> {
+    /**
+     * A deliberate scope choice outranks everything the text says.
+     *
+     * It runs first because it is the only signal that is actually a decision. The
+     * suffix patterns below read an audience out of the caller's own sentence,
+     * which is fine when that sentence *is* the instruction and wrong the moment
+     * a control exists — a member who turned the household scope on and then
+     * typed "share with my household" must not have their words re-parsed into a
+     * second, possibly different, answer.
+     *
+     * The household is read from this caller's own active memberships, never from
+     * the request. There is no argument shape here that can name a workspace.
+     */
+    if (input.requestedScope === "household") {
+      const memberships = await deps.listMemberships({ userId: input.ownerUserId });
+      const householdId = memberships[0]?.householdId;
+      // Fail closed rather than falling back to private: a member who chose to
+      // share and then silently did not would learn about it too late.
+      if (!householdId) throw new Error("A household audience requires an active household.");
+      return {
+        scope: "household",
+        householdId,
+        selectedUserIds: [],
+        label: "Household",
+        captureText: input.originalText,
+      };
+    }
+    if (input.requestedScope === "private") {
+      return {
+        scope: "private",
+        householdId: null,
+        selectedUserIds: [],
+        label: "Only me",
+        captureText: input.originalText,
+      };
+    }
+
     const householdMatch = input.originalText.match(HOUSEHOLD_AUDIENCE);
     if (householdMatch) {
       const memberships = await deps.listMemberships({ userId: input.ownerUserId });
