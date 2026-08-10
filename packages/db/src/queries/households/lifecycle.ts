@@ -210,6 +210,19 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
         throw new Error("Selected household members must be active.");
       }
 
+      // The previous selection goes first. Re-selecting an audience is a
+      // replacement, not an addition: a member left out of the new set must lose
+      // the record, and without this the audience could only ever grow — every
+      // narrowing would silently succeed while changing nothing (#180). Each
+      // per-domain audience change already does this before writing its own
+      // shares; this entry point is the one that did not, so a caller reaching
+      // for the generic seam got a fail-open version of the same operation.
+      await store.deleteHouseholdRecordShares({
+        householdId: input.householdId,
+        recordKind: input.recordKind,
+        recordId: input.recordId,
+      });
+
       const shares = [];
       for (const selectedUserId of input.selectedUserIds) {
         shares.push(

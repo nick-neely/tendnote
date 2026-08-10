@@ -225,6 +225,80 @@ describe("household membership lifecycle", () => {
     ).rejects.toThrow("Selected household members must be active.");
   });
 
+  it("replaces the audience on re-selection rather than adding to it", async () => {
+    // A narrowing that only ever grows the audience is a narrowing that never
+    // happens. The per-domain audience changes clear their stale shares before
+    // writing new ones; this generic seam has to do the same or a caller
+    // reaching for it gets a fail-open version of the same operation (#180).
+    const { lifecycle, store } = setup();
+    const { household } = await lifecycle.createHousehold({ ownerUserId: OWNER, name: "Home" });
+    for (const invitedUserId of [MEMBER, OTHER_MEMBER]) {
+      await lifecycle.inviteMember({
+        ownerUserId: OWNER,
+        householdId: household.id,
+        invitedUserId,
+      });
+      await lifecycle.acceptInvite({ householdId: household.id, userId: invitedUserId });
+    }
+    const record = {
+      householdId: household.id,
+      recordKind: "memory" as const,
+      recordId: "00000000-0000-4000-8000-000000000009",
+    };
+
+    await lifecycle.shareRecordWithSelectedMembers({
+      actorUserId: OWNER,
+      ...record,
+      selectedUserIds: [MEMBER, OTHER_MEMBER],
+    });
+    await lifecycle.shareRecordWithSelectedMembers({
+      actorUserId: OWNER,
+      ...record,
+      selectedUserIds: [OTHER_MEMBER],
+    });
+
+    expect(await store.listHouseholdRecordShares(record)).toMatchObject([
+      { sharedWithUserId: OTHER_MEMBER },
+    ]);
+    await expect(
+      lifecycle.canViewHouseholdRecord({
+        callerUserId: MEMBER,
+        ownerUserId: OWNER,
+        scope: "shared",
+        ...record,
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it("empties the audience when nobody is selected", async () => {
+    const { lifecycle, store } = setup();
+    const { household } = await lifecycle.createHousehold({ ownerUserId: OWNER, name: "Home" });
+    await lifecycle.inviteMember({
+      ownerUserId: OWNER,
+      householdId: household.id,
+      invitedUserId: MEMBER,
+    });
+    await lifecycle.acceptInvite({ householdId: household.id, userId: MEMBER });
+    const record = {
+      householdId: household.id,
+      recordKind: "memory" as const,
+      recordId: "00000000-0000-4000-8000-00000000000a",
+    };
+
+    await lifecycle.shareRecordWithSelectedMembers({
+      actorUserId: OWNER,
+      ...record,
+      selectedUserIds: [MEMBER],
+    });
+    await lifecycle.shareRecordWithSelectedMembers({
+      actorUserId: OWNER,
+      ...record,
+      selectedUserIds: [],
+    });
+
+    expect(await store.listHouseholdRecordShares(record)).toEqual([]);
+  });
+
   it("lets active members share records without household owner authority", async () => {
     const { lifecycle, store } = setup();
     const { household } = await lifecycle.createHousehold({ ownerUserId: OWNER, name: "Home" });

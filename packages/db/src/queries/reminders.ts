@@ -20,8 +20,9 @@ import { createHouseholdAuthorizationProver } from "./households/authorization";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createDrizzleReminderStore } from "./reminders/drizzle-store";
 import { scheduleReminderDeliveryOutbox } from "./reminders/outbox";
-import { reminderSubscriber } from "./reminders/policy";
+import { createReminderRecordLoader } from "./reminders/record-loaders";
 import { createReminderService } from "./reminders/service";
+import { createReminderSubscriptionAuthorizer } from "./reminders/subscription-authorization";
 import type { ReminderRecord } from "./reminders/types";
 import { createDrizzleSavedItemStore } from "./saved-items/drizzle-store";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
@@ -36,222 +37,15 @@ const savedItemStore = createDrizzleSavedItemStore();
 const sourceRecordStore = createDrizzleSourceRecordStore();
 const householdRecordProver = createHouseholdAuthorizationProver(createDrizzleHouseholdStore());
 
-async function reminderSourceSensitivity(input: {
-  ownerUserId: string;
-  sourceRecordId: string | null;
-  getSourceRecord: (input: {
-    ownerUserId: string;
-    sourceRecordId: string;
-  }) => Promise<{ sensitivity: "normal" | "sensitive" | "restricted" } | null>;
-}) {
-  if (!input.sourceRecordId) return "normal" as const;
-  return (
-    (
-      await input.getSourceRecord({
-        ownerUserId: input.ownerUserId,
-        sourceRecordId: input.sourceRecordId,
-      })
-    )?.sensitivity ?? "restricted"
-  );
-}
-
-async function loadFollowupReminderRecord(input: {
-  ownerUserId: string;
-  recordId: string;
-}): Promise<ReminderRecord | null> {
-  const followup = await followupStore.getFollowup({
-    ownerUserId: input.ownerUserId,
-    followupId: input.recordId,
-  });
-  if (!followup) return null;
-  const sensitivity = await reminderSourceSensitivity({
-    ownerUserId: input.ownerUserId,
-    sourceRecordId: followup.sourceRecordId ?? null,
-    getSourceRecord: sourceRecordStore.getSourceRecord,
-  });
-  return {
-    id: followup.id,
-    kind: "follow_up",
-    ownerUserId: followup.ownerUserId,
-    title: followup.reason,
-    status: followup.status,
-    occursAt: followup.dueAt,
-    timeSemantics: reminderTimeSemanticsForRecordKind("follow_up"),
-    recurrence: null,
-    sensitivity,
-    scope: followup.scope,
-    personId: followup.personId,
-  };
-}
-
-/**
- * The one loader keyed by visibility rather than by ownership.
- *
- * Every active member who can currently see a Saved Item may choose their own
- * Reminder Schedule for it, and a household-native one has no owner to key on at
- * all (`docs/phase-8/household-saved-items.md`, ADR 0214). An owner-scoped read
- * here would answer null for exactly the two cases that clause exists to serve -
- * a workspace-owned item, and another member's item shared with this member -
- * and the surface would render a reminder control that silently did nothing.
- *
- * `getVisibleSavedItem` runs the Household Authorization Proof, so this asks the
- * precise question a subscription depends on: may this member see this record,
- * right now? A member who has since left, or lost the share, loads nothing - and
- * because dispatch loads through here too, their pending intents stop being
- * deliverable at the same moment, without relying on a separate sweep.
- */
-async function loadSavedItemReminderRecord(input: {
-  subscriberUserId: string;
-  recordId: string;
-}): Promise<ReminderRecord | null> {
-  const item = await savedItemStore.getVisibleSavedItem({
-    callerUserId: input.subscriberUserId,
-    savedItemId: input.recordId,
-  });
-  if (!item) return null;
-  // Gated on the grounding this subscriber can reach, never on what the item's
-  // owner can. A reminder puts the record on someone's device, so the evidence
-  // behind it has to be evidence they were actually shown; unreadable grounding
-  // reads as restricted and withholds the reminder rather than guessing.
-  const source = await sourceRecordStore.getVisibleSourceRecord({
-    callerUserId: input.subscriberUserId,
-    sourceRecordId: item.sourceRecordId,
-  });
-  return {
-    id: item.id,
-    kind: "saved_item",
-    ownerUserId: item.ownerUserId,
-    subscriberUserId: input.subscriberUserId,
-    title: item.title,
-    status: item.status,
-    occursAt: item.bringBackAt,
-    timeSemantics: reminderTimeSemanticsForRecordKind("saved_item"),
-    recurrence: null,
-    sensitivity: source?.sensitivity ?? "restricted",
-    scope: item.scope,
-    personId: null,
-  };
-}
-
-/**
- * Loads the Action behind a reminder for the *subscribing* member, who is no
- * longer necessarily its owner.
- *
- * The owner-keyed read still runs first — it is the common private case, and the
- * only path that reaches a review-gated row — but a household-native record is
- * never served from it, because its `ownerUserId` is a storage key and honouring
- * it here would keep alerting a member who has left the household about the
- * household's chores (ADR 0214). Everything else falls through to the
- * scope-visible read, which requires current active membership, so a departed
- * member's record simply stops existing for them and their pending intent is
- * superseded on the next reconciliation.
- */
-async function loadActionReminderRecord(input: {
-  ownerUserId: string;
-  recordId: string;
-  requestedKind: "general_action" | "routine";
-}): Promise<ReminderRecord | null> {
-  const owned = await actionStore.getGeneralAction({
-    ownerUserId: input.ownerUserId,
-    generalActionId: input.recordId,
-  });
-  const action =
-    owned?.ownership === "member_owned"
-      ? owned
-      : await actionStore.getVisibleGeneralAction({
-          callerUserId: input.ownerUserId,
-          generalActionId: input.recordId,
-        });
-  if (!action) return null;
-  const kind = action.recurrence ? "routine" : "general_action";
-  if (kind !== input.requestedKind) return null;
-  // Sensitivity travels with the source record, which is the *action owner's*,
-  // so it is resolved against them rather than against the subscriber. A source
-  // the subscriber cannot read resolves to `restricted`, which is the
-  // fail-closed answer and keeps its content out of an ambient alert.
-  const sensitivity = await reminderSourceSensitivity({
-    ownerUserId: action.ownerUserId,
-    sourceRecordId: action.sourceRecordId,
-    getSourceRecord: sourceRecordStore.getSourceRecord,
-  });
-  return {
-    id: action.id,
-    kind,
-    ownerUserId: action.ownerUserId,
-    ownership: action.ownership,
-    householdId: action.householdId,
-    title: action.title,
-    status: action.status,
-    occursAt: action.dueAt,
-    timeSemantics: reminderTimeSemanticsForRecordKind(kind),
-    recurrence: action.recurrence,
-    sensitivity,
-    scope: action.scope,
-    personId: null,
-  };
-}
-
-/**
- * Whether a member may hold their own Reminder Schedule for a record.
- *
- * `reminder_schedules` is keyed on the subscribing member and the record, so
- * several members can each be reminded about one shared Routine and both
- * partners can hear about bin day. What the key cannot decide is whether a given
- * member is *entitled* to one, and that is deliberately not owner-equality any
- * more: it is the Household Authorization Proof, asked for `progress`, the same
- * authority that lets a member complete the record they are asking to be
- * reminded about (ADR 0203, ADR 0219).
- *
- * Nothing here enrolls anybody. This authorizes a member's own explicit choice
- * about their own devices; no other member's action ever reaches it.
- */
-async function authorizeReminderSubscription(input: {
-  subscriberUserId: string;
-  record: ReminderRecord;
-}): Promise<boolean> {
-  if (input.record.kind !== "general_action" && input.record.kind !== "routine") {
-    // Through `reminderSubscriber` rather than the owner directly: a
-    // visibility-keyed loader names the member it proved the record for, and a
-    // workspace-owned record has no owner to compare against at all (ADR 0214).
-    return reminderSubscriber(input.record) === input.subscriberUserId;
-  }
-  const proof = await householdRecordProver.proveRecordAccess({
-    callerUserId: input.subscriberUserId,
-    operation: "progress",
-    record: {
-      kind: "general_action",
-      id: input.record.id,
-      ownerUserId: input.record.ownerUserId,
-      scope: input.record.scope,
-      householdId: input.record.householdId ?? null,
-      ownership: input.record.ownership ?? "member_owned",
-    },
-  });
-  return proof.authorized;
-}
-
 export const reminderService = createReminderService({
   store: reminderStore,
-  authorizeSubscription: authorizeReminderSubscription,
-  async loadReminderRecord(input) {
-    if (input.recordKind === "follow_up") {
-      return loadFollowupReminderRecord({
-        ownerUserId: input.ownerUserId,
-        recordId: input.recordId,
-      });
-    }
-    if (input.recordKind === "saved_item") {
-      return loadSavedItemReminderRecord({
-        subscriberUserId: input.ownerUserId,
-        recordId: input.recordId,
-      });
-    }
-    return loadActionReminderRecord({
-      ownerUserId: input.ownerUserId,
-      recordId: input.recordId,
-      requestedKind: input.recordKind,
-    });
-  },
+  authorizeSubscription: createReminderSubscriptionAuthorizer(householdRecordProver),
+  loadReminderRecord: createReminderRecordLoader({
+    actionStore,
+    followupStore,
+    savedItemStore,
+    sourceRecordStore,
+  }),
   scheduleDelivery: (input) => scheduleReminderDeliveryOutbox(outboxStore, input).then(() => {}),
 });
 
