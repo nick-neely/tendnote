@@ -32,6 +32,13 @@ export default function SharedRecordPage({ params }: { params: Promise<SharedRec
  * membership and the record's current audience, so a link that worked yesterday
  * — bookmarked, forwarded, or left open in a tab — stops working the moment the
  * owner takes the record back or the reader leaves the household (ADR 0219).
+ *
+ * Revocation therefore lands on the next load, not mid-read. Someone already
+ * looking at this page keeps the text on their screen until they navigate or
+ * refresh; nothing after that will hand the record over again. That is the
+ * deliberate trade-off of serving a static document — the alternative is polling
+ * every open page for permission, which would mean running a surveillance loop
+ * to stop someone finishing a paragraph they were already shown.
  */
 export async function SharedRecordContent({ params }: { params: Promise<SharedRecordParams> }) {
   if (process.env.NODE_ENV !== "test") await connection();

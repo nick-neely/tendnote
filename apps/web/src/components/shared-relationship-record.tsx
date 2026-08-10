@@ -43,6 +43,12 @@ export function SharedRelationshipRecord({ view }: { view: SharedRelationshipRec
               glyph beside it would state something untrue. */}
           {view.viewerIsOwner ? null : <AudienceIcon aria-hidden className="size-3.5 shrink-0" />}
           {view.viewerIsOwner ? "Shared by you" : `Shared by ${view.sharedByName}`}
+          {/*
+            The read-only contract, where a first-time reader actually arrives.
+            The fuller statement is in the footer, but a short record on a phone
+            can be read and left without ever scrolling that far.
+          */}
+          {view.viewerIsOwner ? null : <span> · Yours to read, not to change.</span>}
         </p>
       </header>
 

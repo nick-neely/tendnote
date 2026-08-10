@@ -8,9 +8,9 @@ import {
   visibilityChoiceForScope,
 } from "@tendnote/domain";
 import type { PrivacyScope } from "@tendnote/domain/privacy";
-import { useId, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import { setRelationshipShareAudienceAction as defaultSetAudienceAction } from "@/app/actions/relationship-shares";
-import { ActionScopeChip } from "@/components/general-action-shared";
+import { ACTION_CONTROL_TOUCH_TARGET, ActionScopeChip } from "@/components/general-action-shared";
 import {
   ActionVisibilityField,
   AudiencePreview,
@@ -30,6 +30,17 @@ export type SetRelationshipShareAudience = typeof defaultSetAudienceAction;
 function scopeLabel(scope: PrivacyScope, selectedCount: number): string {
   if (scope === "household") return "Whole household";
   return selectedCount === 1 ? "Shared with 1 person" : `Shared with ${selectedCount} people`;
+}
+
+/**
+ * What a save is announced as. Private has no chip to read, so the announcement
+ * is the only way a screen-reader user learns the record came back — which is
+ * exactly the change most worth confirming.
+ */
+function savedAnnouncement(scope: PrivacyScope, selectedCount: number): string {
+  return scope === "private"
+    ? "Visibility saved. Only you can see this."
+    : `Visibility saved. ${scopeLabel(scope, selectedCount)}.`;
 }
 
 /**
@@ -72,9 +83,30 @@ export function RelationshipShareControl({
   const [open, setOpen] = useState(false);
   const [currentScope, setCurrentScope] = useState<PrivacyScope>(scope);
   const [currentSelected, setCurrentSelected] = useState<readonly string[]>(selectedUserIds);
+  const [announcement, setAnnouncement] = useState("");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  /**
+   * Closing the form destroys the control that was focused, so focus has to be
+   * put back deliberately or it falls to the document body — which on a ledger
+   * of twenty memories means starting the whole tab order again.
+   */
+  function closeAndRestoreFocus() {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
 
   return (
     <>
+      {/*
+        Mounted in every state, never conditionally: a live region inserted at
+        the same moment as its text is unreliably announced, and the form's
+        subtree is destroyed on save — so the region has to outlive the swap to
+        carry the confirmation across it.
+      */}
+      <p aria-live="polite" className="sr-only" role="status">
+        {announcement}
+      </p>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           {children}
@@ -86,8 +118,9 @@ export function RelationshipShareControl({
         {shareableMembers.length ? (
           <Button
             aria-expanded={open}
-            className="max-sm:min-h-11 shrink-0"
+            className={`${ACTION_CONTROL_TOUCH_TARGET} shrink-0`}
             onClick={() => setOpen((wasOpen) => !wasOpen)}
+            ref={triggerRef}
             size="sm"
             type="button"
             variant="ghost"
@@ -100,11 +133,14 @@ export function RelationshipShareControl({
       {open ? (
         <RelationshipShareForm
           householdName={householdName}
-          onCancel={() => setOpen(false)}
+          onCancel={closeAndRestoreFocus}
           onSaved={(state) => {
             setCurrentScope(state.scope);
             setCurrentSelected(state.selectedUserIds);
-            setOpen(false);
+            // Derived from the answer, not the press: the announcement states
+            // what the record's audience now is, not what was asked for.
+            setAnnouncement(savedAnnouncement(state.scope, state.selectedUserIds.length));
+            closeAndRestoreFocus();
           }}
           recordId={recordId}
           recordKind={recordKind}
@@ -200,9 +236,15 @@ function RelationshipShareForm({
         selectedUserIds={selected}
         value={choice}
       />
-      {choice === "selected_members" ? (
+      {/*
+        Future tense, and only when there is actually someone to replace. Opening
+        the control on an already-shared record used to greet the owner with a
+        past-tense sentence about their audience being cleared, which reads as
+        something that already happened to them.
+      */}
+      {choice === "selected_members" && selectedUserIds.length ? (
         <p className="text-[length:var(--text-caption)] text-muted-foreground">
-          Anyone you shared this with before is cleared.
+          Saving will replace who this is shared with.
         </p>
       ) : null}
       {changed ? (
@@ -241,10 +283,17 @@ function RelationshipShareForm({
         </Label>
       ) : null}
       <div className="flex items-center justify-end gap-1.5">
-        <Button onClick={onCancel} size="sm" type="button" variant="ghost">
+        <Button
+          className={ACTION_CONTROL_TOUCH_TARGET}
+          onClick={onCancel}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
           Cancel
         </Button>
         <Button
+          className={ACTION_CONTROL_TOUCH_TARGET}
           disabled={pending || needsAudience || (needsConfirmation && !confirmed)}
           size="sm"
           type="submit"

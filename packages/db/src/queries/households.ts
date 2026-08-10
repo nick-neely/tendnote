@@ -234,6 +234,28 @@ export function listActiveHouseholdMembershipsForUser(input: { userId: string })
   return defaultHouseholdLifecycle.listActiveMembershipsForUser(input);
 }
 
+/**
+ * The name of the caller's one active household, or null when they have none.
+ *
+ * Deliberately not folded into {@link listShareableHouseholdMembersForUser} or
+ * the Overview: a surface that needs to *name* the household in a sentence —
+ * the restricted-share confirmation being the motivating case — should not have
+ * to pull seats, invitations, and governance state to get one string, and the
+ * member list is used by five surfaces that do not need the name at all.
+ */
+export async function getActiveHouseholdNameForUser(input: {
+  userId: string;
+}): Promise<string | null> {
+  const memberships = await defaultHouseholdLifecycle.listActiveMembershipsForUser(input);
+  const householdId = memberships[0]?.householdId;
+  if (!householdId) {
+    return null;
+  }
+
+  const household = await createDrizzleHouseholdStore().getHouseholdWorkspace({ householdId });
+  return household?.name ?? null;
+}
+
 export async function listShareableHouseholdMembersForUser(input: { userId: string }) {
   const memberships = await defaultHouseholdLifecycle.listActiveMembershipsForUser(input);
   const householdId = memberships[0]?.householdId;

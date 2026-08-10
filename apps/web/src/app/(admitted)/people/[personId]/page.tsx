@@ -6,7 +6,10 @@ import {
   listSuggestedFollowupReviews,
 } from "@tendnote/db/queries/followups";
 import { listGmailDraftActionsForDraft } from "@tendnote/db/queries/gmail-drafts";
-import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
+import {
+  getActiveHouseholdNameForUser,
+  listShareableHouseholdMembersForUser,
+} from "@tendnote/db/queries/households";
 import { listPersonMemoryContext, listSuggestedMemoryReviews } from "@tendnote/db/queries/memories";
 import {
   getPerson,
@@ -290,14 +293,17 @@ async function PersonDetailEnrichment({
   );
 
   /**
-   * Who each already-shared record on this ledger is shared with.
+   * What the ledger's sharing controls need: who each already-shared record is
+   * shared with, and what the household is called.
    *
-   * Two reads for the whole tab rather than one per row, and only when the owner
-   * actually has someone to share with — a solo ledger asks nothing. The reads
-   * are owner-scoped: they return the audiences this owner chose, never anyone
-   * else's sharing.
+   * Three reads for the whole tab rather than any per row, and only when the
+   * owner actually has someone to share with — a solo ledger asks nothing. The
+   * audience reads are owner-scoped: they return the audiences this owner chose,
+   * never anyone else's sharing. The name is read here rather than defaulted in
+   * the control because the restricted-share confirmation has to name the
+   * audience concretely — "everyone in Rivera House", not "your household".
    */
-  const [memoryAudiences, sourceRecordAudiences] = await Promise.all([
+  const [memoryAudiences, sourceRecordAudiences, householdName] = await Promise.all([
     shareableMembers.length && approvedMemories.length + restrictedMemories.length
       ? listRelationshipShareAudiences({
           ownerUserId,
@@ -312,12 +318,13 @@ async function PersonDetailEnrichment({
           recordIds: trustedSourceRecords.map((sourceRecord) => sourceRecord.id),
         })
       : {},
+    shareableMembers.length ? getActiveHouseholdNameForUser({ userId: ownerUserId }) : null,
   ]);
   const memorySharing = shareableMembers.length
-    ? { members: shareableMembers, audiences: memoryAudiences, householdName: null }
+    ? { members: shareableMembers, audiences: memoryAudiences, householdName }
     : undefined;
   const sourceRecordSharing = shareableMembers.length
-    ? { members: shareableMembers, audiences: sourceRecordAudiences, householdName: null }
+    ? { members: shareableMembers, audiences: sourceRecordAudiences, householdName }
     : undefined;
   const firstName = shortName(person);
   // Active reminders (open/snoozed) lead the section; recently resolved ones stay

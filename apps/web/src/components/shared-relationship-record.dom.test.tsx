@@ -75,11 +75,23 @@ describe("a shared record on its own page", () => {
     expect(screen.getByText(/stays Mara’s to edit or take back/)).toBeTruthy();
   });
 
+  /**
+   * A short record on a phone can be read and left without ever reaching the
+   * footer, so the read-only contract has to be legible at the point of arrival
+   * as well as at the end.
+   */
+  it("states the read-only contract where the reader arrives", () => {
+    render(<SharedRelationshipRecord view={view()} />);
+    expect(screen.getByText(/Yours to read, not to change/)).toBeTruthy();
+  });
+
   it("does not tell the owner their own record was shared by someone", () => {
     render(<SharedRelationshipRecord view={view({ viewerIsOwner: true })} />);
 
     expect(screen.getByText("Shared by you")).toBeTruthy();
     expect(screen.queryByText(/to edit or take back/)).toBeNull();
+    // Nor lecture them about their own record being read-only.
+    expect(screen.queryByText(/Yours to read/)).toBeNull();
   });
 });
 

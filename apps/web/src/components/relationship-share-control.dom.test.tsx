@@ -274,6 +274,105 @@ describe("restricted content", () => {
   });
 });
 
+describe("keyboard and assistive tech", () => {
+  /**
+   * Closing the form destroys the control that had focus. Without a deliberate
+   * restore, focus lands on the body — and on a ledger of twenty memories that
+   * means tabbing from the top again to reach the twenty-first control.
+   */
+  it("returns focus to the trigger after a save", async () => {
+    const user = userEvent.setup();
+    renderControl();
+
+    const trigger = screen.getByRole("button", { name: "Visibility" });
+    await user.click(trigger);
+    await user.click(screen.getByRole("radio", { name: /Whole household/ }));
+    await user.click(screen.getByRole("button", { name: /Save visibility/ }));
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(trigger);
+    });
+  });
+
+  it("returns focus to the trigger after a cancel", async () => {
+    const user = userEvent.setup();
+    renderControl();
+
+    const trigger = screen.getByRole("button", { name: "Visibility" });
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("announces the audience the record actually ended up with", async () => {
+    const user = userEvent.setup();
+    const setAudienceAction = vi
+      .fn()
+      .mockResolvedValue(shareResult({ scope: "household", selectedUserIds: [] }));
+    renderControl({ setAudienceAction });
+
+    // The region is mounted before the press, not created by it: a live region
+    // inserted alongside its own text is unreliably announced.
+    const region = screen.getByRole("status");
+    expect(region.textContent).toBe("");
+
+    await user.click(screen.getByRole("button", { name: "Visibility" }));
+    await user.click(screen.getByRole("radio", { name: /Whole household/ }));
+    await user.click(screen.getByRole("button", { name: /Save visibility/ }));
+
+    await waitFor(() => {
+      expect(region.textContent).toBe("Visibility saved. Whole household.");
+    });
+  });
+
+  /**
+   * Going private removes the row's chip, so the announcement is the only signal
+   * a screen-reader user gets that the record came back — the change most worth
+   * confirming.
+   */
+  it("announces a record coming back to private, which shows no chip", async () => {
+    const user = userEvent.setup();
+    const setAudienceAction = vi
+      .fn()
+      .mockResolvedValue(shareResult({ scope: "private", selectedUserIds: [] }));
+    renderControl({ scope: "shared", selectedUserIds: ["member-2"], setAudienceAction });
+
+    await user.click(screen.getByRole("button", { name: "Visibility" }));
+    await user.click(screen.getByRole("radio", { name: /Only me/ }));
+    await user.click(screen.getByRole("button", { name: /Save visibility/ }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toBe(
+        "Visibility saved. Only you can see this.",
+      );
+    });
+  });
+});
+
+describe("the replacement warning", () => {
+  it("stays away from a record that has no audience to replace", async () => {
+    const user = userEvent.setup();
+    renderControl();
+
+    await user.click(screen.getByRole("button", { name: "Visibility" }));
+    await user.click(screen.getByRole("radio", { name: /Specific people/ }));
+
+    expect(screen.queryByText(/replace who this is shared with/)).toBeNull();
+  });
+
+  it("warns in future tense on a record that already has one", async () => {
+    const user = userEvent.setup();
+    renderControl({ scope: "shared", selectedUserIds: ["member-2"] });
+
+    await user.click(screen.getByRole("button", { name: "Visibility" }));
+
+    expect(screen.getByText("Saving will replace who this is shared with.")).toBeTruthy();
+    // Nothing here may read as something that already happened to the owner.
+    expect(screen.queryByText(/is cleared/)).toBeNull();
+  });
+});
+
 describe("when it does not go through", () => {
   it("renders the refusal and leaves the row's stated audience alone", async () => {
     const user = userEvent.setup();
