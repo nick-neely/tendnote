@@ -136,6 +136,9 @@ export function createDrizzleAssetStore(): AssetStore {
           ownerUserId: row.ownerUserId,
           scope: row.scope,
           householdId: row.householdId,
+          // Without the ownership form the proof cannot tell a member-owned
+          // household-scope Asset from the household's own (ADR 0214).
+          ownership: row.ownership,
         }),
       });
 
@@ -149,7 +152,9 @@ export function createDrizzleAssetStore(): AssetStore {
       const patch = assetUpdateSchema.parse(input.patch);
       const [asset] = await getDb()
         .update(assets)
-        .set({ ...patch, updatedAt: new Date() })
+        // The fence is bumped in SQL rather than read-then-written, so two
+        // concurrent writers can never land on the same revision (#386).
+        .set({ ...patch, revision: sql`${assets.revision} + 1`, updatedAt: new Date() })
         .where(and(eq(assets.id, input.assetId), eq(assets.ownerUserId, input.ownerUserId)))
         .returning();
       if (!asset) {

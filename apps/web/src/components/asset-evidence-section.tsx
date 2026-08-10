@@ -1,6 +1,6 @@
 "use client";
 
-import type { PrivacyScope } from "@tendnote/domain";
+import type { AssetOwnership, PrivacyScope } from "@tendnote/domain";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { removeAssetEvidenceAction } from "@/app/actions/asset-evidence";
@@ -22,12 +22,15 @@ import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
  */
 export function AssetEvidenceSection({
   assetId,
+  assetOwnership = "member_owned",
   assetScope,
   initialEvidence,
   canCapture,
   shareableMembers = [],
 }: {
   assetId: string;
+  /** The anchor's ownership form; see {@link AssetEvidenceCapture}. */
+  assetOwnership?: AssetOwnership;
   assetScope: PrivacyScope;
   initialEvidence: AssetEvidenceView[];
   /** Capture is for the asset's owner while it is active; viewers just read. */
@@ -58,7 +61,7 @@ export function AssetEvidenceSection({
           {evidence.map((view) => (
             <AssetEvidenceRow
               key={view.id}
-              onRemove={view.owned && canCapture ? () => removeEvidence(view) : undefined}
+              onRemove={view.canRemove && canCapture ? () => removeEvidence(view) : undefined}
               removing={removingId === view.id}
               showPrivateBadge={assetScope !== "private" && view.scope === "private"}
               view={view}
@@ -77,6 +80,7 @@ export function AssetEvidenceSection({
 
       {canCapture ? (
         <AssetEvidenceCapture
+          assetOwnership={assetOwnership}
           assetScope={assetScope}
           onAdded={(view) => {
             setEvidence((current) => [...current, view]);

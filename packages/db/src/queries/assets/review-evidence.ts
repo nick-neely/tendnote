@@ -4,6 +4,7 @@ import {
   AssetValidationError,
   assertAssetEvidenceFileAccepted,
   assertAssetEvidenceFileSignature,
+  HouseholdRecordUnavailableError,
 } from "@tendnote/domain";
 import type {
   AddAssetEvidenceInput,
@@ -11,6 +12,8 @@ import type {
   AssetEvidenceFilePayload,
   RemoveAssetEvidenceInput,
 } from "./evidence-types";
+import { createAssetAuthority } from "./household-authority";
+import { proveVisibleEvidence } from "./household-children";
 import { recordAudit } from "./lifecycle";
 import {
   buildGroupResult,
@@ -47,7 +50,10 @@ async function requireCaptureAnchor(
 
   if (input.assetId !== undefined) {
     return {
-      anchor: await requireActiveAnchor(store, input.ownerUserId, input.assetId),
+      anchor: await requireActiveAnchor(store, {
+        actorUserId: input.ownerUserId,
+        assetId: input.assetId,
+      }),
       reviewGroupId: null,
     };
   }
@@ -58,7 +64,7 @@ async function requireCaptureAnchor(
   });
   const anchor = await loadAnchor(store, input.ownerUserId, group.assetId);
   if (!anchor) {
-    throw new Error("Asset not found.");
+    throw new HouseholdRecordUnavailableError();
   }
   if (anchor.status === "dismissed") {
     throw new AssetValidationError(SET_ASIDE);
@@ -89,9 +95,11 @@ export async function addAssetEvidence(
     assertAssetEvidenceFileSignature(input.file);
   }
 
+  const ownership = input.ownership ?? "member_owned";
   const visibility = await resolveAssetChildVisibility(store, {
     ownerUserId: input.ownerUserId,
     anchor,
+    ownership,
     scope: input.scope,
     selectedUserIds: input.selectedUserIds,
   });
@@ -111,6 +119,7 @@ export async function addAssetEvidence(
       purchasedOn: input.purchasedOn ?? null,
       renewsOn: input.renewsOn ?? null,
       scope: visibility.scope,
+      ownership,
       householdId: visibility.householdId,
       sourceRecordId: input.sourceRecordId ?? null,
       reviewGroupId,
@@ -136,6 +145,7 @@ export async function addAssetEvidence(
       kind: evidence.kind,
       label: evidence.label,
       scope: evidence.scope,
+      ownership,
       hasFile: evidence.fileName !== null,
       ...(reviewGroupId ? { reviewGroupId } : {}),
     },
@@ -221,27 +231,56 @@ export async function listAssetEvidenceCaptureTargets(
   }
 
   return {
-    assets: visible.filter((asset) => asset.ownerUserId === input.ownerUserId),
+    // The caller's own Assets, plus the household's own — on a household-native
+    // row `ownerUserId` is a storage key, so filtering on it alone would offer
+    // the refrigerator to whoever typed its name and to nobody else, while the
+    // capture write accepts every active member (ADR 0214).
+    assets: visible.filter(
+      (asset) => asset.ownerUserId === input.ownerUserId || asset.ownership === "household_native",
+    ),
     reviews,
   };
 }
 
 /**
  * Removes one piece of Asset Evidence — the row and its stored bytes together.
- * Owner-only, fail-closed: a co-member who can *see* household evidence can
- * never delete it, and a missing row and a hidden one deny identically.
+ *
+ * Authority, not mere visibility. A member who can *see* another member's
+ * receipt can never delete it, however wide its audience: no member may expose,
+ * rewrite, or delete another member's evidence. Household-native evidence is the
+ * workspace's, so every active member holds the same standing over it (ADR
+ * 0214). A missing row and a hidden one deny identically.
  */
 export async function removeAssetEvidence(
   store: AssetReviewLifecycleStore,
   input: RemoveAssetEvidenceInput,
 ): Promise<AssetEvidence> {
-  const evidence = await store.getAssetEvidence({
+  const owned = await store.getAssetEvidence({
     ownerUserId: input.actorUserId,
     evidenceId: input.evidenceId,
   });
+  const evidence =
+    owned?.ownership === "member_owned"
+      ? owned
+      : await store.getVisibleAssetEvidence({
+          callerUserId: input.actorUserId,
+          evidenceId: input.evidenceId,
+        });
   if (!evidence) {
-    throw new Error("Asset evidence not found.");
+    throw new HouseholdRecordUnavailableError();
   }
+  await createAssetAuthority(store).requireAssetChildAuthority({
+    actorUserId: input.actorUserId,
+    child: {
+      kind: "asset_evidence",
+      id: evidence.id,
+      ownerUserId: evidence.ownerUserId,
+      scope: evidence.scope,
+      ownership: evidence.ownership,
+      householdId: evidence.householdId,
+    },
+    operation: "remove",
+  });
 
   await store.deleteAssetEvidence({
     ownerUserId: evidence.ownerUserId,
@@ -262,19 +301,30 @@ export async function removeAssetEvidence(
 
 /**
  * The gated file read behind every evidence download/preview: bytes are returned
- * only when the caller may see the evidence record itself — the owner always,
+ * only when the caller may see the evidence record itself — its owner always,
  * a household member exactly when the record's own scope reaches them. A hidden
  * file and a missing one are indistinguishable (`null`), fail-closed.
+ *
+ * The owner-keyed read is clamped to a member-owned row and the result is proved
+ * again, because this is the deep link ADR 0219 names: a `/api/asset-evidence/…`
+ * url outlives the page that produced it, and household-native evidence keeps
+ * its capturer's id in `owner_user_id`. Without the clamp, whoever photographed
+ * the household's serial plate would keep fetching those bytes after they moved
+ * out — the storage-key rule failing exactly where it is least visible.
  */
 export async function getAssetEvidenceFileForCaller(
   store: AssetReviewLifecycleStore,
   input: { callerUserId: string; evidenceId: string },
 ): Promise<AssetEvidenceFilePayload | null> {
-  const evidence =
-    (await store.getAssetEvidence({
-      ownerUserId: input.callerUserId,
-      evidenceId: input.evidenceId,
-    })) ?? (await store.getVisibleAssetEvidence(input));
+  const owned = await store.getAssetEvidence({
+    ownerUserId: input.callerUserId,
+    evidenceId: input.evidenceId,
+  });
+  const visible =
+    owned?.ownership === "member_owned" ? owned : await store.getVisibleAssetEvidence(input);
+  const evidence = visible
+    ? await proveVisibleEvidence(store, { callerUserId: input.callerUserId, evidence: visible })
+    : null;
   if (!evidence || evidence.fileName === null || evidence.mimeType === null) {
     return null;
   }

@@ -5,6 +5,7 @@ import type {
   AssetEvidenceKind,
   AssetEvidenceMoney,
   AssetKind,
+  AssetOwnership,
   CreateAssetEvidenceInput,
 } from "@tendnote/domain";
 
@@ -101,6 +102,13 @@ export type AddAssetEvidenceInput = {
   renewsOn?: string | null;
   /** Defaults to the anchor's scope where supported (household), else private. */
   scope?: AssetChildScope;
+  /**
+   * Defaults to `member_owned`. `household_native` makes the capture the
+   * workspace's — whole-household-visible whatever `scope` says, removable by
+   * any active member, and it stays when its capturer leaves. Only allowed under
+   * a household-native Asset (#386).
+   */
+  ownership?: AssetOwnership;
   /** Required when choosing a selected-member audience under a household Asset. */
   selectedUserIds?: string[];
   sourceRecordId?: string | null;

@@ -278,7 +278,7 @@ describe("suggest memories for an existing asset", () => {
         sourceRecordId: foreign.id,
         memories: [{ label: "Note", notes: "Hm." }],
       }),
-    ).rejects.toThrow("Asset not found.");
+    ).rejects.toThrow(/no longer available/);
   });
 });
 

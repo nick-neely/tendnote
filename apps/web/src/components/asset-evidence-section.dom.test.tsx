@@ -40,6 +40,8 @@ function view(overrides: Partial<AssetEvidenceView> = {}): AssetEvidenceView {
     renewsOnLabel: null,
     scope: "private",
     owned: true,
+    ownership: "member_owned",
+    canRemove: true,
     addedLabel: "Added Jul 13",
     ...overrides,
   };

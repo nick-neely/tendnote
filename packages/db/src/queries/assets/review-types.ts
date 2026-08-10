@@ -8,6 +8,7 @@ import type {
   AssetMemoryScope,
   AssetMemoryStatus,
   AssetMemoryValue,
+  AssetOwnership,
   AssetReviewGroup,
   CreateAssetMemoryInput,
   CreateAssetReviewGroupInput,
@@ -39,6 +40,15 @@ export type AssetMemoryPatch = Partial<
 export type AssetReviewStore = {
   createAssetMemory: (input: CreateAssetMemoryInput) => Promise<AssetMemory>;
   getAssetMemory: (input: { ownerUserId: string; memoryId: string }) => Promise<AssetMemory | null>;
+  /**
+   * Loads one *active* memory the caller may see under per-record scope rules,
+   * whoever owns it — the counterpart of `getVisibleAssetEvidence`, and how a
+   * member reaches a household-native detail they did not write (#386).
+   */
+  getVisibleAssetMemory: (input: {
+    callerUserId: string;
+    memoryId: string;
+  }) => Promise<AssetMemory | null>;
   updateAssetMemory: (input: {
     ownerUserId: string;
     memoryId: string;
@@ -193,6 +203,13 @@ export type CreateActiveAssetMemoryInput = {
   value?: AssetMemoryValue | null;
   notes?: string | null;
   scope?: AssetMemoryScope;
+  /**
+   * Defaults to `member_owned`. `household_native` makes the detail the
+   * workspace's — whole-household-visible whatever `scope` says, correctable by
+   * any active member, and it stays when its author leaves. Only allowed under a
+   * household-native Asset (#386).
+   */
+  ownership?: AssetOwnership;
   /** Required when choosing a selected-member audience under a household Asset. */
   selectedUserIds?: string[];
   sourceRecordId?: string | null;
@@ -203,6 +220,21 @@ export type AssetMemoryActionInput = {
   /** Review is owner-only: proposals belong to their owner until accepted. */
   actorUserId: string;
   memoryId: string;
+};
+
+/**
+ * Corrects a durable, active Asset Memory in place (#386).
+ *
+ * Distinct from the review edits above, which correct a *proposal* before it
+ * becomes truth and are owner-only by construction. This one is the "correct"
+ * half of maintaining a detail that is already true, so it asks the proof: the
+ * owner of a member-owned detail, any active member of a household-native one.
+ */
+export type EditAssetMemoryInput = AssetMemoryActionInput & {
+  edit: AssetMemoryEdit;
+  /** The revision the editor's draft was written against; see `EditAssetInput`. */
+  expectedRevision?: number | null;
+  source?: AssetAuditSource;
 };
 
 export type AcceptSuggestedAssetMemoryInput = AssetMemoryActionInput & {

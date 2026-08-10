@@ -1,10 +1,14 @@
 import {
+  ASSET_STALE_WRITE_MESSAGE,
   type Asset,
   type AssetAuditEventKind,
   type AssetAuditSource,
+  type AssetAuthorityOperation,
   AssetValidationError,
   assertAssetEditable,
+  assertAssetRecordFresh,
   assetEditSchema,
+  HouseholdRecordUnavailableError,
   isDurableAssetStatus,
   isEmptyAssetEdit,
   type PrivacyScope,
@@ -12,6 +16,7 @@ import {
 } from "@tendnote/domain";
 import { resolveRecordVisibility } from "../households/record-visibility";
 import { type AssetEmbeddingDeps, makeScheduleAssetEmbedding } from "./embed";
+import { createAssetAuthority } from "./household-authority";
 import type {
   AssetActionInput,
   AssetLifecycleStore,
@@ -68,54 +73,32 @@ export async function writeAssetShares(
 }
 
 /**
- * Loads an asset the caller may see, or `null`. Owner-scoped read first (the
- * common private case), then the scope-visible fallback so a household member
- * reaches an asset they can see. A not-found and a not-visible are
- * indistinguishable on purpose — fail closed, never confirm an asset the caller
- * may not see exists (ADR 0153).
+ * Loads the Asset the acting user is talking about, whichever form it takes.
+ *
+ * The owner-keyed read runs first because it is the common private case and
+ * because it is the only path that can reach a review-gated proposal. It is
+ * accepted **only for a member-owned row**: a household-native Asset's
+ * `ownerUserId` is a storage key, and honouring it as an access path would leave
+ * the creating member reading and editing the household's refrigerator after
+ * they had moved out — the one thing workspace ownership exists to prevent
+ * (ADR 0214). Household-native rows therefore always come through the
+ * scope-visible read, which requires current active membership.
+ *
+ * A not-found and a not-visible are indistinguishable on purpose.
  */
 async function findVisibleAsset(
   store: AssetLifecycleStore,
   input: { callerUserId: string; assetId: string },
 ): Promise<Asset | null> {
-  const asset =
-    (await store.getAsset({ ownerUserId: input.callerUserId, assetId: input.assetId })) ??
-    (await store.getVisibleAsset(input));
+  const owned = await store.getAsset({
+    ownerUserId: input.callerUserId,
+    assetId: input.assetId,
+  });
+  const asset = owned?.ownership === "member_owned" ? owned : await store.getVisibleAsset(input);
   // Durable records only: a suggested proposal (or a dismissed husk) is never a
   // surface-readable Asset, even for its owner — review reaches proposals through
   // its own owner-scoped seam (#198).
   return asset && isDurableAssetStatus(asset.status) ? asset : null;
-}
-
-/** Loads an asset the acting user may touch, or throws the deterministic denial. */
-async function requireAsset(store: AssetLifecycleStore, input: AssetActionInput): Promise<Asset> {
-  const asset = await findVisibleAsset(store, {
-    callerUserId: input.actorUserId,
-    assetId: input.assetId,
-  });
-  if (!asset) {
-    throw new Error("Asset not found.");
-  }
-  return asset;
-}
-
-/**
- * Loads an asset the acting user *owns*, or throws. Owner-only operations —
- * editing content — never fall back to a scope-visible read: a member who can see
- * a household asset must not be able to re-author it (fail closed; ADR 0153).
- */
-async function requireOwnedAsset(
-  store: AssetLifecycleStore,
-  input: AssetActionInput,
-): Promise<Asset> {
-  const asset = await store.getAsset({
-    ownerUserId: input.actorUserId,
-    assetId: input.assetId,
-  });
-  if (!asset) {
-    throw new Error("Asset not found.");
-  }
-  return asset;
 }
 
 /**
@@ -176,10 +159,10 @@ async function hydrateAsset(store: AssetLifecycleStore, asset: Asset): Promise<A
  */
 async function transitionAsset(
   store: AssetLifecycleStore,
+  current: Asset,
   input: AssetActionInput & { source?: AssetAuditSource },
   action: "archive" | "restore",
 ): Promise<AssetWithContext> {
-  const current = await requireAsset(store, input);
   const status = resolveAssetTransition(current.status, action);
   const patch: AssetPatch = {
     status,
@@ -217,15 +200,57 @@ export function createAssetLifecycle(store: AssetLifecycleStore, deps: AssetEmbe
   // *is* — or whether it is durable at all — re-enqueues its embedding (#204).
   const embed = makeScheduleAssetEmbedding(deps);
 
+  const { requireAssetAuthority, keepProvenAssets } = createAssetAuthority(store);
+
+  /**
+   * Loads the Asset and proves the operation about to happen against it.
+   *
+   * Every mutating path goes through here with the operation it is really
+   * performing, rather than through a `requireOwnedAsset`-style read that bakes
+   * "owner only" into which query runs. That is the whole shape of the Phase
+   * Eight authority table: the same operation is owner-only on a member-owned
+   * Asset and symmetric on a household-native one, and only the proof — reading
+   * ownership form, current membership, and the current audience — can tell
+   * which (ADR 0219).
+   */
+  async function requireAsset(
+    input: AssetActionInput,
+    operation: AssetAuthorityOperation,
+  ): Promise<Asset> {
+    const asset = await findVisibleAsset(store, {
+      callerUserId: input.actorUserId,
+      assetId: input.assetId,
+    });
+    // The same sentence a refused proof produces. "No such asset", "you may
+    // not", and "you were removed from that household" have to be
+    // indistinguishable from outside, because the difference between them is
+    // exactly the protected fact (ADR 0219).
+    if (!asset) {
+      throw new HouseholdRecordUnavailableError();
+    }
+    await requireAssetAuthority({ actorUserId: input.actorUserId, asset, operation });
+    return asset;
+  }
+
   return {
     /**
      * Creates an active Asset as a lightweight anchor: name + kind + visibility,
      * with creator/actor provenance and a `created` audit event. Visibility
      * defaults to private and fail-closed; a shared scope materializes its share
      * rows before the audit write so the trail never precedes the audience.
+     *
+     * A `household_native` Asset takes `household` scope by definition rather
+     * than by request — the workspace's refrigerator has no narrower audience to
+     * choose — and the shared visibility guard still runs, so the creator's own
+     * active membership is proved before the workspace is handed anything
+     * (ADR 0214).
      */
     async createAsset(input: CreateActiveAssetInput): Promise<AssetWithContext> {
-      const { scope, householdId } = await resolveAssetVisibility(store, input);
+      const ownership = input.ownership ?? "member_owned";
+      const { scope, householdId } = await resolveAssetVisibility(store, {
+        ...input,
+        ...(ownership === "household_native" ? { scope: "household" as const } : {}),
+      });
 
       const asset = await store.createAsset({
         ownerUserId: input.ownerUserId,
@@ -233,6 +258,7 @@ export function createAssetLifecycle(store: AssetLifecycleStore, deps: AssetEmbe
         kind: input.kind,
         status: "active",
         scope,
+        ownership,
         householdId,
         archivedAt: null,
         createdByUserId: input.ownerUserId,
@@ -252,7 +278,7 @@ export function createAssetLifecycle(store: AssetLifecycleStore, deps: AssetEmbe
         kind: "created",
         actorUserId: input.ownerUserId,
         source: input.source ?? "user",
-        detail: { name: asset.name, kind: asset.kind, scope: asset.scope },
+        detail: { name: asset.name, kind: asset.kind, scope: asset.scope, ownership },
       });
       await embed.asset(asset);
 
@@ -260,13 +286,26 @@ export function createAssetLifecycle(store: AssetLifecycleStore, deps: AssetEmbe
     },
 
     /**
-     * Edits an Asset's content (name, kind) in place. Owner-only and active-only:
-     * a member who can see a shared/household asset may act on it but never
-     * re-author it, and an archived asset is read-only until restored.
+     * Edits an Asset's content (name, kind) in place.
+     *
+     * Authority, not ownership: the owner of a member-owned Asset may re-author
+     * it however wide its audience, and every active member may re-author the
+     * household's own. An archived Asset is read-only until restored either way.
+     *
+     * A stale `expectedRevision` preserves the editor's draft and reports the
+     * current value rather than overwriting it — the jointly-maintained case is
+     * the whole reason the fence exists, and last-write-wins on a record two
+     * people are editing is data loss with a friendly face.
      */
     async editAsset(input: EditAssetInput): Promise<AssetWithContext> {
-      const asset = await requireOwnedAsset(store, input);
+      const asset = await requireAsset(input, "edit");
       assertAssetEditable(asset.status);
+      assertAssetRecordFresh({
+        expectedRevision: input.expectedRevision,
+        current: asset,
+        currentValue: asset.name,
+        message: ASSET_STALE_WRITE_MESSAGE,
+      });
       const edit = assetEditSchema.parse(input.edit);
       if (isEmptyAssetEdit(edit)) {
         throw new AssetValidationError("An asset edit must change the name or kind.");
@@ -305,9 +344,13 @@ export function createAssetLifecycle(store: AssetLifecycleStore, deps: AssetEmbe
       return hydrateAsset(store, updated);
     },
 
-    /** Archives an Asset — the normal inactive path; history stays intact (#196). */
+    /**
+     * Archives an Asset — the normal inactive path; history stays intact (#196),
+     * and for a household-native Asset it is the *only* removal path (ADR 0214).
+     */
     async archiveAsset(input: AssetActionInput & { source?: AssetAuditSource }) {
-      const archived = await transitionAsset(store, input, "archive");
+      const current = await requireAsset(input, "archive");
+      const archived = await transitionAsset(store, current, input, "archive");
       await embed.asset({ id: archived.id, ownerUserId: archived.ownerUserId });
 
       return archived;
@@ -315,23 +358,29 @@ export function createAssetLifecycle(store: AssetLifecycleStore, deps: AssetEmbe
 
     /** Restores an archived Asset back to active. */
     async restoreAsset(input: AssetActionInput & { source?: AssetAuditSource }) {
-      const restored = await transitionAsset(store, input, "restore");
+      // One authority question: setting an Asset aside and bringing it back.
+      const current = await requireAsset(input, "archive");
+      const restored = await transitionAsset(store, current, input, "restore");
       await embed.asset({ id: restored.id, ownerUserId: restored.ownerUserId });
 
       return restored;
     },
 
     /**
-     * Permanently removes an owned Asset for correction/privacy. Owner-only and
-     * intentionally separate from archive, the normal inactive lifecycle path.
+     * Permanently removes an Asset for correction/privacy.
+     *
+     * Owner-only and intentionally separate from archive. The form rule refuses
+     * it outright on a household-native Asset before the proof is even asked:
+     * no single member ends a workspace-owned record for everybody, and the
+     * refusal names archive so there is something to do instead (ADR 0214).
      */
     async hardDeleteAsset(input: AssetActionInput): Promise<void> {
-      const asset = await requireOwnedAsset(store, input);
+      const asset = await requireAsset(input, "delete");
       const deleted = await store.deleteAsset({
         ownerUserId: asset.ownerUserId,
         assetId: asset.id,
       });
-      if (!deleted) throw new Error("Asset not found.");
+      if (!deleted) throw new HouseholdRecordUnavailableError();
     },
 
     /**
@@ -351,11 +400,22 @@ export function createAssetLifecycle(store: AssetLifecycleStore, deps: AssetEmbe
     /**
      * The assets the caller may see — their own plus household and selected-shared
      * ones owned by active co-members — narrowed by the surface's kind/lifecycle/
-     * visibility filters. Scope filtering is applied pre-retrieval by the store.
+     * visibility filters.
+     *
+     * Two gates, not one. The store's scope predicate narrows the query so
+     * nothing out of scope is ever fetched; the proof then re-decides each row
+     * against memberships read now, and drops what it refuses without leaving a
+     * placeholder or a count behind. The predicate alone was the residual ADR
+     * 0219 left for this issue: it is a pre-filter, and a pre-filter cannot see a
+     * membership that ended after the page was built (#380, #386).
      */
     async listAssets(input: ListAssetsInput): Promise<AssetWithContext[]> {
       const assets = await store.listVisibleAssetsForCaller(input);
-      return Promise.all(assets.map((asset) => hydrateAsset(store, asset)));
+      const proven = await keepProvenAssets({
+        callerUserId: input.callerUserId,
+        rows: assets.map((asset) => ({ asset })),
+      });
+      return Promise.all(proven.map((row) => hydrateAsset(store, row.asset)));
     },
 
     /**

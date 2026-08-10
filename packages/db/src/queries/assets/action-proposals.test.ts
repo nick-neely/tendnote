@@ -433,15 +433,31 @@ describe("proposal gating", () => {
     ).rejects.toBeInstanceOf(AssetValidationError);
   });
 
-  it("refuses a co-member: proposing is owner-only, like every other review write", async () => {
-    const { proposals, store, seedAsset, seedMemory } = setup();
-    await seedOwnerMemberHousehold(store, OWNER, MEMBER);
+  it("refuses a co-member on someone else's asset, and allows one on the household's own", async () => {
+    const { proposals, assetLifecycle, store, seedAsset, seedMemory } = setup();
+    const household = await seedOwnerMemberHousehold(store, OWNER, MEMBER);
     const asset = await seedAsset();
     await seedMemory(asset.id);
 
+    // Proposing new review items in someone else's queue is not theirs to do,
+    // and the refusal is the one opaque sentence (ADR 0219).
     await expect(
       proposals.proposeAssetMemoryActions({ actorUserId: MEMBER, assetId: asset.id, now: NOW }),
-    ).rejects.toThrow(/not found/i);
+    ).rejects.toThrow(/no longer available/);
+
+    // The household's own asset is a different question: every active member
+    // holds the same authority over it, so any of them may propose (ADR 0214).
+    const fridge = await assetLifecycle.createAsset({
+      ownerUserId: OWNER,
+      name: "Kitchen refrigerator",
+      kind: "appliance",
+      ownership: "household_native",
+      householdId: household.id,
+    });
+    await seedMemory(fridge.id);
+    await expect(
+      proposals.proposeAssetMemoryActions({ actorUserId: MEMBER, assetId: fridge.id, now: NOW }),
+    ).resolves.toBeDefined();
   });
 
   it("never widens a private memory into a household action", async () => {

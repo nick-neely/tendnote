@@ -11,6 +11,13 @@ const MEMBER = "user-member";
 const OTHER_MEMBER = "user-other-member";
 const OUTSIDER = "user-outsider";
 
+/**
+ * The single sentence every refusal produces. "No such asset", "you may not",
+ * and "you were removed from that household" have to be indistinguishable from
+ * outside, because the difference between them is the protected fact (ADR 0219).
+ */
+const UNAVAILABLE = /no longer available/;
+
 function setup() {
   const store = createInMemoryAssetStore();
   const lifecycle = createAssetLifecycle(store);
@@ -265,9 +272,11 @@ describe("edit asset", () => {
     const household = await seedHousehold();
     const asset = await seedAsset({ scope: "household", householdId: household.id });
 
+    // Widening visibility never transfers authority (ADR 0214), and the refusal
+    // is the one opaque sentence rather than "you may not" (ADR 0219).
     await expect(
       lifecycle.editAsset({ actorUserId: MEMBER, assetId: asset.id, edit: { name: "Nope" } }),
-    ).rejects.toThrow("Asset not found.");
+    ).rejects.toThrow(UNAVAILABLE);
   });
 });
 
@@ -293,7 +302,7 @@ describe("hard delete asset", () => {
 
     await expect(
       lifecycle.hardDeleteAsset({ actorUserId: MEMBER, assetId: asset.id }),
-    ).rejects.toThrow("Asset not found.");
+    ).rejects.toThrow(UNAVAILABLE);
     await expect(
       lifecycle.getAsset({ callerUserId: OWNER, assetId: asset.id }),
     ).resolves.toMatchObject({ id: asset.id });
@@ -333,19 +342,21 @@ describe("archive and restore", () => {
     );
   });
 
-  it("lets a household member archive a household asset, keeping owner provenance", async () => {
+  it("keeps archiving a member's own asset with them, however wide its audience", async () => {
     const { lifecycle, seedAsset, seedHousehold } = setup();
     const household = await seedHousehold();
     const asset = await seedAsset({ scope: "household", householdId: household.id });
 
-    const archived = await lifecycle.archiveAsset({ actorUserId: MEMBER, assetId: asset.id });
+    // Phase Eight narrows what Phase 6 allowed here: setting someone's record
+    // aside for them was never the audience's to do, and it is the one authority
+    // question archive and restore share (ADR 0214, #386).
+    await expect(
+      lifecycle.archiveAsset({ actorUserId: MEMBER, assetId: asset.id }),
+    ).rejects.toThrow(UNAVAILABLE);
 
+    const archived = await lifecycle.archiveAsset({ actorUserId: OWNER, assetId: asset.id });
     expect(archived.status).toBe("archived");
-    expect(archived.ownerUserId).toBe(OWNER);
-    expect(archived.lastActorUserId).toBe(MEMBER);
-
-    const audit = await lifecycle.listAssetAudit({ ownerUserId: OWNER, assetId: asset.id });
-    expect(audit.at(-1)?.actorUserId).toBe(MEMBER);
+    expect(archived.lastActorUserId).toBe(OWNER);
   });
 
   it("denies archive to a caller who cannot see the asset (indistinguishable from missing)", async () => {
@@ -353,7 +364,7 @@ describe("archive and restore", () => {
     const asset = await seedAsset();
     await expect(
       lifecycle.archiveAsset({ actorUserId: OUTSIDER, assetId: asset.id }),
-    ).rejects.toThrow("Asset not found.");
+    ).rejects.toThrow(UNAVAILABLE);
   });
 });
 

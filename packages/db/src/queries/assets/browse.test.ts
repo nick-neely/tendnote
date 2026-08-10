@@ -1,6 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAssetBrowser } from "./browse";
 import type { AssetBrowseRow, AssetBrowseStore } from "./browse-types";
+import type { AssetAuthorityStore } from "./types";
+
+/**
+ * The proof reads, stubbed empty: every fixture row here is a private asset the
+ * caller owns, and a private record's decision provably never consults
+ * memberships or shares. Stubbing them keeps this suite about paging.
+ */
+const noHouseholds: AssetAuthorityStore = {
+  listActiveHouseholdMembershipsForUser: async () => [],
+  listHouseholdRecordSharesForRecords: async () => [],
+};
 
 const row = (name: string): AssetBrowseRow => ({
   asset: {
@@ -10,8 +21,10 @@ const row = (name: string): AssetBrowseRow => ({
     kind: "item",
     status: "active",
     scope: "private",
+    ownership: "member_owned",
     householdId: null,
     archivedAt: null,
+    revision: 0,
     createdByUserId: "owner",
     lastActorUserId: "owner",
     createdAt: new Date("2026-01-01T00:00:00Z"),
@@ -24,7 +37,8 @@ const row = (name: string): AssetBrowseRow => ({
 describe("asset browser", () => {
   it("returns a bounded page and a next offset without leaking the lookahead row", async () => {
     const rows = [row("Alpha"), row("Bravo"), row("Charlie")];
-    const store: AssetBrowseStore = {
+    const store: AssetBrowseStore & AssetAuthorityStore = {
+      ...noHouseholds,
       listAssetBrowseRows: vi.fn(async (input) =>
         rows.slice(input.offset, input.offset + input.limit),
       ),

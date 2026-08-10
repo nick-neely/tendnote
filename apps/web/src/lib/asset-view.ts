@@ -5,7 +5,13 @@ import type {
   AssetReviewFilter,
   AssetWithContext,
 } from "@tendnote/db/queries/assets";
-import type { AssetKind, AssetStatus, PrivacyScope, RecordSurfacingState } from "@tendnote/domain";
+import type {
+  AssetKind,
+  AssetOwnership,
+  AssetStatus,
+  PrivacyScope,
+  RecordSurfacingState,
+} from "@tendnote/domain";
 import { assetLabelForKind } from "@tendnote/domain";
 import {
   formatSurfacingDay,
@@ -40,9 +46,53 @@ export type AssetBrowsePageView = {
 
 export type AssetBrowseRunner = (input: AssetBrowseRequest) => Promise<AssetBrowsePageView>;
 
+/**
+ * What this viewer may do to this Asset, decided once from its ownership form
+ * and the viewer's relationship to it, so no surface re-derives the Phase Eight
+ * authority table and gets a row of it wrong.
+ *
+ * Viewing is deliberately absent: a projected Asset is one the viewer can
+ * already see, so a rendered row never has to ask. What this narrows is
+ * everything that *changes* the record — a member-owned Asset shared into the
+ * household stays its owner's to author, while a household-native one grants
+ * every active member the same authority (ADR 0214).
+ *
+ * A rendering hint, never the gate. The server proves every one of these again
+ * on the write, against memberships read at that moment (ADR 0219).
+ */
+export type AssetAuthority = {
+  /** Rename and re-kind. */
+  edit: boolean;
+  /** Archive and restore — one decision wearing two names. */
+  archive: boolean;
+  /** The correction/privacy delete. A household Asset is archived instead. */
+  remove: boolean;
+  /** Change visibility; a household Asset has no audience to change. */
+  audience: boolean;
+};
+
+export function resolveAssetAuthority(ownership: AssetOwnership, owned: boolean): AssetAuthority {
+  // A household-native Asset is only ever projected for a member who can see it,
+  // and it is visible to every active member by definition — so "can see it" is
+  // "is an active member", which is the whole of its authority test (ADR 0214).
+  const householdNative = ownership === "household_native";
+  return {
+    edit: householdNative || owned,
+    archive: householdNative || owned,
+    remove: !householdNative && owned,
+    audience: !householdNative && owned,
+  };
+}
+
 export type AssetView = {
   id: string;
   revision: string;
+  /**
+   * The fence the viewer's draft is written against, sent back with an edit so a
+   * second writer keeps what they typed instead of quietly overwriting the first
+   * (#386). Distinct from `revision` above, which is a cache-freshness stamp.
+   */
+  contentRevision: number;
   name: string;
   kind: AssetKind;
   /** The canonical kind label ("Appliance"), shared with pickers and chips. */
@@ -58,9 +108,30 @@ export type AssetView = {
    * audience label so scope reads the same across surfaces.
    */
   visibilityLabel: string;
-  /** Whether the viewing user owns this asset. Only the owner may rename it. */
+  /**
+   * Whether the viewing user owns this asset. Kept for the surfaces that phrase
+   * things in the first person; authority questions go through `authority`.
+   */
   owned: boolean;
+  /**
+   * The member the row is keyed by. On a household-native Asset this is a
+   * storage key and never an author — no surface may render it as one, and
+   * `ownership` is what tells them apart (ADR 0214).
+   */
   ownerUserId: string;
+  ownership: AssetOwnership;
+  /** Who is looking, so a surface can say "you" instead of naming them. */
+  viewerUserId: string;
+  /** What this viewer may do to it — see {@link AssetAuthority}. */
+  authority: AssetAuthority;
+  /**
+   * Creator and last-actor provenance (ADR 0154), for the quiet attribution line
+   * on a record more than one person can write. Ids, not names: the surface
+   * already holds the household roster, and resolving names here would mean a
+   * lookup on every row of a ledger.
+   */
+  createdByUserId: string | null;
+  lastActorUserId: string | null;
   /** A calm provenance line, e.g. "Added Jul 1". */
   addedLabel: string;
   /** "Archived Jul 10" when archived, otherwise null. */
@@ -89,6 +160,7 @@ export function toAssetView(
   return {
     id: asset.id,
     revision: surfacing.revision,
+    contentRevision: asset.revision,
     name: asset.name,
     kind: asset.kind,
     kindLabel: assetLabelForKind(asset.kind),
@@ -98,6 +170,11 @@ export function toAssetView(
     visibilityLabel: surfacing.audienceLabel,
     owned: surfacing.owned,
     ownerUserId: asset.ownerUserId,
+    ownership: asset.ownership,
+    viewerUserId: options.callerUserId,
+    authority: resolveAssetAuthority(asset.ownership, surfacing.owned),
+    createdByUserId: asset.createdByUserId ?? null,
+    lastActorUserId: asset.lastActorUserId ?? null,
     addedLabel: `Added ${formatSurfacingDay(asset.createdAt, now)}`,
     archivedLabel: asset.archivedAt
       ? `Archived ${formatSurfacingDay(asset.archivedAt, now)}`

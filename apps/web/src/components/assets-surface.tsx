@@ -14,6 +14,7 @@ import {
   sameAssetFilters,
 } from "@/components/asset-browse-controls";
 import { CreateAssetForm } from "@/components/asset-create-form";
+import { AssetAttributionLine } from "@/components/asset-household";
 import { AssetSearchPanel, type AssetSearchRunner } from "@/components/asset-search-panel";
 import { AssetArchivedBadge, AssetKindBadge } from "@/components/asset-shared";
 import { ActionScopeChip } from "@/components/general-action-shared";
@@ -172,7 +173,7 @@ export function AssetsSurface({
       {visible.length ? (
         <LedgerList>
           {visible.map((asset) => (
-            <AssetRow asset={asset} key={asset.id} />
+            <AssetRow asset={asset} key={asset.id} members={shareableMembers} />
           ))}
         </LedgerList>
       ) : (
@@ -236,7 +237,7 @@ function AssetsEmpty({ filtered, onClear }: { filtered: boolean; onClear: () => 
  * manage). Archived rows stay in place with a quiet word, never removed or
  * reddened.
  */
-function AssetRow({ asset }: { asset: AssetView }) {
+function AssetRow({ asset, members }: { asset: AssetView; members: ShareableActionMember[] }) {
   return (
     <Link
       className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
@@ -257,6 +258,9 @@ function AssetRow({ asset }: { asset: AssetView }) {
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <AssetKindBadge kind={asset.kind} label={asset.kindLabel} />
           <ActionScopeChip label={asset.visibilityLabel} scope={asset.scope} />
+          {/* Whose it is, in the metadata line rather than beside the name: it
+              is context for the row, not part of what the thing is called. */}
+          <AssetAttributionLine asset={asset} members={members} />
           {asset.needsReview ? (
             <Badge className="bg-accent-soft text-accent-soft-foreground" variant="secondary">
               Needs review

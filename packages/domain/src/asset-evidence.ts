@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { assetChildScopeSchema } from "./asset-child-scope";
-import { AssetValidationError } from "./assets";
+import { AssetValidationError, assetOwnershipSchema } from "./assets";
 
 /**
  * The small fixed Asset Evidence kind set (#196, #200): what a piece of evidence
@@ -212,6 +212,12 @@ const assetEvidenceBaseSchema = z.object({
   purchasedOn: z.iso.date().nullable().default(null),
   renewsOn: z.iso.date().nullable().default(null),
   scope: assetChildScopeSchema.default("private"),
+  /**
+   * Whose evidence this is (#386). Evidence is immutable either way — the form
+   * decides who may remove it and whether it follows workspace retention or one
+   * member's private space when they leave.
+   */
+  ownership: assetOwnershipSchema.default("member_owned"),
   householdId: z.string().nullable().default(null),
   sourceRecordId: z.string().nullable().default(null),
   // The Asset Review Group this evidence arrived through; kept after review

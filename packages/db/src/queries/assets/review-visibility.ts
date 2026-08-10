@@ -1,7 +1,10 @@
 import {
   type Asset,
   type AssetMemoryScope,
+  type AssetOwnership,
   AssetValidationError,
+  assertAssetChildOwnershipForm,
+  assetChildScopeForOwnership,
   defaultChildScopeForAsset,
   requireChildScopeWithinAsset,
   resolveLinkedChildVisibility,
@@ -15,17 +18,34 @@ export type ResolvedAssetChildVisibility = {
   selectedUserIds: string[];
 };
 
-/** Resolves a child audience against the parent Asset's visibility ceiling. */
+/**
+ * Resolves a child audience against the parent Asset's visibility ceiling, and
+ * against the two ownership forms.
+ *
+ * Order matters. The form check runs first because "may the workspace own a
+ * detail on this Asset at all" is not a question about audiences and has a
+ * curated answer; only then does the ownership form decide the scope, and only
+ * then does the ceiling clamp it. A household-native detail is
+ * whole-household-visible by definition, so a scope arriving alongside it is not
+ * a conflict to report but a value with nothing to say (#386, ADR 0214).
+ */
 export async function resolveAssetChildVisibility(
   store: AssetReviewLifecycleStore,
   input: {
     ownerUserId: string;
     anchor: Asset;
     scope?: AssetMemoryScope;
+    ownership?: AssetOwnership;
     selectedUserIds?: string[];
   },
 ): Promise<ResolvedAssetChildVisibility> {
-  const scope = input.scope ?? defaultChildScopeForAsset(input.anchor.scope);
+  const ownership = input.ownership ?? "member_owned";
+  assertAssetChildOwnershipForm({
+    childOwnership: ownership,
+    assetOwnership: input.anchor.ownership,
+  });
+  const requested = assetChildScopeForOwnership(ownership, input.scope);
+  const scope = requested ?? defaultChildScopeForAsset(input.anchor.scope);
   requireChildScopeWithinAsset({ childScope: scope, assetScope: input.anchor.scope });
   if (scope === "private") return { scope, householdId: null, selectedUserIds: [] };
 

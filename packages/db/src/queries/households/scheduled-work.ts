@@ -3,6 +3,9 @@ import type { PgColumn } from "drizzle-orm/pg-core";
 import type { DatabaseExecutor } from "../../client";
 import { getDb } from "../../client";
 import {
+  assetEvidence,
+  assetMemories,
+  assets,
   generalActions,
   reminderDeliveryJobs,
   reminderOccurrenceIntents,
@@ -44,6 +47,31 @@ export type HouseholdScheduledWorkStore = {
    * the person who actually owns it.
    */
   revertMemberOwnedActionsToPrivate: (input: {
+    householdId: string;
+    ownerUserId: string;
+  }) => Promise<string[]>;
+  /**
+   * The same for this member's own Assets — and, in the same sweep, their own
+   * Asset Memories and Asset Evidence in this household.
+   *
+   * The children are not an afterthought. An Asset's scope is the ceiling for
+   * every record hanging off it (ADR 0179), so returning the Asset to `private`
+   * while leaving a `household` memory on it would leave the child above its
+   * parent and still readable by the household the owner just left — the exact
+   * shape of leak the revert exists to close. Their details on records that are
+   * *not* theirs come home too: a note this member widened to the household is
+   * their sharing, and their sharing ends with their access. So does the mirror
+   * case — a *remaining* member's detail on the Asset that just went home, which
+   * would otherwise be left above a parent nobody in the household can reach.
+   *
+   * Household-native Assets and their household-native children are deliberately
+   * untouched: those belong to the workspace and stay, with this member's
+   * creator and actor attribution intact (ADR 0214).
+   *
+   * Returns the reverted Asset ids only — governance counts what moved and is
+   * given no way to read what any of it says.
+   */
+  revertMemberOwnedAssetsToPrivate: (input: {
     householdId: string;
     ownerUserId: string;
   }) => Promise<string[]>;
@@ -103,6 +131,70 @@ export function createDrizzleHouseholdScheduledWorkStore(
           ),
         )
         .returning({ id: generalActions.id });
+      return rows.map((row) => row.id);
+    },
+
+    async revertMemberOwnedAssetsToPrivate(input) {
+      const db = resolveDb();
+      const now = new Date();
+      const toPrivate = { scope: "private" as const, householdId: null, updatedAt: now };
+
+      // Children first, then the parent. Either order leaves the pair briefly
+      // inconsistent inside the transaction, and this one is the safe
+      // inconsistency: a private child under a still-household parent is simply
+      // narrower than its ceiling, which is always allowed. The reverse — a
+      // private parent with a household child — is the state ADR 0179 forbids.
+      for (const table of [assetMemories, assetEvidence]) {
+        await db
+          .update(table)
+          .set(toPrivate)
+          .where(
+            and(
+              eq(table.householdId, input.householdId),
+              eq(table.ownerUserId, input.ownerUserId),
+              eq(table.ownership, "member_owned"),
+              ne(table.scope, "private"),
+            ),
+          );
+      }
+
+      const rows = await db
+        .update(assets)
+        .set(toPrivate)
+        .where(
+          and(
+            eq(assets.householdId, input.householdId),
+            eq(assets.ownerUserId, input.ownerUserId),
+            eq(assets.ownership, "member_owned"),
+            ne(assets.scope, "private"),
+          ),
+        )
+        .returning({ id: assets.id });
+
+      // The other half of the ceiling, and the one that is easy to miss: a
+      // *remaining* member's detail on the Asset that just went home.
+      //
+      // Attaching a detail only ever needed visibility of the Asset, so a
+      // partner's household-scope note can be sitting on the departing member's
+      // car. Reverting only the departing member's own rows would leave that
+      // note at `household` scope under a now-private parent — above its ceiling,
+      // still readable by the household, and about a record nobody in that
+      // household can reach any more. Its owner keeps it; it simply stops being
+      // shared, exactly as it would have if they had narrowed the parent
+      // themselves.
+      if (rows.length > 0) {
+        const revertedAssetIds = rows.map((row) => row.id);
+        for (const table of [assetMemories, assetEvidence]) {
+          await db
+            .update(table)
+            .set(toPrivate)
+            // No ownership filter, and that is not an omission: a
+            // household-native child is only legal under a household-native
+            // Asset, so every child of a member-owned one is member-owned.
+            .where(and(inArray(table.assetId, revertedAssetIds), ne(table.scope, "private")));
+        }
+      }
+
       return rows.map((row) => row.id);
     },
 
@@ -178,6 +270,9 @@ export function createNoopHouseholdScheduledWorkStore(): HouseholdScheduledWorkS
       return [];
     },
     async revertMemberOwnedActionsToPrivate() {
+      return [];
+    },
+    async revertMemberOwnedAssetsToPrivate() {
       return [];
     },
     async listHouseholdActionIds() {

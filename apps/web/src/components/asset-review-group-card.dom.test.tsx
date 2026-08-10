@@ -328,6 +328,8 @@ describe("AssetReviewGroupCard", () => {
       renewsOnLabel: null,
       scope: "private" as const,
       owned: true,
+      ownership: "member_owned",
+      canRemove: true,
       addedLabel: "Added Jul 13",
     };
     addAssetEvidenceAction.mockResolvedValue({ ok: true, view: attached });
@@ -379,6 +381,8 @@ describe("AssetReviewGroupCard", () => {
           renewsOnLabel: null,
           scope: "private" as const,
           owned: true,
+          ownership: "member_owned",
+          canRemove: true,
           addedLabel: "Added Jul 13",
         },
       ],
@@ -423,6 +427,8 @@ describe("AssetReviewGroupCard", () => {
           renewsOnLabel: null,
           scope: "private" as const,
           owned: true,
+          ownership: "member_owned",
+          canRemove: true,
           addedLabel: "Added Jul 13",
         },
       ],
