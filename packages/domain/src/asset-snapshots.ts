@@ -294,11 +294,25 @@ export function generateDeterministicAssetSnapshot(
 export function buildAssetSnapshotPrompt(pack: AssetSnapshotInputPack): string {
   const { asset } = pack;
   const facts = reviewedMemories(pack);
+  // A household-native Asset belongs to the Household Workspace, not to whoever
+  // is reading — and the reader may not even be the member the row is keyed by
+  // (ADR 0214). Told to summarize "one thing the user owns", the model wrote
+  // "You own a Cal HN Fridge" for every member of the household, which is the
+  // storage key surfacing as an ownership claim in generated prose.
+  const householdNative = asset.ownership === "household_native";
   const sections: string[] = [
-    "Write a brief, grounded summary of one thing the user owns, to help them recall it.",
+    householdNative
+      ? "Write a brief, grounded summary of one thing the user's household keeps track of, to help them recall it."
+      : "Write a brief, grounded summary of one thing the user owns, to help them recall it.",
     "Use only the facts provided below.",
     "",
     "Grounding rules (these override tone and length):",
+    ...(householdNative
+      ? [
+          "- This belongs to the household, not to the reader. Never say the reader owns",
+          "  it, and never name a member as its owner.",
+        ]
+      : []),
     "- Report only what the facts state. Never invent, guess, or round a model number,",
     "  serial, filter size, price, or date. An invented exact value is worse than none.",
     "- Evidence is grounding material, not a claim: say a receipt or manual is on file,",

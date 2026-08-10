@@ -185,7 +185,12 @@ async function AssetProfileContent({ params, searchParams }: AssetProfilePagePro
   // one query per question rather than one per component that asks it.
   const counts = loadAssetTabCounts(request);
   const history = loadAssetHistory(request);
-  const reviewItems = view.owned ? loadAssetReviewItemCount(request) : null;
+  // Authority, not the owner key. On a household-native Asset `owned` is true
+  // only for whichever member happened to type its name, while the review queue
+  // behind this count accepts every active member (ADR 0214) — gating on `owned`
+  // hid the household's own review items from everyone but its creator, and from
+  // everyone at all once that creator left.
+  const reviewItems = view.authority.edit ? loadAssetReviewItemCount(request) : null;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
@@ -237,8 +242,9 @@ async function AssetProfileContent({ params, searchParams }: AssetProfilePagePro
  *
  * Every pane is its own Suspense boundary, so the tab shell paints before any
  * read lands and each section streams in when its own query resolves. Review is
- * the one conditional pane: `reviewItems` is null unless the caller owns the
- * asset, so the tab exists only when there is something behind it.
+ * the one conditional pane: `reviewItems` is null unless the caller holds edit
+ * authority over the asset, so the tab exists only when there is something
+ * behind it.
  */
 function AssetProfilePanes({
   counts,
@@ -537,7 +543,7 @@ async function AssetActionsStream({ request, view }: { request: AssetRequest; vi
         </PaneIntro>
         <AssetActionProposals
           assetId={assetId}
-          canPropose={view.owned && !view.archived}
+          canPropose={view.authority.edit && !view.archived}
           proposals={proposals.map((entry) => toPendingAssetActionProposalView(entry, now))}
         />
         <AssetRelatedActions
