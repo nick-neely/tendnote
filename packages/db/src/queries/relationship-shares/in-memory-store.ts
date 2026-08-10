@@ -18,11 +18,18 @@ export function createInMemoryRelationshipShareStore(
     personLabels?: Readonly<Record<string, string>>;
     memberNames?: Readonly<Record<string, string>>;
   } = {},
+  /**
+   * Injectable for the same reason as the Asset, General Action, Gift Plan, and
+   * Person Reference stores: a cross-domain suite drives every family against
+   * one membership and share registry, because two would let the domains
+   * disagree about who is a member.
+   */
+  householdStore: ReturnType<typeof createInMemoryHouseholdStore> = createInMemoryHouseholdStore(),
 ): RelationshipShareStore & {
   listAuditLogEntries: (input: { ownerUserId: string }) => Promise<HouseholdAuditLogEntry[]>;
   readSeededRecord: (recordId: string) => RelationshipRecordFacts | undefined;
 } {
-  const household = createInMemoryHouseholdStore();
+  const household = householdStore;
   const records = new Map<string, RelationshipRecordFacts>(
     (seed.records ?? []).map((record) => [`${record.recordKind}:${record.recordId}`, record]),
   );

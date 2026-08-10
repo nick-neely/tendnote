@@ -4,7 +4,16 @@ import { createInMemoryHouseholdStore } from "../households/in-memory-store";
 import type { HouseholdAuditLogEntry } from "../households/types";
 import type { PersonReferenceStore } from "./types";
 
-export function createInMemoryPersonReferenceStore(): PersonReferenceStore & {
+/**
+ * `householdStore` is injectable so a cross-domain composition can share one
+ * membership and share registry across every family it drives, matching the
+ * Asset, General Action, and Gift Plan stores. A second household instance would
+ * let two domains disagree about who is a member, which is the one thing an
+ * isolation suite must not simulate away.
+ */
+export function createInMemoryPersonReferenceStore(
+  householdStore: ReturnType<typeof createInMemoryHouseholdStore> = createInMemoryHouseholdStore(),
+): PersonReferenceStore & {
   listAuditLogEntries: (input: { ownerUserId: string }) => Promise<HouseholdAuditLogEntry[]>;
   createHouseholdWorkspace: ReturnType<
     typeof createInMemoryHouseholdStore
@@ -19,7 +28,7 @@ export function createInMemoryPersonReferenceStore(): PersonReferenceStore & {
   /** Every row, for tests that need to assert nothing was left behind. */
   allPersonReferences: () => PersonReference[];
 } {
-  const household = createInMemoryHouseholdStore();
+  const household = householdStore;
   const references = new Map<string, PersonReference>();
 
   return {
