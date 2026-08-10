@@ -216,6 +216,10 @@ async function purgeWithin(
     householdRecordShares,
     eq(householdRecordShares.householdId, householdId),
   );
+  // Deleted but deliberately not counted. A confirmation is a record of a
+  // decision, and the decision is already in the `household.dissolve` audit
+  // entry by owner and time — counting them again here would put the same fact
+  // in the trail twice and read as a measure of the household's content.
   await deleteReturning(
     tx,
     householdDissolutionConfirmations,

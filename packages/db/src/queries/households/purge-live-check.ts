@@ -8,7 +8,7 @@
  * `saved_items_ownership_check`, the constraint that turns a wrong order into an
  * aborted transaction rather than a stray row.
  *
- *   pnpm --filter @tendnote/db exec tsx src/queries/households/purge-live-check.ts
+ *   pnpm --filter @tendnote/db db:purge:check
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
