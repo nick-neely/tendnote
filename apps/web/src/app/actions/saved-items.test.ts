@@ -1,4 +1,8 @@
-import { SavedItemConflictError, SavedItemValidationError } from "@tendnote/domain";
+import {
+  SavedItemConflictError,
+  SavedItemUnavailableDestinationError,
+  SavedItemValidationError,
+} from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { updateTagSpy } from "@/test/action-adapter-mocks";
 
@@ -421,9 +425,24 @@ describe("household-native Saved Item server adapters", () => {
     expect(result).toMatchObject({ ok: true, view: { canEdit: true, canDeleteEvidence: false } });
   });
 
-  it("surfaces the not-yet-available household Action as an ordinary inline message", async () => {
+  it("promotes a workspace-owned item on the household's retry key once the destination exists", async () => {
+    await promoteHouseholdSavedItemAction({ savedItemId: ITEM.id });
+
+    expect(promoteHouseholdSavedItem).toHaveBeenCalledWith({
+      actorUserId: "owner-1",
+      savedItemId: ITEM.id,
+      idempotencyKey: `saved-item:${ITEM.id}:household-general-action`,
+      title: undefined,
+    });
+  });
+
+  // Flagged rather than merely worded calmly: by the time a refusal reaches a
+  // row it is only a string, and a row cannot tell "not built yet" from "you got
+  // this wrong" without reading the sentence. The flag is what keeps the calm
+  // copy out of the destructive, assertive error line.
+  it("refuses a household Action as an unavailable destination, not a mistake", async () => {
     promoteHouseholdSavedItem.mockRejectedValue(
-      new SavedItemValidationError(
+      new SavedItemUnavailableDestinationError(
         "Household Actions aren't available yet, so this can stay here for now.",
       ),
     );
@@ -431,6 +450,27 @@ describe("household-native Saved Item server adapters", () => {
     await expect(promoteHouseholdSavedItemAction({ savedItemId: ITEM.id })).resolves.toEqual({
       ok: false,
       error: "Household Actions aren't available yet, so this can stay here for now.",
+      unavailableDestination: true,
     });
+  });
+
+  it("refuses the member-owned hand-off the same way, and only for that destination", async () => {
+    promoteSavedItemToGeneralAction.mockRejectedValue(
+      new SavedItemUnavailableDestinationError(
+        "Household Actions aren't available yet, so this can stay here for now.",
+      ),
+    );
+
+    await expect(
+      promoteSavedItemToGeneralActionAction({
+        savedItemId: ITEM.id,
+        destination: "household_native",
+      }),
+    ).resolves.toMatchObject({ ok: false, unavailableDestination: true });
+
+    await promoteSavedItemToGeneralActionAction({ savedItemId: ITEM.id });
+    expect(promoteSavedItemToGeneralAction).toHaveBeenCalledWith(
+      expect.objectContaining({ savedItemId: ITEM.id, destination: "member_owned" }),
+    );
   });
 });

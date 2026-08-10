@@ -17,6 +17,7 @@ import type {
   CreateHouseholdInput,
   ShareHouseholdRecordInput,
 } from "./households/types";
+import { revokeUnreadableSavedItemReminders } from "./reminders";
 
 export {
   createHouseholdAuthorizationProver,
@@ -55,6 +56,16 @@ const defaultHouseholdInvitations = createHouseholdInvitationLifecycle(
 );
 const defaultHouseholdGovernance = createHouseholdGovernanceLifecycle(
   createDrizzleHouseholdInvitationStore(),
+  {
+    // Losing household access has to revoke the reminders that access earned.
+    // A Saved Item schedule belongs to the member who chose it, so it survives
+    // the record but must not survive their ability to see it - a schedule left
+    // behind would quietly resume delivering if they were ever re-admitted
+    // (`docs/phase-8/household-saved-items.md`, ADR 0219).
+    onAccessEnded: async ({ userId }) => {
+      await revokeUnreadableSavedItemReminders({ subscriberUserId: userId });
+    },
+  },
 );
 const defaultHouseholdOverviewReader = createHouseholdOverviewReader(
   defaultHouseholdStore,

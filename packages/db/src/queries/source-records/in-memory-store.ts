@@ -234,6 +234,17 @@ export function createInMemorySourceRecordStore(): InMemorySourceRecordStore {
 
       return sourceRecord;
     },
+    /**
+     * Owner-only, deliberately. This seeded store holds no memberships, so it
+     * cannot evaluate a household audience and must not guess at one - a store
+     * that over-admits in tests hides exactly the bug the proof exists to catch.
+     * The composed Saved Item lifecycle store, which does hold memberships,
+     * overrides this with the real rule.
+     */
+    async getVisibleSourceRecord(input) {
+      const sourceRecord = sourceRecords.get(input.sourceRecordId);
+      return sourceRecord?.ownerUserId === input.callerUserId ? sourceRecord : null;
+    },
     async getSourceRecordById(sourceRecordId) {
       return sourceRecords.get(sourceRecordId) ?? null;
     },

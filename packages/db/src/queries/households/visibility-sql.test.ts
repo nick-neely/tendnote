@@ -111,7 +111,7 @@ describe("household visibility pre-filter and proof agree", () => {
    * two owner comparisons must be inert for it rather than accidentally
    * matching. In SQL they are: `NULL = 'someone'` is unknown, never true. The
    * engine half pins that the same rows resolve the way the workspace-owned form
-   * requires — symmetric authority for every active member, nothing for anyone
+   * requires - symmetric authority for every active member, nothing for anyone
    * else (ADR 0214).
    */
   describe.each([

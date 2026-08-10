@@ -8,7 +8,7 @@ import {
 import { createReminderDeliveryPlanner } from "./delivery-planning";
 import { createReminderDispatcher } from "./dispatch";
 import { createReminderInstallationService } from "./installation-service";
-import { isEligibleReminderRecord, reminderOccurrenceKey } from "./policy";
+import { isEligibleReminderRecord, reminderOccurrenceKey, reminderSubscriber } from "./policy";
 import type { ReminderGeneralAction, ReminderRecord, ReminderStore } from "./types";
 
 const HOUR_MS = 60 * 60 * 1_000;
@@ -102,7 +102,7 @@ export function createReminderService(input: {
       !isEligibleReminderRecord(record) ||
       record.id !== values.recordId ||
       record.kind !== values.recordKind ||
-      record.ownerUserId !== values.ownerUserId
+      reminderSubscriber(record) !== values.ownerUserId
     ) {
       throw new Error("Only an owner's eligible explicit time-bound record can have a reminder.");
     }
@@ -196,7 +196,7 @@ export function createReminderService(input: {
       !isEligibleReminderRecord(record) ||
       record.id !== values.recordId ||
       record.kind !== values.recordKind ||
-      record.ownerUserId !== values.ownerUserId
+      reminderSubscriber(record) !== values.ownerUserId
     ) {
       await input.store.supersedeOccurrenceIntents(values);
       return null;
@@ -265,7 +265,7 @@ export function createReminderService(input: {
     }) {
       const record = await loadRecord(values);
       return isEligibleReminderRecord(record) &&
-        record.ownerUserId === values.ownerUserId &&
+        reminderSubscriber(record) === values.ownerUserId &&
         record.kind === values.recordKind &&
         record.id === values.recordId
         ? {

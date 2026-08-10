@@ -154,7 +154,7 @@ export function createDrizzleSavedItemStore(): SavedItemStore {
       // The predicate above narrowed the candidate; this is what authorizes the
       // read. It re-decides against memberships and shares read now, and against
       // the ownership form SQL does not evaluate, so a member who left between
-      // the page render and this call is refused here — as null, which is the
+      // the page render and this call is refused here - as null, which is the
       // same answer as "no such Saved Item" (ADR 0219).
       const proven = await provenVisibleRecord({
         callerUserId: input.callerUserId,

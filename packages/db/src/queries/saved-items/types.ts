@@ -107,8 +107,8 @@ export type SavedItemStore = {
   getSavedItemById: (input: { savedItemId: string }) => Promise<SavedItem | null>;
   /**
    * The versioned household-native write. `null` back means the record moved
-   * under the caller — a different version, a different ownership form, or gone
-   * — and the caller reconciles rather than retrying.
+   * under the caller - a different version, a different ownership form, or gone
+   * - and the caller reconciles rather than retrying.
    */
   updateHouseholdNativeSavedItem: (input: {
     savedItemId: string;

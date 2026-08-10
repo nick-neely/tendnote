@@ -65,7 +65,7 @@ function validateKindFields(
  * A `household_native` Saved Item carries **no** `ownerUserId`. That is the
  * point of ADR 0214: `owner_user_id NOT NULL` cannot express a record the
  * workspace owns, and a member id left in that column would be read back as
- * authority by the next adapter that looks — the private branch of the audience
+ * authority by the next adapter that looks - the private branch of the audience
  * rule, the owner-scoped reminder reconciler, the owner-scoped semantic index,
  * and the owner-scoped source-deletion path all key off it. Null makes every one
  * of those paths fail closed for free, and authority comes from the Household
@@ -144,7 +144,7 @@ const savedItemStoredFields = {
    *
    * A counter rather than `updatedAt`, because two members saving inside the
    * same millisecond would both match an `updated_at` guard and the second would
-   * silently win — exactly the last-write-wins this domain refuses.
+   * silently win - exactly the last-write-wins this domain refuses.
    */
   version: z.number().int().min(1).default(1),
 };
@@ -218,6 +218,22 @@ export class SavedItemValidationError extends Error {
 }
 
 /**
+ * A destination that does not exist yet, as distinct from one the member may not
+ * use.
+ *
+ * Its own type because the two deserve different rooms. A validation failure is
+ * something the member can fix and belongs in an alarm-coloured, assertively
+ * announced error line; "we have not built that yet" is a fact about Tendnote
+ * that nobody did anything wrong to reach, and reading it out as an alarm would
+ * be scolding someone for our own roadmap. Surfaces branch on the type, never on
+ * the sentence - a string comparison would silently stop matching the first time
+ * the wording is improved.
+ */
+export class SavedItemUnavailableDestinationError extends SavedItemValidationError {
+  override name = "SavedItemUnavailableDestinationError";
+}
+
+/**
  * What a member who has fallen behind is shown instead of their write.
  *
  * It carries the current value and the last actor because the surface has to
@@ -225,7 +241,7 @@ export class SavedItemValidationError extends Error {
  * the member decides. Tendnote never merges the two and never lets the later
  * save quietly win (see `docs/phase-8/household-saved-items.md`).
  *
- * The wording is factual rather than corrective — nobody did anything wrong by
+ * The wording is factual rather than corrective - nobody did anything wrong by
  * writing at the same time as someone else.
  */
 export class SavedItemConflictError extends SavedItemValidationError {
@@ -266,8 +282,8 @@ export function savedItemConflict(item: SavedItem): SavedItemConflict {
 /**
  * The optimistic-concurrency gate on a household-native write.
  *
- * `expectedVersion` omitted is a deliberate replace — the member has already
- * seen the current value and chose to overwrite it — rather than a caller that
+ * `expectedVersion` omitted is a deliberate replace - the member has already
+ * seen the current value and chose to overwrite it - rather than a caller that
  * forgot to send one. Surfaces send it on the first attempt and omit it only
  * after the member explicitly answers a conflict.
  */
@@ -280,7 +296,7 @@ export function assertSavedItemVersion(item: SavedItem, expectedVersion: number 
 /**
  * Whether this record's lifecycle and evidence belong to a member at all.
  *
- * The owner-only paths — unique source-evidence deletion above all — ask this
+ * The owner-only paths - unique source-evidence deletion above all - ask this
  * rather than testing `ownerUserId`, so the reason they refuse a workspace-owned
  * item reads as the rule it is: archive is a household-native item's removal
  * path, and no single member deletes what the household owns.

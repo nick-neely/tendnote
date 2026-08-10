@@ -3,7 +3,7 @@
 import type { SavedItemKind, SavedItemOwnership } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import Link from "next/link";
-import { useId, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import {
   archiveHouseholdSavedItemAction,
   archiveSavedItemAction,
@@ -672,6 +672,7 @@ function SavedItemRow({
   ) => ReversibleMutationApplyResult;
 }) {
   const [editing, setEditing] = useState(false);
+  const [unavailableNote, setUnavailableNote] = useState<string | null>(null);
   const archive = useReversibleMutation(item.id, "archive");
   const reopen = useReversibleMutation(item.id, "reopen");
   const update = useReversibleMutation(item.id, "update");
@@ -698,6 +699,29 @@ function SavedItemRow({
         ...labels,
       },
     });
+  };
+
+  /**
+   * Promotion, and the one refusal it has that is not a mistake.
+   *
+   * A destination that does not exist yet is answered with a quiet note below
+   * the controls, not the row's error line - so the row's generic error stays
+   * empty rather than repeating a calm sentence in alarm color. Same shape as
+   * the edit form's conflict handoff: read the structured field, keep the
+   * message locally, and hand the mutation module an empty error (ADR 0209).
+   */
+  const runPromotion: SavedItemEditSave = (runMutation, focusTarget, labels) => {
+    setUnavailableNote(null);
+    runPending(
+      async () => {
+        const result = await runMutation();
+        if (result.ok || !result.unavailableDestination) return result;
+        setUnavailableNote(result.error);
+        return { ok: false as const, error: "" };
+      },
+      focusTarget,
+      labels,
+    );
   };
 
   // fallow-ignore-next-line complexity -- Archive and reopen are one paired reversible lifecycle with mirrored labels and commands.
@@ -754,9 +778,19 @@ function SavedItemRow({
         item={item}
         onEdit={() => setEditing((current) => !current)}
         onLifecycle={runLifecycle}
-        onPending={runPending}
+        onPromote={runPromotion}
         pending={pending}
       />
+      {/* A destination that is not built yet, said the way it deserves: muted
+          ink, polite announcement, no alarm. Nothing here went wrong. */}
+      {unavailableNote ? (
+        <p
+          className="ml-7 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
+          role="status"
+        >
+          {unavailableNote}
+        </p>
+      ) : null}
       {active?.state.undoAvailable ? (
         <div className="ml-7">
           <Button
@@ -838,10 +872,16 @@ function SavedItemSummary({ item }: { item: SavedItemView }) {
             </span>
           ) : null}
           {/* Attribution, not an activity feed: who wrote it and, if different,
-              who last touched it. Never the viewer, and never a count. */}
-          {item.createdByLabel ? <span>{item.createdByLabel}</span> : null}
-          {item.lastChangedByLabel ? <span>{item.lastChangedByLabel}</span> : null}
-          {item.resolutionReason ? <span>Resolved · {item.resolutionReason}</span> : null}
+              who last touched it. Never the viewer, and never a count. Mono like
+              every other who-did-what-when fact in the app, and like the timing
+              chip standing beside them (DESIGN.md §4). */}
+          {item.createdByLabel ? <span className="font-mono">{item.createdByLabel}</span> : null}
+          {item.lastChangedByLabel ? (
+            <span className="font-mono">{item.lastChangedByLabel}</span>
+          ) : null}
+          {item.resolutionReason ? (
+            <span className="font-mono">Resolved · {item.resolutionReason}</span>
+          ) : null}
         </div>
       </div>
     </div>
@@ -1054,22 +1094,36 @@ function OpenQuestionResolution({
   );
 }
 
+/**
+ * Two promote affordances stay two controls rather than collapsing into one
+ * "Promote…" menu.
+ *
+ * They only ever coexist on a member-owned item already shared into a household,
+ * which is the minority row; the common private row has exactly one. Folding them
+ * would put a menu in front of that common case to serve the rare one, on a
+ * surface whose whole claim is fast recall (DESIGN.md §5). And the two are not
+ * two spellings of one thing - one makes the owner an Action, the other gives an
+ * Action away for good. A shared "Promote…" trigger would flatten exactly the
+ * difference these controls exist to keep visible.
+ */
 function SavedItemControls({
   householdNative,
   item,
   onEdit,
   onLifecycle,
-  onPending,
+  onPromote,
   pending,
 }: {
   householdNative: boolean;
   item: SavedItemView;
   onEdit: () => void;
   onLifecycle: (intent: "archive" | "reopen", focusTarget: HTMLElement) => void;
-  onPending: SavedItemEditSave;
+  onPromote: SavedItemEditSave;
   pending: boolean;
 }) {
   const [handOffArmed, setHandOffArmed] = useState(false);
+  const handOffTrigger = useRef<HTMLButtonElement>(null);
+  const householdPromoteNoteId = useId();
   // A member-owned item somebody else shared is read-only, and reads that way:
   // no control at all rather than a disabled one implying a permission they
   // could earn (`docs/phase-8/household-saved-items.md`).
@@ -1099,9 +1153,10 @@ function SavedItemControls({
         </Button>
         <Button
           aria-busy={pending}
+          aria-describedby={householdNative ? householdPromoteNoteId : undefined}
           disabled={pending}
           onClick={(event) =>
-            onPending(
+            onPromote(
               () =>
                 householdNative
                   ? promoteHouseholdSavedItemAction({ savedItemId: item.id })
@@ -1118,16 +1173,21 @@ function SavedItemControls({
         </Button>
         {/* The owner's second destination, and only where there is a workspace to
             hand it to. A household-native item has no such choice: its Action can
-            only be the household's, which the one button above already is. */}
+            only be the household's, which the one button above already is.
+
+            Its own words, too. This one and the button above it used to read the
+            same and promise different things - this one hands an Action over for
+            good, so it says so. */}
         {!householdNative && item.scope !== "private" && !handOffArmed ? (
           <Button
             disabled={pending}
             onClick={() => setHandOffArmed(true)}
+            ref={handOffTrigger}
             size="sm"
             type="button"
             variant="ghost"
           >
-            <HomeIcon aria-hidden /> Make household Action
+            <HomeIcon aria-hidden /> Give to the household
           </Button>
         ) : null}
         <Button
@@ -1141,11 +1201,34 @@ function SavedItemControls({
           <ArchiveIcon aria-hidden /> {pending ? "Updating…" : "Archive"}
         </Button>
       </div>
+      {/* Why this one asks nothing while its member-owned twin asks twice: the
+          item and the Action are both already the household's, so the click
+          transfers nothing and takes nothing away from anyone. Promotion is
+          irreversible either way, but irreversibility alone does not earn a
+          confirm here - the member-owned promote beside it is equally final and
+          equally unconfirmed, and a Saved Item archived as resolved can be
+          reopened. What earns the confirm next door is the hand-off: standing
+          leaving the member's hands and not coming back. Said out loud, once,
+          so the missing step reads as decided rather than dropped. */}
+      {householdNative ? (
+        <p
+          className="text-[length:var(--text-caption)] text-muted-foreground"
+          id={householdPromoteNoteId}
+        >
+          Already the household's, so nothing changes hands.
+        </p>
+      ) : null}
       {handOffArmed ? (
         <HouseholdActionHandOff
           item={item}
-          onCancel={() => setHandOffArmed(false)}
-          onPending={onPending}
+          onCancel={() => {
+            setHandOffArmed(false);
+            // The trigger comes back in this same commit; focus follows it home
+            // rather than dropping to the document, which is where cancelling
+            // used to leave it.
+            requestAnimationFrame(() => handOffTrigger.current?.focus());
+          }}
+          onPromote={onPromote}
           pending={pending}
         />
       ) : null}
@@ -1154,27 +1237,48 @@ function SavedItemControls({
 }
 
 /**
- * **Make household Action**: the owner's explicit hand-off of a *destination*.
+ * **Give to the household**: the owner's explicit hand-off of a *destination*.
  *
  * Confirmed rather than one click because of what the confirmation has to say -
  * the new Action belongs to the household, stays there after this member leaves,
  * and cannot be taken back. Stated plainly and once; it is a fact about where
  * the Action lives, not a warning against doing it.
+ *
+ * The panel takes focus when it opens, because opening it removes the trigger
+ * that was focused. It takes it on the container rather than the confirm button
+ * so the sentence is heard before the choice it belongs to.
  */
 function HouseholdActionHandOff({
   item,
   onCancel,
-  onPending,
+  onPromote,
   pending,
 }: {
   item: SavedItemView;
   onCancel: () => void;
-  onPending: SavedItemEditSave;
+  onPromote: SavedItemEditSave;
   pending: boolean;
 }) {
+  const termsId = useId();
+  const panel = useRef<HTMLDivElement>(null);
+  // Mount only. A ref callback would re-fire on every render and pull focus back
+  // out of the confirm button the moment the member pressed it.
+  useEffect(() => {
+    panel.current?.focus();
+  }, []);
   return (
-    <div className="flex flex-col gap-2 rounded-md border bg-panel px-3 py-2.5">
-      <p className="max-w-[68ch] text-[length:var(--text-small)] leading-[var(--text-small-line)]">
+    // biome-ignore lint/a11y/useSemanticElements: a related-controls group, not a form fieldset
+    <div
+      aria-labelledby={termsId}
+      className="flex flex-col gap-2 rounded-md border bg-panel px-3 py-2.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      ref={panel}
+      role="group"
+      tabIndex={-1}
+    >
+      <p
+        className="max-w-[68ch] text-[length:var(--text-small)] leading-[var(--text-small-line)]"
+        id={termsId}
+      >
         The new Action belongs to the household. It stays with them if you leave, and there is no
         way to take it back. This Saved Item is archived as resolved.
       </p>
@@ -1183,7 +1287,7 @@ function HouseholdActionHandOff({
           aria-busy={pending}
           disabled={pending}
           onClick={(event) =>
-            onPending(
+            onPromote(
               () =>
                 promoteSavedItemToGeneralActionAction({
                   savedItemId: item.id,

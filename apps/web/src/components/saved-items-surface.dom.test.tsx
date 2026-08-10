@@ -141,6 +141,19 @@ function dayThisMonth(day: number): string {
   return toDateValue(new Date(now.getFullYear(), now.getMonth(), day));
 }
 
+/**
+ * Lets the reversible-mutation module's queued focus restoration run.
+ *
+ * Focus assertions have to be made after it, not before: the panels below take
+ * focus on mount, and the restoration aiming at the control they replaced is
+ * still queued behind them.
+ */
+function afterFocusRestoration(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
 // The action doubles live at module scope, so call history has to be cleared
 // between tests for "was never called" to mean anything.
 beforeEach(() => vi.clearAllMocks());
@@ -403,6 +416,9 @@ describe("SavedItemsSurface", () => {
     render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
 
     expect(screen.queryByRole("button", { name: "Make an action" })).toBeNull();
+    // No confirm step, and the row says why rather than leaving its absence to
+    // read as an oversight beside the hand-off that does confirm.
+    expect(screen.getByText(/nothing changes hands/i)).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Make household Action" }));
 
     await waitFor(() =>
@@ -450,6 +466,12 @@ describe("SavedItemsSurface", () => {
     ).toBeDefined();
     expect(screen.getByText("Filter measurements, revised")).toBeDefined();
     expect(screen.getByText("Last changed by Ben")).toBeDefined();
+    // Save changes has been replaced by the two answers, so focus cannot go back
+    // where it came from. It goes to the panel, explanation first.
+    await afterFocusRestoration();
+    expect(document.activeElement).toBe(
+      screen.getByRole("status", { name: /Someone else changed this while you were writing/ }),
+    );
     // The draft is kept, and an ordinary Save is replaced by the two answers.
     expect((screen.getByRole("textbox", { name: "Edit title" }) as HTMLInputElement).value).toBe(
       "Filter measurements v2",
@@ -525,7 +547,7 @@ describe("SavedItemsSurface", () => {
     });
     render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
 
-    await user.click(screen.getByRole("button", { name: "Make household Action" }));
+    await user.click(screen.getByRole("button", { name: "Give to the household" }));
     expect(promoteSavedItemToGeneralActionAction).not.toHaveBeenCalled();
     expect(screen.getByText(/no way to take it back/i)).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Make it the household's" }));
@@ -538,10 +560,102 @@ describe("SavedItemsSurface", () => {
     );
   });
 
+  it("moves focus into the hand-off panel, and back out again when it closes", async () => {
+    const user = userEvent.setup();
+    const item = fixture({ scope: "household", visibilityLabel: "Home" });
+    render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
+
+    // Opening the panel removes the control that was focused, so the panel has
+    // to take focus or it lands on the document.
+    await user.click(screen.getByRole("button", { name: "Give to the household" }));
+    await afterFocusRestoration();
+    expect(document.activeElement).toBe(
+      screen.getByRole("group", { name: /no way to take it back/i }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await afterFocusRestoration();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Give to the household" }),
+    );
+  });
+
+  it("names the hand-off for what it does, apart from the promote beside it", () => {
+    render(
+      <SavedItemsSurface
+        hasHousehold
+        items={[fixture({ scope: "household", visibilityLabel: "Home" })]}
+        shareableMembers={MEMBERS}
+      />,
+    );
+
+    // Two controls, two promises: one makes the member an Action, one gives an
+    // Action away. They used to carry the same words.
+    expect(screen.getByRole("button", { name: "Make an action" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Give to the household" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Make household Action" })).toBeNull();
+  });
+
   it("keeps the household hand-off away from a private item that has no workspace", () => {
     render(<SavedItemsSurface hasHousehold items={[fixture()]} shareableMembers={MEMBERS} />);
 
     expect(screen.getByRole("button", { name: "Make an action" })).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Make household Action" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Give to the household" })).toBeNull();
+  });
+
+  it("renders a destination that is not built yet as a note, not an alarm", async () => {
+    const user = userEvent.setup();
+    promoteHouseholdSavedItemAction.mockResolvedValue({
+      ok: false,
+      error: "Household Actions aren't available yet, so this can stay here for now.",
+      unavailableDestination: true,
+    });
+    render(
+      <SavedItemsSurface hasHousehold items={[householdNative()]} shareableMembers={MEMBERS} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Make household Action" }));
+
+    const note = await screen.findByText(/available yet/);
+    expect(note.getAttribute("role")).toBe("status");
+    expect(note.className).toContain("text-muted-foreground");
+    expect(note.className).not.toContain("text-destructive");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("still puts a refusal the member can act on in the error line", async () => {
+    const user = userEvent.setup();
+    promoteHouseholdSavedItemAction.mockResolvedValue({
+      ok: false,
+      error: "This Saved Item was already resolved.",
+    });
+    render(
+      <SavedItemsSurface hasHousehold items={[householdNative()]} shareableMembers={MEMBERS} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Make household Action" }));
+
+    const error = await screen.findByRole("alert");
+    expect(error.textContent).toBe("This Saved Item was already resolved.");
+    expect(error.className).toContain("text-destructive");
+  });
+
+  it("sets who-did-what-when metadata in mono, like its neighbours in the caption row", () => {
+    render(
+      <SavedItemsSurface
+        hasHousehold
+        items={[
+          householdNative({
+            lastChangedByLabel: "Last changed by Ana",
+            resolutionReason: "Measured it",
+          }),
+        ]}
+        shareableMembers={MEMBERS}
+      />,
+    );
+
+    for (const label of ["Created by Ben", "Last changed by Ana", "Resolved · Measured it"]) {
+      expect(screen.getByText(label).className).toContain("font-mono");
+    }
   });
 });

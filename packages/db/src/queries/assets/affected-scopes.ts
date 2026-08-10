@@ -102,7 +102,7 @@ export function affectedScopesForGeneralActionIds(input: {
  * A household-native item has no owner, so it emits no owner-scoped anything:
  * no owner collection, no owner surfaces, no per-viewer entity keyed to a member
  * who does not own it. It reaches its readers through the household collection
- * and the visible-entity scope instead — which is the correct shape anyway, since
+ * and the visible-entity scope instead - which is the correct shape anyway, since
  * its audience is "every active member, including future ones" rather than a
  * list this function could enumerate.
  */

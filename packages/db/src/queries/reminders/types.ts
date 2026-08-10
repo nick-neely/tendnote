@@ -41,6 +41,18 @@ export type ReminderStore = {
   ) => Promise<ReminderSchedule>;
   listSchedules: (input: ReminderRecordRef) => Promise<ReminderSchedule[]>;
   listSchedulesForOwner: (input: { ownerUserId: string }) => Promise<ReminderSchedule[]>;
+  /**
+   * Everyone who subscribed to one record, across owners.
+   *
+   * Needed because a Saved Item's subscribers are not derivable from the record:
+   * a household-native one has no owner to start from, and each member's
+   * schedule is their own. A change to the record has to revalidate all of them,
+   * and only the schedule table knows who they are.
+   */
+  listScheduleSubscribers: (input: {
+    recordKind: ReminderRecordKind;
+    recordId: string;
+  }) => Promise<ReminderSchedule[]>;
   getSchedule: (input: {
     ownerUserId: string;
     scheduleId: string;
@@ -140,7 +152,30 @@ export type ReminderStore = {
 export type ReminderRecord = {
   id: string;
   kind: ReminderRecordKind;
-  ownerUserId: string;
+  /**
+   * Who owns the record, or null when the Household Workspace does (ADR 0214).
+   * Descriptive only - nothing decides authority from it, because a
+   * household-native record has nobody here to decide it from.
+   */
+  ownerUserId: string | null;
+  /**
+   * The member this load was resolved *for* - the only identity the schedule
+   * paths compare against. Defaults to {@link ReminderRecord.ownerUserId}.
+   *
+   * A Reminder Schedule belongs to whoever subscribed to it. For most families
+   * that is necessarily the record's owner, because their loader is owner-keyed,
+   * and those loaders leave this unset. A Saved Item is the exception: any member
+   * who can currently see one may choose their own schedule for it, and a
+   * household-native one has no owner at all
+   * (`docs/phase-8/household-saved-items.md`, ADR 0214). Its loader is keyed by
+   * visibility and sets this to the caller it proved the record for.
+   *
+   * Optional rather than required so the field appears only where the two
+   * identities can actually differ, and it is safe to omit: falling back to the
+   * owner reproduces the old rule exactly, and for a workspace-owned record the
+   * owner is null, so a loader that forgot to set it authorizes nobody.
+   */
+  subscriberUserId?: string;
   title: string;
   status: string;
   occursAt: Date | null;

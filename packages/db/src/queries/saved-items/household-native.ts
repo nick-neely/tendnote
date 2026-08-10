@@ -9,6 +9,7 @@ import {
   type SavedItem,
   SavedItemConflictError,
   type SavedItemEdit,
+  SavedItemUnavailableDestinationError,
   SavedItemValidationError,
   savedItemConflict,
   savedItemEditSchema,
@@ -32,8 +33,8 @@ import type {
  *
  * Everything a member does to a **household-native** Saved Item goes through
  * here, and nothing here ever asks who owns the record, what role the caller
- * holds, or whether they created it. Authority comes from one place — the
- * Household Authorization Proof, re-read from storage on every call — because
+ * holds, or whether they created it. Authority comes from one place - the
+ * Household Authorization Proof, re-read from storage on every call - because
  * the whole point of a workspace-owned record is that every active member has
  * the same standing over it and nobody accumulates more (ADR 0214, ADR 0219).
  *
@@ -49,7 +50,7 @@ import type {
  * Saved Item never becomes household-native, and a household-native one never
  * becomes anyone's. It is not a deletion path: archive is how a workspace-owned
  * record leaves, so no member can take the household's history with them. And it
- * is not an inbox, checklist, or thread — the operations below are exactly the
+ * is not an inbox, checklist, or thread - the operations below are exactly the
  * Saved Item lifecycle that already existed, with the ownership form changed.
  */
 export function createHouseholdSavedItemCollaboration(
@@ -62,7 +63,7 @@ export function createHouseholdSavedItemCollaboration(
    * Reads the record, then proves the caller against what was actually stored.
    *
    * Read-then-prove in this order, never the reverse: the facts the proof needs
-   * — ownership form, scope, household — are the record's, and a caller who
+   * - ownership form, scope, household - are the record's, and a caller who
    * supplied them could assert standing they do not have. A record that is
    * missing, or that turns out to be member-owned, refuses identically to one
    * the caller may not touch, so nothing here reveals which it was.
@@ -97,7 +98,7 @@ export function createHouseholdSavedItemCollaboration(
    *
    * The conflict is raised from the row read *after* the failed write rather
    * than the one read before it, so the value shown beside the kept draft is the
-   * one that actually won — not a third state that existed only in between.
+   * one that actually won - not a third state that existed only in between.
    */
   async function write(input: {
     item: SavedItem;
@@ -196,6 +197,10 @@ export function createHouseholdSavedItemCollaboration(
       savedItemId: input.savedItemId,
       operation: input.action === "archive" ? "archive" : "update",
     });
+    // Before the transition rule, for the same reason the edit path does it:
+    // "cannot archive a Saved Item that is archived" is what a member sees when
+    // someone else got there first, and it tells them nothing about who or when.
+    assertSavedItemVersion(item, input.expectedVersion);
     const status = resolveSavedItemTransition(item.status, input.action, {
       kind: item.kind,
       resolved: item.resolvedAt !== null,
@@ -218,8 +223,8 @@ export function createHouseholdSavedItemCollaboration(
      *
      * The record's id is minted before the proof so the grant names the actual
      * record rather than a placeholder, and the proof is asked the write
-     * question — may this caller author a workspace-owned record in this
-     * household — instead of a membership lookup this module would then have to
+     * question - may this caller author a workspace-owned record in this
+     * household - instead of a membership lookup this module would then have to
      * interpret itself.
      */
     async createHouseholdSavedItem(
@@ -282,6 +287,15 @@ export function createHouseholdSavedItemCollaboration(
         savedItemId: input.savedItemId,
         operation: "update",
       });
+      // Staleness is decided before editability, and the order is the point.
+      // Anyone archiving, resolving, or promoting this while the member was
+      // typing bumps the version too, so asking "is it archived?" first would
+      // answer someone holding a superseded draft with a flat "archived items
+      // are read-only" - true, and missing the only thing they need, which is
+      // what happened and who did it. Asking about the version first routes
+      // every kind of overtaken-while-editing into the one conflict, which
+      // carries the current status and the last actor with it.
+      assertSavedItemVersion(item, input.expectedVersion);
       assertSavedItemEditable(item);
       const edit = savedItemEditSchema.parse(input.edit);
       if (isEmptySavedItemEdit(edit)) {
@@ -319,6 +333,7 @@ export function createHouseholdSavedItemCollaboration(
         savedItemId: input.savedItemId,
         operation: "archive",
       });
+      assertSavedItemVersion(item, input.expectedVersion);
       const reason = savedItemResolutionReasonSchema.parse(input.reason);
       const status = resolveSavedItemTransition(item.status, "resolve", { kind: item.kind });
       const updated = await write({
@@ -375,7 +390,7 @@ export function createHouseholdSavedItemCollaboration(
 
       assertSavedItemEditable(item);
       if (!deps.createHouseholdNativeGeneralAction) {
-        throw new SavedItemValidationError(
+        throw new SavedItemUnavailableDestinationError(
           "Household Actions aren't available yet, so this can stay here for now.",
         );
       }

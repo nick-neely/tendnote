@@ -122,6 +122,41 @@ export function createInMemorySavedItemLifecycleStore(): InMemorySavedItemLifecy
       if (deletedSourceRecordIds.has(input.sourceRecordId)) return null;
       return sourceStore.getSourceRecord(input);
     },
+    /**
+     * The membership-aware evidence read the seeded source store cannot provide
+     * on its own. Same audience rule as `isVisible` above, so grounding and the
+     * record it grounds cannot disagree about who may see them.
+     */
+    async getVisibleSourceRecord(input) {
+      if (deletedSourceRecordIds.has(input.sourceRecordId)) return null;
+      const source = await sourceStore.getSourceRecordById(input.sourceRecordId);
+      if (!source) return null;
+      const memberships = await householdStore.listActiveHouseholdMembershipsForUser({
+        userId: input.callerUserId,
+      });
+      const shares = source.householdId
+        ? await householdStore.listHouseholdRecordShares({
+            householdId: source.householdId,
+            recordKind: "source_record",
+            recordId: source.id,
+          })
+        : [];
+      return canViewScopedRecord({
+        callerUserId: input.callerUserId,
+        record: {
+          ownerUserId: source.ownerUserId,
+          scope: source.scope,
+          householdId: source.householdId ?? null,
+          sharedWithUserIds: shares.map((share) => share.sharedWithUserId),
+        },
+        activeMemberships: memberships.map((membership) => ({
+          householdId: membership.householdId,
+          userId: membership.userId,
+        })),
+      })
+        ? source
+        : null;
+    },
     async getVisibleSavedItem(input) {
       const item = items.get(input.savedItemId);
       return item && (await isVisible(input.callerUserId, item)) ? item : null;

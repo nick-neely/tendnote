@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { assertSavedItemEditable, SavedItemValidationError } from "@tendnote/domain";
+import {
+  assertSavedItemEditable,
+  SavedItemUnavailableDestinationError,
+  SavedItemValidationError,
+} from "@tendnote/domain";
 import { hydrateSavedItem, type MemberOwnedSavedItem, requireOwnedSavedItem } from "./context";
 import type { SavedItemLifecycleDeps, SavedItemLifecycleStore } from "./types";
 
@@ -17,7 +21,7 @@ export type PromoteSavedItemInput = {
    * is the explicit **Make household Action**: a new workspace-owned Action, with
    * this Saved Item archived as resolved beside it. It is a separate, confirmed
    * decision rather than something inferred from the item being household-scoped
-   * — an Action that stays behind after you leave is not a thing to end up with
+   * - an Action that stays behind after you leave is not a thing to end up with
    * by accident, and there is no claim-back path once it is made
    * (`docs/phase-8/household-saved-items.md`).
    */
@@ -88,7 +92,7 @@ async function createOwnDestination(
   if (!deps.createGeneralAction) throw new Error("General Action promotion is unavailable.");
   // Hydrated here rather than by the caller: the selected audience is the only
   // thing it is needed for, and the household destination has no audience to
-  // carry — it is visible to the whole workspace by definition.
+  // carry - it is visible to the whole workspace by definition.
   const context = await hydrateSavedItem(store, current);
   return deps.createGeneralAction({
     id: stablePromotionDestinationId(idempotencyKey),
@@ -105,7 +109,7 @@ async function createOwnDestination(
 /**
  * **Make household Action**: a new workspace-owned destination.
  *
- * The Saved Item itself is not transferred and never becomes household-native —
+ * The Saved Item itself is not transferred and never becomes household-native -
  * it is archived as resolved, exactly as any other promotion archives its
  * source. What the owner is agreeing to is that the *Action* now belongs to the
  * household and stays there if they leave.
@@ -126,7 +130,7 @@ async function createHouseholdDestination(
     );
   }
   if (!deps.createHouseholdNativeGeneralAction) {
-    throw new SavedItemValidationError(
+    throw new SavedItemUnavailableDestinationError(
       "Household Actions aren't available yet, so this can stay here for now.",
     );
   }

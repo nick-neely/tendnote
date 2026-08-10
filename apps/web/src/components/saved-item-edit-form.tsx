@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   editHouseholdSavedItemAction,
   editSavedItemAction,
@@ -158,8 +158,12 @@ export function SavedItemEditForm({
       }}
     >
       {conflict ? (
+        // Keyed on the version so a second, newer refusal is a fresh panel: it
+        // takes focus again rather than silently replacing its text under a
+        // member who is looking at the buttons.
         <SavedItemConflictNotice
           conflict={conflict}
+          key={conflict.version}
           memberNames={memberNames}
           onKeepMine={(focusTarget) => submitEdit(true, focusTarget)}
           onTakeTheirs={takeTheirs}
@@ -232,6 +236,12 @@ export function SavedItemEditForm({
  * last-write-wins, and no fault - writing at the same time as a housemate is an
  * ordinary thing to do, so the panel is a quiet panel and not a warning
  * (DESIGN.md §2, ADR 0209).
+ *
+ * It takes focus when it opens, and again whenever a newer value arrives. Save
+ * changes - what the member last pressed - is gone by then, replaced by the two
+ * answers, so focus had nowhere to return to and was landing on the document.
+ * The container takes it rather than a button, so the explanation is heard
+ * before the choice it belongs to.
  */
 function SavedItemConflictNotice({
   conflict,
@@ -246,9 +256,26 @@ function SavedItemConflictNotice({
   onTakeTheirs: (focusTarget: HTMLElement | null) => void;
   pending: boolean;
 }) {
+  const explanationId = useId();
+  const panel = useRef<HTMLDivElement>(null);
+  // Mount only, and the caller keys this panel by version so a newer refusal is
+  // a new mount. A ref callback would re-fire on every render and pull focus out
+  // of whichever answer the member had just pressed.
+  useEffect(() => {
+    panel.current?.focus();
+  }, []);
   return (
-    <div className="flex flex-col gap-2 rounded-md border bg-panel px-3 py-2.5" role="status">
-      <p className="text-[length:var(--text-small)] leading-[var(--text-small-line)]">
+    <div
+      aria-labelledby={explanationId}
+      className="flex flex-col gap-2 rounded-md border bg-panel px-3 py-2.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      ref={panel}
+      role="status"
+      tabIndex={-1}
+    >
+      <p
+        className="text-[length:var(--text-small)] leading-[var(--text-small-line)]"
+        id={explanationId}
+      >
         Someone else changed this while you were writing. Your draft is kept below.
       </p>
       <div className="flex flex-col gap-0.5">

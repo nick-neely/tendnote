@@ -14,7 +14,7 @@ export type RecordSurfacingState =
 export type RecordSurfacingContextInput = {
   /**
    * Null when the Household Workspace owns the record (ADR 0214), which makes
-   * `owned` false for every viewer — nobody reads a household-native item as
+   * `owned` false for every viewer - nobody reads a household-native item as
    * "mine", and no member's controls are widened by having created it.
    */
   ownerUserId: string | null;

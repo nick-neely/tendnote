@@ -12,7 +12,7 @@ const OUTSIDER = "outsider";
 
 /**
  * One household, three active members with different roles, and one person who
- * was never in it. Every case below is about which of the four may do a thing —
+ * was never in it. Every case below is about which of the four may do a thing -
  * so they are seeded once, identically, rather than each test inventing its own
  * roster and quietly testing a different household.
  */
@@ -230,7 +230,7 @@ describe("dissolution", () => {
   /**
    * The state `dissolve()` leaves behind: every membership ended, the workspace
    * row marked dissolved so its recovery window can run. The Saved Items are not
-   * touched by it, and this is what proves that is the right call — they stay in
+   * touched by it, and this is what proves that is the right call - they stay in
    * storage with their attribution for the recovery set, while nobody can reach
    * them (governance.ts, ADR 0213).
    */
@@ -296,6 +296,75 @@ describe("optimistic conflict reconciliation", () => {
     ).resolves.toMatchObject({ title: "Ben's title" });
   });
 
+  /**
+   * The overtaken-while-editing cases. Each of these used to surface as a flat
+   * lifecycle refusal - "archived items are read-only", "cannot archive a Saved
+   * Item that is archived" - which is true and tells the member nothing about
+   * who overtook them or what to do next. They all resolve to one conflict now,
+   * carrying the current status and the last actor.
+   */
+  it.each([
+    [
+      "promoted",
+      async (harness: Harness, savedItemId: string) =>
+        createHouseholdSavedItemCollaboration(harness.store, {
+          createHouseholdNativeGeneralAction: async (created) => ({
+            result: { id: created.id },
+            affectedScopes: [],
+          }),
+        }).promoteHouseholdSavedItem({
+          actorUserId: BEN,
+          savedItemId,
+          idempotencyKey: "promoted-mid-edit",
+        }),
+    ],
+    [
+      "archived",
+      async (harness: Harness, savedItemId: string) =>
+        collaborationFor(harness).archiveHouseholdSavedItem({ actorUserId: BEN, savedItemId }),
+    ],
+  ])("reconciles a member still editing when Ben has %s it", async (_case, overtake) => {
+    const item = await seedItem(harness);
+    await overtake(harness, item.id);
+
+    const conflict = await collaborationFor(harness)
+      .editHouseholdSavedItem({
+        actorUserId: MARA,
+        savedItemId: item.id,
+        expectedVersion: item.version,
+        edit: { title: "Mara's title" },
+      })
+      .catch((error: unknown) => error);
+
+    expect(conflict).toBeInstanceOf(SavedItemConflictError);
+    // Status and actor both travel with it, so the surface can say what happened
+    // and who did it rather than only that the item is now read-only.
+    expect((conflict as SavedItemConflictError).current).toMatchObject({
+      status: "archived",
+      lastActorUserId: BEN,
+    });
+  });
+
+  it("still refuses an edit to an item the member knows is archived", async () => {
+    // Not a conflict: nobody overtook them. `expectedVersion` matches, so the
+    // ordinary lifecycle rule is the right and only answer.
+    const item = await seedItem(harness);
+    const archived = await collaborationFor(harness).archiveHouseholdSavedItem({
+      actorUserId: MARA,
+      savedItemId: item.id,
+      expectedVersion: item.version,
+    });
+
+    await expect(
+      collaborationFor(harness).editHouseholdSavedItem({
+        actorUserId: MARA,
+        savedItemId: item.id,
+        expectedVersion: archived.version,
+        edit: { title: "Mara's title" },
+      }),
+    ).rejects.toThrow("Archived Saved Items are read-only");
+  });
+
   it("applies a deliberate replace once the member has seen the conflict", async () => {
     const item = await seedItem(harness);
     const collaboration = collaborationFor(harness);
@@ -351,7 +420,7 @@ describe("the two ownership forms stay apart", () => {
       householdId: harness.householdId,
     });
 
-    // Household-scoped, so Ben can see it — but seeing it is not authority over
+    // Household-scoped, so Ben can see it - but seeing it is not authority over
     // it, and the household boundary must not be the way he gets that.
     await expect(
       collaborationFor(harness).editHouseholdSavedItem({

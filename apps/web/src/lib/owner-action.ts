@@ -8,6 +8,7 @@ import {
   GeneralActionValidationError,
   HouseholdValidationError,
   SavedItemConflictError,
+  SavedItemUnavailableDestinationError,
   SavedItemValidationError,
 } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
@@ -109,6 +110,13 @@ export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
           error: error.message,
           savedItemConflict: toSavedItemConflictView(error.current),
         };
+      }
+      // Flagged rather than folded into the curated messages below: the two
+      // reach the surface through the same field but must not read the same
+      // way. A validation failure is something to fix; this is somewhere that
+      // does not exist yet.
+      if (error instanceof SavedItemUnavailableDestinationError) {
+        return { ok: false, error: error.message, unavailableDestination: true };
       }
       const message = userSafeErrorMessage(error);
       if (message) {

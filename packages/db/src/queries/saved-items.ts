@@ -1,5 +1,5 @@
 import { createGeneralAction } from "./general-actions";
-import { reconcileReminderRecord } from "./reminders";
+import { reconcileReminderRecord, revalidateSavedItemReminderSubscribers } from "./reminders";
 import { createDrizzleSavedItemLifecycleStore } from "./saved-items/drizzle-store";
 import { createHouseholdSavedItemCollaboration } from "./saved-items/household-native";
 import { createSavedItemLifecycle } from "./saved-items/lifecycle";
@@ -37,7 +37,7 @@ const defaultSavedItemLifecycle = createAffectedSavedItemLifecycle(
     // `createHouseholdNativeGeneralAction` is deliberately absent until #383
     // gives General Actions a workspace-owned form. Promotion refuses that
     // destination rather than landing the household's record in the promoting
-    // member's own Action — the implicit transfer both ownership forms exist to
+    // member's own Action - the implicit transfer both ownership forms exist to
     // prevent. Supplying it here is the whole of what turns that path on.
   }),
 );
@@ -47,23 +47,30 @@ const defaultHouseholdSavedItems = createAffectedHouseholdSavedItemCollaboration
 );
 
 /**
- * Keeps an owner's reminder intents in step with their Saved Item.
+ * Keeps every affected reminder in step after a Saved Item changes.
  *
- * Household-native items are skipped, and not as an omission: a Reminder
- * Schedule belongs to the member who chose it, and a workspace-owned item has no
- * member whose schedule it could be. Reconciling one would quietly enroll
- * whoever wrote it — exactly what `docs/phase-8/household-saved-items.md`
- * refuses. A shared note sits on Household and nags nobody privately until a
- * member opts in for themselves.
+ * Two passes, because a Saved Item can have two different kinds of interested
+ * party. Its owner, if it has one, is reconciled as before. Then every member
+ * who subscribed a schedule of their own is revalidated - including the owner,
+ * harmlessly twice - because a schedule belongs to the member who chose it and
+ * nobody else's subscription is derivable from the record
+ * (`docs/phase-8/household-saved-items.md`).
+ *
+ * The subscriber pass is what makes editing, archiving, resolving, or promoting
+ * an item regenerate the pending intents of the people watching it, and what
+ * supersedes the intents of anyone who has since lost sight of it - the loader
+ * it goes through is visibility-scoped, so both outcomes fall out of one call.
  */
 async function reconcileSavedItemReminder(item: { id: string; ownerUserId: string | null }) {
-  if (!item.ownerUserId) return;
-  await reconcileReminderRecord({
-    ownerUserId: item.ownerUserId,
-    recordKind: "saved_item",
-    recordId: item.id,
-    now: new Date(),
-  });
+  if (item.ownerUserId) {
+    await reconcileReminderRecord({
+      ownerUserId: item.ownerUserId,
+      recordKind: "saved_item",
+      recordId: item.id,
+      now: new Date(),
+    });
+  }
+  await revalidateSavedItemReminderSubscribers({ savedItemId: item.id });
 }
 
 export function createSavedItem(input: CreateSavedItemInput) {
@@ -161,7 +168,25 @@ export function deleteUniqueSavedItemSource(input: { actorUserId: string; savedI
  * (ADR 0214, ADR 0219).
  */
 
+/**
+ * Runs a household-native write, then revalidates whoever was watching.
+ *
+ * The revalidation is here rather than inside the collaboration boundary on
+ * purpose: the boundary owns authority, concurrency, and provenance, and giving
+ * it a reminder dependency would make the thing that decides who may write also
+ * responsible for who gets notified. This module already composes those two
+ * concerns for the owner-scoped lifecycle; household-native writes join it.
+ */
+async function withSubscriberRevalidation<TOutcome extends { result: { id: string } }>(
+  run: () => Promise<TOutcome>,
+): Promise<TOutcome> {
+  const outcome = await run();
+  await revalidateSavedItemReminderSubscribers({ savedItemId: outcome.result.id });
+  return outcome;
+}
+
 export function createHouseholdSavedItem(input: CreateHouseholdSavedItemInput) {
+  // No subscribers can exist yet, so a new item needs no revalidation pass.
   return defaultHouseholdSavedItems.createHouseholdSavedItem(input);
 }
 
@@ -172,25 +197,33 @@ export function getHouseholdSavedItem(input: { actorUserId: string; savedItemId:
 export function editHouseholdSavedItem(
   input: HouseholdSavedItemMutationInput & { edit: EditSavedItemInput["edit"] },
 ) {
-  return defaultHouseholdSavedItems.editHouseholdSavedItem(input);
+  return withSubscriberRevalidation(() => defaultHouseholdSavedItems.editHouseholdSavedItem(input));
 }
 
 export function archiveHouseholdSavedItem(input: HouseholdSavedItemMutationInput) {
-  return defaultHouseholdSavedItems.archiveHouseholdSavedItem(input);
+  return withSubscriberRevalidation(() =>
+    defaultHouseholdSavedItems.archiveHouseholdSavedItem(input),
+  );
 }
 
 export function restoreHouseholdSavedItem(input: HouseholdSavedItemMutationInput) {
-  return defaultHouseholdSavedItems.restoreHouseholdSavedItem(input);
+  return withSubscriberRevalidation(() =>
+    defaultHouseholdSavedItems.restoreHouseholdSavedItem(input),
+  );
 }
 
 export function resolveHouseholdSavedItem(
   input: HouseholdSavedItemMutationInput & { reason: string },
 ) {
-  return defaultHouseholdSavedItems.resolveHouseholdSavedItem(input);
+  return withSubscriberRevalidation(() =>
+    defaultHouseholdSavedItems.resolveHouseholdSavedItem(input),
+  );
 }
 
 export function promoteHouseholdSavedItem(
   input: HouseholdSavedItemMutationInput & { idempotencyKey: string; title?: string },
 ) {
-  return defaultHouseholdSavedItems.promoteHouseholdSavedItem(input);
+  return withSubscriberRevalidation(() =>
+    defaultHouseholdSavedItems.promoteHouseholdSavedItem(input),
+  );
 }

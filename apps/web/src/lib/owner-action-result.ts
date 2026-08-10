@@ -12,6 +12,13 @@ export type OwnerActionResult<TView> =
        * instead of only saying the write did not land (ADR 0209).
        */
       savedItemConflict?: SavedItemConflictView;
+      /**
+       * True when the refusal is only that the destination does not exist yet.
+       * Nothing went wrong and there is nothing to correct, so a surface reading
+       * this must render the message as a quiet note rather than an error - no
+       * destructive color and no assertive live region (DESIGN.md §2, §8).
+       */
+      unavailableDestination?: true;
     };
 
 /** A curated owner-facing failure returned as data by the Server Action protocol. */

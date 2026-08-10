@@ -35,8 +35,8 @@ export type { MemberOwnedSavedItem };
 /**
  * The owner-scoped read every member-owned lifecycle operation starts from.
  *
- * The lookup is keyed by owner, so a household-native record — which has no
- * owner — is simply not found here. That is the seam keeping the two ownership
+ * The lookup is keyed by owner, so a household-native record - which has no
+ * owner - is simply not found here. That is the seam keeping the two ownership
  * forms apart: this path cannot be talked into touching a workspace-owned Saved
  * Item, whatever the caller passes (ADR 0214).
  */

@@ -40,8 +40,8 @@ describe("Saved Item Drizzle store contract", () => {
   it("proves the single-record visible read before returning the row", () => {
     // The predicate narrows; the proof authorizes. Without this a row that
     // passed a stale-by-a-request SQL filter would come back unchecked, and the
-    // record's ownership form, lifecycle, and sensitivity — none of which SQL
-    // evaluates — would never be consulted (ADR 0219).
+    // record's ownership form, lifecycle, and sensitivity - none of which SQL
+    // evaluates - would never be consulted (ADR 0219).
     expect(source).toContain("provenVisibleRecord");
     expect(source).toContain("ownership: row.ownership");
     // Null on refusal, indistinguishable from a Saved Item that is not there.

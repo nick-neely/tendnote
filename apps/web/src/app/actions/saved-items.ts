@@ -223,7 +223,7 @@ function runSavedItemIdMutation(input: { savedItemId: string }, mutate: typeof a
 /**
  * Promotes the caller's own Saved Item, into their own Action by default.
  *
- * `destination: "household_native"` is the explicit **Make household Action**
+ * `destination: "household_native"` is the explicit **Give to the household**
  * choice - a new workspace-owned destination the owner confirmed, never an
  * implicit transfer of the Saved Item itself, and with no claim-back path
  * (`docs/phase-8/household-saved-items.md`). The retry key carries the
@@ -237,8 +237,8 @@ export async function promoteSavedItemToGeneralActionAction(input: {
   return runOwnerAction({
     schema: promoteSchema,
     input,
-    body: ({ ownerUserId, input: parsed }) =>
-      promoteSavedItemToGeneralAction({
+    body: ({ ownerUserId, input: parsed }) => {
+      return promoteSavedItemToGeneralAction({
         actorUserId: ownerUserId,
         savedItemId: parsed.savedItemId,
         authority: "explicit",
@@ -248,7 +248,8 @@ export async function promoteSavedItemToGeneralActionAction(input: {
             : `saved-item:${parsed.savedItemId}:general-action`,
         title: parsed.title,
         destination: parsed.destination,
-      }),
+      });
+    },
     affectedScopes: (outcome) => outcome.affectedScopes,
     result: (outcome, ownerUserId) => savedItemView(outcome.result, ownerUserId),
   });
@@ -405,13 +406,14 @@ export async function promoteHouseholdSavedItemAction(input: {
   return runOwnerAction({
     schema: promoteHouseholdSchema,
     input,
-    body: ({ ownerUserId, input: parsed }) =>
-      promoteHouseholdSavedItem({
+    body: ({ ownerUserId, input: parsed }) => {
+      return promoteHouseholdSavedItem({
         actorUserId: ownerUserId,
         savedItemId: parsed.savedItemId,
         idempotencyKey: `saved-item:${parsed.savedItemId}:household-general-action`,
         title: parsed.title,
-      }),
+      });
+    },
     affectedScopes: (outcome) => outcome.affectedScopes,
     result: (outcome, ownerUserId) => savedItemView(outcome.result, ownerUserId),
   });

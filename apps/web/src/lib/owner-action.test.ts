@@ -1,4 +1,8 @@
-import { type AccessDecision, GeneralActionValidationError } from "@tendnote/domain";
+import {
+  type AccessDecision,
+  GeneralActionValidationError,
+  SavedItemUnavailableDestinationError,
+} from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -176,6 +180,26 @@ describe("owner action seam", () => {
     ).resolves.toEqual({
       ok: false,
       error: "You've reached a usage limit for this action. Please try again shortly.",
+    });
+  });
+
+  it("marks a destination that does not exist yet, apart from the failures owners can fix", async () => {
+    const state = await resolveAccessState(USER, async () => admittedDecision);
+    const runOwnerAction = createOwnerActionRunner(dependencies(gateFor(state)));
+
+    await expect(
+      runOwnerAction({
+        schema: z.string(),
+        input: "valid",
+        body: async () => {
+          throw new SavedItemUnavailableDestinationError("Household Actions aren't available yet.");
+        },
+        result: (output) => output,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "Household Actions aren't available yet.",
+      unavailableDestination: true,
     });
   });
 
