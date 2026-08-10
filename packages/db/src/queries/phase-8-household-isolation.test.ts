@@ -16,13 +16,19 @@ import { createGeneralActionLifecycle } from "./general-actions/lifecycle";
 import type { GeneralActionLifecycleStore } from "./general-actions/types";
 import { createInMemoryGiftPlanStore } from "./gift-plans/in-memory-store";
 import { createGiftPlanLifecycle } from "./gift-plans/lifecycle";
+import { loadHouseholdActionCandidates } from "./household-home/candidate-loaders/actions";
+import { createHouseholdHomeService } from "./household-home/service";
 import { createHouseholdAuthorizationProver } from "./households/authorization";
+import { createHouseholdCalendarLifecycle } from "./households/calendar-connections";
 import { createHouseholdEventPlanLifecycle } from "./households/event-plans";
+import { createHouseholdGovernanceLifecycle } from "./households/governance";
 import { removeHouseholdMember, seedHouseholdWithMembers } from "./households/household-fixtures";
+import { createInMemoryHouseholdCalendarStore } from "./households/in-memory-calendar-store";
 import {
   createInMemoryHouseholdEventPlanLinkTargetStore,
   createInMemoryHouseholdEventPlanStore,
 } from "./households/in-memory-event-plan-store";
+import { createInMemoryHouseholdInvitationStore } from "./households/in-memory-invitation-store";
 import { createHouseholdLifecycle } from "./households/lifecycle";
 import { createHouseholdOverviewReader } from "./households/overview";
 import { createInMemoryPersonReferenceStore } from "./person-references/in-memory-store";
@@ -55,10 +61,36 @@ import { createSavedItemLifecycle } from "./saved-items/lifecycle";
  * Every domain here shares ONE household store. Two would let the domains
  * disagree about who is a member, and a suite whose domains disagree about
  * membership is measuring its own fixture rather than the product.
+ *
+ * ## Where each surface named by the acceptance criteria is proven
+ *
+ * The criteria list surfaces, not modules, and several of them are composed
+ * above this layer. Rather than leave the question answerable only by
+ * archaeology, this is the map. A surface with no entry here would be a surface
+ * with no proof.
+ *
+ * | Surface | Proven by |
+ * | --- | --- |
+ * | Direct views (detail, list) | this file, every family |
+ * | Search | this file, every family with a query surface |
+ * | Household overview | this file, `a dissolved household is readable by nobody` |
+ * | Household Home / Check-in | this file, plus `household-home/checkin.test.ts` and `household-home/household-home.test.ts` |
+ * | Provider context (Calendar Connections, event cache) | this file, plus `households/calendar-connections.test.ts` |
+ * | Reminders and queues | `reminders/dispatch-revalidation.test.ts` (dispatch-time re-proof, all four kinds), `reminders/household-subscriptions.test.ts`, `reminders/household-reminders.test.ts` |
+ * | Scheduled work | `households/scheduled-work.test.ts`, `households/governance.test.ts` |
+ * | Today composition | `today.test.ts`, `phase-4-household-boundaries.test.ts` |
+ * | Eve, Capture, Review | `phase-4-household-boundaries.test.ts`, `../../apps/agent` tool suites and `apps/agent/evals/policy` |
+ * | Recall and semantic retrieval | `phase-4-household-boundaries.test.ts`, `semantic-retrieval/*.test.ts`, `relationship-context-search.test.ts` |
+ * | Deep links | `apps/web/src/app/(admitted)/shared/[recordKind]/[recordId]` route suites |
+ * | Caches and revalidation | `gift-plans/affected-scopes.ts` and each family's `affected-scopes.test.ts` |
+ * | Browser behaviour end to end | `apps/web/tests/browser/household-isolation.browser.test.tsx` |
+ * | Permanent deletion | `households/purge.test.ts` and `db:purge:check` |
  */
 const ANA = "ana";
 const BEN = "ben";
 const OUTSIDER = "zoe";
+const CHECKIN_NOW = new Date("2026-07-21T15:00:00.000Z");
+const CHECKIN_LOCAL_DATE = "2026-07-21";
 
 /**
  * What a caller may still reach, normalized across each family's refusal shape.
@@ -151,8 +183,55 @@ function seedStack() {
   const eventPlanLinkTargets = createInMemoryHouseholdEventPlanLinkTargetStore();
   const contextFactStore = createInMemoryContextFactStore([], { householdAccess: shared });
 
+  const actions = createGeneralActionLifecycle(actionStore);
+  // The provider seam and the governance seam over the same memberships as
+  // everything else, so a dissolution driven through the real decision is a
+  // dissolution every family below can see.
+  const calendarStore = createInMemoryHouseholdCalendarStore();
+  const invitations = createInMemoryHouseholdInvitationStore({
+    households: shared,
+    calendars: calendarStore,
+  });
+
   return {
     shared,
+    calendarStore,
+    governance: createHouseholdGovernanceLifecycle(invitations),
+    calendars: createHouseholdCalendarLifecycle({
+      households: shared,
+      calendars: calendarStore,
+      // Never reached: every case here is about standing, and a caller without
+      // it is refused before any provider read is attempted.
+      readerFor: () => {
+        throw new Error("the isolation matrix never reads a provider");
+      },
+      isConnectorConnected: async () => true,
+    }),
+    checkin: createHouseholdHomeService({
+      readAdmittedHousehold: async ({ callerUserId }) => {
+        const memberships = await shared.listActiveHouseholdMembershipsForUser({
+          userId: callerUserId,
+        });
+        const householdId = memberships[0]?.householdId;
+        if (!householdId) return null;
+        const found = await shared.getHouseholdWorkspace({ householdId });
+        return found && found.status === "active" ? { id: found.id, name: found.name } : null;
+      },
+      listMemberNames: async () => [],
+      loadCandidateFamilies: [
+        (input) =>
+          loadHouseholdActionCandidates(
+            {
+              listVisibleActions: ({ callerUserId, limit }) =>
+                actions.listActiveGeneralActions({ ownerUserId: callerUserId, limit }),
+            },
+            input,
+          ),
+      ],
+      proveRecords: (input) => prover.proveVisibleRecords(input),
+      readCheckinOptIn: async () => true,
+      loadCheckinOnlyFamilies: [],
+    }),
     household: createHouseholdLifecycle(shared),
     savedItems: createSavedItemLifecycle(shared),
     savedItemCollaboration: createHouseholdSavedItemCollaboration(shared),
@@ -204,6 +283,10 @@ async function householdNativeFamilies(stack: Stack, householdId: string): Promi
     title: "Put the bins out",
     ownership: "household_native",
     householdId,
+    // Dated so the Check-in has something timely to compose from: an undated
+    // chore is correctly absent from it, which would make that family's cell
+    // vacuously "closed" for everyone.
+    dueAt: CHECKIN_NOW,
   });
   const asset = await stack.assets.createAsset({
     ownerUserId: ANA,
@@ -252,6 +335,12 @@ async function householdNativeFamilies(stack: Stack, householdId: string): Promi
     actorUserId: ANA,
     host: referenceHost,
     label: "Dr Okafor",
+  });
+  const connection = await stack.calendars.connectHouseholdCalendar({
+    ownerUserId: ANA,
+    calendarId: "primary",
+    label: "Household calendar",
+    connectorHasCalendarAccess: true,
   });
 
   return [
@@ -307,6 +396,42 @@ async function householdNativeFamilies(stack: Stack, householdId: string): Promi
         (
           await stack.assetReview.listAssetEvidence({ callerUserId: caller, assetId: asset.id })
         ).map((row) => row.id),
+    },
+    {
+      // Provider context. Nothing here reads a provider: the point is that a
+      // caller without standing is refused the *designation* before any
+      // credential is touched, so a household calendar can never be reached
+      // through a membership that has ended (ADR 0217).
+      name: "Calendar Connection",
+      recordId: connection.id,
+      detail: async (caller) =>
+        (await stack.calendars.listHouseholdCalendarConnections({ callerUserId: caller }))[0],
+      list: async (caller) =>
+        (await stack.calendars.listHouseholdCalendarConnections({ callerUserId: caller })).map(
+          (row) => row.id,
+        ),
+    },
+    {
+      // The one household surface delivered into a member's private space, so
+      // the record reaching it is the sharpest form of the same question.
+      name: "Check-in",
+      recordId: action.id,
+      detail: async (caller) =>
+        (
+          await stack.checkin.getHouseholdCheckin({
+            callerUserId: caller,
+            localDate: CHECKIN_LOCAL_DATE,
+            now: CHECKIN_NOW,
+          })
+        ).household,
+      list: async (caller) =>
+        (
+          await stack.checkin.getHouseholdCheckin({
+            callerUserId: caller,
+            localDate: CHECKIN_LOCAL_DATE,
+            now: CHECKIN_NOW,
+          })
+        ).records.map((row) => row.record.id),
     },
     {
       name: "Event Plan",
@@ -891,13 +1016,7 @@ describe("a dissolved household is readable by nobody through any product path",
       householdId: workspace.id,
     });
 
-    for (const userId of [ANA, BEN]) {
-      await removeHouseholdMember(stack.shared, { householdId: workspace.id, userId });
-    }
-    await stack.shared.updateHouseholdWorkspace({
-      householdId: workspace.id,
-      patch: { status: "dissolved", dissolvedAt: new Date("2026-08-01T00:00:00.000Z") },
-    });
+    await stack.governance.confirmDissolution({ ownerUserId: ANA });
 
     for (const userId of [ANA, BEN, OUTSIDER]) {
       // Null, not a tombstone view. A dissolved household that still rendered a
