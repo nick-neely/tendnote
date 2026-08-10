@@ -155,6 +155,7 @@ export async function HouseholdCheckinStream({
       <div className="flex flex-col gap-4">
         {householdCheckinIsWorthShowing(checkin) ? (
           <HouseholdCheckinSection
+            context="home"
             headingId="household-checkin"
             householdName={householdName}
             limitations={checkin.limitations}

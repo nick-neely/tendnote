@@ -52,6 +52,15 @@ const EXPECTED_KINDS: AssistantToolView["kind"][] = [
   "asset_search",
   "asset_review_group",
   "asset_context",
+  // Phase 8's household-aware surfaces (#390). They are typed rather than generic
+  // precisely because they are the highest-stakes results on the panel: a shared
+  // read, an exclusion-bearing search, and the audience a Capture actually wrote
+  // with are three things a member must be able to read rather than infer from
+  // Eve's prose.
+  "household_check_in",
+  "gift_plan_search",
+  "gift_idea_added",
+  "capture_outcome",
   "generic",
 ];
 

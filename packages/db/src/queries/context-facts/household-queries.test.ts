@@ -11,6 +11,10 @@ const NEIGHBOUR = "user-neighbour";
 
 const verifiedCallerFor = (userId: string) => async () => userId;
 
+/** A source record that is visible to the whole household, and one that is not. */
+const HOUSEHOLD_EVIDENCE = "source-household";
+const PRIVATE_EVIDENCE = "source-private";
+
 /**
  * Two active members of one household, one member of a different household, and
  * one person in no household at all.
@@ -35,9 +39,23 @@ async function householdFixture() {
   });
 
   const store = createInMemoryContextFactStore([], { householdAccess: householdStore });
+  const sourceRecords = new Map<
+    string,
+    { scope: "private" | "shared" | "household"; householdId: string | null }
+  >([
+    [HOUSEHOLD_EVIDENCE, { scope: "household", householdId: household.id }],
+    [PRIVATE_EVIDENCE, { scope: "private", householdId: null }],
+  ]);
   const queriesFor = (userId: string) =>
     createContextFactQueries(store, {
       householdAccess: householdStore,
+      // The evidence a household suggestion cites, as this world holds it. The
+      // fixture registers each record's audience explicitly, so a test can
+      // propose from a household-visible record or from a private one and get
+      // the two different answers.
+      sourceRecords: {
+        getSourceRecordById: async (sourceRecordId) => sourceRecords.get(sourceRecordId) ?? null,
+      },
       resolveVerifiedCaller: verifiedCallerFor(userId),
     });
 
@@ -549,11 +567,68 @@ describe("Household Context shared Review", () => {
       subject: { kind: "household", householdId: fixture.household.id },
       category: "other",
       content,
-      provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+      provenance: { channel: "ambient", origin: "ambient", sourceRecordId: HOUSEHOLD_EVIDENCE },
       suggestionEvidence: "Everyone was talking about being away in July.",
     });
     return outcome.result.fact;
   }
+
+  it("refuses a household suggestion whose evidence the household cannot see", async () => {
+    /**
+     * The evidence half of "an inferred proposal may enter shared Review only
+     * when its evidence is already safe for that audience".
+     *
+     * Proposing a household suggestion *publishes* its evidence excerpt: the
+     * quote travels verbatim into every active member's queue. So a member must
+     * not be able to launder a private record into the household by wrapping a
+     * quote from it in a suggestion — and the refusal is the family's one opaque
+     * sentence, which tells the proposer nothing about the record they cited.
+     */
+    await expect(
+      fixture.queriesFor(ANA).createSuggestedContextFact({
+        callerUserId: ANA,
+        subject: { kind: "household", householdId: fixture.household.id },
+        category: "other",
+        content: "The household is going away in July.",
+        provenance: { channel: "ambient", origin: "ambient", sourceRecordId: PRIVATE_EVIDENCE },
+        suggestionEvidence: "Something only Ana can see.",
+      }),
+    ).rejects.toThrow(HOUSEHOLD_RECORD_UNAVAILABLE_MESSAGE);
+
+    // And nothing landed: the other member's queue is untouched, so a refused
+    // proposal leaves no trace for anyone to notice either.
+    const benQueue = await fixture.queriesFor(BEN).listSuggestedContextFactReviews({
+      callerUserId: BEN,
+    });
+    expect(benQueue).toEqual([]);
+  });
+
+  it("refuses a household suggestion that names no evidence at all", async () => {
+    // Requiring the id is what makes the check above possible. Without it there
+    // is nothing to check the excerpt against, and the excerpt is the thing that
+    // gets published.
+    await expect(
+      fixture.queriesFor(ANA).createSuggestedContextFact({
+        callerUserId: ANA,
+        subject: { kind: "household", householdId: fixture.household.id },
+        category: "other",
+        content: "The household is going away in July.",
+        provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+        suggestionEvidence: "Everyone was talking about being away in July.",
+      }),
+    ).rejects.toThrow(/must name the record/);
+  });
+
+  it("still admits a suggestion grounded in a record the household can already see", async () => {
+    // The gate is a gate, not a wall: the ordinary case still works, which is
+    // what stops "refuse everything" from passing for a privacy fix.
+    const suggested = await suggest();
+
+    expect(suggested).toMatchObject({
+      lifecycle: "suggested",
+      subject: { kind: "household", householdId: fixture.household.id },
+    });
+  });
 
   it("puts one household suggestion in every active member's review queue", async () => {
     const suggested = await suggest();

@@ -45,6 +45,7 @@ export default defineTool({
       records: view.records.map((entry) => ({
         recordKind: entry.record.kind,
         recordId: entry.record.id,
+        family: entry.family,
         href: entry.record.href,
         title: entry.title,
         context: entry.context,

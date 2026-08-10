@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 import { completeHouseholdHomeRecordAction } from "@/app/actions/household-home";
-import { CheckIcon, type Icon, ListTodoIcon, RepeatIcon } from "@/components/icons";
+import { CheckIcon, GiftIcon, type Icon, ListTodoIcon, RepeatIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
@@ -43,6 +43,7 @@ const SECTION_HEADING_CLASS =
 const FAMILY_ICON: Record<HouseholdHomeRecord["family"], Icon> = {
   action: ListTodoIcon,
   routine: RepeatIcon,
+  gift_plan: GiftIcon,
 };
 
 const GENERIC_FAILURE = "That didn't go through. Nothing changed.";

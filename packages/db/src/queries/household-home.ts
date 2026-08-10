@@ -1,6 +1,8 @@
 import { getAccessProfile } from "./access-profiles";
 import { listActiveGeneralActions } from "./general-actions";
+import { listGiftPlans } from "./gift-plans";
 import { loadHouseholdActionCandidates } from "./household-home/candidate-loaders/actions";
+import { loadHouseholdCheckinGiftPlanCandidates } from "./household-home/candidate-loaders/gift-plans";
 import { createHouseholdHomeService } from "./household-home/service";
 import {
   getAdmittedHouseholdForUser,
@@ -10,6 +12,8 @@ import {
 
 export type { HouseholdHomeActionDeps } from "./household-home/candidate-loaders/actions";
 export { loadHouseholdActionCandidates } from "./household-home/candidate-loaders/actions";
+export type { HouseholdCheckinGiftPlanDeps } from "./household-home/candidate-loaders/gift-plans";
+export { loadHouseholdCheckinGiftPlanCandidates } from "./household-home/candidate-loaders/gift-plans";
 export {
   createHouseholdHomeService,
   type HouseholdHomeServiceDeps,
@@ -46,6 +50,24 @@ const defaultHouseholdHomeService = createHouseholdHomeService({
         input,
       ),
   ],
+  /**
+   * The families only the Check-in composes.
+   *
+   * Gift Plans reach it through the seam's own proved read, which refuses the
+   * Surprise Subject in SQL and again at the proof before this loader sees a
+   * row — and the composition proves each candidate a third time on facts read
+   * at that moment. Three gates rather than one is the point on the only surface
+   * that delivers a shared record into a member's private space.
+   */
+  loadCheckinOnlyFamilies: [
+    (input) =>
+      loadHouseholdCheckinGiftPlanCandidates(
+        {
+          listVisibleGiftPlans: ({ callerUserId, limit }) => listGiftPlans({ callerUserId, limit }),
+        },
+        input,
+      ),
+  ],
   proveRecords: (input) => proveVisibleHouseholdRecords(input),
   /**
    * The member's own opt-in, read fresh on every composition.
@@ -53,6 +75,14 @@ const defaultHouseholdHomeService = createHouseholdHomeService({
    * From the access profile, which every admitted member has, rather than from a
    * briefing row that may not exist yet — a member who has never had a brief
    * generated must still be able to ask for a Check-in and get one.
+   *
+   * This *read* defaults to `false` and never throws, which is the opposite of
+   * its setter and deliberately so. The two are asked different questions: "has
+   * this member opted in?" has an honest conservative answer for someone with no
+   * profile, while "turn this member's check-in on" has none — succeeding against
+   * a row that is not there is the silent no-op that shipped once already. The
+   * throwing half is `setHouseholdCheckinEnabled` in
+   * `queries/access-profiles/queries.ts`.
    */
   readCheckinOptIn: async ({ callerUserId }) =>
     (await getAccessProfile({ userId: callerUserId }))?.householdCheckinEnabled ?? false,

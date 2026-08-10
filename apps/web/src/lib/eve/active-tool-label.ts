@@ -50,6 +50,7 @@ const ACTIVE_TOOL_LABELS: Record<string, string> = {
   // Household surfaces. The wording stays about records rather than about people:
   // "checking on the household" would read as checking up on whoever is in it.
   household_check_in: "Checking what your household is coordinating…",
+  capture_saved_item: "Saving…",
   search_gift_plans: "Checking your gift plans…",
   add_gift_idea: "Adding the idea to the plan…",
 };

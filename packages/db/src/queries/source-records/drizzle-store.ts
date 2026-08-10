@@ -18,6 +18,28 @@ import type {
 
 const visibleSourceRecords = alias(sourceRecords, "sr");
 
+/**
+ * The narrowest possible read of a source record: its audience, and nothing else.
+ *
+ * Context Facts needs to know whether a household suggestion's evidence is itself
+ * household-visible, and has no business loading the record's content, people, or
+ * linked evidence to find out. Selecting two columns is what keeps that true —
+ * a capability that cannot reach the content cannot leak it.
+ */
+export function createDrizzleSourceRecordAudienceReader() {
+  return {
+    async getSourceRecordById(sourceRecordId: string) {
+      const [record] = await getDb()
+        .select({ scope: sourceRecords.scope, householdId: sourceRecords.householdId })
+        .from(sourceRecords)
+        .where(eq(sourceRecords.id, sourceRecordId))
+        .limit(1);
+
+      return record ?? null;
+    },
+  };
+}
+
 export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
   return {
     async createPerson(values) {

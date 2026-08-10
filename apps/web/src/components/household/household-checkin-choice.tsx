@@ -53,6 +53,20 @@ export function HouseholdCheckinChoice({ enabled }: { enabled: boolean }) {
           ? "Your own brief shows up to three shared records you can currently see. Only you see it."
           : "Add up to three shared records you can currently see to your own brief. Only you would see it."}
       </p>
+      {/*
+        A command button with a stateful label, not a switch.
+        `aria-pressed` would announce "Add a check-in to my brief, pressed",
+        which is wrong twice: the label already names the action about to happen
+        rather than a setting's name, and a toggle-button's pressed state is
+        meant to be read alongside a *stable* label. The two labels here are
+        different sentences — "Add" and "Remove" — so the state is carried by the
+        words a screen reader already reads, and adding a pressed state would
+        announce it a second time in the opposite polarity.
+
+        `role="switch"` was the other candidate and needs a stable label plus an
+        on/off value; that is the shape of a settings row, and this is a single
+        consequential action with an outcome sentence beneath it.
+      */}
       <Button
         className="min-h-11 w-fit"
         disabled={pending}

@@ -201,12 +201,27 @@ describe("Search and Eve reach a Gift Plan only through the seam", () => {
       what: "the Eve contribution tool",
       file: [REPO_ROOT, "apps", "agent", "agent", "tools", "add_gift_idea.ts"],
     },
+    {
+      what: "the Household Check-in loader",
+      file: [
+        PACKAGE_ROOT,
+        "src",
+        "queries",
+        "household-home",
+        "candidate-loaders",
+        "gift-plans.ts",
+      ],
+    },
   ];
 
   for (const adapter of adapters) {
     it(`has ${adapter.what} import the seam and nothing beneath it`, () => {
       const source = read(...adapter.file);
-      expect(source).toMatch(/from "(@tendnote\/db\/queries\/gift-plans|\.\/gift-plans)"/);
+      // Either the package entry point or, inside the package, its own module —
+      // a type import from the seam's `types` counts, a table import does not.
+      expect(source).toMatch(
+        /from "(@tendnote\/db\/queries\/gift-plans|\.\/gift-plans|\.\.\/\.\.\/gift-plans\/types)"/,
+      );
       // No store, no lifecycle factory, no table: the free functions only.
       expect(source).not.toContain("createGiftPlanLifecycle");
       expect(source).not.toContain("gift-plans/drizzle-store");

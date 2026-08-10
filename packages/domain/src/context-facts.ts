@@ -322,6 +322,27 @@ export const createSuggestedContextFactInputSchema = z
         message: "Suggested Context Facts require review-gated provenance.",
       });
     }
+    /**
+     * A household suggestion has to name the record it came from.
+     *
+     * A suggestion about the household lands in every active member's Review
+     * queue carrying a verbatim evidence excerpt. Without a source record there
+     * is nothing to check that excerpt against, so a member could propose a
+     * shared fact quoting something only they can see and the quote would be
+     * published to everyone by the act of proposing it. Requiring the id does not
+     * make the evidence safe on its own — the seam checks that the record is
+     * household-visible — but it is what makes the check possible at all.
+     *
+     * Self suggestions are exempt: their audience is one person, who already saw
+     * whatever the evidence quotes.
+     */
+    if (value.subject.kind === "household" && value.provenance.sourceRecordId === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["provenance", "sourceRecordId"],
+        message: "A household suggestion must name the record its evidence came from.",
+      });
+    }
   });
 
 export type CreateSuggestedContextFactInput = z.input<typeof createSuggestedContextFactInputSchema>;

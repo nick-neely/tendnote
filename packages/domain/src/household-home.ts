@@ -10,8 +10,16 @@ import type { HouseholdRecordOwnership } from "./household-authorization";
  * added here; adding one is a new enum member, a loader, and a destination case,
  * and nothing else — the caps, ordering, provenance, and proof are already
  * common to every family.
+ *
+ * `gift_plan` is a member of this vocabulary but is composed only by the
+ * Household Check-in, not by the home (#390). That is deliberate rather than
+ * half-done: a Gift Plan is a member-owned record with a selected audience, so
+ * it belongs on a caller-specific read and not on a surface whose whole contract
+ * is that every member with the same access sees the same thing. The home would
+ * be showing one member a row another cannot see, which is exactly what
+ * "never personalised" rules out.
  */
-export const householdHomeFamilySchema = z.enum(["action", "routine"]);
+export const householdHomeFamilySchema = z.enum(["action", "routine", "gift_plan"]);
 export type HouseholdHomeFamily = z.infer<typeof householdHomeFamilySchema>;
 
 /**
@@ -38,7 +46,7 @@ export const householdHomeTimingCodeSchema = z.enum([
 ]);
 export type HouseholdHomeTimingCode = z.infer<typeof householdHomeTimingCodeSchema>;
 
-export const householdHomeRecordKindSchema = z.enum(["general_action"]);
+export const householdHomeRecordKindSchema = z.enum(["general_action", "gift_plan"]);
 
 /**
  * The one inline mutation the home may offer.
@@ -185,6 +193,8 @@ export function householdHomeFamilyDestination(
     case "action":
     case "routine":
       return { label: "Actions", href: "/actions" };
+    case "gift_plan":
+      return { label: "Gift plans", href: "/gift-plans" };
   }
 }
 

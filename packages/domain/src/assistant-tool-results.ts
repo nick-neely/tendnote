@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { assetMemoryValueSchema } from "./asset-memories";
 import { assetKindSchema, assetOwnershipSchema } from "./assets";
+import { conversationalCaptureConfirmationSchema } from "./conversational-capture-schemas";
 import { draftProposalResultSchema } from "./draft-proposals";
+import { householdHomeFamilySchema } from "./household-home";
 import { memoryCuratorProposalResultSchema } from "./memory-curator";
 import { privacyScopeSchema } from "./privacy";
 
@@ -389,6 +391,118 @@ export const assetContextToolResult = z.object({
   ),
 });
 
+/**
+ * One member's Household check-in, as a chat card reads it.
+ *
+ * Every field is a fact the record already carries: what kind of thing it is, when
+ * it matters, whose it is, and who said they are looking after it. There is
+ * deliberately no summary, no ranking, and no count of what was left out — the set
+ * was capped deterministically before any model saw it, and a remaining number on
+ * a shared list is a backlog badge (ADR 0220).
+ *
+ * `household` is the workspace's name and is null for a member with none, which is
+ * how the card tells "you have left" apart from "nothing is timely".
+ */
+export const householdCheckinToolResult = z.object({
+  household: z.object({ name: z.string().min(1) }).nullable(),
+  optedIn: z.boolean(),
+  count: z.number().int().min(0),
+  records: z.array(
+    z.object({
+      recordKind: z.string().min(1),
+      recordId: z.string().min(1),
+      /** The domain family, so the row picks a glyph from a fact rather than prose. */
+      family: householdHomeFamilySchema,
+      href: z.string().min(1),
+      title: z.string().min(1),
+      /** The record's own type and cadence, in words. "Action", "Routine · weekly". */
+      context: z.string().min(1),
+      /** Factual and unhurried. Never "overdue", "missed", or "late". */
+      timing: z.string().min(1),
+      /** "Household", or "Shared by Mara". Attribution, never responsibility. */
+      scopeLabel: z.string().min(1),
+      /** "Ana is looking after this", or null — the ordinary, calm case. */
+      responsibility: z.string().nullable(),
+    }),
+  ),
+  limitations: z.array(z.string().min(1)),
+});
+
+/**
+ * The Gift Plans a caller may see.
+ *
+ * Nothing here describes the audience: no co-planner list, no member names, no
+ * Surprise Subject flag. A protected plan is simply absent for the person it
+ * protects against, and for everyone else the card must not carry the *shape* of
+ * the protection either (ADR 0216).
+ *
+ * `isOwner` is the one authority fact, and it is a fact about the caller rather
+ * than about the plan: only the owner may re-subject, re-address, or end it, while
+ * a co-planner contributes. The card says which of the two the reader is, so the
+ * absence of an affordance is explained rather than mysterious.
+ */
+export const giftPlanSearchToolResult = z.object({
+  query: z.string().nullable(),
+  count: z.number().int().min(0),
+  plans: z.array(
+    z.object({
+      giftPlanId: z.string().min(1),
+      subjectName: z.string().min(1),
+      occasion: z.string().min(1),
+      occasionOn: z.iso.datetime().nullable(),
+      status: z.string().min(1),
+      ideaCount: z.number().int().min(0),
+      claimedIdeaCount: z.number().int().min(0),
+      isOwner: z.boolean(),
+    }),
+  ),
+});
+
+/** One idea added to a plan by the caller, on their explicit request. */
+export const giftIdeaAddedToolResult = z.object({
+  added: z.literal(true),
+  giftIdeaId: z.string().min(1),
+  giftPlanId: z.string().min(1),
+  title: z.string().min(1),
+});
+
+/**
+ * What an explicit Capture actually did, as a card the user can check against
+ * Eve's paraphrase.
+ *
+ * The audience is the point. Capture's household branch is a privacy-consequential
+ * fork, and a fork confirmed only by generated prose is a fork nobody verified:
+ * the model can say "saved to your household" about a private save, or the reverse,
+ * and the transcript reads identically either way. So the visibility each outcome
+ * was *actually written with* is rendered from the persisted result.
+ */
+export const captureOutcomeToolResult = z.object({
+  confirmation: conversationalCaptureConfirmationSchema,
+});
+
+/**
+ * The audience each capture outcome was actually written with.
+ *
+ * Reads the confirmation the seam produced rather than anything the model said
+ * about it, and flattens a grouped capture into its parts so a multi-clause save
+ * reports one audience per record instead of one for the group. The field the
+ * audience lives on differs by destination — Saved Items call it `visibility`,
+ * every other domain calls it `scope` — which is precisely why this lives here
+ * once instead of at each surface that needs to show it.
+ */
+export function captureOutcomeAudiences(
+  confirmation: z.infer<typeof conversationalCaptureConfirmationSchema>,
+): Array<{ destination: string; visibility: string }> {
+  const outcomes = confirmation.destination === "Grouped" ? confirmation.outcomes : [confirmation];
+  return outcomes.map((outcome) => ({
+    destination: outcome.destination,
+    visibility:
+      "visibility" in outcome.interpreted
+        ? outcome.interpreted.visibility
+        : outcome.interpreted.scope,
+  }));
+}
+
 export const assistantToolResultSchemas = {
   capture_source_record: sourceRecordToolResult,
   capture_memory: memoryToolResult,
@@ -416,6 +530,10 @@ export const assistantToolResultSchemas = {
   propose_asset_memories: assetMemoryProposalToolResult,
   search_assets: assetSearchToolResult,
   get_asset_context: assetContextToolResult,
+  household_check_in: householdCheckinToolResult,
+  search_gift_plans: giftPlanSearchToolResult,
+  add_gift_idea: giftIdeaAddedToolResult,
+  capture_saved_item: captureOutcomeToolResult,
 } as const satisfies Record<string, z.ZodTypeAny>;
 
 /** A tool name that persists a typed, rendered result (vs. a `generic` fallback). */
@@ -435,6 +553,9 @@ export type AssetMemoryProposalToolResult = z.infer<typeof assetMemoryProposalTo
 export type RelationshipAgendaToolResult = z.infer<typeof relationshipAgendaToolResult>;
 export type MemoryCuratorToolResult = z.infer<typeof memoryCuratorToolResult>;
 export type DraftProposalToolResult = z.infer<typeof draftProposalToolResult>;
+export type HouseholdCheckinToolResult = z.infer<typeof householdCheckinToolResult>;
+export type GiftPlanSearchToolResult = z.infer<typeof giftPlanSearchToolResult>;
+export type CaptureOutcomeToolResult = z.infer<typeof captureOutcomeToolResult>;
 
 /** True when a tool name has a typed rendered contract in the registry. */
 export function isRenderedToolName(toolName: string): toolName is RenderedToolName {

@@ -2,9 +2,12 @@ import { HOUSEHOLD_CHECKIN_MAX_RECORDS } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import { createInMemoryGeneralActionLifecycleStore } from "../general-actions/in-memory-store";
 import { createGeneralActionLifecycle } from "../general-actions/lifecycle";
+import { createInMemoryGiftPlanStore } from "../gift-plans/in-memory-store";
+import { createGiftPlanLifecycle } from "../gift-plans/lifecycle";
 import { createHouseholdAuthorizationProver } from "../households/authorization";
 import { removeHouseholdMember, seedHouseholdWithMembers } from "../households/household-fixtures";
 import { loadHouseholdActionCandidates } from "./candidate-loaders/actions";
+import { loadHouseholdCheckinGiftPlanCandidates } from "./candidate-loaders/gift-plans";
 import { createHouseholdHomeService, type HouseholdHomeServiceDeps } from "./service";
 import type { HouseholdCheckinView } from "./types";
 
@@ -29,7 +32,7 @@ function days(count: number): Date {
   return new Date(NOW.getTime() + count * 24 * 60 * 60 * 1_000);
 }
 
-async function household(options: { optedIn?: readonly string[] } = {}) {
+async function household(options: { optedIn?: readonly string[]; giftPlans?: boolean } = {}) {
   const optedIn = new Set(options.optedIn ?? [OWNER, MEMBER]);
   const store = createInMemoryGeneralActionLifecycleStore();
   const lifecycle = createGeneralActionLifecycle(store);
@@ -42,6 +45,14 @@ async function household(options: { optedIn?: readonly string[] } = {}) {
     ],
   });
   const prover = createHouseholdAuthorizationProver(store);
+
+  // The Gift Plan seam over the *same* household world as the Actions family, so
+  // one membership roster answers both and a plan's household id is the household
+  // the composition is actually reading.
+  const giftPlans = createGiftPlanLifecycle({
+    plans: createInMemoryGiftPlanStore(store),
+    households: store,
+  });
 
   const deps: HouseholdHomeServiceDeps = {
     readAdmittedHousehold: async ({ callerUserId }) => {
@@ -70,6 +81,20 @@ async function household(options: { optedIn?: readonly string[] } = {}) {
     ],
     proveRecords: (input) => prover.proveVisibleRecords(input),
     readCheckinOptIn: async ({ callerUserId }) => optedIn.has(callerUserId),
+    // The Check-in's own family, wired exactly as production wires it: the seam's
+    // proved read, then the composition's proof on top.
+    loadCheckinOnlyFamilies: options.giftPlans
+      ? [
+          (input) =>
+            loadHouseholdCheckinGiftPlanCandidates(
+              {
+                listVisibleGiftPlans: ({ callerUserId, limit }) =>
+                  giftPlans.listGiftPlans({ callerUserId, limit }),
+              },
+              input,
+            ),
+        ]
+      : [],
   };
 
   const service = createHouseholdHomeService(deps);
@@ -88,7 +113,23 @@ async function household(options: { optedIn?: readonly string[] } = {}) {
       responsibilityHolderUserId: null,
     });
 
-  return { store, lifecycle, workspace, service, checkin, seedChore };
+  const seedGiftPlan = (overrides: {
+    subjectName?: string;
+    occasion?: string;
+    occasionOn: Date;
+    surpriseSubjectUserId?: string | null;
+  }) =>
+    giftPlans.createGiftPlan({
+      ownerUserId: OWNER,
+      subjectName: overrides.subjectName ?? "Rowan",
+      occasion: overrides.occasion ?? "Birthday",
+      occasionOn: overrides.occasionOn,
+      surpriseSubjectUserId: overrides.surpriseSubjectUserId ?? null,
+      scope: "household",
+      householdId: workspace.id,
+    });
+
+  return { store, lifecycle, workspace, service, checkin, seedChore, seedGiftPlan };
 }
 
 describe("the Household Check-in opt-in", () => {
@@ -183,6 +224,57 @@ describe("the Household Check-in composition", () => {
 
     expect(view.household).toBeNull();
     expect(view.records).toEqual([]);
+  });
+
+  it("composes an authorized Gift Plan as a planning reference, never a task", async () => {
+    const { checkin, seedGiftPlan } = await household({ giftPlans: true });
+    await seedGiftPlan({ occasionOn: days(4) });
+
+    const view = await checkin(MEMBER);
+
+    const plan = view.records.find((record) => record.family === "gift_plan");
+    expect(plan).toBeDefined();
+    expect(plan?.title).toBe("Rowan · Birthday");
+    expect(plan?.record.href).toBe(`/gift-plans/${plan?.record.id}`);
+    // A birthday is not a chore: no inline control, and never pressing.
+    expect(plan?.progress).toBeNull();
+    expect(plan?.pressing).toBe(false);
+    // The audience shape, and no member named on it.
+    expect(plan?.scopeLabel).toBe("Shared with you");
+    expect(JSON.stringify(plan)).not.toContain(OWNER);
+  });
+
+  it("gives the Surprise Subject no plan, no count, and no gap where one was", async () => {
+    // The exclusion at the newest surface, and the reason this test exists at all:
+    // a family that reaches a caller-specific read is a family that has to be
+    // refused caller by caller (ADR 0216).
+    const { checkin, seedGiftPlan, seedChore } = await household({ giftPlans: true });
+    await seedChore({ title: "Put the bins out", dueAt: NOW });
+    await seedGiftPlan({ occasionOn: days(4), surpriseSubjectUserId: MEMBER });
+
+    const owner = await checkin(OWNER);
+    const subject = await checkin(MEMBER);
+
+    // The owner sees their plan beside the household's chore.
+    expect(owner.records.map((record) => record.family)).toContain("gift_plan");
+    // The subject sees the chore and nothing else — not a placeholder, not a
+    // shortened list they could measure, and no household-level count.
+    expect(subject.records.map((record) => record.family)).toEqual(["action"]);
+    expect(JSON.stringify(subject)).not.toMatch(/Rowan|gift/i);
+  });
+
+  it("keeps an undated or past plan off the check-in entirely", async () => {
+    // "Timely" is the whole eligibility rule. An undated plan is not timely by
+    // definition, and a birthday that has been and gone is not work anyone failed
+    // to do — it drops out rather than reading as overdue.
+    const { checkin, seedGiftPlan } = await household({ giftPlans: true });
+    await seedGiftPlan({ subjectName: "Undated", occasion: "Someday", occasionOn: null as never });
+    await seedGiftPlan({ subjectName: "Past", occasion: "Last month", occasionOn: days(-30) });
+    await seedGiftPlan({ subjectName: "Distant", occasion: "Next year", occasionOn: days(200) });
+
+    const view = await checkin(MEMBER);
+
+    expect(view.records.filter((record) => record.family === "gift_plan")).toEqual([]);
   });
 
   it("says a family could not be read rather than borrowing the empty state's words", async () => {

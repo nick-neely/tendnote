@@ -50,6 +50,19 @@ export type HouseholdHomeServiceDeps = {
     householdId: string;
   }) => Promise<Array<{ userId: string; name: string | null }>>;
   loadCandidateFamilies: HouseholdHomeCandidateLoader[];
+  /**
+   * Families the Check-in composes and the home does not.
+   *
+   * Gift Plans are the motivating case and the reason this is a separate list
+   * rather than a wider shared one: a Gift Plan is member-owned with a selected
+   * audience, so it belongs on a caller-specific read and not on a surface whose
+   * contract is that every member with the same access sees the same thing. The
+   * home would be showing one member a row another member cannot see.
+   *
+   * Everything else is identical — same loader shape, same proof, same caps — so
+   * a family joining the Check-in is one entry here and nothing else.
+   */
+  loadCheckinOnlyFamilies?: HouseholdHomeCandidateLoader[];
   proveRecords: HouseholdHomeProver;
   /** Absent means nobody has opted in — the conservative default (ADR 0220). */
   readCheckinOptIn?: HouseholdCheckinOptIn;
@@ -72,9 +85,10 @@ export function createHouseholdHomeService(deps: HouseholdHomeServiceDeps) {
     timeZone?: string;
     now?: Date;
     memberNames: ReadonlyMap<string, string>;
+    families: HouseholdHomeCandidateLoader[];
   }): Promise<{ records: HouseholdHomeRecord[]; failedFamilies: number }> {
     const settled = await Promise.allSettled(
-      deps.loadCandidateFamilies.map((load) =>
+      input.families.map((load) =>
         load({
           callerUserId: input.callerUserId,
           householdId: input.householdId,
@@ -132,6 +146,7 @@ export function createHouseholdHomeService(deps: HouseholdHomeServiceDeps) {
         ...input,
         householdId: household.id,
         memberNames: await memberNamesFor(input.callerUserId, household.id),
+        families: deps.loadCandidateFamilies,
       });
 
       return {
@@ -180,6 +195,7 @@ export function createHouseholdHomeService(deps: HouseholdHomeServiceDeps) {
         ...input,
         householdId: household.id,
         memberNames: await memberNamesFor(input.callerUserId, household.id),
+        families: [...deps.loadCandidateFamilies, ...(deps.loadCheckinOnlyFamilies ?? [])],
       });
 
       return {

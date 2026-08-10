@@ -8,6 +8,7 @@ import {
   createSuggestedContextFactInputSchema,
   createSuggestedSelfContextFactInputSchema,
   dismissSuggestedContextFactInputSchema,
+  HouseholdRecordUnavailableError,
   normalizeContextFactContent,
   toContextFactView,
 } from "@tendnote/domain";
@@ -56,6 +57,21 @@ type SuggestedFactCandidate = Pick<ContextFact, "subject" | "category" | "conten
  */
 export type ContextFactHouseholdReview = {
   callerHouseholdId: (callerUserId: string) => Promise<string | null>;
+  /**
+   * Whether the record a household suggestion cites is itself visible to that
+   * household.
+   *
+   * The one question this file cannot answer alone, and the one that makes a
+   * shared proposal safe. A suggestion carries a verbatim evidence excerpt into
+   * every active member's queue, so proposing one is publishing it — and a member
+   * must not be able to publish a quote from a record only they can see by
+   * wrapping it in a suggestion. Injected like the proof above so Review never
+   * grows its own opinion about what the household can see.
+   */
+  evidenceVisibleToHousehold: (input: {
+    householdId: string;
+    sourceRecordId: string;
+  }) => Promise<boolean>;
   proveFacts: (input: {
     callerUserId: string;
     operation: "view" | "update" | "archive";
@@ -417,12 +433,49 @@ export function createContextFactReviewQueries(context: ContextFactReviewQueryCo
     return review;
   }
 
+  /**
+   * A household suggestion may only quote something the household can already see.
+   *
+   * This is the evidence half of "an inferred proposal may enter shared Review
+   * only when its evidence is already safe for that audience". The schema has
+   * already required the suggestion to name a source record; this checks that the
+   * record is one the whole household can reach, so the excerpt travelling into
+   * every member's queue discloses nothing the act of proposing it would not have
+   * disclosed anyway.
+   *
+   * The refusal is the household family's one opaque sentence rather than a
+   * descriptive one. "Your evidence is private" would confirm to the proposer
+   * that a specific record exists and is theirs — true here, but the wrong habit
+   * to build into a refusal path, and inconsistent with every other household
+   * denial (ADR 0219).
+   *
+   * A self suggestion never reaches the gate: its audience is one person, who has
+   * already seen whatever it quotes.
+   */
+  async function assertEvidenceIsSafeForSubject(
+    parsed: ReturnType<typeof createSuggestedContextFactInputSchema.parse>,
+  ): Promise<void> {
+    if (parsed.subject.kind !== "household") return;
+    const sourceRecordId = parsed.provenance.sourceRecordId;
+    // The schema guarantees this, so its absence is a contract break rather than
+    // a caller mistake — fail closed either way.
+    if (!sourceRecordId) throw new HouseholdRecordUnavailableError();
+    if (!householdReview) throw new HouseholdRecordUnavailableError();
+
+    const visible = await householdReview.evidenceVisibleToHousehold({
+      householdId: parsed.subject.householdId,
+      sourceRecordId,
+    });
+    if (!visible) throw new HouseholdRecordUnavailableError();
+  }
+
   async function createSuggestedContextFact(
     input: CreateSuggestedContextFactMutationInput,
   ): Promise<SuggestedContextFactMutationOutcome> {
     const parsed = createSuggestedContextFactInputSchema.parse(input);
     const callerUserId = await requireVerifiedCaller(parsed.callerUserId);
     await assertSubjectBelongsToCaller({ callerUserId, subject: parsed.subject });
+    await assertEvidenceIsSafeForSubject(parsed);
 
     const suppressionKeys = suggestionSuppressionKeys({
       subject: parsed.subject,

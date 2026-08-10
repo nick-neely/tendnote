@@ -19,6 +19,7 @@ import type {
   HouseholdContextReconciliation,
   HouseholdRequestPurpose,
   PersistContextFact,
+  PrivacyScope,
   RestoreHouseholdContextFactInput,
   RestoreSelfContextFactInput,
   UpdateContextFactInput,
@@ -128,8 +129,24 @@ export type ContextFactHouseholdAccess = Pick<
 /** Resolves the authenticated caller independently of request payload fields. */
 export type ContextFactCallerVerification = () => Promise<string | null>;
 
+/**
+ * The one source-record read Context Facts performs: whether the record a
+ * household suggestion cites is itself household-visible.
+ *
+ * Deliberately a single reader rather than the source-record store: this module
+ * has no business loading a record's content, people, or evidence, and a narrower
+ * capability is one that cannot grow into those by accident.
+ */
+export type ContextFactEvidenceReader = {
+  getSourceRecordById: (
+    sourceRecordId: string,
+  ) => Promise<{ scope: PrivacyScope; householdId: string | null } | null>;
+};
+
 export type ContextFactQueryDependencies = {
   householdAccess?: ContextFactHouseholdAccess;
+  /** Absent means no household suggestion can be grounded, so none may be made. */
+  sourceRecords?: ContextFactEvidenceReader;
   resolveVerifiedCaller?: ContextFactCallerVerification;
   /** Optional bounded queue policy used by ambient/background suggestion producers. */
   maxPendingSuggestedContextFacts?: number;

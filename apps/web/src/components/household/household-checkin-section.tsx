@@ -1,11 +1,12 @@
 import { HOUSEHOLD_CHECKIN_HEADING } from "@tendnote/domain/household-checkin";
 import type { HouseholdHomeRecord } from "@tendnote/domain/household-home";
 import Link from "next/link";
-import { type Icon, ListTodoIcon, RepeatIcon } from "@/components/icons";
+import { GiftIcon, type Icon, ListTodoIcon, RepeatIcon } from "@/components/icons";
 
 const FAMILY_ICON: Record<HouseholdHomeRecord["family"], Icon> = {
   action: ListTodoIcon,
   routine: RepeatIcon,
+  gift_plan: GiftIcon,
 };
 
 /**
@@ -33,11 +34,31 @@ export function HouseholdCheckinSection({
   records,
   limitations,
   headingId,
+  context = "away",
 }: {
   householdName: string;
   records: readonly HouseholdHomeRecord[];
   limitations: readonly string[];
   headingId: string;
+  /**
+   * Where this instance is being read, which is the only thing that differs
+   * between the two.
+   *
+   * On a small household the check-in genuinely repeats rows sitting one scroll
+   * above it on the Household page. Suppressing it there was the other option and
+   * it is worse: the section would appear and disappear as the household's record
+   * count crossed the cap, so the one place a member goes to *find* their
+   * check-in would be the place most likely not to have one — and the offer to
+   * turn it on would sit under an example of it that had vanished.
+   *
+   * So both instances stay and the copy carries the difference. `away` (a brief,
+   * Eve) has to name the household, because the reader has no other context for
+   * whose records these are. `home` is already under the household's own name, so
+   * repeating it is noise; there the line says what the section is *for* — the
+   * short version they will see elsewhere — which turns the repetition from a
+   * duplicate into a preview of the thing being offered.
+   */
+  context?: "home" | "away";
 }) {
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
@@ -52,7 +73,9 @@ export function HouseholdCheckinSection({
             that the list is this member's own view of them. Naming the household
             is what stops a shared row reading as a private obligation. */}
         <p className="text-[length:var(--text-caption)] text-muted-foreground leading-[var(--text-caption-line)]">
-          What {householdName} is coordinating, as you can see it.
+          {context === "home"
+            ? "The short version, in your own brief. Only you see it."
+            : `What ${householdName} is coordinating, as you can see it.`}
         </p>
       </div>
 

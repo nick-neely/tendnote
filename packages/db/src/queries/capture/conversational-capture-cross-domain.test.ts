@@ -520,6 +520,95 @@ describe("cross-domain conversational Capture", () => {
     expect(suggestedCall.householdId).toBeUndefined();
   });
 
+  it("never shares an inferred suggestion with the audience the explicit clause was shared with", async () => {
+    /**
+     * The one-token gap this pins.
+     *
+     * `shareMemoryOutcomes` writes a `household_record_shares` row for every
+     * memory outcome when the capture had a selected audience — and it is
+     * deliberately handed only the *explicit* outcomes. The inferred list sits on
+     * the adjacent line. Passing both would share a suggestion nobody accepted
+     * with people the member never showed it to, and every existing test would
+     * still pass, because the suggestion's own scope stays private either way.
+     *
+     * So the assertion is about the share registry rather than about the record:
+     * the explicit memory is shared, the inferred one is not, and Review keeps
+     * ownership of what becomes durable and visible.
+     */
+    const store = createInMemorySavedItemLifecycleStore();
+    const household = await seedHouseholdWithMembers(store, {
+      ownerUserId: "owner-1",
+      members: [
+        ["owner-1", "owner"],
+        ["member-1", "member"],
+      ],
+    });
+    const createApprovedMemory = vi.fn().mockResolvedValue(
+      actionMutationOutcome({
+        id: "memory-explicit",
+        status: "approved",
+        sourceRecordId: "filled-by-expectation",
+        personId: "person-priya",
+      }),
+    );
+    const createSuggestedMemory = vi.fn().mockResolvedValue(
+      actionMutationOutcome({
+        id: "memory-inferred",
+        status: "suggested",
+        sourceRecordId: "filled-by-expectation",
+        personId: "person-priya",
+      }),
+    );
+    const capture = createConversationalCapture(store, {
+      createApprovedMemory,
+      createSuggestedMemory,
+      searchPeople: vi.fn().mockResolvedValue([{ id: "person-priya", displayName: "Priya" }]),
+      resolveVisibility: createCaptureVisibilityResolver({
+        listMemberships: store.listActiveHouseholdMembershipsForUser,
+        listMembers: vi.fn().mockResolvedValue([]),
+      }),
+    });
+
+    await capture.capture({
+      authority: "explicit",
+      contextVisibility: {
+        scope: "shared",
+        householdId: household.id,
+        selectedUserIds: ["member-1"],
+        label: "Alex",
+      },
+      inferredSuggestions: [
+        {
+          kind: "memory",
+          personId: "person-priya",
+          personName: "Priya",
+          content: "Priya might prefer oat milk",
+        },
+      ],
+      interactionId: "shared-explicit-plus-inference",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "Remember that Priya prefers oat milk",
+      surface: "eve",
+    });
+
+    const shared = await store.listHouseholdRecordShares({
+      householdId: household.id,
+      recordKind: "memory",
+      recordId: "memory-inferred",
+    });
+    expect(shared).toEqual([]);
+
+    // ...while the record the member actually asked to save did reach its audience,
+    // so this is a statement about inference and not about sharing being broken.
+    const explicit = await store.listHouseholdRecordShares({
+      householdId: household.id,
+      recordKind: "memory",
+      recordId: "memory-explicit",
+    });
+    expect(explicit.map((share) => share.sharedWithUserId)).toEqual(["member-1"]);
+  });
+
   it("keeps inferred secondary outcomes typed, private, review-gated, and source-grounded", async () => {
     const store = createInMemorySavedItemLifecycleStore();
     const createGeneralAction = vi

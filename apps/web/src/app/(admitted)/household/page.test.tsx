@@ -203,8 +203,11 @@ describe("the Household destination", () => {
     expect(markup).toContain("Put the bins out");
     expect(markup).toContain('href="/actions#a"');
     // The boundary in words, and no inline mutation: the row links to the record
-    // and the record's own surface owns every decision about it.
-    expect(markup).toContain("as you can see it");
+    // and the record's own surface owns every decision about it. On the household's
+    // own page the line says what the section is *for* rather than repeating the
+    // household's name, which is already the page's heading.
+    expect(markup).toContain("The short version, in your own brief");
+    expect(markup).not.toContain("as you can see it");
     expect(markup).not.toContain("<button");
   });
 

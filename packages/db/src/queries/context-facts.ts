@@ -26,6 +26,7 @@ import type {
   UpdateSelfContextFactMutationInput,
 } from "./context-facts/types";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
+import { createDrizzleSourceRecordAudienceReader } from "./source-records/drizzle-store";
 
 export { createDrizzleContextFactStore } from "./context-facts/drizzle-store";
 export { createInMemoryContextFactStore } from "./context-facts/in-memory-store";
@@ -35,6 +36,9 @@ export type * from "./context-facts/types";
 function createVerifiedContextFactQueries(resolveVerifiedCaller: ContextFactCallerVerification) {
   return createContextFactQueries(createDrizzleContextFactStore(), {
     householdAccess: createDrizzleHouseholdStore(),
+    // The one source-record read: whether a household suggestion's evidence is
+    // itself household-visible. Narrowed to that question at the seam.
+    sourceRecords: createDrizzleSourceRecordAudienceReader(),
     resolveVerifiedCaller,
   });
 }
