@@ -46,6 +46,12 @@ describe("semantic retrieval product-route boundaries", () => {
       "assets",
       "assets/[assetId]",
       "forgot-password",
+      // Phase 8 Gift Plans and one plan's own page (#389). They read through the
+      // Gift Plan seam's own proved search, never semantic retrieval — a Gift
+      // Plan is not an embedded record kind, precisely so a Surprise Subject
+      // cannot meet one in ranked recall.
+      "gift-plans",
+      "gift-plans/[giftPlanId]",
       // The Household Invitation acceptance capability (#379). Reachable only
       // from an emailed link, never from navigation, and it carries no
       // relationship or semantic-search surface.

@@ -18,10 +18,11 @@ export type VisibilityRecordKind =
   | "saved_item"
   | "asset"
   | "asset_memory"
-  | "asset_evidence";
+  | "asset_evidence"
+  | "gift_plan";
 
 /** The per-record-kind SQL alias the shared visibility predicate is built against. */
-export type VisibilityRecordTableAlias = "m" | "sr" | "f" | "ga" | "si" | "a" | "am" | "ae";
+export type VisibilityRecordTableAlias = "m" | "sr" | "f" | "ga" | "si" | "a" | "am" | "ae" | "gp";
 
 export type HouseholdRecordShare = {
   id: string;

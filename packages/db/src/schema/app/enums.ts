@@ -119,6 +119,35 @@ export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "asset_memory",
   // Asset Evidence is independently scoped under an Asset, like memories (#200).
   "asset_evidence",
+  // Phase 8 Gift Plans: member-owned, selected-co-planner records whose audience
+  // additionally answers to a Surprise Subject exclusion (#389, ADR 0216). Gift
+  // Ideas deliberately have no kind of their own — an idea's audience is its
+  // plan's, so there is one record to share and one record to prove.
+  "gift_plan",
+]);
+
+// A Gift Plan is the finite act of planning one celebration (#389): being worked
+// on, the occasion has happened, or put away. No purchase, delivery, or
+// fulfilment state — Tendnote is not a registry.
+export const giftPlanStatus = pgEnum("gift_plan_status", ["active", "celebrated", "archived"]);
+
+// Quiet, plan-local provenance (#389). Only deliberate acts on one plan; there is
+// no event for reading, opening, or arriving, because this is not a household
+// activity feed or a participation record.
+export const giftPlanEventKind = pgEnum("gift_plan_event_kind", [
+  "created",
+  "edited",
+  "audience_changed",
+  "surprise_protected",
+  "surprise_lifted",
+  "idea_added",
+  "idea_edited",
+  "idea_removed",
+  "idea_claimed",
+  "idea_released",
+  "celebrated",
+  "archived",
+  "reopened",
 ]);
 
 // Phase 6 Asset Memory (#196/#197): the small fixed Asset Kind set — practical

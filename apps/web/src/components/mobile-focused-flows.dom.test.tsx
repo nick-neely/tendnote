@@ -123,6 +123,7 @@ describe("MenuFlow", () => {
       "People",
       "Actions",
       "Assets",
+      "Gift plans",
       "Saved Items",
       "Account",
     ]);

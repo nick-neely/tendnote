@@ -27,6 +27,8 @@ describe("app destinations", () => {
       "people",
       "actions",
       "assets",
+      // Occasional and deliberate: in the menu, deliberately not in the rail.
+      "gift-plans",
       "saved-items",
       "account",
     ]);

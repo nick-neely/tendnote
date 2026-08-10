@@ -32,6 +32,7 @@ export * from "./followups";
 export * from "./general-action-areas";
 export * from "./general-action-asset-links";
 export * from "./general-actions";
+export * from "./gift-plans";
 export * from "./global-recall";
 export * from "./gmail-drafts";
 export * from "./household-actions";
