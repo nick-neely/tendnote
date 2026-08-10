@@ -1,6 +1,7 @@
 import type {
   AcceptSuggestedContextFactInput,
   ArchiveContextFactInput,
+  ArchiveHouseholdContextFactInput,
   ArchiveSelfContextFactInput,
   ContextFact,
   ContextFactDeleteResult,
@@ -9,14 +10,19 @@ import type {
   ContextFactReviewDismissResult,
   ContextFactView,
   CreateContextFactInput,
+  CreateHouseholdContextFactInput,
   CreateSelfContextFactInput,
   CreateSuggestedContextFactInput,
   CreateSuggestedSelfContextFactInput,
   DeleteSelfContextFactInput,
   DismissSuggestedContextFactInput,
+  HouseholdContextReconciliation,
+  HouseholdRequestPurpose,
   PersistContextFact,
+  RestoreHouseholdContextFactInput,
   RestoreSelfContextFactInput,
   UpdateContextFactInput,
+  UpdateHouseholdContextFactInput,
   UpdateSelfContextFactInput,
 } from "@tendnote/domain";
 import type { OrientationContextBuildResult } from "@tendnote/domain/context-fact-orientation";
@@ -197,6 +203,51 @@ export type ContextFactReviewMutationOutcome = MutationOutcome<ContextFactView> 
 
 export type ContextFactReviewDismissMutationOutcome =
   MutationOutcome<ContextFactReviewDismissResult>;
+
+export type CreateHouseholdContextFactMutationInput = CreateHouseholdContextFactInput;
+export type UpdateHouseholdContextFactMutationInput = UpdateHouseholdContextFactInput;
+export type ArchiveHouseholdContextFactMutationInput = ArchiveHouseholdContextFactInput;
+export type RestoreHouseholdContextFactMutationInput = RestoreHouseholdContextFactInput;
+
+export type ListHouseholdContextFactsInput = {
+  callerUserId: string;
+  /** Management reads may progressively disclose archived facts. */
+  includeArchived?: boolean;
+  /**
+   * Why the caller wants them, handed to the proof unchanged. `ambient` is what
+   * keeps restricted household facts out of orientation and ranked retrieval;
+   * the management page is `direct` because the reader opened it.
+   */
+  purpose?: HouseholdRequestPurpose;
+};
+
+export type SearchHouseholdContextFactsInput = {
+  callerUserId: string;
+  query: string;
+  /** Restricted facts are eligible only after Global Recall authorizes a direct request. */
+  directlyRequested: boolean;
+  limit: number;
+};
+
+export type HouseholdContextExactResult = {
+  fact: ContextFactView;
+  matchedFields: Array<"content" | "category">;
+  rank: number;
+};
+
+/**
+ * What a household write answers with.
+ *
+ * A stale write is `outcome: "stale"`, not a thrown failure: the member's draft
+ * survived, the current statement is right there, and the next move is theirs.
+ * Modelling it as an error would have forced every surface to reconstruct that
+ * payload from a message string.
+ */
+export type HouseholdContextMutationResult =
+  | { outcome: "saved"; fact: ContextFactView; decision: ContextFactMutationDecision }
+  | { outcome: "stale"; reconciliation: HouseholdContextReconciliation };
+
+export type HouseholdContextMutationOutcome = MutationOutcome<HouseholdContextMutationResult>;
 
 export type CreateSuggestedContextFactMutationInput = CreateSuggestedContextFactInput;
 export type CreateSuggestedSelfContextFactMutationInput = CreateSuggestedSelfContextFactInput;

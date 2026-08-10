@@ -784,12 +784,19 @@ describe("Context Fact product contract", () => {
       }),
     ).rejects.toThrow("no longer available");
 
+    // An active member's orientation carries their own Self Context and the
+    // household's shared context — and neither the pending household suggestion
+    // nor the other household's fact (#382).
     const memberOrientation = await memberQueries.getOrientationContext({
       callerUserId: OTHER_OWNER,
     });
-    expect(memberOrientation.context.facts.map((fact) => fact.subject.kind)).toEqual(["self"]);
-    expect(memberOrientation.context.facts.map((fact) => fact.content)).toEqual([
+    expect([...memberOrientation.context.facts.map((fact) => fact.subject.kind)].sort()).toEqual([
+      "household",
+      "self",
+    ]);
+    expect([...memberOrientation.context.facts.map((fact) => fact.content)].sort()).toEqual([
       "I keep private work context.",
+      "The household has two adults.",
     ]);
 
     await removeHouseholdMember(householdStore, first.household.id, OTHER_OWNER);

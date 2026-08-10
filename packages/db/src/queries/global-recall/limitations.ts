@@ -60,6 +60,7 @@ export function recallLimitations(
     followupLimitation(outcomes),
     calendarLimitation(outcomes, sources),
     selfContextLimitation(outcomes, plan),
+    householdContextLimitation(outcomes, plan),
   ].filter((item): item is Limitation => item !== null);
   const withheld = withheldRelatedLimitation(sources, matches, family);
   // A family that already reported a retrieval failure has no surviving Related
@@ -237,5 +238,17 @@ function selfContextLimitation(
 ): Limitation | null {
   return plan.selfContext && plan.exact && outcomes[7].status === "rejected"
     ? { source: "self_context", message: "Self Context results are temporarily unavailable." }
+    : null;
+}
+
+function householdContextLimitation(
+  outcomes: RecallRetrievalOutcomes,
+  plan: RecallSearchPlan,
+): Limitation | null {
+  return plan.householdContext && plan.exact && outcomes[8].status === "rejected"
+    ? {
+        source: "household_context",
+        message: "Household Context results are temporarily unavailable.",
+      }
     : null;
 }

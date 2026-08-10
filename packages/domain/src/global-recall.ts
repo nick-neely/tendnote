@@ -3,6 +3,7 @@ import { assetMemoryValueSchema } from "./asset-memories";
 import { assetKindSchema } from "./assets";
 import { calendarEventStatusSchema } from "./calendar";
 import {
+  contextFactCategorySchema,
   contextFactChannelSchema,
   contextFactOriginSchema,
   selfContextFactCategorySchema,
@@ -20,8 +21,17 @@ export const globalRecallFamilySchema = z.enum([
   "saved_item",
   "calendar_event",
   "self_context",
+  "household_context",
 ]);
 
+/**
+ * Self and Household Context are two families rather than one "context" family
+ * because they are statements about two different subjects. A single family
+ * would let a search for "we" answer with a member's private statement about
+ * themselves and the household's shared statement side by side under one
+ * heading, which is exactly the conflation the Household Context domain exists
+ * to prevent.
+ */
 export const globalRecallFilterSchema = z.enum([
   "all",
   "people",
@@ -31,6 +41,7 @@ export const globalRecallFilterSchema = z.enum([
   "saved_items",
   "calendar",
   "self_context",
+  "household_context",
 ]);
 
 export const globalRecallCanonicalKindSchema = z.enum([
@@ -62,6 +73,7 @@ export const globalRecallTrustSchema = z.enum([
   "saved_context",
   "provider_context",
   "self_context",
+  "household_context",
 ]);
 
 export const globalRecallMatchKindSchema = z.enum(["exact", "related"]);
@@ -228,6 +240,22 @@ export const globalRecallResultSchema = z.discriminatedUnion("family", [
       }),
     }),
   }),
+  z.object({
+    ...globalRecallBaseShape,
+    family: z.literal("household_context"),
+    details: z.object({
+      content: z.string().min(1),
+      // The full category enum, not the Self subset: `composition` is a category
+      // only a household can hold, so narrowing this to the Self categories
+      // would make the household's own "who lives here" statement unmodellable.
+      category: contextFactCategorySchema,
+      categoryLabel: z.string().min(1),
+      provenance: z.object({
+        channel: contextFactChannelSchema,
+        origin: contextFactOriginSchema,
+      }),
+    }),
+  }),
 ]);
 
 export const globalRecallLimitationSchema = z.object({
@@ -238,6 +266,7 @@ export const globalRecallLimitationSchema = z.object({
     "follow_ups",
     "calendar",
     "self_context",
+    "household_context",
   ]),
   message: z.string().min(1),
 });

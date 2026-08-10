@@ -59,12 +59,23 @@ export function HouseholdSurface({
   invitationActions,
   governanceActions,
   memberActions,
+  contextSection,
 }: {
   initialOverview: HouseholdOverview | null;
   createHouseholdAction?: CreateHouseholdAction;
   invitationActions?: HouseholdInvitationActions;
   governanceActions?: HouseholdGovernanceActions;
   memberActions?: HouseholdMemberGovernanceActions;
+  /**
+   * Household Context, composed on the server and slotted in.
+   *
+   * A node rather than data because the section is a read the server already
+   * did; passing the facts through here would make this client boundary
+   * responsible for content it never touches. It disappears with the Overview
+   * the moment the household ends, which is exactly when household context stops
+   * being the reader's to see.
+   */
+  contextSection?: React.ReactNode;
 }) {
   const router = useRouter();
   const [overview, setOverview] = useState(initialOverview);
@@ -88,6 +99,7 @@ export function HouseholdSurface({
         // Creation destroys the control that was focused, which would otherwise
         // drop focus to the document body at the moment the task completes.
         <HouseholdOverviewPanel
+          contextSection={contextSection}
           focusOnMount={createdHere}
           governanceActions={governanceActions}
           invitationActions={invitationActions}

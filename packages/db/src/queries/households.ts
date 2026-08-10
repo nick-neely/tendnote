@@ -3,6 +3,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "../client";
 import { householdMemberships, user } from "../schema";
 import { createHouseholdAuthorizationProver } from "./households/authorization";
+import { createHouseholdContextActorReader } from "./households/context-actors";
 import { createDrizzleHouseholdInvitationStore } from "./households/drizzle-invitation-store";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createHouseholdGovernanceLifecycle } from "./households/governance";
@@ -22,6 +23,7 @@ export {
   createHouseholdAuthorizationProver,
   type HouseholdRecordFacts,
 } from "./households/authorization";
+export { createHouseholdContextActorReader } from "./households/context-actors";
 export { createDrizzleHouseholdInvitationStore } from "./households/drizzle-invitation-store";
 export { createDrizzleHouseholdStore } from "./households/drizzle-store";
 export {
@@ -98,6 +100,19 @@ export function proveVisibleHouseholdRecords(
 /** The caller's own Household Overview, or `null` when they have no active household. */
 export function getHouseholdOverviewForUser(input: { userId: string }) {
   return defaultHouseholdOverviewReader(input);
+}
+
+const defaultHouseholdContextActorReader = createHouseholdContextActorReader(
+  defaultHouseholdStore,
+  createDrizzleHouseholdIdentityStore(),
+);
+
+/**
+ * The names Household Context attribution renders, former members included.
+ * Empty for a caller with no active household.
+ */
+export function listHouseholdContextActors(input: { userId: string }) {
+  return defaultHouseholdContextActorReader(input);
 }
 
 /**

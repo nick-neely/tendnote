@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { GLOBAL_RECALL_FAMILY_OPTIONS } from "@/lib/use-global-recall";
 import { render, screen, userEvent, waitFor, within } from "@/test/dom";
 import { expectRestrictedGateOpensOnRecordType } from "@/test/global-recall-filters";
-import { selfContextResult } from "@/test/global-recall-fixtures";
+import { householdContextResult, selfContextResult } from "@/test/global-recall-fixtures";
 import { ThemeProvider } from "./theme-provider";
 
 /**
@@ -273,5 +273,43 @@ describe("SearchFlow", () => {
     const link = exact.getByRole("link", { name: /I run a software consultancy\.Work/ });
     expect(link.getAttribute("href")).toBe("/account/about-you#context-fact-context-fact-1");
     expect(link.parentElement?.parentElement?.textContent).toContain("Only me");
+  });
+
+  /**
+   * This flow groups by match strength, so both statements land under "Exact"
+   * with no family heading between them. Identical wording is the hard case and
+   * the one the fixtures use: the household row has to name its subject and
+   * route to the household's own page, or the two read as one record listed
+   * twice with a different privacy setting.
+   */
+  it("keeps a Household Context match distinct from an identically worded Self one", async () => {
+    const user = userEvent.setup();
+    const search = vi.fn().mockResolvedValue({
+      ok: true,
+      view: {
+        query: "software",
+        results: [
+          selfContextResult(),
+          householdContextResult({ content: "I run a software consultancy." }),
+        ],
+        limitations: [],
+        hasMore: false,
+      },
+    });
+    render(<SearchHarness search={search} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Search Tendnote" }), "software");
+    const exact = within(await screen.findByRole("region", { name: "Exact matches" }));
+
+    const household = exact.getByRole("link", {
+      name: /I run a software consultancy\.Household Context · Composition/,
+    });
+    expect(household.getAttribute("href")).toBe(
+      "/account/household/context#household-context-fact-household-fact-1",
+    );
+    expect(household.parentElement?.parentElement?.textContent).toContain("Whole household");
+    expect(
+      exact.getByRole("link", { name: /I run a software consultancy\.Work/ }).getAttribute("href"),
+    ).toBe("/account/about-you#context-fact-context-fact-1");
   });
 });

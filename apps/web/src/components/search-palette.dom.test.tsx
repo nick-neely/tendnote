@@ -10,7 +10,7 @@ import {
   within,
 } from "@/test/dom";
 import { expectRestrictedGateOpensOnRecordType } from "@/test/global-recall-filters";
-import { selfContextResult } from "@/test/global-recall-fixtures";
+import { householdContextResult, selfContextResult } from "@/test/global-recall-fixtures";
 import { ThemeProvider } from "./theme-provider";
 
 /**
@@ -242,6 +242,52 @@ describe("SearchPalette", () => {
       selfContext.getByRole("option", { name: /I run a software consultancy\.Work/ }),
     ).toBeDefined();
     expect(screen.getByText("Calendar results are unavailable.")).toBeDefined();
+  });
+
+  /**
+   * Two subjects, never one. The palette groups by family, so the household's
+   * shared statement has to arrive under its own heading rather than folded in
+   * beside what the owner wrote about themselves - even when both are worded
+   * the same way, which is what this fixture pair does.
+   */
+  it("keeps Household Context in its own group rather than under Self Context", async () => {
+    const user = userEvent.setup();
+    const content = "I run a software consultancy.";
+    const search = vi.fn().mockResolvedValue(
+      success({
+        query: "software",
+        results: [selfContextResult(), householdContextResult({ content })],
+        limitations: [],
+        hasMore: false,
+      }),
+    );
+    renderPalette(search);
+    await openWithHotkey(user);
+
+    await user.type(screen.getByRole("combobox", { name: "Search and commands" }), "software");
+    await waitFor(() => expect(search).toHaveBeenCalled());
+
+    const selfContext = within(await screen.findByRole("group", { name: "Self Context" }));
+    const selfRow = selfContext.getByRole("option", { name: /I run a software consultancy\./ });
+    expect(selfRow.textContent).toContain("Work");
+    expect(selfRow.textContent).not.toContain("Household");
+
+    const household = within(screen.getByRole("group", { name: "Household Context" }));
+    expect(
+      household.getByRole("option", { name: /Household Context · Composition/ }),
+    ).toBeDefined();
+  });
+
+  it("offers Household Context as its own record type", async () => {
+    const user = userEvent.setup();
+    renderPalette();
+    await openWithHotkey(user);
+
+    await user.type(screen.getByRole("combobox", { name: "Search and commands" }), "software");
+    await user.click(screen.getByRole("combobox", { name: "Record type" }));
+
+    expect(screen.getByRole("option", { name: "Household Context" })).toBeDefined();
+    expect(screen.getByRole("option", { name: "Self Context" })).toBeDefined();
   });
 
   /**
