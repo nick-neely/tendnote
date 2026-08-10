@@ -16,7 +16,7 @@ import {
 } from "@tendnote/domain";
 import { resolveRecordVisibility } from "../households/record-visibility";
 import { type AssetEmbeddingDeps, makeScheduleAssetEmbedding } from "./embed";
-import { createAssetAuthority } from "./household-authority";
+import { createAssetAuthority, resolveOwnedOrVisible } from "./household-authority";
 import type {
   AssetActionInput,
   AssetLifecycleStore,
@@ -90,11 +90,10 @@ async function findVisibleAsset(
   store: AssetLifecycleStore,
   input: { callerUserId: string; assetId: string },
 ): Promise<Asset | null> {
-  const owned = await store.getAsset({
-    ownerUserId: input.callerUserId,
-    assetId: input.assetId,
+  const asset = await resolveOwnedOrVisible({
+    owned: () => store.getAsset({ ownerUserId: input.callerUserId, assetId: input.assetId }),
+    visible: () => store.getVisibleAsset(input),
   });
-  const asset = owned?.ownership === "member_owned" ? owned : await store.getVisibleAsset(input);
   // Durable records only: a suggested proposal (or a dismissed husk) is never a
   // surface-readable Asset, even for its owner — review reaches proposals through
   // its own owner-scoped seam (#198).

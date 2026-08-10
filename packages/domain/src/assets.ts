@@ -331,6 +331,10 @@ export const assetAuditEventKindSchema = z.enum([
   "memory_edited",
   "memory_promoted",
   "memory_dismissed",
+  // A set-aside detail brought back (#386) — its own kind rather than an edit,
+  // because the trail exists to answer *what* happened and a status change
+  // recorded as content churn would answer it wrongly.
+  "memory_restored",
   "evidence_added",
   "evidence_removed",
   "link_added",

@@ -1,5 +1,5 @@
 {
-  "id": "b58ca16a-0ae1-4cca-8641-3da2370b6798",
+  "id": "013c8d63-d097-46b2-80ab-9447782371c7",
   "prevId": "0ddbfe8a-1fd4-4895-b4d4-79896d502703",
   "version": "7",
   "dialect": "postgresql",
@@ -12289,6 +12289,7 @@
         "memory_edited",
         "memory_promoted",
         "memory_dismissed",
+        "memory_restored",
         "evidence_added",
         "evidence_removed",
         "link_added",

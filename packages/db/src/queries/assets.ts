@@ -241,6 +241,14 @@ export async function setAsideAssetMemory(input: AssetMemoryActionInput) {
   ]);
 }
 
+/** Brings a set-aside detail back — the inverse behind the surface's undo (#386). */
+export async function restoreAssetMemory(input: AssetMemoryActionInput) {
+  const memory = await defaultAssetReview.restoreAssetMemory(input);
+  return assetIdsMutationOutcome(Promise.resolve(memory), memory.ownerUserId, (result) => [
+    result.assetId,
+  ]);
+}
+
 export async function listAssetReviewGroups(input: ListAssetReviewGroupsInput) {
   return defaultAssetReview.listAssetReviewGroups(input);
 }

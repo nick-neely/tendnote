@@ -7,7 +7,11 @@ import {
   HouseholdRecordUnavailableError,
   resolveAssetMemoryContentPatch,
 } from "@tendnote/domain";
-import { type AssetChildFacts, createAssetAuthority } from "./household-authority";
+import {
+  type AssetChildFacts,
+  createAssetAuthority,
+  resolveOwnedOrVisible,
+} from "./household-authority";
 import { recordAudit } from "./lifecycle";
 import { loadAnchor } from "./review-shared";
 import type {
@@ -62,15 +66,16 @@ function evidenceFacts(evidence: AssetEvidence): AssetChildFacts {
 async function loadMemory(
   store: AssetReviewLifecycleStore,
   input: AssetMemoryActionInput,
+  options: { includeSetAside?: boolean } = {},
 ): Promise<AssetMemory> {
-  const owned = await store.getAssetMemory({
-    ownerUserId: input.actorUserId,
-    memoryId: input.memoryId,
-  });
-  if (owned?.ownership === "member_owned") return owned;
-  const visible = await store.getVisibleAssetMemory({
-    callerUserId: input.actorUserId,
-    memoryId: input.memoryId,
+  const visible = await resolveOwnedOrVisible({
+    owned: () => store.getAssetMemory({ ownerUserId: input.actorUserId, memoryId: input.memoryId }),
+    visible: () =>
+      store.getVisibleAssetMemory({
+        callerUserId: input.actorUserId,
+        memoryId: input.memoryId,
+        includeSetAside: options.includeSetAside,
+      }),
   });
   // The same sentence a refused proof produces: "no such detail", "you may
   // not", and "you were removed from that household" are indistinguishable.
@@ -92,18 +97,31 @@ export async function editAssetMemory(
   store: AssetReviewLifecycleStore,
   input: EditAssetMemoryInput,
 ): Promise<AssetMemory> {
-  const memory = await loadMemory(store, input);
+  // Loaded including a set-aside detail so the race below answers plainly
+  // instead of opaquely. Someone else setting this aside while the member was
+  // typing is not a protected fact — they were looking at the record a moment
+  // ago — and "that's no longer available" would be true, unhelpful, and
+  // different depending on the ownership form, since only the household-native
+  // arm would have fallen through the active-only read.
+  const memory = await loadMemory(store, input, { includeSetAside: true });
+  // Authority first, so all three maintenance paths read the same way and no
+  // lifecycle message is ever answered to a caller who may not act at all.
+  await createAssetAuthority(store).requireAssetChildAuthority({
+    actorUserId: input.actorUserId,
+    child: memoryFacts(memory),
+    operation: "edit",
+  });
+  if (memory.status === "dismissed") {
+    throw new AssetValidationError(
+      "This detail was set aside while you were editing. Bring it back first.",
+    );
+  }
   if (memory.status !== "active") {
     // A proposal is corrected through review, where accepting it is the same
     // gesture. Sending it down this path would let an edit resolve a suggestion
     // without anyone having reviewed it.
     throw new AssetValidationError("Only a detail that's been kept can be corrected.");
   }
-  await createAssetAuthority(store).requireAssetChildAuthority({
-    actorUserId: input.actorUserId,
-    child: memoryFacts(memory),
-    operation: "edit",
-  });
   assertAssetRecordFresh({
     expectedRevision: input.expectedRevision,
     current: memory,
@@ -146,15 +164,25 @@ export async function setAsideAssetMemory(
   store: AssetReviewLifecycleStore,
   input: AssetMemoryActionInput & { source?: AssetMemoryAuditSource },
 ): Promise<AssetMemory> {
-  const memory = await loadMemory(store, input);
-  if (memory.status !== "active") {
-    throw new AssetValidationError("Only a detail that's been kept can be set aside.");
-  }
+  // Same widening as the correction path, for the same reason: two members
+  // setting the same detail aside is a race that settles, not a refusal.
+  const memory = await loadMemory(store, input, { includeSetAside: true });
+  // Authority first, before any settling. An idempotent early return that runs
+  // ahead of the proof answers a caller who has no standing to ask — and hands
+  // them the record while doing it.
   await createAssetAuthority(store).requireAssetChildAuthority({
     actorUserId: input.actorUserId,
     child: memoryFacts(memory),
     operation: "remove",
   });
+  if (memory.status === "dismissed") {
+    // Someone got there first, and the state the member wanted is the state the
+    // record is in.
+    return memory;
+  }
+  if (memory.status !== "active") {
+    throw new AssetValidationError("Only a detail that's been kept can be set aside.");
+  }
 
   const updated = await store.updateAssetMemory({
     ownerUserId: memory.ownerUserId,
@@ -169,6 +197,54 @@ export async function setAsideAssetMemory(
       actorUserId: input.actorUserId,
       source: input.source ?? "user",
       detail: { memoryId: updated.id, label: updated.label, cascade: false },
+    });
+  }
+  return updated;
+}
+
+/**
+ * Brings a set-aside detail back — the inverse behind the undo the surface
+ * offers for the five seconds after a set-aside, and a first-class path
+ * afterwards rather than a hidden one.
+ *
+ * The same authority as setting it aside, because they are one decision in two
+ * directions. Reusing the `dismissed` → `active` transition means the record
+ * never left: a household-native detail brought back is the same row, with the
+ * same history, and the trail records who set it aside and who restored it.
+ */
+export async function restoreAssetMemory(
+  store: AssetReviewLifecycleStore,
+  input: AssetMemoryActionInput & { source?: AssetMemoryAuditSource },
+): Promise<AssetMemory> {
+  const memory = await loadMemory(store, input, { includeSetAside: true });
+  // Authority before settling, for the same reason as above.
+  await createAssetAuthority(store).requireAssetChildAuthority({
+    actorUserId: input.actorUserId,
+    child: memoryFacts(memory),
+    operation: "remove",
+  });
+  if (memory.status === "active") {
+    // Idempotent rather than an error: an undo that arrives twice — a double
+    // click, a retried request — should settle on the state the member wanted.
+    return memory;
+  }
+  if (memory.status !== "dismissed") {
+    throw new AssetValidationError("Only a detail that's been set aside can be brought back.");
+  }
+
+  const updated = await store.updateAssetMemory({
+    ownerUserId: memory.ownerUserId,
+    memoryId: memory.id,
+    patch: { status: "active", lastActorUserId: input.actorUserId },
+  });
+
+  const anchor = await loadAnchor(store, memory.ownerUserId, memory.assetId);
+  if (anchor) {
+    await recordAudit(store, anchor, {
+      kind: "memory_restored",
+      actorUserId: input.actorUserId,
+      source: input.source ?? "user",
+      detail: { memoryId: updated.id, label: updated.label },
     });
   }
   return updated;

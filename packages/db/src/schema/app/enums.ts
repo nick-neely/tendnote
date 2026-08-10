@@ -189,6 +189,8 @@ export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
   "memory_edited",
   "memory_promoted",
   "memory_dismissed",
+  // A set-aside detail brought back (#386).
+  "memory_restored",
   // Evidence capture trail (#200): the evidence id rides in detail JSON.
   "evidence_added",
   "evidence_removed",

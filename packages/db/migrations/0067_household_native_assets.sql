@@ -1,4 +1,5 @@
 CREATE TYPE "public"."asset_ownership" AS ENUM('member_owned', 'household_native');--> statement-breakpoint
+ALTER TYPE "public"."asset_audit_event_kind" ADD VALUE 'memory_restored' BEFORE 'evidence_added';--> statement-breakpoint
 ALTER TABLE "asset_evidence" ADD COLUMN "ownership" "asset_ownership" DEFAULT 'member_owned' NOT NULL;--> statement-breakpoint
 ALTER TABLE "asset_memories" ADD COLUMN "ownership" "asset_ownership" DEFAULT 'member_owned' NOT NULL;--> statement-breakpoint
 ALTER TABLE "asset_memories" ADD COLUMN "revision" integer DEFAULT 0 NOT NULL;--> statement-breakpoint

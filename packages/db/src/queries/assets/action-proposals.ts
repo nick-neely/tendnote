@@ -474,7 +474,17 @@ async function listPendingAssetActionProposals(
   if (!asset || !isDurableAssetStatus(asset.status)) {
     return [];
   }
-  if (asset.ownership !== "household_native" && asset.ownerUserId !== input.actorUserId) {
+  // The same proof `requireProposalAnchor` asks, answered rather than thrown:
+  // this read owes an empty list, not a refusal. Deciding it here with an
+  // ownership comparison would be the storage-key-as-authority pattern the whole
+  // seam exists to remove — and would miss a membership that ended since the
+  // page was built, which no comparison can see (ADR 0219).
+  const mayWrite = await createAssetAuthority(store).proveAssetAuthority({
+    actorUserId: input.actorUserId,
+    asset,
+    operation: "edit",
+  });
+  if (!mayWrite) {
     return [];
   }
 

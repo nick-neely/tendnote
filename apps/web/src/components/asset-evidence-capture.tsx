@@ -505,7 +505,8 @@ function EvidenceVisibilityFields({
           because handing something over is not recoverable later. */}
       {assetOwnership === "household_native" && choice === "whole_household" ? (
         <p className="text-[length:var(--text-small)] text-muted-foreground">
-          This becomes the household's, not yours: it stays if you leave.
+          This becomes the household's, not yours: anyone in the household can remove it, and it
+          stays if you leave.
         </p>
       ) : null}
       <AudiencePreview

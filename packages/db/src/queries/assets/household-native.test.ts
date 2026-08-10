@@ -298,6 +298,80 @@ describe("details under an Asset", () => {
     ).resolves.toEqual([]);
   });
 
+  it("brings a set-aside detail back, which is what the surface's undo spends", async () => {
+    const { review, seedHouseholdNative } = await household();
+    const fridge = await seedHouseholdNative();
+    const filter = await review.createActiveAssetMemory({
+      ownerUserId: OWNER,
+      assetId: fridge.id,
+      label: "Filter size",
+      value: { type: "text", text: "EDR3RXD1" },
+      ownership: "household_native",
+    });
+
+    await review.setAsideAssetMemory({ actorUserId: MEMBER, memoryId: filter.id });
+    await expect(
+      review.listAssetMemories({ callerUserId: OWNER, assetId: fridge.id }),
+    ).resolves.toEqual([]);
+
+    // The record never left, so the undo is a status change on the same row —
+    // and any active member may spend it, like the set-aside itself.
+    await expect(
+      review.restoreAssetMemory({ actorUserId: OWNER, memoryId: filter.id }),
+    ).resolves.toMatchObject({ id: filter.id, status: "active" });
+    await expect(
+      review.listAssetMemories({ callerUserId: MEMBER, assetId: fridge.id }),
+    ).resolves.toMatchObject([{ id: filter.id }]);
+  });
+
+  it("settles rather than refuses when two members set the same detail aside", async () => {
+    const { review, seedHouseholdNative } = await household();
+    const fridge = await seedHouseholdNative();
+    const filter = await review.createActiveAssetMemory({
+      ownerUserId: OWNER,
+      assetId: fridge.id,
+      label: "Filter size",
+      value: { type: "text", text: "EDR3RXD1" },
+      ownership: "household_native",
+    });
+
+    await review.setAsideAssetMemory({ actorUserId: OWNER, memoryId: filter.id });
+
+    // Arriving second is not a failure: the state the member wanted is the state
+    // the record is in, and an undo that lands twice must not error either.
+    await expect(
+      review.setAsideAssetMemory({ actorUserId: MEMBER, memoryId: filter.id }),
+    ).resolves.toMatchObject({ status: "dismissed" });
+    await review.restoreAssetMemory({ actorUserId: OWNER, memoryId: filter.id });
+    await expect(
+      review.restoreAssetMemory({ actorUserId: MEMBER, memoryId: filter.id }),
+    ).resolves.toMatchObject({ status: "active" });
+  });
+
+  it("tells a member plainly when the detail they were correcting was set aside", async () => {
+    const { review, seedHouseholdNative } = await household();
+    const fridge = await seedHouseholdNative();
+    const filter = await review.createActiveAssetMemory({
+      ownerUserId: OWNER,
+      assetId: fridge.id,
+      label: "Filter size",
+      value: { type: "text", text: "EDR3RXD1" },
+      ownership: "household_native",
+    });
+    await review.setAsideAssetMemory({ actorUserId: OWNER, memoryId: filter.id });
+
+    // A curated, showable sentence rather than the opaque refusal: someone else
+    // setting it aside mid-edit is not a protected fact, and the member needs to
+    // know what to do next.
+    await expect(
+      review.editAssetMemory({
+        actorUserId: MEMBER,
+        memoryId: filter.id,
+        edit: { value: { type: "text", text: "Something else" } },
+      }),
+    ).rejects.toThrow(/set aside while you were editing/);
+  });
+
   it("keeps one member's own detail out of another member's hands", async () => {
     const { review, seedHouseholdNative } = await household();
     const fridge = await seedHouseholdNative();
@@ -499,6 +573,46 @@ describe("departure", () => {
     await expect(
       lifecycle.editAsset({ actorUserId: MEMBER, assetId: car.id, edit: { name: "Still mine" } }),
     ).rejects.toThrow(UNAVAILABLE);
+  });
+
+  it("refuses every detail path to a departed member with the one opaque sentence", async () => {
+    const { store, review, workspace, seedHouseholdNative } = await household();
+    const fridge = await seedHouseholdNative({ createdBy: OWNER });
+    const shared = await review.createActiveAssetMemory({
+      ownerUserId: OWNER,
+      assetId: fridge.id,
+      label: "Filter size",
+      value: { type: "text", text: "EDR3RXD1" },
+      ownership: "household_native",
+    });
+    const mine = await review.createActiveAssetMemory({
+      ownerUserId: MEMBER,
+      assetId: fridge.id,
+      label: "Where the receipt is",
+      notes: "Top drawer.",
+      scope: "household",
+    });
+
+    await removeHouseholdMember(store, { householdId: workspace.id, userId: MEMBER });
+
+    // Both ownership forms, all three write paths: a member who left mid-view
+    // gets the same sentence whether the detail was the household's or their own
+    // shared one — the difference between them is exactly the protected fact.
+    for (const memoryId of [shared.id, mine.id]) {
+      await expect(
+        review.editAssetMemory({
+          actorUserId: MEMBER,
+          memoryId,
+          edit: { notes: "Still mine." },
+        }),
+      ).rejects.toThrow(UNAVAILABLE);
+      await expect(review.setAsideAssetMemory({ actorUserId: MEMBER, memoryId })).rejects.toThrow(
+        UNAVAILABLE,
+      );
+      await expect(review.restoreAssetMemory({ actorUserId: MEMBER, memoryId })).rejects.toThrow(
+        UNAVAILABLE,
+      );
+    }
   });
 
   it("stops serving the household's evidence bytes to the member who captured them", async () => {

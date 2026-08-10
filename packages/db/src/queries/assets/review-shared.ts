@@ -11,7 +11,7 @@ import {
   type PrivacyScope,
   type SourceRecord,
 } from "@tendnote/domain";
-import { createAssetAuthority } from "./household-authority";
+import { createAssetAuthority, resolveOwnedOrVisible } from "./household-authority";
 import { recordAudit } from "./lifecycle";
 import type {
   AssetMemoryActionInput,
@@ -137,9 +137,10 @@ export async function loadAnchor(
   ownerUserId: string,
   assetId: string,
 ): Promise<Asset | null> {
-  const owned = await store.getAsset({ ownerUserId, assetId });
-  if (owned?.ownership === "member_owned") return owned;
-  return store.getVisibleAsset({ callerUserId: ownerUserId, assetId });
+  return resolveOwnedOrVisible({
+    owned: () => store.getAsset({ ownerUserId, assetId }),
+    visible: () => store.getVisibleAsset({ callerUserId: ownerUserId, assetId }),
+  });
 }
 
 /**

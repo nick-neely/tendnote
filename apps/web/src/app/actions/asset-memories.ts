@@ -3,6 +3,7 @@
 import {
   createActiveAssetMemory,
   editAssetMemory,
+  restoreAssetMemory,
   setAsideAssetMemory,
 } from "@tendnote/db/queries/assets";
 import { z } from "zod";
@@ -115,7 +116,11 @@ export async function editAssetMemoryAction(input: {
   });
 }
 
-/** Sets aside a detail that is no longer true. Nothing is deleted. */
+/**
+ * Sets aside a detail that is no longer true. Nothing is deleted, and
+ * {@link restoreAssetMemoryAction} is the inverse the surface's undo spends —
+ * the copy promises reversibility, so the reversal has to exist.
+ */
 export async function setAsideAssetMemoryAction(input: {
   memoryId: string;
 }): Promise<AssetMemoryMutationResult> {
@@ -124,6 +129,20 @@ export async function setAsideAssetMemoryAction(input: {
     input,
     body: ({ ownerUserId, input: parsed }) =>
       setAsideAssetMemory({ actorUserId: ownerUserId, memoryId: parsed.memoryId }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, callerUserId) => toAssetMemoryView(outcome.result, { callerUserId }),
+  });
+}
+
+/** Brings a set-aside detail back. */
+export async function restoreAssetMemoryAction(input: {
+  memoryId: string;
+}): Promise<AssetMemoryMutationResult> {
+  return runOwnerAction({
+    schema: memoryIdSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      restoreAssetMemory({ actorUserId: ownerUserId, memoryId: parsed.memoryId }),
     affectedScopes: (outcome) => outcome.affectedScopes,
     result: (outcome, callerUserId) => toAssetMemoryView(outcome.result, { callerUserId }),
   });

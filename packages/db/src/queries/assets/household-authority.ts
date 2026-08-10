@@ -28,6 +28,49 @@ export type AssetChildFacts = {
 };
 
 /**
+ * A record whose ownership form decides whether its owner key is an access path.
+ * Assets, Asset Memories, and Asset Evidence all satisfy it.
+ */
+type OwnershipBearing = { ownership: AssetOwnership };
+
+/**
+ * The storage-key rule, as a predicate: an owner-keyed row is only *the caller's*
+ * when it is member-owned.
+ *
+ * On a household-native row `ownerUserId` is whoever typed it, kept because the
+ * column is `NOT NULL` and because creator provenance is worth having. Treating
+ * it as an access path is how a departed creator keeps the household's records
+ * (ADR 0214), so every owner-keyed read in the family passes through here.
+ */
+export function memberOwned<TRecord extends OwnershipBearing>(
+  record: TRecord | null | undefined,
+): TRecord | null {
+  return record?.ownership === "member_owned" ? record : null;
+}
+
+/**
+ * The family's one load shape: try the owner-keyed read, accept it only for a
+ * member-owned row, and otherwise fall through to the scope-visible read.
+ *
+ * Factored because it was hand-copied at five sites and the copy that got it
+ * wrong was invisible — the evidence-bytes route kept serving a departed
+ * capturer's file for exactly as long as nobody re-read that one line. The
+ * owner-keyed read runs first because it is the common private case and the only
+ * path that reaches a review-gated proposal; `visible` is what requires current
+ * active membership.
+ *
+ * Reads are thunks rather than promises so the scope-visible query is not issued
+ * for the private case that never needs it.
+ */
+export async function resolveOwnedOrVisible<TRecord extends OwnershipBearing>(reads: {
+  owned: () => Promise<TRecord | null>;
+  visible: () => Promise<TRecord | null>;
+}): Promise<TRecord | null> {
+  const owned = memberOwned(await reads.owned());
+  return owned ?? (await reads.visible());
+}
+
+/**
  * The one place an Asset's authority — and every Asset child record's — is
  * decided.
  *
@@ -91,6 +134,35 @@ export function createAssetAuthority(store: AssetAuthorityStore) {
         operation: householdOperationForAsset(input.operation),
         record: assetFacts(input.asset),
       });
+    },
+
+    /**
+     * The same decision, answered rather than enforced.
+     *
+     * For a read that owes an empty list instead of a refusal: review state is
+     * never someone else's to see, and an empty list discloses nothing about
+     * whether there was anything to hide. Same proof, same facts, same form
+     * rules as {@link requireAssetAuthority} — the only difference is what the
+     * caller does with a `false`. That difference is the entire reason this
+     * exists rather than an ownership comparison written at the call site: a
+     * comparison cannot see current membership, and reading `ownerUserId` as
+     * authority is exactly what the storage-key rule forbids (ADR 0214).
+     */
+    async proveAssetAuthority(input: {
+      actorUserId: string;
+      asset: Asset;
+      operation: AssetAuthorityOperation;
+    }): Promise<boolean> {
+      assertAssetOperationForm({
+        operation: input.operation,
+        ownership: input.asset.ownership,
+      });
+      const proof = await prover.proveRecordAccess({
+        callerUserId: input.actorUserId,
+        operation: householdOperationForAsset(input.operation),
+        record: assetFacts(input.asset),
+      });
+      return proof.authorized;
     },
 
     /** The same decision on one child record, on the child's own facts. */

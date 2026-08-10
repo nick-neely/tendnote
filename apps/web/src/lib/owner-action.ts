@@ -132,7 +132,7 @@ export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
           error: error.message,
           conflict: {
             currentValue: error.conflict.currentValue,
-            actorLabel: error.conflict.actorUserId,
+            actorUserId: error.conflict.actorUserId,
             revision: error.conflict.revision,
           },
         };

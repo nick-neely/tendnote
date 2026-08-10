@@ -307,7 +307,12 @@ describe("losing a claim race", () => {
     actions.claimGiftIdeaAction.mockResolvedValue({
       ok: false,
       error: "Someone else already said they'd handle this one.",
-      conflict: { currentValue: "Wool blanket", actorLabel: "Sam", revision: 2 },
+      conflict: {
+        currentValue: "Wool blanket",
+        actorUserId: "user-sam",
+        actorName: "Sam",
+        revision: 2,
+      },
     });
     render(<GiftPlanDetailSurface detail={detail({ ideas: [idea()] })} />);
 
@@ -384,7 +389,12 @@ describe("correcting what is already written", () => {
     actions.editGiftIdeaAction.mockResolvedValue({
       ok: false,
       error: "This idea changed while you were editing.",
-      conflict: { currentValue: "Wool blanket, grey", actorLabel: "Sam", revision: 3 },
+      conflict: {
+        currentValue: "Wool blanket, grey",
+        actorUserId: "user-sam",
+        actorName: "Sam",
+        revision: 3,
+      },
     });
     render(
       <GiftPlanDetailSurface

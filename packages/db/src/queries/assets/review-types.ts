@@ -44,10 +44,19 @@ export type AssetReviewStore = {
    * Loads one *active* memory the caller may see under per-record scope rules,
    * whoever owns it — the counterpart of `getVisibleAssetEvidence`, and how a
    * member reaches a household-native detail they did not write (#386).
+   *
+   * `includeSetAside` widens it to a `dismissed` detail as well, for the undo
+   * behind set-aside: a household-native detail's owner-keyed read is refused by
+   * the storage-key rule, so without this nobody — including the member who set
+   * it aside — could bring the household's detail back. Deliberately a boolean
+   * naming the one extra state rather than a status list: `suggested` is review
+   * state and must never be scope-visible, and a list-shaped argument would make
+   * that a caller's decision to get wrong.
    */
   getVisibleAssetMemory: (input: {
     callerUserId: string;
     memoryId: string;
+    includeSetAside?: boolean;
   }) => Promise<AssetMemory | null>;
   updateAssetMemory: (input: {
     ownerUserId: string;

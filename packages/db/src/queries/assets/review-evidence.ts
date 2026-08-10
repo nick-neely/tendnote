@@ -12,7 +12,7 @@ import type {
   AssetEvidenceFilePayload,
   RemoveAssetEvidenceInput,
 } from "./evidence-types";
-import { createAssetAuthority } from "./household-authority";
+import { createAssetAuthority, resolveOwnedOrVisible } from "./household-authority";
 import { proveVisibleEvidence } from "./household-children";
 import { recordAudit } from "./lifecycle";
 import {
@@ -250,22 +250,29 @@ export async function listAssetEvidenceCaptureTargets(
  * rewrite, or delete another member's evidence. Household-native evidence is the
  * workspace's, so every active member holds the same standing over it (ADR
  * 0214). A missing row and a hidden one deny identically.
+ *
+ * Unlike setting an Asset Memory aside, this has no undo, and the asymmetry is
+ * chosen rather than missed. A memory is *set aside* — the row survives as
+ * `dismissed`, so the inverse is a status change and the copy can honestly
+ * promise reversibility. Evidence removal takes the stored bytes with it, and it
+ * is the privacy escape hatch: "remove my receipt" that quietly retained the
+ * file for a five-second undo window would be the product breaking the one
+ * promise this path exists to keep. The surface guards it with an armed in-place
+ * confirm instead, and its copy says *remove* rather than claiming nothing is.
  */
 export async function removeAssetEvidence(
   store: AssetReviewLifecycleStore,
   input: RemoveAssetEvidenceInput,
 ): Promise<AssetEvidence> {
-  const owned = await store.getAssetEvidence({
-    ownerUserId: input.actorUserId,
-    evidenceId: input.evidenceId,
+  const evidence = await resolveOwnedOrVisible({
+    owned: () =>
+      store.getAssetEvidence({ ownerUserId: input.actorUserId, evidenceId: input.evidenceId }),
+    visible: () =>
+      store.getVisibleAssetEvidence({
+        callerUserId: input.actorUserId,
+        evidenceId: input.evidenceId,
+      }),
   });
-  const evidence =
-    owned?.ownership === "member_owned"
-      ? owned
-      : await store.getVisibleAssetEvidence({
-          callerUserId: input.actorUserId,
-          evidenceId: input.evidenceId,
-        });
   if (!evidence) {
     throw new HouseholdRecordUnavailableError();
   }
@@ -316,12 +323,11 @@ export async function getAssetEvidenceFileForCaller(
   store: AssetReviewLifecycleStore,
   input: { callerUserId: string; evidenceId: string },
 ): Promise<AssetEvidenceFilePayload | null> {
-  const owned = await store.getAssetEvidence({
-    ownerUserId: input.callerUserId,
-    evidenceId: input.evidenceId,
+  const visible = await resolveOwnedOrVisible({
+    owned: () =>
+      store.getAssetEvidence({ ownerUserId: input.callerUserId, evidenceId: input.evidenceId }),
+    visible: () => store.getVisibleAssetEvidence(input),
   });
-  const visible =
-    owned?.ownership === "member_owned" ? owned : await store.getVisibleAssetEvidence(input);
   const evidence = visible
     ? await proveVisibleEvidence(store, { callerUserId: input.callerUserId, evidence: visible })
     : null;

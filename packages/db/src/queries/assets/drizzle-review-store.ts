@@ -73,8 +73,11 @@ export function createDrizzleAssetReviewStore(): AssetReviewStore {
         .where(
           and(
             eq(visibleMemories.id, input.memoryId),
-            // Active only: review state is never a scope-visible read.
-            eq(visibleMemories.status, "active"),
+            // Never `suggested`: review state is not a scope-visible read.
+            inArray(
+              visibleMemories.status,
+              input.includeSetAside ? ["active", "dismissed"] : ["active"],
+            ),
             visibleHouseholdRecordSql({
               callerUserId: input.callerUserId,
               tableAlias: "am",

@@ -126,7 +126,7 @@ function AssetEditForm({
         // already holds; an unresolvable one settles to "Someone" rather than
         // showing a raw id to a person.
         setReplace(true);
-        const actor = members.find((member) => member.userId === conflict.actorLabel)?.name;
+        const actor = members.find((member) => member.userId === conflict.actorUserId)?.name;
         return `${actor ?? "Someone"} changed this to “${conflict.currentValue}”. Save again to replace it with yours.`;
       },
     );

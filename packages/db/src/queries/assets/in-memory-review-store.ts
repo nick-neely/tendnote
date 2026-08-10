@@ -109,10 +109,13 @@ export function createInMemoryAssetReviewStore(deps: {
     },
     async getVisibleAssetMemory(input) {
       const memory = memories.get(input.memoryId);
+      const admitted: AssetMemory["status"][] = input.includeSetAside
+        ? ["active", "dismissed"]
+        : ["active"];
       if (
         !memory ||
-        // Active only: review state is never a scope-visible read.
-        memory.status !== "active" ||
+        // Never `suggested`: review state is not a scope-visible read.
+        !admitted.includes(memory.status) ||
         !(await canCallerViewMemory({ callerUserId: input.callerUserId, memory }))
       ) {
         return null;

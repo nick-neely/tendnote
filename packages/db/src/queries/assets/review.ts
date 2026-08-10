@@ -13,6 +13,7 @@ import {
   editAssetMemory,
   listVisibleAssetEvidence,
   listVisibleAssetMemories,
+  restoreAssetMemory,
   setAsideAssetMemory,
 } from "./household-children";
 import { acceptSuggestedAsset, dismissSuggestedAsset, editSuggestedAsset } from "./review-assets";
@@ -288,6 +289,15 @@ export function createAssetReview(store: AssetReviewLifecycleStore, deps: AssetE
     async setAsideAssetMemory(input: AssetMemoryActionInput & { source?: AssetAuditSource }) {
       const memory = await setAsideAssetMemory(store, input);
       // Re-enqueued so the processor drops the vector for a fact that is gone.
+      await embed.memory(memory);
+
+      return memory;
+    },
+
+    /** Brings a set-aside detail back — the inverse of the above (#386). */
+    async restoreAssetMemory(input: AssetMemoryActionInput & { source?: AssetAuditSource }) {
+      const memory = await restoreAssetMemory(store, input);
+      // True again, so retrievable again.
       await embed.memory(memory);
 
       return memory;

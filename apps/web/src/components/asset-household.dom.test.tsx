@@ -163,7 +163,7 @@ describe("two members editing at once", () => {
       .mockResolvedValueOnce({
         ok: false,
         error: "Someone else changed this while you were editing.",
-        conflict: { currentValue: "Kitchen fridge", actorLabel: PARTNER, revision: 4 },
+        conflict: { currentValue: "Kitchen fridge", actorUserId: PARTNER, revision: 4 },
       })
       .mockResolvedValueOnce({ ok: true, view: assetViewFixture({ name: "The big fridge" }) });
 

@@ -263,7 +263,7 @@ function GiftPlanEditForm({ plan, onSaved }: { plan: GiftPlanView; onSaved: () =
           }
           if (result.conflict) {
             setConflict(
-              `${result.conflict.actorLabel ?? "Someone"} changed this to “${result.conflict.currentValue}”. Save again to replace it with yours.`,
+              `${result.conflict.actorName ?? "Someone"} changed this to “${result.conflict.currentValue}”. Save again to replace it with yours.`,
             );
             setReplace(true);
             return false;
@@ -380,8 +380,8 @@ function GiftIdeaRow({
       if (result.conflict) {
         onChanged({
           ...idea,
-          claimedByLabel: result.conflict.actorLabel,
-          claimedByMe: result.conflict.actorLabel === "You",
+          claimedByLabel: result.conflict.actorName ?? null,
+          claimedByMe: result.conflict.actorName === "You",
         });
       }
       setError(result.error || GIFT_PLAN_GENERIC_ERROR);
@@ -521,7 +521,7 @@ function GiftIdeaEditForm({
         }
         if (result.conflict) {
           setConflict(
-            `${result.conflict.actorLabel ?? "Someone"} changed this to “${result.conflict.currentValue}”. Save again to replace it with yours.`,
+            `${result.conflict.actorName ?? "Someone"} changed this to “${result.conflict.currentValue}”. Save again to replace it with yours.`,
           );
           setReplace(true);
           return false;
