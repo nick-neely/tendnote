@@ -1,6 +1,9 @@
 "use client";
 
-import { NO_RESPONSIBILITY_HOLDER_LABEL, RESPONSIBILITY_HANDOFF_PROMPT } from "@tendnote/domain";
+import {
+  NO_RESPONSIBILITY_HOLDER_LABEL,
+  RESPONSIBILITY_HANDOFF_PROMPT,
+} from "@tendnote/domain/household-actions";
 import { useEffect, useState, useTransition } from "react";
 import {
   declineGeneralActionOfferAction,

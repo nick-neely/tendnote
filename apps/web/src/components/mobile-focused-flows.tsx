@@ -6,8 +6,12 @@ import type {
   GlobalRecallResponse,
 } from "@tendnote/domain/global-recall";
 import Link from "next/link";
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
-import { destinationsInGroup } from "@/components/app-destinations";
+import { type ReactNode, type RefObject, Suspense, use, useEffect, useRef, useState } from "react";
+import {
+  destinationsInGroup,
+  NO_VIEWER_STANDINGS_RESOLVED,
+  type ViewerStandings,
+} from "@/components/app-destinations";
 import { ArrowLeftIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from "@/components/icons";
 import { type CaptureHandlers, MobileCaptureFlow } from "@/components/mobile-capture-flow";
 import { MobileFailureState } from "@/components/mobile-failure-state";
@@ -642,29 +646,22 @@ export function EveFlow({ children, onClose }: { children?: ReactNode; onClose: 
   );
 }
 
-export function MenuFlow({ onClose, onNavigate }: { onClose: () => void; onNavigate: () => void }) {
+export function MenuFlow({
+  onClose,
+  onNavigate,
+  viewerStandings = NO_VIEWER_STANDINGS_RESOLVED,
+}: {
+  onClose: () => void;
+  onNavigate: () => void;
+  viewerStandings?: Promise<ViewerStandings>;
+}) {
   return (
     <FullScreenFlow description="Go to another part of Tendnote." onClose={onClose} title="Menu">
-      <nav aria-label="Menu destinations" className="flex flex-col divide-y px-gutter py-4">
-        {destinationsInGroup("menu").map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link
-              className="flex min-h-14 items-center gap-3 text-base focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              href={item.route}
-              key={item.id}
-              /* The destination renders under this overlay, so the overlay has
-                 to go on activation - otherwise the app reads as frozen while
-                 the page it hides has already changed. Same contract Search
-                 uses when a result row is opened. */
-              onClick={onNavigate}
-            >
-              <Icon aria-hidden className="size-5 text-muted-foreground" />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
+      {/* The destinations everyone has render immediately; only a conditional
+          one waits, so opening Menu never stalls on a membership read. */}
+      <Suspense fallback={<MenuDestinations onNavigate={onNavigate} />}>
+        <ViewerMenuDestinations onNavigate={onNavigate} standings={viewerStandings} />
+      </Suspense>
       <div className="mt-2 flex flex-col gap-2 border-t px-gutter py-4">
         <p className="text-base" id="mobile-appearance-label">
           Appearance
@@ -672,5 +669,48 @@ export function MenuFlow({ onClose, onNavigate }: { onClose: () => void; onNavig
         <ThemeSegmentedControl aria-labelledby="mobile-appearance-label" />
       </div>
     </FullScreenFlow>
+  );
+}
+
+function ViewerMenuDestinations({
+  onNavigate,
+  standings,
+}: {
+  onNavigate: () => void;
+  standings: Promise<ViewerStandings>;
+}) {
+  return (
+    <MenuDestinations householdMember={use(standings).householdMember} onNavigate={onNavigate} />
+  );
+}
+
+function MenuDestinations({
+  householdMember = false,
+  onNavigate,
+}: {
+  householdMember?: boolean;
+  onNavigate: () => void;
+}) {
+  return (
+    <nav aria-label="Menu destinations" className="flex flex-col divide-y px-gutter py-4">
+      {destinationsInGroup("menu", { householdMember }).map((item) => {
+        const Icon = item.icon;
+        return (
+          <Link
+            className="flex min-h-14 items-center gap-3 text-base focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            href={item.route}
+            key={item.id}
+            /* The destination renders under this overlay, so the overlay has
+               to go on activation - otherwise the app reads as frozen while
+               the page it hides has already changed. Same contract Search
+               uses when a result row is opened. */
+            onClick={onNavigate}
+          >
+            <Icon aria-hidden className="size-5 text-muted-foreground" />
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

@@ -52,6 +52,11 @@ describe("semantic retrieval product-route boundaries", () => {
       // cannot meet one in ranked recall.
       "gift-plans",
       "gift-plans/[giftPlanId]",
+      // The shared Household home (#384). A deterministic, capped read over
+      // records the caller is separately proved to see, composed from each
+      // domain's own listing — never ranked or semantic retrieval, so nothing
+      // reaches it by resembling a household record rather than being one.
+      "household",
       // The Household Invitation acceptance capability (#379). Reachable only
       // from an emailed link, never from navigation, and it carries no
       // relationship or semantic-search surface.

@@ -41,6 +41,7 @@
     "./queries/gift-plans": "./src/queries/gift-plans.ts",
     "./queries/global-recall": "./src/queries/global-recall.ts",
     "./queries/gmail-drafts": "./src/queries/gmail-drafts.ts",
+    "./queries/household-home": "./src/queries/household-home.ts",
     "./queries/households": "./src/queries/households.ts",
     "./queries/memory-curator": "./src/queries/memory-curator.ts",
     "./queries/memories": "./src/queries/memories.ts",

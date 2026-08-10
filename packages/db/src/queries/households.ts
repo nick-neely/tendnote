@@ -288,6 +288,36 @@ export async function getActiveHouseholdNameForUser(input: {
   return household?.name ?? null;
 }
 
+/**
+ * The household the caller is currently admitted to, or null.
+ *
+ * The single answer behind "does this member have a Household destination at
+ * all", and the frame the Household home renders inside. Both facts are read
+ * together and fresh: a membership that has ended and a workspace that has been
+ * dissolved are one answer to the member, and neither may be inferred from a
+ * role, a cached page, or a prior successful read (ADR 0219).
+ *
+ * The workspace status is re-checked rather than trusted to the membership
+ * sweep. Dissolution ends every membership, so the check is redundant today —
+ * and it is the redundancy that makes a future sweep which misses a row fail
+ * closed instead of leaving one member inside a household that no longer exists.
+ */
+export async function getAdmittedHouseholdForUser(input: {
+  userId: string;
+}): Promise<{ id: string; name: string } | null> {
+  const memberships = await defaultHouseholdLifecycle.listActiveMembershipsForUser(input);
+  const householdId = memberships[0]?.householdId;
+  if (!householdId) {
+    return null;
+  }
+
+  const household = await defaultHouseholdStore.getHouseholdWorkspace({ householdId });
+  if (!household || household.status !== "active") {
+    return null;
+  }
+  return { id: household.id, name: household.name };
+}
+
 export async function listShareableHouseholdMembersForUser(input: { userId: string }) {
   const memberships = await defaultHouseholdLifecycle.listActiveMembershipsForUser(input);
   const householdId = memberships[0]?.householdId;

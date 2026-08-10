@@ -280,6 +280,10 @@ _Avoid_: Admin, superuser, organization owner
 The unanimous active-Owner decision to end a Household Workspace, cancel its invitations, end its memberships, and begin the retained household-native-record closure lifecycle. It is not a member departure, a record transfer, or a unilateral owner action.
 _Avoid_: Delete household, owner exit, account deletion
 
+**Household Home**:
+The Household Workspace's own read-first coordination surface: a deterministic, capped composition of the household-visible records its active members are jointly coordinating, split into currently actionable ones and dated ones approaching soon. It is common to members with the same record access and never personalised, so a member's private Today curation cannot reorder or hide anything on it; it exposes only small reversible actions each record's own domain already authorises, and it is neither a collective Today, an activity feed, a member-status panel, nor a second task backlog. It is distinct from Account > Household, which owns who belongs to the workspace and how it is governed.
+_Avoid_: Household Today, shared dashboard, activity feed, team board, household inbox
+
 **Household-Native Record**:
 A Personal OS record owned by the Household Workspace itself rather than by a member, such as a shared chore or a joint recurring obligation. It is visible to every active Household Member by definition, grants every active member symmetric authority without Household Owner or creator privilege, preserves creator and actor provenance, is removed by archive rather than by one member's permanent deletion, and remains with the household — with historical attribution — when a member leaves. Visibility alone never makes a member-owned record household-native; conversion is an explicit owner action.
 _Avoid_: Household-scoped record, shared record, team record, ownerless record

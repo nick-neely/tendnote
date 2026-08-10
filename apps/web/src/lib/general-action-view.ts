@@ -11,9 +11,9 @@ import type {
   PrivacyScope,
   RecordSurfacingState,
 } from "@tendnote/domain";
-import { responsibilityHolderLabel } from "@tendnote/domain";
 import { assetLabelForKind } from "@tendnote/domain/assets";
 import { describeRecurrence } from "@tendnote/domain/general-actions";
+import { responsibilityHolderLabel } from "@tendnote/domain/household-actions";
 import {
   formatSurfacingDay,
   resolveRecordSurfacing,

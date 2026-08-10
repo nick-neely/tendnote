@@ -7,6 +7,14 @@ const unusedAction = async () => undefined;
 export const archiveGeneralActionAction = unusedAction;
 export const completeGeneralActionAction = unusedAction;
 export const createGeneralActionAction = unusedAction;
+// The household-native additions (#383). The browser contracts import the
+// Action row transitively, so a doubled module missing one of these fails the
+// whole browser lane at import rather than in a test.
+export const declineGeneralActionOfferAction = unusedAction;
+export const getResponsibilityHandoffOfferAction = unusedAction;
+export const getResponsibilityHolderReminderOfferAction = unusedAction;
+export const handGeneralActionToHouseholdAction = unusedAction;
+export const setResponsibilityHolderAction = unusedAction;
 export const deferGeneralActionAction = unusedAction;
 export const dismissGeneralActionAction = unusedAction;
 export const editGeneralActionAction = unusedAction;

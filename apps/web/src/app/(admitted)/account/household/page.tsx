@@ -61,9 +61,13 @@ export async function HouseholdContent() {
 }
 
 /**
- * Account owns the Household entry and return point, so the way back to Account
- * is part of the page rather than an assumed browser gesture. There is no
- * top-level Household destination to return to instead.
+ * Account owns who belongs to the workspace and how it is governed, so the way
+ * back to Account is part of the page rather than an assumed browser gesture.
+ *
+ * The global Household destination added in #384 is the working surface, not a
+ * relocation of this one: a member arrives here from its "Manage household"
+ * link and leaves the same way. Governance deliberately does not move onto the
+ * home, and the home's coordination records deliberately do not appear here.
  */
 function HouseholdShell({ children }: { children: React.ReactNode }) {
   return (

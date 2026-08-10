@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { AppShellEffects } from "@/components/app-shell-effects";
 import { ReminderInstallationProvider } from "@/components/reminder-installation-context";
 import { hasAdmittedShellAccess } from "@/lib/access/current-access";
+import { readViewerHouseholdAccess } from "@/lib/household/viewer-household-access";
 
 /**
  * Prerenders an owner-neutral application frame for partial prefetching while
@@ -18,7 +19,10 @@ export default function AdmittedLayout({ children }: { children: React.ReactNode
           <AdmissionMarker />
         </Suspense>
         <div className="admitted-layout-content">
-          <AppShell>{children}</AppShell>
+          {/* Started here and handed down unawaited, so the shell and the
+              destination render at once and only the two navigation surfaces
+              that can show a Household link wait for the membership read. */}
+          <AppShell viewerStandings={readViewerHouseholdAccess()}>{children}</AppShell>
         </div>
       </ReminderInstallationProvider>
     </div>
