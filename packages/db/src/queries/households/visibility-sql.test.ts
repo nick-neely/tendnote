@@ -104,6 +104,82 @@ describe("household visibility pre-filter and proof agree", () => {
     expect(source).toMatch(/hrs\.record_kind = \$\{input\.recordKind\}/);
   });
 
+  /**
+   * The ownership dimension the truth table above cannot express.
+   *
+   * A household-native record has no `owner_user_id` at all, so the predicate's
+   * two owner comparisons must be inert for it rather than accidentally
+   * matching. In SQL they are: `NULL = 'someone'` is unknown, never true. The
+   * engine half pins that the same rows resolve the way the workspace-owned form
+   * requires - symmetric authority for every active member, nothing for anyone
+   * else (ADR 0214).
+   */
+  describe.each([
+    "view",
+    "update",
+    "archive",
+  ] as const)("engine: workspace-owned records under %s", (operation) => {
+    const subject = {
+      kind: "saved_item",
+      id: "record-2",
+      ownerUserId: null,
+      scope: "household",
+      householdId: HOUSEHOLD,
+      ownership: "household_native",
+    } as const;
+
+    it.each([OWNER, SELECTED, UNSELECTED])("admits active member %s", (caller) => {
+      expect(
+        evaluateHouseholdAuthorization({
+          callerUserId: caller,
+          operation,
+          subject,
+          callerActiveMemberships: ACTIVE.filter((membership) => membership.userId === caller),
+        }),
+      ).toMatchObject({ authorized: true, via: "household_authority" });
+    });
+
+    it("refuses someone who is no longer active", () => {
+      expect(
+        evaluateHouseholdAuthorization({
+          callerUserId: DEPARTED,
+          operation,
+          subject,
+          callerActiveMemberships: [],
+        }).authorized,
+      ).toBe(false);
+    });
+  });
+
+  it("engine: never reads a null owner as an owner, even on a private row", () => {
+    // The fail-closed direction: if a workspace-owned record ever ended up
+    // `private`, it must reach nobody rather than everybody.
+    expect(
+      evaluateHouseholdAuthorization({
+        callerUserId: OWNER,
+        operation: "view",
+        subject: {
+          kind: "saved_item",
+          id: "record-3",
+          ownerUserId: null,
+          scope: "private",
+          householdId: null,
+        },
+        callerActiveMemberships: ACTIVE,
+      }),
+    ).toMatchObject({ authorized: false, denial: "not_owner" });
+  });
+
+  it("SQL: compares the owner column rather than assuming one exists", () => {
+    // Both owner comparisons stay plain `=` against the column. A rewrite to
+    // `coalesce(owner_user_id, …)` or `is not distinct from` would make a null
+    // owner match something, which is how a workspace-owned row would start
+    // leaking out through the private and shared branches.
+    expect(source.match(/owner_user_id = \$\{input\.callerUserId\}/g)).toHaveLength(2);
+    expect(source).not.toContain("coalesce(");
+    expect(source).not.toContain("is not distinct from");
+  });
+
   it("SQL: is documented as a pre-filter that does not authorize an operation", () => {
     // The comment is load-bearing: it is what stops the next author treating a row
     // that survived the predicate as an authorized read.

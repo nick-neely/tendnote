@@ -4,7 +4,7 @@ import type {
   ReminderOptInState,
   ReminderSchedule,
 } from "@tendnote/domain/reminders";
-import { isEligibleReminderRecord, reminderOccurrenceKey } from "./policy";
+import { isEligibleReminderRecord, reminderOccurrenceKey, reminderSubscriber } from "./policy";
 import type { ReminderRecord, ReminderStore } from "./types";
 
 export type ReminderPushSender = (input: {
@@ -114,7 +114,11 @@ async function loadDispatchContext(
           subscriberUserId: claimed.ownerUserId,
           record,
         })
-      : record.ownerUserId === claimed.ownerUserId
+      : // The subscriber, not the record's owner. For a Saved Item the two differ
+        // by design, and because the loader resolves the record *for* this
+        // subscriber through the visibility proof, a member who lost access since
+        // the intent was written loads nothing here and the send is suppressed.
+        reminderSubscriber(record) === claimed.ownerUserId
     : false;
   return { record, schedule, installation, optIn, subscriptionAuthorized };
 }

@@ -1,6 +1,8 @@
 import { browseAssets, getAsset } from "@tendnote/db/queries/assets";
 import type { AffectedScope } from "@tendnote/db/queries/general-actions";
+import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
 import { listReminderSchedulesForOwner } from "@tendnote/db/queries/reminders";
+import type { SavedItemWithContext } from "@tendnote/db/queries/saved-items";
 import { listSavedItems } from "@tendnote/db/queries/saved-items";
 import { cacheLife, cacheTag } from "next/cache";
 import { toAssetBrowseView, toAssetView } from "@/lib/asset-view";
@@ -158,6 +160,7 @@ async function cachedActiveSavedItemViews(callerUserId: string, refreshedAt: num
       .map((schedule) => [schedule.recordId, schedule]),
   );
   const now = new Date(refreshedAt);
+  const memberNames = await savedItemMemberNames(callerUserId, items);
   return items.map((item) => {
     cacheTag(assetCacheContract.savedItemEntity(callerUserId, item.id));
     cacheTag(assetCacheContract.visibleSavedItemEntity(item.id));
@@ -165,11 +168,30 @@ async function cachedActiveSavedItemViews(callerUserId: string, refreshedAt: num
       cacheTag(assetCacheContract.householdSavedItemCollection(item.householdId));
     }
     const schedule = scheduleByItemId.get(item.id);
-    return toSavedItemView(
-      item,
-      now,
-      schedule ? toReminderScheduleView(schedule, "instant") : null,
+    return toSavedItemView(item, {
       callerUserId,
-    );
+      now,
+      reminderSchedule: schedule ? toReminderScheduleView(schedule, "instant") : null,
+      memberNames,
+    });
   });
+}
+
+/**
+ * The names the ledger needs to say "Shared by Mara" or "Created by Ana" instead
+ * of a raw id.
+ *
+ * Read only when a household-shaped item is actually present, so the common
+ * all-private ledger costs nothing extra. A member renaming themselves is not an
+ * invalidation trigger for this collection, so a caption may lag by this
+ * profile's lifetime - acceptable for a name, and the alternative is coupling
+ * every member's account edit to every other member's Saved Item cache.
+ */
+async function savedItemMemberNames(callerUserId: string, items: SavedItemWithContext[]) {
+  const needsNames = items.some(
+    (item) => item.ownership === "household_native" || item.ownerUserId !== callerUserId,
+  );
+  if (!needsNames) return undefined;
+  const members = await listShareableHouseholdMembersForUser({ userId: callerUserId });
+  return new Map(members.map((member) => [member.userId, member.name]));
 }

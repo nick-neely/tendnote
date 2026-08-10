@@ -1,4 +1,4 @@
-import { SavedItemValidationError } from "@tendnote/domain";
+import { assertMemberOwnedSavedItem, SavedItemValidationError } from "@tendnote/domain";
 import { requireOwnedSavedItem } from "./context";
 import type { SavedItemLifecycleStore } from "./types";
 
@@ -40,11 +40,21 @@ export async function getSourceDeletionImpact(
   };
 }
 
+/**
+ * Deletes a Saved Item and the evidence only it stands on.
+ *
+ * Two guards keep a workspace-owned item out of here, and both are deliberate.
+ * The owner-keyed read cannot find one at all, and the explicit ownership check
+ * below says why for anything that reaches it another way: archive is a
+ * household-native item's removal path, so no single member deletes what the
+ * household owns and everyone else's history rests on (ADR 0214).
+ */
 export async function deleteUniqueSavedItemSource(
   store: SavedItemLifecycleStore,
   input: { actorUserId: string; savedItemId: string },
 ) {
   const item = await requireOwnedSavedItem(store, input);
+  assertMemberOwnedSavedItem(item, "deleted");
   const impact = await getSourceDeletionImpact(store, {
     actorUserId: input.actorUserId,
     sourceRecordId: item.sourceRecordId,

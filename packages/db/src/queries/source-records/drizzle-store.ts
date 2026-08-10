@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, ilike } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import {
   auditLog,
@@ -7,11 +8,15 @@ import {
   sourceRecords,
   unresolvedPersonMentions,
 } from "../../schema";
+import { provenVisibleRecord } from "../households/authorization";
+import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import type {
   ListSourceRecordReviewsInput,
   SourceRecordResolutionStore,
   SourceRecordReviewComponent,
 } from "./types";
+
+const visibleSourceRecords = alias(sourceRecords, "sr");
 
 export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
   return {
@@ -248,6 +253,37 @@ export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
         .limit(1);
 
       return sourceRecord ?? null;
+    },
+    async getVisibleSourceRecord(input) {
+      const [sourceRecord] = await getDb()
+        .select()
+        .from(visibleSourceRecords)
+        .where(
+          and(
+            eq(visibleSourceRecords.id, input.sourceRecordId),
+            visibleHouseholdRecordSql({
+              callerUserId: input.callerUserId,
+              tableAlias: "sr",
+              recordKind: "source_record",
+            }),
+          ),
+        )
+        .limit(1);
+
+      // The predicate narrows and the proof authorizes, the same two steps every
+      // scoped single-record read takes (ADR 0219). Null on refusal, which is
+      // indistinguishable from evidence that was never there.
+      return provenVisibleRecord({
+        callerUserId: input.callerUserId,
+        row: sourceRecord,
+        facts: (row) => ({
+          kind: "source_record",
+          id: row.id,
+          ownerUserId: row.ownerUserId,
+          scope: row.scope,
+          householdId: row.householdId,
+        }),
+      });
     },
     async listAuditLogEntries(input) {
       const rows = await getDb()

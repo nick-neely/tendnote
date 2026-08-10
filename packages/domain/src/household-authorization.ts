@@ -45,7 +45,13 @@ export type HouseholdAuthorizationSubject = {
   /** The record family, so a proof for one kind can never cover another. */
   kind: string;
   id: string;
-  ownerUserId: string;
+  /**
+   * Null when the Household Workspace owns the record rather than a member
+   * (ADR 0214). A `household_native` subject must supply null: a member id left
+   * here would make that member the record's owner in the audience rule, which
+   * is the asymmetry household-native ownership exists to remove.
+   */
+  ownerUserId: string | null;
   scope: PrivacyScope;
   householdId: string | null;
   /** The selected active members for a `shared` scope. */
@@ -74,11 +80,13 @@ export type HouseholdAuthorizationSubject = {
  * every active member holds symmetric authority over it and no creator or
  * Household Owner privilege applies (see CONTEXT.md, Household-Native Record).
  *
- * `household_native` is written by General Actions and Routines (#383), the
- * first domain to earn the full Phase Eight collaboration contract. Ownership
- * form is a stored fact on the record, never derived from scope: a member-owned
- * Action at `household` scope and a household-native one look identical to the
- * audience rule and could not be told apart without it.
+ * `household_native` is written by Saved Items (#385), which store it with a
+ * null `ownerUserId` (ADR 0214), and by General Actions and Routines (#383).
+ * Ownership form is a stored fact on the record, never derived from scope: a
+ * member-owned record at `household` scope and a household-native one look
+ * identical to the audience rule and could not be told apart without it. A
+ * family that cannot name its ownership form will infer authority from scope
+ * instead, which is the mistake this distinction exists to prevent.
  */
 export type HouseholdRecordOwnership = "member_owned" | "household_native";
 

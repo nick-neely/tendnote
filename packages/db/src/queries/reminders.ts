@@ -20,6 +20,7 @@ import { createHouseholdAuthorizationProver } from "./households/authorization";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createDrizzleReminderStore } from "./reminders/drizzle-store";
 import { scheduleReminderDeliveryOutbox } from "./reminders/outbox";
+import { reminderSubscriber } from "./reminders/policy";
 import { createReminderService } from "./reminders/service";
 import type { ReminderRecord } from "./reminders/types";
 import { createDrizzleSavedItemStore } from "./saved-items/drizzle-store";
@@ -83,30 +84,50 @@ async function loadFollowupReminderRecord(input: {
   };
 }
 
+/**
+ * The one loader keyed by visibility rather than by ownership.
+ *
+ * Every active member who can currently see a Saved Item may choose their own
+ * Reminder Schedule for it, and a household-native one has no owner to key on at
+ * all (`docs/phase-8/household-saved-items.md`, ADR 0214). An owner-scoped read
+ * here would answer null for exactly the two cases that clause exists to serve -
+ * a workspace-owned item, and another member's item shared with this member -
+ * and the surface would render a reminder control that silently did nothing.
+ *
+ * `getVisibleSavedItem` runs the Household Authorization Proof, so this asks the
+ * precise question a subscription depends on: may this member see this record,
+ * right now? A member who has since left, or lost the share, loads nothing - and
+ * because dispatch loads through here too, their pending intents stop being
+ * deliverable at the same moment, without relying on a separate sweep.
+ */
 async function loadSavedItemReminderRecord(input: {
-  ownerUserId: string;
+  subscriberUserId: string;
   recordId: string;
 }): Promise<ReminderRecord | null> {
-  const item = await savedItemStore.getSavedItem({
-    ownerUserId: input.ownerUserId,
+  const item = await savedItemStore.getVisibleSavedItem({
+    callerUserId: input.subscriberUserId,
     savedItemId: input.recordId,
   });
   if (!item) return null;
-  const sensitivity = await reminderSourceSensitivity({
-    ownerUserId: input.ownerUserId,
+  // Gated on the grounding this subscriber can reach, never on what the item's
+  // owner can. A reminder puts the record on someone's device, so the evidence
+  // behind it has to be evidence they were actually shown; unreadable grounding
+  // reads as restricted and withholds the reminder rather than guessing.
+  const source = await sourceRecordStore.getVisibleSourceRecord({
+    callerUserId: input.subscriberUserId,
     sourceRecordId: item.sourceRecordId,
-    getSourceRecord: sourceRecordStore.getSourceRecord,
   });
   return {
     id: item.id,
     kind: "saved_item",
     ownerUserId: item.ownerUserId,
+    subscriberUserId: input.subscriberUserId,
     title: item.title,
     status: item.status,
     occursAt: item.bringBackAt,
     timeSemantics: reminderTimeSemanticsForRecordKind("saved_item"),
     recurrence: null,
-    sensitivity,
+    sensitivity: source?.sensitivity ?? "restricted",
     scope: item.scope,
     personId: null,
   };
@@ -189,7 +210,10 @@ async function authorizeReminderSubscription(input: {
   record: ReminderRecord;
 }): Promise<boolean> {
   if (input.record.kind !== "general_action" && input.record.kind !== "routine") {
-    return input.record.ownerUserId === input.subscriberUserId;
+    // Through `reminderSubscriber` rather than the owner directly: a
+    // visibility-keyed loader names the member it proved the record for, and a
+    // workspace-owned record has no owner to compare against at all (ADR 0214).
+    return reminderSubscriber(input.record) === input.subscriberUserId;
   }
   const proof = await householdRecordProver.proveRecordAccess({
     callerUserId: input.subscriberUserId,
@@ -218,7 +242,7 @@ export const reminderService = createReminderService({
     }
     if (input.recordKind === "saved_item") {
       return loadSavedItemReminderRecord({
-        ownerUserId: input.ownerUserId,
+        subscriberUserId: input.ownerUserId,
         recordId: input.recordId,
       });
     }
@@ -266,6 +290,92 @@ export function saveReminder(input: Parameters<typeof reminderService.saveRemind
 
 export function clearReminder(input: Parameters<typeof reminderService.clearReminder>[0]) {
   return reminderMutationOutcome(input, reminderService.clearReminder(input));
+}
+
+/**
+ * Re-derives every subscriber's schedule for one Saved Item after it changes.
+ *
+ * A schedule belongs to the member who chose it, so a change to the record has
+ * to be answered once per subscriber rather than once for the record. Each pass
+ * reloads through the visibility-scoped loader, which means the same call both
+ * regenerates the intents of members who can still see it and supersedes those
+ * of members who no longer can - the spec's "changes revalidate and regenerate
+ * affected subscribers' pending intents" and its revocation clause are the same
+ * operation seen from two sides (`docs/phase-8/household-saved-items.md`).
+ *
+ * Best-effort per subscriber: the durable Saved Item write has already committed
+ * and is authoritative, so one member's reminder bookkeeping failing must not
+ * turn another member's successful edit into an error.
+ */
+export async function revalidateSavedItemReminderSubscribers(input: {
+  savedItemId: string;
+  now?: Date;
+}): Promise<{ revalidated: number }> {
+  const subscribers = await reminderStore.listScheduleSubscribers({
+    recordKind: "saved_item",
+    recordId: input.savedItemId,
+  });
+  const now = input.now ?? new Date();
+  let revalidated = 0;
+  for (const schedule of subscribers) {
+    try {
+      await reminderService.reconcileReminderRecord({
+        ownerUserId: schedule.ownerUserId,
+        recordKind: "saved_item",
+        recordId: input.savedItemId,
+        now,
+      });
+      revalidated += 1;
+    } catch {
+      // Left for the next reconcile rather than failing the member's write.
+    }
+  }
+  return { revalidated };
+}
+
+/**
+ * Drops the Saved Item schedules a member can no longer read.
+ *
+ * Called when household access ends - departure, removal, dissolution. Losing
+ * visibility has to revoke the subscription itself and not merely its pending
+ * intents: a schedule left behind would quietly resume delivering if the person
+ * were ever re-admitted, which is not something they asked for twice.
+ *
+ * Visibility is re-read per record through the proof rather than inferred from
+ * the membership change, so this stays correct for a member who left one
+ * household while keeping private items of their own.
+ */
+export async function revokeUnreadableSavedItemReminders(input: {
+  subscriberUserId: string;
+  now?: Date;
+}): Promise<{ revoked: number }> {
+  const schedules = await reminderStore.listSchedulesForOwner({
+    ownerUserId: input.subscriberUserId,
+  });
+  const now = input.now ?? new Date();
+  let revoked = 0;
+  for (const schedule of schedules) {
+    if (schedule.recordKind !== "saved_item") continue;
+    const stillVisible = await savedItemStore.getVisibleSavedItem({
+      callerUserId: input.subscriberUserId,
+      savedItemId: schedule.recordId,
+    });
+    if (stillVisible) continue;
+    await reminderStore.supersedeOccurrenceIntents({
+      ownerUserId: input.subscriberUserId,
+      recordKind: "saved_item",
+      recordId: schedule.recordId,
+      now,
+    });
+    await reminderStore.deleteSchedule({
+      ownerUserId: input.subscriberUserId,
+      recordKind: "saved_item",
+      recordId: schedule.recordId,
+      now,
+    });
+    revoked += 1;
+  }
+  return { revoked };
 }
 
 export function reconcileReminderRecord(

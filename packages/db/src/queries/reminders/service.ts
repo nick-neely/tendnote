@@ -8,7 +8,7 @@ import {
 import { createReminderDeliveryPlanner } from "./delivery-planning";
 import { createReminderDispatcher } from "./dispatch";
 import { createReminderInstallationService } from "./installation-service";
-import { isEligibleReminderRecord, reminderOccurrenceKey } from "./policy";
+import { isEligibleReminderRecord, reminderOccurrenceKey, reminderSubscriber } from "./policy";
 import type { ReminderGeneralAction, ReminderRecord, ReminderStore } from "./types";
 
 const HOUR_MS = 60 * 60 * 1_000;
@@ -50,7 +50,7 @@ export function createReminderService(input: {
 }) {
   const authorizeSubscription =
     input.authorizeSubscription ??
-    (async (values) => values.record.ownerUserId === values.subscriberUserId);
+    (async (values) => reminderSubscriber(values.record) === values.subscriberUserId);
 
   async function loadRecord(values: {
     ownerUserId: string;
@@ -302,14 +302,14 @@ export function createReminderService(input: {
     recordId: string;
     now: Date;
   }) {
-    const subscribers = await input.store.listScheduleSubscribersForRecord({
+    const subscribers = await input.store.listScheduleSubscribers({
       recordKind: values.recordKind,
       recordId: values.recordId,
     });
     return Promise.all(
-      subscribers.map((subscriberUserId) =>
+      subscribers.map((subscriber) =>
         reconcileReminderRecord({
-          ownerUserId: subscriberUserId,
+          ownerUserId: subscriber.ownerUserId,
           recordKind: values.recordKind,
           recordId: values.recordId,
           now: values.now,

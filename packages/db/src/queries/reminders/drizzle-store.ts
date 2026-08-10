@@ -59,17 +59,17 @@ export function createDrizzleReminderStore(): ReminderStore {
         .where(eq(reminderSchedules.ownerUserId, input.ownerUserId))
         .orderBy(asc(reminderSchedules.intendedAt));
     },
-    async listScheduleSubscribersForRecord(input) {
-      const rows = await getDb()
-        .select({ ownerUserId: reminderSchedules.ownerUserId })
+    async listScheduleSubscribers(input) {
+      return getDb()
+        .select()
         .from(reminderSchedules)
         .where(
           and(
             eq(reminderSchedules.recordKind, input.recordKind),
             eq(reminderSchedules.recordId, input.recordId),
           ),
-        );
-      return rows.map((row) => row.ownerUserId);
+        )
+        .orderBy(asc(reminderSchedules.ownerUserId));
     },
     async getSchedule(input) {
       const [row] = await getDb()

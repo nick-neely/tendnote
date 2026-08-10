@@ -1,11 +1,20 @@
 import type { MutationOutcome } from "../affected-scopes";
 import { affectedScopesForSavedItem } from "../assets/affected-scopes";
+import type { createHouseholdSavedItemCollaboration } from "./household-native";
 import type { createSavedItemLifecycle } from "./lifecycle";
 
 type SavedItemLifecycle = ReturnType<typeof createSavedItemLifecycle>;
+type HouseholdSavedItemCollaboration = ReturnType<typeof createHouseholdSavedItemCollaboration>;
+
+type ScopedSavedItem = {
+  id: string;
+  ownerUserId: string | null;
+  householdId?: string | null;
+  sharedWithUserIds?: readonly string[];
+};
 
 export function createAffectedSavedItemLifecycle(lifecycle: SavedItemLifecycle) {
-  async function withScopes<TResult extends { id: string; ownerUserId: string }>(
+  async function withScopes<TResult extends ScopedSavedItem>(
     run: () => Promise<TResult>,
   ): Promise<MutationOutcome<TResult>> {
     const result = await run();
@@ -52,6 +61,65 @@ export function createAffectedSavedItemLifecycle(lifecycle: SavedItemLifecycle) 
         result,
         affectedScopes: current ? affectedScopesForSavedItem(current) : [],
       };
+    },
+  };
+}
+
+/**
+ * The same reconciliation contract for the household-native boundary.
+ *
+ * Separate from the owner-scoped wrapper above rather than folded into it, for
+ * the same reason the boundaries themselves are separate: one object exposing
+ * both would let a surface reach an owner-scoped mutation while holding what it
+ * believes is a household one.
+ */
+export function createAffectedHouseholdSavedItemCollaboration(
+  collaboration: HouseholdSavedItemCollaboration,
+) {
+  async function withScopes<TResult extends ScopedSavedItem>(
+    run: () => Promise<TResult>,
+  ): Promise<MutationOutcome<TResult>> {
+    const result = await run();
+    return { result, affectedScopes: affectedScopesForSavedItem(result) };
+  }
+
+  return {
+    ...collaboration,
+    createHouseholdSavedItem(
+      input: Parameters<HouseholdSavedItemCollaboration["createHouseholdSavedItem"]>[0],
+    ) {
+      return withScopes(() => collaboration.createHouseholdSavedItem(input));
+    },
+    editHouseholdSavedItem(
+      input: Parameters<HouseholdSavedItemCollaboration["editHouseholdSavedItem"]>[0],
+    ) {
+      return withScopes(() => collaboration.editHouseholdSavedItem(input));
+    },
+    archiveHouseholdSavedItem(
+      input: Parameters<HouseholdSavedItemCollaboration["archiveHouseholdSavedItem"]>[0],
+    ) {
+      return withScopes(() => collaboration.archiveHouseholdSavedItem(input));
+    },
+    restoreHouseholdSavedItem(
+      input: Parameters<HouseholdSavedItemCollaboration["restoreHouseholdSavedItem"]>[0],
+    ) {
+      return withScopes(() => collaboration.restoreHouseholdSavedItem(input));
+    },
+    resolveHouseholdSavedItem(
+      input: Parameters<HouseholdSavedItemCollaboration["resolveHouseholdSavedItem"]>[0],
+    ) {
+      return withScopes(() => collaboration.resolveHouseholdSavedItem(input));
+    },
+    promoteHouseholdSavedItem(
+      input: Parameters<HouseholdSavedItemCollaboration["promoteHouseholdSavedItem"]>[0],
+    ) {
+      return collaboration.promoteHouseholdSavedItem(input).then((promotion) => ({
+        result: promotion.savedItem,
+        affectedScopes: [
+          ...affectedScopesForSavedItem(promotion.savedItem),
+          ...promotion.affectedGeneralActionScopes,
+        ],
+      }));
     },
   };
 }

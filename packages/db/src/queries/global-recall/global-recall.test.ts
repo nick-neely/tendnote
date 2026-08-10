@@ -752,6 +752,8 @@ describe("Global Recall", () => {
         {
           id: "saved-1",
           ownerUserId: OWNER,
+          ownership: "member_owned" as const,
+          version: 1,
           kind: "note" as const,
           title: "Filter measurements",
           content: "Measure the refrigerator filter opening",
@@ -1424,6 +1426,8 @@ describe("Global Recall", () => {
         {
           id: "saved-diverse",
           ownerUserId: OWNER,
+          ownership: "member_owned" as const,
+          version: 1,
           kind: "note" as const,
           title: "Filter measurements",
           content: "Measure the filter opening",

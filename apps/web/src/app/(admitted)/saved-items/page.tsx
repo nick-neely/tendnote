@@ -1,4 +1,7 @@
-import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
+import {
+  listActiveHouseholdMembershipsForUser,
+  listShareableHouseholdMembersForUser,
+} from "@tendnote/db/queries/households";
 import { connection } from "next/server";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { appDestination } from "@/components/app-destinations";
@@ -18,9 +21,14 @@ async function SavedItemsContent() {
   if (process.env.NODE_ENV !== "test") await connection();
   const ownerUserId = await requireAdmittedOwner({ returnTo: "/saved-items" });
   const now = new Date();
-  const [items, shareableMembers] = await Promise.all([
+  const [items, shareableMembers, memberships] = await Promise.all([
     getCachedActiveSavedItemViews({ callerUserId: ownerUserId, now }),
     listShareableHouseholdMembersForUser({ userId: ownerUserId }),
+    // Read apart from the shareable members: a solo Household Workspace has a
+    // household to save into and nobody to share with, and offering the
+    // household destination only when someone else is already there would hide
+    // it exactly when a member is setting the workspace up.
+    listActiveHouseholdMembershipsForUser({ userId: ownerUserId }),
   ]);
 
   return (
@@ -35,6 +43,7 @@ async function SavedItemsContent() {
       </header>
 
       <SavedItemsSurface
+        hasHousehold={memberships.length > 0}
         items={items}
         shareableMembers={shareableMembers.map((member) => ({
           userId: member.userId,

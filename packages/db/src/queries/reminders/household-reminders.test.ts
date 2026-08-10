@@ -126,12 +126,13 @@ describe("a shared Routine several members are each reminded about", () => {
 
     expect(ownerSchedule.schedule.ownerUserId).toBe(OWNER);
     expect(memberSchedule.schedule.ownerUserId).toBe(MEMBER);
-    await expect(
-      reminderStore.listScheduleSubscribersForRecord({
-        recordKind: "routine",
-        recordId: routine.id,
-      }),
-    ).resolves.toEqual(expect.arrayContaining([OWNER, MEMBER]));
+    const subscribers = await reminderStore.listScheduleSubscribers({
+      recordKind: "routine",
+      recordId: routine.id,
+    });
+    expect(subscribers.map((subscriber) => subscriber.ownerUserId)).toEqual(
+      expect.arrayContaining([OWNER, MEMBER]),
+    );
   });
 
   it("refuses a subscription from someone who cannot see the record", async () => {

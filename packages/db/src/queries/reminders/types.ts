@@ -42,19 +42,21 @@ export type ReminderStore = {
   listSchedules: (input: ReminderRecordRef) => Promise<ReminderSchedule[]>;
   listSchedulesForOwner: (input: { ownerUserId: string }) => Promise<ReminderSchedule[]>;
   /**
-   * Every member who holds their own schedule for one record, whoever owns it.
+   * Everyone who holds their own schedule for one record, across owners.
    *
    * The one read that crosses subscribers, and the reason it has to exist: a
    * shared record's lifecycle change invalidates *every* member's pending
    * intent, not just the actor's, so completing bin day cannot leave the other
    * partner's phone still holding an alert for an occurrence that is gone
-   * (ADR 0203). Each subscriber's own schedule is still keyed to them and is
-   * still theirs alone to change.
+   * (ADR 0203). Nor are the subscribers derivable from the record itself: a
+   * household-native Saved Item has no owner to start from, and only the
+   * schedule table knows who enrolled. Each subscriber's own schedule is still
+   * keyed to them and is still theirs alone to change.
    */
-  listScheduleSubscribersForRecord: (input: {
+  listScheduleSubscribers: (input: {
     recordKind: ReminderRecordKind;
     recordId: string;
-  }) => Promise<string[]>;
+  }) => Promise<ReminderSchedule[]>;
   getSchedule: (input: {
     ownerUserId: string;
     scheduleId: string;
@@ -155,15 +157,36 @@ export type ReminderRecord = {
   id: string;
   kind: ReminderRecordKind;
   /**
-   * The record's own owner, which is no longer the same person as the schedule's
-   * subscriber. On a household-native record it is a storage key naming nobody
-   * with authority, which is exactly why eligibility is now decided by
-   * `authorizeSubscription` rather than by comparing this to the caller.
+   * Who owns the record, or null when the Household Workspace does (ADR 0214).
+   *
+   * Descriptive only, and no longer the same person as the schedule's
+   * subscriber. Nothing decides authority from it, because a household-native
+   * record has nobody here to decide it from — which is exactly why eligibility
+   * is decided by `authorizeSubscription` rather than by comparing this to the
+   * caller.
    */
-  ownerUserId: string;
+  ownerUserId: string | null;
   /** Whose record it is, so the subscription check can prove the right thing. */
   ownership?: "member_owned" | "household_native";
   householdId?: string | null;
+  /**
+   * The member this load was resolved *for* - the only identity the schedule
+   * paths compare against. Defaults to {@link ReminderRecord.ownerUserId}.
+   *
+   * A Reminder Schedule belongs to whoever subscribed to it. For most families
+   * that is necessarily the record's owner, because their loader is owner-keyed,
+   * and those loaders leave this unset. A Saved Item is the exception: any member
+   * who can currently see one may choose their own schedule for it, and a
+   * household-native one has no owner at all
+   * (`docs/phase-8/household-saved-items.md`, ADR 0214). Its loader is keyed by
+   * visibility and sets this to the caller it proved the record for.
+   *
+   * Optional rather than required so the field appears only where the two
+   * identities can actually differ, and it is safe to omit: falling back to the
+   * owner reproduces the old rule exactly, and for a workspace-owned record the
+   * owner is null, so a loader that forgot to set it authorizes nobody.
+   */
+  subscriberUserId?: string;
   title: string;
   status: string;
   occursAt: Date | null;

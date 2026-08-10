@@ -34,8 +34,29 @@ export type HouseholdGovernanceOptions = {
    * honest limitation: a failure in between leaves those records unreadable by
    * everyone, their owner included. That is the safe direction to fail and a
    * recoverable one — never a disclosure.
+   *
+   * Whole-household form. {@link HouseholdGovernanceOptions.onAccessEnded} is
+   * the per-member form; both fire for the same endings.
    */
   onHouseholdAccessEnded?: (input: { householdId: string; userId?: string }) => Promise<void>;
+  /**
+   * Called once per member whose household access has just ended, after the
+   * transaction that ended it has committed. Dissolution fans this out over
+   * every member who was still active, because all of them lost access at once.
+   *
+   * The documented hook for derived work that outlives a membership. It runs
+   * outside the transaction deliberately: the membership rows are what the
+   * visibility predicate and the proof read, so access is already gone by the
+   * time this is called, and each consumer re-reads current visibility rather
+   * than being told what changed. That keeps a slow or failing downstream sweep
+   * from holding the household's own governance write open, and keeps its
+   * correctness from depending on this hook having run - the worst a missed call
+   * leaves behind is a subscription whose next reconcile finds nothing.
+   *
+   * #385 uses it to drop Saved Item Reminder Schedules the departing member can
+   * no longer read. #383 joins it for household-native scheduled work.
+   */
+  onAccessEnded?: (input: { householdId: string; userId: string }) => Promise<void>;
 };
 
 /**
@@ -102,7 +123,7 @@ export function createHouseholdGovernanceLifecycle(
    * is the one that matters — nothing is re-privatized on the strength of a
    * departure that did not happen.
    */
-  async function announceAccessEnded(input: { householdId: string; userId?: string }) {
+  async function announceHouseholdAccessEnded(input: { householdId: string; userId?: string }) {
     await options.onHouseholdAccessEnded?.(input);
   }
 
@@ -493,10 +514,11 @@ export function createHouseholdGovernanceLifecycle(
         return ended.membership;
       });
 
-      await announceAccessEnded({
+      await announceHouseholdAccessEnded({
         householdId: removed.householdId,
         userId: removed.userId,
       });
+      await announceAccessEnded([{ householdId: removed.householdId, userId: removed.userId }]);
       return removed;
     },
 
@@ -529,10 +551,11 @@ export function createHouseholdGovernanceLifecycle(
         return ended.membership;
       });
 
-      await announceAccessEnded({
+      await announceHouseholdAccessEnded({
         householdId: departed.householdId,
         userId: departed.userId,
       });
+      await announceAccessEnded([{ householdId: departed.householdId, userId: departed.userId }]);
       return departed;
     },
 
@@ -549,6 +572,7 @@ export function createHouseholdGovernanceLifecycle(
     async confirmDissolution(input: { ownerUserId: string }): Promise<HouseholdDissolutionState> {
       const at = now();
       let endedHouseholdId: string | null = null;
+      let endedMembers: ReadonlyArray<{ householdId: string; userId: string }> = [];
       const state = await store.withTransaction(async (tx) => {
         const { householdId, roster } = await requireOwnerStanding(tx, input.ownerUserId);
         assertDissolutionAllowed({ roster, userId: input.ownerUserId });
@@ -578,6 +602,11 @@ export function createHouseholdGovernanceLifecycle(
           return { ...progress, dissolved: null };
         }
         endedHouseholdId = householdId;
+        // Everyone who was still active: dissolution ends every membership at
+        // once, so every one of them has just lost access.
+        endedMembers = roster
+          .filter((member) => member.status === "active")
+          .map((member) => ({ householdId, userId: member.userId }));
         return {
           ...progress,
           dissolved: await dissolve(tx, {
@@ -592,7 +621,8 @@ export function createHouseholdGovernanceLifecycle(
 
       // No `userId`: this is the whole household's sharing ending at once, not
       // several departures, and every plan in it goes private.
-      if (endedHouseholdId) await announceAccessEnded({ householdId: endedHouseholdId });
+      if (endedHouseholdId) await announceHouseholdAccessEnded({ householdId: endedHouseholdId });
+      await announceAccessEnded(endedMembers);
       return state;
     },
 
@@ -618,6 +648,28 @@ export function createHouseholdGovernanceLifecycle(
       });
     },
   };
+
+  /**
+   * Tells the access-ended hook about each member who just lost their standing.
+   *
+   * Best-effort and never fatal: the governance write has committed and the
+   * membership rows are already the authority on who may see what, so a failure
+   * here can only delay derived cleanup, never restore access. Letting it throw
+   * would turn a completed departure into an error the caller would reasonably
+   * retry.
+   */
+  async function announceAccessEnded(
+    ended: ReadonlyArray<{ householdId: string; userId: string }>,
+  ) {
+    if (!options.onAccessEnded) return;
+    for (const member of ended) {
+      try {
+        await options.onAccessEnded(member);
+      } catch {
+        // Deliberately swallowed; see above.
+      }
+    }
+  }
 
   /** The owners a unanimous decision was made by, recorded as its evidence. */
   function activeOwnerIds(roster: readonly HouseholdMembership[]): string[] {
@@ -645,14 +697,26 @@ export function createHouseholdGovernanceLifecycle(
    * own records revert to `private` in the roster loop below and survive with
    * them, exactly as they would on an individual departure.
    *
+   * Household-native Saved Items (#385) add nothing to that sweep, and they are
+   * the first chance to test the claim rather than assume it: a workspace-owned
+   * record has no `owner_user_id`, the reminder and schedule tables are
+   * owner-scoped, and `queries/saved-items.ts` skips reminder reconciliation for
+   * precisely that reason - a Reminder Schedule belongs to the member who chose
+   * it, so the household writing a note never enrols anybody. What those
+   * per-member subscriptions do need is the post-commit
+   * {@link HouseholdGovernanceOptions.onAccessEnded} fan-out, not this
+   * transaction. A family that stores only content has nothing to cancel here.
+   *
    * There is still no purge. `dissolvedAt` opens the recovery window and nothing
    * closes it: no job deletes a dissolved household's records once the deadline
    * passes. That sweep remains the prerequisite for #391 and is deliberately not
-   * built here — it is a deletion policy over a record set this issue has only
-   * just created, and it needs its own decision about what the minimized audit
-   * tombstone keeps. Until it exists, no surface may promise that anything is
-   * deleted; what passing the deadline changes is that recovery stops being
-   * offered.
+   * built here — it is a deletion policy over a record set these issues have
+   * only just created, and it needs its own decision about what the minimized
+   * audit tombstone keeps. #385 is what makes that record set non-empty: a
+   * dissolved household now genuinely holds household-native Saved Items and
+   * their household-scoped evidence. Until the sweep exists, no surface may
+   * promise that anything is deleted; what passing the deadline changes is that
+   * recovery stops being offered.
    */
   async function dissolve(
     tx: HouseholdInvitationStore,

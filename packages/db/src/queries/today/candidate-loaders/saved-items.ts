@@ -17,6 +17,13 @@ export async function loadSavedItemCandidates(
   const candidates = await Promise.all(
     items.map(async (item): Promise<TodayCandidate | null> => {
       if (item.status !== "active") return null;
+      // Private Today stays individually relevant rather than becoming a second
+      // Household queue. A household-native item belongs to the workspace and to
+      // nobody in particular, so it composes into Household and reaches a
+      // member's own Today only through a Reminder Schedule that member chose.
+      // Until then it sits there and nags nobody
+      // (`docs/phase-8/household-saved-items.md`).
+      if (item.ownership === "household_native") return null;
       const arrived =
         item.bringBackAt !== null && item.bringBackAt.getTime() <= input.now.getTime();
       const aged =

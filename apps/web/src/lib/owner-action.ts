@@ -12,6 +12,8 @@ import {
   HouseholdValidationError,
   PersonReferenceValidationError,
   RelationshipShareValidationError,
+  SavedItemConflictError,
+  SavedItemUnavailableDestinationError,
   SavedItemValidationError,
 } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
@@ -22,6 +24,7 @@ import type { OwnerActionResult } from "@/lib/owner-action-result";
 import { enforceProductBudget, ProductRateLimitError } from "@/lib/rate-limit/guards";
 import type { RateLimitRequest } from "@/lib/rate-limit/types";
 import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
+import { toSavedItemConflictView } from "@/lib/saved-item-conflict";
 
 export type { OwnerActionResult } from "@/lib/owner-action-result";
 
@@ -130,6 +133,23 @@ export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
             revision: error.conflict.revision,
           },
         };
+      }
+      // Ahead of the curated-message branch below, which would otherwise catch
+      // this through its `SavedItemValidationError` base and drop the current
+      // value the surface needs to show beside the member's kept draft.
+      if (error instanceof SavedItemConflictError) {
+        return {
+          ok: false,
+          error: error.message,
+          savedItemConflict: toSavedItemConflictView(error.current),
+        };
+      }
+      // Flagged rather than folded into the curated messages below: the two
+      // reach the surface through the same field but must not read the same
+      // way. A validation failure is something to fix; this is somewhere that
+      // does not exist yet.
+      if (error instanceof SavedItemUnavailableDestinationError) {
+        return { ok: false, error: error.message, unavailableDestination: true };
       }
       const message = userSafeErrorMessage(error);
       if (message) {

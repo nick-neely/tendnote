@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { toDateValue } from "@/components/ui/date-picker";
 import { fireEvent, render, screen, userEvent, waitFor } from "@/test/dom";
 
@@ -18,23 +18,37 @@ HTMLElement.prototype.hasPointerCapture ??= vi.fn();
 HTMLElement.prototype.releasePointerCapture ??= vi.fn();
 
 const createSavedItemAction = vi.fn();
+const createHouseholdSavedItemAction = vi.fn();
 const archiveSavedItemAction = vi.fn();
+const archiveHouseholdSavedItemAction = vi.fn();
 const reopenSavedItemAction = vi.fn();
+const restoreHouseholdSavedItemAction = vi.fn();
 const resolveSavedItemAction = vi.fn();
+const resolveHouseholdSavedItemAction = vi.fn();
 const promoteSavedItemToGeneralActionAction = vi.fn();
+const promoteHouseholdSavedItemAction = vi.fn();
 const editSavedItemAction = vi.fn();
+const editHouseholdSavedItemAction = vi.fn();
+const getHouseholdSavedItemViewAction = vi.fn();
 const getSavedItemSourceDeletionImpactAction = vi.fn();
 const deleteUniqueSavedItemSourceAction = vi.fn();
 const saveReminderAction = vi.fn();
 
 vi.mock("@/app/actions/saved-items", () => ({
   createSavedItemAction: (...args: unknown[]) => createSavedItemAction(...args),
+  createHouseholdSavedItemAction: (...args: unknown[]) => createHouseholdSavedItemAction(...args),
   archiveSavedItemAction: (...args: unknown[]) => archiveSavedItemAction(...args),
+  archiveHouseholdSavedItemAction: (...args: unknown[]) => archiveHouseholdSavedItemAction(...args),
   reopenSavedItemAction: (...args: unknown[]) => reopenSavedItemAction(...args),
+  restoreHouseholdSavedItemAction: (...args: unknown[]) => restoreHouseholdSavedItemAction(...args),
   resolveSavedItemAction: (...args: unknown[]) => resolveSavedItemAction(...args),
+  resolveHouseholdSavedItemAction: (...args: unknown[]) => resolveHouseholdSavedItemAction(...args),
   promoteSavedItemToGeneralActionAction: (...args: unknown[]) =>
     promoteSavedItemToGeneralActionAction(...args),
+  promoteHouseholdSavedItemAction: (...args: unknown[]) => promoteHouseholdSavedItemAction(...args),
   editSavedItemAction: (...args: unknown[]) => editSavedItemAction(...args),
+  editHouseholdSavedItemAction: (...args: unknown[]) => editHouseholdSavedItemAction(...args),
+  getHouseholdSavedItemViewAction: (...args: unknown[]) => getHouseholdSavedItemViewAction(...args),
   getSavedItemSourceDeletionImpactAction: (...args: unknown[]) =>
     getSavedItemSourceDeletionImpactAction(...args),
   deleteUniqueSavedItemSourceAction: (...args: unknown[]) =>
@@ -53,6 +67,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 import type { SavedItemView } from "@/lib/saved-item-view";
 import { SavedItemsSurface } from "./saved-items-surface";
 
+const MEMBERS = [{ userId: "member-2", name: "Ben", email: "ben@example.com" }];
+
 function fixture(overrides: Partial<SavedItemView> = {}): SavedItemView {
   return {
     id: "saved-1",
@@ -65,17 +81,51 @@ function fixture(overrides: Partial<SavedItemView> = {}): SavedItemView {
     status: "active",
     archived: false,
     ownerUserId: "owner-1",
+    ownership: "member_owned",
+    version: 1,
     owned: true,
+    canEdit: true,
+    canDeleteEvidence: true,
     bringBackAt: null,
     bringBackState: null,
     bringBackLabel: null,
     scope: "private",
     visibilityLabel: "Only me",
+    createdByLabel: null,
+    lastChangedByLabel: null,
     sourceRecordId: "source-1",
     resolutionReason: null,
     outcomes: [],
     ...overrides,
   };
+}
+
+/** A member-owned item somebody else shared with the viewer. */
+function sharedByOther(overrides: Partial<SavedItemView> = {}): SavedItemView {
+  return fixture({
+    ownerUserId: "member-2",
+    owned: false,
+    canEdit: false,
+    canDeleteEvidence: false,
+    scope: "shared",
+    visibilityLabel: "Shared by Ben",
+    ...overrides,
+  });
+}
+
+/** A Saved Item the Household Workspace owns, which every member may re-author. */
+function householdNative(overrides: Partial<SavedItemView> = {}): SavedItemView {
+  return fixture({
+    ownerUserId: null,
+    ownership: "household_native",
+    owned: false,
+    canEdit: true,
+    canDeleteEvidence: false,
+    scope: "household",
+    visibilityLabel: "Household",
+    createdByLabel: "Created by Ben",
+    ...overrides,
+  });
 }
 
 /** The day button for a `yyyy-mm-dd` date in the open calendar (portaled to body). */
@@ -90,6 +140,23 @@ function dayThisMonth(day: number): string {
   const now = new Date();
   return toDateValue(new Date(now.getFullYear(), now.getMonth(), day));
 }
+
+/**
+ * Lets the reversible-mutation module's queued focus restoration run.
+ *
+ * Focus assertions have to be made after it, not before: the panels below take
+ * focus on mount, and the restoration aiming at the control they replaced is
+ * still queued behind them.
+ */
+function afterFocusRestoration(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
+// The action doubles live at module scope, so call history has to be cleared
+// between tests for "was never called" to mean anything.
+beforeEach(() => vi.clearAllMocks());
 
 describe("SavedItemsSurface", () => {
   it("creates a private note through the fast capture form", async () => {
@@ -274,5 +341,321 @@ describe("SavedItemsSurface", () => {
       expect(deleteUniqueSavedItemSourceAction).toHaveBeenCalledWith({ savedItemId: "saved-1" }),
     );
     expect(screen.queryByText("Filter measurements")).toBeNull();
+  });
+
+  it("captures into the household only after the destination is deliberately chosen", async () => {
+    const user = userEvent.setup();
+    createHouseholdSavedItemAction.mockResolvedValue({
+      ok: true,
+      view: householdNative({ createdByLabel: null }),
+    });
+    render(<SavedItemsSurface hasHousehold items={[]} shareableMembers={MEMBERS} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Title" }), "Filter measurements");
+    await user.click(screen.getByRole("button", { name: "Where this goes" }));
+    await user.click(await screen.findByRole("radio", { name: /Household/ }));
+    expect(screen.getByText(/stays with the household if you leave/i)).toBeDefined();
+    // A household capture has no audience to choose - the workspace is the audience.
+    expect(screen.queryByRole("radio", { name: /Only me/i })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Save item" }));
+
+    await waitFor(() =>
+      expect(createHouseholdSavedItemAction).toHaveBeenCalledWith({
+        kind: "note",
+        title: "Filter measurements",
+      }),
+    );
+    expect(createSavedItemAction).not.toHaveBeenCalled();
+  });
+
+  it("offers no destination choice to a member with no Household Workspace", () => {
+    render(<SavedItemsSurface items={[]} />);
+
+    expect(screen.queryByRole("button", { name: "Where this goes" })).toBeNull();
+  });
+
+  it("renders another member's shared item read-only, with no disabled stand-ins", () => {
+    render(<SavedItemsSurface items={[sharedByOther()]} shareableMembers={MEMBERS} />);
+
+    expect(screen.getByText("Shared by Ben")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Make an action" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Check deletion impact" })).toBeNull();
+  });
+
+  it("gives every member the full control set on a household-native item", async () => {
+    const user = userEvent.setup();
+    const item = householdNative();
+    archiveHouseholdSavedItemAction.mockResolvedValue({
+      ok: true,
+      view: { ...item, archived: true, status: "archived" },
+    });
+    render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
+
+    expect(screen.getByText("Household")).toBeDefined();
+    expect(screen.getByText("Created by Ben")).toBeDefined();
+    // Archive is a workspace-owned item's removal path; nobody deletes its evidence.
+    await user.click(screen.getByText("Source grounding"));
+    expect(screen.queryByRole("button", { name: "Check deletion impact" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Archive" }));
+    await waitFor(() =>
+      expect(archiveHouseholdSavedItemAction).toHaveBeenCalledWith({ savedItemId: "saved-1" }),
+    );
+    expect(archiveSavedItemAction).not.toHaveBeenCalled();
+  });
+
+  it("promotes a household-native item straight into a household Action, with no choice to make", async () => {
+    const user = userEvent.setup();
+    const item = householdNative();
+    promoteHouseholdSavedItemAction.mockResolvedValue({
+      ok: true,
+      view: { ...item, archived: true, status: "archived" },
+    });
+    render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
+
+    expect(screen.queryByRole("button", { name: "Make an action" })).toBeNull();
+    // No confirm step, and the row says why rather than leaving its absence to
+    // read as an oversight beside the hand-off that does confirm.
+    expect(screen.getByText(/nothing changes hands/i)).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Make household Action" }));
+
+    await waitFor(() =>
+      expect(promoteHouseholdSavedItemAction).toHaveBeenCalledWith({ savedItemId: "saved-1" }),
+    );
+    expect(promoteSavedItemToGeneralActionAction).not.toHaveBeenCalled();
+  });
+
+  it("keeps the draft beside the current value when a household edit conflicts", async () => {
+    const user = userEvent.setup();
+    const item = householdNative({ version: 3 });
+    editHouseholdSavedItemAction.mockResolvedValue({
+      ok: false,
+      error: "Someone else changed this while you were writing. Your draft is kept below.",
+      savedItemConflict: {
+        savedItemId: "saved-1",
+        version: 4,
+        title: "Filter measurements, revised",
+        content: "Ten inches long",
+        url: null,
+        bringBackAt: null,
+        status: "active",
+        lastActorUserId: "member-2",
+        updatedAt: "2026-07-02T12:00:00.000Z",
+      },
+    });
+    render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.clear(screen.getByRole("textbox", { name: "Edit title" }));
+    await user.type(screen.getByRole("textbox", { name: "Edit title" }), "Filter measurements v2");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(editHouseholdSavedItemAction).toHaveBeenCalledWith({
+        savedItemId: "saved-1",
+        title: "Filter measurements v2",
+        content: "Eight inches long",
+        bringBackAt: null,
+        expectedVersion: 3,
+      }),
+    );
+    expect(
+      await screen.findByText(/Someone else changed this while you were writing/),
+    ).toBeDefined();
+    expect(screen.getByText("Filter measurements, revised")).toBeDefined();
+    expect(screen.getByText("Last changed by Ben")).toBeDefined();
+    // Save changes has been replaced by the two answers, so focus cannot go back
+    // where it came from. It goes to the panel, explanation first.
+    await afterFocusRestoration();
+    expect(document.activeElement).toBe(
+      screen.getByRole("status", { name: /Someone else changed this while you were writing/ }),
+    );
+    // The draft is kept, and an ordinary Save is replaced by the two answers.
+    expect((screen.getByRole("textbox", { name: "Edit title" }) as HTMLInputElement).value).toBe(
+      "Filter measurements v2",
+    );
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+
+    editHouseholdSavedItemAction.mockResolvedValue({
+      ok: true,
+      view: { ...item, title: "Filter measurements v2", revision: "2026-07-03T12:00:00.000Z" },
+    });
+    await user.click(screen.getByRole("button", { name: "Keep mine" }));
+
+    await waitFor(() =>
+      expect(editHouseholdSavedItemAction).toHaveBeenLastCalledWith({
+        savedItemId: "saved-1",
+        title: "Filter measurements v2",
+        content: "Eight inches long",
+        bringBackAt: null,
+      }),
+    );
+    expect(await screen.findByText("Filter measurements v2")).toBeDefined();
+  });
+
+  it("adopts the stored value from the server when the member takes theirs", async () => {
+    const user = userEvent.setup();
+    const item = householdNative({ version: 3 });
+    editHouseholdSavedItemAction.mockResolvedValue({
+      ok: false,
+      error: "Someone else changed this while you were writing. Your draft is kept below.",
+      savedItemConflict: {
+        savedItemId: "saved-1",
+        version: 4,
+        title: "Filter measurements, revised",
+        content: "Ten inches long",
+        url: null,
+        bringBackAt: null,
+        status: "active",
+        lastActorUserId: "member-2",
+        updatedAt: "2026-07-02T12:00:00.000Z",
+      },
+    });
+    getHouseholdSavedItemViewAction.mockResolvedValue({
+      ok: true,
+      view: householdNative({
+        version: 4,
+        title: "Filter measurements, revised",
+        content: "Ten inches long",
+        revision: "2026-07-02T12:00:00.000Z",
+        lastChangedByLabel: "Last changed by Ben",
+      }),
+    });
+    render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.clear(screen.getByRole("textbox", { name: "Edit title" }));
+    await user.type(screen.getByRole("textbox", { name: "Edit title" }), "Filter measurements v2");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(await screen.findByRole("button", { name: "Take theirs" }));
+
+    await waitFor(() =>
+      expect(getHouseholdSavedItemViewAction).toHaveBeenCalledWith({ savedItemId: "saved-1" }),
+    );
+    expect(await screen.findByText("Filter measurements, revised")).toBeDefined();
+    expect(screen.queryByRole("textbox", { name: "Edit title" })).toBeNull();
+  });
+
+  it("requires a stated, confirmed hand-off before an Action becomes the household's", async () => {
+    const user = userEvent.setup();
+    const item = fixture({ scope: "household", visibilityLabel: "Home" });
+    promoteSavedItemToGeneralActionAction.mockResolvedValue({
+      ok: true,
+      view: { ...item, archived: true, status: "archived" },
+    });
+    render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
+
+    await user.click(screen.getByRole("button", { name: "Give to the household" }));
+    expect(promoteSavedItemToGeneralActionAction).not.toHaveBeenCalled();
+    expect(screen.getByText(/no way to take it back/i)).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Make it the household's" }));
+
+    await waitFor(() =>
+      expect(promoteSavedItemToGeneralActionAction).toHaveBeenCalledWith({
+        savedItemId: "saved-1",
+        destination: "household_native",
+      }),
+    );
+  });
+
+  it("moves focus into the hand-off panel, and back out again when it closes", async () => {
+    const user = userEvent.setup();
+    const item = fixture({ scope: "household", visibilityLabel: "Home" });
+    render(<SavedItemsSurface hasHousehold items={[item]} shareableMembers={MEMBERS} />);
+
+    // Opening the panel removes the control that was focused, so the panel has
+    // to take focus or it lands on the document.
+    await user.click(screen.getByRole("button", { name: "Give to the household" }));
+    await afterFocusRestoration();
+    expect(document.activeElement).toBe(
+      screen.getByRole("group", { name: /no way to take it back/i }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await afterFocusRestoration();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Give to the household" }),
+    );
+  });
+
+  it("names the hand-off for what it does, apart from the promote beside it", () => {
+    render(
+      <SavedItemsSurface
+        hasHousehold
+        items={[fixture({ scope: "household", visibilityLabel: "Home" })]}
+        shareableMembers={MEMBERS}
+      />,
+    );
+
+    // Two controls, two promises: one makes the member an Action, one gives an
+    // Action away. They used to carry the same words.
+    expect(screen.getByRole("button", { name: "Make an action" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Give to the household" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Make household Action" })).toBeNull();
+  });
+
+  it("keeps the household hand-off away from a private item that has no workspace", () => {
+    render(<SavedItemsSurface hasHousehold items={[fixture()]} shareableMembers={MEMBERS} />);
+
+    expect(screen.getByRole("button", { name: "Make an action" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Give to the household" })).toBeNull();
+  });
+
+  it("renders a destination that is not built yet as a note, not an alarm", async () => {
+    const user = userEvent.setup();
+    promoteHouseholdSavedItemAction.mockResolvedValue({
+      ok: false,
+      error: "Household Actions aren't available yet, so this can stay here for now.",
+      unavailableDestination: true,
+    });
+    render(
+      <SavedItemsSurface hasHousehold items={[householdNative()]} shareableMembers={MEMBERS} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Make household Action" }));
+
+    const note = await screen.findByText(/available yet/);
+    expect(note.getAttribute("role")).toBe("status");
+    expect(note.className).toContain("text-muted-foreground");
+    expect(note.className).not.toContain("text-destructive");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("still puts a refusal the member can act on in the error line", async () => {
+    const user = userEvent.setup();
+    promoteHouseholdSavedItemAction.mockResolvedValue({
+      ok: false,
+      error: "This Saved Item was already resolved.",
+    });
+    render(
+      <SavedItemsSurface hasHousehold items={[householdNative()]} shareableMembers={MEMBERS} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Make household Action" }));
+
+    const error = await screen.findByRole("alert");
+    expect(error.textContent).toBe("This Saved Item was already resolved.");
+    expect(error.className).toContain("text-destructive");
+  });
+
+  it("sets who-did-what-when metadata in mono, like its neighbours in the caption row", () => {
+    render(
+      <SavedItemsSurface
+        hasHousehold
+        items={[
+          householdNative({
+            lastChangedByLabel: "Last changed by Ana",
+            resolutionReason: "Measured it",
+          }),
+        ]}
+        shareableMembers={MEMBERS}
+      />,
+    );
+
+    for (const label of ["Created by Ben", "Last changed by Ana", "Resolved · Measured it"]) {
+      expect(screen.getByText(label).className).toContain("font-mono");
+    }
   });
 });

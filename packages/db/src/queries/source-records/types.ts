@@ -73,6 +73,19 @@ export type CreateUnresolvedMentionInput = Omit<
 export type SourceRecordCaptureStore = {
   createSourceRecord: (sourceRecord: CreateSourceRecordInput) => Promise<SourceRecord>;
   getSourceRecord: (input: GetSourceRecordReviewInput) => Promise<SourceRecord | null>;
+  /**
+   * Evidence read by current visibility rather than by owner.
+   *
+   * Owner-keyed reads cannot answer "may this member see this grounding?" for
+   * anything they did not capture, and the two cases that matter are exactly the
+   * Household ones: a household-native record's evidence, which the whole
+   * household holds, and another member's evidence deliberately shared with
+   * them. Proof-gated, so a member who lost access reads nothing (ADR 0219).
+   */
+  getVisibleSourceRecord: (input: {
+    callerUserId: string;
+    sourceRecordId: string;
+  }) => Promise<SourceRecord | null>;
   updateSourceRecordStatus: (input: {
     ownerUserId: string;
     sourceRecordId: string;
