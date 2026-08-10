@@ -29,6 +29,7 @@ export type AppDestinationId =
   | "reminder"
   | "review"
   | "saved-items"
+  | "shared-record"
   | "today";
 
 export type HomePanel = "review" | "today";
@@ -229,6 +230,21 @@ export const appDestinations = [
     groups: [],
     reserve: { heading: "Self Context setup", shape: "detail" },
     scopes: [owner("account"), owner("context-facts")],
+  },
+  {
+    /**
+     * A single relationship record another member shared. It is deliberately
+     * not in any navigation group and belongs to no collection: there is no
+     * browsable set of other people's shared records, only the one record a
+     * direct request names (ADR 0218).
+     */
+    id: "shared-record",
+    route: "/shared/[recordKind]/[recordId]",
+    label: "Shared with you",
+    icon: UsersRoundIcon,
+    groups: [],
+    reserve: { heading: "Shared with you", shape: "detail" },
+    scopes: [],
   },
   {
     id: "reminder",

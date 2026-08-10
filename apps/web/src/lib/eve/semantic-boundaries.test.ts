@@ -57,6 +57,10 @@ describe("semantic retrieval product-route boundaries", () => {
       "reminders/open",
       "reset-password",
       "saved-items",
+      // The one Relationship Share a direct request names (#388). A single
+      // proof-gated record, never a browsable set: there is no `/shared`
+      // index, and nothing reachable from it is searchable.
+      "shared/[recordKind]/[recordId]",
       "sign-in",
       "sign-up",
     ]);
