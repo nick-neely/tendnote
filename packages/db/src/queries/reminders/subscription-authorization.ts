@@ -1,12 +1,9 @@
-import type { createHouseholdAuthorizationProver } from "../households/authorization";
+import type { HouseholdRecordProver } from "../households/authorization";
 import { reminderSubscriber } from "./policy";
 import type { ReminderRecord } from "./types";
 
 /** The one thing authorizing a subscription needs from the Household boundary. */
-export type ReminderRecordProver = Pick<
-  ReturnType<typeof createHouseholdAuthorizationProver>,
-  "proveRecordAccess"
->;
+export type ReminderRecordProver = Pick<HouseholdRecordProver, "proveRecordAccess">;
 
 /**
  * Whether a member may hold their own Reminder Schedule for a record.
@@ -43,9 +40,9 @@ export function createReminderSubscriptionAuthorizer(prover: ReminderRecordProve
       // workspace-owned record has no owner to compare against at all (ADR 0214).
       //
       // This is an identity check and not a second proof on purpose. The
-      // families that reach it are the ones whose *loader* is the proof — a
+      // families that reach it are the ones whose *loader* is the proof - a
       // Saved Item resolves through `getVisibleSavedItem`, a Follow-Up through
-      // an owner-keyed read that only its owner can ever satisfy — so a
+      // an owner-keyed read that only its owner can ever satisfy - so a
       // subscriber who has lost standing arrives here with no record at all and
       // dispatch has already decided to suppress. Proving again from a record
       // that was only produced by proving would add a step, not a check.

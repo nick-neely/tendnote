@@ -45,14 +45,14 @@ import { createSavedItemLifecycle } from "./saved-items/lifecycle";
  * every record family answering them the same way.
  *
  * Each domain already proves its own contract in its own suite. What none of
- * them can prove alone is the thing Phase Eight actually promises — that a
+ * them can prove alone is the thing Phase Eight actually promises - that a
  * removal, a departure, a dissolution, or an audience change means the same
  * thing everywhere, and that no family quietly keeps a door open because its
  * ownership happens to be represented differently from its neighbour's.
  *
  * So this suite is written as a battery rather than as prose. Every family
- * supplies the same four answers — how to make the workspace's own record, how
- * to make a member's own, how to read one, how to list them — and the battery
+ * supplies the same four answers - how to make the workspace's own record, how
+ * to make a member's own, how to read one, how to list them - and the battery
  * below is applied to all of them identically. Adding a family means adding a
  * case, not adding assertions, which is what keeps the matrix honest as the
  * product grows: a new family that cannot answer the battery is a new family
@@ -113,8 +113,8 @@ type FamilyCase = {
 };
 
 /**
- * The families refuse in three different shapes — `null`, an empty list, and a
- * thrown {@link HouseholdRecordUnavailableError} — and all three are correct.
+ * The families refuse in three different shapes - `null`, an empty list, and a
+ * thrown {@link HouseholdRecordUnavailableError} - and all three are correct.
  * What matters is that they mean the same thing, so the battery reads them
  * through one function and asserts on the meaning rather than the shape.
  *
@@ -601,7 +601,7 @@ describe("the workspace's own records answer every access-changing event alike",
 
   it("closes every family to the creator too, once they are the one who left", async () => {
     // Ana made all of these, and none of them are hers. A household-native
-    // record's `owner_user_id` — where the column exists at all — is a storage
+    // record's `owner_user_id` - where the column exists at all - is a storage
     // key, and honouring it as an access path is the exact bug this proves
     // absent (ADR 0214).
     await removeHouseholdMember(stack.shared, { householdId, userId: ANA });
@@ -682,7 +682,7 @@ describe("a member's own records leave with them and stop being the household's"
  * a Saved Item has no owner column at all, an Action keeps its capturer's id as a
  * storage key, and an Asset records authorship beside an owner that means nothing
  * for access. Three representations is three chances for one of them to be read
- * as an access path, and the failure is silent in every case — the record simply
+ * as an access path, and the failure is silent in every case - the record simply
  * stays visible to the member who made it.
  */
 describe("the three ownership representations are treated identically", () => {
@@ -864,7 +864,7 @@ describe("narrowing an audience revokes as completely as a departure", () => {
  * Every Memory, Source Record, and Follow-Up is somebody's, so the workspace
  * never owns one and a departure returns all of them. That makes this the one
  * family whose whole answer to "what does ending access mean" is the
- * member-owned half — and the one where a share row outliving a membership would
+ * member-owned half - and the one where a share row outliving a membership would
  * be the entire leak, because there is no ownership form left to fall back on.
  */
 describe("shared relationship records answer the same events", () => {

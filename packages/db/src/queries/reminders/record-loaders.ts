@@ -1,8 +1,8 @@
 import { reminderTimeSemanticsForRecordKind } from "@tendnote/domain/reminders";
-import type { createDrizzleFollowupStore } from "../followups/drizzle-store";
-import type { createDrizzleGeneralActionLifecycleStore } from "../general-actions/drizzle-store";
-import type { createDrizzleSavedItemStore } from "../saved-items/drizzle-store";
-import type { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
+import type { FollowupStore } from "../followups/types";
+import type { GeneralActionStore } from "../general-actions/types";
+import type { SavedItemStore } from "../saved-items/types";
+import type { SourceRecordCaptureStore } from "../source-records/types";
 import type { ReminderRecord } from "./types";
 
 /**
@@ -16,16 +16,10 @@ import type { ReminderRecord } from "./types";
  * reimplementation of the thing that revokes access.
  */
 export type ReminderRecordStores = {
-  actionStore: Pick<
-    ReturnType<typeof createDrizzleGeneralActionLifecycleStore>,
-    "getGeneralAction" | "getVisibleGeneralAction"
-  >;
-  followupStore: Pick<ReturnType<typeof createDrizzleFollowupStore>, "getFollowup">;
-  savedItemStore: Pick<ReturnType<typeof createDrizzleSavedItemStore>, "getVisibleSavedItem">;
-  sourceRecordStore: Pick<
-    ReturnType<typeof createDrizzleSourceRecordStore>,
-    "getSourceRecord" | "getVisibleSourceRecord"
-  >;
+  actionStore: Pick<GeneralActionStore, "getGeneralAction" | "getVisibleGeneralAction">;
+  followupStore: Pick<FollowupStore, "getFollowup">;
+  savedItemStore: Pick<SavedItemStore, "getVisibleSavedItem">;
+  sourceRecordStore: Pick<SourceRecordCaptureStore, "getSourceRecord" | "getVisibleSourceRecord">;
 };
 
 /**
@@ -139,8 +133,8 @@ export function createReminderRecordLoader(stores: ReminderRecordStores) {
    * Loads the Action behind a reminder for the *subscribing* member, who is no
    * longer necessarily its owner.
    *
-   * The owner-keyed read still runs first — it is the common private case, and the
-   * only path that reaches a review-gated row — but a household-native record is
+   * The owner-keyed read still runs first - it is the common private case, and the
+   * only path that reaches a review-gated row - but a household-native record is
    * never served from it, because its `ownerUserId` is a storage key and honouring
    * it here would keep alerting a member who has left the household about the
    * household's chores (ADR 0214). Everything else falls through to the

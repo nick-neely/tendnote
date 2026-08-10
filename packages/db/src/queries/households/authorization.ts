@@ -248,7 +248,18 @@ export function createHouseholdAuthorizationProver(store: HouseholdAuthorization
   };
 }
 
-let drizzleProver: ReturnType<typeof createHouseholdAuthorizationProver> | null = null;
+/**
+ * The Household Authorization Proof, named once so its consumers depend on a
+ * port rather than each re-deriving one from the factory.
+ *
+ * A consumer that needs only part of it says so with `Pick` against this name -
+ * reminder dispatch needs only `proveRecordAccess` - which is a sentence about
+ * what that consumer is allowed to ask, rather than an inference that quietly
+ * widens whenever the factory grows a method.
+ */
+export type HouseholdRecordProver = ReturnType<typeof createHouseholdAuthorizationProver>;
+
+let drizzleProver: HouseholdRecordProver | null = null;
 
 /**
  * The database-backed prover the record adapters share.

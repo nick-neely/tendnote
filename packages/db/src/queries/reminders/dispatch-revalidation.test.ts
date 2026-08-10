@@ -27,8 +27,8 @@ import { createReminderSubscriptionAuthorizer } from "./subscription-authorizati
  * stale, and a background job proves again before any durable action.
  *
  * Deliberately driven through {@link createReminderRecordLoader} and
- * {@link createReminderSubscriptionAuthorizer} — the same two functions the
- * composition root wires — over in-memory stores that share one household. A
+ * {@link createReminderSubscriptionAuthorizer} - the same two functions the
+ * composition root wires - over in-memory stores that share one household. A
  * suite that reimplemented either would be testing its own reimplementation of
  * the thing that revokes access.
  */

@@ -4,7 +4,7 @@
  *
  * Not a unit test and deliberately not in the suite: what it proves is the one
  * thing an in-memory store cannot, which is that the delete order actually
- * satisfies Postgres — every foreign key, every `on delete` rule, and
+ * satisfies Postgres - every foreign key, every `on delete` rule, and
  * `saved_items_ownership_check`, the constraint that turns a wrong order into an
  * aborted transaction rather than a stray row.
  *
