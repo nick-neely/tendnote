@@ -18,7 +18,13 @@ export type VisibilityRecordKind =
   | "saved_item"
   | "asset"
   | "asset_memory"
-  | "asset_evidence";
+  | "asset_evidence"
+  /**
+   * Household-native, so it never produces a share row - a workspace-owned
+   * record has no selected audience to store. It is in this union anyway so the
+   * kind the Authorization Proof is asked about is one vocabulary (#387).
+   */
+  | "household_event_plan";
 
 /** The per-record-kind SQL alias the shared visibility predicate is built against. */
 export type VisibilityRecordTableAlias = "m" | "sr" | "f" | "ga" | "si" | "a" | "am" | "ae";

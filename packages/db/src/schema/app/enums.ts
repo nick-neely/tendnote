@@ -119,6 +119,49 @@ export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "asset_memory",
   // Asset Evidence is independently scoped under an Asset, like memories (#200).
   "asset_evidence",
+  // Phase 8 Household Event Plans (#387). Household-native, so it never produces a
+  // `household_record_shares` row - a workspace-owned record has no selected
+  // audience to store. It is a member of this enum anyway so that the record kind
+  // the Authorization Proof is asked about is the same vocabulary everywhere;
+  // splitting "kinds that can be shared" from "kinds that can be proved" would
+  // mean two lists that have to be kept in agreement by hand.
+  "household_event_plan",
+]);
+
+// Whether a designated Household Calendar is currently readable by the household
+// (ADR 0217). There is no `unavailable` member on purpose: whether a connected
+// calendar answers right now is a live provider fact that belongs to the read
+// outcome, and storing it would create a second, staler answer beside the read.
+export const householdCalendarConnectionStatus = pgEnum("household_calendar_connection_status", [
+  "connected",
+  "disconnected",
+]);
+
+// Why a designation ended. The three are meaningfully different to a member
+// looking at a household that lost a calendar, and none of them is a failure.
+export const householdCalendarDisconnectReason = pgEnum("household_calendar_disconnect_reason", [
+  "owner_disconnected",
+  "connector_departed",
+  "household_dissolved",
+]);
+
+// A Household Event Plan is active until it is archived. Archive is its removal
+// path: the record is workspace-owned, so no individual member may permanently
+// delete one (ADR 0217).
+export const householdEventPlanStatus = pgEnum("household_event_plan_status", [
+  "active",
+  "archived",
+]);
+
+// The record families an Event Plan may link. Only families the Household
+// Authorization Proof already covers, because a link is proved before it is
+// revealed. People are deliberately absent: the record-local Person Reference
+// that would let a household-native record name someone without reaching into a
+// member's private People graph is #388's to define.
+export const householdEventPlanLinkKind = pgEnum("household_event_plan_link_kind", [
+  "general_action",
+  "followup",
+  "saved_item",
 ]);
 
 // Phase 6 Asset Memory (#196/#197): the small fixed Asset Kind set — practical

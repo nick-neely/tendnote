@@ -6,6 +6,7 @@ import {
   ContextFactConflictError,
   ContextFactValidationError,
   GeneralActionValidationError,
+  HouseholdRecordUnavailableError,
   HouseholdValidationError,
   SavedItemValidationError,
 } from "@tendnote/domain";
@@ -57,6 +58,11 @@ function userSafeErrorMessage(error: unknown): string | null {
     error instanceof SavedItemValidationError ||
     error instanceof ContextFactValidationError ||
     error instanceof HouseholdValidationError ||
+    // The Household Authorization Proof's one opaque refusal. It is already the
+    // single sentence a refused caller may see - "not allowed", "never existed",
+    // and "you were removed" are deliberately indistinguishable (ADR 0219) - so
+    // it is rendered as data rather than raised as an infrastructure failure.
+    error instanceof HouseholdRecordUnavailableError ||
     error instanceof ProductRateLimitError
   ) {
     return error.message;

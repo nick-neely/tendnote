@@ -40,6 +40,12 @@ const ROLE_SENTENCE = {
  * `focusOnMount` is for the one case where this panel replaces the control that
  * summoned it, so keyboard focus would otherwise land on the document body at
  * the moment the task completed.
+ *
+ * `sharedSections` is where the household's shared *content* goes - its
+ * calendars and Event Plans - rather than its membership. It is a slot because
+ * that content is read on the server and this panel is a client component; it
+ * sits after the invitations and before the exits, because leaving and ending
+ * belong last however much else the household grows.
  */
 export function HouseholdOverviewPanel({
   focusOnMount = false,
@@ -47,6 +53,7 @@ export function HouseholdOverviewPanel({
   invitationActions,
   governanceActions,
   memberActions,
+  sharedSections,
   onOverviewChange,
   onAnnounce,
 }: {
@@ -55,6 +62,7 @@ export function HouseholdOverviewPanel({
   invitationActions?: HouseholdInvitationActions;
   governanceActions?: HouseholdGovernanceActions;
   memberActions?: HouseholdMemberGovernanceActions;
+  sharedSections?: React.ReactNode;
   onOverviewChange: HouseholdOverviewChange;
   onAnnounce: (message: string) => void;
 }) {
@@ -156,6 +164,8 @@ export function HouseholdOverviewPanel({
         onOverviewChange={onOverviewChange}
         overview={overview}
       />
+
+      {sharedSections}
 
       <HouseholdEndingsPanel
         actions={governanceActions}

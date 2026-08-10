@@ -10,11 +10,26 @@ vi.mock("@tendnote/db/queries/households", () => ({ getHouseholdOverviewForUser 
 vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwner }));
 vi.mock("next/navigation", () => ({ unstable_rethrow }));
 vi.mock("@/components/account/household-surface", () => ({
-  HouseholdSurface: ({ initialOverview }: { initialOverview: { name: string } | null }) => (
+  HouseholdSurface: ({
+    initialOverview,
+    sharedSections,
+  }: {
+    initialOverview: { name: string } | null;
+    sharedSections?: unknown;
+  }) => (
     <div data-testid="household-surface">
       {initialOverview ? `active: ${initialOverview.name}` : "no active household"}
+      {sharedSections ? " with shared sections" : " without shared sections"}
     </div>
   ),
+}));
+// The shared Calendar and Event Plan sections read on the server and render as
+// their own client subtree; this route's own contract is the gate above them.
+vi.mock("@/lib/household/household-shared-data", () => ({
+  getHouseholdSharedContext: vi.fn(),
+}));
+vi.mock("@/components/account/household-shared-sections", () => ({
+  HouseholdSharedSections: () => null,
 }));
 
 import { renderToStaticMarkup } from "react-dom/server";
@@ -72,6 +87,18 @@ describe("Household route", () => {
     getHouseholdOverviewForUser.mockResolvedValue(OVERVIEW);
 
     expect(renderToStaticMarkup(await HouseholdContent())).toContain("active: The Neely house");
+  });
+
+  /**
+   * The shared calendars and Event Plans are read through the same active
+   * membership the Overview is read through, so a caller who has no household
+   * is never handed a subtree that would go looking for one.
+   */
+  it("offers the shared sections only alongside an active household", async () => {
+    expect(renderToStaticMarkup(await HouseholdContent())).toContain("without shared sections");
+
+    getHouseholdOverviewForUser.mockResolvedValue(OVERVIEW);
+    expect(renderToStaticMarkup(await HouseholdContent())).toContain("with shared sections");
   });
 
   it("reads only the caller's household, never another account's", async () => {

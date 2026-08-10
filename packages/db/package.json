@@ -41,6 +41,8 @@
     "./queries/global-recall": "./src/queries/global-recall.ts",
     "./queries/gmail-drafts": "./src/queries/gmail-drafts.ts",
     "./queries/households": "./src/queries/households.ts",
+    "./queries/household-calendar": "./src/queries/household-calendar.ts",
+    "./queries/household-event-plans": "./src/queries/household-event-plans.ts",
     "./queries/memory-curator": "./src/queries/memory-curator.ts",
     "./queries/memories": "./src/queries/memories.ts",
     "./queries/morning-agenda": "./src/queries/morning-agenda.ts",

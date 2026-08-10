@@ -1,4 +1,5 @@
 import { createDrizzleCalendarCacheStore } from "./calendar/drizzle-store";
+import { createDrizzleHouseholdCalendarStore } from "./households/drizzle-calendar-store";
 import { createDrizzleProviderConnectionStore } from "./provider-connections/drizzle-store";
 import { createProviderConnectionQueries } from "./provider-connections/queries";
 import type {
@@ -21,9 +22,25 @@ export type * from "./provider-connections/types";
 // facade because calendar.ts already imports this module's read-gate — going through
 // the facade would form an import cycle.
 const calendarCache = createDrizzleCalendarCacheStore();
+// The same revoke also clears whatever a Household Calendar Connection riding
+// this member's grant had cached (#387). The household designation itself is
+// left standing: revoking a personal connection is recoverable by reconnecting,
+// and reads are already closed by the connector-connection gate - but a cache
+// must never outlive the access that authorized it (ADR 0219). Leaf store again,
+// for the same import-cycle reason as above.
+const householdCalendars = createDrizzleHouseholdCalendarStore();
 const defaultProviderConnectionQueries = createProviderConnectionQueries(
   createDrizzleProviderConnectionStore(),
-  { onRevoke: (ref) => calendarCache.clearConnection(ref).then(() => undefined) },
+  {
+    onRevoke: async (ref) => {
+      await calendarCache.clearConnection(ref);
+      await householdCalendars.clearCachesForConnector({
+        connectorUserId: ref.ownerUserId,
+        providerKey: ref.providerKey,
+        capabilityKey: ref.capabilityKey,
+      });
+    },
+  },
 );
 
 export async function listProviderConnections(input: { ownerUserId: string }) {
