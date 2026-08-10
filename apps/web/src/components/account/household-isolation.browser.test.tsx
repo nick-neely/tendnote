@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { renderInBrowser } from "@/test/browser";
 import { HouseholdSurface } from "./household-surface";
+import { governanceDefaults, member } from "./household-test-overview";
 
 /**
  * What a former member's household page actually renders, in a real browser.
@@ -126,22 +127,8 @@ function endedByDissolution(): HouseholdOverview {
     isSoleMember: true,
     invitations: [],
     seats: { limit: 8, occupied: 1, remaining: 7, isFull: false },
-    members: [
-      {
-        userId: "ana",
-        name: "Ana",
-        email: "ana@example.test",
-        role: "owner",
-        isViewer: true,
-        remove: { available: false, blockedReason: null },
-        promote: { available: false, blockedReason: null },
-        awaitingOwnerReply: false,
-      },
-    ],
-    ownerOffer: null,
-    departure: { available: false, blockedReason: "You're the only owner." },
-    stepDown: { available: false, blockedReason: null },
-    invitation: { available: true, blockedReason: null },
+    members: [member({ userId: "ana", name: "Ana", email: "ana@example.test", role: "owner" })],
+    ...governanceDefaults({ viewerRole: "owner", soleMember: true }),
     dissolution: {
       available: true,
       blockedReason: null,
