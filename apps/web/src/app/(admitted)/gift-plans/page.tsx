@@ -19,14 +19,14 @@ async function GiftPlansContent() {
   const callerUserId = await requireAdmittedOwner({ returnTo: "/gift-plans" });
   const now = new Date();
   const shareableMembers = await listShareableHouseholdMembersForUser({ userId: callerUserId });
-  const names = new Map(
+  const names = Object.fromEntries(
     shareableMembers.map((member) => [member.userId, member.name || member.email]),
   );
   const plans = await getCachedGiftPlanViews({
     callerUserId,
     people: {
       callerUserId,
-      nameFor: (userId) => names.get(userId) ?? "Someone in your household",
+      names,
     },
     now,
   });

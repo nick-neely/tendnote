@@ -30,7 +30,7 @@ async function GiftPlanContent({ params }: GiftPlanPageProps) {
     returnTo: `/gift-plans/${encodeURIComponent(giftPlanId)}`,
   });
   const shareableMembers = await listShareableHouseholdMembersForUser({ userId: callerUserId });
-  const names = new Map(
+  const names = Object.fromEntries(
     shareableMembers.map((member) => [member.userId, member.name || member.email]),
   );
   const detail = await getCachedGiftPlanDetailView({
@@ -38,7 +38,7 @@ async function GiftPlanContent({ params }: GiftPlanPageProps) {
     giftPlanId,
     people: {
       callerUserId,
-      nameFor: (userId) => names.get(userId) ?? "Someone in your household",
+      names,
     },
     now: new Date(),
   });

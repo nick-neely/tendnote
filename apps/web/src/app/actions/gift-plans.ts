@@ -23,6 +23,7 @@ import {
   type GiftIdeaMutationResult,
   type GiftPlanMutationResult,
   type GiftPlanPeopleLabels,
+  giftPlanMemberName,
   toGiftIdeaView,
   toGiftPlanView,
 } from "@/lib/gift-plan-view";
@@ -118,17 +119,19 @@ function withNamedConflictActor<TView>(
       ...result.conflict,
       // Added beside the id, not over it: the id stays true for anything that
       // needs to compare it, and the name is what the surface renders.
-      actorName: actorUserId === people.callerUserId ? "You" : people.nameFor(actorUserId),
+      actorName:
+        actorUserId === people.callerUserId ? "You" : giftPlanMemberName(people, actorUserId),
     },
   };
 }
 
 async function peopleLabels(callerUserId: string): Promise<GiftPlanPeopleLabels> {
   const members = await listShareableHouseholdMembersForUser({ userId: callerUserId });
-  const names = new Map(members.map((member) => [member.userId, member.name || member.email]));
   return {
     callerUserId,
-    nameFor: (userId) => names.get(userId) ?? "Someone in your household",
+    names: Object.fromEntries(
+      members.map((member) => [member.userId, member.name || member.email]),
+    ),
   };
 }
 

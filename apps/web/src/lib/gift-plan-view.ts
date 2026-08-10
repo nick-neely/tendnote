@@ -58,11 +58,32 @@ export type GiftPlanDetailView = {
   history: GiftPlanEventView[];
 };
 
-/** Names for the people a plan can attribute something to, resolved by the caller. */
+/**
+ * Names for the people a plan can attribute something to, resolved by the caller.
+ *
+ * A plain record rather than a `nameFor` callback because this crosses a
+ * `"use cache"` boundary. A function argument to a cached function becomes a
+ * temporary Client Reference, and calling one on the server throws — which it
+ * did for every viewer who was not the sole contributor, because the caller's
+ * own name is answered by the `"You"` branch and never reaches the lookup. The
+ * page therefore failed exactly when a household gift plan had more than one
+ * person in it, which is the only case it exists for.
+ */
 export type GiftPlanPeopleLabels = {
   callerUserId: string;
-  nameFor: (userId: string) => string;
+  names: Readonly<Record<string, string>>;
 };
+
+/**
+ * The one fallback for a person a plan can name but the roster cannot.
+ *
+ * A departed member, a removed one, or an actor from before the caller could
+ * see the plan all land here. Never a raw id, and never a blank: an unnamed
+ * actor is still an actor, and the sentence has to survive them leaving.
+ */
+export function giftPlanMemberName(people: GiftPlanPeopleLabels, userId: string): string {
+  return people.names[userId] ?? "Someone in your household";
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -150,12 +171,12 @@ export function toGiftIdeaView(idea: GiftIdea, people: GiftPlanPeopleLabels): Gi
     contributorLabel:
       idea.contributorUserId === people.callerUserId
         ? "You"
-        : people.nameFor(idea.contributorUserId),
+        : giftPlanMemberName(people, idea.contributorUserId),
     mine: idea.contributorUserId === people.callerUserId,
     claimedByLabel: idea.claimedByUserId
       ? idea.claimedByUserId === people.callerUserId
         ? "You"
-        : people.nameFor(idea.claimedByUserId)
+        : giftPlanMemberName(people, idea.claimedByUserId)
       : null,
     claimedByMe: idea.claimedByUserId === people.callerUserId,
   };
@@ -171,9 +192,16 @@ function eventSummary(event: GiftPlanEvent, people: GiftPlanPeopleLabels): strin
   const actor = event.actorUserId
     ? event.actorUserId === people.callerUserId
       ? "You"
-      : people.nameFor(event.actorUserId)
+      : giftPlanMemberName(people, event.actorUserId)
     : null;
   const who = actor ?? "Tendnote";
+  // The subject of these sentences is "You" as often as it is a name, and a
+  // third-person possessive written for the name case reads as a mistake about
+  // the reader when it is not — "You said they'd handle an idea" about the idea
+  // they just claimed themselves.
+  const self = event.actorUserId !== null && event.actorUserId === people.callerUserId;
+  const their = self ? "your" : "their";
+  const theyWould = self ? "you'd" : "they'd";
   switch (event.kind) {
     case "created":
       return `${who} started this plan`;
@@ -190,11 +218,11 @@ function eventSummary(event: GiftPlanEvent, people: GiftPlanPeopleLabels): strin
     case "idea_added":
       return `${who} added an idea`;
     case "idea_edited":
-      return `${who} edited their idea`;
+      return `${who} edited ${their} idea`;
     case "idea_removed":
-      return `${who} removed their idea`;
+      return `${who} removed ${their} idea`;
     case "idea_claimed":
-      return `${who} said they'd handle an idea`;
+      return `${who} said ${theyWould} handle an idea`;
     case "idea_released":
       return `${who} let an idea go`;
     case "celebrated":
