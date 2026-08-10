@@ -13,10 +13,12 @@ import {
   archiveGeneralAction,
   completeGeneralAction,
   createGeneralAction,
+  declineGeneralActionReminderOffer,
   deferGeneralAction,
   dismissGeneralAction,
   editGeneralAction,
   getGeneralAction,
+  handGeneralActionToHousehold,
   listGeneralActionHistory,
   listSuggestedGeneralActionReviews,
   pauseGeneralAction,
@@ -25,6 +27,8 @@ import {
   resumeGeneralAction,
   setGeneralActionPeople,
   setGeneralActionVisibility,
+  setResponsibilityHolder,
+  shouldOfferResponsibilityHolderReminder,
   skipGeneralActionOccurrence,
   undeferGeneralAction,
   undoRoutineOccurrence,
@@ -39,6 +43,7 @@ import { getCachedActionLedgerViews } from "@/lib/cache/action-views";
 import { parseDateInputValue } from "@/lib/followup-view";
 import {
   type GeneralActionMutationResult,
+  type GeneralActionProgressResult,
   toGeneralActionEventView,
   toGeneralActionLinkedAssetView,
   toGeneralActionView,
@@ -119,7 +124,17 @@ const peopleActionSchema = z.object({
 });
 const noInputSchema = z.undefined();
 
-/** Maps a persisted Action outcome to the authoritative view for its acting owner. */
+/**
+ * Maps a persisted Action outcome to the authoritative view for the member who
+ * acted.
+ *
+ * The caller is the *acting* member rather than the record's `ownerUserId`: a
+ * co-member may complete a shared Action, and every member holds the same
+ * authority over a household-native one, whose `ownerUserId` is a storage key
+ * and not a person the view may speak about (ADR 0214). Reading it as the viewer
+ * would tell the acting member they own a record they do not, and would resolve
+ * "You're looking after this" against the wrong person.
+ */
 async function toAuthoritativeActionView(
   callerUserId: string,
   action: Parameters<typeof toGeneralActionView>[0],
@@ -128,6 +143,7 @@ async function toAuthoritativeActionView(
   return toGeneralActionView(hydrated.action, {
     callerUserId,
     linkedAssets: hydrated.linkedAssets,
+    memberNames: hydrated.memberNames,
     reminderSchedule: hydrated.reminderSchedule,
   });
 }
@@ -136,16 +152,22 @@ async function hydrateAuthoritativeActionView(
   callerUserId: string,
   action: Parameters<typeof toGeneralActionView>[0],
 ) {
-  const [linkedByAction, reminderSchedules] = await Promise.all([
+  const namesNeeded =
+    action.ownership === "household_native" && action.responsibilityHolderUserId !== null;
+  const [linkedByAction, reminderSchedules, members] = await Promise.all([
     listLinkedAssetsForGeneralActions({
       callerUserId,
       generalActionIds: [action.id],
     }),
     listReminderSchedulesForOwner({ ownerUserId: callerUserId }),
+    namesNeeded ? listShareableHouseholdMembersForUser({ userId: callerUserId }) : null,
   ]);
   return {
     action,
     linkedAssets: (linkedByAction[action.id] ?? []).map(toGeneralActionLinkedAssetView),
+    memberNames: members
+      ? new Map(members.map((member) => [member.userId, member.name]))
+      : undefined,
     reminderSchedule:
       reminderSchedules.find((schedule) => schedule.generalActionId === action.id) ?? null,
   };
@@ -171,8 +193,21 @@ export async function createGeneralActionAction(input: {
       if (!resolvedScope) {
         throw new Error("Owner action visibility scope was not resolved.");
       }
+      // Creation asks one question — who this is for — and "the whole household"
+      // is answered with a record the household owns, not one of mine that everyone
+      // can read. A shared chore almost always means the former, and the two are
+      // not recoverable from one another afterwards: widening visibility never
+      // transfers ownership, and there is no claim-back path (ADR 0214).
+      //
+      // Area and people links are deliberately forwarded rather than quietly
+      // stripped. They are one member's own records, so the lifecycle refuses them
+      // on a household-native record with a curated sentence that explains why; the
+      // composer hides both fields so an ordinary capture never reaches it.
       return createGeneralAction({
         ownerUserId,
+        ...(parsed.visibilityChoice === "whole_household"
+          ? { ownership: "household_native" as const }
+          : {}),
         title: parsed.title,
         notes: parsed.notes,
         dueAt: parsed.dueAt,
@@ -187,7 +222,7 @@ export async function createGeneralActionAction(input: {
       });
     },
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
+    result: (outcome, callerUserId) => toAuthoritativeActionView(callerUserId, outcome.result),
   });
 }
 
@@ -221,7 +256,7 @@ export async function editGeneralActionAction(input: {
         },
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
+    result: (outcome, callerUserId) => toAuthoritativeActionView(callerUserId, outcome.result),
   });
 }
 
@@ -253,7 +288,7 @@ export async function promoteAssetHintAction(input: {
       return { promotion, action };
     },
     affectedScopes: (outcome) => outcome.promotion.affectedScopes,
-    result: (outcome) => toAuthoritativeActionView(outcome.action.ownerUserId, outcome.action),
+    result: (outcome, callerUserId) => toAuthoritativeActionView(callerUserId, outcome.action),
   });
 }
 
@@ -280,7 +315,7 @@ export async function setGeneralActionVisibilityAction(input: {
       });
     },
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
+    result: (outcome, callerUserId) => toAuthoritativeActionView(callerUserId, outcome.result),
   });
 }
 
@@ -299,7 +334,7 @@ export async function setGeneralActionPeopleAction(input: {
         personIds: parsed.personIds,
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
+    result: (outcome, callerUserId) => toAuthoritativeActionView(callerUserId, outcome.result),
   });
 }
 
@@ -316,20 +351,89 @@ function transitionAction(
     body: ({ ownerUserId, input: parsed }) =>
       run({ actorUserId: ownerUserId, generalActionId: parsed.generalActionId }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
+    result: (outcome, callerUserId) => toAuthoritativeActionView(callerUserId, outcome.result),
+  });
+}
+
+const progressActionSchema = z.object({
+  generalActionId: z.uuid(),
+  // Absent on a private Action, which has nobody to race with. Every shared
+  // surface sends the occurrence its row was rendered against.
+  expectedOccurrenceVersion: z.number().int().min(0).optional(),
+});
+
+/**
+ * Completing or skipping, fenced on the occurrence the member actually saw.
+ *
+ * A second member acting on the same occurrence is *reconciled*, never refused:
+ * the record advances once, and this returns the settled state along with who
+ * settled it and when, so the surface can say so plainly instead of showing the
+ * member an error for a truthful report that arrived second (ADR 0214). The
+ * name lookup only runs when there is something to name.
+ */
+function progressAction(
+  input: unknown,
+  run: (input: {
+    actorUserId: string;
+    generalActionId: string;
+    expectedOccurrenceVersion?: number;
+  }) => Promise<
+    MutationOutcome<
+      GeneralActionWithContext & {
+        reconciliation: {
+          handledAs: "completed" | "skipped";
+          handledByUserId: string | null;
+          handledAt: Date;
+        } | null;
+      }
+    >
+  >,
+): Promise<GeneralActionProgressResult> {
+  return runOwnerAction({
+    schema: progressActionSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      run({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+        ...(parsed.expectedOccurrenceVersion !== undefined
+          ? { expectedOccurrenceVersion: parsed.expectedOccurrenceVersion }
+          : {}),
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: async (outcome, callerUserId) => {
+      const view = await toAuthoritativeActionView(callerUserId, outcome.result);
+      const reconciliation = outcome.result.reconciliation;
+      if (!reconciliation) return { ...view, reconciliation: null };
+      const handledByUserId = reconciliation.handledByUserId;
+      const members = handledByUserId
+        ? await listShareableHouseholdMembersForUser({ userId: callerUserId })
+        : [];
+      return {
+        ...view,
+        reconciliation: {
+          handledAs: reconciliation.handledAs,
+          handledByUserId,
+          handledByName: members.find((member) => member.userId === handledByUserId)?.name ?? null,
+          handledAtISO: reconciliation.handledAt.toISOString(),
+        },
+      };
+    },
   });
 }
 
 export async function completeGeneralActionAction(input: {
   generalActionId: string;
-}): Promise<GeneralActionMutationResult> {
-  return transitionAction(input, completeGeneralAction);
+  expectedOccurrenceVersion?: number;
+}): Promise<GeneralActionProgressResult> {
+  return progressAction(input, completeGeneralAction);
 }
 
 export async function skipGeneralActionOccurrenceAction(input: {
   generalActionId: string;
-}): Promise<GeneralActionMutationResult> {
-  return transitionAction(input, skipGeneralActionOccurrence);
+  expectedOccurrenceVersion?: number;
+}): Promise<GeneralActionProgressResult> {
+  return progressAction(input, skipGeneralActionOccurrence);
 }
 
 export async function dismissGeneralActionAction(input: {
@@ -356,6 +460,120 @@ export async function archiveGeneralActionAction(input: {
   return transitionAction(input, archiveGeneralAction);
 }
 
+const responsibilityHolderSchema = z.object({
+  generalActionId: z.uuid(),
+  // `null` is a real answer — "no one in particular" — not a missing value.
+  holderUserId: z.string().min(1).nullable(),
+  handedOff: z.boolean().optional(),
+  removeOutgoingReminder: z.boolean().optional(),
+});
+
+/**
+ * Names, changes, or clears who is looking after a household-native record.
+ *
+ * Any active member may say it, and it grants the named member nothing: it gates
+ * no authority, moves no work, and is never advanced by Tendnote. `handedOff`
+ * only marks the one-tap hand-off offered at completion so history can tell that
+ * story apart from a plain edit; `removeOutgoingReminder` is honoured downstream
+ * only when the acting member is the outgoing holder, because an alert on
+ * someone else's device is theirs to keep (ADRs 0203, 0215).
+ */
+export async function setResponsibilityHolderAction(input: {
+  generalActionId: string;
+  holderUserId: string | null;
+  handedOff?: boolean;
+  removeOutgoingReminder?: boolean;
+}): Promise<GeneralActionMutationResult> {
+  return runOwnerAction({
+    schema: responsibilityHolderSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      setResponsibilityHolder({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+        holderUserId: parsed.holderUserId,
+        ...(parsed.handedOff !== undefined ? { handedOff: parsed.handedOff } : {}),
+        ...(parsed.removeOutgoingReminder !== undefined
+          ? { removeOutgoingReminder: parsed.removeOutgoingReminder }
+          : {}),
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, callerUserId) => toAuthoritativeActionView(callerUserId, outcome.result),
+  });
+}
+
+/**
+ * Hands a member-owned Action over to the household. Owner-only, confirmed, and
+ * one-way: the record stays with the household if its author leaves, every active
+ * member may edit it, and there is no path back (ADR 0214).
+ */
+export async function handGeneralActionToHouseholdAction(input: {
+  generalActionId: string;
+  responsibilityHolderUserId?: string | null;
+}): Promise<GeneralActionMutationResult> {
+  return runOwnerAction({
+    schema: z.object({
+      generalActionId: z.uuid(),
+      responsibilityHolderUserId: z.string().min(1).nullable().optional(),
+    }),
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      handGeneralActionToHousehold({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+        ...(parsed.responsibilityHolderUserId !== undefined
+          ? { responsibilityHolderUserId: parsed.responsibilityHolderUserId }
+          : {}),
+      }),
+    affectedScopes: (outcome) => outcome.affectedScopes,
+    result: (outcome, callerUserId) => toAuthoritativeActionView(callerUserId, outcome.result),
+  });
+}
+
+/**
+ * Whether to invite this member to set their own Reminder Schedule for a record
+ * they are named as looking after.
+ *
+ * The rule lives in one place server-side, so this surface asks rather than
+ * reassembles it: household-native only, the named member only, in their own
+ * surfaces only, only when they hold no schedule for it, and never after they
+ * have said no. It is an offer inside a surface the member already opened —
+ * never a push, because an unconsented alert is precisely what the reminder
+ * contract refuses (ADR 0203).
+ */
+export async function getResponsibilityHolderReminderOfferAction(input: {
+  generalActionId: string;
+}) {
+  return runOwnerAction({
+    schema: actionIdSchema,
+    input,
+    body: ({ ownerUserId, input: parsed }) =>
+      shouldOfferResponsibilityHolderReminder({
+        actorUserId: ownerUserId,
+        generalActionId: parsed.generalActionId,
+      }),
+    result: (offer) => ({ offer }),
+  });
+}
+
+/** Remembers this member's "no thanks", so the offer is never made again. */
+export async function declineResponsibilityHolderReminderAction(input: {
+  generalActionId: string;
+}) {
+  return runOwnerAction({
+    schema: actionIdSchema,
+    input,
+    body: async ({ ownerUserId, input: parsed }) => {
+      await declineGeneralActionReminderOffer({
+        generalActionId: parsed.generalActionId,
+        userId: ownerUserId,
+      });
+      return null;
+    },
+    result: () => ({ declined: true }),
+  });
+}
+
 /** Pauses a Routine (recurring Action). Routine-only downstream (ADR 0148). */
 export async function pauseGeneralActionAction(input: {
   generalActionId: string;
@@ -380,7 +598,7 @@ export async function deferGeneralActionAction(input: {
     body: ({ ownerUserId, input: parsed }) =>
       deferGeneralAction({ actorUserId: ownerUserId, ...parsed }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
+    result: (outcome, callerUserId) => toAuthoritativeActionView(callerUserId, outcome.result),
   });
 }
 
@@ -407,7 +625,7 @@ export async function undoRoutineOccurrenceAction(input: {
         restoreDueAt: parsed.restoreDueAt,
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => toAuthoritativeActionView(outcome.result.ownerUserId, outcome.result),
+    result: (outcome, callerUserId) => toAuthoritativeActionView(callerUserId, outcome.result),
   });
 }
 

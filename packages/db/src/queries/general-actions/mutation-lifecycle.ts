@@ -23,10 +23,13 @@ export function createAffectedGeneralActionLifecycle(
 ) {
   const lifecycle = createGeneralActionLifecycle(store, deps);
 
-  async function withAffectedScopes(
-    resultPromise: Promise<GeneralActionResult>,
+  // Generic in the result so a path that returns *more* than the action view —
+  // the progress paths, which carry their reconciliation — keeps that on the way
+  // through rather than being widened back down to the bare view.
+  async function withAffectedScopes<TResult extends GeneralActionResult>(
+    resultPromise: Promise<TResult>,
     previousViewerUserIds: readonly string[] = [],
-  ): Promise<MutationOutcome<GeneralActionResult>> {
+  ): Promise<MutationOutcome<TResult>> {
     const result = await resultPromise;
     return {
       result,
@@ -48,6 +51,23 @@ export function createAffectedGeneralActionLifecycle(
       const previous = await lifecycle.getGeneralAction(input);
       const previousViewerUserIds = await listGeneralActionViewerUserIds(store, previous);
       return withAffectedScopes(lifecycle.setGeneralActionVisibility(input), previousViewerUserIds);
+    },
+    setResponsibilityHolder: (input: Parameters<typeof lifecycle.setResponsibilityHolder>[0]) =>
+      withAffectedScopes(lifecycle.setResponsibilityHolder(input)),
+    /**
+     * Handing a record to the household widens who can see it, so the previous
+     * audience is captured first — a member dropped by the change still has a
+     * stale view to invalidate.
+     */
+    async handGeneralActionToHousehold(
+      input: Parameters<typeof lifecycle.handGeneralActionToHousehold>[0],
+    ) {
+      const previous = await lifecycle.getGeneralAction(input);
+      const previousViewerUserIds = await listGeneralActionViewerUserIds(store, previous);
+      return withAffectedScopes(
+        lifecycle.handGeneralActionToHousehold(input),
+        previousViewerUserIds,
+      );
     },
     completeGeneralAction: (input: Parameters<typeof lifecycle.completeGeneralAction>[0]) =>
       withAffectedScopes(lifecycle.completeGeneralAction(input)),

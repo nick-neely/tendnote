@@ -1,5 +1,6 @@
 import type { HouseholdInvitationState, HouseholdRole, HouseholdWorkspace } from "@tendnote/domain";
 import type { HouseholdIdentityStore } from "./overview";
+import type { HouseholdScheduledWorkStore } from "./scheduled-work";
 import type { HouseholdStore } from "./types";
 
 export type HouseholdInvitation = {
@@ -57,6 +58,14 @@ export type HouseholdInvitationDelivery = {
 export type HouseholdInvitationStore = {
   households: HouseholdStore;
   identities: HouseholdIdentityStore;
+  /**
+   * The scheduled work a departure, removal, or dissolution has to end.
+   *
+   * It hangs off this store for the same reason the household store does:
+   * `withTransaction` rebinds it too, so ending a membership and cancelling the
+   * reminders that were queued around it commit together or not at all.
+   */
+  scheduledWork: HouseholdScheduledWorkStore;
   /**
    * Runs `fn` inside one transaction, handing it a store bound to that
    * transaction. Concurrency is serialized by {@link lockHousehold}, not by this

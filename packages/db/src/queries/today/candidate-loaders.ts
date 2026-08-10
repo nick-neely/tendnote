@@ -28,6 +28,14 @@ export type TodayCandidateLoaderDeps = {
     >;
   }) => Promise<RelationshipAgendaCandidate[]>;
   listActions: (input: { ownerUserId: string; limit: number }) => Promise<GeneralAction[]>;
+  /**
+   * The record ids this member holds their own Reminder Schedule for.
+   *
+   * One of the three signals that make a household-visible record personally
+   * relevant. Defaults to none when a caller does not wire it, which is the
+   * calm answer: a household chore nobody subscribed to nags nobody privately.
+   */
+  listOwnReminderRecordIds?: (input: { ownerUserId: string }) => Promise<string[]>;
   listSavedItems: (input: {
     callerUserId: string;
     includeArchived: false;

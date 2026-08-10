@@ -79,6 +79,9 @@ describe("Today cross-domain candidate loaders", () => {
         {
           id: "action-due",
           ownerUserId: OWNER,
+          scope: "private",
+          ownership: "member_owned",
+          responsibilityHolderUserId: null,
           title: "Replace the filter",
           status: "open",
           dueAt: new Date("2026-07-21T00:00:00.000Z"),
@@ -91,6 +94,9 @@ describe("Today cross-domain candidate loaders", () => {
         {
           id: "routine-due",
           ownerUserId: OWNER,
+          scope: "private",
+          ownership: "member_owned",
+          responsibilityHolderUserId: null,
           title: "Water plants",
           status: "open",
           dueAt: new Date("2026-07-21T00:00:00.000Z"),
@@ -103,6 +109,9 @@ describe("Today cross-domain candidate loaders", () => {
         {
           id: "action-future",
           ownerUserId: OWNER,
+          scope: "private",
+          ownership: "member_owned",
+          responsibilityHolderUserId: null,
           title: "Future action",
           status: "open",
           dueAt: new Date("2026-07-23T00:00:00.000Z"),

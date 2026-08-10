@@ -16,6 +16,8 @@ import type {
 } from "./capture/conversational-capture/types";
 import { createDrizzleFollowupStore } from "./followups/drizzle-store";
 import { createDrizzleGeneralActionLifecycleStore } from "./general-actions/drizzle-store";
+import { createHouseholdAuthorizationProver } from "./households/authorization";
+import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createDrizzleReminderStore } from "./reminders/drizzle-store";
 import { scheduleReminderDeliveryOutbox } from "./reminders/outbox";
 import { createReminderService } from "./reminders/service";
@@ -31,6 +33,7 @@ const outboxStore = createDrizzleBackgroundJobDeliveryStore();
 const reminderStore = createDrizzleReminderStore();
 const savedItemStore = createDrizzleSavedItemStore();
 const sourceRecordStore = createDrizzleSourceRecordStore();
+const householdRecordProver = createHouseholdAuthorizationProver(createDrizzleHouseholdStore());
 
 async function reminderSourceSensitivity(input: {
   ownerUserId: string;
@@ -109,20 +112,44 @@ async function loadSavedItemReminderRecord(input: {
   };
 }
 
+/**
+ * Loads the Action behind a reminder for the *subscribing* member, who is no
+ * longer necessarily its owner.
+ *
+ * The owner-keyed read still runs first — it is the common private case, and the
+ * only path that reaches a review-gated row — but a household-native record is
+ * never served from it, because its `ownerUserId` is a storage key and honouring
+ * it here would keep alerting a member who has left the household about the
+ * household's chores (ADR 0214). Everything else falls through to the
+ * scope-visible read, which requires current active membership, so a departed
+ * member's record simply stops existing for them and their pending intent is
+ * superseded on the next reconciliation.
+ */
 async function loadActionReminderRecord(input: {
   ownerUserId: string;
   recordId: string;
   requestedKind: "general_action" | "routine";
 }): Promise<ReminderRecord | null> {
-  const action = await actionStore.getGeneralAction({
+  const owned = await actionStore.getGeneralAction({
     ownerUserId: input.ownerUserId,
     generalActionId: input.recordId,
   });
+  const action =
+    owned?.ownership === "member_owned"
+      ? owned
+      : await actionStore.getVisibleGeneralAction({
+          callerUserId: input.ownerUserId,
+          generalActionId: input.recordId,
+        });
   if (!action) return null;
   const kind = action.recurrence ? "routine" : "general_action";
   if (kind !== input.requestedKind) return null;
+  // Sensitivity travels with the source record, which is the *action owner's*,
+  // so it is resolved against them rather than against the subscriber. A source
+  // the subscriber cannot read resolves to `restricted`, which is the
+  // fail-closed answer and keeps its content out of an ambient alert.
   const sensitivity = await reminderSourceSensitivity({
-    ownerUserId: input.ownerUserId,
+    ownerUserId: action.ownerUserId,
     sourceRecordId: action.sourceRecordId,
     getSourceRecord: sourceRecordStore.getSourceRecord,
   });
@@ -130,6 +157,8 @@ async function loadActionReminderRecord(input: {
     id: action.id,
     kind,
     ownerUserId: action.ownerUserId,
+    ownership: action.ownership,
+    householdId: action.householdId,
     title: action.title,
     status: action.status,
     occursAt: action.dueAt,
@@ -141,8 +170,45 @@ async function loadActionReminderRecord(input: {
   };
 }
 
+/**
+ * Whether a member may hold their own Reminder Schedule for a record.
+ *
+ * `reminder_schedules` is keyed on the subscribing member and the record, so
+ * several members can each be reminded about one shared Routine and both
+ * partners can hear about bin day. What the key cannot decide is whether a given
+ * member is *entitled* to one, and that is deliberately not owner-equality any
+ * more: it is the Household Authorization Proof, asked for `progress`, the same
+ * authority that lets a member complete the record they are asking to be
+ * reminded about (ADR 0203, ADR 0219).
+ *
+ * Nothing here enrolls anybody. This authorizes a member's own explicit choice
+ * about their own devices; no other member's action ever reaches it.
+ */
+async function authorizeReminderSubscription(input: {
+  subscriberUserId: string;
+  record: ReminderRecord;
+}): Promise<boolean> {
+  if (input.record.kind !== "general_action" && input.record.kind !== "routine") {
+    return input.record.ownerUserId === input.subscriberUserId;
+  }
+  const proof = await householdRecordProver.proveRecordAccess({
+    callerUserId: input.subscriberUserId,
+    operation: "progress",
+    record: {
+      kind: "general_action",
+      id: input.record.id,
+      ownerUserId: input.record.ownerUserId,
+      scope: input.record.scope,
+      householdId: input.record.householdId ?? null,
+      ownership: input.record.ownership ?? "member_owned",
+    },
+  });
+  return proof.authorized;
+}
+
 export const reminderService = createReminderService({
   store: reminderStore,
+  authorizeSubscription: authorizeReminderSubscription,
   async loadReminderRecord(input) {
     if (input.recordKind === "follow_up") {
       return loadFollowupReminderRecord({
@@ -166,6 +232,8 @@ export const reminderService = createReminderService({
 });
 
 export const saveGeneralActionReminder = reminderService.saveGeneralActionReminder;
+export const reconcileReminderRecordForSubscribers =
+  reminderService.reconcileReminderRecordForSubscribers;
 export const clearGeneralActionReminder = reminderService.clearGeneralActionReminder;
 
 export async function reminderMutationOutcome<

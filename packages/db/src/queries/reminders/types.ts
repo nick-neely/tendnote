@@ -41,6 +41,20 @@ export type ReminderStore = {
   ) => Promise<ReminderSchedule>;
   listSchedules: (input: ReminderRecordRef) => Promise<ReminderSchedule[]>;
   listSchedulesForOwner: (input: { ownerUserId: string }) => Promise<ReminderSchedule[]>;
+  /**
+   * Every member who holds their own schedule for one record, whoever owns it.
+   *
+   * The one read that crosses subscribers, and the reason it has to exist: a
+   * shared record's lifecycle change invalidates *every* member's pending
+   * intent, not just the actor's, so completing bin day cannot leave the other
+   * partner's phone still holding an alert for an occurrence that is gone
+   * (ADR 0203). Each subscriber's own schedule is still keyed to them and is
+   * still theirs alone to change.
+   */
+  listScheduleSubscribersForRecord: (input: {
+    recordKind: ReminderRecordKind;
+    recordId: string;
+  }) => Promise<string[]>;
   getSchedule: (input: {
     ownerUserId: string;
     scheduleId: string;
@@ -140,7 +154,16 @@ export type ReminderStore = {
 export type ReminderRecord = {
   id: string;
   kind: ReminderRecordKind;
+  /**
+   * The record's own owner, which is no longer the same person as the schedule's
+   * subscriber. On a household-native record it is a storage key naming nobody
+   * with authority, which is exactly why eligibility is now decided by
+   * `authorizeSubscription` rather than by comparing this to the caller.
+   */
   ownerUserId: string;
+  /** Whose record it is, so the subscription check can prove the right thing. */
+  ownership?: "member_owned" | "household_native";
+  householdId?: string | null;
   title: string;
   status: string;
   occursAt: Date | null;

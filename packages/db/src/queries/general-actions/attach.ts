@@ -3,6 +3,7 @@ import {
   type CreateGeneralActionInput,
   type GeneralActionAssetHint,
   type GeneralActionEdit,
+  type GeneralActionOwnership,
   GeneralActionValidationError,
   type PrivacyScope,
 } from "@tendnote/domain";
@@ -228,6 +229,8 @@ export function buildCreateGeneralActionValues(
     areaId: string | null;
     scope: PrivacyScope;
     householdId: string | null;
+    ownership?: GeneralActionOwnership;
+    responsibilityHolderUserId?: string | null;
   },
 ): CreateGeneralActionInput {
   const assetHints: GeneralActionAssetHint[] = input.assetHints ?? [];
@@ -248,6 +251,14 @@ export function buildCreateGeneralActionValues(
     areaId: resolved.areaId,
     scope: resolved.scope,
     householdId: resolved.householdId,
+    ownership: resolved.ownership ?? "member_owned",
+    responsibilityHolderUserId: resolved.responsibilityHolderUserId ?? null,
+    occurrenceVersion: 0,
+    // Creator provenance survives everything. On a household-native record it is
+    // the only thing its creator keeps, and it stays readable after they leave —
+    // every surface that attributes authorship reads this rather than ownership,
+    // because a workspace-owned record has no member owner to attribute to
+    // (ADRs 0154, 0214).
     createdByUserId: input.ownerUserId,
     lastActorUserId: input.ownerUserId,
     completedAt: null,

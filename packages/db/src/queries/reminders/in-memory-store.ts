@@ -44,6 +44,18 @@ export function createInMemoryReminderStore(): ReminderStore {
         (schedule) => schedule.ownerUserId === input.ownerUserId,
       );
     },
+    async listScheduleSubscribersForRecord(input) {
+      return [
+        ...new Set(
+          [...schedules.values()]
+            .filter(
+              (schedule) =>
+                schedule.recordKind === input.recordKind && schedule.recordId === input.recordId,
+            )
+            .map((schedule) => schedule.ownerUserId),
+        ),
+      ];
+    },
     async getSchedule(input) {
       return (
         [...schedules.values()].find(

@@ -117,8 +117,31 @@ describe("Phase 5 boundary — the general_actions schema is a bounded action mo
         "last_actor_user_id",
         "links",
         "notes",
+        // Phase 8 (#383). Three columns that each have to earn their place here,
+        // because two of them look exactly like the things this allowlist exists
+        // to keep out.
+        //
+        // `ownership` is the Household Workspace as an owner, which
+        // `owner_user_id NOT NULL` cannot express (ADR 0214). It is not a kind,
+        // a board, or a category.
+        //
+        // `responsibility_holder_user_id` is a single nullable name and is
+        // emphatically NOT an assignee: nothing reads it to decide authority,
+        // nothing advances it on completion or skip, nothing infers it from who
+        // usually does the work, and there is no per-member backlog or default
+        // filter built on it. It is a member's statement about who is looking
+        // after the household's chore, and the absence of any turn-order,
+        // sequence, tally, or fairness column beside it is the structural proof
+        // that it never became task routing (ADR 0215).
+        //
+        // `occurrence_version` is a concurrency fence, not a count of anything a
+        // person did. It is invisible in the product and carries no meaning
+        // across records.
+        "occurrence_version",
+        "ownership",
         "owner_user_id",
         "recurrence",
+        "responsibility_holder_user_id",
         "scope",
         // The generated tsvector backing exact recall (ADR 0150, #184) — a retrieval index,
         // not a product field. Added by migration 0036, which only the all-migrations scan
