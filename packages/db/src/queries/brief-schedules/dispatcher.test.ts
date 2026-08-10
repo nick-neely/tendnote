@@ -17,6 +17,7 @@ function dailyRow(overrides: Partial<CreateBriefScheduleInput> = {}): CreateBrie
     weekday: null,
     nextRunAt: new Date("2026-06-27T08:00:00Z"),
     enabled: true,
+    householdCheckinEnabled: false,
     leaseExpiresAt: null,
     attempts: 0,
     lastError: null,

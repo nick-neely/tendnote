@@ -1,6 +1,11 @@
 import type { HouseholdHomeRecord } from "@tendnote/domain";
-import { composeHouseholdHome } from "@tendnote/domain";
+import {
+  composeHouseholdCheckin,
+  composeHouseholdHome,
+  HOUSEHOLD_CHECKIN_UNAVAILABLE,
+} from "@tendnote/domain";
 import type {
+  HouseholdCheckinView,
   HouseholdHomeCandidate,
   HouseholdHomeCandidateLoader,
   HouseholdHomeProver,
@@ -16,6 +21,17 @@ import type {
  */
 const FAMILY_UNAVAILABLE =
   "Part of Household is temporarily unavailable. Your household's records are unchanged.";
+
+/**
+ * What the Check-in adds to the home's dependencies: whether this member asked
+ * for it.
+ *
+ * Read on every composition rather than passed in, because an opt-in is a
+ * standing preference and standing is exactly what a caller-scoped surface may
+ * not assume. It is also the one thing about a Check-in nobody else can decide —
+ * no member enables it for another (ADR 0220).
+ */
+export type HouseholdCheckinOptIn = (input: { callerUserId: string }) => Promise<boolean>;
 
 export type HouseholdHomeServiceDeps = {
   /**
@@ -35,9 +51,61 @@ export type HouseholdHomeServiceDeps = {
   }) => Promise<Array<{ userId: string; name: string | null }>>;
   loadCandidateFamilies: HouseholdHomeCandidateLoader[];
   proveRecords: HouseholdHomeProver;
+  /** Absent means nobody has opted in — the conservative default (ADR 0220). */
+  readCheckinOptIn?: HouseholdCheckinOptIn;
 };
 
 export function createHouseholdHomeService(deps: HouseholdHomeServiceDeps) {
+  /**
+   * The one gather-and-prove pass both surfaces are built from.
+   *
+   * The Check-in is a narrower read of the same authorized set, not a second
+   * pipeline: same membership re-read, same per-family isolation, same proof on
+   * each candidate's own facts. Extending rather than forking is the whole point —
+   * two pipelines over one household's records is two chances for one of them to
+   * be the lenient one, and the lenient one is the leak (ADR 0219).
+   */
+  async function provenCandidates(input: {
+    callerUserId: string;
+    householdId: string;
+    localDate: string;
+    timeZone?: string;
+    now?: Date;
+    memberNames: ReadonlyMap<string, string>;
+  }): Promise<{ records: HouseholdHomeRecord[]; failedFamilies: number }> {
+    const settled = await Promise.allSettled(
+      deps.loadCandidateFamilies.map((load) =>
+        load({
+          callerUserId: input.callerUserId,
+          householdId: input.householdId,
+          localDate: input.localDate,
+          timeZone: input.timeZone ?? "UTC",
+          now: input.now ?? new Date(),
+          memberNames: input.memberNames,
+        }),
+      ),
+    );
+
+    const candidates: HouseholdHomeCandidate[] = [];
+    let failedFamilies = 0;
+    for (const result of settled) {
+      if (result.status === "fulfilled") candidates.push(...result.value);
+      else failedFamilies += 1;
+    }
+
+    return {
+      records: await provenRecords(deps.proveRecords, input.callerUserId, candidates),
+      failedFamilies,
+    };
+  }
+
+  async function memberNamesFor(callerUserId: string, householdId: string) {
+    const members = await deps.listMemberNames({ callerUserId, householdId });
+    return new Map(
+      members.flatMap((member) => (member.name ? [[member.userId, member.name] as const] : [])),
+    );
+  }
+
   return {
     /**
      * The deterministic, permission-filtered Household home for one member.
@@ -60,36 +128,68 @@ export function createHouseholdHomeService(deps: HouseholdHomeServiceDeps) {
         return { household: null, ...composeHouseholdHome({ records: [] }) };
       }
 
-      const members = await deps.listMemberNames({
-        callerUserId: input.callerUserId,
+      const { records, failedFamilies } = await provenCandidates({
+        ...input,
         householdId: household.id,
+        memberNames: await memberNamesFor(input.callerUserId, household.id),
       });
-      const loaderInput = {
-        callerUserId: input.callerUserId,
-        householdId: household.id,
-        localDate: input.localDate,
-        timeZone: input.timeZone ?? "UTC",
-        now: input.now ?? new Date(),
-        memberNames: new Map(
-          members.flatMap((member) => (member.name ? [[member.userId, member.name] as const] : [])),
-        ),
-      };
-
-      const settled = await Promise.allSettled(
-        deps.loadCandidateFamilies.map((load) => load(loaderInput)),
-      );
-      const candidates: HouseholdHomeCandidate[] = [];
-      const limitations: string[] = [];
-      for (const result of settled) {
-        if (result.status === "fulfilled") candidates.push(...result.value);
-        else limitations.push(FAMILY_UNAVAILABLE);
-      }
 
       return {
         household,
         ...composeHouseholdHome({
-          records: await provenRecords(deps.proveRecords, input.callerUserId, candidates),
-          limitations,
+          records,
+          limitations: Array.from({ length: failedFamilies }, () => FAMILY_UNAVAILABLE),
+        }),
+      };
+    },
+
+    /**
+     * One member's private Household Check-in: at most three timely records they
+     * are currently authorized to see.
+     *
+     * Caller-scoped end to end. Membership, the opt-in, the candidates, and the
+     * proof are all re-read here rather than carried from whatever produced the
+     * entry the member tapped — a Check-in composed an hour ago by a scheduled
+     * brief and rendered now is exactly the deferred boundary ADR 0219 names, and
+     * this is its last safe point.
+     *
+     * The opt-in is checked before anything is read, not after. A member who has
+     * not asked for a Check-in has no household records gathered on their behalf
+     * at all, which is a stronger statement than composing one and hiding it.
+     */
+    async getHouseholdCheckin(input: {
+      callerUserId: string;
+      localDate: string;
+      timeZone?: string;
+      now?: Date;
+    }): Promise<HouseholdCheckinView> {
+      const optedIn =
+        (await deps.readCheckinOptIn?.({ callerUserId: input.callerUserId })) ?? false;
+      if (!optedIn) {
+        return { household: null, optedIn: false, records: [], limitations: [] };
+      }
+
+      const household = await deps.readAdmittedHousehold({ callerUserId: input.callerUserId });
+      if (!household) {
+        // A member who has left has no Check-in, and is told nothing about the
+        // household they used to be in — the entry simply stops existing.
+        return { household: null, optedIn: true, records: [], limitations: [] };
+      }
+
+      const { records, failedFamilies } = await provenCandidates({
+        ...input,
+        householdId: household.id,
+        memberNames: await memberNamesFor(input.callerUserId, household.id),
+      });
+
+      return {
+        household,
+        optedIn: true,
+        ...composeHouseholdCheckin({
+          records,
+          // One message however many families failed: which internal source was
+          // unavailable is a log line, not copy.
+          limitations: failedFamilies > 0 ? [HOUSEHOLD_CHECKIN_UNAVAILABLE] : [],
         }),
       };
     },

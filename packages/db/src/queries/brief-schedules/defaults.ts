@@ -51,6 +51,9 @@ export async function ensureDefaultBriefSchedules(
         now,
       ),
       enabled: true,
+      // A Household Check-in is offered, never assumed: a member who has not
+      // asked for one does not get shared records gathered on their behalf.
+      householdCheckinEnabled: false,
       leaseExpiresAt: null,
       attempts: 0,
       lastError: null,

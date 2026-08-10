@@ -1,3 +1,4 @@
+import { listBriefSchedulesForOwner } from "./brief-schedules";
 import { listActiveGeneralActions } from "./general-actions";
 import { loadHouseholdActionCandidates } from "./household-home/candidate-loaders/actions";
 import { createHouseholdHomeService } from "./household-home/service";
@@ -46,6 +47,18 @@ const defaultHouseholdHomeService = createHouseholdHomeService({
       ),
   ],
   proveRecords: (input) => proveVisibleHouseholdRecords(input),
+  /**
+   * The member's own opt-in, read fresh on every composition.
+   *
+   * Any enabled briefing carrying the flag counts, because the member opted into
+   * a Check-in rather than into one cadence's version of one. A member with no
+   * briefing schedules at all has never opted in, and reads as `false` without a
+   * special case.
+   */
+  readCheckinOptIn: async ({ callerUserId }) => {
+    const schedules = await listBriefSchedulesForOwner({ ownerUserId: callerUserId });
+    return schedules.some((schedule) => schedule.householdCheckinEnabled);
+  },
 });
 
 export function getHouseholdHome(input: {
@@ -55,4 +68,22 @@ export function getHouseholdHome(input: {
   now?: Date;
 }) {
   return defaultHouseholdHomeService.getHouseholdHome(input);
+}
+
+/**
+ * One member's private Household Check-in.
+ *
+ * Composed on every read for the same reason the home is: authorization can end
+ * mid-session, and a Check-in served from a store that outlives the membership
+ * behind it is a shared record delivered to someone who has left. Every surface
+ * that shows a Check-in — the private briefing, the Household destination, an Eve
+ * turn — calls this again rather than reusing what it was handed.
+ */
+export function getHouseholdCheckin(input: {
+  callerUserId: string;
+  localDate: string;
+  timeZone?: string;
+  now?: Date;
+}) {
+  return defaultHouseholdHomeService.getHouseholdCheckin(input);
 }

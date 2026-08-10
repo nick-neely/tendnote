@@ -12,6 +12,7 @@
     "./briefs": "./src/briefs.ts",
     "./household-actions": "./src/household-actions.ts",
     "./household-calendar": "./src/household-calendar.ts",
+    "./household-checkin": "./src/household-checkin.ts",
     "./household-context": "./src/household-context.ts",
     "./household-event-plans": "./src/household-event-plans.ts",
     "./household-governance": "./src/household-governance.ts",

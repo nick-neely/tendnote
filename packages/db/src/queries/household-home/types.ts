@@ -1,5 +1,6 @@
 import type {
   HouseholdAuthorizationGrant,
+  HouseholdCheckinComposition,
   HouseholdHomeComposition,
   HouseholdHomeRecord,
 } from "@tendnote/domain";
@@ -50,6 +51,21 @@ export type HouseholdHomeCandidateLoader = (input: {
  */
 export type HouseholdHomeView = HouseholdHomeComposition & {
   household: { id: string; name: string } | null;
+};
+
+/**
+ * One member's Check-in, as the surfaces that render it need it.
+ *
+ * `optedIn` and `household` are separate nullable facts because the three
+ * absences are three different situations and the caller renders each
+ * differently: not opted in (offer it), no household (there is no entry at all),
+ * and opted in with nothing timely (omit the entry rather than show an empty one).
+ * Collapsing them into one empty list would make a member who left look like a
+ * member with a quiet week.
+ */
+export type HouseholdCheckinView = HouseholdCheckinComposition & {
+  household: { id: string; name: string } | null;
+  optedIn: boolean;
 };
 
 export type HouseholdHomeProver = (input: {

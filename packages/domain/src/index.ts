@@ -39,6 +39,7 @@ export * from "./household-actions";
 export * from "./household-assets";
 export * from "./household-authorization";
 export * from "./household-calendar";
+export * from "./household-checkin";
 export * from "./household-context";
 export * from "./household-event-plans";
 export * from "./household-governance";

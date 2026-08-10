@@ -22,6 +22,17 @@ export const briefScheduleSchema = z.object({
   // nextRunAt is in the past and re-derives this on success.
   nextRunAt: z.date(),
   enabled: z.boolean().default(true),
+  /**
+   * Whether this member has asked for a Household Check-in in their private
+   * briefing (#390).
+   *
+   * It rides the brief schedule because that is literally what the member opts
+   * into — "their private daily or weekly briefing" — and because a preference
+   * stored beside the thing it modifies cannot drift away from it. Default
+   * `false`: a Check-in is offered, never assumed, and nobody may enable one for
+   * another member (ADR 0220).
+   */
+  householdCheckinEnabled: z.boolean().default(false),
   // Lease held while a dispatcher run is generating this brief; null when free.
   // A row is claimable only when its lease is absent or expired (at-least-once).
   leaseExpiresAt: z.date().nullable().default(null),

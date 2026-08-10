@@ -1,6 +1,7 @@
-import { getHouseholdHome } from "@tendnote/db/queries/household-home";
+import { getHouseholdCheckin, getHouseholdHome } from "@tendnote/db/queries/household-home";
 import { getAdmittedHouseholdForUser } from "@tendnote/db/queries/households";
 import { getOwnerTodayContext } from "@tendnote/db/queries/today";
+import { householdCheckinIsWorthShowing } from "@tendnote/domain/household-checkin";
 import { householdHomeSectionHeadings } from "@tendnote/domain/household-home";
 import Link from "next/link";
 import { redirect, unstable_rethrow } from "next/navigation";
@@ -8,6 +9,11 @@ import { connection } from "next/server";
 import { cache, Suspense } from "react";
 import { AdmittedRoute } from "@/components/admitted-route";
 import { appDestination } from "@/components/app-destinations";
+import { HouseholdCheckinChoice } from "@/components/household/household-checkin-choice";
+import {
+  HouseholdCheckinReserve,
+  HouseholdCheckinSection,
+} from "@/components/household/household-checkin-section";
 import {
   HouseholdHomeSection,
   type HouseholdHomeSectionKey,
@@ -80,6 +86,13 @@ export async function HouseholdHomeContent() {
         <HouseholdHomeStream ownerUserId={ownerUserId} sectionKey="comingUp" />
       </Suspense>
 
+      {/* Not a third collection on the home, and deliberately below the fold of
+          the two that are: the check-in is one member's private read, offered
+          from the household rather than composed into it (ADR 0220). */}
+      <Suspense fallback={<HouseholdCheckinReserve />}>
+        <HouseholdCheckinStream householdName={household.name} ownerUserId={ownerUserId} />
+      </Suspense>
+
       <HouseholdHomeFooter />
     </div>
   );
@@ -107,6 +120,52 @@ export async function HouseholdHomeStream({
   } catch (error) {
     unstable_rethrow(error);
     return <HouseholdHomeSectionUnavailable heading={heading} />;
+  }
+}
+
+/**
+ * The member's own check-in, and the choice about whether their brief carries it.
+ *
+ * Composed here rather than reusing the memoised home read: the check-in has its
+ * own opt-in gate and its own cap, and it re-reads standing at the moment it is
+ * rendered — which is the last safe point for a surface whose authorization can
+ * end mid-session. The choice is always offered; the section only appears when
+ * the member has asked for it and the household actually has something timely.
+ */
+export async function HouseholdCheckinStream({
+  householdName,
+  ownerUserId,
+}: {
+  householdName: string;
+  ownerUserId: string;
+}) {
+  try {
+    const { localDate, timeZone, now } = await getOwnerTodayContext({ ownerUserId });
+    const checkin = await getHouseholdCheckin({
+      callerUserId: ownerUserId,
+      localDate,
+      timeZone,
+      now,
+    });
+
+    return (
+      <div className="flex flex-col gap-4 border-t pt-6">
+        {householdCheckinIsWorthShowing(checkin) ? (
+          <HouseholdCheckinSection
+            headingId="household-checkin"
+            householdName={householdName}
+            limitations={checkin.limitations}
+            records={checkin.records}
+          />
+        ) : null}
+        <HouseholdCheckinChoice enabled={checkin.optedIn} />
+      </div>
+    );
+  } catch (error) {
+    unstable_rethrow(error);
+    // The check-in is the smallest thing on this page. If it cannot be read, the
+    // page says nothing about it rather than claiming the household is quiet.
+    return null;
   }
 }
 

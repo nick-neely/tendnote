@@ -34,6 +34,10 @@ export const briefSchedules = pgTable(
     weekday: integer("weekday"),
     nextRunAt: timestamp("next_run_at", { withTimezone: true }).notNull(),
     enabled: boolean("enabled").notNull().default(true),
+    // The member's own opt-in to a Household Check-in inside this briefing (#390).
+    // Off until they ask: the Check-in is offered, never assumed, and no member
+    // may turn it on for another (ADR 0220).
+    householdCheckinEnabled: boolean("household_checkin_enabled").notNull().default(false),
     // Lease held while a dispatcher run generates this brief; null when free.
     leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     attempts: integer("attempts").notNull().default(0),

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getAdmittedHouseholdForUser,
+  getHouseholdCheckin,
   getHouseholdHome,
   getOwnerTodayContext,
   redirect,
@@ -10,6 +11,7 @@ const {
   unstable_rethrow,
 } = vi.hoisted(() => ({
   getAdmittedHouseholdForUser: vi.fn(),
+  getHouseholdCheckin: vi.fn(),
   getHouseholdHome: vi.fn(),
   getOwnerTodayContext: vi.fn(),
   redirect: vi.fn(() => {
@@ -20,10 +22,18 @@ const {
 }));
 
 vi.mock("@tendnote/db/queries/households", () => ({ getAdmittedHouseholdForUser }));
-vi.mock("@tendnote/db/queries/household-home", () => ({ getHouseholdHome }));
+vi.mock("@tendnote/db/queries/household-home", () => ({ getHouseholdCheckin, getHouseholdHome }));
 vi.mock("@tendnote/db/queries/today", () => ({ getOwnerTodayContext }));
 vi.mock("@/lib/access/current-access", () => ({ requireAdmittedOwner }));
 vi.mock("next/navigation", () => ({ redirect, unstable_rethrow }));
+// The choice is a client component whose server action pulls in `server-only`.
+// Its own behaviour is covered where it lives; here it stands for "the offer is
+// on the page" so the page's composition can be asserted at all.
+vi.mock("@/components/household/household-checkin-choice", () => ({
+  HouseholdCheckinChoice: ({ enabled }: { enabled: boolean }) => (
+    <p>{enabled ? "Remove the check-in from my brief" : "Add a check-in to my brief"}</p>
+  ),
+}));
 vi.mock("@/components/household/household-home-section", () => ({
   HouseholdHomeSection: ({ view }: { view: HouseholdHomeSectionView }) => (
     <section>
@@ -38,7 +48,11 @@ vi.mock("@/components/household/household-home-section", () => ({
 
 import { renderToStaticMarkup } from "react-dom/server";
 import { RouteReserve } from "@/components/route-reserve";
-import HouseholdHomePage, { HouseholdHomeContent, HouseholdHomeStream } from "./page";
+import HouseholdHomePage, {
+  HouseholdCheckinStream,
+  HouseholdHomeContent,
+  HouseholdHomeStream,
+} from "./page";
 
 function emptySection(
   section: "needs_attention" | "coming_up",
@@ -60,6 +74,12 @@ beforeEach(() => {
     household: { id: "household-1", name: "Ash Lane" },
     needsAttention: emptySection("needs_attention", "Needs attention"),
     comingUp: emptySection("coming_up", "Coming up"),
+  });
+  getHouseholdCheckin.mockResolvedValue({
+    household: { id: "household-1", name: "Ash Lane" },
+    optedIn: false,
+    records: [],
+    limitations: [],
   });
 });
 
@@ -91,6 +111,14 @@ describe("the Household destination", () => {
 
     expect(markup.indexOf("Needs attention")).toBeLessThan(markup.indexOf("Coming up"));
     expect(markup.indexOf("Coming up")).toBeLessThan(markup.indexOf("Actions and Routines"));
+  });
+
+  it("offers the check-in below both sections rather than as a third one", async () => {
+    const markup = renderToStaticMarkup(await HouseholdHomeContent());
+
+    // The home answers one question in two sections. The check-in is a member's
+    // own private read offered from here, so it sits under them (ADR 0220).
+    expect(markup.indexOf("Coming up")).toBeLessThan(markup.indexOf("check-in"));
   });
 
   it("offers the way back to governance without putting it in the page's work", async () => {
@@ -130,6 +158,67 @@ describe("the Household destination", () => {
     expect(needs).toContain("Put the bins out");
     expect(needs).not.toContain("Parking permit");
     expect(coming).toContain("Parking permit");
+  });
+
+  it("omits the check-in section entirely when nothing is timely, but keeps the offer", async () => {
+    // An empty check-in is a standing request to go and find something. The
+    // offer stays, because the member still has a decision to make.
+    const markup = renderToStaticMarkup(
+      await HouseholdCheckinStream({ householdName: "Ash Lane", ownerUserId: "owner-1" }),
+    );
+
+    expect(markup).toContain("Add a check-in to my brief");
+    expect(markup).not.toContain("Household check-in");
+  });
+
+  it("shows the opted-in member their capped read, named as their own view", async () => {
+    getHouseholdCheckin.mockResolvedValue({
+      household: { id: "household-1", name: "Ash Lane" },
+      optedIn: true,
+      records: [
+        {
+          identity: "routine:a",
+          family: "routine",
+          section: "needs_attention",
+          pressing: true,
+          record: { kind: "general_action", id: "a", href: "/actions#a" },
+          title: "Put the bins out",
+          context: "Routine · weekly",
+          timing: { code: "due_today", explanation: "Due today" },
+          scopeLabel: "Household",
+          responsibility: null,
+          progress: null,
+          at: new Date("2026-07-21T09:00:00.000Z"),
+          createdAt: new Date("2026-07-01T09:00:00.000Z"),
+        },
+      ],
+      limitations: [],
+    });
+
+    const markup = renderToStaticMarkup(
+      await HouseholdCheckinStream({ householdName: "Ash Lane", ownerUserId: "owner-1" }),
+    );
+
+    expect(markup).toContain("Household check-in");
+    expect(markup).toContain("Put the bins out");
+    expect(markup).toContain('href="/actions#a"');
+    // The boundary in words, and no inline mutation: the row links to the record
+    // and the record's own surface owns every decision about it.
+    expect(markup).toContain("as you can see it");
+    expect(markup).not.toContain("<button");
+  });
+
+  it("says nothing at all when the check-in cannot be read", async () => {
+    getHouseholdCheckin.mockRejectedValue(new Error("unavailable"));
+
+    const rendered = await HouseholdCheckinStream({
+      householdName: "Ash Lane",
+      ownerUserId: "owner-1",
+    });
+
+    // Not an error state and not an empty state: the smallest thing on the page
+    // must never claim the household is quiet when it could not look.
+    expect(rendered).toBeNull();
   });
 
   it("returns a member who no longer has a household to Account", async () => {
