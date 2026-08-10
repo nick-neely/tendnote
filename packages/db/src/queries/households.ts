@@ -35,6 +35,7 @@ export {
   type HouseholdDissolutionState,
 } from "./households/governance";
 export { createInMemoryHouseholdInvitationStore } from "./households/in-memory-invitation-store";
+export { createInMemoryHouseholdPurgeStore } from "./households/in-memory-purge-store";
 export { createInMemoryHouseholdStore } from "./households/in-memory-store";
 export {
   digestHouseholdInvitationSecret,
@@ -52,7 +53,8 @@ export {
   type HouseholdIdentityStore,
 } from "./households/overview";
 export {
-  createInMemoryHouseholdPurgeStore,
+  eraseHousehold,
+  HOUSEHOLD_PURGE_DISPOSAL_ORDER,
   type HouseholdPurgeCounts,
   type HouseholdPurgeStore,
   type HouseholdPurgeSweepResult,

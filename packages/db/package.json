@@ -73,7 +73,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "TMPDIR=/tmp tsx src/seed.ts",
-    "db:purge:check": "TMPDIR=/tmp tsx src/queries/households/purge-live-check.ts",
+    "db:purge:check": "TMPDIR=/tmp tsx src/household-purge-live-check.ts",
     "db:eval:reset": "TMPDIR=/tmp tsx src/eval/reset.ts",
     "db:instant:seed": "TMPDIR=/tmp tsx src/instant/seed.ts"
   },

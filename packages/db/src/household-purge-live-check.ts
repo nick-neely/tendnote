@@ -12,7 +12,9 @@
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { getDb } from "../../client";
+import { getDb } from "./client";
+import { createDrizzleHouseholdPurgeStore } from "./queries/households/drizzle-purge-store";
+import { runHouseholdPurgeSweep } from "./queries/households/purge";
 import {
   assetEvidence,
   assetMemories,
@@ -23,6 +25,9 @@ import {
   generalActions,
   giftIdeas,
   giftPlans,
+  householdCalendarConnections,
+  householdCalendarEventCache,
+  householdDissolutionConfirmations,
   householdEventPlanLinks,
   householdEventPlans,
   householdInvitations,
@@ -35,9 +40,7 @@ import {
   reminderSchedules,
   savedItems,
   sourceRecords,
-} from "../../schema";
-import { createDrizzleHouseholdPurgeStore } from "./drizzle-purge-store";
-import { runHouseholdPurgeSweep } from "./purge";
+} from "./schema";
 
 const OWNER = "demo-user";
 const MEMBER = "demo-member";
@@ -238,6 +241,32 @@ async function seedDissolvedHousehold(dissolvedAt: Date) {
     sharedByUserId: MEMBER,
   });
 
+  const [connection] = await db
+    .insert(householdCalendarConnections)
+    .values({
+      householdId,
+      connectorUserId: OWNER,
+      designatedByUserId: OWNER,
+      providerKey: "google",
+      capabilityKey: "calendar.readonly",
+      calendarId: "primary",
+      label: "Household calendar",
+    })
+    .returning();
+  if (!connection) throw new Error("failed to seed calendar connection");
+  await db.insert(householdCalendarEventCache).values({
+    connectionId: connection.id,
+    calendarId: "primary",
+    windowKey: "2026-08",
+    events: [],
+    fetchedAt: new Date(),
+    expiresAt: new Date(Date.now() + DAY_MS),
+  });
+
+  await db
+    .insert(householdDissolutionConfirmations)
+    .values({ householdId, userId: OWNER, confirmedAt: dissolvedAt });
+
   await db.insert(householdInvitations).values({
     householdId,
     invitedByUserId: OWNER,
@@ -386,6 +415,13 @@ async function main() {
   ] as const) {
     check(`${label} are gone`, rows.length === 0, rows.length);
   }
+
+  const survivingCache = await db
+    .select()
+    .from(householdCalendarEventCache)
+    .where(eq(householdCalendarEventCache.calendarId, "primary"))
+    .then((rows) => rows.filter((row) => row.windowKey === "2026-08"));
+  check("provider cache material is gone", survivingCache.length === 0, survivingCache.length);
 
   const orphanReminders = await db
     .select()
