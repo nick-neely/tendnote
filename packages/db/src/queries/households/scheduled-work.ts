@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, exists, inArray, ne, or, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import type { DatabaseExecutor } from "../../client";
 import { getDb } from "../../client";
@@ -6,23 +6,34 @@ import {
   assetEvidence,
   assetMemories,
   assets,
+  followups,
   generalActions,
+  memories,
   reminderDeliveryJobs,
   reminderOccurrenceIntents,
   reminderSchedules,
+  savedItems,
+  sourceRecords,
 } from "../../schema";
 
 /**
  * What ending someone's place in a household has to do to the work that was
  * scheduled around them.
  *
- * A narrow, purpose-built seam rather than the General Action and reminder
- * stores handed to governance wholesale, because governance has no business
- * reading or writing records generally — it needs exactly these four effects,
- * all of them consequences of access ending, and all of them obliged to happen
- * inside the same transaction as the membership change. A departure that
- * revoked sharing but left a queued alert is a window in which the household
- * and the person disagree about whether they still live together.
+ * A narrow, purpose-built seam rather than the record and reminder stores handed
+ * to governance wholesale, because governance has no business reading or writing
+ * records generally — it needs exactly the effects below, all of them
+ * consequences of access ending, and all of them obliged to happen inside the
+ * same transaction as the membership change. A departure that revoked sharing
+ * but left a queued alert is a window in which the household and the person
+ * disagree about whether they still live together.
+ *
+ * The reverts are one rule applied family by family rather than one generic
+ * sweep, because the families genuinely differ: some have a household-native
+ * form that must survive the departure, one has a parent whose scope is a
+ * ceiling, and one is evidence that other people's surviving records stand on.
+ * A single "set every household-scoped row of this owner to private" would get
+ * each of those wrong in a different way.
  *
  * Deliberately id-returning rather than record-returning: governance decides
  * *that* these things end, and nothing here gives it a way to read their
@@ -75,6 +86,50 @@ export type HouseholdScheduledWorkStore = {
     householdId: string;
     ownerUserId: string;
   }) => Promise<string[]>;
+  /**
+   * The same for this member's own Saved Items.
+   *
+   * `docs/phase-8/household-saved-items.md` states it twice — a member-owned
+   * item "immediately returns to their private space" on departure, removal, or
+   * dissolution — and until this existed the code did neither half: the item
+   * kept `household` scope, so the household read on, and the audience rule
+   * needs current active membership before it consults ownership, so the person
+   * who wrote it was refused their own note. Exactly the shape of the Action and
+   * Asset reverts beside it.
+   *
+   * Household-native Saved Items are untouched: they belong to the workspace and
+   * survive every departure with their creator and actor attribution intact
+   * (ADR 0214).
+   */
+  revertMemberOwnedSavedItemsToPrivate: (input: {
+    householdId: string;
+    ownerUserId: string;
+  }) => Promise<string[]>;
+  /**
+   * The same for the relationship records this member deliberately exposed to
+   * the household — their own Memories, Source Records, and Follow-Ups (#388).
+   *
+   * These have no household-native form at all: every row is somebody's, so a
+   * departure returns all of them. Dropping the share rows is not enough on its
+   * own and never was, because a `household`-scope record has no share rows to
+   * drop; it is readable by anyone with a current active membership, which after
+   * a departure means everyone except its owner.
+   *
+   * Source Records are the one family that needs an exclusion, and it is the
+   * evidence-ceiling rule seen from the other side. A household-native Saved
+   * Item, Action, Asset Memory, or Asset Evidence stands on grounding that is
+   * still keyed to whichever member captured it, and that record survives the
+   * departure — so returning its evidence to `private` would leave the
+   * workspace's own record grounded on something nobody in the household can
+   * read. Those source records stay where they are; every other one comes home.
+   *
+   * Returns the ids per family, so the audit trail can say how much of each
+   * moved and still be given no way to read any of it.
+   */
+  revertMemberOwnedRelationshipRecordsToPrivate: (input: {
+    householdId: string;
+    ownerUserId: string;
+  }) => Promise<{ memories: string[]; sourceRecords: string[]; followups: string[] }>;
   /**
    * The ids of the Actions and Routines currently scoped to this household.
    *
@@ -198,6 +253,124 @@ export function createDrizzleHouseholdScheduledWorkStore(
       return rows.map((row) => row.id);
     },
 
+    async revertMemberOwnedSavedItemsToPrivate(input) {
+      const rows = await resolveDb()
+        .update(savedItems)
+        .set({
+          scope: "private",
+          householdId: null,
+          // Every Saved Item write bumps the concurrency fence, and this is a
+          // write. A member still holding the pre-departure version is then
+          // reconciled rather than allowed to save over a record that has since
+          // left the household (#385).
+          version: sql`${savedItems.version} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(savedItems.householdId, input.householdId),
+            eq(savedItems.ownerUserId, input.ownerUserId),
+            eq(savedItems.ownership, "member_owned"),
+            ne(savedItems.scope, "private"),
+          ),
+        )
+        .returning({ id: savedItems.id });
+      return rows.map((row) => row.id);
+    },
+
+    async revertMemberOwnedRelationshipRecordsToPrivate(input) {
+      const db = resolveDb();
+      const toPrivate = { scope: "private" as const, householdId: null, updatedAt: new Date() };
+      const ownRowsInThisHousehold = (table: typeof memories | typeof followups) =>
+        and(
+          eq(table.householdId, input.householdId),
+          eq(table.ownerUserId, input.ownerUserId),
+          ne(table.scope, "private"),
+        );
+
+      const revertedMemories = await db
+        .update(memories)
+        .set(toPrivate)
+        .where(ownRowsInThisHousehold(memories))
+        .returning({ id: memories.id });
+      const revertedFollowups = await db
+        .update(followups)
+        .set(toPrivate)
+        .where(ownRowsInThisHousehold(followups))
+        .returning({ id: followups.id });
+
+      // The grounding the household's own records stand on stays put. Each of
+      // these families keeps its capturer in `owner_user_id` as a storage key
+      // while the record itself belongs to the workspace (ADR 0214), so the
+      // owner match alone cannot tell "evidence I shared" from "evidence the
+      // household's record is made of".
+      const groundsSurvivingHouseholdRecord = or(
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(savedItems)
+            .where(
+              and(
+                eq(savedItems.sourceRecordId, sourceRecords.id),
+                eq(savedItems.ownership, "household_native"),
+              ),
+            ),
+        ),
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(generalActions)
+            .where(
+              and(
+                eq(generalActions.sourceRecordId, sourceRecords.id),
+                eq(generalActions.ownership, "household_native"),
+              ),
+            ),
+        ),
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(assetMemories)
+            .where(
+              and(
+                eq(assetMemories.sourceRecordId, sourceRecords.id),
+                eq(assetMemories.ownership, "household_native"),
+              ),
+            ),
+        ),
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(assetEvidence)
+            .where(
+              and(
+                eq(assetEvidence.sourceRecordId, sourceRecords.id),
+                eq(assetEvidence.ownership, "household_native"),
+              ),
+            ),
+        ),
+      );
+
+      const revertedSourceRecords = await db
+        .update(sourceRecords)
+        .set(toPrivate)
+        .where(
+          and(
+            eq(sourceRecords.householdId, input.householdId),
+            eq(sourceRecords.ownerUserId, input.ownerUserId),
+            ne(sourceRecords.scope, "private"),
+            sql`not (${groundsSurvivingHouseholdRecord})`,
+          ),
+        )
+        .returning({ id: sourceRecords.id });
+
+      return {
+        memories: revertedMemories.map((row) => row.id),
+        sourceRecords: revertedSourceRecords.map((row) => row.id),
+        followups: revertedFollowups.map((row) => row.id),
+      };
+    },
+
     async listHouseholdActionIds(input) {
       const rows = await resolveDb()
         .select({ id: generalActions.id })
@@ -274,6 +447,12 @@ export function createNoopHouseholdScheduledWorkStore(): HouseholdScheduledWorkS
     },
     async revertMemberOwnedAssetsToPrivate() {
       return [];
+    },
+    async revertMemberOwnedSavedItemsToPrivate() {
+      return [];
+    },
+    async revertMemberOwnedRelationshipRecordsToPrivate() {
+      return { memories: [], sourceRecords: [], followups: [] };
     },
     async listHouseholdActionIds() {
       return [];

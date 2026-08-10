@@ -66,6 +66,79 @@ function auditActions(fixture: Fixture, actorUserId: string) {
     .then((entries) => entries.map((entry) => entry.action));
 }
 
+async function auditEntry(
+  fixture: Fixture,
+  actorUserId: string,
+  action: string,
+): Promise<Record<string, unknown>> {
+  const entries = await fixture.store.households.listAuditLogEntries({ ownerUserId: actorUserId });
+  const entry = entries.find((row) => row.action === action);
+  if (!entry) throw new Error(`No ${action} audit entry for ${actorUserId}`);
+  return entry.metadataJson as Record<string, unknown>;
+}
+
+/** Which record families a departure asked to send home, in the order it asked. */
+const sweptCalls = new WeakMap<object, Array<{ family: string; userId: string }>>();
+
+/**
+ * A scheduled-work store that records the sweep instead of performing it.
+ *
+ * Every family is one line here so that adding a family to the seam and
+ * forgetting to call it from one of the three endings fails loudly rather than
+ * quietly leaving those records in a household their owner has left.
+ */
+function recordingScheduledWork(): HouseholdScheduledWorkStore {
+  const calls: Array<{ family: string; userId: string }> = [];
+  const record = (family: string) => (userId: string) => {
+    calls.push({ family, userId });
+  };
+  const store: HouseholdScheduledWorkStore = {
+    ...createNoopHouseholdScheduledWorkStore(),
+    revertMemberOwnedActionsToPrivate: async ({ ownerUserId }) => {
+      record("actions")(ownerUserId);
+      return [];
+    },
+    revertMemberOwnedAssetsToPrivate: async ({ ownerUserId }) => {
+      record("assets")(ownerUserId);
+      return [];
+    },
+    revertMemberOwnedSavedItemsToPrivate: async ({ ownerUserId }) => {
+      record("saved-items")(ownerUserId);
+      return [];
+    },
+    revertMemberOwnedRelationshipRecordsToPrivate: async ({ ownerUserId }) => {
+      record("relationship-records")(ownerUserId);
+      return { memories: [], sourceRecords: [], followups: [] };
+    },
+    clearResponsibilityHolderForMember: async ({ userId }) => {
+      record("responsibilities")(userId);
+      return [];
+    },
+  };
+  sweptCalls.set(store, calls);
+  return store;
+}
+
+function sweptFamilies(fixture: Fixture) {
+  const scheduledWork = fixture.store.scheduledWork;
+  return sweptCalls.get(scheduledWork) ?? [];
+}
+
+/** A sweep that moves a distinguishable number of rows in every family. */
+function countingReverts(): Partial<HouseholdScheduledWorkStore> {
+  return {
+    revertMemberOwnedActionsToPrivate: async () => ["action"],
+    revertMemberOwnedAssetsToPrivate: async () => ["asset"],
+    revertMemberOwnedSavedItemsToPrivate: async () => ["saved-item"],
+    revertMemberOwnedRelationshipRecordsToPrivate: async () => ({
+      memories: ["memory"],
+      sourceRecords: ["source-a", "source-b", "source-c"],
+      followups: ["followup"],
+    }),
+    clearResponsibilityHolderForMember: async () => ["action"],
+  };
+}
+
 let fixture: Fixture;
 beforeEach(() => {
   fixture = createFixture();
@@ -258,23 +331,16 @@ describe("removal and departure", () => {
     expect(departed.acceptedAt).not.toBeNull();
   });
 
-  it("sends every family of the departing person's own records home, in the same breath", async () => {
+  it.each([
+    ["removal", (f: Fixture) => f.governance.removeMember({ actorUserId: ANA, memberUserId: BEN })],
+    ["voluntary departure", (f: Fixture) => f.governance.leaveHousehold({ userId: BEN })],
+  ] as const)("sends every family of the departing person's own records home on %s", async (_label, end) => {
     // The sweep is deliberately id-returning and store-shaped, so what this
     // asserts is that governance *asks* for each family. One household record
     // family silently missing from a departure is the failure mode worth
-    // catching, and adding Assets (#386) is exactly the moment it could happen.
-    const reverted: Array<{ family: string; ownerUserId: string }> = [];
-    const recording = createFixture({
-      ...createNoopHouseholdScheduledWorkStore(),
-      revertMemberOwnedActionsToPrivate: async ({ ownerUserId }) => {
-        reverted.push({ family: "actions", ownerUserId });
-        return [];
-      },
-      revertMemberOwnedAssetsToPrivate: async ({ ownerUserId }) => {
-        reverted.push({ family: "assets", ownerUserId });
-        return [];
-      },
-    });
+    // catching, and it has happened twice: Assets (#386) were the moment it
+    // could, and Saved Items were the moment it did.
+    const recording = createFixture(recordingScheduledWork());
     await seedHouseholdWithMembers(recording.store.households, {
       ownerUserId: ANA,
       members: [
@@ -283,12 +349,105 @@ describe("removal and departure", () => {
       ],
     });
 
-    await recording.governance.leaveHousehold({ userId: BEN });
+    await end(recording);
 
-    expect(reverted).toEqual([
-      { family: "actions", ownerUserId: BEN },
-      { family: "assets", ownerUserId: BEN },
+    expect(sweptFamilies(recording)).toEqual([
+      { family: "actions", userId: BEN },
+      { family: "assets", userId: BEN },
+      { family: "saved-items", userId: BEN },
+      { family: "relationship-records", userId: BEN },
+      { family: "responsibilities", userId: BEN },
     ]);
+  });
+
+  it("sends every family home for every member when the household is dissolved", async () => {
+    // Dissolution is every member departing at once, so it owes each of them the
+    // same sweep an individual departure would have given them - including the
+    // responsibility clear, which it used to skip, leaving the 30-day recovery
+    // set naming people who had been removed (ADR 0215).
+    const recording = createFixture(recordingScheduledWork());
+    await seedHouseholdWithMembers(recording.store.households, {
+      ownerUserId: ANA,
+      members: [
+        [ANA, "owner"],
+        [BEN, "member"],
+      ],
+    });
+
+    await recording.governance.confirmDissolution({ ownerUserId: ANA });
+
+    const families = [
+      "actions",
+      "assets",
+      "saved-items",
+      "relationship-records",
+      "responsibilities",
+    ];
+    expect(sweptFamilies(recording)).toEqual([
+      ...families.map((family) => ({ family, userId: ANA })),
+      ...families.map((family) => ({ family, userId: BEN })),
+    ]);
+  });
+
+  it("records the same set of counts however the household access ended", async () => {
+    // Removal, departure, and dissolution differ in who decided and in nothing
+    // else the trail is allowed to be vaguer about. Each of these keys went
+    // missing from one payload or another before this test existed.
+    const counted = { ...createNoopHouseholdScheduledWorkStore(), ...countingReverts() };
+    const removal = createFixture(counted);
+    await seedHouseholdWithMembers(removal.store.households, {
+      ownerUserId: ANA,
+      members: [
+        [ANA, "owner"],
+        [BEN, "member"],
+      ],
+    });
+    await removal.governance.removeMember({ actorUserId: ANA, memberUserId: BEN });
+
+    const departure = createFixture(counted);
+    await seedHouseholdWithMembers(departure.store.households, {
+      ownerUserId: ANA,
+      members: [
+        [ANA, "owner"],
+        [BEN, "member"],
+      ],
+    });
+    await departure.governance.leaveHousehold({ userId: BEN });
+
+    const dissolution = createFixture(counted);
+    await seedHouseholdWithMembers(dissolution.store.households, {
+      ownerUserId: ANA,
+      members: [[ANA, "owner"]],
+    });
+    await dissolution.governance.confirmDissolution({ ownerUserId: ANA });
+
+    const expected = [
+      "canceledActionReminders",
+      "canceledInvitations",
+      "clearedResponsibilities",
+      "disconnectedCalendars",
+      "revertedActions",
+      "revertedAssets",
+      "revertedFollowups",
+      "revertedMemories",
+      "revertedSavedItems",
+      "revertedSourceRecords",
+    ];
+    for (const [fixture, actor, action] of [
+      [removal, ANA, "household.member_remove"],
+      [departure, BEN, "household.member_leave"],
+      [dissolution, ANA, "household.dissolve"],
+    ] as const) {
+      const entry = await auditEntry(fixture, actor, action);
+      expect(
+        Object.keys(entry)
+          .filter((key) => expected.includes(key))
+          .sort(),
+      ).toEqual(expected);
+      // Every count is the real one from the sweep, not a zero placeholder.
+      expect(entry.revertedSavedItems).toBe(1);
+      expect(entry.revertedSourceRecords).toBe(3);
+    }
   });
 
   it("takes the departing person's outstanding invitations with them", async () => {
@@ -592,5 +751,90 @@ describe("governed removal is the only removal", () => {
       }
     }
     expect(offenders).toEqual(["households.ts"]);
+  });
+});
+
+/**
+ * What happens after the transaction has committed, and what must not.
+ *
+ * The hooks are derived cleanup running on an ending that is already true and
+ * irreversible. One of them failing used to throw out of a completed departure
+ * *and* skip every hook queued behind it, so a Gift Plan outage took Saved Item
+ * reminder revocation down with it - the reverse of what either family wanted.
+ */
+describe("post-commit hooks", () => {
+  function fixtureWithHooks(hooks: {
+    onHouseholdAccessEnded?: (input: { householdId: string; userId?: string }) => Promise<void>;
+    onAccessEnded?: (input: { householdId: string; userId: string }) => Promise<void>;
+  }) {
+    const store = createInMemoryHouseholdInvitationStore({
+      identities: [
+        { id: ANA, name: "Ana", email: "ana@example.com" },
+        { id: BEN, name: "Ben", email: "ben@example.com" },
+      ],
+    });
+    return {
+      store,
+      governance: createHouseholdGovernanceLifecycle(store, { now: () => NOW, ...hooks }),
+    };
+  }
+
+  it.each([
+    ["the whole-household hook", "onHouseholdAccessEnded"],
+    ["the per-member hook", "onAccessEnded"],
+  ] as const)("finishes the departure and the other hook when %s throws", async (_label, failing) => {
+    const ran: string[] = [];
+    const harness = fixtureWithHooks({
+      onHouseholdAccessEnded: async () => {
+        if (failing === "onHouseholdAccessEnded") throw new Error("gift plan sweep is down");
+        ran.push("household");
+      },
+      onAccessEnded: async () => {
+        if (failing === "onAccessEnded") throw new Error("reminder revocation is down");
+        ran.push("member");
+      },
+    });
+    await seedHouseholdWithMembers(harness.store.households, {
+      ownerUserId: ANA,
+      members: [
+        [ANA, "owner"],
+        [BEN, "member"],
+      ],
+    });
+
+    // The departure itself resolves - the rows have moved, and reporting an
+    // error would invite a retry of something that cannot be done twice.
+    await expect(harness.governance.leaveHousehold({ userId: BEN })).resolves.toMatchObject({
+      status: "removed",
+    });
+    // And the hook that did not fail still ran.
+    expect(ran).toEqual([failing === "onHouseholdAccessEnded" ? "member" : "household"]);
+  });
+
+  it("tells the whole-household hook that a dissolution was not a departure", async () => {
+    const calls: Array<{ userId?: string }> = [];
+    const members: string[] = [];
+    const harness = fixtureWithHooks({
+      onHouseholdAccessEnded: async ({ userId }) => {
+        calls.push({ userId });
+      },
+      onAccessEnded: async ({ userId }) => {
+        members.push(userId);
+      },
+    });
+    await seedHouseholdWithMembers(harness.store.households, {
+      ownerUserId: ANA,
+      members: [
+        [ANA, "owner"],
+        [BEN, "member"],
+      ],
+    });
+
+    await harness.governance.confirmDissolution({ ownerUserId: ANA });
+
+    // No `userId`: nobody in particular left, the household ended.
+    expect(calls).toEqual([{ userId: undefined }]);
+    // Every member who was still active hears about it individually.
+    expect(members.sort()).toEqual([ANA, BEN]);
   });
 });

@@ -257,6 +257,94 @@ describe("dissolution", () => {
   });
 });
 
+/**
+ * The other ownership form's end of life, which is the opposite of the
+ * household-native one: a member-owned Saved Item shared into the household
+ * leaves *with* its owner (`docs/phase-8/household-saved-items.md`).
+ *
+ * The revert itself is `revertMemberOwnedSavedItemsToPrivate`, one SQL statement
+ * inside the same transaction as the membership change, so what is asserted here
+ * is the pair of states either side of it - the state that made the revert
+ * necessary, and the state it produces. Between them they say the whole rule:
+ * without it the household reads on and the owner is locked out of their own
+ * note, which is exactly backwards.
+ */
+describe("a member-owned Saved Item shared into the household", () => {
+  let harness: Harness;
+  beforeEach(async () => {
+    harness = await seedHousehold();
+  });
+
+  async function seedSharedByAna(scope: "household" | "shared") {
+    return createSavedItemLifecycle(harness.store).createSavedItem({
+      ownerUserId: ANA,
+      kind: "note",
+      title: "The gate code",
+      scope,
+      householdId: harness.householdId,
+      ...(scope === "shared" ? { selectedUserIds: [BEN] } : {}),
+    });
+  }
+
+  it.each([
+    "household",
+    "shared",
+  ] as const)("strands its %s-scope owner and keeps serving the household until the revert runs", async (scope) => {
+    const lifecycle = createSavedItemLifecycle(harness.store);
+    const note = await seedSharedByAna(scope);
+
+    await removeHouseholdMember(harness.store, {
+      householdId: harness.householdId,
+      userId: ANA,
+    });
+
+    // This is the window the revert closes, asserted so the need for it is
+    // visible here and not only in governance. The audience rule wants a
+    // current active membership before it ever consults ownership, so the
+    // person who wrote the note is refused it - while Ben, who is still in the
+    // household, reads on.
+    await expect(
+      lifecycle.getSavedItem({ callerUserId: ANA, savedItemId: note.id }),
+    ).resolves.toBeNull();
+    await expect(
+      lifecycle.getSavedItem({ callerUserId: BEN, savedItemId: note.id }),
+    ).resolves.toMatchObject({ id: note.id });
+  });
+
+  it.each([
+    "household",
+    "shared",
+  ] as const)("comes home to its %s-scope owner once it is private again, and leaves the household", async (scope) => {
+    const lifecycle = createSavedItemLifecycle(harness.store);
+    const note = await seedSharedByAna(scope);
+
+    await removeHouseholdMember(harness.store, {
+      householdId: harness.householdId,
+      userId: ANA,
+    });
+    // What the departure sweep writes: scope and household cleared, the shares
+    // already dropped by the membership change that preceded it.
+    await harness.store.updateSavedItem({
+      ownerUserId: ANA,
+      savedItemId: note.id,
+      patch: { scope: "private", householdId: null },
+    });
+    await harness.store.deleteHouseholdRecordSharesForMember({
+      householdId: harness.householdId,
+      userId: ANA,
+    });
+
+    await expect(
+      lifecycle.getSavedItem({ callerUserId: ANA, savedItemId: note.id }),
+    ).resolves.toMatchObject({ id: note.id, scope: "private", householdId: null });
+    for (const other of [BEN, MARA, OUTSIDER]) {
+      await expect(
+        lifecycle.getSavedItem({ callerUserId: other, savedItemId: note.id }),
+      ).resolves.toBeNull();
+    }
+  });
+});
+
 describe("optimistic conflict reconciliation", () => {
   let harness: Harness;
   beforeEach(async () => {

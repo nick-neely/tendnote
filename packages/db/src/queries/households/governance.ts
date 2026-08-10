@@ -37,7 +37,9 @@ export type HouseholdGovernanceOptions = {
    * recoverable one — never a disclosure.
    *
    * Whole-household form. {@link HouseholdGovernanceOptions.onAccessEnded} is
-   * the per-member form; both fire for the same endings.
+   * the per-member form; both fire for the same endings, independently and in no
+   * guaranteed order. Neither may assume the other ran, and a hook that throws
+   * is logged and dropped rather than failing an ending that already happened.
    */
   onHouseholdAccessEnded?: (input: { householdId: string; userId?: string }) => Promise<void>;
   /**
@@ -56,6 +58,14 @@ export type HouseholdGovernanceOptions = {
    *
    * #385 uses it to drop Saved Item Reminder Schedules the departing member can
    * no longer read. #383 joins it for household-native scheduled work.
+   *
+   * What it revokes is counted by the hook itself, in whatever trail that family
+   * keeps, and deliberately not folded into the governance audit entry: the
+   * numbers in that entry are what the *transaction* did, and a count from a
+   * best-effort sweep that may not have run at all would make the trail's other
+   * figures read as less certain than they are. `canceledActionReminders` in
+   * particular means exactly what it says — schedules and pending intents for
+   * this household's General Actions and Routines — and nothing else.
    */
   onAccessEnded?: (input: { householdId: string; userId: string }) => Promise<void>;
 };
@@ -74,6 +84,24 @@ export type HouseholdDissolutionResult = {
   endedMemberships: number;
   /** Designations ended and provider caches cleared, whoever connected them. */
   disconnectedCalendars: number;
+};
+
+/**
+ * How much of one member's own record set came home, per family.
+ *
+ * Counts, never ids or content: governance says *that* these things moved and is
+ * given no way to read any of it (household privacy evidence). Every ending
+ * writes the whole set — a removal, a departure, and a dissolution differ in who
+ * decided, never in what the trail is allowed to say about it.
+ */
+type RevertedRecordCounts = {
+  revertedActions: number;
+  revertedAssets: number;
+  revertedSavedItems: number;
+  revertedMemories: number;
+  revertedSourceRecords: number;
+  revertedFollowups: number;
+  clearedResponsibilities: number;
 };
 
 /** How far a household is from the unanimous decision, plus whether it has ended. */
@@ -117,17 +145,71 @@ export function createHouseholdGovernanceLifecycle(
   const now = options.now ?? (() => new Date());
 
   /**
-   * Tells the record families that access has ended, once the rows have
-   * actually moved.
+   * Tells the record families that access has ended, once the rows have actually
+   * moved.
    *
-   * After the transaction commits rather than inside it: the hook writes through
+   * After the transaction commits rather than inside it: a hook writes through
    * its own connection, and running it in the middle would have it acting on a
    * membership change that might still roll back. The ordering it does guarantee
    * is the one that matters — nothing is re-privatized on the strength of a
    * departure that did not happen.
+   *
+   * Every hook is independent, and that is the whole design rather than a
+   * defensive flourish. The transaction has committed; the membership rows are
+   * already the authority on who may see what, so nothing that fails here can
+   * restore access, and nothing that succeeds here is what made the departure
+   * true. Letting one throw would do two wrong things at once: turn a completed,
+   * irreversible governance write into an error the caller would reasonably
+   * retry, and cancel the sweeps that had not run yet — which is how one record
+   * family's outage used to take another family's revocation down with it.
+   *
+   * So each is called on its own, each failure is logged and swallowed, and none
+   * of them may depend on another having run or on running in any order. The
+   * cost of that is bounded and known: the worst a missed call leaves behind is
+   * derived work whose next reconcile finds nothing.
    */
-  async function announceHouseholdAccessEnded(input: { householdId: string; userId?: string }) {
-    await options.onHouseholdAccessEnded?.(input);
+  async function announcePostCommitHook(hook: string, run: () => Promise<void>) {
+    try {
+      await run();
+    } catch (error) {
+      // The hook's name and the error, never the household or the member: a
+      // server log is not the audit trail and has no business naming who left.
+      console.warn(
+        `Household post-departure hook "${hook}" failed; leaving it to reconcile.`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Runs every post-commit hook for one ending.
+   *
+   * `members` is who lost access — one person for a removal or a departure,
+   * everyone who was still active for a dissolution. `departingUserId` names that
+   * one person and is deliberately absent for a dissolution rather than derived
+   * from the list: the whole-household hook draws a real distinction between "one
+   * of you left" and "this ended", and reading it off a list that happened to
+   * hold one entry would let an empty list quietly claim the household ended.
+   */
+  async function announceAccessEnded(input: {
+    householdId: string;
+    members: ReadonlyArray<{ householdId: string; userId: string }>;
+    departingUserId?: string;
+  }) {
+    const { onHouseholdAccessEnded, onAccessEnded } = options;
+    if (onHouseholdAccessEnded) {
+      await announcePostCommitHook("household-access-ended", () =>
+        onHouseholdAccessEnded({
+          householdId: input.householdId,
+          ...(input.departingUserId ? { userId: input.departingUserId } : {}),
+        }),
+      );
+    }
+    if (onAccessEnded) {
+      for (const member of input.members) {
+        await announcePostCommitHook("access-ended", () => onAccessEnded(member));
+      }
+    }
   }
 
   /**
@@ -290,6 +372,59 @@ export function createHouseholdGovernanceLifecycle(
   }
 
   /**
+   * Sends one member's own records home and unnames them from the household's.
+   *
+   * One function used by removal, departure, and dissolution alike, for the same
+   * reason {@link endMembership} is: "what someone wrote is still theirs" must
+   * not have two implementations that can come to disagree about which families
+   * it covers. Dissolution reached this rule by a second, shorter path until the
+   * live-validation pass found it had drifted — it was missing the responsibility
+   * clear, and both paths had lost families as they were added.
+   *
+   * Nothing here deletes anything. Every record either goes back to `private`
+   * with its owner or stays with the workspace; the only thing that ends is the
+   * sharing, and the only thing cleared is a name that was a statement about a
+   * current member (ADR 0215).
+   */
+  async function revertMemberOwnedRecords(
+    tx: HouseholdInvitationStore,
+    input: { householdId: string; userId: string },
+  ): Promise<RevertedRecordCounts> {
+    const scope = { householdId: input.householdId, ownerUserId: input.userId };
+    // Their own shared and household Actions come back to `private` and go with
+    // them. Nothing is transferred and nothing is deleted.
+    const actions = await tx.scheduledWork.revertMemberOwnedActionsToPrivate(scope);
+    // The same for their own Assets and the details they wrote on any Asset
+    // here. The household's own Assets stay with the workspace, keeping this
+    // member's creator and actor attribution on everything (ADR 0214).
+    const assets = await tx.scheduledWork.revertMemberOwnedAssetsToPrivate(scope);
+    // And their own Saved Items, which the spec says return to their private
+    // space the moment they leave (`docs/phase-8/household-saved-items.md`).
+    const savedItems = await tx.scheduledWork.revertMemberOwnedSavedItemsToPrivate(scope);
+    // And the Memories, Source Records, and Follow-Ups they deliberately exposed
+    // to the household (#388), minus the grounding the household's own records
+    // still stand on.
+    const relationship =
+      await tx.scheduledWork.revertMemberOwnedRelationshipRecordsToPrivate(scope);
+    // A name is a statement about a current member, so it is cleared — and
+    // Tendnote picks nobody to replace them (ADR 0215).
+    const responsibilities = await tx.scheduledWork.clearResponsibilityHolderForMember({
+      householdId: input.householdId,
+      userId: input.userId,
+    });
+
+    return {
+      revertedActions: actions.length,
+      revertedAssets: assets.length,
+      revertedSavedItems: savedItems.length,
+      revertedMemories: relationship.memories.length,
+      revertedSourceRecords: relationship.sourceRecords.length,
+      revertedFollowups: relationship.followups.length,
+      clearedResponsibilities: responsibilities.length,
+    };
+  }
+
+  /**
    * Ends one membership and everything it was carrying.
    *
    * The order matters only in that all of it happens inside one transaction: a
@@ -323,31 +458,17 @@ export function createHouseholdGovernanceLifecycle(
       userId: input.membership.userId,
     });
 
-    // What someone wrote is still theirs, so their own shared and household
-    // Actions come back to `private` and go with them. Nothing is transferred
-    // and nothing is deleted.
-    const revertedActions = await tx.scheduledWork.revertMemberOwnedActionsToPrivate({
-      householdId: input.householdId,
-      ownerUserId: input.membership.userId,
-    });
-    // The same for their own Assets and the details they wrote on any Asset
-    // here. The household's own Assets stay with the workspace, keeping this
-    // member's creator and actor attribution on everything (ADR 0214).
-    const revertedAssets = await tx.scheduledWork.revertMemberOwnedAssetsToPrivate({
-      householdId: input.householdId,
-      ownerUserId: input.membership.userId,
-    });
-    // A name is a statement about a current member, so it is cleared — and
-    // Tendnote picks nobody to replace them (ADR 0215).
-    const clearedResponsibilities = await tx.scheduledWork.clearResponsibilityHolderForMember({
+    // What someone wrote is still theirs, so every family of their own records
+    // comes back to `private` and goes with them.
+    const reverted = await revertMemberOwnedRecords(tx, {
       householdId: input.householdId,
       userId: input.membership.userId,
     });
-    // Their reminders for the household's records end with their access, so no
-    // alert can arrive about a record they can no longer see (ADR 0203). Read
-    // after the revert above, so their own records — now private again and back
-    // with them — keep the reminders they set on them.
-    const canceledReminders = await tx.scheduledWork.cancelRemindersForRecords({
+    // Their reminders for the household's Actions and Routines end with their
+    // access, so no alert can arrive about a record they can no longer see
+    // (ADR 0203). Read after the revert above, so their own records — now
+    // private again and back with them — keep the reminders they set on them.
+    const canceledActionReminders = await tx.scheduledWork.cancelRemindersForRecords({
       recordIds: await tx.scheduledWork.listHouseholdActionIds({
         householdId: input.householdId,
       }),
@@ -370,12 +491,12 @@ export function createHouseholdGovernanceLifecycle(
 
     return {
       membership: updated,
-      canceledInvitations,
-      revertedActions: revertedActions.length,
-      revertedAssets: revertedAssets.length,
-      clearedResponsibilities: clearedResponsibilities.length,
-      canceledReminders,
-      disconnectedCalendars,
+      audit: {
+        ...reverted,
+        canceledInvitations,
+        canceledActionReminders,
+        disconnectedCalendars,
+      },
     };
   }
 
@@ -573,21 +694,17 @@ export function createHouseholdGovernanceLifecycle(
           metadata: {
             memberUserId: input.memberUserId,
             previousRole: target.role,
-            canceledInvitations: ended.canceledInvitations,
-            revertedActions: ended.revertedActions,
-            revertedAssets: ended.revertedAssets,
-            clearedResponsibilities: ended.clearedResponsibilities,
-            canceledReminders: ended.canceledReminders,
+            ...ended.audit,
           },
         });
         return ended.membership;
       });
 
-      await announceHouseholdAccessEnded({
+      await announceAccessEnded({
         householdId: removed.householdId,
-        userId: removed.userId,
+        members: [{ householdId: removed.householdId, userId: removed.userId }],
+        departingUserId: removed.userId,
       });
-      await announceAccessEnded([{ householdId: removed.householdId, userId: removed.userId }]);
       return removed;
     },
 
@@ -611,21 +728,17 @@ export function createHouseholdGovernanceLifecycle(
           entityId: ended.membership.id,
           metadata: {
             previousRole: membership.role,
-            canceledInvitations: ended.canceledInvitations,
-            revertedActions: ended.revertedActions,
-            revertedAssets: ended.revertedAssets,
-            clearedResponsibilities: ended.clearedResponsibilities,
-            canceledReminders: ended.canceledReminders,
+            ...ended.audit,
           },
         });
         return ended.membership;
       });
 
-      await announceHouseholdAccessEnded({
+      await announceAccessEnded({
         householdId: departed.householdId,
-        userId: departed.userId,
+        members: [{ householdId: departed.householdId, userId: departed.userId }],
+        departingUserId: departed.userId,
       });
-      await announceAccessEnded([{ householdId: departed.householdId, userId: departed.userId }]);
       return departed;
     },
 
@@ -689,10 +802,14 @@ export function createHouseholdGovernanceLifecycle(
         };
       });
 
-      // No `userId`: this is the whole household's sharing ending at once, not
-      // several departures, and every plan in it goes private.
-      if (endedHouseholdId) await announceHouseholdAccessEnded({ householdId: endedHouseholdId });
-      await announceAccessEnded(endedMembers);
+      if (endedHouseholdId) {
+        await announceAccessEnded({
+          householdId: endedHouseholdId,
+          // No `departingUserId`: this is the whole household's sharing ending
+          // at once, not several departures.
+          members: endedMembers,
+        });
+      }
       return state;
     },
 
@@ -718,28 +835,6 @@ export function createHouseholdGovernanceLifecycle(
       });
     },
   };
-
-  /**
-   * Tells the access-ended hook about each member who just lost their standing.
-   *
-   * Best-effort and never fatal: the governance write has committed and the
-   * membership rows are already the authority on who may see what, so a failure
-   * here can only delay derived cleanup, never restore access. Letting it throw
-   * would turn a completed departure into an error the caller would reasonably
-   * retry.
-   */
-  async function announceAccessEnded(
-    ended: ReadonlyArray<{ householdId: string; userId: string }>,
-  ) {
-    if (!options.onAccessEnded) return;
-    for (const member of ended) {
-      try {
-        await options.onAccessEnded(member);
-      } catch {
-        // Deliberately swallowed; see above.
-      }
-    }
-  }
 
   /** The owners a unanimous decision was made by, recorded as its evidence. */
   function activeOwnerIds(roster: readonly HouseholdMembership[]): string[] {
@@ -804,6 +899,15 @@ export function createHouseholdGovernanceLifecycle(
     });
 
     let endedMemberships = 0;
+    const reverted: RevertedRecordCounts = {
+      revertedActions: 0,
+      revertedAssets: 0,
+      revertedSavedItems: 0,
+      revertedMemories: 0,
+      revertedSourceRecords: 0,
+      revertedFollowups: 0,
+      clearedResponsibilities: 0,
+    };
     for (const member of input.roster) {
       if (member.status !== "active") continue;
       await tx.households.updateHouseholdMembership({
@@ -816,27 +920,27 @@ export function createHouseholdGovernanceLifecycle(
           pendingRoleOfferedAt: null,
         },
       });
-      // Their own shared records come home with them, exactly as they would on
-      // an individual departure. This is every member departing at once.
-      await tx.scheduledWork.revertMemberOwnedActionsToPrivate({
+      // Their own records come home with them, family for family, through the
+      // same function a single departure uses. This is every member departing at
+      // once, so it must not be a second, shorter version of that rule — what
+      // stays behind is exactly what the workspace owns, which is what enters the
+      // 30-day recovery set, and a name that pointed at a removed member is not
+      // part of it (ADR 0213, ADR 0214, ADR 0215).
+      const swept = await revertMemberOwnedRecords(tx, {
         householdId: input.householdId,
-        ownerUserId: member.userId,
+        userId: member.userId,
       });
-      // Their own Assets and details come home too. What stays behind is exactly
-      // what the workspace owns, which is what enters the 30-day recovery set —
-      // a private member-owned child never does (ADR 0213, ADR 0214).
-      await tx.scheduledWork.revertMemberOwnedAssetsToPrivate({
-        householdId: input.householdId,
-        ownerUserId: member.userId,
-      });
+      for (const key of Object.keys(reverted) as Array<keyof RevertedRecordCounts>) {
+        reverted[key] += swept[key];
+      }
       endedMemberships += 1;
     }
 
-    // Every member's reminders for the household's own records, in one sweep
-    // rather than per departing member: this is the whole household's scheduled
-    // work ending, not several departures. No `userIds`, so nobody is left
-    // holding a queued alert about a household that no longer exists.
-    const canceledReminders = await tx.scheduledWork.cancelRemindersForRecords({
+    // Every member's reminders for the household's own Actions and Routines, in
+    // one sweep rather than per departing member: this is the whole household's
+    // scheduled work ending, not several departures. No `userIds`, so nobody is
+    // left holding a queued alert about a household that no longer exists.
+    const canceledActionReminders = await tx.scheduledWork.cancelRemindersForRecords({
       recordIds: await tx.scheduledWork.listHouseholdActionIds({
         householdId: input.householdId,
       }),
@@ -871,7 +975,11 @@ export function createHouseholdGovernanceLifecycle(
         confirmedOwnerUserIds: [...input.confirmedOwnerUserIds],
         canceledInvitations,
         endedMemberships,
-        canceledReminders,
+        // The same set a removal and a departure record, summed over everyone
+        // who was still active. An ending that says less about itself than a
+        // single departure does is the trail being wrong about the larger event.
+        ...reverted,
+        canceledActionReminders,
         disconnectedCalendars,
         recoveryDeadlineAt: recoveryDeadlineAt.toISOString(),
         // Stated in the trail as well as the UI: there is no path from here back
