@@ -385,11 +385,14 @@ describe("ending the household", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "End this household" }));
     const dialog = within(screen.getByRole("alertdialog"));
-    // Nothing sweeps a dissolved household's records, so the copy promises what
-    // the product actually does — support can put it back — and never deletion.
+    // Both halves of the window, because the purge sweep now keeps the second
+    // one: support can put it back for thirty days, and after that what the
+    // household held is deleted (#391).
     const consequence = dialog.getByText(/Everyone's access ends the moment you press this/i);
     expect(consequence.textContent).toMatch(/for 30 days afterwards support can still put/i);
-    expect(consequence.textContent).not.toMatch(/delet/i);
+    expect(consequence.textContent).toMatch(/what the household itself held is deleted/i);
+    // Still never a promise about a member's own records: those leave with them.
+    expect(consequence.textContent).toMatch(/each person wrote privately stays theirs/i);
     const boundary = dialog.getByText(/handled by support/i);
     expect(boundary.textContent).toMatch(/no way for anyone else here to take it over/i);
     // A boundary that names support has to say how to reach them.

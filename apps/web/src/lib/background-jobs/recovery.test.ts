@@ -191,6 +191,9 @@ describe("background job recovery", () => {
         .fn()
         .mockResolvedValue({ recovered: 1, scanned: 1, processed: 0, failed: 1 }),
       backfillActionExtraction: vi.fn().mockResolvedValue({ scanned: 1, processed: 1, failed: 0 }),
+      purgeDissolvedHouseholds: vi
+        .fn()
+        .mockResolvedValue({ scanned: 1, purged: 1, skipped: 0, failed: 0 }),
     });
 
     expect(result).toEqual({
@@ -199,7 +202,58 @@ describe("background job recovery", () => {
       embedding: { recovered: 1, scanned: 1, processed: 0, failed: 1 },
       actionExtraction: { scanned: 1, processed: 1, failed: 0 },
       contextFactExtraction: { scanned: 0, processed: 0, failed: 0 },
+      householdPurge: { scanned: 1, purged: 1, skipped: 0, failed: 0 },
     });
+  });
+
+  it("closes the household recovery window on the same bounded cron pass", async () => {
+    // The sweep rides the existing ten-minute cron rather than a schedule of its
+    // own: a thirty-day deadline does not need its own timer, and a second cron
+    // entry would be a second place for the deletion promise to be switched off.
+    const purge = vi.fn().mockResolvedValue({ scanned: 3, purged: 2, skipped: 1, failed: 0 });
+
+    const result = await runBackgroundJobRecovery({
+      deliveryLimit: 0,
+      extractionBackfillLimit: 0,
+      embeddingBackfillLimit: 0,
+      actionExtractionBackfillLimit: 0,
+      householdPurgeLimit: 5,
+      recoverDeliveries: vi
+        .fn()
+        .mockResolvedValue({ scanned: 0, republished: 0, failed: 0, abandoned: 0 }),
+      backfillExtraction: vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
+      backfillEmbedding: vi
+        .fn()
+        .mockResolvedValue({ recovered: 0, scanned: 0, processed: 0, failed: 0 }),
+      backfillActionExtraction: vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
+      purgeDissolvedHouseholds: purge,
+    });
+
+    expect(purge).toHaveBeenCalledWith(expect.objectContaining({ limit: 5 }));
+    expect(result.householdPurge).toEqual({ scanned: 3, purged: 2, skipped: 1, failed: 0 });
+  });
+
+  it("purges nothing when the run is given no household budget", async () => {
+    const purge = vi.fn().mockResolvedValue({ scanned: 0, purged: 0, skipped: 0, failed: 0 });
+
+    const result = await runBackgroundJobRecovery({
+      deliveryLimit: 0,
+      extractionBackfillLimit: 0,
+      embeddingBackfillLimit: 0,
+      actionExtractionBackfillLimit: 0,
+      recoverDeliveries: vi
+        .fn()
+        .mockResolvedValue({ scanned: 0, republished: 0, failed: 0, abandoned: 0 }),
+      backfillExtraction: vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
+      backfillEmbedding: vi
+        .fn()
+        .mockResolvedValue({ recovered: 0, scanned: 0, processed: 0, failed: 0 }),
+      backfillActionExtraction: vi.fn().mockResolvedValue({ scanned: 0, processed: 0, failed: 0 }),
+      purgeDissolvedHouseholds: purge,
+    });
+
+    expect(purge).toHaveBeenCalledWith(expect.objectContaining({ limit: 0 }));
+    expect(result.householdPurge).toEqual({ scanned: 0, purged: 0, skipped: 0, failed: 0 });
   });
 
   it("configures a bounded Vercel cron trigger for recovery", () => {

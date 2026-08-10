@@ -31,15 +31,44 @@ export type HouseholdRoster = readonly GovernanceMember[];
  * so the copy that promises it and the sweep that will eventually close it read
  * the same value.
  *
- * Note what the window is *not*, because the copy must not overstate it: no job
- * deletes a dissolved household when the window closes (see `dissolve`). Passing
- * the deadline is the moment recovery stops being offered, not the moment
- * anything is erased.
+ * The window is also the erasure boundary, not only the recovery one: when it
+ * closes, the purge sweep disposes of the workspace's own records and the
+ * workspace row, leaving the minimized non-content audit tombstone (#391).
+ * Recovery stopping and deletion happening are the same moment on purpose —
+ * a gap between them would be a period in which Tendnote holds a household's
+ * content it has already told everyone it can no longer put back.
  */
 export const HOUSEHOLD_RECOVERY_WINDOW_DAYS = 30;
 
 export function householdRecoveryDeadline(dissolvedAt: Date): Date {
   return new Date(dissolvedAt.getTime() + HOUSEHOLD_RECOVERY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Whether this household's content may now be disposed of.
+ *
+ * Inclusive of the deadline itself, matching the copy: "thirty days" ends when
+ * the thirtieth day is up, not a millisecond later. A household with no
+ * `dissolvedAt` is never due whatever its status says — an absent moment is not
+ * an old one, and inferring "long enough ago" from a missing value is how a live
+ * workspace gets deleted.
+ */
+export function isHouseholdPurgeDue(input: { dissolvedAt: Date | null; now: Date }): boolean {
+  if (!input.dissolvedAt) return false;
+  return householdRecoveryDeadline(input.dissolvedAt).getTime() <= input.now.getTime();
+}
+
+/**
+ * The same boundary expressed as a `dissolved_at` the sweep can compare against
+ * in SQL, so the index on `(status, dissolved_at)` selects candidates rather
+ * than the job filtering a scan in memory.
+ *
+ * Deliberately the inverse of {@link householdRecoveryDeadline} rather than a
+ * second definition of the window: `dissolved_at <= cutoff` and
+ * `deadline <= now` are the same sentence, and a test pins that they agree.
+ */
+export function householdPurgeCutoff(now: Date): Date {
+  return new Date(now.getTime() - HOUSEHOLD_RECOVERY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 }
 
 /**

@@ -411,11 +411,11 @@ function DepartureRow({ overview, actions = {}, onOverviewChange, onAnnounce }: 
  * and states plainly that getting it back afterwards is not something anyone can
  * do from inside Tendnote.
  *
- * What the copy must not say is that anything is deleted. Ending a household
- * marks it dissolved and stops every access; no sweep removes its records when
- * the window closes, and none is built until #391. So the window is described as
- * how long support can still put it back — the promise the product actually
- * keeps — and the address to reach them travels with it.
+ * The window is described as how long support can still put it back, with the
+ * address to reach them travelling alongside, and it now also says what happens
+ * when the window closes: the purge sweep deletes what the household itself held
+ * (#391). Before that sweep existed the copy deliberately stopped short of
+ * promising deletion, because nothing performed it. It no longer has to.
  */
 function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }: PanelProps) {
   const confirm = actions.confirmDissolution ?? defaultConfirmDissolutionAction;
@@ -542,7 +542,7 @@ function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {endsNow
-                  ? `Everyone's access ends the moment you press this, and every live invitation stops working. For ${HOUSEHOLD_RECOVERY_WINDOW_DAYS} days afterwards support can still put the household back; after that, treat it as final. What each person wrote privately stays theirs.`
+                  ? `Everyone's access ends the moment you press this, and every live invitation stops working. For ${HOUSEHOLD_RECOVERY_WINDOW_DAYS} days afterwards support can still put the household back; after that, what the household itself held is deleted. What each person wrote privately stays theirs.`
                   : `Nothing changes yet. The household ends only once every owner has agreed, and you can change your mind until then. ${stillWaitingOn - 1 === 1 ? "One other owner" : `${stillWaitingOn - 1} other owners`} would still need to agree.`}
               </AlertDialogDescription>
             </AlertDialogHeader>

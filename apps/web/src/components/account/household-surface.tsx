@@ -163,10 +163,12 @@ export function HouseholdSurface({
  * on, and it is deliberately not the thing the eye lands on: someone who has
  * just closed a household is rarely here to open another one.
  *
- * The dissolution copy says what the system does — support can put it back for
- * {@link HOUSEHOLD_RECOVERY_WINDOW_DAYS} days — and not that anything is
- * deleted afterwards, because nothing deletes it (see the db governance
- * lifecycle's `dissolve`).
+ * The dissolution copy says what the system does, both halves of it: support can
+ * put the household back for {@link HOUSEHOLD_RECOVERY_WINDOW_DAYS} days, and
+ * when that window closes what the household itself held is deleted (#391).
+ * The second sentence stayed unsaid until the purge sweep existed to keep it;
+ * now that it does, leaving it out would understate what ending a household
+ * costs at the one moment someone is deciding whether to do it.
  */
 function HouseholdEnded({
   ending,
@@ -214,7 +216,7 @@ function HouseholdEnded({
               >
                 {HOUSEHOLD_SUPPORT_EMAIL}
               </a>
-              .
+              . After that, what the household itself held is deleted.
             </>
           )}
         </p>

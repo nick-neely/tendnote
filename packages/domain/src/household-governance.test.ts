@@ -11,7 +11,9 @@ import {
   HOUSEHOLD_RECOVERY_WINDOW_DAYS,
   type HouseholdRoster,
   householdDissolutionProgress,
+  householdPurgeCutoff,
   householdRecoveryDeadline,
+  isHouseholdPurgeDue,
   memberRemovalRefusal,
   ownerPromotionRefusal,
   ownerStepDownRefusal,
@@ -274,5 +276,32 @@ describe("the recovery boundary", () => {
     const dissolvedAt = new Date("2026-08-08T12:00:00Z");
     expect(householdRecoveryDeadline(dissolvedAt).toISOString()).toBe("2026-09-07T12:00:00.000Z");
     expect(HOUSEHOLD_RECOVERY_WINDOW_DAYS).toBe(30);
+  });
+
+  it("holds a household back until its deadline has actually passed", () => {
+    const dissolvedAt = new Date("2026-08-08T12:00:00Z");
+    const deadline = householdRecoveryDeadline(dissolvedAt);
+
+    expect(isHouseholdPurgeDue({ dissolvedAt, now: new Date(deadline.getTime() - 1) })).toBe(false);
+    expect(isHouseholdPurgeDue({ dissolvedAt, now: deadline })).toBe(true);
+    expect(isHouseholdPurgeDue({ dissolvedAt, now: new Date(deadline.getTime() + 1) })).toBe(true);
+  });
+
+  it("never purges a household that has no dissolution moment to count from", () => {
+    expect(isHouseholdPurgeDue({ dissolvedAt: null, now: new Date("2099-01-01T00:00:00Z") })).toBe(
+      false,
+    );
+  });
+
+  it("selects by the same boundary from the other end, so the index can do the filtering", () => {
+    const now = new Date("2026-09-07T12:00:00Z");
+    const cutoff = householdPurgeCutoff(now);
+
+    // A household is due exactly when it dissolved at or before the cutoff, so
+    // `dissolved_at <= cutoff` and `deadline <= now` must never disagree.
+    for (const offsetMs of [-1, 0, 1]) {
+      const dissolvedAt = new Date(cutoff.getTime() + offsetMs);
+      expect(isHouseholdPurgeDue({ dissolvedAt, now })).toBe(dissolvedAt <= cutoff);
+    }
   });
 });

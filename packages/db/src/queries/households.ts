@@ -27,6 +27,7 @@ export {
 } from "./households/authorization";
 export { createHouseholdContextActorReader } from "./households/context-actors";
 export { createDrizzleHouseholdInvitationStore } from "./households/drizzle-invitation-store";
+export { createDrizzleHouseholdPurgeStore } from "./households/drizzle-purge-store";
 export { createDrizzleHouseholdStore } from "./households/drizzle-store";
 export {
   createHouseholdGovernanceLifecycle,
@@ -50,6 +51,14 @@ export {
   createHouseholdOverviewReader,
   type HouseholdIdentityStore,
 } from "./households/overview";
+export {
+  createInMemoryHouseholdPurgeStore,
+  type HouseholdPurgeCounts,
+  type HouseholdPurgeStore,
+  type HouseholdPurgeSweepResult,
+  householdPurgeTombstone,
+  runHouseholdPurgeSweep,
+} from "./households/purge";
 export type * from "./households/types";
 
 const defaultHouseholdStore = createDrizzleHouseholdStore();

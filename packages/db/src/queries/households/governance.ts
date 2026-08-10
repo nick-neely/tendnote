@@ -872,16 +872,13 @@ export function createHouseholdGovernanceLifecycle(
    * {@link HouseholdGovernanceOptions.onAccessEnded} fan-out, not this
    * transaction. A family that stores only content has nothing to cancel here.
    *
-   * There is still no purge. `dissolvedAt` opens the recovery window and nothing
-   * closes it: no job deletes a dissolved household's records once the deadline
-   * passes. That sweep remains the prerequisite for #391 and is deliberately not
-   * built here — it is a deletion policy over a record set these issues have
-   * only just created, and it needs its own decision about what the minimized
-   * audit tombstone keeps. #385 is what makes that record set non-empty: a
-   * dissolved household now genuinely holds household-native Saved Items and
-   * their household-scoped evidence. Until the sweep exists, no surface may
-   * promise that anything is deleted; what passing the deadline changes is that
-   * recovery stops being offered.
+   * `dissolvedAt` opens the recovery window; `queries/households/purge.ts`
+   * closes it (#391). What ends here is access; what ends there is the content,
+   * thirty days later, leaving the minimized non-content tombstone. The two are
+   * deliberately separate transactions with a month between them, and neither
+   * may assume the other: dissolution is complete on its own even if the sweep
+   * never runs, and the sweep re-decides eligibility from `dissolvedAt` rather
+   * than from anything this function told it.
    */
   async function dissolve(
     tx: HouseholdInvitationStore,
