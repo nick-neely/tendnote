@@ -20,6 +20,7 @@ function evidence(overrides: Partial<AssetEvidence> = {}): AssetEvidence {
     purchasedOn: null,
     renewsOn: null,
     scope: "private",
+    ownership: "member_owned",
     householdId: null,
     sourceRecordId: null,
     reviewGroupId: null,

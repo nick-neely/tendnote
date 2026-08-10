@@ -484,6 +484,13 @@
       "when": 1786326154790,
       "tag": "0068_household_calendar_and_event_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1786374293320,
+      "tag": "0069_household_native_assets",
+      "breakpoints": true
     }
   ]
 }

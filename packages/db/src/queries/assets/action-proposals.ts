@@ -6,6 +6,7 @@ import {
   AssetValidationError,
   type GeneralAction,
   type GeneralActionAssetLink,
+  HouseholdRecordUnavailableError,
   isDurableAssetStatus,
   planAssetMemoryActionProposals,
 } from "@tendnote/domain";
@@ -21,6 +22,7 @@ import type {
   PendingAssetActionProposal,
   ProposeAssetMemoryActionsInput,
 } from "./action-proposal-types";
+import { createAssetAuthority } from "./household-authority";
 import { recordAudit, resolveAssetVisibility } from "./lifecycle";
 import { loadAnchor, requireGrounding } from "./review-shared";
 
@@ -44,24 +46,34 @@ import { loadAnchor, requireGrounding } from "./review-shared";
  */
 
 /**
- * The asset a proposal pass may run against: the owner's own, durable, and active.
+ * The asset a proposal pass may run against: one the actor may write, durable,
+ * and active.
  *
- * Owner-only, like every review write in this seam — a co-member who can see a
- * household asset may act on its actions, but proposing new review items in someone
- * else's queue is not theirs to do. Archived is refused rather than ignored: a sold car
- * proposing an oil change is precisely the stale noise archive exists to stop.
+ * Their own record, or the household's own — the same authority test every other
+ * write in the Asset family applies. Proposing new review items in someone
+ * *else's* queue is still not the caller's to do, and the `edit` proof is what
+ * refuses it: it grants a member-owned Asset only to its owner and a
+ * household-native one to every active member (ADR 0214). Reading the storage
+ * key instead got this wrong in both directions — a departed creator kept
+ * proposing against the household's refrigerator, and the members who still live
+ * with it could not.
+ *
+ * Archived is refused rather than ignored: a sold car proposing an oil change is
+ * precisely the stale noise archive exists to stop.
  */
 async function requireProposalAnchor(
   store: AssetActionProposalStore,
   input: { actorUserId: string; assetId: string },
 ): Promise<Asset> {
-  const asset = await store.getAsset({
-    ownerUserId: input.actorUserId,
-    assetId: input.assetId,
-  });
+  const asset = await loadAnchor(store, input.actorUserId, input.assetId);
   if (!asset || !isDurableAssetStatus(asset.status)) {
-    throw new Error("Asset not found.");
+    throw new HouseholdRecordUnavailableError();
   }
+  await createAssetAuthority(store).requireAssetAuthority({
+    actorUserId: input.actorUserId,
+    asset,
+    operation: "edit",
+  });
   if (asset.status !== "active") {
     throw new AssetValidationError(
       "This asset is archived. Restore it before proposing reminders.",
@@ -449,15 +461,30 @@ async function resolvePendingProposal(
  * The owner's still-suggested asset-derived actions for one Asset — what the Asset
  * Profile renders as pending proposals, each paired with the memory that argued for it.
  *
- * Owner-only: review state is never a co-member's to see, so a caller who is not the
- * asset's owner reads an empty list rather than a denial.
+ * Scoped to a caller who may write the asset: their own, or the household's own.
+ * Anyone else reads an empty list rather than a denial — review state is never
+ * someone else's to see, and an empty list says nothing about whether there was
+ * anything to hide.
  */
 async function listPendingAssetActionProposals(
   store: AssetActionProposalStore,
   input: ListPendingAssetActionProposalsInput,
 ): Promise<PendingAssetActionProposal[]> {
   const asset = await loadAnchor(store, input.actorUserId, input.assetId);
-  if (!asset || !isDurableAssetStatus(asset.status) || asset.ownerUserId !== input.actorUserId) {
+  if (!asset || !isDurableAssetStatus(asset.status)) {
+    return [];
+  }
+  // The same proof `requireProposalAnchor` asks, answered rather than thrown:
+  // this read owes an empty list, not a refusal. Deciding it here with an
+  // ownership comparison would be the storage-key-as-authority pattern the whole
+  // seam exists to remove — and would miss a membership that ended since the
+  // page was built, which no comparison can see (ADR 0219).
+  const mayWrite = await createAssetAuthority(store).proveAssetAuthority({
+    actorUserId: input.actorUserId,
+    asset,
+    operation: "edit",
+  });
+  if (!mayWrite) {
     return [];
   }
 

@@ -11,6 +11,10 @@ import { createHouseholdGovernanceLifecycle } from "./governance";
 import { seedHouseholdWithMembers } from "./household-fixtures";
 import { createInMemoryHouseholdInvitationStore } from "./in-memory-invitation-store";
 import { createHouseholdInvitationLifecycle } from "./invitations";
+import {
+  createNoopHouseholdScheduledWorkStore,
+  type HouseholdScheduledWorkStore,
+} from "./scheduled-work";
 
 const ANA = "user-ana";
 const BEN = "user-ben";
@@ -19,13 +23,14 @@ const NOW = new Date("2026-08-08T12:00:00Z");
 
 type Fixture = ReturnType<typeof createFixture>;
 
-function createFixture() {
+function createFixture(scheduledWork?: HouseholdScheduledWorkStore) {
   const store = createInMemoryHouseholdInvitationStore({
     identities: [
       { id: ANA, name: "Ana", email: "ana@example.com" },
       { id: BEN, name: "Ben", email: "ben@example.com" },
       { id: CAI, name: "Cai", email: "cai@example.com" },
     ],
+    ...(scheduledWork ? { scheduledWork } : {}),
   });
   return {
     store,
@@ -251,6 +256,39 @@ describe("removal and departure", () => {
     const departed = await membershipFor(fixture, household.id, BEN);
     expect(departed).toMatchObject({ status: "removed", role: "owner", removedAt: NOW });
     expect(departed.acceptedAt).not.toBeNull();
+  });
+
+  it("sends every family of the departing person's own records home, in the same breath", async () => {
+    // The sweep is deliberately id-returning and store-shaped, so what this
+    // asserts is that governance *asks* for each family. One household record
+    // family silently missing from a departure is the failure mode worth
+    // catching, and adding Assets (#386) is exactly the moment it could happen.
+    const reverted: Array<{ family: string; ownerUserId: string }> = [];
+    const recording = createFixture({
+      ...createNoopHouseholdScheduledWorkStore(),
+      revertMemberOwnedActionsToPrivate: async ({ ownerUserId }) => {
+        reverted.push({ family: "actions", ownerUserId });
+        return [];
+      },
+      revertMemberOwnedAssetsToPrivate: async ({ ownerUserId }) => {
+        reverted.push({ family: "assets", ownerUserId });
+        return [];
+      },
+    });
+    await seedHouseholdWithMembers(recording.store.households, {
+      ownerUserId: ANA,
+      members: [
+        [ANA, "owner"],
+        [BEN, "member"],
+      ],
+    });
+
+    await recording.governance.leaveHousehold({ userId: BEN });
+
+    expect(reverted).toEqual([
+      { family: "actions", ownerUserId: BEN },
+      { family: "assets", ownerUserId: BEN },
+    ]);
   });
 
   it("takes the departing person's outstanding invitations with them", async () => {

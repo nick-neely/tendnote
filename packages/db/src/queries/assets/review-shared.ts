@@ -6,10 +6,12 @@ import {
   AssetValidationError,
   canUseSensitiveContext,
   findAssetDuplicateCandidates,
+  HouseholdRecordUnavailableError,
   isDurableAssetStatus,
   type PrivacyScope,
   type SourceRecord,
 } from "@tendnote/domain";
+import { createAssetAuthority, resolveOwnedOrVisible } from "./household-authority";
 import { recordAudit } from "./lifecycle";
 import type {
   AssetMemoryActionInput,
@@ -121,34 +123,53 @@ export async function openSuggestedAssetProposal(
 }
 
 /**
- * Loads a group's anchor asset for its owner: the owner's own row (the common
- * case, including a pending proposal) or a scope-visible durable asset owned by
- * a co-member after duplicate review linked to it.
+ * Loads a group's anchor asset for the caller: their own row (the common case,
+ * including a pending proposal) or a scope-visible durable asset after duplicate
+ * review linked to a co-member's — or after the workspace was handed one.
+ *
+ * The owner-keyed read is accepted only for a member-owned row, for the same
+ * reason `findVisibleAsset` does it: a household-native Asset's `ownerUserId` is
+ * a storage key, and treating it as an access path would keep its departed
+ * creator reading the household's records (ADR 0214).
  */
 export async function loadAnchor(
   store: AssetReviewLifecycleStore,
   ownerUserId: string,
   assetId: string,
 ): Promise<Asset | null> {
-  return (
-    (await store.getAsset({ ownerUserId, assetId })) ??
-    (await store.getVisibleAsset({ callerUserId: ownerUserId, assetId }))
-  );
+  return resolveOwnedOrVisible({
+    owned: () => store.getAsset({ ownerUserId, assetId }),
+    visible: () => store.getVisibleAsset({ callerUserId: ownerUserId, assetId }),
+  });
 }
 
-/** Loads a durable, active anchor for a memory write, or throws fail-closed. */
+/**
+ * Loads a durable, active anchor for a child write and proves the caller may
+ * attach to it, or throws fail-closed.
+ *
+ * `attach` asks the proof only for visibility, because the detail being written
+ * is the caller's own and clamped to this Asset's scope — attaching a private
+ * note to a partner's shared car is not an act on the car. What it *does* buy is
+ * the freshness the SQL predicate cannot give: a member removed since the page
+ * rendered is refused here rather than writing into a household they left
+ * (ADR 0219).
+ */
 export async function requireActiveAnchor(
   store: AssetReviewLifecycleStore,
-  ownerUserId: string,
-  assetId: string,
+  input: { actorUserId: string; assetId: string },
 ): Promise<Asset> {
-  const anchor = await loadAnchor(store, ownerUserId, assetId);
+  const anchor = await loadAnchor(store, input.actorUserId, input.assetId);
   if (!anchor || !isDurableAssetStatus(anchor.status)) {
-    throw new Error("Asset not found.");
+    throw new HouseholdRecordUnavailableError();
   }
   if (anchor.status !== "active") {
     throw new AssetValidationError(ARCHIVED_ANCHOR);
   }
+  await createAssetAuthority(store).requireAssetAuthority({
+    actorUserId: input.actorUserId,
+    asset: anchor,
+    operation: "attach",
+  });
   return anchor;
 }
 

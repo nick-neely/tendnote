@@ -12,6 +12,8 @@ function asset(overrides: Partial<AssetWithContext> = {}): AssetWithContext {
     kind: "appliance",
     status: "active",
     scope: "private",
+    ownership: "member_owned",
+    revision: 0,
     householdId: null,
     archivedAt: null,
     createdByUserId: "owner-1",

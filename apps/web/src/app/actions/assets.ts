@@ -41,6 +41,12 @@ const editAssetActionSchema = z.object({
   assetId: z.uuid(),
   name: nameSchema.optional(),
   kind: assetKindSchema.optional(),
+  /**
+   * The fence the editor's form was rendered from. Absent is a deliberate
+   * replace — the escape hatch the conflict copy offers once the editor has
+   * seen what is there now (#386).
+   */
+  expectedRevision: z.number().int().nonnegative().optional(),
 });
 
 /**
@@ -63,6 +69,11 @@ export async function createAssetAction(input: {
         name: parsed.name,
         kind: parsed.kind,
         scope: resolvedScope?.scope,
+        // Choosing the whole household is choosing to hand the thing over: the
+        // household's refrigerator is the workspace's, not a member's Asset that
+        // everyone happens to see. Widening an existing Asset is a different,
+        // deliberate act and deliberately not this one (ADR 0214).
+        ownership: parsed.visibilityChoice === "whole_household" ? "household_native" : undefined,
         householdId: resolvedScope?.householdId,
         selectedUserIds: parsed.selectedUserIds,
       }),
@@ -71,11 +82,17 @@ export async function createAssetAction(input: {
   });
 }
 
-/** Edits an Asset's name and/or kind. Owner-only and active-only downstream. */
+/**
+ * Edits an Asset's name and/or kind. Authority and freshness are both decided
+ * downstream: the owner of a member-owned Asset or any active member of the
+ * household's own, and a stale `expectedRevision` preserves the draft rather
+ * than overwriting whoever got there first (#386).
+ */
 export async function editAssetAction(input: {
   assetId: string;
   name?: string;
   kind?: string;
+  expectedRevision?: number;
 }): Promise<AssetMutationResult> {
   return runOwnerAction({
     schema: editAssetActionSchema,
@@ -88,6 +105,7 @@ export async function editAssetAction(input: {
           ...(parsed.name !== undefined ? { name: parsed.name } : {}),
           ...(parsed.kind !== undefined ? { kind: parsed.kind } : {}),
         },
+        expectedRevision: parsed.expectedRevision,
       }),
     affectedScopes: (outcome) => outcome.affectedScopes,
     result: (outcome, callerUserId) => toAssetView(outcome.result, { callerUserId }),

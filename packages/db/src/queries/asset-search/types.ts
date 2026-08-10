@@ -46,6 +46,28 @@ export type SearchAssetEmbeddingsInput = AssetSearchQueryInput & {
  * be one the caller may see. Scope filtering is deterministic and happens *inside*
  * the query — never as a post-filter — so a hidden child record can never reach the
  * fusion step at all.
+ *
+ * ## Residual: Asset Search is pre-filtered, not proved (#386 → #390)
+ *
+ * That filtering is `visibleHouseholdRecordSql`, which is a *pre-filter* and not
+ * a Household Authorization Proof (ADR 0219). #386 ceilinged every other Asset
+ * read with the proof — the ledger, the profile's memories and evidence, the
+ * gated bytes route — and deliberately stopped here. Two reasons, both cost
+ * rather than principle:
+ *
+ * - The proof needs a record's `ownerUserId`, `scope`, `householdId`, and
+ *   `ownership`, and `AssetSearchCandidate` carries none of them. Adding them
+ *   widens a shape that reaches the drizzle store, its in-memory twin, Eve, and
+ *   Global Recall — a blast radius well outside #386's acceptance criteria.
+ * - Search is a live per-request query, so the predicate is evaluated *now*. The
+ *   staleness window the proof closes elsewhere — a cached ledger page, a
+ *   deep-linked url, a queued job — does not exist on this path. That makes the
+ *   gap narrower here than anywhere else, not absent: sensitivity, domain
+ *   exclusions, and record lifecycle are facts SQL still cannot see.
+ *
+ * #390 owns closing it. This note exists because the defect was the silence, not
+ * the deferral: a seam pre-filtered where its siblings are proved has to say so
+ * where whoever extends it will read it.
  */
 export type AssetSearchStore = {
   /**

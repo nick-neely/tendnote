@@ -3,6 +3,7 @@ import {
   type AssetLink,
   type AssetPersonLink,
   AssetValidationError,
+  HouseholdRecordUnavailableError,
   isDurableAssetStatus,
   requireLinkableAssetPair,
   resolveAssetLinkPerspective,
@@ -36,7 +37,9 @@ async function requireVisibleDurableAsset(
 ): Promise<Asset> {
   const asset = await loadAnchor(store, callerUserId, assetId);
   if (!asset || !isDurableAssetStatus(asset.status)) {
-    throw new Error("Asset not found.");
+    // The one opaque refusal: an asset that is not there and one the caller may
+    // not know about have to look the same from outside (ADR 0219).
+    throw new HouseholdRecordUnavailableError();
   }
   return asset;
 }
@@ -52,7 +55,10 @@ async function requireLinkableAssets(
   input: { actorUserId: string; fromAssetId: string; toAssetId: string },
 ): Promise<{ fromAsset: Asset; toAsset: Asset }> {
   requireLinkableAssetPair(input.fromAssetId, input.toAssetId);
-  const fromAsset = await requireActiveAnchor(store, input.actorUserId, input.fromAssetId);
+  const fromAsset = await requireActiveAnchor(store, {
+    actorUserId: input.actorUserId,
+    assetId: input.fromAssetId,
+  });
   const toAsset = await requireVisibleDurableAsset(store, input.actorUserId, input.toAssetId);
   return { fromAsset, toAsset };
 }
@@ -353,7 +359,10 @@ async function addAssetPersonLink(
   store: AssetContextLinkStore,
   input: AddAssetPersonLinkInput,
 ): Promise<AssetPersonLink> {
-  const asset = await requireActiveAnchor(store, input.actorUserId, input.assetId);
+  const asset = await requireActiveAnchor(store, {
+    actorUserId: input.actorUserId,
+    assetId: input.assetId,
+  });
   const person = await store.getPerson({
     ownerUserId: input.actorUserId,
     personId: input.personId,

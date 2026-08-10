@@ -10,7 +10,19 @@ import type { SavedItemConflictView } from "@/lib/saved-item-conflict";
  */
 export type OwnerActionConflict = {
   currentValue: string | null;
-  actorLabel: string | null;
+  /**
+   * Who wrote the value that won, as an id. `runOwnerAction` is generic and
+   * cannot know a household roster, so the raw id is what the protocol can
+   * honestly produce — a surface that already holds the roster resolves it.
+   */
+  actorUserId: string | null;
+  /**
+   * The resolved display name, when a surface-level helper has already looked it
+   * up. Separate from the id rather than overwriting it, because a field that
+   * holds an id on some paths and a name on others is a field every reader has
+   * to guess about — and guessing wrong renders a user id at a person.
+   */
+  actorName?: string | null;
   revision: number;
 };
 

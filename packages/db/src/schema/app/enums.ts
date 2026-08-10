@@ -218,6 +218,12 @@ export const assetKind = pgEnum("asset_kind", [
 // scope-visible read filters to active/archived.
 export const assetStatus = pgEnum("asset_status", ["active", "archived", "suggested", "dismissed"]);
 
+// Phase Eight (#386): who an Asset or one of its child records belongs to, which
+// is not the same question as who may see it (ADR 0214). Deliberately the same
+// two members as `general_action_ownership` (#383) — a second household-native
+// family naming its forms differently would be a fork of the contract.
+export const assetOwnership = pgEnum("asset_ownership", ["member_owned", "household_native"]);
+
 export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
   "created",
   "edited",
@@ -234,6 +240,8 @@ export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
   "memory_edited",
   "memory_promoted",
   "memory_dismissed",
+  // A set-aside detail brought back (#386).
+  "memory_restored",
   // Evidence capture trail (#200): the evidence id rides in detail JSON.
   "evidence_added",
   "evidence_removed",

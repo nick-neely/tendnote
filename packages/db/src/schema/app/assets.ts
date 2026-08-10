@@ -1,11 +1,21 @@
 import { sql } from "drizzle-orm";
-import { customType, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  customType,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
 import {
   assetAuditEventKind,
   assetAuditSource,
   assetKind,
+  assetOwnership,
   assetStatus,
   privacyScope,
 } from "./enums";
@@ -30,6 +40,16 @@ export const assets = pgTable(
   "assets",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    /**
+     * The member this row is keyed by.
+     *
+     * On a `household_native` Asset this is the creating member and nothing
+     * else: a storage key, kept because the column is `NOT NULL`, because every
+     * owner-keyed write and audit row hangs off it, and because creator
+     * provenance is worth keeping. It is never authority and never an access
+     * path — the owner-keyed *read* refuses household-native rows so a departed
+     * creator loses the household's refrigerator like anyone else (ADR 0214).
+     */
     ownerUserId: text("owner_user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -37,14 +57,23 @@ export const assets = pgTable(
     // Small fixed kind set — behavior and prompts key off it; no custom taxonomy.
     kind: assetKind("kind").notNull(),
     // Archive is the normal inactive path; archived assets keep their history.
+    // It is also the *only* removal path for a household-native Asset (ADR 0214).
     status: assetStatus("status").notNull().default("active"),
     // Visibility (ADR 0153). The Asset's scope is also the broadest allowed
     // visibility for future child records — children may narrow, never widen (#196).
     scope: privacyScope("scope").notNull().default("private"),
+    // Ownership form (ADR 0214, #386). Stored rather than derived: a member-owned
+    // Asset at `household` scope and a household-native one are the same row to
+    // the audience rule and could not be told apart without this.
+    ownership: assetOwnership("ownership").notNull().default("member_owned"),
     householdId: uuid("household_id").references(() => householdWorkspaces.id, {
       onDelete: "set null",
     }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    // Optimistic-concurrency fence for the jointly-maintained case (#386). A
+    // counter, not a timestamp: two members editing the household refrigerator
+    // in the same second is precisely what this exists for.
+    revision: integer("revision").notNull().default(0),
     // Creator provenance and actor provenance for lifecycle changes (ADR 0154).
     createdByUserId: text("created_by_user_id").references(() => user.id, {
       onDelete: "set null",
@@ -64,6 +93,9 @@ export const assets = pgTable(
     index("assets_owner_status_idx").on(table.ownerUserId, table.status),
     index("assets_owner_kind_idx").on(table.ownerUserId, table.kind),
     index("assets_household_scope_idx").on(table.householdId, table.scope),
+    // The household's own assets, and the ones a departing member's revert has to
+    // find (#386) — both are (household, ownership) reads.
+    index("assets_household_ownership_idx").on(table.householdId, table.ownership),
     index("assets_search_vector_idx").using("gin", table.searchVector),
   ],
 );

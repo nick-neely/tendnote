@@ -1,11 +1,11 @@
 import type { AssetMemoryValue } from "@tendnote/domain";
 import { sql } from "drizzle-orm";
-import { customType, index, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { customType, index, integer, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { assetReviewGroups } from "./asset-review-groups";
 import { assets } from "./assets";
 import { timestamps } from "./common";
-import { assetMemoryStatus, privacyScope } from "./enums";
+import { assetMemoryStatus, assetOwnership, privacyScope } from "./enums";
 import { householdWorkspaces } from "./households";
 import { sourceRecords } from "./source-records";
 
@@ -42,9 +42,15 @@ export const assetMemories = pgTable(
     // Per-record visibility, at or below the Asset's scope. This slice supports
     // private/household; a selected-shared memory audience is a later, additive step.
     scope: privacyScope("scope").notNull().default("private"),
+    // Ownership form (#386), independent of the parent Asset's: the household's
+    // refrigerator can hold one member's private receipt note, and a
+    // jointly-maintained filter size on it belongs to the workspace (ADR 0179).
+    ownership: assetOwnership("ownership").notNull().default("member_owned"),
     householdId: uuid("household_id").references(() => householdWorkspaces.id, {
       onDelete: "set null",
     }),
+    // Optimistic-concurrency fence for a jointly-maintained detail (#386).
+    revision: integer("revision").notNull().default(0),
     // Evidence/source grounding: where this memory was inferred or captured from.
     sourceRecordId: uuid("source_record_id").references(() => sourceRecords.id, {
       onDelete: "set null",

@@ -15,6 +15,7 @@ import type {
   PromoteGeneralActionAssetHintInput,
   PromoteGeneralActionAssetHintResult,
 } from "./action-link-types";
+import { memberOwned } from "./household-authority";
 import { resolveAssetVisibility } from "./lifecycle";
 import {
   buildGroupResult,
@@ -68,8 +69,13 @@ async function resolveExistingHintLink(
   link: GeneralActionAssetLink,
 ): Promise<PromoteGeneralActionAssetHintResult | { replacedDismissedAssetId: string }> {
   // Owner-keyed first: a proposal (or its dismissed husk) is always the
-  // promoter's own row, whatever its visibility.
-  const owned = await store.getAsset({ ownerUserId: actorUserId, assetId: link.assetId });
+  // promoter's own row, whatever its visibility. Clamped to a member-owned row,
+  // because on a household-native Asset `ownerUserId` is a storage key and
+  // honouring it here would hand its departed creator the record back
+  // (ADR 0214) — and a workspace-owned Asset is never a proposal anyway.
+  const owned = memberOwned(
+    await store.getAsset({ ownerUserId: actorUserId, assetId: link.assetId }),
+  );
   if (owned?.status === "suggested") {
     const group = await requireGroupForAsset(store, {
       ownerUserId: actorUserId,

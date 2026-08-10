@@ -16,7 +16,7 @@ import { user } from "../auth";
 import { assetReviewGroups } from "./asset-review-groups";
 import { assets } from "./assets";
 import { timestamps } from "./common";
-import { assetEvidenceKind, privacyScope } from "./enums";
+import { assetEvidenceKind, assetOwnership, privacyScope } from "./enums";
 import { householdWorkspaces } from "./households";
 import { sourceRecords } from "./source-records";
 
@@ -63,6 +63,10 @@ export const assetEvidence = pgTable(
     purchasedOn: date("purchased_on"),
     renewsOn: date("renews_on"),
     scope: privacyScope("scope").notNull().default("private"),
+    // Ownership form (#386). Evidence is immutable either way; the form decides
+    // who may remove it, and whether it follows workspace retention or leaves
+    // with its member (ADR 0214).
+    ownership: assetOwnership("ownership").notNull().default("member_owned"),
     householdId: uuid("household_id").references(() => householdWorkspaces.id, {
       onDelete: "set null",
     }),

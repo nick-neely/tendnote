@@ -23,6 +23,8 @@ import { AssetActionProposals } from "@/components/asset-action-proposals";
 import { AssetDetailTabs } from "@/components/asset-detail-tabs";
 import { AssetEvidenceSection } from "@/components/asset-evidence-section";
 import { AssetHistory } from "@/components/asset-history";
+import { AssetAttributionLine, AssetProvenanceLine } from "@/components/asset-household";
+import { AssetMemoriesSection } from "@/components/asset-memories-section";
 import { AssetPersonLinks } from "@/components/asset-person-links";
 import { AssetProfileControls } from "@/components/asset-profile-controls";
 import { AssetRelatedActions } from "@/components/asset-related-actions";
@@ -31,6 +33,7 @@ import { AssetRemove } from "@/components/asset-remove";
 import { ASSET_KIND_ICONS, AssetArchivedBadge } from "@/components/asset-shared";
 import { AssetSnapshotCard, type AssetSnapshotCardProps } from "@/components/asset-snapshot-card";
 import { ActionScopeChip } from "@/components/general-action-shared";
+import type { ShareableActionMember } from "@/components/general-action-visibility-field";
 import { ArrowLeftIcon } from "@/components/icons";
 import { LedgerList } from "@/components/person-ledger";
 import { TabCount } from "@/components/tab-count";
@@ -42,7 +45,7 @@ import { toPendingAssetActionProposalView } from "@/lib/asset-action-proposal-vi
 import { toAssetEvidenceView } from "@/lib/asset-evidence-view";
 import { type AssetHistoryEntryView, toAssetHistoryEntryView } from "@/lib/asset-history-view";
 import { toAssetPersonLinkView, toRelatedAssetLinkView } from "@/lib/asset-link-view";
-import { formatAssetMemoryValue } from "@/lib/asset-memory-value";
+import { toAssetMemoryView } from "@/lib/asset-memory-view";
 import { toAssetRelatedActionView } from "@/lib/asset-related-action-view";
 import type { AssetView } from "@/lib/asset-view";
 import { appReturnTo } from "@/lib/auth/return-to";
@@ -164,6 +167,18 @@ async function AssetProfileContent({ params, searchParams }: AssetProfilePagePro
     notFound();
   }
 
+  // Only for a record more than one person can write. A private Asset has no
+  // attribution to show and no second writer to name, so it pays nothing — the
+  // same shape of skip the proof seam makes for a private record.
+  const members =
+    view.scope === "private"
+      ? []
+      : (await listShareableHouseholdMembersForUser({ userId: callerUserId })).map((member) => ({
+          userId: member.userId,
+          name: member.name,
+          email: member.email,
+        }));
+
   const request: AssetRequest = { assetId, callerUserId };
   // Started here and awaited in several places below. Each is a single read that
   // more than one boundary needs, so sharing the promise keeps the profile at
@@ -182,21 +197,22 @@ async function AssetProfileContent({ params, searchParams }: AssetProfilePagePro
         Assets
       </Link>
 
-      <AssetProfileHeader view={view} />
+      <AssetProfileHeader members={members} view={view} />
 
       <ArchivedNote view={view} />
 
-      <AssetProfileControls asset={view} />
+      <AssetProfileControls asset={view} members={members} />
 
       <AssetProfilePanes
         counts={counts}
         history={history}
+        members={members}
         request={request}
         reviewItems={reviewItems}
         view={view}
       />
 
-      {view.owned ? (
+      {view.authority.remove ? (
         <Suspense fallback={null}>
           <AssetRemoveStream
             assetName={view.name}
@@ -227,12 +243,14 @@ async function AssetProfileContent({ params, searchParams }: AssetProfilePagePro
 function AssetProfilePanes({
   counts,
   history,
+  members,
   request,
   reviewItems,
   view,
 }: {
   counts: ReturnType<typeof loadAssetTabCounts>;
   history: ReturnType<typeof loadAssetHistory>;
+  members: ShareableActionMember[];
   request: AssetRequest;
   reviewItems: ReturnType<typeof loadAssetReviewItemCount> | null;
   view: AssetView;
@@ -277,7 +295,7 @@ function AssetProfilePanes({
       memoryPanel={
         <>
           <Suspense fallback={<AssetPaneReserve label="Memories" />}>
-            <AssetMemoriesStream request={request} />
+            <AssetMemoriesStream members={members} request={request} view={view} />
           </Suspense>
           <Suspense fallback={<AssetPaneReserve label="Evidence" />}>
             <AssetEvidenceStream request={request} view={view} />
@@ -427,17 +445,39 @@ async function AssetLatestStream({
   );
 }
 
-async function AssetMemoriesStream({ request }: { request: AssetRequest }) {
+async function AssetMemoriesStream({
+  members,
+  request,
+  view,
+}: {
+  members: ShareableActionMember[];
+  request: AssetRequest;
+  view: AssetView;
+}) {
   try {
+    const memories = await listAssetMemories({
+      callerUserId: request.callerUserId,
+      assetId: request.assetId,
+    });
     return (
-      <AssetMemoriesSection
-        memories={
-          await listAssetMemories({
-            callerUserId: request.callerUserId,
-            assetId: request.assetId,
-          })
-        }
-      />
+      <PanelSection
+        description="Confirmed details worth keeping: model numbers, sizes, warranty dates."
+        id="memories"
+        title="Memories"
+      >
+        <AssetMemoriesSection
+          archived={view.archived}
+          assetId={request.assetId}
+          // Only the household's own Asset can hold the household's own detail:
+          // a workspace-owned record on a member's Asset would leave with them
+          // when they do (ADR 0214).
+          canAddHouseholdDetail={view.ownership === "household_native"}
+          initialMemories={memories.map((memory) =>
+            toAssetMemoryView(memory, { callerUserId: request.callerUserId }),
+          )}
+          members={members}
+        />
+      </PanelSection>
     );
   } catch {
     return <AssetPaneUnavailable label="Memories" />;
@@ -465,8 +505,13 @@ async function AssetEvidenceStream({ request, view }: { request: AssetRequest; v
       >
         <AssetEvidenceSection
           assetId={assetId}
+          assetOwnership={view.ownership}
           assetScope={view.scope}
-          canCapture={view.owned && !view.archived}
+          // Any member who can see the Asset may attach evidence of their own —
+          // it is their record, clamped to this Asset's scope and theirs alone to
+          // rewrite or remove. A household refrigerator only its creator could
+          // hold a receipt for would not be the household's (ADR 0179, #386).
+          canCapture={!view.archived}
           initialEvidence={evidence.map((record) => toAssetEvidenceView(record, { callerUserId }))}
           shareableMembers={shareableMembers}
         />
@@ -649,7 +694,13 @@ function AssetPaneUnavailable({ label }: { label: string }) {
 }
 
 /** Kind glyph, name, provenance line, and — only when it says something — scope/archive chips. */
-function AssetProfileHeader({ view }: { view: AssetView }) {
+function AssetProfileHeader({
+  members,
+  view,
+}: {
+  members: ShareableActionMember[];
+  view: AssetView;
+}) {
   const KindIcon = ASSET_KIND_ICONS[view.kind];
   return (
     <header className="flex items-start gap-4">
@@ -670,8 +721,13 @@ function AssetProfileHeader({ view }: { view: AssetView }) {
           <div className="flex flex-wrap items-center gap-2">
             <ActionScopeChip label={view.visibilityLabel} scope={view.scope} />
             {view.archived ? <AssetArchivedBadge /> : null}
+            <AssetAttributionLine asset={view} members={members} />
           </div>
         ) : null}
+        {/* Quiet and factual, and only where more than one person can write:
+            who started this and who touched it last. Never an activity feed, a
+            comment thread, or a maintenance log. */}
+        <AssetProvenanceLine asset={view} members={members} viewerUserId={view.viewerUserId} />
       </div>
     </header>
   );
@@ -687,35 +743,6 @@ function ArchivedNote({ view }: { view: AssetView }) {
       {view.archivedLabel ?? "This asset is archived"}. It keeps its history and stays out of active
       views until you restore it.
     </p>
-  );
-}
-
-/**
- * One reviewed Asset Memory: the fact's name in quiet mono, the exact value in
- * ink, freeform notes underneath — Personal Ledger density, human content first.
- */
-function AssetMemoryRow({ memory }: { memory: AssetMemory }) {
-  const valueLabel = formatAssetMemoryValue(memory.value);
-  return (
-    <div
-      className="scroll-mt-32 flex flex-col gap-0.5 px-4 py-3 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-      id={`asset-memory-${memory.id}`}
-      tabIndex={-1}
-    >
-      <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
-        {memory.label}
-      </span>
-      {valueLabel ? (
-        <span className="font-medium text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-          {valueLabel}
-        </span>
-      ) : null}
-      {memory.notes ? (
-        <p className="max-w-[68ch] text-pretty text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-          {memory.notes}
-        </p>
-      ) : null}
-    </div>
   );
 }
 
@@ -786,30 +813,5 @@ function countSnapshotCitations(references: AssetSnapshotSupportingReferences | 
     references.relatedAssetLinkIds.length +
     references.assetPersonLinkIds.length +
     references.generalActionIds.length
-  );
-}
-
-/** The reviewed facts: the confirmed details this asset is actually known by. */
-function AssetMemoriesSection({ memories }: { memories: AssetMemory[] }) {
-  return (
-    <PanelSection
-      description="Confirmed details worth keeping: model numbers, sizes, warranty dates."
-      id="memories"
-      title="Memories"
-    >
-      {memories.length > 0 ? (
-        <LedgerList>
-          {memories.map((memory) => (
-            <AssetMemoryRow key={memory.id} memory={memory} />
-          ))}
-        </LedgerList>
-      ) : (
-        <EmptyState
-          description="Details Tendnote confirms about this asset collect here."
-          size="compact"
-          title="Nothing remembered about this yet."
-        />
-      )}
-    </PanelSection>
   );
 }

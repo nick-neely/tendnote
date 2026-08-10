@@ -330,6 +330,13 @@ export function createHouseholdGovernanceLifecycle(
       householdId: input.householdId,
       ownerUserId: input.membership.userId,
     });
+    // The same for their own Assets and the details they wrote on any Asset
+    // here. The household's own Assets stay with the workspace, keeping this
+    // member's creator and actor attribution on everything (ADR 0214).
+    const revertedAssets = await tx.scheduledWork.revertMemberOwnedAssetsToPrivate({
+      householdId: input.householdId,
+      ownerUserId: input.membership.userId,
+    });
     // A name is a statement about a current member, so it is cleared — and
     // Tendnote picks nobody to replace them (ADR 0215).
     const clearedResponsibilities = await tx.scheduledWork.clearResponsibilityHolderForMember({
@@ -365,6 +372,7 @@ export function createHouseholdGovernanceLifecycle(
       membership: updated,
       canceledInvitations,
       revertedActions: revertedActions.length,
+      revertedAssets: revertedAssets.length,
       clearedResponsibilities: clearedResponsibilities.length,
       canceledReminders,
       disconnectedCalendars,
@@ -567,6 +575,7 @@ export function createHouseholdGovernanceLifecycle(
             previousRole: target.role,
             canceledInvitations: ended.canceledInvitations,
             revertedActions: ended.revertedActions,
+            revertedAssets: ended.revertedAssets,
             clearedResponsibilities: ended.clearedResponsibilities,
             canceledReminders: ended.canceledReminders,
           },
@@ -604,6 +613,7 @@ export function createHouseholdGovernanceLifecycle(
             previousRole: membership.role,
             canceledInvitations: ended.canceledInvitations,
             revertedActions: ended.revertedActions,
+            revertedAssets: ended.revertedAssets,
             clearedResponsibilities: ended.clearedResponsibilities,
             canceledReminders: ended.canceledReminders,
           },
@@ -809,6 +819,13 @@ export function createHouseholdGovernanceLifecycle(
       // Their own shared records come home with them, exactly as they would on
       // an individual departure. This is every member departing at once.
       await tx.scheduledWork.revertMemberOwnedActionsToPrivate({
+        householdId: input.householdId,
+        ownerUserId: member.userId,
+      });
+      // Their own Assets and details come home too. What stays behind is exactly
+      // what the workspace owns, which is what enters the 30-day recovery set —
+      // a private member-owned child never does (ADR 0213, ADR 0214).
+      await tx.scheduledWork.revertMemberOwnedAssetsToPrivate({
         householdId: input.householdId,
         ownerUserId: member.userId,
       });

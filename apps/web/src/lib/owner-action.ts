@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AffectedScope } from "@tendnote/db/queries/general-actions";
 import {
+  AssetConflictError,
   AssetValidationError,
   ContextFactConflictError,
   ContextFactValidationError,
@@ -120,16 +121,21 @@ export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
           focusContextFactId: error.existingFactId,
         };
       }
-      if (error instanceof GiftPlanConflictError) {
+      if (error instanceof GiftPlanConflictError || error instanceof AssetConflictError) {
         // The actor travels as an id here and is turned into a name by the
-        // surface, which already holds the co-planner roster. Resolving it here
+        // surface, which already holds the household roster. Resolving it here
         // would mean a name lookup inside a failure path.
+        //
+        // Two families, one branch: a jointly-maintained Gift Plan and a
+        // jointly-maintained Asset owe the writer the same thing — keep the
+        // draft, show what is there now, make them choose — so they must not
+        // grow two conflict protocols (#386, #389).
         return {
           ok: false,
           error: error.message,
           conflict: {
             currentValue: error.conflict.currentValue,
-            actorLabel: error.conflict.actorUserId,
+            actorUserId: error.conflict.actorUserId,
             revision: error.conflict.revision,
           },
         };

@@ -1,4 +1,9 @@
-import { type Asset, AssetValidationError, isDurableAssetStatus } from "@tendnote/domain";
+import {
+  type Asset,
+  AssetValidationError,
+  HouseholdRecordUnavailableError,
+  isDurableAssetStatus,
+} from "@tendnote/domain";
 import { recordAudit } from "./lifecycle";
 import { buildGroupResult, listPendingMemories, loadAnchor, requireGroup } from "./review-shared";
 import type {
@@ -29,7 +34,10 @@ async function requireLinkTarget(
   }
   const target = await loadAnchor(store, input.actorUserId, input.targetAssetId);
   if (!target || !isDurableAssetStatus(target.status)) {
-    throw new Error("Asset not found.");
+    // Reached through `loadAnchor`, so this can name a record in a household the
+    // caller has no standing in: one opaque sentence, never a distinguishable
+    // "no such asset" (ADR 0219).
+    throw new HouseholdRecordUnavailableError();
   }
   if (target.status !== "active") {
     throw new AssetValidationError("Link to an active asset. Restore it first.");

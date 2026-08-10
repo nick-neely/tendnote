@@ -213,7 +213,7 @@ describe("addAssetEvidence to an existing asset (#200)", () => {
         label: "Manual",
         url: "https://example.com/manual",
       }),
-    ).rejects.toThrow("Asset not found.");
+    ).rejects.toThrow(/no longer available/);
   });
 });
 
@@ -319,7 +319,7 @@ describe("evidence visibility ceilings (#196, #200)", () => {
 
     await expect(
       ctx.review.removeAssetEvidence({ actorUserId: MEMBER, evidenceId: householdEvidence.id }),
-    ).rejects.toThrow("Asset evidence not found.");
+    ).rejects.toThrow(/no longer available/);
 
     await ctx.review.removeAssetEvidence({ actorUserId: OWNER, evidenceId: householdEvidence.id });
     expect(

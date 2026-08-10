@@ -44,6 +44,7 @@ import type {
   AssetMemoryActionInput,
   AssetReviewGroupActionInput,
   CreateActiveAssetMemoryInput,
+  EditAssetMemoryInput,
   EditSuggestedAssetInput,
   EditSuggestedAssetMemoryInput,
   LinkAssetReviewGroupInput,
@@ -60,6 +61,7 @@ import type {
   ListAssetsInput,
 } from "./assets/types";
 import { createDrizzleGeneralActionStore } from "./general-actions/drizzle-store";
+import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { enqueueAndTriggerSemanticEmbeddingJob } from "./semantic-retrieval";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 
@@ -107,7 +109,12 @@ const defaultAssetLifecycle = createAffectedAssetLifecycle(
     scheduleAssetEmbedding,
   }),
 );
-const defaultAssetBrowser = createAssetBrowser(createDrizzleAssetBrowseStore());
+// The browse adapter plus the two reads a Household Authorization Proof is built
+// from, so a ledger page is proved and not merely pre-filtered (ADR 0219).
+const defaultAssetBrowser = createAssetBrowser({
+  ...createDrizzleAssetBrowseStore(),
+  ...createDrizzleHouseholdStore(),
+});
 const defaultAssetReview = createAssetReview(createDrizzleAssetReviewLifecycleStore(), {
   scheduleAssetEmbedding,
 });
@@ -175,13 +182,17 @@ export async function browseAssets(input: import("./assets/browse-types").Browse
         callerUserId: input.callerUserId,
         assetId: item.asset.id,
       });
-      if (!asset) {
-        throw new Error("Asset disappeared while loading the browse page.");
-      }
-      return { ...item, asset };
+      // A row the page proved and the hydrating read refuses lost a race with
+      // something that ended the caller's standing. It is dropped rather than
+      // thrown on: the ledger settling one row shorter is the correct outcome,
+      // and an error page would announce that the record exists (ADR 0219).
+      return asset ? { ...item, asset } : null;
     }),
   );
-  return { ...page, items: hydrated };
+  return {
+    ...page,
+    items: hydrated.filter((item): item is NonNullable<typeof item> => item !== null),
+  };
 }
 
 export async function listAssetAudit(input: ListAssetAuditInput) {
@@ -204,6 +215,38 @@ export async function createActiveAssetMemory(input: CreateActiveAssetMemoryInpu
     input.ownerUserId,
     (result) => [result.assetId],
   );
+}
+
+/**
+ * Corrects a detail that is already true (#386) — distinct from the review edits
+ * below, which correct a *proposal* before it becomes one. Authority is the
+ * proof's: the owner of a member-owned detail, any active member of the
+ * household's own.
+ */
+export async function editAssetMemory(input: EditAssetMemoryInput) {
+  const memory = await defaultAssetReview.editAssetMemory(input);
+  // Keyed on the record's owner rather than the actor: on a household detail the
+  // two differ, and the owner-collection tag has to name the collection the row
+  // actually lives in.
+  return assetIdsMutationOutcome(Promise.resolve(memory), memory.ownerUserId, (result) => [
+    result.assetId,
+  ]);
+}
+
+/** Sets aside a detail that is no longer true. Nothing is deleted (#386). */
+export async function setAsideAssetMemory(input: AssetMemoryActionInput) {
+  const memory = await defaultAssetReview.setAsideAssetMemory(input);
+  return assetIdsMutationOutcome(Promise.resolve(memory), memory.ownerUserId, (result) => [
+    result.assetId,
+  ]);
+}
+
+/** Brings a set-aside detail back — the inverse behind the surface's undo (#386). */
+export async function restoreAssetMemory(input: AssetMemoryActionInput) {
+  const memory = await defaultAssetReview.restoreAssetMemory(input);
+  return assetIdsMutationOutcome(Promise.resolve(memory), memory.ownerUserId, (result) => [
+    result.assetId,
+  ]);
 }
 
 export async function listAssetReviewGroups(input: ListAssetReviewGroupsInput) {

@@ -107,6 +107,21 @@ export function createInMemoryAssetReviewStore(deps: {
       }
       return memory;
     },
+    async getVisibleAssetMemory(input) {
+      const memory = memories.get(input.memoryId);
+      const admitted: AssetMemory["status"][] = input.includeSetAside
+        ? ["active", "dismissed"]
+        : ["active"];
+      if (
+        !memory ||
+        // Never `suggested`: review state is not a scope-visible read.
+        !admitted.includes(memory.status) ||
+        !(await canCallerViewMemory({ callerUserId: input.callerUserId, memory }))
+      ) {
+        return null;
+      }
+      return memory;
+    },
     async updateAssetMemory(input) {
       const memory = memories.get(input.memoryId);
       if (!memory || memory.ownerUserId !== input.ownerUserId) {
@@ -117,6 +132,8 @@ export function createInMemoryAssetReviewStore(deps: {
       const updated = assetMemorySchema.parse({
         ...memory,
         ...input.patch,
+        // The optimistic-concurrency fence is the store's on every write (#386).
+        revision: memory.revision + 1,
         updatedAt: new Date(),
       });
       memories.set(updated.id, updated);

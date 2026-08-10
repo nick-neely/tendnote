@@ -110,13 +110,15 @@ function withNamedConflictActor<TView>(
   result: OwnerActionResult<TView>,
   people: GiftPlanPeopleLabels,
 ): OwnerActionResult<TView> {
-  if (result.ok || !result.conflict?.actorLabel) return result;
-  const actorUserId = result.conflict.actorLabel;
+  if (result.ok || !result.conflict?.actorUserId) return result;
+  const actorUserId = result.conflict.actorUserId;
   return {
     ...result,
     conflict: {
       ...result.conflict,
-      actorLabel: actorUserId === people.callerUserId ? "You" : people.nameFor(actorUserId),
+      // Added beside the id, not over it: the id stays true for anything that
+      // needs to compare it, and the name is what the surface renders.
+      actorName: actorUserId === people.callerUserId ? "You" : people.nameFor(actorUserId),
     },
   };
 }
