@@ -4,7 +4,11 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
-import { appDestination, homePanelForLocation } from "@/components/app-destinations";
+import {
+  appDestination,
+  homePanelForLocation,
+  type ViewerStandings,
+} from "@/components/app-destinations";
 import { type HomeIcon, MenuIcon, PlusIcon, SearchIcon } from "@/components/icons";
 import type {
   CaptureHandlers,
@@ -35,6 +39,8 @@ type MobileShellProps = {
   captureHandlers?: CaptureHandlers;
   ownerUserId?: string;
   searchHandler: GlobalRecallHandler;
+  /** The viewer's conditional destinations; unwrapped inside Menu, never here. */
+  viewerStandings?: Promise<ViewerStandings>;
 };
 
 export function MobileShell(props: MobileShellProps) {
@@ -56,6 +62,7 @@ function MobileShellContent({
   captureHandlers,
   ownerUserId = "",
   searchHandler,
+  viewerStandings,
 }: MobileShellProps) {
   const focused = useFocusedFlow(ownerUserId);
   const [searchQuery, setSearchQuery] = useState("");
@@ -88,6 +95,7 @@ function MobileShellContent({
         query={searchQuery}
         search={searchHandler}
         setQuery={setSearchQuery}
+        viewerStandings={viewerStandings}
       />
     </>
   );
@@ -183,6 +191,7 @@ function MobileFocusedFlow({
   query,
   search,
   setQuery,
+  viewerStandings,
 }: {
   captureHandlers?: CaptureHandlers;
   flow: FocusedFlow | null;
@@ -192,6 +201,7 @@ function MobileFocusedFlow({
   query: string;
   search: GlobalRecallHandler;
   setQuery: (query: string) => void;
+  viewerStandings?: Promise<ViewerStandings>;
 }) {
   switch (flow) {
     case "search":
@@ -208,7 +218,9 @@ function MobileFocusedFlow({
     case "capture":
       return <CaptureFlow handlers={captureHandlers} onClose={onClose} ownerUserId={ownerUserId} />;
     case "menu":
-      return <MenuFlow onClose={onClose} onNavigate={onNavigate} />;
+      return (
+        <MenuFlow onClose={onClose} onNavigate={onNavigate} viewerStandings={viewerStandings} />
+      );
     default:
       return null;
   }
@@ -237,6 +249,14 @@ function MobileBottomBar({
       )}
       hidden={hidden}
     >
+      {/* Five slots, and they are spent on the things a member reaches for many
+          times a day: their own shortlist, recall, capture, and the review
+          queue. Household is a read-first surface visited on purpose, not in
+          passing, so it lives one tap down in Menu rather than displacing one of
+          these — and unlike them it is conditional, so a slot holding it would
+          be empty for every member without a household. Desktop has room to
+          place it beside Today and does; the asymmetry is the scarcity, not a
+          different idea of where Household belongs (#384). */}
       <MobileNavLink active={mobileHome} href={today.route} icon={today.icon} label={today.label} />
       <MobileNavButton icon={SearchIcon} label="Search" onClick={onOpen} flow="search" />
       <MobileNavButton emphasized icon={PlusIcon} label="Capture" onClick={onOpen} flow="capture" />

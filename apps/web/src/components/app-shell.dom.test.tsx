@@ -272,6 +272,46 @@ describe("AppShell Phase Seven mobile navigation", () => {
     }
   });
 
+  /**
+   * The Household destination exists only while a membership does, so the shell
+   * asks for it rather than assuming it. Both navigation surfaces have to agree:
+   * a member who has left must not find a way back in through the phone Menu.
+   */
+  it("offers Household to an active member on both desktop and phone", async () => {
+    const user = userEvent.setup();
+    render(
+      <AppShell ownerUserId="owner-1" viewerStandings={Promise.resolve({ householdMember: true })}>
+        <p>Destination</p>
+      </AppShell>,
+    );
+
+    const desktopLink = await screen.findByRole("link", { name: "Household" });
+    expect(desktopLink.closest("nav")?.getAttribute("aria-label")).toBe("Primary");
+    expect(desktopLink.getAttribute("href")).toBe("/household");
+
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    await waitFor(() => {
+      const menu = within(screen.getByRole("navigation", { name: "Menu destinations" }));
+      expect(menu.getByRole("link", { name: "Household" })).toBeDefined();
+    });
+  });
+
+  it("shows no Household destination to someone without one", async () => {
+    const user = userEvent.setup();
+    render(
+      <AppShell ownerUserId="owner-1" viewerStandings={Promise.resolve({ householdMember: false })}>
+        <p>Destination</p>
+      </AppShell>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    await waitFor(() => {
+      const menu = within(screen.getByRole("navigation", { name: "Menu destinations" }));
+      expect(menu.getByRole("link", { name: "Account" })).toBeDefined();
+    });
+    expect(screen.queryByRole("link", { name: "Household" })).toBeNull();
+  });
+
   it("marks Review as the active phone destination without adding a count", () => {
     navigationState.searchParams = new URLSearchParams("tab=review");
     render(

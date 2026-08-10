@@ -8,9 +8,10 @@ import {
   undoExplicitCaptureOutcomeAction,
 } from "@/app/actions/conversational-capture";
 import { globalRecallAction } from "@/app/actions/global-recall";
+import { NO_VIEWER_STANDINGS_RESOLVED, type ViewerStandings } from "@/components/app-destinations";
 import {
-  DesktopAppNavigation,
   DesktopAppNavigationFallback,
+  DesktopAppNavigationForViewer,
 } from "@/components/desktop-app-navigation";
 import type { CaptureHandlers, GlobalRecallHandler } from "@/components/mobile-focused-flows";
 import { MobileShell } from "@/components/mobile-shell";
@@ -32,11 +33,20 @@ export function AppShell({
   children,
   ownerUserId,
   searchHandler = globalRecallAction,
+  /**
+   * The viewer's conditional destinations, resolved by the admitted layout.
+   *
+   * A promise so the shell never awaits it: the header, the phone bar, and the
+   * destination itself all render first, and only the two navigation surfaces
+   * that need a Household link wait behind their own boundaries.
+   */
+  viewerStandings = NO_VIEWER_STANDINGS_RESOLVED,
 }: {
   captureHandlers?: CaptureHandlers;
   children: ReactNode;
   ownerUserId?: string;
   searchHandler?: GlobalRecallHandler;
+  viewerStandings?: Promise<ViewerStandings>;
 }) {
   return (
     <div className="min-h-dvh overflow-x-clip bg-background text-foreground">
@@ -50,7 +60,7 @@ export function AppShell({
           </Link>
           <div className="flex items-center gap-1">
             <Suspense fallback={<DesktopAppNavigationFallback />}>
-              <DesktopAppNavigation />
+              <DesktopAppNavigationForViewer standings={viewerStandings} />
             </Suspense>
             <Separator className="mx-1 h-5" orientation="vertical" />
             {/* Search and appearance are tools, not destinations, so they sit
@@ -68,6 +78,7 @@ export function AppShell({
         captureHandlers={captureHandlers}
         ownerUserId={ownerUserId}
         searchHandler={searchHandler}
+        viewerStandings={viewerStandings}
       >
         {children}
       </MobileShell>

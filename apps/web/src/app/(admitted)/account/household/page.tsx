@@ -88,13 +88,12 @@ export async function HouseholdContent() {
  * Overview is the one those seams prove again for themselves.
  *
  * These two bring Account > Household to seven stacked sections, and the Plans
- * list is uncapped. That is deliberate for now: spec #376 says not to create a
- * global Household destination until a supported coordination domain exists,
- * and this is the first one. It is also the point at which the question becomes
- * real - #384's Household home is the intended answer, and when it lands, the
- * shared sections belong there with Account keeping governance. Until then,
- * whoever adds the eighth section should treat this comment as the marker that
- * the page has run out of room rather than as permission to keep stacking.
+ * list is uncapped. #384's Household home has since landed and is where they
+ * belong, with Account keeping governance - but moving them is a change to what
+ * two shipped surfaces show, not a merge's to make, so they stay here until it
+ * is done deliberately. Whoever adds the eighth section should treat this
+ * comment as the marker that the page has run out of room rather than as
+ * permission to keep stacking.
  */
 async function SharedSections({
   overview,
@@ -129,9 +128,16 @@ function SharedSectionsReserve() {
 }
 
 /**
- * Account owns the Household entry and return point, so the way back to Account
- * is part of the page rather than an assumed browser gesture. There is no
- * top-level Household destination to return to instead.
+ * Account owns who belongs to the workspace and how it is governed, so the way
+ * back to Account is part of the page rather than an assumed browser gesture.
+ *
+ * The global Household destination added in #384 is the working surface, not a
+ * relocation of this one: a member arrives here from its "Manage household"
+ * link and leaves the same way. Governance deliberately does not move onto the
+ * home, and the home's own read model - what needs attention, what is coming up
+ * - deliberately does not appear here. The shared Calendar and Event Plan
+ * sections above are the one thing still sitting on the wrong side of that
+ * line; see {@link SharedSections}.
  */
 function HouseholdShell({ children }: { children: React.ReactNode }) {
   return (

@@ -27,6 +27,7 @@ export type AppDestinationId =
   | "assets"
   | "gift-plan"
   | "gift-plans"
+  | "household"
   | "people"
   | "person"
   | "reminder"
@@ -38,6 +39,47 @@ export type AppDestinationId =
 export type HomePanel = "review" | "today";
 export type DestinationGroup = "desktop-primary" | "menu";
 export type DestinationReserveShape = "detail" | "ledger";
+
+/**
+ * Whether a destination exists for everyone, or only while the viewer holds a
+ * standing that can end.
+ *
+ * One member of this union today, and the union rather than a boolean because
+ * the question a gate asks is "which standing", not "gated or not" — a second
+ * conditional destination would otherwise be tempted to reuse a field named for
+ * households. Availability is decided from live state per request, never from a
+ * role in a session or a value cached with the page.
+ */
+export type DestinationAvailability = "always" | "household-member";
+
+/** The viewer standings navigation resolves before it renders a group. */
+export type DestinationViewer = {
+  householdMember?: boolean;
+};
+
+/**
+ * The resolved form of {@link DestinationViewer}, streamed into the shell.
+ *
+ * Every standing is answered, so a navigation surface holding one of these is
+ * never guessing. The shell passes it as a promise and each navigation region
+ * unwraps it behind its own boundary, so resolving membership never delays the
+ * destination the member is actually looking at.
+ */
+export type ViewerStandings = {
+  householdMember: boolean;
+};
+
+/**
+ * The standings a surface assumes when it has not been told any: none.
+ *
+ * A settled promise, and a module constant rather than a fresh one per render,
+ * so `use` resolves on the first attempt instead of suspending navigation on
+ * every pass. Assuming nothing is the fail-closed direction — a conditional
+ * destination is missing rather than offered to someone who has lost it.
+ */
+export const NO_VIEWER_STANDINGS: ViewerStandings = { householdMember: false };
+export const NO_VIEWER_STANDINGS_RESOLVED: Promise<ViewerStandings> =
+  Promise.resolve(NO_VIEWER_STANDINGS);
 
 type DestinationScope =
   | {
@@ -55,6 +97,8 @@ export type AppDestination = {
   label: string;
   icon: typeof HomeIcon;
   groups: readonly DestinationGroup[];
+  /** Defaults to `always`. See {@link DestinationAvailability}. */
+  availability?: DestinationAvailability;
   reserve: {
     heading: string;
     shape: DestinationReserveShape;
@@ -94,6 +138,30 @@ export const appDestinations = [
     groups: [],
     reserve: { heading: "Review", shape: "ledger" },
     scopes: [owner("review")],
+  },
+  {
+    /**
+     * The shared coordination surface: what we are jointly working on, as
+     * against Today's what is relevant to me now.
+     *
+     * It sits next to Today because those two are the same question asked of
+     * two different subjects, and a member reads them together. Its own row
+     * rather than a tab inside Today, because a collective "Household Today"
+     * is precisely what the shared-home decision refuses.
+     *
+     * Available only while the viewer is an active Household Member. The
+     * destination launches with Actions and Routines, the first domain to earn
+     * a Phase Eight collaboration contract, and leaving or losing membership
+     * removes it on the next request.
+     */
+    id: "household",
+    route: "/household",
+    label: "Household",
+    icon: UsersRoundIcon,
+    groups: ["desktop-primary", "menu"],
+    availability: "household-member",
+    reserve: { heading: "Household", shape: "ledger" },
+    scopes: [viewer("general-actions")],
   },
   {
     id: "people",
@@ -218,8 +286,10 @@ export const appDestinations = [
     scopes: [owner("account"), owner("people")],
   },
   {
-    // Account owns the durable Household entry and return point; there is no
-    // top-level Household destination, so this row stays out of every group.
+    // Account owns who belongs to the workspace and how it is governed. The
+    // global `household` row above is the working surface, not a relocation of
+    // this one, so governance stays out of every navigation group and is reached
+    // from Account or from the home's "Manage household" link.
     id: "account-household",
     route: "/account/household",
     label: "Household",
@@ -293,10 +363,36 @@ export function appDestination(id: AppDestinationId): AppDestination {
   return destination;
 }
 
-export function destinationsInGroup(group: DestinationGroup): AppDestination[] {
-  return appDestinations.filter((destination) =>
-    destination.groups.some((candidate) => candidate === group),
+/**
+ * The destinations one navigation group shows this viewer.
+ *
+ * Availability is applied here rather than at each call site so the desktop
+ * rail, the phone Menu, and the command palette cannot drift into offering
+ * different sets. The viewer defaults to holding no standing: a caller that has
+ * not resolved membership yet shows the destinations everyone has, which is the
+ * fail-closed answer and the one a reserve should render.
+ */
+export function destinationsInGroup(
+  group: DestinationGroup,
+  viewer: DestinationViewer = {},
+): AppDestination[] {
+  return appDestinations.filter(
+    (destination) =>
+      destination.groups.some((candidate) => candidate === group) &&
+      isDestinationAvailable(destination, viewer),
   );
+}
+
+function isDestinationAvailable(
+  destination: Pick<AppDestination, "id" | "availability">,
+  viewer: DestinationViewer,
+): boolean {
+  switch (destination.availability ?? "always") {
+    case "always":
+      return true;
+    case "household-member":
+      return viewer.householdMember === true;
+  }
 }
 
 type SearchParamsReader = Pick<URLSearchParams, "get">;
@@ -366,8 +462,9 @@ export function isDestinationCurrentInGroup(
   group: DestinationGroup,
   pathname: string,
   searchParams: SearchParamsReader,
+  viewer: DestinationViewer = {},
 ): boolean {
-  const grouped = destinationsInGroup(group);
+  const grouped = destinationsInGroup(group, viewer);
   const exact = appDestinations.find((candidate) =>
     isDestinationActive(candidate.id, pathname, searchParams),
   );

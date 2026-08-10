@@ -876,6 +876,14 @@ function paletteCommandGroups({
     },
     {
       heading: "Go to",
+      /**
+       * The destinations every viewer has. A conditional one — Household, which
+       * exists only while a membership does — is deliberately left out: the
+       * palette renders outside the boundary that resolves the viewer's
+       * standings, and a shortcut to a destination that may have ended reads
+       * worse than one that is simply absent. The rail and the phone Menu carry
+       * it, and Global Recall still returns the household's own records.
+       */
       commands: destinationsInGroup("desktop-primary").map((destination) => ({
         id: `go-to-${destination.id}`,
         label: destination.label,

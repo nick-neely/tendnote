@@ -104,8 +104,16 @@ export function assertGeneralActionOperationForm(input: {
  *
  * So a household chore is simply unfiled. That is a real cost — a household with
  * a "Home maintenance" Area cannot file the water filter under it — and the
- * honest alternative is a household-level Area, which Phase Eight does not have
- * and this issue does not invent.
+ * honest alternative is a household-level Area, which Phase Eight does not have.
+ *
+ * #384 settled that it does not need one. The Household home is the surface a
+ * household-level Area would have organised, and it organises by timing instead:
+ * **Needs attention** and **Coming up**, capped at three records and never more
+ * than five, with a link to Actions for the rest. Filing exists to make a long
+ * list navigable, and the home is deliberately never a long list — so an Area
+ * there would be a category label with nothing to categorise. Areas stay one
+ * member's own filing, and a later phase that wants shared filing owes it a
+ * contract of its own rather than inheriting one by default.
  */
 export function assertHouseholdNativeFilingAllowed(input: {
   ownership: HouseholdRecordOwnership;

@@ -1,7 +1,7 @@
 "use client";
 
-import { describeProgressReconciliation } from "@tendnote/domain";
 import type { GeneralActionLink, GeneralActionRecurrence } from "@tendnote/domain/general-actions";
+import { describeProgressReconciliation } from "@tendnote/domain/household-actions";
 import { type VisibilityChoice, visibilityChoiceForScope } from "@tendnote/domain/privacy";
 import { formatSurfacingDay } from "@tendnote/domain/record-surfacing";
 import { useRef, useState } from "react";
