@@ -83,7 +83,7 @@ import { createSavedItemLifecycle } from "./saved-items/lifecycle";
  * | Recall and semantic retrieval | `phase-4-household-boundaries.test.ts`, `semantic-retrieval/*.test.ts`, `relationship-context-search.test.ts` |
  * | Deep links | `apps/web/src/app/(admitted)/shared/[recordKind]/[recordId]` route suites |
  * | Caches and revalidation | `gift-plans/affected-scopes.ts` and each family's `affected-scopes.test.ts` |
- * | Browser behaviour end to end | `apps/web/tests/browser/household-isolation.browser.test.tsx` |
+ * | Browser behaviour end to end | `apps/web/src/components/account/household-isolation.browser.test.tsx` |
  * | Permanent deletion | `households/purge.test.ts` and `db:purge:check` |
  */
 const ANA = "ana";
