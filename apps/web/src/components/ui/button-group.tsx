@@ -66,7 +66,9 @@ function ButtonGroupSeparator({
       data-slot="button-group-separator"
       orientation={orientation}
       className={cn(
-        "relative self-stretch bg-input data-horizontal:mx-px data-horizontal:w-auto data-vertical:my-px data-vertical:h-auto",
+        // This one is the exception Separator centers against: it takes no height
+        // of its own, so it has to span the group it divides.
+        "relative self-stretch bg-input data-horizontal:mx-px data-horizontal:w-auto data-vertical:my-px data-vertical:h-auto data-vertical:self-stretch",
         className,
       )}
       {...props}

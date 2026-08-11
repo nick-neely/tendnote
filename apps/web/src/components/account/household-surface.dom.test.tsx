@@ -99,8 +99,8 @@ describe("household activation", () => {
   it("names both the exits that exist and the rename that does not", () => {
     render(<HouseholdSurface initialOverview={null} />);
 
-    const durability = screen.getByText(/nothing here\s+renames one/i);
-    expect(durability.textContent).toMatch(/you can leave a household later/i);
+    const durability = screen.getByText(/nothing renames a household/i);
+    expect(durability.textContent).toMatch(/you can leave later/i);
     expect(durability.textContent).toMatch(/owners can end it together/i);
     expect(durability).toBeTruthy();
     expect(screen.getByLabelText("Household name").getAttribute("aria-describedby")).toContain(

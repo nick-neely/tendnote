@@ -48,9 +48,19 @@ export function HouseholdCheckinChoice({ enabled }: { enabled: boolean }) {
 
   return (
     <div className="flex flex-col gap-2">
+      {/*
+        Two states, and each says only what its own state has not already said.
+        Turned on, the section directly above this has just named the brief and
+        promised that only this member sees it, so repeating both here was the
+        same two sentences twice within a screen; what is left is the one fact
+        neither the section nor the button carries — the cap, and that it is
+        bounded by what this member can already see. Turned off there is no
+        section, so the offer states the promise itself, at the moment the
+        member is being asked to make the decision.
+      */}
       <p className="max-w-[65ch] text-[length:var(--text-small)] text-muted-foreground text-pretty leading-[var(--text-small-line)]">
         {enabled
-          ? "Your own brief shows up to three shared records you can currently see. Only you see it."
+          ? "The check-in shows up to three shared records you can currently see."
           : "Add up to three shared records you can currently see to your own brief. Only you would see it."}
       </p>
       {/*

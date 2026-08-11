@@ -19,6 +19,7 @@ import {
   type HouseholdHomeSectionKey,
   HouseholdHomeSectionReserve,
 } from "@/components/household/household-home-section";
+import { HOUSEHOLD_SECTION_HEADING_CLASS } from "@/components/household/household-record-row";
 import { requireAdmittedOwner } from "@/lib/access/current-access";
 
 export default function HouseholdHomePage() {
@@ -184,9 +185,7 @@ export async function HouseholdCheckinStream({
 function HouseholdHomeSectionUnavailable({ heading }: { heading: string }) {
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="font-semibold text-[length:var(--text-h2)] leading-[var(--text-h2-line)] tracking-normal">
-        {heading}
-      </h2>
+      <h2 className={HOUSEHOLD_SECTION_HEADING_CLASS}>{heading}</h2>
       {/* The dashed box of the product's one empty treatment, with its own
           words. The primary line carries full-strength ink like that
           treatment's title does: an all-muted block is the faint "bare muted
@@ -213,13 +212,15 @@ function HouseholdHomeSectionUnavailable({ heading }: { heading: string }) {
  * Two quiet links, not a toolbar: the home is read-first, and the only things
  * worth offering beneath it are the domain that currently supplies it and the
  * Account surface that owns who is in the household.
+ *
+ * The links carry it alone. A line above them saying "Shared Actions and
+ * Routines appear here" named the same two things the first link is named after,
+ * one line apart — and in the state where a member actually needs telling, the
+ * empty section above has already said it and offered the way there.
  */
 function HouseholdHomeFooter() {
   return (
-    <footer className="flex flex-col gap-2 border-t pt-6">
-      <p className="text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]">
-        Shared Actions and Routines appear here.
-      </p>
+    <footer className="border-t pt-6">
       <nav aria-label="Household surfaces" className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <Link
           className="inline-flex min-h-11 items-center font-medium text-[length:var(--text-small)] underline underline-offset-4 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"

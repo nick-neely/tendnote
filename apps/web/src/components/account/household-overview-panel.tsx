@@ -91,11 +91,19 @@ export function HouseholdOverviewPanel({
         >
           {overview.name}
         </h2>
+        {/*
+          Who the reader is here, and the one rule that changes for them now
+          that they are. Both halves of the sharing boundary sit in a single
+          sentence because they are a single idea — what household visibility
+          opens, and what it leaves alone. Splitting them into two sentences
+          read as two separate promises and made the paragraph the longest thing
+          on a screen whose subject is the people below it.
+        */}
         <p className="max-w-[65ch] text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
           {ROLE_SENTENCE[overview.viewerRole]}
-          {overview.isSoleMember ? " For now it's just you." : ""} From here on, a note, action, or
-          asset can be given household visibility so everyone here can read it. Anything you
-          don&rsquo;t share stays private to you.
+          {overview.isSoleMember ? " For now it's just you." : ""} A note, action, or asset can be
+          given household visibility so everyone here can read it — anything you don&rsquo;t share
+          stays private to you.
         </p>
       </section>
 
