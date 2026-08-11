@@ -37,6 +37,19 @@ vi.mock("@tendnote/db/queries/general-actions", () => ({
   listPausedGeneralActions: vi.fn().mockResolvedValue([]),
   listResolvedGeneralActions: vi.fn().mockResolvedValue([]),
 }));
+// Both cache modules under test reach for member names when a household-shaped
+// record is present, and this fixture's Saved Item is one. Without this mock the
+// read falls through to a real Postgres connection.
+vi.mock("@tendnote/db/queries/households", () => ({
+  listShareableHouseholdMembersForUser: vi.fn().mockResolvedValue([
+    {
+      householdId: "household-1",
+      userId: "member-1",
+      name: "Mara",
+      email: "mara@example.com",
+    },
+  ]),
+}));
 vi.mock("@tendnote/db/queries/people", () => ({
   getPersonDetailCoreView: vi.fn().mockResolvedValue({ id: "person-1" }),
   listPeopleProductView: vi.fn().mockResolvedValue([]),
