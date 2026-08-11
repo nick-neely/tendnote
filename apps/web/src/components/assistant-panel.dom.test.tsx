@@ -66,8 +66,8 @@ const { eve } = vi.hoisted(() => {
       registerOnError: (handler?: (error: Error) => void): void => {
         onError = handler;
       },
-      send: (input: { message: string }): Promise<void> => {
-        sent.push(input.message);
+      send: (message: string, _options?: { clientContext?: unknown }): Promise<void> => {
+        sent.push(message);
         publish({ error: undefined, status: "submitted" });
         return new Promise<void>((resolve) => {
           settleTurn = (failure) => {

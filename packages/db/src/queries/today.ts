@@ -10,13 +10,21 @@ import { listSavedItems } from "./saved-items";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
 import { createTodayCandidateLoaders } from "./today/candidate-loaders";
 import { createDrizzleTodayFeedbackStore } from "./today/drizzle-store";
-import { createAiSdkTodayRanker, hasTodayRankerCredentials } from "./today/ranker";
+import {
+  createAiSdkTodayRanker,
+  hasTodayRankerCredentials,
+  shouldUseTodayRanker,
+} from "./today/ranker";
 import { createTodayShortlistService } from "./today/service";
 
 export { createTodayCandidateLoaders } from "./today/candidate-loaders";
 export { createDrizzleTodayFeedbackStore } from "./today/drizzle-store";
 export { createInMemoryTodayFeedbackStore } from "./today/in-memory-store";
-export { createAiSdkTodayRanker, hasTodayRankerCredentials } from "./today/ranker";
+export {
+  createAiSdkTodayRanker,
+  hasTodayRankerCredentials,
+  shouldUseTodayRanker,
+} from "./today/ranker";
 export { createTodayShortlistService } from "./today/service";
 export type * from "./today/types";
 
@@ -93,7 +101,8 @@ const candidateLoaders = createTodayCandidateLoaders({
 const defaultTodayService = createTodayShortlistService({
   feedbackStore: createDrizzleTodayFeedbackStore(),
   loadCandidateFamilies: candidateLoaders,
-  rankOptional: hasTodayRankerCredentials() ? createAiSdkTodayRanker() : undefined,
+  rankOptional:
+    shouldUseTodayRanker() && hasTodayRankerCredentials() ? createAiSdkTodayRanker() : undefined,
 });
 
 export async function getOwnerTodayContext(input: { ownerUserId: string; now?: Date }) {

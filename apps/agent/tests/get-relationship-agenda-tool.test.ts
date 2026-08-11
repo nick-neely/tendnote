@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const { getRelationshipAgenda } = vi.hoisted(() => ({
   getRelationshipAgenda: vi.fn(),
@@ -8,7 +9,8 @@ vi.mock("@tendnote/db/queries/relationship-agenda", () => ({
   getRelationshipAgenda,
 }));
 
-const { default: tool } = await import("../agent/tools/get_relationship_agenda");
+const { default: rawTool } = await import("../agent/tools/get_relationship_agenda");
+const tool = asTestTool(rawTool);
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

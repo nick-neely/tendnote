@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { authoredInstructions } from "./instructions-source";
+import { asTestTool } from "./test-tool";
 
 const { getRelationshipAgenda, suggestFollowup, listDraftsForPerson } = vi.hoisted(() => ({
   getRelationshipAgenda: vi.fn(),
@@ -103,9 +104,10 @@ describe("Relationship Strategist subagent", () => {
         rank: 1,
       },
     ]);
-    const { default: agendaTool } = await import(
+    const { default: rawAgendaTool } = await import(
       "../agent/subagents/relationship_strategist/tools/get_relationship_agenda"
     );
+    const agendaTool = asTestTool(rawAgendaTool);
 
     const result = await agendaTool.execute(
       {
@@ -153,9 +155,10 @@ describe("Relationship Strategist subagent", () => {
         sourceRecord: { id: SOURCE_RECORD_ID },
       },
     });
-    const { default: proposalTool } = await import(
+    const { default: rawProposalTool } = await import(
       "../agent/subagents/relationship_strategist/tools/propose_followup"
     );
+    const proposalTool = asTestTool(rawProposalTool);
 
     const result = await proposalTool.execute(
       {
@@ -200,9 +203,10 @@ describe("Relationship Strategist subagent", () => {
         updatedAt: new Date("2026-07-01T00:00:00.000Z"),
       },
     ]);
-    const { default: draftTool } = await import(
+    const { default: rawDraftTool } = await import(
       "../agent/subagents/relationship_strategist/tools/list_message_drafts"
     );
+    const draftTool = asTestTool(rawDraftTool);
 
     const result = await draftTool.execute({ personId: PERSON_ID, statuses: ["draft"] }, ctx);
 

@@ -63,5 +63,5 @@ See [`docs/architecture.md`](../../docs/architecture.md#provider-connections-and
 ## Run
 
 ```bash
-pnpm dev:web    # web only; from the repo root, `pnpm dev` also spawns Eve
+pnpm dev:web    # web only; from the repo root, `pnpm dev` starts web + Eve in parallel
 ```

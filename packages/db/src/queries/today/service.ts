@@ -45,17 +45,27 @@ export function createTodayShortlistService(deps: {
     return { candidates, limitations };
   }
 
+  function isAbortLikeError(error: unknown): boolean {
+    if (typeof error !== "object" || error === null) return false;
+    const candidate = error as { code?: unknown; name?: unknown };
+    return (
+      candidate.name === "AbortError" ||
+      candidate.name === "TimeoutError" ||
+      candidate.code === "ABORT_ERR"
+    );
+  }
+
   /**
    * Eve's optional ranking is a nicety over an already-complete deterministic
    * list: when it is unavailable the owner sees the same items in a sensible
    * order, so there is nothing to tell them. The fallback is recorded in
-   * `curation` for logs and tests, and warned in development. It never becomes
-   * a limitation the UI renders.
+   * `curation` for logs and tests, and only unexpected development failures
+   * receive a concise warning. It never becomes a limitation the UI renders.
    */
   function noteRankingFallback(error: unknown): void {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("Eve ranking is unavailable; using deterministic Today ordering.", error);
-    }
+    if (process.env.NODE_ENV === "production" || isAbortLikeError(error)) return;
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn("Eve ranking is unavailable; using deterministic Today ordering.", reason);
   }
 
   return {

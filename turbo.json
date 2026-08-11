@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalPassThroughEnv": ["LOC_INVENTORY_CANVAS_DATA", "TMPDIR"],
+  "globalPassThroughEnv": ["EVE_BASE_URL", "LOC_INVENTORY_CANVAS_DATA", "TMPDIR"],
   "tasks": {
     "dev": {
       "cache": false,

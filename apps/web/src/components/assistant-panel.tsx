@@ -130,7 +130,7 @@ export function AssistantPanel({
     // store retires its own `error` at the same moment.
     turnFailure.current = null;
 
-    await agent.send({ message: text, clientContext: clientContextFor(context) });
+    await agent.send(text, { clientContext: clientContextFor(context) });
 
     // `send` resolved, which says nothing about whether the turn worked. If it
     // failed, `onError` already ran - the store calls it before settling - so

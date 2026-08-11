@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const { searchSemanticContext } = vi.hoisted(() => ({
   searchSemanticContext: vi.fn(),
@@ -8,7 +9,8 @@ vi.mock("@tendnote/db/queries/semantic-retrieval", () => ({
   searchSemanticContext,
 }));
 
-const { default: tool } = await import("../agent/tools/search_semantic_context");
+const { default: rawTool } = await import("../agent/tools/search_semantic_context");
+const tool = asTestTool(rawTool);
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

@@ -11,7 +11,7 @@ describe("sendNudgeToAgent", () => {
     const started = sendNudgeToAgent({ status: "ready", send }, undefined, "Follow up with Maya");
 
     expect(started).toBe(true);
-    expect(send).toHaveBeenCalledWith({ message: "Follow up with Maya", clientContext: undefined });
+    expect(send).toHaveBeenCalledWith("Follow up with Maya", { clientContext: undefined });
   });
 
   it("includes one-turn person context when scoped", () => {
@@ -22,8 +22,7 @@ describe("sendNudgeToAgent", () => {
       "Follow up with Maya",
     );
 
-    expect(send).toHaveBeenCalledWith({
-      message: "Follow up with Maya",
+    expect(send).toHaveBeenCalledWith("Follow up with Maya", {
       clientContext: { person: { id: "p1", displayName: "Maya" } },
     });
   });

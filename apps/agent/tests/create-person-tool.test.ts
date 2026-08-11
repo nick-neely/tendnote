@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const { createPerson, reconcile } = vi.hoisted(() => ({
   createPerson: vi.fn(),
@@ -10,7 +11,8 @@ vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
   requestBackgroundAffectedScopeReconciliation: reconcile,
 }));
 
-const { default: tool } = await import("../agent/tools/create_person");
+const { default: rawTool } = await import("../agent/tools/create_person");
+const tool = asTestTool(rawTool);
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

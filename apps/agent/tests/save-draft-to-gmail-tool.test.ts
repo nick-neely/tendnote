@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const { getDraft } = vi.hoisted(() => ({ getDraft: vi.fn() }));
 const { listPersonEmailContactMethods } = vi.hoisted(() => ({
@@ -24,7 +25,8 @@ vi.mock("@tendnote/db/queries/gmail-drafts", () => ({
   listGmailDraftActionsForDraft,
 }));
 
-const { default: tool } = await import("../agent/tools/save_draft_to_gmail");
+const { default: rawTool } = await import("../agent/tools/save_draft_to_gmail");
+const tool = asTestTool(rawTool);
 
 const DRAFT_ID = "22222222-2222-2222-2222-222222222222";
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;

@@ -40,6 +40,7 @@ function candidate(input: {
 
 describe("Today shortlist product function", () => {
   it("gives Eve only validated optional candidates and falls back without losing mandatory items", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const mandatory = candidate({ id: "due", family: "follow_up", mandatory: true });
     const saved = candidate({ id: "saved", family: "saved_item" });
     const review = candidate({ id: "review", family: "review" });
@@ -81,6 +82,34 @@ describe("Today shortlist product function", () => {
     // attention (and "deterministic ordering" is not a sentence Tendnote says).
     expect(result.curation).toBe("deterministic_fallback");
     expect(result.limitations).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      "Eve ranking is unavailable; using deterministic Today ordering.",
+      "Eve unavailable",
+    );
+    warn.mockRestore();
+  });
+
+  it("keeps expected ranking aborts quiet while falling back deterministically", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const saved = candidate({ id: "saved", family: "saved_item" });
+    const abort = Object.assign(new Error("Delay was aborted"), { name: "AbortError" });
+    const service = createTodayShortlistService({
+      feedbackStore: createInMemoryTodayFeedbackStore(),
+      loadCandidateFamilies: [vi.fn(async () => [saved])],
+      rankOptional: vi.fn(async () => {
+        throw abort;
+      }),
+    });
+
+    await expect(
+      service.getTodayShortlist({
+        ownerUserId: "owner-1",
+        localDate: "2026-07-21",
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ curation: "deterministic_fallback" });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it("records Today-only Later feedback after reloading the authoritative candidate", async () => {
