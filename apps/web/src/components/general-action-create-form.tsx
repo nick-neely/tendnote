@@ -38,47 +38,11 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
+import { buildCreateActionInput } from "@/lib/general-action-create-input";
 import type { GeneralActionView } from "@/lib/general-action-view";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 import { useReminderScheduleWriter } from "@/lib/use-reminder-schedule-writer";
-
-/**
- * Assembles the create-action server-action payload, including only the optional fields the
- * user actually filled in (an empty note, no date, no links, and so on are simply omitted).
- * Kept a pure function so the submit handler stays a flat try/await/handle flow.
- */
-function buildCreateActionInput(fields: {
-  title: string;
-  notes: string;
-  dueDate: string;
-  recurrence: GeneralActionRecurrence | null;
-  links: ReturnType<typeof cleanLinks>;
-  assetHints: ReturnType<typeof cleanHintLabels>;
-  personIds: string[];
-  areaId: string | null;
-  visibilityChoice: VisibilityChoice;
-  selectedUserIds: string[];
-}): Parameters<typeof createGeneralActionAction>[0] {
-  // "Our household" creates a record the household owns, and an Area and people
-  // links are one member's own records — so the composer hides both fields for
-  // that choice and this drops whatever they were carrying, rather than sending
-  // a pre-filled Area (the active filter pre-fills one) into a refusal the member
-  // never asked for (ADR 0214).
-  const householdNative = fields.visibilityChoice === "whole_household";
-  return {
-    title: fields.title,
-    ...(fields.notes ? { notes: fields.notes } : {}),
-    ...(fields.dueDate ? { dueAt: fields.dueDate } : {}),
-    ...(fields.recurrence ? { recurrence: fields.recurrence } : {}),
-    ...(fields.links.length ? { links: fields.links } : {}),
-    ...(fields.assetHints.length ? { assetHints: fields.assetHints } : {}),
-    ...(fields.personIds.length && !householdNative ? { personIds: fields.personIds } : {}),
-    ...(fields.areaId && !householdNative ? { areaId: fields.areaId } : {}),
-    visibilityChoice: fields.visibilityChoice,
-    ...(fields.selectedUserIds.length ? { selectedUserIds: fields.selectedUserIds } : {}),
-  };
-}
 
 /**
  * Capture-first create surface for a private one-time Action. The title input is
