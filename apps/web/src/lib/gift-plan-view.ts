@@ -183,57 +183,64 @@ export function toGiftIdeaView(idea: GiftIdea, people: GiftPlanPeopleLabels): Gi
 }
 
 /**
+ * The possessives an event sentence needs, resolved for whoever acted.
+ *
+ * The subject of these sentences is "You" as often as it is a name, and a
+ * third-person possessive written for the name case reads as a mistake about
+ * the reader when it is not — "You said they'd handle an idea" about the idea
+ * they just claimed themselves.
+ */
+type GiftPlanEventVoice = { their: string; theyWould: string };
+
+/**
+ * What each event says, minus who did it.
+ *
+ * A table rather than a switch because every arm is the same shape: one clause,
+ * in the actor's voice, appended to a name. Keeping it as data means the copy
+ * for a new event kind is a line here, and the `Record` makes leaving one out a
+ * type error rather than a silent fall through to "made a change".
+ */
+const GIFT_PLAN_EVENT_CLAUSES: Record<
+  GiftPlanEvent["kind"],
+  (voice: GiftPlanEventVoice) => string
+> = {
+  created: () => "started this plan",
+  edited: () => "updated the details",
+  audience_changed: () => "changed who can see this",
+  surprise_protected: () => "turned on surprise protection",
+  surprise_lifted: () => "turned off surprise protection",
+  idea_added: () => "added an idea",
+  idea_edited: (voice) => `edited ${voice.their} idea`,
+  idea_removed: (voice) => `removed ${voice.their} idea`,
+  idea_claimed: (voice) => `said ${voice.theyWould} handle an idea`,
+  idea_released: () => "let an idea go",
+  celebrated: () => "marked this celebrated",
+  archived: () => "archived this plan",
+  reopened: () => "reopened this plan",
+};
+
+/**
  * Provenance as a sentence, never a raw id or an event name.
  *
  * Quiet and plan-local by design: it says what happened and who did it, and
  * nothing that would read as a fairness record or a score.
  */
 function eventSummary(event: GiftPlanEvent, people: GiftPlanPeopleLabels): string {
+  const self = event.actorUserId !== null && event.actorUserId === people.callerUserId;
   const actor = event.actorUserId
-    ? event.actorUserId === people.callerUserId
+    ? self
       ? "You"
       : giftPlanMemberName(people, event.actorUserId)
     : null;
-  const who = actor ?? "Tendnote";
-  // The subject of these sentences is "You" as often as it is a name, and a
-  // third-person possessive written for the name case reads as a mistake about
-  // the reader when it is not — "You said they'd handle an idea" about the idea
-  // they just claimed themselves.
-  const self = event.actorUserId !== null && event.actorUserId === people.callerUserId;
-  const their = self ? "your" : "their";
-  const theyWould = self ? "you'd" : "they'd";
-  switch (event.kind) {
-    case "created":
-      return `${who} started this plan`;
-    case "edited":
-      return `${who} updated the details`;
-    case "audience_changed":
-      return actor
-        ? `${who} changed who can see this`
-        : "This plan went private when household access ended";
-    case "surprise_protected":
-      return `${who} turned on surprise protection`;
-    case "surprise_lifted":
-      return `${who} turned off surprise protection`;
-    case "idea_added":
-      return `${who} added an idea`;
-    case "idea_edited":
-      return `${who} edited ${their} idea`;
-    case "idea_removed":
-      return `${who} removed ${their} idea`;
-    case "idea_claimed":
-      return `${who} said ${theyWould} handle an idea`;
-    case "idea_released":
-      return `${who} let an idea go`;
-    case "celebrated":
-      return `${who} marked this celebrated`;
-    case "archived":
-      return `${who} archived this plan`;
-    case "reopened":
-      return `${who} reopened this plan`;
-    default:
-      return `${who} made a change`;
+  // The one event nobody performs: access ended, so there is no actor to name
+  // and no sentence that could start with one.
+  if (event.kind === "audience_changed" && !actor) {
+    return "This plan went private when household access ended";
   }
+  const clause = GIFT_PLAN_EVENT_CLAUSES[event.kind];
+  const who = actor ?? "Tendnote";
+  if (!clause) return `${who} made a change`;
+  return `${who} ${clause({ their: self ? "your" : "their", theyWould: self ? "you'd" : "they'd" })}`;
 }
 
 export function toGiftPlanDetailView(
