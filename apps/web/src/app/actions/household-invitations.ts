@@ -63,10 +63,11 @@ async function overviewFor(ownerUserId: string): Promise<HouseholdOverview> {
  * `after` is what keeps delivery out of the interactive request: the Owner's
  * answer is computed and returned from the committed invitation, and only then
  * does anything external happen. That matters twice over. The Owner is told the
- * invitation exists, which is true, rather than waiting on a claim about an
- * inbox nobody can make yet. And once a real provider is wired, every
- * syntactically valid address will still take the same time to answer, so
- * response latency carries no signal about the recipient.
+ * invitation exists, which is true, rather than waiting on a provider's claim
+ * about an inbox. And every syntactically valid address takes the same time to
+ * answer, so response latency carries no signal about the recipient — which is
+ * what stops the send becoming an account-enumeration oracle now that a real
+ * provider is on the other end of it.
  *
  * ## Deviation from the outbox/background-job style, and the drain path
  *
@@ -78,17 +79,16 @@ async function overviewFor(ownerUserId: string): Promise<HouseholdOverview> {
  * this call site. What is not here is a registered background-job family — a
  * `background_job_kind` value, a queue topic and consumer route, a job table with
  * its own lease, cron backfill, and the shared processor plumbing — which is a
- * large amount of machinery to stand up around a transport that currently makes
- * no network call at all (no email provider is configured; see
- * `lib/household/invitation-delivery.ts`).
+ * large amount of machinery for a private beta's invitation volume.
  *
  * The drain path it would need already exists in the schema:
  * `household_invitation_deliveries_status_idx` on `(status, requested_at)` is
  * there so a worker can select queued attempts oldest-first and call
  * `dispatchHouseholdInvitationDelivery` on each. Because the claim is a
  * conditional update, that worker and this `after` callback cannot both send the
- * same attempt. Wiring the family is the right move at the same time a provider
- * is selected, and it changes nothing above this function.
+ * same attempt. What that buys, and what is missing until it exists, is a retry
+ * for an attempt whose provider call failed: today it is recorded `failed` and
+ * the Owner resends. Wiring the family changes nothing above this function.
  */
 function deliverAfterResponse(sent: SentHouseholdInvitation): void {
   after(async () => {
@@ -238,12 +238,20 @@ const retryable = (error: string): RecipientFailure => ({ ok: false, error, term
  * is not acting on their own data, they are presenting a capability. What it
  * needs is the session's proven identity — id and email, never anything the
  * caller supplied — and the shared lifecycle re-decides everything else.
+ *
+ * Private Beta Access is deliberately *not* checked here. It is the global
+ * denier for using Tendnote, not a rule about who may belong to a household: an
+ * invited person whose access has not been granted yet still becomes a member,
+ * and still lands on the waiting page afterwards. Requiring admission would
+ * instead let the invitation expire under someone who did everything right.
+ * Signing in is the whole requirement, because the address is what the shared
+ * lifecycle matches against.
  */
 async function requireRecipientSession(): Promise<
   { ok: true; userId: string; email: string } | RecipientFailure
 > {
   const access = await getCurrentAccess();
-  if (access.state !== "admitted") {
+  if (access.state === "unauthenticated") {
     return retryable(RECIPIENT_SIGN_IN_REQUIRED);
   }
   return { ok: true, userId: access.user.id, email: access.user.email };

@@ -18,7 +18,19 @@ const READY = {
   householdName: "The Neely house",
   role: "member" as const,
   expiresAt: new Date("2026-08-15T09:00:00Z"),
+  accessPending: false,
 };
+const READY_WHILE_PENDING = { ...READY, accessPending: true };
+
+/**
+ * The two presses joining always takes. Named rather than repeated so the tests
+ * below read as what they are checking, not as the same pair of clicks five
+ * times over.
+ */
+const openJoinConfirm = () =>
+  userEvent.click(screen.getByRole("button", { name: "Join The Neely house" }));
+const confirmJoin = () =>
+  userEvent.click(screen.getByRole("button", { name: "Yes, join The Neely house" }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -67,12 +79,48 @@ describe("what an unproven visitor is told", () => {
     expect(screen.getByRole("link", { name: "Go to your household" })).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/Neely/);
   });
+});
 
-  it("holds an invitation for an account still waiting on access", () => {
-    render(<JoinInvitationSurface secret={SECRET} view={{ state: "access-pending" }} />);
+/**
+ * Private Beta Access is the global denier for using Tendnote, not a rule about
+ * who may belong to a household. An invited person who has not been admitted yet
+ * joins for real and goes back to waiting for the site — so the page has to say
+ * that before the press, at the press, and after it.
+ */
+describe("joining while Private Beta Access is still pending", () => {
+  it("says what joining does and does not open, before anything is pressed", () => {
+    render(<JoinInvitationSurface secret={SECRET} view={READY_WHILE_PENDING} />);
 
-    expect(screen.getByText(/waiting for Private Beta Access/i)).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/Neely/);
+    expect(screen.getByText(/waiting for Private Beta Access/i).textContent).toMatch(
+      /gives you your place in the household/i,
+    );
+    expect(screen.getByRole("button", { name: "Join The Neely house" })).toBeTruthy();
+  });
+
+  it("repeats it at the moment of commitment, and lands on the waiting page", async () => {
+    const acceptAction = vi.fn().mockResolvedValue({ ok: true });
+    render(
+      <JoinInvitationSurface
+        acceptAction={acceptAction}
+        secret={SECRET}
+        view={READY_WHILE_PENDING}
+      />,
+    );
+
+    await openJoinConfirm();
+    expect(screen.getByText(/You'll become a member of The Neely house/i).textContent).toMatch(
+      /land back on the waiting page/i,
+    );
+
+    await confirmJoin();
+
+    await waitFor(() => {
+      expect(acceptAction).toHaveBeenCalledWith({ secret: SECRET });
+    });
+    expect(replace).toHaveBeenCalledWith("/pending");
+    expect(screen.getByRole("status").textContent).toBe(
+      "You've joined The Neely house. Tendnote opens when your access comes through.",
+    );
   });
 });
 
@@ -89,7 +137,7 @@ describe("joining", () => {
 
     expect(screen.getByText(/good until Aug 15/i)).toBeTruthy();
 
-    await userEvent.click(screen.getByRole("button", { name: "Join The Neely house" }));
+    await openJoinConfirm();
     expect(acceptAction).not.toHaveBeenCalled();
     const confirmation = screen.getByText(/You'll become a member of The Neely house/i);
     expect(confirmation.textContent).toMatch(/nothing you've already written moves/i);
@@ -97,8 +145,8 @@ describe("joining", () => {
     await userEvent.click(screen.getByRole("button", { name: "Not yet" }));
     expect(screen.getByRole("button", { name: "Join The Neely house" })).toBeTruthy();
 
-    await userEvent.click(screen.getByRole("button", { name: "Join The Neely house" }));
-    await userEvent.click(screen.getByRole("button", { name: "Yes, join The Neely house" }));
+    await openJoinConfirm();
+    await confirmJoin();
 
     await waitFor(() => {
       expect(acceptAction).toHaveBeenCalledWith({ secret: SECRET });
@@ -113,8 +161,8 @@ describe("joining", () => {
 
     expect(screen.getByRole("status").textContent).toBe("");
 
-    await userEvent.click(screen.getByRole("button", { name: "Join The Neely house" }));
-    await userEvent.click(screen.getByRole("button", { name: "Yes, join The Neely house" }));
+    await openJoinConfirm();
+    await confirmJoin();
 
     await waitFor(() => {
       expect(screen.getByRole("status").textContent).toBe("You've joined The Neely house.");
@@ -127,8 +175,8 @@ describe("joining", () => {
       .mockResolvedValue({ ok: false, error: "Something broke.", terminal: false });
     render(<JoinInvitationSurface acceptAction={acceptAction} secret={SECRET} view={READY} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Join The Neely house" }));
-    await userEvent.click(screen.getByRole("button", { name: "Yes, join The Neely house" }));
+    await openJoinConfirm();
+    await confirmJoin();
 
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toBe("Something broke.");
@@ -148,8 +196,8 @@ describe("joining", () => {
     const acceptAction = vi.fn().mockResolvedValue({ ok: false, error: refusal, terminal: true });
     render(<JoinInvitationSurface acceptAction={acceptAction} secret={SECRET} view={READY} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Join The Neely house" }));
-    await userEvent.click(screen.getByRole("button", { name: "Yes, join The Neely house" }));
+    await openJoinConfirm();
+    await confirmJoin();
 
     await waitFor(() => {
       expect(screen.getByRole("status").textContent).toBe(refusal);

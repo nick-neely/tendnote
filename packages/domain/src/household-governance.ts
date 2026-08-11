@@ -89,8 +89,15 @@ export const HOUSEHOLD_RECOVERY_IS_SUPPORT_ONLY =
  * so the address travels with the sentence above and every surface that shows
  * one shows the other. Kept beside the copy rather than in the surface so the
  * two cannot drift apart.
+ *
+ * It is a real, monitored mailbox rather than a plausible-looking one: an Owner
+ * locked out of their household is told to write here, and an address that
+ * bounces would turn the only recovery path into a dead end. Deliberately on the
+ * apex domain, not the `mail.` sending subdomain - inbound routing and outbound
+ * sending are separate concerns and only the sending one needs its own
+ * reputation. Transactional mail replies here too, so the two cannot diverge.
  */
-export const HOUSEHOLD_SUPPORT_EMAIL = "support@tendnote.com";
+export const HOUSEHOLD_SUPPORT_EMAIL = "support@stacklet.app";
 
 /**
  * What someone is told when the household they were acting on is no longer one

@@ -107,6 +107,10 @@ Most app vars have working local defaults (Postgres, Redis, and a dev auth secre
 
 The root `.env` is read **only** by `docker compose`; Next.js and `eve dev` do not read it. Each `.env.example` documents the rest. `.env*` files are gitignored (except the `.env.example` templates), so your keys are never committed.
 
+## Transactional email
+
+Household Invitations are the one email Tendnote sends. Locally you do not need a provider: with no `RESEND_API_KEY` set, the whole message — subject, body, and the acceptance link — is written to the `next dev` terminal, so you can walk the recipient's side by pasting the link into a browser. Setting `RESEND_API_KEY` turns real sending on in any environment, which is how you smoke-test one send; `vitest` never sends whatever is configured. Production without the key refuses by name rather than writing a live capability URL into a hosted log. Sending domain, DNS records, and the send checklist: [`email-setup.md`](email-setup.md).
+
 ## Google integrations
 
 Connecting Google Calendar or Gmail needs an operator to configure a Google Cloud OAuth client, consent screen, callback URLs, and the exact scopes Tendnote uses: Calendar event-read and Gmail compose. Set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `apps/web/.env.local`. This is human-in-the-loop work that code slices cannot complete. See [`google-setup.md`](google-setup.md) for the step-by-step guide and local/hosted smoke checklists.

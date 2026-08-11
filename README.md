@@ -94,6 +94,7 @@ Tendnote uses Biome for linting, formatting, and import organization. See [`docs
 - [`docs/local-development.md`](docs/local-development.md) — setup, environment variables, evals, CI
 - [`docs/architecture.md`](docs/architecture.md) — system design and boundaries
 - [`docs/security.md`](docs/security.md) — privacy model and trust boundaries
+- [`docs/email-setup.md`](docs/email-setup.md) — Resend account, sending-domain DNS, and send checklist
 - [`docs/google-setup.md`](docs/google-setup.md) — Google OAuth client setup
 - [`docs/discord-setup.md`](docs/discord-setup.md) — Discord app, capture, and delivery setup
 - [`docs/background-job-delivery.md`](docs/background-job-delivery.md) — production queue foundation

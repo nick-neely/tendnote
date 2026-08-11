@@ -397,8 +397,8 @@ describe("ending the household", () => {
     expect(boundary.textContent).toMatch(/no way for anyone else here to take it over/i);
     // A boundary that names support has to say how to reach them.
     expect(
-      within(boundary).getByRole("link", { name: "support@tendnote.com" }).getAttribute("href"),
-    ).toBe("mailto:support@tendnote.com");
+      within(boundary).getByRole("link", { name: "support@stacklet.app" }).getAttribute("href"),
+    ).toBe("mailto:support@stacklet.app");
 
     const endIt = dialog.getByRole("button", { name: "End it" });
     expect(endIt.dataset.variant).toBe("destructive");
@@ -489,8 +489,8 @@ describe("ending the household", () => {
     await waitFor(() => {
       expect(screen.getByText(/support can still put the household back/i)).toBeTruthy();
     });
-    expect(screen.getByRole("link", { name: "support@tendnote.com" }).getAttribute("href")).toBe(
-      "mailto:support@tendnote.com",
+    expect(screen.getByRole("link", { name: "support@stacklet.app" }).getAttribute("href")).toBe(
+      "mailto:support@stacklet.app",
     );
   });
 

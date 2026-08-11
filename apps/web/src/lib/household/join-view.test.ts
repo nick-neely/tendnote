@@ -37,9 +37,18 @@ describe("resolveHouseholdJoinView", () => {
     expect(db.viewHouseholdInvitation).toHaveBeenCalledWith({ secret: "secret", viewer: null });
   });
 
-  it("tells the lifecycle how many households the signed-in viewer already has", async () => {
+  /**
+   * Both states, one test, because "counted like anyone else's" is the whole
+   * claim. A pending account can hold a membership now, so assuming it has none
+   * would show a second invitation as ready and let the one-household rule
+   * refuse it a press later.
+   */
+  it.each([
+    "admitted",
+    "pending",
+  ] as const)("tells the lifecycle how many households a %s viewer already has", async (state) => {
     getCurrentAccess.mockResolvedValue({
-      state: "admitted",
+      state,
       user: { id: "sam-1", email: "sam@example.com" },
     });
     db.listActiveHouseholdMembershipsForUser.mockResolvedValue([{ householdId: "other" }]);
@@ -54,34 +63,38 @@ describe("resolveHouseholdJoinView", () => {
     });
   });
 
+  it("says nothing about access on a decision that proved nothing", async () => {
+    getCurrentAccess.mockResolvedValue({
+      state: "admitted",
+      user: { id: "sam-1", email: "sam@example.com" },
+    });
+
+    await expect(resolveHouseholdJoinView("secret")).resolves.toEqual({
+      ...READY,
+      accessPending: false,
+    });
+  });
+
   /**
    * Private Beta Access is a different gate from the invitation, so it is only
    * ever applied *after* the invited address has been proven. A pending visitor
    * holding someone else's link must still see the address mismatch, not a
    * signal that their own account exists and is waiting.
    */
-  it("explains pending access only once the invited address is proven", async () => {
+  it("mentions pending access only once the invited address is proven", async () => {
     getCurrentAccess.mockResolvedValue({
       state: "pending",
       user: { id: "sam-1", email: "sam@example.com" },
     });
 
-    await expect(resolveHouseholdJoinView("secret")).resolves.toEqual({ state: "access-pending" });
+    await expect(resolveHouseholdJoinView("secret")).resolves.toEqual({
+      ...READY,
+      accessPending: true,
+    });
 
     db.viewHouseholdInvitation.mockResolvedValue({ state: "address-mismatch" });
     await expect(resolveHouseholdJoinView("secret")).resolves.toEqual({
       state: "address-mismatch",
     });
-  });
-
-  it("never asks a pending account for household memberships it cannot have", async () => {
-    getCurrentAccess.mockResolvedValue({
-      state: "pending",
-      user: { id: "sam-1", email: "sam@example.com" },
-    });
-
-    await resolveHouseholdJoinView("secret");
-
-    expect(db.listActiveHouseholdMembershipsForUser).not.toHaveBeenCalled();
   });
 });
