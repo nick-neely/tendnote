@@ -401,6 +401,213 @@ function DepartureRow({ overview, actions = {}, onOverviewChange, onAnnounce }: 
 }
 
 /**
+ * What an owner sees once they have already agreed.
+ *
+ * An agreement is a commitment, not an act: nothing has happened yet, so the
+ * only control is the way back out and the copy says who is still to answer.
+ */
+function DissolutionWithdrawal({
+  error,
+  householdName,
+  onWithdraw,
+  pending,
+  stillWaitingOn,
+}: {
+  error: string | null;
+  householdName: string;
+  onWithdraw: () => void;
+  pending: boolean;
+  stillWaitingOn: number;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="max-w-[65ch] text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
+        You&rsquo;ve agreed to end {householdName}. It stays exactly as it is until the{" "}
+        {stillWaitingOn === 1 ? "other owner agrees" : `other ${stillWaitingOn} owners agree`} too.
+      </p>
+      <Button
+        className="min-h-11 self-start sm:min-h-8"
+        disabled={pending}
+        onClick={onWithdraw}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        {pending ? "Changing…" : "Change my mind"}
+      </Button>
+      {error ? <ErrorText message={error} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The retyped-phrase gate, shown only for the press that actually ends things.
+ *
+ * The boundary and the door through it travel together: naming support as the
+ * only way back and then not saying how to reach them would leave the reader
+ * with a rule and no recourse.
+ */
+function DissolutionPhraseGate({
+  error,
+  errorId,
+  onTyped,
+  pending,
+  phrase,
+  typed,
+}: {
+  error: string | null;
+  errorId: string;
+  onTyped: (value: string) => void;
+  pending: boolean;
+  phrase: string;
+  typed: string;
+}) {
+  return (
+    <>
+      <p className="max-w-[65ch] text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
+        {HOUSEHOLD_RECOVERY_IS_SUPPORT_ONLY} If you need to, write to{" "}
+        <a
+          className="underline underline-offset-2 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/35 focus-visible:outline-none"
+          href={`mailto:${HOUSEHOLD_SUPPORT_EMAIL}`}
+        >
+          {HOUSEHOLD_SUPPORT_EMAIL}
+        </a>
+        .
+      </p>
+      <div className="flex flex-col gap-1.5">
+        <Label
+          className="block text-[length:var(--text-small)] leading-[var(--text-small-line)] font-normal text-muted-foreground"
+          htmlFor="household-dissolve-confirm"
+        >
+          Type{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.8125rem] font-medium text-foreground select-none">
+            {phrase}
+          </code>{" "}
+          to confirm
+        </Label>
+        <Input
+          // The refusal below is about this press, and this input is the only
+          // field in the dialog — wired rather than left to `role="alert"`,
+          // which announces once and is gone for anyone who arrives at the
+          // field afterwards.
+          aria-describedby={error ? errorId : undefined}
+          aria-invalid={error ? true : undefined}
+          autoComplete="off"
+          // Typing the phrase is the only next action in this gated dialog.
+          autoFocus
+          disabled={pending}
+          id="household-dissolve-confirm"
+          onChange={(event) => onTyped(event.target.value)}
+          // Retyping is the safeguard; pasting the on-screen phrase defeats it.
+          onDrop={(event) => event.preventDefault()}
+          onPaste={(event) => event.preventDefault()}
+          placeholder={phrase}
+          spellCheck={false}
+          value={typed}
+        />
+      </div>
+    </>
+  );
+}
+
+/**
+ * The dialog behind both presses, which read differently on purpose.
+ *
+ * `endsNow` decides every word and the weight of the confirm: an agreement that
+ * still waits on another owner changes nothing yet and must not borrow the alarm
+ * of the press that ends a household.
+ */
+function DissolutionDialog({
+  canConfirm,
+  endsNow,
+  error,
+  errorId,
+  householdName,
+  onConfirm,
+  onOpenChange,
+  onTyped,
+  open,
+  pending,
+  phrase,
+  stillWaitingOn,
+  typed,
+}: {
+  canConfirm: boolean;
+  endsNow: boolean;
+  error: string | null;
+  errorId: string;
+  householdName: string;
+  onConfirm: () => void;
+  onOpenChange: (next: boolean) => void;
+  onTyped: (value: string) => void;
+  open: boolean;
+  pending: boolean;
+  phrase: string;
+  stillWaitingOn: number;
+  typed: string;
+}) {
+  const othersLeft = stillWaitingOn - 1;
+  return (
+    <AlertDialog onOpenChange={onOpenChange} open={open}>
+      <AlertDialogTrigger asChild>
+        <Button
+          className={`min-h-11 self-start text-muted-foreground sm:min-h-8${
+            endsNow ? " hover:text-destructive" : ""
+          }`}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          {endsNow ? "End this household" : "Agree to end it"}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {endsNow ? `End ${householdName}?` : `Agree to end ${householdName}?`}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {endsNow
+              ? `Everyone's access ends the moment you press this, and every live invitation stops working. For ${HOUSEHOLD_RECOVERY_WINDOW_DAYS} days afterwards support can still put the household back; after that, what the household itself held is deleted. What each person wrote privately stays theirs.`
+              : `Nothing changes yet. The household ends only once every owner has agreed, and you can change your mind until then. ${othersLeft === 1 ? "One other owner" : `${othersLeft} other owners`} would still need to agree.`}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        {endsNow ? (
+          <DissolutionPhraseGate
+            error={error}
+            errorId={errorId}
+            onTyped={onTyped}
+            pending={pending}
+            phrase={phrase}
+            typed={typed}
+          />
+        ) : null}
+
+        {error ? <ErrorText id={errorId} message={error} /> : null}
+
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>Keep the household</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={!canConfirm}
+            onClick={(event) => {
+              event.preventDefault();
+              onConfirm();
+            }}
+            // Destructive weight belongs to the press that actually ends
+            // something. An agreement that still waits on another owner
+            // changes nothing yet and must not borrow the alarm.
+            variant={endsNow ? "destructive" : "default"}
+          >
+            {pending ? (endsNow ? "Ending…" : "Agreeing…") : endsNow ? "End it" : "Agree to end it"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+/**
  * The end of the household, which no one Owner can decide alone.
  *
  * Two different presses live here and read differently on purpose. Where other
@@ -416,6 +623,10 @@ function DepartureRow({ overview, actions = {}, onOverviewChange, onAnnounce }: 
  * when the window closes: the purge sweep deletes what the household itself held
  * (#391). Before that sweep existed the copy deliberately stopped short of
  * promising deletion, because nothing performed it. It no longer has to.
+ *
+ * This function owns the state and the writes; the three components above own
+ * the reading of them. The split is why none of them has to hold the whole of
+ * agreement, withdrawal, and irreversible ending at once.
  */
 function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }: PanelProps) {
   const confirm = actions.confirmDissolution ?? defaultConfirmDissolutionAction;
@@ -428,27 +639,6 @@ function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }
   const [pending, startTransition] = useTransition();
 
   const { dissolution } = overview;
-  if (!dissolution.available) {
-    // A plain member reaches this branch and is meant to: the end of the
-    // household is a fact about *their* household, so the rule that governs it
-    // is theirs to read even though no control follows from it. Every other
-    // governance answer on this screen is about what one person may do to
-    // another, and those stay silent for a member.
-    return dissolution.blockedReason ? (
-      <ExitRow
-        description="Ending a household is an owner decision, and every owner has to agree to it."
-        title="Ending this household"
-      >
-        <BlockedNote reason={dissolution.blockedReason} />
-      </ExitRow>
-    ) : null;
-  }
-
-  const stillWaitingOn = dissolution.required - dissolution.confirmed;
-  // The press that finishes it: nobody but this reader is left to agree.
-  const endsNow = !dissolution.viewerHasConfirmed && stillWaitingOn === 1;
-  const phraseConfirmed = confirmPhraseMatches(typed, phrase);
-  const canConfirm = !pending && (!endsNow || phraseConfirmed);
 
   function handleOpenChange(next: boolean) {
     if (pending) return;
@@ -465,7 +655,7 @@ function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }
   /**
    * `announce` is a function of the answer, not of the press.
    *
-   * `endsNow` above is a reading of an Overview that may be a moment old: if
+   * `endsNow` below is a reading of an Overview that may be a moment old: if
    * another owner agreed in between, a press this screen labelled "Agree to end
    * it" is the one that ends the household. The server settles that, and it
    * settles it in the only way that cannot be stale — the reader has an Overview
@@ -497,142 +687,64 @@ function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }
     });
   }
 
+  if (!dissolution.available) {
+    // A plain member reaches this branch and is meant to: the end of the
+    // household is a fact about *their* household, so the rule that governs it
+    // is theirs to read even though no control follows from it. Every other
+    // governance answer on this screen is about what one person may do to
+    // another, and those stay silent for a member.
+    if (!dissolution.blockedReason) return null;
+    return (
+      <ExitRow
+        description="Ending a household is an owner decision, and every owner has to agree to it."
+        title="Ending this household"
+      >
+        <BlockedNote reason={dissolution.blockedReason} />
+      </ExitRow>
+    );
+  }
+
+  const stillWaitingOn = dissolution.required - dissolution.confirmed;
+  // The press that finishes it: nobody but this reader is left to agree.
+  const endsNow = !dissolution.viewerHasConfirmed && stillWaitingOn === 1;
+
   return (
     <ExitRow
       description={`Every owner has to agree. Once they all do, the household closes for everyone and support can put it back for ${HOUSEHOLD_RECOVERY_WINDOW_DAYS} days.`}
       title="Ending this household"
     >
       {dissolution.viewerHasConfirmed ? (
-        <div className="flex flex-col gap-2">
-          <p className="max-w-[65ch] text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
-            You&rsquo;ve agreed to end {overview.name}. It stays exactly as it is until the{" "}
-            {stillWaitingOn === 1 ? "other owner agrees" : `other ${stillWaitingOn} owners agree`}{" "}
-            too.
-          </p>
-          <Button
-            className="min-h-11 self-start sm:min-h-8"
-            disabled={pending}
-            onClick={() => run(cancel, () => `Ending ${overview.name} was called off.`, false)}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {pending ? "Changing…" : "Change my mind"}
-          </Button>
-          {error ? <ErrorText message={error} /> : null}
-        </div>
+        <DissolutionWithdrawal
+          error={error}
+          householdName={overview.name}
+          onWithdraw={() => run(cancel, () => `Ending ${overview.name} was called off.`, false)}
+          pending={pending}
+          stillWaitingOn={stillWaitingOn}
+        />
       ) : (
-        <AlertDialog onOpenChange={handleOpenChange} open={open}>
-          <AlertDialogTrigger asChild>
-            <Button
-              className={`min-h-11 self-start text-muted-foreground sm:min-h-8${
-                endsNow ? " hover:text-destructive" : ""
-              }`}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              {endsNow ? "End this household" : "Agree to end it"}
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {endsNow ? `End ${overview.name}?` : `Agree to end ${overview.name}?`}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {endsNow
-                  ? `Everyone's access ends the moment you press this, and every live invitation stops working. For ${HOUSEHOLD_RECOVERY_WINDOW_DAYS} days afterwards support can still put the household back; after that, what the household itself held is deleted. What each person wrote privately stays theirs.`
-                  : `Nothing changes yet. The household ends only once every owner has agreed, and you can change your mind until then. ${stillWaitingOn - 1 === 1 ? "One other owner" : `${stillWaitingOn - 1} other owners`} would still need to agree.`}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-
-            {endsNow ? (
-              <>
-                {/*
-                  The boundary and the door through it, in one paragraph. Naming
-                  support as the only way back and then not saying how to reach
-                  them would leave the reader with a rule and no recourse.
-                */}
-                <p className="max-w-[65ch] text-[length:var(--text-small)] leading-[var(--text-small-line)] text-pretty text-muted-foreground">
-                  {HOUSEHOLD_RECOVERY_IS_SUPPORT_ONLY} If you need to, write to{" "}
-                  <a
-                    className="underline underline-offset-2 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/35 focus-visible:outline-none"
-                    href={`mailto:${HOUSEHOLD_SUPPORT_EMAIL}`}
-                  >
-                    {HOUSEHOLD_SUPPORT_EMAIL}
-                  </a>
-                  .
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  <Label
-                    className="block text-[length:var(--text-small)] leading-[var(--text-small-line)] font-normal text-muted-foreground"
-                    htmlFor="household-dissolve-confirm"
-                  >
-                    Type{" "}
-                    <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.8125rem] font-medium text-foreground select-none">
-                      {phrase}
-                    </code>{" "}
-                    to confirm
-                  </Label>
-                  <Input
-                    // The refusal below is about this press, and this input is
-                    // the only field in the dialog — wired rather than left to
-                    // `role="alert"`, which announces once and is gone for
-                    // anyone who arrives at the field afterwards.
-                    aria-describedby={error ? errorId : undefined}
-                    aria-invalid={error ? true : undefined}
-                    autoComplete="off"
-                    // Typing the phrase is the only next action in this gated dialog.
-                    autoFocus
-                    disabled={pending}
-                    id="household-dissolve-confirm"
-                    onChange={(event) => setTyped(event.target.value)}
-                    // Retyping is the safeguard; pasting the on-screen phrase defeats it.
-                    onDrop={(event) => event.preventDefault()}
-                    onPaste={(event) => event.preventDefault()}
-                    placeholder={phrase}
-                    spellCheck={false}
-                    value={typed}
-                  />
-                </div>
-              </>
-            ) : null}
-
-            {error ? <ErrorText id={errorId} message={error} /> : null}
-
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={pending}>Keep the household</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={!canConfirm}
-                onClick={(event) => {
-                  event.preventDefault();
-                  run(
-                    confirm,
-                    (ended) =>
-                      ended
-                        ? `${overview.name} has ended.`
-                        : `You've agreed to end ${overview.name}.`,
-                    true,
-                    (ended) => (ended ? { kind: "dissolved", name: overview.name } : undefined),
-                  );
-                }}
-                // Destructive weight belongs to the press that actually ends
-                // something. An agreement that still waits on another owner
-                // changes nothing yet and must not borrow the alarm.
-                variant={endsNow ? "destructive" : "default"}
-              >
-                {pending
-                  ? endsNow
-                    ? "Ending…"
-                    : "Agreeing…"
-                  : endsNow
-                    ? "End it"
-                    : "Agree to end it"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <DissolutionDialog
+          canConfirm={!pending && (!endsNow || confirmPhraseMatches(typed, phrase))}
+          endsNow={endsNow}
+          error={error}
+          errorId={errorId}
+          householdName={overview.name}
+          onConfirm={() =>
+            run(
+              confirm,
+              (ended) =>
+                ended ? `${overview.name} has ended.` : `You've agreed to end ${overview.name}.`,
+              true,
+              (ended) => (ended ? { kind: "dissolved", name: overview.name } : undefined),
+            )
+          }
+          onOpenChange={handleOpenChange}
+          onTyped={setTyped}
+          open={open}
+          pending={pending}
+          phrase={phrase}
+          stillWaitingOn={stillWaitingOn}
+          typed={typed}
+        />
       )}
       {error && !open && !dissolution.viewerHasConfirmed ? <ErrorText message={error} /> : null}
     </ExitRow>
