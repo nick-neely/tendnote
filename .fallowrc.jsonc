@@ -68,7 +68,17 @@
       // A browser event dispatcher with intentional fetch-policy branches.
       "apps/web/public/sw.js",
       // A standalone reporting utility, not runtime product code.
-      "scripts/loc-inventory.mjs"
+      "scripts/loc-inventory.mjs",
+      // The household purge sweep's live check: a hand-run verification script
+      // (`pnpm --filter @tendnote/db db:purge:check`) that seeds a real Postgres
+      // and asserts the delete order against it. Its own header states it is
+      // deliberately not in the suite, because what it proves is the one thing an
+      // in-memory store cannot. Both of its findings exceeded on CRAP alone —
+      // complexity multiplied by untestedness — with raw cyclomatic inside the
+      // thresholds, so the score was measuring the absence of unit coverage that
+      // the file exists specifically to do without. Same reason as the line above:
+      // a verification utility, not runtime product code.
+      "packages/db/src/household-purge-live-check.ts"
     ]
   },
   "audit": {
