@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
+    "email:dev": "email dev --dir src/lib/email/templates --port 3001",
     "build": "next build",
     "start": "next start",
     "lint": "biome check src tests playwright.config.ts next.config.ts postcss.config.mjs components.json",
@@ -63,6 +64,7 @@
   },
   "devDependencies": {
     "@next/playwright": "16.3.0",
+    "@react-email/ui": "6.9.2",
     "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4",
     "@tendnote/config": "workspace:*",

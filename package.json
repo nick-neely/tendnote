@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "turbo run dev --filter=@tendnote/web",
     "dev:web": "pnpm --filter @tendnote/web dev",
+    "email:dev": "pnpm --filter @tendnote/web email:dev",
     "dev:agent": "pnpm --filter @tendnote/agent dev",
     "build": "turbo run build --filter=@tendnote/web --only",
     "lint": "biome check .",

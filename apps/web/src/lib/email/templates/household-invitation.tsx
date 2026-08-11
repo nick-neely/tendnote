@@ -72,9 +72,10 @@ export async function renderHouseholdInvitationEmail(
  * screen that opens with the same sentence, and the invitation reads as one
  * continuous thing rather than a hand-off between two systems.
  *
- * Module-private on purpose: `renderHouseholdInvitationEmail` is the whole
- * public surface, so nothing outside can render half an email or send the HTML
- * without its plain-text twin.
+ * The transport surface is `renderHouseholdInvitationEmail`, so nothing in the
+ * send path can render half an email or send the HTML without its plain-text
+ * twin. The default export at the bottom is a fixed React Email preview entry
+ * point; it is not used by the transactional transport.
  */
 function HouseholdInvitationEmail({
   householdName,
@@ -320,3 +321,19 @@ const styles = {
   },
   footerLink: { color: emailColors.mutedForeground, textDecoration: "underline" },
 };
+
+/**
+ * React Email's preview server discovers templates through a default export.
+ * Keep the fixture here so the preview exercises the same component and styles
+ * as production without making the send path invent display-only defaults.
+ */
+export default function HouseholdInvitationEmailPreview() {
+  return (
+    <HouseholdInvitationEmail
+      householdName="The Field Notebook"
+      inviterName="Alex"
+      acceptUrl="http://localhost:3000/join/preview-token"
+      expiresAt={new Date("2026-08-15T09:00:00Z")}
+    />
+  );
+}
