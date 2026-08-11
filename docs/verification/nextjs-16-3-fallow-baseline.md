@@ -207,3 +207,106 @@ is appended.
   Checked on 2026-07-25 (#311): this pair's dupes half matches **64 of its 68**
   entries exactly, so it is live and was deliberately not re-saved. The four
   absent entries are clones that have since been removed.
+
+## Superseded, 2026-08-11: the Phase Eight pair
+
+`.fallowrc.jsonc` now points at `fallow-baselines/phase-8-health.json` and
+`phase-8-dupes.json`. The `nextjs-16-3-*` pair above is retired and deleted;
+everything it recorded is folded into the new pair, and the sections above stay
+as the history of what was accepted and why.
+
+This is the sanctioned end-of-epic move, not a bump to get a branch through.
+Phase Eight (#376, issues #378-#391) is delivered: fourteen issues, each
+implemented and individually reviewed, and closed. That is the same point in the
+cycle at which Phase Seven and the 16.3 epic recorded theirs.
+
+**One difference from the last handover, stated plainly.** The 16.3 pair was not
+dead. The repo-wide check this note prescribes was run before superseding it, and
+its dupes half still matched **34 of its 68** entries, against 64 of 68 when
+#311 checked. It is superseded because an epic ended, not because it had
+degenerated. Half its entries went absent because Phase Eight rewrote the code
+they described, which is a normal consequence of a 505-file changeset and not by
+itself a reason to re-save.
+
+### What Phase Eight fixed rather than accepted
+
+The gate attributed 95 findings to the branch. The two categories where the
+default answer is "fix it" were fixed:
+
+- **All ten dead-code findings.** Five exports were used only inside their own
+  module and became module-private (`SharedRecordContent`,
+  `giftPlanCacheContract`, `HOUSEHOLD_EVENT_PLAN_LINK_KIND_LABELS`,
+  `readHouseholdEventPlanLinkCandidates`, `HOUSEHOLD_CONTEXT_RECORD_KIND`).
+  Three type exports had no consumer at all and were deleted
+  (`AssetSearchAuthority`, `AssetAuthority`, and the
+  `HouseholdContextActorIdentity` re-export). Two server actions were exported
+  from a `"use server"` file with nothing referencing them, which in Next.js is a
+  reachable endpoint with no caller, and were removed (`deleteGiftPlanAction`,
+  `searchGiftPlansAction`). **No suppressions were used**: every one of the ten
+  was genuinely unreferenced.
+- **All five critical complexity findings.**
+
+  | Finding | Was | Done |
+  | --- | --- | --- |
+  | `lib/gift-plan-view.ts` → `eventSummary` | 21 cyclomatic, CRAP 462 | Thirteen-arm switch became a `Record` keyed by event kind; new test file pins every sentence in both voices |
+  | `components/account/household-governance-panel.tsx` → `DissolutionRow` | 28 cyclomatic, 54 cognitive, 221 lines, exceeded *all* thresholds | Split into `DissolutionWithdrawal`, `DissolutionDialog`, and `DissolutionPhraseGate`; the row keeps the state and the writes |
+  | `components/general-action-create-form.tsx` → `buildCreateActionInput` | 11 cyclomatic, CRAP 132 | Moved to `lib/general-action-create-input.ts` as a pure module with type-only imports, and covered |
+  | `household-purge-live-check.ts` → `main` | 18 cyclomatic, CRAP 342 | Excluded from health analysis, see below |
+  | `household-purge-live-check.ts` → `seedDissolvedHousehold` | 13 cyclomatic, CRAP 182 | Excluded from health analysis, see below |
+
+`buildCreateActionInput` is the one worth reading twice. Its eleven cyclomatic
+are conditional spreads that omit empty fields, and its own comment argues for
+keeping that flat, so splitting it would have made it worse. What it needed was
+a test, and it could not have one where it lived: the component's import graph
+reaches `server-only`, so importing the module threw before any test ran. The
+graph was saying the payload assembler did not belong in the form.
+
+**The one exclusion, and why it is not a suppression in disguise.**
+`packages/db/src/household-purge-live-check.ts` joins `scripts/loc-inventory.mjs`
+in `health.ignore`. Both of its findings exceeded on CRAP alone - complexity
+multiplied by untestedness - with raw cyclomatic inside the thresholds. That
+untestedness is the file's stated design: its own header says it is run by hand
+against a real Postgres (`pnpm --filter @tendnote/db db:purge:check`) and is
+deliberately not in the suite, because what it proves is the one thing an
+in-memory store cannot. Decomposing a linear seed-and-assert script into
+sub-five-cyclomatic fragments would have moved the number without improving
+anything. Scoped to that one file, with the reasoning in the config beside it.
+
+### What this pair accepts
+
+Itemised by file, with a suggested paydown order, in
+[#394](https://github.com/nick-neely/tendnote/issues/394). Summary:
+
+- **42 complexity findings, none critical**: 9 high, 33 moderate, across 28
+  files. The high ones are React components carrying a lot of field state and JSX
+  depth rather than branching logic; several moderates are CRAP scores on adapters
+  with no direct unit test, which coverage clears without any refactor - the same
+  move that paid down #311's findings in #312.
+  `components/account/household-event-plans-panel.tsx` carries four on its own
+  (`PlanCard`, `PlanLinks`, `EditPlanForm`) and is the single best target.
+- **38 duplication clone groups**, about 1,400 instance-lines across 33 files.
+  **69 of the 83 clone instances are in test files** - repeated arrange blocks
+  across the Phase 8 test batteries, heaviest in
+  `relationship-share-control.dom.test.tsx` (16) and
+  `phase-8-household-isolation.test.ts` (8). Only 14 instances are product code,
+  and those are the ones actually worth extracting; the largest is an 80-line
+  clone between `context-facts/household-queries.ts` and
+  `context-facts/queries.ts`, the household Context read duplicating the private
+  one.
+
+Accepting a test battery's repetition is a weaker claim than accepting product
+duplication, and it is made deliberately: a shared fixture helper is usually the
+right answer, but sometimes the repetition is what lets a test be read on its
+own. #394 carries the judgement call rather than burying it here.
+
+Re-saved with, per the rules above:
+
+```bash
+pnpm coverage:ci
+pnpm exec fallow health --coverage coverage/coverage-final.json \
+  --save-baseline fallow-baselines/phase-8-health.json
+pnpm exec fallow dupes --save-baseline fallow-baselines/phase-8-dupes.json
+```
+
+Both files needed a trailing newline appended afterwards, as the note above
+warns. Verified green with `FALLOW_AUDIT_BASE=origin/main pnpm fallow:ci`.

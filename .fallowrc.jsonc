@@ -73,8 +73,8 @@
       // (`pnpm --filter @tendnote/db db:purge:check`) that seeds a real Postgres
       // and asserts the delete order against it. Its own header states it is
       // deliberately not in the suite, because what it proves is the one thing an
-      // in-memory store cannot. Both of its findings exceeded on CRAP alone —
-      // complexity multiplied by untestedness — with raw cyclomatic inside the
+      // in-memory store cannot. Both of its findings exceeded on CRAP alone,
+      // complexity multiplied by untestedness, with raw cyclomatic inside the
       // thresholds, so the score was measuring the absence of unit coverage that
       // the file exists specifically to do without. Same reason as the line above:
       // a verification utility, not runtime product code.
@@ -86,22 +86,26 @@
     // A baseline records the state accepted at the end of a delivered epic, so the
     // cumulative PR gate reports regressions introduced *after* the per-ticket
     // reviews rather than the whole standing backlog. Phase Seven set the first
-    // pair (#276, eleven independently gated slices); these supersede them at the
-    // end of the Next.js 16.3 instant-navigation epic (#301-#309, all reviewed and
-    // closed), whose 183-file changeset the Phase Seven pair no longer matched —
-    // its recorded clones had been rewritten out of existence, so the gate had
-    // degenerated into reporting the entire backlog.
+    // pair (#276); the Next.js 16.3 instant-navigation epic (#301-#309) superseded
+    // it; this pair supersedes that one at the end of Phase Eight (#376, issues
+    // #378-#391, all implemented, reviewed, and closed).
     //
-    // A "matched 0 current clone groups" warning is not by itself that verdict: a
-    // scoped audit matches nothing when the changeset touches no duplicated file.
+    // Unlike the last handover this one did not inherit a dead baseline: the 16.3
+    // dupes half still matched 34 of its 68 entries repo-wide. It is superseded
+    // because Phase Eight is a delivered epic, which is the only point at which
+    // this file may move, not because the old pair had stopped working.
+    //
+    // A "matched 0 current clone groups" warning is not by itself a dead baseline:
+    // a scoped audit matches nothing when the changeset touches no duplicated file.
     // Tell the two apart with a repo-wide `fallow dupes` run — the baseline note
-    // records how, and that this pair matched 64 of 68 when last checked.
+    // records how.
     //
     // What this pair accepts, and what it does NOT, is written down in
     // docs/verification/nextjs-16-3-fallow-baseline.md. Read that before adding to
     // it: a baseline is for findings a review consciously accepted, never a way to
-    // land a new one.
-    "healthBaseline": "fallow-baselines/nextjs-16-3-health.json",
-    "dupesBaseline": "fallow-baselines/nextjs-16-3-dupes.json"
+    // land a new one. What Phase Eight accepted is itemised there and tracked for
+    // paydown in #394.
+    "healthBaseline": "fallow-baselines/phase-8-health.json",
+    "dupesBaseline": "fallow-baselines/phase-8-dupes.json"
   }
 }
