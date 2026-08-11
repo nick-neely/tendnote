@@ -51,3 +51,37 @@ it("keeps the session active when reminder disablement cannot be confirmed", asy
   ).toBeTruthy();
   expect(signOut).not.toHaveBeenCalled();
 });
+
+it("lands on sign-in by default, and on a caller's own destination when given one", async () => {
+  const user = userEvent.setup();
+  render(<SignOutButton />);
+
+  await user.click(screen.getByRole("button", { name: "Sign out" }));
+  await waitFor(() => {
+    expect(push).toHaveBeenCalledWith("/sign-in");
+  });
+});
+
+/**
+ * A sign-out that is a step inside something else - holding an invitation whose
+ * link would otherwise be lost - returns to where the visitor was. The
+ * destination is still only ever a path on this site.
+ */
+it("returns to a caller's destination, and refuses one that leaves the site", async () => {
+  const user = userEvent.setup();
+  const { unmount } = render(<SignOutButton returnTo="/join/one-time-secret" />);
+
+  await user.click(screen.getByRole("button", { name: "Sign out" }));
+  await waitFor(() => {
+    expect(push).toHaveBeenCalledWith("/join/one-time-secret");
+  });
+  unmount();
+
+  push.mockClear();
+  render(<SignOutButton returnTo="https://evil.example/steal" />);
+
+  await user.click(screen.getByRole("button", { name: "Sign out" }));
+  await waitFor(() => {
+    expect(push).toHaveBeenCalledWith("/");
+  });
+});

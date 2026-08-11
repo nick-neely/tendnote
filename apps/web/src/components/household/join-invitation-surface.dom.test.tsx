@@ -2,12 +2,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, userEvent, waitFor } from "@/test/dom";
 
-const { refresh, replace } = vi.hoisted(() => ({ refresh: vi.fn(), replace: vi.fn() }));
+const { refresh, replace, push, signOut } = vi.hoisted(() => ({
+  refresh: vi.fn(),
+  replace: vi.fn(),
+  push: vi.fn(),
+  signOut: vi.fn(),
+}));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh, replace }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh, replace, push }) }));
 vi.mock("@/app/actions/household-invitations", () => ({
   acceptHouseholdInvitationAction: vi.fn(),
   declineHouseholdInvitationAction: vi.fn(),
+}));
+vi.mock("@/lib/auth/client", () => ({ signOut }));
+vi.mock("@/app/actions/reminders", () => ({
+  disableCurrentReminderInstallationAction: vi.fn(),
 }));
 
 import { JoinInvitationSurface } from "./join-invitation-surface";
@@ -70,6 +79,27 @@ describe("what an unproven visitor is told", () => {
     const text = document.body.textContent ?? "";
     expect(text).not.toMatch(/@/);
     expect(text).not.toMatch(/Neely/);
+  });
+
+  /**
+   * This state is only reachable with a live session — it is decided by
+   * comparing the signed-in address against the invited one. So a link to
+   * `/sign-in` is a door that cannot open: an authenticated visitor is
+   * redirected straight back out of it, and the invitation is lost on the way.
+   * Signing out is the only move that reaches the form, and it has to keep hold
+   * of the link.
+   */
+  it("gets a mismatched session out of the session that is blocking it", async () => {
+    render(<JoinInvitationSurface secret={SECRET} view={{ state: "address-mismatch" }} />);
+
+    expect(screen.queryByRole("link", { name: /sign in/i })).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await waitFor(() => {
+      expect(signOut).toHaveBeenCalled();
+    });
+    expect(push).toHaveBeenCalledWith(`/join/${SECRET}`);
   });
 
   it("explains an existing household privately and names neither one", () => {

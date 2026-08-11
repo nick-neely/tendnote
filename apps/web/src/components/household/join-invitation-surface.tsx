@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { type ReactNode, useId, useState, useTransition } from "react";
 import {
   acceptHouseholdInvitationAction as defaultAcceptAction,
   declineHouseholdInvitationAction as defaultDeclineAction,
   type HouseholdJoinResult,
 } from "@/app/actions/household-invitations";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Button } from "@/components/ui/button";
 import { HOUSEHOLD_GENERIC_ERROR, INVITATION_DATE_FORMAT } from "@/lib/household/invitation-copy";
 import type { HouseholdJoinView } from "@/lib/household/join-view";
@@ -103,9 +104,18 @@ function JoinBody({
       );
     case "address-mismatch":
       return (
+        /*
+          This state is only reachable with a live session - it is decided by
+          comparing the signed-in address against the invited one. That makes a
+          link to `/sign-in` a door that cannot open: an authenticated visitor
+          is redirected straight back out of it, and the invitation is lost on
+          the way. Signing out is the move that actually works, and it returns
+          here, where the page will ask for the right address and carry the link
+          into sign-in itself.
+        */
         <JoinNotice
-          action={{ href: "/sign-in", label: "Sign in with another address" }}
-          body="You're signed in with a different email address. Sign in with the one this invitation was sent to and it will be waiting."
+          body="You're signed in with a different email address. Sign out and come back with the one this invitation was sent to, and it will be waiting."
+          control={<SignOutButton className="min-h-11 w-full" returnTo={joinPath(secret)} />}
         />
       );
     case "workspace-conflict":
@@ -138,23 +148,27 @@ function JoinNotice({
   body,
   action,
   secondary,
+  control,
 }: {
   body: string;
   action?: { href: string; label: string };
   secondary?: { href: string; label: string };
+  /** For the one state whose way out is a press rather than a link. */
+  control?: ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-5">
       <p className="text-[length:var(--text-body)] leading-[var(--text-body-line)] text-pretty">
         {body}
       </p>
-      {action || secondary ? (
+      {action || secondary || control ? (
         <div className="flex flex-col gap-2">
           {action ? (
             <Button asChild className="min-h-11 w-full">
               <Link href={action.href}>{action.label}</Link>
             </Button>
           ) : null}
+          {control}
           {secondary ? (
             <Button asChild className="min-h-11 w-full" variant="outline">
               <Link href={secondary.href}>{secondary.label}</Link>
