@@ -101,17 +101,33 @@ describe("gift plan timing", () => {
     expect(on("2026-08-01T00:00:00.000Z").timingLabel).toBe("Date has passed");
   });
 
-  /**
-   * The exact day is deliberately not pinned. The day arithmetic above is
-   * UTC-normalised but this fallback formats in the runner's zone, so the
-   * rendered day can trail the stored one by one west of UTC. That
-   * inconsistency is real and worth fixing, but it changes what a reader sees,
-   * so it is filed rather than folded into a complexity refactor.
-   */
   it("falls back to the date itself once it is far enough out", () => {
-    expect(on("2026-12-24T00:00:00.000Z").timingLabel).toMatch(/^December \d{1,2}$/);
+    expect(on("2026-12-24T00:00:00.000Z").timingLabel).toBe("December 24");
+  });
+
+  /**
+   * The day arithmetic above is UTC-normalised, and this fallback has to agree
+   * with it. While it formatted in the reader's own zone, a date stored as
+   * December 24 read "December 23" anywhere west of UTC — so the zone is forced
+   * here rather than left to whichever one the runner happens to sit in.
+   */
+  it("names the stored day west of UTC, where the reader's own zone trails it", () => {
+    withTimeZone("America/New_York", () => {
+      expect(on("2026-12-24T00:00:00.000Z").timingLabel).toBe("December 24");
+    });
   });
 });
+
+/** Runs `body` with the process reading dates in `timeZone`, then restores it. */
+function withTimeZone(timeZone: string, body: () => void) {
+  const previous = process.env.TZ;
+  process.env.TZ = timeZone;
+  try {
+    body();
+  } finally {
+    process.env.TZ = previous;
+  }
+}
 
 describe("gift plan view", () => {
   it("keeps an active plan free of a status chip and open to contributions", () => {

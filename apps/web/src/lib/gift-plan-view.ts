@@ -127,7 +127,15 @@ function timingLabel(occasionOn: Date | null, now: Date): string | null {
   if (days === 1) return "Tomorrow";
   if (days < 14) return `In ${days} days`;
   if (days < 60) return `In ${Math.round(days / 7)} weeks`;
-  return occasionOn.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+  // The same UTC calendar day the deltas above are measured in. Formatting in
+  // the reader's zone instead let the two halves disagree: a date stored as
+  // December 24 rendered "December 23" anywhere west of UTC, while every
+  // relative label above still counted to the 24th.
+  return occasionOn.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 export function toGiftPlanView(
