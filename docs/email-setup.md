@@ -63,7 +63,7 @@ or `MX`, but check the toggle anyway if you add a `CNAME` variant.
 | --- | --- | --- | --- | --- | --- |
 | 1 | `MX` | `send.mail` | the `feedback-smtp.<region>.amazonses.com` host Resend shows | `10` | The bounce return path. Without it Resend cannot see bounces and SPF cannot align. |
 | 2 | `TXT` | `send.mail` | `v=spf1 include:amazonses.com ~all` | - | SPF for the return path. |
-| 3 | `TXT` | `resend._domainkey.mail` | the long `p=MIGfMA0GCSqGSIb3...` value Resend shows | - | DKIM. **Copy it from the dashboard**; it is unique to your domain and is not reproduced here. |
+| 3 | `TXT` | `resend._domainkey.mail` | the long `p=MIGfMA0GCSqGSIb3...` value Resend shows | - | DKIM. **The dashboard is the authority here** - see the note below before you type anything. |
 | 4 | `TXT` | `_dmarc.mail` | `v=DMARC1; p=none; rua=mailto:support@stacklet.app` | - | DMARC. See the rollout note below. |
 
 Notes on each:
@@ -71,8 +71,19 @@ Notes on each:
 - **Record 1 and 2** must both exist and must both be on `send.mail`. Resend's
   own instructions call this host `send.<your-domain>`; the two records together
   are what make SPF align with the envelope sender.
-- **Record 3** is a single long string. Cloudflare accepts it as one value and
-  splits it internally; do not add quotes or line breaks by hand.
+- **Record 3 is the one to copy rather than transcribe.** As documented today,
+  Resend issues DKIM as a *single* `TXT` record named `resend._domainkey`, which
+  for a subdomain becomes `resend._domainkey.mail` in the Cloudflare name field.
+  The value is one long string unique to your domain; Cloudflare accepts it whole
+  and splits it internally, so do not add quotes or line breaks by hand.
+
+  **If the Records tab shows you something else, believe the dashboard, not this
+  table.** Resend's own API types allow a DKIM record to arrive as either `TXT`
+  or `CNAME`, so the shape is theirs to change and may differ by region or by how
+  the domain was created. Whatever it shows - one record or several, `TXT` or
+  `CNAME` - reproduce every DKIM row's type, name, and value exactly, applying
+  the same name rule as everything else here (drop the `.stacklet.app` suffix,
+  keep the `.mail`). Verification will not pass on a record you invented.
 - **Record 4** is optional for Resend's verification but not optional for
   deliverability. Gmail and Yahoo have required authenticated mail since February
   2024, and a domain with no DMARC record is treated worse than one with
@@ -93,6 +104,9 @@ dig MX  send.mail.stacklet.app +short
 dig TXT resend._domainkey.mail.stacklet.app +short
 dig TXT _dmarc.mail.stacklet.app +short
 ```
+
+If the dashboard gave you `CNAME` DKIM records instead, query those names with
+`dig CNAME <name>.stacklet.app +short` rather than the `TXT` line above.
 
 Each should print the value you entered. No output means the record is missing or
 the name was entered relative to the wrong domain - re-read the name column
