@@ -355,6 +355,27 @@ describe("household context reconciliation", () => {
     return textarea as HTMLTextAreaElement;
   }
 
+  /**
+   * Takes one of the reconcile choices once it is actually actionable.
+   *
+   * The panel is committed by the transition that is still finishing, so React
+   * can paint it one render before `pending` clears and leave the choices
+   * briefly disabled. `user.click` on a disabled button is a silent no-op, which
+   * surfaces later as a resubmission that never happened or a message that never
+   * arrives, so wait the button out rather than racing it.
+   */
+  async function chooseReconcile(
+    user: ReturnType<typeof userEvent.setup>,
+    panel: HTMLElement,
+    label: string,
+  ) {
+    await waitFor(() => {
+      const choice = within(panel).getByRole("button", { name: label }) as HTMLButtonElement;
+      expect(choice.disabled).toBe(false);
+    });
+    await user.click(within(panel).getByRole("button", { name: label }));
+  }
+
   it("keeps the draft on screen and shows the current statement with its actor", async () => {
     const user = userEvent.setup();
     const updateAction = vi.fn().mockResolvedValue(staleResult());
@@ -416,7 +437,7 @@ describe("household context reconciliation", () => {
     const panel = await screen.findByRole("region", {
       name: "Ben changed this while you were writing",
     });
-    await user.click(within(panel).getByRole("button", { name: "Replace with mine" }));
+    await chooseReconcile(user, panel, "Replace with mine");
 
     await waitFor(() => expect(updateAction).toHaveBeenCalledTimes(2));
     expect(updateAction.mock.calls[1]?.[0]).toMatchObject({
@@ -446,7 +467,7 @@ describe("household context reconciliation", () => {
     const panel = await screen.findByRole("region", {
       name: "Ben changed this while you were writing",
     });
-    await user.click(within(panel).getByRole("button", { name: "Revise mine" }));
+    await chooseReconcile(user, panel, "Revise mine");
 
     await waitFor(() => {
       expect(
@@ -476,7 +497,7 @@ describe("household context reconciliation", () => {
     const panel = await screen.findByRole("region", {
       name: "Ben changed this while you were writing",
     });
-    await user.click(within(panel).getByRole("button", { name: "Keep theirs" }));
+    await chooseReconcile(user, panel, "Keep theirs");
 
     await waitFor(() => {
       expect(screen.getByRole("status").textContent).toBe("Kept the current wording.");
