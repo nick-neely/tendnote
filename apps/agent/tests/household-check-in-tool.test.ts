@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const { getHouseholdCheckin } = vi.hoisted(() => ({ getHouseholdCheckin: vi.fn() }));
 vi.mock("@tendnote/db/queries/household-home", () => ({ getHouseholdCheckin }));
@@ -6,7 +7,8 @@ vi.mock("@tendnote/db/queries/household-home", () => ({ getHouseholdCheckin }));
 const { getOwnerTodayContext } = vi.hoisted(() => ({ getOwnerTodayContext: vi.fn() }));
 vi.mock("@tendnote/db/queries/today", () => ({ getOwnerTodayContext }));
 
-const { default: tool } = await import("../agent/tools/household_check_in");
+const { default: rawTool } = await import("../agent/tools/household_check_in");
+const tool = asTestTool(rawTool);
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 
 function view(overrides: Record<string, unknown> = {}) {

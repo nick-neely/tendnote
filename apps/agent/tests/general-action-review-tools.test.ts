@@ -1,5 +1,6 @@
 import type { GeneralActionWithContext } from "@tendnote/db/queries/general-actions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const mocks = vi.hoisted(() => ({
   listSuggestedGeneralActionReviews: vi.fn(),
@@ -14,14 +15,18 @@ vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
   requestBackgroundAffectedScopeReconciliation: mocks.requestBackgroundAffectedScopeReconciliation,
 }));
 
-const { default: listReviewsTool } = await import(
+const { default: rawListReviewsTool } = await import(
   "../agent/tools/list_suggested_general_action_reviews"
 );
-const { default: getReviewTool } = await import(
+const { default: rawGetReviewTool } = await import(
   "../agent/tools/get_suggested_general_action_review"
 );
-const { default: acceptTool } = await import("../agent/tools/accept_suggested_general_action");
-const { default: dismissTool } = await import("../agent/tools/dismiss_suggested_general_action");
+const { default: rawAcceptTool } = await import("../agent/tools/accept_suggested_general_action");
+const { default: rawDismissTool } = await import("../agent/tools/dismiss_suggested_general_action");
+const listReviewsTool = asTestTool(rawListReviewsTool);
+const getReviewTool = asTestTool(rawGetReviewTool);
+const acceptTool = asTestTool(rawAcceptTool);
+const dismissTool = asTestTool(rawDismissTool);
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 const ACTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";

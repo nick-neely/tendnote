@@ -1,5 +1,6 @@
 import { AssetValidationError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const { searchAssets } = vi.hoisted(() => ({ searchAssets: vi.fn() }));
 const { getAssetSnapshot } = vi.hoisted(() => ({ getAssetSnapshot: vi.fn() }));
@@ -21,12 +22,18 @@ vi.mock("@tendnote/db/queries/assets", () => ({
 }));
 vi.mock("@tendnote/db/queries/source-records", () => ({ captureSourceRecord }));
 
-const { default: searchAssetsTool } = await import("../agent/tools/search_assets");
-const { default: getAssetContextTool } = await import("../agent/tools/get_asset_context");
-const { default: proposeAssetActionsTool } = await import("../agent/tools/propose_asset_actions");
-const { default: proposeAssetMemoriesTool, MAX_ASSET_MEMORY_PROPOSALS } = await import(
+const { default: rawSearchAssetsTool } = await import("../agent/tools/search_assets");
+const { default: rawGetAssetContextTool } = await import("../agent/tools/get_asset_context");
+const { default: rawProposeAssetActionsTool } = await import(
+  "../agent/tools/propose_asset_actions"
+);
+const { default: rawProposeAssetMemoriesTool, MAX_ASSET_MEMORY_PROPOSALS } = await import(
   "../agent/tools/propose_asset_memories"
 );
+const searchAssetsTool = asTestTool(rawSearchAssetsTool);
+const getAssetContextTool = asTestTool(rawGetAssetContextTool);
+const proposeAssetActionsTool = asTestTool(rawProposeAssetActionsTool);
+const proposeAssetMemoriesTool = asTestTool(rawProposeAssetMemoriesTool);
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

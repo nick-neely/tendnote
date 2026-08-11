@@ -79,7 +79,7 @@
   },
   "dependencies": {
     "@tendnote/domain": "workspace:*",
-    "ai": "7.0.2",
+    "ai": "7.0.59",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.7",
     "zod": "^4.1.13"

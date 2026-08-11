@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const {
   captureExplicitOutcome,
@@ -21,9 +22,12 @@ vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
   requestBackgroundAffectedScopeReconciliation,
 }));
 
-const { default: tool } = await import("../agent/tools/capture_saved_item");
-const { default: changeTool } = await import("../agent/tools/change_saved_item_capture");
-const { default: undoTool } = await import("../agent/tools/undo_saved_item_capture");
+const { default: rawTool } = await import("../agent/tools/capture_saved_item");
+const { default: rawChangeTool } = await import("../agent/tools/change_saved_item_capture");
+const { default: rawUndoTool } = await import("../agent/tools/undo_saved_item_capture");
+const tool = asTestTool(rawTool);
+const changeTool = asTestTool(rawChangeTool);
+const undoTool = asTestTool(rawUndoTool);
 const ctx = { session: { auth: { current: { principalId: "owner-1" } } } } as never;
 const SAVED_ITEM_ID = "11111111-1111-4111-8111-111111111111";
 

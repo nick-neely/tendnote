@@ -7,7 +7,18 @@ export default defineAgent({
   build: {
     // The @tendnote/db snapshot path pulls the `ai` SDK, whose internal dynamic
     // imports make Rolldown emit multiple chunks; eve requires one chunk per
-    // authored tool. Keep `ai` external so it stays a runtime dep instead.
-    externalDependencies: ["ai"],
+    // authored tool. Keep the AI SDK and ordinary runtime dependencies external
+    // so the dev build does not rebundle them. Workspace packages stay bundled:
+    // their extensionless TypeScript imports are not directly runnable by Node.
+    externalDependencies: [
+      "@better-auth/redis-storage",
+      "@vercel/queue",
+      "ai",
+      "better-auth",
+      "drizzle-orm",
+      "ioredis",
+      "postgres",
+      "zod",
+    ],
   },
 });

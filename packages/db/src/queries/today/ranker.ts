@@ -8,6 +8,14 @@ export function hasTodayRankerCredentials(env: TodayRankerEnv = process.env) {
   return Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
 }
 
+/**
+ * Keep local Today loads fast and deterministic unless a developer explicitly
+ * opts into the bounded live-ranking path.
+ */
+export function shouldUseTodayRanker(env: TodayRankerEnv = process.env) {
+  return env.NODE_ENV !== "development" || env.TENDNOTE_ENABLE_TODAY_RANKING === "1";
+}
+
 export function createAiSdkTodayRanker(
   options: { env?: TodayRankerEnv; model?: string; timeoutMs?: number } = {},
 ): TodayOptionalRanker {

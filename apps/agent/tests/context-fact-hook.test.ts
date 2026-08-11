@@ -75,7 +75,7 @@ describe("ambient Context Fact Eve hook", () => {
     const hook = createAmbientContextFactHook(
       enqueue as unknown as typeof enqueueAndPublishContextFactExtractionJob,
     );
-    const handler = hook.events["message.received"] as unknown as (
+    const handler = hook.events?.["message.received"] as unknown as (
       event: typeof messageEvent,
       context: typeof hookContext,
     ) => void | Promise<void>;
@@ -93,7 +93,7 @@ describe("ambient Context Fact Eve hook", () => {
     const hook = createAmbientContextFactHook(
       enqueue as unknown as typeof enqueueAndPublishContextFactExtractionJob,
     );
-    const handler = hook.events["message.received"] as unknown as (
+    const handler = hook.events?.["message.received"] as unknown as (
       event: typeof messageEvent,
       context: typeof hookContext,
     ) => void | Promise<void>;
@@ -106,7 +106,7 @@ describe("ambient Context Fact Eve hook", () => {
     const hook = createAmbientContextFactHook(
       enqueue as unknown as typeof enqueueAndPublishContextFactExtractionJob,
     );
-    const handler = hook.events["message.received"] as unknown as (
+    const handler = hook.events?.["message.received"] as unknown as (
       event: typeof messageEvent,
       context: typeof hookContext,
     ) => void | Promise<void>;

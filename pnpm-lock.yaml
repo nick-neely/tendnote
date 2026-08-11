@@ -51,14 +51,14 @@ importers:
         specifier: ^0.3.1
         version: 0.3.1
       ai:
-        specifier: 7.0.28
-        version: 7.0.28(zod@4.4.3)
+        specifier: 7.0.59
+        version: 7.0.59(zod@4.4.3)
       better-auth:
         specifier: ^1.6.20
-        version: 1.6.20(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(next@16.3.0(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@4.1.9)
+        version: 1.6.20(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(next@16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@4.1.9)
       eve:
-        specifier: ^0.24.3
-        version: 0.24.3(@opentelemetry/api@1.9.1)(@vercel/functions@3.7.4(ws@8.21.1))(@vercel/queue@0.3.1)(ai@7.0.28(zod@4.4.3))(chokidar@4.0.3)(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(lru-cache@11.5.1)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
+        specifier: ^0.32.0
+        version: 0.32.0(@opentelemetry/api@1.9.1)(@vercel/functions@3.7.4(ws@8.21.1))(@vercel/queue@0.3.1)(ai@7.0.59(zod@4.4.3))(chokidar@4.0.3)(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(lru-cache@11.5.1)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
       ioredis:
         specifier: ^5.8.2
         version: 5.11.1
@@ -139,11 +139,11 @@ importers:
         specifier: ^0.3.1
         version: 0.3.1
       ai:
-        specifier: 7.0.28
-        version: 7.0.28(zod@4.4.3)
+        specifier: 7.0.59
+        version: 7.0.59(zod@4.4.3)
       better-auth:
         specifier: ^1.6.20
-        version: 1.6.20(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(next@16.3.0(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@4.1.9)
+        version: 1.6.20(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(next@16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@4.1.9)
       better-call:
         specifier: 1.3.6
         version: 1.3.6(zod@4.4.3)
@@ -157,8 +157,8 @@ importers:
         specifier: ^1.1.1
         version: 1.1.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       eve:
-        specifier: ^0.24.3
-        version: 0.24.3(@opentelemetry/api@1.9.1)(@vercel/functions@3.7.4(ws@8.21.1))(@vercel/queue@0.3.1)(ai@7.0.28(zod@4.4.3))(chokidar@4.0.3)(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(lru-cache@11.5.1)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
+        specifier: ^0.32.0
+        version: 0.32.0(@opentelemetry/api@1.9.1)(@vercel/functions@3.7.4(ws@8.21.1))(@vercel/queue@0.3.1)(ai@7.0.59(zod@4.4.3))(chokidar@4.0.3)(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(lru-cache@11.5.1)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
       flags:
         specifier: ^4.2.0
         version: 4.2.0(@opentelemetry/api@1.9.1)(next@16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -226,6 +226,9 @@ importers:
       '@playwright/test':
         specifier: 1.61.1
         version: 1.61.1
+      '@react-email/ui':
+        specifier: 6.9.2
+        version: 6.9.2(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.1
@@ -279,7 +282,7 @@ importers:
     dependencies:
       better-auth:
         specifier: ^1.6.20
-        version: 1.6.20(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(next@16.3.0(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@4.1.9)
+        version: 1.6.20(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(next@16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@4.1.9)
       next:
         specifier: 16.3.0
         version: 16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -305,8 +308,8 @@ importers:
         specifier: workspace:*
         version: link:../domain
       ai:
-        specifier: 7.0.2
-        version: 7.0.2(zod@4.4.3)
+        specifier: 7.0.59
+        version: 7.0.59(zod@4.4.3)
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9)
@@ -372,36 +375,20 @@ importers:
 
 packages:
 
-  '@ai-sdk/gateway@4.0.2':
-    resolution: {integrity: sha512-Jz1BiiTSvhDsCBJrkFRSqLHDRMVjFtYk9GdbSi3UOqY+/epza+oIESMDzfN4m+YHT/1IYmNEmxaMfjXOvxKDjQ==}
+  '@ai-sdk/gateway@4.0.47':
+    resolution: {integrity: sha512-BuWWlA8atWEnEJzN4eamCpGZWkoK9V3TCyNaMwgRIazhqkgWkA1Wp36si3j2JeVYzlvlEAOWrJ92dr92j/Vkqg==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/gateway@4.0.20':
-    resolution: {integrity: sha512-m3PdYs0yqSxswsrEhVj64wDLgFs35Zxl8liLNuWGzE7bwBLF6Mhu0E5rPpDNJbIjyQpA4aMKOOWBfjERw2zvPw==}
+  '@ai-sdk/provider-utils@5.0.26':
+    resolution: {integrity: sha512-0mqhqx+Dcv+msI84+zkbLXmnCHb/mpkYJ9DU3HBvB1px+UjFQss4lLZqRCSzJ0w3NxwQk4Ishk7cP0r8wEQD5w==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/provider-utils@5.0.0':
-    resolution: {integrity: sha512-zj66M02jc6ASYwIgWZowsooDUwaVngeNZQ3H10GwcPMZ+KR6gHMhcUuKl6tkai+JPXTKDyHY1pnszuxRtw2D4A==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
-
-  '@ai-sdk/provider-utils@5.0.10':
-    resolution: {integrity: sha512-uPyec0+85dwxZYXtb8qe8gCjhjDfxP4LCDo/uRQS/iG+FIgYbHPRhr/ys281udG90bTaE18+5cxWraYaf8oHCw==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
-
-  '@ai-sdk/provider@4.0.0':
-    resolution: {integrity: sha512-fr9Gs89prDWiuox/T+kCA+i2cJkHpxU5S+tr4megjTzRC27ZsvFhwjU/+XrqqMbvBUlfmXxTOYWy8ng45dsjIg==}
-    engines: {node: '>=22'}
-
-  '@ai-sdk/provider@4.0.3':
-    resolution: {integrity: sha512-e0CpNWJUY7OxAFAnCZkw+ri9QOHWwTs1tXP42782KFGCU07qt8NiXCrCVowyCB5dP2r5/Uls+g2oPd8kOJn9dw==}
+  '@ai-sdk/provider@4.0.7':
+    resolution: {integrity: sha512-6or44XprPzKbr8zkmzosowSE0pxkvJcoojBL+mCZvPUt3kvXp3XSNqeVun9golb1acEfSo6yaEBRT18h2VU+1Q==}
     engines: {node: '>=22'}
 
   '@alloc/quick-lru@5.2.0':
@@ -2336,6 +2323,9 @@ packages:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
       react-dom: ^18.0 || ^19.0 || ^19.0.0-rc
 
+  '@react-email/ui@6.9.2':
+    resolution: {integrity: sha512-nCE8uZJuhNB7E6j8Prq6tfcswHMbiNwM4a+t2Q83AjgkDUhki1TwvKjQ9yfLLSquQuu9oFKNaTvYUNZ8yTdGNw==}
+
   '@rolldown/binding-android-arm64@1.1.3':
     resolution: {integrity: sha512-DT6Z3PhvioeHMvxo+xHc3KtqggrI7CCTXCmC2h/5zUlp5jVitv7XEy+9q5/7v8IolhlioawpMo8Kg0EEBy7J0g==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -3110,14 +3100,8 @@ packages:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
 
-  ai@7.0.2:
-    resolution: {integrity: sha512-VMU08jHIDJnnKDrbC9AFa5ZsPpOTfAPRLvTRHtJk4FGAoeldmJROMxvZ2ak5lCjEJ2GP2OLPQbMRyEK8w0+S4A==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
-
-  ai@7.0.28:
-    resolution: {integrity: sha512-RtynA4e6rWH2YiMX0OJz2h2i+sdJgiItuwqmstYZAiTZ0ZkZzQ8s4KVh7tQfZuDCfzIhRTg+q1h1xirT8AClkw==}
+  ai@7.0.59:
+    resolution: {integrity: sha512-p10cqg8KvLIZi7Gk+XsQjoYoLENoDdEYvehP0rSo6Wg15nbCmP+nwIy1rOIX+WGIDWGdI+jmhjVx5fXShBVC3w==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -4034,13 +4018,13 @@ packages:
     resolution: {integrity: sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==}
     engines: {node: '>= 0.6'}
 
-  eve@0.24.3:
-    resolution: {integrity: sha512-qdNUjF1tlEJHVEsmnuSBHkJToDo0VjXgiHX5KaWhbHxBfsHahPGVI+/ecW+DHvsLlzmw58/rk2ypQXdAkul4uA==}
+  eve@0.32.0:
+    resolution: {integrity: sha512-b1+JLZIAucpW6eVxdyLKlKp0sJ20F737TEe+wj6vYzhq5JPz5n9bdoTCvh5Z1Q7TFGLO0GSIub/q9b8UGVb28Q==}
     engines: {node: '>=24'}
     hasBin: true
     peerDependencies:
       '@opentelemetry/api': ^1.0.0
-      ai: ^7.0.26
+      ai: ^7.0.58
       braintrust: ^3.0.0
       just-bash: ^3.0.0
       microsandbox: ^0.5.0
@@ -6020,6 +6004,10 @@ packages:
     resolution: {integrity: sha512-cRZYrTDwWznlnRiPjggAGxZXanty6M8RV1ff8Wm4LWXBp7/IG8v5DnOm74DtUBp9OONpK75YlPnIjQqX0dBDtA==}
     engines: {node: '>=20.18.1'}
 
+  undici@8.9.0:
+    resolution: {integrity: sha512-aWZpUj7XoGonMClx4gdDRfgBjqeA+F473aDmROQQbM9n6PRfK/u1q/a0X4wMTgcHfT8H6fpbt98PFuDUwFg2YA==}
+    engines: {node: '>=22.19.0'}
+
   unenv@2.0.0-rc.24:
     resolution: {integrity: sha512-i7qRCmY42zmCwnYlh9H2SvLEypEFGye5iRmEMKjcGi7zk9UquigRjFtTLz0TYqr0ZGLZhaMHl/foy1bZR+Cwlw==}
 
@@ -6390,41 +6378,23 @@ packages:
 
 snapshots:
 
-  '@ai-sdk/gateway@4.0.2(zod@4.4.3)':
+  '@ai-sdk/gateway@4.0.47(zod@4.4.3)':
     dependencies:
-      '@ai-sdk/provider': 4.0.0
-      '@ai-sdk/provider-utils': 5.0.0(zod@4.4.3)
+      '@ai-sdk/provider': 4.0.7
+      '@ai-sdk/provider-utils': 5.0.26(zod@4.4.3)
       '@vercel/oidc': 3.2.0
       zod: 4.4.3
 
-  '@ai-sdk/gateway@4.0.20(zod@4.4.3)':
+  '@ai-sdk/provider-utils@5.0.26(zod@4.4.3)':
     dependencies:
-      '@ai-sdk/provider': 4.0.3
-      '@ai-sdk/provider-utils': 5.0.10(zod@4.4.3)
-      '@vercel/oidc': 3.2.0
-      zod: 4.4.3
-
-  '@ai-sdk/provider-utils@5.0.0(zod@4.4.3)':
-    dependencies:
-      '@ai-sdk/provider': 4.0.0
+      '@ai-sdk/provider': 4.0.7
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.0
+      undici: 7.28.0
       zod: 4.4.3
 
-  '@ai-sdk/provider-utils@5.0.10(zod@4.4.3)':
-    dependencies:
-      '@ai-sdk/provider': 4.0.3
-      '@standard-schema/spec': 1.1.0
-      '@workflow/serde': 4.1.0
-      eventsource-parser: 3.1.0
-      zod: 4.4.3
-
-  '@ai-sdk/provider@4.0.0':
-    dependencies:
-      json-schema: 0.4.0
-
-  '@ai-sdk/provider@4.0.3':
+  '@ai-sdk/provider@4.0.7':
     dependencies:
       json-schema: 0.4.0
 
@@ -8116,6 +8086,21 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
+  '@react-email/ui@6.9.2(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      esbuild: 0.28.1
+      next: 16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@opentelemetry/api'
+      - '@playwright/test'
+      - '@types/node'
+      - babel-plugin-macros
+      - babel-plugin-react-compiler
+      - react
+      - react-dom
+      - sass
+
   '@rolldown/binding-android-arm64@1.1.3':
     optional: true
 
@@ -8926,18 +8911,11 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  ai@7.0.2(zod@4.4.3):
+  ai@7.0.59(zod@4.4.3):
     dependencies:
-      '@ai-sdk/gateway': 4.0.2(zod@4.4.3)
-      '@ai-sdk/provider': 4.0.0
-      '@ai-sdk/provider-utils': 5.0.0(zod@4.4.3)
-      zod: 4.4.3
-
-  ai@7.0.28(zod@4.4.3):
-    dependencies:
-      '@ai-sdk/gateway': 4.0.20(zod@4.4.3)
-      '@ai-sdk/provider': 4.0.3
-      '@ai-sdk/provider-utils': 5.0.10(zod@4.4.3)
+      '@ai-sdk/gateway': 4.0.47(zod@4.4.3)
+      '@ai-sdk/provider': 4.0.7
+      '@ai-sdk/provider-utils': 5.0.26(zod@4.4.3)
       zod: 4.4.3
 
   ajv-formats@2.1.1(ajv@8.20.0):
@@ -9011,7 +8989,7 @@ snapshots:
 
   baseline-browser-mapping@2.10.38: {}
 
-  better-auth@1.6.20(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(next@16.3.0(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@4.1.9):
+  better-auth@1.6.20(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(next@16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@4.1.9):
     dependencies:
       '@better-auth/core': 1.6.20(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.6(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0)
       '@better-auth/drizzle-adapter': 1.6.20(@better-auth/core@1.6.20(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.6(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))
@@ -9739,10 +9717,11 @@ snapshots:
 
   etag@1.8.1: {}
 
-  eve@0.24.3(@opentelemetry/api@1.9.1)(@vercel/functions@3.7.4(ws@8.21.1))(@vercel/queue@0.3.1)(ai@7.0.28(zod@4.4.3))(chokidar@4.0.3)(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(lru-cache@11.5.1)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)):
+  eve@0.32.0(@opentelemetry/api@1.9.1)(@vercel/functions@3.7.4(ws@8.21.1))(@vercel/queue@0.3.1)(ai@7.0.59(zod@4.4.3))(chokidar@4.0.3)(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(lru-cache@11.5.1)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)):
     dependencies:
-      ai: 7.0.28(zod@4.4.3)
+      ai: 7.0.59(zod@4.4.3)
       nitro: 3.0.260610-beta(@vercel/functions@3.7.4(ws@8.21.1))(@vercel/queue@0.3.1)(chokidar@4.0.3)(dotenv@17.4.2)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(kysely@0.29.2)(postgres@3.4.9))(ioredis@5.11.1)(jiti@2.7.0)(lru-cache@11.5.1)(vite@8.1.0(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
+      undici: 8.9.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
     transitivePeerDependencies:
@@ -12254,6 +12233,8 @@ snapshots:
   undici-types@6.21.0: {}
 
   undici@7.28.0: {}
+
+  undici@8.9.0: {}
 
   unenv@2.0.0-rc.24:
     dependencies:

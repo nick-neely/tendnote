@@ -1,5 +1,6 @@
 import type { GeneralActionWithContext } from "@tendnote/db/queries/general-actions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const mocks = vi.hoisted(() => ({
   createGeneralAction: vi.fn(),
@@ -23,14 +24,20 @@ vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
   requestBackgroundAffectedScopeReconciliation: mocks.requestBackgroundAffectedScopeReconciliation,
 }));
 
-const { default: createTool } = await import("../agent/tools/create_general_action");
-const { default: suggestTool } = await import("../agent/tools/suggest_general_action");
-const { default: planTool, MAX_SHALLOW_PLAN_ACTIONS } = await import(
+const { default: rawCreateTool } = await import("../agent/tools/create_general_action");
+const { default: rawSuggestTool } = await import("../agent/tools/suggest_general_action");
+const { default: rawPlanTool, MAX_SHALLOW_PLAN_ACTIONS } = await import(
   "../agent/tools/plan_suggested_general_actions"
 );
-const { default: listTool } = await import("../agent/tools/list_general_actions");
-const { default: updateTool } = await import("../agent/tools/update_general_action_status");
-const { default: editTool } = await import("../agent/tools/edit_general_action");
+const { default: rawListTool } = await import("../agent/tools/list_general_actions");
+const { default: rawUpdateTool } = await import("../agent/tools/update_general_action_status");
+const { default: rawEditTool } = await import("../agent/tools/edit_general_action");
+const createTool = asTestTool(rawCreateTool);
+const suggestTool = asTestTool(rawSuggestTool);
+const planTool = asTestTool(rawPlanTool);
+const listTool = asTestTool(rawListTool);
+const updateTool = asTestTool(rawUpdateTool);
+const editTool = asTestTool(rawEditTool);
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 const ACTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const {
   captureSourceRecord,
@@ -30,7 +31,8 @@ vi.mock("../agent/lib/background-jobs/extraction-queue", () => ({
   enqueueAndPublishActionExtractionJob,
 }));
 
-const { default: tool } = await import("../agent/tools/capture_source_record");
+const { default: rawTool } = await import("../agent/tools/capture_source_record");
+const tool = asTestTool(rawTool);
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

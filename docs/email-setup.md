@@ -175,6 +175,18 @@ capability somewhere the recipient's mailbox is not.
 
 Do this once, against an address you control, before anyone else is invited.
 
+**Preview the template locally, without sending anything:**
+
+```bash
+pnpm email:dev
+```
+
+Open [http://localhost:3001](http://localhost:3001). The sidebar should contain
+`household-invitation`; select it to preview the same React Email component used
+by the transactional sender. The preview uses a fixed local fixture and never
+calls Resend. Port `3001` keeps the preview beside Tendnote's web app on port
+`3000`.
+
 **Locally, without sending anything:**
 
 ```bash

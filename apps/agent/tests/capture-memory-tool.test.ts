@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const { captureExplicitMemoryWithEmbeddingDelivery } = vi.hoisted(() => ({
   captureExplicitMemoryWithEmbeddingDelivery: vi.fn(),
@@ -8,7 +9,8 @@ vi.mock("../agent/lib/background-jobs/embedding-schedulers", () => ({
   captureExplicitMemoryWithEmbeddingDelivery,
 }));
 
-const { default: tool } = await import("../agent/tools/capture_memory");
+const { default: rawTool } = await import("../agent/tools/capture_memory");
+const tool = asTestTool(rawTool);
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

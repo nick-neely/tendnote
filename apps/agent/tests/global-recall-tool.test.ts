@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const { searchGlobalRecall } = vi.hoisted(() => ({ searchGlobalRecall: vi.fn() }));
 vi.mock("@tendnote/db/queries/global-recall", () => ({ searchGlobalRecall }));
 
-const { default: tool } = await import("../agent/tools/search_global_recall");
+const { default: rawTool } = await import("../agent/tools/search_global_recall");
+const tool = asTestTool(rawTool);
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 
 beforeEach(() => vi.clearAllMocks());

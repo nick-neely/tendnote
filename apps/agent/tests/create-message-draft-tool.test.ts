@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const { generateDraft, persistAcceptedDraftProposal, reconcile } = vi.hoisted(() => ({
   generateDraft: vi.fn(),
@@ -14,7 +15,8 @@ vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
   requestBackgroundAffectedScopeReconciliation: reconcile,
 }));
 
-const { default: tool } = await import("../agent/tools/create_message_draft");
+const { default: rawTool } = await import("../agent/tools/create_message_draft");
+const tool = asTestTool(rawTool);
 
 const PERSON_ID = "11111111-1111-1111-1111-111111111111";
 const DRAFT_ID = "22222222-2222-2222-2222-222222222222";

@@ -27,13 +27,18 @@ pnpm db:studio   # Drizzle Studio against the local database
 ## Running the apps
 
 ```bash
-pnpm dev        # web app on :3000; withEve spawns the Eve agent and serves
-                # it same-origin, so this is all you need for web chat
+pnpm dev        # web app on :3000 + Eve agent on :2000, started in parallel
+                # so Next does not wait for Eve's dev bundle before serving
 pnpm dev:agent  # Eve agent only, standalone on :2000 (agent-isolated
                 # debugging / the Eve TUI; do not run alongside `pnpm dev`)
 ```
 
-The web chat is served same-origin: `apps/web/next.config.ts` wraps Next with `withEve()`, which spawns the Eve agent and proxies `/eve/v1/*` to it, so the browser streams turns with no Eve URL to configure.
+The web chat is still served same-origin: the root `pnpm dev` passes
+`EVE_BASE_URL=http://127.0.0.1:2000` to both apps, and
+`apps/web/next.config.ts` uses `withEve()` to proxy `/eve/v1/*` to the parallel
+agent. The browser therefore streams turns with no Eve URL to configure. If
+you run the web package by itself, `withEve()` falls back to managing the Eve
+dev process for that invocation.
 
 ## Local services
 
@@ -55,6 +60,7 @@ Semantic embeddings run through the same job lifecycle in every environment. Loc
 - Suggested Memory and General Action extraction use `TENDNOTE_EXTRACTION_MODEL` when set and otherwise default to `google/gemini-3.1-flash-lite`; an omitted tuning override never disables extraction.
 - Without gateway credentials, local development falls back to deterministic fake vectors so capture and search still work offline.
 - Set `TENDNOTE_EMBEDDING_RUNTIME=enqueue_only` to leave jobs for a worker instead of processing inline.
+- Optional Today ranking is deterministic in development even when web gateway credentials are present. Set `TENDNOTE_ENABLE_TODAY_RANKING=1` in `apps/web/.env.local` to exercise the bounded live ranking path; a failure keeps the deterministic order and only unexpected errors get a concise server warning.
 
 Several other model overrides follow the same fallback chain — the specific variable, then `TENDNOTE_AGENT_MODEL`, then `anthropic/claude-haiku-4.5`. All are optional tuning knobs:
 
@@ -103,7 +109,7 @@ Configuration is **per app**, not a single root file. Each process only loads en
 | `apps/agent/.env.local` | the Eve agent (spawned by `withEve` from the web app, or `eve dev`) | `apps/agent/.env.example` | `AI_GATEWAY_API_KEY` (**required to drive the agent model**) |
 | `.env` (repo root) | `docker compose` only | `.env.example` | optional `TENDNOTE_POSTGRES_PORT` / `TENDNOTE_REDIS_PORT` overrides |
 
-Most app vars have working local defaults (Postgres, Redis, and a dev auth secret), so `AI_GATEWAY_API_KEY` (in `apps/agent/.env.local`) is the only one a typical local session needs — and only when running the conversational assistant. The web app's AI Gateway vars are server-only and optional; they matter only when web server actions/pages should generate live snapshots or real embeddings instead of using local fallbacks or enqueueing work for another process.
+Most app vars have working local defaults (Postgres, Redis, and a dev auth secret), so `AI_GATEWAY_API_KEY` (in `apps/agent/.env.local`) is the only one a typical local session needs — and only when running the conversational assistant. The web app's AI Gateway vars are server-only and optional; they matter when web server actions/pages should generate live snapshots or real embeddings, or when you explicitly opt into Today ranking, instead of using local fallbacks or enqueueing work for another process.
 
 The root `.env` is read **only** by `docker compose`; Next.js and `eve dev` do not read it. Each `.env.example` documents the rest. `.env*` files are gitignored (except the `.env.example` templates), so your keys are never committed.
 

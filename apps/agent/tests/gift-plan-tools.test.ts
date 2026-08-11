@@ -1,5 +1,6 @@
 import { HouseholdRecordUnavailableError } from "@tendnote/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const { listGiftPlans, searchGiftPlans, addGiftIdea } = vi.hoisted(() => ({
   listGiftPlans: vi.fn(),
@@ -19,8 +20,10 @@ vi.mock("../agent/lib/request-affected-scope-reconciliation", () => ({
   requestBackgroundAffectedScopeReconciliation,
 }));
 
-const { default: searchTool } = await import("../agent/tools/search_gift_plans");
-const { default: addTool } = await import("../agent/tools/add_gift_idea");
+const { default: rawSearchTool } = await import("../agent/tools/search_gift_plans");
+const { default: rawAddTool } = await import("../agent/tools/add_gift_idea");
+const searchTool = asTestTool(rawSearchTool);
+const addTool = asTestTool(rawAddTool);
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 

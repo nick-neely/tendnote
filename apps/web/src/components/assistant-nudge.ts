@@ -9,7 +9,7 @@ type NudgeClientContext = { person: { id: string; displayName: string } } | unde
 
 export type NudgeAgent = {
   status: string;
-  send: (input: { message: string; clientContext?: NudgeClientContext }) => Promise<unknown>;
+  send: (message: string, options?: { clientContext?: NudgeClientContext }) => Promise<unknown>;
 };
 
 /** Owner-safe one-turn client context for the agent, or none when unscoped. */
@@ -32,6 +32,6 @@ export function sendNudgeToAgent(
   if (agent.status !== "ready") {
     return false;
   }
-  agent.send({ message: prompt, clientContext: nudgeClientContextFor(context) }).catch(() => {});
+  agent.send(prompt, { clientContext: nudgeClientContextFor(context) }).catch(() => {});
   return true;
 }

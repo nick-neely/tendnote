@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { asTestTool } from "./test-tool";
 
 const { searchPeople } = vi.hoisted(() => ({ searchPeople: vi.fn() }));
 
 vi.mock("@tendnote/db/queries/people", () => ({ searchPeople }));
 
-const { default: tool } = await import("../agent/tools/search_people");
+const { default: rawTool } = await import("../agent/tools/search_people");
+const tool = asTestTool(rawTool);
 
 const ctx = { session: { auth: { current: { principalId: "user-1" } } } } as never;
 
