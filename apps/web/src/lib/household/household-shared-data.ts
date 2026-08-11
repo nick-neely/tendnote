@@ -163,7 +163,7 @@ export async function readHouseholdEventPlans(
  * The per-family cap is what makes that affordable: these entry points hydrate
  * each record they return, so the bound is on rows, not just on rendering.
  */
-export async function readHouseholdEventPlanLinkCandidates(
+async function readHouseholdEventPlanLinkCandidates(
   callerUserId: string,
 ): Promise<HouseholdEventPlanLinkCandidate[]> {
   const limit = HOUSEHOLD_EVENT_PLAN_CANDIDATES_PER_KIND;

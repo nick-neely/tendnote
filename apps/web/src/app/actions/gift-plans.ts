@@ -4,12 +4,10 @@ import {
   addGiftIdea,
   claimGiftIdea,
   createGiftPlan,
-  deleteGiftPlan,
   editGiftIdea,
   editGiftPlan,
   releaseGiftIdea,
   removeGiftIdea,
-  searchGiftPlans,
   setGiftPlanAudience,
   setGiftPlanStatus,
   setGiftPlanSurpriseSubject,
@@ -29,7 +27,6 @@ import {
 } from "@/lib/gift-plan-view";
 import { type OwnerActionResult, runOwnerAction } from "@/lib/owner-action";
 
-const giftPlanIdSchema = z.object({ giftPlanId: z.uuid() });
 const giftIdeaIdSchema = z.object({ giftIdeaId: z.uuid() });
 const selectedUserIdsSchema = z.array(z.string().min(1)).max(50).optional();
 
@@ -78,8 +75,6 @@ const editIdeaSchema = z.object({
   url: z.string().trim().max(2_000).nullable().optional(),
   expectedRevision: z.number().int().nonnegative().optional(),
 });
-
-const searchSchema = z.object({ query: z.string().trim().max(200) });
 
 function parseOccasionDate(value: string | null | undefined): Date | null | undefined {
   if (value === undefined) return undefined;
@@ -258,28 +253,6 @@ export async function setGiftPlanStatusAction(input: {
   });
 }
 
-/**
- * Permanent deletion, deliberately with no control on any surface yet.
- *
- * The seam owes the domain a way to end a plan for good (the spec's "permanently
- * deleting it"), and this is it. What the *surface* offers is Archive, which is
- * reversible and covers every case a person actually reaches for. An irreversible
- * button that silently destroys other people's contributions needs a confirmation
- * flow of the kind Asset removal has — typed confirmation over a real summary of
- * what is about to go — and that is worth building properly rather than bolting
- * on. Until then the capability exists and nothing invokes it.
- */
-export async function deleteGiftPlanAction(input: { giftPlanId: string }) {
-  return runOwnerAction({
-    schema: giftPlanIdSchema,
-    input,
-    body: ({ ownerUserId, input: parsed }) =>
-      deleteGiftPlan({ actorUserId: ownerUserId, giftPlanId: parsed.giftPlanId }),
-    affectedScopes: (outcome) => outcome.affectedScopes,
-    result: (outcome) => outcome.result,
-  });
-}
-
 export async function addGiftIdeaAction(input: {
   giftPlanId: string;
   title: string;
@@ -376,23 +349,4 @@ export async function releaseGiftIdeaAction(input: {
     result: async (outcome, ownerUserId) =>
       toGiftIdeaView(outcome.result, await peopleLabels(ownerUserId)),
   });
-}
-
-/**
- * Search across the plans the caller may see.
- *
- * It goes through the same seam as the list, so Search cannot come to a
- * different answer about who may see a plan than the page it links to. A
- * Surprise Subject searching for their own surprise gets an empty array —
- * indistinguishable from a search that matched nothing.
- */
-export async function searchGiftPlansAction(input: { query: string }) {
-  const callerUserId = await requireAdmittedOwnerForAction();
-  const parsed = searchSchema.parse(input);
-  const [plans, people] = await Promise.all([
-    searchGiftPlans({ callerUserId, query: parsed.query }),
-    peopleLabels(callerUserId),
-  ]);
-  const now = new Date();
-  return plans.map((plan) => toGiftPlanView(plan, people, now));
 }

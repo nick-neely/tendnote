@@ -7,7 +7,7 @@ import type { ContextFactHouseholdAccess } from "./types";
  * never be spent on a General Action or an Asset, because the family is part of
  * what `proofCovers` compares (ADR 0219).
  */
-export const HOUSEHOLD_CONTEXT_RECORD_KIND = "household_context_fact";
+const HOUSEHOLD_CONTEXT_RECORD_KIND = "household_context_fact";
 
 /**
  * The facts about one Household Context Fact that policy is allowed to see.

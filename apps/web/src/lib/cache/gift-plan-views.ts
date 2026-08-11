@@ -28,7 +28,7 @@ function refreshBucket(now: Date) {
  * answer this viewer was already entitled to*, and the write that changes their
  * entitlement names them in its affected scopes (ADR 0219).
  */
-export const giftPlanCacheContract = {
+const giftPlanCacheContract = {
   collection(callerUserId: string) {
     return tagsForAffectedScope({
       kind: "viewer-collection",

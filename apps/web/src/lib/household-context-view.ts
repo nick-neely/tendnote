@@ -1,6 +1,5 @@
 import type { ContextFactView } from "@tendnote/domain/context-facts";
 import type {
-  HouseholdContextActorIdentity,
   HouseholdContextCategory,
   HouseholdContextReconciliation,
 } from "@tendnote/domain/household-context";
@@ -8,7 +7,7 @@ import { householdContextCategoryOptions } from "@tendnote/domain/household-cont
 import type { Sensitivity } from "@tendnote/domain/privacy";
 import type { OwnerActionResult } from "@/lib/owner-action-result";
 
-export type { HouseholdContextActorIdentity, HouseholdContextReconciliation };
+export type { HouseholdContextReconciliation };
 
 export const householdContextCategories = householdContextCategoryOptions;
 

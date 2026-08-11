@@ -69,5 +69,3 @@ export function createAssetSearchAuthority(store: AssetSearchAuthorityStore) {
     },
   };
 }
-
-export type AssetSearchAuthority = ReturnType<typeof createAssetSearchAuthority>;

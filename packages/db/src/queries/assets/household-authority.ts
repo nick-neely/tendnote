@@ -225,5 +225,3 @@ export function createAssetAuthority(store: AssetAuthorityStore) {
     },
   };
 }
-
-export type AssetAuthority = ReturnType<typeof createAssetAuthority>;

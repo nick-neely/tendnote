@@ -40,7 +40,7 @@ export default function SharedRecordPage({ params }: { params: Promise<SharedRec
  * every open page for permission, which would mean running a surveillance loop
  * to stop someone finishing a paragraph they were already shown.
  */
-export async function SharedRecordContent({ params }: { params: Promise<SharedRecordParams> }) {
+async function SharedRecordContent({ params }: { params: Promise<SharedRecordParams> }) {
   if (process.env.NODE_ENV !== "test") await connection();
   const { recordKind, recordId } = await params;
   // The concrete URL, not the destination's route template: someone following a

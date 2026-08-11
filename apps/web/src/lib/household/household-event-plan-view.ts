@@ -41,7 +41,7 @@ export const HOUSEHOLD_EVENT_PLAN_DEPARTED_ACTOR = "someone who's left";
  * has never heard of a `general_action`. Three families, and the list is closed
  * by the domain rather than by this map.
  */
-export const HOUSEHOLD_EVENT_PLAN_LINK_KIND_LABELS: Record<HouseholdEventPlanLinkKind, string> = {
+const HOUSEHOLD_EVENT_PLAN_LINK_KIND_LABELS: Record<HouseholdEventPlanLinkKind, string> = {
   general_action: "Action",
   followup: "Follow-up",
   saved_item: "Saved item",
