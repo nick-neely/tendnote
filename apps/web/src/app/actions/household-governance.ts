@@ -42,6 +42,7 @@ export type HouseholdDissolutionResult = OwnerActionResult<{
 
 const memberSchema = z.object({ memberUserId: z.string().min(1).max(200) }).strict();
 const emptySchema = z.object({}).strict();
+const dissolutionConfirmSchema = z.object({ endsNow: z.boolean() }).strict();
 
 async function overviewFor(userId: string): Promise<HouseholdOverview> {
   const overview = await getHouseholdOverviewForUser({ userId });
@@ -192,14 +193,24 @@ export async function leaveHouseholdAction(): Promise<
  * Until then the answer is a refreshed Overview showing how many owners are
  * still to confirm, so the decision is visible to all of them rather than being
  * a private countdown held by whoever started it.
+ *
+ * `endsNow` carries what the pressed control said it would do. The lifecycle
+ * declines a press offered as an ordinary agreement that turns out to be the
+ * last one needed, so an Overview a moment out of date cannot end a household
+ * on someone who was told nothing would change yet.
  */
-export async function confirmHouseholdDissolutionAction(): Promise<HouseholdDissolutionResult> {
+export async function confirmHouseholdDissolutionAction(input: {
+  endsNow: boolean;
+}): Promise<HouseholdDissolutionResult> {
   return runOwnerAction({
-    schema: emptySchema,
-    input: {},
+    schema: dissolutionConfirmSchema,
+    input,
     budget: { costCategory: "server-action" },
-    body: async ({ ownerUserId }) => {
-      const dissolution = await confirmHouseholdDissolution({ ownerUserId });
+    body: async ({ ownerUserId, input: parsed }) => {
+      const dissolution = await confirmHouseholdDissolution({
+        ownerUserId,
+        endsNow: parsed.endsNow,
+      });
       return { dissolution, view: await getHouseholdOverviewForUser({ userId: ownerUserId }) };
     },
     affectedScopes: accountScope,

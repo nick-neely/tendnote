@@ -420,20 +420,26 @@ describe("ending the household", () => {
 
   /**
    * The one press whose label can be wrong. `endsNow` is read off an Overview
-   * that may be a moment old, so a reader can press "Agree to end it" and have
-   * it be the confirmation that ends the household. What they are told has to
-   * come from the answer, not from the button they pressed.
+   * that may be a moment old, so a reader can be looking at "Agree to end it" -
+   * and its promise that nothing changes yet - when theirs has become the press
+   * that ends the household. The server declines that press rather than letting
+   * a stale screen be the way around the retyped phrase, and answers with an
+   * Overview in which this owner still has not agreed. That answer is what turns
+   * the open dialog into the final question.
    */
-  it("tells the reader the household ended even when the press said only 'agree'", async () => {
+  it("turns a stale agreement into the final question instead of ending on it", async () => {
     const confirmDissolution = vi.fn().mockResolvedValue({
       ok: true,
-      view: { dissolution: { unanimous: true }, view: null },
+      view: {
+        dissolution: { required: 2, confirmed: 1, awaitingUserIds: ["ana"], unanimous: false },
+        view: twoOwners({ confirmed: 1, awaitingUserIds: ["ana"], viewerHasConfirmed: false }),
+      },
     });
     render(
       <HouseholdSurface
         governanceActions={{ confirmDissolution }}
         // Three owners on this screen, so this reader believes two more have to
-        // agree after them. Both of them already did.
+        // agree after them. One of them already did.
         initialOverview={twoOwners({ required: 3, confirmed: 0, awaitingUserIds: ["ana"] })}
       />,
     );
@@ -443,10 +449,23 @@ describe("ending the household", () => {
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Agree to end it" }),
     );
 
+    // What the control said it would do travels with the press, which is the
+    // only way the server can tell a stale agreement from a deliberate ending.
+    expect(confirmDissolution).toHaveBeenCalledWith({ endsNow: false });
+
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "The Neely house has ended" })).toBeTruthy();
+      expect(screen.getByRole("status").textContent).toMatch(
+        /Yours is now the press that ends The Neely house/i,
+      );
     });
-    expect(screen.getByRole("status").textContent).toBe("The Neely house has ended.");
+    // Nothing ended, and the same dialog is now asking the irreversible
+    // question - which cannot be answered until the phrase is retyped.
+    expect(screen.queryByRole("heading", { name: "The Neely house has ended" })).toBeNull();
+    const dialog = within(screen.getByRole("alertdialog"));
+    expect(dialog.getByText(/Everyone's access ends the moment you press this/i)).toBeTruthy();
+    const endIt = dialog.getByRole("button", { name: "End it" });
+    expect(endIt.dataset.variant).toBe("destructive");
+    expect(endIt.hasAttribute("disabled")).toBe(true);
   });
 
   it("gives the reader who ended it the way to reach support", async () => {
@@ -457,14 +476,15 @@ describe("ending the household", () => {
     render(
       <HouseholdSurface
         governanceActions={{ confirmDissolution }}
-        initialOverview={twoOwners({ required: 3, confirmed: 0, awaitingUserIds: ["ana"] })}
+        initialOverview={twoOwners({ confirmed: 1, awaitingUserIds: ["ana"] })}
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Agree to end it" }));
-    await userEvent.click(
-      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Agree to end it" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "End this household" }));
+    const dialog = within(screen.getByRole("alertdialog"));
+    const phrase = (dialog.getByRole("code" as never) as HTMLElement | null)?.textContent ?? "";
+    await userEvent.type(dialog.getByLabelText(/to confirm/i), phrase);
+    await userEvent.click(dialog.getByRole("button", { name: "End it" }));
 
     await waitFor(() => {
       expect(screen.getByText(/support can still put the household back/i)).toBeTruthy();

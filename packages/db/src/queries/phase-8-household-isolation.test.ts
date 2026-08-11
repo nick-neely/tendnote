@@ -1016,7 +1016,7 @@ describe("a dissolved household is readable by nobody through any product path",
       householdId: workspace.id,
     });
 
-    await stack.governance.confirmDissolution({ ownerUserId: ANA });
+    await stack.governance.confirmDissolution({ ownerUserId: ANA, endsNow: true });
 
     for (const userId of [ANA, BEN, OUTSIDER]) {
       // Null, not a tombstone view. A dissolved household that still rendered a

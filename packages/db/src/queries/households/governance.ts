@@ -751,14 +751,45 @@ export function createHouseholdGovernanceLifecycle(
      * confirmation the one that acts: two owners pressing at the same moment
      * produce one dissolution, not two, and the second one reads the first's
      * agreement rather than an older count.
+     *
+     * `endsNow` is the caller's own reading of whether their press is the last
+     * one needed, and it is checked here rather than trusted. That reading comes
+     * off an Overview that may be a moment old, so an owner can be looking at a
+     * screen that offers this as an ordinary agreement - "nothing changes yet,
+     * and you can change your mind until then" - while another owner has since
+     * agreed and made it the press that ends the household for everyone. Such a
+     * press is declined and nothing is written: the retyped phrase in front of
+     * the final confirmation exists so that ending a household cannot happen to
+     * someone who was told it would not, and a stale screen must not be the way
+     * around it. The caller gets the current progress back, which is what turns
+     * their open question into the final one.
      */
-    async confirmDissolution(input: { ownerUserId: string }): Promise<HouseholdDissolutionState> {
+    async confirmDissolution(input: {
+      ownerUserId: string;
+      endsNow: boolean;
+    }): Promise<HouseholdDissolutionState> {
       const at = now();
       let endedHouseholdId: string | null = null;
       let endedMembers: ReadonlyArray<{ householdId: string; userId: string }> = [];
       const state = await store.withTransaction(async (tx) => {
         const { householdId, roster } = await requireOwnerStanding(tx, input.ownerUserId);
         assertDissolutionAllowed({ roster, userId: input.ownerUserId });
+
+        const standing = householdDissolutionProgress({
+          roster,
+          confirmedOwnerUserIds: (
+            await tx.households.listHouseholdDissolutionConfirmations({ householdId })
+          ).map((confirmation) => confirmation.userId),
+        });
+        // Nobody but this caller is left to agree, so recording their press
+        // would end the household. Read before the write, under the same lock,
+        // so the answer cannot go stale between the two.
+        const wouldEndNow =
+          standing.awaitingUserIds.length === 1 &&
+          standing.awaitingUserIds[0] === input.ownerUserId;
+        if (wouldEndNow && !input.endsNow) {
+          return { ...standing, dissolved: null };
+        }
 
         await tx.households.confirmHouseholdDissolution({
           householdId,

@@ -374,7 +374,7 @@ describe("removal and departure", () => {
       ],
     });
 
-    await recording.governance.confirmDissolution({ ownerUserId: ANA });
+    await recording.governance.confirmDissolution({ ownerUserId: ANA, endsNow: true });
 
     const families = [
       "actions",
@@ -419,7 +419,7 @@ describe("removal and departure", () => {
       ownerUserId: ANA,
       members: [[ANA, "owner"]],
     });
-    await dissolution.governance.confirmDissolution({ ownerUserId: ANA });
+    await dissolution.governance.confirmDissolution({ ownerUserId: ANA, endsNow: true });
 
     const expected = [
       "canceledActionReminders",
@@ -568,7 +568,7 @@ describe("dissolution", () => {
     ]);
     await fixture.invitations.sendInvitation({ ownerUserId: ANA, email: "dee@example.com" });
 
-    const state = await fixture.governance.confirmDissolution({ ownerUserId: ANA });
+    const state = await fixture.governance.confirmDissolution({ ownerUserId: ANA, endsNow: true });
 
     expect(state).toMatchObject({ required: 1, confirmed: 1, unanimous: true });
     expect(state.dissolved).toMatchObject({
@@ -595,13 +595,43 @@ describe("dissolution", () => {
       [BEN, "owner"],
     ]);
 
-    const first = await fixture.governance.confirmDissolution({ ownerUserId: ANA });
+    const first = await fixture.governance.confirmDissolution({ ownerUserId: ANA, endsNow: false });
     expect(first).toMatchObject({ required: 2, confirmed: 1, unanimous: false, dissolved: null });
     expect(await membershipFor(fixture, household.id, BEN)).toMatchObject({ status: "active" });
 
-    const second = await fixture.governance.confirmDissolution({ ownerUserId: BEN });
+    const second = await fixture.governance.confirmDissolution({ ownerUserId: BEN, endsNow: true });
     expect(second.unanimous).toBe(true);
     expect(second.dissolved).not.toBeNull();
+  });
+
+  /**
+   * The retyped phrase in front of the final press is what keeps a household
+   * from ending on a reflex, and `endsNow` is read off an Overview that can be a
+   * moment old. An owner still being offered an ordinary agreement - the one
+   * whose copy promises nothing changes yet - must not end the household for
+   * everyone because somebody else agreed while they were reading it.
+   */
+  it("declines a press offered as an agreement once it would be the last one", async () => {
+    const household = await seed(fixture, [
+      [ANA, "owner"],
+      [BEN, "owner"],
+    ]);
+    await fixture.governance.confirmDissolution({ ownerUserId: ANA, endsNow: false });
+
+    const state = await fixture.governance.confirmDissolution({ ownerUserId: BEN, endsNow: false });
+
+    // Nothing was written. Ben has still not agreed, so the household stands and
+    // the question returns to him as the final one it has become.
+    expect(state).toMatchObject({ required: 2, confirmed: 1, unanimous: false, dissolved: null });
+    expect(state.awaitingUserIds).toEqual([BEN]);
+    expect(await membershipFor(fixture, household.id, BEN)).toMatchObject({ status: "active" });
+    expect(
+      await fixture.store.households.getHouseholdWorkspace({ householdId: household.id }),
+    ).toMatchObject({ status: "active" });
+
+    // The same press, made knowingly, is the one that ends it.
+    const ended = await fixture.governance.confirmDissolution({ ownerUserId: BEN, endsNow: true });
+    expect(ended.dissolved).not.toBeNull();
   });
 
   it("lets any owner call the whole thing off", async () => {
@@ -609,7 +639,7 @@ describe("dissolution", () => {
       [ANA, "owner"],
       [BEN, "owner"],
     ]);
-    await fixture.governance.confirmDissolution({ ownerUserId: ANA });
+    await fixture.governance.confirmDissolution({ ownerUserId: ANA, endsNow: false });
 
     const state = await fixture.governance.cancelDissolution({ ownerUserId: BEN });
 
@@ -625,10 +655,10 @@ describe("dissolution", () => {
       [BEN, "owner"],
       [CAI, "member"],
     ]);
-    await fixture.governance.confirmDissolution({ ownerUserId: BEN });
+    await fixture.governance.confirmDissolution({ ownerUserId: BEN, endsNow: false });
     await fixture.governance.stepDownFromOwner({ userId: BEN });
 
-    const state = await fixture.governance.confirmDissolution({ ownerUserId: ANA });
+    const state = await fixture.governance.confirmDissolution({ ownerUserId: ANA, endsNow: true });
 
     expect(state).toMatchObject({ required: 1, confirmed: 1, unanimous: true });
     // Ana is now the only owner, so her own confirmation is unanimity — but Ben's
@@ -644,9 +674,9 @@ describe("dissolution", () => {
       [ANA, "owner"],
       [BEN, "member"],
     ]);
-    await expect(fixture.governance.confirmDissolution({ ownerUserId: BEN })).rejects.toThrow(
-      "Household owner permissions required.",
-    );
+    await expect(
+      fixture.governance.confirmDissolution({ ownerUserId: BEN, endsNow: true }),
+    ).rejects.toThrow("Household owner permissions required.");
   });
 
   /**
@@ -659,13 +689,13 @@ describe("dissolution", () => {
       [ANA, "owner"],
       [BEN, "member"],
     ]);
-    await fixture.governance.confirmDissolution({ ownerUserId: ANA });
+    await fixture.governance.confirmDissolution({ ownerUserId: ANA, endsNow: true });
 
     expect(Object.keys(fixture.governance)).not.toContain("restoreHousehold");
     for (const userId of [ANA, BEN]) {
-      await expect(fixture.governance.confirmDissolution({ ownerUserId: userId })).rejects.toThrow(
-        HOUSEHOLD_STANDING_ENDED,
-      );
+      await expect(
+        fixture.governance.confirmDissolution({ ownerUserId: userId, endsNow: true }),
+      ).rejects.toThrow(HOUSEHOLD_STANDING_ENDED);
       await expect(fixture.governance.leaveHousehold({ userId })).rejects.toThrow(
         HOUSEHOLD_STANDING_ENDED,
       );
@@ -680,7 +710,7 @@ describe("dissolution", () => {
    */
   it("refuses a former member in words the surface may show them", async () => {
     await seed(fixture, [[ANA, "owner"]]);
-    await fixture.governance.confirmDissolution({ ownerUserId: ANA });
+    await fixture.governance.confirmDissolution({ ownerUserId: ANA, endsNow: true });
 
     await expect(fixture.governance.leaveHousehold({ userId: ANA })).rejects.toBeInstanceOf(
       HouseholdValidationError,
@@ -689,7 +719,7 @@ describe("dissolution", () => {
 
   it("frees its creator to start a household again", async () => {
     await seed(fixture, [[ANA, "owner"]]);
-    await fixture.governance.confirmDissolution({ ownerUserId: ANA });
+    await fixture.governance.confirmDissolution({ ownerUserId: ANA, endsNow: true });
 
     await expect(
       fixture.store.households.createHouseholdWorkspace({
@@ -705,8 +735,8 @@ describe("dissolution", () => {
       [ANA, "owner"],
       [BEN, "owner"],
     ]);
-    await fixture.governance.confirmDissolution({ ownerUserId: ANA });
-    await fixture.governance.confirmDissolution({ ownerUserId: BEN });
+    await fixture.governance.confirmDissolution({ ownerUserId: ANA, endsNow: false });
+    await fixture.governance.confirmDissolution({ ownerUserId: BEN, endsNow: true });
 
     const [entry] = (
       await fixture.store.households.listAuditLogEntries({ ownerUserId: BEN })
@@ -830,7 +860,7 @@ describe("post-commit hooks", () => {
       ],
     });
 
-    await harness.governance.confirmDissolution({ ownerUserId: ANA });
+    await harness.governance.confirmDissolution({ ownerUserId: ANA, endsNow: true });
 
     // No `userId`: nobody in particular left, the household ended.
     expect(calls).toEqual([{ userId: undefined }]);

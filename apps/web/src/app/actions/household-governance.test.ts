@@ -125,9 +125,15 @@ describe("household governance actions", () => {
     };
     db.confirmHouseholdDissolution.mockResolvedValue(dissolution);
 
-    const result = await confirmHouseholdDissolutionAction();
+    const result = await confirmHouseholdDissolutionAction({ endsNow: false });
 
-    expect(db.confirmHouseholdDissolution).toHaveBeenCalledWith({ ownerUserId: "owner-1" });
+    // What the pressed control said it would do travels with the press, so the
+    // lifecycle can decline one offered as an ordinary agreement that has since
+    // become the last one needed.
+    expect(db.confirmHouseholdDissolution).toHaveBeenCalledWith({
+      ownerUserId: "owner-1",
+      endsNow: false,
+    });
     expect(result).toEqual({ ok: true, view: { dissolution, view: OVERVIEW } });
   });
 });

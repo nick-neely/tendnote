@@ -37,13 +37,17 @@ import type { OwnerActionResult } from "@/lib/owner-action-result";
 type OverviewAction = () => Promise<OwnerActionResult<HouseholdOverview>>;
 type DepartureAction = () => Promise<OwnerActionResult<{ view: HouseholdOverview | null }>>;
 type DissolutionAction = () => Promise<HouseholdDissolutionResult>;
+/** Carries what the pressed control said it would do, for the server to check. */
+type DissolutionConfirmAction = (input: {
+  endsNow: boolean;
+}) => Promise<HouseholdDissolutionResult>;
 
 export type HouseholdGovernanceActions = {
   acceptOffer?: OverviewAction;
   declineOffer?: OverviewAction;
   stepDown?: OverviewAction;
   leave?: DepartureAction;
-  confirmDissolution?: DissolutionAction;
+  confirmDissolution?: DissolutionConfirmAction;
   cancelDissolution?: DissolutionAction;
 };
 
@@ -54,9 +58,12 @@ export type HouseholdGovernanceActions = {
  * and read completely differently to the person. It travels beside the `null` so
  * the screen that replaces the household can say which one happened.
  *
- * It is derived from what came back, never from what was pressed. A reader whose
- * screen was one confirmation out of date presses a control labelled "agree" and
- * ends the household; the answer knows that and the label does not.
+ * It is derived from what came back, never from what was pressed. A screen that
+ * is one confirmation out of date can offer "End this household" for a press
+ * that only agrees - another owner withdrew in between - and the answer knows
+ * that while the label does not. The opposite mistake is not left to the label
+ * to get right: a press offered as an ordinary agreement that would in fact end
+ * the household is declined by the server rather than announced after the fact.
  */
 export type HouseholdEnding = {
   kind: "left" | "dissolved";
@@ -653,21 +660,12 @@ function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }
   }
 
   /**
-   * `announce` is a function of the answer, not of the press.
-   *
-   * `endsNow` below is a reading of an Overview that may be a moment old: if
-   * another owner agreed in between, a press this screen labelled "Agree to end
-   * it" is the one that ends the household. The server settles that, and it
-   * settles it in the only way that cannot be stale — the reader has an Overview
-   * afterwards, or they do not. Announcing the label rather than the outcome
-   * would tell that person their household still stands when it has just ended.
+   * The pending-and-error scaffolding both presses share. What each one made
+   * true is read off the answer by `settle`, never off the control that was
+   * pressed - `endsNow` below is a reading of an Overview that may be a moment
+   * old, and the server is the only thing that cannot be stale.
    */
-  function run(
-    action: DissolutionAction,
-    announce: (ended: boolean) => string,
-    close: boolean,
-    ending?: (ended: boolean) => HouseholdEnding | undefined,
-  ) {
+  function run(action: DissolutionAction, settle: (view: HouseholdOverview | null) => void) {
     if (pending) return;
     setError(null);
     startTransition(async () => {
@@ -677,14 +675,36 @@ function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }
           setError(result.error);
           return;
         }
-        if (close) setOpen(false);
-        const ended = result.view.view === null;
-        onOverviewChange(result.view.view, ending?.(ended));
-        onAnnounce(announce(ended));
+        settle(result.view.view);
       } catch {
         setError(HOUSEHOLD_GENERIC_ERROR);
       }
     });
+  }
+
+  /**
+   * What the confirmation turned out to be, in the three readings the answer can
+   * have.
+   *
+   * An Overview that still says this owner has not confirmed is the server
+   * declining the press: it was offered here as an ordinary agreement, and by
+   * the time it arrived it was the last one needed. Nothing was recorded, and
+   * that same Overview is what turns this dialog into the final question - the
+   * phrase gate included. The alternative is a household ending under a control
+   * whose own copy promised "nothing changes yet".
+   */
+  function settleConfirmation(view: HouseholdOverview | null) {
+    if (view && !view.dissolution.viewerHasConfirmed) {
+      onOverviewChange(view);
+      onAnnounce(
+        `Another owner agreed while this was open. Yours is now the press that ends ${overview.name}.`,
+      );
+      return;
+    }
+    setOpen(false);
+    const ended = view === null;
+    onOverviewChange(view, ended ? { kind: "dissolved", name: overview.name } : undefined);
+    onAnnounce(ended ? `${overview.name} has ended.` : `You've agreed to end ${overview.name}.`);
   }
 
   if (!dissolution.available) {
@@ -717,7 +737,12 @@ function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }
         <DissolutionWithdrawal
           error={error}
           householdName={overview.name}
-          onWithdraw={() => run(cancel, () => `Ending ${overview.name} was called off.`, false)}
+          onWithdraw={() =>
+            run(cancel, (view) => {
+              onOverviewChange(view);
+              onAnnounce(`Ending ${overview.name} was called off.`);
+            })
+          }
           pending={pending}
           stillWaitingOn={stillWaitingOn}
         />
@@ -728,15 +753,7 @@ function DissolutionRow({ overview, actions = {}, onOverviewChange, onAnnounce }
           error={error}
           errorId={errorId}
           householdName={overview.name}
-          onConfirm={() =>
-            run(
-              confirm,
-              (ended) =>
-                ended ? `${overview.name} has ended.` : `You've agreed to end ${overview.name}.`,
-              true,
-              (ended) => (ended ? { kind: "dissolved", name: overview.name } : undefined),
-            )
-          }
+          onConfirm={() => run(() => confirm({ endsNow }), settleConfirmation)}
           onOpenChange={handleOpenChange}
           onTyped={setTyped}
           open={open}

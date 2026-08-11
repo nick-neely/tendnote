@@ -744,8 +744,8 @@ describe("losing the member who was carrying the calendar", () => {
     const plan = await planForEvent(fixture, family.id);
     await warmCache(CAI, family.id, school.id);
 
-    await fixture.governance.confirmDissolution({ ownerUserId: ANA });
-    const state = await fixture.governance.confirmDissolution({ ownerUserId: BEN });
+    await fixture.governance.confirmDissolution({ ownerUserId: ANA, endsNow: false });
+    const state = await fixture.governance.confirmDissolution({ ownerUserId: BEN, endsNow: true });
 
     expect(state.dissolved).toMatchObject({ disconnectedCalendars: 2 });
     await expectCalendarEnded(family.id, "household_dissolved");

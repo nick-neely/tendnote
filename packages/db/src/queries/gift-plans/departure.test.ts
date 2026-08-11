@@ -93,7 +93,7 @@ describe("ending household access, end to end", () => {
       householdId,
     });
 
-    await governance.confirmDissolution({ ownerUserId: OWNER });
+    await governance.confirmDissolution({ ownerUserId: OWNER, endsNow: true });
 
     for (const [caller, giftPlanId] of [
       [OWNER, planId],

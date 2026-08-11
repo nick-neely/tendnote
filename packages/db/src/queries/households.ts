@@ -266,7 +266,7 @@ export function leaveHousehold(input: { userId: string }) {
   return defaultHouseholdGovernance.leaveHousehold(input);
 }
 
-export function confirmHouseholdDissolution(input: { ownerUserId: string }) {
+export function confirmHouseholdDissolution(input: { ownerUserId: string; endsNow: boolean }) {
   return defaultHouseholdGovernance.confirmDissolution(input);
 }
 
