@@ -5,6 +5,7 @@ import type {
   GeneralActionEvent,
   GeneralActionEventKind,
   GeneralActionLink,
+  GeneralActionOwnership,
   GeneralActionRecurrence,
   GeneralActionStatus,
   PrivacyScope,
@@ -12,6 +13,7 @@ import type {
 } from "@tendnote/domain";
 import { assetLabelForKind } from "@tendnote/domain/assets";
 import { describeRecurrence } from "@tendnote/domain/general-actions";
+import { responsibilityHolderLabel } from "@tendnote/domain/household-actions";
 import {
   formatSurfacingDay,
   resolveRecordSurfacing,
@@ -71,6 +73,77 @@ export type ActionSurfaceState = RecordSurfacingState;
  */
 export type GeneralActionMutationResult = OwnerActionResult<GeneralActionView>;
 
+/**
+ * A progress mutation's result: the authoritative view, plus what happened when
+ * the occurrence had already been settled by someone else.
+ *
+ * The view is *widened* rather than wrapped, mirroring the server outcome: every
+ * surface that ignores `reconciliation` behaves exactly as it did before shared
+ * Actions existed, and only the surfaces that can say something useful about a
+ * race have to know a race is possible. `null` means the tap advanced the record
+ * normally. Non-null is never an error — the member's report was truthful, it
+ * simply arrived second (ADR 0214).
+ */
+export type GeneralActionProgressView = GeneralActionView & {
+  reconciliation?: {
+    handledAs: "completed" | "skipped";
+    handledByUserId: string | null;
+    handledByName: string | null;
+    handledAtISO: string;
+  } | null;
+};
+
+export type GeneralActionProgressResult = OwnerActionResult<GeneralActionProgressView>;
+
+/**
+ * What this viewer may do to this Action, decided once from its ownership form
+ * and the viewer's relationship to it, so no surface has to re-derive the
+ * Phase Eight authority table and get a row of it wrong.
+ *
+ * Completing and reopening are deliberately absent: they are the one pair any
+ * member who can see a record may do, so a rendered row always offers them. What
+ * this narrows is everything else — a member-owned Action shared into the
+ * household stays its owner's to author, while a household-native one grants
+ * every active member the same authority (ADRs 0214, 0215).
+ */
+export type GeneralActionAuthority = {
+  /** Title, notes, due date, links, asset hints, recurrence, pause and resume. */
+  edit: boolean;
+  /** People links, which are one member's own records and never the household's. */
+  people: boolean;
+  /** "Not this time" — an authoring act on the shared occurrence, not a report. */
+  skip: boolean;
+  defer: boolean;
+  /** Archive and dismiss, which are decisions rather than reversible progress. */
+  archive: boolean;
+  /** Name, change, or clear who is looking after this. */
+  responsibility: boolean;
+  /** Change visibility; a household-native record has no audience to change. */
+  audience: boolean;
+  /** The one-way, confirmed hand-over of a member-owned record to the household. */
+  handToHousehold: boolean;
+};
+
+export function resolveGeneralActionAuthority(
+  ownership: GeneralActionOwnership,
+  owned: boolean,
+): GeneralActionAuthority {
+  // A household-native record is only ever projected for a member who can see it,
+  // and it is visible to every active member by definition — so "can see it" is
+  // "is an active member", which is the whole of its authority test (ADR 0214).
+  const householdNative = ownership === "household_native";
+  return {
+    edit: householdNative || owned,
+    people: !householdNative && owned,
+    skip: householdNative || owned,
+    defer: householdNative || owned,
+    archive: householdNative || owned,
+    responsibility: householdNative,
+    audience: !householdNative && owned,
+    handToHousehold: !householdNative && owned,
+  };
+}
+
 export type GeneralActionView = {
   id: string;
   /** Durable server revision used to reject older Action projections after a write. */
@@ -108,8 +181,43 @@ export type GeneralActionView = {
    * on it (complete, set aside, dismiss, archive) (ADR 0153).
    */
   owned: boolean;
-  /** The Action's owner, so a non-owner row can name who shared it (a co-member). */
+  /**
+   * The Action's owner, so a non-owner row can name who shared it (a co-member).
+   *
+   * Meaningless on a `household_native` record, where it is a storage key and not
+   * an owner: no surface may render it as an author, and `ownership` is what
+   * decides attribution and authority (ADR 0214).
+   */
   ownerUserId: string;
+  /**
+   * The member this projection was built for.
+   *
+   * The view is already viewer-relative — `owned`, `authority`, and the holder
+   * label all read against this member — and a household surface needs the id
+   * itself to name *itself* as the Responsibility Holder without threading the
+   * session through every row.
+   */
+  viewerUserId: string;
+  /** Whose record this is, which is not the question `scope` answers (ADR 0214). */
+  ownership: GeneralActionOwnership;
+  /**
+   * The occurrence this row was rendered against, sent back with a completion or
+   * skip so a second member acting on the same occurrence is reconciled rather
+   * than rolling it forward twice.
+   */
+  occurrenceVersion: number;
+  /** The active member named as looking after a household-native record. */
+  responsibilityHolderUserId: string | null;
+  /**
+   * "You're looking after this" / "Ana is looking after this", or `null`.
+   *
+   * Null when nobody is named — the ordinary, calmest state a household chore can
+   * be in — and the surface renders nothing rather than a placeholder, because
+   * "nobody has taken this on" would read as a reproach (ADR 0215).
+   */
+  responsibilityHolderLabel: string | null;
+  /** What this viewer may do to it, per the Phase Eight authority table. */
+  authority: GeneralActionAuthority;
   /** The Action's primary Area, or null when unfiled. Name resolves in the surface. */
   areaId: string | null;
   /** ISO due timestamp, or null when unscheduled. */
@@ -156,6 +264,9 @@ export function toGeneralActionView(
     recurrence: GeneralActionRecurrence | null;
     scope: PrivacyScope;
     ownerUserId: string;
+    ownership: GeneralActionOwnership;
+    responsibilityHolderUserId: string | null;
+    occurrenceVersion: number;
     /** How many members a `shared` Action reaches; 0 otherwise. */
     sharedWithCount: number;
     /** The household's name for a `shared`/`household` Action, when one exists. */
@@ -168,6 +279,14 @@ export function toGeneralActionView(
     now?: Date;
     callerUserId: string;
     linkedAssets?: GeneralActionLinkedAssetView[];
+    /**
+     * Display names for the caller's active co-members, so a named Responsibility
+     * Holder is resolved here rather than on the client. The Actions surface loads
+     * its household roster lazily, and a client-side lookup that has not arrived
+     * yet renders nothing — which is indistinguishable from nobody being named,
+     * the one state that must render nothing (ADR 0215).
+     */
+    memberNames?: ReadonlyMap<string, string>;
     reminderSchedule?: {
       kind: "exact" | "relative";
       localTime: string | null;
@@ -213,6 +332,17 @@ export function toGeneralActionView(
     visibilityLabel: surfacing.audienceLabel,
     owned: surfacing.owned,
     ownerUserId: action.ownerUserId,
+    viewerUserId: options.callerUserId,
+    ownership: action.ownership,
+    occurrenceVersion: action.occurrenceVersion,
+    responsibilityHolderUserId: action.responsibilityHolderUserId,
+    responsibilityHolderLabel: action.responsibilityHolderUserId
+      ? responsibilityHolderLabel({
+          holderName: options.memberNames?.get(action.responsibilityHolderUserId) ?? null,
+          isSelf: action.responsibilityHolderUserId === options.callerUserId,
+        })
+      : null,
+    authority: resolveGeneralActionAuthority(action.ownership, surfacing.owned),
     areaId: action.areaId,
     dueAtISO: action.dueAt?.toISOString() ?? null,
     dueAtDate: action.dueAt ? toDateInputValue(action.dueAt) : "",
@@ -238,6 +368,11 @@ const EVENT_LABELS: Record<GeneralActionEventKind, string> = {
   suggested: "Suggested",
   promoted: "Accepted",
   ignored: "Ignored",
+  // Household collaboration (ADRs 0214, 0215). Both read as plain statements of
+  // what changed. History says who said what about who is looking after this; it
+  // never scores it, and a hand-off is a change, not a handover of blame.
+  responsibility_changed: "Who's looking after this changed",
+  handed_to_household: "Handed to the household",
 };
 
 export type GeneralActionEventView = {
@@ -263,6 +398,16 @@ export function toGeneralActionEventView(
     const date = new Date(deferUntil);
     if (!Number.isNaN(date.getTime())) {
       label = `Set aside until ${formatSurfacingDay(date, now)}`;
+    }
+  }
+  if (event.kind === "responsibility_changed") {
+    // The three shapes of the one write, told apart by detail rather than by kind.
+    // Names are deliberately absent: history is read by whoever opens it, and a
+    // roster lookup here would be a second, quieter place attribution could drift.
+    if (event.detailJson?.handedOff === true) {
+      label = "Handed on";
+    } else if (event.detailJson?.holderUserId === null) {
+      label = "No one in particular is looking after this";
     }
   }
 

@@ -465,6 +465,150 @@ describe("cross-domain conversational Capture", () => {
     );
   });
 
+  it("keeps an inference private even when the explicit clause was chosen for the household", async () => {
+    // Review owns durable creation, and a shared durable record may never come
+    // from inference alone. Choosing the household scope widens the thing the
+    // member actually asked to save and nothing else: the secondary reading
+    // stays a private review artifact for them to accept or drop.
+    const store = createInMemorySavedItemLifecycleStore();
+    await seedHouseholdWithMembers(store, {
+      ownerUserId: "owner-1",
+      members: [["owner-1", "owner"]],
+    });
+    const createSuggestedMemory = vi.fn().mockImplementation(async (input) =>
+      actionMutationOutcome({
+        id: "suggested-memory-priya",
+        personId: input.personId,
+        sourceRecordId: input.sourceRecordId,
+        status: "suggested",
+      }),
+    );
+    const capture = createConversationalCapture(store, {
+      createSuggestedMemory,
+      resolveVisibility: createCaptureVisibilityResolver({
+        listMemberships: store.listActiveHouseholdMembershipsForUser,
+        listMembers: vi.fn().mockResolvedValue([]),
+      }),
+    });
+
+    const result = await capture.capture({
+      authority: "explicit",
+      interactionId: "household-explicit-private-inference",
+      inferredSuggestions: [
+        {
+          kind: "memory",
+          personId: "person-priya",
+          personName: "Priya",
+          content: "Priya might prefer oat milk",
+        },
+      ],
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "Buy oat milk",
+      requestedScope: "household",
+      surface: "eve",
+    });
+
+    // The explicit clause and its grounding evidence went to the household...
+    expect(result.sourceRecord.scope).toBe("household");
+    // ...and the inference is still a private suggestion nobody else can see.
+    expect(createSuggestedMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerUserId: "owner-1", personId: "person-priya" }),
+    );
+    const suggestedCall = createSuggestedMemory.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(suggestedCall.scope).toBeUndefined();
+    expect(suggestedCall.householdId).toBeUndefined();
+  });
+
+  it("never shares an inferred suggestion with the audience the explicit clause was shared with", async () => {
+    /**
+     * The one-token gap this pins.
+     *
+     * `shareMemoryOutcomes` writes a `household_record_shares` row for every
+     * memory outcome when the capture had a selected audience — and it is
+     * deliberately handed only the *explicit* outcomes. The inferred list sits on
+     * the adjacent line. Passing both would share a suggestion nobody accepted
+     * with people the member never showed it to, and every existing test would
+     * still pass, because the suggestion's own scope stays private either way.
+     *
+     * So the assertion is about the share registry rather than about the record:
+     * the explicit memory is shared, the inferred one is not, and Review keeps
+     * ownership of what becomes durable and visible.
+     */
+    const store = createInMemorySavedItemLifecycleStore();
+    const household = await seedHouseholdWithMembers(store, {
+      ownerUserId: "owner-1",
+      members: [
+        ["owner-1", "owner"],
+        ["member-1", "member"],
+      ],
+    });
+    const createApprovedMemory = vi.fn().mockResolvedValue(
+      actionMutationOutcome({
+        id: "memory-explicit",
+        status: "approved",
+        sourceRecordId: "filled-by-expectation",
+        personId: "person-priya",
+      }),
+    );
+    const createSuggestedMemory = vi.fn().mockResolvedValue(
+      actionMutationOutcome({
+        id: "memory-inferred",
+        status: "suggested",
+        sourceRecordId: "filled-by-expectation",
+        personId: "person-priya",
+      }),
+    );
+    const capture = createConversationalCapture(store, {
+      createApprovedMemory,
+      createSuggestedMemory,
+      searchPeople: vi.fn().mockResolvedValue([{ id: "person-priya", displayName: "Priya" }]),
+      resolveVisibility: createCaptureVisibilityResolver({
+        listMemberships: store.listActiveHouseholdMembershipsForUser,
+        listMembers: vi.fn().mockResolvedValue([]),
+      }),
+    });
+
+    await capture.capture({
+      authority: "explicit",
+      contextVisibility: {
+        scope: "shared",
+        householdId: household.id,
+        selectedUserIds: ["member-1"],
+        label: "Alex",
+      },
+      inferredSuggestions: [
+        {
+          kind: "memory",
+          personId: "person-priya",
+          personName: "Priya",
+          content: "Priya might prefer oat milk",
+        },
+      ],
+      interactionId: "shared-explicit-plus-inference",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "Remember that Priya prefers oat milk",
+      surface: "eve",
+    });
+
+    const shared = await store.listHouseholdRecordShares({
+      householdId: household.id,
+      recordKind: "memory",
+      recordId: "memory-inferred",
+    });
+    expect(shared).toEqual([]);
+
+    // ...while the record the member actually asked to save did reach its audience,
+    // so this is a statement about inference and not about sharing being broken.
+    const explicit = await store.listHouseholdRecordShares({
+      householdId: household.id,
+      recordKind: "memory",
+      recordId: "memory-explicit",
+    });
+    expect(explicit.map((share) => share.sharedWithUserId)).toEqual(["member-1"]);
+  });
+
   it("keeps inferred secondary outcomes typed, private, review-gated, and source-grounded", async () => {
     const store = createInMemorySavedItemLifecycleStore();
     const createGeneralAction = vi
@@ -634,6 +778,91 @@ describe("cross-domain conversational Capture", () => {
       sourceRecordId: original.sourceRecord.id,
     });
     expect(deleteCapturedPerson).not.toHaveBeenCalled();
+  });
+
+  it("shares a capture only when the caller deliberately chose the household scope", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const household = await seedHouseholdWithMembers(store, {
+      ownerUserId: "owner-1",
+      members: [
+        ["owner-1", "owner"],
+        ["member-1", "member"],
+      ],
+    });
+    const capture = createConversationalCapture(store, {
+      resolveVisibility: createCaptureVisibilityResolver({
+        listMemberships: store.listActiveHouseholdMembershipsForUser,
+        listMembers: vi.fn().mockResolvedValue([]),
+      }),
+    });
+
+    const result = await capture.capture({
+      authority: "explicit",
+      interactionId: "explicit-household-scope",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      // No audience suffix, no plural pronoun: the scope is the caller's control.
+      originalText: "Replace the refrigerator water filter",
+      requestedScope: "household",
+      surface: "eve",
+    });
+
+    // The household comes from the caller's own membership rows, never from the
+    // request: the tool passed a word, and the seam resolved a workspace.
+    expect(result.savedItem).toMatchObject({ scope: "household", householdId: household.id });
+    expect(result.sourceRecord.scope).toBe("household");
+    expect(result.confirmation).toMatchObject({ interpreted: { visibility: "Household" } });
+  });
+
+  it("keeps a capture private when the caller chose private, whatever the words say", async () => {
+    // A deliberate choice outranks the sentence. Re-parsing the text after the
+    // member has already answered the question is a second answer waiting to
+    // disagree with the first.
+    const store = createInMemorySavedItemLifecycleStore();
+    await seedHouseholdWithMembers(store, {
+      ownerUserId: "owner-1",
+      members: [["owner-1", "owner"]],
+    });
+    const capture = createConversationalCapture(store, {
+      resolveVisibility: createCaptureVisibilityResolver({
+        listMemberships: store.listActiveHouseholdMembershipsForUser,
+        listMembers: vi.fn().mockResolvedValue([]),
+      }),
+    });
+
+    const result = await capture.capture({
+      authority: "explicit",
+      interactionId: "explicit-private-scope",
+      inputMode: "typed",
+      ownerUserId: "owner-1",
+      originalText: "Order a new filter and share this with my household",
+      requestedScope: "private",
+      surface: "eve",
+    });
+
+    expect(result.savedItem).toMatchObject({ scope: "private", householdId: null });
+  });
+
+  it("refuses a household capture from someone with no household rather than quietly going private", async () => {
+    const store = createInMemorySavedItemLifecycleStore();
+    const capture = createConversationalCapture(store, {
+      resolveVisibility: createCaptureVisibilityResolver({
+        listMemberships: store.listActiveHouseholdMembershipsForUser,
+        listMembers: vi.fn().mockResolvedValue([]),
+      }),
+    });
+
+    await expect(
+      capture.capture({
+        authority: "explicit",
+        interactionId: "household-scope-without-household",
+        inputMode: "typed",
+        ownerUserId: "owner-1",
+        originalText: "Replace the refrigerator water filter",
+        requestedScope: "household",
+        surface: "eve",
+      }),
+    ).rejects.toThrow(/household/i);
   });
 
   it("never widens capture visibility from plural wording", async () => {

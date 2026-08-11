@@ -51,6 +51,10 @@ export function CreateAssetForm({
   const trimmedName = name.trim();
   const selectedMembersRequired =
     visibilityChoice === "selected_members" && selectedUserIds.length === 0;
+  // Choosing the whole household is choosing to hand the thing over, not just to
+  // widen who sees it — the same equivalence the Actions composer makes, so one
+  // gesture does not mean two things in one product (ADR 0214, #383, #386).
+  const householdNative = visibilityChoice === "whole_household";
 
   function reset() {
     setName("");
@@ -139,6 +143,16 @@ export function CreateAssetForm({
               selectedUserIds={selectedUserIds}
               value={visibilityChoice}
             />
+            {/* One line, stated once, in the words the Actions composer already
+                uses, because the difference is real and not recoverable later.
+                Said plainly and left alone — not a warning, not a callout, and
+                never repeated on the row afterwards. */}
+            {householdNative ? (
+              <p className="text-[length:var(--text-small)] text-muted-foreground">
+                This becomes the household's, not yours: everyone can edit it, and it stays if you
+                leave.
+              </p>
+            ) : null}
             <AudiencePreview
               choice={visibilityChoice}
               householdSize={shareableMembers.length + 1}

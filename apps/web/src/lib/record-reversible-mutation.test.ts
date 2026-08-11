@@ -6,7 +6,12 @@ import {
   reopenFollowupAction,
   restoreArchivedFollowupAction,
 } from "@/app/actions/followups";
-import { archiveSavedItemAction, reopenSavedItemAction } from "@/app/actions/saved-items";
+import {
+  archiveHouseholdSavedItemAction,
+  archiveSavedItemAction,
+  reopenSavedItemAction,
+  restoreHouseholdSavedItemAction,
+} from "@/app/actions/saved-items";
 import { followupLifecycleAdapter } from "@/lib/followup-reversible-mutation";
 import { savedItemLifecycleAdapter } from "@/lib/saved-item-reversible-mutation";
 import {
@@ -25,8 +30,10 @@ vi.mock("@/app/actions/followups", () => ({
 }));
 
 vi.mock("@/app/actions/saved-items", () => ({
+  archiveHouseholdSavedItemAction: vi.fn(),
   archiveSavedItemAction: vi.fn(),
   reopenSavedItemAction: vi.fn(),
+  restoreHouseholdSavedItemAction: vi.fn(),
 }));
 
 const followup = {
@@ -55,16 +62,30 @@ const savedItem = {
   url: null,
   status: "active" as const,
   archived: false,
-  ownerUserId: "owner",
+  ownerUserId: "owner" as string | null,
+  ownership: "member_owned" as const,
+  version: 1,
   owned: true,
+  canEdit: true,
+  canDeleteEvidence: true,
   bringBackAt: null,
   bringBackState: null,
   bringBackLabel: null,
   scope: "private" as const,
   visibilityLabel: "Only you",
+  createdByLabel: null,
+  lastChangedByLabel: null,
   sourceRecordId: "33333333-3333-4333-8333-333333333333",
   resolutionReason: null,
   outcomes: [],
+};
+
+const householdSavedItem = {
+  ...savedItem,
+  ownerUserId: null,
+  ownership: "household_native" as const,
+  scope: "household" as const,
+  visibilityLabel: "Household",
 };
 
 beforeEach(() => vi.resetAllMocks());
@@ -104,10 +125,10 @@ describe("record reversible-mutation adapters", () => {
   });
 
   it("projects Saved Item archive and uses reopen as its inverse", async () => {
-    const projected = savedItemLifecycleAdapter("archive").project(savedItem);
+    const projected = savedItemLifecycleAdapter("archive", "member_owned").project(savedItem);
     vi.mocked(reopenSavedItemAction).mockResolvedValue({ ok: true, view: savedItem });
 
-    await savedItemLifecycleAdapter("archive").inverse(savedItem, projected);
+    await savedItemLifecycleAdapter("archive", "member_owned").inverse(savedItem, projected);
 
     expect(projected).toBe(savedItem);
     expect(reopenSavedItemAction).toHaveBeenCalledWith({ savedItemId: savedItem.id });
@@ -117,9 +138,43 @@ describe("record reversible-mutation adapters", () => {
     const prior = { ...savedItem, status: "archived" as const, archived: true };
     vi.mocked(archiveSavedItemAction).mockResolvedValue({ ok: true, view: prior });
 
-    await savedItemLifecycleAdapter("reopen").inverse(prior, savedItem);
+    await savedItemLifecycleAdapter("reopen", "member_owned").inverse(prior, savedItem);
 
     expect(archiveSavedItemAction).toHaveBeenCalledWith({ savedItemId: prior.id });
+  });
+
+  it("inverses a household-native Saved Item through the household boundary", async () => {
+    vi.mocked(restoreHouseholdSavedItemAction).mockResolvedValue({
+      ok: true,
+      view: householdSavedItem,
+    });
+
+    await savedItemLifecycleAdapter("archive", "household_native").inverse(
+      householdSavedItem,
+      householdSavedItem,
+    );
+
+    expect(restoreHouseholdSavedItemAction).toHaveBeenCalledWith({
+      savedItemId: householdSavedItem.id,
+    });
+    expect(reopenSavedItemAction).not.toHaveBeenCalled();
+  });
+
+  it("archives a household-native Saved Item back when reopen is undone", async () => {
+    vi.mocked(archiveHouseholdSavedItemAction).mockResolvedValue({
+      ok: true,
+      view: householdSavedItem,
+    });
+
+    await savedItemLifecycleAdapter("reopen", "household_native").inverse(
+      householdSavedItem,
+      householdSavedItem,
+    );
+
+    expect(archiveHouseholdSavedItemAction).toHaveBeenCalledWith({
+      savedItemId: householdSavedItem.id,
+    });
+    expect(archiveSavedItemAction).not.toHaveBeenCalled();
   });
 
   it("projects Today suppression by removing the candidate and delegates its inverse", async () => {

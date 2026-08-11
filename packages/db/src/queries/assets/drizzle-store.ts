@@ -18,6 +18,7 @@ import {
   relationshipContextEmbeddingJobs,
   relationshipContextEmbeddings,
 } from "../../schema";
+import { provenVisibleRecord } from "../households/authorization";
 import { createDrizzleHouseholdStore } from "../households/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
@@ -123,7 +124,25 @@ export function createDrizzleAssetStore(): AssetStore {
           ),
         )
         .limit(1);
-      return asset ? assetSchema.parse(asset) : null;
+
+      // As with General Actions: the predicate narrows, the proof authorizes, and
+      // a refusal is indistinguishable from an asset that is not there.
+      const proven = await provenVisibleRecord({
+        callerUserId: input.callerUserId,
+        row: asset,
+        facts: (row) => ({
+          kind: "asset",
+          id: row.id,
+          ownerUserId: row.ownerUserId,
+          scope: row.scope,
+          householdId: row.householdId,
+          // Without the ownership form the proof cannot tell a member-owned
+          // household-scope Asset from the household's own (ADR 0214).
+          ownership: row.ownership,
+        }),
+      });
+
+      return proven ? assetSchema.parse(proven) : null;
     },
     async updateAsset(input) {
       // Validate the patched fields so constraints hold for direct store callers.
@@ -133,7 +152,9 @@ export function createDrizzleAssetStore(): AssetStore {
       const patch = assetUpdateSchema.parse(input.patch);
       const [asset] = await getDb()
         .update(assets)
-        .set({ ...patch, updatedAt: new Date() })
+        // The fence is bumped in SQL rather than read-then-written, so two
+        // concurrent writers can never land on the same revision (#386).
+        .set({ ...patch, revision: sql`${assets.revision} + 1`, updatedAt: new Date() })
         .where(and(eq(assets.id, input.assetId), eq(assets.ownerUserId, input.ownerUserId)))
         .returning();
       if (!asset) {

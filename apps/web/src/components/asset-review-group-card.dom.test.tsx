@@ -60,6 +60,7 @@ function reviewFixture(overrides: Partial<AssetReviewGroupView> = {}): AssetRevi
       kindLabel: "Appliance",
       scope: "private",
       visibilityLabel: "Only me",
+      ownership: "member_owned",
       pending: true,
     },
     memories: [
@@ -118,6 +119,30 @@ describe("AssetReviewGroupCard", () => {
     expect(screen.getByText(/New fridge filter is EDR3RXD1/)).toBeDefined();
   });
 
+  it("names a chosen audience, but never invents one for a household-native anchor", () => {
+    // Shared *with* the household is a decision worth stating; being the household's own
+    // record is not one anybody made, so the chip stays off (ADR 0214).
+    const anchor = { scope: "household" as const, visibilityLabel: "The Shahs" };
+    const { unmount } = render(
+      <AssetReviewGroupCard
+        onResolve={vi.fn()}
+        review={reviewFixture({ asset: { ...reviewFixture().asset, ...anchor } })}
+      />,
+    );
+    expect(screen.getByText("The Shahs")).toBeDefined();
+    unmount();
+
+    render(
+      <AssetReviewGroupCard
+        onResolve={vi.fn()}
+        review={reviewFixture({
+          asset: { ...reviewFixture().asset, ...anchor, ownership: "household_native" },
+        })}
+      />,
+    );
+    expect(screen.queryByText("The Shahs")).toBeNull();
+  });
+
   it("names the originating action for a promoted hint, even without a source record", () => {
     render(
       <AssetReviewGroupCard
@@ -172,6 +197,7 @@ describe("AssetReviewGroupCard", () => {
         kindLabel: "Appliance",
         scope: "private",
         visibilityLabel: "Only me",
+        ownership: "member_owned",
         pending: false,
       },
       duplicates: [],
@@ -291,6 +317,7 @@ describe("AssetReviewGroupCard", () => {
         kindLabel: "Appliance",
         scope: "private",
         visibilityLabel: "Only me",
+        ownership: "member_owned",
         pending: false,
       },
       duplicates: [],
@@ -328,6 +355,8 @@ describe("AssetReviewGroupCard", () => {
       renewsOnLabel: null,
       scope: "private" as const,
       owned: true,
+      ownership: "member_owned",
+      canRemove: true,
       addedLabel: "Added Jul 13",
     };
     addAssetEvidenceAction.mockResolvedValue({ ok: true, view: attached });
@@ -379,6 +408,8 @@ describe("AssetReviewGroupCard", () => {
           renewsOnLabel: null,
           scope: "private" as const,
           owned: true,
+          ownership: "member_owned",
+          canRemove: true,
           addedLabel: "Added Jul 13",
         },
       ],
@@ -423,6 +454,8 @@ describe("AssetReviewGroupCard", () => {
           renewsOnLabel: null,
           scope: "private" as const,
           owned: true,
+          ownership: "member_owned",
+          canRemove: true,
           addedLabel: "Added Jul 13",
         },
       ],

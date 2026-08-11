@@ -18,6 +18,7 @@ import {
   CalendarIcon,
   CircleDotIcon,
   CircleUserRoundIcon,
+  GiftIcon,
   type Icon,
   MonitorIcon,
   MoonIcon,
@@ -26,6 +27,7 @@ import {
   SearchIcon,
   StickyNoteIcon,
   SunIcon,
+  UsersRoundIcon,
 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -737,6 +739,11 @@ type RecallGroup = {
 const FAMILY_HEADINGS: Record<GlobalRecallFamily, string> = {
   person: "People",
   self_context: "Self Context",
+  // Named in full beside "Self Context" rather than shortened to "Household":
+  // the two headings sit one above the other whenever a search touches both,
+  // and a member reading a shared statement has to be able to tell at a glance
+  // that it is not something they wrote about themselves.
+  household_context: "Household Context",
   relationship_context: "Memories",
   follow_up: "Follow-Ups",
   general_action: "Actions",
@@ -744,11 +751,15 @@ const FAMILY_HEADINGS: Record<GlobalRecallFamily, string> = {
   asset_memory: "Asset details",
   saved_item: "Saved Items",
   calendar_event: "Calendar",
+  gift_plan: "Gift plans",
 };
 
 const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
   person: BookUserIcon,
   self_context: CircleUserRoundIcon,
+  // One person against several: the glyphs carry the same distinction the
+  // headings do, for a row read at a glance rather than word by word.
+  household_context: UsersRoundIcon,
   relationship_context: StickyNoteIcon,
   follow_up: BellIcon,
   general_action: CircleDotIcon,
@@ -756,12 +767,14 @@ const FAMILY_ICONS: Record<GlobalRecallFamily, Icon> = {
   asset_memory: BoxIcon,
   saved_item: BookmarkIcon,
   calendar_event: CalendarIcon,
+  gift_plan: GiftIcon,
 };
 
 /** Families in reading order: who first, then what was said, then what is owed. */
 const FAMILY_ORDER: GlobalRecallFamily[] = [
   "person",
   "self_context",
+  "household_context",
   "relationship_context",
   "follow_up",
   "general_action",
@@ -769,6 +782,10 @@ const FAMILY_ORDER: GlobalRecallFamily[] = [
   "asset_memory",
   "saved_item",
   "calendar_event",
+  // Last: a plan is the least likely thing a search was reaching for, and it is
+  // the one family whose heading appearing at all is a small disclosure. Keeping
+  // it below the everyday families means an ordinary search never leads with it.
+  "gift_plan",
 ];
 
 /**
@@ -866,6 +883,14 @@ function paletteCommandGroups({
     },
     {
       heading: "Go to",
+      /**
+       * The destinations every viewer has. A conditional one — Household, which
+       * exists only while a membership does — is deliberately left out: the
+       * palette renders outside the boundary that resolves the viewer's
+       * standings, and a shortcut to a destination that may have ended reads
+       * worse than one that is simply absent. The rail and the phone Menu carry
+       * it, and Global Recall still returns the household's own records.
+       */
       commands: destinationsInGroup("desktop-primary").map((destination) => ({
         id: `go-to-${destination.id}`,
         label: destination.label,

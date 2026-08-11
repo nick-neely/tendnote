@@ -1,4 +1,5 @@
 import { ensureDefaultGeneralActionAreas } from "@tendnote/db/queries/general-action-areas";
+import { listShareableHouseholdMembersForUser } from "@tendnote/db/queries/households";
 import Link from "next/link";
 import { connection } from "next/server";
 import { ActionsSurface } from "@/components/actions-surface";
@@ -29,6 +30,17 @@ async function ActionsContent() {
   // linking data stays behind the controls that reveal it (ADR 0206).
   await ensureDefaultGeneralActionAreas({ ownerUserId });
   const primary = await getCachedActionPrimaryViews({ ownerUserId, now });
+  // The household roster is still secondary data, but a row that is the
+  // household's, or someone else's, needs a name to attribute it to and members to
+  // hand it to — and those are on screen from the first paint. So it is read only
+  // when the visible ledger actually holds such a row; a private-only surface pays
+  // nothing for it (ADR 0206).
+  const needsHousehold = primary.active.some(
+    (action) => action.ownership === "household_native" || !action.owned,
+  );
+  const shareableMembers = needsHousehold
+    ? await listShareableHouseholdMembersForUser({ userId: ownerUserId })
+    : [];
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <header className="flex flex-col gap-1">
@@ -53,6 +65,11 @@ async function ActionsContent() {
         active={primary.active}
         areas={primary.areas}
         resolvedLimit={RESOLVED_LIMIT}
+        shareableMembers={shareableMembers.map((member) => ({
+          userId: member.userId,
+          name: member.name,
+          email: member.email,
+        }))}
       />
     </div>
   );

@@ -57,6 +57,30 @@ function selfContextResult(): GlobalRecallResponse["results"][number] {
   };
 }
 
+/** The same statement, said by the household instead of by the owner. */
+function householdContextResult(): GlobalRecallResponse["results"][number] {
+  return {
+    family: "household_context",
+    canonical: { kind: "context_fact", id: "household-fact-1" },
+    label: "I run a software consultancy.",
+    supportingText: "Composition",
+    lifecycle: "active",
+    match: { kind: "exact", reason: "Matched Household Context content", excerpt: "software" },
+    trust: "household_context",
+    sensitivity: "normal",
+    visibility: { choice: "whole_household", label: "Whole household" },
+    grounding: [{ kind: "context_fact", id: "household-fact-1" }],
+    href: "/account/household/context#household-context-fact-household-fact-1",
+    parent: null,
+    details: {
+      content: "I run a software consultancy.",
+      category: "composition",
+      categoryLabel: "Composition",
+      provenance: { channel: "account", origin: "direct" },
+    },
+  };
+}
+
 describe("Global Recall mobile result rows", () => {
   it("renders a flat canonical link with progressive Why disclosure", () => {
     const html = renderToStaticMarkup(
@@ -105,6 +129,30 @@ describe("Global Recall mobile result rows", () => {
 
     expect(html).toContain("I run a software consultancy.");
     expect(html).toContain("Work");
+    expect(html).toContain("/account/about-you#context-fact-context-fact-1");
+    expect(html).toContain("Only me");
+  });
+
+  /**
+   * The subjects must not be conflated. Same words, same match strength, same
+   * section - so the row has to say on its own face which one it is, and link
+   * to the surface where that subject is actually corrected.
+   */
+  it("renders a Household Context row as the household's, not as a private one", () => {
+    const html = renderToStaticMarkup(
+      <RecallResultSection
+        expanded={[]}
+        label="Exact"
+        onNavigate={vi.fn()}
+        onToggle={vi.fn()}
+        // The household row repeats the Self row's exact wording on purpose.
+        results={[householdContextResult(), selfContextResult()]}
+      />,
+    );
+
+    expect(html).toContain("Household Context · Composition");
+    expect(html).toContain("/account/household/context#household-context-fact-household-fact-1");
+    expect(html).toContain("Whole household");
     expect(html).toContain("/account/about-you#context-fact-context-fact-1");
     expect(html).toContain("Only me");
   });

@@ -3,9 +3,11 @@ import { createContextFactQueries } from "./context-facts/queries";
 import type {
   AcceptSuggestedContextFactMutationInput,
   ArchiveContextFactMutationInput,
+  ArchiveHouseholdContextFactMutationInput,
   ArchiveSelfContextFactMutationInput,
   ContextFactCallerVerification,
   CreateContextFactMutationInput,
+  CreateHouseholdContextFactMutationInput,
   CreateSelfContextFactMutationInput,
   CreateSuggestedContextFactMutationInput,
   CreateSuggestedSelfContextFactMutationInput,
@@ -14,12 +16,17 @@ import type {
   GetContextFactInput,
   GetOrientationContextInput,
   ListContextFactsInput,
+  ListHouseholdContextFactsInput,
+  RestoreHouseholdContextFactMutationInput,
   RestoreSelfContextFactMutationInput,
+  SearchHouseholdContextFactsInput,
   SearchSelfContextFactsInput,
   UpdateContextFactMutationInput,
+  UpdateHouseholdContextFactMutationInput,
   UpdateSelfContextFactMutationInput,
 } from "./context-facts/types";
 import { createDrizzleHouseholdStore } from "./households/drizzle-store";
+import { createDrizzleSourceRecordAudienceReader } from "./source-records/drizzle-store";
 
 export { createDrizzleContextFactStore } from "./context-facts/drizzle-store";
 export { createInMemoryContextFactStore } from "./context-facts/in-memory-store";
@@ -29,6 +36,9 @@ export type * from "./context-facts/types";
 function createVerifiedContextFactQueries(resolveVerifiedCaller: ContextFactCallerVerification) {
   return createContextFactQueries(createDrizzleContextFactStore(), {
     householdAccess: createDrizzleHouseholdStore(),
+    // The one source-record read: whether a household suggestion's evidence is
+    // itself household-visible. Narrowed to that question at the seam.
+    sourceRecords: createDrizzleSourceRecordAudienceReader(),
     resolveVerifiedCaller,
   });
 }
@@ -109,13 +119,6 @@ export function updateContextFact(
   return createVerifiedContextFactQueries(resolveVerifiedCaller).updateContextFact(input);
 }
 
-export function updateHouseholdContextFact(
-  input: UpdateContextFactMutationInput,
-  resolveVerifiedCaller: ContextFactCallerVerification,
-) {
-  return createVerifiedContextFactQueries(resolveVerifiedCaller).updateHouseholdContextFact(input);
-}
-
 export function archiveSelfContextFact(
   input: ArchiveSelfContextFactMutationInput,
   resolveVerifiedCaller: ContextFactCallerVerification,
@@ -130,13 +133,6 @@ export function archiveContextFact(
   return createVerifiedContextFactQueries(resolveVerifiedCaller).archiveContextFact(input);
 }
 
-export function archiveHouseholdContextFact(
-  input: ArchiveContextFactMutationInput,
-  resolveVerifiedCaller: ContextFactCallerVerification,
-) {
-  return createVerifiedContextFactQueries(resolveVerifiedCaller).archiveHouseholdContextFact(input);
-}
-
 export function restoreSelfContextFact(
   input: RestoreSelfContextFactMutationInput,
   resolveVerifiedCaller: ContextFactCallerVerification,
@@ -149,6 +145,49 @@ export function deleteSelfContextFact(
   resolveVerifiedCaller: ContextFactCallerVerification,
 ) {
   return createVerifiedContextFactQueries(resolveVerifiedCaller).deleteSelfContextFact(input);
+}
+
+export function listHouseholdContextFacts(
+  input: ListHouseholdContextFactsInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).listHouseholdContextFacts(input);
+}
+
+/** Active Household Context as an exact Global Recall result for an active member. */
+export function searchHouseholdContextFacts(
+  input: SearchHouseholdContextFactsInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).searchHouseholdContextFacts(input);
+}
+
+export function createHouseholdContextFact(
+  input: CreateHouseholdContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).createHouseholdContextFact(input);
+}
+
+export function updateHouseholdContextFact(
+  input: UpdateHouseholdContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).updateHouseholdContextFact(input);
+}
+
+export function archiveHouseholdContextFact(
+  input: ArchiveHouseholdContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).archiveHouseholdContextFact(input);
+}
+
+export function restoreHouseholdContextFact(
+  input: RestoreHouseholdContextFactMutationInput,
+  resolveVerifiedCaller: ContextFactCallerVerification,
+) {
+  return createVerifiedContextFactQueries(resolveVerifiedCaller).restoreHouseholdContextFact(input);
 }
 
 export function listContextFacts(

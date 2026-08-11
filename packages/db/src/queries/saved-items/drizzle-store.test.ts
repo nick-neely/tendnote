@@ -7,6 +7,10 @@ const migration = readFileSync(
   join(import.meta.dirname, "../../../migrations/0045_saved_items.sql"),
   "utf8",
 );
+const ownershipMigration = readFileSync(
+  join(import.meta.dirname, "../../../migrations/0067_household_native_saved_items.sql"),
+  "utf8",
+);
 
 describe("Saved Item Drizzle store contract", () => {
   it("owner-keys direct reads and mutations and uses shared visibility for caller reads", () => {
@@ -31,6 +35,49 @@ describe("Saved Item Drizzle store contract", () => {
     expect(migration).toContain("ON DELETE restrict");
     expect(migration).toContain("ADD VALUE 'saved_item'");
     expect(migration).toContain("ADD VALUE 'saved_context'");
+  });
+
+  it("proves the single-record visible read before returning the row", () => {
+    // The predicate narrows; the proof authorizes. Without this a row that
+    // passed a stale-by-a-request SQL filter would come back unchecked, and the
+    // record's ownership form, lifecycle, and sensitivity - none of which SQL
+    // evaluates - would never be consulted (ADR 0219).
+    expect(source).toContain("provenVisibleRecord");
+    expect(source).toContain("ownership: row.ownership");
+    // Null on refusal, indistinguishable from a Saved Item that is not there.
+    expect(source).toContain("proven ? savedItemSchema.parse(proven) : null");
+  });
+
+  it("guards the household-native write by version and ownership in one statement", () => {
+    // Comparing the version outside the UPDATE would leave a read-then-write gap
+    // two members could both pass, which is the last-write-wins this domain
+    // refuses. The ownership clause keeps the versioned path off member-owned
+    // rows entirely.
+    expect(source).toContain("async updateHouseholdNativeSavedItem(input)");
+    expect(source).toContain('eq(savedItems.ownership, "household_native")');
+    expect(source).toContain("eq(savedItems.version, input.expectedVersion)");
+    expect(source).toMatch(/version: sql`\$\{savedItems\.version\} \+ 1`/);
+  });
+
+  it("matches a household-native audit trail on a null owner rather than by equality", () => {
+    // `owner_user_id = NULL` is never true, so a workspace-owned item's own
+    // history would be invisible to it without the null-aware key.
+    expect(source).toContain("isNull(savedItemEvents.ownerUserId)");
+    expect(source).toContain("ownerEventKey(");
+  });
+
+  it("ships the workspace-ownership columns and their constraint in the descriptive migration", () => {
+    expect(ownershipMigration).toContain('ALTER TABLE "saved_items" ALTER COLUMN "owner_user_id"');
+    expect(ownershipMigration).toContain("DROP NOT NULL");
+    expect(ownershipMigration).toContain('ADD COLUMN "ownership"');
+    expect(ownershipMigration).toContain('ADD COLUMN "version"');
+    // The constraint is what stops an adapter inventing a third ownership form:
+    // a member-owned row names its member, a household-native row names none and
+    // is whole-household visible with its creator recorded (ADR 0214).
+    expect(ownershipMigration).toContain('CONSTRAINT "saved_items_ownership_check"');
+    expect(ownershipMigration).toContain(`"saved_items"."owner_user_id" is null`);
+    expect(ownershipMigration).toContain(`"saved_items"."scope" = 'household'`);
+    expect(ownershipMigration).toContain(`"saved_items"."created_by_user_id" is not null`);
   });
 
   it("deletes unique source evidence and derived semantic material in one owner-scoped transaction", () => {

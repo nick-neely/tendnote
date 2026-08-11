@@ -99,9 +99,51 @@ export const generalActionRecurrenceSchema = z.object({
 });
 export type GeneralActionRecurrence = z.infer<typeof generalActionRecurrenceSchema>;
 
+/**
+ * Who a General Action belongs to, which is not the question `scope` answers.
+ *
+ * `member_owned` is every Action written before Phase Eight and every one a
+ * member writes for themselves: widening its audience to the household changes
+ * who can see it and never who may author it. `household_native` belongs to the
+ * Household Workspace — the bins, the water filter, the parking permit — so
+ * every active member holds the same authority over it, its creator holds no
+ * more than anyone else, and it stays with the household when its creator leaves
+ * (ADR 0214).
+ */
+export const generalActionOwnershipSchema = z.enum(["member_owned", "household_native"]);
+export type GeneralActionOwnership = z.infer<typeof generalActionOwnershipSchema>;
+
 export const generalActionSchema = z.object({
   id: z.string(),
+  /**
+   * On a `member_owned` Action, its author and its authority.
+   *
+   * On a `household_native` one it is a **storage key only**: the member who
+   * created it, kept because the column is `NOT NULL` and because every
+   * owner-keyed write and history row hangs off it. It confers nothing. Nothing
+   * may read it to decide authority — that is `ownership`'s job, through the
+   * Household Authorization Proof — and no owner-keyed *read* path may return a
+   * household-native row, because its creator's access must end when their
+   * membership does, exactly like every other member's.
+   */
   ownerUserId: z.string(),
+  ownership: generalActionOwnershipSchema.default("member_owned"),
+  /**
+   * The active member a household-native record names as looking after it, or
+   * null. A member's statement, never Tendnote's claim: it is set only by an
+   * explicit edit, never advanced on completion, and cleared without replacement
+   * when the named member leaves (ADR 0215). It gates nothing.
+   */
+  responsibilityHolderUserId: z.string().nullable().default(null),
+  /**
+   * The occurrence fence. Incremented once each time progress advances the
+   * record, so two members acting on the same occurrence produce one advance and
+   * the second is reconciled against the outcome rather than rolling forward
+   * again. A counter rather than a timestamp because it has to be comparable
+   * exactly, and one that only the advance path moves so an unrelated edit never
+   * invalidates a member's in-flight tap.
+   */
+  occurrenceVersion: z.number().int().min(0).default(0),
   // The action itself, e.g. "Replace the refrigerator water filter". Product UI
   // labels one-time General Actions as "Actions" (ADR 0148).
   title: z.string().trim().min(1),
@@ -181,6 +223,14 @@ export const generalActionUpdateSchema = z
     householdId: z.string().nullable(),
     completedAt: z.date().nullable(),
     lastActorUserId: z.string().nullable(),
+    // Ownership form is patchable in one direction only — the explicit,
+    // confirmed hand-over of a member-owned record to the household. The
+    // lifecycle seam is what refuses the reverse; there is no claim-back path,
+    // because reversing it would mean deciding which member wins a record the
+    // workspace owns (ADR 0214).
+    ownership: generalActionOwnershipSchema,
+    responsibilityHolderUserId: z.string().nullable(),
+    occurrenceVersion: z.number().int().min(0),
   })
   .partial();
 
@@ -627,6 +677,15 @@ export const generalActionEventKindSchema = z.enum([
   "suggested",
   "promoted",
   "ignored",
+  // A household-native record's Responsibility Holder was named, changed, or
+  // cleared — including the hand-off offered at completion, which is the same
+  // write with `handedOff` in its detail. One kind rather than three, because
+  // what history has to preserve is who said what about who is looking after
+  // this, and the distinctions are detail on that one fact (ADR 0215).
+  "responsibility_changed",
+  // A member-owned record was handed over to the household, becoming
+  // household-native. One-way and confirmed (ADR 0214).
+  "handed_to_household",
 ]);
 
 export const generalActionEventSchema = z.object({

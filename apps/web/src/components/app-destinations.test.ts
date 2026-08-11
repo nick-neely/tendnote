@@ -27,9 +27,64 @@ describe("app destinations", () => {
       "people",
       "actions",
       "assets",
+      // Occasional and deliberate: in the menu, deliberately not in the rail.
+      "gift-plans",
       "saved-items",
       "account",
     ]);
+  });
+
+  it("adds the shared coordination destination for an active household member", () => {
+    const viewer = { householdMember: true };
+
+    expect(destinationsInGroup("desktop-primary", viewer).map(({ id }) => id)).toEqual([
+      "today",
+      // Beside Today: the same question, asked of the household.
+      "household",
+      "people",
+      "actions",
+      "assets",
+      "saved-items",
+      "account",
+    ]);
+    expect(destinationsInGroup("menu", viewer).map(({ id }) => id)).toEqual([
+      "household",
+      "people",
+      "actions",
+      "assets",
+      "gift-plans",
+      "saved-items",
+      "account",
+    ]);
+  });
+
+  it("keeps household governance out of navigation, where Account owns it", () => {
+    for (const group of ["desktop-primary", "menu"] as const) {
+      const ids = destinationsInGroup(group, { householdMember: true }).map(({ id }) => id);
+      expect(ids).not.toContain("account-household");
+      expect(ids).not.toContain("account-household-context");
+    }
+  });
+
+  it("marks the Household link current on its own route without claiming Account's", () => {
+    const viewer = { householdMember: true };
+    const none = new URLSearchParams();
+
+    expect(
+      isDestinationCurrentInGroup("household", "desktop-primary", "/household", none, viewer),
+    ).toBe(true);
+    expect(
+      isDestinationCurrentInGroup(
+        "household",
+        "desktop-primary",
+        "/account/household",
+        none,
+        viewer,
+      ),
+    ).toBe(false);
+    expect(
+      isDestinationCurrentInGroup("account", "desktop-primary", "/account/household", none, viewer),
+    ).toBe(true);
   });
 
   it("structurally keeps each Shaped Reserve heading aligned with its destination", () => {

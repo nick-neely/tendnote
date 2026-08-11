@@ -82,7 +82,7 @@ describe("addAssetLink (explicit)", () => {
         toAssetId: stranger.id,
         relation: "fits",
       }),
-    ).rejects.toThrow("Asset not found.");
+    ).rejects.toThrow(/no longer available/);
   });
 
   it("requires an active subject but allows an archived object — a new asset replaces a retired one", async () => {

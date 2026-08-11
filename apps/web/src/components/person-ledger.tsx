@@ -1,27 +1,16 @@
-import type { Memory, Person, SourceRecord } from "@tendnote/domain";
-import { LockIcon } from "@/components/icons";
-import { RestrictedMemoriesDisclosure } from "@/components/person-restricted-memories";
-import {
-  formatBirthday,
-  formatMonthYear,
-  formatShortDate,
-  humanize,
-  titleCase,
-} from "@/lib/person-format";
+import type { Person } from "@tendnote/domain";
+import { formatBirthday, formatMonthYear, titleCase } from "@/lib/person-format";
 
-// Source-grounded lead per provenance: user-authored notes read as "you noted",
-// while imported/synced sources state where the context came from rather than
-// claiming the user wrote it (issue #8 trust framing).
-const SOURCE_GROUNDING: Record<string, string> = {
-  manual: "You noted",
-  agent: "You noted",
-  contact_import: "From an imported contact",
-  calendar: "From your calendar",
-  gmail: "From an email",
-  seed: "Sample context",
-};
-
-function LedgerSection({
+/**
+ * The Personal Ledger primitives: a titled section, a flat divided list, and an
+ * empty state.
+ *
+ * Actions, Assets, and Saved Items all borrow the list and empty state, so this
+ * module deliberately holds nothing but presentation — no record family, no
+ * mutation, no Server Action. The person ledger's own Memory and Logged-context
+ * sections live in `person-ledger-records.tsx` for that reason.
+ */
+export function LedgerSection({
   title,
   description,
   id,
@@ -63,111 +52,6 @@ export function LedgerEmpty({ children }: { children: React.ReactNode }) {
         {children}
       </p>
     </div>
-  );
-}
-
-/**
- * One memory on the ledger. Restricted memories render through the same row as
- * confirmed ones - the only difference is the marker, so a revealed memory reads
- * as the same kind of record it has always been rather than a second class of
- * thing. The marker is an icon plus the word, never a color on its own (DESIGN
- * §6 badges, §8 accessibility).
- */
-function MemoryRow({ memory, restricted = false }: { memory: Memory; restricted?: boolean }) {
-  return (
-    <article
-      className="scroll-mt-36 flex flex-col gap-1.5 px-4 py-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-      id={`memory-${encodeURIComponent(memory.id)}`}
-      tabIndex={-1}
-    >
-      <p className="max-w-[68ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-        {memory.content}
-      </p>
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[length:var(--text-caption)] text-muted-foreground">
-        <span>
-          {humanize(memory.memoryType)} · {memory.confidence} confidence
-          {/* A restricted row already says so in its marker; repeating the raw
-              sensitivity here would only make the caption longer. */}
-          {!restricted && memory.sensitivity !== "normal" ? ` · ${memory.sensitivity}` : ""}
-        </span>
-        {restricted ? (
-          <span className="inline-flex items-center gap-1 font-sans font-medium text-foreground">
-            <LockIcon aria-hidden className="size-3 shrink-0" />
-            Restricted
-          </span>
-        ) : null}
-      </p>
-    </article>
-  );
-}
-
-export function MemoriesSection({
-  memories,
-  restrictedMemories = [],
-}: {
-  memories: Memory[];
-  /**
-   * Approved memories held back from proactive use. They are the owner's own
-   * facts, so the page they belong to can reach them - behind the reveal below
-   * the confirmed list, never mixed into it, and never counted by the Memory tab
-   * badge, which promises confirmed facts.
-   */
-  restrictedMemories?: Memory[];
-}) {
-  return (
-    <LedgerSection description="Confirmed facts you've saved." id="memories" title="Memories">
-      {memories.length ? (
-        <LedgerList>
-          {memories.map((memory) => (
-            <MemoryRow key={memory.id} memory={memory} />
-          ))}
-        </LedgerList>
-      ) : (
-        <LedgerEmpty>
-          No confirmed memories yet. Save a suggestion, or add a note and review it.
-        </LedgerEmpty>
-      )}
-      {restrictedMemories.length ? (
-        <RestrictedMemoriesDisclosure count={restrictedMemories.length}>
-          <LedgerList>
-            {restrictedMemories.map((memory) => (
-              <MemoryRow key={memory.id} memory={memory} restricted />
-            ))}
-          </LedgerList>
-        </RestrictedMemoriesDisclosure>
-      ) : null}
-    </LedgerSection>
-  );
-}
-
-export function LoggedContextSection({ sourceRecords }: { sourceRecords: SourceRecord[] }) {
-  return (
-    <LedgerSection
-      description="Notes and mentions, kept for grounding. Not confirmed facts."
-      id="logged-context"
-      title="Logged context"
-    >
-      {sourceRecords.length ? (
-        <LedgerList>
-          {sourceRecords.map((sourceRecord) => (
-            <article className="flex flex-col gap-1 px-4 py-3.5" key={sourceRecord.id}>
-              <p className="text-[length:var(--text-small)] text-muted-foreground">
-                {SOURCE_GROUNDING[sourceRecord.sourceType] ?? "Logged context"}
-              </p>
-              <p className="max-w-[68ch] text-pretty text-[length:var(--text-body)] leading-[var(--text-body-line)]">
-                {sourceRecord.content}
-              </p>
-              <p className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
-                {formatShortDate(sourceRecord.createdAt)}
-                {sourceRecord.sensitivity !== "normal" ? ` · ${sourceRecord.sensitivity}` : ""}
-              </p>
-            </article>
-          ))}
-        </LedgerList>
-      ) : (
-        <LedgerEmpty>Nothing logged yet.</LedgerEmpty>
-      )}
-    </LedgerSection>
   );
 }
 

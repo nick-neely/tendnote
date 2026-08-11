@@ -31,6 +31,7 @@ apps/agent ─┘
 - `packages/domain` stays independent of apps and of database implementation code.
 - Eve-specific code stays in `apps/agent`.
 - `@tendnote/db` has **no root barrel** — consumers import explicit subpaths (`./client`, `./schema`, `./queries/*`) so Eve's bundle stays lean.
+- `@tendnote/domain` does have a root barrel, but **client components import the specific subpath** (`@tendnote/domain/household-actions`, not `@tendnote/domain`). The barrel re-exports every module, including ones that reach for `node:crypto`, so a single barrel import in a client module pulls server-only code into the browser bundle and breaks the browser test lane. Server code may use either.
 
 ## Data model at a glance
 

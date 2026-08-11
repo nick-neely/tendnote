@@ -28,8 +28,10 @@ describe("semantic retrieval product-route boundaries", () => {
     // Phase 7's source-grounded Saved Items surface (#265);
     // account/auth surfaces, Phase 2E's explicit Contacts import preview entry,
     // the owner-scoped Discord delivery settings (#173), Account → About you and
-    // its assistant import round trip, and optional Self Context onboarding are
-    // allowed alongside them but carry no semantic-search route.
+    // its assistant import round trip, Account → Household's activation and
+    // return point (#378) with its Household Context subpage beneath Overview
+    // (#382), and optional Self Context onboarding are allowed alongside them
+    // but carry no semantic-search route.
     expect(pageRoutes).toEqual([
       "/",
       "account",
@@ -37,11 +39,28 @@ describe("semantic retrieval product-route boundaries", () => {
       "account/about-you/import",
       "account/contacts/import",
       "account/discord",
+      "account/household",
+      "account/household/context",
       "actions",
       "actions/today",
       "assets",
       "assets/[assetId]",
       "forgot-password",
+      // Phase 8 Gift Plans and one plan's own page (#389). They read through the
+      // Gift Plan seam's own proved search, never semantic retrieval — a Gift
+      // Plan is not an embedded record kind, precisely so a Surprise Subject
+      // cannot meet one in ranked recall.
+      "gift-plans",
+      "gift-plans/[giftPlanId]",
+      // The shared Household home (#384). A deterministic, capped read over
+      // records the caller is separately proved to see, composed from each
+      // domain's own listing — never ranked or semantic retrieval, so nothing
+      // reaches it by resembling a household record rather than being one.
+      "household",
+      // The Household Invitation acceptance capability (#379). Reachable only
+      // from an emailed link, never from navigation, and it carries no
+      // relationship or semantic-search surface.
+      "join/[token]",
       "onboarding/self-context",
       "pending",
       "people",
@@ -49,6 +68,10 @@ describe("semantic retrieval product-route boundaries", () => {
       "reminders/open",
       "reset-password",
       "saved-items",
+      // The one Relationship Share a direct request names (#388). A single
+      // proof-gated record, never a browsable set: there is no `/shared`
+      // index, and nothing reachable from it is searchable.
+      "shared/[recordKind]/[recordId]",
       "sign-in",
       "sign-up",
     ]);

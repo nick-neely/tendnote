@@ -10,6 +10,7 @@ import type {
   EmbeddingJob,
   EmbeddingJobStatus,
   GeneralAction,
+  MemberOwnedSavedItem,
   Memory,
   ParsedSearchSavedItemsSemanticInput,
   ParsedSearchSemanticContextInput,
@@ -208,10 +209,11 @@ export type EmbeddingStore = MemoryReviewStore &
       ownerUserId: string;
       assetMemoryId: string;
     }) => Promise<{ memory: AssetMemory; asset: Asset } | null>;
+    /** Owner-keyed, so what comes back provably has an owner to embed it for. */
     getSavedItemForEmbedding: (input: {
       ownerUserId: string;
       savedItemId: string;
-    }) => Promise<SavedItem | null>;
+    }) => Promise<MemberOwnedSavedItem | null>;
     upsertRelationshipContextEmbedding: (
       embedding: CreateRelationshipContextEmbeddingInput,
     ) => Promise<RelationshipContextEmbedding>;

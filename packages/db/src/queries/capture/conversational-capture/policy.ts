@@ -48,7 +48,7 @@ export function stableCaptureUuid(
 export function captureInputHash(input: ConversationalCaptureInput, originalText: string) {
   return createHash("sha256")
     .update(
-      `${input.surface}\0${input.inputMode}\0${originalText}\0${JSON.stringify(input.contextVisibility ?? null)}\0${JSON.stringify(input.inferredSuggestions ?? [])}`,
+      `${input.surface}\0${input.inputMode}\0${originalText}\0${JSON.stringify(input.contextVisibility ?? null)}\0${input.requestedScope ?? "unset"}\0${JSON.stringify(input.inferredSuggestions ?? [])}`,
     )
     .digest("hex");
 }

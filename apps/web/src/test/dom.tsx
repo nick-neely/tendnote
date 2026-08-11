@@ -80,7 +80,23 @@ function installMatchMedia(): void {
   };
 }
 
+/**
+ * jsdom implements no `ResizeObserver`, and several Radix primitives (Checkbox,
+ * Select, and anything else built on `useSize`) construct one on mount. Without
+ * this they throw inside a layout effect and the component never renders at all
+ * - a harness gap rather than anything about the component under test. It
+ * observes nothing, because jsdom has no layout to observe.
+ */
+function installResizeObserver(): void {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 installMatchMedia();
+installResizeObserver();
 
 afterEach(() => {
   cleanup();

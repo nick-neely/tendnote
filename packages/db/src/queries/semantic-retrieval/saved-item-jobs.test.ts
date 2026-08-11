@@ -36,7 +36,7 @@ describe("Saved Item semantic indexing", () => {
     });
     const processor = createEmbeddingProcessor(store, createFakeEmbeddingAdapter());
     const queued = await processor.enqueueEmbeddingJob({
-      ownerUserId: item.ownerUserId,
+      ownerUserId: "owner-1",
       recordKind: "saved_item",
       recordId: item.id,
     });
@@ -69,7 +69,7 @@ describe("Saved Item semantic indexing", () => {
         sourceRecordId: `source-${status}`,
       });
       const queued = await processor.enqueueEmbeddingJob({
-        ownerUserId: item.ownerUserId,
+        ownerUserId: "owner-1",
         recordKind: "saved_item",
         recordId: item.id,
       });

@@ -1,7 +1,11 @@
 import type { Asset, AssetEvidence, AssetMemory, HouseholdMembership } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
 import type { EmbeddingAdapter } from "../semantic-retrieval/types";
-import { type AssetSearchSeed, createInMemoryAssetSearchStore } from "./in-memory-store";
+import {
+  type AssetSearchSeed,
+  createInMemoryAssetSearchAuthorityStore,
+  createInMemoryAssetSearchStore,
+} from "./in-memory-store";
 import { createAssetSearch } from "./queries";
 
 const OWNER = "user-1";
@@ -43,8 +47,10 @@ function asset(overrides: Partial<Asset> = {}): Asset {
     kind: "appliance",
     status: "active",
     scope: "private",
+    ownership: "member_owned",
     householdId: null,
     archivedAt: null,
+    revision: 0,
     createdByUserId: OWNER,
     lastActorUserId: OWNER,
     createdAt: NOW,
@@ -63,7 +69,9 @@ function memory(overrides: Partial<AssetMemory> = {}): AssetMemory {
     value: { type: "text", text: "RPWFE" },
     notes: null,
     scope: "private",
+    ownership: "member_owned",
     householdId: null,
+    revision: 0,
     sourceRecordId: null,
     reviewGroupId: null,
     createdByUserId: OWNER,
@@ -90,6 +98,7 @@ function evidence(overrides: Partial<AssetEvidence> = {}): AssetEvidence {
     purchasedOn: null,
     renewsOn: null,
     scope: "private",
+    ownership: "member_owned",
     householdId: null,
     sourceRecordId: null,
     reviewGroupId: null,
@@ -112,6 +121,9 @@ function activeMembership(userId: string): HouseholdMembership {
     invitedAt: NOW,
     acceptedAt: NOW,
     removedAt: null,
+    pendingRole: null,
+    pendingRoleOfferedByUserId: null,
+    pendingRoleOfferedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -128,7 +140,30 @@ function embeddingFor(
 }
 
 function search(seed: AssetSearchSeed) {
-  return createAssetSearch(createInMemoryAssetSearchStore(seed), themedAdapter, CONFIG);
+  return createAssetSearch(
+    createInMemoryAssetSearchStore(seed),
+    createInMemoryAssetSearchAuthorityStore(seed),
+    themedAdapter,
+    CONFIG,
+  );
+}
+
+/**
+ * A search whose store hands back rows its proof will refuse.
+ *
+ * The two halves are seeded from different worlds on purpose: the store believes
+ * the caller is a household member, the proof knows they are not. That is exactly
+ * the state a pre-filter cannot detect — a membership that ended after the
+ * predicate ran, a stale plan, a store that was simply wrong — and the only way to
+ * show that the proof is the ceiling rather than a second opinion nobody asks for.
+ */
+function searchWithStaleStore(input: { store: AssetSearchSeed; authority: AssetSearchSeed }) {
+  return createAssetSearch(
+    createInMemoryAssetSearchStore(input.store),
+    createInMemoryAssetSearchAuthorityStore(input.authority),
+    themedAdapter,
+    CONFIG,
+  );
 }
 
 describe("Asset Search — exact recall", () => {
@@ -347,6 +382,7 @@ describe("Asset Search — fuzzy intent", () => {
     };
     const seam = createAssetSearch(
       createInMemoryAssetSearchStore({ assets: [asset()], memories: [memory()] }),
+      createInMemoryAssetSearchAuthorityStore({}),
       brokenAdapter,
       CONFIG,
     );
@@ -453,6 +489,27 @@ describe("Asset Search — visibility boundaries", () => {
     expect(results.map((result) => result.recordId)).not.toContain("evidence-receipt");
   });
 
+  it("reports the anchor's ownership on every record under it, not the child row's", async () => {
+    // A memory and a receipt under a household-native Asset are the household's too, so
+    // a surface reading a result can tell "shared with the household" apart from "is the
+    // household's" and stop naming an audience nobody chose (ADR 0214).
+    const results = await search({
+      assets: [
+        asset({ scope: "household", ownership: "household_native", householdId: HOUSEHOLD }),
+      ],
+      memories: [memory({ scope: "household", ownership: "member_owned", householdId: HOUSEHOLD })],
+      evidence: [
+        evidence({ scope: "household", ownership: "member_owned", householdId: HOUSEHOLD }),
+      ],
+      householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)],
+    }).searchAssets({ ownerUserId: MEMBER, query: "refrigerator filter receipt" });
+
+    expect(results.length).toBeGreaterThan(0);
+    for (const result of results) {
+      expect(result.ownership).toBe("household_native");
+    }
+  });
+
   it("hides the whole asset — and everything under it — when the asset itself is not visible", async () => {
     const results = await search({
       assets: [asset({ scope: "private" })],
@@ -460,6 +517,136 @@ describe("Asset Search — visibility boundaries", () => {
       householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)],
     }).searchAssets({ ownerUserId: MEMBER, query: "filter refrigerator" });
 
+    expect(results).toEqual([]);
+  });
+});
+
+/**
+ * The gate the SQL predicate cannot be (#386 → #390).
+ *
+ * These cases seed the store and the proof from different worlds, so the store
+ * hands back exactly the rows a stale pre-filter would: a membership that ended
+ * after the predicate ran, a share the registry no longer holds. If the proof were
+ * a second opinion rather than the ceiling, every one of them would surface.
+ */
+describe("Asset Search — proved, not merely pre-filtered", () => {
+  const householdAsset = asset({ scope: "household", householdId: HOUSEHOLD });
+  const householdMemory = memory({ scope: "household", householdId: HOUSEHOLD });
+
+  it("drops a household row whose membership ended after the query ran", async () => {
+    const results = await searchWithStaleStore({
+      store: {
+        assets: [householdAsset],
+        memories: [householdMemory],
+        householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)],
+      },
+      // The roster the proof reads now: the member has gone.
+      authority: { householdMemberships: [activeMembership(OWNER)] },
+    }).searchAssets({ ownerUserId: MEMBER, query: "refrigerator filter" });
+
+    expect(results).toEqual([]);
+  });
+
+  it("leaves nothing behind for a refused row — no placeholder and no countable gap", async () => {
+    const results = await searchWithStaleStore({
+      store: {
+        assets: [householdAsset],
+        memories: [
+          householdMemory,
+          memory({ id: "memory-model", label: "Filter model", scope: "private" }),
+        ],
+        householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)],
+      },
+      authority: { householdMemberships: [activeMembership(OWNER)] },
+    }).searchAssets({ ownerUserId: MEMBER, query: "refrigerator filter" });
+
+    // Not "three results, two blanked": the refused rows never existed for this
+    // caller, and a search that returns nothing is indistinguishable from a
+    // household that has nothing (ADR 0219).
+    expect(results).toHaveLength(0);
+  });
+
+  it("refuses a selected-audience row the share registry no longer holds", async () => {
+    const results = await searchWithStaleStore({
+      store: {
+        assets: [asset({ scope: "shared", householdId: HOUSEHOLD })],
+        householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)],
+        householdRecordShares: [
+          {
+            id: "share-1",
+            householdId: HOUSEHOLD,
+            recordKind: "asset",
+            recordId: "asset-fridge",
+            sharedWithUserId: MEMBER,
+            sharedByUserId: OWNER,
+            createdAt: NOW,
+          },
+        ],
+      },
+      // The selection was narrowed; the store's copy is a moment out of date.
+      authority: { householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)] },
+    }).searchAssets({ ownerUserId: MEMBER, query: "refrigerator" });
+
+    expect(results).toEqual([]);
+  });
+
+  it("proves a child on its own facts, never on its anchor's", async () => {
+    // The household refrigerator is everybody's; the private receipt hanging off it
+    // is not, and it answers for itself every time it is listed (ADR 0179).
+    const results = await searchWithStaleStore({
+      store: {
+        assets: [householdAsset],
+        evidence: [evidence({ scope: "private", householdId: null, label: "Fridge receipt" })],
+        householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)],
+      },
+      authority: { householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)] },
+    }).searchAssets({ ownerUserId: MEMBER, query: "refrigerator receipt" });
+
+    const ids = results.map((result) => result.recordId);
+    expect(ids).toContain("asset-fridge");
+    expect(ids).not.toContain("evidence-receipt");
+  });
+
+  it("still answers the rows that do prove — a refusal costs one record, not the search", async () => {
+    const results = await searchWithStaleStore({
+      store: {
+        assets: [householdAsset],
+        memories: [
+          householdMemory,
+          memory({
+            id: "memory-other",
+            label: "Filter model",
+            ownerUserId: "stranger",
+            scope: "private",
+            householdId: null,
+          }),
+        ],
+        householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)],
+      },
+      authority: { householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)] },
+    }).searchAssets({ ownerUserId: MEMBER, query: "refrigerator filter" });
+
+    const ids = results.map((result) => result.recordId);
+    expect(ids).toContain("memory-filter");
+    expect(ids).not.toContain("memory-other");
+  });
+
+  it("keeps the semantic tier under the same ceiling", async () => {
+    const results = await searchWithStaleStore({
+      store: {
+        assets: [householdAsset],
+        memories: [householdMemory],
+        embeddings: [
+          embeddingFor("asset", "asset-fridge", "refrigerator appliance"),
+          embeddingFor("asset_memory", "memory-filter", "refrigerator filter"),
+        ],
+        householdMemberships: [activeMembership(OWNER), activeMembership(MEMBER)],
+      },
+      authority: { householdMemberships: [activeMembership(OWNER)] },
+    }).searchAssets({ ownerUserId: MEMBER, query: "anything for the kitchen fridge" });
+
+    // Meaning is not a way around the proof: similarity can widen a candidate set,
+    // never the audience for one.
     expect(results).toEqual([]);
   });
 });

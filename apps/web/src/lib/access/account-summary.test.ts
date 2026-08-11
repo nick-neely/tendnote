@@ -16,6 +16,7 @@ function admittedState(sourceLabelSource: "bootstrap" | "beta_flag"): AccessStat
       grantedAt: new Date(),
       selfContextOnboardingStatus: "not_started",
       selfContextOnboardingReminderAt: null,
+      householdCheckinEnabled: false,
       createdAt: new Date(),
       updatedAt: new Date(),
     },

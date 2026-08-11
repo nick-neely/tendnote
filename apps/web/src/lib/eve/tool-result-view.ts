@@ -114,6 +114,36 @@ export type AssistantToolView =
       actions: { actionId: string; title: string; status: string; dueAt: string | null }[];
     }
   /**
+   * One member's Household check-in, read in chat.
+   *
+   * `householdName` is null for a member with no current household, which the card
+   * renders differently from an opted-in member whose household is simply quiet —
+   * "you have left" and "nothing is timely" are different facts.
+   */
+  | {
+      kind: "household_check_in";
+      householdName: string | null;
+      optedIn: boolean;
+      records: HouseholdCheckinRowView[];
+      limitations: string[];
+    }
+  /** The Gift Plans this caller may see. Never anyone else's audience. */
+  | { kind: "gift_plan_search"; query: string | null; plans: GiftPlanRowView[] }
+  /** One idea the caller explicitly added to a plan they co-plan. */
+  | { kind: "gift_idea_added"; giftIdeaId: string; giftPlanId: string; title: string }
+  /**
+   * What an explicit Capture wrote, and the audience it wrote it with.
+   *
+   * Rendered from the persisted outcome rather than from Eve's sentence about it,
+   * because the household branch is a privacy-consequential fork and a paraphrase is
+   * not a confirmation.
+   */
+  | {
+      kind: "capture_outcome";
+      destination: string;
+      outcomes: { destination: string; visibility: string }[];
+    }
+  /**
    * The safe fallback for output that did not project to a typed view. Three honest,
    * visually distinct outcomes share this kind:
    *
@@ -148,6 +178,46 @@ export type AssetSearchResultView = {
   matchKinds: ("structured" | "exact" | "semantic")[];
   trustLevel: "asset_anchor" | "asset_fact" | "suggested_asset_fact" | "asset_evidence";
   visibilityLabel: string;
+  /**
+   * The anchor's ownership form. The card reads it to decide whether an audience is
+   * a thing anyone chose: on a household-native record there is none to name, and
+   * stating one would invent a sharing decision (ADR 0214).
+   */
+  ownership: "member_owned" | "household_native";
+};
+
+/**
+ * One record on a Household check-in, as chat renders it.
+ *
+ * Deliberately the same fields the static check-in surface shows, so the two
+ * instances of this list cannot come to describe a record differently. There is no
+ * `pressing` here: it decided the order before the card existed, and rendering it
+ * would turn a selection input into a severity the record never claimed.
+ */
+export type HouseholdCheckinRowView = {
+  recordId: string;
+  family: "action" | "routine" | "gift_plan";
+  href: string;
+  title: string;
+  context: string;
+  timing: string;
+  scopeLabel: string;
+  responsibility: string | null;
+};
+
+/**
+ * One Gift Plan row. `isOwner` says which authority the *reader* holds, so a
+ * co-planner understands why the plan's own settings are not theirs to change.
+ */
+export type GiftPlanRowView = {
+  giftPlanId: string;
+  subjectName: string;
+  occasion: string;
+  occasionOn: string | null;
+  status: string;
+  ideaCount: number;
+  claimedIdeaCount: number;
+  isOwner: boolean;
 };
 
 /** One reviewed fact about an Asset — a confirmed record, never snapshot prose. */
@@ -157,6 +227,8 @@ export type AssetFactView = {
   value: string | null;
   notes: string | null;
   visibilityLabel: string;
+  /** The anchor's form, for the same audience rule as the search row above. */
+  ownership: "member_owned" | "household_native";
 };
 
 /** One tentative suggestion the user can approve or dismiss inline. */

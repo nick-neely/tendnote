@@ -5,7 +5,7 @@ import {
   savedItemSchema,
   savedItemUpdateSchema,
 } from "@tendnote/domain";
-import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import {
@@ -18,6 +18,7 @@ import {
   savedItems,
   sourceRecords,
 } from "../../schema";
+import { provenVisibleRecord } from "../households/authorization";
 import { createDrizzleHouseholdStore } from "../households/drizzle-store";
 import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import { createDrizzleSourceRecordStore } from "../source-records/drizzle-store";
@@ -28,6 +29,17 @@ const PERSISTED_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[
 
 function isPersistedId(id: string): boolean {
   return PERSISTED_ID_PATTERN.test(id);
+}
+
+/**
+ * Matches an audit trail's owner column, including the household-native trail
+ * where it is null. `eq(column, null)` is never true in SQL, so a household-native
+ * item's own history would be invisible to itself without this.
+ */
+function ownerEventKey(ownerUserId: string | null) {
+  return ownerUserId === null
+    ? isNull(savedItemEvents.ownerUserId)
+    : eq(savedItemEvents.ownerUserId, ownerUserId);
 }
 
 function buildSourceRecordDependenciesQuery(input: {
@@ -85,7 +97,14 @@ export function createDrizzleSavedItemStore(): SavedItemStore {
         const existing = await getDb()
           .select()
           .from(savedItems)
-          .where(and(eq(savedItems.id, values.id), eq(savedItems.ownerUserId, values.ownerUserId)))
+          .where(
+            and(
+              eq(savedItems.id, values.id),
+              values.ownerUserId
+                ? eq(savedItems.ownerUserId, values.ownerUserId)
+                : isNull(savedItems.ownerUserId),
+            ),
+          )
           .limit(1);
         if (existing[0]) return savedItemSchema.parse(existing[0]);
       }
@@ -100,6 +119,18 @@ export function createDrizzleSavedItemStore(): SavedItemStore {
         .where(
           and(eq(savedItems.id, input.savedItemId), eq(savedItems.ownerUserId, input.ownerUserId)),
         )
+        .limit(1);
+      // The owner is restated from the key the row was selected by. That is how
+      // it survives into the type, rather than being re-derived from a column
+      // that is legitimately null for other rows in this table.
+      return item ? { ...savedItemSchema.parse(item), ownerUserId: input.ownerUserId } : null;
+    },
+    async getSavedItemById(input) {
+      if (!isPersistedId(input.savedItemId)) return null;
+      const [item] = await getDb()
+        .select()
+        .from(savedItems)
+        .where(eq(savedItems.id, input.savedItemId))
         .limit(1);
       return item ? savedItemSchema.parse(item) : null;
     },
@@ -119,19 +150,58 @@ export function createDrizzleSavedItemStore(): SavedItemStore {
           ),
         )
         .limit(1);
-      return item ? savedItemSchema.parse(item) : null;
+
+      // The predicate above narrowed the candidate; this is what authorizes the
+      // read. It re-decides against memberships and shares read now, and against
+      // the ownership form SQL does not evaluate, so a member who left between
+      // the page render and this call is refused here - as null, which is the
+      // same answer as "no such Saved Item" (ADR 0219).
+      const proven = await provenVisibleRecord({
+        callerUserId: input.callerUserId,
+        row: item,
+        facts: (row) => ({
+          kind: "saved_item",
+          id: row.id,
+          ownerUserId: row.ownerUserId,
+          scope: row.scope,
+          householdId: row.householdId,
+          ownership: row.ownership,
+        }),
+      });
+
+      return proven ? savedItemSchema.parse(proven) : null;
     },
     async updateSavedItem(input) {
       const patch = savedItemUpdateSchema.parse(input.patch);
       const [item] = await getDb()
         .update(savedItems)
-        .set({ ...patch, updatedAt: new Date() })
+        .set({ ...patch, version: sql`${savedItems.version} + 1`, updatedAt: new Date() })
         .where(
           and(eq(savedItems.id, input.savedItemId), eq(savedItems.ownerUserId, input.ownerUserId)),
         )
         .returning();
       if (!item) throw new Error("Saved Item not found.");
-      return savedItemSchema.parse(item);
+      return { ...savedItemSchema.parse(item), ownerUserId: input.ownerUserId };
+    },
+    async updateHouseholdNativeSavedItem(input) {
+      if (!isPersistedId(input.savedItemId)) return null;
+      const patch = savedItemUpdateSchema.parse(input.patch);
+      // Version, id, and ownership form are all in the WHERE rather than checked
+      // beforehand: the comparison and the write are then one statement, so two
+      // members saving at the same instant cannot both pass a read-then-write
+      // gap. The loser gets no row back and is reconciled, never overwritten.
+      const [item] = await getDb()
+        .update(savedItems)
+        .set({ ...patch, version: sql`${savedItems.version} + 1`, updatedAt: new Date() })
+        .where(
+          and(
+            eq(savedItems.id, input.savedItemId),
+            eq(savedItems.ownership, "household_native"),
+            eq(savedItems.version, input.expectedVersion),
+          ),
+        )
+        .returning();
+      return item ? savedItemSchema.parse(item) : null;
     },
     async listVisibleSavedItems(input) {
       const rows = await getDb()
@@ -214,12 +284,7 @@ export function createDrizzleSavedItemStore(): SavedItemStore {
         [event] = await getDb()
           .select()
           .from(savedItemEvents)
-          .where(
-            and(
-              eq(savedItemEvents.id, parsed.id),
-              eq(savedItemEvents.ownerUserId, parsed.ownerUserId),
-            ),
-          )
+          .where(and(eq(savedItemEvents.id, parsed.id), ownerEventKey(parsed.ownerUserId)))
           .limit(1);
       }
       if (!event) throw new Error("Failed to record Saved Item audit event.");
@@ -231,10 +296,7 @@ export function createDrizzleSavedItemStore(): SavedItemStore {
         .select()
         .from(savedItemEvents)
         .where(
-          and(
-            eq(savedItemEvents.ownerUserId, input.ownerUserId),
-            eq(savedItemEvents.savedItemId, input.savedItemId),
-          ),
+          and(ownerEventKey(input.ownerUserId), eq(savedItemEvents.savedItemId, input.savedItemId)),
         )
         .orderBy(asc(savedItemEvents.createdAt));
       return rows.map((row) => savedItemEventSchema.parse(row));

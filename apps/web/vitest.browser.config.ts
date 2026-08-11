@@ -42,6 +42,14 @@ export default defineConfig({
         replacement: fileURLToPath(new URL("./src/test/browser-actions.ts", import.meta.url)),
       },
       {
+        // The household surfaces reach for their own Server Actions by default,
+        // and those modules are `server-only`. The browser lane always drives
+        // them with injected actions, so the default import is stubbed rather
+        // than the component being reshaped for the test.
+        find: /^@\/app\/actions\/(households|household-governance|household-invitations|household-context|household-calendar|household-event-plans)$/,
+        replacement: fileURLToPath(new URL("./src/test/browser-actions.ts", import.meta.url)),
+      },
+      {
         find: /^@\/app\/actions\/(asset-evidence|asset-review|memory-review)$/,
         replacement: fileURLToPath(new URL("./src/test/browser-actions.ts", import.meta.url)),
       },

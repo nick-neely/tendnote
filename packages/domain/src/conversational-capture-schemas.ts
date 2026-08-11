@@ -40,11 +40,33 @@ export const conversationalCaptureInferredSuggestionSchema = z.discriminatedUnio
     .strict(),
 ]);
 
+/**
+ * The scope a caller *chose*, as opposed to the audience a resolver worked out.
+ *
+ * Deliberately just the word, with no household id and no member list. A Capture
+ * that accepted an id would let whatever produced the request — a UI control, a
+ * model turn, a replayed job — name a workspace, and "the household the caller
+ * says they are in" is exactly the assertion the Household Authorization Proof
+ * exists to refuse. `household` here means "the one household this caller is
+ * currently an active member of", which the seam reads from their own membership
+ * rows at the moment of the write (ADR 0219, ADR 0220).
+ */
+export const conversationalCaptureRequestedScopeSchema = z.enum(["private", "household"]);
+export type ConversationalCaptureRequestedScope = z.infer<
+  typeof conversationalCaptureRequestedScopeSchema
+>;
+
 export const conversationalCaptureRequestSchema = z
   .object({
     authority: z.literal("explicit"),
     clarificationAnswer: z.string().trim().min(1).max(500).optional(),
     contextVisibility: conversationalCaptureVisibilitySchema.optional(),
+    /**
+     * Set only by a deliberate scope control. Absent means private, which is what
+     * a caller who did not choose gets: widening is always explicit (ADR 0153),
+     * and conversational wording is never the choice.
+     */
+    requestedScope: conversationalCaptureRequestedScopeSchema.optional(),
     interactionId: z.string().trim().min(1).max(200),
     inputMode: conversationalCaptureInputModeSchema,
     inferredSuggestions: z.array(conversationalCaptureInferredSuggestionSchema).max(4).optional(),

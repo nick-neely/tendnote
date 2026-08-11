@@ -50,10 +50,24 @@ describe("AssetProfileControls", () => {
     expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
   });
 
-  it("hides the edit control from a non-owner who can still act on the asset", () => {
+  it("offers a co-member nothing at all on someone else's asset", () => {
     render(<AssetProfileControls asset={assetViewFixture({ owned: false })} />);
 
+    // Phase Eight narrows what Phase 6 allowed: widening visibility never
+    // transferred the right to re-author or set aside someone's record, and
+    // archive was the one place the old row let it look as if it had (ADR 0214).
     expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Archive/ })).toBeNull();
+  });
+
+  it("gives every active member the same controls on the household's own asset", () => {
+    render(
+      <AssetProfileControls
+        asset={assetViewFixture({ owned: false, ownership: "household_native" })}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /Edit/ })).toBeDefined();
     expect(screen.getByRole("button", { name: /Archive/ })).toBeDefined();
   });
 
@@ -75,11 +89,14 @@ describe("AssetProfileControls", () => {
     await user.type(input, "Fridge filter (MWF)");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    // Only the changed field rides the edit — the untouched kind stays out.
+    // Only the changed field rides the edit — the untouched kind stays out —
+    // alongside the fence the form was rendered from, so a second writer is
+    // reported rather than overwritten (#386).
     await waitFor(() =>
       expect(editAssetAction).toHaveBeenCalledWith({
         assetId: asset.id,
         name: "Fridge filter (MWF)",
+        expectedRevision: asset.contentRevision,
       }),
     );
   });

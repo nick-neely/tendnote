@@ -74,6 +74,15 @@ const FORBIDDEN_SEND_IMPORT =
 const FORBIDDEN_CALL =
   /nodemailer|createtransport|\bsmtp\b|sendmail|googleapis\.com|api\.sendgrid|api\.twilio|hooks\.slack\.com|api\.resend|mcp__/i;
 
+/**
+ * The transactional email provider Tendnote sends its *own* mail with — one
+ * Household Invitation, to an address an Owner typed, as an explicit Owner
+ * action. It is confined to `apps/web/src/lib/email` and forbidden everywhere
+ * the user's drafted messages are handled; see the two assertions at the end of
+ * the boundary block.
+ */
+const TRANSACTIONAL_EMAIL_PACKAGE = "resend";
+
 function importSpecifiers(source: string): string[] {
   return [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1] ?? "");
 }
@@ -123,10 +132,46 @@ describe("Phase 1G boundary — no external delivery in drafting surfaces", () =
       const manifest = JSON.parse(readFileSync(join(repoRoot, pkg, "package.json"), "utf8"));
       const deps = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies });
       for (const dep of deps) {
+        const sanctioned = pkg === "apps/web" && dep === TRANSACTIONAL_EMAIL_PACKAGE;
         expect(dep, `${pkg} depends on ${dep}`).not.toMatch(
-          /nodemailer|twilio|sendgrid|@sendgrid|resend|googleapis|gmail/i,
+          sanctioned
+            ? /nodemailer|twilio|sendgrid|@sendgrid|googleapis|gmail/i
+            : /nodemailer|twilio|sendgrid|@sendgrid|resend|googleapis|gmail/i,
         );
       }
+    }
+  });
+
+  /**
+   * The one sanctioned exception, pinned to the shape that makes it safe.
+   *
+   * `apps/web` carries a transactional email provider so Tendnote can send a
+   * Household Invitation on its own behalf, to an address an Owner typed, as an
+   * explicit Owner action. That is a different act from the one this file
+   * guards: delivering a message the *user* drafted to somebody they know. The
+   * package-level ban above was a usable proxy for that rule only while Tendnote
+   * had no mailbox at all, so the rule is now stated directly instead.
+   *
+   * Every drafting surface is already checked import by import above. This adds
+   * the other half: the provider has exactly one home, and a second one cannot
+   * appear unnoticed.
+   */
+  it("confines the transactional email provider to its own module", () => {
+    const webSrc = join(repoRoot, "apps/web/src");
+    const importers = readdirSync(webSrc, { recursive: true, encoding: "utf8" })
+      .filter((entry) => /\.tsx?$/.test(entry))
+      .filter((entry) =>
+        importSpecifiers(readFileSync(join(webSrc, entry), "utf8")).includes(
+          TRANSACTIONAL_EMAIL_PACKAGE,
+        ),
+      )
+      .map((entry) => entry.replaceAll("\\", "/"));
+
+    expect(importers.length).toBeGreaterThan(0);
+    for (const importer of importers) {
+      expect(importer, `${importer} imports ${TRANSACTIONAL_EMAIL_PACKAGE}`).toMatch(
+        /^lib\/email\//,
+      );
     }
   });
 });

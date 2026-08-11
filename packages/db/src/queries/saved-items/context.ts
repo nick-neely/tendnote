@@ -1,10 +1,15 @@
-import type { SavedItem } from "@tendnote/domain";
-import type { SavedItemLifecycleStore, SavedItemWithContext } from "./types";
+import type { MemberOwnedSavedItem, SavedItem } from "@tendnote/domain";
+import type { SavedItemContext, SavedItemLifecycleStore } from "./types";
 
-export async function hydrateSavedItem(
+/**
+ * Generic in the item rather than fixed to `SavedItem`, so hydrating a
+ * {@link MemberOwnedSavedItem} still yields one. Otherwise every owner-scoped
+ * path would forget it has an owner the moment it added context.
+ */
+export async function hydrateSavedItem<TItem extends SavedItem>(
   store: SavedItemLifecycleStore,
-  item: SavedItem,
-): Promise<SavedItemWithContext> {
+  item: TItem,
+): Promise<TItem & SavedItemContext> {
   const shares =
     item.scope === "shared" && item.householdId
       ? await store.listHouseholdRecordShares({
@@ -25,10 +30,20 @@ export async function hydrateSavedItem(
   };
 }
 
+export type { MemberOwnedSavedItem };
+
+/**
+ * The owner-scoped read every member-owned lifecycle operation starts from.
+ *
+ * The lookup is keyed by owner, so a household-native record - which has no
+ * owner - is simply not found here. That is the seam keeping the two ownership
+ * forms apart: this path cannot be talked into touching a workspace-owned Saved
+ * Item, whatever the caller passes (ADR 0214).
+ */
 export async function requireOwnedSavedItem(
   store: SavedItemLifecycleStore,
   input: { actorUserId: string; savedItemId: string },
-) {
+): Promise<MemberOwnedSavedItem> {
   const item = await store.getSavedItem({
     ownerUserId: input.actorUserId,
     savedItemId: input.savedItemId,

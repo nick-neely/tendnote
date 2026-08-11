@@ -8,10 +8,24 @@ import { useReminderInstallation } from "@/components/reminder-installation-cont
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { signOut } from "@/lib/auth/client";
+import { safeReturnTo } from "@/lib/auth/return-to";
 import { clearAllLocalComposerDrafts } from "@/lib/local-composer-draft";
 import { unsubscribeReminderRegistration } from "@/lib/reminder-registration";
 
-export function SignOutButton({ className }: { className?: string }) {
+export function SignOutButton({
+  className,
+  returnTo,
+}: {
+  className?: string;
+  /**
+   * Where to land after signing out. Defaults to sign-in, which is what someone
+   * leaving the app wants. A caller passes this when the sign-out is a step
+   * inside something else the visitor is still doing — holding an invitation
+   * whose link would otherwise be lost. Run through `safeReturnTo` so a
+   * destination assembled from URL data can only ever be a path on this site.
+   */
+  returnTo?: string;
+}) {
   const router = useRouter();
   const installation = useReminderInstallation();
   const [pending, setPending] = useState(false);
@@ -49,7 +63,7 @@ export function SignOutButton({ className }: { className?: string }) {
       } catch {
         // Successful sign-out must still navigate when device storage is blocked.
       }
-      router.push("/sign-in");
+      router.push(returnTo ? safeReturnTo(returnTo) : "/sign-in");
       router.refresh();
     } catch {
       // A failed sign-out (e.g. network) must not leave the button stuck disabled.

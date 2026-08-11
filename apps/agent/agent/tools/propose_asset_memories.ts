@@ -182,6 +182,7 @@ export default defineTool({
         kindLabel: assetLabelForKind(result.asset.kind),
         scope: result.asset.scope,
         visibilityLabel: visibilityLabelForScope(result.asset.scope),
+        ownership: result.asset.ownership,
         pending: result.assetPending,
       },
       memories: result.memories.map((memory) => ({

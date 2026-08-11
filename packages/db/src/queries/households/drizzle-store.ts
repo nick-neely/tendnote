@@ -3,20 +3,29 @@ import {
   createHouseholdWorkspaceSchema,
   householdMembershipSchema,
 } from "@tendnote/domain";
-import { and, eq, inArray } from "drizzle-orm";
-import { getDb } from "../../client";
+import { and, eq, inArray, or } from "drizzle-orm";
+import { type DatabaseExecutor, getDb } from "../../client";
 import {
   auditLog,
+  householdDissolutionConfirmations,
   householdMemberships,
   householdRecordShares,
   householdWorkspaces,
 } from "../../schema";
 import type { HouseholdStore } from "./types";
 
-export function createDrizzleHouseholdStore(): HouseholdStore {
+/**
+ * `resolveDb` is how this adapter is re-bound to an open transaction. The
+ * invitation lifecycle has to count seats and create the membership that fills
+ * one against the same transaction (ADR 0213), which is impossible while every
+ * method reaches for the pooled connection itself.
+ */
+export function createDrizzleHouseholdStore(
+  resolveDb: () => DatabaseExecutor = getDb,
+): HouseholdStore {
   return {
     async createHouseholdWorkspace(input) {
-      const [household] = await getDb()
+      const [household] = await resolveDb()
         .insert(householdWorkspaces)
         .values(createHouseholdWorkspaceSchema.parse(input))
         .returning();
@@ -26,7 +35,7 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
       return household;
     },
     async getHouseholdWorkspace(input) {
-      const [household] = await getDb()
+      const [household] = await resolveDb()
         .select()
         .from(householdWorkspaces)
         .where(eq(householdWorkspaces.id, input.householdId))
@@ -35,13 +44,24 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
     },
     async getHouseholdWorkspaces(input) {
       if (input.householdIds.length === 0) return [];
-      return getDb()
+      return resolveDb()
         .select()
         .from(householdWorkspaces)
         .where(inArray(householdWorkspaces.id, input.householdIds));
     },
+    async updateHouseholdWorkspace(input) {
+      const [household] = await resolveDb()
+        .update(householdWorkspaces)
+        .set({ ...input.patch, updatedAt: new Date() })
+        .where(eq(householdWorkspaces.id, input.householdId))
+        .returning();
+      if (!household) {
+        throw new Error("Household workspace not found.");
+      }
+      return household;
+    },
     async createHouseholdMembership(input) {
-      const [membership] = await getDb()
+      const [membership] = await resolveDb()
         .insert(householdMemberships)
         .values(createHouseholdMembershipSchema.parse(input))
         .returning();
@@ -51,7 +71,7 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
       return membership;
     },
     async getHouseholdMembership(input) {
-      const [membership] = await getDb()
+      const [membership] = await resolveDb()
         .select()
         .from(householdMemberships)
         .where(
@@ -64,7 +84,7 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
       return membership ?? null;
     },
     async getHouseholdMembershipById(input) {
-      const [membership] = await getDb()
+      const [membership] = await resolveDb()
         .select()
         .from(householdMemberships)
         .where(eq(householdMemberships.id, input.membershipId))
@@ -73,7 +93,7 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
     },
     async updateHouseholdMembership(input) {
       const patch = householdMembershipSchema.partial().parse(input.patch);
-      const [membership] = await getDb()
+      const [membership] = await resolveDb()
         .update(householdMemberships)
         .set({ ...patch, updatedAt: new Date() })
         .where(eq(householdMemberships.id, input.membershipId))
@@ -84,7 +104,7 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
       return membership;
     },
     async listHouseholdMemberships(input) {
-      return getDb()
+      return resolveDb()
         .select()
         .from(householdMemberships)
         .where(
@@ -95,7 +115,7 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
         );
     },
     async listActiveHouseholdMembershipsForUser(input) {
-      return getDb()
+      return resolveDb()
         .select()
         .from(householdMemberships)
         .where(
@@ -106,7 +126,7 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
         );
     },
     async createHouseholdRecordShare(input) {
-      const [share] = await getDb()
+      const [share] = await resolveDb()
         .insert(householdRecordShares)
         .values(input)
         .onConflictDoNothing()
@@ -116,7 +136,7 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
         return share;
       }
 
-      const [existing] = await getDb()
+      const [existing] = await resolveDb()
         .select()
         .from(householdRecordShares)
         .where(
@@ -133,7 +153,7 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
       return existing;
     },
     async listHouseholdRecordShares(input) {
-      return getDb()
+      return resolveDb()
         .select()
         .from(householdRecordShares)
         .where(
@@ -146,7 +166,7 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
     },
     async listHouseholdRecordSharesForRecords(input) {
       if (input.householdIds.length === 0 || input.recordIds.length === 0) return [];
-      return getDb()
+      return resolveDb()
         .select()
         .from(householdRecordShares)
         .where(
@@ -158,7 +178,7 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
         );
     },
     async deleteHouseholdRecordShares(input) {
-      await getDb()
+      await resolveDb()
         .delete(householdRecordShares)
         .where(
           and(
@@ -168,8 +188,68 @@ export function createDrizzleHouseholdStore(): HouseholdStore {
           ),
         );
     },
+    async deleteHouseholdRecordSharesForMember(input) {
+      await resolveDb()
+        .delete(householdRecordShares)
+        .where(
+          and(
+            eq(householdRecordShares.householdId, input.householdId),
+            ...(input.userId
+              ? [
+                  or(
+                    eq(householdRecordShares.sharedWithUserId, input.userId),
+                    eq(householdRecordShares.sharedByUserId, input.userId),
+                  ),
+                ]
+              : []),
+          ),
+        );
+    },
+    async listHouseholdDissolutionConfirmations(input) {
+      return resolveDb()
+        .select({
+          householdId: householdDissolutionConfirmations.householdId,
+          userId: householdDissolutionConfirmations.userId,
+          confirmedAt: householdDissolutionConfirmations.confirmedAt,
+        })
+        .from(householdDissolutionConfirmations)
+        .where(eq(householdDissolutionConfirmations.householdId, input.householdId));
+    },
+    async confirmHouseholdDissolution(input) {
+      const [confirmation] = await resolveDb()
+        .insert(householdDissolutionConfirmations)
+        .values({ householdId: input.householdId, userId: input.userId })
+        .onConflictDoUpdate({
+          target: [
+            householdDissolutionConfirmations.householdId,
+            householdDissolutionConfirmations.userId,
+          ],
+          // Re-confirming refreshes the moment rather than adding a second vote;
+          // unanimity counts distinct owners, never presses.
+          set: { confirmedAt: new Date() },
+        })
+        .returning({
+          householdId: householdDissolutionConfirmations.householdId,
+          userId: householdDissolutionConfirmations.userId,
+          confirmedAt: householdDissolutionConfirmations.confirmedAt,
+        });
+      if (!confirmation) {
+        throw new Error("Failed to record household dissolution confirmation.");
+      }
+      return confirmation;
+    },
+    async clearHouseholdDissolutionConfirmations(input) {
+      await resolveDb()
+        .delete(householdDissolutionConfirmations)
+        .where(
+          and(
+            eq(householdDissolutionConfirmations.householdId, input.householdId),
+            ...(input.userId ? [eq(householdDissolutionConfirmations.userId, input.userId)] : []),
+          ),
+        );
+    },
     async createAuditLogEntry(input) {
-      const [entry] = await getDb().insert(auditLog).values(input).returning();
+      const [entry] = await resolveDb().insert(auditLog).values(input).returning();
       if (!entry) {
         throw new Error("Failed to create audit log entry.");
       }

@@ -341,11 +341,38 @@ describe("lifecycle transitions", () => {
   it("rejects invalid transitions", async () => {
     const { lifecycle, seedOpen } = await setup();
     const action = await seedOpen();
-    await lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: action.id });
 
+    // Resuming something that was never paused is a genuine category error and
+    // stays an error. Re-completing is not — see the reconciliation test below.
     await expect(
-      lifecycle.completeGeneralAction({ actorUserId: OWNER, generalActionId: action.id }),
-    ).rejects.toThrow(/Cannot complete/);
+      lifecycle.resumeGeneralAction({ actorUserId: OWNER, generalActionId: action.id }),
+    ).rejects.toThrow(/Cannot resume/);
+  });
+
+  it("reconciles a second completion instead of settling the action twice", async () => {
+    const { lifecycle, seedOpen } = await setup();
+    const action = await seedOpen();
+    const first = await lifecycle.completeGeneralAction({
+      actorUserId: OWNER,
+      generalActionId: action.id,
+    });
+    expect(first).toMatchObject({ status: "completed", reconciliation: null });
+
+    const second = await lifecycle.completeGeneralAction({
+      actorUserId: OWNER,
+      generalActionId: action.id,
+    });
+    expect(second.status).toBe("completed");
+    expect(second.reconciliation).toMatchObject({
+      handledAs: "completed",
+      handledByUserId: OWNER,
+    });
+    // The occurrence settled once, so history carries one completion.
+    const history = await lifecycle.listGeneralActionHistory({
+      actorUserId: OWNER,
+      generalActionId: action.id,
+    });
+    expect(history.filter((event) => event.kind === "completed")).toHaveLength(1);
   });
 });
 
@@ -508,17 +535,17 @@ describe("owner scoping", () => {
 
     await expect(
       lifecycle.getGeneralAction({ actorUserId: OTHER, generalActionId: action.id }),
-    ).rejects.toThrow(/Action not found/);
+    ).rejects.toThrow(/no longer available/);
     await expect(
       lifecycle.completeGeneralAction({ actorUserId: OTHER, generalActionId: action.id }),
-    ).rejects.toThrow(/Action not found/);
+    ).rejects.toThrow(/no longer available/);
     await expect(
       lifecycle.editGeneralAction({
         actorUserId: OTHER,
         generalActionId: action.id,
         edit: { title: "hijack" },
       }),
-    ).rejects.toThrow(/Action not found/);
+    ).rejects.toThrow(/no longer available/);
   });
 
   it("scopes active listing and history to the owner", async () => {
@@ -776,7 +803,7 @@ describe("household-scoped actions", () => {
     await expect(ids({ ownerUserId: OWNER })).resolves.not.toContain(memberPrivate.id);
     await expect(
       lifecycle.getGeneralAction({ actorUserId: OWNER, generalActionId: memberPrivate.id }),
-    ).rejects.toThrow(/Action not found/);
+    ).rejects.toThrow(/no longer available/);
   });
 
   it("lets a visible member lifecycle-change a household action, preserving owner provenance", async () => {
@@ -820,7 +847,7 @@ describe("household-scoped actions", () => {
 
     await expect(
       lifecycle.completeGeneralAction({ actorUserId: OTHER_MEMBER, generalActionId: action.id }),
-    ).rejects.toThrow(/Action not found/);
+    ).rejects.toThrow(/no longer available/);
   });
 
   it("rejects a visible member editing an owner's action content (edit is owner-only)", async () => {
@@ -840,7 +867,7 @@ describe("household-scoped actions", () => {
         generalActionId: action.id,
         edit: { title: "hijacked" },
       }),
-    ).rejects.toThrow(/Action not found/);
+    ).rejects.toThrow(/no longer available/);
 
     const seen = await lifecycle.getGeneralAction({
       actorUserId: OWNER,
@@ -875,7 +902,7 @@ describe("household-scoped actions", () => {
         generalActionId: action.id,
         personIds: [person.id],
       }),
-    ).rejects.toThrow(/Action not found/);
+    ).rejects.toThrow(/no longer available/);
   });
 
   it("hides a selected-shared action from a member once they are removed", async () => {
@@ -1120,7 +1147,7 @@ describe("routines (recurring general actions)", () => {
     expect(events.at(-1)).toMatchObject({ kind: "completed", actorUserId: MEMBER });
   });
 
-  it("lets a household member pause and resume a shared Routine, stamping the actor", async () => {
+  it("keeps pausing and resuming a member-owned shared Routine with its owner", async () => {
     const base = await setup();
     const household = await seedHouseholdWithMembers(base.store, {
       ownerUserId: OWNER,
@@ -1138,28 +1165,35 @@ describe("routines (recurring general actions)", () => {
       recurrence: { interval: 1, unit: "month" },
     });
 
-    // A member who can see a household Routine may pause/resume it (act-not-author,
-    // #180), keyed on the owner while recording the member as actor.
+    // Phase Eight narrows this: pausing a *member-owned* Routine is a decision
+    // about someone else's record, so it returns to its owner even though the
+    // member can plainly see it (#383). Completion stays open to them.
+    await expect(
+      base.lifecycle.pauseGeneralAction({ actorUserId: MEMBER, generalActionId: routine.id }),
+    ).rejects.toThrow(/no longer available/);
+
     const paused = await base.lifecycle.pauseGeneralAction({
-      actorUserId: MEMBER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
-    expect(paused).toMatchObject({ ownerUserId: OWNER, status: "paused", lastActorUserId: MEMBER });
+    expect(paused).toMatchObject({ ownerUserId: OWNER, status: "paused", lastActorUserId: OWNER });
 
     const resumed = await base.lifecycle.resumeGeneralAction({
-      actorUserId: MEMBER,
+      actorUserId: OWNER,
       generalActionId: routine.id,
     });
-    expect(resumed).toMatchObject({ ownerUserId: OWNER, status: "open", lastActorUserId: MEMBER });
+    expect(resumed).toMatchObject({ ownerUserId: OWNER, status: "open", lastActorUserId: OWNER });
 
     const events = await base.lifecycle.listGeneralActionHistory({
       actorUserId: MEMBER,
       generalActionId: routine.id,
     });
+    // The member can still *read* the history of a record they can see; what
+    // they cannot do is author the entries.
     expect(events.map((event) => [event.kind, event.actorUserId])).toEqual([
       ["created", OWNER],
-      ["paused", MEMBER],
-      ["resumed", MEMBER],
+      ["paused", OWNER],
+      ["resumed", OWNER],
     ]);
   });
 
@@ -1496,6 +1530,6 @@ describe("visibility transitions", () => {
         generalActionId: action.id,
         scope: "private",
       }),
-    ).rejects.toThrow(/Action not found/);
+    ).rejects.toThrow(/no longer available/);
   });
 });

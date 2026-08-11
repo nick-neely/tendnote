@@ -32,6 +32,9 @@ function activeMembership(userId: string, id: string): HouseholdMembership {
     invitedAt: at,
     acceptedAt: at,
     removedAt: null,
+    pendingRole: null,
+    pendingRoleOfferedByUserId: null,
+    pendingRoleOfferedAt: null,
     createdAt: at,
     updatedAt: at,
   };

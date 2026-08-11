@@ -435,6 +435,69 @@
       "when": 1785801146994,
       "tag": "0061_context_fact_imports",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1786243592565,
+      "tag": "0062_household_invitations",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1786249098275,
+      "tag": "0063_household_governance_and_dissolution",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1786322926025,
+      "tag": "0064_household_native_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1786323971182,
+      "tag": "0065_person_references",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1786324170120,
+      "tag": "0066_gift_plans_and_surprise_subjects",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1786325207526,
+      "tag": "0067_household_native_saved_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1786326154790,
+      "tag": "0068_household_calendar_and_event_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1786374293320,
+      "tag": "0069_household_native_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1786383061556,
+      "tag": "0070_household_checkin_opt_in",
+      "breakpoints": true
     }
   ]
 }

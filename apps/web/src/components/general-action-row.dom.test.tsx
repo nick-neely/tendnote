@@ -253,6 +253,10 @@ describe("Routine occurrence lifecycle", () => {
     await waitFor(() =>
       expect(skipGeneralActionOccurrenceAction).toHaveBeenCalledWith({
         generalActionId: "11111111-1111-1111-1111-111111111111",
+        // The occurrence the row was rendered against travels with the skip, so a
+        // second member acting on the same one is reconciled rather than advancing
+        // it twice.
+        expectedOccurrenceVersion: 0,
       }),
     );
     expect(onUpdate).toHaveBeenCalledWith(next);

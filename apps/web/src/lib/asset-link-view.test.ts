@@ -14,6 +14,8 @@ function linkEntry(overrides: Partial<RelatedAssetLink> = {}): RelatedAssetLink 
       kind: "appliance",
       status: "active",
       scope: "private",
+      ownership: "member_owned",
+      revision: 0,
       householdId: null,
       archivedAt: null,
       createdAt: new Date("2026-07-01T00:00:00Z"),

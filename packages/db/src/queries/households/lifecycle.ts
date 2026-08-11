@@ -1,8 +1,9 @@
 import {
+  assertHouseholdAdmissionAvailable,
   assertHouseholdOwner,
-  canViewScopedRecord,
-  scopedRecordVisibility,
+  parseHouseholdName,
 } from "@tendnote/domain";
+import { createHouseholdAuthorizationProver } from "./authorization";
 import type {
   AcceptHouseholdInviteInput,
   CanViewHouseholdRecordInput,
@@ -14,6 +15,8 @@ import type {
 } from "./types";
 
 export function createHouseholdLifecycle(store: HouseholdStore) {
+  const prover = createHouseholdAuthorizationProver(store);
+
   async function requireOwner(input: { ownerUserId: string; householdId: string }) {
     const membership = await store.getHouseholdMembership({
       householdId: input.householdId,
@@ -38,10 +41,21 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
   }
 
   return {
+    /**
+     * Creates one immediately active workspace whose creator is its sole active
+     * Owner. Admission is checked against the creator's own active memberships
+     * first, so the one-active-workspace promise is decided here rather than by
+     * whichever row a later reader happens to pick.
+     */
     async createHousehold(input: CreateHouseholdInput) {
+      const name = parseHouseholdName(input.name);
+      assertHouseholdAdmissionAvailable(
+        await store.listActiveHouseholdMembershipsForUser({ userId: input.ownerUserId }),
+      );
+
       const household = await store.createHouseholdWorkspace({
         ownerUserId: input.ownerUserId,
-        name: input.name,
+        name,
         defaultScope: input.defaultScope ?? "private",
       });
       const ownerMembership = await store.createHouseholdMembership({
@@ -60,12 +74,29 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
         action: "household.create",
         entityType: "household",
         entityId: household.id,
-        metadataJson: { ownerMembershipId: ownerMembership.id },
+        metadataJson: {
+          ownerMembershipId: ownerMembership.id,
+          name: household.name,
+          role: ownerMembership.role,
+          status: ownerMembership.status,
+        },
       });
 
       return { household, ownerMembership };
     },
 
+    /**
+     * The pre-Phase-Eight direct-membership path: it takes an existing Tendnote
+     * user id, writes an `invited` membership row, sends nothing, and consumes
+     * no seat.
+     *
+     * It is **not** the Household Invitation model (ADR 0213), and nothing a
+     * user can reach calls it — the shipped path is
+     * `createHouseholdInvitationLifecycle`, whose capability is bound to an
+     * email address, expires, and creates a membership only at acceptance. This
+     * pair survives as fast test seeding for suites that need a two-member
+     * household without an invitation round trip.
+     */
     async inviteMember(input: InviteHouseholdMemberInput) {
       await requireOwner(input);
 
@@ -179,6 +210,19 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
         throw new Error("Selected household members must be active.");
       }
 
+      // The previous selection goes first. Re-selecting an audience is a
+      // replacement, not an addition: a member left out of the new set must lose
+      // the record, and without this the audience could only ever grow — every
+      // narrowing would silently succeed while changing nothing (#180). Each
+      // per-domain audience change already does this before writing its own
+      // shares; this entry point is the one that did not, so a caller reaching
+      // for the generic seam got a fail-open version of the same operation.
+      await store.deleteHouseholdRecordShares({
+        householdId: input.householdId,
+        recordKind: input.recordKind,
+        recordId: input.recordId,
+      });
+
       const shares = [];
       for (const selectedUserId of input.selectedUserIds) {
         shares.push(
@@ -206,32 +250,26 @@ export function createHouseholdLifecycle(store: HouseholdStore) {
       return shares;
     },
 
+    /**
+     * The read predicate, now answered by the same Household Authorization Proof
+     * every other access decision uses. It stays a boolean because its callers
+     * are seeding and fixture code that only ask whether a record would be
+     * visible; anything acting on a record calls the prover directly so it gets
+     * the operation, the grant, and the opaque refusal.
+     */
     async canViewHouseholdRecord(input: CanViewHouseholdRecordInput) {
-      const activeMemberships = input.householdId
-        ? await store.listHouseholdMemberships({
-            householdId: input.householdId,
-            status: "active",
-          })
-        : [];
-      const shares =
-        input.scope === "shared" && input.householdId
-          ? await store.listHouseholdRecordShares({
-              householdId: input.householdId,
-              recordKind: input.recordKind,
-              recordId: input.recordId,
-            })
-          : [];
-
-      return canViewScopedRecord({
+      const proof = await prover.proveRecordAccess({
         callerUserId: input.callerUserId,
-        record: scopedRecordVisibility({
+        operation: "view",
+        record: {
+          kind: input.recordKind,
+          id: input.recordId,
           ownerUserId: input.ownerUserId,
           scope: input.scope,
           householdId: input.householdId,
-          shares,
-        }),
-        activeMemberships,
+        },
       });
+      return proof.authorized;
     },
   };
 }

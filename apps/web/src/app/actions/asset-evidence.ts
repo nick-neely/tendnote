@@ -57,6 +57,12 @@ const evidenceFieldsSchema = z.object({
   purchasedOn: z.preprocess(blankAsUndefined, z.iso.date().optional()),
   renewsOn: z.preprocess(blankAsUndefined, z.iso.date().optional()),
   visibilityChoice: z.preprocess(blankAsUndefined, visibilityChoiceSchema.optional()),
+  /**
+   * Whether this capture is the household's rather than the capturer's. Offered
+   * only under a household-native Asset; the seam refuses it anywhere else, so
+   * the form field chooses and never decides (ADR 0214, #386).
+   */
+  household: z.preprocess((value) => value === "true", z.boolean()),
   selectedUserIds: z.array(z.string().min(1)).max(50).optional(),
 });
 
@@ -100,6 +106,7 @@ function toEvidenceFields(
     money: toEvidenceMoney(fields),
     purchasedOn: fields.purchasedOn ?? null,
     renewsOn: fields.renewsOn ?? null,
+    ...(fields.household ? { ownership: "household_native" as const } : {}),
     // Absent lets the seam inherit the anchor. Every explicit choice is re-checked
     // against the authoritative parent Asset in the owner-scoped seam.
     ...toResolvedEvidenceVisibility(fields, resolvedScope),

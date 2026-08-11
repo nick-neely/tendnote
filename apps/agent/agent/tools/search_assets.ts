@@ -72,8 +72,15 @@ export default defineTool({
           snippet: result.snippet,
           matchedBy: result.matchKinds,
           trust: result.trustLevel,
-          visibility: result.visibilityLabel,
-          visibilityChoice: result.visibilityChoice,
+          // A household-native record has no audience anyone chose — it is simply
+          // the household's — so the model is given nothing to state one from, the
+          // same suppression every rendered Asset surface makes (ADR 0214). The
+          // ownership form itself is offered instead, so Eve can still say whose
+          // the record is when that is the honest thing to say.
+          visibility: result.ownership === "household_native" ? null : result.visibilityLabel,
+          visibilityChoice:
+            result.ownership === "household_native" ? null : result.visibilityChoice,
+          ownership: result.ownership,
         })),
         guidance:
           "`assetId` and `memoryId` are handles for your follow-up tool calls " +

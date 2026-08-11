@@ -1,4 +1,4 @@
-import type { AssetEvidence, AssetMemory } from "@tendnote/domain";
+import type { AssetAuditSource, AssetEvidence, AssetMemory } from "@tendnote/domain";
 import {
   type AssetEmbeddingDeps,
   makeScheduleAssetEmbedding,
@@ -9,6 +9,13 @@ import type {
   AddAssetEvidenceToNewAssetInput,
   RemoveAssetEvidenceInput,
 } from "./evidence-types";
+import {
+  editAssetMemory,
+  listVisibleAssetEvidence,
+  listVisibleAssetMemories,
+  restoreAssetMemory,
+  setAsideAssetMemory,
+} from "./household-children";
 import { acceptSuggestedAsset, dismissSuggestedAsset, editSuggestedAsset } from "./review-assets";
 import {
   addAssetEvidence,
@@ -38,6 +45,7 @@ import type {
   AssetReviewGroupResult,
   AssetReviewLifecycleStore,
   CreateActiveAssetMemoryInput,
+  EditAssetMemoryInput,
   EditSuggestedAssetInput,
   EditSuggestedAssetMemoryInput,
   LinkAssetReviewGroupInput,
@@ -254,11 +262,46 @@ export function createAssetReview(store: AssetReviewLifecycleStore, deps: AssetE
     }) => findAssetReviewGroupBySource(store, input),
     /**
      * The active Asset Memories on one asset the caller may see — per-record
-     * scope filtering, applied pre-surface, so a household Asset can carry a
-     * private detail its members never learn exists (#196).
+     * scope filtering *and* a per-record proof, applied pre-surface, so a
+     * household Asset can carry a private detail its members never learn exists
+     * (#196) and a member who left mid-session sees nothing (#386).
      */
     listAssetMemories: (input: { callerUserId: string; assetId: string }): Promise<AssetMemory[]> =>
-      store.listVisibleAssetMemoriesForAsset(input),
+      listVisibleAssetMemories(store, input),
+
+    /**
+     * Corrects a durable, active Asset Memory: the owner's own, or the
+     * household's own by any active member. Optimistically fenced, so a
+     * correction never silently overwrites another member's (#386).
+     */
+    async editAssetMemory(input: EditAssetMemoryInput) {
+      const memory = await editAssetMemory(store, input);
+      // Corrected text embeds differently — re-enqueue so the vector follows.
+      await embed.memory(memory);
+
+      return memory;
+    },
+
+    /**
+     * Sets aside a durable, active Asset Memory that is no longer true. Nothing
+     * is deleted, so the household keeps its history and its record (ADR 0214).
+     */
+    async setAsideAssetMemory(input: AssetMemoryActionInput & { source?: AssetAuditSource }) {
+      const memory = await setAsideAssetMemory(store, input);
+      // Re-enqueued so the processor drops the vector for a fact that is gone.
+      await embed.memory(memory);
+
+      return memory;
+    },
+
+    /** Brings a set-aside detail back — the inverse of the above (#386). */
+    async restoreAssetMemory(input: AssetMemoryActionInput & { source?: AssetAuditSource }) {
+      const memory = await restoreAssetMemory(store, input);
+      // True again, so retrievable again.
+      await embed.memory(memory);
+
+      return memory;
+    },
     /**
      * Shared Asset Evidence Capture (#200): one write path for every surface —
      * profile drop zone, mobile capture, review card, and later Eve's plus-menu
@@ -288,7 +331,7 @@ export function createAssetReview(store: AssetReviewLifecycleStore, deps: AssetE
     listAssetEvidence: (input: {
       callerUserId: string;
       assetId: string;
-    }): Promise<AssetEvidence[]> => store.listVisibleAssetEvidenceForAsset(input),
+    }): Promise<AssetEvidence[]> => listVisibleAssetEvidence(store, input),
     /** Stored upload bytes, gated by the caller's visibility of the record. */
     getAssetEvidenceFile: (input: { callerUserId: string; evidenceId: string }) =>
       getAssetEvidenceFileForCaller(store, input),

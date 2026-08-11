@@ -41,6 +41,33 @@ export function createAccessProfileQueries(store: AccessProfileStore) {
 
   return {
     /**
+     * Turns this member's Household Check-in on or off (#390).
+     *
+     * The subject is the member and there is deliberately no argument for whose
+     * Check-in this is: opting in is a decision only they can make, and a target
+     * here would be the cross-member enrollment Phase Eight refuses (ADR 0220).
+     *
+     * The profile is ensured first so the control cannot succeed against
+     * nothing. That is the whole reason this preference lives on the access
+     * profile rather than beside the briefing it appears in: a member who has
+     * never had a brief generated must still be able to ask for a Check-in.
+     */
+    async setHouseholdCheckinEnabled(input: {
+      userId: string;
+      enabled: boolean;
+    }): Promise<boolean> {
+      const existing = await store.getByUserId(input.userId);
+      if (!existing) throw new Error("Failed to update the household check-in.");
+
+      const updated = await store.update({
+        userId: input.userId,
+        patch: { householdCheckinEnabled: input.enabled },
+      });
+      if (!updated) throw new Error("Failed to update the household check-in.");
+      return updated.householdCheckinEnabled;
+    },
+
+    /**
      * Ensure a signed-up user has an access profile. The very first profile ever
      * created becomes the initial allowed owner (bootstrap); every later user
      * starts pending until access is granted.

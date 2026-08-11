@@ -1,6 +1,52 @@
+import type { SavedItemConflictView } from "@/lib/saved-item-conflict";
+
+/**
+ * What the writer needs to resolve a lost race without losing their draft.
+ *
+ * The rule is "preserve what they typed, show what is there now, make them
+ * choose" — so the current value, who wrote it, and the revision a deliberate
+ * replace would carry all travel back with the failure. Re-reading afterwards
+ * would just be a second race.
+ */
+export type OwnerActionConflict = {
+  currentValue: string | null;
+  /**
+   * Who wrote the value that won, as an id. `runOwnerAction` is generic and
+   * cannot know a household roster, so the raw id is what the protocol can
+   * honestly produce — a surface that already holds the roster resolves it.
+   */
+  actorUserId: string | null;
+  /**
+   * The resolved display name, when a surface-level helper has already looked it
+   * up. Separate from the id rather than overwriting it, because a field that
+   * holds an id on some paths and a name on others is a field every reader has
+   * to guess about — and guessing wrong renders a user id at a person.
+   */
+  actorName?: string | null;
+  revision: number;
+};
+
 export type OwnerActionResult<TView> =
   | { ok: true; view: TView }
-  | { ok: false; error: string; focusContextFactId?: string };
+  | {
+      ok: false;
+      error: string;
+      focusContextFactId?: string;
+      conflict?: OwnerActionConflict;
+      /**
+       * The authoritative current value behind a household-native optimistic
+       * concurrency refusal, so the form can put it beside the kept draft
+       * instead of only saying the write did not land (ADR 0209).
+       */
+      savedItemConflict?: SavedItemConflictView;
+      /**
+       * True when the refusal is only that the destination does not exist yet.
+       * Nothing went wrong and there is nothing to correct, so a surface reading
+       * this must render the message as a quiet note rather than an error - no
+       * destructive color and no assertive live region (DESIGN.md §2, §8).
+       */
+      unavailableDestination?: true;
+    };
 
 /** A curated owner-facing failure returned as data by the Server Action protocol. */
 export class OwnerActionFailure extends Error {

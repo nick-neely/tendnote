@@ -7,7 +7,9 @@ import {
 } from "@tendnote/domain";
 import { DEFAULT_EMBEDDING_CONFIG } from "../semantic-retrieval/processor";
 import type { EmbeddingAdapter, EmbeddingConfig } from "../semantic-retrieval/types";
+import { createAssetSearchAuthority } from "./authority";
 import type {
+  AssetSearchAuthorityStore,
   AssetSearchOutcome,
   AssetSearchQueryInput,
   AssetSearchStore,
@@ -28,12 +30,20 @@ import type {
  * search to exact recall rather than breaking it), and the pure fusion gates
  * meaning-only records to the Assets the query actually found, so the weakest signal can
  * enhance an answer but never become the noise floor of one (`passesSemanticGate`).
+ *
+ * The authority store is a constructor argument rather than an option with a default
+ * so that an Asset Search without a proof cannot be built at all. Search is the one
+ * surface where a caller can ask about a record they were never told exists, and it
+ * spent one issue too many pre-filtered where its siblings were proved (#386 → #390).
  */
 export function createAssetSearch(
   store: AssetSearchStore,
+  authorityStore: AssetSearchAuthorityStore,
   adapter: EmbeddingAdapter,
   config: EmbeddingConfig = DEFAULT_EMBEDDING_CONFIG,
 ) {
+  const authority = createAssetSearchAuthority(authorityStore);
+
   async function searchAssetsWithStatus(input: SearchAssetsRequest): Promise<AssetSearchOutcome> {
     const parsed = searchAssetsSchema.parse(input);
     const query: AssetSearchQueryInput = { ...parsed, ownerUserId: input.ownerUserId };
@@ -44,11 +54,26 @@ export function createAssetSearch(
       searchSemanticTier(store, adapter, config, query),
     ]);
 
+    /**
+     * The proof runs before fusion, not after.
+     *
+     * Fusion is not a passive step: the anchor set, the semantic gate, and the
+     * multi-signal bonus are all computed from the candidate list, so a row the
+     * caller may not see would otherwise still shape the answer it is excluded
+     * from — deciding which meaning-only records survive, or which record is
+     * ranked first. Proving first means a refused row leaves nothing behind at
+     * all, which is the only shape ADR 0219 accepts.
+     *
+     * The page it produces may be short, and that is correct. A refusal leaves no
+     * hole to backfill, because a backfilled page is a countable one.
+     */
+    const candidates = await authority.keepProvenCandidates({
+      callerUserId: input.ownerUserId,
+      candidates: [...records, ...semantic.candidates],
+    });
+
     return {
-      results: mergeAssetSearchResults({
-        candidates: [...records, ...semantic.candidates],
-        limit: parsed.limit,
-      }),
+      results: mergeAssetSearchResults({ candidates, limit: parsed.limit }),
       semanticAvailable: semantic.available,
     };
   }

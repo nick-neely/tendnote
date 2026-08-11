@@ -79,6 +79,42 @@ export const householdMemberStatus = pgEnum("household_member_status", [
   "removed",
 ]);
 
+// Who a scoped record belongs to, which is a different question from who may see
+// it (ADR 0214). Shared across record families so a household-native Saved Item
+// and a household-native Action cannot come to mean different things by it.
+export const householdRecordOwnership = pgEnum("household_record_ownership", [
+  "member_owned",
+  "household_native",
+]);
+
+// Whether a Household Workspace still exists for its members. `dissolved` is the
+// unanimous active-Owner ending (ADR 0213): the row outlives the household so its
+// household-native records can sit in the recovery window before permanent
+// deletion, and so the ending itself stays auditable.
+export const householdStatus = pgEnum("household_status", ["active", "dissolved"]);
+
+// A Household Invitation's whole lifecycle (ADR 0213): one live state, four
+// terminal ones. `expired` is written when a path observes the lapsed window;
+// every read derives it from `expires_at` so a link is never usable past it.
+export const householdInvitationState = pgEnum("household_invitation_state", [
+  "pending",
+  "accepted",
+  "declined",
+  "canceled",
+  "expired",
+]);
+
+// The life of one durable send attempt. Deliberately only the states Tendnote
+// itself produces: provider-reported outcomes (delivered, bounced, complained,
+// suppressed) arrive through a webhook consumer that does not exist yet, and an
+// enum value with no producer would read as supported behavior.
+export const householdInvitationDeliveryStatus = pgEnum("household_invitation_delivery_status", [
+  "queued",
+  "sending",
+  "sent",
+  "failed",
+]);
+
 export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "memory",
   "source_record",
@@ -91,6 +127,78 @@ export const visibilityRecordKind = pgEnum("visibility_record_kind", [
   "asset_memory",
   // Asset Evidence is independently scoped under an Asset, like memories (#200).
   "asset_evidence",
+  // Phase 8 Gift Plans: member-owned, selected-co-planner records whose audience
+  // additionally answers to a Surprise Subject exclusion (#389, ADR 0216). Gift
+  // Ideas deliberately have no kind of their own — an idea's audience is its
+  // plan's, so there is one record to share and one record to prove.
+  "gift_plan",
+  // Phase 8 Household Event Plans (#387). Household-native, so it never produces a
+  // `household_record_shares` row - a workspace-owned record has no selected
+  // audience to store. It is a member of this enum anyway so that the record kind
+  // the Authorization Proof is asked about is the same vocabulary everywhere;
+  // splitting "kinds that can be shared" from "kinds that can be proved" would
+  // mean two lists that have to be kept in agreement by hand.
+  "household_event_plan",
+]);
+
+// A Gift Plan is the finite act of planning one celebration (#389): being worked
+// on, the occasion has happened, or put away. No purchase, delivery, or
+// fulfilment state — Tendnote is not a registry.
+export const giftPlanStatus = pgEnum("gift_plan_status", ["active", "celebrated", "archived"]);
+
+// Quiet, plan-local provenance (#389). Only deliberate acts on one plan; there is
+// no event for reading, opening, or arriving, because this is not a household
+// activity feed or a participation record.
+export const giftPlanEventKind = pgEnum("gift_plan_event_kind", [
+  "created",
+  "edited",
+  "audience_changed",
+  "surprise_protected",
+  "surprise_lifted",
+  "idea_added",
+  "idea_edited",
+  "idea_removed",
+  "idea_claimed",
+  "idea_released",
+  "celebrated",
+  "archived",
+  "reopened",
+]);
+
+// Whether a designated Household Calendar is currently readable by the household
+// (ADR 0217). There is no `unavailable` member on purpose: whether a connected
+// calendar answers right now is a live provider fact that belongs to the read
+// outcome, and storing it would create a second, staler answer beside the read.
+export const householdCalendarConnectionStatus = pgEnum("household_calendar_connection_status", [
+  "connected",
+  "disconnected",
+]);
+
+// Why a designation ended. The three are meaningfully different to a member
+// looking at a household that lost a calendar, and none of them is a failure.
+export const householdCalendarDisconnectReason = pgEnum("household_calendar_disconnect_reason", [
+  "owner_disconnected",
+  "connector_departed",
+  "household_dissolved",
+]);
+
+// A Household Event Plan is active until it is archived. Archive is its removal
+// path: the record is workspace-owned, so no individual member may permanently
+// delete one (ADR 0217).
+export const householdEventPlanStatus = pgEnum("household_event_plan_status", [
+  "active",
+  "archived",
+]);
+
+// The record families an Event Plan may link. Only families the Household
+// Authorization Proof already covers, because a link is proved before it is
+// revealed. People are deliberately absent: the record-local Person Reference
+// that would let a household-native record name someone without reaching into a
+// member's private People graph is #388's to define.
+export const householdEventPlanLinkKind = pgEnum("household_event_plan_link_kind", [
+  "general_action",
+  "followup",
+  "saved_item",
 ]);
 
 // Phase 6 Asset Memory (#196/#197): the small fixed Asset Kind set — practical
@@ -110,6 +218,12 @@ export const assetKind = pgEnum("asset_kind", [
 // scope-visible read filters to active/archived.
 export const assetStatus = pgEnum("asset_status", ["active", "archived", "suggested", "dismissed"]);
 
+// Phase Eight (#386): who an Asset or one of its child records belongs to, which
+// is not the same question as who may see it (ADR 0214). Deliberately the same
+// two members as `general_action_ownership` (#383) — a second household-native
+// family naming its forms differently would be a fork of the contract.
+export const assetOwnership = pgEnum("asset_ownership", ["member_owned", "household_native"]);
+
 export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
   "created",
   "edited",
@@ -126,6 +240,8 @@ export const assetAuditEventKind = pgEnum("asset_audit_event_kind", [
   "memory_edited",
   "memory_promoted",
   "memory_dismissed",
+  // A set-aside detail brought back (#386).
+  "memory_restored",
   // Evidence capture trail (#200): the evidence id rides in detail JSON.
   "evidence_added",
   "evidence_removed",
@@ -269,6 +385,40 @@ export const generalActionEventKind = pgEnum("general_action_event_kind", [
   "suggested",
   "promoted",
   "ignored",
+  // Phase 8 household collaboration (#383): who is looking after a
+  // household-native record changed, and a member-owned record was handed over
+  // to the household (ADRs 0214, 0215).
+  "responsibility_changed",
+  "handed_to_household",
+]);
+
+/**
+ * Whether a scoped record belongs to a member or to the Household Workspace.
+ *
+ * Deliberately separate from `privacy_scope`: scope says who may see a record,
+ * ownership says whose it is, and Phase Eight's whole distinction — "my errand
+ * you can see" versus "the household's chore" — is invisible without both, since
+ * the two look identical to the audience rule (ADR 0214). General Actions are
+ * the first family to carry it.
+ */
+export const generalActionOwnership = pgEnum("general_action_ownership", [
+  "member_owned",
+  "household_native",
+]);
+
+/**
+ * The questions a household record may put to one of its members, and which
+ * therefore have to remember a "no".
+ *
+ * Both are invitations rather than actions: naming a Responsibility Holder
+ * offers *that* member their own reminder, and settling an occurrence offers the
+ * acting member a hand-off. Neither may be repeated after it is declined, and
+ * an enum rather than two tables keeps "what has this member already answered"
+ * one question with one answer (#383, ADRs 0203, 0215).
+ */
+export const generalActionOfferKind = pgEnum("general_action_offer_kind", [
+  "holder_reminder",
+  "responsibility_handoff",
 ]);
 
 export const savedItemKind = pgEnum("saved_item_kind", ["note", "link", "open_question"]);

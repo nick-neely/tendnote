@@ -1,5 +1,7 @@
+import { getHouseholdCheckin } from "@tendnote/db/queries/household-home";
 import { getOwnerTodayContext } from "@tendnote/db/queries/today";
 import type { BriefCadence, TodayShortlistResponse } from "@tendnote/domain";
+import { householdCheckinIsWorthShowing } from "@tendnote/domain/household-checkin";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
@@ -27,6 +29,7 @@ import {
   DashboardGreetingReserve,
   DashboardRailReserve,
 } from "@/components/dashboard-reserve";
+import { HouseholdCheckinSection } from "@/components/household/household-checkin-section";
 import { MobileHomeReserve } from "@/components/mobile-home-reserve";
 import { MobileTodayDestination } from "@/components/mobile-today-destination";
 import { ReviewQueueFamilySection } from "@/components/review-queue-section";
@@ -193,6 +196,11 @@ async function HomeRail({ searchParams }: HomeProps) {
       dailyBrief={dailyBrief}
       followupReviews={followupReviews.map((review) => toSuggestedFollowupReviewView(review))}
       followups={followups.map((summary) => toDashboardFollowupView(summary, now, ownerUserId))}
+      householdCheckin={
+        <Suspense fallback={null}>
+          <HomeHouseholdCheckin ownerUserId={ownerUserId} />
+        </Suspense>
+      }
       initialTab={landingRailTab({
         birthdays,
         calendarSuggestions,
@@ -209,6 +217,41 @@ async function HomeRail({ searchParams }: HomeProps) {
       weeklyBrief={weeklyBrief}
     />
   );
+}
+
+/**
+ * The member's own Household check-in, inside their private briefing.
+ *
+ * Its own boundary and its own fallback of nothing: the check-in is the smallest
+ * thing in the rail, and a slow or failed household read must never hold up — or
+ * be mistaken for — the member's own day. Standing is re-read here rather than
+ * carried from whatever composed the page, which is what makes a member who has
+ * just left see the section disappear instead of a stale copy of it.
+ */
+async function HomeHouseholdCheckin({ ownerUserId }: { ownerUserId: string }) {
+  try {
+    const { localDate, timeZone, now } = await getOwnerTodayContext({ ownerUserId });
+    const checkin = await getHouseholdCheckin({
+      callerUserId: ownerUserId,
+      localDate,
+      timeZone,
+      now,
+    });
+    if (!checkin.household || !householdCheckinIsWorthShowing(checkin)) return null;
+
+    return (
+      <HouseholdCheckinSection
+        headingId="rail-household-checkin"
+        householdName={checkin.household.name}
+        limitations={checkin.limitations}
+        records={checkin.records}
+      />
+    );
+  } catch {
+    // Nothing rather than a wrong thing: an unavailable household read must not
+    // become a line in someone's brief claiming their household is quiet.
+    return null;
+  }
 }
 
 /**

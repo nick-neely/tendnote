@@ -160,7 +160,9 @@ function AssetReviewGroupCardContent({
           <span aria-hidden className="size-1.5 rounded-full bg-accent" />
           {review.asset.pending ? "Suggested asset" : "Suggested details"}
         </span>
-        {review.asset.scope !== "private" ? (
+        {/* A household-native anchor has no audience anyone chose: the record is the
+            household's, which is not a sharing decision to name here (ADR 0214). */}
+        {review.asset.scope !== "private" && review.asset.ownership !== "household_native" ? (
           <ActionScopeChip label={review.asset.visibilityLabel} scope={review.asset.scope} />
         ) : null}
       </div>

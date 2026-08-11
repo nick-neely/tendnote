@@ -19,6 +19,7 @@ function result(overrides: Partial<AssetSearchResultView> = {}): AssetSearchResu
     matchKinds: ["structured"],
     trustLevel: "asset_fact",
     visibilityLabel: "Whole household",
+    ownership: "member_owned",
     ...overrides,
   };
 }
@@ -141,6 +142,20 @@ describe("AssetSearchPanel", () => {
       expect(screen.getByText(/Confirmed fact/)).toBeTruthy();
     });
     expect(screen.getByText(/Whole household/)).toBeTruthy();
+  });
+
+  it("states the trust register but no audience on a household-native record", async () => {
+    // Nobody chose to share the household's own refrigerator with the household, so the
+    // row must not say so — and it must not leave the separator hanging either (ADR 0214).
+    const user = userEvent.setup();
+    renderPanel([result({ ownership: "household_native" })]);
+
+    await user.type(screen.getByRole("searchbox", { name: /search your things/i }), "fridge");
+
+    await waitFor(() => {
+      expect(screen.getByText("Confirmed fact")).toBeTruthy();
+    });
+    expect(screen.queryByText(/Whole household/)).toBeNull();
   });
 
   it("deep-links each result to its asset profile", async () => {

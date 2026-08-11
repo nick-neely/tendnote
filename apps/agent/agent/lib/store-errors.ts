@@ -1,4 +1,9 @@
-import { AssetValidationError, GeneralActionValidationError } from "@tendnote/domain";
+import {
+  AssetValidationError,
+  GeneralActionValidationError,
+  GiftPlanValidationError,
+  HouseholdRecordUnavailableError,
+} from "@tendnote/domain";
 
 /**
  * What a tool may say when a store call fails for a reason that is not the caller's to
@@ -31,7 +36,26 @@ export async function withModelSafeStoreErrors<T>(run: () => Promise<T>): Promis
   try {
     return await run();
   } catch (error) {
-    if (error instanceof AssetValidationError || error instanceof GeneralActionValidationError) {
+    if (
+      error instanceof AssetValidationError ||
+      error instanceof GeneralActionValidationError ||
+      error instanceof GiftPlanValidationError
+    ) {
+      throw error;
+    }
+
+    /**
+     * The Household Authorization Proof's refusal, which is already the one
+     * sentence a refused caller is ever told.
+     *
+     * It passes through rather than being folded into the infrastructure message
+     * because it is *more* opaque, not less: "That's no longer available." names no
+     * record, household, member, or reason, and it says the true thing — nothing
+     * broke. Swallowing it would tell a Surprise Subject that Tendnote had a
+     * problem reading something, which is a fact about a record they must not
+     * learn exists (ADR 0219).
+     */
+    if (error instanceof HouseholdRecordUnavailableError) {
       throw error;
     }
 

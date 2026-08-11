@@ -30,15 +30,28 @@ export type RecallResultLines = {
 };
 
 export function recallResultLines(result: GlobalRecallResult): RecallResultLines {
-  const { primary, secondary } =
-    result.family === "relationship_context"
-      ? {
-          primary: result.supportingText,
-          // `personDisplayName` is nullable; the normalizer's label is the same
-          // name when it is there to be had, so it is the honest fallback.
-          secondary: result.details.personDisplayName ?? result.label,
-        }
-      : { primary: result.label, secondary: result.supportingText };
+  const { primary, secondary } = leadAndContext(result);
   // A row never says the same thing twice.
   return { primary, secondary: secondary === primary ? null : secondary };
+}
+
+function leadAndContext(result: GlobalRecallResult): { primary: string; secondary: string } {
+  if (result.family === "relationship_context") {
+    return {
+      primary: result.supportingText,
+      // `personDisplayName` is nullable; the normalizer's label is the same
+      // name when it is there to be had, so it is the honest fallback.
+      secondary: result.details.personDisplayName ?? result.label,
+    };
+  }
+  if (result.family === "household_context") {
+    // The subject rides on the row itself, not only on a heading above it. A
+    // household statement and a member's own statement can be worded
+    // identically, and the phone's Search flow groups by match strength rather
+    // than by family - so without this the two would arrive under "Exact" as
+    // two rows saying the same words about two different subjects, with only
+    // the audience label beneath them to tell them apart.
+    return { primary: result.label, secondary: `Household Context · ${result.supportingText}` };
+  }
+  return { primary: result.label, secondary: result.supportingText };
 }

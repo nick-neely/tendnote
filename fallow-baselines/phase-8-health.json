@@ -38,6 +38,11 @@
         "count": 1
       }
     },
+    "apps/agent/evals/policy/gift-plan-surprise-boundary.eval.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
     "apps/agent/evals/policy/household-privacy-boundary.eval.ts": {
       "crap_high": {
         "count": 1
@@ -69,7 +74,17 @@
         "count": 1
       }
     },
+    "apps/web/src/app/(admitted)/shared/[recordKind]/[recordId]/page.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "apps/web/src/app/actions/asset-evidence.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/app/actions/asset-memories.ts": {
       "crap_moderate": {
         "count": 1
       }
@@ -79,18 +94,44 @@
         "count": 1
       }
     },
-    "apps/web/src/app/actions/contact-import.ts": {
+    "apps/web/src/app/actions/general-actions.ts": {
       "crap_moderate": {
         "count": 1
       }
     },
-    "apps/web/src/app/pending/page.tsx": {
-      "crap_high": {
+    "apps/web/src/app/actions/gift-plans.ts": {
+      "crap_moderate": {
+        "count": 5
+      }
+    },
+    "apps/web/src/components/account/household-calendars-panel.tsx": {
+      "complexity_moderate": {
         "count": 1
       }
     },
-    "apps/web/src/app/sign-in/page.tsx": {
-      "crap_moderate": {
+    "apps/web/src/components/account/household-context-surface.tsx": {
+      "complexity_high": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/account/household-event-plans-panel.tsx": {
+      "complexity_high": {
+        "count": 3
+      },
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/account/household-governance-panel.tsx": {
+      "complexity_moderate": {
+        "count": 2
+      }
+    },
+    "apps/web/src/components/account/household-member-actions.tsx": {
+      "complexity_high": {
         "count": 1
       }
     },
@@ -101,11 +142,19 @@
     },
     "apps/web/src/components/actions-surface.tsx": {
       "crap_moderate": {
-        "count": 3
+        "count": 1
       }
     },
     "apps/web/src/components/agenda-calendar.tsx": {
       "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/asset-memories-section.tsx": {
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_high": {
         "count": 1
       }
     },
@@ -127,18 +176,39 @@
         "count": 1
       }
     },
-    "apps/web/src/components/general-action-create-form.tsx": {
-      "crap_high": {
+    "apps/web/src/components/general-action-household.tsx": {
+      "crap_moderate": {
         "count": 1
       }
     },
     "apps/web/src/components/general-action-row.tsx": {
-      "crap_moderate": {
+      "complexity_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/gift-plan-detail-surface.tsx": {
+      "complexity_high": {
+        "count": 1
+      },
+      "complexity_moderate": {
         "count": 2
+      },
+      "crap_high": {
+        "count": 1
       }
     },
     "apps/web/src/components/gmail-draft-panel.tsx": {
       "complexity_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/household/household-checkin-choice.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/household/join-invitation-surface.tsx": {
+      "complexity_moderate": {
         "count": 1
       }
     },
@@ -147,13 +217,7 @@
         "count": 1
       }
     },
-    "apps/web/src/components/person-followup-active-row.tsx": {
-      "complexity_critical": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 1
-      },
+    "apps/web/src/components/person-ledger-records.tsx": {
       "crap_moderate": {
         "count": 1
       }
@@ -168,17 +232,12 @@
         "count": 1
       }
     },
-    "apps/web/src/components/saved-item-edit-form.tsx": {
-      "crap_critical": {
-        "count": 1
+    "apps/web/src/components/saved-items-surface.tsx": {
+      "complexity_moderate": {
+        "count": 3
       }
     },
-    "apps/web/src/components/suggested-memory-review.tsx": {
-      "crap_high": {
-        "count": 1
-      }
-    },
-    "apps/web/src/lib/cache/asset-mutation-scopes.ts": {
+    "apps/web/src/components/suggested-context-fact-review.tsx": {
       "complexity_moderate": {
         "count": 1
       }
@@ -261,9 +320,9 @@
         "count": 2
       }
     },
-    "packages/db/src/queries/capture/conversational-capture/lifecycle-operations.ts": {
-      "crap_moderate": {
-        "count": 3
+    "packages/db/src/queries/capture/conversational-capture/visibility.ts": {
+      "complexity_moderate": {
+        "count": 1
       }
     },
     "packages/db/src/queries/cleanup-preview.ts": {
@@ -296,12 +355,37 @@
         "count": 1
       }
     },
+    "packages/db/src/queries/general-actions.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/db/src/queries/gift-plans/drizzle-store.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/db/src/queries/global-recall/retrieval.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
     "packages/db/src/queries/gmail-drafts.ts": {
       "crap_moderate": {
         "count": 1
       }
     },
-    "packages/db/src/queries/memories/capture.ts": {
+    "packages/db/src/queries/households.ts": {
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "packages/db/src/queries/households/drizzle-event-plan-store.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/db/src/queries/households/in-memory-calendar-store.ts": {
       "crap_moderate": {
         "count": 1
       }
@@ -321,14 +405,19 @@
         "count": 1
       }
     },
-    "packages/db/src/queries/relationship-agenda/drizzle-store.ts": {
+    "packages/db/src/queries/relationship-context-search/drizzle-store.ts": {
       "crap_moderate": {
         "count": 2
       }
     },
-    "packages/db/src/queries/relationship-context-search/drizzle-store.ts": {
+    "packages/db/src/queries/relationship-shares/drizzle-store.ts": {
       "crap_moderate": {
-        "count": 2
+        "count": 1
+      }
+    },
+    "packages/db/src/queries/reminders.ts": {
+      "crap_moderate": {
+        "count": 1
       }
     },
     "packages/db/src/queries/reminders/drizzle-store.ts": {
@@ -346,7 +435,7 @@
     },
     "packages/db/src/queries/semantic-retrieval/drizzle-store.ts": {
       "crap_moderate": {
-        "count": 2
+        "count": 1
       }
     },
     "packages/db/src/queries/source-records/drizzle-store.ts": {
@@ -372,11 +461,6 @@
         "count": 1
       }
     },
-    "packages/domain/src/reminders.ts": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "packages/domain/src/semantic-retrieval.ts": {
       "crap_high": {
         "count": 1
@@ -398,22 +482,29 @@
   },
   "runtime_coverage_findings": [],
   "target_keys": [
-    "packages/db/src/queries/followups/in-memory-store.ts:high impact",
     "packages/db/src/queries/relationship-context-search/in-memory-store.ts:high impact",
+    "packages/db/src/queries/followups/in-memory-store.ts:high impact",
+    "packages/db/src/queries/saved-items/in-memory-store.ts:high impact",
     "apps/agent/evals/helpers.ts:high impact",
+    "packages/db/src/queries/reminders/in-memory-store.ts:high impact",
     "apps/web/src/components/suggested-general-action-review.tsx:complexity",
     "apps/web/src/components/gmail-draft-panel.tsx:complexity",
+    "apps/web/src/lib/focus-after-removal.ts:high impact",
+    "packages/db/src/queries/context-facts/in-memory-store.ts:high impact",
     "apps/web/src/components/actions-surface.tsx:complexity",
-    "packages/db/src/queries/saved-items/in-memory-store.ts:high impact",
-    "packages/db/src/queries/reminders/in-memory-store.ts:high impact",
     "apps/web/src/components/person-followup-active-row.tsx:complexity",
-    "apps/web/src/lib/access/private-beta-flag.ts:dead code",
-    "apps/web/src/lib/dashboard-brief.ts:high impact",
     "apps/web/src/components/general-action-row.tsx:complexity",
-    "packages/db/src/queries/asset-snapshots/in-memory-store.ts:high impact",
-    "packages/db/src/queries/capture/conversational-capture/lifecycle-operations.ts:untested risk",
-    "packages/db/src/queries/calendar-followups/pipeline.ts:complexity",
+    "apps/web/src/lib/access/private-beta-flag.ts:dead code",
     "apps/web/src/components/general-action-create-form.tsx:complexity",
-    "apps/agent/evals/architecture/privacy-guard-reviewer.eval.ts:untested risk"
+    "apps/web/src/lib/dashboard-brief.ts:high impact",
+    "apps/web/src/app/(admitted)/people/[personId]/page.tsx:complexity",
+    "packages/db/src/queries/asset-snapshots/in-memory-store.ts:high impact",
+    "apps/web/src/components/account/about-you-surface.tsx:complexity",
+    "packages/db/src/queries/assets/in-memory-link-store.ts:high impact",
+    "apps/web/src/components/account/household-context-editor.tsx:complexity",
+    "apps/web/src/components/account/household-context-surface.tsx:complexity",
+    "packages/db/src/queries/calendar-followups/pipeline.ts:complexity",
+    "apps/agent/evals/architecture/privacy-guard-reviewer.eval.ts:untested risk",
+    "apps/web/src/components/account/household-event-plans-panel.tsx:complexity"
   ]
 }

@@ -1,4 +1,9 @@
-import type { AssetChildScope, AssetEvidence, AssetEvidenceKind } from "@tendnote/domain";
+import type {
+  AssetChildScope,
+  AssetEvidence,
+  AssetEvidenceKind,
+  AssetOwnership,
+} from "@tendnote/domain";
 import { assetEvidenceLabelForKind, isAssetEvidenceImage } from "@tendnote/domain";
 import { formatSurfacingDay } from "@tendnote/domain/record-surfacing";
 import { formatAssetMemoryValue } from "./asset-memory-value";
@@ -40,8 +45,15 @@ export type AssetEvidenceView = {
   renewsOnLabel: string | null;
   /** Per-record visibility under the child-scope ceiling. */
   scope: AssetChildScope;
-  /** Whether the viewing user owns this evidence — only the owner may remove it. */
+  /** Whether the viewing user owns this evidence. */
   owned: boolean;
+  ownership: AssetOwnership;
+  /**
+   * Whether this viewer may remove it: their own always, the household's own as
+   * any active member. No member may ever delete another member's evidence,
+   * however wide its audience (ADR 0214).
+   */
+  canRemove: boolean;
   /** A calm provenance line, e.g. "Added Jul 1". */
   addedLabel: string;
 };
@@ -96,6 +108,9 @@ export function toAssetEvidenceView(
     renewsOnLabel: dayLabel(record.renewsOn, now),
     scope: record.scope,
     owned: record.ownerUserId === options.callerUserId,
+    ownership: record.ownership,
+    canRemove:
+      record.ownership === "household_native" || record.ownerUserId === options.callerUserId,
     addedLabel: `Added ${formatSurfacingDay(record.createdAt, now)}`,
   };
 }

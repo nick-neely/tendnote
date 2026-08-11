@@ -5,6 +5,11 @@ import {
 } from "@tendnote/db/queries/background-job-deliveries";
 import { BACKGROUND_JOB_FAMILIES } from "@tendnote/db/queries/background-jobs";
 import type { AffectedScope } from "@tendnote/db/queries/general-actions";
+import {
+  createDrizzleHouseholdPurgeStore,
+  type HouseholdPurgeSweepResult,
+  runHouseholdPurgeSweep,
+} from "@tendnote/db/queries/households";
 import { recoverStaleSemanticEmbeddingJobs } from "@tendnote/db/queries/semantic-retrieval";
 import { reconcileAffectedScopes } from "@/lib/cache/reconcile-affected-scopes";
 import { classifyBackgroundJobFailure } from "./failure-observability";
@@ -54,6 +59,7 @@ export type BackgroundJobRecoveryRunResult = {
   embedding: EmbeddingBackfillResult;
   actionExtraction: ProcessorBackfillResult;
   contextFactExtraction: ProcessorBackfillResult;
+  householdPurge: HouseholdPurgeSweepResult;
 };
 
 /** A backing job is obsolete once it is gone or already terminal. */
@@ -228,12 +234,36 @@ function runContextFactExtractionBackfill(
   });
 }
 
+/**
+ * Closes the household recovery window for the households whose thirty days are
+ * up, disposing of the workspace's own records and leaving the minimized
+ * non-content tombstone (#391).
+ *
+ * Bounded like every other family here, and last in the pass: it is the only
+ * irreversible one, so a run that is running out of its budget spends what is
+ * left on work that can be retried without consequence before it spends any on
+ * work that cannot be undone.
+ */
+function purgeDueDissolvedHouseholds(input: {
+  limit: number;
+  now?: Date;
+  logger?: BackgroundJobQueueLogger;
+}): Promise<HouseholdPurgeSweepResult> {
+  return runHouseholdPurgeSweep({
+    limit: input.limit,
+    store: createDrizzleHouseholdPurgeStore(),
+    ...(input.now ? { now: input.now } : {}),
+    ...(input.logger ? { logger: input.logger } : {}),
+  });
+}
+
 export async function runBackgroundJobRecovery(input: {
   deliveryLimit: number;
   extractionBackfillLimit: number;
   embeddingBackfillLimit: number;
   actionExtractionBackfillLimit: number;
   contextFactExtractionBackfillLimit?: number;
+  householdPurgeLimit?: number;
   now?: Date;
   logger?: BackgroundJobQueueLogger;
   recoverDeliveries?: typeof recoverBackgroundJobDeliveries;
@@ -241,6 +271,7 @@ export async function runBackgroundJobRecovery(input: {
   backfillEmbedding?: typeof runEmbeddingBackfill;
   backfillActionExtraction?: typeof runActionExtractionBackfill;
   backfillContextFactExtraction?: typeof runContextFactExtractionBackfill;
+  purgeDissolvedHouseholds?: typeof purgeDueDissolvedHouseholds;
 }): Promise<BackgroundJobRecoveryRunResult> {
   const now = input.now ?? new Date();
   const recoverDeliveries = input.recoverDeliveries ?? recoverBackgroundJobDeliveries;
@@ -249,6 +280,7 @@ export async function runBackgroundJobRecovery(input: {
   const backfillActionExtraction = input.backfillActionExtraction ?? runActionExtractionBackfill;
   const backfillContextFactExtraction =
     input.backfillContextFactExtraction ?? runContextFactExtractionBackfill;
+  const purgeDissolvedHouseholds = input.purgeDissolvedHouseholds ?? purgeDueDissolvedHouseholds;
 
   const deliveries = await recoverDeliveries({
     limit: input.deliveryLimit,
@@ -276,7 +308,20 @@ export async function runBackgroundJobRecovery(input: {
     logger: input.logger,
   });
 
-  return { deliveries, extraction, embedding, actionExtraction, contextFactExtraction };
+  const householdPurge = await purgeDissolvedHouseholds({
+    limit: input.householdPurgeLimit ?? 0,
+    now,
+    ...(input.logger ? { logger: input.logger } : {}),
+  });
+
+  return {
+    deliveries,
+    extraction,
+    embedding,
+    actionExtraction,
+    contextFactExtraction,
+    householdPurge,
+  };
 }
 
 async function runProcessorBackfill(input: {

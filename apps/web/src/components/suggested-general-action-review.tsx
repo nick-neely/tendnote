@@ -294,7 +294,11 @@ function SuggestedGeneralActionReviewCardContent({
                   {areaName}
                 </span>
               ) : null}
-              <ActionScopeChip label={action.visibilityLabel} scope={action.scope} />
+              {/* A household-native record has no audience anyone chose, so naming
+                  one would invent a sharing decision nobody made (ADR 0214). */}
+              {action.ownership === "household_native" ? null : (
+                <ActionScopeChip label={action.visibilityLabel} scope={action.scope} />
+              )}
             </div>
             {action.linkedPeople.length > 0 || action.assetHints.length > 0 ? (
               <div className="mt-1 flex flex-wrap items-center gap-1.5">

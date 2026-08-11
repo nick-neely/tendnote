@@ -537,7 +537,7 @@ export function createDrizzleEmbeddingStore(): EmbeddingStore {
           and(eq(savedItems.id, input.savedItemId), eq(savedItems.ownerUserId, input.ownerUserId)),
         )
         .limit(1);
-      return item ? savedItemSchema.parse(item) : null;
+      return item ? { ...savedItemSchema.parse(item), ownerUserId: input.ownerUserId } : null;
     },
     async upsertRelationshipContextEmbedding(values) {
       const parsed = createRelationshipContextEmbeddingSchema.parse(values);

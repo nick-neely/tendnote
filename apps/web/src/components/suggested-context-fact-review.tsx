@@ -333,7 +333,10 @@ function useSuggestedContextFactMutations(input: {
       focusTarget,
       labels: {
         pending: normalizedEdit ? "Accepting your reviewed fact…" : "Accepting suggested fact…",
-        success: "Fact accepted into About you.",
+        success:
+          input.fact.subject.kind === "household"
+            ? "Fact accepted for the household."
+            : "Fact accepted into About you.",
         rollback: "The suggested fact was not accepted.",
         undo: "",
         undone: "",
@@ -497,8 +500,16 @@ function SuggestedContextFactReviewCardContent({
         data-leaving={leaving}
       >
         <div className="flex min-w-0 items-center justify-between gap-3">
+          {/*
+            A suggestion's audience is the first thing about it that matters,
+            and it is the one thing the two subjects do not share. Saying
+            "Suggested context" over a statement bound for the whole household
+            would let a member accept it believing it stayed theirs.
+          */}
           <span className="inline-flex shrink-0 items-center rounded-full bg-accent-soft px-2 py-0.5 font-medium text-[length:var(--text-caption)] text-accent-soft-foreground">
-            Suggested context
+            {fact.subject.kind === "household"
+              ? "Suggested for the household"
+              : "Suggested context"}
           </span>
           <span className="truncate text-[length:var(--text-caption)] text-muted-foreground">
             {contextFactCategoryLabel(fact.category as SelfContextCategory)}
@@ -528,7 +539,11 @@ function SuggestedContextFactReviewCardContent({
         {focusedMatchId && !match ? (
           <Link
             className="min-h-11 w-fit content-center text-[length:var(--text-small)] font-medium underline-offset-4 hover:underline"
-            href={`/account/about-you#context-fact-${focusedMatchId}`}
+            href={
+              fact.subject.kind === "household"
+                ? `/account/household/context#household-context-fact-${focusedMatchId}`
+                : `/account/about-you#context-fact-${focusedMatchId}`
+            }
           >
             Edit existing fact
           </Link>

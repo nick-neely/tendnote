@@ -6,7 +6,7 @@ import {
   createAssetMemorySchema,
   createAssetReviewGroupSchema,
 } from "@tendnote/domain";
-import { and, asc, desc, eq, exists, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import { assetMemories, assetReviewGroups, assets } from "../../schema";
@@ -66,13 +66,41 @@ export function createDrizzleAssetReviewStore(): AssetReviewStore {
         .limit(1);
       return row ? parseMemoryRow(row) : null;
     },
+    async getVisibleAssetMemory(input) {
+      const [row] = await getDb()
+        .select()
+        .from(visibleMemories)
+        .where(
+          and(
+            eq(visibleMemories.id, input.memoryId),
+            // Never `suggested`: review state is not a scope-visible read.
+            inArray(
+              visibleMemories.status,
+              input.includeSetAside ? ["active", "dismissed"] : ["active"],
+            ),
+            visibleHouseholdRecordSql({
+              callerUserId: input.callerUserId,
+              tableAlias: "am",
+              recordKind: "asset_memory",
+            }),
+          ),
+        )
+        .limit(1);
+      return row ? parseMemoryRow(row) : null;
+    },
     async updateAssetMemory(input) {
       // Defaults-free patch parse, like the asset store: an absent key stays
       // absent so a status-only patch never wipes content or scope columns.
       const patch = assetMemoryUpdateSchema.parse(input.patch);
       const [row] = await getDb()
         .update(assetMemories)
-        .set({ ...toMemoryColumns(patch), updatedAt: new Date() })
+        // The fence is bumped in SQL rather than read-then-written, so two
+        // concurrent writers can never land on the same revision (#386).
+        .set({
+          ...toMemoryColumns(patch),
+          revision: sql`${assetMemories.revision} + 1`,
+          updatedAt: new Date(),
+        })
         .where(
           and(
             eq(assetMemories.id, input.memoryId),

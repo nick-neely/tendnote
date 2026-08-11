@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { assetChildScopeSchema } from "./asset-child-scope";
-import { AssetValidationError } from "./assets";
+import { AssetValidationError, assetOwnershipSchema } from "./assets";
 import { generalActionRecurrenceUnitSchema, MAX_RECURRENCE_INTERVAL } from "./general-actions";
 
 /**
@@ -77,13 +77,22 @@ function hasMemoryContent(record: { value: AssetMemoryValue | null; notes: strin
 const assetMemoryBaseSchema = z.object({
   id: z.string(),
   assetId: z.string(),
+  /** A storage key on a household-native memory, never authority (ADR 0214). */
   ownerUserId: z.string(),
   status: assetMemoryStatusSchema.default("suggested"),
   label: z.string().trim().min(1).max(120),
   value: assetMemoryValueSchema.nullable().default(null),
   notes: z.string().trim().min(1).max(2000).nullable().default(null),
   scope: assetMemoryScopeSchema.default("private"),
+  /**
+   * Whose memory this is, independent of its parent Asset's ownership form. A
+   * household-native Asset can hold one member's private note, and a
+   * jointly-maintained detail on it is the workspace's (#386).
+   */
+  ownership: assetOwnershipSchema.default("member_owned"),
   householdId: z.string().nullable().default(null),
+  /** Optimistic-concurrency fence for a jointly-maintained detail. See `assetSchema`. */
+  revision: z.number().int().nonnegative().default(0),
   // Evidence/source grounding for the memory, where it was inferred from.
   sourceRecordId: z.string().nullable().default(null),
   // The Asset Review Group a suggested memory arrived in, for grouped review.
@@ -122,6 +131,9 @@ export const assetMemoryUpdateSchema = z
     lastActorUserId: z.string().nullable(),
   })
   .partial();
+// `ownership` is deliberately absent: a detail is created as one form or the
+// other and never converted in place, so no patch can quietly hand a member's
+// private note to the workspace. `revision` is the store's, not a caller's.
 
 export type AssetMemoryUpdate = z.infer<typeof assetMemoryUpdateSchema>;
 

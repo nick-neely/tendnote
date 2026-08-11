@@ -93,7 +93,10 @@ export async function suggestAssetMemories(
   if (input.memories.length === 0) {
     throw new AssetValidationError("Suggest at least one detail.");
   }
-  const anchor = await requireActiveAnchor(store, input.ownerUserId, input.assetId);
+  const anchor = await requireActiveAnchor(store, {
+    actorUserId: input.ownerUserId,
+    assetId: input.assetId,
+  });
 
   const group = await store.createAssetReviewGroup({
     ownerUserId: input.ownerUserId,
@@ -124,12 +127,18 @@ export async function createActiveAssetMemory(
   store: AssetReviewLifecycleStore,
   input: CreateActiveAssetMemoryInput,
 ): Promise<AssetMemory> {
-  const anchor = await requireActiveAnchor(store, input.ownerUserId, input.assetId);
+  const anchor = await requireActiveAnchor(store, {
+    actorUserId: input.ownerUserId,
+    assetId: input.assetId,
+  });
+  const ownership = input.ownership ?? "member_owned";
 
   const visibility = await resolveAssetChildVisibility(store, {
     ownerUserId: input.ownerUserId,
     anchor,
-    // Explicit creation remains private unless the user widens it.
+    ownership,
+    // Explicit creation remains private unless the user widens it — or unless
+    // the detail is the household's, which has no narrower audience to keep.
     scope: input.scope ?? "private",
     selectedUserIds: input.selectedUserIds,
   });
@@ -142,6 +151,7 @@ export async function createActiveAssetMemory(
     value: input.value ?? null,
     notes: input.notes ?? null,
     scope: visibility.scope,
+    ownership,
     householdId: visibility.householdId,
     sourceRecordId: input.sourceRecordId ?? null,
     reviewGroupId: null,
@@ -160,7 +170,7 @@ export async function createActiveAssetMemory(
     kind: "memory_created",
     actorUserId: input.ownerUserId,
     source: input.source ?? "user",
-    detail: { memoryId: memory.id, label: memory.label, scope: memory.scope },
+    detail: { memoryId: memory.id, label: memory.label, scope: memory.scope, ownership },
   });
 
   return memory;

@@ -8,6 +8,17 @@ vi.mock("../../client", () => ({ getDb }));
 const { createDrizzleReminderStore } = await import("./drizzle-store");
 
 describe("Reminder Drizzle store contract", () => {
+  it("enumerates one record's subscribers across owners", () => {
+    const source = readFileSync(join(import.meta.dirname, "drizzle-store.ts"), "utf8");
+    // Deliberately not owner-scoped, and the only read here that is not. A Saved
+    // Item's subscribers cannot be derived from the record - a household-native
+    // one has no owner to start from - so revalidating a change means asking the
+    // schedule table who was watching (`docs/phase-8/household-saved-items.md`).
+    expect(source).toContain("async listScheduleSubscribers(input)");
+    expect(source).toContain("eq(reminderSchedules.recordKind, input.recordKind)");
+    expect(source).toContain("eq(reminderSchedules.recordId, input.recordId)");
+  });
+
   it("owner-scopes schedule, installation, job, and minimized audit persistence", () => {
     const source = readFileSync(join(import.meta.dirname, "drizzle-store.ts"), "utf8");
     const migration = readFileSync(

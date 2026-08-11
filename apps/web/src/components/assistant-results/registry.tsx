@@ -15,6 +15,12 @@ import {
   suggestedGeneralActionReviewListModule,
   suggestedGeneralActionReviewModule,
 } from "./general-action";
+import {
+  captureOutcomeModule,
+  giftIdeaAddedModule,
+  giftPlanSearchModule,
+  householdCheckinModule,
+} from "./household";
 import { defineModule, type ResultModule } from "./module";
 import {
   addedPersonModule,
@@ -109,6 +115,10 @@ export const RESULT_MODULES = {
   asset_search: assetSearchModule,
   asset_review_group: assetReviewGroupModule,
   asset_context: assetContextModule,
+  household_check_in: householdCheckinModule,
+  gift_plan_search: giftPlanSearchModule,
+  gift_idea_added: giftIdeaAddedModule,
+  capture_outcome: captureOutcomeModule,
   generic: genericModule,
 } satisfies { [K in AssistantToolView["kind"]]: ResultModule<K> };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import type { AssetEvidenceKind, PrivacyScope } from "@tendnote/domain";
+import type { AssetEvidenceKind, AssetOwnership, PrivacyScope } from "@tendnote/domain";
 import {
   ASSET_EVIDENCE_ALLOWED_MIME_TYPES,
   ASSET_EVIDENCE_FILE_TYPES_LABEL,
@@ -79,12 +79,20 @@ function labelFromFileName(name: string): string {
  */
 export function AssetEvidenceCapture({
   target,
+  assetOwnership = "member_owned",
   assetScope,
   onAdded,
   onCancel,
   shareableMembers = [],
 }: {
   target: AssetEvidenceCaptureTarget;
+  /**
+   * The anchor's ownership form. Under a household-native Asset, choosing the
+   * whole household means the capture is the *household's* — the same
+   * equivalence the Asset composer makes, so one gesture does not mean two
+   * things in one product (ADR 0214, #386).
+   */
+  assetOwnership?: AssetOwnership;
   /** The anchor's visibility — household offers the "keep private" narrowing. */
   assetScope: PrivacyScope;
   onAdded: (view: AssetEvidenceView) => void;
@@ -308,6 +316,7 @@ function EvidenceDropZone({
  */
 export function EvidenceDetailsForm({
   draft,
+  assetOwnership = "member_owned",
   assetScope,
   pending,
   error,
@@ -318,6 +327,7 @@ export function EvidenceDetailsForm({
   shareableMembers = [],
 }: {
   draft: Draft;
+  assetOwnership?: AssetOwnership;
   assetScope: PrivacyScope;
   pending: boolean;
   error: string | null;
@@ -331,6 +341,7 @@ export function EvidenceDetailsForm({
 }) {
   const form = useEvidenceDetailsForm({
     draft,
+    assetOwnership,
     assetScope,
     initialSelectedUserIds:
       assetScope === "shared" ? shareableMembers.map((member) => member.userId) : [],
@@ -356,6 +367,7 @@ export function EvidenceDetailsForm({
       <EvidenceMetadataDisclosure />
 
       <EvidenceVisibilityFields
+        assetOwnership={assetOwnership}
         assetScope={assetScope}
         choice={form.visibilityChoice}
         members={shareableMembers}
@@ -381,12 +393,14 @@ export function EvidenceDetailsForm({
 
 function useEvidenceDetailsForm({
   draft,
+  assetOwnership,
   assetScope,
   initialSelectedUserIds,
   pending,
   submit,
 }: {
   draft: Draft;
+  assetOwnership: AssetOwnership;
   assetScope: PrivacyScope;
   initialSelectedUserIds: string[];
   pending: boolean;
@@ -415,6 +429,12 @@ function useEvidenceDetailsForm({
     const formData = new FormData(event.currentTarget);
     formData.set("kind", kind);
     formData.set("visibilityChoice", visibilityChoice);
+    // Only ever true where it is legal — the seam refuses a workspace-owned
+    // detail on a member's own Asset, so this chooses and never decides.
+    formData.set(
+      "household",
+      String(assetOwnership === "household_native" && visibilityChoice === "whole_household"),
+    );
     for (const userId of selectedUserIds) {
       formData.append("selectedUserIds", userId);
     }
@@ -441,6 +461,7 @@ function useEvidenceDetailsForm({
 }
 
 function EvidenceVisibilityFields({
+  assetOwnership,
   assetScope,
   choice,
   members,
@@ -448,6 +469,7 @@ function EvidenceVisibilityFields({
   onSelectedChange,
   selectedUserIds,
 }: {
+  assetOwnership: AssetOwnership;
   assetScope: PrivacyScope;
   choice: VisibilityChoice;
   members: ShareableActionMember[];
@@ -479,6 +501,14 @@ function EvidenceVisibilityFields({
           value={choice}
         />
       )}
+      {/* Stated once, in the words the Asset and Action composers already use,
+          because handing something over is not recoverable later. */}
+      {assetOwnership === "household_native" && choice === "whole_household" ? (
+        <p className="text-[length:var(--text-small)] text-muted-foreground">
+          This becomes the household's, not yours: anyone in the household can remove it, and it
+          stays if you leave.
+        </p>
+      ) : null}
       <AudiencePreview
         choice={choice}
         householdSize={members.length + 1}

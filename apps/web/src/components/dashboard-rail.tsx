@@ -60,6 +60,7 @@ export function DashboardRail({
   dailyBrief,
   weeklyBrief,
   reviewContent,
+  householdCheckin = null,
   nextFollowup = null,
   initialTab = "today",
 }: {
@@ -78,6 +79,14 @@ export function DashboardRail({
    * carries no user-visible count and nothing else about what is in there.
    */
   reviewContent: ReactNode;
+  /**
+   * The member's own Household check-in, when they have asked for one and the
+   * household has something timely. A slot rather than data, because the rail
+   * neither composes it nor decides whether it belongs — and it is deliberately
+   * inside Today rather than a tab of its own: a household tab beside Today would
+   * be a second place to look for the same kind of thing.
+   */
+  householdCheckin?: ReactNode;
   /** The soonest reminder past the Follow-ups horizon, named by an empty tab. */
   nextFollowup?: DashboardFollowupView | null;
   initialTab?: RailTab;
@@ -166,6 +175,11 @@ export function DashboardRail({
           cadence="weekly"
           key={weeklyBrief?.id ?? "weekly"}
         />
+
+        {/* Last in the panel: the member's private glance at shared work sits
+            after their own day rather than ahead of it. Household visibility is
+            never personal urgency (ADR 0220). */}
+        {householdCheckin}
       </TabsContent>
 
       {/* Follow-ups — active reminders, then suggestions awaiting a yes/no. */}

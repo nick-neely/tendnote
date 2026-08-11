@@ -1,5 +1,5 @@
 import type { AssetReviewGroupResult } from "@tendnote/db/queries/assets";
-import type { AssetKind, AssetMemoryValue, PrivacyScope } from "@tendnote/domain";
+import type { AssetKind, AssetMemoryValue, AssetOwnership, PrivacyScope } from "@tendnote/domain";
 import { assetLabelForKind } from "@tendnote/domain";
 import { visibilityLabelForScope } from "@tendnote/domain/privacy";
 import { type AssetEvidenceView, toAssetEvidenceView } from "./asset-evidence-view";
@@ -22,6 +22,12 @@ export type AssetReviewGroupView = {
     kindLabel: string;
     scope: PrivacyScope;
     visibilityLabel: string;
+    /**
+     * The anchor's ownership form, so the card can tell "shared with the household"
+     * apart from "is the household's" — only the first is an audience worth naming
+     * (ADR 0214).
+     */
+    ownership: AssetOwnership;
     /** True while the anchor itself is still a pending proposal. */
     pending: boolean;
   };
@@ -79,6 +85,7 @@ export function toAssetReviewGroupView(
       kindLabel: assetLabelForKind(result.asset.kind),
       scope: result.asset.scope,
       visibilityLabel: visibilityLabelForScope(result.asset.scope),
+      ownership: result.asset.ownership,
       pending: result.assetPending,
     },
     memories: result.memories.map(toAssetReviewMemoryView),

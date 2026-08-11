@@ -17,6 +17,7 @@ export type AffectedScope =
         | "assets"
         | "briefs"
         | "context-facts"
+        | "gift-plans"
         | "global-recall"
         | "orientation"
         | "people"
@@ -27,12 +28,12 @@ export type AffectedScope =
     }
   | {
       kind: "viewer-collection";
-      collection: "assets" | "general-actions" | "saved-items";
+      collection: "assets" | "general-actions" | "gift-plans" | "saved-items";
       viewerUserId: string;
     }
   | {
       kind: "viewer-entity";
-      entity: "asset" | "general-action" | "person" | "saved-item";
+      entity: "asset" | "general-action" | "gift-plan" | "person" | "saved-item";
       entityId: string;
       viewerUserId: string;
     }
@@ -64,6 +65,7 @@ export const affectedScopeSchema = z.discriminatedUnion("kind", [
         "assets",
         "briefs",
         "context-facts",
+        "gift-plans",
         "global-recall",
         "orientation",
         "people",
@@ -77,14 +79,14 @@ export const affectedScopeSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("viewer-collection"),
-      collection: z.enum(["assets", "general-actions", "saved-items"]),
+      collection: z.enum(["assets", "general-actions", "gift-plans", "saved-items"]),
       viewerUserId: boundedScopeIdentifier,
     })
     .strict(),
   z
     .object({
       kind: z.literal("viewer-entity"),
-      entity: z.enum(["asset", "general-action", "person", "saved-item"]),
+      entity: z.enum(["asset", "general-action", "gift-plan", "person", "saved-item"]),
       entityId: boundedScopeIdentifier,
       viewerUserId: boundedScopeIdentifier,
     })

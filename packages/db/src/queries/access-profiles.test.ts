@@ -17,6 +17,7 @@ function grantedProfileFixture(userId: string): AccessProfile {
     grantedAt: now,
     selfContextOnboardingStatus: "not_started",
     selfContextOnboardingReminderAt: null,
+    householdCheckinEnabled: false,
     createdAt: now,
     updatedAt: now,
   };
@@ -163,6 +164,47 @@ describe("access profile queries", () => {
     await expect(
       queries.claimSelfContextOnboardingReminder({ userId: FIRST_USER }),
     ).resolves.toMatchObject({ claimed: false, state: { status: "completed" } });
+  });
+
+  it("starts every member without a Household check-in and turns one on for them alone", async () => {
+    // Offered, never assumed — and never by anybody else. Two members of one
+    // household get two answers, because the opt-in is a fact about a person
+    // rather than about the household (ADR 0220).
+    const store = createInMemoryAccessProfileStore();
+    const queries = createAccessProfileQueries(store);
+    await queries.ensureAccessProfile({ userId: FIRST_USER });
+    await queries.ensureAccessProfile({ userId: SECOND_USER });
+
+    await expect(queries.getAccessProfile({ userId: FIRST_USER })).resolves.toMatchObject({
+      householdCheckinEnabled: false,
+    });
+
+    await expect(
+      queries.setHouseholdCheckinEnabled({ userId: FIRST_USER, enabled: true }),
+    ).resolves.toBe(true);
+
+    await expect(queries.getAccessProfile({ userId: FIRST_USER })).resolves.toMatchObject({
+      householdCheckinEnabled: true,
+    });
+    await expect(queries.getAccessProfile({ userId: SECOND_USER })).resolves.toMatchObject({
+      householdCheckinEnabled: false,
+    });
+
+    await expect(
+      queries.setHouseholdCheckinEnabled({ userId: FIRST_USER, enabled: false }),
+    ).resolves.toBe(false);
+  });
+
+  it("refuses to turn a check-in on for someone with no access profile", async () => {
+    // The failure the brief-schedule home would have had: a control that reports
+    // success while updating nothing. Somebody who is not admitted has no
+    // preference to set, and saying so is the honest outcome.
+    const store = createInMemoryAccessProfileStore();
+    const queries = createAccessProfileQueries(store);
+
+    await expect(
+      queries.setHouseholdCheckinEnabled({ userId: "nobody", enabled: true }),
+    ).rejects.toThrow();
   });
 
   it("keeps onboarding metadata isolated between admitted owners", async () => {

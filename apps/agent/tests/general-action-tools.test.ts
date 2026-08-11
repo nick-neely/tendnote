@@ -42,6 +42,9 @@ function action(overrides: Partial<GeneralActionWithContext> = {}): GeneralActio
   return {
     id: ACTION_ID,
     ownerUserId: "user-1",
+    ownership: "member_owned",
+    responsibilityHolderUserId: null,
+    occurrenceVersion: 0,
     title: "Replace the fridge water filter",
     notes: null,
     links: [],

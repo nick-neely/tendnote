@@ -2,10 +2,19 @@ import "server-only";
 
 import type { AffectedScope } from "@tendnote/db/queries/general-actions";
 import {
+  AssetConflictError,
   AssetValidationError,
   ContextFactConflictError,
   ContextFactValidationError,
   GeneralActionValidationError,
+  GiftPlanConflictError,
+  GiftPlanValidationError,
+  HouseholdRecordUnavailableError,
+  HouseholdValidationError,
+  PersonReferenceValidationError,
+  RelationshipShareValidationError,
+  SavedItemConflictError,
+  SavedItemUnavailableDestinationError,
   SavedItemValidationError,
 } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
@@ -16,6 +25,7 @@ import type { OwnerActionResult } from "@/lib/owner-action-result";
 import { enforceProductBudget, ProductRateLimitError } from "@/lib/rate-limit/guards";
 import type { RateLimitRequest } from "@/lib/rate-limit/types";
 import { resolveScopeForCaller } from "@/lib/resolve-scope-for-caller";
+import { toSavedItemConflictView } from "@/lib/saved-item-conflict";
 
 export type { OwnerActionResult } from "@/lib/owner-action-result";
 
@@ -55,8 +65,23 @@ function userSafeErrorMessage(error: unknown): string | null {
     error instanceof AssetValidationError ||
     error instanceof SavedItemValidationError ||
     error instanceof ContextFactValidationError ||
+    error instanceof GiftPlanValidationError ||
+    error instanceof HouseholdValidationError ||
+    error instanceof RelationshipShareValidationError ||
+    error instanceof PersonReferenceValidationError ||
     error instanceof ProductRateLimitError
   ) {
+    return error.message;
+  }
+  /**
+   * The one opaque household refusal. It is rendered rather than rethrown so the
+   * surface settles quietly instead of erroring, and its message is deliberately
+   * the same sentence whether the record is gone, was never shared, or is a
+   * surprise being kept from the person asking. Rendering it verbatim discloses
+   * nothing while still telling the owner that their press landed somewhere and
+   * changed nothing (ADR 0219).
+   */
+  if (error instanceof HouseholdRecordUnavailableError) {
     return error.message;
   }
   return null;
@@ -95,6 +120,42 @@ export function createOwnerActionRunner(dependencies: OwnerActionDependencies) {
           error: error.message,
           focusContextFactId: error.existingFactId,
         };
+      }
+      if (error instanceof GiftPlanConflictError || error instanceof AssetConflictError) {
+        // The actor travels as an id here and is turned into a name by the
+        // surface, which already holds the household roster. Resolving it here
+        // would mean a name lookup inside a failure path.
+        //
+        // Two families, one branch: a jointly-maintained Gift Plan and a
+        // jointly-maintained Asset owe the writer the same thing — keep the
+        // draft, show what is there now, make them choose — so they must not
+        // grow two conflict protocols (#386, #389).
+        return {
+          ok: false,
+          error: error.message,
+          conflict: {
+            currentValue: error.conflict.currentValue,
+            actorUserId: error.conflict.actorUserId,
+            revision: error.conflict.revision,
+          },
+        };
+      }
+      // Ahead of the curated-message branch below, which would otherwise catch
+      // this through its `SavedItemValidationError` base and drop the current
+      // value the surface needs to show beside the member's kept draft.
+      if (error instanceof SavedItemConflictError) {
+        return {
+          ok: false,
+          error: error.message,
+          savedItemConflict: toSavedItemConflictView(error.current),
+        };
+      }
+      // Flagged rather than folded into the curated messages below: the two
+      // reach the surface through the same field but must not read the same
+      // way. A validation failure is something to fix; this is somewhere that
+      // does not exist yet.
+      if (error instanceof SavedItemUnavailableDestinationError) {
+        return { ok: false, error: error.message, unavailableDestination: true };
       }
       const message = userSafeErrorMessage(error);
       if (message) {

@@ -59,6 +59,9 @@ function tagsForOwnerCollection(
   if (scope.collection === "global-recall") {
     return [`global-recall:owner:${ownerUserId}`];
   }
+  if (scope.collection === "gift-plans") {
+    return giftPlanCollectionTags(ownerUserId);
+  }
   if (scope.collection === "saved-items") {
     return [
       `saved-item:viewer:${ownerUserId}`,
@@ -76,6 +79,9 @@ function tagsForViewerCollection(
   if (scope.collection === "general-actions") {
     return [`action:owner:${viewerUserId}`, `action:owner:${viewerUserId}:linked-assets`];
   }
+  if (scope.collection === "gift-plans") {
+    return giftPlanCollectionTags(viewerUserId);
+  }
   const family = scope.collection === "assets" ? "asset" : "saved-item";
   const tags = [`${family}:viewer:${viewerUserId}`, `${family}:viewer:${viewerUserId}:collection`];
   return scope.collection === "saved-items"
@@ -83,9 +89,27 @@ function tagsForViewerCollection(
     : tags;
 }
 
+/**
+ * Gift Plan tags are keyed by *viewer* in both the owner and viewer cases, with
+ * no `visible-entity` sibling.
+ *
+ * The other families have a viewer-agnostic entity tag so a write can invalidate
+ * a record without enumerating who can see it. A Gift Plan must not have one:
+ * whether a given person may see a plan depends on the Surprise Subject as well
+ * as the audience, so a shared cache entry keyed only by record could be filled
+ * by a co-planner and served to the person it is a surprise for. Every entry is
+ * per-viewer, and the write names each viewer it affects (ADR 0216, ADR 0219).
+ */
+function giftPlanCollectionTags(viewerUserId: string): readonly string[] {
+  return [`gift-plan:viewer:${viewerUserId}`, `gift-plan:viewer:${viewerUserId}:collection`];
+}
+
 function viewerEntityTag(scope: Extract<AffectedScope, { kind: "viewer-entity" }>): string {
   if (scope.entity === "general-action") {
     return `action:owner:${scope.viewerUserId}:action:${scope.entityId}`;
+  }
+  if (scope.entity === "gift-plan") {
+    return `gift-plan:viewer:${scope.viewerUserId}:plan:${scope.entityId}`;
   }
   if (scope.entity === "person") {
     return `people:owner:${scope.viewerUserId}:person:${scope.entityId}`;

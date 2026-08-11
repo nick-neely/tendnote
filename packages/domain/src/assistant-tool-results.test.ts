@@ -50,6 +50,79 @@ describe("assistant tool-result contract", () => {
     expect(JSON.stringify(parsed.data)).not.toContain("generatedAnswer");
   });
 
+  it("carries an Asset Search row's ownership form, defaulting an older persisted result", () => {
+    // The chat card decides whether to state an audience from this field, so a
+    // result that lost it on the way across the seam would put "Whole household"
+    // back on the household's own record (ADR 0214).
+    const row = {
+      recordKind: "asset",
+      recordId: "a1",
+      assetId: "a1",
+      assetName: "Refrigerator",
+      assetKind: "appliance",
+      label: "Refrigerator",
+      snippet: "Refrigerator",
+      value: null,
+      matchKinds: ["exact"],
+      trustLevel: "asset_anchor",
+      visibilityChoice: "whole_household",
+      visibilityLabel: "Whole household",
+    };
+    const schema = assistantToolResultSchemas.search_assets;
+
+    const household = schema.safeParse({
+      query: "fridge",
+      results: [{ ...row, ownership: "household_native" }],
+    });
+    expect(household.success && household.data.results[0]?.ownership).toBe("household_native");
+
+    // A result written before the field existed still parses, and reads as the
+    // conservative form: a record nobody has said is the household's is a member's.
+    const older = schema.safeParse({ query: "fridge", results: [row] });
+    expect(older.success && older.data.results[0]?.ownership).toBe("member_owned");
+  });
+
+  it("carries an Asset context result's ownership form on the asset and on each fact", () => {
+    const parsed = assistantToolResultSchemas.get_asset_context.safeParse({
+      assetId: "a1",
+      assetName: "Refrigerator",
+      assetKind: "appliance",
+      assetStatus: "active",
+      visibilityLabel: "Whole household",
+      ownership: "household_native",
+      snapshotStatus: "fresh",
+      summary: null,
+      facts: [
+        {
+          memoryId: "m1",
+          label: "Filter size",
+          value: "RPWFE",
+          notes: null,
+          visibilityLabel: "Whole household",
+          ownership: "household_native",
+        },
+        // The older shape, without the field.
+        {
+          memoryId: "m2",
+          label: "Model",
+          value: "GNE27",
+          notes: null,
+          visibilityLabel: "Only me",
+        },
+      ],
+      evidence: [],
+      relatedAssets: [],
+      actions: [],
+    });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.ownership).toBe("household_native");
+    expect(parsed.success && parsed.data.facts.map((fact) => fact.ownership)).toEqual([
+      "household_native",
+      "member_owned",
+    ]);
+  });
+
   it("accepts a relationship-agenda result with candidates and an optional window", () => {
     const parsed = assistantToolResultSchemas.get_relationship_agenda.safeParse({
       candidates: [

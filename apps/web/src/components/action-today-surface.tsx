@@ -101,7 +101,11 @@ function ActionTodayRow({ item }: { item: ActionTodayItem }) {
         {assets.map((asset) => (
           <ActionLinkedAssetChip asset={asset} key={asset.assetId} />
         ))}
-        <ActionScopeChip label={view.visibilityLabel} scope={view.scope} />
+        {/* A household-native record has no audience anyone chose, so a scope chip
+            would name the household as people this member shared with (ADR 0214). */}
+        {view.ownership === "household_native" ? null : (
+          <ActionScopeChip label={view.visibilityLabel} scope={view.scope} />
+        )}
       </span>
     </li>
   );

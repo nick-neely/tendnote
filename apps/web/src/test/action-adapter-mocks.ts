@@ -21,6 +21,17 @@ export const revalidatePathSpy = vi.fn();
 export const updateTagSpy = vi.fn();
 export const enforceProductBudgetSpy = vi.fn();
 export const requireAdmittedOwnerForActionSpy = vi.fn().mockResolvedValue(OWNER_USER_ID);
+/**
+ * For adapters that need the session's proven *identity* rather than just an
+ * owner id — the Household Invitation acceptance path has to compare the
+ * session's email against the invited address.
+ */
+export const getCurrentAccessSpy = vi.fn().mockResolvedValue({
+  state: "admitted",
+  ownerUserId: OWNER_USER_ID,
+  user: { id: OWNER_USER_ID, email: "owner@example.com", name: "Owner" },
+  decision: { admitted: true },
+});
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({
@@ -29,6 +40,7 @@ vi.mock("next/cache", () => ({
 }));
 vi.mock("@/lib/access/current-access", () => ({
   requireAdmittedOwnerForAction: requireAdmittedOwnerForActionSpy,
+  getCurrentAccess: getCurrentAccessSpy,
 }));
 vi.mock("@/lib/rate-limit/guards", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/rate-limit/guards")>()),

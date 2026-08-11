@@ -288,10 +288,17 @@ function AssetSearchRow({ result }: { result: AssetSearchResultView }) {
         )}
       </div>
 
+      {/* The trust register always; the audience only when someone chose one. On a
+          household-native record there is none to state — it is simply the
+          household's — and naming one would invent a sharing decision (ADR 0214). */}
       <p className="text-muted-foreground text-xs">
         {ASSET_TRUST_LABEL[result.trustLevel]}
-        {" · "}
-        {result.visibilityLabel}
+        {result.ownership === "household_native" ? null : (
+          <>
+            {" · "}
+            {result.visibilityLabel}
+          </>
+        )}
       </p>
     </Link>
   );

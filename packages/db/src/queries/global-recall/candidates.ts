@@ -12,6 +12,8 @@ import {
   toExactRelationshipResult,
   toExactSavedItemResult,
   toFollowupResult,
+  toGiftPlanResult,
+  toHouseholdContextResult,
   toRelatedRelationshipResult,
   toRelatedSavedItemResult,
   toSelfContextResult,
@@ -25,6 +27,8 @@ export function recallCandidates(
   return [
     ...sources.exact.map(toExactRelationshipResult).filter(isResult),
     ...sources.selfContext.map(toSelfContextResult),
+    ...sources.householdContext.map(toHouseholdContextResult),
+    ...sources.giftPlans.map((plan) => toGiftPlanResult(plan, input.query)),
     ...sources.related.map(toRelatedRelationshipResult).filter(isResult),
     ...sources.assets.results.map(toAssetResult),
     ...sources.savedItemsExact.map(toExactSavedItemResult),

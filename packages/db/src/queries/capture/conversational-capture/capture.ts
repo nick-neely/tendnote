@@ -113,6 +113,7 @@ async function resolveCaptureVisibility(
     ownerUserId: parsedInput.ownerUserId,
     originalText: parsedInput.originalText,
     ...(parsedInput.contextVisibility ? { contextVisibility: parsedInput.contextVisibility } : {}),
+    ...(parsedInput.requestedScope ? { requestedScope: parsedInput.requestedScope } : {}),
   });
 }
 

@@ -10,8 +10,9 @@ import type {
   SemanticRetrievalResult,
 } from "@tendnote/domain";
 import { contextFactCategoryLabel } from "@tendnote/domain";
-import type { SelfContextExactResult } from "../context-facts/types";
+import type { HouseholdContextExactResult, SelfContextExactResult } from "../context-facts/types";
 import type { ActiveFollowupSummary } from "../followups/types";
+import type { GiftPlanWithContext } from "../gift-plans/types";
 import type { SavedItemWithContext } from "../saved-items/types";
 
 export const RELATED_MINIMUM_SIMILARITY = 0.55;
@@ -178,10 +179,113 @@ export function toSelfContextResult(
   };
 }
 
+/**
+ * Household Context as an exact recall result.
+ *
+ * Deliberately not folded into `toSelfContextResult` despite the two carrying
+ * the same fields. The subject is the whole difference: a household statement
+ * belongs to everyone active in the workspace, so it says "Whole household"
+ * where a self statement says "Only me", it names Household Context in its
+ * match reason, and it links to the household management page rather than
+ * About you. Two members can hold the same words about themselves and about
+ * the household, and a reader has to be able to tell which one they are
+ * reading without opening it.
+ */
+export function toHouseholdContextResult(source: HouseholdContextExactResult): GlobalRecallResult {
+  const { fact, matchedFields } = source;
+  const categoryLabel = contextFactCategoryLabel(fact.category);
+  return {
+    family: "household_context",
+    canonical: { kind: "context_fact", id: fact.id },
+    label: fact.content,
+    supportingText: categoryLabel,
+    lifecycle: fact.lifecycle,
+    match: {
+      kind: "exact",
+      reason: matchedFields.length
+        ? `Matched Household Context ${matchedFields.join(" and ")}`
+        : "Matched Household Context",
+      excerpt: fact.content,
+    },
+    trust: "household_context",
+    sensitivity: fact.sensitivity,
+    // Household Context has one audience by construction - every active member,
+    // including whoever joins next - so it takes the household scope's own
+    // visibility rather than restating a choice the fact never made.
+    visibility: visibilityForScope("household"),
+    grounding: [{ kind: "context_fact", id: fact.id }],
+    href: `/account/household/context#household-context-fact-${encodeURIComponent(fact.id)}`,
+    parent: null,
+    details: {
+      content: fact.content,
+      category: fact.category,
+      categoryLabel,
+      provenance: {
+        channel: fact.provenance.channel,
+        origin: fact.provenance.origin,
+      },
+    },
+  };
+}
+
+/**
+ * One authorized Gift Plan as a recall row.
+ *
+ * Everything here is the plan's own: who it is for, what it is for, when, and how
+ * much has been thought of. Nothing describes the audience except the audience
+ * *shape* the owner chose, and nothing names another member — a co-planner list on
+ * a search result would turn a private plan into a small roster.
+ *
+ * The row exists at all only because the seam proved it. There is no second
+ * visibility rule here and deliberately no way to write one: this function takes an
+ * already-proved plan and formats it, so a Surprise Subject cannot be refused by
+ * the seam and re-admitted by a normalizer (ADR 0216).
+ */
+export function toGiftPlanResult(plan: GiftPlanWithContext, query: string): GlobalRecallResult {
+  const matchedSubject = plan.subjectName.toLowerCase().includes(query.trim().toLowerCase());
+  return {
+    family: "gift_plan",
+    canonical: { kind: "gift_plan", id: plan.id },
+    label: `${plan.subjectName} · ${plan.occasion}`,
+    supportingText: plan.occasion,
+    lifecycle: plan.status,
+    match: {
+      kind: "exact",
+      reason: matchedSubject ? "Matched the person this plan is for" : "Matched the occasion",
+      excerpt: plan.subjectName,
+    },
+    trust: "gift_plan",
+    // A Gift Plan has no sensitivity of its own: its protection is an audience plus
+    // an exclusion, not a content grade, and grading it would invent a second rule
+    // that could disagree with the first.
+    sensitivity: "normal",
+    visibility: visibilityForScope(plan.scope),
+    grounding: [{ kind: "gift_plan", id: plan.id }],
+    href: `/gift-plans/${encodeURIComponent(plan.id)}`,
+    parent: null,
+    details: {
+      subjectName: plan.subjectName,
+      occasion: plan.occasion,
+      occasionOn: plan.occasionOn ? plan.occasionOn.toISOString() : null,
+      status: plan.status,
+      ideaCount: plan.ideaCount,
+      claimedIdeaCount: plan.claimedIdeaCount,
+    },
+  };
+}
+
 export function toAssetResult(result: AssetSearchResult): GlobalRecallResult {
   const matchKind = result.matchKinds.some((kind) => kind === "exact" || kind === "structured")
     ? "exact"
     : "related";
+  /**
+   * A household-native Asset has no audience anyone chose, so a recall row states
+   * none. `null` is already the shape this field takes for a record with no
+   * visibility to report, so the row loses a chip rather than gaining a special
+   * case — the same suppression the ledger, the profile, the search panel, and the
+   * chat card make (ADR 0214).
+   */
+  const visibility = result.ownership === "household_native" ? null : visibilityFor(result);
   if (result.recordKind === "asset_memory") {
     return {
       family: "asset_memory",
@@ -192,7 +296,7 @@ export function toAssetResult(result: AssetSearchResult): GlobalRecallResult {
       match: { kind: matchKind, reason: assetMatchReason(result), excerpt: result.snippet },
       trust: "asset_fact",
       sensitivity: "normal",
-      visibility: visibilityFor(result),
+      visibility,
       grounding: result.citations,
       href: `/assets/${result.assetId}#asset-memory-${result.recordId}`,
       parent: { kind: "asset", id: result.assetId },
@@ -213,7 +317,7 @@ export function toAssetResult(result: AssetSearchResult): GlobalRecallResult {
     match: { kind: matchKind, reason: assetMatchReason(result), excerpt: result.snippet },
     trust: "asset_anchor",
     sensitivity: "normal",
-    visibility: visibilityFor(result),
+    visibility,
     grounding: result.citations,
     href: `/assets/${result.assetId}`,
     parent: null,

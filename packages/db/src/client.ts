@@ -2,7 +2,15 @@ import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-type Database = ReturnType<typeof drizzlePostgres<typeof schema>>;
+export type Database = ReturnType<typeof drizzlePostgres<typeof schema>>;
+
+/**
+ * Whatever a query may be issued against: the pooled database, or one open
+ * transaction. Adapters that must be re-bindable to a transaction take a
+ * `() => DatabaseExecutor` instead of calling {@link getDb} directly, so the
+ * same code reads inside and outside a transaction.
+ */
+export type DatabaseExecutor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 let db: Database | undefined;
 let postgresClient: postgres.Sql | undefined;

@@ -3,6 +3,7 @@ import {
   ASSET_SEMANTIC_TIER_LIMIT,
   type AssetKind,
   type AssetMemoryValue,
+  type AssetOwnership,
   type AssetSearchCandidate,
   type AssetSearchRecordKind,
   type AssetSearchTrustLevel,
@@ -30,6 +31,18 @@ type SearchRow = {
   label: string;
   snippet: string;
   scope: PrivacyScope;
+  // Always the *anchor asset's* ownership, never the child record's: a memory under a
+  // household-native Asset is the household's, whatever row it lives in (ADR 0214).
+  ownership: AssetOwnership;
+  // The proof's facts, and always the *record's own* — the opposite rule to
+  // `ownership` above, and deliberately so. What a row displays about its anchor
+  // and what a row must answer for itself are two questions: the household's
+  // refrigerator being open to everyone says nothing about the private receipt
+  // hanging off it, so the receipt is proved on its own owner, scope, household,
+  // and ownership form (ADR 0179, ADR 0219).
+  record_owner_user_id: string;
+  record_household_id: string | null;
+  record_ownership: AssetOwnership;
   value_json: AssetMemoryValue | null;
   trust_level: AssetSearchTrustLevel;
   source_record_id: string | null;
@@ -136,6 +149,10 @@ export function buildAssetSearchRecordsQuery(input: SearchAssetRecordsInput): SQ
             a.name as label,
             a.name as snippet,
             a.scope::text as scope,
+            a.ownership::text as ownership,
+            a.owner_user_id::text as record_owner_user_id,
+            a.household_id::text as record_household_id,
+            a.ownership::text as record_ownership,
             null::jsonb as value_json,
             'asset_anchor'::text as trust_level,
             null::text as source_record_id,
@@ -170,6 +187,10 @@ export function buildAssetSearchRecordsQuery(input: SearchAssetRecordsInput): SQ
               else am.label
             end as snippet,
             am.scope::text as scope,
+            a.ownership::text as ownership,
+            am.owner_user_id::text as record_owner_user_id,
+            am.household_id::text as record_household_id,
+            am.ownership::text as record_ownership,
             am.value_json as value_json,
             case when am.status = 'suggested' then 'suggested_asset_fact' else 'asset_fact' end as trust_level,
             am.source_record_id::text as source_record_id,
@@ -222,6 +243,10 @@ export function buildAssetSearchRecordsQuery(input: SearchAssetRecordsInput): SQ
             ae.label as label,
             coalesce(nullif(ae.captured_text, ''), ae.label) as snippet,
             ae.scope::text as scope,
+            a.ownership::text as ownership,
+            ae.owner_user_id::text as record_owner_user_id,
+            ae.household_id::text as record_household_id,
+            ae.ownership::text as record_ownership,
             null::jsonb as value_json,
             'asset_evidence'::text as trust_level,
             ae.source_record_id::text as source_record_id,
@@ -280,6 +305,10 @@ export function buildAssetSearchEmbeddingsQuery(input: SearchAssetEmbeddingsInpu
             a.name as label,
             a.name as snippet,
             a.scope::text as scope,
+            a.ownership::text as ownership,
+            a.owner_user_id::text as record_owner_user_id,
+            a.household_id::text as record_household_id,
+            a.ownership::text as record_ownership,
             null::jsonb as value_json,
             'asset_anchor'::text as trust_level,
             null::text as source_record_id,
@@ -321,6 +350,10 @@ export function buildAssetSearchEmbeddingsQuery(input: SearchAssetEmbeddingsInpu
               else am.label
             end as snippet,
             am.scope::text as scope,
+            a.ownership::text as ownership,
+            am.owner_user_id::text as record_owner_user_id,
+            am.household_id::text as record_household_id,
+            am.ownership::text as record_ownership,
             am.value_json as value_json,
             case when am.status = 'suggested' then 'suggested_asset_fact' else 'asset_fact' end as trust_level,
             am.source_record_id::text as source_record_id,
@@ -480,6 +513,7 @@ function baseCandidate(row: SearchRow) {
     assetName: row.asset_name,
     assetKind: row.asset_kind,
     assetStatus: row.asset_status,
+    ownership: row.ownership,
     label: row.label,
     snippet: row.snippet,
     value: row.value_json,
@@ -487,6 +521,12 @@ function baseCandidate(row: SearchRow) {
     visibilityChoice: visibilityChoiceForScope(row.scope),
     visibilityLabel: visibilityLabelForScope(row.scope),
     citations: citationsFor(row),
+    authorization: {
+      ownerUserId: row.record_owner_user_id,
+      scope: row.scope,
+      householdId: row.record_household_id,
+      ownership: row.record_ownership,
+    },
   };
 }
 

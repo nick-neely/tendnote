@@ -508,17 +508,28 @@ export function usePendingMutationSubmit(genericError: string) {
     setFallbackError(error);
   }
 
+  /**
+   * `onFailure` sees the curated failure and may return the sentence to show in
+   * its place. That is how a lost race becomes useful rather than merely true: a
+   * form that holds the writer's draft can say what the record reads now and who
+   * put it there, which the generic message cannot know (#386, #389). Returning
+   * nothing leaves the protocol's own message alone.
+   */
   function submit<TView>(
     command: () => Promise<OwnerActionResult<TView>>,
     onSuccess: (view: TView) => void | Promise<void>,
+    onFailure?: (result: Extract<OwnerActionResult<TView>, { ok: false }>) => string | void,
   ): void {
+    const resolveFailure = (result: Extract<OwnerActionResult<TView>, { ok: false }>) =>
+      onFailure?.(result) ?? result.error;
+
     if (!context) {
       setFallbackError(null);
       startFallbackTransition(async () => {
         try {
           const result = await command();
           if (!result.ok) {
-            setFallbackError(result.error);
+            setFallbackError(resolveFailure(result));
             return;
           }
           await onSuccess(result.view);
@@ -539,7 +550,7 @@ export function usePendingMutationSubmit(genericError: string) {
       command: async () => {
         try {
           const result = await command();
-          if (!result.ok) return result;
+          if (!result.ok) return { ...result, error: resolveFailure(result) };
           await onSuccess(result.view);
           return result;
         } catch {

@@ -16,9 +16,13 @@ import type {
 } from "./capture/conversational-capture/types";
 import { createDrizzleFollowupStore } from "./followups/drizzle-store";
 import { createDrizzleGeneralActionLifecycleStore } from "./general-actions/drizzle-store";
+import { createHouseholdAuthorizationProver } from "./households/authorization";
+import { createDrizzleHouseholdStore } from "./households/drizzle-store";
 import { createDrizzleReminderStore } from "./reminders/drizzle-store";
 import { scheduleReminderDeliveryOutbox } from "./reminders/outbox";
+import { createReminderRecordLoader } from "./reminders/record-loaders";
 import { createReminderService } from "./reminders/service";
+import { createReminderSubscriptionAuthorizer } from "./reminders/subscription-authorization";
 import type { ReminderRecord } from "./reminders/types";
 import { createDrizzleSavedItemStore } from "./saved-items/drizzle-store";
 import { createDrizzleSourceRecordStore } from "./source-records/drizzle-store";
@@ -31,141 +35,23 @@ const outboxStore = createDrizzleBackgroundJobDeliveryStore();
 const reminderStore = createDrizzleReminderStore();
 const savedItemStore = createDrizzleSavedItemStore();
 const sourceRecordStore = createDrizzleSourceRecordStore();
-
-async function reminderSourceSensitivity(input: {
-  ownerUserId: string;
-  sourceRecordId: string | null;
-  getSourceRecord: (input: {
-    ownerUserId: string;
-    sourceRecordId: string;
-  }) => Promise<{ sensitivity: "normal" | "sensitive" | "restricted" } | null>;
-}) {
-  if (!input.sourceRecordId) return "normal" as const;
-  return (
-    (
-      await input.getSourceRecord({
-        ownerUserId: input.ownerUserId,
-        sourceRecordId: input.sourceRecordId,
-      })
-    )?.sensitivity ?? "restricted"
-  );
-}
-
-async function loadFollowupReminderRecord(input: {
-  ownerUserId: string;
-  recordId: string;
-}): Promise<ReminderRecord | null> {
-  const followup = await followupStore.getFollowup({
-    ownerUserId: input.ownerUserId,
-    followupId: input.recordId,
-  });
-  if (!followup) return null;
-  const sensitivity = await reminderSourceSensitivity({
-    ownerUserId: input.ownerUserId,
-    sourceRecordId: followup.sourceRecordId ?? null,
-    getSourceRecord: sourceRecordStore.getSourceRecord,
-  });
-  return {
-    id: followup.id,
-    kind: "follow_up",
-    ownerUserId: followup.ownerUserId,
-    title: followup.reason,
-    status: followup.status,
-    occursAt: followup.dueAt,
-    timeSemantics: reminderTimeSemanticsForRecordKind("follow_up"),
-    recurrence: null,
-    sensitivity,
-    scope: followup.scope,
-    personId: followup.personId,
-  };
-}
-
-async function loadSavedItemReminderRecord(input: {
-  ownerUserId: string;
-  recordId: string;
-}): Promise<ReminderRecord | null> {
-  const item = await savedItemStore.getSavedItem({
-    ownerUserId: input.ownerUserId,
-    savedItemId: input.recordId,
-  });
-  if (!item) return null;
-  const sensitivity = await reminderSourceSensitivity({
-    ownerUserId: input.ownerUserId,
-    sourceRecordId: item.sourceRecordId,
-    getSourceRecord: sourceRecordStore.getSourceRecord,
-  });
-  return {
-    id: item.id,
-    kind: "saved_item",
-    ownerUserId: item.ownerUserId,
-    title: item.title,
-    status: item.status,
-    occursAt: item.bringBackAt,
-    timeSemantics: reminderTimeSemanticsForRecordKind("saved_item"),
-    recurrence: null,
-    sensitivity,
-    scope: item.scope,
-    personId: null,
-  };
-}
-
-async function loadActionReminderRecord(input: {
-  ownerUserId: string;
-  recordId: string;
-  requestedKind: "general_action" | "routine";
-}): Promise<ReminderRecord | null> {
-  const action = await actionStore.getGeneralAction({
-    ownerUserId: input.ownerUserId,
-    generalActionId: input.recordId,
-  });
-  if (!action) return null;
-  const kind = action.recurrence ? "routine" : "general_action";
-  if (kind !== input.requestedKind) return null;
-  const sensitivity = await reminderSourceSensitivity({
-    ownerUserId: input.ownerUserId,
-    sourceRecordId: action.sourceRecordId,
-    getSourceRecord: sourceRecordStore.getSourceRecord,
-  });
-  return {
-    id: action.id,
-    kind,
-    ownerUserId: action.ownerUserId,
-    title: action.title,
-    status: action.status,
-    occursAt: action.dueAt,
-    timeSemantics: reminderTimeSemanticsForRecordKind(kind),
-    recurrence: action.recurrence,
-    sensitivity,
-    scope: action.scope,
-    personId: null,
-  };
-}
+const householdRecordProver = createHouseholdAuthorizationProver(createDrizzleHouseholdStore());
 
 export const reminderService = createReminderService({
   store: reminderStore,
-  async loadReminderRecord(input) {
-    if (input.recordKind === "follow_up") {
-      return loadFollowupReminderRecord({
-        ownerUserId: input.ownerUserId,
-        recordId: input.recordId,
-      });
-    }
-    if (input.recordKind === "saved_item") {
-      return loadSavedItemReminderRecord({
-        ownerUserId: input.ownerUserId,
-        recordId: input.recordId,
-      });
-    }
-    return loadActionReminderRecord({
-      ownerUserId: input.ownerUserId,
-      recordId: input.recordId,
-      requestedKind: input.recordKind,
-    });
-  },
+  authorizeSubscription: createReminderSubscriptionAuthorizer(householdRecordProver),
+  loadReminderRecord: createReminderRecordLoader({
+    actionStore,
+    followupStore,
+    savedItemStore,
+    sourceRecordStore,
+  }),
   scheduleDelivery: (input) => scheduleReminderDeliveryOutbox(outboxStore, input).then(() => {}),
 });
 
 export const saveGeneralActionReminder = reminderService.saveGeneralActionReminder;
+export const reconcileReminderRecordForSubscribers =
+  reminderService.reconcileReminderRecordForSubscribers;
 export const clearGeneralActionReminder = reminderService.clearGeneralActionReminder;
 
 export async function reminderMutationOutcome<
@@ -198,6 +84,92 @@ export function saveReminder(input: Parameters<typeof reminderService.saveRemind
 
 export function clearReminder(input: Parameters<typeof reminderService.clearReminder>[0]) {
   return reminderMutationOutcome(input, reminderService.clearReminder(input));
+}
+
+/**
+ * Re-derives every subscriber's schedule for one Saved Item after it changes.
+ *
+ * A schedule belongs to the member who chose it, so a change to the record has
+ * to be answered once per subscriber rather than once for the record. Each pass
+ * reloads through the visibility-scoped loader, which means the same call both
+ * regenerates the intents of members who can still see it and supersedes those
+ * of members who no longer can - the spec's "changes revalidate and regenerate
+ * affected subscribers' pending intents" and its revocation clause are the same
+ * operation seen from two sides (`docs/phase-8/household-saved-items.md`).
+ *
+ * Best-effort per subscriber: the durable Saved Item write has already committed
+ * and is authoritative, so one member's reminder bookkeeping failing must not
+ * turn another member's successful edit into an error.
+ */
+export async function revalidateSavedItemReminderSubscribers(input: {
+  savedItemId: string;
+  now?: Date;
+}): Promise<{ revalidated: number }> {
+  const subscribers = await reminderStore.listScheduleSubscribers({
+    recordKind: "saved_item",
+    recordId: input.savedItemId,
+  });
+  const now = input.now ?? new Date();
+  let revalidated = 0;
+  for (const schedule of subscribers) {
+    try {
+      await reminderService.reconcileReminderRecord({
+        ownerUserId: schedule.ownerUserId,
+        recordKind: "saved_item",
+        recordId: input.savedItemId,
+        now,
+      });
+      revalidated += 1;
+    } catch {
+      // Left for the next reconcile rather than failing the member's write.
+    }
+  }
+  return { revalidated };
+}
+
+/**
+ * Drops the Saved Item schedules a member can no longer read.
+ *
+ * Called when household access ends - departure, removal, dissolution. Losing
+ * visibility has to revoke the subscription itself and not merely its pending
+ * intents: a schedule left behind would quietly resume delivering if the person
+ * were ever re-admitted, which is not something they asked for twice.
+ *
+ * Visibility is re-read per record through the proof rather than inferred from
+ * the membership change, so this stays correct for a member who left one
+ * household while keeping private items of their own.
+ */
+export async function revokeUnreadableSavedItemReminders(input: {
+  subscriberUserId: string;
+  now?: Date;
+}): Promise<{ revoked: number }> {
+  const schedules = await reminderStore.listSchedulesForOwner({
+    ownerUserId: input.subscriberUserId,
+  });
+  const now = input.now ?? new Date();
+  let revoked = 0;
+  for (const schedule of schedules) {
+    if (schedule.recordKind !== "saved_item") continue;
+    const stillVisible = await savedItemStore.getVisibleSavedItem({
+      callerUserId: input.subscriberUserId,
+      savedItemId: schedule.recordId,
+    });
+    if (stillVisible) continue;
+    await reminderStore.supersedeOccurrenceIntents({
+      ownerUserId: input.subscriberUserId,
+      recordKind: "saved_item",
+      recordId: schedule.recordId,
+      now,
+    });
+    await reminderStore.deleteSchedule({
+      ownerUserId: input.subscriberUserId,
+      recordKind: "saved_item",
+      recordId: schedule.recordId,
+      now,
+    });
+    revoked += 1;
+  }
+  return { revoked };
 }
 
 export function reconcileReminderRecord(

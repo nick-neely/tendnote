@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
 import { accessSource, accessStatus, selfContextOnboardingStatus } from "./enums";
@@ -26,6 +26,10 @@ export const accessProfiles = pgTable(
     selfContextOnboardingReminderAt: timestamp("self_context_onboarding_reminder_at", {
       withTimezone: true,
     }),
+    // The member's own opt-in to a Household Check-in in their private briefing
+    // (#390). It sits here because this row always exists for an admitted member,
+    // so the control can never succeed against nothing (ADR 0220).
+    householdCheckinEnabled: boolean("household_checkin_enabled").notNull().default(false),
     ...timestamps,
   },
   (table) => [

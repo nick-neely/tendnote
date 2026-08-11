@@ -15,6 +15,33 @@ export class AssetValidationError extends Error {
 }
 
 /**
+ * An Asset write that lost a race, carrying what the surface needs to let the
+ * person decide what happens to their draft.
+ *
+ * The current value and the responsible actor travel on the error because the
+ * rule for a jointly-maintained record is "preserve the draft, show what is there
+ * now, make them choose" — never a silent last-write-wins and never a
+ * natural-language merge. A bare failure would leave the surface guessing, and
+ * re-reading afterwards would be a second race. Same shape as
+ * `GiftPlanConflictError` so one surface protocol covers both (#386, #389).
+ */
+export class AssetConflictError extends Error {
+  override name = "AssetConflictError";
+
+  constructor(
+    message: string,
+    readonly conflict: {
+      currentValue: string | null;
+      actorUserId: string | null;
+      /** What the writer must carry to retry, so the retry is not a third race. */
+      revision: number;
+    },
+  ) {
+    super(message);
+  }
+}
+
+/**
  * The small fixed Asset Kind set (Phase 6 #196/#197). Kinds cover practical
  * owner- or household-scoped resources only — an Asset is never a person, a
  * project, a document library, or a generic object. Fixed on purpose: no custom
@@ -98,6 +125,24 @@ export function isDurableAssetStatus(status: AssetStatus): boolean {
 }
 
 /**
+ * Who an Asset — or one of its child records — belongs to, which is a different
+ * question from who may see it (ADR 0214).
+ *
+ * A `member_owned` Asset keeps its owner's authority however wide its audience
+ * gets: sharing the fridge with the household never hands the fridge over. A
+ * `household_native` Asset belongs to the Household Workspace itself, so every
+ * active member holds the same authority over it and it stays with the workspace
+ * when someone leaves.
+ *
+ * Stored, never derived: a member-owned Asset at `household` scope and a
+ * household-native one are the same row to the audience rule and could not be
+ * told apart without this column. General Actions and Routines carry the
+ * identical enum (#383) — the two families must not drift.
+ */
+export const assetOwnershipSchema = z.enum(["member_owned", "household_native"]);
+export type AssetOwnership = z.infer<typeof assetOwnershipSchema>;
+
+/**
  * The core Asset record: a practical owner- or household-scoped thing Tendnote
  * tracks over time (Phase 6 #197). Deliberately a lightweight anchor — memories,
  * evidence, links, and snapshots are later slices that hang off this seam, so the
@@ -105,6 +150,14 @@ export function isDurableAssetStatus(status: AssetStatus): boolean {
  */
 export const assetSchema = z.object({
   id: z.string(),
+  /**
+   * The member the row is keyed by. On a `household_native` Asset this is the
+   * creating member and **nothing else**: not authority, and not an access path.
+   * It exists because the column is `NOT NULL`, because every owner-keyed write
+   * and audit row hangs off it, and because provenance is worth keeping — read
+   * it as an owner and a departed creator would keep editing the household's
+   * refrigerator after they moved out (ADR 0214).
+   */
   ownerUserId: z.string(),
   name: z.string().trim().min(1),
   kind: assetKindSchema,
@@ -113,9 +166,17 @@ export const assetSchema = z.object({
   // member of `householdId`; shared = the owner plus selected members. The Asset's
   // scope is also the broadest allowed visibility for future child records (#196).
   scope: privacyScopeSchema.default("private"),
+  ownership: assetOwnershipSchema.default("member_owned"),
   householdId: z.string().nullable().default(null),
   // Set when the asset was archived; cleared on restore.
   archivedAt: z.date().nullable().default(null),
+  /**
+   * Optimistic-concurrency fence, bumped by the store on every write. A counter
+   * rather than a timestamp because two members editing the same household
+   * refrigerator in the same second is exactly the case this exists for, and
+   * `updated_at` collides there (#386, mirroring Gift Plans).
+   */
+  revision: z.number().int().nonnegative().default(0),
   // Creator provenance and actor provenance for lifecycle changes, mirroring
   // General Actions (ADR 0154).
   createdByUserId: z.string().nullable().optional(),
@@ -215,6 +276,35 @@ export function isEmptyAssetEdit(edit: AssetEdit): boolean {
 }
 
 /**
+ * Optimistic concurrency for an Asset or Asset Memory edit.
+ *
+ * The expected revision is the one the surface rendered from. A mismatch means
+ * the record moved underneath the draft, and the answer is never a silent
+ * overwrite: the writer keeps what they typed and is shown what is there now,
+ * plus the revision they would be replacing.
+ *
+ * An absent expectation is an explicit replace — the escape hatch the conflict
+ * copy offers ("replace it with mine"), and the reason this is not simply
+ * mandatory. It is also why a private, single-actor Asset never pays for it: a
+ * surface that has no second writer sends no expectation and the check does
+ * nothing.
+ */
+export function assertAssetRecordFresh(input: {
+  expectedRevision: number | null | undefined;
+  current: { revision: number; lastActorUserId?: string | null };
+  currentValue: string | null;
+  message: string;
+}): void {
+  if (input.expectedRevision === null || input.expectedRevision === undefined) return;
+  if (input.expectedRevision === input.current.revision) return;
+  throw new AssetConflictError(input.message, {
+    currentValue: input.currentValue,
+    actorUserId: input.current.lastActorUserId ?? null,
+    revision: input.current.revision,
+  });
+}
+
+/**
  * Kinds of internal Asset Audit events. Asset Audit is internal-first — it exists
  * so asset writes can be debugged and future trusted-agent modes held accountable
  * (#196), distinct from any user-facing Asset History. `created`/`edited`/
@@ -241,6 +331,10 @@ export const assetAuditEventKindSchema = z.enum([
   "memory_edited",
   "memory_promoted",
   "memory_dismissed",
+  // A set-aside detail brought back (#386) — its own kind rather than an edit,
+  // because the trail exists to answer *what* happened and a status change
+  // recorded as content churn would answer it wrongly.
+  "memory_restored",
   "evidence_added",
   "evidence_removed",
   "link_added",

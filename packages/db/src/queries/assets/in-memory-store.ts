@@ -101,8 +101,14 @@ export function createInMemoryAssetStore(
         throw new Error("Asset not found.");
       }
       // Re-validate the merged record so field constraints hold for direct store
-      // callers too, matching the drizzle store.
-      const updated = assetSchema.parse({ ...asset, ...input.patch, updatedAt: new Date() });
+      // callers too, matching the drizzle store. Every write bumps the fence —
+      // it is the store's, never a caller's, so a patch cannot rewind it (#386).
+      const updated = assetSchema.parse({
+        ...asset,
+        ...input.patch,
+        revision: asset.revision + 1,
+        updatedAt: new Date(),
+      });
       assets.set(updated.id, updated);
       return updated;
     },

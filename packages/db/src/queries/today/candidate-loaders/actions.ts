@@ -1,23 +1,54 @@
-import type { ActionSurfacingReason, GeneralAction, TodayCandidate } from "@tendnote/domain";
-import { describeRecurrence } from "@tendnote/domain";
+import type { TodayCandidate } from "@tendnote/domain";
+import { describeRecurrence, isPersonallyRelevantHouseholdRecord } from "@tendnote/domain";
 import type { TodayCandidateLoaderDeps } from "../candidate-loaders";
 import type { TodayCandidateLoader } from "../types";
-import { dateOnlyKey, formatDateInZone, formatDateOnly, sourceSensitivity } from "./shared";
+import { classifyDatedAction, formatDateInZone, formatDateOnly, sourceSensitivity } from "./shared";
+
+/**
+ * Narrowed to the three deps this loader actually reads, so a caller composing
+ * Today's Action family on its own — the Household home / private Today boundary
+ * suite is one — does not have to supply the calendar, relationship, and review
+ * readers it will never call.
+ */
+export type TodayActionCandidateDeps = Pick<
+  TodayCandidateLoaderDeps,
+  "listActions" | "listOwnReminderRecordIds" | "getSourceRecord"
+>;
 
 export async function loadActionCandidates(
-  deps: TodayCandidateLoaderDeps,
+  deps: TodayActionCandidateDeps,
   input: Parameters<TodayCandidateLoader>[0],
 ): Promise<TodayCandidate[]> {
   const actions = await deps.listActions({ ownerUserId: input.ownerUserId, limit: 40 });
+  const subscribedRecordIds = new Set(
+    await (deps.listOwnReminderRecordIds?.({ ownerUserId: input.ownerUserId }) ?? []),
+  );
   const candidates = await Promise.all(
     actions.map(async (action): Promise<TodayCandidate | null> => {
-      const reason = classifyTodayAction(action, { localDate: input.localDate, now: input.now });
-      if (!reason) return null;
+      const timing = classifyDatedAction(action, { localDate: input.localDate, now: input.now });
+      // A date that has not arrived is not relevant to me *now*, so Today drops
+      // the `scheduled` branch the Household home keeps for Coming up.
+      if (!timing || timing.code === "scheduled") return null;
+      const reason = timing.code;
+      // Household visibility alone is not personal relevance. Without this,
+      // every chore would land in both partners' shortlists and Today would stop
+      // answering what is relevant to *me* (#383, narrowing Phase Seven).
+      if (
+        !isPersonallyRelevantHouseholdRecord({
+          memberUserId: input.ownerUserId,
+          ownership: action.ownership,
+          ownerUserId: action.ownerUserId,
+          scope: action.scope,
+          responsibilityHolderUserId: action.responsibilityHolderUserId,
+          hasOwnReminderSchedule: subscribedRecordIds.has(action.id),
+        })
+      ) {
+        return null;
+      }
       const sensitivity = await sourceSensitivity(deps, input.ownerUserId, action.sourceRecordId);
       if (sensitivity === "restricted") return null;
       const routine = action.recurrence !== null;
-      const reasonAt = reason === "resurfaced" ? action.deferUntil : action.dueAt;
-      if (!reasonAt) return null;
+      const reasonAt = timing.at;
       return {
         identity: `${routine ? "routine" : "action"}:${action.id}`,
         family: routine ? "routine" : "action",
@@ -52,21 +83,4 @@ export async function loadActionCandidates(
     }),
   );
   return candidates.filter((candidate): candidate is TodayCandidate => candidate !== null);
-}
-
-function classifyTodayAction(
-  action: Pick<GeneralAction, "status" | "dueAt" | "deferUntil">,
-  day: { localDate: string; now: Date },
-): ActionSurfacingReason | null {
-  if (action.status === "deferred") {
-    return action.deferUntil && action.deferUntil.getTime() <= day.now.getTime()
-      ? "resurfaced"
-      : null;
-  }
-  if (action.status !== "open" || !action.dueAt) {
-    return null;
-  }
-  const dueDate = dateOnlyKey(action.dueAt);
-  if (dueDate > day.localDate) return null;
-  return dueDate < day.localDate ? "overdue" : "due_today";
 }

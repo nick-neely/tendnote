@@ -9,11 +9,12 @@ import { scopeForVisibilityChoice } from "@tendnote/domain/privacy";
  * household; the shared lifecycle then fails closed if it is missing or the
  * member is inactive (ADR 0153).
  *
- * Phases 5/6 treat a user as belonging to at most one household (the product
- * model is a single household), so we deliberately take the first active
- * membership. If a user ever holds several, this picks one arbitrarily rather
- * than guessing — surfacing an explicit household chooser is future
- * multi-household work, not a silent default we want to pretend is correct here.
+ * Taking the first active membership is deterministic rather than arbitrary:
+ * the one-active-household rule is now enforced where memberships are created.
+ * Creation refuses a caller who already has one, and invitation acceptance
+ * re-decides the same rule inside its transaction (ADR 0213), so this list holds
+ * at most one row. Should multi-household ever be a product, this becomes an
+ * explicit household chooser — not a silent first-row default.
  */
 export async function resolveScopeForCaller(
   ownerUserId: string,

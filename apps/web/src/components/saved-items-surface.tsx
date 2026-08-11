@@ -1,18 +1,23 @@
 "use client";
 
-import type { SavedItemKind } from "@tendnote/domain";
+import type { SavedItemKind, SavedItemOwnership } from "@tendnote/domain";
 import type { VisibilityChoice } from "@tendnote/domain/privacy";
 import Link from "next/link";
-import { useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import {
+  archiveHouseholdSavedItemAction,
   archiveSavedItemAction,
+  createHouseholdSavedItemAction,
   createSavedItemAction,
   deleteUniqueSavedItemSourceAction,
   getArchivedSavedItemViewsAction,
   getSavedItemSourceDeletionImpactAction,
+  promoteHouseholdSavedItemAction,
   promoteSavedItemToGeneralActionAction,
   reopenSavedItemAction,
+  resolveHouseholdSavedItemAction,
   resolveSavedItemAction,
+  restoreHouseholdSavedItemAction,
 } from "@/app/actions/saved-items";
 import { GeneralActionReminderField } from "@/components/general-action-reminder";
 import { ActionScopeChip, ErrorText, GENERIC_ERROR } from "@/components/general-action-shared";
@@ -27,6 +32,7 @@ import {
   BookmarkIcon,
   ChevronDownIcon,
   CircleHelpIcon,
+  HomeIcon,
   LinkIcon,
   ListPlusIcon,
   RotateCcwIcon,
@@ -34,13 +40,14 @@ import {
 import { LedgerEmpty, LedgerList } from "@/components/person-ledger";
 import { RecordTimingChip } from "@/components/record-timing-chip";
 import { ReminderPastLeadRecovery } from "@/components/reminder-past-lead-recovery";
-import { SavedItemEditForm } from "@/components/saved-item-edit-form";
+import { SavedItemEditForm, type SavedItemEditSave } from "@/components/saved-item-edit-form";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -59,7 +66,7 @@ import {
   useReversibleMutation,
 } from "@/lib/reversible-mutation";
 import { savedItemLifecycleAdapter } from "@/lib/saved-item-reversible-mutation";
-import type { SavedItemView } from "@/lib/saved-item-view";
+import type { SavedItemMemberNames, SavedItemView } from "@/lib/saved-item-view";
 import { useReminderSchedule } from "@/lib/use-reminder-schedule";
 import { useReminderScheduleWriter } from "@/lib/use-reminder-schedule-writer";
 import { reconcileRevisionedItems, useServerSyncedList } from "@/lib/use-server-synced-list";
@@ -77,6 +84,7 @@ const EMPTY_SAVED_ITEM_DRAFT = {
   url: "",
   bringBackAt: "",
   showSharing: false,
+  ownership: "member_owned" as SavedItemOwnership,
   visibilityChoice: "only_me" as VisibilityChoice,
   selectedUserIds: [] as string[],
 };
@@ -86,6 +94,8 @@ export function SavedItemsSurface({
 }: {
   items: SavedItemView[];
   shareableMembers?: ShareableActionMember[];
+  /** True when the viewer has an active Household Workspace, including a solo one. */
+  hasHousehold?: boolean;
 }) {
   return (
     <ReversibleMutationProvider>
@@ -97,9 +107,11 @@ export function SavedItemsSurface({
 function SavedItemsSurfaceContent({
   items,
   shareableMembers = [],
+  hasHousehold = false,
 }: {
   items: SavedItemView[];
   shareableMembers?: ShareableActionMember[];
+  hasHousehold?: boolean;
 }) {
   const acknowledgedRevisions = useRef(new Map<string, string>());
   const [list, setList] = useServerSyncedList(
@@ -116,6 +128,12 @@ function SavedItemsSurfaceContent({
   const [archivedLoaded, setArchivedLoaded] = useState(false);
   const [archivedError, setArchivedError] = useState<string | null>(null);
   const [archivedLoading, startArchivedTransition] = useTransition();
+  // The only names this surface resolves itself: the conflict payload names its
+  // last actor by id so nothing server-side can leak one into the page.
+  const memberNames: SavedItemMemberNames = useMemo(
+    () => new Map(shareableMembers.map((member) => [member.userId, member.name])),
+    [shareableMembers],
+  );
 
   const visible = list.filter((item) => item.status === state);
   function upsert(item: SavedItemView, phase: ReversibleMutationApplyPhase = "authoritative") {
@@ -158,7 +176,11 @@ function SavedItemsSurfaceContent({
 
   return (
     <div className="flex flex-col gap-4">
-      <CreateSavedItemForm onCreate={upsert} shareableMembers={shareableMembers} />
+      <CreateSavedItemForm
+        hasHousehold={hasHousehold}
+        onCreate={upsert}
+        shareableMembers={shareableMembers}
+      />
 
       <fieldset className="flex items-center gap-1">
         <legend className="sr-only">Saved Item state</legend>
@@ -184,7 +206,13 @@ function SavedItemsSurfaceContent({
       ) : visible.length ? (
         <LedgerList>
           {visible.map((item) => (
-            <SavedItemRow item={item} key={item.id} onDelete={remove} onUpdate={upsert} />
+            <SavedItemRow
+              item={item}
+              key={item.id}
+              memberNames={memberNames}
+              onDelete={remove}
+              onUpdate={upsert}
+            />
           ))}
         </LedgerList>
       ) : state === "active" ? (
@@ -208,9 +236,11 @@ function SavedItemsSurfaceContent({
 }
 
 function CreateSavedItemForm({
+  hasHousehold,
   onCreate,
   shareableMembers,
 }: {
+  hasHousehold: boolean;
   onCreate: (item: SavedItemView) => void;
   shareableMembers: ShareableActionMember[];
 }) {
@@ -230,10 +260,20 @@ function CreateSavedItemForm({
     recordId: string;
   } | null>(null);
   const [recoveryPending, setRecoveryPending] = useState(false);
-  const { kind, title, content, url, bringBackAt, showSharing, visibilityChoice, selectedUserIds } =
-    draft;
+  const {
+    kind,
+    title,
+    content,
+    url,
+    bringBackAt,
+    showSharing,
+    ownership,
+    visibilityChoice,
+    selectedUserIds,
+  } = draft;
+  const householdNative = ownership === "household_native";
   const selectedMembersRequired =
-    visibilityChoice === "selected_members" && selectedUserIds.length === 0;
+    !householdNative && visibilityChoice === "selected_members" && selectedUserIds.length === 0;
 
   function reset() {
     setDraft(EMPTY_SAVED_ITEM_DRAFT);
@@ -251,6 +291,7 @@ function CreateSavedItemForm({
     content: content.trim(),
     url: url.trim(),
     bringBackAt,
+    ownership,
     visibilityChoice,
     selectedUserIds,
   };
@@ -263,7 +304,7 @@ function CreateSavedItemForm({
           event.preventDefault();
           if (!title.trim() || selectedMembersRequired) return;
           submit(
-            () => createSavedItemAction(compactCreateInput(actionInput)),
+            () => createSavedItem(actionInput),
             async (item) => {
               let view = item;
               if (reminderEnabled && bringBackAt) {
@@ -315,11 +356,24 @@ function CreateSavedItemForm({
             onEnabledChange={setReminderEnabled}
           />
         ) : null}
-        <CreateSavedItemSharing
+        <CreateSavedItemDestination
+          hasHousehold={hasHousehold}
           members={shareableMembers}
           onChoiceChange={(value) => updateDraft({ visibilityChoice: value })}
           onOpenChange={(open) => updateDraft({ showSharing: open })}
+          onOwnershipChange={(value) =>
+            updateDraft({
+              ownership: value,
+              // Leaving the household destination returns the item to the private
+              // default rather than to whatever was chosen before it; widening is
+              // always the deliberate act (ADR 0153).
+              ...(value === "household_native"
+                ? {}
+                : { visibilityChoice: "only_me" as VisibilityChoice, selectedUserIds: [] }),
+            })
+          }
           onSelectedChange={(value) => updateDraft({ selectedUserIds: value })}
+          ownership={ownership}
           selectedUserIds={selectedUserIds}
           show={showSharing}
           value={visibilityChoice}
@@ -349,24 +403,36 @@ function CreateSavedItemForm({
   );
 }
 
-function compactCreateInput(input: {
+type CreateSavedItemDraftInput = {
   kind: SavedItemKind;
   title: string;
   content: string;
   url: string;
   bringBackAt: string;
+  ownership: SavedItemOwnership;
   visibilityChoice: VisibilityChoice;
   selectedUserIds: string[];
-}): Parameters<typeof createSavedItemAction>[0] {
-  return {
+};
+
+/**
+ * One composer, two destinations. A household capture carries no visibility
+ * choice because a workspace-owned record is whole-household-visible by
+ * definition, so nothing selects an audience for it (ADR 0214).
+ */
+function createSavedItem(input: CreateSavedItemDraftInput) {
+  const shared = {
     kind: input.kind,
     title: input.title,
-    visibilityChoice: input.visibilityChoice,
     ...(input.content ? { content: input.content } : {}),
     ...(input.url ? { url: input.url } : {}),
     ...(input.bringBackAt ? { bringBackAt: input.bringBackAt } : {}),
-    ...(input.selectedUserIds.length ? { selectedUserIds: input.selectedUserIds } : {}),
   };
+  if (input.ownership === "household_native") return createHouseholdSavedItemAction(shared);
+  return createSavedItemAction({
+    ...shared,
+    visibilityChoice: input.visibilityChoice,
+    ...(input.selectedUserIds.length ? { selectedUserIds: input.selectedUserIds } : {}),
+  });
 }
 
 function CreateSavedItemFields({
@@ -480,56 +546,125 @@ function CreateSavedItemFooter({
   );
 }
 
-function CreateSavedItemSharing({
+/**
+ * Where a capture goes, folded into the one composer rather than a second one.
+ *
+ * It stays collapsed and the draft stays private until the member opens it, so
+ * the fast private capture costs nothing and every widening is a deliberate act.
+ * A member with no Household Workspace never sees it at all.
+ */
+function CreateSavedItemDestination({
+  hasHousehold,
   members,
   onChoiceChange,
   onOpenChange,
+  onOwnershipChange,
   onSelectedChange,
+  ownership,
   selectedUserIds,
   show,
   value,
 }: {
+  hasHousehold: boolean;
   members: ShareableActionMember[];
   onChoiceChange: (value: VisibilityChoice) => void;
   onOpenChange: (open: boolean) => void;
+  onOwnershipChange: (value: SavedItemOwnership) => void;
   onSelectedChange: (value: string[]) => void;
+  ownership: SavedItemOwnership;
   selectedUserIds: string[];
   show: boolean;
   value: VisibilityChoice;
 }) {
-  if (!members.length) return null;
+  const fieldId = useId();
+  if (!hasHousehold && !members.length) return null;
+  const householdNative = ownership === "household_native";
   return (
     // Collapsible owns the trigger/content wiring the hand-rolled `aria-expanded`
     // button did, so the panel id no longer needs a `useId` of its own.
     <Collapsible className="flex flex-col gap-3" onOpenChange={onOpenChange} open={show}>
       <CollapsibleTrigger className="self-start rounded-md text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-        Share with your household
+        Where this goes
       </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-2">
-        <ActionVisibilityField
-          members={members}
-          name="saved-item-visibility"
-          onChoiceChange={onChoiceChange}
-          onSelectedChange={onSelectedChange}
-          selectedUserIds={selectedUserIds}
-          value={value}
-        />
-        <AudiencePreview
-          choice={value}
-          householdSize={members.length + 1}
-          selectedCount={selectedUserIds.length}
-        />
+      <CollapsibleContent className="flex flex-col gap-3">
+        <fieldset className="grid gap-2">
+          <legend className="text-sm font-medium text-foreground">Keep this as</legend>
+          <RadioGroup
+            className="grid gap-2 sm:grid-cols-2"
+            name="saved-item-ownership"
+            onValueChange={(next) => onOwnershipChange(next as SavedItemOwnership)}
+            value={ownership}
+          >
+            {SAVED_ITEM_DESTINATIONS.map((option) => (
+              <Label
+                className="min-h-20 cursor-pointer flex-col items-stretch gap-1 rounded-md border border-border bg-card p-3 text-sm font-normal transition-colors hover:border-primary/45 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-secondary"
+                htmlFor={`${fieldId}-${option.ownership}`}
+                key={option.ownership}
+              >
+                <span className="flex items-center gap-2 font-medium text-foreground">
+                  <RadioGroupItem id={`${fieldId}-${option.ownership}`} value={option.ownership} />
+                  {option.label}
+                </span>
+                <span className="text-muted-foreground text-xs leading-5">
+                  {option.description}
+                </span>
+              </Label>
+            ))}
+          </RadioGroup>
+        </fieldset>
+        {householdNative ? (
+          <p className="inline-flex items-center gap-1.5 text-[length:var(--text-small)] text-muted-foreground">
+            <HomeIcon aria-hidden className="size-3.5 shrink-0" />
+            Every member can see it, change it, and archive it. It stays with the household if you
+            leave.
+          </p>
+        ) : (
+          <>
+            <ActionVisibilityField
+              members={members}
+              name="saved-item-visibility"
+              onChoiceChange={onChoiceChange}
+              onSelectedChange={onSelectedChange}
+              selectedUserIds={selectedUserIds}
+              value={value}
+            />
+            <AudiencePreview
+              choice={value}
+              householdSize={members.length + 1}
+              selectedCount={selectedUserIds.length}
+            />
+          </>
+        )}
       </CollapsibleContent>
     </Collapsible>
   );
 }
 
+const SAVED_ITEM_DESTINATIONS: Array<{
+  ownership: SavedItemOwnership;
+  label: string;
+  description: string;
+}> = [
+  {
+    ownership: "member_owned",
+    label: "Mine",
+    description: "Stays yours. Private unless you share it.",
+  },
+  {
+    ownership: "household_native",
+    label: "Household",
+    description: "The household's. Anyone in it can change or archive it.",
+  },
+];
+
 function SavedItemRow({
   item,
+  memberNames,
   onDelete,
   onUpdate,
 }: {
   item: SavedItemView;
+  memberNames: SavedItemMemberNames;
   onDelete: (savedItemId: string) => void;
   onUpdate: (
     item: SavedItemView,
@@ -537,16 +672,15 @@ function SavedItemRow({
   ) => ReversibleMutationApplyResult;
 }) {
   const [editing, setEditing] = useState(false);
+  const [unavailableNote, setUnavailableNote] = useState<string | null>(null);
   const archive = useReversibleMutation(item.id, "archive");
   const reopen = useReversibleMutation(item.id, "reopen");
   const update = useReversibleMutation(item.id, "update");
   const active = useActiveReversibleMutation(item.id, ["archive", "reopen", "update"]);
   const pending = Boolean(active?.state.pending);
+  const householdNative = item.ownership === "household_native";
 
-  function runPending(
-    runMutation: () => ReturnType<typeof archiveSavedItemAction>,
-    focusTarget: HTMLElement | null,
-  ) {
+  const runPending: SavedItemEditSave = (runMutation, focusTarget, labels) => {
     update.run({
       kind: "pending",
       apply: (view, phase) => {
@@ -562,9 +696,33 @@ function SavedItemRow({
         rollback: "The Saved Item was not changed.",
         undo: "",
         undone: "",
+        ...labels,
       },
     });
-  }
+  };
+
+  /**
+   * Promotion, and the one refusal it has that is not a mistake.
+   *
+   * A destination that does not exist yet is answered with a quiet note below
+   * the controls, not the row's error line - so the row's generic error stays
+   * empty rather than repeating a calm sentence in alarm color. Same shape as
+   * the edit form's conflict handoff: read the structured field, keep the
+   * message locally, and hand the mutation module an empty error (ADR 0209).
+   */
+  const runPromotion: SavedItemEditSave = (runMutation, focusTarget, labels) => {
+    setUnavailableNote(null);
+    runPending(
+      async () => {
+        const result = await runMutation();
+        if (result.ok || !result.unavailableDestination) return result;
+        setUnavailableNote(result.error);
+        return { ok: false as const, error: "" };
+      },
+      focusTarget,
+      labels,
+    );
+  };
 
   // fallow-ignore-next-line complexity -- Archive and reopen are one paired reversible lifecycle with mirrored labels and commands.
   function runLifecycle(intent: "archive" | "reopen", focusTarget: HTMLElement) {
@@ -573,12 +731,9 @@ function SavedItemRow({
     const moveFocus = captureFocusAfterRemoval(row);
     mutation.run({
       kind: "optimistic",
-      adapter: savedItemLifecycleAdapter(intent),
+      adapter: savedItemLifecycleAdapter(intent, item.ownership),
       apply: onUpdate,
-      command: () =>
-        intent === "archive"
-          ? archiveSavedItemAction({ savedItemId: item.id })
-          : reopenSavedItemAction({ savedItemId: item.id }),
+      command: () => runSavedItemLifecycle(intent, item),
       focusTarget,
       labels: {
         pending: `${intent === "archive" ? "Archiving" : "Reopening"} Saved Item…`,
@@ -611,6 +766,7 @@ function SavedItemRow({
       {editing ? (
         <SavedItemEditForm
           item={item}
+          memberNames={memberNames}
           onCancel={() => setEditing(false)}
           onSave={runPending}
           pending={pending}
@@ -618,12 +774,23 @@ function SavedItemRow({
       ) : null}
       <OpenQuestionResolution item={item} onResolve={runPending} pending={pending} />
       <SavedItemControls
+        householdNative={householdNative}
         item={item}
         onEdit={() => setEditing((current) => !current)}
         onLifecycle={runLifecycle}
-        onPending={runPending}
+        onPromote={runPromotion}
         pending={pending}
       />
+      {/* A destination that is not built yet, said the way it deserves: muted
+          ink, polite announcement, no alarm. Nothing here went wrong. */}
+      {unavailableNote ? (
+        <p
+          className="ml-7 text-[length:var(--text-small)] text-muted-foreground leading-[var(--text-small-line)]"
+          role="status"
+        >
+          {unavailableNote}
+        </p>
+      ) : null}
       {active?.state.undoAvailable ? (
         <div className="ml-7">
           <Button
@@ -644,6 +811,25 @@ function SavedItemRow({
       ) : null}
     </article>
   );
+}
+
+/**
+ * The lifecycle command for whichever ownership form this row is.
+ *
+ * No `expectedVersion` on either household-native branch: archive and restore
+ * are state-aware in the domain and reversible here, so a refusal would have
+ * nothing for the member to reconcile. Optimistic concurrency belongs where a
+ * draft exists to keep - the edit form (ADR 0209).
+ */
+function runSavedItemLifecycle(intent: "archive" | "reopen", item: SavedItemView) {
+  if (item.ownership === "household_native") {
+    return intent === "archive"
+      ? archiveHouseholdSavedItemAction({ savedItemId: item.id })
+      : restoreHouseholdSavedItemAction({ savedItemId: item.id });
+  }
+  return intent === "archive"
+    ? archiveSavedItemAction({ savedItemId: item.id })
+    : reopenSavedItemAction({ savedItemId: item.id });
 }
 
 function SavedItemSummary({ item }: { item: SavedItemView }) {
@@ -675,7 +861,7 @@ function SavedItemSummary({ item }: { item: SavedItemView }) {
             {item.url}
           </a>
         ) : null}
-        <div className="mt-1 flex flex-wrap gap-x-2 text-[length:var(--text-caption)] text-muted-foreground">
+        <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[length:var(--text-caption)] text-muted-foreground">
           {item.bringBackLabel && item.bringBackState ? (
             <RecordTimingChip label={item.bringBackLabel} state={item.bringBackState} />
           ) : null}
@@ -685,7 +871,17 @@ function SavedItemSummary({ item }: { item: SavedItemView }) {
               {item.reminderSchedule.label}
             </span>
           ) : null}
-          {item.resolutionReason ? <span>Resolved · {item.resolutionReason}</span> : null}
+          {/* Attribution, not an activity feed: who wrote it and, if different,
+              who last touched it. Never the viewer, and never a count. Mono like
+              every other who-did-what-when fact in the app, and like the timing
+              chip standing beside them (DESIGN.md §4). */}
+          {item.createdByLabel ? <span className="font-mono">{item.createdByLabel}</span> : null}
+          {item.lastChangedByLabel ? (
+            <span className="font-mono">{item.lastChangedByLabel}</span>
+          ) : null}
+          {item.resolutionReason ? (
+            <span className="font-mono">Resolved · {item.resolutionReason}</span>
+          ) : null}
         </div>
       </div>
     </div>
@@ -738,48 +934,64 @@ function SourceGroundingDetails({
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-2 flex flex-col items-start gap-1">
         <code className="font-mono text-[length:var(--text-caption)]">{item.sourceRecordId}</code>
-        <p>
-          {item.outcomes.length
-            ? "Deleting this source would affect the linked outcome. Check the impact first."
-            : "Archive keeps this evidence. Source deletion is a separate privacy action."}
-        </p>
-        <Button
-          disabled={checking}
-          onClick={async () => {
-            setChecking(true);
-            setImpactError(null);
-            try {
-              const result = await getSavedItemSourceDeletionImpactAction({
-                sourceRecordId: item.sourceRecordId,
-              });
-              if (!result.ok) throw new Error(result.error);
-              setImpact(result.view);
-            } catch {
-              setImpactError("Could not check the source impact. Try again.");
-            } finally {
-              setChecking(false);
-            }
-          }}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          {checking ? "Checking…" : "Check deletion impact"}
-        </Button>
-        {impact ? (
-          <p role="status">
-            This source grounds {impact.linkedSavedItemIds.length} Saved Item
-            {impact.linkedSavedItemIds.length === 1 ? "" : "s"} and {impact.linkedOutcomes.length}{" "}
-            linked outcome{impact.linkedOutcomes.length === 1 ? "" : "s"}, plus{" "}
-            {impact.linkedRecords.length} other grounded record
-            {impact.linkedRecords.length === 1 ? "" : "s"}.
-          </p>
+        <p>{sourceGroundingNote(item)}</p>
+        {/* Evidence deletion is the owner's alone. A household-native item has no
+            owner to hold it, and nobody may delete someone else's evidence, so
+            the impact check is absent rather than offered and refused. */}
+        {item.canDeleteEvidence ? (
+          <>
+            <Button
+              disabled={checking}
+              onClick={async () => {
+                setChecking(true);
+                setImpactError(null);
+                try {
+                  const result = await getSavedItemSourceDeletionImpactAction({
+                    sourceRecordId: item.sourceRecordId,
+                  });
+                  if (!result.ok) throw new Error(result.error);
+                  setImpact(result.view);
+                } catch {
+                  setImpactError("Could not check the source impact. Try again.");
+                } finally {
+                  setChecking(false);
+                }
+              }}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              {checking ? "Checking…" : "Check deletion impact"}
+            </Button>
+            {impact ? (
+              <p role="status">
+                This source grounds {impact.linkedSavedItemIds.length} Saved Item
+                {impact.linkedSavedItemIds.length === 1 ? "" : "s"} and{" "}
+                {impact.linkedOutcomes.length} linked outcome
+                {impact.linkedOutcomes.length === 1 ? "" : "s"}, plus {impact.linkedRecords.length}{" "}
+                other grounded record
+                {impact.linkedRecords.length === 1 ? "" : "s"}.
+              </p>
+            ) : null}
+            <SourceDeletionControls impact={impact} itemId={item.id} onDelete={onDelete} />
+            {impactError ? <ErrorText message={impactError} /> : null}
+          </>
         ) : null}
-        <SourceDeletionControls impact={impact} itemId={item.id} onDelete={onDelete} />
-        {impactError ? <ErrorText message={impactError} /> : null}
       </CollapsibleContent>
     </Collapsible>
   );
+}
+
+function sourceGroundingNote(item: SavedItemView): string {
+  if (item.ownership === "household_native") {
+    return "The whole household can see this evidence. Archiving keeps it with the household's history.";
+  }
+  if (!item.canDeleteEvidence) {
+    return "This evidence belongs to the member who shared it.";
+  }
+  return item.outcomes.length
+    ? "Deleting this source would affect the linked outcome. Check the impact first."
+    : "Archive keeps this evidence. Source deletion is a separate privacy action.";
 }
 
 type SourceDeletionImpact = Extract<
@@ -849,14 +1061,11 @@ function OpenQuestionResolution({
   pending,
 }: {
   item: SavedItemView;
-  onResolve: (
-    run: () => ReturnType<typeof resolveSavedItemAction>,
-    focusTarget: HTMLElement | null,
-  ) => void;
+  onResolve: SavedItemEditSave;
   pending: boolean;
 }) {
   const [reason, setReason] = useState("");
-  if (item.kind !== "open_question" || item.archived) return null;
+  if (item.kind !== "open_question" || item.archived || !item.canEdit) return null;
   return (
     <form
       className="ml-7 flex flex-col gap-2 sm:flex-row"
@@ -864,7 +1073,10 @@ function OpenQuestionResolution({
         event.preventDefault();
         if (!reason.trim()) return;
         onResolve(
-          () => resolveSavedItemAction({ savedItemId: item.id, reason: reason.trim() }),
+          () =>
+            item.ownership === "household_native"
+              ? resolveHouseholdSavedItemAction({ savedItemId: item.id, reason: reason.trim() })
+              : resolveSavedItemAction({ savedItemId: item.id, reason: reason.trim() }),
           event.nativeEvent.submitter instanceof HTMLElement ? event.nativeEvent.submitter : null,
         );
       }}
@@ -882,22 +1094,40 @@ function OpenQuestionResolution({
   );
 }
 
+/**
+ * Two promote affordances stay two controls rather than collapsing into one
+ * "Promote…" menu.
+ *
+ * They only ever coexist on a member-owned item already shared into a household,
+ * which is the minority row; the common private row has exactly one. Folding them
+ * would put a menu in front of that common case to serve the rare one, on a
+ * surface whose whole claim is fast recall (DESIGN.md §5). And the two are not
+ * two spellings of one thing - one makes the owner an Action, the other gives an
+ * Action away for good. A shared "Promote…" trigger would flatten exactly the
+ * difference these controls exist to keep visible.
+ */
 function SavedItemControls({
+  householdNative,
   item,
   onEdit,
   onLifecycle,
-  onPending,
+  onPromote,
   pending,
 }: {
+  householdNative: boolean;
   item: SavedItemView;
   onEdit: () => void;
   onLifecycle: (intent: "archive" | "reopen", focusTarget: HTMLElement) => void;
-  onPending: (
-    run: () => ReturnType<typeof archiveSavedItemAction>,
-    focusTarget: HTMLElement | null,
-  ) => void;
+  onPromote: SavedItemEditSave;
   pending: boolean;
 }) {
+  const [handOffArmed, setHandOffArmed] = useState(false);
+  const handOffTrigger = useRef<HTMLButtonElement>(null);
+  const householdPromoteNoteId = useId();
+  // A member-owned item somebody else shared is read-only, and reads that way:
+  // no control at all rather than a disabled one implying a permission they
+  // could earn (`docs/phase-8/household-saved-items.md`).
+  if (!item.canEdit) return null;
   if (item.archived) {
     if (item.resolutionReason) return null;
     return (
@@ -916,35 +1146,165 @@ function SavedItemControls({
     );
   }
   return (
-    <div className="ml-7 flex flex-wrap gap-2">
-      <Button disabled={pending} onClick={onEdit} size="sm" type="button" variant="ghost">
-        Edit
-      </Button>
-      <Button
-        aria-busy={pending}
-        disabled={pending}
-        onClick={(event) =>
-          onPending(
-            () => promoteSavedItemToGeneralActionAction({ savedItemId: item.id }),
-            event.currentTarget,
-          )
-        }
-        size="sm"
-        type="button"
-        variant="outline"
+    <div className="ml-7 flex flex-col gap-2">
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={pending} onClick={onEdit} size="sm" type="button" variant="ghost">
+          Edit
+        </Button>
+        <Button
+          aria-busy={pending}
+          aria-describedby={householdNative ? householdPromoteNoteId : undefined}
+          disabled={pending}
+          onClick={(event) =>
+            onPromote(
+              () =>
+                householdNative
+                  ? promoteHouseholdSavedItemAction({ savedItemId: item.id })
+                  : promoteSavedItemToGeneralActionAction({ savedItemId: item.id }),
+              event.currentTarget,
+            )
+          }
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <ListPlusIcon aria-hidden />{" "}
+          {pending ? "Updating…" : householdNative ? "Make household Action" : "Make an action"}
+        </Button>
+        {/* The owner's second destination, and only where there is a workspace to
+            hand it to. A household-native item has no such choice: its Action can
+            only be the household's, which the one button above already is.
+
+            Its own words, too. This one and the button above it used to read the
+            same and promise different things - this one hands an Action over for
+            good, so it says so. */}
+        {!householdNative && item.scope !== "private" && !handOffArmed ? (
+          <Button
+            disabled={pending}
+            onClick={() => setHandOffArmed(true)}
+            ref={handOffTrigger}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <HomeIcon aria-hidden /> Give to the household
+          </Button>
+        ) : null}
+        <Button
+          aria-busy={pending}
+          disabled={pending}
+          onClick={(event) => onLifecycle("archive", event.currentTarget)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <ArchiveIcon aria-hidden /> {pending ? "Updating…" : "Archive"}
+        </Button>
+      </div>
+      {/* Why this one asks nothing while its member-owned twin asks twice: the
+          item and the Action are both already the household's, so the click
+          transfers nothing and takes nothing away from anyone. Promotion is
+          irreversible either way, but irreversibility alone does not earn a
+          confirm here - the member-owned promote beside it is equally final and
+          equally unconfirmed, and a Saved Item archived as resolved can be
+          reopened. What earns the confirm next door is the hand-off: standing
+          leaving the member's hands and not coming back. Said out loud, once,
+          so the missing step reads as decided rather than dropped. */}
+      {householdNative ? (
+        <p
+          className="text-[length:var(--text-caption)] text-muted-foreground"
+          id={householdPromoteNoteId}
+        >
+          Already the household's, so nothing changes hands.
+        </p>
+      ) : null}
+      {handOffArmed ? (
+        <HouseholdActionHandOff
+          item={item}
+          onCancel={() => {
+            setHandOffArmed(false);
+            // The trigger comes back in this same commit; focus follows it home
+            // rather than dropping to the document, which is where cancelling
+            // used to leave it.
+            requestAnimationFrame(() => handOffTrigger.current?.focus());
+          }}
+          onPromote={onPromote}
+          pending={pending}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * **Give to the household**: the owner's explicit hand-off of a *destination*.
+ *
+ * Confirmed rather than one click because of what the confirmation has to say -
+ * the new Action belongs to the household, stays there after this member leaves,
+ * and cannot be taken back. Stated plainly and once; it is a fact about where
+ * the Action lives, not a warning against doing it.
+ *
+ * The panel takes focus when it opens, because opening it removes the trigger
+ * that was focused. It takes it on the container rather than the confirm button
+ * so the sentence is heard before the choice it belongs to.
+ */
+function HouseholdActionHandOff({
+  item,
+  onCancel,
+  onPromote,
+  pending,
+}: {
+  item: SavedItemView;
+  onCancel: () => void;
+  onPromote: SavedItemEditSave;
+  pending: boolean;
+}) {
+  const termsId = useId();
+  const panel = useRef<HTMLDivElement>(null);
+  // Mount only. A ref callback would re-fire on every render and pull focus back
+  // out of the confirm button the moment the member pressed it.
+  useEffect(() => {
+    panel.current?.focus();
+  }, []);
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a related-controls group, not a form fieldset
+    <div
+      aria-labelledby={termsId}
+      className="flex flex-col gap-2 rounded-md border bg-panel px-3 py-2.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      ref={panel}
+      role="group"
+      tabIndex={-1}
+    >
+      <p
+        className="max-w-[68ch] text-[length:var(--text-small)] leading-[var(--text-small-line)]"
+        id={termsId}
       >
-        <ListPlusIcon aria-hidden /> {pending ? "Updating…" : "Make an action"}
-      </Button>
-      <Button
-        aria-busy={pending}
-        disabled={pending}
-        onClick={(event) => onLifecycle("archive", event.currentTarget)}
-        size="sm"
-        type="button"
-        variant="ghost"
-      >
-        <ArchiveIcon aria-hidden /> {pending ? "Updating…" : "Archive"}
-      </Button>
+        The new Action belongs to the household. It stays with them if you leave, and there is no
+        way to take it back. This Saved Item is archived as resolved.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          aria-busy={pending}
+          disabled={pending}
+          onClick={(event) =>
+            onPromote(
+              () =>
+                promoteSavedItemToGeneralActionAction({
+                  savedItemId: item.id,
+                  destination: "household_native",
+                }),
+              event.currentTarget,
+            )
+          }
+          size="sm"
+          type="button"
+        >
+          {pending ? "Updating…" : "Make it the household's"}
+        </Button>
+        <Button onClick={onCancel} size="sm" type="button" variant="ghost">
+          Cancel
+        </Button>
+      </div>
     </div>
   );
 }

@@ -7,6 +7,14 @@ const unusedAction = async () => undefined;
 export const archiveGeneralActionAction = unusedAction;
 export const completeGeneralActionAction = unusedAction;
 export const createGeneralActionAction = unusedAction;
+// The household-native additions (#383). The browser contracts import the
+// Action row transitively, so a doubled module missing one of these fails the
+// whole browser lane at import rather than in a test.
+export const declineGeneralActionOfferAction = unusedAction;
+export const getResponsibilityHandoffOfferAction = unusedAction;
+export const getResponsibilityHolderReminderOfferAction = unusedAction;
+export const handGeneralActionToHouseholdAction = unusedAction;
+export const setResponsibilityHolderAction = unusedAction;
 export const deferGeneralActionAction = unusedAction;
 export const dismissGeneralActionAction = unusedAction;
 export const editGeneralActionAction = unusedAction;
@@ -114,3 +122,35 @@ export function usePathname() {
 export function useSearchParams() {
   return new URLSearchParams();
 }
+
+// The Household surfaces (#391). Their default actions reach a `server-only`
+// graph, and the browser contracts always drive them with injected actions, so
+// the stub stands in for the whole family rather than each component being
+// reshaped for the test.
+export const acceptHouseholdInvitationAction = unusedAction;
+export const acceptHouseholdOwnerRoleAction = unusedAction;
+export const archiveHouseholdContextFactAction = unusedAction;
+export const archiveHouseholdEventPlanAction = unusedAction;
+export const cancelHouseholdDissolutionAction = unusedAction;
+export const cancelHouseholdInvitationAction = unusedAction;
+export const confirmHouseholdDissolutionAction = unusedAction;
+export const connectHouseholdCalendarAction = unusedAction;
+export const createHouseholdAction = unusedAction;
+export const createHouseholdContextFactAction = unusedAction;
+export const createHouseholdEventPlanAction = unusedAction;
+export const declineHouseholdInvitationAction = unusedAction;
+export const declineHouseholdOwnerRoleAction = unusedAction;
+export const disconnectHouseholdCalendarAction = unusedAction;
+export const leaveHouseholdAction = unusedAction;
+export const linkHouseholdEventPlanRecordAction = unusedAction;
+export const offerHouseholdOwnerRoleAction = unusedAction;
+export const removeHouseholdMemberAction = unusedAction;
+export const resendHouseholdInvitationAction = unusedAction;
+export const restoreHouseholdContextFactAction = unusedAction;
+export const restoreHouseholdEventPlanAction = unusedAction;
+export const sendHouseholdInvitationAction = unusedAction;
+export const stepDownFromHouseholdOwnerAction = unusedAction;
+export const unlinkHouseholdEventPlanRecordAction = unusedAction;
+export const updateHouseholdContextFactAction = unusedAction;
+export const updateHouseholdEventPlanAction = unusedAction;
+export const withdrawHouseholdOwnerOfferAction = unusedAction;

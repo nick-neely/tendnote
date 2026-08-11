@@ -28,6 +28,11 @@ async function createHouseholdContextFixture() {
   const createQueriesFor = (userId: string) =>
     createContextFactQueries(store, {
       householdAccess: householdStore,
+      // Every source record in this fixture is household-visible; the refusal
+      // side is exercised where it belongs, in household-queries.test.ts.
+      sourceRecords: {
+        getSourceRecordById: async () => ({ scope: "household", householdId: household.id }),
+      },
       resolveVerifiedCaller: verifiedCallerFor(userId),
     });
   return { householdStore, household, store, createQueriesFor };
@@ -730,6 +735,14 @@ describe("Context Fact product contract", () => {
     const queriesFor = (userId: string) =>
       createContextFactQueries(store, {
         householdAccess: householdStore,
+        // The one source record this case proposes from is visible to the first
+        // household — the point here is membership revocation, not evidence.
+        sourceRecords: {
+          getSourceRecordById: async () => ({
+            scope: "household",
+            householdId: first.household.id,
+          }),
+        },
         resolveVerifiedCaller: verifiedCallerFor(userId),
       });
     const ownerQueries = queriesFor(OWNER);
@@ -759,7 +772,7 @@ describe("Context Fact product contract", () => {
       subject: { kind: "household", householdId: first.household.id },
       category: "composition",
       content: "The household may add a shared garden next year.",
-      provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+      provenance: { channel: "ambient", origin: "ambient", sourceRecordId: "source-household" },
       suggestionEvidence: "The household discussed adding a shared garden next year.",
     });
     expect(householdSuggestion.result.fact).toMatchObject({
@@ -784,12 +797,19 @@ describe("Context Fact product contract", () => {
       }),
     ).rejects.toThrow("no longer available");
 
+    // An active member's orientation carries their own Self Context and the
+    // household's shared context — and neither the pending household suggestion
+    // nor the other household's fact (#382).
     const memberOrientation = await memberQueries.getOrientationContext({
       callerUserId: OTHER_OWNER,
     });
-    expect(memberOrientation.context.facts.map((fact) => fact.subject.kind)).toEqual(["self"]);
-    expect(memberOrientation.context.facts.map((fact) => fact.content)).toEqual([
+    expect([...memberOrientation.context.facts.map((fact) => fact.subject.kind)].sort()).toEqual([
+      "household",
+      "self",
+    ]);
+    expect([...memberOrientation.context.facts.map((fact) => fact.content)].sort()).toEqual([
       "I keep private work context.",
+      "The household has two adults.",
     ]);
 
     await removeHouseholdMember(householdStore, first.household.id, OTHER_OWNER);
@@ -838,7 +858,10 @@ describe("Context Fact product contract", () => {
         subject: { kind: "household", householdId: first.household.id },
         category: "composition",
         content: "A removed member must not suggest this household fact.",
-        provenance: { channel: "ambient", origin: "ambient", sourceRecordId: null },
+        // Grounded, so the refusal under test is the membership one rather than
+        // the schema's — a removed member is refused for standing, and never
+        // told anything about the evidence they cited.
+        provenance: { channel: "ambient", origin: "ambient", sourceRecordId: "source-household" },
         suggestionEvidence: "A removed member must not suggest this household fact.",
       }),
     ).rejects.toThrow("Active household membership is required for Household Context.");

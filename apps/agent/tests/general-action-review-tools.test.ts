@@ -31,6 +31,9 @@ function suggested(overrides: Partial<GeneralActionWithContext> = {}): GeneralAc
   return {
     id: ACTION_ID,
     ownerUserId: "user-1",
+    ownership: "member_owned",
+    responsibilityHolderUserId: null,
+    occurrenceVersion: 0,
     title: "Book the campsite",
     notes: null,
     links: [],

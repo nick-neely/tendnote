@@ -667,6 +667,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
           matchKinds: ["structured", "exact"],
           trustLevel: "asset_fact",
           visibilityLabel: "Only me",
+          ownership: "member_owned",
         },
       ],
     });
@@ -680,6 +681,36 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).not.toContain("memory-1");
     expect(html).toContain('href="/assets/asset-1"');
     expect(html.split("asset-1")).toHaveLength(2);
+  });
+
+  it("states the trust register but no audience on a household-native search row", () => {
+    // Nobody chose to share the household's own refrigerator with the household, so
+    // the row must not say so — and it must not leave the separator dangling either
+    // (ADR 0214). The chat card was the last Asset Search surface still naming one.
+    const html = render({
+      kind: "asset_search",
+      query: "fridge",
+      results: [
+        {
+          recordKind: "asset",
+          recordId: "asset-1",
+          assetId: "asset-1",
+          assetName: "Kitchen refrigerator",
+          label: "Kitchen refrigerator",
+          snippet: "Kitchen refrigerator",
+          value: null,
+          matchKinds: ["exact"],
+          trustLevel: "asset_anchor",
+          visibilityLabel: "Whole household",
+          ownership: "household_native",
+        },
+      ],
+    });
+
+    expect(html).toContain("Asset");
+    expect(html).toContain("Exact text");
+    expect(html).not.toContain("Whole household");
+    expect(html).not.toMatch(/Exact text\s*(·|&middot;|\u00b7)\s*</);
   });
 
   it("renders an empty search_assets result as a quiet line", () => {
@@ -703,6 +734,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
           value: "EDR1RXD1",
           notes: null,
           visibilityLabel: "Only me",
+          ownership: "member_owned",
         },
       ],
       evidence: [{ evidenceId: "e1", kind: "photo", label: "Filter photo" }],
@@ -736,6 +768,7 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
           value: "EDR1RXD1",
           notes: null,
           visibilityLabel: "Only me",
+          ownership: "member_owned",
         },
       ],
       evidence: [],
@@ -746,6 +779,153 @@ describe("AssistantToolResult (persisted Eve tool result rendering)", () => {
     expect(html).toContain("EDR1RXD1");
     expect(html).not.toContain("not a source of truth");
     expect(html).toContain("summary unavailable");
+  });
+
+  it("names no audience on a household-native asset's own fact", () => {
+    const html = render({
+      kind: "asset_context",
+      found: true,
+      assetName: "Kitchen refrigerator",
+      snapshotStatus: "fresh",
+      summary: null,
+      facts: [
+        {
+          memoryId: "m1",
+          label: "Filter model",
+          value: "EDR1RXD1",
+          notes: null,
+          visibilityLabel: "Whole household",
+          ownership: "household_native",
+        },
+      ],
+      evidence: [],
+      actions: [],
+    });
+
+    expect(html).toContain("Filter model");
+    expect(html).toContain("EDR1RXD1");
+    expect(html).not.toContain("Whole household");
+  });
+
+  it("renders a household check-in as a card of canonical rows, naming the household", () => {
+    const html = render({
+      kind: "household_check_in",
+      householdName: "Ash Lane",
+      optedIn: true,
+      limitations: [],
+      records: [
+        {
+          recordId: "action-1",
+          family: "routine",
+          href: "/actions#action-1",
+          title: "Put the bins out",
+          context: "Routine · Every week",
+          timing: "Due today.",
+          scopeLabel: "Household",
+          responsibility: "Mara is looking after this",
+        },
+      ],
+    });
+
+    expect(html).toContain("Household check-in");
+    expect(html).toContain("Put the bins out");
+    expect(html).toContain('href="/actions#action-1"');
+    // Every fact in text, and the boundary said in words on the card itself.
+    expect(html).toContain("Due today.");
+    expect(html).toContain("Household");
+    expect(html).toContain("Mara is looking after this");
+    expect(html).toContain("as you can see it");
+    // Read-first: the card offers no inline mutation at all.
+    expect(html).not.toContain("<button");
+  });
+
+  it("tells a quiet household apart from a failed read and from no opt-in", () => {
+    // The whole reason these are typed rather than a generic dot: three different
+    // absences that must not look identical.
+    const quiet = render({
+      kind: "household_check_in",
+      householdName: "Ash Lane",
+      optedIn: true,
+      limitations: [],
+      records: [],
+    });
+    const failed = render({
+      kind: "household_check_in",
+      householdName: "Ash Lane",
+      optedIn: true,
+      limitations: ["The check-in is temporarily unavailable."],
+      records: [],
+    });
+    const notOptedIn = render({
+      kind: "household_check_in",
+      householdName: null,
+      optedIn: false,
+      limitations: [],
+      records: [],
+    });
+
+    expect(quiet).toContain("Nothing timely in Ash Lane");
+    expect(failed).toContain("temporarily unavailable");
+    expect(notOptedIn).toContain("No household check-in on your brief");
+    // "Nothing is going on" and "we could not look" never share wording.
+    expect(quiet).not.toContain("unavailable");
+    expect(failed).not.toContain("Nothing timely");
+  });
+
+  it("renders gift plans with the reader's own standing and nobody else's audience", () => {
+    const html = render({
+      kind: "gift_plan_search",
+      query: "Rowan",
+      plans: [
+        {
+          giftPlanId: "plan-1",
+          subjectName: "Rowan",
+          occasion: "Fortieth birthday",
+          occasionOn: "2026-09-14T00:00:00.000Z",
+          status: "active",
+          ideaCount: 3,
+          claimedIdeaCount: 1,
+          isOwner: false,
+        },
+      ],
+    });
+
+    expect(html).toContain("Rowan");
+    expect(html).toContain("Fortieth birthday");
+    expect(html).toContain("3 ideas");
+    expect(html).toContain("1 claimed");
+    // The authority fact is about the reader, so an absent control is explained.
+    expect(html).toContain("Shared with you");
+    expect(html).toContain('href="/gift-plans/plan-1"');
+  });
+
+  it("renders an empty gift-plan search as plain absence, with nothing to hedge from", () => {
+    // What a Surprise Subject sees. It must read exactly like what someone with no
+    // plans at all sees — no hedge, no hint, no "hidden" (ADR 0216).
+    const html = render({ kind: "gift_plan_search", query: "Rowan", plans: [] });
+
+    expect(html).toContain("No gift plans");
+    // Text only: `aria-hidden` on a decorative glyph is not a word the user reads.
+    const text = html.replace(/<[^>]*>/g, " ");
+    expect(text).not.toMatch(/hidden|withheld|surprise|can't show|cannot show/i);
+  });
+
+  it("renders the audience a capture actually wrote with, not the one Eve described", () => {
+    const household = render({
+      kind: "capture_outcome",
+      destination: "Saved Items",
+      outcomes: [{ destination: "Saved Items", visibility: "Household" }],
+    });
+    const private_ = render({
+      kind: "capture_outcome",
+      destination: "Saved Items",
+      outcomes: [{ destination: "Saved Items", visibility: "Only me" }],
+    });
+
+    // The privacy-consequential fork, readable rather than paraphrased.
+    expect(household).toContain("Household");
+    expect(private_).toContain("Only me");
+    expect(household).not.toContain("Only me");
   });
 
   it("renders a not-found asset context as a quiet line", () => {

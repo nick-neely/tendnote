@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, ilike } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../client";
 import {
   auditLog,
@@ -7,11 +8,37 @@ import {
   sourceRecords,
   unresolvedPersonMentions,
 } from "../../schema";
+import { provenVisibleRecord } from "../households/authorization";
+import { visibleHouseholdRecordSql } from "../households/visibility-sql";
 import type {
   ListSourceRecordReviewsInput,
   SourceRecordResolutionStore,
   SourceRecordReviewComponent,
 } from "./types";
+
+const visibleSourceRecords = alias(sourceRecords, "sr");
+
+/**
+ * The narrowest possible read of a source record: its audience, and nothing else.
+ *
+ * Context Facts needs to know whether a household suggestion's evidence is itself
+ * household-visible, and has no business loading the record's content, people, or
+ * linked evidence to find out. Selecting two columns is what keeps that true —
+ * a capability that cannot reach the content cannot leak it.
+ */
+export function createDrizzleSourceRecordAudienceReader() {
+  return {
+    async getSourceRecordById(sourceRecordId: string) {
+      const [record] = await getDb()
+        .select({ scope: sourceRecords.scope, householdId: sourceRecords.householdId })
+        .from(sourceRecords)
+        .where(eq(sourceRecords.id, sourceRecordId))
+        .limit(1);
+
+      return record ?? null;
+    },
+  };
+}
 
 export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
   return {
@@ -248,6 +275,37 @@ export function createDrizzleSourceRecordStore(): SourceRecordResolutionStore {
         .limit(1);
 
       return sourceRecord ?? null;
+    },
+    async getVisibleSourceRecord(input) {
+      const [sourceRecord] = await getDb()
+        .select()
+        .from(visibleSourceRecords)
+        .where(
+          and(
+            eq(visibleSourceRecords.id, input.sourceRecordId),
+            visibleHouseholdRecordSql({
+              callerUserId: input.callerUserId,
+              tableAlias: "sr",
+              recordKind: "source_record",
+            }),
+          ),
+        )
+        .limit(1);
+
+      // The predicate narrows and the proof authorizes, the same two steps every
+      // scoped single-record read takes (ADR 0219). Null on refusal, which is
+      // indistinguishable from evidence that was never there.
+      return provenVisibleRecord({
+        callerUserId: input.callerUserId,
+        row: sourceRecord,
+        facts: (row) => ({
+          kind: "source_record",
+          id: row.id,
+          ownerUserId: row.ownerUserId,
+          scope: row.scope,
+          householdId: row.householdId,
+        }),
+      });
     },
     async listAuditLogEntries(input) {
       const rows = await getDb()

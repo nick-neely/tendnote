@@ -62,6 +62,48 @@ function savedItemResult({ supportingText = "Renewal notes" } = {}): GlobalRecal
   };
 }
 
+function householdContextResult(
+  content = "Two adults and one child live here.",
+): GlobalRecallResult {
+  return {
+    ...base,
+    family: "household_context",
+    canonical: { kind: "context_fact", id: "household-fact-1" },
+    label: content,
+    supportingText: "Composition",
+    trust: "household_context",
+    visibility: { choice: "whole_household", label: "Whole household" },
+    grounding: [{ kind: "context_fact", id: "household-fact-1" }],
+    href: "/account/household/context#household-context-fact-household-fact-1",
+    details: {
+      content,
+      category: "composition",
+      categoryLabel: "Composition",
+      provenance: { channel: "account", origin: "direct" },
+    },
+  };
+}
+
+function selfContextResult(content = "Two adults and one child live here."): GlobalRecallResult {
+  return {
+    ...base,
+    family: "self_context",
+    canonical: { kind: "context_fact", id: "self-fact-1" },
+    label: content,
+    supportingText: "Background",
+    trust: "self_context",
+    visibility: { choice: "only_me", label: "Only me" },
+    grounding: [{ kind: "context_fact", id: "self-fact-1" }],
+    href: "/account/about-you#context-fact-self-fact-1",
+    details: {
+      content,
+      category: "background",
+      categoryLabel: "Background",
+      provenance: { channel: "account", origin: "direct" },
+    },
+  };
+}
+
 describe("recallResultLines", () => {
   /**
    * The regression: recall labels a memory with the person it is about, so a
@@ -121,6 +163,24 @@ describe("recallResultLines", () => {
     expect(recallResultLines(savedItemResult())).toEqual({
       primary: "Climbing gym membership",
       secondary: "Renewal notes",
+    });
+  });
+
+  /**
+   * The phone's Search flow groups by match strength, so there is no family
+   * heading over these rows to say whose statement it is. Two members can word
+   * the same fact about themselves and about the household identically, and
+   * "Only me" against "Whole household" alone reads as an audience setting
+   * rather than a different subject.
+   */
+  it("names the household on a household row so it cannot read as a private one", () => {
+    expect(recallResultLines(householdContextResult())).toEqual({
+      primary: "Two adults and one child live here.",
+      secondary: "Household Context · Composition",
+    });
+    expect(recallResultLines(selfContextResult())).toEqual({
+      primary: "Two adults and one child live here.",
+      secondary: "Background",
     });
   });
 

@@ -16,6 +16,7 @@ import {
 import type { HouseholdRecordShare } from "../households/types";
 import { canViewerSeeSeededHouseholdRecord } from "../households/visibility-memory";
 import type {
+  AssetSearchAuthorityStore,
   AssetSearchQueryInput,
   AssetSearchStore,
   SearchAssetEmbeddingsInput,
@@ -85,6 +86,41 @@ export function createInMemoryAssetSearchStore(seed: AssetSearchSeed = {}): Asse
   return {
     searchAssetRecords: (input) => searchAssetRecords(world, input),
     searchAssetEmbeddings: (input) => searchAssetEmbeddings(world, input),
+  };
+}
+
+/**
+ * The seeded world's answer to the two reads the Household Authorization Proof is
+ * built from.
+ *
+ * It is a separate factory from the search store on purpose. The store's job is to
+ * pre-filter, the proof's is to decide, and a suite that wants to show the
+ * difference — a store that hands back a row the caller may not have — needs to be
+ * able to seed the two from different worlds. Passing the same seed to both is the
+ * ordinary case and reads as one line.
+ */
+export function createInMemoryAssetSearchAuthorityStore(
+  seed: Pick<AssetSearchSeed, "householdMemberships" | "householdRecordShares">,
+): AssetSearchAuthorityStore {
+  const memberships = seed.householdMemberships ?? [];
+  const shares = seed.householdRecordShares ?? [];
+
+  return {
+    listActiveHouseholdMembershipsForUser: ({ userId }) =>
+      Promise.resolve(
+        memberships.filter(
+          (membership) => membership.userId === userId && membership.status === "active",
+        ),
+      ),
+    listHouseholdRecordSharesForRecords: ({ householdIds, recordKind, recordIds }) =>
+      Promise.resolve(
+        shares.filter(
+          (share) =>
+            householdIds.includes(share.householdId) &&
+            share.recordKind === recordKind &&
+            recordIds.includes(share.recordId),
+        ),
+      ),
   };
 }
 
@@ -168,7 +204,7 @@ function memoryFacts(memory: AssetMemory, asset: Asset) {
       label: memory.label,
       snippet: valueText ? `${memory.label}: ${valueText}` : memory.label,
       trustLevel,
-      scope: memory.scope,
+      record: memory,
       value: memory.value,
       citations: [
         { kind: "asset_memory", id: memory.id },
@@ -190,7 +226,8 @@ function baseCandidate(
     label: string;
     snippet: string;
     trustLevel: AssetSearchTrustLevel;
-    scope: Asset["scope"];
+    /** The record itself, whose own facts the proof is asked about. */
+    record: ScopedRecord & { ownership: Asset["ownership"] };
     value?: AssetMemory["value"];
     citations: AssetSearchCandidate["citations"];
   },
@@ -202,13 +239,25 @@ function baseCandidate(
     assetName: asset.name,
     assetKind: asset.kind,
     assetStatus: asset.status,
+    // The anchor's ownership, for every record kind — mirroring the SQL, which reads
+    // `a.ownership` in each branch rather than the child row's (ADR 0214).
+    ownership: asset.ownership,
     label: fields.label,
     snippet: fields.snippet,
     value: fields.value ?? null,
     trustLevel: fields.trustLevel,
-    visibilityChoice: visibilityChoiceForScope(fields.scope),
-    visibilityLabel: visibilityLabelForScope(fields.scope),
+    visibilityChoice: visibilityChoiceForScope(fields.record.scope),
+    visibilityLabel: visibilityLabelForScope(fields.record.scope),
     citations: fields.citations,
+    // The record's own facts, not the anchor's — the mirror of the SQL, and the
+    // opposite rule to `ownership` above. A private receipt under the household's
+    // refrigerator answers for itself (ADR 0179).
+    authorization: {
+      ownerUserId: fields.record.ownerUserId,
+      scope: fields.record.scope,
+      householdId: fields.record.householdId ?? null,
+      ownership: fields.record.ownership,
+    },
   };
 }
 
@@ -260,7 +309,7 @@ function assetCandidates(
           label: anchor.name,
           snippet: anchor.name,
           trustLevel: "asset_anchor",
-          scope: anchor.scope,
+          record: anchor,
           citations: [{ kind: "asset", id: anchor.id }],
         }),
         matchedFields: ["name"],
@@ -360,7 +409,7 @@ function evidenceCandidates(
       label: item.label,
       snippet: item.capturedText ?? item.label,
       trustLevel: "asset_evidence",
-      scope: item.scope,
+      record: item,
       citations: [
         { kind: "asset_evidence", id: item.id },
         { kind: "asset", id: asset.id },
@@ -440,7 +489,7 @@ function embeddedAsset(
       label: asset.name,
       snippet: asset.name,
       trustLevel: "asset_anchor",
-      scope: asset.scope,
+      record: asset,
       citations: [{ kind: "asset", id: asset.id }],
     }),
     matchedFields: ["name"],

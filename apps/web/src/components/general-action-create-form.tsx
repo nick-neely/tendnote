@@ -38,41 +38,11 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { GeneralActionAreaView } from "@/lib/general-action-area-view";
+import { buildCreateActionInput } from "@/lib/general-action-create-input";
 import type { GeneralActionView } from "@/lib/general-action-view";
 import { toReminderScheduleView } from "@/lib/reminder-schedule-view";
 import { usePendingMutationSubmit } from "@/lib/reversible-mutation";
 import { useReminderScheduleWriter } from "@/lib/use-reminder-schedule-writer";
-
-/**
- * Assembles the create-action server-action payload, including only the optional fields the
- * user actually filled in (an empty note, no date, no links, and so on are simply omitted).
- * Kept a pure function so the submit handler stays a flat try/await/handle flow.
- */
-function buildCreateActionInput(fields: {
-  title: string;
-  notes: string;
-  dueDate: string;
-  recurrence: GeneralActionRecurrence | null;
-  links: ReturnType<typeof cleanLinks>;
-  assetHints: ReturnType<typeof cleanHintLabels>;
-  personIds: string[];
-  areaId: string | null;
-  visibilityChoice: VisibilityChoice;
-  selectedUserIds: string[];
-}): Parameters<typeof createGeneralActionAction>[0] {
-  return {
-    title: fields.title,
-    ...(fields.notes ? { notes: fields.notes } : {}),
-    ...(fields.dueDate ? { dueAt: fields.dueDate } : {}),
-    ...(fields.recurrence ? { recurrence: fields.recurrence } : {}),
-    ...(fields.links.length ? { links: fields.links } : {}),
-    ...(fields.assetHints.length ? { assetHints: fields.assetHints } : {}),
-    ...(fields.personIds.length ? { personIds: fields.personIds } : {}),
-    ...(fields.areaId ? { areaId: fields.areaId } : {}),
-    visibilityChoice: fields.visibilityChoice,
-    ...(fields.selectedUserIds.length ? { selectedUserIds: fields.selectedUserIds } : {}),
-  };
-}
 
 /**
  * Capture-first create surface for a private one-time Action. The title input is
@@ -384,6 +354,8 @@ function CreateActionDetails({
   onVisibilityChange: (value: VisibilityChoice) => void;
   onSelectedUserIdsChange: (value: string[]) => void;
 }) {
+  const householdNative = visibilityChoice === "whole_household";
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3">
@@ -419,7 +391,7 @@ function CreateActionDetails({
             value={notes}
           />
         </div>
-        {areas.length ? (
+        {areas.length && !householdNative ? (
           <div className="flex flex-col gap-1.5">
             <span className="text-[length:var(--text-small)] text-muted-foreground">Area</span>
             <AreaSelect
@@ -432,7 +404,12 @@ function CreateActionDetails({
           </div>
         ) : null}
         <ActionLinksField links={links} onChange={onLinksChange} />
-        <ActionPeopleField onChange={onPersonIdsChange} people={people} selectedIds={personIds} />
+        {/* An Area and a person link are one member's own records, resolved against
+            that member and invisible to everyone else — so a household action
+            carries neither, and the fields go rather than sit there refusing. */}
+        {householdNative ? null : (
+          <ActionPeopleField onChange={onPersonIdsChange} people={people} selectedIds={personIds} />
+        )}
         <ActionAssetHintsField labels={hintLabels} onChange={onHintLabelsChange} />
       </div>
       {shareableMembers.length ? (
@@ -448,6 +425,16 @@ function CreateActionDetails({
             selectedUserIds={selectedUserIds}
             value={visibilityChoice}
           />
+          {/* One line, stated once, because the difference is real and not
+              recoverable later: choosing the household makes the record theirs
+              rather than yours. Said plainly and left alone — not a warning, not a
+              callout, and never repeated on the row afterwards (ADR 0214). */}
+          {householdNative ? (
+            <p className="text-[length:var(--text-small)] text-muted-foreground">
+              This becomes the household's, not yours: everyone can edit it, and it stays if you
+              leave.
+            </p>
+          ) : null}
           {visibilityChoice !== "only_me" ? (
             <AudiencePreview
               choice={visibilityChoice}

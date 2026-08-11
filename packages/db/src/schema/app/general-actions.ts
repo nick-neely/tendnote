@@ -7,6 +7,7 @@ import { sql } from "drizzle-orm";
 import {
   customType,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -16,7 +17,13 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "../auth";
 import { timestamps } from "./common";
-import { generalActionEventKind, generalActionStatus, privacyScope } from "./enums";
+import {
+  generalActionEventKind,
+  generalActionOfferKind,
+  generalActionOwnership,
+  generalActionStatus,
+  privacyScope,
+} from "./enums";
 import { generalActionAreas } from "./general-action-areas";
 import { householdWorkspaces } from "./households";
 import { people } from "./people";
@@ -40,9 +47,49 @@ export const generalActions = pgTable(
   "general_actions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    /**
+     * The member this row is keyed under, and — for a `member_owned` Action —
+     * its author and its authority.
+     *
+     * For a `household_native` Action it is the creating member and nothing
+     * more: a storage key kept because this column is `NOT NULL` and because
+     * every owner-keyed write and every history row hangs off it. It must never
+     * be read as authority (that is `ownership`, through the Household
+     * Authorization Proof) and never as an access path — the owner-keyed *read*
+     * seams exclude household-native rows precisely so a creator who leaves
+     * loses access exactly like anyone else (ADR 0214).
+     */
     ownerUserId: text("owner_user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    /**
+     * Whose record this is, as opposed to who may see it. `member_owned` for
+     * everything written before Phase Eight and for anything a member writes
+     * for themselves; `household_native` for a record the Household Workspace
+     * owns, over which every active member holds symmetric authority and which
+     * survives its creator's departure with its history intact (ADR 0214).
+     */
+    ownership: generalActionOwnership("ownership").notNull().default("member_owned"),
+    /**
+     * The active member a household-native record names as looking after it.
+     *
+     * `set null` on user delete, and cleared explicitly on departure or removal,
+     * because a name is a statement about a current member and Tendnote never
+     * chooses a replacement. It gates nothing: any active member may act on the
+     * record whoever is named, and history records the real actor (ADR 0215).
+     */
+    responsibilityHolderUserId: text("responsibility_holder_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * The optimistic fence on occurrence advancement, bumped once per advance.
+     *
+     * Two members completing the same bin day produce one roll-forward: the
+     * second write finds the version moved, does not advance again, and is
+     * reconciled against what actually happened. Only the progress paths touch
+     * it, so an unrelated edit never invalidates a member's in-flight tap.
+     */
+    occurrenceVersion: integer("occurrence_version").notNull().default(0),
     title: text("title").notNull(),
     notes: text("notes"),
     // Lightweight links (URL + optional label), not attachment/document
@@ -102,7 +149,55 @@ export const generalActions = pgTable(
     index("general_actions_owner_due_idx").on(table.ownerUserId, table.dueAt),
     index("general_actions_owner_area_idx").on(table.ownerUserId, table.areaId),
     index("general_actions_household_scope_idx").on(table.householdId, table.scope),
+    /**
+     * The Household home's access path (#384) and the departure sweep's: the
+     * household's own records, by ownership form.
+     */
+    index("general_actions_household_ownership_idx").on(table.householdId, table.ownership),
+    /** Departure clears every record naming the leaving member. */
+    index("general_actions_responsibility_holder_idx").on(table.responsibilityHolderUserId),
     index("general_actions_search_vector_idx").using("gin", table.searchVector),
+  ],
+);
+
+/**
+ * One member's "no thanks" to an offer this record made them, stored only when
+ * the answer was no.
+ *
+ * Both Phase Eight offers ask a question the member did not go looking for, so
+ * both owe the same promise: asked once, and never again once answered. A yes
+ * leaves its own durable trace — a `reminder_schedules` row, or a changed
+ * Responsibility Holder — and needs nothing here. A no leaves none, so without
+ * this table the question would come back every single time the member opened
+ * the record, which is precisely the nagging the offers exist to avoid.
+ *
+ * One table with an `offer_kind` rather than one per offer, because "which
+ * questions has this member already answered about this record" is a single
+ * concept, and a second table would be a second place to forget to check.
+ *
+ * Keyed on the member and the record rather than on the occasion, so re-naming
+ * the same member, or another occurrence coming round, never re-asks a question
+ * they have already answered. Rows cascade with the record and with the member.
+ */
+export const generalActionOfferDeclines = pgTable(
+  "general_action_offer_declines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    generalActionId: uuid("general_action_id")
+      .notNull()
+      .references(() => generalActions.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    offerKind: generalActionOfferKind("offer_kind").notNull(),
+    declinedAt: timestamp("declined_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("general_action_offer_declines_action_user_kind_idx").on(
+      table.generalActionId,
+      table.userId,
+      table.offerKind,
+    ),
   ],
 );
 

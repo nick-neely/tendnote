@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   customType,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -12,6 +14,7 @@ import {
 import { user } from "../auth";
 import { timestamps } from "./common";
 import {
+  householdRecordOwnership,
   privacyScope,
   savedItemDestinationKind,
   savedItemEventKind,
@@ -31,9 +34,11 @@ export const savedItems = pgTable(
   "saved_items",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    // Nullable because a household-native Saved Item is owned by the workspace,
+    // not by a member (ADR 0214, #385). `saved_items_ownership_check` below is
+    // what keeps the column and the ownership form from disagreeing.
+    ownerUserId: text("owner_user_id").references(() => user.id, { onDelete: "cascade" }),
+    ownership: householdRecordOwnership("ownership").notNull().default("member_owned"),
     kind: savedItemKind("kind").notNull(),
     title: text("title").notNull(),
     content: text("content"),
@@ -59,6 +64,10 @@ export const savedItems = pgTable(
     lastActorUserId: text("last_actor_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    // The optimistic-concurrency counter every write increments. Household-native
+    // writes compare it before saving so a stale member is reconciled instead of
+    // silently overwriting the member who saved first (#385).
+    version: integer("version").notNull().default(1),
     searchVector: tsvector("search_vector")
       .notNull()
       .generatedAlwaysAs(
@@ -71,7 +80,29 @@ export const savedItems = pgTable(
     index("saved_items_owner_bring_back_idx").on(table.ownerUserId, table.bringBackAt),
     index("saved_items_source_record_idx").on(table.sourceRecordId),
     index("saved_items_household_scope_idx").on(table.householdId, table.scope),
+    index("saved_items_household_ownership_idx").on(
+      table.householdId,
+      table.ownership,
+      table.status,
+    ),
     index("saved_items_search_vector_idx").using("gin", table.searchVector),
+    // The two ownership forms written as one constraint so no adapter can invent
+    // a third: a member-owned row always names its member, and a household-native
+    // row names no member, sits in a household, is visible to all of it, and
+    // still records who created it (ADR 0214).
+    check(
+      "saved_items_ownership_check",
+      sql`(
+        (${table.ownership} = 'member_owned' and ${table.ownerUserId} is not null)
+        or (
+          ${table.ownership} = 'household_native'
+          and ${table.ownerUserId} is null
+          and ${table.householdId} is not null
+          and ${table.scope} = 'household'
+          and ${table.createdByUserId} is not null
+        )
+      )`,
+    ),
   ],
 );
 
@@ -82,9 +113,10 @@ export const savedItemEvents = pgTable(
     savedItemId: uuid("saved_item_id")
       .notNull()
       .references(() => savedItems.id, { onDelete: "cascade" }),
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    // Null on a household-native item's trail, matching its Saved Item. The
+    // actor is still recorded: attribution survives, authority never came from
+    // this column (ADR 0214).
+    ownerUserId: text("owner_user_id").references(() => user.id, { onDelete: "cascade" }),
     kind: savedItemEventKind("kind").notNull(),
     actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
     detailJson: jsonb("detail_json")

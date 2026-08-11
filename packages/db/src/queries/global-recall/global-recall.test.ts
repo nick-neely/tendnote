@@ -8,15 +8,17 @@ import {
   searchRelationshipContextSchema,
   searchSavedItemsSemanticSchema,
   searchSemanticContextSchema,
+  toContextFactView,
 } from "@tendnote/domain";
 import { describe, expect, it, vi } from "vitest";
-import type { SelfContextExactResult } from "../context-facts/types";
+import type { HouseholdContextExactResult, SelfContextExactResult } from "../context-facts/types";
 import { createInMemoryRelationshipContextSearchStore } from "../relationship-context-search/in-memory-store";
 import { createRelationshipContextSearchQueries } from "../relationship-context-search/queries";
 import { createGlobalRecall } from "./queries";
 import type { GlobalRecallDependencies } from "./types";
 
 const OWNER = "owner-1";
+const HOUSEHOLD = "household-1";
 
 function assetOutcome(
   results: Awaited<ReturnType<GlobalRecallDependencies["searchAssets"]>>["results"],
@@ -128,13 +130,55 @@ function exactSelfContext(
   };
 }
 
+/**
+ * A household fact in the shape the household query already answers with: a
+ * rendered view, not a raw record. The proof that decides whether the caller may
+ * see it at all lives inside that query, so the stubs below stand in for it the
+ * only way this seam can observe it - by answering for one member and nobody
+ * else.
+ */
+function exactHouseholdContext(
+  id = "household-fact-1",
+  content = "Two adults and one child live here.",
+  sensitivity: "normal" | "restricted" = "normal",
+): HouseholdContextExactResult {
+  const now = new Date("2026-08-02T12:00:00.000Z");
+  return {
+    fact: toContextFactView(
+      contextFactSchema.parse({
+        id,
+        subject: { kind: "household", householdId: HOUSEHOLD },
+        // Composition is a household-only category, so a household result that
+        // could not carry it would be unmodellable for the household's most
+        // characteristic statement.
+        category: "composition",
+        content,
+        lifecycle: "active",
+        sensitivity,
+        provenance: { channel: "account", origin: "direct", sourceRecordId: null },
+        suggestionEvidence: null,
+        creatorUserId: OWNER,
+        lastActorUserId: OWNER,
+        reviewedAt: now,
+        archivedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ),
+    matchedFields: ["content"],
+    rank: 5,
+  };
+}
+
 const emptyDependencies = {
   searchSelfContextExact: async () => [],
+  searchHouseholdContextExact: async () => [],
   searchRelationshipExact: async () => [],
   searchRelationshipRelated: async () => [],
   searchAssets: async () => assetOutcome([]),
   searchSavedItemsExact: async () => [],
   searchSavedItemsRelated: async () => [],
+  searchGiftPlans: async () => [],
   listFollowups: async () => [],
   readCalendar: async () => ({ connected: false, result: null }),
 } satisfies GlobalRecallDependencies;
@@ -197,6 +241,173 @@ describe("Global Recall", () => {
       }),
     ).resolves.toMatchObject({ results: [] });
     expect(searchRelationshipRelated).not.toHaveBeenCalled();
+  });
+
+  it("returns an active member's Household Context under the household's own audience", async () => {
+    const searchHouseholdContextExact = vi
+      .fn()
+      .mockImplementation(async (input) =>
+        input.callerUserId === OWNER ? [exactHouseholdContext()] : [],
+      );
+    const recall = createGlobalRecall({ ...emptyDependencies, searchHouseholdContextExact });
+
+    const result = await recall.search({
+      ownerUserId: OWNER,
+      query: "one child",
+      family: "household_context",
+    });
+
+    expect(result).toMatchObject({
+      results: [
+        {
+          family: "household_context",
+          canonical: { kind: "context_fact", id: "household-fact-1" },
+          label: "Two adults and one child live here.",
+          supportingText: "Composition",
+          lifecycle: "active",
+          trust: "household_context",
+          sensitivity: "normal",
+          visibility: { choice: "whole_household", label: "Whole household" },
+          grounding: [{ kind: "context_fact", id: "household-fact-1" }],
+          href: "/account/household/context#household-context-fact-household-fact-1",
+          match: { kind: "exact", reason: "Matched Household Context content" },
+          details: {
+            content: "Two adults and one child live here.",
+            category: "composition",
+            categoryLabel: "Composition",
+            provenance: { channel: "account", origin: "direct" },
+          },
+        },
+      ],
+      limitations: [],
+    });
+    // A member of no household, or of a different one, is answered by the same
+    // query with nothing - there is no separate "not a member" outcome to leak.
+    await expect(
+      recall.search({
+        ownerUserId: "outsider-1",
+        query: "one child",
+        family: "household_context",
+      }),
+    ).resolves.toMatchObject({ results: [] });
+  });
+
+  it("reaches restricted Household Context only on a direct request", async () => {
+    const searchHouseholdContextExact = vi
+      .fn()
+      .mockImplementation(async (input: { directlyRequested: boolean }) =>
+        input.directlyRequested
+          ? [
+              exactHouseholdContext(
+                "household-fact-restricted",
+                "We use a shared therapy fund.",
+                "restricted",
+              ),
+            ]
+          : [],
+      );
+    const recall = createGlobalRecall({ ...emptyDependencies, searchHouseholdContextExact });
+
+    const ambient = await recall.search({
+      ownerUserId: OWNER,
+      query: "therapy fund",
+      family: "household_context",
+    });
+    const revealed = await recall.search({
+      ownerUserId: OWNER,
+      query: "therapy fund",
+      family: "household_context",
+      includeRestricted: true,
+    });
+
+    expect(ambient.results).toEqual([]);
+    expect(revealed.results.map((entry) => entry.canonical.id)).toEqual([
+      "household-fact-restricted",
+    ]);
+    expect(
+      searchHouseholdContextExact.mock.calls.map(([input]) => input.directlyRequested),
+    ).toEqual([false, true]);
+  });
+
+  /**
+   * Archived Household Context is a statement the household took down together,
+   * so "Include archived" - a control one member ticks for their own history -
+   * must not put it back in front of them. The seam enforces that by never
+   * offering the household read an archived parameter at all.
+   */
+  it("never widens the Household Context read to archived history", async () => {
+    const searchHouseholdContextExact = vi.fn().mockResolvedValue([]);
+    const recall = createGlobalRecall({ ...emptyDependencies, searchHouseholdContextExact });
+
+    await recall.search({
+      ownerUserId: OWNER,
+      query: "spare key",
+      family: "household_context",
+      includeArchived: true,
+    });
+
+    expect(searchHouseholdContextExact).toHaveBeenCalledWith({
+      callerUserId: OWNER,
+      query: "spare key",
+      directlyRequested: false,
+      limit: 20,
+    });
+  });
+
+  it("keeps a Self and a Household fact with the same words as two separate answers", async () => {
+    const sameWords = "We are hosting family in August.";
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchSelfContextExact: async () => [exactSelfContext("self-fact-1", sameWords)],
+      searchHouseholdContextExact: async () => [
+        exactHouseholdContext("household-fact-1", sameWords),
+      ],
+    });
+
+    const both = await recall.search({ ownerUserId: OWNER, query: "hosting family" });
+    const selfOnly = await recall.search({
+      ownerUserId: OWNER,
+      query: "hosting family",
+      family: "self_context",
+    });
+    const householdOnly = await recall.search({
+      ownerUserId: OWNER,
+      query: "hosting family",
+      family: "household_context",
+    });
+
+    expect(
+      both.results.map((entry) => [entry.family, entry.canonical.id, entry.visibility]),
+    ).toEqual([
+      ["self_context", "self-fact-1", { choice: "only_me", label: "Only me" }],
+      [
+        "household_context",
+        "household-fact-1",
+        { choice: "whole_household", label: "Whole household" },
+      ],
+    ]);
+    expect(selfOnly.results.map((entry) => entry.family)).toEqual(["self_context"]);
+    expect(householdOnly.results.map((entry) => entry.family)).toEqual(["household_context"]);
+  });
+
+  it("reports an unavailable Household Context read without silencing the rest", async () => {
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchHouseholdContextExact: async () => {
+        throw new Error("household context unavailable");
+      },
+      searchSelfContextExact: async () => [exactSelfContext()],
+    });
+
+    const result = await recall.search({ ownerUserId: OWNER, query: "software consultancy" });
+
+    expect(result.results.map((entry) => entry.canonical.id)).toEqual(["context-fact-1"]);
+    expect(result.limitations).toEqual([
+      {
+        source: "household_context",
+        message: "Household Context results are temporarily unavailable.",
+      },
+    ]);
   });
 
   it("uses one candidate bound accepted by every typed retrieval dependency", async () => {
@@ -450,6 +661,43 @@ describe("Global Recall", () => {
     });
   });
 
+  it("names no audience on a household-native Asset", async () => {
+    // A recall row reports the audience someone chose. Nobody chose to share the
+    // household's own refrigerator with the household, so there is none to report
+    // and the field takes its absent shape rather than a "Whole household" chip
+    // the record never earned (ADR 0214).
+    const recall = createGlobalRecall({
+      ...emptyDependencies,
+      searchAssets: async () =>
+        assetOutcome([
+          {
+            recordKind: "asset" as const,
+            recordId: "asset-1",
+            assetId: "asset-1",
+            assetName: "Kitchen refrigerator",
+            assetKind: "appliance" as const,
+            assetStatus: "active" as const,
+            ownership: "household_native" as const,
+            label: "Kitchen refrigerator",
+            snippet: "Kitchen refrigerator",
+            matchedFields: ["name"],
+            value: null,
+            trustLevel: "asset_anchor" as const,
+            visibilityChoice: "whole_household" as const,
+            visibilityLabel: "Whole household",
+            citations: [{ kind: "asset" as const, id: "asset-1" }],
+            matchKinds: ["exact" as const],
+            score: 0.9,
+          },
+        ]),
+    });
+
+    const { results } = await recall.search({ ownerUserId: OWNER, query: "refrigerator" });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.visibility).toBeNull();
+  });
+
   it("returns Asset Memories canonically while evidence only grounds its parent Asset", async () => {
     const recall = createGlobalRecall({
       ...emptyDependencies,
@@ -462,6 +710,7 @@ describe("Global Recall", () => {
             assetName: "Kitchen refrigerator",
             assetKind: "appliance" as const,
             assetStatus: "active" as const,
+            ownership: "member_owned" as const,
             label: "Filter model",
             snippet: "Filter model: EDR4RXD1",
             matchedFields: ["value"],
@@ -483,6 +732,7 @@ describe("Global Recall", () => {
             assetName: "Garage refrigerator",
             assetKind: "appliance" as const,
             assetStatus: "active" as const,
+            ownership: "member_owned" as const,
             label: "Filter receipt",
             snippet: "Replacement water filter receipt",
             matchedFields: ["label"],
@@ -542,6 +792,8 @@ describe("Global Recall", () => {
         {
           id: "saved-1",
           ownerUserId: OWNER,
+          ownership: "member_owned" as const,
+          version: 1,
           kind: "note" as const,
           title: "Filter measurements",
           content: "Measure the refrigerator filter opening",
@@ -838,6 +1090,7 @@ describe("Global Recall", () => {
             assetName: "Refrigerator filter",
             assetKind: "item" as const,
             assetStatus: "active" as const,
+            ownership: "member_owned" as const,
             label: "Refrigerator filter",
             snippet: "Refrigerator filter",
             matchedFields: ["name"],
@@ -888,8 +1141,10 @@ describe("Global Recall", () => {
     };
     const recall = createGlobalRecall({
       searchSelfContextExact: forbidden,
+      searchHouseholdContextExact: forbidden,
       searchRelationshipExact: forbidden,
       searchRelationshipRelated: forbidden,
+      searchGiftPlans: forbidden,
       searchAssets: async () =>
         assetOutcome([
           {
@@ -899,6 +1154,7 @@ describe("Global Recall", () => {
             assetName: "Refrigerator filter",
             assetKind: "item" as const,
             assetStatus: "active" as const,
+            ownership: "member_owned" as const,
             label: "Refrigerator filter",
             snippet: "Refrigerator filter",
             matchedFields: ["name"],
@@ -940,6 +1196,7 @@ describe("Global Recall", () => {
               assetName: "Refrigerator filter",
               assetKind: "item" as const,
               assetStatus: "active" as const,
+              ownership: "member_owned" as const,
               label: "Refrigerator filter",
               snippet: "Refrigerator filter",
               matchedFields: ["name"],
@@ -1194,6 +1451,7 @@ describe("Global Recall", () => {
             assetName: "Kitchen refrigerator",
             assetKind: "appliance" as const,
             assetStatus: "active" as const,
+            ownership: "member_owned" as const,
             label: `Filter detail ${index + 1}`,
             snippet: `Filter detail ${index + 1}`,
             matchedFields: ["label"],
@@ -1213,6 +1471,8 @@ describe("Global Recall", () => {
         {
           id: "saved-diverse",
           ownerUserId: OWNER,
+          ownership: "member_owned" as const,
+          version: 1,
           kind: "note" as const,
           title: "Filter measurements",
           content: "Measure the filter opening",
@@ -1441,6 +1701,9 @@ describe("Global Recall over stored relationship context", () => {
       invitedAt: now,
       acceptedAt: now,
       removedAt: null,
+      pendingRole: null,
+      pendingRoleOfferedByUserId: null,
+      pendingRoleOfferedAt: null,
       createdAt: now,
       updatedAt: now,
     },

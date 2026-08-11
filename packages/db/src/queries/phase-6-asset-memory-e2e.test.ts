@@ -7,7 +7,10 @@ import {
   isDurableAssetStatus,
 } from "@tendnote/domain";
 import { describe, expect, it } from "vitest";
-import { createInMemoryAssetSearchStore } from "./asset-search/in-memory-store";
+import {
+  createInMemoryAssetSearchAuthorityStore,
+  createInMemoryAssetSearchStore,
+} from "./asset-search/in-memory-store";
 import { createAssetSearch } from "./asset-search/queries";
 import { createAssetSnapshot } from "./asset-snapshots/builder";
 import { createInMemoryAssetSnapshotStore } from "./asset-snapshots/in-memory-store";
@@ -137,6 +140,7 @@ function searchOver(input: {
       evidence: input.evidence,
       householdMemberships: input.memberships,
     }),
+    createInMemoryAssetSearchAuthorityStore({ householdMemberships: input.memberships }),
     themedAdapter,
     { model: "fake", version: "v1" },
   );
