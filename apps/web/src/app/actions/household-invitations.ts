@@ -238,12 +238,20 @@ const retryable = (error: string): RecipientFailure => ({ ok: false, error, term
  * is not acting on their own data, they are presenting a capability. What it
  * needs is the session's proven identity — id and email, never anything the
  * caller supplied — and the shared lifecycle re-decides everything else.
+ *
+ * Private Beta Access is deliberately *not* checked here. It is the global
+ * denier for using Tendnote, not a rule about who may belong to a household: an
+ * invited person whose access has not been granted yet still becomes a member,
+ * and still lands on the waiting page afterwards. Requiring admission would
+ * instead let the invitation expire under someone who did everything right.
+ * Signing in is the whole requirement, because the address is what the shared
+ * lifecycle matches against.
  */
 async function requireRecipientSession(): Promise<
   { ok: true; userId: string; email: string } | RecipientFailure
 > {
   const access = await getCurrentAccess();
-  if (access.state !== "admitted") {
+  if (access.state === "unauthenticated") {
     return retryable(RECIPIENT_SIGN_IN_REQUIRED);
   }
   return { ok: true, userId: access.user.id, email: access.user.email };

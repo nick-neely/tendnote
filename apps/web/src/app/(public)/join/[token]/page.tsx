@@ -39,10 +39,6 @@ const HEADINGS: Record<HouseholdJoinView["state"], { title: string; subtitle: st
     title: "You already have a household",
     subtitle: "Nothing here has changed.",
   },
-  "access-pending": {
-    title: "Not quite yet",
-    subtitle: "Your Tendnote access is still being set up.",
-  },
   unusable: {
     title: "This invitation has closed",
     subtitle: "Nothing was shared, and nothing needs doing.",
