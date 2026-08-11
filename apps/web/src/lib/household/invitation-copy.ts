@@ -17,9 +17,21 @@ export const HOUSEHOLD_GENERIC_ERROR =
  * glances at, not a record, and the year is never in question inside a 14-day
  * window.
  */
-export const INVITATION_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
+const INVITATION_DATE_FIELDS = { month: "short", day: "numeric" } as const;
+
+export const INVITATION_DATE_FORMAT = new Intl.DateTimeFormat("en-US", INVITATION_DATE_FIELDS);
+
+/**
+ * The same deadline, for a surface with no reader's clock to ask.
+ *
+ * An email is composed on a server and read wherever the recipient is, so there
+ * is no local zone to format in and guessing one would be worse than picking a
+ * fixed one. Pinned to UTC so the same invitation renders the same words on
+ * every machine that builds it, including the test runner.
+ */
+export const INVITATION_DATE_FORMAT_UTC = new Intl.DateTimeFormat("en-US", {
+  ...INVITATION_DATE_FIELDS,
+  timeZone: "UTC",
 });
 
 /**
