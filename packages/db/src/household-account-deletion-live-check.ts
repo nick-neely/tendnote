@@ -51,6 +51,7 @@ async function cleanupTestArtifacts() {
   const householdIds = households.map((household) => household.id);
   if (householdIds.length > 0) {
     await getDb().delete(generalActions).where(inArray(generalActions.householdId, householdIds));
+    await getDb().delete(auditLog).where(inArray(auditLog.entityId, householdIds));
     await getDb().delete(assets).where(inArray(assets.householdId, householdIds));
     await getDb().delete(householdWorkspaces).where(inArray(householdWorkspaces.id, householdIds));
   }
